@@ -1,0 +1,288 @@
+// The only way the card talks to the backend: authenticated Home Assistant WebSocket commands via
+// `hass.callWS`. No fetch, XHR, relay URL or entity reads, and the card never holds a token, webhook
+// id or pairing URL.
+
+import {
+  ACTION_API_VERSION,
+  ACTION_STOP,
+  API_VERSION,
+  ENTITY_CONFIG_API_VERSION,
+  MARKET_API_VERSION,
+  SETTINGS_API_VERSION,
+  SITE_SETTINGS_API_VERSION,
+  type ChargerList,
+  type HomeAssistantLike,
+  type ManualAction,
+  type ManualActionResult,
+  type SettingsBody,
+} from "./types";
+import type { EntityRequest, VehicleSocRequest } from "./entity-config";
+import type { SiteSettingsRequest } from "./site-settings";
+
+export const UNSUPPORTED_API_VERSION = "spotnav_unsupported_api_version";
+
+/**
+ * What every failure is presented as: static text. A rejection's `message` is transport or backend
+ * prose (it can quote a path, token or exception) and is never shown, stored or logged; the stable
+ * code is the whole content of a refusal.
+ */
+export const REQUEST_FAILED_MESSAGE = "The request to Home Assistant failed.";
+
+export class SpotnavApiError extends Error {
+  readonly code: string | null;
+
+  constructor(code: string | null) {
+    super(REQUEST_FAILED_MESSAGE);
+    this.name = "SpotnavApiError";
+    this.code = code;
+  }
+}
+
+function failureCode(error: unknown): string | null {
+  if (typeof error === "object" && error !== null) {
+    const candidate = (error as { code?: unknown }).code;
+    if (typeof candidate === "string" && candidate.length > 0) {
+      return candidate;
+    }
+  }
+  return null;
+}
+
+async function call<T>(hass: HomeAssistantLike, message: Record<string, unknown>): Promise<T> {
+  try {
+    return await hass.callWS<T>(message);
+  } catch (error) {
+    throw new SpotnavApiError(failureCode(error));
+  }
+}
+
+export async function listChargers(hass: HomeAssistantLike): Promise<ChargerList> {
+  return await call<ChargerList>(hass, {
+    type: "spotnav/list_chargers",
+    api_version: API_VERSION,
+  });
+}
+
+/**
+ * One charger's whole view as the backend sent it, deliberately `unknown`: only `decodeDashboard()`
+ * turns it into a model. A newer backend is not refused here; the version is one of the facts the
+ * decoder judges, so unsupported and malformed stay distinct.
+ */
+export async function getDashboard(
+  hass: HomeAssistantLike,
+  chargerId: string,
+  version: number = API_VERSION,
+): Promise<unknown> {
+  return await call<unknown>(hass, {
+    type: "spotnav/get_dashboard",
+    api_version: version,
+    charger_id: chargerId,
+  });
+}
+
+/**
+ * The action request is `{type, api_version, charger_id, action}` plus one `choice` only for Stop;
+ * the field is added only where the contract allows it.
+ */
+function actionMessage(
+  chargerId: string,
+  action: ManualAction,
+  choice: string | null,
+): Record<string, unknown> {
+  const message: Record<string, unknown> = {
+    type: "spotnav/manual_action",
+    api_version: ACTION_API_VERSION,
+    charger_id: chargerId,
+    action,
+  };
+  if (action === ACTION_STOP && choice !== null) {
+    message.choice = choice;
+  }
+  return message;
+}
+
+/**
+ * One manual action and its stable envelope, decoded strictly (`ok` boolean, `error`/`action`/`choice`
+ * string or null, exactly the contract's keys). A refusal is returned as a value, not thrown.
+ */
+export async function performAction(
+  hass: HomeAssistantLike,
+  chargerId: string,
+  action: ManualAction,
+  choice: string | null = null,
+): Promise<ManualActionResult> {
+  const raw = await call<unknown>(hass, actionMessage(chargerId, action, choice));
+  return decodeActionResult(raw);
+}
+
+function decodeActionResult(raw: unknown): ManualActionResult {
+  const source = typeof raw === "object" && raw !== null && !Array.isArray(raw) ? raw : null;
+  if (source === null) {
+    throw new SpotnavApiError(null);
+  }
+  const record = source as Record<string, unknown>;
+  const keys = ["api_version", "ok", "error", "action", "choice"];
+  for (const key of keys) {
+    if (!(key in record)) {
+      throw new SpotnavApiError(null);
+    }
+  }
+  if (Object.keys(record).length !== keys.length) {
+    throw new SpotnavApiError(null);
+  }
+  const version = record.api_version;
+  const ok = record.ok;
+  const error = record.error;
+  const answered = record.action;
+  const answeredChoice = record.choice;
+  if (typeof version !== "number" || typeof ok !== "boolean") {
+    throw new SpotnavApiError(null);
+  }
+  for (const value of [error, answered, answeredChoice]) {
+    if (value !== null && typeof value !== "string") {
+      throw new SpotnavApiError(null);
+    }
+  }
+  return {
+    api_version: version,
+    ok,
+    error: (error ?? null) as string | null,
+    action: (answered ?? null) as ManualAction | null,
+    choice: (answeredChoice ?? null) as string | null,
+  };
+}
+
+/**
+ * One charger's canonical settings as sent, `unknown` until `decodeSettingsAnswer()` decodes it.
+ * Edits are built from this record, never from the dashboard's reduced `settings` summary.
+ */
+export async function getSettings(
+  hass: HomeAssistantLike,
+  chargerId: string,
+): Promise<unknown> {
+  return await call<unknown>(hass, {
+    type: "spotnav/get_settings",
+    api_version: SETTINGS_API_VERSION,
+    charger_id: chargerId,
+  });
+}
+
+/**
+ * The catalogue's area choices and suggestions, `unknown` until `decodeMarketOptions()`. A refusal
+ * here is entry-level and arrives as a rejected message with a stable code.
+ */
+export async function getMarketOptions(
+  hass: HomeAssistantLike,
+  chargerId: string,
+): Promise<unknown> {
+  return await call<unknown>(hass, {
+    type: "spotnav/get_market_options",
+    api_version: MARKET_API_VERSION,
+    charger_id: chargerId,
+  });
+}
+
+/**
+ * One full settings replacement under compare-and-set: `{type, api_version, charger_id,
+ * expected_revision, settings}`. The revision travels beside the body (a `revision` key inside it is
+ * refused); `body` comes from the builders in `settings.ts`.
+ */
+export async function updateSettings(
+  hass: HomeAssistantLike,
+  chargerId: string,
+  expectedRevision: number,
+  body: SettingsBody,
+): Promise<unknown> {
+  return await call<unknown>(hass, {
+    type: "spotnav/update_settings",
+    api_version: SETTINGS_API_VERSION,
+    charger_id: chargerId,
+    expected_revision: expectedRevision,
+    settings: body,
+  });
+}
+
+/**
+ * The one site-wide write (solar priority and/or hybrid forecast sources, admin only). `expected` is
+ * the subset last seen, `changes` only the fields this edit owns. The server resolves charger to
+ * site and answers with the re-read `site` block, so a conflict is a value, not an exception.
+ */
+export async function updateSiteSettings(
+  hass: HomeAssistantLike,
+  chargerId: string,
+  request: SiteSettingsRequest,
+): Promise<unknown> {
+  return await call<unknown>(hass, {
+    type: "spotnav/update_site_settings",
+    api_version: SITE_SETTINGS_API_VERSION,
+    charger_id: chargerId,
+    expected: request.expected,
+    changes: request.changes,
+  });
+}
+
+export async function getEntityConfig(hass: HomeAssistantLike, chargerId: string): Promise<unknown> {
+  return await call<unknown>(hass, {
+    type: "spotnav/get_entity_config",
+    api_version: ENTITY_CONFIG_API_VERSION,
+    charger_id: chargerId,
+  });
+}
+
+export async function updateEntityConfig(
+  hass: HomeAssistantLike,
+  chargerId: string,
+  request: EntityRequest,
+): Promise<unknown> {
+  return await call<unknown>(hass, {
+    type: "spotnav/update_entity_config",
+    api_version: ENTITY_CONFIG_API_VERSION,
+    charger_id: chargerId,
+    scope: request.scope,
+    expected: request.expected,
+    changes: request.changes,
+  });
+}
+
+/**
+ * Choose a vehicle's charge-level sensor, or (`entityId: null`) return it to automatic detection.
+ * Administrators only; same envelope as the other entity commands.
+ */
+export async function setVehicleSoc(
+  hass: HomeAssistantLike,
+  chargerId: string,
+  request: VehicleSocRequest,
+): Promise<unknown> {
+  return await call<unknown>(hass, {
+    type: "spotnav/choose_vehicle_soc",
+    api_version: ENTITY_CONFIG_API_VERSION,
+    charger_id: chargerId,
+    vehicle_id: request.vehicleId,
+    entity_id: request.entityId,
+  });
+}
+
+export interface VehicleChanges {
+  vehicleId: string;
+  changes: { capacity_kwh?: number | null; consumption_kwh_per_10km?: number | null };
+  expected: { capacity_kwh?: number | null; consumption_kwh_per_10km?: number | null };
+}
+
+/**
+ * Change a vehicle's battery size and/or consumption under compare-and-set. Administrators only;
+ * the answer is the entity envelope plus the vehicle's row.
+ */
+export async function updateVehicle(
+  hass: HomeAssistantLike,
+  chargerId: string,
+  request: VehicleChanges,
+): Promise<unknown> {
+  return await call<unknown>(hass, {
+    type: "spotnav/update_vehicle",
+    api_version: ENTITY_CONFIG_API_VERSION,
+    charger_id: chargerId,
+    vehicle_id: request.vehicleId,
+    changes: request.changes,
+    expected: request.expected,
+  });
+}

@@ -1,5 +1,5 @@
 {
-  "name": "SpotNav charging control",
-  "homeassistant": "2025.1.0",
+  "name": "SpotNav",
+  "homeassistant": "2026.9.0",
   "render_readme": true
 }

@@ -1,0 +1,27 @@
+{
+  "action": "update_vehicle",
+  "api_version": 1,
+  "config": null,
+  "error": "spotnav_invalid_value",
+  "field_errors": [
+    {
+      "code": "invalid_capacity",
+      "field": "capacity_kwh"
+    },
+    {
+      "code": "invalid_consumption",
+      "field": "consumption_kwh_per_10km"
+    }
+  ],
+  "ok": false,
+  "vehicle": {
+    "capacity_kwh": null,
+    "capacity_source": null,
+    "consumption_kwh_per_10km": 2.0,
+    "id": "vehicle_niro",
+    "max_percent": null,
+    "name": "Niro",
+    "soc_entity_id": "sensor.niro_battery",
+    "soc_percent": 55.0
+  }
+}

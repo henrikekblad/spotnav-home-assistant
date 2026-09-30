@@ -1,0 +1,490 @@
+{
+  "api_version": 1,
+  "config": {
+    "charger_id": "get_derived",
+    "control": {
+      "capabilities": {
+        "reads_charging_state": false,
+        "reads_energy_register": false,
+        "reads_measured_current": false,
+        "regulated_current": false,
+        "set_current": false,
+        "start_stop": true
+      },
+      "charging_state": {
+        "entity_id": null,
+        "source": "control"
+      },
+      "conflicts": [],
+      "current": {
+        "enabled": false,
+        "entity_id": null,
+        "kind": "none",
+        "service": null
+      },
+      "platform": null,
+      "policy": {
+        "flash_stored": false,
+        "ignored_while_paused": false,
+        "installation_wide": false,
+        "max_writes_per_minute": null,
+        "min_interval_s": 90.0,
+        "regulator_writes": true,
+        "resend_after_plug_in": false,
+        "zero_pauses": true
+      },
+      "start_stop": {
+        "entity_ids": [
+          "switch.get_derived_control"
+        ],
+        "inverted": false,
+        "kind": "switch",
+        "start_option": null,
+        "stop_option": null
+      }
+    },
+    "fields": [
+      {
+        "allowed_device_classes": [],
+        "allowed_domains": [
+          "switch"
+        ],
+        "current": {
+          "entity_id": "switch.get_derived_control",
+          "exists": true,
+          "friendly_name": "Control get_derived"
+        },
+        "effective": {
+          "entity_id": "switch.get_derived_control",
+          "friendly_name": "Control get_derived",
+          "source": "configured"
+        },
+        "field": "charge_control",
+        "kind": "entity",
+        "required": true,
+        "scope": "charger",
+        "writable": true
+      },
+      {
+        "allowed_device_classes": [],
+        "allowed_domains": [
+          "number"
+        ],
+        "current": null,
+        "effective": null,
+        "field": "current_limit",
+        "kind": "entity",
+        "required": false,
+        "scope": "charger",
+        "writable": true
+      },
+      {
+        "allowed_device_classes": [
+          "energy"
+        ],
+        "allowed_domains": [
+          "sensor"
+        ],
+        "current": null,
+        "effective": null,
+        "field": "energy_register_entity",
+        "kind": "entity",
+        "required": false,
+        "scope": "charger",
+        "writable": true
+      },
+      {
+        "allowed_device_classes": [
+          "battery"
+        ],
+        "allowed_domains": [
+          "sensor"
+        ],
+        "current": null,
+        "effective": null,
+        "field": "vehicle_soc",
+        "kind": "entity",
+        "required": false,
+        "scope": "charger",
+        "writable": false
+      },
+      {
+        "field": "main_fuse_a",
+        "kind": "number",
+        "minimum": 0.1,
+        "required": true,
+        "scope": "site",
+        "value": 25.0,
+        "writable": true
+      },
+      {
+        "choices": [
+          "direct_phase_current",
+          "derived_phase_current"
+        ],
+        "field": "measurement_mode",
+        "kind": "enum",
+        "required": true,
+        "scope": "site",
+        "value": "derived_phase_current",
+        "writable": true
+      },
+      {
+        "allowed_device_classes": [
+          "power"
+        ],
+        "allowed_domains": [
+          "sensor"
+        ],
+        "current": null,
+        "effective": null,
+        "field": "derived_L1_power",
+        "kind": "entity",
+        "required": true,
+        "scope": "site",
+        "writable": true
+      },
+      {
+        "allowed_device_classes": [
+          "voltage"
+        ],
+        "allowed_domains": [
+          "sensor"
+        ],
+        "current": null,
+        "effective": null,
+        "field": "derived_L1_voltage",
+        "kind": "entity",
+        "required": true,
+        "scope": "site",
+        "writable": true
+      },
+      {
+        "allowed_device_classes": [
+          "power"
+        ],
+        "allowed_domains": [
+          "sensor"
+        ],
+        "current": null,
+        "effective": null,
+        "field": "derived_L1_power_export",
+        "kind": "entity",
+        "required": false,
+        "scope": "site",
+        "writable": true
+      },
+      {
+        "allowed_device_classes": [
+          "reactive_power"
+        ],
+        "allowed_domains": [
+          "sensor"
+        ],
+        "current": null,
+        "effective": null,
+        "field": "derived_L1_reactive_power",
+        "kind": "entity",
+        "required": false,
+        "scope": "site",
+        "writable": true
+      },
+      {
+        "allowed_device_classes": [
+          "apparent_power"
+        ],
+        "allowed_domains": [
+          "sensor"
+        ],
+        "current": null,
+        "effective": null,
+        "field": "derived_L1_apparent_power",
+        "kind": "entity",
+        "required": false,
+        "scope": "site",
+        "writable": true
+      },
+      {
+        "allowed_device_classes": [
+          "current"
+        ],
+        "allowed_domains": [
+          "sensor"
+        ],
+        "current": null,
+        "effective": null,
+        "field": "derived_L1_current",
+        "kind": "entity",
+        "required": false,
+        "scope": "site",
+        "writable": true
+      },
+      {
+        "allowed_device_classes": [
+          "power"
+        ],
+        "allowed_domains": [
+          "sensor"
+        ],
+        "current": null,
+        "effective": null,
+        "field": "derived_L2_power",
+        "kind": "entity",
+        "required": true,
+        "scope": "site",
+        "writable": true
+      },
+      {
+        "allowed_device_classes": [
+          "voltage"
+        ],
+        "allowed_domains": [
+          "sensor"
+        ],
+        "current": null,
+        "effective": null,
+        "field": "derived_L2_voltage",
+        "kind": "entity",
+        "required": true,
+        "scope": "site",
+        "writable": true
+      },
+      {
+        "allowed_device_classes": [
+          "power"
+        ],
+        "allowed_domains": [
+          "sensor"
+        ],
+        "current": null,
+        "effective": null,
+        "field": "derived_L2_power_export",
+        "kind": "entity",
+        "required": false,
+        "scope": "site",
+        "writable": true
+      },
+      {
+        "allowed_device_classes": [
+          "reactive_power"
+        ],
+        "allowed_domains": [
+          "sensor"
+        ],
+        "current": null,
+        "effective": null,
+        "field": "derived_L2_reactive_power",
+        "kind": "entity",
+        "required": false,
+        "scope": "site",
+        "writable": true
+      },
+      {
+        "allowed_device_classes": [
+          "apparent_power"
+        ],
+        "allowed_domains": [
+          "sensor"
+        ],
+        "current": null,
+        "effective": null,
+        "field": "derived_L2_apparent_power",
+        "kind": "entity",
+        "required": false,
+        "scope": "site",
+        "writable": true
+      },
+      {
+        "allowed_device_classes": [
+          "current"
+        ],
+        "allowed_domains": [
+          "sensor"
+        ],
+        "current": null,
+        "effective": null,
+        "field": "derived_L2_current",
+        "kind": "entity",
+        "required": false,
+        "scope": "site",
+        "writable": true
+      },
+      {
+        "allowed_device_classes": [
+          "power"
+        ],
+        "allowed_domains": [
+          "sensor"
+        ],
+        "current": null,
+        "effective": null,
+        "field": "derived_L3_power",
+        "kind": "entity",
+        "required": true,
+        "scope": "site",
+        "writable": true
+      },
+      {
+        "allowed_device_classes": [
+          "voltage"
+        ],
+        "allowed_domains": [
+          "sensor"
+        ],
+        "current": null,
+        "effective": null,
+        "field": "derived_L3_voltage",
+        "kind": "entity",
+        "required": true,
+        "scope": "site",
+        "writable": true
+      },
+      {
+        "allowed_device_classes": [
+          "power"
+        ],
+        "allowed_domains": [
+          "sensor"
+        ],
+        "current": null,
+        "effective": null,
+        "field": "derived_L3_power_export",
+        "kind": "entity",
+        "required": false,
+        "scope": "site",
+        "writable": true
+      },
+      {
+        "allowed_device_classes": [
+          "reactive_power"
+        ],
+        "allowed_domains": [
+          "sensor"
+        ],
+        "current": null,
+        "effective": null,
+        "field": "derived_L3_reactive_power",
+        "kind": "entity",
+        "required": false,
+        "scope": "site",
+        "writable": true
+      },
+      {
+        "allowed_device_classes": [
+          "apparent_power"
+        ],
+        "allowed_domains": [
+          "sensor"
+        ],
+        "current": null,
+        "effective": null,
+        "field": "derived_L3_apparent_power",
+        "kind": "entity",
+        "required": false,
+        "scope": "site",
+        "writable": true
+      },
+      {
+        "allowed_device_classes": [
+          "current"
+        ],
+        "allowed_domains": [
+          "sensor"
+        ],
+        "current": null,
+        "effective": null,
+        "field": "derived_L3_current",
+        "kind": "entity",
+        "required": false,
+        "scope": "site",
+        "writable": true
+      },
+      {
+        "field": "site_current_signed",
+        "kind": "flag",
+        "required": false,
+        "scope": "site",
+        "value": false,
+        "writable": true
+      },
+      {
+        "field": "grid_power_inverted",
+        "kind": "flag",
+        "required": false,
+        "scope": "site",
+        "value": false,
+        "writable": true
+      },
+      {
+        "allowed_device_classes": [
+          "power"
+        ],
+        "allowed_domains": [
+          "sensor"
+        ],
+        "current": null,
+        "effective": null,
+        "field": "battery_aggregate_power_entity",
+        "kind": "entity",
+        "required": false,
+        "scope": "site",
+        "writable": true
+      },
+      {
+        "allowed_device_classes": [
+          "power"
+        ],
+        "allowed_domains": [
+          "sensor"
+        ],
+        "current": null,
+        "effective": null,
+        "field": "battery_discharge_power_entity",
+        "kind": "entity",
+        "required": false,
+        "scope": "site",
+        "writable": true
+      },
+      {
+        "field": "battery_power_inverted",
+        "kind": "flag",
+        "required": false,
+        "scope": "site",
+        "value": false,
+        "writable": true
+      },
+      {
+        "field": "max_age_s",
+        "kind": "number",
+        "minimum": 1.0,
+        "required": false,
+        "scope": "site",
+        "value": 120.0,
+        "writable": true
+      }
+    ],
+    "site": {
+      "charger_count": 1,
+      "detection": {
+        "batteries": [],
+        "meters": []
+      },
+      "measurement": {
+        "assumed_power_factor": null,
+        "basis": {
+          "L1": null,
+          "L2": null,
+          "L3": null
+        },
+        "current_estimated": false,
+        "mode": "derived_phase_current"
+      },
+      "name": "Site",
+      "warnings": []
+    },
+    "vehicles": []
+  },
+  "error": null,
+  "field_errors": [],
+  "ok": true
+}

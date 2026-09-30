@@ -1,0 +1,571 @@
+"""The composed status block: a table over every precedence rule."""
+
+from __future__ import annotations
+
+from datetime import datetime, timedelta, timezone
+from typing import Any
+
+import pytest
+from homeassistant.core import HomeAssistant
+
+from custom_components.spotnav.api import dashboard as dashboard_api
+from custom_components.spotnav.planning.status_compose import (
+    STATUS_CODES,
+    HybridFacts,
+    LoadBalancingFacts,
+    PlanningFacts,
+    ProposalFacts,
+    SocFacts,
+    SolarFacts,
+    StatusFacts,
+    TargetFacts,
+    compose_status,
+)
+
+from .helpers import setup_two_chargers, webhook_dashboard
+
+NOW = datetime(2026, 9, 22, 20, 0, tzinfo=timezone.utc)
+
+
+def at(hours: float) -> datetime:
+    return NOW + timedelta(hours=hours)
+
+
+def iso(hours: float) -> str:
+    return at(hours).isoformat()
+
+
+def planning(state: str = "proposal_ready", reason: str = "ready", **kw: Any) -> PlanningFacts:
+    return PlanningFacts(state=state, reason=reason, **kw)
+
+
+def proposal(**kw: Any) -> ProposalFacts:
+    defaults: dict[str, Any] = dict(
+        periods=((at(2), at(3)), (at(3), at(4))),
+        identity="p1",
+        planned_kwh=20.0,
+        requested_kwh=20.0,
+        cost=12.5,
+        currency="SEK",
+        distance_mil=10.0,
+    )
+    defaults.update(kw)
+    return ProposalFacts(**defaults)
+
+
+def base(**kw: Any) -> StatusFacts:
+    defaults: dict[str, Any] = dict(
+        now=NOW, has_settings=True, strategy="cheapest", planning=planning(), price_state="ready", usable_price_rows=96
+    )
+    defaults.update(kw)
+    return StatusFacts(**defaults)
+
+
+def codes(block: dict[str, Any]) -> list[str]:
+    return [line["code"] for line in block["lines"]]
+
+
+PLANNED = [
+    {"code": "auto_planned", "params": {"start": iso(2)}},
+    {"code": "plan_energy", "params": {"kwh": 20.0}},
+    {"code": "plan_cost", "params": {"amount_minor": 1250, "currency": "SEK"}},
+    {"code": "plan_distance", "params": {"mil": 10.0}},
+]
+
+CASES: list[tuple[str, StatusFacts, str, list[dict[str, Any]]]] = [
+    ("idle: a plan that says nothing", base(relation_applied=True, proposal=proposal(planned_kwh=None, requested_kwh=None)), "normal", []),
+    ("planned and applied", base(relation_applied=True, proposal=proposal()), "normal", PLANNED),
+    (
+        "planned without cost or distance",
+        base(relation_applied=True, proposal=proposal(cost=None, distance_mil=None)),
+        "normal",
+        [PLANNED[0], PLANNED[1]],
+    ),
+    (
+        "installed schedule only",
+        base(installed_periods=((at(5), at(6)),)),
+        "normal",
+        [{"code": "auto_installed", "params": {"start": iso(5)}}],
+    ),
+    (
+        "pending proposal beside an installed plan, queued for a boundary",
+        base(
+            relation_applied=False,
+            pending_identity="p1",
+            proposal=proposal(),
+            installed_periods=((at(-1), at(-0.5)),),
+        ),
+        "notice",
+        [{"code": "auto_installed", "params": {"start": iso(-1)}}],
+    ),
+    (
+        "proposal pending, not queued",
+        base(relation_applied=False, proposal=proposal()),
+        "normal",
+        [{"code": "proposal_pending", "params": {}}, *PLANNED[1:]],
+    ),
+    (
+        "charging now inside a period",
+        base(
+            charging=True,
+            installed_periods=((at(-1), at(1)),),
+            relation_applied=True,
+            proposal=proposal(),
+        ),
+        "normal",
+        [
+            {"code": "charging_now", "params": {"until": iso(1)}},
+            PLANNED[1],
+            PLANNED[2],
+        ],
+    ),
+    (
+        "charging with no period keeps no end",
+        base(charging=True),
+        "normal",
+        [{"code": "charging_now", "params": {"until": None}}],
+    ),
+    (
+        "paused with an end",
+        base(paused=True, pause_until=at(10), pause_choice="until_tomorrow", relation_applied=True, proposal=proposal()),
+        "normal",
+        [{"code": "paused", "params": {"until": iso(10), "choice": "until_tomorrow"}}],
+    ),
+    (
+        "paused until resumed, charging by hand",
+        base(paused=True, charging=True, pause_choice="until_resumed"),
+        "normal",
+        [
+            {"code": "paused", "params": {"until": None, "choice": "until_resumed"}},
+            {"code": "charging_now", "params": {"until": None}},
+        ],
+    ),
+    (
+        "waiting for tomorrow's prices",
+        base(waiting_for_tomorrow=True),
+        "normal",
+        [{"code": "waiting_for_tomorrow", "params": {}}],
+    ),
+    (
+        "waiting for publication with a time",
+        base(planning=planning("waiting_for_publication", "publication_pending", publication_at=at(15))),
+        "normal",
+        [{"code": "waiting_for_publication", "params": {"publication_at": iso(15)}}],
+    ),
+    (
+        "waiting for publication without a time",
+        base(planning=planning("waiting_for_publication", "publication_pending")),
+        "normal",
+        [{"code": "waiting_for_publication", "params": {"publication_at": None}}],
+    ),
+    (
+        "buying before publication",
+        base(planning=planning(reason="buying_before_publication", must_buy_now_kwh=4.5), proposal=proposal(), relation_applied=True),
+        "normal",
+        [{"code": "buying_before_publication", "params": {"kwh": 4.5}}],
+    ),
+    (
+        "charging without prices",
+        base(
+            planning=planning("proposal_unpriced", "charging_without_prices"),
+            proposal=proposal(unpriced=True),
+            relation_applied=True,
+        ),
+        "notice",
+        [
+            {"code": "charging_without_prices", "params": {}},
+            {"code": "plan_energy", "params": {"kwh": 20.0}},
+        ],
+    ),
+    (
+        "unpriced plan is a notice fact",
+        base(relation_applied=True, proposal=proposal(unpriced=True)),
+        "notice",
+        [*PLANNED, {"code": "unpriced", "params": {}}],
+    ),
+    (
+        "no plan at all",
+        base(planning=planning("planning_unavailable", "no_prices_yet")),
+        "normal",
+        [{"code": "no_plan", "params": {}}],
+    ),
+    (
+        "nothing to charge",
+        base(planning=planning("nothing_to_charge", "already_at_target")),
+        "normal",
+        [{"code": "nothing_to_charge", "params": {}}],
+    ),
+    (
+        "a period installed with no settings record",
+        base(has_settings=False, installed_periods=((at(1), at(2)),)),
+        "normal",
+        [{"code": "auto_installed", "params": {"start": iso(1)}}],
+    ),
+    (
+        "solar charging",
+        base(strategy="solar", solar=SolarFacts("on", "surplus", 9.0), planning=planning("planning_unavailable", "solar_running")),
+        "normal",
+        [{"code": "solar_charging", "params": {"requested_a": 9.0}}],
+    ),
+    ("solar arming", base(strategy="solar", solar=SolarFacts("arming")), "normal", [{"code": "solar_arming", "params": {}}]),
+    ("solar disarming", base(strategy="solar", solar=SolarFacts("disarming")), "normal", [{"code": "solar_disarming", "params": {}}]),
+    (
+        "solar off, no reading while stopped",
+        base(strategy="solar", solar=SolarFacts("off", "no_basis_stopped")),
+        "normal",
+        [{"code": "solar_no_reading_stopped", "params": {}}],
+    ),
+    (
+        "solar off, no reading yet",
+        base(strategy="solar", solar=SolarFacts("off", "no_basis_off")),
+        "normal",
+        [{"code": "solar_no_reading_waiting", "params": {}}],
+    ),
+    (
+        "solar off, watching for sun",
+        base(strategy="solar", solar=SolarFacts("off", "off_no_surplus")),
+        "normal",
+        [{"code": "solar_waiting_for_sun", "params": {}}],
+    ),
+    ("solar unknown", base(strategy="solar", solar=SolarFacts("unknown")), "normal", [{"code": "solar_unknown", "params": {}}]),
+    (
+        "solar cannot run on this site",
+        base(strategy="solar", planning=planning("planning_unavailable", "solar_execution_unavailable"), solar=SolarFacts("unknown")),
+        "blocking",
+        [{"code": "solar_unavailable", "params": {}}],
+    ),
+    (
+        "hybrid with a forecast and a window",
+        base(
+            strategy="hybrid",
+            hybrid=HybridFacts("waiting_for_sun_within_slack", 12.0, 5.0, True),
+            proposal=proposal(),
+        ),
+        "normal",
+        [
+            {
+                "code": "hybrid_grid",
+                "params": {"grid_kwh": 12.0, "credit_kwh": 5.0, "window_start": iso(2), "window_end": iso(4)},
+            }
+        ],
+    ),
+    (
+        "hybrid, no credit, no window",
+        base(strategy="hybrid", hybrid=HybridFacts("last_call_no_slack", 12.0, 0.0, True)),
+        "normal",
+        [{"code": "hybrid_grid", "params": {"grid_kwh": 12.0, "credit_kwh": None, "window_start": None, "window_end": None}}],
+    ),
+    (
+        "hybrid without a forecast source",
+        base(strategy="hybrid", hybrid=HybridFacts("no_forecast_cheapest", 20.0, 0.0, False)),
+        "normal",
+        [{"code": "hybrid_no_forecast", "params": {}}],
+    ),
+    ("hybrid waiting for price data", base(strategy="hybrid", hybrid=HybridFacts("no_price_data")), "normal", [{"code": "hybrid_no_price_data", "params": {}}]),
+    ("hybrid need met", base(strategy="hybrid", hybrid=HybridFacts("satisfied_need_met", 0.0)), "normal", [{"code": "hybrid_satisfied", "params": {}}]),
+    ("hybrid unknown", base(strategy="hybrid", hybrid=HybridFacts(None, None)), "normal", [{"code": "hybrid_unknown", "params": {}}]),
+    (
+        "target SoC: capacity missing",
+        base(planning=planning("planning_unavailable", "target_capacity_unknown"), soc=SocFacts(("capacity",))),
+        "blocking",
+        [{"code": "target_soc_unknown", "params": {"missing": ["capacity"]}}],
+    ),
+    (
+        "target SoC: reading missing",
+        base(planning=planning("planning_unavailable", "target_soc_unknown"), soc=SocFacts(("soc",))),
+        "blocking",
+        [{"code": "target_soc_unknown", "params": {"missing": ["soc"]}}],
+    ),
+    (
+        "target SoC: both missing",
+        base(planning=planning("planning_unavailable", "target_soc_unknown"), soc=SocFacts(("soc", "capacity", "vehicle"))),
+        "blocking",
+        [{"code": "target_soc_unknown", "params": {"missing": ["soc", "capacity"]}}],
+    ),
+    (
+        "target SoC: no soc block falls back to the reason",
+        base(planning=planning("planning_unavailable", "target_capacity_unknown")),
+        "blocking",
+        [{"code": "target_soc_unknown", "params": {"missing": ["capacity"]}}],
+    ),
+    (
+        "load balancing limits a charge in active mode",
+        base(
+            charging=True,
+            load_balancing=LoadBalancingFacts("capacity_limited", True, 10.0, "L2"),
+            load_balancing_capable=True,
+        ),
+        "notice",
+        [
+            {"code": "charging_now", "params": {"until": None}},
+            {"code": "load_balancing_limited", "params": {"limit_a": 10.0, "phase": "L2"}},
+        ],
+    ),
+    (
+        "load balancing while observing limits nothing",
+        base(
+            charging=True,
+            load_balancing=LoadBalancingFacts("capacity_limited", False, 10.0, "L2"),
+            load_balancing_capable=True,
+        ),
+        "normal",
+        [{"code": "charging_now", "params": {"until": None}}],
+    ),
+    (
+        "load balancing capable but no summary",
+        base(load_balancing_capable=True, waiting_for_tomorrow=True),
+        "notice",
+        [{"code": "waiting_for_tomorrow", "params": {}}, {"code": "load_balancing_unavailable", "params": {}}],
+    ),
+    (
+        "stale prices are a notice fact",
+        base(price_state="stale", price_reason="fetch_failed", waiting_for_tomorrow=True),
+        "notice",
+        [{"code": "waiting_for_tomorrow", "params": {}}, {"code": "price_data_stale", "params": {"reason": "fetch_failed"}}],
+    ),
+    (
+        "unavailable prices with usable rows are a notice fact",
+        base(price_state="unavailable", price_reason="x", usable_price_rows=4, waiting_for_tomorrow=True),
+        "notice",
+        [{"code": "waiting_for_tomorrow", "params": {}}, {"code": "price_data_degraded", "params": {"reason": "x"}}],
+    ),
+    (
+        "settings missing",
+        base(planning=planning("incomplete_settings", "settings_missing", missing=("area", "amps"))),
+        "notice",
+        [{"code": "settings_incomplete", "params": {"reason": "settings_missing", "missing": ["area", "amps"]}}],
+    ),
+    (
+        "area unknown",
+        base(planning=planning("incomplete_settings", "area_unknown")),
+        "notice",
+        [{"code": "settings_incomplete", "params": {"reason": "area_unknown", "missing": []}}],
+    ),
+    (
+        "area unknown as a refusal",
+        base(planning=planning("planning_unavailable", "area_unknown")),
+        "blocking",
+        [{"code": "planning_unavailable", "params": {"reason": "area_unknown"}}],
+    ),
+    (
+        "price horizon missing",
+        base(planning=planning("planning_unavailable", "insufficient_price_horizon")),
+        "blocking",
+        [{"code": "price_horizon_missing", "params": {}}],
+    ),
+    (
+        "price horizon while waiting for tomorrow is normal life",
+        base(
+            planning=planning("planning_unavailable", "insufficient_price_horizon"),
+            waiting_for_tomorrow=True,
+            installed_periods=((at(1), at(2)),),
+            departure_enabled=True,
+        ),
+        "normal",
+        [{"code": "auto_installed", "params": {"start": iso(1)}}],
+    ),
+    (
+        "price horizon with a deadline and no unfinished plan stays blocking",
+        base(
+            planning=planning("planning_unavailable", "insufficient_price_horizon"),
+            waiting_for_tomorrow=True,
+            departure_enabled=True,
+        ),
+        "blocking",
+        [{"code": "price_horizon_missing", "params": {}}],
+    ),
+    (
+        "planning error",
+        base(planning=planning("error", "unexpected_failure")),
+        "blocking",
+        [{"code": "planning_error", "params": {"reason": "unexpected_failure"}}],
+    ),
+    (
+        "charger unavailable and invalid prices, both said",
+        base(charger_available=False, price_state="invalid", price_reason="bad"),
+        "blocking",
+        [
+            {"code": "charger_unavailable", "params": {}},
+            {"code": "price_data_invalid", "params": {"reason": "bad"}},
+        ],
+    ),
+    (
+        "no usable price at all",
+        base(price_state="unavailable", price_reason="none", usable_price_rows=0),
+        "blocking",
+        [{"code": "price_data_unavailable", "params": {"reason": "none"}}],
+    ),
+    (
+        "blocking and drawing current, no period",
+        base(charging=True, planning=planning("incomplete_settings", "settings_missing")),
+        "notice",
+        [
+            {"code": "settings_incomplete", "params": {"reason": "settings_missing", "missing": []}},
+            {"code": "charging_now", "params": {"until": None}},
+        ],
+    ),
+    (
+        "blocking and drawing current inside an installed period",
+        base(
+            charging=True,
+            installed_periods=((at(-1), at(1)),),
+            planning=planning("planning_unavailable", "area_unknown"),
+        ),
+        "blocking",
+        [
+            {"code": "planning_unavailable", "params": {"reason": "area_unknown"}},
+            {"code": "charging_now", "params": {"until": iso(1)}},
+        ],
+    ),
+    (
+        "blocking and idle shows no charging line",
+        base(planning=planning("planning_unavailable", "area_unknown")),
+        "blocking",
+        [{"code": "planning_unavailable", "params": {"reason": "area_unknown"}}],
+    ),
+    (
+        "a reading-based stop follows the headline as a fact",
+        base(planning=planning("nothing_to_charge", "already_at_target"), target=TargetFacts(81.4, "reading", 12.0)),
+        "normal",
+        [
+            {"code": "nothing_to_charge", "params": {}},
+            {"code": "target_reached", "params": {"soc_percent": 81.4, "basis": "reading", "reading_age_s": 12}},
+        ],
+    ),
+    (
+        "an estimate-based stop names its basis and its anchor's age, before the notices",
+        base(
+            planning=planning("nothing_to_charge", "already_at_target"),
+            price_state="stale",
+            target=TargetFacts(81.0, "estimate", 1800.4),
+        ),
+        "notice",
+        [
+            {"code": "nothing_to_charge", "params": {}},
+            {"code": "target_reached", "params": {"soc_percent": 81.0, "basis": "estimate", "reading_age_s": 1800}},
+            {"code": "price_data_stale", "params": {"reason": None}},
+        ],
+    ),
+    (
+        "a stop record without an age is still worded",
+        base(planning=planning("nothing_to_charge", "already_at_target"), target=TargetFacts(80.0, None, None)),
+        "normal",
+        [
+            {"code": "nothing_to_charge", "params": {}},
+            {"code": "target_reached", "params": {"soc_percent": 80.0, "basis": "reading", "reading_age_s": None}},
+        ],
+    ),
+    (
+        "a stop record without a percent says nothing",
+        base(planning=planning("nothing_to_charge", "already_at_target"), target=TargetFacts(None, "reading", 5.0)),
+        "normal",
+        [{"code": "nothing_to_charge", "params": {}}],
+    ),
+    (
+        "a target that cannot be checked is a notice beside the headline",
+        base(relation_applied=True, proposal=proposal(), target=TargetFacts(unverifiable_reason="reading_unusable")),
+        "notice",
+        [*PLANNED, {"code": "target_unverifiable", "params": {"reason": "reading_unusable"}}],
+    ),
+    (
+        "a stop record wins over an unverifiable reason",
+        base(planning=planning("nothing_to_charge", "already_at_target"), target=TargetFacts(80.0, "reading", 1.0, "no_source")),
+        "normal",
+        [
+            {"code": "nothing_to_charge", "params": {}},
+            {"code": "target_reached", "params": {"soc_percent": 80.0, "basis": "reading", "reading_age_s": 1}},
+        ],
+    ),
+    (
+        "blocking hides the target facts",
+        base(planning=planning("error", "boom"), target=TargetFacts(81.0, "reading", 1.0)),
+        "blocking",
+        [{"code": "planning_error", "params": {"reason": "boom"}}],
+    ),
+    (
+        "settings missing beside a price fault keeps the stronger tone",
+        base(
+            planning=planning("incomplete_settings", "settings_missing", missing=("area",)),
+            price_state="invalid",
+            price_reason="bad",
+        ),
+        "blocking",
+        [
+            {"code": "price_data_invalid", "params": {"reason": "bad"}},
+            {"code": "settings_incomplete", "params": {"reason": "settings_missing", "missing": ["area"]}},
+        ],
+    ),
+    (
+        "first-run defaults are one neutral line after the headline",
+        base(suggested=("area", "phases", "amps"), waiting_for_tomorrow=True),
+        "normal",
+        [
+            {"code": "waiting_for_tomorrow", "params": {}},
+            {"code": "settings_suggested", "params": {"fields": ["area", "phases", "amps"]}},
+        ],
+    ),
+    (
+        "first-run defaults are not said while settings are still missing",
+        base(
+            suggested=("phases",),
+            planning=planning("incomplete_settings", "settings_missing", missing=("area",)),
+        ),
+        "notice",
+        [{"code": "settings_incomplete", "params": {"reason": "settings_missing", "missing": ["area"]}}],
+    ),
+    (
+        "blocking beats a pause and a charge",
+        base(paused=True, charging=True, planning=planning("incomplete_settings", "settings_missing")),
+        "notice",
+        [
+            {"code": "settings_incomplete", "params": {"reason": "settings_missing", "missing": []}},
+            {"code": "charging_now", "params": {"until": None}},
+        ],
+    ),
+]
+
+
+@pytest.mark.parametrize(("name", "facts", "tone", "lines"), CASES, ids=[case[0] for case in CASES])
+def test_the_status_block_for_every_rule(name: str, facts: StatusFacts, tone: str, lines: list[dict[str, Any]]) -> None:
+    block = compose_status(facts)
+    assert block == {"tone": tone, "lines": lines}, name
+
+
+def test_every_line_names_only_declared_params_and_every_code_is_reachable() -> None:
+    seen: set[str] = set()
+    for _, facts, _, _ in CASES:
+        for line in compose_status(facts)["lines"]:
+            assert line["code"] in STATUS_CODES
+            assert set(line["params"]) == set(STATUS_CODES[line["code"]][1])
+            seen.add(line["code"])
+    assert seen == set(STATUS_CODES), sorted(set(STATUS_CODES) - seen)
+
+
+def test_a_line_that_is_blocking_is_never_composed_with_normal_life() -> None:
+    for _, facts, tone, _ in CASES:
+        block = compose_status(facts)
+        # settings_incomplete is composed with the blocking conditions but is only a notice.
+        blocking = [
+            line
+            for line in block["lines"]
+            if STATUS_CODES[line["code"]][0] == "blocking" or line["code"] == "settings_incomplete"
+        ]
+        assert (block["tone"] == "blocking") == any(
+            STATUS_CODES[line["code"]][0] == "blocking" for line in blocking
+        )
+        if blocking:
+            # The one exception: a trailing charging_now while the charger draws current.
+            rest = [line["code"] for line in block["lines"][len(blocking) :]]
+            assert rest in ([], ["charging_now"]) and facts.charging == bool(rest)
+
+
+async def test_the_dashboard_and_the_webhook_carry_the_same_block(
+    hass: HomeAssistant, hass_client_no_auth
+) -> None:
+    entry_a, *_ = await setup_two_chargers(hass)
+    client = await hass_client_no_auth()
+    dashboard = await webhook_dashboard(client, "webhook-a")
+    capture = dashboard_api.capture_dashboard(hass, entry_a)
+    direct = dashboard_api.serialize_dashboard(capture, can_act=False)
+    assert dashboard["status"] == direct["status"]
+    assert set(dashboard["status"]) == {"tone", "lines"}

@@ -1,0 +1,27 @@
+{
+  "api_version": 1,
+  "error": null,
+  "ok": true,
+  "pause": {
+    "admitted_at": null,
+    "choice": null,
+    "expires_at": null
+  },
+  "settings": {
+    "amps": 16,
+    "area_id": "SE4",
+    "departure_enabled": true,
+    "departure_time": "08:00",
+    "driver": "manual_kwh",
+    "max_periods": 1,
+    "overrides": [],
+    "phases": 3,
+    "requested_kwh": 20.0,
+    "revision": 2,
+    "strategy": "solar",
+    "target": {
+      "target_percent": null,
+      "vehicle_id": null
+    }
+  }
+}

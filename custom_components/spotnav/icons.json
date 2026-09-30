@@ -1,0 +1,120 @@
+{
+  "entity": {
+    "binary_sensor": {
+      "schedule_active": {
+        "default": "mdi:calendar-clock"
+      }
+    },
+    "button": {
+      "start": {
+        "default": "mdi:play"
+      },
+      "stop": {
+        "default": "mdi:stop"
+      },
+      "follow": {
+        "default": "mdi:calendar-sync"
+      },
+      "cancel": {
+        "default": "mdi:calendar-remove"
+      },
+      "recalculate_auto": {
+        "default": "mdi:calculator-variant"
+      },
+      "pause_auto": {
+        "default": "mdi:pause"
+      },
+      "resume_auto": {
+        "default": "mdi:play"
+      }
+    },
+    "sensor": {
+      "connection": {
+        "default": "mdi:home-assistant"
+      },
+      "plan_start": {
+        "default": "mdi:clock-start"
+      },
+      "plan_end": {
+        "default": "mdi:clock-end"
+      },
+      "site_state": {
+        "default": "mdi:transmission-tower"
+      },
+      "charger_proposed_current": {
+        "default": "mdi:current-ac"
+      },
+      "auto_plan_state": {
+        "default": "mdi:chart-bell-curve-cumulative"
+      },
+      "auto_execution_state": {
+        "default": "mdi:car-clock"
+      },
+      "auto_next_start": {
+        "default": "mdi:clock-start"
+      },
+      "auto_next_end": {
+        "default": "mdi:clock-end"
+      },
+      "auto_periods": {
+        "default": "mdi:timeline-clock-outline"
+      },
+      "auto_cost": {
+        "default": "mdi:cash"
+      },
+      "auto_energy": {
+        "default": "mdi:battery-charging-100"
+      },
+      "auto_settings_revision": {
+        "default": "mdi:counter"
+      }
+    },
+    "select": {
+      "price_area": {
+        "default": "mdi:map-marker-radius"
+      },
+      "charging_phases": {
+        "default": "mdi:sine-wave"
+      },
+      "fiscal_vat_policy": {
+        "default": "mdi:percent-outline"
+      },
+      "fiscal_tax_policy": {
+        "default": "mdi:gavel"
+      },
+      "fiscal_transfer_policy": {
+        "default": "mdi:transmission-tower"
+      }
+    },
+    "number": {
+      "charging_current": {
+        "default": "mdi:current-ac"
+      },
+      "requested_energy": {
+        "default": "mdi:battery-charging-80"
+      },
+      "maximum_periods": {
+        "default": "mdi:counter"
+      },
+      "vat_rate": {
+        "default": "mdi:percent-outline"
+      },
+      "energy_tax": {
+        "default": "mdi:gavel"
+      },
+      "transfer_fee": {
+        "default": "mdi:transmission-tower"
+      }
+    },
+    "switch": {
+      "departure_enabled": {
+        "default": "mdi:clock-alert-outline"
+      }
+    },
+    "time": {
+      "departure_time": {
+        "default": "mdi:clock-outline"
+      }
+    }
+  }
+}

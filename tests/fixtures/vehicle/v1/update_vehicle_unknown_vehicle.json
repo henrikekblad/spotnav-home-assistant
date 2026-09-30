@@ -1,0 +1,319 @@
+{
+  "api_version": 1,
+  "config": {
+    "charger_id": "charger",
+    "control": {
+      "capabilities": {
+        "reads_charging_state": false,
+        "reads_energy_register": false,
+        "reads_measured_current": false,
+        "regulated_current": false,
+        "set_current": false,
+        "start_stop": true
+      },
+      "charging_state": {
+        "entity_id": null,
+        "source": "control"
+      },
+      "conflicts": [],
+      "current": {
+        "enabled": false,
+        "entity_id": null,
+        "kind": "none",
+        "service": null
+      },
+      "platform": null,
+      "policy": {
+        "flash_stored": false,
+        "ignored_while_paused": false,
+        "installation_wide": false,
+        "max_writes_per_minute": null,
+        "min_interval_s": 90.0,
+        "regulator_writes": true,
+        "resend_after_plug_in": false,
+        "zero_pauses": true
+      },
+      "start_stop": {
+        "entity_ids": [
+          "switch.charger_control"
+        ],
+        "inverted": false,
+        "kind": "switch",
+        "start_option": null,
+        "stop_option": null
+      }
+    },
+    "fields": [
+      {
+        "allowed_device_classes": [],
+        "allowed_domains": [
+          "switch"
+        ],
+        "current": {
+          "entity_id": "switch.charger_control",
+          "exists": true,
+          "friendly_name": "Control charger"
+        },
+        "effective": {
+          "entity_id": "switch.charger_control",
+          "friendly_name": "Control charger",
+          "source": "configured"
+        },
+        "field": "charge_control",
+        "kind": "entity",
+        "required": true,
+        "scope": "charger",
+        "writable": true
+      },
+      {
+        "allowed_device_classes": [],
+        "allowed_domains": [
+          "number"
+        ],
+        "current": null,
+        "effective": null,
+        "field": "current_limit",
+        "kind": "entity",
+        "required": false,
+        "scope": "charger",
+        "writable": true
+      },
+      {
+        "allowed_device_classes": [
+          "energy"
+        ],
+        "allowed_domains": [
+          "sensor"
+        ],
+        "current": null,
+        "effective": null,
+        "field": "energy_register_entity",
+        "kind": "entity",
+        "required": false,
+        "scope": "charger",
+        "writable": true
+      },
+      {
+        "allowed_device_classes": [
+          "battery"
+        ],
+        "allowed_domains": [
+          "sensor"
+        ],
+        "current": {
+          "entity_id": "sensor.niro_battery",
+          "exists": true,
+          "friendly_name": "niro battery"
+        },
+        "effective": {
+          "entity_id": "sensor.niro_battery",
+          "friendly_name": "niro battery",
+          "source": "automatic"
+        },
+        "field": "vehicle_soc",
+        "kind": "entity",
+        "required": false,
+        "scope": "charger",
+        "writable": false
+      },
+      {
+        "field": "main_fuse_a",
+        "kind": "number",
+        "minimum": 0.1,
+        "required": true,
+        "scope": "site",
+        "value": 25.0,
+        "writable": true
+      },
+      {
+        "choices": [
+          "direct_phase_current",
+          "derived_phase_current"
+        ],
+        "field": "measurement_mode",
+        "kind": "enum",
+        "required": true,
+        "scope": "site",
+        "value": "direct_phase_current",
+        "writable": true
+      },
+      {
+        "allowed_device_classes": [
+          "current"
+        ],
+        "allowed_domains": [
+          "sensor"
+        ],
+        "current": {
+          "entity_id": "sensor.site_charger_l1",
+          "exists": false,
+          "friendly_name": "sensor.site_charger_l1"
+        },
+        "effective": {
+          "entity_id": "sensor.site_charger_l1",
+          "friendly_name": "sensor.site_charger_l1",
+          "source": "configured"
+        },
+        "field": "direct_L1",
+        "kind": "entity",
+        "required": true,
+        "scope": "site",
+        "writable": true
+      },
+      {
+        "allowed_device_classes": [
+          "current"
+        ],
+        "allowed_domains": [
+          "sensor"
+        ],
+        "current": {
+          "entity_id": "sensor.site_charger_l2",
+          "exists": false,
+          "friendly_name": "sensor.site_charger_l2"
+        },
+        "effective": {
+          "entity_id": "sensor.site_charger_l2",
+          "friendly_name": "sensor.site_charger_l2",
+          "source": "configured"
+        },
+        "field": "direct_L2",
+        "kind": "entity",
+        "required": true,
+        "scope": "site",
+        "writable": true
+      },
+      {
+        "allowed_device_classes": [
+          "current"
+        ],
+        "allowed_domains": [
+          "sensor"
+        ],
+        "current": {
+          "entity_id": "sensor.site_charger_l3",
+          "exists": false,
+          "friendly_name": "sensor.site_charger_l3"
+        },
+        "effective": {
+          "entity_id": "sensor.site_charger_l3",
+          "friendly_name": "sensor.site_charger_l3",
+          "source": "configured"
+        },
+        "field": "direct_L3",
+        "kind": "entity",
+        "required": true,
+        "scope": "site",
+        "writable": true
+      },
+      {
+        "field": "site_current_signed",
+        "kind": "flag",
+        "required": false,
+        "scope": "site",
+        "value": false,
+        "writable": true
+      },
+      {
+        "field": "grid_power_inverted",
+        "kind": "flag",
+        "required": false,
+        "scope": "site",
+        "value": false,
+        "writable": true
+      },
+      {
+        "allowed_device_classes": [
+          "power"
+        ],
+        "allowed_domains": [
+          "sensor"
+        ],
+        "current": null,
+        "effective": null,
+        "field": "battery_aggregate_power_entity",
+        "kind": "entity",
+        "required": false,
+        "scope": "site",
+        "writable": true
+      },
+      {
+        "allowed_device_classes": [
+          "power"
+        ],
+        "allowed_domains": [
+          "sensor"
+        ],
+        "current": null,
+        "effective": null,
+        "field": "battery_discharge_power_entity",
+        "kind": "entity",
+        "required": false,
+        "scope": "site",
+        "writable": true
+      },
+      {
+        "field": "battery_power_inverted",
+        "kind": "flag",
+        "required": false,
+        "scope": "site",
+        "value": false,
+        "writable": true
+      },
+      {
+        "field": "max_age_s",
+        "kind": "number",
+        "minimum": 1.0,
+        "required": false,
+        "scope": "site",
+        "value": 120.0,
+        "writable": true
+      }
+    ],
+    "site": {
+      "charger_count": 1,
+      "detection": {
+        "batteries": [],
+        "meters": []
+      },
+      "measurement": {
+        "assumed_power_factor": null,
+        "basis": {
+          "L1": null,
+          "L2": null,
+          "L3": null
+        },
+        "current_estimated": false,
+        "mode": "direct_phase_current"
+      },
+      "name": "Site",
+      "warnings": []
+    },
+    "vehicles": [
+      {
+        "candidates": [
+          {
+            "entity_id": "sensor.niro_battery",
+            "friendly_name": "niro battery"
+          }
+        ],
+        "id": "vehicle_niro",
+        "name": "Niro",
+        "selected": {
+          "entity_id": "sensor.niro_battery",
+          "friendly_name": "niro battery"
+        },
+        "source": "automatic"
+      }
+    ]
+  },
+  "error": "spotnav_invalid_value",
+  "field_errors": [
+    {
+      "code": "unknown_vehicle",
+      "field": "vehicle_id"
+    }
+  ],
+  "ok": false,
+  "vehicle": null
+}

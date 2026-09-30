@@ -1,0 +1,20 @@
+{
+  "name": "spotnav-card-source",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Source, tests and build for the SpotNav Lovelace card that ships inside the spotnav integration. The compiled bundle is committed to custom_components/spotnav/www/spotnav-card.js.",
+  "scripts": {
+    "version:write": "node scripts/write-version.mjs",
+    "build": "npm run version:write && node scripts/build.mjs",
+    "check-dist": "npm run version:write && node scripts/check-dist.mjs",
+    "type-check": "npm run version:write && tsc --noEmit",
+    "test": "npm run version:write && vitest run"
+  },
+  "devDependencies": {
+    "esbuild": "0.28.2",
+    "jsdom": "30.1.1",
+    "typescript": "7.0.2",
+    "vitest": "5.0.1"
+  }
+}

@@ -1,0 +1,51 @@
+dismiss_vehicle:
+  name: Dismiss a detected vehicle
+  description: >
+    Stop reporting one vehicle-like Home Assistant device in the vehicle
+    list, until it is undismissed. Useful when automatic detection
+    picks up a device that is not the car you charge.
+  fields:
+    device_id:
+      name: Device ID
+      description: >
+        The Home Assistant device ID of the vehicle to dismiss. It does not
+        have to exist right now: dismissing an id ahead of the device
+        appearing still applies once it does.
+      required: true
+      example: 8f14e45fceea167a5a36dedd4bea2543
+      selector:
+        text:
+
+undismiss_vehicle:
+  name: Undismiss a detected vehicle
+  description: >
+    Undo dismiss_vehicle for one device ID, so automatic detection reports it
+    again.
+  fields:
+    device_id:
+      name: Device ID
+      description: The Home Assistant device ID to report again.
+      required: true
+      example: 8f14e45fceea167a5a36dedd4bea2543
+      selector:
+        text:
+
+unconfirm_vehicle:
+  name: Unconfirm a detected vehicle's state of charge
+  description: >
+    Forget which state-of-charge entity was confirmed for one device ID, so the
+    device goes back to being an ambiguity to resolve (or to being detected
+    automatically, if only one plausible reading is left). Useful when the
+    wrong reading was picked. A confirmation that names an entity which no
+    longer exists is already ignored without this, and dismissing a vehicle is
+    a separate decision this never touches.
+  fields:
+    device_id:
+      name: Device ID
+      description: >
+        The Home Assistant device ID to unconfirm. An id with no confirmation
+        is not an error: there is simply nothing to forget.
+      required: true
+      example: 8f14e45fceea167a5a36dedd4bea2543
+      selector:
+        text:

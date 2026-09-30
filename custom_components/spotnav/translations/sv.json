@@ -1,0 +1,616 @@
+{
+  "title": "SpotNav",
+  "config": {
+    "flow_title": "{device} vill ansluta · kod {code}",
+    "step": {
+      "pairing": {
+        "menu_options": {
+          "pair_approve": "Godkänn",
+          "pair_deny": "Neka"
+        },
+        "title": "En telefon vill ansluta",
+        "description": "En enhet som kallar sig **{device}** vill ansluta och visar koden **{code}**. Godkänn bara om samma kod står på dess skärm. Ett godkännande lämnar över den här instansens laddare; koden är bara till för att jämföra."
+      },
+      "pair_approve": {
+        "title": "Godkänn"
+      },
+      "pair_deny": {
+        "title": "Avslå"
+      },
+      "user": {
+        "title": "Vad vill du lägga till?",
+        "description": "En laddare kopplar en fysisk laddpunkt till SpotNav. En site är valfri: den lastbalanserar alla laddare på samma elanslutning under huvudsäkringen.",
+        "data": {
+          "entry_type": "Vad som ska läggas till"
+        }
+      },
+      "charger_type": {
+        "title": "Välj typ av laddare",
+        "description": "Automatisk hittar laddarens styrning från dess enhet: OCPP-laddare och integrationer som stöds (Easee, Wallbox, Zaptec, go-e, Peblar med flera). Manuell låter dig själv välja en brytare för laddstyrning.",
+        "data": {
+          "mode": "Typ av laddare"
+        }
+      },
+      "resolve_vehicle": {
+        "title": "Lös upp ett upptäckt fordon",
+        "description": "En av dessa enheter ser ut som ett fordon men rapporterar mer än en batterinivå, så SpotNav gissar inte vilken som är laddningsnivån. Välj enheten som ska lösas upp – eller välj typ igen om det inte finns något här du känner igen.",
+        "data": {
+          "device_id": "Enhet"
+        }
+      },
+      "resolve_vehicle_soc": {
+        "title": "Vilken är laddningsnivån?",
+        "description": "Välj vilken av {name}s batterinivåer som är den faktiska laddningsnivån – eller ange att enheten inte är ett fordon du laddar, så slutar SpotNav rapportera den.",
+        "data": {
+          "soc_entity_id": "Laddningsnivå"
+        }
+      },
+      "ocpp_entities": {
+        "title": "Bekräfta laddstyrning",
+        "description": "Endast kompatibla entiteter som tillhör den valda OCPP-laddaren visas.",
+        "data": {
+          "charge_control": "Laddstyrning",
+          "current_limit": "Strömgränsnummer (valfritt)",
+          "energy_register_entity": "Energimätare (total)",
+          "current_control": "Så ställer SpotNav in strömmen"
+        },
+        "data_description": {
+          "charge_control": "Brytaren som startar och stoppar laddningen på den här kontakten.",
+          "current_limit": "Laddarens eget strömnummer; SpotNav läser bara dess värde och intervall.",
+          "energy_register_entity": "Kontaktens sensor för total energi; den hittas automatiskt, så låt den stå kvar.",
+          "current_control": "Låt stå på \"Sätt ingen ström\" om du inte vet att laddaren accepterar vald metod."
+        }
+      },
+      "generic": {
+        "title": "Välj laddstyrning",
+        "data": {
+          "charge_control": "Laddstyrning",
+          "current_limit": "Laddström (valfri)",
+          "energy_register_entity": "Energimätare (total)"
+        },
+        "data_description": {
+          "energy_register_entity": "Laddarens sensor för total energi, används för att räkna redan levererad energi. Valfri."
+        }
+      },
+      "site": {
+        "title": "Site",
+        "description": "Siten håller laddarnas sammanlagda ström under huvudsäkringen. Aktiv styrning kan slås på och av senare; den är bästa möjliga försök, inte ett skyddsorgan. Huvudsäkringens storlek måste anges uttryckligen -- den gissas aldrig utifrån uppmätt last.",
+        "data": {
+          "name": "Sitenamn",
+          "main_fuse_a": "Huvudsäkring (A)",
+          "safety_margin_a": "Säkerhetsmarginal (A)",
+          "measurement_mode": "Mätkälla",
+          "charger_entry_ids": "Laddare som delar sitens kapacitet"
+        }
+      },
+      "site_detected": {
+        "title": "Elmätare hittad",
+        "description": "SpotNav hittade dessa elmätare. Inget tillämpas förrän du bekräftar; välj \"manuellt\" för att välja entiteter själv.",
+        "data": {
+          "choice": "Hittad mätare",
+          "enable_disabled": "Aktivera de avaktiverade entiteter mätaren behöver"
+        }
+      },
+      "site_current_suggestions": {
+        "title": "Föreslagna mätkällor för sitens ström",
+        "description": "Detta är endast förslag, baserade på entiteter som redan finns i Home Assistant -- inget tillämpas förrän du bekräftar. Välj \"manual\" för att välja entiteter själv, eller \"skip\" för att konfigurera detta senare via sitens inställningar.",
+        "data": {
+          "choice": "Föreslagen källa"
+        }
+      },
+      "site_details": {
+        "title": "Faskoppling och mätentiteter",
+        "description": "För en 1-fasladdare, ange uttryckligen vilken fas den är kopplad till -- en okänd fas innebär att ingen säker rekommendation någonsin kan beräknas för den. Endast entiteter som matchar vald mätkälla visas. Varje laddares egen uppmätta ström är valfri: välj ett hittat förslag, välj manual för att själv ange en entitet och dess fasattribut, eller lämna som \"skip\" för att konfigurera det senare.",
+        "data": {
+          "direct_L1": "L1 nätström",
+          "direct_L2": "L2 nätström",
+          "direct_L3": "L3 nätström",
+          "site_current_signed": "Nätströmmen är teckenmärkt (export är negativ)",
+          "grid_power_inverted": "Nätets effekt har export som positiv (negera den)",
+          "derived_L1_power_export": "L1 exporteffekt (valfri, när import och export är separata)",
+          "derived_L1_reactive_power": "L1 reaktiv effekt (valfri)",
+          "derived_L1_apparent_power": "L1 skenbar effekt (valfri)",
+          "derived_L1_current": "L1 ström (valfri)",
+          "derived_L2_power_export": "L2 exporteffekt (valfri, när import och export är separata)",
+          "derived_L2_reactive_power": "L2 reaktiv effekt (valfri)",
+          "derived_L2_apparent_power": "L2 skenbar effekt (valfri)",
+          "derived_L2_current": "L2 ström (valfri)",
+          "derived_L3_power_export": "L3 exporteffekt (valfri, när import och export är separata)",
+          "derived_L3_reactive_power": "L3 reaktiv effekt (valfri)",
+          "derived_L3_apparent_power": "L3 skenbar effekt (valfri)",
+          "derived_L3_current": "L3 ström (valfri)"
+        }
+      },
+      "charger_manual_source": {
+        "title": "Laddarens uppmätta ström",
+        "description": "Välj en entitet som tillhör just den här laddarens enhet och ange vilket attribut på den som innehåller respektive fas ström. Endast entiteter som är registrerade på den här laddaren erbjuds. Ange uttryckligen vilken enhet attributen rapporterar, A eller mA: en entitets egen enhet beskriver dess tillståndsvärde, inte nödvändigtvis andra attribut den också bär.",
+        "data": {
+          "entity_id": "Entitet (endast den här laddarens enhet)",
+          "attribute_L1": "Attributnamn för L1",
+          "attribute_L2": "Attributnamn för L2",
+          "attribute_L3": "Attributnamn för L3",
+          "unit": "Enhet för dessa attribut",
+          "confirm_unverified": "Inget kunde verifieras -- spara ändå"
+        }
+      },
+      "site_manual_source": {
+        "title": "Sitens ström från en entitet",
+        "description": "Välj en entitet som bär hela sitens ström som sina egna fasattribut och ange vilket attribut som innehåller respektive fas. Entiteter som tillhör någon av sitens laddare erbjuds aldrig -- en laddares egen sensor kan inte samtidigt vara hela sitens total. Ange uttryckligen vilken enhet attributen rapporterar, A eller mA: en entitets egen enhet beskriver dess tillståndsvärde, inte nödvändigtvis andra attribut den också bär.",
+        "data": {
+          "entity_id": "Entitet (allt utom sitens laddare)",
+          "attribute_L1": "Attributnamn för L1",
+          "attribute_L2": "Attributnamn för L2",
+          "attribute_L3": "Attributnamn för L3",
+          "unit": "Enhet för dessa attribut",
+          "confirm_unverified": "Inget kunde verifieras -- spara ändå"
+        }
+      },
+      "detect_device": {
+        "title": "Välj laddarens enhet",
+        "description": "Välj laddarens enhet. SpotNav hittar dess styrning från integrationens egna entiteter; inget tillämpas förrän du bekräftar nästa steg.",
+        "data": {
+          "device": "Laddare"
+        }
+      },
+      "own_mode": {
+        "title": "Stäng av laddarens egen styrning",
+        "description": "Den här laddaren har sitt eget smarta, sol- eller lastbalanseringsläge påslaget: {modes}. Två styrningar på en laddare motverkar varandra. Stäng av det i laddarens egen integration eller app och fortsätt sedan.",
+        "data": {
+          "continue_anyway": "Fortsätt ändå (jag accepterar att de kan motverka varandra)"
+        }
+      },
+      "detected_entities": {
+        "title": "Bekräfta {device}",
+        "description": "{warning}Hittat från laddarens enhet. Ändra eller rensa det som är fel. \"Sätt laddarens ström\" är av om du inte väljer det: SpotNav skriver då strömmen bara så som laddarens skrivgränser tillåter.{disabled}",
+        "data": {
+          "charge_control": "Laddstyrning",
+          "current_limit": "Laddströmsnummer (valfritt)",
+          "current_control": "Sätt laddarens ström",
+          "energy_register_entity": "Energiregister (valfritt)",
+          "energy_register_is_session": "Använd energiregistret per session (nollställs varje session)",
+          "charging_state_entity": "Statussensor som säger att den laddar (valfritt)",
+          "enable_disabled_entities": "Aktivera de användbara entiteter som är avstängda"
+        }
+      },
+      "ocpp_confirm": {
+        "title": "Laddare hittad",
+        "description": "Laddarens styrning hittades. Laddstyrning: {charge_control}. Ström ställs in via: {current}. Energimätare (hittas automatiskt): {energy_meter}. Fortsätt för att lägga till den, eller kryssa i rutan för att ändra valen.",
+        "data": {
+          "adjust": "Ändra valen"
+        }
+      },
+      "site_confirm": {
+        "title": "Anläggning hittad",
+        "description": "Det här hittade SpotNav för anläggningen. Fortsätt för att skapa den, eller kryssa i rutan för att ändra valen.\n\n{summary}",
+        "data": {
+          "adjust": "Ändra valen"
+        }
+      },
+      "join_site": {
+        "title": "Lägg till i anläggning",
+        "description": "Lägg till laddaren i anläggningen {site}?\n\n{summary}",
+        "data": {
+          "join": "Lägg till i anläggningen"
+        }
+      }
+    },
+    "abort": {
+      "already_configured": "Den här laddaren eller siten är redan konfigurerad.",
+      "pairing_approved": "Godkänt. Telefonen har nu den här instansens laddare.",
+      "pairing_denied": "Avslaget. Telefonen fick besked och inget lämnades över.",
+      "pairing_request_expired": "Den parkopplingen har gått ut. Börja om i telefonen.",
+      "no_supported_charger": "Ingen laddare som stöds hittades. Ställ först in laddarens egen integration, eller välj Manuell.",
+      "no_charge_control": "Ingen aktiverad OCPP-brytare för laddstyrning hittades för enheten.",
+      "no_pending_site": "Sitens uppgifter skickades inte in innan den manuella laddarinmatningen öppnades, så inget sparades.",
+      "no_ambiguous_vehicles": "Inget upptäckt fordon behöver lösas upp just nu.",
+      "vehicle_resolved": "Fordonet är upplöst. Laddningsnivån läses från den nivå du valde.",
+      "vehicle_dismissed": "Fordonet avfärdat. SpotNav slutar rapportera det tills du ångrar avfärdandet.",
+      "not_a_charger": "Den enheten är ingen elbilsladdare (en värmare eller uttagsstyrning).",
+      "charger_not_recognised": "SpotNav känner inte igen den här integrationen. Välj Manuell i stället.",
+      "charger_not_controllable": "SpotNav kan inte starta eller stoppa den här laddaren. Den kan bara läsas."
+    },
+    "error": {
+      "charge_control_in_use": "Denna laddstyrning används redan av en annan SpotNav-laddare.",
+      "current_limit_in_use": "Denna laddströmsstyrning används redan av en annan SpotNav-laddare.",
+      "charger_already_in_another_site": "En av dessa laddare är redan kopplad till en annan site.",
+      "manual_source_entity_invalid": "Välj en sensorentitet som finns i Home Assistant.",
+      "manual_source_entity_wrong_device": "Den entiteten är inte registrerad på den här laddarens egen enhet och kan därför inte vara laddarens uppmätta ström.",
+      "site_manual_source_entity_on_charger_device": "Den entiteten tillhör en av sitens laddare och kan därför inte vara sitens egen totalström.",
+      "manual_source_attributes_required": "Ange attributnamnet för den här fasen.",
+      "manual_source_unverified": "Inget på den här entiteten matchar de attributnamnen just nu, och inget i historiken de senaste {lookback_days} dagarna gör det heller -- det kan vara en helt ny laddare, eller en felstavning. Kryssa i rutan spara ändå för att spara det trots det.",
+      "device_not_found": "Den enheten finns inte.",
+      "own_mode_active": "Laddarens egen styrning är fortfarande på. Stäng av den eller välj att fortsätta ändå.",
+      "control_path_unknown": "SpotNav kan inte avgöra hur en laddning startas och stoppas med den här entiteten. Välj laddarens strömbrytare, eller en väljare med tydliga start- och stoppalternativ.",
+      "current_limit_required": "Välj laddströmsnumret som strömmen ska sättas genom.",
+      "current_control_unsupported": "Det här sättet att sätta strömmen passar inte den här laddaren.",
+      "charger_no_answer": "Laddaren svarade inte, så SpotNav kan inte avgöra hur strömmen ställs in. Vänta tills den är ansluten och skicka igen, eller välj själv."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Laddstyrning",
+        "data": {
+          "charge_control": "Laddstyrning",
+          "current_limit": "Laddström (valfri)",
+          "current_control": "Ställ in laddarens ström",
+          "energy_register_entity": "Energimätare (total, valfritt)"
+        }
+      },
+      "site_init": {
+        "title": "Inställningar för sitekapacitet",
+        "description": "Lastbalansering under huvudsäkringen. Aktiv styrning sänker en laddares ström vid behov; den är bästa möjliga försök, inte ett skyddsorgan. Batteriets effektsensor är valfri och används endast för en diagnostisk uppskattning -- aldrig som en säker laddgräns.",
+        "data": {
+          "name": "Sitenamn",
+          "site_enabled": "Sitens beräkning aktiverad",
+          "active_control_enabled": "Aktiv styrning aktiverad (opt-in, endast derived mode)",
+          "main_fuse_a": "Huvudsäkring (A)",
+          "safety_margin_a": "Säkerhetsmarginal (A)",
+          "max_age_s": "Max ålder på mätvärden (sekunder)",
+          "regulator_deadband_a": "Aktiv styrning: ignorera ändringar mindre än (A)",
+          "regulator_dwell_s": "Aktiv styrning: hur länge en ändring måste hålla (sekunder)",
+          "yield_stepping_enabled": "Verifierad eftergiftssteg aktiverad (opt-in, för en site med en last som ger vika, t.ex. ett hembatteri)",
+          "yield_ceiling_a": "Eftergiftssteg: hårt tak, överskrids aldrig (A, måste vara större än huvudsäkringen)",
+          "solar_priority": "Prioritet för solöverskott (bilen eller hembatteriet först)",
+          "battery_aggregate_power_entity": "Hembatteriets laddeffekt (valfri, endast diagnostik)",
+          "change_measurement": "Ändra mätning och fasinkoppling",
+          "measurement_mode": "Mätkälla",
+          "charger_entry_ids": "Laddare som delar sitens kapacitet",
+          "solar_forecast_entries": "Solprognoskällor (valfritt, används av hybridstrategin)"
+        }
+      },
+      "site_current_suggestions": {
+        "title": "Föreslagna mätkällor för sitens ström",
+        "description": "Detta är endast förslag, baserade på entiteter som redan finns i Home Assistant -- inget tillämpas förrän du bekräftar. Välj \"manual\" för att välja entiteter själv, eller \"skip\" för att konfigurera detta senare via sitens inställningar.",
+        "data": {
+          "choice": "Föreslagen källa"
+        }
+      },
+      "site_details": {
+        "title": "Faskoppling och mätentiteter",
+        "description": "{reason}För en 1-fasladdare, ange uttryckligen vilken fas den är kopplad till -- en okänd fas innebär att ingen säker rekommendation någonsin kan beräknas för den. Endast entiteter som matchar vald mätkälla visas.",
+        "data": {
+          "direct_L1": "L1 nätström",
+          "direct_L2": "L2 nätström",
+          "direct_L3": "L3 nätström",
+          "site_current_signed": "Nätströmmen är teckenmärkt (export är negativ)",
+          "grid_power_inverted": "Nätets effekt har export som positiv (negera den)",
+          "derived_L1_power_export": "L1 exporteffekt (valfri, när import och export är separata)",
+          "derived_L1_reactive_power": "L1 reaktiv effekt (valfri)",
+          "derived_L1_apparent_power": "L1 skenbar effekt (valfri)",
+          "derived_L1_current": "L1 ström (valfri)",
+          "derived_L2_power_export": "L2 exporteffekt (valfri, när import och export är separata)",
+          "derived_L2_reactive_power": "L2 reaktiv effekt (valfri)",
+          "derived_L2_apparent_power": "L2 skenbar effekt (valfri)",
+          "derived_L2_current": "L2 ström (valfri)",
+          "derived_L3_power_export": "L3 exporteffekt (valfri, när import och export är separata)",
+          "derived_L3_reactive_power": "L3 reaktiv effekt (valfri)",
+          "derived_L3_apparent_power": "L3 skenbar effekt (valfri)",
+          "derived_L3_current": "L3 ström (valfri)"
+        }
+      },
+      "charger_manual_source": {
+        "title": "Laddarens uppmätta ström",
+        "description": "Välj en entitet som tillhör just den här laddarens enhet och ange vilket attribut på den som innehåller respektive fas ström. Endast entiteter som är registrerade på den här laddaren erbjuds. Ange uttryckligen vilken enhet attributen rapporterar, A eller mA: en entitets egen enhet beskriver dess tillståndsvärde, inte nödvändigtvis andra attribut den också bär.",
+        "data": {
+          "entity_id": "Entitet (endast den här laddarens enhet)",
+          "attribute_L1": "Attributnamn för L1",
+          "attribute_L2": "Attributnamn för L2",
+          "attribute_L3": "Attributnamn för L3",
+          "unit": "Enhet för dessa attribut",
+          "confirm_unverified": "Inget kunde verifieras -- spara ändå"
+        }
+      },
+      "site_manual_source": {
+        "title": "Sitens ström från en entitet",
+        "description": "Välj en entitet som bär hela sitens ström som sina egna fasattribut och ange vilket attribut som innehåller respektive fas. Entiteter som tillhör någon av sitens laddare erbjuds aldrig -- en laddares egen sensor kan inte samtidigt vara hela sitens total. Ange uttryckligen vilken enhet attributen rapporterar, A eller mA: en entitets egen enhet beskriver dess tillståndsvärde, inte nödvändigtvis andra attribut den också bär.",
+        "data": {
+          "entity_id": "Entitet (allt utom sitens laddare)",
+          "attribute_L1": "Attributnamn för L1",
+          "attribute_L2": "Attributnamn för L2",
+          "attribute_L3": "Attributnamn för L3",
+          "unit": "Enhet för dessa attribut",
+          "confirm_unverified": "Inget kunde verifieras -- spara ändå"
+        }
+      }
+    },
+    "abort": {
+      "no_pending_site": "Sitens uppgifter skickades inte in innan den manuella laddarinmatningen öppnades, så inget sparades."
+    },
+    "error": {
+      "charge_control_in_use": "Denna laddstyrning används redan av en annan SpotNav-laddare.",
+      "current_limit_in_use": "Denna laddströmsstyrning används redan av en annan SpotNav-laddare.",
+      "charger_already_in_another_site": "En av dessa laddare är redan kopplad till en annan site.",
+      "manual_source_entity_invalid": "Välj en sensorentitet som finns i Home Assistant.",
+      "manual_source_entity_wrong_device": "Den entiteten är inte registrerad på den här laddarens egen enhet och kan därför inte vara laddarens uppmätta ström.",
+      "site_manual_source_entity_on_charger_device": "Den entiteten tillhör en av sitens laddare och kan därför inte vara sitens egen totalström.",
+      "manual_source_attributes_required": "Ange attributnamnet för den här fasen.",
+      "manual_source_unverified": "Inget på den här entiteten matchar de attributnamnen just nu, och inget i historiken de senaste {lookback_days} dagarna gör det heller -- det kan vara en helt ny laddare, eller en felstavning. Kryssa i rutan spara ändå för att spara det trots det.",
+      "yield_ceiling_below_fuse": "Eftergiftsstegets tak måste vara större än huvudsäkringen.",
+      "yield_ceiling_above_limit": "Taket måste ligga under 1,25 gånger huvudsäkringen: det är den last en gG-säkring ska klara i en timme utan att lösa ut, och ett provsteg får närma sig den men aldrig nå den."
+    }
+  },
+  "selector": {
+    "mode": {
+      "options": {
+        "generic": "Manuell",
+        "detected": "Automatisk (rekommenderas)"
+      }
+    },
+    "entry_type": {
+      "options": {
+        "charger": "En laddare",
+        "site": "En site (lastbalansering)",
+        "resolve_vehicle": "Lös upp ett upptäckt fordon"
+      }
+    },
+    "measurement_mode": {
+      "options": {
+        "direct_phase_current": "Direkt fasström från elmätaren (att föredra)",
+        "derived_phase_current": "Härledd från effekt och spänning (mer exakt med mätarens ström, skenbara eller reaktiva effekt; annars uppskattas strömmen)"
+      }
+    },
+    "solar_priority": {
+      "options": {
+        "car_first": "Bilen först",
+        "battery_first": "Hembatteriet först"
+      }
+    }
+  },
+  "entity": {
+    "binary_sensor": {
+      "schedule_active": {
+        "name": "Laddschema aktivt"
+      }
+    },
+    "button": {
+      "start": {
+        "name": "Starta laddning"
+      },
+      "stop": {
+        "name": "Stoppa laddning"
+      },
+      "follow": {
+        "name": "Följ laddschema"
+      },
+      "cancel": {
+        "name": "Avbryt laddschema"
+      },
+      "recalculate_auto": {
+        "name": "Beräkna om Auto-förslaget"
+      },
+      "pause_auto": {
+        "name": "Pausa Auto-prisplaneringen"
+      },
+      "resume_auto": {
+        "name": "Återuppta Auto-prisplaneringen"
+      }
+    },
+    "sensor": {
+      "instance_connection": {
+        "name": "Parkoppling (alla laddare)"
+      },
+      "connection": {
+        "name": "Appanslutning"
+      },
+      "plan_start": {
+        "name": "Schemalagd start"
+      },
+      "plan_end": {
+        "name": "Schemalagt slut"
+      },
+      "site_state": {
+        "name": "Kapacitetsstatus"
+      },
+      "charger_proposed_current": {
+        "name": "Föreslagen ström – {charger}"
+      },
+      "auto_plan_state": {
+        "name": "Auto-planens tillstånd",
+        "state": {
+          "incomplete_settings": "Inställningar saknas",
+          "waiting_for_prices": "Väntar på priser",
+          "waiting_for_publication": "Väntar på morgondagens priser",
+          "price_data_stale": "Prisdata är inaktuell",
+          "proposal_ready": "Förslag klart",
+          "proposal_unpriced": "Förslag laddar utan priser",
+          "nothing_to_charge": "Inget att ladda",
+          "planning_unavailable": "Planering ej tillgänglig",
+          "error": "Fel"
+        }
+      },
+      "auto_execution_state": {
+        "name": "Auto-utförandets tillstånd",
+        "state": {
+          "not_applied": "Inte tillämpat",
+          "scheduled": "Schemalagt",
+          "active": "Laddar nu",
+          "paused": "Pausat",
+          "complete": "Klart",
+          "apply_pending": "Väntar på fönstergränsen",
+          "execution_error": "Utförandefel"
+        }
+      },
+      "auto_next_start": {
+        "name": "Nästa planerade laddstart"
+      },
+      "auto_next_end": {
+        "name": "Nästa planerade laddslut"
+      },
+      "auto_periods": {
+        "name": "Planerade laddperioder"
+      },
+      "auto_cost": {
+        "name": "Planerad kostnad"
+      },
+      "auto_energy": {
+        "name": "Planerad energi"
+      },
+      "auto_settings_revision": {
+        "name": "Auto-inställningarnas version"
+      }
+    },
+    "select": {
+      "price_area": {
+        "name": "Elområde"
+      },
+      "charging_phases": {
+        "name": "Faser vid laddning",
+        "state": {
+          "1": "Enfas",
+          "3": "Trefas"
+        }
+      },
+      "fiscal_vat_policy": {
+        "name": "Momsregel",
+        "state": {
+          "off": "Av",
+          "suggested": "Använd områdets förslag",
+          "manual": "Använd ett eget värde"
+        }
+      },
+      "fiscal_tax_policy": {
+        "name": "Energiskatteregel",
+        "state": {
+          "off": "Av",
+          "suggested": "Använd områdets förslag",
+          "manual": "Använd ett eget värde"
+        }
+      },
+      "fiscal_transfer_policy": {
+        "name": "Regel för nätavgift",
+        "state": {
+          "off": "Av",
+          "suggested": "Använd områdets förslag",
+          "manual": "Använd ett eget värde"
+        }
+      },
+      "auto_strategy": {
+        "name": "Laddstrategi",
+        "state": {
+          "cheapest": "Billigaste timmarna",
+          "solar": "Solöverskott",
+          "hybrid": "Billigaste timmarna, minus väntad sol"
+        }
+      }
+    },
+    "number": {
+      "charging_current": {
+        "name": "Laddström"
+      },
+      "requested_energy": {
+        "name": "Energi att ladda"
+      },
+      "maximum_periods": {
+        "name": "Högsta antal laddperioder"
+      },
+      "vat_rate": {
+        "name": "Moms"
+      },
+      "energy_tax": {
+        "name": "Energiskatt"
+      },
+      "transfer_fee": {
+        "name": "Nätavgift"
+      }
+    },
+    "switch": {
+      "departure_enabled": {
+        "name": "Avgångstid gäller"
+      }
+    },
+    "time": {
+      "departure_time": {
+        "name": "Avgångstid"
+      }
+    }
+  },
+  "issues": {
+    "vehicle_soc_needs_decision": {
+      "title": "En bils laddningsnivå behöver ett beslut",
+      "description": "**{device}** rapporterar mer än en batterinivå, så SpotNav gissar inte vilken av dem som är laddningsnivån. Lös detta för att välja den som är det, eller för att säga att enheten inte är ett fordon.",
+      "fix_flow": {
+        "abort": {
+          "no_longer_needs_decision": "Den här enheten behöver inte längre något beslut."
+        },
+        "step": {
+          "pick": {
+            "title": "Vilken nivå är laddningsnivån?",
+            "description": "Välj vilken av {device}s batterinivåer som är den faktiska laddningsnivån – eller ange att detta inte är ett fordon, så slutar det rapporteras.",
+            "data": {
+              "choice": "Nivå"
+            }
+          }
+        }
+      }
+    },
+    "vehicle_charge_limit_needs_decision": {
+      "title": "En bils laddgräns behöver ett beslut",
+      "description": "**{device}** rapporterar mer än en laddgräns, så SpotNav gissar inte vilken av dem en ändring ska sätta. Lös detta för att välja den gräns bilens ändringar ska använda.",
+      "fix_flow": {
+        "abort": {
+          "no_longer_needs_decision": "Den här enheten behöver inte längre något beslut."
+        },
+        "step": {
+          "pick": {
+            "title": "Vilken gräns ska en ändring sätta?",
+            "description": "Välj den laddgräns bilens ändringar ska använda. Den skrivs via bilens egen integration och gäller när den integrationen läser av den nästa gång.",
+            "data": {
+              "choice": "Laddgräns"
+            }
+          }
+        }
+      }
+    }
+  },
+  "exceptions": {
+    "invalid_driver": {
+      "message": "Den energikällan stöds inte."
+    },
+    "invalid_area": {
+      "message": "Välj ett elområde först: värdet hör till ett område."
+    },
+    "invalid_phases": {
+      "message": "Antalet faser måste vara 1 eller 3."
+    },
+    "invalid_amps": {
+      "message": "Strömmen måste vara ett helt antal ampere."
+    },
+    "invalid_energy": {
+      "message": "Energin måste vara ett positivt antal kWh."
+    },
+    "invalid_periods": {
+      "message": "Antalet perioder måste vara ett heltal från 1 till 8."
+    },
+    "invalid_departure": {
+      "message": "Avgångstiden måste vara en lokal klocktid."
+    },
+    "invalid_fiscal": {
+      "message": "Det avgiftsvärdet kan inte sparas som det är."
+    },
+    "invalid_target": {
+      "message": "Målposten är ofullständig."
+    },
+    "invalid_number": {
+      "message": "Värdet måste vara ett giltigt tal."
+    },
+    "unknown_field": {
+      "message": "Posten innehåller ett fält som den här versionen inte känner."
+    },
+    "missing_field": {
+      "message": "Posten saknar ett fält som den måste ha."
+    },
+    "invalid_proposal": {
+      "message": "Det sparade förslaget kan inte användas."
+    },
+    "invalid_pause": {
+      "message": "Pausflaggan måste vara på eller av."
+    },
+    "revision_conflict": {
+      "message": "Inställningarna ändrades någon annanstans, så värdet skrevs inte. Försök igen."
+    },
+    "not_auto_mode": {
+      "message": "Auto-pris är inte planeringsläget för den här laddaren."
+    }
+  }
+}

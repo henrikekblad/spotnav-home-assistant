@@ -1,0 +1,19 @@
+[tool.ruff]
+target-version = "py314"
+line-length = 120
+extend-exclude = ["frontend"]
+
+[tool.ruff.lint]
+# Correctness only: syntax and import errors, unused names, likely bugs.
+select = ["E4", "E7", "E9", "F", "B"]
+ignore = [
+    "B905",  # zip() without strict=: lengths are equal by construction where it matters
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/*" = [
+    "E402",  # a few modules import helpers next to the fixtures that use them
+    "F841",  # arranged-but-unused locals that document a test's setup
+    "B017",  # asserting that a frozen value refuses assignment
+    "B007",
+]

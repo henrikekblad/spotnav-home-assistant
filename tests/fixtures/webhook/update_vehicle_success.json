@@ -1,0 +1,18 @@
+{
+  "action": "update_vehicle",
+  "api_version": 1,
+  "config": null,
+  "error": null,
+  "field_errors": [],
+  "ok": true,
+  "vehicle": {
+    "capacity_kwh": 64.8,
+    "capacity_source": "stored",
+    "consumption_kwh_per_10km": 1.7,
+    "id": "vehicle_niro",
+    "max_percent": null,
+    "name": "Niro",
+    "soc_entity_id": "sensor.niro_battery",
+    "soc_percent": 55.0
+  }
+}

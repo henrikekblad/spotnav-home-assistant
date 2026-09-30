@@ -1,0 +1,30 @@
+{
+  "action": "update_site_settings",
+  "api_version": 1,
+  "error": "spotnav_conflict",
+  "ok": false,
+  "restore": null,
+  "site": {
+    "active_control": {
+      "available": false,
+      "enabled": false,
+      "reason": "site_measurement_configured_missing",
+      "writable": false
+    },
+    "charger_count": 1,
+    "name": "Site",
+    "solar_forecast": {
+      "choices": [
+        {
+          "id": "roof_wh",
+          "title": "Roof"
+        }
+      ],
+      "selected": [
+        "roof_wh"
+      ]
+    },
+    "solar_priority": "battery_first",
+    "writable": true
+  }
+}

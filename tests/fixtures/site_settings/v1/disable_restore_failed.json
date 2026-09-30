@@ -1,0 +1,39 @@
+{
+  "api_version": 1,
+  "error": null,
+  "ok": true,
+  "restore": {
+    "chargers": [
+      {
+        "charger_id": "fx_failed_c1",
+        "charger_name": "Charger 1",
+        "code": "write_failed",
+        "from_a": 10,
+        "outcome": "failed",
+        "to_a": 16
+      }
+    ],
+    "outcome": "failed"
+  },
+  "site": {
+    "active_control": {
+      "available": true,
+      "enabled": false,
+      "reason": null,
+      "writable": true
+    },
+    "charger_count": 1,
+    "name": "Home",
+    "solar_forecast": {
+      "choices": [
+        {
+          "id": "fx_roof",
+          "title": "Roof"
+        }
+      ],
+      "selected": []
+    },
+    "solar_priority": "car_first",
+    "writable": true
+  }
+}

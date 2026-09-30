@@ -1,0 +1,614 @@
+"""The SpotNav Relay `/v1` contract: typed models and the parsers that build them.
+
+Home Assistant consumes three published documents (`areas.json`, `index.json` and one dated price
+document) and this module is the one place that knows their shape. It is pure (no `hass`,
+session or clock), so every rule is a plain unit test. Field names follow `spotnav-relay`'s
+`docs/format.md`. A field the relay documents as optional is held as `None`, never substituted:
+zero and absent are different facts.
+
+Every rejection raises [RelayParseError] carrying a stable [ParseCode] that callers may branch on;
+the message is for logs only.
+
+Not here: fetching (`price_repository`), deciding how much of a day is enough, or computing a
+consumer price. Prices are stored as published, in EUR per kWh, with the catalogue's currency and
+unit labels beside them.
+"""
+
+from __future__ import annotations
+
+import json
+import math
+from dataclasses import dataclass
+from datetime import date, datetime, timedelta
+from types import MappingProxyType
+from typing import Any, Final, Literal, Mapping
+
+from homeassistant.util import dt as dt_util
+
+
+#: The only contract version understood; another is refused rather than read hopefully.
+SUPPORTED_VERSION: Final = 1
+
+#: The published resolutions in minutes; anything else is refused, not coerced.
+SUPPORTED_RESOLUTIONS: Final = (15, 60)
+
+#: The only unit a day document may be priced in (the relay is EUR-native); anything else is a
+#: contract violation, not a conversion.
+RELAY_PRICE_UNIT: Final = "EUR/kWh"
+
+ParseCode = Literal[
+    "not_json",
+    "not_an_object",
+    "unsupported_version",
+    "missing_field",
+    "invalid_field",
+    "invalid_timestamp",
+    "invalid_number",
+    "invalid_resolution",
+    "invalid_coverage",
+    "duplicate_interval",
+    "interval_order",
+    "interval_duration",
+    "interval_gap",
+    "area_mismatch",
+    "date_mismatch",
+    "unit_mismatch",
+    "unknown_area",
+    "duplicate_area",
+    "unsorted_days",
+    "duplicate_day",
+]
+
+
+class RelayParseError(ValueError):
+    """A document that does not satisfy the contract.
+
+    [code] is the program-facing fact; `str(error)` names the field and reason but never the whole
+    document (a rejected body may be a proxy's error page).
+    """
+
+    def __init__(self, code: ParseCode, message: str) -> None:
+        super().__init__(message)
+        self.code: ParseCode = code
+
+
+def _fail(code: ParseCode, message: str) -> None:
+    raise RelayParseError(code, message)
+
+
+def loads_document(text: str) -> Any:
+    """Parse a response body as JSON, refusing the non-finite constants.
+
+    `json.loads` accepts `NaN` and `Infinity`, which are not JSON. A body that is not JSON at all
+    (likely a proxy's HTML page) raises [RelayParseError] with `not_json`.
+    """
+
+    def refuse(constant: str) -> Any:
+        _fail("invalid_number", f"the document contains {constant}, which is not a JSON number")
+
+    try:
+        return json.loads(text, parse_constant=refuse)
+    except RelayParseError:
+        raise
+    except (ValueError, TypeError) as err:
+        raise RelayParseError("not_json", f"the response body is not JSON: {type(err).__name__}") from err
+
+
+def _object(value: Any, what: str) -> dict[str, Any]:
+    if not isinstance(value, dict):
+        _fail("not_an_object", f"{what} must be a JSON object")
+    return value
+
+
+def _require(document: Mapping[str, Any], key: str, what: str) -> Any:
+    if key not in document:
+        _fail("missing_field", f"{what} has no {key!r}")
+    return document[key]
+
+
+def _version(document: Mapping[str, Any], what: str) -> int:
+    raw = _require(document, "v", what)
+    if isinstance(raw, bool) or not isinstance(raw, int):
+        _fail("invalid_field", f"{what}: 'v' must be a whole number, not {raw!r}")
+    if raw != SUPPORTED_VERSION:
+        _fail("unsupported_version", f"{what}: contract version {raw} is not {SUPPORTED_VERSION}")
+    return raw
+
+
+def _text(document: Mapping[str, Any], key: str, what: str) -> str:
+    raw = _require(document, key, what)
+    if not isinstance(raw, str) or not raw.strip():
+        _fail("invalid_field", f"{what}: {key!r} must be a non-empty string, not {raw!r}")
+    return raw
+
+
+def _optional_text(document: Mapping[str, Any], key: str, what: str) -> str | None:
+    """`None` when the field is absent or null; `published` and `retrieved` are documented as nullable."""
+    if key not in document or document[key] is None:
+        return None
+    return _text(document, key, what)
+
+
+def _number(raw: Any, what: str) -> float:
+    """A finite JSON number, never a boolean (`True` is an `int` in Python)."""
+    if isinstance(raw, bool) or not isinstance(raw, (int, float)):
+        _fail("invalid_number", f"{what} must be a JSON number, not {type(raw).__name__}")
+    value = float(raw)
+    if not math.isfinite(value):
+        _fail("invalid_number", f"{what} must be finite")
+    return value
+
+
+def _optional_number(document: Mapping[str, Any], key: str, what: str) -> float | None:
+    """`None` for an absent field, the number for a present one, zero included: an area with VAT `0`
+    differs from one that publishes none.
+    """
+    if key not in document or document[key] is None:
+        return None
+    return _number(document[key], f"{what}: {key!r}")
+
+
+def _timestamp(document: Mapping[str, Any], key: str, what: str, *, required: bool = True) -> datetime | None:
+    """A timezone-aware instant; a string with no offset is refused rather than assumed local."""
+    if key not in document or document[key] is None:
+        if required:
+            _fail("missing_field", f"{what} has no {key!r}")
+        return None
+    raw = document[key]
+    if not isinstance(raw, str):
+        _fail("invalid_timestamp", f"{what}: {key!r} must be a string")
+    parsed = dt_util.parse_datetime(raw)
+    if parsed is None or parsed.tzinfo is None:
+        _fail("invalid_timestamp", f"{what}: {key!r} is not an offset-bearing ISO timestamp")
+    return parsed
+
+
+def _local_date(document: Mapping[str, Any], key: str, what: str) -> date:
+    raw = _text(document, key, what)
+    try:
+        return date.fromisoformat(raw)
+    except ValueError as err:
+        raise RelayParseError("invalid_field", f"{what}: {key!r} is not an ISO date") from err
+
+
+def _resolution(raw: Any, what: str) -> int:
+    if isinstance(raw, bool) or not isinstance(raw, int):
+        _fail("invalid_resolution", f"{what} must be a whole number of minutes, not {raw!r}")
+    if raw not in SUPPORTED_RESOLUTIONS:
+        _fail("invalid_resolution", f"{what} is {raw} minutes; the relay publishes {SUPPORTED_RESOLUTIONS}")
+    return raw
+
+
+@dataclass(frozen=True, slots=True)
+class AreaEntry:
+    """One area the relay can price, as its catalogue states it.
+
+    Three separate facts about money, kept separate as the relay keeps them: `currency` is the ISO
+    4217 identity, `major_unit` a display label that is not unique (`kr` is SEK, NOK and DKK alike)
+    and `minor_unit` the hundredth-unit label. None is derived from another or from the area id or
+    timezone. The fiscal fields are the relay's suggestions for a person to override; `None` means
+    nothing published and is never rendered as `0.0`.
+    """
+
+    id: str
+    eic: str
+    countries: tuple[str, ...]
+    name: str
+    tz: str
+    currency: str
+    major_unit: str
+    minor_unit: str
+    vat_percent: float | None
+    suggested_tax: float | None
+    suggested_grid_fee: float | None
+
+
+@dataclass(frozen=True, slots=True)
+class AreaCatalogue:
+    """The whole published area list, with the moment the relay generated it."""
+
+    version: int
+    generated: datetime
+    areas: tuple[AreaEntry, ...]
+
+    def area(self, area_id: str) -> AreaEntry | None:
+        """The area, or `None`. An area id is an exact string, never a fuzzy match."""
+        for entry in self.areas:
+            if entry.id == area_id:
+                return entry
+        return None
+
+    @property
+    def area_ids(self) -> tuple[str, ...]:
+        return tuple(entry.id for entry in self.areas)
+
+
+@dataclass(frozen=True, slots=True)
+class IndexArea:
+    """One area inside the index: which of its recent days are published.
+
+    `resolution_minutes` is optional; `res_default` covers areas without a per-area value.
+    """
+
+    area_id: str
+    days: tuple[date, ...]
+    resolution_minutes: int | None
+
+    def lists(self, day: date) -> bool:
+        return day in self.days
+
+
+@dataclass(frozen=True, slots=True)
+class RelayIndex:
+    """The published index: a short recent window per area, and two revisions.
+
+    `areas_rev` is the first twelve hex digits of the `areas.json` hash, so a client polling this
+    small document notices a changed catalogue. It is the only revision the contract states.
+    """
+
+    version: int
+    generated: datetime
+    res_default: int | None
+    areas_rev: str
+    areas: tuple[IndexArea, ...]
+
+    def area(self, area_id: str) -> IndexArea | None:
+        for entry in self.areas:
+            if entry.area_id == area_id:
+                return entry
+        return None
+
+
+@dataclass(frozen=True, slots=True)
+class PriceInterval:
+    """One priced interval of a day: when it applies, and what it costs.
+
+    `eur_per_kwh` is the market price as published, never adjusted (negative and zero are prices).
+
+    `utc_start`/`utc_end` are the absolute instants; `start`/`end` are the same instants in the
+    document's named timezone, for people and local departure times. Build through [from_instants]
+    so the local half is derived and the two cannot disagree. A local clock alone is ambiguous
+    (02:15 happens twice on the autumn night, never on the spring day), and two aware datetimes
+    sharing one `ZoneInfo` compare by wall clock (PEP 495). Every ordering, gap, duration and
+    containment question is therefore answered by `utc_start`/`utc_end`; the local halves are for
+    reading, display and local-day logic only.
+    """
+
+    start: datetime
+    end: datetime
+    utc_start: datetime
+    utc_end: datetime
+    eur_per_kwh: float
+
+    @classmethod
+    def from_instants(
+        cls, utc_start: datetime, utc_end: datetime, *, zone, eur_per_kwh: float
+    ) -> PriceInterval:
+        """Build one interval from its absolute half, with its local half derived from it."""
+        return cls(
+            start=utc_start.astimezone(zone),
+            end=utc_end.astimezone(zone),
+            utc_start=utc_start,
+            utc_end=utc_end,
+            eur_per_kwh=eur_per_kwh,
+        )
+
+    @property
+    def duration(self) -> timedelta:
+        """Elapsed time, by instant, never a wall-clock subtraction."""
+        return self.utc_end - self.utc_start
+
+    def applies_at(self, instant: datetime) -> bool:
+        """Whether this interval covers an instant: half-open, `start <= t < end`, so an instant belongs to
+        exactly one interval. Compared by instant (on the autumn night the caller's `fold` or offset says
+        which 02:15 was meant).
+        """
+        if instant.tzinfo is None:
+            raise ValueError("applies_at needs an aware instant")
+        moment = instant.astimezone(dt_util.UTC)
+        return self.utc_start <= moment < self.utc_end
+
+
+@dataclass(frozen=True, slots=True)
+class PriceDocument:
+    """One dated price document: the day's prices and where they came from.
+
+    `prices` is kept as published (positional) beside the derived `intervals`; both carry the same
+    numbers. `published` is the platform's creation time and `retrieved` when the relay fetched it;
+    either may be `None`. `fx` is the rate table the relay attached, empty when it had none close in
+    time, never another date's rate. `start` is the day's first instant in the document's timezone and
+    `start_instant` the same instant in UTC (see [PriceInterval]).
+    """
+
+    version: int
+    area_id: str
+    day: date
+    tz: str
+    start: datetime
+    start_instant: datetime
+    resolution_minutes: int
+    unit: str
+    prices: tuple[float, ...]
+    intervals: tuple[PriceInterval, ...]
+    fx: Mapping[str, float]
+    fx_date: date | None
+    fx_src: str | None
+    src: str | None
+    published: datetime | None
+    retrieved: datetime | None
+
+    @property
+    def interval_count(self) -> int:
+        return len(self.intervals)
+
+    @property
+    def covers_until(self) -> datetime:
+        """Where this document stops pricing, in its own local timezone."""
+        return self.intervals[-1].end
+
+    @property
+    def covers_until_instant(self) -> datetime:
+        """The same stopping point as an absolute instant."""
+        return self.intervals[-1].utc_end
+
+    def covers_whole_day(self) -> bool:
+        """Whether the last interval reaches the next local midnight, by instant: true for 23-, 24- and
+        25-hour days alike, with no count of 96.
+        """
+        return self.covers_until_instant >= _as_instant(_next_local_midnight(self.start, self.tz))
+
+    def fx_rate(self, currency: str) -> float | None:
+        return self.fx.get(currency)
+
+
+def _as_instant(moment: datetime) -> datetime:
+    """The same instant in UTC, the only safe way to compare two of them (aware datetimes sharing one
+    `ZoneInfo` compare by wall clock).
+    """
+    if moment.tzinfo is None:
+        _fail("invalid_timestamp", "a timezone-aware instant is required")
+    return moment.astimezone(dt_util.UTC)
+
+
+def _local_midnight(day: date, tz: str) -> datetime:
+    """Midnight at the start of a local calendar date, built from the zone's own rules so a skipped or
+    doubled midnight is handled.
+    """
+    return datetime(day.year, day.month, day.day, tzinfo=dt_util.get_time_zone(tz))
+
+
+def _next_local_midnight(instant: datetime, tz: str) -> datetime:
+    """The next local midnight after [instant], which may be 23, 24 or 25 hours away."""
+    local = instant.astimezone(dt_util.get_time_zone(tz))
+    following = local.date() + timedelta(days=1)
+    return _local_midnight(following, tz)
+
+
+def validate_intervals(intervals: tuple[PriceInterval, ...], what: str) -> None:
+    """The geometry every price day must satisfy, whoever built the list.
+
+    Ordering, uniqueness, positive duration and contiguity are checked rather than assumed from the
+    wire, and apply to any other source of intervals (an estimate, a restored snapshot). Comparisons
+    are by instant, which makes the autumn night legal (local clock goes backwards, instants do not);
+    a genuine reversal, duplicate, overlap or gap is refused.
+    """
+    if len(intervals) < 2:
+        _fail("invalid_coverage", f"{what} has {len(intervals)} interval(s); a day is at least two")
+    for index, interval in enumerate(intervals):
+        if interval.utc_end <= interval.utc_start:
+            _fail("interval_duration", f"{what}: interval {index} does not end after it starts")
+        if index == 0:
+            continue
+        previous = intervals[index - 1]
+        if interval.utc_start == previous.utc_start:
+            _fail("duplicate_interval", f"{what}: interval {index} starts when interval {index - 1} does")
+        if interval.utc_start < previous.utc_start:
+            _fail("interval_order", f"{what}: interval {index} starts before interval {index - 1}")
+        if interval.utc_start != previous.utc_end:
+            _fail(
+                "interval_gap",
+                f"{what}: interval {index} leaves a gap or overlap at {interval.utc_start.isoformat()}",
+            )
+
+
+def parse_catalogue(document: Any) -> AreaCatalogue:
+    """The published area list. A catalogue listing an id twice is refused: one identity, two entries."""
+    document = _object(document, "the area catalogue")
+    version = _version(document, "the area catalogue")
+    generated = _timestamp(document, "generated", "the area catalogue")
+    raw_areas = _require(document, "areas", "the area catalogue")
+    if not isinstance(raw_areas, list):
+        _fail("invalid_field", "the area catalogue: 'areas' must be a list")
+
+    entries: list[AreaEntry] = []
+    seen: set[str] = set()
+    for raw in raw_areas:
+        area = _object(raw, "an area")
+        area_id = _text(area, "id", "an area")
+        if area_id in seen:
+            _fail("duplicate_area", f"the area catalogue lists {area_id!r} twice")
+        seen.add(area_id)
+        countries = _require(area, "countries", f"area {area_id!r}")
+        if not isinstance(countries, list) or not countries or not all(
+            isinstance(code, str) and code.strip() for code in countries
+        ):
+            _fail("invalid_field", f"area {area_id!r}: 'countries' must be a non-empty list of strings")
+        timezone = _text(area, "tz", f"area {area_id!r}")
+        if dt_util.get_time_zone(timezone) is None:
+            _fail("invalid_field", f"area {area_id!r}: {timezone!r} is not a known timezone")
+        entries.append(
+            AreaEntry(
+                id=area_id,
+                eic=_text(area, "eic", f"area {area_id!r}"),
+                countries=tuple(countries),
+                name=_text(area, "name", f"area {area_id!r}"),
+                tz=timezone,
+                currency=_text(area, "currency", f"area {area_id!r}"),
+                major_unit=_text(area, "major_unit", f"area {area_id!r}"),
+                minor_unit=_text(area, "minor_unit", f"area {area_id!r}"),
+                vat_percent=_optional_number(area, "vat_percent", f"area {area_id!r}"),
+                suggested_tax=_optional_number(area, "suggested_tax", f"area {area_id!r}"),
+                suggested_grid_fee=_optional_number(area, "suggested_grid_fee", f"area {area_id!r}"),
+            )
+        )
+    return AreaCatalogue(version=version, generated=generated, areas=tuple(entries))
+
+
+def parse_index(document: Any) -> RelayIndex:
+    """The published index, whose `days` lists are this client's authority. An unsorted or repeating
+    list is refused so a damaged one is not read as authoritative.
+    """
+    document = _object(document, "the index")
+    version = _version(document, "the index")
+    generated = _timestamp(document, "generated", "the index")
+    areas_rev = _text(document, "areas_rev", "the index")
+    res_default = None if document.get("res_default") is None else _resolution(document["res_default"], "the index: 'res_default'")
+    raw_areas = _require(document, "areas", "the index")
+    if not isinstance(raw_areas, dict):
+        _fail("invalid_field", "the index: 'areas' must be an object keyed by area id")
+
+    entries: list[IndexArea] = []
+    for area_id, raw in raw_areas.items():
+        what = f"index area {area_id!r}"
+        if not isinstance(area_id, str) or not area_id.strip():
+            _fail("invalid_field", "the index has an area key that is not a name")
+        area = _object(raw, what)
+        raw_days = _require(area, "days", what)
+        if not isinstance(raw_days, list):
+            _fail("invalid_field", f"{what}: 'days' must be a list")
+        days: list[date] = []
+        for item in raw_days:
+            if not isinstance(item, str):
+                _fail("invalid_field", f"{what}: 'days' must hold ISO dates")
+            try:
+                days.append(date.fromisoformat(item))
+            except ValueError as err:
+                raise RelayParseError("invalid_field", f"{what}: {item!r} is not an ISO date") from err
+        if len(set(days)) != len(days):
+            _fail("duplicate_day", f"{what}: 'days' repeats a date")
+        if days != sorted(days):
+            _fail("unsorted_days", f"{what}: 'days' is not in ascending order")
+        resolution = None if area.get("res") is None else _resolution(area["res"], f"{what}: 'res'")
+        entries.append(IndexArea(area_id=area_id, days=tuple(days), resolution_minutes=resolution))
+    return RelayIndex(
+        version=version,
+        generated=generated,
+        res_default=res_default,
+        areas_rev=areas_rev,
+        areas=tuple(entries),
+    )
+
+
+def parse_day(document: Any, *, area_id: str, day: date) -> PriceDocument:
+    """One dated price document, checked against the area and date asked for.
+
+    Identity is checked, not trusted: another area is another market's money, another date another
+    day's. A stated unit other than EUR/kWh is refused too.
+
+    Intervals are derived from `start` and `res` by stepping in absolute time, so 23-, 24- and 25-hour
+    days come out right, then each endpoint is expressed in the document's timezone with its instant
+    kept beside it (a spring day has no 02:15 interval, an autumn day has two). They are validated and
+    checked to stay inside the document's local date. A day that stops early is accepted: incomplete
+    publication is a state the repository reports, not a parse failure.
+    """
+    document = _object(document, "the day document")
+    version = _version(document, "the day document")
+    document_area = _text(document, "area", "the day document")
+    if document_area != area_id:
+        _fail("area_mismatch", f"the document is for {document_area!r}, not {area_id!r}")
+    document_day = _local_date(document, "date", "the day document")
+    if document_day != day:
+        _fail("date_mismatch", f"the document is for {document_day.isoformat()}, not {day.isoformat()}")
+
+    timezone = _text(document, "tz", "the day document")
+    if dt_util.get_time_zone(timezone) is None:
+        _fail("invalid_field", f"the day document: {timezone!r} is not a known timezone")
+    resolution = _resolution(_require(document, "res", "the day document"), "the day document: 'res'")
+    unit = _text(document, "unit", "the day document")
+    if unit != RELAY_PRICE_UNIT:
+        _fail("unit_mismatch", f"the day document is priced in {unit!r}, not {RELAY_PRICE_UNIT!r}")
+
+    zone = dt_util.get_time_zone(timezone)
+    published_start = _timestamp(document, "start", "the day document")
+    # Compared by instant: the published `start` carries the relay's offset, the constructed
+    # midnight the zone's own.
+    start_instant = _as_instant(published_start)
+    midnight = _local_midnight(day, timezone)
+    if start_instant != _as_instant(midnight):
+        # A day document starts at the first instant of its local date: the array is positional,
+        # so any other start would misalign every price after it.
+        _fail(
+            "invalid_coverage",
+            f"the day document starts at {published_start.isoformat()}, not at {midnight.isoformat()}",
+        )
+
+    raw_prices = _require(document, "prices", "the day document")
+    if not isinstance(raw_prices, list):
+        _fail("invalid_field", "the day document: 'prices' must be a list")
+    prices = tuple(_number(value, f"the day document: prices[{index}]") for index, value in enumerate(raw_prices))
+
+    # Positions are `start + n x res` on the absolute timeline, expressed in the zone afterwards;
+    # stepping on the local clock would invent the spring 02:15 and lose the autumn repeat.
+    step = timedelta(minutes=resolution)
+    intervals = tuple(
+        PriceInterval.from_instants(
+            start_instant + step * index,
+            start_instant + step * (index + 1),
+            zone=zone,
+            eur_per_kwh=price,
+        )
+        for index, price in enumerate(prices)
+    )
+    validate_intervals(intervals, "the day document")
+    day_end = _as_instant(_next_local_midnight(published_start, timezone))
+    if intervals[-1].utc_end > day_end:
+        _fail(
+            "invalid_coverage",
+            "the day document prices past its own local midnight, ending at "
+            f"{intervals[-1].end.isoformat()}",
+        )
+
+    return PriceDocument(
+        version=version,
+        area_id=document_area,
+        day=day,
+        tz=timezone,
+        start=published_start.astimezone(zone),
+        start_instant=start_instant,
+        resolution_minutes=resolution,
+        unit=unit,
+        prices=prices,
+        intervals=intervals,
+        fx=_fx_table(document),
+        fx_date=_optional_local_date(document, "fx_date", "the day document"),
+        fx_src=_optional_text(document, "fx_src", "the day document"),
+        src=_optional_text(document, "src", "the day document"),
+        published=_timestamp(document, "published", "the day document", required=False),
+        retrieved=_timestamp(document, "retrieved", "the day document", required=False),
+    )
+
+
+def _optional_local_date(document: Mapping[str, Any], key: str, what: str) -> date | None:
+    if key not in document or document[key] is None:
+        return None
+    return _local_date(document, key, what)
+
+
+def _fx_table(document: Mapping[str, Any]) -> Mapping[str, float]:
+    """The relay's rate table: local = EUR x rate, or empty when it has no rate.
+
+    Every rate must be positive and finite (zero converts nothing, a negative one inverts a price).
+    """
+    raw = document.get("fx")
+    if raw is None:
+        return MappingProxyType({})
+    table = _object(raw, "the day document: 'fx'")
+    rates: dict[str, float] = {}
+    for currency, rate in table.items():
+        if not isinstance(currency, str) or not currency.strip():
+            _fail("invalid_field", "the day document: 'fx' must be keyed by currency code")
+        value = _number(rate, f"the day document: fx[{currency!r}]")
+        if value <= 0:
+            _fail("invalid_number", f"the day document: fx[{currency!r}] is not a rate")
+        rates[currency] = value
+    return MappingProxyType(rates)

@@ -1,0 +1,29 @@
+{
+  "api_version": 1,
+  "error": null,
+  "ok": true,
+  "restore": null,
+  "site": {
+    "active_control": {
+      "available": false,
+      "enabled": false,
+      "reason": "site_measurement_configured_missing",
+      "writable": true
+    },
+    "charger_count": 1,
+    "name": "Site",
+    "solar_forecast": {
+      "choices": [
+        {
+          "id": "fx_roof",
+          "title": "Roof"
+        }
+      ],
+      "selected": [
+        "fx_roof"
+      ]
+    },
+    "solar_priority": "battery_first",
+    "writable": true
+  }
+}

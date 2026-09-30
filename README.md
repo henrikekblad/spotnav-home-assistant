@@ -1,85 +1,101 @@
 ![SpotNav logo](assets/spotnav-icon.svg)
 
-# SpotNav charging control for Home Assistant
+# SpotNav for Home Assistant
 
 [![Open your Home Assistant instance and open this repository in HACS](https://my.home-assistant.io/badges/hacs_repository.svg)](https://my.home-assistant.io/redirect/hacs_repository/?owner=henrikekblad&repository=spotnav-home-assistant&category=integration)
 
-Home Assistant integration for receiving and executing EV charging schedules from the [SpotNav Android app](https://github.com/henrikekblad/spotnav).
+![The SpotNav card: price graph, charging plan and buttons](docs/images/card-hero.png)
 
-> The integration is under active development. Home Assistant executes the
-> schedules and controls the charger through the selected entities.
+SpotNav plans and runs your EV charging inside Home Assistant. It reads spot prices from the
+public SpotNav Relay (no account or API key) and follows them.
 
-## Features
+- **Charges when power is cheapest.** It picks the cheapest hours before your departure, or a
+  target state of charge, and starts and stops your charger to follow the plan.
+- **Uses your sun and respects your fuse.** It can charge from solar surplus, hold back grid energy
+  when a solar forecast promises sun, and keep several chargers under one main fuse.
+- **Runs locally.** The plan lives in Home Assistant and keeps running if your phone is away. A
+  Lovelace card is included, and the [SpotNav Android app](https://github.com/henrikekblad/spotnav)
+  pairs with it.
 
-- Stores schedules with up to eight charging periods in Home Assistant, independently of the Android phone.
-- Starts and stops charging at the calculated times.
-- Optionally applies a charging-current limit before starting.
-- Restores future and active schedules after a Home Assistant restart.
-- Provides start, stop, follow-schedule and cancel buttons plus schedule-status entities.
-- Generates a private, narrowly scoped webhook instead of requiring a Home Assistant access token in the app.
-- Guided OCPP setup that first selects a charger and then shows only its compatible controls.
-- Generic mode for other chargers that expose a Home Assistant switch and optional number entity.
+## Requirements
 
-## Installation
+- Home Assistant 2026.9 or newer, with [HACS](https://hacs.xyz) installed.
+- A charger that Home Assistant can switch on and off: one of the
+  [supported integrations](docs/supported.md) (OCPP, Easee, Wallbox, Zaptec, go-e and more), or any
+  charger that exposes a switch.
+- Optional, for load balancing and solar charging: a grid meter that Home Assistant can read.
+- For phone pairing, an address the phone can reach: your Home Assistant URL (HTTPS for the
+  internet) or a local address while on your network.
+
+## Install
 
 1. Open this repository in HACS with the button above and choose **Download**.
-2. Restart Home Assistant when HACS asks you to.
-3. Open **Settings → Devices & services → Add integration**.
-4. Search for **SpotNav charging control**.
-5. Choose **OCPP charger** for the guided setup, or **Generic Home Assistant charger** for any charger exposing a control switch.
-6. Select the charger and its charge-control switch. Select a current-limit number entity if available.
+2. Restart Home Assistant.
 
-Existing installations of Elpris charging control can update directly to
-SpotNav charging control. The technical integration domain remains unchanged so
-the existing configuration, webhook, entities and dashboard or Node-RED
-references are preserved. Do not remove the integration before updating.
+## Set up
 
-The integration creates schedule sensors and start, stop, follow-schedule and cancel buttons. **Follow charging schedule** immediately restores the state required by the saved plan: charging inside a configured period and stopped while waiting for the next one. No helper entities or automation blueprint are required.
+Go to **Settings, Devices & services, Add integration** and search for **SpotNav**. The full
+walk-through, with every dialog, is in [Set up SpotNav](docs/setup.md).
 
-The scheduled start and end sensors expose the complete non-secret plan as
-attributes: `periods`, `amps`, `phases`, `power_kw`, `energy_kwh`, `price_area`,
-and `estimated`. These can be used to visualize every charging period in a Home
-Assistant or Node-RED dashboard. Pairing secrets remain confined to the separate
-*App connection* sensor.
+### 1. Add a charger
 
-## Connect the Android app
+Choose **A charger**, then **Automatic (recommended)**, and pick the charger's device. SpotNav finds its
+controls and shows what it found for you to confirm.
 
-1. Open **Settings → Devices & services → Entities** in Home Assistant.
-2. Search for **App connection** on the SpotNav charging-control device.
-3. Open the entity and display its attributes. Copy `webhook_id`.
-4. In SpotNav, open **Settings → Home Assistant**.
-5. Enter the Home Assistant address and paste the private webhook ID. Use HTTPS for internet addresses; a private local IP address or local hostname may use HTTP.
-6. Tap **Test connection**.
+![The Charger found dialog](docs/images/charger-found.png)
 
-`webhook_id` is a generated secret for this integration, not a Home Assistant password or long-lived access token. Automatic pairing through the `pairing_uri` attribute is experimental and works with either a configured external HTTPS URL or a private local HTTP address.
+A charger with no integration of its own works through **Manual**: pick the switch that
+starts and stops it and, if you have one, the number that sets its current.
 
-In the **EV** tab, **Start now** first applies the amperage currently selected in SpotNav and then enables charging. **Send charging schedule** transfers all calculated periods and the selected amperage. The button indicates whether the calculated schedule is synchronized with Home Assistant or needs updating.
+### 2. Add a site (optional)
 
-## Dashboard
+A site is your main fuse, shared by one or more chargers. It is needed for load balancing and solar
+charging. Enter the fuse rating, choose the chargers on it, and SpotNav looks for your grid meter.
 
-[`examples/dashboard.yaml`](examples/dashboard.yaml) is a ready-made dashboard section using only built-in Home Assistant cards. It shows charger state, session energy, the active SpotNav schedule, manual controls, daily energy for the current month and monthly energy for the last year.
+![The Site found summary](docs/images/site-found.png)
 
-Paste the example into a manual dashboard card and replace the example OCPP entity IDs with those of your charger. The energy graph needs a cumulative energy sensor with `device_class: energy` and `state_class: total_increasing`; Home Assistant then calculates consumption from its long-term statistics. The integration does not modify dashboards automatically.
+### 3. Add the card
 
-## Security
+Open a dashboard, choose **Add card** and search for **SpotNav**. The card is served by the
+integration itself, so there is no dashboard resource to add. Pick the charger in the card's
+editor. Price area, phases, energy to charge, departure time and the strategy are set in the card;
+see [The card](docs/card.md).
 
-The webhook accepts only versioned SpotNav commands for status, scheduling, cancellation, start and stop. The status response contains only this integration's charger-control and schedule state. Timestamps and charging current are validated before the selected Home Assistant entities are called. The Android app does not store a Home Assistant username, password or general access token.
+![The Add card picker with the SpotNav preview](docs/images/card-picker.png)
 
-The webhook ID is a secret. Do not publish the complete webhook URL, screenshots of the ID, or the attributes of the *App connection* sensor. Removing and adding the integration again generates a new webhook ID.
+### 4. Pair the app (optional)
 
-## Troubleshooting
+In the SpotNav app choose **Log in to Home Assistant** and enter your Home Assistant address. The
+app shows a six-digit code and Home Assistant shows an item with the same code: check that they
+match and choose **Approve**. No Home Assistant password or token is stored on the phone.
 
-- If OCPP entities are unavailable after a Home Assistant restart, allow the charger time to reconnect.
-- Chargers with several connectors may expose connector-specific entities. Select the main charging outlet, commonly connector 1, under the integration's **Configure** action.
-- A rejected OCPP remote start or stop can mean there is no active transaction or that the connected vehicle is not requesting energy.
-- Internet-facing addresses require HTTPS. Plain HTTP is accepted only for private local addresses and hostnames, and works only while the phone can reach that network.
+![The pairing approval in Home Assistant](docs/images/pairing-approve.png)
 
-## Current scope
+## More
 
-The current scheduler runs in Home Assistant and controls standard switch and
-number entities, including those exposed by OCPP. Native OCPP Smart Charging
-profiles stored directly in compatible chargers are planned as an optional mode.
+- [Set up SpotNav](docs/setup.md): every setup dialog, the manual path, and what to do when
+  detection finds nothing.
+- [Supported chargers, meters, batteries and cars](docs/supported.md).
+- [The card](docs/card.md): graph, plan, buttons, status lines and settings.
+- [Charging strategies](docs/strategies.md): cheapest, solar and hybrid.
+- [Target state of charge](docs/target-soc.md): vehicles, estimates and stopping at a target.
+- [Site and load balancing](docs/site-and-load-balancing.md): main fuse, measurement sources,
+  active control.
+- [OCPP chargers](docs/ocpp.md): entity model, current control, connectors.
+- [Apps and API](docs/api.md): pairing, webhook and WebSocket contracts.
+- [Diagnostics and troubleshooting](docs/troubleshooting.md).
 
-## License
+## Development
+
+```sh
+pip install -r requirements_test.txt
+pytest tests/
+cd frontend && npm ci && npm test && npm run check-dist
+```
+
+The card source is in `frontend/`; the compiled bundle in
+`custom_components/spotnav/www/` is committed and `npm run build` regenerates it.
+
+## Licence
 
 [MIT](LICENSE)

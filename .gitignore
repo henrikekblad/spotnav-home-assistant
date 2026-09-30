@@ -3,3 +3,11 @@ __pycache__/
 .pytest_cache/
 .ruff_cache/
 .venv/
+
+frontend/node_modules/
+# Generated from the integration manifest; never edited by hand, never committed.
+frontend/src/generated/
+
+# Documentation screenshot tool: its virtual environment, throwaway configuration and logs.
+tools/docs_screenshots/.config/
+tools/docs_screenshots/.logs/

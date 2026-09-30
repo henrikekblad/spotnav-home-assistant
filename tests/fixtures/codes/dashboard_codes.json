@@ -1,0 +1,347 @@
+{
+  "active_control_reasons": [
+    "duplicate_membership",
+    "no_commandable_charger",
+    "site_measurement_configured_missing",
+    "site_measurement_inconsistent",
+    "site_measurement_invalid",
+    "site_measurement_not_configured",
+    "site_measurement_stale"
+  ],
+  "control_reasons": [
+    "action_pending",
+    "no_settings",
+    "pause_unsettled"
+  ],
+  "execution_errors": [
+    "action_failed",
+    "action_unavailable",
+    "install_failed",
+    "pause_clear_failed",
+    "pause_stop_failed",
+    "plan_unusable",
+    "reconcile_failed"
+  ],
+  "hybrid_reasons": [
+    "holding_back_does_not_pay",
+    "last_call_no_slack",
+    "no_forecast_cheapest",
+    "no_price_data",
+    "satisfied_need_met",
+    "waiting_for_sun_within_slack"
+  ],
+  "planning_reasons": [
+    "already_at_target",
+    "area_unknown",
+    "buying_before_publication",
+    "charging_without_prices",
+    "deadline_too_short",
+    "fiscal_value_missing",
+    "insufficient_price_horizon",
+    "missing_fx_rate",
+    "no_prices_yet",
+    "no_published_prices",
+    "price_data_invalid",
+    "price_data_stale",
+    "publication_pending",
+    "ready",
+    "settings_missing",
+    "shutdown",
+    "solar_execution_unavailable",
+    "solar_running",
+    "target_capacity_unknown",
+    "target_soc_unknown",
+    "unexpected_failure",
+    "unpriced"
+  ],
+  "planning_states": [
+    "error",
+    "incomplete_settings",
+    "nothing_to_charge",
+    "planning_unavailable",
+    "price_data_stale",
+    "proposal_ready",
+    "proposal_unpriced",
+    "waiting_for_prices",
+    "waiting_for_publication"
+  ],
+  "price_reasons": [
+    "incomplete_day",
+    "index_unavailable",
+    "invalid_contract",
+    "last_good_retained",
+    "loading",
+    "not_listed",
+    "ready",
+    "source_unreachable",
+    "tomorrow_incomplete",
+    "tomorrow_invalid",
+    "tomorrow_stale",
+    "tomorrow_unavailable",
+    "waiting_for_tomorrow"
+  ],
+  "price_states": [
+    "degraded",
+    "incomplete",
+    "invalid",
+    "loading",
+    "ready",
+    "stale",
+    "unavailable",
+    "waiting_for_tomorrow"
+  ],
+  "solar_reasons": [
+    "arming_delay",
+    "arming_dip",
+    "arming_min_off_wait",
+    "disarming_delay",
+    "disarming_min_on_wait",
+    "disarming_recover",
+    "no_basis_grace",
+    "no_basis_off",
+    "no_basis_stopped",
+    "off_no_surplus",
+    "on_modulate",
+    "on_steady",
+    "start_after_delay",
+    "stop_after_delay"
+  ],
+  "status_codes": {
+    "auto_installed": {
+      "params": [
+        "start"
+      ],
+      "tone": "normal"
+    },
+    "auto_planned": {
+      "params": [
+        "start"
+      ],
+      "tone": "normal"
+    },
+    "buying_before_publication": {
+      "params": [
+        "kwh"
+      ],
+      "tone": "normal"
+    },
+    "charger_unavailable": {
+      "params": [],
+      "tone": "blocking"
+    },
+    "charging_now": {
+      "params": [
+        "until"
+      ],
+      "tone": "normal"
+    },
+    "charging_without_prices": {
+      "params": [],
+      "tone": "notice"
+    },
+    "hybrid_grid": {
+      "params": [
+        "credit_kwh",
+        "grid_kwh",
+        "window_end",
+        "window_start"
+      ],
+      "tone": "normal"
+    },
+    "hybrid_no_forecast": {
+      "params": [],
+      "tone": "normal"
+    },
+    "hybrid_no_price_data": {
+      "params": [],
+      "tone": "normal"
+    },
+    "hybrid_satisfied": {
+      "params": [],
+      "tone": "normal"
+    },
+    "hybrid_unknown": {
+      "params": [],
+      "tone": "normal"
+    },
+    "load_balancing_limited": {
+      "params": [
+        "limit_a",
+        "phase"
+      ],
+      "tone": "notice"
+    },
+    "load_balancing_unavailable": {
+      "params": [],
+      "tone": "notice"
+    },
+    "no_plan": {
+      "params": [],
+      "tone": "normal"
+    },
+    "nothing_to_charge": {
+      "params": [],
+      "tone": "normal"
+    },
+    "paused": {
+      "params": [
+        "choice",
+        "until"
+      ],
+      "tone": "normal"
+    },
+    "plan_cost": {
+      "params": [
+        "amount_minor",
+        "currency"
+      ],
+      "tone": "normal"
+    },
+    "plan_distance": {
+      "params": [
+        "mil"
+      ],
+      "tone": "normal"
+    },
+    "plan_energy": {
+      "params": [
+        "kwh"
+      ],
+      "tone": "normal"
+    },
+    "planning_error": {
+      "params": [
+        "reason"
+      ],
+      "tone": "blocking"
+    },
+    "planning_unavailable": {
+      "params": [
+        "reason"
+      ],
+      "tone": "blocking"
+    },
+    "price_data_degraded": {
+      "params": [
+        "reason"
+      ],
+      "tone": "notice"
+    },
+    "price_data_invalid": {
+      "params": [
+        "reason"
+      ],
+      "tone": "blocking"
+    },
+    "price_data_stale": {
+      "params": [
+        "reason"
+      ],
+      "tone": "notice"
+    },
+    "price_data_unavailable": {
+      "params": [
+        "reason"
+      ],
+      "tone": "blocking"
+    },
+    "price_horizon_missing": {
+      "params": [],
+      "tone": "blocking"
+    },
+    "proposal_pending": {
+      "params": [],
+      "tone": "normal"
+    },
+    "settings_incomplete": {
+      "params": [
+        "missing",
+        "reason"
+      ],
+      "tone": "notice"
+    },
+    "settings_suggested": {
+      "params": [
+        "fields"
+      ],
+      "tone": "normal"
+    },
+    "solar_arming": {
+      "params": [],
+      "tone": "normal"
+    },
+    "solar_charging": {
+      "params": [
+        "requested_a"
+      ],
+      "tone": "normal"
+    },
+    "solar_disarming": {
+      "params": [],
+      "tone": "normal"
+    },
+    "solar_no_reading_stopped": {
+      "params": [],
+      "tone": "normal"
+    },
+    "solar_no_reading_waiting": {
+      "params": [],
+      "tone": "normal"
+    },
+    "solar_unavailable": {
+      "params": [],
+      "tone": "blocking"
+    },
+    "solar_unknown": {
+      "params": [],
+      "tone": "normal"
+    },
+    "solar_waiting_for_sun": {
+      "params": [],
+      "tone": "normal"
+    },
+    "target_reached": {
+      "params": [
+        "basis",
+        "reading_age_s",
+        "soc_percent"
+      ],
+      "tone": "normal"
+    },
+    "target_soc_unknown": {
+      "params": [
+        "missing"
+      ],
+      "tone": "blocking"
+    },
+    "target_unverifiable": {
+      "params": [
+        "reason"
+      ],
+      "tone": "notice"
+    },
+    "unpriced": {
+      "params": [],
+      "tone": "notice"
+    },
+    "waiting_for_publication": {
+      "params": [
+        "publication_at"
+      ],
+      "tone": "normal"
+    },
+    "waiting_for_tomorrow": {
+      "params": [],
+      "tone": "normal"
+    }
+  },
+  "status_tones": [
+    "normal",
+    "notice",
+    "blocking"
+  ],
+  "strategy_reasons": [
+    "needs_solar_and_price_control",
+    "needs_solar_surplus_measurement"
+  ]
+}

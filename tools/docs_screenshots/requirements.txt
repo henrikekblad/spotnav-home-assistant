@@ -1,0 +1,4 @@
+# The Home Assistant core the integration is developed against (the same release the test plugin pins)
+# and the frontend build that release ships with.
+homeassistant==2026.9.2
+home-assistant-frontend==20260826.7

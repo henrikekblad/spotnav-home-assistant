@@ -1,0 +1,5 @@
+{
+  "action": "dashboard",
+  "error": "spotnav_unsupported_api_version",
+  "ok": false
+}

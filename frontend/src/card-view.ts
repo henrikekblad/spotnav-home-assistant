@@ -1,0 +1,2587 @@
+// The card's DOM, built from one immutable `CardModel` and nothing else.
+//
+// Knows no `hass`, `callWS`, timer or raw payload: everything visible is a model field or a
+// translation key. Owns every node it creates (including the chart interaction and the dialogs);
+// `destroy()` releases them. No `innerHTML`: names, codes and labels go through `textContent`, so a
+// hostile charger name or backend code stays text.
+//
+// Top to bottom: banner (only when something is wrong), status sentence, the graph with its
+// max/min/current overlay (facts the model lacks are omitted, not shown as "unknown"), the action
+// bar, and the header's Info and Settings actions.
+
+import { chartNowAt, nextIntervalBoundary, type ChartMark, type ChartNow } from "./chart";
+import {
+  createChartInteraction,
+  FALLBACK_SIZE,
+  type ChartInteraction,
+  type ChartObserverLike,
+  type ChartSize,
+} from "./chart-interaction";
+import { applyFocus, chartHeightForWidth, renderChart, type ChartLabels } from "./chart-render";
+import { createDialog, type DialogHandle } from "./dialog";
+import { clock, formatFixed, formatNumber, hasZone, pricePerKwh, wallTimeRepeats, weekdayDate } from "./format";
+import { pluralForm, translate, type Language, type TranslationKey } from "./i18n";
+import {
+  actionErrorKey,
+  type CardModel,
+  type Issue,
+  type PlanPeriod,
+  type PlanRelationKind,
+  type SiteFacts,
+} from "./model";
+import type { ActiveControlNotice } from "./site-settings";
+import {
+  controlCurrentText,
+  entityEditorBody,
+  entityNameIn,
+  modeLabel,
+  vehicleEditorBody,
+  type EntityEditorBody,
+} from "./entity-editor";
+import { solarEditorBody } from "./solar-editor";
+import {
+  automaticEntity,
+  fieldsOf,
+  isMissingEntity,
+  storedMode,
+  type EntityConfig,
+  type EntityDraft,
+  type EntityFieldError,
+  type EntityScope,
+  type VehicleSoc,
+} from "./entity-config";
+import { marketAreaLabel, type MarketFormValues } from "./market";
+import {
+  marketEditorBody,
+  marketTrigger,
+  type MarketEditorForm,
+} from "./market-editor";
+import { settingsEditorBody, settingsTrigger, type SettingsEditorForm } from "./settings-editor";
+import type { Vehicle } from "./validate";
+import { vehicleSummary } from "./vehicle-settings";
+import {
+  fiscalRows,
+  planSummaryParts,
+  type SettingsEditorKind,
+  type SettingsFormValues,
+} from "./settings";
+import { VISUAL_CLASSES as C } from "./visual-styles";
+
+export interface CardViewInput {
+  model: CardModel;
+  mount: ShadowRoot | HTMLElement;
+  idPrefix: string;
+  /** The clock the keyboard's "current interval" fallback uses; injectable for tests. */
+  now?: () => number;
+  size?: () => ChartSize | null;
+  measure?: (host: HTMLElement) => ChartSize;
+  /** The resize observer factory; `undefined` means the platform's own, `null` means none. */
+  observe?: (host: HTMLElement, onResize: () => void) => ChartObserverLike | null;
+  setTimer?: (callback: () => void, delayMs: number) => number;
+  clearTimer?: (handle: number) => void;
+  /**
+   * What the row does when a person acts: the card owns the request, the guard and the refresh; the
+   * view only reports the click with the backend-supplied choice.
+   */
+  onAction: (action: ActionId, choice: string | null) => void;
+  /**
+   * A settings trigger was pressed: the card reads the canonical record and answers with the
+   * dialog's state. The view never fetches.
+   */
+  onOpenSettings: (kind: SettingsEditorKind) => void;
+  onSaveSettings: (kind: SettingsEditorKind, values: SettingsFormValues) => void;
+  onReloadSettings: (kind: SettingsEditorKind) => void;
+  onReapplySettings: (kind: SettingsEditorKind, values: SettingsFormValues) => void;
+  /**
+   * The market editor trigger: the card reads the record and market context and answers with the
+   * form.
+   */
+  onOpenMarket: () => void;
+  onSaveMarket: (values: MarketFormValues) => void;
+  onReloadMarket: () => void;
+  onReapplyMarket: (values: MarketFormValues) => void;
+  /**
+   * The reader picked another area in the open form. The card decides which draft that area has and
+   * hands back a new form.
+   */
+  onMarketAreaChange: (areaId: string | null, live: MarketFormValues) => void;
+  /**
+   * Whether this connection is an administrator. A courtesy only: the backend's admin check on the
+   * write is the security boundary; this decides whether a row looks pressable.
+   */
+  isAdmin: boolean;
+  /**
+   * An available, non-selected strategy row was pressed. The view has already closed the dialog;
+   * the card owns the request and every outcome.
+   */
+  onSelectStrategy: (strategyId: string) => void;
+  /** The Solar card's Change button, and that dialog's Save (the card judges the draft) and Cancel. */
+  onOpenSolarEditor?: () => void;
+  onSaveSolar?: (draft: EntityDraft) => void;
+  onCancelSolar?: () => boolean | void;
+  /**
+   * Active load-balancing switch (admin only): `confirmed` is the last shown opt-in, the other the
+   * one just asked for. The control is already back on `confirmed`; the answer arrives through
+   * `adoptActiveControl`.
+   */
+  onSetActiveControl?: (confirmed: boolean, chosen: boolean) => void;
+  /**
+   * The reader is leaving an area/fiscal editor for the Settings page it was opened from (Cancel,
+   * Escape, backdrop or close). Answering `false` means do not open Settings: a save is in flight
+   * and its answer returns the reader itself.
+   */
+  onCancelMarket?: () => boolean | void;
+  /**
+   * Every dialog this view owns is now closed. Fired at most once per batch of closes (see
+   * `notifyDialogsChanged`); the card uses it to apply a refresh it deferred while a dialog was
+   * open.
+   */
+  onDialogsClosed?: () => void;
+  /** The Home Assistant object the entity pickers need, read when an editor opens. */
+  hass?: () => unknown;
+  onSettingsOverviewOpened?: () => void;
+  onOpenEntityEditor?: (scope: EntityScope) => void;
+  onSaveEntities?: (scope: EntityScope, draft: EntityDraft) => void;
+  onCancelEntities?: () => boolean | void;
+  /** A vehicle card's Change button, and that dialog's Save (sensor, capacity, consumption as typed). */
+  onOpenVehicleEditor?: (vehicleId: string) => void;
+  onSaveVehicle?: (vehicleId: string, draft: EntityDraft) => void;
+}
+
+export type EntityViewState =
+  | { kind: "loading" }
+  | { kind: "adminOnly" }
+  | { kind: "failed"; failure: FailureSentence }
+  | { kind: "ready"; config: EntityConfig };
+
+export type ActionId = "start" | "stop" | "resume";
+
+/**
+ * What the action row says when something went wrong: the card's sentence plus the stable code,
+ * kept as subdued detail.
+ */
+export interface FailureSentence {
+  sentenceKey: TranslationKey;
+  code: string | null;
+}
+
+export interface CardView {
+  element: HTMLElement;
+  destroy(): void;
+  chart(): ChartInteraction;
+  selection(): ChartMark | null;
+  readoutText(): string;
+  openIssues(opener?: HTMLElement | null): void;
+  openCapabilities(): void;
+  openPause(): void;
+  /**
+   * Strategy dialog: an available, non-selected row writes the strategy when `isAdmin`; every other
+   * row stays read-only.
+   */
+  openStrategy(): void;
+  openSettingsOverview(): void;
+  dialogOpen(kind: "issues" | "capabilities" | "pause" | "strategy" | "settingsOverview"): boolean;
+  /** While a request is in flight its trigger is disabled, so a second click cannot send a second. */
+  /** Disable both action cells; the one for `action`, when given, shows its busy state. */
+  setActionPending(pending: boolean, action?: ActionId, choice?: string | null): void;
+  /**
+   * A refusal or failed confirmation above the status line: one sentence plus the stable code as
+   * subdued detail; `null` clears it.
+   */
+  setActionError(failure: FailureSentence | null): void;
+  openSettingsEditor(kind: SettingsEditorKind): void;
+  showSettingsEditorForm(form: SettingsEditorForm): void;
+  setSettingsEditorNotice(failure: FailureSentence | null): void;
+  showSettingsEditorConflict(revision: number, phases: number | null): void;
+  setSettingsEditorPending(pending: boolean): void;
+  settingsEditorOpen(): SettingsEditorKind | null;
+  closeSettingsEditor(): void;
+  openMarketEditor(): void;
+  showMarketEditorForm(form: MarketEditorForm): void;
+  setMarketEditorNotice(failure: FailureSentence | null): void;
+  showMarketEditorConflict(revision: number): void;
+  setMarketEditorPending(pending: boolean): void;
+  marketEditorOpen(): boolean;
+  /** Close it, restoring focus to its trigger unless the caller is switching straight to another dialog. */
+  closeMarketEditor(options?: { restoreFocus?: boolean }): void;
+  setActiveControlPending(pending: boolean): void;
+  /**
+   * Adopt the returned site block (`null` keeps what is shown) and say what happened, including
+   * what became of any balancing-lowered current on a disable.
+   */
+  adoptActiveControl(site: SiteFacts | null, notice: ActiveControlNotice | null): void;
+  setSettingsError(failure: FailureSentence | null): void;
+  anyDialogOpen(): boolean;
+  setEntityState(state: EntityViewState): void;
+  openEntityEditor(scope: EntityScope, config: EntityConfig, notice?: FailureSentence | null): void;
+  openVehicleEditor(vehicleId: string, config: EntityConfig | null, notice?: FailureSentence | null, row?: Vehicle): void;
+  vehicleEditorOpen(): string | null;
+  openSolarEditor(notice?: FailureSentence | null): void;
+  solarEditorOpen(): boolean;
+  entityEditorOpen(): EntityScope | null;
+  setEntityEditorNotice(failure: FailureSentence | null): void;
+  markEntityFieldErrors(errors: readonly EntityFieldError[]): void;
+  setEntityEditorPending(pending: boolean): void;
+  setEntityHass(hass: unknown): void;
+  closeEntityEditor(): void;
+  setOverviewNotice(failure: FailureSentence | null): void;
+  /** Close the Settings popover without returning focus (the card is about to redraw it). */
+  closeSettingsOverview(): void;
+}
+
+/**
+ * The furthest ahead an interval-boundary appointment is worth keeping (ms). Anything past a day
+ * would be replaced by the card's own refresh first, and a platform timer would clamp it; every
+ * refresh arms a fresh one.
+ */
+export const BOUNDARY_HORIZON_MS = 24 * 3_600_000;
+
+function element<K extends keyof HTMLElementTagNameMap>(
+  doc: Document,
+  tag: K,
+  className?: string,
+  text?: string,
+): HTMLElementTagNameMap[K] {
+  const created = doc.createElement(tag);
+  if (className !== undefined) {
+    created.className = className;
+  }
+  if (text !== undefined) {
+    created.textContent = text;
+  }
+  return created;
+}
+
+export function readoutDay(model: CardModel, mark: ChartMark): string {
+  return hasZone(model.format) ? weekdayDate(model.format, mark.startMs) : "";
+}
+
+/**
+ * One selection readout: day, time, price. The UTC offset appears only when the wall time is
+ * ambiguous ("02:15 (GMT+2)"); a price with no market zone reads as the model's "unknown".
+ */
+export function readoutTextFor(model: CardModel, mark: ChartMark | null): string {
+  const language = model.language;
+  if (mark === null) {
+    return translate(language, "graph.descriptionNoSelection");
+  }
+  const day = readoutDay(model, mark);
+  const time = mark.wallClock;
+  const zone = hasZone(model.format);
+  const ambiguous = zone && wallTimeRepeats(model.format, mark.startMs);
+  const offset = ambiguous ? mark.offset : "";
+  const price = zone ? pricePerKwh(model.format, mark.price) : "";
+  if (price === "") {
+    const key: TranslationKey = ambiguous ? "graph.readoutMissingWithOffset" : "graph.readoutMissing";
+    return translate(language, key, { day, time, offset }).trim();
+  }
+  const key: TranslationKey = ambiguous ? "graph.readoutWithOffset" : "graph.readout";
+  return translate(language, key, { day, time, offset, price }).trim();
+}
+
+/**
+ * The visible readout line: the full sentence for a selection, or empty for none, so the aria-live
+ * region stays silent instead of showing "Nothing selected." (`graphDescription` still says it, as
+ * the whole-picture description).
+ */
+function readoutDisplayText(model: CardModel, mark: ChartMark | null): string {
+  return mark === null ? "" : readoutTextFor(model, mark);
+}
+
+/**
+ * The figure for the summary's Now label at one interval, or `null` when there is no containing
+ * interval or no market zone (the line is then omitted, never shown as "unknown").
+ */
+function currentPriceText(model: CardModel, mark: ChartMark | null): string | null {
+  return mark === null || !hasZone(model.format) ? null : pricePerKwh(model.format, mark.price);
+}
+
+/**
+ * The summary's "Now" line: label and formatted figure, or `null` to hide the whole line. The label
+ * is translated here so a redraw never drops it.
+ */
+function nowSummaryText(model: CardModel, figure: string | null): string | null {
+  return figure === null ? null : `${translate(model.language, "graph.summary.current")} ${figure}`;
+}
+
+/** `hass.config.country`, when Home Assistant states one. */
+function homeAssistantCountry(hass: unknown): string | null {
+  if (typeof hass !== "object" || hass === null) {
+    return null;
+  }
+  const config = (hass as { config?: unknown }).config;
+  const country = typeof config === "object" && config !== null ? (config as { country?: unknown }).country : undefined;
+  return typeof country === "string" && country.trim() !== "" ? country : null;
+}
+
+export function bannerSeverity(model: CardModel): "blocking" | "notice" | null {
+  return model.severity;
+}
+
+/**
+ * A neutral banner whose issues are all already worded in the status headline adds nothing: the
+ * headline says it. A blocking banner is always kept.
+ */
+export function bannerRepeatsStatus(model: CardModel, severity: "blocking" | "notice"): boolean {
+  if (severity !== "notice" || model.status === null || model.issues.length === 0) {
+    return false;
+  }
+  const strip = (text: string): string => text.trim().replace(/[.。]$/u, "");
+  const shown = model.status.split(" \u00b7 ").map(strip);
+  return model.issues.every((issue) => shown.includes(strip(translate(model.language, issue.textKey, issue.params))));
+}
+
+/** The strategy rows whose availability hangs on the site's solar setup. */
+const SOLAR_SETUP_ROWS: ReadonlySet<string> = new Set(["solar", "hybrid"]);
+
+export function issueCountText(language: Language, count: number): string {
+  const key: TranslationKey = pluralForm(language, count) === "one" ? "issue.count.one" : "issue.count.other";
+  return translate(language, key, { count: String(count) });
+}
+
+/**
+ * Which period blocks to draw, from the model's relation, never from issue presence. `applied_same`
+ * is one block (proposal equals what runs); a lone section is drawn alone; a pending proposal
+ * follows the running schedule.
+ */
+export function periodBlockOrder(model: CardModel): Array<"proposal" | "installed"> {
+  const table: Record<PlanRelationKind, Array<"proposal" | "installed">> = {
+    none: [],
+    proposal_only: ["proposal"],
+    installed_only: ["installed"],
+    applied_same: ["proposal"],
+    pending_beside_installed: ["installed", "proposal"],
+  };
+  return table[model.planRelation].filter((kind) =>
+    kind === "installed" ? model.installedPeriods.length > 0 : model.proposalPeriods.length > 0,
+  );
+}
+
+function periodHeading(model: CardModel, base: "plan.proposal" | "plan.installed", count: number): string {
+  const form = pluralForm(model.language, count);
+  return translate(model.language, `${base}.${form}` as TranslationKey, { count: String(count) });
+}
+
+function periodLine(doc: Document, model: CardModel, period: PlanPeriod): HTMLElement {
+  const line = element(doc, "div", C.period);
+  // The model's own offset-disambiguated label; when the market had no zone the model says so.
+  line.textContent = period.label === "" ? translate(model.language, "plan.missing") : period.label;
+  return line;
+}
+
+function periodBlock(
+  doc: Document,
+  model: CardModel,
+  kind: "proposal" | "installed",
+  periods: readonly PlanPeriod[],
+): HTMLElement {
+  const block = element(
+    doc,
+    "section",
+    `${C.periods} ${kind === "installed" ? C.periodsInstalled : C.periodsProposal}`,
+  );
+  const heading = element(
+    doc,
+    "h4",
+    C.periodsHeading,
+    periodHeading(model, kind === "installed" ? "plan.installed" : "plan.proposal", periods.length),
+  );
+  block.append(heading);
+  periods.forEach((period, index) => {
+    const line = periodLine(doc, model, period);
+    // `activeNow` is only ever set on an installed period by the model, and is asserted here too.
+    const active = kind === "installed" && period.activeNow;
+    if (active) {
+      line.classList.add(C.periodActive);
+      line.dataset["activeIndex"] = String(index);
+    }
+    block.append(line);
+  });
+  return block;
+}
+
+/**
+ * The product mark: a dark rounded square with the red-yellow-green bolt, readable on light and
+ * dark themes. Hidden from assistive technology and built with `createElementNS`; gradient and
+ * filter ids carry the instance prefix so several cards never share a `url(#id)`.
+ */
+const MARK_PATH =
+  "m214 42-6 62-18-10-23 49 47 3-86.00154 76.23385L142 232l-50 32 6-62 13.99846 9.52923L139 163l-47-3 " +
+  "81.29385-75.527692-16.59077-9.06z";
+
+export function brandMark(doc: Document, idPrefix: string): SVGElement {
+  const ns = "http://www.w3.org/2000/svg";
+  const make = (tag: string, attributes: Record<string, string>): SVGElement => {
+    const node = doc.createElementNS(ns, tag) as SVGElement;
+    for (const [name, value] of Object.entries(attributes)) {
+      node.setAttribute(name, value);
+    }
+    return node;
+  };
+  const stop = (offset: string, color: string): SVGElement => make("stop", { offset, "stop-color": color });
+  const backgroundId = `${idPrefix}-mark-background`;
+  const boltId = `${idPrefix}-mark-bolt`;
+  const haloId = `${idPrefix}-mark-halo`;
+
+  const svg = make("svg", {
+    viewBox: "0 0 306 306",
+    width: "22",
+    height: "22",
+    "aria-hidden": "true",
+    focusable: "false",
+  });
+  svg.classList.add(C.identity);
+
+  const background = make("radialGradient", {
+    id: backgroundId,
+    cx: "106.158",
+    cy: "79.888",
+    r: "261",
+    gradientUnits: "userSpaceOnUse",
+  });
+  background.append(stop("0", "#454d55"), stop(".42", "#1b1e22"), stop(".76", "#101216"), stop("1", "#080a0d"));
+  const bolt = make("linearGradient", {
+    id: boltId,
+    x1: "155.35",
+    y1: "4.69",
+    x2: "129.22",
+    y2: "303.87",
+    gradientUnits: "userSpaceOnUse",
+  });
+  bolt.append(
+    stop("0", "#ff0000"),
+    stop(".102", "#ff0000"),
+    stop(".43", "#ffd22e"),
+    stop(".57", "#ffe56a"),
+    stop(".904", "#00ff06"),
+    stop("1", "#00ff00"),
+  );
+  const halo = make("filter", { id: haloId, x: "-30%", y: "-30%", width: "160%", height: "160%" });
+  halo.append(make("feGaussianBlur", { stdDeviation: "3.2" }));
+  const defs = make("defs", {});
+  defs.append(background, bolt, halo);
+
+  svg.append(
+    defs,
+    make("rect", { x: "8", y: "8", width: "290", height: "290", rx: "70", fill: `url(#${backgroundId})` }),
+    make("path", {
+      d: MARK_PATH,
+      fill: "none",
+      stroke: "#ffe36b",
+      "stroke-width": "8",
+      "stroke-opacity": ".36",
+      "stroke-linejoin": "round",
+      filter: `url(#${haloId})`,
+    }),
+    make("path", {
+      d: MARK_PATH,
+      fill: `url(#${boltId})`,
+      stroke: "#ffe36b",
+      "stroke-width": "1.2",
+      "stroke-opacity": ".52",
+      "stroke-linejoin": "round",
+    }),
+  );
+  return svg;
+}
+
+/** One small path-only SVG icon, decorative and hidden from assistive technology. */
+function icon(doc: Document, build: (svg: SVGElement, ns: string) => void): SVGElement {
+  const ns = "http://www.w3.org/2000/svg";
+  const svg = doc.createElementNS(ns, "svg") as SVGElement;
+  svg.setAttribute("viewBox", "0 0 24 24");
+  svg.setAttribute("width", "16");
+  svg.setAttribute("height", "16");
+  svg.setAttribute("aria-hidden", "true");
+  svg.setAttribute("focusable", "false");
+  svg.classList.add(C.actionIcon);
+  build(svg, ns);
+  return svg;
+}
+
+function strokePath(ns: string, doc: Document, d: string): SVGPathElement {
+  const path = doc.createElementNS(ns, "path") as SVGPathElement;
+  path.setAttribute("d", d);
+  path.setAttribute("fill", "none");
+  path.setAttribute("stroke", "currentColor");
+  path.setAttribute("stroke-width", "2");
+  path.setAttribute("stroke-linecap", "round");
+  path.setAttribute("stroke-linejoin", "round");
+  return path;
+}
+
+function fillPath(ns: string, doc: Document, d: string): SVGPathElement {
+  const path = doc.createElementNS(ns, "path") as SVGPathElement;
+  path.setAttribute("d", d);
+  path.setAttribute("fill", "currentColor");
+  return path;
+}
+
+/**
+ * The Info mark: a circled "i" as one symmetrical filled path in the same 24-unit box as the cog,
+ * so both sit centred in their buttons. Material "info" glyph (Apache License 2.0).
+ */
+function infoIcon(doc: Document): SVGElement {
+  return icon(doc, (svg, ns) => {
+    svg.append(
+      fillPath(
+        ns,
+        doc,
+        "M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-6h2v6zm0-8h-2V7h2v2z",
+      ),
+    );
+  });
+}
+
+/**
+ * The settings cog: MDI `mdiCog` path data (`@mdi/js`, Apache License 2.0), one filled path unlike
+ * this file's usual stroked primitives.
+ */
+function settingsGearIcon(doc: Document): SVGElement {
+  return icon(doc, (svg, ns) => {
+    svg.append(
+      fillPath(
+        ns,
+        doc,
+        "M12,15.5A3.5,3.5 0 0,1 8.5,12A3.5,3.5 0 0,1 12,8.5A3.5,3.5 0 0,1 15.5,12A3.5,3.5 0 0,1 12,15.5M19.43," +
+          "12.97C19.47,12.65 19.5,12.33 19.5,12C19.5,11.67 19.47,11.34 19.43,11L21.54,9.37C21.73,9.22 21.78,8.95 " +
+          "21.66,8.73L19.66,5.27C19.54,5.05 19.27,4.96 19.05,5.05L16.56,6.05C16.04,5.66 15.5,5.32 14.87,5.07L14.5," +
+          "2.42C14.46,2.18 14.25,2 14,2H10C9.75,2 9.54,2.18 9.5,2.42L9.13,5.07C8.5,5.32 7.96,5.66 7.44,6.05L4.95," +
+          "5.05C4.73,4.96 4.46,5.05 4.34,5.27L2.34,8.73C2.22,8.95 2.27,9.22 2.46,9.37L4.57,11C4.53,11.34 4.5,11.67 " +
+          "4.5,12C4.5,12.33 4.53,12.65 4.57,12.97L2.46,14.63C2.27,14.78 2.22,15.05 2.34,15.27L4.34,18.73C4.46," +
+          "18.95 4.73,19.03 4.95,18.95L7.44,17.94C7.96,18.34 8.5,18.68 9.13,18.93L9.5,21.58C9.54,21.82 9.75,22 " +
+          "10,22H14C14.25,22 14.46,21.82 14.5,21.58L14.87,18.93C15.5,18.68 16.04,18.34 16.56,17.94L19.05,18.95C" +
+          "19.27,19.03 19.54,18.95 19.66,18.73L21.66,15.27C21.78,15.05 21.73,14.78 21.54,14.63L19.43,12.97Z",
+      ),
+    );
+  });
+}
+
+function pauseIcon(doc: Document): SVGElement {
+  return icon(doc, (svg, ns) => {
+    svg.append(fillPath(ns, doc, "M7 5h3v14H7zM14 5h3v14h-3z"));
+  });
+}
+
+function playIcon(doc: Document): SVGElement {
+  return icon(doc, (svg, ns) => {
+    svg.append(fillPath(ns, doc, "M8 5v14l11-7Z"));
+  });
+}
+
+function stopIcon(doc: Document): SVGElement {
+  return icon(doc, (svg, ns) => {
+    svg.append(fillPath(ns, doc, "M7 7h10v10H7z"));
+  });
+}
+
+function filledEllipse(ns: string, doc: Document, cx: number, cy: number, rx: number, ry: number): SVGEllipseElement {
+  const ellipse = doc.createElementNS(ns, "ellipse") as SVGEllipseElement;
+  ellipse.setAttribute("cx", String(cx));
+  ellipse.setAttribute("cy", String(cy));
+  ellipse.setAttribute("rx", String(rx));
+  ellipse.setAttribute("ry", String(ry));
+  ellipse.setAttribute("fill", "currentColor");
+  return ellipse;
+}
+
+function filledRect(ns: string, doc: Document, x: number, y: number, width: number, height: number): SVGRectElement {
+  const rect = doc.createElementNS(ns, "rect") as SVGRectElement;
+  rect.setAttribute("x", String(x));
+  rect.setAttribute("y", String(y));
+  rect.setAttribute("width", String(width));
+  rect.setAttribute("height", String(height));
+  rect.setAttribute("rx", "0.6");
+  rect.setAttribute("fill", "currentColor");
+  return rect;
+}
+
+/** Piggy-bank glyph (Cheapest strategy): a bold filled silhouette that stays legible at 16-18 px. */
+function piggyBankPath(ns: string, doc: Document): SVGElement[] {
+  return [
+    filledEllipse(ns, doc, 10.5, 13.5, 7.5, 5.5),
+    filledEllipse(ns, doc, 18, 13.5, 2.3, 1.9),
+    fillPath(ns, doc, "M6.2 8.4 9.8 6.6 8.7 10.8Z"),
+    filledRect(ns, doc, 5.8, 17.6, 1.8, 3.2),
+    filledRect(ns, doc, 10.2, 18.2, 1.8, 3.2),
+    filledRect(ns, doc, 14.6, 17.6, 1.8, 3.2),
+  ];
+}
+
+function sunPath(ns: string, doc: Document): (SVGCircleElement | SVGPathElement)[] {
+  const circle = doc.createElementNS(ns, "circle") as SVGCircleElement;
+  circle.setAttribute("cx", "12");
+  circle.setAttribute("cy", "12");
+  circle.setAttribute("r", "3.4");
+  circle.setAttribute("fill", "none");
+  circle.setAttribute("stroke", "currentColor");
+  circle.setAttribute("stroke-width", "2");
+  const rays = strokePath(
+    ns,
+    doc,
+    "M12 3v2.4M12 18.6V21M21 12h-2.4M5.4 12H3M18.1 5.9l-1.7 1.7M7.6 16.4l-1.7 1.7M18.1 18.1l-1.7-1.7M7.6 7.6 5.9 5.9",
+  );
+  return [circle, rays];
+}
+
+/** The strategy trigger's own icon: piggy bank, sun, or a legible piggy-bank-and-sun for Hybrid. */
+function strategyIcon(doc: Document, strategyId: string | null): SVGElement | null {
+  if (strategyId === "cheapest") {
+    return icon(doc, (svg, ns) => svg.append(...piggyBankPath(ns, doc)));
+  }
+  if (strategyId === "solar") {
+    return icon(doc, (svg, ns) => svg.append(...sunPath(ns, doc)));
+  }
+  if (strategyId === "hybrid") {
+    // The same two marks, scaled and offset so both read clearly at the small size a narrow card
+    // allows -- one legible combined icon, rather than two full-size glyphs competing for the space.
+    return icon(doc, (svg, ns) => {
+      const sun = doc.createElementNS(ns, "g") as SVGGElement;
+      sun.setAttribute("transform", "translate(1 -2) scale(0.62)");
+      sun.append(...sunPath(ns, doc));
+      const piggy = doc.createElementNS(ns, "g") as SVGGElement;
+      piggy.setAttribute("transform", "translate(-2 4) scale(0.72)");
+      piggy.append(...piggyBankPath(ns, doc));
+      svg.append(sun, piggy);
+    });
+  }
+  return null;
+}
+
+function capabilityStateText(language: Language, state: "available" | "unavailable"): string {
+  return translate(language, state === "available" ? "cap.available" : "cap.unavailable");
+}
+
+/** The issue list, in the model's stable order, with codes only as subdued technical detail. */
+export function issueListBody(doc: Document, model: CardModel): HTMLElement {
+  const body = element(doc, "div");
+  body.append(element(doc, "p", `${C.muted} ${C.dialogIntro}`, translate(model.language, "dialog.issuesIntro")));
+  for (const issue of model.issues) {
+    body.append(issueRow(doc, model, issue));
+  }
+  return body;
+}
+
+function issueRow(doc: Document, model: CardModel, issue: Issue): HTMLElement {
+  const row = element(doc, "div", C.issueItem);
+  row.dataset["code"] = issue.code;
+  row.dataset["severity"] = issue.severity;
+  row.append(
+    element(doc, "span", C.issueText, translate(model.language, issue.textKey, issue.params)),
+  );
+  return row;
+}
+
+/** The five capabilities, and nothing API v1 cannot prove about the charger. */
+export function capabilityBody(doc: Document, model: CardModel): HTMLElement {
+  const body = element(doc, "div");
+  body.append(element(doc, "p", `${C.muted} ${C.dialogIntro}`, translate(model.language, "cap.intro")));
+  for (const item of model.capabilities) {
+    const row = element(doc, "div", C.capabilityItem);
+    row.dataset["capability"] = item.key;
+    row.dataset["state"] = item.state;
+    row.append(element(doc, "span", C.capabilityLabel, translate(model.language, item.labelKey)));
+    row.append(element(doc, "span", C.capabilityState, capabilityStateText(model.language, item.state)));
+    body.append(row);
+    if (item.key === "target_soc" && item.state === "unavailable") {
+      body.append(element(doc, "span", C.capabilityNote, translate(model.language, "cap.targetSocNote")));
+    }
+  }
+  return body;
+}
+
+/** The graph's accessible name and description, from the model and the reader's own language. */
+export function graphDescription(
+  model: CardModel,
+  selected: ChartMark | null,
+  now: ChartMark | null,
+  marks: readonly ChartMark[],
+  days: number,
+): string {
+  const language = model.language;
+  const zone = hasZone(model.format);
+  const first = marks[0] ?? null;
+  const last = marks[marks.length - 1] ?? null;
+  const stamp = (instantMs: number | undefined, fallback: string): string =>
+    instantMs === undefined || !zone
+      ? fallback
+      : `${weekdayDate(model.format, instantMs)} ${clock(model.format, instantMs)}`;
+  const from = stamp(first?.startMs, translate(language, "plan.missing"));
+  const to = stamp(last?.endMs, translate(language, "plan.missing"));
+  const unit = model.format.unit === "" ? translate(language, "plan.missing") : model.format.unit;
+  const selectedText = selected === null ? translate(language, "graph.descriptionNoSelection") : readoutTextFor(model, selected);
+  const parts = [
+    translate(language, "graph.description", {
+      from,
+      to,
+      unit,
+      count: String(marks.length),
+      days: String(days),
+      selected: selectedText,
+    }),
+    // The one focus fact a reader cannot see: which interval is current, said in words rather than
+    // left to a decorative line the accessibility tree never receives.
+    ...(now === null ? [] : [translate(language, "graph.descriptionNow", { now: readoutTextFor(model, now) })]),
+    translate(language, "graph.keyboardInstructions"),
+  ];
+  if (!zone) {
+    parts.push(translate(language, "graph.noZone"));
+  }
+  return parts.join(" ");
+}
+
+export function createCardView(input: CardViewInput): CardView {
+  const { model, idPrefix } = input;
+  const doc = input.mount.ownerDocument;
+  const now = input.now ?? (() => Date.now());
+  let destroyed = false;
+
+  const card = element(doc, "div", C.card);
+  card.style.boxSizing = "border-box";
+
+  // Header: the product mark and the charger's own name. One card is bound to one charger, so there is
+  // no selector and no visible product name; the accessible name still names the product.
+  const header = element(doc, "div", C.header);
+  header.append(brandMark(doc, idPrefix));
+  if (model.chargerName !== null) {
+    header.append(element(doc, "h3", C.name, model.chargerName));
+  }
+  // The product name: in the DOM for anyone who cannot see the mark, clipped out of sight (text nodes only, never an attribute).
+  header.append(
+    element(doc, "span", C.visuallyHidden, translate(model.language, "card.title")),
+  );
+  const help = element(doc, "button", C.iconButton);
+  help.type = "button";
+  help.setAttribute("aria-label", translate(model.language, "header.info"));
+  help.title = translate(model.language, "header.info");
+  help.append(infoIcon(doc));
+  header.append(help);
+  // The Settings entry point: one popover gathering price/fiscal, consumption, capabilities and the site, beside Info.
+  const settingsGeneral = element(doc, "button", C.iconButton);
+  settingsGeneral.type = "button";
+  settingsGeneral.setAttribute("aria-label", translate(model.language, "header.settings"));
+  settingsGeneral.title = translate(model.language, "header.settings");
+  settingsGeneral.append(settingsGearIcon(doc));
+  header.append(settingsGeneral);
+  card.append(header);
+
+  // Dialogs are created once as overlays so nothing shifts the card's height.
+  const labels = { close: translate(model.language, "dialog.close") };
+  const issuesDialog: DialogHandle = createDialog({
+    owner: input.mount,
+    idPrefix: `${idPrefix}-issues`,
+    labels,
+    background: () => card,
+    onClose: notifyDialogsChanged,
+  });
+  const capabilityDialog: DialogHandle = createDialog({
+    owner: input.mount,
+    idPrefix: `${idPrefix}-capabilities`,
+    labels,
+    background: () => card,
+    onClose: notifyDialogsChanged,
+  });
+  const pauseDialog: DialogHandle = createDialog({
+    owner: input.mount,
+    idPrefix: `${idPrefix}-pause`,
+    labels,
+    background: () => card,
+    onClose: notifyDialogsChanged,
+  });
+  const strategyDialog: DialogHandle = createDialog({
+    owner: input.mount,
+    idPrefix: `${idPrefix}-strategy`,
+    labels,
+    background: () => card,
+    onClose: notifyDialogsChanged,
+  });
+  const settingsDialog: DialogHandle = createDialog({
+    owner: input.mount,
+    idPrefix: `${idPrefix}-settings`,
+    labels,
+    background: () => card,
+    onClose: notifyDialogsChanged,
+  });
+  const marketDialog: DialogHandle = createDialog({
+    owner: input.mount,
+    idPrefix: `${idPrefix}-market`,
+    labels,
+    background: () => card,
+    onClose: notifyDialogsChanged,
+    // Leaving the price/tax editor by any of the reader's own routes lands on the Settings page it
+    // was opened from, exactly as a Save does.
+    onDismiss: () => leaveSettingsChild(marketDialog, input.onCancelMarket),
+  });
+  const entityDialog: DialogHandle = createDialog({
+    owner: input.mount,
+    idPrefix: `${idPrefix}-entities`,
+    labels,
+    background: () => card,
+    onClose: notifyDialogsChanged,
+    onDismiss: () => leaveSettingsChild(entityDialog, input.onCancelEntities),
+  });
+  entityDialog.element.classList.add(C.entityDialog);
+  const settingsOverviewDialog: DialogHandle = createDialog({
+    owner: input.mount,
+    idPrefix: `${idPrefix}-settings-overview`,
+    labels,
+    background: () => card,
+    onClose: notifyDialogsChanged,
+  });
+
+  /**
+   * The one way out of a dialog opened from the Settings page (Cancel, close, Escape, backdrop).
+   * The card's callback drops the editor's state and may answer `false` (a save is in flight and
+   * returns the reader itself); otherwise this closes the dialog without restoring focus to a
+   * background control and reopens Settings built fresh from the model.
+   */
+  function leaveSettingsChild(dialog: DialogHandle, cancel?: () => boolean | void): void {
+    const returns = cancel?.() !== false;
+    dialog.hide({ restoreFocus: false });
+    if (returns && !destroyed) {
+      openSettingsOverview();
+    }
+  }
+
+  function anyDialogOpenNow(): boolean {
+    return (
+      issuesDialog.isOpen() ||
+      capabilityDialog.isOpen() ||
+      pauseDialog.isOpen() ||
+      strategyDialog.isOpen() ||
+      settingsDialog.isOpen() ||
+      marketDialog.isOpen() ||
+      entityDialog.isOpen() ||
+      settingsOverviewDialog.isOpen()
+    );
+  }
+
+  /**
+   * One dialog just closed. Deferred to a microtask so closing one dialog and opening another in
+   * the same synchronous call is never reported as "nothing open".
+   */
+  function notifyDialogsChanged(): void {
+    queueMicrotask(() => {
+      if (destroyed || anyDialogOpenNow()) {
+        return;
+      }
+      input.onDialogsClosed?.();
+    });
+  }
+
+  const severity = bannerSeverity(model);
+  if (severity !== null && !bannerRepeatsStatus(model, severity)) {
+    const banner = element(doc, "button", `${C.banner} ${severity === "blocking" ? C.bannerBlocking : C.bannerNotice}`);
+    banner.type = "button";
+    banner.append(
+      element(
+        doc,
+        "span",
+        undefined,
+        translate(model.language, severity === "blocking" ? "issue.banner.blocking" : "issue.banner.notice"),
+      ),
+    );
+    banner.append(element(doc, "span", C.bannerCount, issueCountText(model.language, model.issues.length)));
+    banner.addEventListener("click", () => {
+      openIssues(banner);
+    });
+    card.append(banner);
+  }
+
+  // Two different facts above the status sentence: the action error (the outcome of what a person just
+  // did) and the backend's own explanation of the control state. Codes appear only as subdued detail.
+  const actionError = element(doc, "p", C.actionError);
+  actionError.setAttribute("role", "status");
+  actionError.hidden = true;
+  card.append(actionError);
+  // A save that committed but could not be applied or confirmed is a row-level fact: the dialog is
+  // closed by then, so the sentence sits beside the action error.
+  const settingsError = element(doc, "p", C.settingsError);
+  settingsError.setAttribute("role", "status");
+  settingsError.hidden = true;
+  card.append(settingsError);
+
+  if (model.control.notice !== null) {
+    const notice = element(doc, "p", C.controlNotice, model.control.notice);
+    card.append(notice);
+  }
+
+  // Vehicle-side advisory: the only line about the car rather than the plan or charger. Shown only when
+  // the backend observes a started charge not being taken (see charge_progress.py); no button, since
+  // there is no recovery command. It states what was observed, not a fix.
+  if (model.advisory !== null) {
+    const advisory = element(doc, "p", C.advisory, model.advisory.text);
+    advisory.setAttribute("role", "status");
+    card.append(advisory);
+  }
+
+  if (model.status !== null) {
+    card.append(element(doc, "p", C.status, model.status));
+  }
+  if (model.statusNote !== null) {
+    card.append(element(doc, "p", `${C.status} ${C.muted}`, model.statusNote));
+  }
+
+  // ---- the graph: one outer section whose *viewport* is the tab stop and the image object.
+  // The readout, hint and legend are siblings of that viewport, not descendants: an `aria-live`
+  // region inside `role="img"` is presentational as far as accessibility APIs are concerned, and the
+  // viewport is also exactly the box the chart is measured and drawn for.
+  const graph = element(doc, "section", C.graphSurface);
+  const viewport = element(doc, "div", C.viewport);
+  viewport.tabIndex = 0;
+  viewport.setAttribute("role", "img");
+  viewport.setAttribute("aria-labelledby", `${idPrefix}-chart-title`);
+  viewport.setAttribute("aria-describedby", `${idPrefix}-chart-description`);
+  const readout = element(doc, "p", C.readout, readoutDisplayText(model, null));
+  // Always present and always one line high: selecting a point writes into a line that was already
+  // reserved, so the controls below the chart never move when the chart is pressed.
+  readout.textContent = "";
+  readout.setAttribute("aria-live", "polite");
+  // The hint and legend are visually hidden but kept in the accessibility tree: `graphDescription`
+  // covers most of it, and these nodes carry the roles it does not (cheap/expensive, installed/proposal,
+  // selection line).
+  const hint = element(doc, "p", `${C.readoutHint} ${C.visuallyHidden}`, translate(model.language, "graph.hint"));
+  const legend = element(doc, "p", `${C.legend} ${C.visuallyHidden}`);
+
+  /**
+   * Only the legend entries that describe something drawn. Day entries name roles ("Today",
+   * "Tomorrow", an earlier captured day), not date counts; the current interval is named while one
+   * is published; the decorative focus lines are never mentioned.
+   */
+  function legendKeys(current: CardModel, selected: ChartMark | null): TranslationKey[] {
+    const keys: TranslationKey[] = [];
+    if (current.chart.days.some((day) => day.role === "today")) {
+      keys.push("graph.legend.today");
+    }
+    if (current.chart.days.some((day) => day.role === "future")) {
+      keys.push("graph.legend.tomorrow");
+    }
+    if (current.chart.days.some((day) => day.role === "past")) {
+      keys.push("graph.legend.past");
+    }
+    keys.push("graph.legend.cheap", "graph.legend.expensive");
+    if (nowState.mark !== null) {
+      keys.push("graph.legend.current");
+    }
+    if (current.bands.installed.length > 0) {
+      keys.push("graph.legend.installed");
+    }
+    if (current.bands.proposal.length > 0) {
+      keys.push("graph.legend.proposal");
+    }
+    if (!current.timesAvailable) {
+      keys.push("graph.noZone");
+    }
+    if (selected !== null) {
+      keys.push("graph.legend.selection");
+    }
+    return keys;
+  }
+
+  function paintLegend(selected: ChartMark | null): void {
+    legend.replaceChildren(
+      ...legendKeys(model, selected).map((key) =>
+        element(doc, "span", undefined, translate(model.language, key)),
+      ),
+    );
+  }
+
+  let interaction: ChartInteraction | null = null;
+  let drawn: ReturnType<typeof renderChart> | null = null;
+  // The initial draw uses the measurement's own policy, so the first viewBox already matches what the reader sees.
+  const initial = input.size?.() ?? FALLBACK_SIZE;
+  let size: ChartSize = { width: initial.width, height: chartHeightForWidth(initial.width) };
+  // The now fact of the last draw; nothing else in this view reads the wall clock for geometry.
+  let nowState: ChartNow = chartNowAt(model.chart.marks, now());
+  // The one pending interval-boundary appointment, and the injected scheduler that owns it.
+  const setTimer = input.setTimer ?? ((callback: () => void, delayMs: number) => window.setTimeout(callback, delayMs));
+  const clearTimer = input.clearTimer ?? ((handle: number) => window.clearTimeout(handle));
+  let boundaryHandle: number | null = null;
+  // The summary's Now figure, kept so a redraw moves it with the now line.
+  let nowValue: HTMLElement | null = null;
+
+  /** (Re)draw the SVG only: the interaction, the readout and the legend survive a resize. */
+  function render(next: ChartSize): void {
+    size = next;
+    nowState = chartNowAt(model.chart.marks, now());
+    // The one now fact in every place it shows: the line, the description, the keyboard fallback and the summary figure.
+    if (nowValue !== null) {
+      const text = nowSummaryText(model, currentPriceText(model, nowState.mark));
+      // A now fact this instant lacks (no containing interval or no zone) omits the whole line rather than say "Now unknown".
+      nowValue.hidden = text === null;
+      nowValue.textContent = text ?? "";
+    }
+    const labels: ChartLabels = {
+      time: (instantMs) => clock(model.format, instantMs),
+    };
+    const result = renderChart({
+      series: model.chart,
+      bands: model.bands,
+      now: nowState,
+      width: size.width,
+      height: size.height,
+      selected: interaction?.selection() ?? null,
+      title: translate(model.language, "graph.title"),
+      description: graphDescription(
+        model,
+        interaction?.selection() ?? null,
+        nowState.mark,
+        model.chart.marks,
+        model.chart.days.length,
+      ),
+      labels,
+      ids: { title: `${idPrefix}-chart-title`, description: `${idPrefix}-chart-description` },
+    });
+    drawn?.element.remove();
+    drawn = result;
+    // The viewport's height is the policy's answer for the measured width, so the box, viewBox and CSS viewport agree 1:1.
+    viewport.style.height = `${chartHeightForWidth(size.width)}px`;
+    viewport.append(result.element);
+    publish();
+  }
+
+  /** Hand the drawn geometry to the controller: the one geometry, never a recomputed second one. */
+  function publish(): void {
+    if (interaction === null || drawn === null) {
+      return;
+    }
+    interaction.setGeometry({
+      scale: drawn.scale,
+      targets: drawn.targets,
+      marks: model.chart.marks,
+      current: nowState.mark,
+    });
+    applyFocus(drawn, interaction.selection()?.startMs ?? null);
+  }
+
+  /**
+   * Wait for the one instant the focus can change: the end of the current interval. One appointment
+   * at a time (arming replaces); `null` from the model cancels; `destroy()` is terminal and a late
+   * callback touches nothing.
+   */
+  function scheduleBoundary(): void {
+    cancelBoundary();
+    if (destroyed) {
+      return;
+    }
+    const at = now();
+    const boundary = nextIntervalBoundary(model.chart.marks, at);
+    if (boundary === null || boundary - at > BOUNDARY_HORIZON_MS) {
+      return;
+    }
+    boundaryHandle = setTimer(onBoundary, Math.max(0, boundary - at));
+  }
+
+  function cancelBoundary(): void {
+    if (boundaryHandle === null) {
+      return;
+    }
+    clearTimer(boundaryHandle);
+    boundaryHandle = null;
+  }
+
+  function onBoundary(): void {
+    boundaryHandle = null;
+    if (destroyed) {
+      return; // A cancelled appointment that still fired owns nothing.
+    }
+    // Redraw only when the current interval really changed: an early or duplicate callback inside the
+    // same interval is not a redraw, and the next appointment is always recomputed from the clock.
+    if (chartNowAt(model.chart.marks, now()).identity !== nowState.identity) {
+      render(size);
+      paintLegend(interaction?.selection() ?? null);
+    }
+    scheduleBoundary();
+  }
+
+  // Summary: max, min and current inside the plot, as an absolutely positioned overlay in the graph
+  // section so it can never affect chart measurement. Current sits alone on the right; max and min share
+  // the left with up/down markers in the plot's expensive/cheap colours.
+  const summary = element(doc, "div", C.summary);
+  const summaryExtremes = element(doc, "span", C.summaryExtremes);
+  // One line above the plot: `▲ 267  ▼ 112.9` on the left with the unit dropped (the "Now" figure at
+  // the right carries it), and the labelled, unit-bearing wording kept as each figure's accessible name.
+  const maxLine = element(doc, "span", C.summaryMax);
+  maxLine.append(element(doc, "span", C.summaryArrow, "▲"), doc.createTextNode(` ${model.summary.maxFigure ?? ""}`));
+  maxLine.querySelector(`.${C.summaryArrow}`)?.setAttribute("aria-hidden", "true");
+  maxLine.setAttribute("aria-label", `${translate(model.language, "graph.summary.max")} ${model.summary.max ?? ""}`);
+  maxLine.hidden = model.summary.max === null;
+  const minLine = element(doc, "span", C.summaryMin);
+  minLine.append(element(doc, "span", C.summaryArrow, "▼"), doc.createTextNode(` ${model.summary.minFigure ?? ""}`));
+  minLine.querySelector(`.${C.summaryArrow}`)?.setAttribute("aria-hidden", "true");
+  minLine.setAttribute("aria-label", `${translate(model.language, "graph.summary.min")} ${model.summary.min ?? ""}`);
+  minLine.hidden = model.summary.min === null;
+  summaryExtremes.append(maxLine, minLine);
+  // The model's build-time figure is the first paint; later redraws read the injected now fact and hide the line the same way when it has no figure.
+  const currentText = nowSummaryText(model, model.summary.current);
+  const currentValue = element(doc, "span", C.summaryCurrent, currentText ?? "");
+  currentValue.hidden = currentText === null;
+  nowValue = currentValue;
+  summary.append(summaryExtremes, currentValue);
+
+  graph.append(summary, viewport, readout, hint, legend);
+  card.append(graph);
+
+  interaction = createChartInteraction({
+    // Listeners on the stable outer section; measurement and observation on the viewport alone.
+    host: graph,
+    viewport,
+    surface: () => viewport.querySelector("svg"),
+    fallbackSize: size,
+    now,
+    measure: input.measure,
+    observe: input.observe,
+    onResize: (next) => {
+      render(next);
+    },
+    onSelectionChange: (mark) => {
+      if (drawn !== null) {
+        applyFocus(drawn, mark?.startMs ?? null);
+      }
+      readout.textContent = mark === null ? "" : readoutDisplayText(model, mark);
+      paintLegend(mark);
+      if (drawn !== null) {
+        const description = graphDescription(
+          model,
+          mark,
+          nowState.mark,
+          model.chart.marks,
+          model.chart.days.length,
+        );
+        drawn.element.querySelector("desc")?.replaceChildren(document.createTextNode(description));
+      }
+    },
+    // The viewport and the readout are the region where a press belongs to the chart; anywhere else
+    // in the card is "outside" and clears the selection.
+    isInsideInteractive: (node) =>
+      node instanceof Node && (viewport.contains(node) || readout.contains(node)),
+  });
+  publish();
+
+  // Periods: the blocks the model's relation asks for, in its order. The rows are visually hidden but
+  // kept in the accessibility tree so a screen reader user gets the whole schedule.
+  for (const kind of periodBlockOrder(model)) {
+    const block =
+      kind === "installed"
+        ? periodBlock(doc, model, "installed", model.installedPeriods)
+        : periodBlock(doc, model, "proposal", model.proposalPeriods);
+    block.classList.add(C.visuallyHidden);
+    card.append(block);
+  }
+
+  // Action bar: six cells (3x2 on a narrow card, 6x1 on a wide one), each a caption naming the axis over
+  // an icon and the value or action. Charging (Start/Stop) commands the charger; Schedule (Pause/Resume)
+  // is Home Assistant's automatic execution; the rest are planning values. Every cell renders a backend
+  // fact and only reports a click; the two control axes are never folded together. The accessible name
+  // states axis + value + action, since the caption is not part of a button's name.
+  const bar = element(doc, "div", C.actionBar);
+  const barWrap = element(doc, "div", C.actionBarWrap);
+  barWrap.append(bar);
+  const immediateLabelKey = model.control.immediate.labelKey;
+  const automaticLabelKey = model.control.automatic.labelKey;
+  let actionButton: HTMLButtonElement | null = null;
+  let plannerButton: HTMLButtonElement | null = null;
+  let strategyButton: HTMLButtonElement | null = null;
+  const axisName = (key: TranslationKey): string => translate(model.language, key);
+  const changeWord = translate(model.language, "bar.change");
+
+  function cell(
+    cellClass: string,
+    id: string,
+    caption: string,
+    glyph: SVGElement | null,
+    value: string | readonly string[],
+    ariaLabel: string,
+    wide = false,
+  ): HTMLButtonElement {
+    const button = element(doc, "button", `${C.button} ${C.barCell} ${cellClass}`);
+    button.type = "button";
+    button.dataset["cell"] = id;
+    button.setAttribute("aria-label", ariaLabel);
+    const captionNode = element(doc, "span", C.barCaption, caption);
+    captionNode.setAttribute("aria-hidden", "true");
+    const line = element(doc, "span", C.barValue);
+    if (wide) {
+      // The Plan cell's value is a whole line of its own: it gets the cell's full width.
+      button.classList.add(C.barWide);
+    }
+    if (glyph !== null) {
+      line.append(glyph);
+    }
+    const valueNode = element(doc, "span", C.settingsValue);
+    if (typeof value === "string") {
+      valueNode.textContent = value;
+    } else {
+      // One line of parts (`20 kWh · No deadline · 16 A`): each part keeps together, so a narrow cell
+      // breaks only at a separator.
+      value.forEach((part, index) => {
+        if (index > 0) {
+          valueNode.append(doc.createTextNode(" \u00b7 "));
+        }
+        valueNode.append(element(doc, "span", C.barPart, part));
+      });
+    }
+    line.append(valueNode);
+    button.append(captionNode, line);
+    return button;
+  }
+
+  // The explanation a Start button might show is kept as its accessible description, not visible prose.
+  const startHelpId = `${idPrefix}-start-help`;
+  const startHelp = element(doc, "p", `${C.actionHelp} ${C.visuallyHidden}`, translate(model.language, "action.startHelp"));
+  startHelp.id = startHelpId;
+  if (immediateLabelKey !== null) {
+    const action = model.control.immediate.action;
+    // The caption states the state the same fact implies: a Stop on offer means a charge is running.
+    const running = action === "stop";
+    actionButton = cell(
+      `${C.actionButton}`,
+      "charging",
+      axisName(running ? "bar.chargingNow" : "bar.chargeNow"),
+      running ? stopIcon(doc) : playIcon(doc),
+      axisName(running ? "bar.stop" : "bar.start"),
+      `${axisName("bar.charging")}: ${axisName(running ? "bar.state.charging" : "bar.state.notCharging")}. ${axisName(immediateLabelKey)}`,
+    );
+    actionButton.dataset["action"] = action;
+    actionButton.disabled = !model.control.canAct;
+    actionButton.dataset["renderedDisabled"] = String(!model.control.canAct);
+    actionButton.addEventListener("click", () => {
+      // The immediate axis is exactly one command and carries no choice: a bare Stop changes the
+      // charger now and leaves the planning record alone. Taking a pause is the *other* cell.
+      input.onAction(action as ActionId, null);
+    });
+    if (action === "start") {
+      actionButton.setAttribute("aria-describedby", startHelpId);
+    }
+    bar.append(actionButton);
+  }
+  if (immediateLabelKey === null && model.control.immediate.pending) {
+    // The backend is waiting for the charger to acknowledge a start: the cell stays where it was,
+    // greyed and busy, instead of vanishing until the answer arrives.
+    actionButton = cell(
+      `${C.actionButton}`,
+      "charging",
+      axisName("bar.chargeNow"),
+      playIcon(doc),
+      axisName("bar.waiting"),
+      `${axisName("bar.charging")}: ${axisName("bar.state.notCharging")}. ${axisName("bar.waiting")}. ${axisName("control.actionPending")}`,
+    );
+    actionButton.dataset["action"] = "start";
+    actionButton.disabled = true;
+    actionButton.dataset["renderedDisabled"] = "true";
+    actionButton.dataset["waiting"] = "true";
+    actionButton.setAttribute("aria-busy", "true");
+    actionButton.classList.add(C.barBusy);
+    bar.append(actionButton);
+  }
+  if (automaticLabelKey !== null) {
+    const action = model.control.automatic.action;
+    // Pause on offer means the schedule is running, Resume on offer means it is paused.
+    const paused = action === "resume";
+    plannerButton = cell(
+      C.plannerButton,
+      "schedule",
+      axisName(paused ? "bar.schedulePaused" : "bar.scheduleActive"),
+      paused ? playIcon(doc) : pauseIcon(doc),
+      axisName(paused ? "action.resumeShort" : "action.pauseAutomaticShort"),
+      `${axisName("bar.schedule")}: ${axisName(paused ? "bar.state.schedulePaused" : "bar.state.scheduleActive")}. ${axisName(automaticLabelKey)}`,
+    );
+    plannerButton.dataset["action"] = action;
+    plannerButton.disabled = !model.control.canAct;
+    plannerButton.dataset["renderedDisabled"] = String(!model.control.canAct);
+    plannerButton.addEventListener("click", () => {
+      if (action === "pause") {
+        // The pause always names the choice it is taken with, so the sheet is not optional -- and a
+        // charger that offers none of its own gets no menu rather than an empty one (see `openPause`).
+        openPause();
+        return;
+      }
+      if (action === "resume") {
+        input.onAction("resume", null);
+      }
+    });
+    bar.append(plannerButton);
+  }
+  if (model.strategy.selected !== null) {
+    strategyButton = cell(
+      C.strategyButton,
+      "strategy",
+      axisName("strategy.title"),
+      strategyIcon(doc, model.strategy.selectedId),
+      model.strategy.selected,
+      `${axisName("strategy.title")}: ${model.strategy.selected}. ${changeWord}`,
+    );
+    strategyButton.addEventListener("click", () => {
+      openStrategy();
+    });
+    bar.append(strategyButton);
+  }
+  // The Plan cell: requested energy, finish by and current in one popover. Area/fiscal and consumption live in Settings.
+  const planParts = planSummaryParts(model.language, model.dashboardSettings);
+  const planCaption = axisName("bar.plan");
+  const planTrigger = cell(
+    C.settingsTrigger,
+    "plan",
+    planCaption,
+    null,
+    planParts,
+    `${planCaption}: ${planParts.join(" \u00b7 ")}. ${changeWord}`,
+    true,
+  );
+  planTrigger.dataset["setting"] = "plan";
+  planTrigger.addEventListener("click", () => {
+    input.onOpenSettings("plan");
+  });
+  bar.append(planTrigger);
+  card.append(barWrap);
+  if (actionButton !== null && actionButton.dataset["action"] === "start") {
+    card.append(startHelp);
+  }
+
+
+  mountCard();
+  paintLegend(null);
+  render(size);
+  scheduleBoundary();
+
+  function mountCard(): void {
+    if (!input.mount.contains(card)) {
+      input.mount.append(card);
+    }
+  }
+
+  function openIssues(opener: HTMLElement | null): void {
+    if (destroyed) {
+      return;
+    }
+    // Two overlays and two focus traps must never coexist: the other dialog closes first, and it does
+    // not restore focus on the way out (that would briefly focus a background control).
+    capabilityDialog.hide({ restoreFocus: false });
+    settingsOverviewDialog.hide({ restoreFocus: false });
+    issuesDialog.show({
+      title: translate(model.language, "dialog.issues"),
+      body: issueListBody(doc, model),
+      opener,
+    });
+  }
+
+  function openCapabilities(): void {
+    if (destroyed) {
+      return;
+    }
+    issuesDialog.hide({ restoreFocus: false });
+    settingsOverviewDialog.hide({ restoreFocus: false });
+    capabilityDialog.show({
+      title: translate(model.language, "cap.title"),
+      body: capabilityBody(doc, model),
+      opener: help,
+    });
+  }
+
+  function openPause(): void {
+    if (destroyed || model.control.choices.length === 0) {
+      // No choices is not an empty menu: it is this charger having none to offer, and opening a
+      // dialog with nothing in it would be worse than doing nothing.
+      return;
+    }
+    issuesDialog.hide({ restoreFocus: false });
+    capabilityDialog.hide({ restoreFocus: false });
+    strategyDialog.hide({ restoreFocus: false });
+    settingsOverviewDialog.hide({ restoreFocus: false });
+    const body = element(doc, "div");
+    body.append(element(doc, "p", `${C.muted} ${C.dialogIntro}`, translate(model.language, "pause.intro")));
+    const list = element(doc, "div", C.pauseChoices);
+    for (const choice of model.control.choices) {
+      const button = element(doc, "button", C.choiceButton, translate(model.language, choice.labelKey));
+      button.type = "button";
+      button.dataset["choice"] = choice.id;
+      button.disabled = !model.control.canAct;
+      button.addEventListener("click", () => {
+        // One click, one request: the dialog closes first, and the choice is the backend's own id.
+        pauseDialog.hide({ restoreFocus: false });
+        input.onAction("stop", choice.id);
+      });
+      list.append(button);
+    }
+    body.append(list);
+    pauseDialog.show({
+      title: translate(model.language, "pause.sheetTitle"),
+      body,
+      // The sheet belongs to the automatic control, so focus returns to *that* button.
+      opener: plannerButton,
+    });
+  }
+
+  function openStrategy(): void {
+    if (destroyed) {
+      return;
+    }
+    issuesDialog.hide({ restoreFocus: false });
+    capabilityDialog.hide({ restoreFocus: false });
+    pauseDialog.hide({ restoreFocus: false });
+    settingsOverviewDialog.hide({ restoreFocus: false });
+    const body = element(doc, "div");
+    body.append(element(doc, "p", `${C.muted} ${C.dialogIntro}`, translate(model.language, "strategy.intro")));
+    if (!input.isAdmin) {
+      body.append(element(doc, "p", C.settingsReadOnly, translate(model.language, "settings.readOnly")));
+    }
+    for (const row of model.strategy.rows) {
+      const item = element(doc, "div", C.strategyRow);
+      const selected = row.id === model.strategy.selectedId;
+      // An available, non-selected row is a real button for an administrator. The selected and unavailable
+      // rows stay disabled; the backend's `require_admin` is the security boundary, this is a courtesy.
+      const writable = row.available && !selected && input.isAdmin;
+      const button = element(doc, "button", C.choiceButton, translate(model.language, row.labelKey));
+      button.type = "button";
+      button.dataset["strategy"] = row.id;
+      button.disabled = !writable;
+      button.setAttribute("aria-pressed", selected ? "true" : "false");
+      if (writable) {
+        button.addEventListener("click", () => {
+          // No confirmation dialog: the click closes this one at once, and the card reports a refusal on the row-level sentence.
+          strategyDialog.hide({ restoreFocus: false });
+          input.onSelectStrategy(row.id);
+        });
+      }
+      item.append(button);
+      if (row.reason !== null) {
+        item.append(element(doc, "span", C.strategyReason, row.reason));
+        // A solar strategy held back for lack of solar settings points at the card that sets them.
+        if (!row.available && model.site !== null && SOLAR_SETUP_ROWS.has(row.id)) {
+          const link = element(doc, "button", C.strategyLink, translate(model.language, "strategy.setupSolar"));
+          link.type = "button";
+          link.dataset["action"] = "setup-solar";
+          link.addEventListener("click", () => {
+            strategyDialog.hide({ restoreFocus: false });
+            openSettingsOverview();
+            overviewBodyNode
+              ?.querySelector<HTMLElement>("[data-section='solar']")
+              ?.scrollIntoView?.({ block: "nearest" });
+            overviewBodyNode?.querySelector<HTMLElement>("[data-edit-solar]")?.focus();
+          });
+          item.append(link);
+        }
+      }
+      body.append(item);
+    }
+    strategyDialog.show({
+      title: translate(model.language, "strategy.dialogTitle"),
+      body,
+      opener: strategyButton,
+    });
+  }
+
+  /**
+   * The general Settings popover, built fresh from the model on every open (no request): an overview
+   * with one card per area (price area and taxes, each vehicle, the charger, the site, solar), two or
+   * three summary rows each and one Change button that opens a dialog with Save and Cancel. Nothing here
+   * writes by itself except the active-control switch. A charger with no site gets a plain statement.
+   */
+  function settingsOverviewBody(): HTMLElement {
+    const body = element(doc, "div");
+    overviewBodyNode = body;
+
+    overviewNoticeNode = element(doc, "p", C.settingsNotice);
+    overviewNoticeNode.hidden = true;
+    overviewNoticeNode.setAttribute("role", "status");
+    body.append(overviewNoticeNode);
+    paintOverviewNotice();
+
+    if (!input.isAdmin) {
+      body.append(element(doc, "p", C.settingsReadOnly, translate(model.language, "settings.readOnly")));
+    }
+
+    const marketSection = element(doc, "section", C.settingsSection);
+    marketSection.dataset["section"] = "market";
+    marketSection.append(
+      element(doc, "h4", C.settingsSectionHeading, translate(model.language, "settings.section.market")),
+    );
+    if (model.contextArea !== null || model.contextAreaName !== null) {
+      marketSection.append(
+        overviewRow(
+          "area",
+          translate(model.language, "context.area"),
+          marketAreaLabel(model.language, model.contextAreaName, model.contextAreaId),
+        ),
+      );
+    }
+    for (const fiscal of fiscalRows(model.language, model.dashboardFiscal)) {
+      marketSection.append(overviewRow(fiscal.key, fiscal.label, fiscal.value));
+    }
+    const marketButton = marketTrigger(
+      doc,
+      model.language,
+      marketAreaLabel(model.language, model.contextAreaName, model.contextAreaId),
+    );
+    marketButton.classList.add(C.settingsSectionConfigure);
+    marketButton.addEventListener("click", () => {
+      input.onOpenMarket();
+    });
+    marketSection.append(marketButton);
+    body.append(marketSection);
+
+    // One card per vehicle, repainted when the entity configuration arrives (the sensor row needs it).
+    vehicleRows = model.vehicles.map((entry) => ({ ...entry }));
+    vehicleListSlot = element(doc, "div");
+    vehicleListSlot.dataset["slot"] = "vehicles";
+    body.append(vehicleListSlot);
+
+    entitySlot = element(doc, "section", C.settingsSection);
+    entitySlot.dataset["section"] = "entities";
+    body.append(entitySlot);
+
+    body.append(siteSectionBody());
+    const solar = solarSectionBody();
+    if (solar !== null) {
+      body.append(solar);
+    }
+    paintEntities();
+
+    return body;
+  }
+
+  function overviewRow(key: string, label: string, value: string): HTMLElement {
+    const row = element(doc, "div", C.capabilityItem);
+    row.dataset["row"] = key;
+    row.append(element(doc, "span", C.capabilityLabel, label), element(doc, "span", C.settingsValue, value));
+    return row;
+  }
+
+  let overviewBodyNode: HTMLElement | null = null;
+  let entityState: EntityViewState = input.isAdmin ? { kind: "loading" } : { kind: "adminOnly" };
+  let entitySlot: HTMLElement | null = null;
+  let vehicleListSlot: HTMLElement | null = null;
+  let vehicleRows: Vehicle[] = [];
+  let siteEntitySlot: HTMLElement | null = null;
+  let siteButtonSlot: HTMLElement | null = null;
+
+  function sensorFor(vehicleId: string): VehicleSoc | null | undefined {
+    if (entityState.kind !== "ready") {
+      return undefined;
+    }
+    return entityState.config.vehicles.find((entry) => entry.id === vehicleId) ?? null;
+  }
+
+  /** A section's heading, then a muted line saying why its rows are not shown (or its rows). */
+  function unreadableLine(state: EntityViewState): HTMLElement | null {
+    if (state.kind === "loading") {
+      return element(doc, "p", C.muted, translate(model.language, "entity.loading"));
+    }
+    if (state.kind === "adminOnly") {
+      return element(doc, "p", C.muted, translate(model.language, "entity.adminOnly"));
+    }
+    if (state.kind === "failed") {
+      const sentence = element(doc, "p", C.settingsNotice, translate(model.language, state.failure.sentenceKey));
+      if (state.failure.code !== null) {
+        sentence.dataset["code"] = state.failure.code;
+      }
+      return sentence;
+    }
+    return null;
+  }
+
+  function changeButton(label: TranslationKey, scope: EntityScope, enabled: boolean): HTMLButtonElement {
+    const button = element(doc, "button", `${C.button} ${C.settingsSectionConfigure}`, translate(model.language, label));
+    button.type = "button";
+    button.dataset["editEntities"] = scope;
+    button.disabled = !enabled;
+    if (enabled) {
+      button.addEventListener("click", () => {
+        input.onOpenEntityEditor?.(scope);
+      });
+    }
+    return button;
+  }
+
+  /** The friendly name an entity field states, or `null` when it names none. */
+  function fieldEntityName(config: EntityConfig, scope: EntityScope, name: string): string | null {
+    const field = fieldsOf(config, scope).find((entry) => entry.field === name);
+    if (field === undefined || field.kind !== "entity" || field.current === null) {
+      return null;
+    }
+    return field.current.friendlyName;
+  }
+
+  function chargerRows(config: EntityConfig): HTMLElement[] {
+    const notSet = translate(model.language, "entity.notSet");
+    const control = config.control;
+    const nodes: HTMLElement[] = [];
+    const startStopId = control?.startStop.entityIds[0];
+    const startStopName =
+      startStopId !== undefined ? entityNameIn(config, startStopId) : fieldEntityName(config, "charger", "charge_control");
+    nodes.push(overviewRow("start_stop", translate(model.language, "control.startStop"), startStopName ?? notSet));
+    const chargeControl = fieldsOf(config, "charger").find((entry) => entry.field === "charge_control");
+    if (chargeControl !== undefined && chargeControl.kind === "entity" && isMissingEntity(chargeControl)) {
+      const warning = element(doc, "p", C.entityWarning, translate(model.language, "entity.missing.required"));
+      warning.dataset["missing"] = "charge_control";
+      nodes.push(warning);
+    }
+    const currentId = control?.current.entityId ?? null;
+    nodes.push(
+      overviewRow(
+        "current",
+        translate(model.language, "control.current"),
+        control === null
+          ? (fieldEntityName(config, "charger", "current_limit") ?? notSet)
+          : controlCurrentText(model.language, control, currentId === null ? "" : entityNameIn(config, currentId)),
+      ),
+    );
+    const energyField = fieldsOf(config, "charger").find((entry) => entry.field === "energy_register_entity");
+    let energy = translate(model.language, "entity.foundAutomatically");
+    if (energyField !== undefined && energyField.kind === "entity") {
+      if (energyField.current !== null) {
+        energy = energyField.current.friendlyName;
+      } else {
+        const automatic = automaticEntity(energyField);
+        if (automatic !== null) {
+          energy = translate(model.language, "entity.automatic", { name: automatic.friendlyName });
+        }
+      }
+    }
+    nodes.push(overviewRow("energy_register", translate(model.language, "entity.field.energyRegister"), energy));
+    for (const conflict of control?.conflicts ?? []) {
+      const warning = element(
+        doc,
+        "p",
+        C.entityWarning,
+        translate(model.language, "control.conflict", {
+          label: conflict.label,
+          name: entityNameIn(config, conflict.entityId),
+        }),
+      );
+      warning.dataset["conflict"] = conflict.entityId;
+      nodes.push(warning);
+    }
+    return nodes;
+  }
+
+  /** Only what is configured: the fuse, the measurement in words and the battery. No "not set" rows. */
+  function siteRows(config: EntityConfig): HTMLElement[] {
+    const nodes: HTMLElement[] = [];
+    const fuse = fieldsOf(config, "site").find((entry) => entry.field === "main_fuse_a");
+    if (fuse !== undefined && fuse.kind === "number" && fuse.value !== null) {
+      nodes.push(
+        overviewRow("main_fuse_a", translate(model.language, "entity.field.mainFuse"), `${formatNumber(model.language, fuse.value, 1)} A`),
+      );
+    }
+    const mode = storedMode(config);
+    if (mode !== null) {
+      nodes.push(overviewRow("measurement_mode", translate(model.language, "entity.field.measurementMode"), modeLabel(model.language, mode)));
+    }
+    nodes.push(
+      overviewRow(
+        "battery",
+        translate(model.language, "site.row.battery"),
+        fieldEntityName(config, "site", "battery_aggregate_power_entity") ?? translate(model.language, "settings.value.none"),
+      ),
+    );
+    return nodes;
+  }
+
+  function paintEntities(): void {
+    const state = entityState;
+    if (vehicleListSlot !== null) {
+      const root = vehicleListSlot.getRootNode() as Document | ShadowRoot;
+      const active = root.activeElement;
+      const focusId =
+        active !== null && vehicleListSlot.contains(active) ? (active as HTMLElement).dataset["editVehicle"] : undefined;
+      vehicleListSlot.replaceChildren();
+      if (vehicleRows.length === 0 && !(state.kind === "ready" && state.config.vehicles.length > 0)) {
+        const none = element(doc, "section", C.settingsSection);
+        none.dataset["section"] = "vehicle";
+        none.append(
+          element(doc, "h4", C.settingsSectionHeading, translate(model.language, "settings.section.vehicle")),
+          element(doc, "p", C.muted, translate(model.language, "settings.vehicle.none")),
+        );
+        vehicleListSlot.append(none);
+      }
+      // A vehicle the configuration lists but the dashboard does not: its sensor can still be chosen.
+      const extra: Vehicle[] =
+        state.kind === "ready"
+          ? state.config.vehicles
+              .filter((entry) => !vehicleRows.some((row) => row.id === entry.id))
+              .map((entry) => ({
+                id: entry.id,
+                name: entry.name,
+                soc_entity_id: null,
+                capacity_kwh: null,
+                capacity_source: null,
+                consumption_kwh_per_10km: null,
+                max_percent: null,
+                soc_percent: null,
+              }))
+          : [];
+      for (const row of [...vehicleRows, ...extra]) {
+        vehicleListSlot.append(
+          vehicleSummary(doc, model.language, {
+            row,
+            properties: !extra.includes(row),
+            planned: row.id === model.targetVehicleId,
+            sensor: sensorFor(row.id),
+            isAdmin: input.isAdmin,
+            onChange: () => {
+              input.onOpenVehicleEditor?.(row.id);
+            },
+          }),
+        );
+      }
+      if (focusId !== undefined) {
+        vehicleListSlot
+          .querySelector<HTMLElement>(`[data-edit-vehicle="${focusId}"]`)
+          ?.focus();
+      }
+    }
+    if (entitySlot !== null) {
+      entitySlot.replaceChildren(
+        element(doc, "h4", C.settingsSectionHeading, translate(model.language, "settings.section.entities")),
+      );
+      const line = unreadableLine(state);
+      if (line !== null) {
+        entitySlot.append(line);
+      }
+      if (state.kind === "ready") {
+        entitySlot.append(...chargerRows(state.config));
+      }
+      entitySlot.append(changeButton("entity.edit.charger", "charger", state.kind === "ready" && input.isAdmin));
+    }
+    if (siteEntitySlot !== null) {
+      siteEntitySlot.replaceChildren();
+      const line = unreadableLine(state);
+      if (line !== null) {
+        siteEntitySlot.append(line);
+      }
+      if (state.kind === "ready" && state.config.site !== null) {
+        siteEntitySlot.append(...siteRows(state.config));
+      }
+    }
+    if (siteButtonSlot !== null) {
+      siteButtonSlot.replaceChildren(
+        changeButton("entity.edit.site", "site", state.kind === "ready" && state.config.site !== null && input.isAdmin),
+      );
+    }
+  }
+
+  /**
+   * The site card: headed by the site's name alone ("Site" only when it has none), marked as applying to
+   * every charger on it, with the configured entities in words and the load-balancing switch.
+   */
+  function siteSectionBody(): HTMLElement {
+    const site = model.site;
+    const siteSection = element(doc, "section", C.settingsSection);
+    siteSection.dataset["section"] = "site";
+    siteEntitySlot = null;
+    siteButtonSlot = null;
+    if (site === null) {
+      siteSection.append(
+        element(doc, "h4", C.settingsSectionHeading, translate(model.language, "settings.section.site")),
+      );
+      siteSection.append(element(doc, "p", C.muted, translate(model.language, "site.none")));
+      return siteSection;
+    }
+    const name = site.name.trim();
+    siteSection.append(
+      element(doc, "h4", C.settingsSectionHeading, name === "" ? translate(model.language, "settings.section.site") : name),
+    );
+    siteSection.append(element(doc, "p", C.siteApplies, site.appliesToText));
+    siteEntitySlot = element(doc, "div");
+    siteEntitySlot.dataset["slot"] = "site-entities";
+    siteSection.append(siteEntitySlot);
+    // Active load balancing: a switch for administrators, read-only state for others. `available` and
+    // `enabled` stay separate: enabled-but-unavailable keeps the switch on and says why. Never optimistic:
+    // a press leaves the control on the confirmed value, pending until the answer.
+    activeSlot = element(doc, "div");
+    activeSlot.dataset["slot"] = "active-control";
+    siteSection.append(activeSlot);
+    paintActiveControl();
+    siteButtonSlot = element(doc, "div");
+    siteSection.append(siteButtonSlot);
+    return siteSection;
+  }
+
+  /** The solar card: priority and forecast sources in words, and the button for its dialog. */
+  function solarSectionBody(): HTMLElement | null {
+    const site = model.site;
+    if (site === null) {
+      return null;
+    }
+    const section = element(doc, "section", C.settingsSection);
+    section.dataset["section"] = "solar";
+    section.append(element(doc, "h4", C.settingsSectionHeading, translate(model.language, "settings.section.solar")));
+    section.append(element(doc, "p", C.siteApplies, site.appliesToText));
+    section.append(
+      overviewRow(
+        "solar_priority",
+        translate(model.language, "site.solarPriority.title"),
+        translate(model.language, site.solarPriority === "car_first" ? "site.solarPriority.carFirst" : "site.solarPriority.batteryFirst"),
+      ),
+    );
+    const sources = site.solarForecastChoices.filter((choice) => choice.selected).map((choice) => choice.title);
+    section.append(
+      overviewRow(
+        "solar_forecast",
+        translate(model.language, "site.solarForecast.title"),
+        sources.length === 0 ? translate(model.language, "settings.value.none") : sources.join(", "),
+      ),
+    );
+    const button = element(doc, "button", `${C.button} ${C.settingsSectionConfigure}`, translate(model.language, "site.solar.change"));
+    button.type = "button";
+    button.dataset["editSolar"] = "true";
+    button.disabled = !(input.isAdmin && site.writable);
+    button.addEventListener("click", () => {
+      input.onOpenSolarEditor?.();
+    });
+    section.append(button);
+    return section;
+  }
+
+  // The load-balancing switch's state lives outside `model`: an answer repaints this block in place,
+  // since the popover stays open and a full render is deferred while a dialog is open.
+  let activeSlot: HTMLElement | null = null;
+  let activeOverride: { available: boolean; enabled: boolean; reason: { text: string; code: string | null } | null } | null =
+    null;
+  let activePending = false;
+  let activeNotice: ActiveControlNotice | null = null;
+
+  function paintActiveControl(): void {
+    const site = model.site;
+    if (activeSlot === null || site === null) {
+      return;
+    }
+    const state = activeOverride ?? {
+      available: site.activeControlAvailable,
+      enabled: site.activeControlEnabled,
+      reason: site.activeControlReason,
+    };
+    const stateText = activePending
+      ? translate(model.language, "site.activeControl.pending")
+      : translate(model.language, state.enabled ? "site.activeControl.on" : "site.activeControl.off");
+    const nodes: HTMLElement[] = [];
+    const row = element(doc, "div", C.capabilityItem);
+    row.dataset["row"] = "active-control";
+    const title = element(doc, "label", C.capabilityLabel, translate(model.language, "site.activeControl.title"));
+    const group = element(doc, "span", C.switchGroup);
+    const status = element(doc, "span", C.capabilityState, stateText);
+    status.dataset["role"] = "active-control-state";
+    group.append(status);
+    if (site.writable && site.activeControlWritable) {
+      const control = doc.createElement("input");
+      control.type = "checkbox";
+      control.className = C.switchControl;
+      control.id = `${idPrefix}-active-control`;
+      control.setAttribute("role", "switch");
+      control.checked = state.enabled;
+      // Off may always be chosen; on only when the backend says it is available.
+      control.disabled = activePending || (!state.available && !state.enabled);
+      if (activePending) {
+        control.setAttribute("aria-busy", "true");
+      }
+      title.htmlFor = control.id;
+      control.addEventListener("change", () => {
+        const chosen = control.checked;
+        // Never optimistic: the control shows the confirmed value until an answer says otherwise.
+        control.checked = state.enabled;
+        input.onSetActiveControl?.(state.enabled, chosen);
+      });
+      group.append(control);
+    }
+    row.append(title, group);
+    nodes.push(row);
+    if (state.reason !== null) {
+      nodes.push(element(doc, "p", C.capabilityNote, state.reason.text));
+    } else if (!site.writable) {
+      nodes.push(element(doc, "p", C.capabilityNote, translate(model.language, "site.activeControl.available")));
+    }
+    nodes.push(element(doc, "p", C.capabilityNote, translate(model.language, "site.activeControl.note")));
+    if (activeNotice !== null) {
+      const notice = element(
+        doc,
+        "p",
+        activeNotice.tone === "warning" ? `${C.activeNotice} ${C.activeNoticeWarning}` : C.activeNotice,
+      );
+      notice.setAttribute("role", "status");
+      for (const line of activeNotice.lines) {
+        notice.append(element(doc, "span", "", line));
+      }
+      if (activeNotice.code !== null) {
+        notice.dataset["code"] = activeNotice.code;
+      }
+      nodes.push(notice);
+    }
+    activeSlot.replaceChildren(...nodes);
+  }
+
+  let overviewNotice: FailureSentence | null = null;
+  let overviewNoticeNode: HTMLParagraphElement | null = null;
+
+  function paintOverviewNotice(): void {
+    if (overviewNoticeNode === null) {
+      return;
+    }
+    if (overviewNotice === null) {
+      overviewNoticeNode.hidden = true;
+      overviewNoticeNode.textContent = "";
+      overviewNoticeNode.removeAttribute("data-code");
+      return;
+    }
+    overviewNoticeNode.hidden = false;
+    overviewNoticeNode.textContent = translate(model.language, overviewNotice.sentenceKey);
+    if (overviewNotice.code === null) {
+      overviewNoticeNode.removeAttribute("data-code");
+    } else {
+      overviewNoticeNode.dataset["code"] = overviewNotice.code;
+    }
+  }
+
+  function openSettingsOverview(): void {
+    if (destroyed) {
+      return;
+    }
+    overviewNotice = null;
+    issuesDialog.hide({ restoreFocus: false });
+    capabilityDialog.hide({ restoreFocus: false });
+    pauseDialog.hide({ restoreFocus: false });
+    strategyDialog.hide({ restoreFocus: false });
+    entityDialog.hide({ restoreFocus: false });
+    settingsOverviewDialog.show({
+      title:
+        model.chargerName === null
+          ? translate(model.language, "settings.overview.title")
+          : translate(model.language, "settings.overview.titleNamed", { name: model.chargerName }),
+      body: settingsOverviewBody(),
+      opener: settingsGeneral,
+    });
+    input.onSettingsOverviewOpened?.();
+  }
+
+  help.addEventListener("click", () => {
+    openCapabilities();
+  });
+  settingsGeneral.addEventListener("click", () => {
+    openSettingsOverview();
+  });
+
+  // The settings row and its dialog. The row labels itself from the dashboard's settings section (no
+  // request); a press is reported and the card hands back the form. One overlay serves all three
+  // editors, and opening one closes the others first.
+  let settingsKind: SettingsEditorKind | null = null;
+  let settingsForm: SettingsEditorForm | null = null;
+  let settingsBody: HTMLElement | null = null;
+  let settingsNotice: FailureSentence | null = null;
+  let settingsNoticeNode: HTMLParagraphElement | null = null;
+  let settingsSaveButton: HTMLButtonElement | null = null;
+  let settingsReapplyButton: HTMLButtonElement | null = null;
+  let settingsPending = false;
+  let settingsBodyReader: (() => SettingsFormValues) | null = null;
+
+  function settingsTitleKey(kind: SettingsEditorKind): TranslationKey {
+    return `settings.${kind}.title` as TranslationKey;
+  }
+
+  function settingsTriggerFor(kind: SettingsEditorKind): HTMLElement | null {
+    return bar.querySelector<HTMLElement>(`[data-setting="${kind}"]`);
+  }
+
+  function applySettingsPending(): void {
+    if (settingsSaveButton !== null) {
+      settingsSaveButton.disabled = settingsPending;
+    }
+    if (settingsReapplyButton !== null) {
+      settingsReapplyButton.disabled = settingsPending;
+    }
+    const cancel = settingsBody?.querySelector<HTMLButtonElement>("[data-action='cancel']") ?? null;
+    if (cancel !== null) {
+      cancel.disabled = settingsPending;
+    }
+  }
+
+  /**
+   * Notices inside the dialog: one sentence, re-inserted whenever the body is rebuilt. Validation
+   * errors and refusals share one node; the stable code stays as subdued detail.
+   */
+  function paintSettingsNotice(): void {
+    settingsNoticeNode?.remove();
+    settingsNoticeNode = null;
+    if (settingsBody !== null && settingsNotice !== null) {
+      if (settingsForm === null) {
+        settingsBody.replaceChildren();
+      }
+      const paragraph = element(doc, "p", C.settingsNotice, translate(model.language, settingsNotice.sentenceKey));
+      if (settingsNotice.code !== null) {
+        paragraph.dataset["code"] = settingsNotice.code;
+      }
+      settingsBody.append(paragraph);
+      settingsNoticeNode = paragraph;
+    }
+    applySettingsPending();
+  }
+
+  function renderSettingsBody(): void {
+    const form = settingsForm;
+    if (form === null || destroyed) {
+      return;
+    }
+    const built = settingsEditorBody(
+      doc,
+      model.language,
+      form,
+      {
+        onSave: (values) => input.onSaveSettings(form.kind, values),
+        onCancel: () => closeSettingsEditor(),
+        onReload: () => input.onReloadSettings(form.kind),
+        onReapply: (values) => input.onReapplySettings(form.kind, values),
+      },
+      `${idPrefix}-settings-${form.kind}`,
+    );
+    settingsBody = built.body;
+    settingsBodyReader = built.values;
+    settingsSaveButton = built.body.querySelector<HTMLButtonElement>(`.${C.settingsSave}`);
+    settingsReapplyButton = built.body.querySelector<HTMLButtonElement>(`.${C.settingsReapply}`);
+    settingsDialog.show({
+      title: translate(model.language, settingsTitleKey(form.kind)),
+      body: built.body,
+      opener: settingsTriggerFor(form.kind),
+    });
+    paintSettingsNotice();
+  }
+
+  function openSettingsEditor(kind: SettingsEditorKind): void {
+    if (destroyed) {
+      return;
+    }
+    settingsKind = kind;
+    settingsForm = null;
+    settingsBody = null;
+    settingsBodyReader = null;
+    settingsNotice = null;
+    settingsNoticeNode = null;
+    settingsSaveButton = null;
+    settingsReapplyButton = null;
+    settingsPending = false;
+    // One overlay at a time, and the others do not restore focus on the way out.
+    issuesDialog.hide({ restoreFocus: false });
+    capabilityDialog.hide({ restoreFocus: false });
+    pauseDialog.hide({ restoreFocus: false });
+    strategyDialog.hide({ restoreFocus: false });
+    marketDialog.hide({ restoreFocus: false });
+    settingsOverviewDialog.hide({ restoreFocus: false });
+    const loading = element(
+      doc,
+      "p",
+      `${C.muted} ${C.dialogIntro}`,
+      translate(model.language, "settings.loading"),
+    );
+    // This paragraph is the dialog's body until a form replaces it, so a failure that arrives while the
+    // record is still being read has a node to be shown in rather than a sentence with nowhere to go.
+    settingsBody = loading;
+    settingsDialog.show({
+      title: translate(model.language, settingsTitleKey(kind)),
+      body: loading,
+      opener: settingsTriggerFor(kind),
+    });
+  }
+
+  function showSettingsEditorForm(form: SettingsEditorForm): void {
+    if (destroyed || settingsKind !== form.kind) {
+      return;
+    }
+    settingsForm = form;
+    settingsNotice = null;
+    settingsPending = false;
+    renderSettingsBody();
+  }
+
+  function showSettingsEditorConflict(revision: number, phases: number | null): void {
+    const form = settingsForm;
+    if (destroyed || form === null) {
+      return;
+    }
+    const values = settingsBodyReader === null ? form.values : settingsBodyReader();
+    // The server's own phase count comes with the conflict: a reapply is built on that record, so the
+    // nominal power the form names must be the one that record would actually draw.
+    settingsForm = { ...form, values, conflict: revision, phases };
+    settingsNotice = null;
+    settingsPending = false;
+    renderSettingsBody();
+  }
+
+  function setSettingsEditorNotice(failure: FailureSentence | null): void {
+    settingsNotice = failure;
+    paintSettingsNotice();
+  }
+
+  function setSettingsEditorPending(pending: boolean): void {
+    settingsPending = pending;
+    applySettingsPending();
+  }
+
+  function closeSettingsEditor(): void {
+    settingsDialog.hide();
+    settingsKind = null;
+    settingsForm = null;
+    settingsBody = null;
+    settingsBodyReader = null;
+    settingsNotice = null;
+    settingsNoticeNode = null;
+    settingsSaveButton = null;
+    settingsReapplyButton = null;
+    settingsPending = false;
+  }
+
+  function settingsEditorOpen(): SettingsEditorKind | null {
+    return settingsDialog.isOpen() ? settingsKind : null;
+  }
+
+  function setSettingsError(failure: FailureSentence | null): void {
+    if (failure === null) {
+      settingsError.hidden = true;
+      settingsError.textContent = "";
+      settingsError.removeAttribute("data-code");
+      return;
+    }
+    settingsError.hidden = false;
+    settingsError.textContent = translate(model.language, failure.sentenceKey);
+    if (failure.code === null) {
+      settingsError.removeAttribute("data-code");
+    } else {
+      settingsError.dataset["code"] = failure.code;
+    }
+  }
+
+  // The area/fiscal dialog: the card owns the record, catalogue context and drafts. Picking another area
+  // rebuilds nothing here; the choice is reported with the values on screen and the card hands back the
+  // form for that area.
+  let marketForm: MarketEditorForm | null = null;
+  let marketBody: HTMLElement | null = null;
+  let marketNotice: FailureSentence | null = null;
+  let marketNoticeNode: HTMLParagraphElement | null = null;
+  let marketSaveButton: HTMLButtonElement | null = null;
+  let marketReapplyButton: HTMLButtonElement | null = null;
+  let marketPending = false;
+  let marketBodyReader: (() => MarketFormValues) | null = null;
+
+  function marketTriggerFor(): HTMLElement | null {
+    // The area/fiscal editor is reached from the Settings popover: closing it returns focus to the
+    // button that opened that surface, the same rule the consumption editor follows.
+    return settingsGeneral;
+  }
+
+  function applyMarketPending(): void {
+    if (marketSaveButton !== null) {
+      marketSaveButton.disabled = marketPending;
+    }
+    if (marketReapplyButton !== null) {
+      marketReapplyButton.disabled = marketPending;
+    }
+  }
+
+  function paintMarketNotice(): void {
+    marketNoticeNode?.remove();
+    marketNoticeNode = null;
+    if (marketBody !== null && marketNotice !== null) {
+      if (marketForm === null) {
+        marketBody.replaceChildren();
+      }
+      const paragraph = element(doc, "p", C.settingsNotice, translate(model.language, marketNotice.sentenceKey));
+      if (marketNotice.code !== null) {
+        paragraph.dataset["code"] = marketNotice.code;
+      }
+      marketBody.append(paragraph);
+      marketNoticeNode = paragraph;
+    }
+    applyMarketPending();
+  }
+
+  function renderMarketBody(): void {
+    const form = marketForm;
+    if (form === null || destroyed) {
+      return;
+    }
+    const built = marketEditorBody(
+      doc,
+      model.language,
+      form,
+      {
+        onSave: (values) => input.onSaveMarket(values),
+        onReload: () => input.onReloadMarket(),
+        onReapply: (values) => input.onReapplyMarket(values),
+        onCancel: () => leaveSettingsChild(marketDialog, input.onCancelMarket),
+        onAreaChange: (areaId, live) => input.onMarketAreaChange(areaId, live),
+      },
+      idPrefix,
+      homeAssistantCountry(input.hass?.()),
+    );
+    marketBody = built.body;
+    marketBodyReader = built.values;
+    marketSaveButton = built.body.querySelector<HTMLButtonElement>(`.${C.settingsSave}`);
+    marketReapplyButton = built.body.querySelector<HTMLButtonElement>(`.${C.settingsReapply}`);
+    marketDialog.show({
+      title: translate(model.language, "market.title"),
+      body: built.body,
+      opener: marketTriggerFor(),
+    });
+    paintMarketNotice();
+  }
+
+  function openMarketEditor(): void {
+    if (destroyed) {
+      return;
+    }
+    marketForm = null;
+    marketBody = null;
+    marketBodyReader = null;
+    marketNotice = null;
+    marketNoticeNode = null;
+    marketSaveButton = null;
+    marketReapplyButton = null;
+    marketPending = false;
+    // One overlay at a time, and the others do not restore focus on the way out.
+    issuesDialog.hide({ restoreFocus: false });
+    capabilityDialog.hide({ restoreFocus: false });
+    pauseDialog.hide({ restoreFocus: false });
+    strategyDialog.hide({ restoreFocus: false });
+    settingsDialog.hide({ restoreFocus: false });
+    settingsOverviewDialog.hide({ restoreFocus: false });
+    const loading = element(doc, "p", `${C.muted} ${C.dialogIntro}`, translate(model.language, "market.loading"));
+    // This paragraph is the dialog's body until a form replaces it, so a failure that arrives while the
+    // two reads are still out has a node to be shown in rather than a sentence with nowhere to go.
+    marketBody = loading;
+    marketDialog.show({
+      title: translate(model.language, "market.title"),
+      body: loading,
+      opener: marketTriggerFor(),
+    });
+  }
+
+  function showMarketEditorForm(form: MarketEditorForm): void {
+    if (destroyed || !marketDialog.isOpen()) {
+      return;
+    }
+    marketForm = form;
+    marketNotice = null;
+    marketPending = false;
+    renderMarketBody();
+  }
+
+  function showMarketEditorConflict(revision: number): void {
+    const form = marketForm;
+    if (destroyed || form === null) {
+      return;
+    }
+    const values = marketBodyReader === null ? form.values : marketBodyReader();
+    // The reader's own area and figures stay exactly as they are; only the base they would be applied
+    // to changes, and that base is the server's record the caller kept.
+    marketForm = { ...form, values, conflict: revision };
+    marketNotice = null;
+    marketPending = false;
+    renderMarketBody();
+  }
+
+  function setMarketEditorNotice(failure: FailureSentence | null): void {
+    marketNotice = failure;
+    paintMarketNotice();
+  }
+
+  function setMarketEditorPending(pending: boolean): void {
+    marketPending = pending;
+    applyMarketPending();
+  }
+
+  function marketEditorOpen(): boolean {
+    return marketDialog.isOpen();
+  }
+
+  function closeMarketEditor(options: { restoreFocus?: boolean } = {}): void {
+    marketDialog.hide(options);
+    marketForm = null;
+    marketBody = null;
+    marketBodyReader = null;
+    marketNotice = null;
+    marketNoticeNode = null;
+    marketSaveButton = null;
+    marketReapplyButton = null;
+    marketPending = false;
+  }
+
+  // The entity editors: one overlay drawn from the config the card read, never optimistic.
+  let entityEditor: { scope: EntityScope | "vehicle" | "solar"; built: EntityEditorBody } | null = null;
+
+  function openEntityEditor(scope: EntityScope, config: EntityConfig, notice: FailureSentence | null = null): void {
+    if (destroyed) {
+      return;
+    }
+    issuesDialog.hide({ restoreFocus: false });
+    capabilityDialog.hide({ restoreFocus: false });
+    pauseDialog.hide({ restoreFocus: false });
+    strategyDialog.hide({ restoreFocus: false });
+    settingsDialog.hide({ restoreFocus: false });
+    marketDialog.hide({ restoreFocus: false });
+    settingsOverviewDialog.hide({ restoreFocus: false });
+    const built = entityEditorBody(
+      doc,
+      model.language,
+      {
+        scope,
+        config,
+        hass: () => input.hass?.(),
+        appliesText: scope === "site" ? (model.site?.appliesToText ?? null) : null,
+      },
+      {
+        onSave: (draft) => input.onSaveEntities?.(scope, draft),
+        onCancel: () => leaveSettingsChild(entityDialog, input.onCancelEntities),
+      },
+      idPrefix,
+    );
+    entityEditor = { scope, built };
+    if (notice !== null) {
+      built.setNotice(translate(model.language, notice.sentenceKey), notice.code);
+    }
+    entityDialog.show({
+      title: translate(model.language, scope === "site" ? "entity.editor.site" : "entity.editor.charger"),
+      body: built.body,
+      opener: settingsGeneral,
+    });
+  }
+
+  function hideForChildDialog(): void {
+    issuesDialog.hide({ restoreFocus: false });
+    capabilityDialog.hide({ restoreFocus: false });
+    pauseDialog.hide({ restoreFocus: false });
+    strategyDialog.hide({ restoreFocus: false });
+    settingsDialog.hide({ restoreFocus: false });
+    marketDialog.hide({ restoreFocus: false });
+    settingsOverviewDialog.hide({ restoreFocus: false });
+  }
+
+  let vehicleEditorId: string | null = null;
+
+  function openVehicleEditor(
+    vehicleId: string,
+    config: EntityConfig | null,
+    notice: FailureSentence | null = null,
+    adopted?: Vehicle,
+  ): void {
+    const row = adopted ?? model.vehicles.find((entry) => entry.id === vehicleId) ?? null;
+    const sensor = config?.vehicles.find((entry) => entry.id === vehicleId) ?? null;
+    if (destroyed || (row === null && sensor === null)) {
+      return;
+    }
+    hideForChildDialog();
+    const built = vehicleEditorBody(
+      doc,
+      model.language,
+      { vehicleId, row, sensor },
+      {
+        onSave: (draft) => input.onSaveVehicle?.(vehicleId, draft),
+        onCancel: () => leaveSettingsChild(entityDialog, input.onCancelEntities),
+      },
+      idPrefix,
+    );
+    entityEditor = { scope: "vehicle", built };
+    vehicleEditorId = vehicleId;
+    if (notice !== null) {
+      built.setNotice(translate(model.language, notice.sentenceKey), notice.code);
+    }
+    entityDialog.show({
+      title: translate(model.language, "settings.vehicle.dialogTitle", {
+        name: row?.name ?? sensor?.name ?? translate(model.language, "settings.vehicle.unnamed"),
+      }),
+      body: built.body,
+      opener: settingsGeneral,
+    });
+  }
+
+  function openSolarEditor(notice: FailureSentence | null = null): void {
+    if (destroyed || model.site === null) {
+      return;
+    }
+    hideForChildDialog();
+    const built = solarEditorBody(
+      doc,
+      model.language,
+      model.site,
+      {
+        onSave: (draft) => input.onSaveSolar?.(draft),
+        onCancel: () => leaveSettingsChild(entityDialog, input.onCancelSolar),
+      },
+      idPrefix,
+    );
+    entityEditor = { scope: "solar", built };
+    if (notice !== null) {
+      built.setNotice(translate(model.language, notice.sentenceKey), notice.code);
+    }
+    entityDialog.show({
+      title: translate(model.language, "site.solar.dialogTitle"),
+      body: built.body,
+      opener: settingsGeneral,
+    });
+  }
+
+  function vehicleEditorOpen(): string | null {
+    return entityEditor !== null && entityEditor.scope === "vehicle" && entityDialog.isOpen() ? vehicleEditorId : null;
+  }
+
+  function solarEditorOpen(): boolean {
+    return entityEditor !== null && entityEditor.scope === "solar" && entityDialog.isOpen();
+  }
+
+  function entityEditorOpen(): EntityScope | null {
+    return entityEditor !== null && entityEditor.scope !== "vehicle" && entityEditor.scope !== "solar" && entityDialog.isOpen()
+      ? entityEditor.scope
+      : null;
+  }
+
+  function closeEntityEditor(): void {
+    entityDialog.hide({ restoreFocus: false });
+    entityEditor = null;
+  }
+
+  return {
+    element: card,
+    chart: () => interaction as ChartInteraction,
+    selection: () => interaction?.selection() ?? null,
+    readoutText: () => readout.textContent ?? "",
+    // The opener is what focus returns to; the banner passes itself when it is clicked.
+    openIssues: (opener: HTMLElement | null = null) => {
+      openIssues(opener);
+    },
+    openCapabilities,
+    openPause,
+    openStrategy,
+    openSettingsOverview,
+    dialogOpen: (kind) => {
+      if (kind === "issues") {
+        return issuesDialog.isOpen();
+      }
+      if (kind === "capabilities") {
+        return capabilityDialog.isOpen();
+      }
+      if (kind === "pause") {
+        return pauseDialog.isOpen();
+      }
+      if (kind === "strategy") {
+        return strategyDialog.isOpen();
+      }
+      return settingsOverviewDialog.isOpen();
+    },
+    setActionPending(pending: boolean, action?: ActionId, choice?: string | null): void {
+      // Both controls, always together: one physical request is in flight, and an axis that stayed
+      // clickable while it was would be an invitation to send a second one. `pending` disables what
+      // the row rendered; it never enables a cell that was rendered disabled. The cell that was
+      // pressed stays in place and is marked busy until the answer arrives.
+      const pressed =
+        action === undefined ? null : action === "resume" || (choice ?? null) !== null ? plannerButton : actionButton;
+      for (const button of [actionButton, plannerButton]) {
+        if (button === null) {
+          continue;
+        }
+        button.disabled = pending || button.dataset["renderedDisabled"] === "true";
+        const busy = (pending && button === pressed) || button.dataset["waiting"] === "true";
+        button.classList.toggle(C.barBusy, busy);
+        if (busy) {
+          button.setAttribute("aria-busy", "true");
+        } else {
+          button.removeAttribute("aria-busy");
+        }
+      }
+    },
+    openSettingsEditor,
+    showSettingsEditorForm,
+    setSettingsEditorNotice,
+    showSettingsEditorConflict,
+    setSettingsEditorPending,
+    settingsEditorOpen,
+    closeSettingsEditor,
+    setSettingsError,
+    openMarketEditor,
+    showMarketEditorForm,
+    setMarketEditorNotice,
+    showMarketEditorConflict,
+    setMarketEditorPending,
+    marketEditorOpen,
+    closeMarketEditor,
+    setActiveControlPending(pending: boolean): void {
+      activePending = pending;
+      paintActiveControl();
+    },
+    adoptActiveControl(site: SiteFacts | null, notice: ActiveControlNotice | null): void {
+      if (site !== null) {
+        activeOverride = {
+          available: site.activeControlAvailable,
+          enabled: site.activeControlEnabled,
+          reason: site.activeControlReason,
+        };
+      }
+      activeNotice = notice;
+      activePending = false;
+      paintActiveControl();
+    },
+    anyDialogOpen: anyDialogOpenNow,
+    setEntityState(state: EntityViewState): void {
+      entityState = state;
+      paintEntities();
+    },
+    openEntityEditor,
+    openVehicleEditor,
+    vehicleEditorOpen,
+    openSolarEditor,
+    solarEditorOpen,
+    entityEditorOpen,
+    setEntityEditorNotice(failure: FailureSentence | null): void {
+      entityEditor?.built.setNotice(
+        failure === null ? null : translate(model.language, failure.sentenceKey),
+        failure === null ? null : failure.code,
+      );
+    },
+    markEntityFieldErrors(errors: readonly EntityFieldError[]): void {
+      entityEditor?.built.markErrors(errors);
+    },
+    setEntityEditorPending(pending: boolean): void {
+      entityEditor?.built.setPending(pending);
+    },
+    setEntityHass(hass: unknown): void {
+      entityEditor?.built.setHass(hass);
+    },
+    closeEntityEditor,
+    setOverviewNotice(failure: FailureSentence | null): void {
+      overviewNotice = failure;
+      paintOverviewNotice();
+    },
+    closeSettingsOverview(): void {
+      settingsOverviewDialog.hide({ restoreFocus: false });
+    },
+    setActionError(failure: FailureSentence | null): void {
+      if (failure === null) {
+        actionError.hidden = true;
+        actionError.textContent = "";
+        actionError.removeAttribute("data-code");
+        return;
+      }
+      actionError.hidden = false;
+      actionError.textContent = translate(model.language, failure.sentenceKey);
+      if (failure.code === null) {
+        actionError.removeAttribute("data-code");
+      } else {
+        actionError.dataset["code"] = failure.code;
+      }
+    },
+    destroy(): void {
+      if (destroyed) {
+        return;
+      }
+      destroyed = true;
+      // The boundary appointment is released before anything else: a callback that fired after this
+      // would belong to a view that no longer exists.
+      cancelBoundary();
+      interaction?.destroy();
+      issuesDialog.destroy();
+      capabilityDialog.destroy();
+      pauseDialog.destroy();
+      strategyDialog.destroy();
+      settingsDialog.destroy();
+      marketDialog.destroy();
+      entityDialog.destroy();
+      settingsOverviewDialog.destroy();
+      card.remove();
+    },
+  };
+}

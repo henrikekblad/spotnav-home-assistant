@@ -1,0 +1,95 @@
+# Site and load balancing
+
+A **site** is an optional second kind of SpotNav entry. It represents one electrical connection,
+typically your main fuse, shared by one or more SpotNav chargers. It is what makes load
+balancing, [solar charging and hybrid](strategies.md) possible. A charger can belong to only
+one site.
+
+## Add a site
+
+**Settings, Devices & services, Add integration, SpotNav, A site (load balancing).** The dialogs are
+shown in [Set up SpotNav](setup.md#2-add-a-site-optional). You provide:
+
+- **Main fuse rating (A).** Always entered by you; it is never guessed from measured load.
+- **Safety margin (A)** kept below the fuse rating. It starts at 1 A.
+- **Measurement source** for the site's per-phase current:
+  - *Direct*: a sensor per phase reporting current, or one entity carrying every phase as
+    attributes (you name the attribute for each phase and its unit, A or mA). The flow suggests
+    candidates from entities already in Home Assistant; nothing is applied until you confirm.
+  - *Derived*: current computed from each phase's active power and voltage, with the meter's own
+    current, apparent power or reactive power when it has them. Without any of those the current
+    is estimated, which is marked as such.
+- **Chargers on this site**, and for each charger whether it is three-phase or on one explicitly
+  chosen phase. A single-phase charger whose phase is unknown never gets a recommendation.
+- Optionally, each charger's own **measured current** (its per-phase sensors). Never use a
+  commanded current here: a car can draw less than its setpoint, and crediting a setpoint would
+  overstate how much of the site's load is the charger's.
+
+After the basics, SpotNav looks for your grid meter in the entity registry (see
+[Meter detection](#meter-detection-signs-and-estimated-current)). When it finds the meter and
+everything else it needs, it shows a **Site found** summary to confirm; otherwise it shows the
+forms above. A new site is created with its calculation on and active control off.
+
+A charger added later is offered to the site when exactly one site exists, if SpotNav can tell how
+the charger is wired (see [Set up SpotNav](setup.md#add-the-charger-to-an-existing-site)).
+
+Everything can be changed later under the site's **Configure** and, for entities, in the card's
+settings popover. In **Configure** the first step holds the basics and a tick box, **Change
+measurement and phase wiring**. Unticked, saving keeps the stored measurement and wiring; the step
+opens anyway when the measurement mode changed, when chargers were added or removed, or when the
+measurement is incomplete. A site with nothing configured yet reports "not configured" and does
+nothing.
+
+## What the site calculates
+
+For every phase the site works out what is left for chargers:
+
+    headroom = main fuse - safety margin - other load
+
+where *other load* is the site's measured total minus the chargers' own measured current on
+that phase. Each charger gets a proposed current from the headroom on its phases, in one pass,
+between the charger's minimum (6 A by default) and its own limits.
+
+Measurements older than the *maximum measurement age* (default 120 s) are not trusted, and if
+the chargers together claim more current than the site's total (beyond a small tolerance) the
+whole result is reported as invalid rather than corrected silently. Results are exposed as
+sensors and in [diagnostics](troubleshooting.md).
+
+## Active load balancing
+
+By default the site only calculates. Turn on **Active load balancing** (site options, or in the
+card by an administrator) to let SpotNav lower a charger's current to keep the site under its fuse.
+It is best effort and is not a protective device. Turning it off gives back any current it had lowered.
+
+- A sudden overload is reduced immediately. Other changes are damped: a change smaller than the
+  *deadband* (2 A) is ignored, and a new level must hold for the *dwell* time (60 s) before it
+  is written, so the charger does not dither.
+- It requires a site with usable measurement and a charger SpotNav can command: one whose
+  current SpotNav is set to change (an OCPP charger set through ChangeConfiguration, or a charger
+  with a current number or service, see [supported hardware](supported.md)). A charger whose
+  current is stored in the charger cannot be adjusted during a charge, but can be stopped when the
+  fuse needs less than its setting. It is refused while a charger belongs to more than one site.
+- **Yield-verified stepping** (opt-in) is for sites with a load that gives way when the car
+  draws more, for example a house battery holding the grid at its setpoint. SpotNav then judges a
+  step by whether it moves the site current, within a hard ceiling that must be above the main
+  fuse and below 1.25 times it.
+- Reading a measurement that has not changed is told apart from a dead link before the reading
+  is treated as stale.
+
+## Solar and forecast settings
+
+Set on the site, used by the [solar and hybrid strategies](strategies.md): **solar priority**
+(car first or house battery first), an optional **home battery power** sensor (positive means
+charging), and the **solar forecast sources** for hybrid.
+
+## Meter detection, signs and estimated current
+
+SpotNav scans the entity registry (including entities an integration ships disabled) for grid meters and home batteries and offers them in the site editor and the create flow (the recognised integrations are listed under [supported hardware](supported.md)); nothing is applied until confirmed, and applying enables only entities the integration disabled, never ones a person disabled. Each integration carries its sign conventions:
+
+* `site_current_signed`: the meter reports export as a negative current; the fuse carries |I|, so the magnitude is read. Without the flag a negative current is invalid.
+* `grid_power_inverted` / `battery_power_inverted`: export-positive grid power and discharge-positive battery power are negated.
+* Import and export reported as two entities (`power` and `power_export`, or a battery's charge and discharge) are combined as import minus export; a missing half makes the value missing, never zero.
+
+Derived mode needs only signed active power and voltage per phase. The current is, in order: the meter's own current (as |I|), S / U from apparent power, sqrt(P^2 + Q^2) / U from reactive power, else `|P| / (U x 0.9)`, which is marked **estimated** in the site state and the card. The estimate is never below the real current for a power factor of 0.9 or better and understates it below that. A configured source that is unavailable never falls back to a cruder one.
+
+The card warns when a source's integration updates more slowly than the maximum measurement age (naming the integration option that lowers it where known), and when a device with its own load balancing (Easee Equalizer, Zaptec Sense, Ferroamp ACE, ONEp1) is present.

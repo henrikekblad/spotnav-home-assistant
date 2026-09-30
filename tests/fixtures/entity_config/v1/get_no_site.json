@@ -1,0 +1,118 @@
+{
+  "api_version": 1,
+  "config": {
+    "charger_id": "get_lone",
+    "control": {
+      "capabilities": {
+        "reads_charging_state": false,
+        "reads_energy_register": false,
+        "reads_measured_current": false,
+        "regulated_current": false,
+        "set_current": false,
+        "start_stop": true
+      },
+      "charging_state": {
+        "entity_id": null,
+        "source": "control"
+      },
+      "conflicts": [],
+      "current": {
+        "enabled": false,
+        "entity_id": null,
+        "kind": "none",
+        "service": null
+      },
+      "platform": null,
+      "policy": {
+        "flash_stored": false,
+        "ignored_while_paused": false,
+        "installation_wide": false,
+        "max_writes_per_minute": null,
+        "min_interval_s": 90.0,
+        "regulator_writes": true,
+        "resend_after_plug_in": false,
+        "zero_pauses": true
+      },
+      "start_stop": {
+        "entity_ids": [
+          "switch.get_lone_control"
+        ],
+        "inverted": false,
+        "kind": "switch",
+        "start_option": null,
+        "stop_option": null
+      }
+    },
+    "fields": [
+      {
+        "allowed_device_classes": [],
+        "allowed_domains": [
+          "switch"
+        ],
+        "current": {
+          "entity_id": "switch.get_lone_control",
+          "exists": true,
+          "friendly_name": "Control get_lone"
+        },
+        "effective": {
+          "entity_id": "switch.get_lone_control",
+          "friendly_name": "Control get_lone",
+          "source": "configured"
+        },
+        "field": "charge_control",
+        "kind": "entity",
+        "required": true,
+        "scope": "charger",
+        "writable": true
+      },
+      {
+        "allowed_device_classes": [],
+        "allowed_domains": [
+          "number"
+        ],
+        "current": null,
+        "effective": null,
+        "field": "current_limit",
+        "kind": "entity",
+        "required": false,
+        "scope": "charger",
+        "writable": true
+      },
+      {
+        "allowed_device_classes": [
+          "energy"
+        ],
+        "allowed_domains": [
+          "sensor"
+        ],
+        "current": null,
+        "effective": null,
+        "field": "energy_register_entity",
+        "kind": "entity",
+        "required": false,
+        "scope": "charger",
+        "writable": true
+      },
+      {
+        "allowed_device_classes": [
+          "battery"
+        ],
+        "allowed_domains": [
+          "sensor"
+        ],
+        "current": null,
+        "effective": null,
+        "field": "vehicle_soc",
+        "kind": "entity",
+        "required": false,
+        "scope": "charger",
+        "writable": false
+      }
+    ],
+    "site": null,
+    "vehicles": []
+  },
+  "error": null,
+  "field_errors": [],
+  "ok": true
+}

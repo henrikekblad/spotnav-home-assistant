@@ -1,0 +1,14 @@
+{
+  "action": "update_vehicle",
+  "api_version": 1,
+  "config": null,
+  "error": "spotnav_invalid_value",
+  "field_errors": [
+    {
+      "code": "unknown_vehicle",
+      "field": "vehicle_id"
+    }
+  ],
+  "ok": false,
+  "vehicle": null
+}

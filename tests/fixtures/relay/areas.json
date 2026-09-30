@@ -1,0 +1,63 @@
+{
+  "v": 1,
+  "generated": "2026-09-21T20:40:11+02:00",
+  "areas": [
+    {
+      "id": "DE-LU",
+      "eic": "10Y1001A1001A82H",
+      "countries": [
+        "DE",
+        "LU"
+      ],
+      "name": "Germany-Luxembourg",
+      "tz": "Europe/Berlin",
+      "currency": "EUR",
+      "major_unit": "€",
+      "minor_unit": "cent"
+    },
+    {
+      "id": "DK1",
+      "eic": "10YDK-1--------W",
+      "countries": [
+        "DK"
+      ],
+      "name": "Vestdanmark",
+      "tz": "Europe/Copenhagen",
+      "currency": "DKK",
+      "major_unit": "kr",
+      "minor_unit": "øre",
+      "vat_percent": 25,
+      "suggested_tax": 0
+    },
+    {
+      "id": "NO1",
+      "eic": "10YNO-1--------2",
+      "countries": [
+        "NO"
+      ],
+      "name": "Oslo",
+      "tz": "Europe/Oslo",
+      "currency": "NOK",
+      "major_unit": "kr",
+      "minor_unit": "øre",
+      "vat_percent": 25,
+      "suggested_tax": 7.13,
+      "suggested_grid_fee": 0
+    },
+    {
+      "id": "SE4",
+      "eic": "10Y1001A1001A47J",
+      "countries": [
+        "SE"
+      ],
+      "name": "Malmö",
+      "tz": "Europe/Stockholm",
+      "currency": "SEK",
+      "major_unit": "kr",
+      "minor_unit": "öre",
+      "vat_percent": 25,
+      "suggested_tax": 36,
+      "suggested_grid_fee": 30
+    }
+  ]
+}

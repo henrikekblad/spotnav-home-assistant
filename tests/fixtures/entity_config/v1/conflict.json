@@ -1,0 +1,643 @@
+{
+  "api_version": 1,
+  "config": {
+    "charger_id": "conflict",
+    "control": {
+      "capabilities": {
+        "reads_charging_state": false,
+        "reads_energy_register": false,
+        "reads_measured_current": false,
+        "regulated_current": false,
+        "set_current": false,
+        "start_stop": true
+      },
+      "charging_state": {
+        "entity_id": null,
+        "source": "control"
+      },
+      "conflicts": [],
+      "current": {
+        "enabled": false,
+        "entity_id": null,
+        "kind": "none",
+        "service": null
+      },
+      "platform": null,
+      "policy": {
+        "flash_stored": false,
+        "ignored_while_paused": false,
+        "installation_wide": false,
+        "max_writes_per_minute": null,
+        "min_interval_s": 90.0,
+        "regulator_writes": true,
+        "resend_after_plug_in": false,
+        "zero_pauses": true
+      },
+      "start_stop": {
+        "entity_ids": [
+          "switch.conflict_control"
+        ],
+        "inverted": false,
+        "kind": "switch",
+        "start_option": null,
+        "stop_option": null
+      }
+    },
+    "fields": [
+      {
+        "allowed_device_classes": [],
+        "allowed_domains": [
+          "switch"
+        ],
+        "current": {
+          "entity_id": "switch.conflict_control",
+          "exists": true,
+          "friendly_name": "Control conflict"
+        },
+        "effective": {
+          "entity_id": "switch.conflict_control",
+          "friendly_name": "Control conflict",
+          "source": "configured"
+        },
+        "field": "charge_control",
+        "kind": "entity",
+        "required": true,
+        "scope": "charger",
+        "writable": true
+      },
+      {
+        "allowed_device_classes": [],
+        "allowed_domains": [
+          "number"
+        ],
+        "current": null,
+        "effective": null,
+        "field": "current_limit",
+        "kind": "entity",
+        "required": false,
+        "scope": "charger",
+        "writable": true
+      },
+      {
+        "allowed_device_classes": [
+          "energy"
+        ],
+        "allowed_domains": [
+          "sensor"
+        ],
+        "current": null,
+        "effective": null,
+        "field": "energy_register_entity",
+        "kind": "entity",
+        "required": false,
+        "scope": "charger",
+        "writable": true
+      },
+      {
+        "allowed_device_classes": [
+          "battery"
+        ],
+        "allowed_domains": [
+          "sensor"
+        ],
+        "current": null,
+        "effective": null,
+        "field": "vehicle_soc",
+        "kind": "entity",
+        "required": false,
+        "scope": "charger",
+        "writable": false
+      },
+      {
+        "field": "main_fuse_a",
+        "kind": "number",
+        "minimum": 0.1,
+        "required": true,
+        "scope": "site",
+        "value": 25.0,
+        "writable": true
+      },
+      {
+        "choices": [
+          "direct_phase_current",
+          "derived_phase_current"
+        ],
+        "field": "measurement_mode",
+        "kind": "enum",
+        "required": true,
+        "scope": "site",
+        "value": "direct_phase_current",
+        "writable": true
+      },
+      {
+        "allowed_device_classes": [
+          "current"
+        ],
+        "allowed_domains": [
+          "sensor"
+        ],
+        "current": {
+          "entity_id": "sensor.site_conflict_l1",
+          "exists": false,
+          "friendly_name": "sensor.site_conflict_l1"
+        },
+        "effective": {
+          "entity_id": "sensor.site_conflict_l1",
+          "friendly_name": "sensor.site_conflict_l1",
+          "source": "configured"
+        },
+        "field": "direct_L1",
+        "kind": "entity",
+        "required": true,
+        "scope": "site",
+        "writable": true
+      },
+      {
+        "allowed_device_classes": [
+          "current"
+        ],
+        "allowed_domains": [
+          "sensor"
+        ],
+        "current": {
+          "entity_id": "sensor.site_conflict_l2",
+          "exists": false,
+          "friendly_name": "sensor.site_conflict_l2"
+        },
+        "effective": {
+          "entity_id": "sensor.site_conflict_l2",
+          "friendly_name": "sensor.site_conflict_l2",
+          "source": "configured"
+        },
+        "field": "direct_L2",
+        "kind": "entity",
+        "required": true,
+        "scope": "site",
+        "writable": true
+      },
+      {
+        "allowed_device_classes": [
+          "current"
+        ],
+        "allowed_domains": [
+          "sensor"
+        ],
+        "current": {
+          "entity_id": "sensor.site_conflict_l3",
+          "exists": false,
+          "friendly_name": "sensor.site_conflict_l3"
+        },
+        "effective": {
+          "entity_id": "sensor.site_conflict_l3",
+          "friendly_name": "sensor.site_conflict_l3",
+          "source": "configured"
+        },
+        "field": "direct_L3",
+        "kind": "entity",
+        "required": true,
+        "scope": "site",
+        "writable": true
+      },
+      {
+        "field": "site_current_signed",
+        "kind": "flag",
+        "required": false,
+        "scope": "site",
+        "value": false,
+        "writable": true
+      },
+      {
+        "field": "grid_power_inverted",
+        "kind": "flag",
+        "required": false,
+        "scope": "site",
+        "value": false,
+        "writable": true
+      },
+      {
+        "allowed_device_classes": [
+          "power"
+        ],
+        "allowed_domains": [
+          "sensor"
+        ],
+        "current": null,
+        "effective": null,
+        "field": "battery_aggregate_power_entity",
+        "kind": "entity",
+        "required": false,
+        "scope": "site",
+        "writable": true
+      },
+      {
+        "allowed_device_classes": [
+          "power"
+        ],
+        "allowed_domains": [
+          "sensor"
+        ],
+        "current": null,
+        "effective": null,
+        "field": "battery_discharge_power_entity",
+        "kind": "entity",
+        "required": false,
+        "scope": "site",
+        "writable": true
+      },
+      {
+        "field": "battery_power_inverted",
+        "kind": "flag",
+        "required": false,
+        "scope": "site",
+        "value": false,
+        "writable": true
+      },
+      {
+        "field": "max_age_s",
+        "kind": "number",
+        "minimum": 1.0,
+        "required": false,
+        "scope": "site",
+        "value": 120.0,
+        "writable": true
+      }
+    ],
+    "site": {
+      "charger_count": 1,
+      "detection": {
+        "batteries": [
+          {
+            "disabled_entities": [],
+            "discharge_entity_id": null,
+            "entity_id": "sensor.battery_charge_discharge",
+            "friendly_name": "battery charge discharge",
+            "id": "battery:huawei_solar:huawei_solar_huawei",
+            "integration": "huawei_solar",
+            "inverted": false,
+            "title": "Power meter"
+          },
+          {
+            "disabled_entities": [],
+            "discharge_entity_id": "sensor.sma_battery_discharge",
+            "entity_id": "sensor.sma_battery_charge",
+            "friendly_name": "sma battery charge",
+            "id": "battery:sma:sma_sma",
+            "integration": "sma",
+            "inverted": false,
+            "title": "sma"
+          },
+          {
+            "disabled_entities": [],
+            "discharge_entity_id": null,
+            "entity_id": "sensor.se_b1_dc_power",
+            "friendly_name": "se b1 dc power",
+            "id": "battery:solaredge_modbus_multi:solaredge_modbus_multi_se",
+            "integration": "solaredge_modbus_multi",
+            "inverted": false,
+            "title": "solaredge_modbus_multi"
+          }
+        ],
+        "meters": [
+          {
+            "applied": false,
+            "confidence": "high",
+            "current_signed": false,
+            "disabled_entities": [
+              "sensor.easee_equalizer_current"
+            ],
+            "entities": [
+              {
+                "disabled": true,
+                "entity_id": "sensor.easee_equalizer_current",
+                "friendly_name": "sensor.easee_equalizer_current",
+                "phase": null,
+                "role": "current"
+              }
+            ],
+            "estimated": false,
+            "id": "easee:easee_easee:equalizer",
+            "integration": "easee",
+            "mode": "direct_phase_current",
+            "power_inverted": false,
+            "title": "Easee Equalizer",
+            "warnings": [
+              "own_load_balancing"
+            ]
+          },
+          {
+            "applied": false,
+            "confidence": "high",
+            "current_signed": true,
+            "disabled_entities": [
+              "sensor.meter_voltage_a",
+              "sensor.meter_voltage_b",
+              "sensor.meter_voltage_c",
+              "sensor.meter_current_a",
+              "sensor.meter_current_b",
+              "sensor.meter_current_c"
+            ],
+            "entities": [
+              {
+                "disabled": false,
+                "entity_id": "sensor.meter_power_a",
+                "friendly_name": "meter power a",
+                "phase": "L1",
+                "role": "power"
+              },
+              {
+                "disabled": false,
+                "entity_id": "sensor.meter_power_b",
+                "friendly_name": "meter power b",
+                "phase": "L2",
+                "role": "power"
+              },
+              {
+                "disabled": false,
+                "entity_id": "sensor.meter_power_c",
+                "friendly_name": "meter power c",
+                "phase": "L3",
+                "role": "power"
+              },
+              {
+                "disabled": true,
+                "entity_id": "sensor.meter_voltage_a",
+                "friendly_name": "sensor.meter_voltage_a",
+                "phase": "L1",
+                "role": "voltage"
+              },
+              {
+                "disabled": true,
+                "entity_id": "sensor.meter_voltage_b",
+                "friendly_name": "sensor.meter_voltage_b",
+                "phase": "L2",
+                "role": "voltage"
+              },
+              {
+                "disabled": true,
+                "entity_id": "sensor.meter_voltage_c",
+                "friendly_name": "sensor.meter_voltage_c",
+                "phase": "L3",
+                "role": "voltage"
+              },
+              {
+                "disabled": true,
+                "entity_id": "sensor.meter_current_a",
+                "friendly_name": "sensor.meter_current_a",
+                "phase": "L1",
+                "role": "current"
+              },
+              {
+                "disabled": true,
+                "entity_id": "sensor.meter_current_b",
+                "friendly_name": "sensor.meter_current_b",
+                "phase": "L2",
+                "role": "current"
+              },
+              {
+                "disabled": true,
+                "entity_id": "sensor.meter_current_c",
+                "friendly_name": "sensor.meter_current_c",
+                "phase": "L3",
+                "role": "current"
+              }
+            ],
+            "estimated": false,
+            "id": "huawei_solar:huawei_solar_huawei",
+            "integration": "huawei_solar",
+            "mode": "derived_phase_current",
+            "power_inverted": true,
+            "title": "Power meter",
+            "warnings": []
+          },
+          {
+            "applied": false,
+            "confidence": "high",
+            "current_signed": false,
+            "disabled_entities": [],
+            "entities": [
+              {
+                "disabled": false,
+                "entity_id": "sensor.sma_em_draw_l1",
+                "friendly_name": "sma em draw l1",
+                "phase": "L1",
+                "role": "power"
+              },
+              {
+                "disabled": false,
+                "entity_id": "sensor.sma_em_draw_l2",
+                "friendly_name": "sma em draw l2",
+                "phase": "L2",
+                "role": "power"
+              },
+              {
+                "disabled": false,
+                "entity_id": "sensor.sma_em_draw_l3",
+                "friendly_name": "sma em draw l3",
+                "phase": "L3",
+                "role": "power"
+              },
+              {
+                "disabled": false,
+                "entity_id": "sensor.sma_em_feed_l1",
+                "friendly_name": "sma em feed l1",
+                "phase": "L1",
+                "role": "power_export"
+              },
+              {
+                "disabled": false,
+                "entity_id": "sensor.sma_em_feed_l2",
+                "friendly_name": "sma em feed l2",
+                "phase": "L2",
+                "role": "power_export"
+              },
+              {
+                "disabled": false,
+                "entity_id": "sensor.sma_em_feed_l3",
+                "friendly_name": "sma em feed l3",
+                "phase": "L3",
+                "role": "power_export"
+              },
+              {
+                "disabled": false,
+                "entity_id": "sensor.sma_em_voltage_l1",
+                "friendly_name": "sma em voltage l1",
+                "phase": "L1",
+                "role": "voltage"
+              },
+              {
+                "disabled": false,
+                "entity_id": "sensor.sma_em_voltage_l2",
+                "friendly_name": "sma em voltage l2",
+                "phase": "L2",
+                "role": "voltage"
+              },
+              {
+                "disabled": false,
+                "entity_id": "sensor.sma_em_voltage_l3",
+                "friendly_name": "sma em voltage l3",
+                "phase": "L3",
+                "role": "voltage"
+              },
+              {
+                "disabled": false,
+                "entity_id": "sensor.sma_em_current_l1",
+                "friendly_name": "sma em current l1",
+                "phase": "L1",
+                "role": "current"
+              },
+              {
+                "disabled": false,
+                "entity_id": "sensor.sma_em_current_l2",
+                "friendly_name": "sma em current l2",
+                "phase": "L2",
+                "role": "current"
+              },
+              {
+                "disabled": false,
+                "entity_id": "sensor.sma_em_current_l3",
+                "friendly_name": "sma em current l3",
+                "phase": "L3",
+                "role": "current"
+              }
+            ],
+            "estimated": false,
+            "id": "sma:sma_sma",
+            "integration": "sma",
+            "mode": "derived_phase_current",
+            "power_inverted": false,
+            "title": "sma",
+            "warnings": []
+          },
+          {
+            "applied": false,
+            "confidence": "high",
+            "current_signed": true,
+            "disabled_entities": [
+              "sensor.se_m1_var_a",
+              "sensor.se_m1_var_b",
+              "sensor.se_m1_var_c"
+            ],
+            "entities": [
+              {
+                "disabled": false,
+                "entity_id": "sensor.se_m1_power_a",
+                "friendly_name": "se m1 power a",
+                "phase": "L1",
+                "role": "power"
+              },
+              {
+                "disabled": false,
+                "entity_id": "sensor.se_m1_power_b",
+                "friendly_name": "se m1 power b",
+                "phase": "L2",
+                "role": "power"
+              },
+              {
+                "disabled": false,
+                "entity_id": "sensor.se_m1_power_c",
+                "friendly_name": "se m1 power c",
+                "phase": "L3",
+                "role": "power"
+              },
+              {
+                "disabled": false,
+                "entity_id": "sensor.se_m1_voltage_a",
+                "friendly_name": "se m1 voltage a",
+                "phase": "L1",
+                "role": "voltage"
+              },
+              {
+                "disabled": false,
+                "entity_id": "sensor.se_m1_voltage_b",
+                "friendly_name": "se m1 voltage b",
+                "phase": "L2",
+                "role": "voltage"
+              },
+              {
+                "disabled": false,
+                "entity_id": "sensor.se_m1_voltage_c",
+                "friendly_name": "se m1 voltage c",
+                "phase": "L3",
+                "role": "voltage"
+              },
+              {
+                "disabled": false,
+                "entity_id": "sensor.se_m1_current_a",
+                "friendly_name": "se m1 current a",
+                "phase": "L1",
+                "role": "current"
+              },
+              {
+                "disabled": false,
+                "entity_id": "sensor.se_m1_current_b",
+                "friendly_name": "se m1 current b",
+                "phase": "L2",
+                "role": "current"
+              },
+              {
+                "disabled": false,
+                "entity_id": "sensor.se_m1_current_c",
+                "friendly_name": "se m1 current c",
+                "phase": "L3",
+                "role": "current"
+              },
+              {
+                "disabled": true,
+                "entity_id": "sensor.se_m1_var_a",
+                "friendly_name": "sensor.se_m1_var_a",
+                "phase": "L1",
+                "role": "reactive_power"
+              },
+              {
+                "disabled": true,
+                "entity_id": "sensor.se_m1_var_b",
+                "friendly_name": "sensor.se_m1_var_b",
+                "phase": "L2",
+                "role": "reactive_power"
+              },
+              {
+                "disabled": true,
+                "entity_id": "sensor.se_m1_var_c",
+                "friendly_name": "sensor.se_m1_var_c",
+                "phase": "L3",
+                "role": "reactive_power"
+              }
+            ],
+            "estimated": false,
+            "id": "solaredge_modbus_multi:solaredge_modbus_multi_se:m1",
+            "integration": "solaredge_modbus_multi",
+            "mode": "derived_phase_current",
+            "power_inverted": true,
+            "title": "solaredge_modbus_multi",
+            "warnings": []
+          }
+        ]
+      },
+      "measurement": {
+        "assumed_power_factor": null,
+        "basis": {
+          "L1": null,
+          "L2": null,
+          "L3": null
+        },
+        "current_estimated": false,
+        "mode": "direct_phase_current"
+      },
+      "name": "Site",
+      "warnings": [
+        {
+          "code": "own_load_balancing",
+          "device_name": "Easee Equalizer",
+          "entity_id": null,
+          "integration": "easee",
+          "interval_s": null,
+          "option": null
+        }
+      ]
+    },
+    "vehicles": []
+  },
+  "error": "spotnav_conflict",
+  "field_errors": [],
+  "ok": false
+}

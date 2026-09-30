@@ -1,0 +1,27 @@
+{
+  "api_version": 1,
+  "error": "spotnav_active_control_unavailable",
+  "ok": false,
+  "restore": null,
+  "site": {
+    "active_control": {
+      "available": false,
+      "enabled": false,
+      "reason": "site_measurement_configured_missing",
+      "writable": true
+    },
+    "charger_count": 1,
+    "name": "Home",
+    "solar_forecast": {
+      "choices": [
+        {
+          "id": "fx_roof",
+          "title": "Roof"
+        }
+      ],
+      "selected": []
+    },
+    "solar_priority": "car_first",
+    "writable": true
+  }
+}
