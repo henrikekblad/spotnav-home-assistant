@@ -83,11 +83,11 @@ serious each is. Examples:
 | Hybrid · 12 kWh from grid, 8 kWh expected from sun | The hybrid plan's split; with no forecast source it says it plans like Cheapest. |
 | Charging was started, but the vehicle is not requesting current. | The connector reports the car is not asking for current. It is an observation only: check the car's charging settings or reconnect the cable. |
 
-![The card while waiting for tomorrow's prices](images/card-waiting.png)
+<!-- Screenshot to add when available: ![The card while waiting for tomorrow's prices](images/card-waiting.png) -->
 
-![The card during a charge, with the state of charge estimate](images/card-charging.png)
+<!-- Screenshot to add when available: ![The card during a charge, with the state of charge estimate](images/card-charging.png) -->
 
-![The card with the solar strategy on a sunny day](images/card-solar.png)
+<!-- Screenshot to add when available: ![The card with the solar strategy on a sunny day](images/card-solar.png) -->
 
 ## The settings popover
 

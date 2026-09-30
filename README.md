@@ -69,7 +69,7 @@ In the SpotNav app choose **Log in to Home Assistant** and enter your Home Assis
 app shows a six-digit code and Home Assistant shows an item with the same code: check that they
 match and choose **Approve**. No Home Assistant password or token is stored on the phone.
 
-![The pairing approval in Home Assistant](docs/images/pairing-approve.png)
+<!-- Screenshot to add when available: ![The pairing approval in Home Assistant](docs/images/pairing-approve.png) -->
 
 ## More
 
