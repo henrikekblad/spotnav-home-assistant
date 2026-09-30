@@ -528,7 +528,6 @@
   "issues": {
     "vehicle_soc_needs_decision": {
       "title": "En bils laddningsnivå behöver ett beslut",
-      "description": "**{device}** rapporterar mer än en batterinivå, så SpotNav gissar inte vilken av dem som är laddningsnivån. Lös detta för att välja den som är det, eller för att säga att enheten inte är ett fordon.",
       "fix_flow": {
         "abort": {
           "no_longer_needs_decision": "Den här enheten behöver inte längre något beslut."
@@ -536,7 +535,7 @@
         "step": {
           "pick": {
             "title": "Vilken nivå är laddningsnivån?",
-            "description": "Välj vilken av {device}s batterinivåer som är den faktiska laddningsnivån – eller ange att detta inte är ett fordon, så slutar det rapporteras.",
+            "description": "**{device}** rapporterar mer än en batterinivå, så SpotNav gissar inte vilken av dem som är laddningsnivån. Välj den som är det, eller ange att detta inte är ett fordon, så slutar det rapporteras.",
             "data": {
               "choice": "Nivå"
             }
@@ -546,7 +545,6 @@
     },
     "vehicle_charge_limit_needs_decision": {
       "title": "En bils laddgräns behöver ett beslut",
-      "description": "**{device}** rapporterar mer än en laddgräns, så SpotNav gissar inte vilken av dem en ändring ska sätta. Lös detta för att välja den gräns bilens ändringar ska använda.",
       "fix_flow": {
         "abort": {
           "no_longer_needs_decision": "Den här enheten behöver inte längre något beslut."
@@ -554,7 +552,7 @@
         "step": {
           "pick": {
             "title": "Vilken gräns ska en ändring sätta?",
-            "description": "Välj den laddgräns bilens ändringar ska använda. Den skrivs via bilens egen integration och gäller när den integrationen läser av den nästa gång.",
+            "description": "**{device}** rapporterar mer än en laddgräns, så SpotNav gissar inte vilken av dem en ändring ska sätta. Välj den gräns bilens ändringar ska använda. Den skrivs via bilens egen integration och gäller när den integrationen läser av den nästa gång.",
             "data": {
               "choice": "Laddgräns"
             }

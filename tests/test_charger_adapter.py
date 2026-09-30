@@ -12,7 +12,7 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers import entity_registry as er
 from pytest_homeassistant_custom_component.common import async_mock_service
 
-from custom_components.spotnav.config_flow.charger_detection import detect_charger
+from custom_components.spotnav.flows.charger_detection import detect_charger
 from custom_components.spotnav.const import (
     CONF_CHARGE_CONTROL,
     CONF_CURRENT_CONTROL,

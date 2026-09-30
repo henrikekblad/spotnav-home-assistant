@@ -120,7 +120,7 @@ async def test_a_probe_that_times_out_is_unreachable_and_never_picks_the_number(
         return {"value": "1.16"}
 
     hass.services.async_register("ocpp", "get_configuration", slow, supports_response=SupportsResponse.ONLY)
-    monkeypatch.setattr("custom_components.spotnav.config_flow.flow.PROBE_TIMEOUT_S", 0.05)
+    monkeypatch.setattr("custom_components.spotnav.flows.flow.PROBE_TIMEOUT_S", 0.05)
     device_id, _ = _connector(hass)
 
     result = await _step(hass, device_id)
@@ -173,7 +173,7 @@ async def test_a_probe_answer_without_this_connector_is_unsupported(hass: HomeAs
 def test_the_flow_names_no_vendor() -> None:
     import pathlib
 
-    for path in pathlib.Path("custom_components/spotnav/config_flow").glob("*.py"):
+    for path in pathlib.Path("custom_components/spotnav/flows").glob("*.py"):
         assert "charge amps" not in path.read_text().lower(), path
 
 

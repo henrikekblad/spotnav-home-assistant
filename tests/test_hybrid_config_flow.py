@@ -12,7 +12,7 @@ import pytest
 from homeassistant.core import HomeAssistant
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
-from custom_components.spotnav.config_flow import options as config_flow_module
+from custom_components.spotnav.flows import options as config_flow_module
 from custom_components.spotnav.const import CONF_SOLAR_FORECAST_ENTRIES
 
 from .helpers import make_site_entry

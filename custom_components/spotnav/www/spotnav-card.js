@@ -1,5 +1,5 @@
 // SpotNav card, compiled from frontend/ in the same integration.
-// Integration version 0.42.1. The integration registers this file as a
+// Integration version 0.42.2. The integration registers this file as a
 // Lovelace module resource itself; it is not added by hand.
 
 // src/types.ts

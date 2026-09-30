@@ -9,7 +9,7 @@ import pytest
 from homeassistant.core import HomeAssistant
 
 from custom_components.spotnav.const import CONF_ENERGY_REGISTER_ENTITY
-from custom_components.spotnav.config_flow import SpotNavChargingConfigFlow
+from custom_components.spotnav.flows import SpotNavChargingConfigFlow
 
 TRANSLATIONS = Path("custom_components/spotnav/translations")
 

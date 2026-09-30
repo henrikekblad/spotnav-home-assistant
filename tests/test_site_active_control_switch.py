@@ -473,7 +473,7 @@ async def test_options_flow_disable_with_nothing_lowered_writes_nothing_and_stay
         for r in caplog.records
         if r.levelname == "WARNING"
         and r.name.startswith(
-            ("custom_components.spotnav.config_flow", "custom_components.spotnav.site.")
+            ("custom_components.spotnav.flows", "custom_components.spotnav.site.")
         )
     ] == []
     assert f"{DOMAIN}_restore_failed_{world.site_entry.entry_id}" not in hass.data.get(

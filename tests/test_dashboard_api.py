@@ -403,6 +403,10 @@ async def test_an_unauthenticated_connection_never_reaches_the_commands(
         assert (await socket.receive_json())["type"] == "auth_invalid"
     finally:
         await socket.close()
+        # Closing the client lets the server finish its side of the socket; until then aiohttp
+        # still holds the server-side heartbeat timer.
+        await client.close()
+        await hass.async_block_till_done()
 
 
 async def test_the_commands_are_websocket_only_and_registered_once(

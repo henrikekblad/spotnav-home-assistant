@@ -24,8 +24,8 @@ from pytest_homeassistant_custom_component.components.recorder.common import (
     async_wait_recording_done,
 )
 
-from custom_components.spotnav.config_flow import SpotNavChargingConfigFlow
-from custom_components.spotnav.config_flow.labels import (
+from custom_components.spotnav.flows import SpotNavChargingConfigFlow
+from custom_components.spotnav.flows.labels import (
     MANUAL_SOURCE_UNVERIFIED_ERROR,
     SITE_MANUAL_SOURCE_DEVICE_ERROR,
 )

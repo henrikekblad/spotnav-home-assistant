@@ -19,7 +19,7 @@ from custom_components.spotnav.const import (
     MEASUREMENT_MODE_DERIVED,
     SITE_RECOMPUTE_INTERVAL_S,
 )
-from custom_components.spotnav.config_flow.labels import power_sensor_entity_options
+from custom_components.spotnav.flows.labels import power_sensor_entity_options
 from custom_components.spotnav.site.measurement_source import (
     PhaseMeasurementSource,
     source_to_dict,

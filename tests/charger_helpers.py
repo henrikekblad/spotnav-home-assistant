@@ -7,7 +7,7 @@ from typing import Any
 
 from homeassistant.core import HomeAssistant
 
-from custom_components.spotnav.config_flow.charger_detection import DetectedCharger
+from custom_components.spotnav.flows.charger_detection import DetectedCharger
 from custom_components.spotnav.const import (
     CONF_CHARGE_CONTROL,
     CONF_CHARGER_CURRENT_ENTITIES,

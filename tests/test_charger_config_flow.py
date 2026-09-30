@@ -18,7 +18,7 @@ from custom_components.spotnav.api.entity_config import (
     async_update_entity_config,
     EntityConfigRefusal,
 )
-from custom_components.spotnav.config_flow.charger_detection import detect_charger
+from custom_components.spotnav.flows.charger_detection import detect_charger
 from custom_components.spotnav.const import (
     CONF_CHARGE_CONTROL,
     CONF_CHARGER_CURRENT_ENTITIES,

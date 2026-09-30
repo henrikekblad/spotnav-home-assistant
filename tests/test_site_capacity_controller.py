@@ -363,7 +363,7 @@ async def test_site_entries_never_participate_in_charger_entity_conflict_checks(
 async def test_available_charger_options_excludes_chargers_claimed_by_other_sites(
     hass: HomeAssistant,
 ) -> None:
-    from custom_components.spotnav.config_flow.site_form import _available_charger_options as available_charger_options
+    from custom_components.spotnav.flows.site_form import _available_charger_options as available_charger_options
 
     hass.states.async_set("switch.dup_charger", "off")
     hass.states.async_set("switch.free_charger", "off")

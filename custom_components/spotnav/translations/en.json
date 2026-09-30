@@ -528,7 +528,6 @@
   "issues": {
     "vehicle_soc_needs_decision": {
       "title": "A vehicle's state of charge needs a decision",
-      "description": "**{device}** reports more than one battery reading, so SpotNav will not guess which one is the state of charge. Resolve this to choose the reading that is, or to say that the device is not a vehicle.",
       "fix_flow": {
         "abort": {
           "no_longer_needs_decision": "This device no longer needs a decision."
@@ -536,7 +535,7 @@
         "step": {
           "pick": {
             "title": "Which reading is the state of charge?",
-            "description": "Choose which of {device}'s battery readings is its actual state of charge — or say that this is not a vehicle, which stops it being reported.",
+            "description": "**{device}** reports more than one battery reading, so SpotNav will not guess which one is the state of charge. Choose the reading that is, or say that this is not a vehicle, which stops it being reported.",
             "data": {
               "choice": "Reading"
             }
@@ -546,7 +545,6 @@
     },
     "vehicle_charge_limit_needs_decision": {
       "title": "A vehicle's charge limit needs a decision",
-      "description": "**{device}** reports more than one charge limit, so SpotNav will not guess which one a change should set. Resolve this to choose the limit this vehicle's changes should use.",
       "fix_flow": {
         "abort": {
           "no_longer_needs_decision": "This device no longer needs a decision."
@@ -554,7 +552,7 @@
         "step": {
           "pick": {
             "title": "Which limit should a change set?",
-            "description": "Choose the charge limit this vehicle's changes should use. It is written through the vehicle's own integration, and takes effect when that integration next reads it.",
+            "description": "**{device}** reports more than one charge limit, so SpotNav will not guess which one a change should set. Choose the limit this vehicle's changes should use. It is written through the vehicle's own integration, and takes effect when that integration next reads it.",
             "data": {
               "choice": "Charge limit"
             }

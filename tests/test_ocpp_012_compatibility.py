@@ -38,7 +38,7 @@ from custom_components.spotnav.const import (
     MODE_GENERIC,
     MODE_OCPP,
 )
-from custom_components.spotnav.config_flow import SpotNavChargingConfigFlow
+from custom_components.spotnav.flows import SpotNavChargingConfigFlow
 from custom_components.spotnav.execution.controller import (
     ChargingController,
     rewrite_assigned_current,

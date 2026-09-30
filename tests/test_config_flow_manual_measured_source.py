@@ -24,8 +24,8 @@ from pytest_homeassistant_custom_component.components.recorder.common import (
     async_wait_recording_done,
 )
 
-from custom_components.spotnav.config_flow import SpotNavChargingConfigFlow
-from custom_components.spotnav.config_flow.labels import (
+from custom_components.spotnav.flows import SpotNavChargingConfigFlow
+from custom_components.spotnav.flows.labels import (
     MANUAL_SOURCE_ATTRIBUTES_ERROR,
     MANUAL_SOURCE_DEVICE_ERROR,
     MANUAL_SOURCE_ENTITY_ERROR,
