@@ -381,6 +381,9 @@ class _Plan:
 # ------------------------------------------------------- the real authenticated socket
 
 
+# The server side of a refused socket keeps aiohttp's heartbeat timer until it is collected; it is
+# Home Assistant's websocket server, not this integration, and core's own tests allow it the same way.
+@pytest.mark.parametrize("expected_lingering_timers", [True])
 async def test_an_unauthenticated_connection_never_reaches_the_commands(
     hass: HomeAssistant, aiohttp_client, socket_enabled: None
 ) -> None:
