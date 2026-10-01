@@ -4,16 +4,16 @@
 
 import { formatFixed } from "./format";
 import { translate, type Language } from "./i18n";
-import type { VehicleSoc } from "./entity-config";
 import type { Vehicle } from "./validate";
-import { VISUAL_CLASSES as C } from "./visual-styles";
+import { VISUAL_CLASSES as C, summaryValueClass } from "./visual-styles";
 
 export interface VehicleSummaryInput {
   row: Vehicle;
   /** `false` for a vehicle only its sensors are known for: no capacity or consumption rows. */
   properties: boolean;
   planned: boolean;
-  sensor: VehicleSoc | null | undefined;
+  /** The vehicle's charge as the header line spells it (`~36 %`, `36 %`, or `No reading`). */
+  charge: string;
   isAdmin: boolean;
   onChange: () => void;
 }
@@ -27,15 +27,6 @@ function element(doc: Document, tag: string, className?: string, text?: string):
     node.textContent = text;
   }
   return node;
-}
-
-function sensorText(language: Language, sensor: VehicleSoc): string {
-  if (sensor.selected === null) {
-    return translate(language, "settings.vehicle.socNone");
-  }
-  return sensor.source === "automatic"
-    ? translate(language, "entity.automatic", { name: sensor.selected.friendlyName })
-    : sensor.selected.friendlyName;
 }
 
 export function vehicleSummary(doc: Document, language: Language, input: VehicleSummaryInput): HTMLElement {
@@ -55,17 +46,11 @@ export function vehicleSummary(doc: Document, language: Language, input: Vehicle
   const valueRow = (key: string, label: string, value: string): void => {
     const line = element(doc, "div", C.capabilityItem);
     line.dataset["row"] = key;
-    line.append(element(doc, "span", C.capabilityLabel, label), element(doc, "span", C.settingsValue, value));
+    line.append(element(doc, "span", C.capabilityLabel, label), element(doc, "span", summaryValueClass(value), value));
     card.append(line);
   };
   const notSet = translate(language, "entity.notSet");
-  let sensor: string | null = null;
-  if (input.sensor !== undefined && input.sensor !== null) {
-    sensor = sensorText(language, input.sensor);
-  } else if (row.soc_entity_id !== null) {
-    sensor = row.soc_entity_id;
-  }
-  valueRow("vehicle_soc", translate(language, "entity.field.vehicleSoc"), sensor ?? notSet);
+  valueRow("charge_level", translate(language, "settings.vehicle.charge"), input.charge);
   if (input.properties) {
     valueRow(
       "capacity",

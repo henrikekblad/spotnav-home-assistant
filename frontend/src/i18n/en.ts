@@ -540,6 +540,7 @@ export const en = {
   "settings.vehicle.plannedHere": "This charger plans for it",
   "settings.vehicle.capacityReported": "reported by the vehicle",
   "settings.vehicle.socNone": "No sensor chosen",
+  "settings.vehicle.charge": "Charge level",
   "settings.vehicle.error.capacity": "Battery capacity must be between 1 and 500 kWh.",
   "settings.vehicle.error.consumption": "Consumption must be between 0.1 and 50 kWh/10 km.",
   "settings.phases.legend": "Phases the charger uses",

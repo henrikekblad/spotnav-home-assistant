@@ -526,6 +526,7 @@ export const nb: Record<keyof typeof en, string> = {
   "settings.vehicle.plannedHere": "Denne laderen planlegger for det",
   "settings.vehicle.capacityReported": "rapportert av bilen",
   "settings.vehicle.socNone": "Ingen sensor valgt",
+  "settings.vehicle.charge": "Ladenivå",
   "settings.vehicle.error.capacity": "Batterikapasiteten må være mellom 1 og 500 kWh.",
   "settings.vehicle.error.consumption": "Forbruket må være mellom 0,1 og 50 kWh/10 km.",
   "settings.phases.legend": "Faser laderen bruker",

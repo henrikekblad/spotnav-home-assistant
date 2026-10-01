@@ -527,6 +527,7 @@ export const sv: Record<keyof typeof en, string> = {
   "settings.vehicle.plannedHere": "Laddaren planerar för det här fordonet",
   "settings.vehicle.capacityReported": "rapporterad av bilen",
   "settings.vehicle.socNone": "Ingen sensor vald",
+  "settings.vehicle.charge": "Laddnivå",
   "settings.vehicle.error.capacity": "Batterikapaciteten måste vara mellan 1 och 500 kWh.",
   "settings.vehicle.error.consumption": "Förbrukningen måste vara mellan 0,1 och 50 kWh/10 km.",
   "settings.phases.legend": "Faser som laddaren använder",

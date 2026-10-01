@@ -3,13 +3,14 @@
 The compiled file is committed next to the Python that serves it. It is served with
 `StaticPathConfig` and `hass.http.async_register_static_paths`, registered once for the whole
 domain during domain setup (a per-entry registration would fail as a duplicate route on reload)
-and never unregistered. The URL carries the manifest version as a query (`card_asset_url`), so
-an upgrade is a new URL and the file may be cached hard. A missing compiled file raises rather
+and never unregistered. The URL carries the manifest version and a short hash of the bundle as a query
+(`card_asset_url`), so an upgrade or a rebuild is a new URL and the file may be cached hard. A missing compiled file raises rather
 than registering a route that answers 404.
 """
 
 from __future__ import annotations
 
+import hashlib
 import logging
 from pathlib import Path
 from typing import Final
@@ -39,9 +40,25 @@ class CardAssetMissing(HomeAssistantError):
     """The compiled card asset is not where the integration package must carry it."""
 
 
-def card_asset_url(version: str) -> str:
-    """The documented resource URL for one integration version. Pure, so docs, tests and logs agree."""
-    return f"{CARD_URL_PATH}?v={version}"
+def card_asset_url(version: str, digest: str | None = None) -> str:
+    """The resource URL for one integration version and, when known, one bundle content.
+
+    Pure, so docs, tests and logs agree. The digest makes a rebuilt bundle a new URL even when the
+    version did not change (the Home Assistant Android app keeps the old module otherwise).
+    """
+    token = f"{version}-{digest}" if digest else version
+    return f"{CARD_URL_PATH}?v={token}"
+
+
+def read_bundle_digest(path: Path = CARD_ASSET_PATH) -> str | None:
+    """The first 8 hex characters of the bundle's SHA-256, or None if it cannot be read.
+
+    Blocking file I/O: call it from an executor job, never on the event loop.
+    """
+    try:
+        return hashlib.sha256(path.read_bytes()).hexdigest()[:8]
+    except OSError:
+        return None
 
 
 async def async_manifest_version(hass: HomeAssistant) -> str | None:
@@ -77,7 +94,8 @@ async def async_setup_card_asset(hass: HomeAssistant) -> None:
         [StaticPathConfig(CARD_URL_PATH, str(CARD_ASSET_PATH), cache_headers=True)]
     )
     data.card_served = True
-    url = card_asset_url(await async_manifest_version(hass) or "unknown")
+    digest = await hass.async_add_executor_job(read_bundle_digest)
+    url = card_asset_url(await async_manifest_version(hass) or "unknown", digest)
     _LOGGER.debug("Serving the bundled SpotNav card at %s", url)
     async_load_card_in_frontend(hass, url)
 

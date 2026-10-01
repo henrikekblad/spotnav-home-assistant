@@ -618,6 +618,15 @@ describe("what is actually in use, and what no longer exists", () => {
     expect(register).not.toContain(translate("en", "entity.notSet"));
   });
 
+  it("stacks that long value under its label, with the label kept whole", async () => {
+    const { element } = await mounted({ patch: ownersInstallation });
+    openSettings(element);
+    await settle();
+    const row = openDialog(element)?.querySelector("[data-row=\"energy_register\"]");
+    expect(row?.querySelector(".spotnav-settings-value")?.className).toContain("spotnav-settings-value-long");
+    expect(row?.firstElementChild?.className).toContain("spotnav-capability-label");
+  });
+
   it("shows the warning, the help and the automatic entity in the editor", async () => {
     const { element } = await mounted({ patch: ownersInstallation });
     openSettings(element);

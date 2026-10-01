@@ -73,6 +73,47 @@ def test_the_documented_url_derives_from_the_manifest_version() -> None:
     assert "no dashboard resource to add" in text
 
 
+def test_the_url_carries_the_bundle_hash_and_falls_back_to_the_version(tmp_path: Path) -> None:
+    import hashlib
+
+    bundle = tmp_path / "card.js"
+    bundle.write_bytes(b"console.log(1)")
+    digest = card_asset.read_bundle_digest(bundle)
+    assert digest == hashlib.sha256(b"console.log(1)").hexdigest()[:8]
+    assert card_asset.card_asset_url("1.2.3", digest) == f"/spotnav/spotnav-card.js?v=1.2.3-{digest}"
+    bundle.write_bytes(b"console.log(2)")
+    assert card_asset.read_bundle_digest(bundle) != digest, "a rebuilt bundle is a new URL"
+    assert card_asset.read_bundle_digest(tmp_path / "missing.js") is None
+    assert card_asset.card_asset_url("1.2.3", None) == "/spotnav/spotnav-card.js?v=1.2.3"
+
+
+async def test_setup_registers_the_hashed_url_computed_off_the_loop(
+    hass: HomeAssistant, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import threading
+
+    seen: dict[str, object] = {}
+    loop_thread = threading.get_ident()
+    real = card_asset.read_bundle_digest
+
+    def spy(*args: object) -> str | None:
+        seen["off_loop"] = threading.get_ident() != loop_thread
+        return real(*args)  # type: ignore[arg-type]
+
+    urls: list[str] = []
+    monkeypatch.setattr(card_asset, "read_bundle_digest", spy)
+    monkeypatch.setattr(card_asset, "async_load_card_in_frontend", lambda _h, url: urls.append(url))
+    monkeypatch.setattr(card_asset, "domain_data", lambda _h: type("D", (), {"card_served": False})())
+    monkeypatch.setattr(hass, "http", type("H", (), {"async_register_static_paths": staticmethod(lambda *_: _noop())})(), raising=False)
+    await card_asset.async_setup_card_asset(hass)
+    assert seen["off_loop"] is True
+    assert urls == [card_asset.card_asset_url(MANIFEST["version"], real())]
+
+
+async def _noop() -> None:
+    return None
+
+
 async def test_the_manifest_version_is_read_from_the_loader(hass: HomeAssistant) -> None:
     """What Home Assistant itself loaded, not a second hand-kept constant."""
     assert await card_asset.async_manifest_version(hass) == MANIFEST["version"]

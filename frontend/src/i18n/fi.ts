@@ -526,6 +526,7 @@ export const fi: Record<keyof typeof en, string> = {
   "settings.vehicle.plannedHere": "Tämä lataaja suunnittelee sille",
   "settings.vehicle.capacityReported": "auton ilmoittama",
   "settings.vehicle.socNone": "Anturia ei valittu",
+  "settings.vehicle.charge": "Varaustaso",
   "settings.vehicle.error.capacity": "Akun kapasiteetin on oltava 1–500 kWh.",
   "settings.vehicle.error.consumption": "Kulutuksen on oltava 0,1–50 kWh/10 km.",
   "settings.phases.legend": "Laturin käyttämät vaiheet",

@@ -19,7 +19,7 @@ import {
 } from "./chart-interaction";
 import { applyFocus, chartHeightForWidth, renderChart, type ChartLabels } from "./chart-render";
 import { createDialog, type DialogHandle } from "./dialog";
-import { clock, formatFixed, formatNumber, hasZone, pricePerKwh, wallTimeRepeats, weekdayDate } from "./format";
+import { clock, formatFixed, formatNumber, hasZone, percentAmount, pricePerKwh, wallTimeRepeats, weekdayDate } from "./format";
 import { pluralForm, translate, type Language, type TranslationKey } from "./i18n";
 import {
   actionErrorKey,
@@ -48,7 +48,6 @@ import {
   type EntityDraft,
   type EntityFieldError,
   type EntityScope,
-  type VehicleSoc,
 } from "./entity-config";
 import { marketAreaLabel, type MarketFormValues } from "./market";
 import {
@@ -66,7 +65,7 @@ import {
   type SettingsEditorKind,
   type SettingsFormValues,
 } from "./settings";
-import { VISUAL_CLASSES as C } from "./visual-styles";
+import { VISUAL_CLASSES as C, summaryValueClass } from "./visual-styles";
 
 export interface CardViewInput {
   model: CardModel;
@@ -1666,7 +1665,7 @@ export function createCardView(input: CardViewInput): CardView {
   function overviewRow(key: string, label: string, value: string): HTMLElement {
     const row = element(doc, "div", C.capabilityItem);
     row.dataset["row"] = key;
-    row.append(element(doc, "span", C.capabilityLabel, label), element(doc, "span", C.settingsValue, value));
+    row.append(element(doc, "span", C.capabilityLabel, label), element(doc, "span", summaryValueClass(value), value));
     return row;
   }
 
@@ -1678,11 +1677,15 @@ export function createCardView(input: CardViewInput): CardView {
   let siteEntitySlot: HTMLElement | null = null;
   let siteButtonSlot: HTMLElement | null = null;
 
-  function sensorFor(vehicleId: string): VehicleSoc | null | undefined {
-    if (entityState.kind !== "ready") {
-      return undefined;
+  /** The vehicle's charge as the header line spells it: `~36 %` for an estimate, `No reading` for none. */
+  function chargeFor(row: Vehicle): string {
+    const soc = model.soc;
+    if (soc !== null && soc.vehicle_id === row.id && soc.value !== null) {
+      return `${soc.estimated ? "~" : ""}${percentAmount(model.language, soc.value)}`;
     }
-    return entityState.config.vehicles.find((entry) => entry.id === vehicleId) ?? null;
+    return row.soc_percent === null
+      ? translate(model.language, "vehicleLine.noReading")
+      : percentAmount(model.language, row.soc_percent);
   }
 
   /** A section's heading, then a muted line saying why its rows are not shown (or its rows). */
@@ -1840,7 +1843,7 @@ export function createCardView(input: CardViewInput): CardView {
             row,
             properties: !extra.includes(row),
             planned: row.id === model.targetVehicleId,
-            sensor: sensorFor(row.id),
+            charge: chargeFor(row),
             isAdmin: input.isAdmin,
             onChange: () => {
               input.onOpenVehicleEditor?.(row.id);

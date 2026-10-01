@@ -23,7 +23,7 @@ import {
   type SettingsEditorKind,
   type SettingsFormValues,
 } from "./settings";
-import { VISUAL_CLASSES as C } from "./visual-styles";
+import { VISUAL_CLASSES as C, summaryValueClass } from "./visual-styles";
 import { chargeCeiling, effectiveTarget, pythonRoundedAbove, targetNeedKwh } from "./target-need";
 import type { Soc, Vehicle } from "./validate";
 
@@ -437,7 +437,7 @@ export function settingsEditorBody(
   const socRow = (key: string, label: string, value: string): HTMLElement => {
     const row = element(doc, "div", C.capabilityItem);
     row.dataset["socRow"] = key;
-    row.append(element(doc, "span", C.capabilityLabel, label), element(doc, "span", C.settingsValue, value));
+    row.append(element(doc, "span", C.capabilityLabel, label), element(doc, "span", summaryValueClass(value), value));
     return row;
   };
 

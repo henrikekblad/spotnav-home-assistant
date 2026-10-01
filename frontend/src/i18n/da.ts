@@ -526,6 +526,7 @@ export const da: Record<keyof typeof en, string> = {
   "settings.vehicle.plannedHere": "Denne oplader planlægger for det",
   "settings.vehicle.capacityReported": "rapporteret af bilen",
   "settings.vehicle.socNone": "Ingen sensor valgt",
+  "settings.vehicle.charge": "Ladeniveau",
   "settings.vehicle.error.capacity": "Batterikapaciteten skal være mellem 1 og 500 kWh.",
   "settings.vehicle.error.consumption": "Forbruget skal være mellem 0,1 og 50 kWh/10 km.",
   "settings.phases.legend": "Faser laderen bruger",

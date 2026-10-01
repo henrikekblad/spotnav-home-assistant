@@ -4,6 +4,16 @@
 // Nothing external (no `@import`, `url(...)`, web font or image); dialogs are `position: fixed`
 // overlays, so opening one never changes the card's height.
 
+/** Values longer than this stack under their label (the Android app uses the same threshold). */
+export const LONG_VALUE_LENGTH = 18;
+
+/** The class list of a summary row's value span: long values stack, short ones sit beside the label. */
+export function summaryValueClass(value: string): string {
+  return value.length > LONG_VALUE_LENGTH
+    ? `${VISUAL_CLASSES.settingsValue} ${VISUAL_CLASSES.settingsValueLong}`
+    : VISUAL_CLASSES.settingsValue;
+}
+
 export const VISUAL_CLASSES = {
   shell: "spotnav-shell",
   card: "spotnav-card",
@@ -64,6 +74,7 @@ export const VISUAL_CLASSES = {
   summaryArrow: "spotnav-summary-arrow",
   settingsIcon: "spotnav-settings-icon",
   settingsValue: "spotnav-settings-value",
+  settingsValueLong: "spotnav-settings-value-long",
   settingsField: "spotnav-settings-field",
   settingsLabel: "spotnav-settings-label",
   settingsInput: "spotnav-settings-input",
@@ -1231,17 +1242,33 @@ export const VISUAL_STYLES = `
   .${VISUAL_CLASSES.capabilityLabel} {
     overflow-wrap: anywhere;
   }
-  /* A summary row on the Settings page: the label keeps its words whole, the value takes the rest. */
+  /*
+   * A summary row on the Settings page: the label never breaks mid-label (ellipsis only as a last
+   * resort); a short value sits right-aligned beside it. A value that does not fit beside the label
+   * wraps to its own line (flex-wrap), and a value past LONG_VALUE_LENGTH characters is stacked
+   * under the label left-aligned from the start (the Android app's threshold), so the two never
+   * read as extra rows.
+   */
+  .${VISUAL_CLASSES.settingsSection} .${VISUAL_CLASSES.capabilityItem} {
+    flex-wrap: wrap;
+  }
   .${VISUAL_CLASSES.settingsSection} .${VISUAL_CLASSES.capabilityItem} > .${VISUAL_CLASSES.capabilityLabel} {
-    flex: 0 0 auto;
-    max-width: 45%;
-    overflow-wrap: normal;
+    flex: 0 1 auto;
+    max-width: 100%;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
   }
   .${VISUAL_CLASSES.settingsSection} .${VISUAL_CLASSES.capabilityItem} > .${VISUAL_CLASSES.settingsValue} {
-    flex: 1 1 0;
+    flex: 1 1 auto;
     min-width: 0;
     text-align: right;
     overflow-wrap: anywhere;
+  }
+  .${VISUAL_CLASSES.settingsSection} .${VISUAL_CLASSES.capabilityItem} > .${VISUAL_CLASSES.settingsValueLong} {
+    flex: 1 0 100%;
+    text-align: left;
+    margin-bottom: 6px;
   }
   [data-slot='vehicles'] > .${VISUAL_CLASSES.settingsSection} {
     margin-top: 12px;

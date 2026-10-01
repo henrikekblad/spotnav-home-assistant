@@ -7,6 +7,7 @@ import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { translate } from "../src/i18n";
+import { summaryValueClass } from "../src/visual-styles";
 import { SETTINGS_API_VERSION, type SettingsRecord } from "../src/types";
 import { FakeHass, mountCard } from "./helpers";
 
@@ -303,25 +304,36 @@ describe("the Settings page's vehicles", () => {
     expect(dlg(element).querySelectorAll("[data-edit-vehicle]")).toHaveLength(2);
   });
 
-  it("shows each vehicle's charge-level sensor once the entity read answers", async () => {
-    const { hass, element } = await mounted(twoVehicles());
-    let answer: (value: unknown) => void = () => undefined;
-    hass.entityHandler = () => new Promise((resolve) => (answer = resolve));
-    shadow(element).querySelector<HTMLButtonElement>(`[aria-label="${translate("en", "header.settings")}"]`)!.click();
-    await settle();
-    // Before the read answers, the row names the dashboard's sensor id...
-    expect(block(element, "vehicle_niro").querySelector("[data-row='vehicle_soc']")?.textContent).toContain(
-      "sensor.niro_battery",
+  it("shows each vehicle's charge level, not its sensor, in the Settings overview", async () => {
+    const { element } = await openSettings(twoVehicles());
+    const ev6 = block(element, "vehicle_ev6").querySelector("[data-row='charge_level']");
+    expect(ev6?.textContent).toContain("Charge level");
+    expect(ev6?.textContent).toContain("40 %");
+    const niro = block(element, "vehicle_niro").querySelector("[data-row='charge_level']");
+    expect(niro?.textContent).toContain("55 %");
+    expect(block(element, "vehicle_niro").textContent).not.toContain("Automatic");
+    expect(block(element, "vehicle_niro").textContent).not.toContain("sensor.");
+  });
+
+  it("marks an estimate with ~ and says No reading when there is none", async () => {
+    const payload = twoVehicles();
+    payload["soc"]["estimated"] = true;
+    payload["vehicles"][1]["soc_percent"] = null;
+    const { element } = await openSettings(payload);
+    expect(block(element, "vehicle_ev6").querySelector("[data-row='charge_level']")?.textContent).toContain("~40 %");
+    expect(block(element, "vehicle_niro").querySelector("[data-row='charge_level']")?.textContent).toContain(
+      "No reading",
     );
-    answer(entityConfig());
-    await settle();
-    // ...and then the read's own description of it.
-    const niro = block(element, "vehicle_niro").querySelector("[data-row='vehicle_soc']");
-    expect(niro?.textContent).toContain("Vehicle charge level");
-    expect(niro?.textContent).toContain("Automatic: niro battery");
-    expect(block(element, "vehicle_ev6").querySelector("[data-row='vehicle_soc']")?.textContent).toContain(
-      "sensor.ev6_battery",
-    );
+  });
+
+  it("names the charge level in every language", () => {
+    const names = ["en", "sv", "da", "nb", "fi"].map((l) => translate(l as "en", "settings.vehicle.charge"));
+    expect(names).toEqual(["Charge level", "Laddnivå", "Ladeniveau", "Ladenivå", "Varaustaso"]);
+  });
+
+  it("marks a value past 18 characters to stack under its label and leaves a short one beside it", () => {
+    expect(summaryValueClass("x".repeat(18))).not.toContain("long");
+    expect(summaryValueClass("x".repeat(19))).toContain("long");
   });
 
   it("shows a reported capacity as read-only in the vehicle's dialog, with where it comes from", async () => {

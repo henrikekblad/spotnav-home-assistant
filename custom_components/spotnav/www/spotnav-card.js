@@ -619,6 +619,10 @@ function plannedBands(rows, days, timeZone) {
 }
 
 // src/visual-styles.ts
+var LONG_VALUE_LENGTH = 18;
+function summaryValueClass(value) {
+  return value.length > LONG_VALUE_LENGTH ? `${VISUAL_CLASSES.settingsValue} ${VISUAL_CLASSES.settingsValueLong}` : VISUAL_CLASSES.settingsValue;
+}
 var VISUAL_CLASSES = {
   shell: "spotnav-shell",
   card: "spotnav-card",
@@ -679,6 +683,7 @@ var VISUAL_CLASSES = {
   summaryArrow: "spotnav-summary-arrow",
   settingsIcon: "spotnav-settings-icon",
   settingsValue: "spotnav-settings-value",
+  settingsValueLong: "spotnav-settings-value-long",
   settingsField: "spotnav-settings-field",
   settingsLabel: "spotnav-settings-label",
   settingsInput: "spotnav-settings-input",
@@ -1837,17 +1842,33 @@ var VISUAL_STYLES = `
   .${VISUAL_CLASSES.capabilityLabel} {
     overflow-wrap: anywhere;
   }
-  /* A summary row on the Settings page: the label keeps its words whole, the value takes the rest. */
+  /*
+   * A summary row on the Settings page: the label never breaks mid-label (ellipsis only as a last
+   * resort); a short value sits right-aligned beside it. A value that does not fit beside the label
+   * wraps to its own line (flex-wrap), and a value past LONG_VALUE_LENGTH characters is stacked
+   * under the label left-aligned from the start (the Android app's threshold), so the two never
+   * read as extra rows.
+   */
+  .${VISUAL_CLASSES.settingsSection} .${VISUAL_CLASSES.capabilityItem} {
+    flex-wrap: wrap;
+  }
   .${VISUAL_CLASSES.settingsSection} .${VISUAL_CLASSES.capabilityItem} > .${VISUAL_CLASSES.capabilityLabel} {
-    flex: 0 0 auto;
-    max-width: 45%;
-    overflow-wrap: normal;
+    flex: 0 1 auto;
+    max-width: 100%;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
   }
   .${VISUAL_CLASSES.settingsSection} .${VISUAL_CLASSES.capabilityItem} > .${VISUAL_CLASSES.settingsValue} {
-    flex: 1 1 0;
+    flex: 1 1 auto;
     min-width: 0;
     text-align: right;
     overflow-wrap: anywhere;
+  }
+  .${VISUAL_CLASSES.settingsSection} .${VISUAL_CLASSES.capabilityItem} > .${VISUAL_CLASSES.settingsValueLong} {
+    flex: 1 0 100%;
+    text-align: left;
+    margin-bottom: 6px;
   }
   [data-slot='vehicles'] > .${VISUAL_CLASSES.settingsSection} {
     margin-top: 12px;
@@ -3230,6 +3251,7 @@ var da = {
   "settings.vehicle.plannedHere": "Denne oplader planlægger for det",
   "settings.vehicle.capacityReported": "rapporteret af bilen",
   "settings.vehicle.socNone": "Ingen sensor valgt",
+  "settings.vehicle.charge": "Ladeniveau",
   "settings.vehicle.error.capacity": "Batterikapaciteten skal være mellem 1 og 500 kWh.",
   "settings.vehicle.error.consumption": "Forbruget skal være mellem 0,1 og 50 kWh/10 km.",
   "settings.phases.legend": "Faser laderen bruger",
@@ -3730,6 +3752,7 @@ var en = {
   "settings.vehicle.plannedHere": "This charger plans for it",
   "settings.vehicle.capacityReported": "reported by the vehicle",
   "settings.vehicle.socNone": "No sensor chosen",
+  "settings.vehicle.charge": "Charge level",
   "settings.vehicle.error.capacity": "Battery capacity must be between 1 and 500 kWh.",
   "settings.vehicle.error.consumption": "Consumption must be between 0.1 and 50 kWh/10 km.",
   "settings.phases.legend": "Phases the charger uses",
@@ -4230,6 +4253,7 @@ var fi = {
   "settings.vehicle.plannedHere": "Tämä lataaja suunnittelee sille",
   "settings.vehicle.capacityReported": "auton ilmoittama",
   "settings.vehicle.socNone": "Anturia ei valittu",
+  "settings.vehicle.charge": "Varaustaso",
   "settings.vehicle.error.capacity": "Akun kapasiteetin on oltava 1–500 kWh.",
   "settings.vehicle.error.consumption": "Kulutuksen on oltava 0,1–50 kWh/10 km.",
   "settings.phases.legend": "Laturin käyttämät vaiheet",
@@ -4730,6 +4754,7 @@ var nb = {
   "settings.vehicle.plannedHere": "Denne laderen planlegger for det",
   "settings.vehicle.capacityReported": "rapportert av bilen",
   "settings.vehicle.socNone": "Ingen sensor valgt",
+  "settings.vehicle.charge": "Ladenivå",
   "settings.vehicle.error.capacity": "Batterikapasiteten må være mellom 1 og 500 kWh.",
   "settings.vehicle.error.consumption": "Forbruket må være mellom 0,1 og 50 kWh/10 km.",
   "settings.phases.legend": "Faser laderen bruker",
@@ -5230,6 +5255,7 @@ var sv = {
   "settings.vehicle.plannedHere": "Laddaren planerar för det här fordonet",
   "settings.vehicle.capacityReported": "rapporterad av bilen",
   "settings.vehicle.socNone": "Ingen sensor vald",
+  "settings.vehicle.charge": "Laddnivå",
   "settings.vehicle.error.capacity": "Batterikapaciteten måste vara mellan 1 och 500 kWh.",
   "settings.vehicle.error.consumption": "Förbrukningen måste vara mellan 0,1 och 50 kWh/10 km.",
   "settings.phases.legend": "Faser som laddaren använder",
@@ -10047,7 +10073,7 @@ function settingsEditorBody(doc, language, form, handlers, idPrefix) {
   const socRow = (key, label, value) => {
     const row = element4(doc, "div", VISUAL_CLASSES.capabilityItem);
     row.dataset["socRow"] = key;
-    row.append(element4(doc, "span", VISUAL_CLASSES.capabilityLabel, label), element4(doc, "span", VISUAL_CLASSES.settingsValue, value));
+    row.append(element4(doc, "span", VISUAL_CLASSES.capabilityLabel, label), element4(doc, "span", summaryValueClass(value), value));
     return row;
   };
   const ageSentence2 = (seconds) => ageSentence(language, seconds);
@@ -10320,12 +10346,6 @@ function element5(doc, tag, className, text4) {
   }
   return node;
 }
-function sensorText(language, sensor) {
-  if (sensor.selected === null) {
-    return translate(language, "settings.vehicle.socNone");
-  }
-  return sensor.source === "automatic" ? translate(language, "entity.automatic", { name: sensor.selected.friendlyName }) : sensor.selected.friendlyName;
-}
 function vehicleSummary(doc, language, input) {
   const { row } = input;
   const card = element5(doc, "section", VISUAL_CLASSES.settingsSection);
@@ -10343,17 +10363,11 @@ function vehicleSummary(doc, language, input) {
   const valueRow = (key, label, value) => {
     const line = element5(doc, "div", VISUAL_CLASSES.capabilityItem);
     line.dataset["row"] = key;
-    line.append(element5(doc, "span", VISUAL_CLASSES.capabilityLabel, label), element5(doc, "span", VISUAL_CLASSES.settingsValue, value));
+    line.append(element5(doc, "span", VISUAL_CLASSES.capabilityLabel, label), element5(doc, "span", summaryValueClass(value), value));
     card.append(line);
   };
   const notSet = translate(language, "entity.notSet");
-  let sensor = null;
-  if (input.sensor !== void 0 && input.sensor !== null) {
-    sensor = sensorText(language, input.sensor);
-  } else if (row.soc_entity_id !== null) {
-    sensor = row.soc_entity_id;
-  }
-  valueRow("vehicle_soc", translate(language, "entity.field.vehicleSoc"), sensor ?? notSet);
+  valueRow("charge_level", translate(language, "settings.vehicle.charge"), input.charge);
   if (input.properties) {
     valueRow(
       "capacity",
@@ -11512,7 +11526,7 @@ function createCardView(input) {
   function overviewRow(key, label, value) {
     const row = element6(doc, "div", VISUAL_CLASSES.capabilityItem);
     row.dataset["row"] = key;
-    row.append(element6(doc, "span", VISUAL_CLASSES.capabilityLabel, label), element6(doc, "span", VISUAL_CLASSES.settingsValue, value));
+    row.append(element6(doc, "span", VISUAL_CLASSES.capabilityLabel, label), element6(doc, "span", summaryValueClass(value), value));
     return row;
   }
   let overviewBodyNode = null;
@@ -11522,11 +11536,12 @@ function createCardView(input) {
   let vehicleRows = [];
   let siteEntitySlot = null;
   let siteButtonSlot = null;
-  function sensorFor(vehicleId) {
-    if (entityState.kind !== "ready") {
-      return void 0;
+  function chargeFor(row) {
+    const soc = model.soc;
+    if (soc !== null && soc.vehicle_id === row.id && soc.value !== null) {
+      return `${soc.estimated ? "~" : ""}${percentAmount(model.language, soc.value)}`;
     }
-    return entityState.config.vehicles.find((entry) => entry.id === vehicleId) ?? null;
+    return row.soc_percent === null ? translate(model.language, "vehicleLine.noReading") : percentAmount(model.language, row.soc_percent);
   }
   function unreadableLine(state) {
     if (state.kind === "loading") {
@@ -11665,7 +11680,7 @@ function createCardView(input) {
             row,
             properties: !extra.includes(row),
             planned: row.id === model.targetVehicleId,
-            sensor: sensorFor(row.id),
+            charge: chargeFor(row),
             isAdmin: input.isAdmin,
             onChange: () => {
               input.onOpenVehicleEditor?.(row.id);
