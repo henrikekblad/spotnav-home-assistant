@@ -1,10 +1,6 @@
-![SpotNav logo](assets/spotnav-icon.svg)
-
-# SpotNav for Home Assistant
+![SpotNav for Home Assistant: smart EV charging on spot prices and solar](assets/spotnav-social-preview.png)
 
 [![Open your Home Assistant instance and open this repository in HACS](https://my.home-assistant.io/badges/hacs_repository.svg)](https://my.home-assistant.io/redirect/hacs_repository/?owner=henrikekblad&repository=spotnav-home-assistant&category=integration)
-
-![The SpotNav card: price graph, charging plan and buttons](docs/images/card-hero.png)
 
 SpotNav plans and runs your EV charging inside Home Assistant. It reads spot prices from the
 public SpotNav Relay (no account or API key) and follows them.
