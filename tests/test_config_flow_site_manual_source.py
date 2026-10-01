@@ -325,6 +325,8 @@ async def test_site_manual_source_via_the_flow_never_stores_a_chargers_entity(
     assert result["step_id"] == "site_details"
 
     result = await hass.config_entries.flow.async_configure(result["flow_id"], {})
+    assert result["step_id"] == "site_charger_wiring"
+    result = await hass.config_entries.flow.async_configure(result["flow_id"], {})
 
     assert result["type"] is FlowResultType.CREATE_ENTRY
     assert _stored_site_source(hass, result["result"].entry_id) == {
@@ -612,6 +614,8 @@ async def test_editing_the_site_source_leaves_charger_sources_and_wiring_untouch
     # The site's own step is done; the charger whose own source is
     # manual-attributes-shaped is collected exactly as it always was.
     assert result["step_id"] == "site_details"
+    result = await hass.config_entries.options.async_configure(result["flow_id"], {})
+    assert result["step_id"] == "site_charger_wiring"
     result = await hass.config_entries.options.async_configure(result["flow_id"], {})
     assert result["step_id"] == "charger_manual_source"
     result = await hass.config_entries.options.async_configure(

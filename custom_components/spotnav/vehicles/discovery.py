@@ -34,6 +34,8 @@ from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers.recorder import DATA_INSTANCE, get_instance
 from homeassistant.util import dt as dt_util
 
+from ..execution.charger_entities import EntityMatcher
+from ..execution.charger_profiles import profile_for
 from ..site.measurement_source import PhaseMeasurementSource
 from ..site.site_capacity import normalized_ampere_unit, PhaseName, PHASES
 
@@ -51,6 +53,7 @@ REASON_SEPARATE_ENTITIES_DEVICE_CLASS_AND_UNIT_MATCH = "separate_entities_device
 REASON_SEPARATE_ENTITIES_DEVICE_CLASS_MATCH_ONLY = "separate_entities_device_class_match_only"
 REASON_SEPARATE_ENTITIES_UNIT_MATCH_ONLY = "separate_entities_unit_match_only"
 REASON_SEPARATE_ENTITIES_NAME_MATCH_ONLY = "separate_entities_name_match_only"
+REASON_SEPARATE_ENTITIES_PROFILE_MATCH = "separate_entities_profile_match"
 REASON_POSSIBLE_INVERTER_OUTPUT = "possible_inverter_output_not_confirmed_as_grid_input"
 
 # How far back Recorder history is searched. An upper bound only; a shorter
@@ -190,6 +193,7 @@ def discover_charger_current_sources(
     candidates += _discover_separate_entity_candidates(
         hass, "charger_current", only_device_id=charger_device_id
     )
+    candidates += _profile_phase_entity_candidates(hass, charger_device_id, candidates)
     return _ranked(candidates)
 
 
@@ -209,7 +213,55 @@ async def async_discover_charger_current_sources(
     candidates += _discover_separate_entity_candidates(
         hass, "charger_current", only_device_id=charger_device_id
     )
+    candidates += _profile_phase_entity_candidates(hass, charger_device_id, candidates)
     return _ranked(candidates)
+
+
+def _profile_phase_entity_candidates(
+    hass: HomeAssistant, device_id: str, found: list[DiscoveryCandidate]
+) -> list[DiscoveryCandidate]:
+    """A separate-entities candidate from the per-phase current sensors the charger's platform profile
+    names (`current_sensor_keys`, three of them, matched by translation key or unique id), for
+    integrations such as Charge Amps whose entity ids carry the phase before the word "current" and
+    so escape the name-based scan. Skipped when `found` already holds the same entities.
+    """
+    registry = er.async_get(hass)
+    entries = er.async_entries_for_device(registry, device_id)
+    results: list[DiscoveryCandidate] = []
+    for platform in dict.fromkeys(entry.platform for entry in entries):
+        profile = profile_for(platform)
+        if profile is None or len(profile.current_sensor_keys) != len(PHASES):
+            continue
+        matcher = EntityMatcher(hass, [e for e in entries if e.platform == platform], profile)
+        phase_map: dict[PhaseName, str] = {}
+        for phase, key in zip(PHASES, profile.current_sensor_keys):
+            entry = matcher.first("sensor", (key,))
+            if entry is None:
+                break
+            phase_map[phase] = entry.entity_id
+        if len(phase_map) != len(PHASES) or len(set(phase_map.values())) != len(PHASES):
+            continue
+        if any(
+            candidate.mapping.kind == "separate_entities" and dict(candidate.mapping.entity_ids or {}) == phase_map
+            for candidate in [*found, *results]
+        ):
+            continue
+        states = {phase: hass.states.get(entity_id) for phase, entity_id in phase_map.items()}
+        if any(state is None for state in states.values()):
+            continue
+        scored = _score_separate_entities_candidate(states, "charger_current")
+        if scored is None:
+            continue
+        results.append(
+            DiscoveryCandidate(
+                candidate_id="|".join(sorted(phase_map.values())),
+                source_type="charger_current",
+                mapping=PhaseMeasurementSource(kind="separate_entities", entity_ids=dict(phase_map)),
+                confidence=scored[0],
+                reason_code=REASON_SEPARATE_ENTITIES_PROFILE_MATCH,
+            )
+        )
+    return results
 
 
 _CONFIDENCE_RANK: dict[Confidence, int] = {"high": 0, "medium": 1, "low": 2}

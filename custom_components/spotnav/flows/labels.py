@@ -23,6 +23,7 @@ from ..vehicles.discovery import (
     REASON_SEPARATE_ENTITIES_DEVICE_CLASS_AND_UNIT_MATCH,
     REASON_SEPARATE_ENTITIES_DEVICE_CLASS_MATCH_ONLY,
     REASON_SEPARATE_ENTITIES_NAME_MATCH_ONLY,
+    REASON_SEPARATE_ENTITIES_PROFILE_MATCH,
     REASON_SEPARATE_ENTITIES_UNIT_MATCH_ONLY,
 )
 
@@ -44,6 +45,14 @@ MANUAL_CHOICE = "manual"
 # The other manual shape, for a charger's own measured current or the site's total: one entity
 # carrying all three phases as attributes, with their names given explicitly.
 MANUAL_ATTRIBUTES_CHOICE = "manual_attributes"
+
+
+# A charger's measured current as three whole entities, one per phase (its own device only).
+MANUAL_ENTITIES_CHOICE = "manual_entities"
+
+
+#: Every choice that sends a charger's measured current to a manual step.
+MANUAL_CHOICES = (MANUAL_CHOICE, MANUAL_ENTITIES_CHOICE)
 
 
 # The only two units a manually entered attribute mapping may use (the spellings
@@ -72,6 +81,13 @@ MANUAL_SOURCE_ATTRIBUTES_ERROR = "manual_source_attributes_required"
 MANUAL_SOURCE_UNVERIFIED_ERROR = "manual_source_unverified"
 
 
+MANUAL_ENTITIES_DUPLICATE_ERROR = "manual_entities_duplicate"
+
+
+# One field per phase of the three-entity form, e.g. "entity_L1".
+MANUAL_ENTITY_KEY = "entity_{phase}"
+
+
 # One field per phase, e.g. "attribute_L1".
 MANUAL_ATTRIBUTE_KEY = "attribute_{phase}"
 
@@ -89,6 +105,7 @@ _REASON_TEXT: dict[str, dict[str, str]] = {
         REASON_SEPARATE_ENTITIES_DEVICE_CLASS_MATCH_ONLY: "current device class only",
         REASON_SEPARATE_ENTITIES_UNIT_MATCH_ONLY: "a supported current unit only",
         REASON_SEPARATE_ENTITIES_NAME_MATCH_ONLY: "name pattern only",
+        REASON_SEPARATE_ENTITIES_PROFILE_MATCH: "the charger integration's own per-phase current sensors",
         REASON_POSSIBLE_INVERTER_OUTPUT: "looks like inverter/solar output, not confirmed as grid input",
     },
     "sv": {
@@ -101,6 +118,7 @@ _REASON_TEXT: dict[str, dict[str, str]] = {
         REASON_SEPARATE_ENTITIES_DEVICE_CLASS_MATCH_ONLY: "endast strömtyp",
         REASON_SEPARATE_ENTITIES_UNIT_MATCH_ONLY: "endast en stödd strömenhet",
         REASON_SEPARATE_ENTITIES_NAME_MATCH_ONLY: "endast namnmönster",
+        REASON_SEPARATE_ENTITIES_PROFILE_MATCH: "laddarintegrationens egna fasströmssensorer",
         REASON_POSSIBLE_INVERTER_OUTPUT: "ser ut som växelriktar-/solutdata, ej bekräftad som nätingång",
     },
 }

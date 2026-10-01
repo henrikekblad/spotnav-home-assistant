@@ -232,12 +232,14 @@ async def test_charger_measured_current_candidate_can_be_selected_in_site_detail
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"],
         {
-            f"phases_{charger.entry_id}": 3,
-            f"measured_source_{charger.entry_id}": candidate_entity_id,
             "direct_L1": "sensor.unused_l1",
             "direct_L2": "sensor.unused_l2",
             "direct_L3": "sensor.unused_l3",
         },
+    )
+    assert result["step_id"] == "site_charger_wiring"
+    result = await hass.config_entries.flow.async_configure(
+        result["flow_id"], {"phases": 3, "measured_source": candidate_entity_id}
     )
     assert result["type"] is FlowResultType.CREATE_ENTRY
     wiring = result["data"][CONF_PHASE_WIRING][charger.entry_id]
@@ -367,9 +369,15 @@ async def test_charger_measured_source_dropdown_also_shows_a_rich_label(
     assert result["step_id"] == "site_current_suggestions"
     result = await hass.config_entries.flow.async_configure(result["flow_id"], {})
     assert result["step_id"] == "site_details"
+    result = await hass.config_entries.flow.async_configure(
+        result["flow_id"],
+        {"direct_L1": "sensor.unused_l1", "direct_L2": "sensor.unused_l2", "direct_L3": "sensor.unused_l3"},
+    )
+    assert result["step_id"] == "site_charger_wiring"
+    assert result["description_placeholders"]["charger"] == "Flow label"
 
     schema = result["data_schema"]
-    field_name = f"measured_source_{charger.entry_id}"
+    field_name = "measured_source"
     field = next(key for key in schema.schema if str(key) == field_name)
     select_selector = schema.schema[field]
     options = select_selector.config["options"]

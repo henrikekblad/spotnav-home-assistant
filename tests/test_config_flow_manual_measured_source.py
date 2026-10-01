@@ -150,7 +150,7 @@ async def _drive_create_flow_to_manual_step(
     hass: HomeAssistant, *, charger_entry_ids: list[str]
 ) -> dict:
     """`user` -> `site` -> (`site_current_suggestions` falling through) ->
-    `site_details` choosing "manual" for every given charger -> the first
+    `site_details` -> the first charger's `site_charger_wiring` choosing "manual" -> its
     per-charger manual-entry step. Returns that step's flow result.
     """
     result = await hass.config_entries.flow.async_init(DOMAIN, context={"source": "user"})
@@ -174,13 +174,10 @@ async def _drive_create_flow_to_manual_step(
     assert result["step_id"] == "site_current_suggestions"
     result = await hass.config_entries.flow.async_configure(result["flow_id"], {})
     assert result["step_id"] == "site_details"
+    result = await hass.config_entries.flow.async_configure(result["flow_id"], _UNUSED_SITE_CURRENT)
+    assert result["step_id"] == "site_charger_wiring"
     result = await hass.config_entries.flow.async_configure(
-        result["flow_id"],
-        {
-            **{f"phases_{entry_id}": 3 for entry_id in charger_entry_ids},
-            **{f"measured_source_{entry_id}": "manual" for entry_id in charger_entry_ids},
-            **_UNUSED_SITE_CURRENT,
-        },
+        result["flow_id"], {"phases": 3, "measured_source": "manual"}
     )
     assert result["step_id"] == "charger_manual_source"
     return result
@@ -324,9 +321,8 @@ async def test_manual_source_step_itself_rejects_an_entity_from_another_device(
     flow.hass = hass
     flow.flow_id = "manual-source-direct-step"
     flow.handler = DOMAIN
-    flow._pending_site = None
-    flow._pending_manual_charger_ids = [charger.entry_id]
-    flow._manual_measured_sources = {}
+    flow._init_charger_wiring()
+    flow._wiring_queue = [charger.entry_id]
 
     result = await flow.async_step_charger_manual_source(_manual_payload(house_sensor))
 
@@ -501,6 +497,10 @@ async def test_the_unit_field_defaults_to_a_recognized_ampere_unit_never_a_wilde
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"], _manual_payload(watts_sensor, confirm=True)
     )
+    assert result["step_id"] == "site_charger_wiring"
+    result = await hass.config_entries.flow.async_configure(
+        result["flow_id"], {"phases": 3, "measured_source": "manual"}
+    )
     assert result["step_id"] == "charger_manual_source"
 
     result = await hass.config_entries.flow.async_configure(
@@ -580,7 +580,9 @@ async def test_options_flow_roundtrip_preserves_a_manually_entered_charger_sourc
     assert result["step_id"] == "site_current_suggestions"
     result = await hass.config_entries.options.async_configure(result["flow_id"], {})
     assert result["step_id"] == "site_details"
-    assert _default(result["data_schema"], f"measured_source_{charger.entry_id}") == "manual"
+    result = await hass.config_entries.options.async_configure(result["flow_id"], {})
+    assert result["step_id"] == "site_charger_wiring"
+    assert _default(result["data_schema"], "measured_source") == "manual"
 
     result = await hass.config_entries.options.async_configure(result["flow_id"], {})
 
@@ -712,11 +714,9 @@ async def test_options_flow_roundtrip_leaves_other_chargers_and_the_site_source_
     assert result["step_id"] == "site_current_suggestions"
     result = await hass.config_entries.options.async_configure(result["flow_id"], {})
     assert result["step_id"] == "site_details"
-    schema = result["data_schema"]
-    assert _default(schema, f"measured_source_{manual_charger.entry_id}") == "manual"
-    assert (
-        _default(schema, f"measured_source_{discovered_charger.entry_id}") == discovered_sensor
-    )
+    result = await hass.config_entries.options.async_configure(result["flow_id"], {})
+    assert result["step_id"] == "site_charger_wiring"
+    assert _default(result["data_schema"], "measured_source") == "manual"
 
     result = await hass.config_entries.options.async_configure(result["flow_id"], {})
     assert result["step_id"] == "charger_manual_source"
@@ -730,6 +730,10 @@ async def test_options_flow_roundtrip_leaves_other_chargers_and_the_site_source_
     result = await hass.config_entries.options.async_configure(
         result["flow_id"], {"entity_id": manual_sensor, "confirm_unverified": True}
     )
+    # The second charger has its own wiring step, starting on its discovered source.
+    assert result["step_id"] == "site_charger_wiring"
+    assert _default(result["data_schema"], "measured_source") == discovered_sensor
+    result = await hass.config_entries.options.async_configure(result["flow_id"], {})
 
     assert result["type"] is FlowResultType.CREATE_ENTRY
     updated = hass.config_entries.async_get_entry(entry.entry_id)

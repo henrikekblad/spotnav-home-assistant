@@ -27,7 +27,6 @@ from ..const import (
     CONF_GRID_POWER_INVERTED,
     CONF_MAIN_FUSE_A,
     CONF_MAX_AGE_S,
-    CONF_MEASURED_CURRENT_SOURCE,
     CONF_MEASUREMENT_MODE,
     CONF_MODE,
     CONF_PHASE_WIRING,
@@ -67,6 +66,7 @@ from ..vehicles.choices import entity_option, flow_language
 from ..vehicles.discovery import async_discover_site_current_sources, DiscoveryCandidate
 from ..vehicles.ocpp_identity import apply_target, discover_controls, resolve_target
 from ..execution.charger_entities import control_path_for_entity
+from .charger_wiring import ChargerWiringSteps
 from .labels import (
     current_control_selector,
     MANUAL_ATTRIBUTES_CHOICE,
@@ -76,10 +76,7 @@ from .labels import (
 from .measured_source import (
     async_charger_measured_candidates,
     async_manual_source_step,
-    charger_device_id,
     charger_device_ids,
-    charger_device_scope,
-    manual_charger_entry_ids,
     site_device_scope,
 )
 from .labels import PHASES
@@ -92,6 +89,7 @@ from .site_form import (
     site_current_suggestions_schema,
     site_default_current_choice,
     site_details_schema,
+    site_details_unit_errors,
 )
 
 
@@ -242,7 +240,7 @@ _DETAILS_REASON_TEXT: dict[str, dict[str, str]] = {
 }
 
 
-class SiteCapacityOptionsFlow(config_entries.OptionsFlow):
+class SiteCapacityOptionsFlow(ChargerWiringSteps, config_entries.OptionsFlow):
     """Edit every structural choice a site was created with.
 
     `CONF_SITE_ENABLED` gates the site calculation; `CONF_ACTIVE_CONTROL_ENABLED` is this
@@ -261,11 +259,8 @@ class SiteCapacityOptionsFlow(config_entries.OptionsFlow):
         self._pending_basic: dict[str, Any] = {}
         # Why the details step is shown although it was not asked for (`_measurement_change_reason`).
         self._details_reason: str | None = None
-        # Set when a `site_details` submission chose "manual" for a charger: that submission and
-        # the queue of chargers whose manual entry is still being collected.
-        self._pending_site: PendingSiteDetails | None = None
-        self._pending_manual_charger_ids: list[str] = []
-        self._manual_measured_sources: dict[str, dict[str, Any]] = {}
+        # The `site_details` submission while each charger's wiring is collected (`ChargerWiringSteps`).
+        self._init_charger_wiring()
         # What this run resolved the site's current source to; `None` means the suggestions step
         # did not run (derived mode) or is unanswered (see `_site_current_source_for_save`).
         self._site_current_source_choice: str | None = None
@@ -552,18 +547,12 @@ class SiteCapacityOptionsFlow(config_entries.OptionsFlow):
         charger_entry_ids: list[str] = self._pending_basic.get(CONF_CHARGER_ENTRY_IDS, [])
         mode = self._pending_basic[CONF_MEASUREMENT_MODE]
         skip_direct_fields = self._skip_direct_fields(mode)
-        charger_candidates = await async_charger_measured_candidates(
-            self.hass, charger_entry_ids
-        )
         schema = site_details_schema(
             self.hass,
-            charger_entry_ids,
             mode,
-            phase_wiring_defaults=self._entry.data.get(CONF_PHASE_WIRING, {}),
             direct_defaults=self._entry.data.get(CONF_DIRECT_ENTITIES, {}),
             derived_defaults=self._entry.data.get(CONF_DERIVED_ENTITIES, {}),
             skip_direct_fields=skip_direct_fields,
-            charger_candidates=charger_candidates,
             flag_defaults={
                 CONF_SITE_CURRENT_SIGNED: bool(self._entry.data.get(CONF_SITE_CURRENT_SIGNED, False)),
                 CONF_GRID_POWER_INVERTED: bool(self._entry.data.get(CONF_GRID_POWER_INVERTED, False)),
@@ -583,70 +572,43 @@ class SiteCapacityOptionsFlow(config_entries.OptionsFlow):
                 return self.async_show_form(
                     step_id="site_init", data_schema=self._site_init_schema(), errors=errors
                 )
+            errors = site_details_unit_errors(
+                self.hass, user_input, mode, skip_direct_fields=skip_direct_fields
+            )
+            if errors:
+                return self.async_show_form(
+                    step_id="site_details",
+                    data_schema=self.add_suggested_values_to_schema(schema, user_input),
+                    errors=errors,
+                    description_placeholders=self._details_placeholders(),
+                )
             pending = PendingSiteDetails(
                 details=user_input,
                 charger_entry_ids=charger_entry_ids,
                 mode=mode,
                 skip_direct_fields=skip_direct_fields,
-                charger_candidates=charger_candidates,
+                charger_candidates=await async_charger_measured_candidates(
+                    self.hass, charger_entry_ids
+                ),
             )
-            manual_ids = manual_charger_entry_ids(user_input, charger_entry_ids)
-            if manual_ids:
-                # "Manual" chargers are collected first, one per step, so a saved source has
-                # always passed every check.
-                self._pending_site = pending
-                self._pending_manual_charger_ids = manual_ids
-                self._manual_measured_sources = {}
-                return await self.async_step_charger_manual_source()
+            if charger_entry_ids:
+                # Each charger's wiring is its own step; the site is saved after the last.
+                return await self._begin_charger_wiring(pending)
             return await self._save_site_details(pending, {})
         return self.async_show_form(
             step_id="site_details",
             data_schema=schema,
-            description_placeholders={"reason": _DETAILS_REASON_TEXT[flow_language(self.hass)].get(
-                self._details_reason or "", ""
-            )},
+            description_placeholders=self._details_placeholders(),
         )
 
-    async def async_step_charger_manual_source(
-        self, user_input: dict[str, Any] | None = None
-    ) -> ConfigFlowResult:
-        """Collect one charger's manually entered measured-current source: the counterpart of the create
-        flow's step (same helpers, step id and queue), differing only in `_finish_pending_site`, which
-        updates an existing entry.
-        """
-        if not self._pending_manual_charger_ids:
-            return await self._finish_pending_site()
-        charger_entry_id = self._pending_manual_charger_ids[0]
-        if charger_device_id(self.hass, charger_entry_id) is None:
-            # As in the create flow: skip rather than block, leaving the stored source untouched.
-            _LOGGER.warning(
-                "Skipping the manual measured-current entry for charger %s: "
-                "its own device could not be resolved",
-                charger_entry_id,
-            )
-            self._pending_manual_charger_ids.pop(0)
-            return await self.async_step_charger_manual_source()
-        outcome = await async_manual_source_step(
-            self.hass,
-            scope=charger_device_scope(self.hass, charger_entry_id),
-            stored_source=self._stored_measured_source(charger_entry_id),
-            user_input=user_input,
-        )
-        if outcome.source is None:
-            return self.async_show_form(
-                step_id="charger_manual_source",
-                data_schema=outcome.schema,
-                errors=outcome.errors,
-                description_placeholders=outcome.description_placeholders,
-            )
-        self._manual_measured_sources[charger_entry_id] = outcome.source
-        self._pending_manual_charger_ids.pop(0)
-        return await self.async_step_charger_manual_source()
+    def _details_placeholders(self) -> dict[str, str]:
+        return {
+            "reason": _DETAILS_REASON_TEXT[flow_language(self.hass)].get(self._details_reason or "", "")
+        }
 
-    def _stored_measured_source(self, charger_entry_id: str) -> dict[str, Any] | None:
-        """This site's stored measured-current source for one charger, so the manual form pre-fills it."""
-        phase_wiring = self._entry.data.get(CONF_PHASE_WIRING, {}) or {}
-        return (phase_wiring.get(charger_entry_id) or {}).get(CONF_MEASURED_CURRENT_SOURCE)
+    def _stored_wiring(self, charger_entry_id: str) -> dict[str, Any]:
+        """This site's stored wiring for one charger, so its forms pre-fill it."""
+        return dict((self._entry.data.get(CONF_PHASE_WIRING, {}) or {}).get(charger_entry_id) or {})
 
     async def _finish_pending_site(self) -> ConfigFlowResult:
         """Save the site whose `site_details` submission started this run of manual entries (the options
@@ -655,6 +617,16 @@ class SiteCapacityOptionsFlow(config_entries.OptionsFlow):
         if self._pending_site is None:
             # Unreachable from the UI (`_pending_site` is stored first); abort if that ever fails.
             return self.async_abort(reason="no_pending_site")
+        # The chargers' wiring steps took time: another site may have claimed one meanwhile.
+        errors = site_membership_errors(
+            self.hass,
+            charger_entry_ids=self._pending_site.charger_entry_ids,
+            exclude_entry_id=self._entry.entry_id,
+        )
+        if errors:
+            return self.async_show_form(
+                step_id="site_init", data_schema=self._site_init_schema(), errors=errors
+            )
         return await self._save_site_details(self._pending_site, self._manual_measured_sources)
 
     async def _save_site_details(
@@ -672,6 +644,7 @@ class SiteCapacityOptionsFlow(config_entries.OptionsFlow):
             skip_direct_fields=pending.skip_direct_fields,
             charger_candidates=pending.charger_candidates,
             manual_sources=manual_sources,
+            charger_inputs=pending.charger_inputs,
         )
         updated_data = self._updated_site_data(
             mode=pending.mode,

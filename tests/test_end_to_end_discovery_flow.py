@@ -175,12 +175,14 @@ async def test_charger_current_attributes_candidate_is_credited_exactly_once_end
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"],
         {
-            f"phases_{charger.entry_id}": 3,
-            f"measured_source_{charger.entry_id}": charger_candidate_id,
             "direct_L1": "sensor.e2e_site_l1",
             "direct_L2": "sensor.e2e_site_l2",
             "direct_L3": "sensor.e2e_site_l3",
         },
+    )
+    assert result["step_id"] == "site_charger_wiring"
+    result = await hass.config_entries.flow.async_configure(
+        result["flow_id"], {"phases": 3, "measured_source": charger_candidate_id}
     )
     assert result["type"] is FlowResultType.CREATE_ENTRY
     site_entry_id = result["result"].entry_id
@@ -216,12 +218,14 @@ async def test_charger_current_attributes_candidate_is_credited_exactly_once_end
     options_result = await hass.config_entries.options.async_configure(
         options_result["flow_id"],
         {
-            f"phases_{charger.entry_id}": 3,
-            f"measured_source_{charger.entry_id}": charger_candidate_id,
             "direct_L1": "sensor.e2e_site_l1",
             "direct_L2": "sensor.e2e_site_l2",
             "direct_L3": "sensor.e2e_site_l3",
         },
+    )
+    assert options_result["step_id"] == "site_charger_wiring"
+    options_result = await hass.config_entries.options.async_configure(
+        options_result["flow_id"], {"phases": 3, "measured_source": charger_candidate_id}
     )
     assert options_result["type"] is FlowResultType.CREATE_ENTRY
     await hass.async_block_till_done()

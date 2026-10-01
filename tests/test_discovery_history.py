@@ -566,9 +566,11 @@ async def test_site_details_offers_a_charger_measured_source_from_history_alone(
         result["flow_id"], {"choice": grid_entity_id}
     )
     assert result["step_id"] == "site_details"
+    result = await hass.config_entries.flow.async_configure(result["flow_id"], {})
+    assert result["step_id"] == "site_charger_wiring"
 
     schema = result["data_schema"]
-    field_name = f"measured_source_{charger.entry_id}"
+    field_name = "measured_source"
     assert any(str(key) == field_name for key in schema.schema)
     field = next(key for key in schema.schema if str(key) == field_name)
     options = schema.schema[field].config["options"]

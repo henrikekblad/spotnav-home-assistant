@@ -513,12 +513,14 @@ async def test_options_flow_can_edit_every_structural_field(hass: HomeAssistant)
     result = await hass.config_entries.options.async_configure(
         result["flow_id"],
         {
-            f"phases_{charger.entry_id}": 1,
-            f"phase_{charger.entry_id}": "L2",
             "direct_L1": "sensor.site_opt_new_l1",
             "direct_L2": "sensor.site_opt_new_l2",
             "direct_L3": "sensor.site_opt_new_l3",
         },
+    )
+    assert result["step_id"] == "site_charger_wiring"
+    result = await hass.config_entries.options.async_configure(
+        result["flow_id"], {"phases": 1, "phase": "L2"}
     )
     assert result["type"] is FlowResultType.CREATE_ENTRY
     await hass.async_block_till_done()
@@ -620,7 +622,6 @@ async def test_options_flow_rejects_a_race_conflict_created_between_its_two_step
     result = await hass.config_entries.options.async_configure(
         result["flow_id"],
         {
-            f"phases_{charger.entry_id}": 3,
             "direct_L1": "sensor.site_between_steps_new_l1",
             "direct_L2": "sensor.site_between_steps_new_l2",
             "direct_L3": "sensor.site_between_steps_new_l3",

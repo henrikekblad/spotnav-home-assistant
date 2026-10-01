@@ -99,8 +99,8 @@
         }
       },
       "site_details": {
-        "title": "Faskoppling och mätentiteter",
-        "description": "För en 1-fasladdare, ange uttryckligen vilken fas den är kopplad till -- en okänd fas innebär att ingen säker rekommendation någonsin kan beräknas för den. Endast entiteter som matchar vald mätkälla visas. Varje laddares egen uppmätta ström är valfri: välj ett hittat förslag, välj manual för att själv ange en entitet och dess fasattribut, eller lämna som \"skip\" för att konfigurera det senare.",
+        "title": "Mätentiteter",
+        "description": "Välj elmätarens sensorer. Alla sensorer godtas; enheten kontrolleras när du fortsätter (ström i A eller mA, effekt i W eller kW, spänning i V, reaktiv effekt i var eller kvar, skenbar effekt i VA eller kVA). Endast fält som passar vald mätkälla visas. Därefter följer varje ansluten laddares fasinkoppling, en laddare i taget.",
         "data": {
           "direct_L1": "L1 nätström",
           "direct_L2": "L2 nätström",
@@ -118,7 +118,13 @@
           "derived_L3_power_export": "L3 exporteffekt (valfri, när import och export är separata)",
           "derived_L3_reactive_power": "L3 reaktiv effekt (valfri)",
           "derived_L3_apparent_power": "L3 skenbar effekt (valfri)",
-          "derived_L3_current": "L3 ström (valfri)"
+          "derived_L3_current": "L3 ström (valfri)",
+          "derived_L1_power": "Effekt L1",
+          "derived_L1_voltage": "Spänning L1",
+          "derived_L2_power": "Effekt L2",
+          "derived_L2_voltage": "Spänning L2",
+          "derived_L3_power": "Effekt L3",
+          "derived_L3_voltage": "Spänning L3"
         }
       },
       "charger_manual_source": {
@@ -192,6 +198,24 @@
         "data": {
           "join": "Lägg till i anläggningen"
         }
+      },
+      "site_charger_wiring": {
+        "title": "Inkoppling för {charger}",
+        "description": "För en 1-fasladdare, ange uttryckligen vilken fas den är kopplad till -- en okänd fas innebär att ingen säker rekommendation någonsin kan beräknas för den. Laddarens egen uppmätta ström är valfri: välj ett hittat förslag, ange en entitet med fasattribut, ange tre separata entiteter (en per fas, som Charge Amps-integrationen ger) eller lämna som \"skip\" för att konfigurera det senare.",
+        "data": {
+          "phases": "Antal faser",
+          "phase": "Ansluten fas (1-fasladdare)",
+          "measured_source": "Källa för uppmätt ström (valfri)"
+        }
+      },
+      "charger_manual_entities": {
+        "title": "Laddarens uppmätta ström, en entitet per fas",
+        "description": "Välj sensorn som innehåller respektive fas ström. Endast entiteter på just den här laddarens enhet erbjuds, och varje entitet måste rapportera ampere (A eller mA).",
+        "data": {
+          "entity_L1": "Ström L1",
+          "entity_L2": "Ström L2",
+          "entity_L3": "Ström L3"
+        }
       }
     },
     "abort": {
@@ -223,7 +247,13 @@
       "control_path_unknown": "SpotNav kan inte avgöra hur en laddning startas och stoppas med den här entiteten. Välj laddarens strömbrytare, eller en väljare med tydliga start- och stoppalternativ.",
       "current_limit_required": "Välj laddströmsnumret som strömmen ska sättas genom.",
       "current_control_unsupported": "Det här sättet att sätta strömmen passar inte den här laddaren.",
-      "charger_no_answer": "Laddaren svarade inte, så SpotNav kan inte avgöra hur strömmen ställs in. Vänta tills den är ansluten och skicka igen, eller välj själv."
+      "charger_no_answer": "Laddaren svarade inte, så SpotNav kan inte avgöra hur strömmen ställs in. Vänta tills den är ansluten och skicka igen, eller välj själv.",
+      "unit_expected_current": "Sensorn måste rapportera ström i A eller mA.",
+      "unit_expected_power": "Sensorn måste rapportera effekt i W eller kW.",
+      "unit_expected_voltage": "Sensorn måste rapportera spänning i V.",
+      "unit_expected_reactive_power": "Sensorn måste rapportera reaktiv effekt i var eller kvar.",
+      "unit_expected_apparent_power": "Sensorn måste rapportera skenbar effekt i VA eller kVA.",
+      "manual_entities_duplicate": "Varje fas behöver en egen entitet."
     }
   },
   "options": {
@@ -267,8 +297,8 @@
         }
       },
       "site_details": {
-        "title": "Faskoppling och mätentiteter",
-        "description": "{reason}För en 1-fasladdare, ange uttryckligen vilken fas den är kopplad till -- en okänd fas innebär att ingen säker rekommendation någonsin kan beräknas för den. Endast entiteter som matchar vald mätkälla visas.",
+        "title": "Mätentiteter",
+        "description": "{reason}Välj elmätarens sensorer. Alla sensorer godtas; enheten kontrolleras när du fortsätter (ström i A eller mA, effekt i W eller kW, spänning i V, reaktiv effekt i var eller kvar, skenbar effekt i VA eller kVA). Endast fält som passar vald mätkälla visas. Därefter följer varje ansluten laddares fasinkoppling, en laddare i taget.",
         "data": {
           "direct_L1": "L1 nätström",
           "direct_L2": "L2 nätström",
@@ -286,7 +316,13 @@
           "derived_L3_power_export": "L3 exporteffekt (valfri, när import och export är separata)",
           "derived_L3_reactive_power": "L3 reaktiv effekt (valfri)",
           "derived_L3_apparent_power": "L3 skenbar effekt (valfri)",
-          "derived_L3_current": "L3 ström (valfri)"
+          "derived_L3_current": "L3 ström (valfri)",
+          "derived_L1_power": "Effekt L1",
+          "derived_L1_voltage": "Spänning L1",
+          "derived_L2_power": "Effekt L2",
+          "derived_L2_voltage": "Spänning L2",
+          "derived_L3_power": "Effekt L3",
+          "derived_L3_voltage": "Spänning L3"
         }
       },
       "charger_manual_source": {
@@ -312,6 +348,24 @@
           "unit": "Enhet för dessa attribut",
           "confirm_unverified": "Inget kunde verifieras -- spara ändå"
         }
+      },
+      "site_charger_wiring": {
+        "title": "Inkoppling för {charger}",
+        "description": "För en 1-fasladdare, ange uttryckligen vilken fas den är kopplad till -- en okänd fas innebär att ingen säker rekommendation någonsin kan beräknas för den. Laddarens egen uppmätta ström är valfri: välj ett hittat förslag, ange en entitet med fasattribut, ange tre separata entiteter (en per fas, som Charge Amps-integrationen ger) eller lämna som \"skip\" för att konfigurera det senare.",
+        "data": {
+          "phases": "Antal faser",
+          "phase": "Ansluten fas (1-fasladdare)",
+          "measured_source": "Källa för uppmätt ström (valfri)"
+        }
+      },
+      "charger_manual_entities": {
+        "title": "Laddarens uppmätta ström, en entitet per fas",
+        "description": "Välj sensorn som innehåller respektive fas ström. Endast entiteter på just den här laddarens enhet erbjuds, och varje entitet måste rapportera ampere (A eller mA).",
+        "data": {
+          "entity_L1": "Ström L1",
+          "entity_L2": "Ström L2",
+          "entity_L3": "Ström L3"
+        }
       }
     },
     "abort": {
@@ -327,7 +381,13 @@
       "manual_source_attributes_required": "Ange attributnamnet för den här fasen.",
       "manual_source_unverified": "Inget på den här entiteten matchar de attributnamnen just nu, och inget i historiken de senaste {lookback_days} dagarna gör det heller -- det kan vara en helt ny laddare, eller en felstavning. Kryssa i rutan spara ändå för att spara det trots det.",
       "yield_ceiling_below_fuse": "Eftergiftsstegets tak måste vara större än huvudsäkringen.",
-      "yield_ceiling_above_limit": "Taket måste ligga under 1,25 gånger huvudsäkringen: det är den last en gG-säkring ska klara i en timme utan att lösa ut, och ett provsteg får närma sig den men aldrig nå den."
+      "yield_ceiling_above_limit": "Taket måste ligga under 1,25 gånger huvudsäkringen: det är den last en gG-säkring ska klara i en timme utan att lösa ut, och ett provsteg får närma sig den men aldrig nå den.",
+      "unit_expected_current": "Sensorn måste rapportera ström i A eller mA.",
+      "unit_expected_power": "Sensorn måste rapportera effekt i W eller kW.",
+      "unit_expected_voltage": "Sensorn måste rapportera spänning i V.",
+      "unit_expected_reactive_power": "Sensorn måste rapportera reaktiv effekt i var eller kvar.",
+      "unit_expected_apparent_power": "Sensorn måste rapportera skenbar effekt i VA eller kVA.",
+      "manual_entities_duplicate": "Varje fas behöver en egen entitet."
     }
   },
   "selector": {

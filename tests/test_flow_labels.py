@@ -46,11 +46,6 @@ def _labels(language: str) -> dict[str, Any]:
     return json.loads((TRANSLATIONS / f"{language}.json").read_text(encoding="utf-8"))
 
 
-#: Fields named after a charger's entry id cannot have a translation key of their own; the form's text
-#: around them says which charger they belong to.
-PER_CHARGER_PREFIXES = ("phases_", "phase_", "measured_source_")
-
-
 def _assert_labelled(seen: dict[tuple[str, str], set[str]]) -> None:
     missing = []
     for (kind, step), fields in sorted(seen.items()):
@@ -59,7 +54,7 @@ def _assert_labelled(seen: dict[tuple[str, str], set[str]]) -> None:
             missing += [
                 f"{language} {kind}.{step}.{name}"
                 for name in sorted(fields)
-                if not data.get(name) and not name.startswith(PER_CHARGER_PREFIXES)
+                if not data.get(name)
             ]
     assert not missing, "fields shown without a label: " + ", ".join(missing)
 
@@ -153,4 +148,74 @@ async def test_every_config_form_labels_its_fields(
     flow.async_abort(result["flow_id"])
 
     assert {"user", "site", "site_current_suggestions", "site_details", "charger_type"} <= {step for kind, step in shown if kind == "config"}
+    _assert_labelled(shown)
+
+
+async def test_every_charger_wiring_step_labels_its_fields(
+    hass: HomeAssistant, shown: dict[tuple[str, str], set[str]]
+) -> None:
+    owner = make_ocpp_config_entry(hass, entry_id="owner")
+    switch = create_ocpp_charger_device(hass, ocpp_entry=owner, device_unique_id="c1", switch_object_id="c1")
+    charger = make_entry(hass, entry_id="c1", charge_control=switch, current_limit=None, webhook_id="h", title="C1")
+    flow = hass.config_entries.flow
+    meter = {"direct_L1": "sensor.a", "direct_L2": "sensor.b", "direct_L3": "sensor.c"}
+
+    for choice, manual_step in (("manual", "charger_manual_source"), ("manual_entities", "charger_manual_entities")):
+        # The create flow.
+        result = await flow.async_init(DOMAIN, context={"source": "user"})
+        result = await flow.async_configure(result["flow_id"], {"entry_type": "site"})
+        result = await flow.async_configure(
+            result["flow_id"],
+            {"name": "Home", "main_fuse_a": 25, "safety_margin_a": 1, "measurement_mode": "direct_phase_current", "charger_entry_ids": [charger.entry_id]},
+        )
+        assert result["step_id"] == "site_current_suggestions"
+        result = await flow.async_configure(result["flow_id"], {"choice": "manual"})
+        assert result["step_id"] == "site_details"
+        result = await flow.async_configure(result["flow_id"], meter)
+        assert result["step_id"] == "site_charger_wiring"
+        result = await flow.async_configure(result["flow_id"], {"phases": 1, "phase": "L2", "measured_source": choice})
+        assert result["step_id"] == manual_step
+        flow.async_abort(result["flow_id"])
+
+        # The options flow.
+        site = make_site_entry(hass, entry_id=f"site_{choice}", charger_entry_ids=[charger.entry_id])
+        result = await hass.config_entries.options.async_init(site.entry_id)
+        result = await hass.config_entries.options.async_configure(
+            result["flow_id"],
+            {
+                "name": "Site", "main_fuse_a": 25.0, "safety_margin_a": 1.0,
+                "measurement_mode": "direct_phase_current", "charger_entry_ids": [charger.entry_id],
+                "site_enabled": True, "change_measurement": True,
+            },
+        )
+        result = await hass.config_entries.options.async_configure(result["flow_id"], {"choice": "manual"})
+        assert result["step_id"] == "site_details"
+        result = await hass.config_entries.options.async_configure(result["flow_id"], meter)
+        assert result["step_id"] == "site_charger_wiring"
+        result = await hass.config_entries.options.async_configure(result["flow_id"], {"phases": 3, "measured_source": choice})
+        assert result["step_id"] == manual_step
+        hass.config_entries.options.async_abort(result["flow_id"])
+        await hass.config_entries.async_remove(site.entry_id)
+
+    for kind in ("config", "options"):
+        assert shown[(kind, "site_charger_wiring")] == {"phases", "phase", "measured_source"}
+        assert shown[(kind, "charger_manual_entities")] == {"entity_L1", "entity_L2", "entity_L3"}
+        assert (kind, "charger_manual_source") in shown
+    _assert_labelled(shown)
+
+
+async def test_derived_site_details_fields_are_labelled(
+    hass: HomeAssistant, shown: dict[tuple[str, str], set[str]]
+) -> None:
+    flow = hass.config_entries.flow
+    result = await flow.async_init(DOMAIN, context={"source": "user"})
+    result = await flow.async_configure(result["flow_id"], {"entry_type": "site"})
+    result = await flow.async_configure(
+        result["flow_id"],
+        {"name": "Home", "main_fuse_a": 25, "safety_margin_a": 1, "measurement_mode": "derived_phase_current", "charger_entry_ids": []},
+    )
+    assert result["step_id"] == "site_details"
+    flow.async_abort(result["flow_id"])
+
+    assert {"derived_L1_power", "derived_L3_voltage", "derived_L2_reactive_power", "grid_power_inverted"} <= shown[("config", "site_details")]
     _assert_labelled(shown)

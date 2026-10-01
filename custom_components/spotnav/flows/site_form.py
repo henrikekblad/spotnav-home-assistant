@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import logging
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any
 
 import voluptuous as vol
@@ -34,10 +34,13 @@ from .labels import (
     choice_option,
     MANUAL_ATTRIBUTES_CHOICE,
     MANUAL_CHOICE,
+    MANUAL_CHOICES,
+    MANUAL_ENTITIES_CHOICE,
     PHASES,
     SKIP_CHOICE,
 )
 from .site_confirm import candidate_label
+from .unit_check import unit_error
 from .measured_source import (
     charger_device_id,
     default_measured_choice,
@@ -48,7 +51,7 @@ from .measured_source import (
 
 _LOGGER = logging.getLogger(__name__)
 
-# Derived mode's optional per-phase sources and the device class each is picked by. Without any of
+# Derived mode's optional per-phase sources and the quantity (unit family) each must report. Without any of
 # `reactive_power`, `apparent_power` and `current` the fuse check estimates the current from power.
 DERIVED_OPTIONAL_SUBKEYS: tuple[tuple[str, str], ...] = (
     ("power_export", "power"),
@@ -241,8 +244,9 @@ def _available_charger_options(
 
 @dataclass(frozen=True, slots=True)
 class PendingSiteDetails:
-    """One `site_details` submission, held on the flow while the "manual" charger entries it asked for
-    are collected one at a time; carries what both flows need to finish saving it.
+    """One `site_details` submission, held on the flow while each associated charger's wiring is
+    collected (`async_step_site_charger_wiring`, one step per charger); carries what both flows need to
+    finish saving it. `charger_inputs` fills up as those steps are submitted, keyed by charger entry id.
     """
 
     details: dict[str, Any]
@@ -250,100 +254,106 @@ class PendingSiteDetails:
     mode: str
     skip_direct_fields: bool
     charger_candidates: dict[str, list[DiscoveryCandidate]]
+    charger_inputs: dict[str, dict[str, Any]] = field(default_factory=dict)
+
+
+def charger_wiring_schema(
+    hass,
+    charger_entry_id: str,
+    *,
+    existing: dict[str, Any] | None = None,
+    candidates: list[DiscoveryCandidate] | None = None,
+) -> vol.Schema:
+    """One charger's wiring: its phase count, the connected phase of a single-phase one and, when its
+    device resolves (`charger_device_id`), an optional measured-current source. The keys are fixed
+    (`phases`, `phase`, `measured_source`) so each has a translated label; which charger it is, is
+    said by the step's description.
+
+    The measured-current dropdown offers every discovered candidate, "manual" (one entity with
+    per-phase attribute names, `async_step_charger_manual_source`), "manual_entities" (three entities,
+    one per phase, `async_step_charger_manual_entities`) and "skip"; a charger with no device shows no
+    such field. `candidates` is what the async caller resolved (`async_charger_measured_candidates`);
+    the starting selection is `default_measured_choice`'s decision.
+    """
+    existing = existing or {}
+    candidates = candidates or []
+    schema_dict: dict[Any, Any] = {
+        vol.Required("phases", default=existing.get("phases", 3)): vol.In([1, 3])
+    }
+    phase_field: Any = vol.Optional("phase")
+    if existing.get("phase") is not None:
+        phase_field = vol.Optional("phase", description={"suggested_value": existing["phase"]})
+    schema_dict[phase_field] = vol.In(PHASES)
+    if charger_device_id(hass, charger_entry_id) is not None:
+        # Shown whenever the device resolves, even with no candidate: manual entry is what such a
+        # charger needs. Without a device there is nothing to list or check.
+        default_choice = default_measured_choice(
+            candidates, existing.get(CONF_MEASURED_CURRENT_SOURCE)
+        )
+        field_marker: Any = vol.Optional("measured_source")
+        if default_choice is not None:
+            field_marker = vol.Optional("measured_source", default=default_choice)
+        schema_dict[field_marker] = selector.SelectSelector(
+            selector.SelectSelectorConfig(
+                options=candidate_options(
+                    hass,
+                    candidates,
+                    manual_options=(
+                        choice_option(hass, "manual_attributes", value=MANUAL_CHOICE),
+                        choice_option(
+                            hass, "manual_separate_entities", value=MANUAL_ENTITIES_CHOICE
+                        ),
+                    ),
+                ),
+                mode=selector.SelectSelectorMode.DROPDOWN,
+            )
+        )
+    return vol.Schema(schema_dict)
 
 
 def site_details_schema(
     hass,
-    charger_entry_ids: list[str],
     mode: str,
     *,
-    phase_wiring_defaults: dict[str, dict[str, Any]] | None = None,
     direct_defaults: dict[str, str] | None = None,
     derived_defaults: dict[str, dict[str, str]] | None = None,
     skip_direct_fields: bool = False,
-    charger_candidates: dict[str, list[DiscoveryCandidate]] | None = None,
     flag_defaults: dict[str, bool] | None = None,
 ) -> vol.Schema:
-    """Per-charger phase wiring, plus the measurement entities for `mode`.
+    """The measurement entities for `mode`, plus the sign options.
 
     Shared by both flows; never includes derived-mode fields in direct mode or vice versa.
-    `*_defaults` pre-fill an existing site's values.
+    `*_defaults` pre-fill an existing site's values. The pickers take any `sensor`, since meter
+    readers without a device class are common; `site_details_unit_errors` checks the unit on submit.
 
     `skip_direct_fields` omits the direct-mode L1/L2/L3 pickers when the site's current was already
-    resolved as a single generic source or "skip".
-
-    Each charger whose device can be resolved (`charger_device_id`) also gets an optional
-    measured-current-source field: every discovered candidate
-    (`async_discover_charger_current_sources`), "manual" (one entity on that device with per-phase
-    attribute names, collected in `async_step_charger_manual_source`) and "skip". A charger with no
-    device shows no field.
-
-    `charger_candidates` is what the async caller resolved (`async_charger_measured_candidates`);
-    none means only "manual"/"skip", so this builder does no discovery. The starting selection is
-    `default_measured_choice`'s decision.
+    resolved as a single generic source or "skip". Each charger's own wiring is a step of its own
+    (`charger_wiring_schema`).
     """
-    phase_wiring_defaults = phase_wiring_defaults or {}
     direct_defaults = direct_defaults or {}
     derived_defaults = derived_defaults or {}
-    charger_candidates = charger_candidates or {}
+    sensor_picker = selector.EntitySelector(selector.EntitySelectorConfig(domain="sensor"))
     schema_dict: dict[Any, Any] = {}
-    for charger_entry_id in charger_entry_ids:
-        existing = phase_wiring_defaults.get(charger_entry_id) or {}
-        schema_dict[
-            vol.Required(f"phases_{charger_entry_id}", default=existing.get("phases", 3))
-        ] = vol.In([1, 3])
-        phase_field: Any = vol.Optional(f"phase_{charger_entry_id}")
-        if existing.get("phase") is not None:
-            phase_field = vol.Optional(
-                f"phase_{charger_entry_id}", description={"suggested_value": existing["phase"]}
-            )
-        schema_dict[phase_field] = vol.In(PHASES)
-
-        candidates = charger_candidates.get(charger_entry_id) or []
-        device_id = charger_device_id(hass, charger_entry_id)
-        if device_id is not None:
-            # Shown whenever the device resolves, even with no candidate: manual entry is what such
-            # a charger needs. Without a device there is nothing to list or check.
-            default_choice = default_measured_choice(
-                candidates, existing.get(CONF_MEASURED_CURRENT_SOURCE)
-            )
-            field = vol.Optional(f"measured_source_{charger_entry_id}")
-            if default_choice is not None:
-                field = vol.Optional(
-                    f"measured_source_{charger_entry_id}", default=default_choice
-                )
-            schema_dict[field] = selector.SelectSelector(
-                selector.SelectSelectorConfig(
-                    options=candidate_options(
-                        hass, candidates, manual_options=(choice_option(hass, MANUAL_CHOICE),)
-                    ),
-                    mode=selector.SelectSelectorMode.DROPDOWN,
-                )
-            )
     if not skip_direct_fields:
         if mode == MEASUREMENT_MODE_DIRECT:
             for phase in PHASES:
                 key = f"direct_{phase}"
-                field: Any = vol.Required(key, default=direct_defaults[phase]) if direct_defaults.get(
+                field_marker: Any = vol.Required(key, default=direct_defaults[phase]) if direct_defaults.get(
                     phase
                 ) else vol.Required(key)
-                schema_dict[field] = selector.EntitySelector(
-                    selector.EntitySelectorConfig(domain="sensor", device_class="current")
-                )
+                schema_dict[field_marker] = sensor_picker
         elif mode == MEASUREMENT_MODE_DERIVED:
             for phase in PHASES:
                 existing_phase = derived_defaults.get(phase) or {}
-                for sub_key, device_class in (("power", "power"), ("voltage", "voltage")):
+                for sub_key in ("power", "voltage"):
                     key = f"derived_{phase}_{sub_key}"
-                    field = (
+                    field_marker = (
                         vol.Required(key, default=existing_phase[sub_key])
                         if existing_phase.get(sub_key)
                         else vol.Required(key)
                     )
-                    schema_dict[field] = selector.EntitySelector(
-                        selector.EntitySelectorConfig(domain="sensor", device_class=device_class)
-                    )
-                for sub_key, device_class in DERIVED_OPTIONAL_SUBKEYS:
+                    schema_dict[field_marker] = sensor_picker
+                for sub_key, _quantity in DERIVED_OPTIONAL_SUBKEYS:
                     key = f"derived_{phase}_{sub_key}"
                     # A stored value is the field's default, not a suggestion: an untouched
                     # submission must keep the more exact source rather than silently fall back to
@@ -351,9 +361,7 @@ def site_details_schema(
                     optional: Any = vol.Optional(key)
                     if existing_phase.get(sub_key):
                         optional = vol.Optional(key, default=existing_phase[sub_key])
-                    schema_dict[optional] = selector.EntitySelector(
-                        selector.EntitySelectorConfig(domain="sensor", device_class=device_class)
-                    )
+                    schema_dict[optional] = sensor_picker
     flag_defaults = flag_defaults or {}
     schema_dict[
         vol.Optional(CONF_SITE_CURRENT_SIGNED, default=flag_defaults.get(CONF_SITE_CURRENT_SIGNED, False))
@@ -363,6 +371,29 @@ def site_details_schema(
             vol.Optional(CONF_GRID_POWER_INVERTED, default=flag_defaults.get(CONF_GRID_POWER_INVERTED, False))
         ] = bool
     return vol.Schema(schema_dict)
+
+
+def site_details_unit_errors(
+    hass, details: dict[str, Any], mode: str, *, skip_direct_fields: bool
+) -> dict[str, str]:
+    """Field -> error code for every picked site sensor whose unit is not the quantity's: current in A or
+    mA, power in W or kW, voltage in V, reactive power in var or kvar, apparent power in VA or kVA.
+    Empty when the submission is fine (or has no entity fields)."""
+    if skip_direct_fields:
+        return {}
+    checks: list[tuple[str, str]] = []
+    if mode == MEASUREMENT_MODE_DIRECT:
+        checks = [(f"direct_{phase}", "current") for phase in PHASES]
+    elif mode == MEASUREMENT_MODE_DERIVED:
+        for phase in PHASES:
+            checks += [(f"derived_{phase}_power", "power"), (f"derived_{phase}_voltage", "voltage")]
+            checks += [(f"derived_{phase}_{sub_key}", quantity) for sub_key, quantity in DERIVED_OPTIONAL_SUBKEYS]
+    errors: dict[str, str] = {}
+    for key, quantity in checks:
+        code = unit_error(hass, details.get(key), quantity)
+        if code is not None:
+            errors[key] = code
+    return errors
 
 
 def parse_site_flags(details: dict[str, Any], mode: str, stored: dict[str, Any] | None = None) -> dict[str, bool]:
@@ -386,6 +417,38 @@ def parse_site_flags(details: dict[str, Any], mode: str, stored: dict[str, Any] 
     return flags
 
 
+def parse_charger_wiring(
+    existing: dict[str, Any] | None,
+    inputs: dict[str, Any],
+    candidates: list[DiscoveryCandidate] | None = None,
+    manual_source: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    """One charger's stored wiring from its `site_charger_wiring` submission, merged onto `existing` so
+    fields the form did not show survive a save.
+
+    `candidates` must be what the form was built from; a `candidate_id` no longer among them is ignored
+    rather than stored. `manual_source` is what the manual steps collected (already fully checked); a
+    "manual" choice without one keeps what the charger had, and an untouched field changes nothing:
+    only an explicit "skip" clears a stored source.
+    """
+    wiring = dict(existing or {})
+    wiring["phases"] = inputs["phases"]
+    wiring["phase"] = inputs.get("phase")
+    choice = inputs.get("measured_source")
+    if choice is None:
+        return wiring
+    if choice == SKIP_CHOICE:
+        wiring.pop(CONF_MEASURED_CURRENT_SOURCE, None)
+    elif choice in MANUAL_CHOICES:
+        if manual_source is not None:
+            wiring[CONF_MEASURED_CURRENT_SOURCE] = manual_source
+    else:
+        chosen = next((c for c in candidates or [] if c.candidate_id == choice), None)
+        if chosen is not None:
+            wiring[CONF_MEASURED_CURRENT_SOURCE] = source_to_dict(chosen.mapping)
+    return wiring
+
+
 def parse_site_details(
     hass,
     details: dict[str, Any],
@@ -396,42 +459,26 @@ def parse_site_details(
     skip_direct_fields: bool = False,
     charger_candidates: dict[str, list[DiscoveryCandidate]] | None = None,
     manual_sources: dict[str, dict[str, Any]] | None = None,
+    charger_inputs: dict[str, dict[str, Any]] | None = None,
 ) -> tuple[dict[str, dict[str, Any]], dict[str, str], dict[str, dict[str, str]]]:
-    """The inverse of `site_details_schema`'s field naming, shared by both flows.
-
-    Merges onto `phase_wiring_defaults` per charger so fields the schema did not show are preserved
-    across a save.
-
-    `charger_candidates` must be the mapping `site_details_schema` was built from; a `candidate_id`
-    no longer among them is ignored rather than stored. `manual_sources` is what
-    `async_step_charger_manual_source` collected (by charger entry id, already fully checked); a
-    "manual" choice absent from it keeps what the charger had, and an untouched field changes
-    nothing: only an explicit "skip" clears a stored source.
+    """The inverse of `site_details_schema`'s field naming plus every charger's wiring, shared by both
+    flows. `charger_inputs` holds each charger's `site_charger_wiring` submission (see
+    `parse_charger_wiring`) and `manual_sources` what the manual steps collected, both by charger
+    entry id; the wiring merges onto `phase_wiring_defaults`.
     """
     phase_wiring_defaults = phase_wiring_defaults or {}
     charger_candidates = charger_candidates or {}
     manual_sources = manual_sources or {}
-    phase_wiring: dict[str, dict[str, Any]] = {}
-    for charger_entry_id in charger_entry_ids:
-        existing = dict(phase_wiring_defaults.get(charger_entry_id) or {})
-        existing["phases"] = details[f"phases_{charger_entry_id}"]
-        existing["phase"] = details.get(f"phase_{charger_entry_id}")
-        measured_choice = details.get(f"measured_source_{charger_entry_id}")
-        if measured_choice is not None:
-            if measured_choice == SKIP_CHOICE:
-                existing.pop(CONF_MEASURED_CURRENT_SOURCE, None)
-            elif measured_choice == MANUAL_CHOICE:
-                manual_source = manual_sources.get(charger_entry_id)
-                if manual_source is not None:
-                    existing[CONF_MEASURED_CURRENT_SOURCE] = manual_source
-            else:
-                candidates = charger_candidates.get(charger_entry_id) or []
-                chosen = next(
-                    (c for c in candidates if c.candidate_id == measured_choice), None
-                )
-                if chosen is not None:
-                    existing[CONF_MEASURED_CURRENT_SOURCE] = source_to_dict(chosen.mapping)
-        phase_wiring[charger_entry_id] = existing
+    charger_inputs = charger_inputs or {}
+    phase_wiring: dict[str, dict[str, Any]] = {
+        charger_entry_id: parse_charger_wiring(
+            phase_wiring_defaults.get(charger_entry_id),
+            charger_inputs[charger_entry_id],
+            charger_candidates.get(charger_entry_id),
+            manual_sources.get(charger_entry_id),
+        )
+        for charger_entry_id in charger_entry_ids
+    }
 
     direct_entities: dict[str, str] = {}
     derived_entities: dict[str, dict[str, str]] = {}
@@ -446,7 +493,7 @@ def parse_site_details(
                 "power": details[f"derived_{phase}_power"],
                 "voltage": details[f"derived_{phase}_voltage"],
             }
-            for sub_key, _device_class in DERIVED_OPTIONAL_SUBKEYS:
+            for sub_key, _quantity in DERIVED_OPTIONAL_SUBKEYS:
                 value = details.get(f"derived_{phase}_{sub_key}")
                 if value:
                     entry[sub_key] = value

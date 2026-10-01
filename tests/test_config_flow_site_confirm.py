@@ -101,9 +101,10 @@ async def test_an_unambiguous_detection_is_confirmed_and_equals_the_form_path(ha
     form = await hass.config_entries.flow.async_configure(result["flow_id"], {"choice": choice})
     form = await hass.config_entries.flow.async_configure(form["flow_id"], {"adjust": True})
     assert form["step_id"] == "site_details"
+    form = await hass.config_entries.flow.async_configure(form["flow_id"], {})
+    assert form["step_id"] == "site_charger_wiring"
     via_form = await hass.config_entries.flow.async_configure(
-        form["flow_id"],
-        {f"measured_source_{charger_ids[0]}": source_candidate(wiring, hass, charger_ids[0])},
+        form["flow_id"], {"measured_source": source_candidate(wiring, hass, charger_ids[0])}
     )
     form_data = dict(via_form["data"])
     for key in ("battery_aggregate_power_entity", "battery_discharge_power_entity", "battery_power_inverted"):

@@ -18,10 +18,14 @@ from ..vehicles.discovery import (
     async_discover_charger_current_sources,
     DiscoveryCandidate,
 )
+from .unit_check import unit_error
 from .labels import (
     DEFAULT_MANUAL_UNIT,
     MANUAL_ATTRIBUTE_KEY,
     MANUAL_CHOICE,
+    MANUAL_ENTITIES_CHOICE,
+    MANUAL_ENTITY_KEY,
+    MANUAL_ENTITIES_DUPLICATE_ERROR,
     MANUAL_SOURCE_ATTRIBUTES_ERROR,
     MANUAL_SOURCE_DEVICE_ERROR,
     MANUAL_SOURCE_ENTITY_ERROR,
@@ -178,13 +182,26 @@ def manual_attributes_source(stored_source: dict | None) -> bool:
     return isinstance(attributes, dict) and set(attributes) == set(PHASES)
 
 
+def manual_entities_source(stored_source: dict | None) -> bool:
+    """Whether a stored source is exactly what the manual-entities form can re-create: one entity per
+    phase, all three, and nothing else set (so an untouched save cannot rewrite anything else)."""
+    if not isinstance(stored_source, dict) or stored_source.get("kind") != "separate_entities":
+        return False
+    if stored_source.get("signed_current") or stored_source.get("attribute_unit_override"):
+        return False
+    if stored_source.get("trust_entity_unit_for_attributes"):
+        return False
+    entity_ids = stored_source.get("entity_ids")
+    return isinstance(entity_ids, dict) and set(entity_ids) == set(PHASES)
+
+
 def default_measured_choice(
     candidates: list[DiscoveryCandidate], stored_source: dict | None
 ) -> str | None:
     """Which option a charger's measured-current dropdown starts on.
 
     A stored source matching a discovered candidate keeps its id; one with the manual form's shape is
-    pre-selected as "manual"; anything else is left unselected, so an untouched form keeps the stored
+    pre-selected as "manual" (or "manual_entities" for three entities); anything else is left unselected, so an untouched form keeps the stored
     value (`parse_site_details` changes a source only for a value actually chosen). "skip" stays an
     explicit choice.
     """
@@ -195,18 +212,9 @@ def default_measured_choice(
         return matched
     if manual_attributes_source(stored_source):
         return MANUAL_CHOICE
+    if manual_entities_source(stored_source):
+        return MANUAL_ENTITIES_CHOICE
     return None
-
-
-def manual_charger_entry_ids(details: dict[str, Any], charger_entry_ids: list[str]) -> list[str]:
-    """Every charger whose submitted `measured_source_<id>` was "manual", in the site's charger order:
-    the queue `async_step_charger_manual_source` walks. Shared by the create and options flows.
-    """
-    return [
-        charger_entry_id
-        for charger_entry_id in charger_entry_ids
-        if details.get(f"measured_source_{charger_entry_id}") == MANUAL_CHOICE
-    ]
 
 
 @dataclass(frozen=True, slots=True)
@@ -380,5 +388,72 @@ async def async_manual_source_step(
                 attributes=attributes,
                 attribute_unit_override=unit,
             )
+        ),
+    )
+
+
+def _manual_entities_schema(*, defaults: dict[str, str]) -> vol.Schema:
+    """The three-entity form: one picker per phase, pre-filled by suggestion (a cleared one stays cleared).
+    Any `sensor` is offered, since a charger's phase sensors may state no device class; the entity's
+    device and unit are checked on submit by `manual_entities_step`."""
+    schema_dict: dict[Any, Any] = {}
+    for phase in PHASES:
+        key = MANUAL_ENTITY_KEY.format(phase=phase)
+        marker: Any = vol.Required(key)
+        if defaults.get(phase):
+            marker = vol.Required(key, description={"suggested_value": defaults[phase]})
+        schema_dict[marker] = selector.EntitySelector(
+            selector.EntitySelectorConfig(domain="sensor")
+        )
+    return vol.Schema(schema_dict)
+
+
+def manual_entities_step(
+    hass,
+    *,
+    scope: _DeviceScope,
+    stored_source: dict[str, Any] | None,
+    user_input: dict[str, Any] | None,
+) -> _ManualSourceStep:
+    """Render, or validate one submission of, the three-entity form for a charger's measured current.
+
+    Per phase, in order: the entity must exist in the registry and be a `sensor`; it must be inside
+    `scope`; its unit must be amperes ("A" or "mA"). Each phase needs an entity of its own. Every
+    failure is an error on that field. A source is returned only when all pass.
+    """
+    stored = (stored_source or {}).get("entity_ids") if manual_entities_source(stored_source) else None
+    submitted = {
+        phase: user_input.get(MANUAL_ENTITY_KEY.format(phase=phase)) for phase in PHASES
+    } if user_input is not None else {}
+    defaults = {phase: (submitted.get(phase) or (stored or {}).get(phase) or "") for phase in PHASES}
+    schema = _manual_entities_schema(defaults=defaults)
+    if user_input is None:
+        return _ManualSourceStep(schema, {}, {}, None)
+
+    errors: dict[str, str] = {}
+    registry = er.async_get(hass)
+    for phase in PHASES:
+        key = MANUAL_ENTITY_KEY.format(phase=phase)
+        entity_id = submitted[phase]
+        entry = registry.async_get(entity_id) if isinstance(entity_id, str) else None
+        if entry is None or entry.domain != "sensor":
+            errors[key] = MANUAL_SOURCE_ENTITY_ERROR
+        elif not scope.allows(entry.device_id):
+            errors[key] = scope.device_error
+        elif (code := unit_error(hass, entity_id, "current")) is not None:
+            errors[key] = code
+    picked = [e for e in submitted.values() if isinstance(e, str)]
+    if not errors and len(set(picked)) != len(PHASES):
+        for phase in PHASES:
+            if picked.count(submitted[phase]) > 1:
+                errors[MANUAL_ENTITY_KEY.format(phase=phase)] = MANUAL_ENTITIES_DUPLICATE_ERROR
+    if errors:
+        return _ManualSourceStep(schema, errors, {}, None)
+    return _ManualSourceStep(
+        schema,
+        {},
+        {},
+        source_to_dict(
+            PhaseMeasurementSource(kind="separate_entities", entity_ids=dict(submitted))
         ),
     )

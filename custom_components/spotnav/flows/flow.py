@@ -111,15 +111,13 @@ from ..vehicles.ocpp_identity import (
 from ..vehicles.vehicle_discovery import discover_ambiguous_vehicles
 from ..execution.charger_adapter import assigned_amps_for_connector, read_assigned_current_value
 from ..execution.charger_entities import control_path_for_entity, own_mode_conflicts
+from .charger_wiring import ChargerWiringSteps
 from .charger_detection import detect_charger, DetectedCharger, identifier_domains
 from .labels import current_control_selector, MANUAL_ATTRIBUTES_CHOICE, SKIP_CHOICE
 from .measured_source import (
     async_charger_measured_candidates,
     async_manual_source_step,
-    charger_device_id,
     charger_device_ids,
-    charger_device_scope,
-    manual_charger_entry_ids,
     site_device_scope,
 )
 from .options import SiteCapacityOptionsFlow, SpotNavChargingOptionsFlow
@@ -136,6 +134,8 @@ from .site_form import (
     site_default_current_choice,
     site_detected_schema,
     site_details_schema,
+    site_details_unit_errors,
+    charger_wiring_schema,
 )
 
 
@@ -164,7 +164,7 @@ _DETECTED_TEXT: dict[str, dict[str, str]] = {
 FIELD_CHARGING_STATE_ENTITY = "charging_state_entity"
 
 
-class SpotNavChargingConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
+class SpotNavChargingConfigFlow(ChargerWiringSteps, config_entries.ConfigFlow, domain=DOMAIN):
     """Configure SpotNav charging control."""
 
     VERSION = CONFIG_ENTRY_VERSION
@@ -202,11 +202,8 @@ class SpotNavChargingConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         self._site_battery: BatteryCandidate | None = None
         self._site_detected: MeterCandidate | None = None
         self._enable_detected_entities = False
-        # Set when a `site_details` submission chose "manual" for a charger: that submission and
-        # the queue of chargers whose manual entry is still being collected.
-        self._pending_site: PendingSiteDetails | None = None
-        self._pending_manual_charger_ids: list[str] = []
-        self._manual_measured_sources: dict[str, dict[str, Any]] = {}
+        # The `site_details` submission while each charger's wiring is collected (`ChargerWiringSteps`).
+        self._init_charger_wiring()
         # Set from the request that started this flow. It creates no config entry either: it
         # records a person's approval or refusal of one pairing request and aborts.
         self._pairing_request_id: str | None = None
@@ -1022,26 +1019,33 @@ class SpotNavChargingConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         direct_defaults, derived_defaults, flag_defaults = detected_defaults(chosen)
         schema = site_details_schema(
             self.hass,
-            charger_entry_ids,
             mode,
             direct_defaults=direct_defaults,
             derived_defaults=derived_defaults,
             skip_direct_fields=skip_direct_fields,
-            charger_candidates=charger_candidates,
             flag_defaults=flag_defaults,
         )
         try:
             details = dict(schema({}))
         except vol.Invalid:
             return None
+        if site_details_unit_errors(self.hass, details, mode, skip_direct_fields=skip_direct_fields):
+            return None
         chargers = []
+        charger_inputs: dict[str, dict[str, Any]] = {}
         for charger_entry_id in charger_entry_ids:
             found = charger_candidates.get(charger_entry_id) or []
             entry = self.hass.config_entries.async_get_entry(charger_entry_id)
             if len(found) != 1 or entry is None:
                 return None
-            details[f"measured_source_{charger_entry_id}"] = found[0].candidate_id
-            chargers.append((entry.title, details[f"phases_{charger_entry_id}"], found[0]))
+            wiring_defaults = charger_wiring_schema(
+                self.hass, charger_entry_id, candidates=found
+            )({})
+            charger_inputs[charger_entry_id] = {
+                **wiring_defaults,
+                "measured_source": found[0].candidate_id,
+            }
+            chargers.append((entry.title, wiring_defaults["phases"], found[0]))
         batteries = [b for b in self._detected_batteries if b.integration == chosen.integration]
         battery = batteries[0] if len(batteries) == 1 else None
         summary = site_confirm_summary(self.hass, candidate=chosen, battery=battery, chargers=chargers)
@@ -1051,6 +1055,7 @@ class SpotNavChargingConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             mode=mode,
             skip_direct_fields=skip_direct_fields,
             charger_candidates=charger_candidates,
+            charger_inputs=charger_inputs,
         )
         return pending, summary, battery
 
@@ -1148,22 +1153,15 @@ class SpotNavChargingConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             MANUAL_ATTRIBUTES_CHOICE,
             SKIP_CHOICE,
         )
-        # Resolved once and reused by schema and parser: per-charger discovery is asynchronous
-        # (Recorder) while those two are synchronous.
-        charger_candidates = await async_charger_measured_candidates(
-            self.hass, charger_entry_ids
-        )
         direct_defaults, derived_defaults, flag_defaults = (
             detected_defaults(self._site_detected) if self._site_detected is not None else ({}, {}, {})
         )
         schema = site_details_schema(
             self.hass,
-            charger_entry_ids,
             mode,
             direct_defaults=direct_defaults,
             derived_defaults=derived_defaults,
             skip_direct_fields=skip_direct_fields,
-            charger_candidates=charger_candidates,
             flag_defaults=flag_defaults,
         )
         if user_input is not None:
@@ -1175,66 +1173,30 @@ class SpotNavChargingConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                     data_schema=site_basic_schema(self.hass, defaults=self._site_basic),
                     errors=errors,
                 )
+            errors = site_details_unit_errors(
+                self.hass, user_input, mode, skip_direct_fields=skip_direct_fields
+            )
+            if errors:
+                return self.async_show_form(
+                    step_id="site_details",
+                    data_schema=self.add_suggested_values_to_schema(schema, user_input),
+                    errors=errors,
+                )
+            # Resolved once and reused by every charger's wiring step and the parser: per-charger
+            # discovery is asynchronous (Recorder) while the form builders are synchronous.
             pending = PendingSiteDetails(
                 details=user_input,
                 charger_entry_ids=charger_entry_ids,
                 mode=mode,
                 skip_direct_fields=skip_direct_fields,
-                charger_candidates=charger_candidates,
+                charger_candidates=await async_charger_measured_candidates(
+                    self.hass, charger_entry_ids
+                ),
             )
-            manual_ids = manual_charger_entry_ids(user_input, charger_entry_ids)
-            if manual_ids:
-                # "Manual" chargers are collected first, one per step, so the saved site never
-                # holds a placeholder.
-                self._pending_site = pending
-                self._pending_manual_charger_ids = manual_ids
-                self._manual_measured_sources = {}
-                return await self.async_step_charger_manual_source()
+            if charger_entry_ids:
+                return await self._begin_charger_wiring(pending)
             return await self._create_site_entry(pending, {})
         return self.async_show_form(step_id="site_details", data_schema=schema)
-
-    async def async_step_charger_manual_source(
-        self, user_input: dict[str, Any] | None = None
-    ) -> ConfigFlowResult:
-        """Collect one charger's manually entered measured-current source.
-
-        Reached from `async_step_site_details`, once per charger that chose "manual", in the site's
-        charger order; the last falls through to creating the entry. `SiteCapacityOptionsFlow` has the
-        identical step and differs only in `_finish_pending_site`.
-        """
-        if not self._pending_manual_charger_ids:
-            return await self._finish_pending_site()
-        charger_entry_id = self._pending_manual_charger_ids[0]
-        if charger_device_id(self.hass, charger_entry_id) is None:
-            # This charger's device no longer resolves: skip it and leave what it had untouched
-            # (`parse_site_details` only changes a source it was handed one for).
-            _LOGGER.warning(
-                "Skipping the manual measured-current entry for charger %s: "
-                "its own device could not be resolved",
-                charger_entry_id,
-            )
-            self._pending_manual_charger_ids.pop(0)
-            return await self.async_step_charger_manual_source()
-        outcome = await async_manual_source_step(
-            self.hass,
-            scope=charger_device_scope(self.hass, charger_entry_id),
-            stored_source=self._stored_measured_source(charger_entry_id),
-            user_input=user_input,
-        )
-        if outcome.source is None:
-            return self.async_show_form(
-                step_id="charger_manual_source",
-                data_schema=outcome.schema,
-                errors=outcome.errors,
-                description_placeholders=outcome.description_placeholders,
-            )
-        self._manual_measured_sources[charger_entry_id] = outcome.source
-        self._pending_manual_charger_ids.pop(0)
-        return await self.async_step_charger_manual_source()
-
-    def _stored_measured_source(self, charger_entry_id: str) -> dict[str, Any] | None:
-        """Brand-new site: no stored measured-current source yet (the options flow overrides this)."""
-        return None
 
     async def _finish_pending_site(self) -> ConfigFlowResult:
         """Save the site whose `site_details` submission started this run of manual entries (the create
@@ -1243,6 +1205,16 @@ class SpotNavChargingConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         if self._pending_site is None:
             # Unreachable from the UI (`_pending_site` is stored first); abort if that ever fails.
             return self.async_abort(reason="no_pending_site")
+        # The chargers' wiring steps took time: another site may have claimed one meanwhile.
+        errors = site_membership_errors(
+            self.hass, charger_entry_ids=self._pending_site.charger_entry_ids
+        )
+        if errors:
+            return self.async_show_form(
+                step_id="site",
+                data_schema=site_basic_schema(self.hass, defaults=self._site_basic),
+                errors=errors,
+            )
         return await self._create_site_entry(self._pending_site, self._manual_measured_sources)
 
     async def _create_site_entry(
@@ -1259,6 +1231,7 @@ class SpotNavChargingConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             skip_direct_fields=pending.skip_direct_fields,
             charger_candidates=pending.charger_candidates,
             manual_sources=manual_sources,
+            charger_inputs=pending.charger_inputs,
         )
         data = {
             CONF_ENTRY_TYPE: ENTRY_TYPE_SITE,

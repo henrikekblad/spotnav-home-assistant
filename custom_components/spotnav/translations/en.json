@@ -99,8 +99,8 @@
         }
       },
       "site_details": {
-        "title": "Phase wiring and measurement entities",
-        "description": "For a single-phase charger, choose the connected phase explicitly -- an unknown phase means no safe recommendation can ever be calculated for it. Only entities matching the chosen measurement source are shown. Each charger's own measured current is optional: pick a discovered suggestion, choose \"manual\" to enter an entity and its per-phase attribute names yourself, or leave it as \"skip\" to configure it later.",
+        "title": "Measurement entities",
+        "description": "Pick the grid meter's sensors. Any sensor is accepted; its unit is checked when you continue (current in A or mA, power in W or kW, voltage in V, reactive power in var or kvar, apparent power in VA or kVA). Only fields matching the chosen measurement source are shown. Each associated charger's phase wiring follows, one charger at a time.",
         "data": {
           "direct_L1": "L1 grid current",
           "direct_L2": "L2 grid current",
@@ -118,7 +118,13 @@
           "derived_L3_power_export": "L3 export power (optional, when import and export are separate)",
           "derived_L3_reactive_power": "L3 reactive power (optional)",
           "derived_L3_apparent_power": "L3 apparent power (optional)",
-          "derived_L3_current": "L3 current (optional)"
+          "derived_L3_current": "L3 current (optional)",
+          "derived_L1_power": "L1 power",
+          "derived_L1_voltage": "L1 voltage",
+          "derived_L2_power": "L2 power",
+          "derived_L2_voltage": "L2 voltage",
+          "derived_L3_power": "L3 power",
+          "derived_L3_voltage": "L3 voltage"
         }
       },
       "charger_manual_source": {
@@ -192,6 +198,24 @@
         "data": {
           "join": "Add it to the site"
         }
+      },
+      "site_charger_wiring": {
+        "title": "Wiring for {charger}",
+        "description": "For a single-phase charger, choose the connected phase explicitly -- an unknown phase means no safe recommendation can ever be calculated for it. The charger's own measured current is optional: pick a discovered suggestion, enter one entity with per-phase attributes, enter three separate entities (one per phase, as the Charge Amps integration provides), or leave it as \"skip\" to configure it later.",
+        "data": {
+          "phases": "Number of phases",
+          "phase": "Connected phase (single-phase chargers)",
+          "measured_source": "Measured current source (optional)"
+        }
+      },
+      "charger_manual_entities": {
+        "title": "Charger measured current, one entity per phase",
+        "description": "Pick the sensor holding each phase's current. Only entities registered on this charger's own device are offered, and each must report amperes (A or mA).",
+        "data": {
+          "entity_L1": "L1 current",
+          "entity_L2": "L2 current",
+          "entity_L3": "L3 current"
+        }
       }
     },
     "abort": {
@@ -223,7 +247,13 @@
       "control_path_unknown": "SpotNav cannot tell how to start and stop a charge with this entity. Choose the charger's switch, or a select with clear start and stop options.",
       "current_limit_required": "Choose the charging current number to set it through.",
       "current_control_unsupported": "This way of setting the current does not fit this charger.",
-      "charger_no_answer": "The charger did not answer, so SpotNav cannot tell how its current is set. Wait until it is connected and submit again, or choose yourself."
+      "charger_no_answer": "The charger did not answer, so SpotNav cannot tell how its current is set. Wait until it is connected and submit again, or choose yourself.",
+      "unit_expected_current": "This sensor must report current in A or mA.",
+      "unit_expected_power": "This sensor must report power in W or kW.",
+      "unit_expected_voltage": "This sensor must report voltage in V.",
+      "unit_expected_reactive_power": "This sensor must report reactive power in var or kvar.",
+      "unit_expected_apparent_power": "This sensor must report apparent power in VA or kVA.",
+      "manual_entities_duplicate": "Each phase needs its own entity."
     }
   },
   "options": {
@@ -267,8 +297,8 @@
         }
       },
       "site_details": {
-        "title": "Phase wiring and measurement entities",
-        "description": "{reason}For a single-phase charger, choose the connected phase explicitly -- an unknown phase means no safe recommendation can ever be calculated for it. Only entities matching the chosen measurement source are shown.",
+        "title": "Measurement entities",
+        "description": "{reason}Pick the grid meter's sensors. Any sensor is accepted; its unit is checked when you continue (current in A or mA, power in W or kW, voltage in V, reactive power in var or kvar, apparent power in VA or kVA). Only fields matching the chosen measurement source are shown. Each associated charger's phase wiring follows, one charger at a time.",
         "data": {
           "direct_L1": "L1 grid current",
           "direct_L2": "L2 grid current",
@@ -286,7 +316,13 @@
           "derived_L3_power_export": "L3 export power (optional, when import and export are separate)",
           "derived_L3_reactive_power": "L3 reactive power (optional)",
           "derived_L3_apparent_power": "L3 apparent power (optional)",
-          "derived_L3_current": "L3 current (optional)"
+          "derived_L3_current": "L3 current (optional)",
+          "derived_L1_power": "L1 power",
+          "derived_L1_voltage": "L1 voltage",
+          "derived_L2_power": "L2 power",
+          "derived_L2_voltage": "L2 voltage",
+          "derived_L3_power": "L3 power",
+          "derived_L3_voltage": "L3 voltage"
         }
       },
       "charger_manual_source": {
@@ -312,6 +348,24 @@
           "unit": "Unit of those attributes",
           "confirm_unverified": "Nothing could be verified -- save anyway"
         }
+      },
+      "site_charger_wiring": {
+        "title": "Wiring for {charger}",
+        "description": "For a single-phase charger, choose the connected phase explicitly -- an unknown phase means no safe recommendation can ever be calculated for it. The charger's own measured current is optional: pick a discovered suggestion, enter one entity with per-phase attributes, enter three separate entities (one per phase, as the Charge Amps integration provides), or leave it as \"skip\" to configure it later.",
+        "data": {
+          "phases": "Number of phases",
+          "phase": "Connected phase (single-phase chargers)",
+          "measured_source": "Measured current source (optional)"
+        }
+      },
+      "charger_manual_entities": {
+        "title": "Charger measured current, one entity per phase",
+        "description": "Pick the sensor holding each phase's current. Only entities registered on this charger's own device are offered, and each must report amperes (A or mA).",
+        "data": {
+          "entity_L1": "L1 current",
+          "entity_L2": "L2 current",
+          "entity_L3": "L3 current"
+        }
       }
     },
     "abort": {
@@ -327,7 +381,13 @@
       "manual_source_attributes_required": "Enter the attribute name for this phase.",
       "manual_source_unverified": "Nothing on this entity currently matches those attribute names, and nothing in the last {lookback_days} days of history does either -- this may be a brand-new charger, or a typo. Tick \"save anyway\" to store it regardless.",
       "yield_ceiling_below_fuse": "The yield-stepping ceiling must be greater than the main fuse rating.",
-      "yield_ceiling_above_limit": "The ceiling must be below 1.25 times the main fuse: that is the load a gG fuse must carry for an hour without blowing, and a probe step may approach it but never reach it."
+      "yield_ceiling_above_limit": "The ceiling must be below 1.25 times the main fuse: that is the load a gG fuse must carry for an hour without blowing, and a probe step may approach it but never reach it.",
+      "unit_expected_current": "This sensor must report current in A or mA.",
+      "unit_expected_power": "This sensor must report power in W or kW.",
+      "unit_expected_voltage": "This sensor must report voltage in V.",
+      "unit_expected_reactive_power": "This sensor must report reactive power in var or kvar.",
+      "unit_expected_apparent_power": "This sensor must report apparent power in VA or kVA.",
+      "manual_entities_duplicate": "Each phase needs its own entity."
     }
   },
   "selector": {
