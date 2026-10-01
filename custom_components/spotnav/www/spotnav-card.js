@@ -1313,6 +1313,9 @@ var VISUAL_STYLES = `
     align-items: flex-start;
   }
   .${VISUAL_CLASSES.nameBlock} > .${VISUAL_CLASSES.name} {
+    /* A two-line title: no heading margins, so the vehicle line reads as the name's subtitle. */
+    margin: 0;
+    line-height: 1.25;
     flex: 0 0 auto;
     max-width: 100%;
   }
@@ -1322,9 +1325,9 @@ var VISUAL_STYLES = `
     align-items: center;
     gap: 4px;
     max-width: 100%;
-    min-height: 32px;
-    margin: -4px 0 -4px -4px;
-    padding: 4px;
+    min-height: 28px;
+    margin: 0 0 -4px -4px;
+    padding: 2px 4px;
     font: inherit;
     font-size: 0.85rem;
     color: var(--secondary-text-color, #727272);
