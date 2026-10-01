@@ -21,6 +21,7 @@ confirmation; nothing here writes a config entry or calls a service.
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import re
 from collections.abc import Iterable
@@ -52,10 +53,31 @@ REASON_SEPARATE_ENTITIES_UNIT_MATCH_ONLY = "separate_entities_unit_match_only"
 REASON_SEPARATE_ENTITIES_NAME_MATCH_ONLY = "separate_entities_name_match_only"
 REASON_POSSIBLE_INVERTER_OUTPUT = "possible_inverter_output_not_confirmed_as_grid_input"
 
-# How far back Recorder history is searched. An upper bound only (Home
-# Assistant's default `purge_keep_days` is 10); a shorter window can only miss
-# a candidate, never produce a wrong one.
-_HISTORY_LOOKBACK_DAYS = 30
+# How far back Recorder history is searched. An upper bound only; a shorter
+# window can only miss a candidate, never produce a wrong one. Kept short because
+# the query reads every row with attributes for the entity in the window.
+_HISTORY_LOOKBACK_DAYS = 2
+
+# A history read that takes longer than this is abandoned: discovery then offers
+# live candidates only, so a config flow never hangs on a large database.
+_HISTORY_TIMEOUT_SECONDS = 10
+
+# Attributes every sensor state carries. An entity with nothing beyond these can
+# never have had phase attributes, so its history is not worth reading.
+_STANDARD_ATTRIBUTES = frozenset(
+    {
+        "unit_of_measurement",
+        "device_class",
+        "state_class",
+        "friendly_name",
+        "icon",
+        "attribution",
+        "supported_features",
+        "entity_picture",
+        "options",
+        "suggested_display_precision",
+    }
+)
 
 # A historical-only match is reported one tier below the equivalent live match.
 _HISTORICAL_CONFIDENCE: dict[Confidence, Confidence] = {
@@ -145,18 +167,13 @@ def discover_site_current_sources(
 async def async_discover_site_current_sources(
     hass: HomeAssistant, *, excluded_device_ids: set[str] | None = None
 ) -> list[DiscoveryCandidate]:
-    """`discover_site_current_sources` plus the Recorder-history fallback.
+    """Site-current candidates from live state, never from Recorder history.
 
-    History reads are blocking database I/O and run in an executor. The
-    separate-entities half stays live-only: per-phase entities exist in the state
-    machine whether or not a session is running.
+    The site's own measurement is live by nature, and a grid meter can update every
+    second, so its history is both unnecessary and potentially enormous. Async only
+    to keep the call shape shared with the charger variant.
     """
-    excluded = excluded_device_ids or set()
-    candidates = await _async_discover_attribute_candidates(
-        hass, "site_current", excluded_device_ids=excluded
-    )
-    candidates += _discover_separate_entity_candidates(hass, "site_current", excluded_device_ids=excluded)
-    return _ranked(candidates)
+    return discover_site_current_sources(hass, excluded_device_ids=excluded_device_ids)
 
 
 def discover_charger_current_sources(
@@ -227,8 +244,8 @@ async def _async_discover_attribute_candidates(
 ) -> list[DiscoveryCandidate]:
     """`_discover_attribute_candidates` plus a Recorder-history fallback.
 
-    Recorder is touched only for entities that passed the device filter and have no
-    complete phase mapping live, and not at all if there are none.
+    Recorder is touched only for entities that passed the device filter, carry
+    non-standard attributes and have no complete phase mapping live, and not at all if there are none.
     """
     live, pending = _attribute_scan(
         hass,
@@ -285,7 +302,8 @@ def _attribute_scan(
             continue
         # Valid parent unit but no complete live mapping: the only case where
         # history is consulted.
-        pending.append((entry.entity_id, state))
+        if set(state.attributes) - _STANDARD_ATTRIBUTES:
+            pending.append((entry.entity_id, state))
     return results, pending
 
 
@@ -364,6 +382,8 @@ async def _async_historical_phase_matches(
     * **Optional, never fatal.** No `recorder`, an empty database or a failing
       query all mean "no historical candidates", never an exception in a config flow.
     * **Off the event loop.** `get_significant_states` is blocking I/O.
+    * **Bounded.** After `_HISTORY_TIMEOUT_SECONDS` the read is abandoned and no
+      historical candidates are reported.
     """
     if not entity_ids:
         return {}
@@ -373,9 +393,15 @@ async def _async_historical_phase_matches(
         return {}
     start_time = dt_util.utcnow() - timedelta(days=_HISTORY_LOOKBACK_DAYS)
     try:
-        return await get_instance(hass).async_add_executor_job(
-            _history_phase_matches, hass, entity_ids, start_time
+        async with asyncio.timeout(_HISTORY_TIMEOUT_SECONDS):
+            return await get_instance(hass).async_add_executor_job(
+                _history_phase_matches, hass, entity_ids, start_time
+            )
+    except TimeoutError:
+        _LOGGER.debug(
+            "Recorder history lookup for discovery timed out after %s s", _HISTORY_TIMEOUT_SECONDS
         )
+        return {}
     except Exception as err:  # noqa: BLE001 -- see this function's docstring
         _LOGGER.warning("Recorder history lookup for discovery failed: %s", err)
         return {}

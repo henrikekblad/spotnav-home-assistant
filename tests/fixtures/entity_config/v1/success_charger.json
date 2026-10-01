@@ -309,32 +309,6 @@
           {
             "applied": false,
             "confidence": "high",
-            "current_signed": false,
-            "disabled_entities": [
-              "sensor.easee_equalizer_current"
-            ],
-            "entities": [
-              {
-                "disabled": true,
-                "entity_id": "sensor.easee_equalizer_current",
-                "friendly_name": "sensor.easee_equalizer_current",
-                "phase": null,
-                "role": "current"
-              }
-            ],
-            "estimated": false,
-            "id": "easee:easee_easee:equalizer",
-            "integration": "easee",
-            "mode": "direct_phase_current",
-            "power_inverted": false,
-            "title": "Easee Equalizer",
-            "warnings": [
-              "own_load_balancing"
-            ]
-          },
-          {
-            "applied": false,
-            "confidence": "high",
             "current_signed": true,
             "disabled_entities": [
               "sensor.meter_voltage_a",
@@ -618,6 +592,32 @@
             "power_inverted": true,
             "title": "solaredge_modbus_multi",
             "warnings": []
+          },
+          {
+            "applied": false,
+            "confidence": "high",
+            "current_signed": false,
+            "disabled_entities": [
+              "sensor.easee_equalizer_current"
+            ],
+            "entities": [
+              {
+                "disabled": true,
+                "entity_id": "sensor.easee_equalizer_current",
+                "friendly_name": "sensor.easee_equalizer_current",
+                "phase": null,
+                "role": "current"
+              }
+            ],
+            "estimated": false,
+            "id": "easee:easee_easee:equalizer",
+            "integration": "easee",
+            "mode": "direct_phase_current",
+            "power_inverted": false,
+            "title": "Easee Equalizer",
+            "warnings": [
+              "own_load_balancing"
+            ]
           }
         ]
       },

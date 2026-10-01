@@ -11,6 +11,8 @@ module-level override below shadows it for this file only.
 
 from __future__ import annotations
 
+import time
+
 import pytest
 from homeassistant.core import HomeAssistant
 from homeassistant.data_entry_flow import FlowResultType
@@ -83,7 +85,7 @@ def _sensor(
         suggested_object_id=object_id,
     )
     hass.states.async_set(
-        entry.entity_id, "0", {"device_class": device_class, "unit_of_measurement": unit}
+        entry.entity_id, "0", {"device_class": device_class, "unit_of_measurement": unit, "connector_id": 1}
     )
     return entry.entity_id
 
@@ -103,11 +105,11 @@ async def _record_one_charging_session(
     hass.states.async_set(
         entity_id,
         "6.2",
-        {"device_class": "current", "unit_of_measurement": "A", **phase_attributes},
+        {"device_class": "current", "unit_of_measurement": "A", "connector_id": 1, **phase_attributes},
     )
     await async_wait_recording_done(hass)
     hass.states.async_set(
-        entity_id, "0", {"device_class": "current", "unit_of_measurement": "A"}
+        entity_id, "0", {"device_class": "current", "unit_of_measurement": "A", "connector_id": 1}
     )
     await async_wait_recording_done(hass)
 
@@ -197,7 +199,7 @@ async def test_an_entity_with_no_historical_phase_match_is_not_fabricated(
     )
     await async_wait_recording_done(hass)
     hass.states.async_set(
-        entity_id, "0", {"device_class": "current", "unit_of_measurement": "A"}
+        entity_id, "0", {"device_class": "current", "unit_of_measurement": "A", "connector_id": 1}
     )
     await async_wait_recording_done(hass)
 
@@ -232,7 +234,7 @@ async def test_discovery_without_recorder_still_works_and_does_not_raise(
     # still is one.
     hass.states.async_set(
         history_only_entity_id, "0",
-        {"device_class": "current", "unit_of_measurement": "A"},
+        {"device_class": "current", "unit_of_measurement": "A", "connector_id": 1},
     )
     hass.states.async_set(
         live_entity_id,
@@ -279,7 +281,7 @@ async def test_phase_attributes_that_changed_without_the_value_are_still_found(
     )
     await async_wait_recording_done(hass)
     hass.states.async_set(
-        entity_id, "0", {"device_class": "current", "unit_of_measurement": "A"}
+        entity_id, "0", {"device_class": "current", "unit_of_measurement": "A", "connector_id": 1}
     )
     await async_wait_recording_done(hass)
 
@@ -291,15 +293,14 @@ async def test_phase_attributes_that_changed_without_the_value_are_still_found(
     assert candidates[0].reason_code == REASON_ATTRIBUTES_HISTORICAL_MATCH
 
 
-# --- The site and the charger share the same attribute-based path ---------
+# --- The site never reads history ------------------------------------------
 
 
-async def test_site_discovery_also_falls_back_to_history(
-    recorder_mock, hass: HomeAssistant
+async def test_site_discovery_never_reads_recorder_history(
+    recorder_mock, hass: HomeAssistant, monkeypatch
 ) -> None:
-    """`discover_site_current_sources` shares the attribute-based path, so a
-    site meter whose attributes were only ever seen in history benefits
-    exactly like a charger does.
+    """The site's own measurement is live. A grid meter can update every second, so
+    reading its history would be enormous and is never needed.
     """
     owner = _owner_entry(hass, entry_id="owner_history_site")
     device_id = _device(hass, owner=owner, unique_id="grid_history", name="Grid meter")
@@ -311,10 +312,66 @@ async def test_site_discovery_also_falls_back_to_history(
         hass, entity_id, phase_attributes={"L1": 11.0, "L2": 12.0, "L3": 13.0}
     )
 
-    candidates = await async_discover_site_current_sources(hass)
+    def _fail(*_args, **_kwargs):
+        raise AssertionError("site discovery must not read history")
 
-    assert [candidate.candidate_id for candidate in candidates] == [entity_id]
-    assert candidates[0].reason_code == REASON_ATTRIBUTES_HISTORICAL_MATCH
+    monkeypatch.setattr(discovery_module, "_async_historical_phase_matches", _fail)
+    monkeypatch.setattr(discovery_module, "_history_phase_matches", _fail)
+
+    assert await async_discover_site_current_sources(hass) == []
+
+
+async def test_a_slow_recorder_is_abandoned_and_live_candidates_are_still_returned(
+    recorder_mock, hass: HomeAssistant, monkeypatch
+) -> None:
+    owner = _owner_entry(hass, entry_id="owner_history_slow")
+    device_id = _device(hass, owner=owner, unique_id="charger_slow", name="Charger")
+    idle = _sensor(
+        hass, owner=owner, device_id=device_id, unique_id="charger_slow_idle",
+        object_id="charger_slow_idle",
+    )
+    live = _sensor(
+        hass, owner=owner, device_id=device_id, unique_id="charger_slow_live",
+        object_id="charger_slow_live",
+    )
+    hass.states.async_set(
+        live, "9.0",
+        {"device_class": "current", "unit_of_measurement": "A", "L1": 9.0, "L2": 9.1, "L3": 9.2},
+    )
+    assert idle != live
+
+    def _slow(*_args, **_kwargs):
+        time.sleep(1.0)
+        return {}
+
+    monkeypatch.setattr(discovery_module, "_history_phase_matches", _slow)
+    monkeypatch.setattr(discovery_module, "_HISTORY_TIMEOUT_SECONDS", 0.05)
+
+    started = time.monotonic()
+    candidates = await async_discover_charger_current_sources(hass, charger_device_id=device_id)
+
+    assert time.monotonic() - started < 0.9
+    assert [candidate.candidate_id for candidate in candidates] == [live]
+    assert candidates[0].reason_code == REASON_ATTRIBUTES_DEVICE_CLASS_AND_UNIT_MATCH
+
+
+async def test_an_entity_without_extra_attributes_is_never_looked_up_in_history(
+    recorder_mock, hass: HomeAssistant, monkeypatch
+) -> None:
+    owner = _owner_entry(hass, entry_id="owner_history_plain")
+    device_id = _device(hass, owner=owner, unique_id="charger_plain", name="Charger")
+    entity_id = _sensor(
+        hass, owner=owner, device_id=device_id, unique_id="charger_plain_current",
+        object_id="charger_plain_current",
+    )
+    hass.states.async_set(entity_id, "0", {"device_class": "current", "unit_of_measurement": "A"})
+
+    def _fail(*_args, **_kwargs):
+        raise AssertionError("history must not be read")
+
+    monkeypatch.setattr(discovery_module, "_async_historical_phase_matches", _fail)
+
+    assert await async_discover_charger_current_sources(hass, charger_device_id=device_id) == []
 
 
 # --- Device membership is the only thing separating the two --------------
@@ -362,7 +419,9 @@ async def test_historical_fallback_never_crosses_the_device_membership_boundary(
     )
 
     assert [candidate.candidate_id for candidate in charger_candidates] == [charger_entity_id]
-    assert [candidate.candidate_id for candidate in site_candidates] == [house_entity_id]
+    # The site is live-only: the house meter's history is never read.
+    assert site_candidates == []
+    assert house_entity_id
 
 
 async def test_history_is_queried_once_and_only_for_device_filtered_entities(
@@ -479,7 +538,7 @@ async def test_site_details_offers_a_charger_measured_source_from_history_alone(
     # ...and now idle: still a current sensor, but with no phase attributes.
     hass.states.async_set(
         charger_current_entity_id, "0",
-        {"device_class": "current", "unit_of_measurement": "A"},
+        {"device_class": "current", "unit_of_measurement": "A", "connector_id": 1},
     )
     await async_wait_recording_done(hass)
 

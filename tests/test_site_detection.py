@@ -592,16 +592,36 @@ def test_an_ams_reader_is_recognized_by_its_manufacturer_not_by_the_mqtt_platfor
     assert plain_mqtt.detect().meters == ()
 
 
-def test_slimmelezer_needs_its_device_model_and_ignores_reactive_power_entities() -> None:
-    candidate = one_meter(slimmelezer())
+def test_a_p1_reader_is_detected_whatever_its_esphome_device_model_and_ignores_reactive_power() -> None:
+    reader = slimmelezer()
+    reader.devices[0] = RegistryDevice("sl", manufacturer="espressif", model="esp32dev", config_entry_ids=("esphome",))
 
+    candidate = one_meter(reader)
+
+    assert candidate.integration == "esphome"
     assert candidate.derived_entities["L3"]["power"] == "sensor.slimmelezer_power_delivered_phase_3"
     assert candidate.derived_entities["L3"]["power_export"] == "sensor.slimmelezer_power_returned_phase_3"
     assert "reactive_power" not in candidate.derived_entities["L3"]
-    other = slimmelezer()
-    other.devices[0] = RegistryDevice("sl", manufacturer="x", model="something", config_entry_ids=("esphome",))
-    # Another ESPHome device with these names is left to the generic fallback, which finds no grid.
-    assert all(c.confidence != "high" for c in other.detect().meters)
+
+
+def test_an_esphome_device_with_a_single_current_sensor_is_not_a_grid_meter() -> None:
+    r = Registry()
+    r.device("d", model="esp32dev", manufacturer="espressif", name="Garage", entry="esphome")
+    r.add("esphome", "garage_current", "x-sensor-current", device_class="current", unit="A", device="d", entry="esphome")
+
+    assert r.detect().meters == ()
+
+
+def test_a_real_grid_meter_is_listed_before_the_easee_equalizer() -> None:
+    both = slimmelezer()
+    both.devices[0] = RegistryDevice("sl", manufacturer="espressif", model="esp32dev", config_entry_ids=("esphome",))
+    eq = easee_equalizer()
+    both.devices.extend(eq.devices)
+    both.entities.extend(eq.entities)
+
+    meters = both.detect().meters
+
+    assert [m.integration for m in meters] == ["esphome", "easee"]
 
 
 def test_the_core_solarman_p1_shape_is_not_taken_for_the_hacs_inverter_integration() -> None:

@@ -112,7 +112,7 @@ Measurement is either direct (a current per phase) or derived (power and voltage
 | GoodWe (`goodwe`) | Derived from power and voltage, current exact | Export-positive power, negated |  | Detected from the integration's source |
 | Sigenergy (`sigen`) | Derived from power and voltage, current exact | None needed | Voltage is taken from the inverter, which is on another device of the same integration. | Tested (Sigenergy) |
 | MQTT (`mqtt`) | Derived from power and voltage, current exact | Import and export are two entities | Only devices from amsleser.no. | Detected from the integration's source |
-| ESPHome (`esphome`) | Derived from power and voltage, current exact | Import and export are two entities | Only devices whose model contains "slimmelezer". | Detected from the integration's source |
+| ESPHome (`esphome`) | Derived from power and voltage, current exact | Import and export are two entities |  | Detected from the integration's source |
 | Easee Equalizer (`easee`) | Direct phase current, all phases on one entity | None needed | The Equalizer balances load by itself and may fight active control. | Detected from the integration's source |
 
 Devices known to balance load by themselves, which SpotNav warns about: Easee Equalizer; Zaptec Sense; Zaptec APM; Ferroamp; ONEp1.

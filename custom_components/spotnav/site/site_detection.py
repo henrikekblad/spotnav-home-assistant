@@ -353,8 +353,10 @@ METER_ROWS: Final[tuple[MeterRow, ...]] = (
         ),
     ),
     MeterRow(
+        # Any ESPHome device: a DIY or off-the-shelf P1 reader reports its board as the model. The
+        # per-phase patterns (a digit 1-3, complete for current, or for power and voltage) are the
+        # shape requirement, so a device with a single `current` sensor is not matched.
         platforms=("esphome",),
-        device_model="slimmelezer",
         patterns=(
             _p("current", r"(?:^|[_-])current_(?:phase_|l)?(?P<n>[123])$"),
             _p("power", r"(?:^|[_-])power_delivered_(?:phase_|l)?(?P<n>[123])$"),
@@ -984,7 +986,12 @@ def detect_site(
     claimed |= easee_claimed
     meters += _generic_candidates(entities, device_map, excluded, claimed)
     rank = {"high": 0, "medium": 1, "low": 2}
-    meters.sort(key=lambda c: (rank[c.confidence], c.integration, c.candidate_id))
+    # Within a confidence tier a meter with its own per-phase entities (direct or derived) comes
+    # before an attributes source such as the Easee Equalizer, which reports a derived figure and
+    # balances load by itself; then by integration and id for a stable order.
+    meters.sort(
+        key=lambda c: (rank[c.confidence], c.current_source is not None, c.integration, c.candidate_id)
+    )
     batteries = _battery_candidates(entities, device_map, excluded)
     batteries.sort(key=lambda c: (c.integration, c.candidate_id))
     return Detection(meters=tuple(meters), batteries=tuple(batteries))
