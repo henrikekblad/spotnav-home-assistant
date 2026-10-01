@@ -1253,6 +1253,8 @@ export const VISUAL_STYLES = `
     flex-wrap: wrap;
   }
   .${VISUAL_CLASSES.settingsSection} .${VISUAL_CLASSES.capabilityItem} > .${VISUAL_CLASSES.capabilityLabel} {
+    /* Muted, as in the app: a value stacked under its label must not read as one more label. */
+    color: var(--secondary-text-color, #727272);
     flex: 0 1 auto;
     max-width: 100%;
     white-space: nowrap;
@@ -1268,7 +1270,7 @@ export const VISUAL_STYLES = `
   .${VISUAL_CLASSES.settingsSection} .${VISUAL_CLASSES.capabilityItem} > .${VISUAL_CLASSES.settingsValueLong} {
     flex: 1 0 100%;
     text-align: left;
-    margin-bottom: 6px;
+    margin: 1px 0 6px;
   }
   [data-slot='vehicles'] > .${VISUAL_CLASSES.settingsSection} {
     margin-top: 12px;
