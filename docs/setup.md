@@ -11,6 +11,11 @@ There are four steps, and only the first is required:
 3. [Add the card](#3-add-the-card).
 4. [Pair the app](#4-pair-the-app-optional) if you want to use the SpotNav app.
 
+Add the charger first and the site second. The site's dialog then lists the charger and can
+include it straight away. If the site came first, add the charger later: the last dialog of the
+charger flow offers to join the site (see [Add the charger to an existing
+site](#add-the-charger-to-an-existing-site)).
+
 Everything else, such as price area, phases, the energy to charge and the departure time, is set
 in the [card](card.md).
 
@@ -122,7 +127,8 @@ another SpotNav charger already uses is refused.
 ### Add the charger to an existing site
 
 If you already have one site, the last dialog of the charger flow offers to add the new charger to
-it.
+it. To add a charger after the site, go to **Settings, Devices & services, SpotNav, Add entry**,
+choose **A charger**, and answer yes when it offers to join the site.
 
 ![The dialog offering to add the charger to the site](images/join-site.png)
 
@@ -132,6 +138,11 @@ charger's device. Then the dialog shows the wiring it would use and a tick box, 
 site**, which is on by default. Otherwise the dialog says SpotNav cannot tell how the charger is
 wired, so it is not added automatically; add it from the site's settings (see [Change these
 choices later](#change-these-choices-later)).
+
+### Renaming a charger
+
+Renaming a charger's entry under **Settings, Devices & services, SpotNav** changes the name shown
+in the card and the app. It does not change any entity id.
 
 ### The manual path
 
@@ -206,7 +217,14 @@ is a separate, later decision (see [the card](card.md#the-settings-popover)).
 ### When the meter is not found
 
 If SpotNav finds no grid meter, or finds one but cannot complete the summary (for example a
-charger with no single measured-current sensor), it goes on with the forms:
+charger with no single measured-current sensor), it goes on with the forms.
+
+Manual measurement has two shapes. Choose **one entity with the three phase currents as
+attributes** when a single entity carries them (the Easee Equalizer does). Choose **three separate
+entities, one per phase** when each phase is its own sensor, which is typical for P1 readers. A
+sensor without a device class can be picked, which a DIY meter reader needs. SpotNav checks the
+unit instead: current in A or mA, power in W or kW, voltage in V, reactive power in var or kvar,
+and apparent power in VA or kVA; a sensor in another unit is refused.
 
 - In direct mode **Site current source suggestions** lists current sources found among existing
   entities, **Choose manually (three separate entities, one per phase)**, **Enter one entity + its
@@ -227,12 +245,25 @@ charger with no single measured-current sensor), it goes on with the forms:
   device, entered manually, or skipped. Never use a commanded current there: a car can draw less
   than its setpoint.
 
+A charger's own measured current can also be three separate entities, one per phase (the Charge
+Amps integration and similar). SpotNav suggests them automatically when they are on the charger's
+device.
+
+If both an Easee Equalizer and a real grid meter, such as a P1 reader, are found, SpotNav lists the
+meter first. Prefer the meter: the Equalizer reports a derived figure and balances load by itself.
+If SpotNav does the load balancing, turn off the charger's own smart charging and the Equalizer's
+load balancing, because two controllers on one charger fight each other.
+
 A single-phase charger whose phase is unknown never gets a recommendation, so choose its phase.
 
 ## 3. Add the card
 
 The card is served by the integration itself. There is no dashboard resource to add, and nothing to
 update after an upgrade except reloading the browser once.
+
+After the first install the card may be missing from the card picker until the browser page is
+reloaded with Ctrl+Shift+R. In the Home Assistant companion app, reset the frontend cache instead
+(in the app's settings, under Troubleshooting).
 
 Open a dashboard, choose **Add card**, stay on **By card** and search for **SpotNav**. The
 picker shows a preview. If you have exactly one charger, the preview is the real card for it.

@@ -21,6 +21,13 @@ charging losses.
 - The charger reads the car's own level when the charger reports it, and otherwise the
   vehicle's sensor.
 
+### Several vehicles
+
+Several vehicles can be detected, and you choose which one the charger plans for, in the card's
+vehicle settings. SpotNav does not detect which car is plugged in, because chargers do not report
+it: change the choice when a different car is connected. Without a vehicle integration, charge a
+fixed number of kWh instead.
+
 ## How it behaves
 
 - **Stopping.** With a target, the charge stops when the level reaches it, in addition to

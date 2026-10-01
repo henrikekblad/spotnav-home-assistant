@@ -35,6 +35,15 @@ charging start*, *Planned cost* and *Auto settings revision*. On a site: *Capaci
   skip and finish later under the site's **Configure**. See
   [Set up SpotNav](setup.md#when-the-meter-is-not-found).
 
+- **"Unknown error occurred" in a setup dialog.** SpotNav hit an unexpected error. Open
+  **Settings, System, Logs**, choose the menu (three dots) and **Show full logs**, search for
+  `spotnav`, and copy the whole traceback. Note your Home Assistant version and open an issue with
+  both.
+- **Setting up a meter that updates every second is slow.** The site's meter is read live only, and
+  the Recorder's history is no longer searched for it (since 1.0.1). The only history search left
+  is for a charger's own measured current: it covers the last two days and stops after ten
+  seconds, so a very chatty sensor cannot hang the dialog.
+
 ## Charging
 
 - **OCPP entities are unavailable after a restart.** Give the charger time to reconnect.

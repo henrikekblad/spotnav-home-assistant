@@ -6,7 +6,8 @@ SpotNav for Home Assistant works with the Home Assistant integrations listed her
 
 Each row says how it is known to work:
 
-- **Tested**: confirmed on real hardware.
+- **Tested: charging verified**: charging confirmed on real hardware.
+- **Set up by users: detected and configured, charging not yet confirmed**: users have added it and SpotNav detected and configured it correctly, but nobody has yet confirmed that charging or current control works.
 - **Detected from the integration's source**: SpotNav recognises the integration's entities and follows its documented behaviour, but nobody has confirmed it on real hardware yet.
 
 Using one of these? Tell us whether it works: [Works with my hardware or does not](../../../issues/new?template=hardware_report.yml).
@@ -23,8 +24,8 @@ These integrations can be started and stopped, and most can have their current s
 
 | Integration | Start and stop | Current | Energy and status | Notes | Verification |
 | --- | --- | --- | --- | --- | --- |
-| OCPP (`ocpp`), any charge point | Charge control switch | AssignedCurrent through ChangeConfiguration, else the connector's session current limit number | Energy.Active.Import.Register sensor | SpotNav asks the charge point which of the two it supports when the charger is added. A charge point with several connectors is added once per connector. | Tested (Charge Amps HALO) |
-| Easee (`easee`) | Easee services | Easee dynamic limit service | Lifetime energy, status sensor | Start and stop and the dynamic limit go through Easee's own services; the max-limit services are never used (flash). Turn off its own smart charging: two controllers on one charger fight each other. | Detected from the integration's source |
+| OCPP (`ocpp`), any charge point | Charge control switch | AssignedCurrent through ChangeConfiguration, else the connector's session current limit number | Energy.Active.Import.Register sensor | SpotNav asks the charge point which of the two it supports when the charger is added. A charge point with several connectors is added once per connector. | Tested: charging verified (Charge Amps HALO) |
+| Easee (`easee`) | Easee services | Easee dynamic limit service | Lifetime energy, status sensor | Start and stop and the dynamic limit go through Easee's own services; the max-limit services are never used (flash). Turn off its own smart charging: two controllers on one charger fight each other. | Set up by users: detected and configured, charging not yet confirmed (Easee Home) |
 | Wallbox (`wallbox`) | Switch | Number entity | Per-session energy, status sensor | Cloud: at most one current write every 90 s. Turn off its own Eco-Smart: two controllers on one charger fight each other. | Detected from the integration's source |
 | Zaptec (`zaptec`) | Switch | Number entity | Lifetime energy, status sensor | The limit is installation-wide: used only for a single-charger installation, and at most every 15 minutes. | Detected from the integration's source |
 | go-e Charger (API v2) (`goecharger_api2`) | Mode select | Number entity | Lifetime energy, status sensor | At most one current write every 10 s. Turn off its own PV surplus and charging mode: two controllers on one charger fight each other. | Detected from the integration's source |
@@ -97,7 +98,7 @@ Measurement is either direct (a current per phase) or derived (power and voltage
 | Shelly EM / 3EM (`shelly`) | Derived from power and voltage, current exact | None needed | Check that the meter measures the whole main feed, not a sub-circuit. | Detected from the integration's source |
 | HomeWizard (`homewizard`) | Derived from power and voltage, current exact | Negative current while exporting, read as its size |  | Detected from the integration's source |
 | Tibber Pulse (`tibber`) | Direct phase current | None needed |  | Detected from the integration's source |
-| DSMR smart meter (`dsmr`) | Derived from power and voltage, current exact | Import and export are two entities | Updates about every 30 s. | Detected from the integration's source |
+| DSMR smart meter (`dsmr`) | Derived from power and voltage, current exact | Import and export are two entities | Updates about every 30 s. | Set up by users: detected and configured, charging not yet confirmed (ESPHome P1 reader) |
 | DSMR Reader (`dsmr_reader`) | Derived from power and voltage, current exact | Import and export are two entities |  | Detected from the integration's source |
 | P1 Monitor (`p1_monitor`) | Derived from power and voltage, current exact | Import and export are two entities |  | Detected from the integration's source |
 | AMS HAN (`amshan`) | Direct phase current | None needed |  | Detected from the integration's source |
@@ -110,10 +111,10 @@ Measurement is either direct (a current per phase) or derived (power and voltage
 | SolarEdge Modbus Multi / SolarEdge Modbus (`solaredge_modbus_multi`, `solaredge_modbus`) | Derived from power and voltage, current exact | Negative current while exporting, read as its size; Export-positive power, negated | Updates about every 5 min. | Detected from the integration's source |
 | Victron GX / Victron MQTT / Victron (`victron_gx`, `victron_mqtt`, `victron`) | Derived from power and voltage, current exact | Negative current while exporting, read as its size |  | Detected from the integration's source |
 | GoodWe (`goodwe`) | Derived from power and voltage, current exact | Export-positive power, negated |  | Detected from the integration's source |
-| Sigenergy (`sigen`) | Derived from power and voltage, current exact | None needed | Voltage is taken from the inverter, which is on another device of the same integration. | Tested (Sigenergy) |
+| Sigenergy (`sigen`) | Derived from power and voltage, current exact | None needed | Voltage is taken from the inverter, which is on another device of the same integration. | Tested: charging verified (Sigenergy) |
 | MQTT (`mqtt`) | Derived from power and voltage, current exact | Import and export are two entities | Only devices from amsleser.no. | Detected from the integration's source |
 | ESPHome (`esphome`) | Derived from power and voltage, current exact | Import and export are two entities |  | Detected from the integration's source |
-| Easee Equalizer (`easee`) | Direct phase current, all phases on one entity | None needed | The Equalizer balances load by itself and may fight active control. | Detected from the integration's source |
+| Easee Equalizer (`easee`) | Direct phase current, all phases on one entity | None needed | The Equalizer balances load by itself and may fight active control. | Set up by users: detected and configured, charging not yet confirmed (Easee Equalizer) |
 
 Devices known to balance load by themselves, which SpotNav warns about: Easee Equalizer; Zaptec Sense; Zaptec APM; Ferroamp; ONEp1.
 
@@ -124,7 +125,7 @@ The site uses a house battery's power to tell the car's draw from the house's, a
 | Integration | Sign convention | Notes | Verification |
 | --- | --- | --- | --- |
 | Huawei Solar (`huawei_solar`) | Charge-positive, used as it is |  | Detected from the integration's source |
-| Sigenergy (`sigen`) | Charge-positive, used as it is |  | Tested (Sigenergy) |
+| Sigenergy (`sigen`) | Charge-positive, used as it is |  | Tested: charging verified (Sigenergy) |
 | Victron GX / Victron MQTT / Victron (`victron_gx`, `victron_mqtt`, `victron`) | Charge-positive, used as it is |  | Detected from the integration's source |
 | SolarEdge Modbus Multi / SolarEdge Modbus (`solaredge_modbus_multi`, `solaredge_modbus`) | Charge-positive, used as it is |  | Detected from the integration's source |
 | HomeWizard (`homewizard`) | Charge-positive, used as it is | Only devices whose model contains "bat". | Detected from the integration's source |
@@ -141,7 +142,7 @@ The site uses a house battery's power to tell the car's draw from the house's, a
 
 ## Supported vehicles
 
-SpotNav needs no vehicle integration to charge. A vehicle adds the target state of charge, the charge-level estimate and the charge-limit display. Any integration works when one of its devices has a battery percentage sensor and a distance (range) sensor: SpotNav detects the vehicle from those shapes, not from the brand.
+SpotNav needs no vehicle integration to charge. A vehicle adds the target state of charge, the charge-level estimate and the charge-limit display. Any integration works when one of its devices has a battery percentage sensor and a distance (range) sensor: SpotNav detects the vehicle from those shapes, not from the brand. A Subaru e-Outback, for example, is detected through the Toyota integration (`pytoyoda`, Home Assistant domain `toyota`) from its battery level sensor and range sensor, although the list below has no Subaru-specific entry for it.
 
 The integrations below are the ones the detection was checked against, from each integration's recorded entity shapes. A vehicle that reports several battery readings is ranked by what the integration calls them, and when that does not leave exactly one, Home Assistant shows a repair asking which reading is the state of charge.
 
@@ -152,7 +153,7 @@ The integrations below are the ones the detection was checked against, from each
 | BMW CarData (`cardata`) | Read only, used as the ceiling |  | Detected from the integration's source |
 | FordPass (`fordpass`) | Can be set | Percent selects, the 12 V battery has no class. | Detected from the integration's source |
 | Kia and Hyundai (community integration) (`ha_kia_hyundai`) | Can be set | AC and DC limits. | Detected from the integration's source |
-| Kia Uvo (`kia_uvo`) | Can be set | SoH, AC/DC/V2L limits, kJ capacity and remaining. | Tested (Kia EV6) |
+| Kia Uvo (`kia_uvo`) | Can be set | SoH, AC/DC/V2L limits, kJ capacity and remaining. | Tested: charging verified (Kia EV6) |
 | Leaf Spy (`leafspy`) | None found | The phone's battery is not the car's. | Detected from the integration's source |
 | Mercedes-Benz (`mbapi2020`) | Read only, used as the ceiling | max_soc sensor is a ceiling only. | Detected from the integration's source |
 | MG (SAIC) (`mg_saic`) | Can be set | Target SOC and fuel level are battery class; capacity is declared a meter. | Detected from the integration's source |
@@ -169,7 +170,7 @@ The integrations below are the ones the detection was checked against, from each
 | Tesla Fleet (`tesla_fleet`) | Can be set | Usable level, route arrival and a charge_energy_added meter. | Detected from the integration's source |
 | Teslemetry (`teslemetry`) | Can be set |  | Detected from the integration's source |
 | Tessie (`tessie`) | Can be set | usable_battery_level is the only level; energy_remaining is not a capacity. | Detected from the integration's source |
-| Toyota (`toyota`) | None found | The PHEV usable level is a soft demotion. | Detected from the integration's source |
+| Toyota (`toyota`) | None found | The PHEV usable level is a soft demotion. | Set up by users: detected and configured, charging not yet confirmed (Subaru e-Outback through the Toyota integration) |
 | Volkswagen We Connect (`volkswagencarnet`) | Can be set | The charge target is tagged as a battery sensor too. | Detected from the integration's source |
 | Volvo (`volvo`) | Read only, used as the ceiling | Target is a read-only sensor, capacity from the model data. | Detected from the integration's source |
 

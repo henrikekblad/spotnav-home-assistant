@@ -33,7 +33,8 @@ VEHICLE_CASES = ROOT / "tests" / "test_vehicle_catalogue.py"
 #: Relative to docs/supported.md as GitHub renders it (docs, main, blob, repository), so no owner name.
 ISSUES_URL = "../../../issues/new?template=hardware_report.yml"
 
-TESTED = "Tested"
+TESTED = "Tested: charging verified"
+SET_UP = "Set up by users: detected and configured, charging not yet confirmed"
 DETECTED = "Detected from the integration's source"
 
 #: Hardware confirmed by the owner on real equipment. Everything else is read from the
@@ -43,6 +44,15 @@ TESTED_ON: dict[tuple[str, str], str] = {
     ("meter", "sigen"): "Sigenergy",
     ("battery", "sigen"): "Sigenergy",
     ("vehicle", "kia_uvo"): "Kia EV6",
+}
+
+#: Hardware that users have set up successfully (SpotNav found and configured it) but where nobody
+#: has confirmed a charge or a balanced current yet. Same keys as `TESTED_ON`.
+SET_UP_ON: dict[tuple[str, str], str] = {
+    ("meter", "dsmr"): "ESPHome P1 reader",
+    ("charger", "easee"): "Easee Home",
+    ("meter", "easee"): "Easee Equalizer",
+    ("vehicle", "toyota"): "Subaru e-Outback through the Toyota integration",
 }
 
 #: Display names by Home Assistant domain.
@@ -154,6 +164,10 @@ def verified(category: str, *domains: str) -> str:
         hardware = TESTED_ON.get((category, domain))
         if hardware:
             return f"{TESTED} ({hardware})"
+    for domain in domains:
+        hardware = SET_UP_ON.get((category, domain))
+        if hardware:
+            return f"{SET_UP} ({hardware})"
     return DETECTED
 
 
@@ -513,7 +527,9 @@ def vehicles_section() -> list[str]:
         "SpotNav needs no vehicle integration to charge. A vehicle adds the target state of charge, "
         "the charge-level estimate and the charge-limit display. Any integration works when one of its "
         "devices has a battery percentage sensor and a distance (range) sensor: SpotNav detects the "
-        "vehicle from those shapes, not from the brand.",
+        "vehicle from those shapes, not from the brand. A Subaru e-Outback, for example, is detected "
+        "through the Toyota integration (`pytoyoda`, Home Assistant domain `toyota`) from its battery "
+        "level sensor and range sensor, although the list below has no Subaru-specific entry for it.",
         "",
         "The integrations below are the ones the detection was checked against, from each integration's "
         "recorded entity shapes. A vehicle that reports several battery readings is ranked by what the "
@@ -578,7 +594,9 @@ def render() -> str:
         "",
         "Each row says how it is known to work:",
         "",
-        f"- **{TESTED}**: confirmed on real hardware.",
+        f"- **{TESTED}**: charging confirmed on real hardware.",
+        f"- **{SET_UP}**: users have added it and SpotNav detected and configured it correctly, "
+        "but nobody has yet confirmed that charging or current control works.",
         f"- **{DETECTED}**: SpotNav recognises the integration's entities and follows its documented "
         "behaviour, but nobody has confirmed it on real hardware yet.",
         "",
