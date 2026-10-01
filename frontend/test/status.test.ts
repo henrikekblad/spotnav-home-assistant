@@ -37,7 +37,7 @@ describe("the status line renders the block and nothing else", () => {
       statusLine("plan_cost", { amount_minor: 2250, currency: "SEK" }),
       statusLine("plan_distance", { mil: 8.5 }),
     );
-    expect(statusText(status, format("en"), NOW)).toBe("Planned from 06:00 · 20 kWh · 22.5 kr · 8.5 mil");
+    expect(statusText(status, format("en"), NOW)).toBe("Planned from 06:00 · 20 kWh · 22.5 kr · 85 km");
     expect(statusText(status, format("sv"), NOW)).toBe("Planerat från 06:00 · 20 kWh · 22,5 kr · 8,5 mil");
     // The same lines in another order are read in that order: there is no ranking here.
     const swapped = block(statusLine("plan_energy", { kwh: 20 }), statusLine("no_plan"));

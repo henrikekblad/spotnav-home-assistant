@@ -17,6 +17,7 @@ import {
   periodIsAmbiguous,
   periodLabel,
   pricePerKwh,
+  distanceText,
   formatNumber,
   type FormatContext,
 } from "./format";
@@ -272,7 +273,7 @@ function figuresFor(dashboard: Dashboard, format: FormatContext): PlanFigures {
     distance:
       proposal.distance_mil === null
         ? null
-        : `${formatNumber(format.language, proposal.distance_mil, 1)} mil`,
+        : distanceText(format.language, proposal.distance_mil),
     power: proposal.power_kw === null ? null : `${formatNumber(format.language, proposal.power_kw, 1)} kW`,
   };
 }

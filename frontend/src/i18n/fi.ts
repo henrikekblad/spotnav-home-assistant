@@ -39,7 +39,7 @@ export const fi: Record<keyof typeof en, string> = {
   "status.targetAgeMinutes": "{n} min",
   "status.targetAgeHours": "{n} h",
   "issue.targetUnverifiable": "Tavoitetta ei voi tarkistaa juuri nyt.",
-  "status.planDistance": "{mil} mil",
+  "status.planDistance": "{distance}",
   "issue.priceDegraded": "Hintatiedot ovat puutteellisia.",
   "issue.banner.blocking": "Jotain on korjattava ennen kuin lataus voidaan suunnitella.",
   "issue.banner.notice": "Hyvä tietää.",

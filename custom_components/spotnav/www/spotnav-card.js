@@ -2790,6 +2790,12 @@ function periodLabel(context, startMs, endMs) {
   const endSuffix = ambiguousEnd ? ` (${offsetLabel(context, endMs)})` : "";
   return `${day} ${from}${startSuffix}-${end}${endSuffix}`;
 }
+function distanceText(language, mil) {
+  if (language === "sv" || language === "nb") {
+    return `${formatNumber(language, mil, 1)} mil`;
+  }
+  return `${formatNumber(language, mil * 10, 0)} km`;
+}
 
 // src/i18n/da.ts
 var da = {
@@ -2829,7 +2835,7 @@ var da = {
   "status.targetAgeMinutes": "{n} min",
   "status.targetAgeHours": "{n} t",
   "issue.targetUnverifiable": "Målet kan ikke kontrolleres lige nu.",
-  "status.planDistance": "{mil} mil",
+  "status.planDistance": "{distance}",
   "issue.priceDegraded": "Prisdata er ufuldstændige.",
   "issue.banner.blocking": "Noget skal ordnes, før opladning kan planlægges.",
   "issue.banner.notice": "Godt at vide.",
@@ -3330,7 +3336,7 @@ var en = {
   "status.targetAgeMinutes": "{n} min",
   "status.targetAgeHours": "{n} h",
   "issue.targetUnverifiable": "The target can't be checked right now.",
-  "status.planDistance": "{mil} mil",
+  "status.planDistance": "{distance}",
   "issue.priceDegraded": "The price data is incomplete.",
   "issue.banner.blocking": "Something needs attention before charging can be planned.",
   "issue.banner.notice": "Good to know.",
@@ -3831,7 +3837,7 @@ var fi = {
   "status.targetAgeMinutes": "{n} min",
   "status.targetAgeHours": "{n} h",
   "issue.targetUnverifiable": "Tavoitetta ei voi tarkistaa juuri nyt.",
-  "status.planDistance": "{mil} mil",
+  "status.planDistance": "{distance}",
   "issue.priceDegraded": "Hintatiedot ovat puutteellisia.",
   "issue.banner.blocking": "Jotain on korjattava ennen kuin lataus voidaan suunnitella.",
   "issue.banner.notice": "Hyvä tietää.",
@@ -4332,7 +4338,7 @@ var nb = {
   "status.targetAgeMinutes": "{n} min",
   "status.targetAgeHours": "{n} t",
   "issue.targetUnverifiable": "Målet kan ikke kontrolleres akkurat nå.",
-  "status.planDistance": "{mil} mil",
+  "status.planDistance": "{distance}",
   "issue.priceDegraded": "Prisdataene er ufullstendige.",
   "issue.banner.blocking": "Noe må ordnes før lading kan planlegges.",
   "issue.banner.notice": "Greit å vite.",
@@ -4833,7 +4839,7 @@ var sv = {
   "status.targetAgeMinutes": "{n} min",
   "status.targetAgeHours": "{n} h",
   "issue.targetUnverifiable": "Målet kan inte kontrolleras just nu.",
-  "status.planDistance": "{mil} mil",
+  "status.planDistance": "{distance}",
   "issue.priceDegraded": "Prisunderlaget är ofullständigt.",
   "issue.banner.blocking": "Något behöver åtgärdas innan laddning kan planeras.",
   "issue.banner.notice": "Bra att veta.",
@@ -6938,7 +6944,7 @@ function lineText(line, format, nowMs) {
       return say("status.planCost", { cost: `${formatNumber(language, major, 2)} ${unit}`.trim() });
     }
     case "plan_distance":
-      return say("status.planDistance", { mil: formatNumber(language, num(p["mil"]) ?? 0, 1) });
+      return say("status.planDistance", { distance: distanceText(language, num(p["mil"]) ?? 0) });
     case "solar_charging": {
       const amps = num(p["requested_a"]);
       return amps === null ? say("strategy.status.solar.chargingUnknown") : say("strategy.status.solar.charging", { amps: formatNumber(language, amps, 0) });
@@ -7094,7 +7100,7 @@ function figuresFor(dashboard, format) {
     // A planned amount is the planner's estimate, stated to a tenth; `energyAmount` is for amounts a record
     // holds, not for this.
     energy: plannedKwh === null ? null : `${formatNumber(format.language, plannedKwh, 1)} kWh`,
-    distance: proposal.distance_mil === null ? null : `${formatNumber(format.language, proposal.distance_mil, 1)} mil`,
+    distance: proposal.distance_mil === null ? null : distanceText(format.language, proposal.distance_mil),
     power: proposal.power_kw === null ? null : `${formatNumber(format.language, proposal.power_kw, 1)} kW`
   };
 }

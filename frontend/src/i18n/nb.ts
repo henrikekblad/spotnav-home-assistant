@@ -39,7 +39,7 @@ export const nb: Record<keyof typeof en, string> = {
   "status.targetAgeMinutes": "{n} min",
   "status.targetAgeHours": "{n} t",
   "issue.targetUnverifiable": "Målet kan ikke kontrolleres akkurat nå.",
-  "status.planDistance": "{mil} mil",
+  "status.planDistance": "{distance}",
   "issue.priceDegraded": "Prisdataene er ufullstendige.",
   "issue.banner.blocking": "Noe må ordnes før lading kan planlegges.",
   "issue.banner.notice": "Greit å vite.",

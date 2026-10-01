@@ -39,7 +39,7 @@ export const sv: Record<keyof typeof en, string> = {
   "status.targetAgeMinutes": "{n} min",
   "status.targetAgeHours": "{n} h",
   "issue.targetUnverifiable": "Målet kan inte kontrolleras just nu.",
-  "status.planDistance": "{mil} mil",
+  "status.planDistance": "{distance}",
   "issue.priceDegraded": "Prisunderlaget är ofullständigt.",
   "issue.banner.blocking": "Något behöver åtgärdas innan laddning kan planeras.",
   "issue.banner.notice": "Bra att veta.",

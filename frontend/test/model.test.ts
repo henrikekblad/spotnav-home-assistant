@@ -65,7 +65,7 @@ describe("capabilities and figures", () => {
     const withProposal = model().figures;
     expect(withProposal.energy).toBe("20 kWh");
     expect(withProposal.cost).toBe("22.5 kr");
-    expect(withProposal.distance).toBe("8.5 mil");
+    expect(withProposal.distance).toBe("85 km");
     const base = rawDashboard();
     const withoutProposal = model({ plan: { ...(base.plan as object), proposal: null } }).figures;
     expect(withoutProposal).toEqual({ cost: null, energy: null, distance: null, power: null });

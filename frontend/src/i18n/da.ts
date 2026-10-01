@@ -39,7 +39,7 @@ export const da: Record<keyof typeof en, string> = {
   "status.targetAgeMinutes": "{n} min",
   "status.targetAgeHours": "{n} t",
   "issue.targetUnverifiable": "Målet kan ikke kontrolleres lige nu.",
-  "status.planDistance": "{mil} mil",
+  "status.planDistance": "{distance}",
   "issue.priceDegraded": "Prisdata er ufuldstændige.",
   "issue.banner.blocking": "Noget skal ordnes, før opladning kan planlægges.",
   "issue.banner.notice": "Godt at vide.",

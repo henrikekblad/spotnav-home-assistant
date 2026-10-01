@@ -171,3 +171,14 @@ export function periodLabel(context: FormatContext, startMs: number, endMs: numb
   const endSuffix = ambiguousEnd ? ` (${offsetLabel(context, endMs)})` : "";
   return `${day} ${from}${startSuffix}-${end}${endSuffix}`;
 }
+
+/**
+ * A distance given in Scandinavian miles (1 mil = 10 km), written in the unit the language uses:
+ * mil for Swedish and Norwegian, km otherwise (as the Android app does).
+ */
+export function distanceText(language: Language, mil: number): string {
+  if (language === "sv" || language === "nb") {
+    return `${formatNumber(language, mil, 1)} mil`;
+  }
+  return `${formatNumber(language, mil * 10, 0)} km`;
+}

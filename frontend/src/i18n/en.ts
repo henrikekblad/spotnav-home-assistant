@@ -40,7 +40,7 @@ export const en = {
   "status.targetAgeMinutes": "{n} min",
   "status.targetAgeHours": "{n} h",
   "issue.targetUnverifiable": "The target can't be checked right now.",
-  "status.planDistance": "{mil} mil",
+  "status.planDistance": "{distance}",
   "issue.priceDegraded": "The price data is incomplete.",
   "issue.banner.blocking": "Something needs attention before charging can be planned.",
   "issue.banner.notice": "Good to know.",

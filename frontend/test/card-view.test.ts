@@ -89,7 +89,7 @@ describe("the header and the status line", () => {
     // The accepted status precedence: an applied proposal with a real planned amount wins, and the
     // line also carries the energy, cost and distance.
     expect(root.querySelector(`.${VISUAL_CLASSES.status}`)?.textContent).toBe(
-      "Planned from 06:00 · 20 kWh · 22.5 kr · 8.5 mil",
+      "Planned from 06:00 · 20 kWh · 22.5 kr · 85 km",
     );
     // A model is immutable and its language reaches both the strings and the formats: a Swedish
     // model is built as Swedish, not relabelled afterwards.

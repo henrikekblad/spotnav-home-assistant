@@ -3,7 +3,7 @@
 // formats its typed facts. `tone` alone decides banner colour (`blocking` red, `notice` neutral).
 
 import { localDayKey } from "./chart";
-import { clock, formatNumber, hasZone, weekdayDate, type FormatContext } from "./format";
+import { clock, distanceText, formatNumber, hasZone, weekdayDate, type FormatContext } from "./format";
 import { translate, type Language, type TranslationKey } from "./i18n";
 import { STATUS_CODE_TABLE, type StatusCode, type StatusLine, type StatusParam, type StatusTone, type Status } from "./validate";
 
@@ -157,7 +157,7 @@ export function lineText(line: StatusLine, format: FormatContext, nowMs: number)
       return say("status.planCost", { cost: `${formatNumber(language, major, 2)} ${unit}`.trim() });
     }
     case "plan_distance":
-      return say("status.planDistance", { mil: formatNumber(language, num(p["mil"]) ?? 0, 1) });
+      return say("status.planDistance", { distance: distanceText(language, num(p["mil"]) ?? 0) });
     case "solar_charging": {
       const amps = num(p["requested_a"]);
       return amps === null
