@@ -85,11 +85,23 @@ def external_controller_entries(hass: HomeAssistant) -> list[ConfigEntry]:
     return [entry for domain in sorted(domains) for entry in hass.config_entries.async_entries(domain)]
 
 
+def identifier_domains(device: dr.DeviceEntry) -> list[str]:
+    """The domains of a device's identifiers, sorted. An identifier is normally `(domain, id)`, but
+    some integrations register longer tuples, so only the first element is read."""
+    return sorted(
+        {
+            identifier[0]
+            for identifier in device.identifiers
+            if isinstance(identifier, tuple) and identifier and isinstance(identifier[0], str)
+        }
+    )
+
+
 def _device_platform(hass: HomeAssistant, device: dr.DeviceEntry, entries: list[er.RegistryEntry]) -> str | None:
     """The integration the device is a charger of: the first of its identifiers' domains that has
     a profile, else the first entity platform that has one.
     """
-    for domain, _ in sorted(device.identifiers):
+    for domain in identifier_domains(device):
         if domain in PROFILES:
             return domain
     for entry in entries:

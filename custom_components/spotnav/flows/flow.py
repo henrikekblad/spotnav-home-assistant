@@ -111,7 +111,7 @@ from ..vehicles.ocpp_identity import (
 from ..vehicles.vehicle_discovery import discover_ambiguous_vehicles
 from ..execution.charger_adapter import assigned_amps_for_connector, read_assigned_current_value
 from ..execution.charger_entities import control_path_for_entity, own_mode_conflicts
-from .charger_detection import detect_charger, DetectedCharger
+from .charger_detection import detect_charger, DetectedCharger, identifier_domains
 from .labels import current_control_selector, MANUAL_ATTRIBUTES_CHOICE, SKIP_CHOICE
 from .measured_source import (
     async_charger_measured_candidates,
@@ -1353,7 +1353,7 @@ class SpotNavChargingConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         device = dr.async_get(self.hass).async_get(device_id)
         if device is None:
             return False
-        if any(domain == "ocpp" for domain, _ in device.identifiers):
+        if "ocpp" in identifier_domains(device):
             return True
         domains = self._config_entry_domains()
         return any(domains.get(config_entry_id) == "ocpp" for config_entry_id in device.config_entries)

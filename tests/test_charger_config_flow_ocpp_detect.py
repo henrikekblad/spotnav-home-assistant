@@ -193,3 +193,18 @@ async def test_automatic_flow_hides_a_non_ocpp_hub_device_without_entities(hass:
 
 def _config_entry_of(hass: HomeAssistant, device_id: str) -> str:
     return next(iter(dr.async_get(hass).async_get(device_id).config_entries))
+
+
+async def test_automatic_flow_tolerates_a_device_with_a_three_part_identifier(hass: HomeAssistant) -> None:
+    """Some integrations register `(domain, id, extra)` identifiers; listing devices must not fail."""
+    ids = register_shape(hass, SHAPES["peblar"])
+    odd = dr.async_get(hass).async_get_or_create(
+        config_entry_id=_config_entry_of(hass, ids["device_id"]),
+        identifiers={("peblar", "odd", "extra")},
+        name="Odd",
+    )
+
+    result = await _detected(hass, None)
+
+    assert ids["device_id"] in _listed(result)
+    assert odd.id not in _listed(result)  # no entities of its own, so not a charger to choose
