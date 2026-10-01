@@ -59,6 +59,7 @@ import {
 import { settingsEditorBody, settingsTrigger, type SettingsEditorForm } from "./settings-editor";
 import type { Vehicle } from "./validate";
 import { vehicleSummary } from "./vehicle-settings";
+import { vehicleChoicesFor, vehicleLineFor } from "./vehicle-line";
 import {
   fiscalRows,
   planSummaryParts,
@@ -115,6 +116,11 @@ export interface CardViewInput {
    * the card owns the request and every outcome.
    */
   onSelectStrategy: (strategyId: string) => void;
+  /**
+   * A vehicle other than the planned one was chosen in the vehicle dialog. The view has already closed
+   * the dialog; the card owns the write and every outcome.
+   */
+  onSelectVehicle?: (vehicleId: string) => void;
   /** The Solar card's Change button, and that dialog's Save (the card judges the draft) and Cancel. */
   onOpenSolarEditor?: () => void;
   onSaveSolar?: (draft: EntityDraft) => void;
@@ -557,6 +563,22 @@ function settingsGearIcon(doc: Document): SVGElement {
   });
 }
 
+/** A small battery glyph for the vehicle line. */
+function batteryIcon(doc: Document): SVGElement {
+  return icon(doc, (svg, ns) => {
+    const body = doc.createElementNS(ns, "path");
+    body.setAttribute("d", "M4 8h13a1 1 0 0 1 1 1v6a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V9a1 1 0 0 1 1-1zM19 11h1.5v2H19z");
+    body.setAttribute("fill", "none");
+    body.setAttribute("stroke", "currentColor");
+    body.setAttribute("stroke-width", "1.6");
+    body.setAttribute("stroke-linejoin", "round");
+    const level = doc.createElementNS(ns, "path");
+    level.setAttribute("d", "M5.5 10h7v4h-7z");
+    level.setAttribute("fill", "currentColor");
+    svg.append(body, level);
+  });
+}
+
 function pauseIcon(doc: Document): SVGElement {
   return icon(doc, (svg, ns) => {
     svg.append(fillPath(ns, doc, "M7 5h3v14H7zM14 5h3v14h-3z"));
@@ -743,7 +765,37 @@ export function createCardView(input: CardViewInput): CardView {
   // no selector and no visible product name; the accessible name still names the product.
   const header = element(doc, "div", C.header);
   header.append(brandMark(doc, idPrefix));
-  if (model.chargerName !== null) {
+  const vehicleLine = vehicleLineFor(model.language, model.soc, model.dashboardSettings);
+  let vehicleButton: HTMLButtonElement | null = null;
+  if (vehicleLine !== null) {
+    // The name and the planned vehicle stack in one block, so the line sits under the name.
+    const identity = element(doc, "div", C.nameBlock);
+    if (model.chargerName !== null) {
+      identity.append(element(doc, "h3", C.name, model.chargerName));
+    }
+    vehicleButton = element(doc, "button", C.vehicleLine);
+    vehicleButton.type = "button";
+    vehicleButton.dataset["vehicleLine"] = vehicleLine.vehicleId;
+    vehicleButton.setAttribute("aria-label", vehicleLine.ariaLabel);
+    vehicleButton.setAttribute("aria-haspopup", "dialog");
+    if (vehicleLine.estimateTitle !== null) {
+      vehicleButton.title = vehicleLine.estimateTitle;
+      vehicleButton.dataset["estimated"] = "true";
+    }
+    vehicleButton.append(
+      batteryIcon(doc),
+      element(doc, "span", C.vehicleLineName, vehicleLine.name),
+      element(doc, "span", C.vehicleLineCharge, `\u00b7 ${vehicleLine.estimatePrefix}${vehicleLine.charge}`),
+    );
+    if (vehicleLine.age !== null) {
+      vehicleButton.append(element(doc, "span", C.vehicleLineAge, `\u00b7 ${vehicleLine.age}`));
+    }
+    vehicleButton.addEventListener("click", () => {
+      openVehicleChoice();
+    });
+    identity.append(vehicleButton);
+    header.append(identity);
+  } else if (model.chargerName !== null) {
     header.append(element(doc, "h3", C.name, model.chargerName));
   }
   // The product name: in the DOM for anyone who cannot see the mark, clipped out of sight (text nodes only, never an attribute).
@@ -791,6 +843,13 @@ export function createCardView(input: CardViewInput): CardView {
   const strategyDialog: DialogHandle = createDialog({
     owner: input.mount,
     idPrefix: `${idPrefix}-strategy`,
+    labels,
+    background: () => card,
+    onClose: notifyDialogsChanged,
+  });
+  const vehicleDialog: DialogHandle = createDialog({
+    owner: input.mount,
+    idPrefix: `${idPrefix}-vehicle`,
     labels,
     background: () => card,
     onClose: notifyDialogsChanged,
@@ -849,6 +908,7 @@ export function createCardView(input: CardViewInput): CardView {
       capabilityDialog.isOpen() ||
       pauseDialog.isOpen() ||
       strategyDialog.isOpen() ||
+      vehicleDialog.isOpen() ||
       settingsDialog.isOpen() ||
       marketDialog.isOpen() ||
       entityDialog.isOpen() ||
@@ -1387,6 +1447,7 @@ export function createCardView(input: CardViewInput): CardView {
     issuesDialog.hide({ restoreFocus: false });
     capabilityDialog.hide({ restoreFocus: false });
     strategyDialog.hide({ restoreFocus: false });
+    vehicleDialog.hide({ restoreFocus: false });
     settingsOverviewDialog.hide({ restoreFocus: false });
     const body = element(doc, "div");
     body.append(element(doc, "p", `${C.muted} ${C.dialogIntro}`, translate(model.language, "pause.intro")));
@@ -1409,6 +1470,66 @@ export function createCardView(input: CardViewInput): CardView {
       body,
       // The sheet belongs to the automatic control, so focus returns to *that* button.
       opener: plannerButton,
+    });
+  }
+
+  /**
+   * The vehicle dialog: every vehicle of this charger with its charge, the planned one selected. Choosing
+   * another closes it at once and the card writes `target.vehicle_id`; a reader without write access
+   * sees the same list with the radios disabled. A single vehicle still opens the dialog, so the line
+   * always does what its label says.
+   */
+  function openVehicleChoice(): void {
+    if (destroyed) {
+      return;
+    }
+    issuesDialog.hide({ restoreFocus: false });
+    capabilityDialog.hide({ restoreFocus: false });
+    pauseDialog.hide({ restoreFocus: false });
+    strategyDialog.hide({ restoreFocus: false });
+    settingsOverviewDialog.hide({ restoreFocus: false });
+    const body = element(doc, "div");
+    if (!input.isAdmin) {
+      body.append(element(doc, "p", C.settingsReadOnly, translate(model.language, "settings.readOnly")));
+    }
+    const group = element(doc, "div", C.vehicleChoices);
+    group.setAttribute("role", "radiogroup");
+    group.setAttribute("aria-label", translate(model.language, "vehicleLine.dialogTitle"));
+    const plannedId = model.soc?.vehicle_id ?? model.targetVehicleId;
+    const name = `${idPrefix}-vehicle-choice`;
+    for (const choice of vehicleChoicesFor(model.language, model.vehicles, plannedId)) {
+      const label = element(doc, "label", C.vehicleChoice);
+      const radio = element(doc, "input");
+      radio.type = "radio";
+      radio.name = name;
+      radio.value = choice.id;
+      radio.checked = choice.selected;
+      radio.disabled = !input.isAdmin;
+      radio.dataset["vehicle"] = choice.id;
+      radio.addEventListener("change", () => {
+        if (!radio.checked || choice.selected || !input.isAdmin) {
+          return;
+        }
+        vehicleDialog.hide({ restoreFocus: false });
+        input.onSelectVehicle?.(choice.id);
+      });
+      label.append(
+        radio,
+        element(doc, "span", C.vehicleChoiceName, choice.name),
+        element(
+          doc,
+          "span",
+          C.vehicleChoiceCharge,
+          choice.charge ?? translate(model.language, "vehicleLine.noReading"),
+        ),
+      );
+      group.append(label);
+    }
+    body.append(group);
+    vehicleDialog.show({
+      title: translate(model.language, "vehicleLine.dialogTitle"),
+      body,
+      opener: vehicleButton,
     });
   }
 
@@ -1440,6 +1561,7 @@ export function createCardView(input: CardViewInput): CardView {
         button.addEventListener("click", () => {
           // No confirmation dialog: the click closes this one at once, and the card reports a refusal on the row-level sentence.
           strategyDialog.hide({ restoreFocus: false });
+          vehicleDialog.hide({ restoreFocus: false });
           input.onSelectStrategy(row.id);
         });
       }
@@ -1453,6 +1575,7 @@ export function createCardView(input: CardViewInput): CardView {
           link.dataset["action"] = "setup-solar";
           link.addEventListener("click", () => {
             strategyDialog.hide({ restoreFocus: false });
+            vehicleDialog.hide({ restoreFocus: false });
             openSettingsOverview();
             overviewBodyNode
               ?.querySelector<HTMLElement>("[data-section='solar']")
@@ -1941,6 +2064,7 @@ export function createCardView(input: CardViewInput): CardView {
     capabilityDialog.hide({ restoreFocus: false });
     pauseDialog.hide({ restoreFocus: false });
     strategyDialog.hide({ restoreFocus: false });
+    vehicleDialog.hide({ restoreFocus: false });
     entityDialog.hide({ restoreFocus: false });
     settingsOverviewDialog.show({
       title:
@@ -2062,6 +2186,7 @@ export function createCardView(input: CardViewInput): CardView {
     capabilityDialog.hide({ restoreFocus: false });
     pauseDialog.hide({ restoreFocus: false });
     strategyDialog.hide({ restoreFocus: false });
+    vehicleDialog.hide({ restoreFocus: false });
     marketDialog.hide({ restoreFocus: false });
     settingsOverviewDialog.hide({ restoreFocus: false });
     const loading = element(
@@ -2239,6 +2364,7 @@ export function createCardView(input: CardViewInput): CardView {
     capabilityDialog.hide({ restoreFocus: false });
     pauseDialog.hide({ restoreFocus: false });
     strategyDialog.hide({ restoreFocus: false });
+    vehicleDialog.hide({ restoreFocus: false });
     settingsDialog.hide({ restoreFocus: false });
     settingsOverviewDialog.hide({ restoreFocus: false });
     const loading = element(doc, "p", `${C.muted} ${C.dialogIntro}`, translate(model.language, "market.loading"));
@@ -2313,6 +2439,7 @@ export function createCardView(input: CardViewInput): CardView {
     capabilityDialog.hide({ restoreFocus: false });
     pauseDialog.hide({ restoreFocus: false });
     strategyDialog.hide({ restoreFocus: false });
+    vehicleDialog.hide({ restoreFocus: false });
     settingsDialog.hide({ restoreFocus: false });
     marketDialog.hide({ restoreFocus: false });
     settingsOverviewDialog.hide({ restoreFocus: false });
@@ -2347,6 +2474,7 @@ export function createCardView(input: CardViewInput): CardView {
     capabilityDialog.hide({ restoreFocus: false });
     pauseDialog.hide({ restoreFocus: false });
     strategyDialog.hide({ restoreFocus: false });
+    vehicleDialog.hide({ restoreFocus: false });
     settingsDialog.hide({ restoreFocus: false });
     marketDialog.hide({ restoreFocus: false });
     settingsOverviewDialog.hide({ restoreFocus: false });
@@ -2577,6 +2705,7 @@ export function createCardView(input: CardViewInput): CardView {
       capabilityDialog.destroy();
       pauseDialog.destroy();
       strategyDialog.destroy();
+      vehicleDialog.destroy();
       settingsDialog.destroy();
       marketDialog.destroy();
       entityDialog.destroy();

@@ -364,6 +364,22 @@ export function strategyReplacement(record: SettingsRecord, strategy: string): R
   return { ok: true, body: { ...encodeBody(record), strategy }, changed: strategy !== record.strategy };
 }
 
+/**
+ * What choosing the vehicle the charger plans for would send: the accepted record unchanged except
+ * `target.vehicle_id`. The driver is not touched, so the choice holds in both planning modes.
+ */
+export function vehicleReplacement(record: SettingsRecord, vehicleId: string): ReplacementCheck {
+  if (vehicleId.trim() === "") {
+    return { ok: false, errorKey: "settings.error.invalid" };
+  }
+  const body = encodeBody(record);
+  return {
+    ok: true,
+    body: { ...body, target: { ...record.target, vehicle_id: vehicleId } },
+    changed: vehicleId !== record.target.vehicle_id,
+  };
+}
+
 export interface SettingsFormValues {
   energy: string;
   deadlineEnabled: boolean;

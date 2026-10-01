@@ -23,6 +23,15 @@ export const VISUAL_CLASSES = {
   advisory: "spotnav-advisory",
   pauseChoices: "spotnav-pause-choices",
   choiceButton: "spotnav-choice-button",
+  nameBlock: "spotnav-name-block",
+  vehicleLine: "spotnav-vehicle-line",
+  vehicleLineName: "spotnav-vehicle-line-name",
+  vehicleLineCharge: "spotnav-vehicle-line-charge",
+  vehicleLineAge: "spotnav-vehicle-line-age",
+  vehicleChoices: "spotnav-vehicle-choices",
+  vehicleChoice: "spotnav-vehicle-choice",
+  vehicleChoiceName: "spotnav-vehicle-choice-name",
+  vehicleChoiceCharge: "spotnav-vehicle-choice-charge",
   strategyRow: "spotnav-strategy-row",
   strategyReason: "spotnav-strategy-reason",
   strategyLink: "spotnav-strategy-link",
@@ -689,6 +698,85 @@ export const VISUAL_STYLES = `
     flex: 0 0 auto;
     color: var(--secondary-text-color, #727272);
     font-size: 0.8rem;
+  }
+  .${VISUAL_CLASSES.nameBlock} {
+    flex: 1 1 auto;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+  }
+  .${VISUAL_CLASSES.nameBlock} > .${VISUAL_CLASSES.name} {
+    flex: 0 0 auto;
+    max-width: 100%;
+  }
+  /* The planned vehicle: a quiet text button under the name; the header's 44 px icon buttons keep the row tall enough to tap. */
+  .${VISUAL_CLASSES.vehicleLine} {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    max-width: 100%;
+    min-height: 32px;
+    margin: -4px 0 -4px -4px;
+    padding: 4px;
+    font: inherit;
+    font-size: 0.85rem;
+    color: var(--secondary-text-color, #727272);
+    background: transparent;
+    border: 0;
+    border-radius: 6px;
+    text-align: start;
+    cursor: pointer;
+  }
+  .${VISUAL_CLASSES.vehicleLine} > svg {
+    flex: none;
+  }
+  .${VISUAL_CLASSES.vehicleLine}:focus-visible {
+    outline: 2px solid var(--primary-color, #03a9f4);
+    outline-offset: 1px;
+  }
+  .${VISUAL_CLASSES.vehicleLineName} {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .${VISUAL_CLASSES.vehicleLineCharge},
+  .${VISUAL_CLASSES.vehicleLineAge} {
+    flex: none;
+    white-space: nowrap;
+  }
+  .${VISUAL_CLASSES.vehicleLineAge} {
+    opacity: 0.8;
+  }
+  .${VISUAL_CLASSES.vehicleChoices} {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+  .${VISUAL_CLASSES.vehicleChoice} {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    min-height: 44px;
+    padding: 4px 8px;
+    border: 1px solid var(--divider-color, #e0e0e0);
+    border-radius: 8px;
+    cursor: pointer;
+  }
+  .${VISUAL_CLASSES.vehicleChoice} > input {
+    flex: none;
+    margin: 0;
+  }
+  .${VISUAL_CLASSES.vehicleChoiceName} {
+    flex: 1 1 auto;
+    min-width: 0;
+    overflow-wrap: anywhere;
+  }
+  .${VISUAL_CLASSES.vehicleChoiceCharge} {
+    flex: none;
+    color: var(--secondary-text-color, #727272);
+    font-size: 0.85rem;
   }
   .${VISUAL_CLASSES.status} {
     margin: 8px 0 0;

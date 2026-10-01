@@ -3,6 +3,7 @@
 // dialog body it opens. Nothing here talks to the backend or judges a value; `settings.ts` and the
 // card own every judgement and request.
 
+import { ageSentence as sharedAgeSentence } from "./vehicle-line";
 import { energyAmount, formatFixed, formatNumber, percentAmount } from "./format";
 import { translate, type Language, type TranslationKey } from "./i18n";
 import {
@@ -440,18 +441,7 @@ export function settingsEditorBody(
     return row;
   };
 
-  const ageSentence = (seconds: number): string => {
-    if (seconds < 90) {
-      return translate(language, "settings.soc.age.now");
-    }
-    if (seconds < 3600) {
-      return translate(language, "settings.soc.age.min", { count: String(Math.floor(seconds / 60)) });
-    }
-    if (seconds < 86400) {
-      return translate(language, "settings.soc.age.hour", { count: String(Math.floor(seconds / 3600)) });
-    }
-    return translate(language, "settings.soc.age.day", { count: String(Math.floor(seconds / 86400)) });
-  };
+  const ageSentence = (seconds: number): string => sharedAgeSentence(language, seconds);
 
   /**
    * The target mode's block: the vehicle, the slider with what is known about the charge, the energy

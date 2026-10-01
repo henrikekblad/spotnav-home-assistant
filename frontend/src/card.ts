@@ -64,6 +64,8 @@ import {
   replacementFor,
   settingsErrorKey,
   strategyReplacement,
+  vehicleReplacement,
+  type ReplacementCheck,
   type CurrentRange,
   type SettingsEditorKind,
   type SettingsFormValues,
@@ -1050,6 +1052,18 @@ export class SpotnavCard extends HTMLElement {
    * strategy as shown and is reported through the row-level sentence.
    */
   private async selectStrategy(strategyId: string): Promise<void> {
+    await this.writeFreshSettings((record) => strategyReplacement(record, strategyId));
+  }
+
+  /**
+   * Choose the vehicle the charger plans for: the same dialog-free write as the strategy, changing only
+   * `target.vehicle_id` of a freshly read record under its revision.
+   */
+  private async selectVehicle(vehicleId: string): Promise<void> {
+    await this.writeFreshSettings((record) => vehicleReplacement(record, vehicleId));
+  }
+
+  private async writeFreshSettings(build: (record: SettingsRecord) => ReplacementCheck): Promise<void> {
     const hass = this.hassObject;
     const config = this.config;
     if (!this.connected || hass === null || config === null || config.charger === "" || !this.isAdmin) {
@@ -1076,7 +1090,7 @@ export class SpotnavCard extends HTMLElement {
         return;
       }
       const record = decodedRecord.value.settings;
-      const check = strategyReplacement(record, strategyId);
+      const check = build(record);
       if (!check.ok) {
         this.view?.setSettingsError({ sentenceKey: check.errorKey, code: null });
         return;
@@ -1784,6 +1798,9 @@ export class SpotnavCard extends HTMLElement {
           this.switchMarketArea(areaId, live);
         },
         isAdmin: this.isAdmin,
+        onSelectVehicle: (vehicleId) => {
+          void this.selectVehicle(vehicleId);
+        },
         onSelectStrategy: (strategyId) => {
           void this.selectStrategy(strategyId);
         },

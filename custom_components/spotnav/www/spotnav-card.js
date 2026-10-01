@@ -1,5 +1,5 @@
 // SpotNav card, compiled from frontend/ in the same integration.
-// Integration version 1.0.3. The integration registers this file as a
+// Integration version 1.0.4. The integration registers this file as a
 // Lovelace module resource itself; it is not added by hand.
 
 // src/types.ts
@@ -638,6 +638,15 @@ var VISUAL_CLASSES = {
   advisory: "spotnav-advisory",
   pauseChoices: "spotnav-pause-choices",
   choiceButton: "spotnav-choice-button",
+  nameBlock: "spotnav-name-block",
+  vehicleLine: "spotnav-vehicle-line",
+  vehicleLineName: "spotnav-vehicle-line-name",
+  vehicleLineCharge: "spotnav-vehicle-line-charge",
+  vehicleLineAge: "spotnav-vehicle-line-age",
+  vehicleChoices: "spotnav-vehicle-choices",
+  vehicleChoice: "spotnav-vehicle-choice",
+  vehicleChoiceName: "spotnav-vehicle-choice-name",
+  vehicleChoiceCharge: "spotnav-vehicle-choice-charge",
   strategyRow: "spotnav-strategy-row",
   strategyReason: "spotnav-strategy-reason",
   strategyLink: "spotnav-strategy-link",
@@ -1295,6 +1304,85 @@ var VISUAL_STYLES = `
     flex: 0 0 auto;
     color: var(--secondary-text-color, #727272);
     font-size: 0.8rem;
+  }
+  .${VISUAL_CLASSES.nameBlock} {
+    flex: 1 1 auto;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+  }
+  .${VISUAL_CLASSES.nameBlock} > .${VISUAL_CLASSES.name} {
+    flex: 0 0 auto;
+    max-width: 100%;
+  }
+  /* The planned vehicle: a quiet text button under the name; the header's 44 px icon buttons keep the row tall enough to tap. */
+  .${VISUAL_CLASSES.vehicleLine} {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    max-width: 100%;
+    min-height: 32px;
+    margin: -4px 0 -4px -4px;
+    padding: 4px;
+    font: inherit;
+    font-size: 0.85rem;
+    color: var(--secondary-text-color, #727272);
+    background: transparent;
+    border: 0;
+    border-radius: 6px;
+    text-align: start;
+    cursor: pointer;
+  }
+  .${VISUAL_CLASSES.vehicleLine} > svg {
+    flex: none;
+  }
+  .${VISUAL_CLASSES.vehicleLine}:focus-visible {
+    outline: 2px solid var(--primary-color, #03a9f4);
+    outline-offset: 1px;
+  }
+  .${VISUAL_CLASSES.vehicleLineName} {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .${VISUAL_CLASSES.vehicleLineCharge},
+  .${VISUAL_CLASSES.vehicleLineAge} {
+    flex: none;
+    white-space: nowrap;
+  }
+  .${VISUAL_CLASSES.vehicleLineAge} {
+    opacity: 0.8;
+  }
+  .${VISUAL_CLASSES.vehicleChoices} {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+  .${VISUAL_CLASSES.vehicleChoice} {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    min-height: 44px;
+    padding: 4px 8px;
+    border: 1px solid var(--divider-color, #e0e0e0);
+    border-radius: 8px;
+    cursor: pointer;
+  }
+  .${VISUAL_CLASSES.vehicleChoice} > input {
+    flex: none;
+    margin: 0;
+  }
+  .${VISUAL_CLASSES.vehicleChoiceName} {
+    flex: 1 1 auto;
+    min-width: 0;
+    overflow-wrap: anywhere;
+  }
+  .${VISUAL_CLASSES.vehicleChoiceCharge} {
+    flex: none;
+    color: var(--secondary-text-color, #727272);
+    font-size: 0.85rem;
   }
   .${VISUAL_CLASSES.status} {
     margin: 8px 0 0;
@@ -3131,6 +3219,10 @@ var da = {
   "settings.soc.toLimit": "Lader til bilens grænse, {value}",
   "settings.soc.readAge": "Aflæst {age}",
   "settings.soc.needAfterVehicle": "Behovet beregnes, når valget af køretøj er gemt.",
+  "vehicleLine.aria": "{name}, {summary}. Vælg hvilket køretøj der skal oplades",
+  "vehicleLine.estimateTitle": "Anslået mellem aflæsningerne, aflæst {age}",
+  "vehicleLine.dialogTitle": "Hvilket køretøj skal oplades?",
+  "vehicleLine.noReading": "Ingen aflæsning",
   "settings.vehicle.unnamed": "Køretøj uden navn",
   "settings.vehicle.plannedHere": "Denne oplader planlægger for det",
   "settings.vehicle.capacityReported": "rapporteret af bilen",
@@ -3627,6 +3719,10 @@ var en = {
   "settings.soc.toLimit": "Charging to the vehicle's limit, {value}",
   "settings.soc.readAge": "Read {age}",
   "settings.soc.needAfterVehicle": "The need is calculated once the vehicle choice is saved.",
+  "vehicleLine.aria": "{name}, {summary}. Choose which vehicle to charge",
+  "vehicleLine.estimateTitle": "Estimated between readings, read {age}",
+  "vehicleLine.dialogTitle": "Which vehicle should be charged?",
+  "vehicleLine.noReading": "No reading",
   "settings.vehicle.unnamed": "Unnamed vehicle",
   "settings.vehicle.plannedHere": "This charger plans for it",
   "settings.vehicle.capacityReported": "reported by the vehicle",
@@ -4123,6 +4219,10 @@ var fi = {
   "settings.soc.toLimit": "Ladataan auton rajaan, {value}",
   "settings.soc.readAge": "Luettu {age}",
   "settings.soc.needAfterVehicle": "Tarve lasketaan, kun ajoneuvon valinta on tallennettu.",
+  "vehicleLine.aria": "{name}, {summary}. Valitse ladattava ajoneuvo",
+  "vehicleLine.estimateTitle": "Arvio lukemien välillä, luettu {age}",
+  "vehicleLine.dialogTitle": "Mikä ajoneuvo ladataan?",
+  "vehicleLine.noReading": "Ei lukemaa",
   "settings.vehicle.unnamed": "Nimetön ajoneuvo",
   "settings.vehicle.plannedHere": "Tämä lataaja suunnittelee sille",
   "settings.vehicle.capacityReported": "auton ilmoittama",
@@ -4619,6 +4719,10 @@ var nb = {
   "settings.soc.toLimit": "Lader til bilens grense, {value}",
   "settings.soc.readAge": "Avlest {age}",
   "settings.soc.needAfterVehicle": "Behovet beregnes når kjøretøyvalget er lagret.",
+  "vehicleLine.aria": "{name}, {summary}. Velg hvilket kjøretøy som skal lades",
+  "vehicleLine.estimateTitle": "Anslått mellom avlesningene, avlest {age}",
+  "vehicleLine.dialogTitle": "Hvilket kjøretøy skal lades?",
+  "vehicleLine.noReading": "Ingen avlesning",
   "settings.vehicle.unnamed": "Kjøretøy uten navn",
   "settings.vehicle.plannedHere": "Denne laderen planlegger for det",
   "settings.vehicle.capacityReported": "rapportert av bilen",
@@ -5115,6 +5219,10 @@ var sv = {
   "settings.soc.toLimit": "Laddar till bilens gräns, {value}",
   "settings.soc.readAge": "Avläst {age}",
   "settings.soc.needAfterVehicle": "Behovet räknas när fordonsvalet är sparat.",
+  "vehicleLine.aria": "{name}, {summary}. Välj vilket fordon som ska laddas",
+  "vehicleLine.estimateTitle": "Uppskattad mellan avläsningarna, avläst {age}",
+  "vehicleLine.dialogTitle": "Vilket fordon ska laddas?",
+  "vehicleLine.noReading": "Ingen avläsning",
   "settings.vehicle.unnamed": "Fordon utan namn",
   "settings.vehicle.plannedHere": "Laddaren planerar för det här fordonet",
   "settings.vehicle.capacityReported": "rapporterad av bilen",
@@ -5427,6 +5535,17 @@ function strategyReplacement(record6, strategy) {
     return { ok: false, errorKey: "settings.error.invalid" };
   }
   return { ok: true, body: { ...encodeBody(record6), strategy }, changed: strategy !== record6.strategy };
+}
+function vehicleReplacement(record6, vehicleId) {
+  if (vehicleId.trim() === "") {
+    return { ok: false, errorKey: "settings.error.invalid" };
+  }
+  const body = encodeBody(record6);
+  return {
+    ok: true,
+    body: { ...body, target: { ...record6.target, vehicle_id: vehicleId } },
+    changed: vehicleId !== record6.target.vehicle_id
+  };
 }
 function formFromRecord(record6) {
   return {
@@ -9583,6 +9702,54 @@ function marketEditorBody(doc, language, form, handlers, idPrefix, region = null
   return { body, values: read };
 }
 
+// src/vehicle-line.ts
+var STALE_READING_S = 3600;
+function ageSentence(language, seconds) {
+  if (seconds < 90) {
+    return translate(language, "settings.soc.age.now");
+  }
+  if (seconds < 3600) {
+    return translate(language, "settings.soc.age.min", { count: String(Math.floor(seconds / 60)) });
+  }
+  if (seconds < 86400) {
+    return translate(language, "settings.soc.age.hour", { count: String(Math.floor(seconds / 3600)) });
+  }
+  return translate(language, "settings.soc.age.day", { count: String(Math.floor(seconds / 86400)) });
+}
+function vehicleName(language, name) {
+  return name !== null && name.trim() !== "" ? name : translate(language, "settings.vehicle.unnamed");
+}
+function vehicleLineFor(language, soc, settings) {
+  if (soc === null || soc.vehicle_id === null || soc.value === null) {
+    return null;
+  }
+  const name = vehicleName(language, soc.vehicle_name);
+  const target = settings?.driver === SETTINGS_DRIVER_TARGET_SOC ? settings.target.target_percent ?? soc.target_percent : null;
+  const now = percentAmount(language, soc.value);
+  const charge = target === null ? now : `${now} → ${percentAmount(language, target)}`;
+  const estimatePrefix = soc.estimated ? "~" : "";
+  const age = !soc.estimated && soc.age_s !== null && soc.age_s > STALE_READING_S ? ageSentence(language, soc.age_s) : null;
+  const estimateTitle = soc.estimated && soc.age_s !== null ? translate(language, "vehicleLine.estimateTitle", { age: ageSentence(language, soc.age_s) }) : null;
+  const spoken = [`${estimatePrefix}${charge}`, estimateTitle ?? age].filter((part) => part !== null).join(", ");
+  return {
+    vehicleId: soc.vehicle_id,
+    name,
+    charge,
+    estimatePrefix,
+    age,
+    estimateTitle,
+    ariaLabel: translate(language, "vehicleLine.aria", { name, summary: spoken })
+  };
+}
+function vehicleChoicesFor(language, vehicles, plannedId) {
+  return vehicles.map((vehicle) => ({
+    id: vehicle.id,
+    name: vehicleName(language, vehicle.name),
+    charge: vehicle.soc_percent === null ? null : percentAmount(language, vehicle.soc_percent),
+    selected: vehicle.id === plannedId
+  }));
+}
+
 // src/target-need.ts
 function pythonRound(value) {
   const floor = Math.floor(value);
@@ -9880,18 +10047,7 @@ function settingsEditorBody(doc, language, form, handlers, idPrefix) {
     row.append(element4(doc, "span", VISUAL_CLASSES.capabilityLabel, label), element4(doc, "span", VISUAL_CLASSES.settingsValue, value));
     return row;
   };
-  const ageSentence = (seconds) => {
-    if (seconds < 90) {
-      return translate(language, "settings.soc.age.now");
-    }
-    if (seconds < 3600) {
-      return translate(language, "settings.soc.age.min", { count: String(Math.floor(seconds / 60)) });
-    }
-    if (seconds < 86400) {
-      return translate(language, "settings.soc.age.hour", { count: String(Math.floor(seconds / 3600)) });
-    }
-    return translate(language, "settings.soc.age.day", { count: String(Math.floor(seconds / 86400)) });
-  };
+  const ageSentence2 = (seconds) => ageSentence(language, seconds);
   const socBlock = () => {
     const block = element4(doc, "div");
     block.dataset["part"] = "soc";
@@ -9938,7 +10094,7 @@ function settingsEditorBody(doc, language, form, handlers, idPrefix) {
         facts.hidden = false;
       }
       if (!other && now !== null && soc.age_s !== null) {
-        const age = ageSentence(soc.age_s);
+        const age = ageSentence2(soc.age_s);
         const note = soc.estimated ? translate(language, "settings.soc.estimatedFrom", { age }) : soc.age_s >= 90 ? translate(language, "settings.soc.readAge", { age }) : "";
         if (note !== "") {
           reading.textContent = note.charAt(0).toUpperCase() + note.slice(1);
@@ -10450,6 +10606,20 @@ function settingsGearIcon(doc) {
     );
   });
 }
+function batteryIcon(doc) {
+  return icon(doc, (svg2, ns) => {
+    const body = doc.createElementNS(ns, "path");
+    body.setAttribute("d", "M4 8h13a1 1 0 0 1 1 1v6a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V9a1 1 0 0 1 1-1zM19 11h1.5v2H19z");
+    body.setAttribute("fill", "none");
+    body.setAttribute("stroke", "currentColor");
+    body.setAttribute("stroke-width", "1.6");
+    body.setAttribute("stroke-linejoin", "round");
+    const level = doc.createElementNS(ns, "path");
+    level.setAttribute("d", "M5.5 10h7v4h-7z");
+    level.setAttribute("fill", "currentColor");
+    svg2.append(body, level);
+  });
+}
 function pauseIcon(doc) {
   return icon(doc, (svg2, ns) => {
     svg2.append(fillPath(ns, doc, "M7 5h3v14H7zM14 5h3v14h-3z"));
@@ -10603,7 +10773,36 @@ function createCardView(input) {
   card.style.boxSizing = "border-box";
   const header = element6(doc, "div", VISUAL_CLASSES.header);
   header.append(brandMark(doc, idPrefix));
-  if (model.chargerName !== null) {
+  const vehicleLine = vehicleLineFor(model.language, model.soc, model.dashboardSettings);
+  let vehicleButton = null;
+  if (vehicleLine !== null) {
+    const identity2 = element6(doc, "div", VISUAL_CLASSES.nameBlock);
+    if (model.chargerName !== null) {
+      identity2.append(element6(doc, "h3", VISUAL_CLASSES.name, model.chargerName));
+    }
+    vehicleButton = element6(doc, "button", VISUAL_CLASSES.vehicleLine);
+    vehicleButton.type = "button";
+    vehicleButton.dataset["vehicleLine"] = vehicleLine.vehicleId;
+    vehicleButton.setAttribute("aria-label", vehicleLine.ariaLabel);
+    vehicleButton.setAttribute("aria-haspopup", "dialog");
+    if (vehicleLine.estimateTitle !== null) {
+      vehicleButton.title = vehicleLine.estimateTitle;
+      vehicleButton.dataset["estimated"] = "true";
+    }
+    vehicleButton.append(
+      batteryIcon(doc),
+      element6(doc, "span", VISUAL_CLASSES.vehicleLineName, vehicleLine.name),
+      element6(doc, "span", VISUAL_CLASSES.vehicleLineCharge, `· ${vehicleLine.estimatePrefix}${vehicleLine.charge}`)
+    );
+    if (vehicleLine.age !== null) {
+      vehicleButton.append(element6(doc, "span", VISUAL_CLASSES.vehicleLineAge, `· ${vehicleLine.age}`));
+    }
+    vehicleButton.addEventListener("click", () => {
+      openVehicleChoice();
+    });
+    identity2.append(vehicleButton);
+    header.append(identity2);
+  } else if (model.chargerName !== null) {
     header.append(element6(doc, "h3", VISUAL_CLASSES.name, model.chargerName));
   }
   header.append(
@@ -10651,6 +10850,13 @@ function createCardView(input) {
     background: () => card,
     onClose: notifyDialogsChanged
   });
+  const vehicleDialog = createDialog({
+    owner: input.mount,
+    idPrefix: `${idPrefix}-vehicle`,
+    labels,
+    background: () => card,
+    onClose: notifyDialogsChanged
+  });
   const settingsDialog = createDialog({
     owner: input.mount,
     idPrefix: `${idPrefix}-settings`,
@@ -10692,7 +10898,7 @@ function createCardView(input) {
     }
   }
   function anyDialogOpenNow() {
-    return issuesDialog.isOpen() || capabilityDialog.isOpen() || pauseDialog.isOpen() || strategyDialog.isOpen() || settingsDialog.isOpen() || marketDialog.isOpen() || entityDialog.isOpen() || settingsOverviewDialog.isOpen();
+    return issuesDialog.isOpen() || capabilityDialog.isOpen() || pauseDialog.isOpen() || strategyDialog.isOpen() || vehicleDialog.isOpen() || settingsDialog.isOpen() || marketDialog.isOpen() || entityDialog.isOpen() || settingsOverviewDialog.isOpen();
   }
   function notifyDialogsChanged() {
     queueMicrotask(() => {
@@ -11115,6 +11321,7 @@ function createCardView(input) {
     issuesDialog.hide({ restoreFocus: false });
     capabilityDialog.hide({ restoreFocus: false });
     strategyDialog.hide({ restoreFocus: false });
+    vehicleDialog.hide({ restoreFocus: false });
     settingsOverviewDialog.hide({ restoreFocus: false });
     const body = element6(doc, "div");
     body.append(element6(doc, "p", `${VISUAL_CLASSES.muted} ${VISUAL_CLASSES.dialogIntro}`, translate(model.language, "pause.intro")));
@@ -11136,6 +11343,59 @@ function createCardView(input) {
       body,
       // The sheet belongs to the automatic control, so focus returns to *that* button.
       opener: plannerButton
+    });
+  }
+  function openVehicleChoice() {
+    if (destroyed) {
+      return;
+    }
+    issuesDialog.hide({ restoreFocus: false });
+    capabilityDialog.hide({ restoreFocus: false });
+    pauseDialog.hide({ restoreFocus: false });
+    strategyDialog.hide({ restoreFocus: false });
+    settingsOverviewDialog.hide({ restoreFocus: false });
+    const body = element6(doc, "div");
+    if (!input.isAdmin) {
+      body.append(element6(doc, "p", VISUAL_CLASSES.settingsReadOnly, translate(model.language, "settings.readOnly")));
+    }
+    const group = element6(doc, "div", VISUAL_CLASSES.vehicleChoices);
+    group.setAttribute("role", "radiogroup");
+    group.setAttribute("aria-label", translate(model.language, "vehicleLine.dialogTitle"));
+    const plannedId = model.soc?.vehicle_id ?? model.targetVehicleId;
+    const name = `${idPrefix}-vehicle-choice`;
+    for (const choice of vehicleChoicesFor(model.language, model.vehicles, plannedId)) {
+      const label = element6(doc, "label", VISUAL_CLASSES.vehicleChoice);
+      const radio = element6(doc, "input");
+      radio.type = "radio";
+      radio.name = name;
+      radio.value = choice.id;
+      radio.checked = choice.selected;
+      radio.disabled = !input.isAdmin;
+      radio.dataset["vehicle"] = choice.id;
+      radio.addEventListener("change", () => {
+        if (!radio.checked || choice.selected || !input.isAdmin) {
+          return;
+        }
+        vehicleDialog.hide({ restoreFocus: false });
+        input.onSelectVehicle?.(choice.id);
+      });
+      label.append(
+        radio,
+        element6(doc, "span", VISUAL_CLASSES.vehicleChoiceName, choice.name),
+        element6(
+          doc,
+          "span",
+          VISUAL_CLASSES.vehicleChoiceCharge,
+          choice.charge ?? translate(model.language, "vehicleLine.noReading")
+        )
+      );
+      group.append(label);
+    }
+    body.append(group);
+    vehicleDialog.show({
+      title: translate(model.language, "vehicleLine.dialogTitle"),
+      body,
+      opener: vehicleButton
     });
   }
   function openStrategy() {
@@ -11163,6 +11423,7 @@ function createCardView(input) {
       if (writable) {
         button.addEventListener("click", () => {
           strategyDialog.hide({ restoreFocus: false });
+          vehicleDialog.hide({ restoreFocus: false });
           input.onSelectStrategy(row.id);
         });
       }
@@ -11175,6 +11436,7 @@ function createCardView(input) {
           link.dataset["action"] = "setup-solar";
           link.addEventListener("click", () => {
             strategyDialog.hide({ restoreFocus: false });
+            vehicleDialog.hide({ restoreFocus: false });
             openSettingsOverview();
             overviewBodyNode?.querySelector("[data-section='solar']")?.scrollIntoView?.({ block: "nearest" });
             overviewBodyNode?.querySelector("[data-edit-solar]")?.focus();
@@ -11600,6 +11862,7 @@ function createCardView(input) {
     capabilityDialog.hide({ restoreFocus: false });
     pauseDialog.hide({ restoreFocus: false });
     strategyDialog.hide({ restoreFocus: false });
+    vehicleDialog.hide({ restoreFocus: false });
     entityDialog.hide({ restoreFocus: false });
     settingsOverviewDialog.show({
       title: model.chargerName === null ? translate(model.language, "settings.overview.title") : translate(model.language, "settings.overview.titleNamed", { name: model.chargerName }),
@@ -11702,6 +11965,7 @@ function createCardView(input) {
     capabilityDialog.hide({ restoreFocus: false });
     pauseDialog.hide({ restoreFocus: false });
     strategyDialog.hide({ restoreFocus: false });
+    vehicleDialog.hide({ restoreFocus: false });
     marketDialog.hide({ restoreFocus: false });
     settingsOverviewDialog.hide({ restoreFocus: false });
     const loading = element6(
@@ -11856,6 +12120,7 @@ function createCardView(input) {
     capabilityDialog.hide({ restoreFocus: false });
     pauseDialog.hide({ restoreFocus: false });
     strategyDialog.hide({ restoreFocus: false });
+    vehicleDialog.hide({ restoreFocus: false });
     settingsDialog.hide({ restoreFocus: false });
     settingsOverviewDialog.hide({ restoreFocus: false });
     const loading = element6(doc, "p", `${VISUAL_CLASSES.muted} ${VISUAL_CLASSES.dialogIntro}`, translate(model.language, "market.loading"));
@@ -11917,6 +12182,7 @@ function createCardView(input) {
     capabilityDialog.hide({ restoreFocus: false });
     pauseDialog.hide({ restoreFocus: false });
     strategyDialog.hide({ restoreFocus: false });
+    vehicleDialog.hide({ restoreFocus: false });
     settingsDialog.hide({ restoreFocus: false });
     marketDialog.hide({ restoreFocus: false });
     settingsOverviewDialog.hide({ restoreFocus: false });
@@ -11950,6 +12216,7 @@ function createCardView(input) {
     capabilityDialog.hide({ restoreFocus: false });
     pauseDialog.hide({ restoreFocus: false });
     strategyDialog.hide({ restoreFocus: false });
+    vehicleDialog.hide({ restoreFocus: false });
     settingsDialog.hide({ restoreFocus: false });
     marketDialog.hide({ restoreFocus: false });
     settingsOverviewDialog.hide({ restoreFocus: false });
@@ -12158,6 +12425,7 @@ function createCardView(input) {
       capabilityDialog.destroy();
       pauseDialog.destroy();
       strategyDialog.destroy();
+      vehicleDialog.destroy();
       settingsDialog.destroy();
       marketDialog.destroy();
       entityDialog.destroy();
@@ -13266,6 +13534,16 @@ var SpotnavCard = class extends HTMLElement {
    * strategy as shown and is reported through the row-level sentence.
    */
   async selectStrategy(strategyId) {
+    await this.writeFreshSettings((record6) => strategyReplacement(record6, strategyId));
+  }
+  /**
+   * Choose the vehicle the charger plans for: the same dialog-free write as the strategy, changing only
+   * `target.vehicle_id` of a freshly read record under its revision.
+   */
+  async selectVehicle(vehicleId) {
+    await this.writeFreshSettings((record6) => vehicleReplacement(record6, vehicleId));
+  }
+  async writeFreshSettings(build) {
     const hass = this.hassObject;
     const config = this.config;
     if (!this.connected || hass === null || config === null || config.charger === "" || !this.isAdmin) {
@@ -13288,7 +13566,7 @@ var SpotnavCard = class extends HTMLElement {
         return;
       }
       const record6 = decodedRecord.value.settings;
-      const check = strategyReplacement(record6, strategyId);
+      const check = build(record6);
       if (!check.ok) {
         this.view?.setSettingsError({ sentenceKey: check.errorKey, code: null });
         return;
@@ -13923,6 +14201,9 @@ var SpotnavCard = class extends HTMLElement {
           this.switchMarketArea(areaId, live);
         },
         isAdmin: this.isAdmin,
+        onSelectVehicle: (vehicleId) => {
+          void this.selectVehicle(vehicleId);
+        },
         onSelectStrategy: (strategyId) => {
           void this.selectStrategy(strategyId);
         },
