@@ -26,6 +26,7 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from custom_components.spotnav.execution import charger_profiles as cp  # noqa: E402
+from custom_components.spotnav.execution import other_controllers as oc  # noqa: E402
 from custom_components.spotnav.site import site_detection as sd  # noqa: E402
 
 OUTPUT = ROOT / "docs" / "supported.md"
@@ -97,6 +98,7 @@ NAMES: dict[str, str] = {
     "solax_modbus": "SolaX Modbus",
     "perific": "Perific",
     "solis_modbus": "Solis Modbus",
+    "bitvis": "Bitvis Power Hub",
     # vehicles
     "kia_uvo": "Kia Uvo",
     "ha_kia_hyundai": "Kia and Hyundai (community integration)",
@@ -330,6 +332,16 @@ def chargers_section() -> list[str]:
         "",
     ]
     lines += [f"- {p.name} (`{p.platform}`)" for p in external]
+    lines += [
+        "",
+        "These integrations switch or limit a charger by themselves and run beside SpotNav. The flow "
+        "and the card warn that the charger will be fought over, and still suggest the charger's "
+        "entities. Turn the other controller off for the charger SpotNav controls. The warning is for "
+        "the charger when the controller's setting names it, and for the installation when the "
+        "controller cannot name one.",
+        "",
+    ]
+    lines += [f"- {c.name} (`{c.domain}`)" for c in oc.CONTROLLERS]
     lines.append("")
     unsupported = by_role.get(cp.ROLE_UNSUPPORTED, [])
     lines += [
@@ -424,7 +436,7 @@ def domains_text(domains: tuple[str, ...]) -> str:
 def meters_section() -> list[str]:
     rows = []
     for row in sd.METER_ROWS:
-        names = " / ".join(dict.fromkeys(name_of(p) for p in row.platforms))
+        names = row.label or " / ".join(dict.fromkeys(name_of(p) for p in row.platforms))
         rows.append(
             (
                 f"{names} ({domains_text(row.platforms)})",
@@ -480,7 +492,7 @@ def meters_section() -> list[str]:
 def batteries_section() -> list[str]:
     rows = []
     for row in sd.BATTERY_ROWS:
-        names = " / ".join(dict.fromkeys(name_of(p) for p in row.platforms))
+        names = row.label or " / ".join(dict.fromkeys(name_of(p) for p in row.platforms))
         if row.discharge_regex is not None:
             convention = "Charge and discharge are two entities, combined"
         elif row.inverted:

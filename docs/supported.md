@@ -68,6 +68,12 @@ These integrations mean another system owns the charger. The flow shows a warnin
 - evcc (`evcc_intg`)
 - openWB (`openwb2mqtt`)
 
+These integrations switch or limit a charger by themselves and run beside SpotNav. The flow and the card warn that the charger will be fought over, and still suggest the charger's entities. Turn the other controller off for the charger SpotNav controls. The warning is for the charger when the controller's setting names it, and for the installation when the controller cannot name one.
+
+- EV Smart Charging (`ev_smart_charging`)
+- EVSE Load Balancer (`evse_load_balancer`)
+- PeaqEV (`peaqev`)
+
 ### Not supported
 
 SpotNav recognises these chargers but cannot drive them; the flow stops with a message.
@@ -119,7 +125,9 @@ Solar and hybrid need the grid's signed power. A derived site has it per phase; 
 | Fronius (`fronius`) | Derived from power and voltage, current exact | Negative current while exporting, read as its size | Only devices whose model contains "meter". Updates about every 1 min. | Detected from the integration's source |
 | Enphase Envoy (`enphase_envoy`) | Derived from power and voltage, current exact | None needed | Updates about every 1 min. | Detected from the integration's source |
 | SMA (`sma`, `pysmaplus`) | Derived from power and voltage, current exact | Import and export are two entities |  | Detected from the integration's source |
-| SolarEdge Modbus Multi / SolarEdge Modbus (`solaredge_modbus_multi`, `solaredge_modbus`) | Derived from power and voltage, current exact | Negative current while exporting, read as its size; Export-positive power, negated | Updates about every 5 min. | Detected from the integration's source |
+| SolarEdge Modbus Multi / SolarEdge Modbus (HACS) (`solaredge_modbus_multi`, `solaredge_modbus`) | Derived from power and voltage, current exact | Negative current while exporting, read as its size; Export-positive power, negated | Updates about every 5 min. | Detected from the integration's source |
+| SolarEdge Modbus (Home Assistant core) (`solaredge_modbus`) | Derived from power and voltage, current exact | Negative current while exporting, read as its size; Export-positive power, negated | Total grid power for solar and hybrid: one signed entity. Updates about every 30 s. | Detected from the integration's source |
+| Bitvis Power Hub (`bitvis`) | Derived from power and voltage, current exact | Import and export are two entities | Total grid power for solar and hybrid: an import and an export entity. | Detected from the integration's source |
 | Victron GX / Victron MQTT / Victron (`victron_gx`, `victron_mqtt`, `victron`) | Derived from power and voltage, current exact | Negative current while exporting, read as its size |  | Detected from the integration's source |
 | GoodWe (`goodwe`) | Derived from power and voltage, current exact | Export-positive power, negated |  | Detected from the integration's source |
 | Sigenergy (`sigen`) | Derived from power and voltage, current exact | None needed | Voltage is taken from the inverter, which is on another device of the same integration. | Tested: charging verified (Sigenergy) |
@@ -141,7 +149,8 @@ The site uses a house battery's power to tell the car's draw from the house's, a
 | Huawei Solar (`huawei_solar`) | Charge-positive, used as it is |  | Detected from the integration's source |
 | Sigenergy (`sigen`) | Charge-positive, used as it is |  | Tested: charging verified (Sigenergy) |
 | Victron GX / Victron MQTT / Victron (`victron_gx`, `victron_mqtt`, `victron`) | Charge-positive, used as it is |  | Detected from the integration's source |
-| SolarEdge Modbus Multi / SolarEdge Modbus (`solaredge_modbus_multi`, `solaredge_modbus`) | Charge-positive, used as it is |  | Detected from the integration's source |
+| SolarEdge Modbus Multi / SolarEdge Modbus (HACS) (`solaredge_modbus_multi`, `solaredge_modbus`) | Charge-positive, used as it is |  | Detected from the integration's source |
+| SolarEdge Modbus (Home Assistant core) (`solaredge_modbus`) | Charge-positive, used as it is |  | Detected from the integration's source |
 | HomeWizard (`homewizard`) | Charge-positive, used as it is | Only devices whose model contains "bat". | Detected from the integration's source |
 | Tesla Powerwall (`powerwall`) | Discharge-positive, negated |  | Detected from the integration's source |
 | Tesla Fleet / Teslemetry / Tesla Custom Integration (`tesla_fleet`, `teslemetry`, `tesla_custom`) | Discharge-positive, negated |  | Detected from the integration's source |
