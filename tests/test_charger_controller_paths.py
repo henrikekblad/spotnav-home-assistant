@@ -54,7 +54,7 @@ async def test_a_charger_that_waits_for_the_car_is_not_charging_but_is_still_sto
     turn the enabled switch off, or the charger would start the moment the car asks.
     """
     controller = await _controller(hass, "wallbox")
-    hass.states.async_set("sensor.wallbox_status_description", "Connected: waiting car demand")
+    hass.states.async_set("sensor.wallbox_status_description", "Waiting for car demand")
     turn_off = async_mock_service(hass, "switch", "turn_off")
     turn_on = async_mock_service(hass, "switch", "turn_on")
 

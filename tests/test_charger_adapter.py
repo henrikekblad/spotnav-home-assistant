@@ -123,7 +123,7 @@ async def test_the_charging_state_is_the_status_sensor_not_the_switch(hass: Home
     adapter = adapter_for(hass, detect_charger(hass, ids["device_id"]))
 
     assert adapter.charging_state() is True
-    hass.states.async_set("sensor.wallbox_status_description", "Connected: waiting car demand")
+    hass.states.async_set("sensor.wallbox_status_description", "Waiting for car demand")
     assert adapter.charging_state() is False
     assert adapter.enabled_state() is True
     assert adapter.progress_status() == "SuspendedEV"
