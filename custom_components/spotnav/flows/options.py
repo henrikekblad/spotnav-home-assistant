@@ -20,6 +20,7 @@ from ..const import (
     CONF_CHARGER_PLATFORM,
     CONF_CONTROL_PATH,
     CONF_CURRENT_CONTROL,
+    CONF_CURRENT_LIMIT_NONE,
     CONF_CURRENT_LIMIT,
     CONF_DERIVED_ENTITIES,
     CONF_DIRECT_ENTITIES,
@@ -226,6 +227,9 @@ class SpotNavChargingOptionsFlow(config_entries.OptionsFlow):
                     CONF_CURRENT_CONTROL: user_input.get(CONF_CURRENT_CONTROL) or "",
                     CONF_ENERGY_REGISTER_ENTITY: user_input.get(CONF_ENERGY_REGISTER_ENTITY) or "",
                 }
+                if updated_data[CONF_CURRENT_LIMIT] or updated_data[CONF_CURRENT_CONTROL]:
+                    # Setting a current again ends the card's "None".
+                    updated_data.pop(CONF_CURRENT_LIMIT_NONE, None)
                 for key in (CONF_POWER_ENTITY, CONF_IDLE_POWER_W):
                     # Stored only while set, so a charger without them keeps exactly its old data.
                     if user_input.get(key):

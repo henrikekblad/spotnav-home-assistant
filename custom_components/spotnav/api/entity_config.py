@@ -49,7 +49,9 @@ from ..const import (
     CONF_CHARGE_CONTROL,
     CONF_CHARGER_ENTRY_IDS,
     CONF_CONTROL_PATH,
+    CONF_CURRENT_CONTROL,
     CONF_CURRENT_LIMIT,
+    CONF_CURRENT_LIMIT_NONE,
     CONF_DERIVED_ENTITIES,
     CONF_DIRECT_ENTITIES,
     CONF_ENERGY_REGISTER_ENTITY,
@@ -95,6 +97,7 @@ from .entity_fields import (
     FIELD_BATTERY_AGGREGATE_POWER,
     FIELD_BATTERY_DISCHARGE_POWER,
     FIELD_CHARGE_CONTROL,
+    CURRENT_LIMIT_NONE,
     FIELD_CURRENT_LIMIT,
     FIELD_ENERGY_REGISTER,
     FIELD_POWER_ENTITY,
@@ -195,7 +198,14 @@ def _write_charger(hass: HomeAssistant, entry: ConfigEntry, changes: dict[str, A
     if FIELD_CHARGE_CONTROL in changes:
         updated[CONF_CHARGE_CONTROL] = changes[FIELD_CHARGE_CONTROL]
     if FIELD_CURRENT_LIMIT in changes:
-        updated[CONF_CURRENT_LIMIT] = changes[FIELD_CURRENT_LIMIT] or ""
+        if changes[FIELD_CURRENT_LIMIT] == CURRENT_LIMIT_NONE:
+            # "None": no entity, no current control, and the automatic lookup is switched off.
+            updated[CONF_CURRENT_LIMIT] = ""
+            updated[CONF_CURRENT_CONTROL] = ""
+            updated[CONF_CURRENT_LIMIT_NONE] = True
+        else:
+            updated[CONF_CURRENT_LIMIT] = changes[FIELD_CURRENT_LIMIT] or ""
+            updated.pop(CONF_CURRENT_LIMIT_NONE, None)
     if FIELD_ENERGY_REGISTER in changes:
         updated[CONF_ENERGY_REGISTER_ENTITY] = changes[FIELD_ENERGY_REGISTER] or ""
     if FIELD_POWER_ENTITY in changes:

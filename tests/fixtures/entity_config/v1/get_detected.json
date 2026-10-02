@@ -74,6 +74,11 @@
         "effective": null,
         "field": "current_limit",
         "kind": "entity",
+        "none": {
+          "allowed": true,
+          "automatic": null,
+          "chosen": false
+        },
         "required": false,
         "scope": "charger",
         "writable": true

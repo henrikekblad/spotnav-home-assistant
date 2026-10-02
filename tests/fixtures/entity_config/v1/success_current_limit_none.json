@@ -1,7 +1,7 @@
 {
   "api_version": 1,
   "config": {
-    "charger_id": "veh_clear",
+    "charger_id": "ok_none",
     "control": {
       "capabilities": {
         "reads_charging_state": false,
@@ -35,7 +35,7 @@
       },
       "start_stop": {
         "entity_ids": [
-          "switch.veh_clear_control"
+          "switch.ok_none_control"
         ],
         "inverted": false,
         "kind": "switch",
@@ -50,13 +50,13 @@
           "switch"
         ],
         "current": {
-          "entity_id": "switch.veh_clear_control",
+          "entity_id": "switch.ok_none_control",
           "exists": true,
-          "friendly_name": "Control veh_clear"
+          "friendly_name": "Control ok_none"
         },
         "effective": {
-          "entity_id": "switch.veh_clear_control",
-          "friendly_name": "Control veh_clear",
+          "entity_id": "switch.ok_none_control",
+          "friendly_name": "Control ok_none",
           "source": "configured"
         },
         "field": "charge_control",
@@ -77,7 +77,7 @@
         "none": {
           "allowed": true,
           "automatic": null,
-          "chosen": false
+          "chosen": true
         },
         "required": false,
         "scope": "charger",
@@ -157,13 +157,13 @@
           "sensor"
         ],
         "current": {
-          "entity_id": "sensor.site_veh_clear_l1",
+          "entity_id": "sensor.site_ok_none_l1",
           "exists": false,
-          "friendly_name": "sensor.site_veh_clear_l1"
+          "friendly_name": "sensor.site_ok_none_l1"
         },
         "effective": {
-          "entity_id": "sensor.site_veh_clear_l1",
-          "friendly_name": "sensor.site_veh_clear_l1",
+          "entity_id": "sensor.site_ok_none_l1",
+          "friendly_name": "sensor.site_ok_none_l1",
           "source": "configured"
         },
         "field": "direct_L1",
@@ -180,13 +180,13 @@
           "sensor"
         ],
         "current": {
-          "entity_id": "sensor.site_veh_clear_l2",
+          "entity_id": "sensor.site_ok_none_l2",
           "exists": false,
-          "friendly_name": "sensor.site_veh_clear_l2"
+          "friendly_name": "sensor.site_ok_none_l2"
         },
         "effective": {
-          "entity_id": "sensor.site_veh_clear_l2",
-          "friendly_name": "sensor.site_veh_clear_l2",
+          "entity_id": "sensor.site_ok_none_l2",
+          "friendly_name": "sensor.site_ok_none_l2",
           "source": "configured"
         },
         "field": "direct_L2",
@@ -203,13 +203,13 @@
           "sensor"
         ],
         "current": {
-          "entity_id": "sensor.site_veh_clear_l3",
+          "entity_id": "sensor.site_ok_none_l3",
           "exists": false,
-          "friendly_name": "sensor.site_veh_clear_l3"
+          "friendly_name": "sensor.site_ok_none_l3"
         },
         "effective": {
-          "entity_id": "sensor.site_veh_clear_l3",
-          "friendly_name": "sensor.site_veh_clear_l3",
+          "entity_id": "sensor.site_ok_none_l3",
+          "friendly_name": "sensor.site_ok_none_l3",
           "source": "configured"
         },
         "field": "direct_L3",
@@ -736,19 +736,19 @@
             {
               "age_s": null,
               "cause": "no_value",
-              "entity_id": "sensor.site_veh_clear_l1",
+              "entity_id": "sensor.site_ok_none_l1",
               "phase": "L1"
             },
             {
               "age_s": null,
               "cause": "no_value",
-              "entity_id": "sensor.site_veh_clear_l2",
+              "entity_id": "sensor.site_ok_none_l2",
               "phase": "L2"
             },
             {
               "age_s": null,
               "cause": "no_value",
-              "entity_id": "sensor.site_veh_clear_l3",
+              "entity_id": "sensor.site_ok_none_l3",
               "phase": "L3"
             }
           ]
@@ -764,24 +764,7 @@
         }
       ]
     },
-    "vehicles": [
-      {
-        "candidates": [
-          {
-            "entity_id": "sensor.pack_a",
-            "friendly_name": "pack a"
-          },
-          {
-            "entity_id": "sensor.pack_b",
-            "friendly_name": "pack b"
-          }
-        ],
-        "id": "vehicle_a",
-        "name": "Volvo",
-        "selected": null,
-        "source": null
-      }
-    ]
+    "vehicles": []
   },
   "error": null,
   "field_errors": [],

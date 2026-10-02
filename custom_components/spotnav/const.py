@@ -6,6 +6,10 @@ CONF_CHARGE_CONTROL = "charge_control"
 CONF_CURRENT_LIMIT = "current_limit"
 # Optional per charger: how its current may be set (see CURRENT_CONTROL_CHANGE_CONFIGURATION).
 CONF_CURRENT_CONTROL = "current_control"
+# Set when the person chose "None" for the current limit in the card: SpotNav sets no current and
+# does not fall back to the OCPP session limit it would otherwise find by itself. Stored only while
+# true, so a charger that never chose it keeps exactly its old data.
+CONF_CURRENT_LIMIT_NONE = "current_limit_none"
 # Optional per charger: a `sensor` with the charger's cumulative energy register (kWh). When set,
 # energy already delivered toward the departure is subtracted from `requested_kwh`, so a replan
 # does not buy it twice (baseline: `auto_settings.EnergyBaseline`).

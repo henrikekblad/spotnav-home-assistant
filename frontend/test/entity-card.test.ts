@@ -675,12 +675,18 @@ describe("what is actually in use, and what no longer exists", () => {
     expect(block("current_limit")?.querySelector("[data-missing]")?.textContent).toBe(
       translate("en", "entity.missing.optional"),
     );
-    expect(block("current_limit")?.textContent).toContain(translate("en", "entity.help.currentLimit"));
-    expect(block("current_limit")?.textContent).toContain("Automatic: halo_charger Connector 1 Session Current Limit");
-    expect(block("energy_register_entity")?.textContent).toContain(
+    // The automatic value is a radio of the group, with the help once above it; a stored entity that is gone
+    // keeps "Choose an entity" selected, with the warning under its picker.
+    const part = (name: string) => dialog?.querySelector<HTMLElement>(`[data-part="${name}"]`);
+    expect(part("current-limit")?.textContent).toContain(translate("en", "entity.help.currentLimit"));
+    expect(part("current-limit")?.textContent).toContain("Automatic: halo_charger Connector 1 Session Current Limit");
+    expect(part("current-limit")?.querySelector<HTMLInputElement>("input:checked")?.dataset["choice"]).toBe("choose");
+    expect(part("energy-source")?.textContent).toContain(
       "Automatic: halo_charger Connector 1 Energy Active Import Register",
     );
-    expect(block("energy_register_entity")?.textContent).toContain(translate("en", "entity.help.energyRegister"));
+    expect(part("energy-source")?.textContent).toContain(translate("en", "entity.help.energyRegister"));
+    expect(part("energy-source")?.querySelector<HTMLInputElement>("input:checked")?.dataset["choice"]).toBe("automatic");
+    expect(block("energy_register_entity")).toBeNull();
     expect(block("charge_control")?.querySelector("[data-missing]")).toBeNull();
     expect(block("charge_control")?.textContent).toContain(translate("en", "entity.help.chargeControl"));
   });

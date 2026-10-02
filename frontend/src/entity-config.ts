@@ -104,6 +104,11 @@ export interface EntityFieldEntity extends FieldBase {
   kind: "entity";
   current: StoredEntityRef | null;
   effective: EntityEffective | null;
+  /**
+   * Only the charger's current limit: whether "None" (SpotNav sets no current) may be chosen, whether it
+   * is what is stored, and what Automatic finds (also while None is chosen). Absent on every other field.
+   */
+  none: { allowed: boolean; chosen: boolean; automatic: EntityRef | null } | null;
   domains: string[];
   deviceClasses: string[];
 }
@@ -306,6 +311,8 @@ const ENTITY_KEYS = [
   "scope",
   "writable",
 ] as const;
+/** Present on the current limit alone, so an older backend (and every other field) still decodes. */
+const ENTITY_OPTIONAL_KEYS = ["none"] as const;
 const NUMBER_KEYS = ["field", "kind", "minimum", "required", "scope", "value", "writable"] as const;
 const ENUM_KEYS = ["choices", "field", "kind", "required", "scope", "value", "writable"] as const;
 const FLAG_KEYS = ["field", "kind", "required", "scope", "value", "writable"] as const;
@@ -325,7 +332,24 @@ function decodeField(raw: unknown): EntityField {
     writable: flag(source, "writable"),
   };
   if (kind === "entity") {
-    exactKeys(source, ENTITY_KEYS);
+    const rawNone = source["none"];
+    exactKeys(
+      source,
+      rawNone === undefined ? ENTITY_KEYS : [...ENTITY_KEYS, ...ENTITY_OPTIONAL_KEYS],
+    );
+    let none: EntityFieldEntity["none"] = null;
+    if (rawNone !== undefined) {
+      const choice = record(rawNone);
+      exactKeys(choice, ["allowed", "automatic", "chosen"]);
+      const rawAutomatic = choice["automatic"];
+      let automatic: EntityRef | null = null;
+      if (rawAutomatic !== null) {
+        const ref = record(rawAutomatic);
+        exactKeys(ref, ["entity_id", "friendly_name"]);
+        automatic = { entityId: text(ref, "entity_id"), friendlyName: text(ref, "friendly_name") };
+      }
+      none = { allowed: flag(choice, "allowed"), chosen: flag(choice, "chosen"), automatic };
+    }
     const rawCurrent = source["current"];
     let current: StoredEntityRef | null = null;
     if (rawCurrent !== null) {
@@ -357,6 +381,7 @@ function decodeField(raw: unknown): EntityField {
       kind,
       current,
       effective,
+      none,
       domains: textList(source, "allowed_domains"),
       deviceClasses: textList(source, "allowed_device_classes"),
     };
@@ -873,6 +898,7 @@ export function phaseField(config: EntityConfig, field: string): EntityFieldEnti
     writable: true,
     current: null,
     effective: null,
+    none: null,
     domains: ["sensor"],
     deviceClasses: [deviceClass],
   };
@@ -890,8 +916,14 @@ export function storedMode(config: EntityConfig): string | null {
 
 export type EntityDraft = Record<string, string>;
 
+/** What `current_limit` is sent as to say "None": SpotNav sets no current and looks nothing up. */
+export const NONE_VALUE = "none";
+
 function readText(field: EntityField): string {
   if (field.kind === "entity") {
+    if (field.current === null && field.none !== null && field.none.chosen) {
+      return NONE_VALUE;
+    }
     return field.current === null ? "" : field.current.entityId;
   }
   if (field.kind === "number") {
@@ -1189,7 +1221,11 @@ export function isMissingEntity(field: EntityFieldEntity): boolean {
   return field.current !== null && !field.current.exists;
 }
 
-export function automaticEntity(field: EntityFieldEntity): EntityEffective | null {
+export function automaticEntity(field: EntityFieldEntity): EntityRef | null {
   const effective = field.effective;
-  return effective !== null && effective.source === "automatic" ? effective : null;
+  if (effective !== null && effective.source === "automatic") {
+    return effective;
+  }
+  // The current limit also says what Automatic would find while None is chosen.
+  return field.none === null ? null : field.none.automatic;
 }

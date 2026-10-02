@@ -1057,6 +1057,21 @@ const ENTITY_CONFIG_V1_EXPECTED: Record<
       siteChargers: null,
     },
   },
+  "success_current_limit_none.json": {
+    ok: true,
+    code: null,
+    fieldErrors: [],
+    config: {
+      charger: "ok_none",
+      fields: [...CHARGER, ...SITE_FIXED, ...DIRECT, ...SITE_TAIL],
+      mode: "direct_phase_current",
+      chargeControl: "switch.ok_none_control",
+      currentLimit: null,
+      fuse: 25,
+      maxAge: 120,
+      siteChargers: 1,
+    },
+  },
   "success_charger.json": {
     ok: true,
     code: null,
@@ -1226,6 +1241,12 @@ describe("the backend's entity_config v1 contract fixtures", () => {
     expect(limit?.kind === "entity" ? (limit.current?.entityId ?? null) : undefined, name).toBe(
       expected.config.currentLimit,
     );
+    // The current limit says whether "None" may be chosen, and the one saved as None says it is chosen.
+    expect(limit?.kind === "entity" ? limit.none : undefined, name).toEqual({
+      allowed: true,
+      chosen: name === "success_current_limit_none.json",
+      automatic: null,
+    });
     const fuse = byName.get("main_fuse_a");
     expect(fuse === undefined ? null : fuse.kind === "number" ? fuse.value : "wrong kind", name).toBe(expected.config.fuse);
     const age = byName.get("max_age_s");

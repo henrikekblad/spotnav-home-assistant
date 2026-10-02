@@ -2996,7 +2996,7 @@ var da = {
   "entity.missing.required": "Denne entitet findes ikke længere i Home Assistant. Vælg en anden entitet.",
   "entity.automatic": "Automatisk: {name}",
   "entity.help.chargeControl": "Kontakten der starter og stopper opladningen. SpotNav tænder og slukker den efter planen.",
-  "entity.help.currentLimit": "Entiteten der viser laderens indstillede strøm. Lad den stå tom for OCPP 0.12-ladere, sessionsgrænsen aflæses så automatisk.",
+  "entity.help.currentLimit": "Entiteten der viser laderens indstillede strøm. Automatisk bruger den, SpotNav selv finder, for OCPP 0.12-ladere sessionsgrænsen.",
   "entity.help.energyRegister": "Laderens akkumulerede kWh-måler. SpotNav bruger den til at vide, hvad der allerede er ladet. Findes automatisk for OCPP-ladere.",
   "entity.help.powerEntity": "Til en lader bag et smart stik: stikkets effektsensor, i W eller kW. SpotNav tæller energien fra den og kan se, når bilen er holdt op med at trække strøm. Stikket skal være dimensioneret til laderens kontinuerlige strøm.",
   "entity.help.vehicleSoc": "Køretøjets opladningsniveau, læst fra den sensor der er valgt til køretøjet, eller fundet automatisk når det kun har én.",
@@ -3029,6 +3029,8 @@ var da = {
   "entity.help.derivedApparentPower": "Tilsyneladende effekt på denne fase, i VA. Med den bliver strømmen nøjagtig.",
   "entity.help.derivedCurrent": "Målerens egen strøm på denne fase. Med den bliver strømmen nøjagtig.",
   "entity.choice.mixed": "Mere end én af disse er angivet. Kun den valgte beholdes; de andre ryddes, når du gemmer.",
+  "entity.choice.choose": "Vælg en entitet",
+  "entity.limit.none": "Ingen (SpotNav indstiller ikke strømmen)",
   "entity.grid.title": "Nettets effekt",
   "entity.grid.one": "Én sensor med retning",
   "entity.grid.two": "Import og eksport som to sensorer",
@@ -3557,7 +3559,7 @@ var en = {
   "entity.missing.required": "This entity no longer exists in Home Assistant. Choose another entity.",
   "entity.automatic": "Automatic: {name}",
   "entity.help.chargeControl": "The entity that starts and stops charging: a switch, a selector or a button. SpotNav uses it to follow the plan.",
-  "entity.help.currentLimit": "The entity that reports the charger's current setpoint. Leave empty for OCPP 0.12 chargers, the session limit is then read automatically.",
+  "entity.help.currentLimit": "The entity that reports the charger's current setpoint. Automatic uses the one SpotNav finds itself, for OCPP 0.12 chargers the session limit.",
   "entity.help.energyRegister": "Your charger's cumulative kWh meter. SpotNav uses it to know what has already been charged. Found automatically for OCPP chargers.",
   "entity.help.powerEntity": "For a charger behind a smart plug: the plug's power sensor, in W or kW. SpotNav counts the energy from it and sees when the car has stopped drawing. The plug must be rated for the charger's continuous current.",
   "entity.help.vehicleSoc": "The vehicle's charge level, read from the sensor chosen for the vehicle, or found automatically when it has only one.",
@@ -3590,6 +3592,8 @@ var en = {
   "entity.help.derivedApparentPower": "Apparent power on this phase, in VA. With it the current is exact.",
   "entity.help.derivedCurrent": "The meter's own current on this phase. With it the current is exact.",
   "entity.choice.mixed": "More than one of these is set. Only the chosen one is kept; the others are cleared when you save.",
+  "entity.choice.choose": "Choose an entity",
+  "entity.limit.none": "None (SpotNav does not set the current)",
   "entity.grid.title": "Grid power",
   "entity.grid.one": "One sensor with direction",
   "entity.grid.two": "Import and export as two sensors",
@@ -4118,7 +4122,7 @@ var fi = {
   "entity.missing.required": "Tätä entiteettiä ei enää ole Home Assistantissa. Valitse toinen entiteetti.",
   "entity.automatic": "Automaattinen: {name}",
   "entity.help.chargeControl": "Kytkin, joka käynnistää ja pysäyttää latauksen. SpotNav kytkee sen päälle ja pois suunnitelman mukaan.",
-  "entity.help.currentLimit": "Entiteetti, joka kertoo laturin asetetun virran. Jätä tyhjäksi OCPP 0.12 -latureilla, jolloin istuntoraja luetaan automaattisesti.",
+  "entity.help.currentLimit": "Entiteetti, joka kertoo laturin asetetun virran. Automaattinen käyttää sitä, jonka SpotNav löytää itse, OCPP 0.12 -latureilla istuntorajaa.",
   "entity.help.energyRegister": "Laturin kumulatiivinen kWh-mittari. SpotNav käyttää sitä tietääkseen, mitä on jo ladattu. Löytyy automaattisesti OCPP-latureille.",
   "entity.help.powerEntity": "Älypistokkeen takana olevalle latauslaitteelle: pistokkeen tehoanturi, W tai kW. SpotNav laskee energian siitä ja huomaa, kun auto ei enää ota virtaa. Pistokkeen on kestettävä latauslaitteen jatkuva virta.",
   "entity.help.vehicleSoc": "Ajoneuvon varaustaso, luettuna ajoneuvolle valitusta anturista tai löydettynä automaattisesti, kun sillä on vain yksi.",
@@ -4151,6 +4155,8 @@ var fi = {
   "entity.help.derivedApparentPower": "Näennäisteho tällä vaiheella, VA. Sen kanssa virta on tarkka.",
   "entity.help.derivedCurrent": "Mittarin oma virta tällä vaiheella. Sen kanssa virta on tarkka.",
   "entity.choice.mixed": "Useampi näistä on asetettu. Vain valittu säilytetään; muut tyhjennetään tallennettaessa.",
+  "entity.choice.choose": "Valitse entiteetti",
+  "entity.limit.none": "Ei mitään (SpotNav ei aseta virtaa)",
   "entity.grid.title": "Verkon teho",
   "entity.grid.one": "Yksi anturi suunnan kanssa",
   "entity.grid.two": "Otto ja vienti kahtena anturina",
@@ -4679,7 +4685,7 @@ var nb = {
   "entity.missing.required": "Denne entiteten finnes ikke lenger i Home Assistant. Velg en annen entitet.",
   "entity.automatic": "Automatisk: {name}",
   "entity.help.chargeControl": "Bryteren som starter og stopper ladingen. SpotNav slår den av og på etter planen.",
-  "entity.help.currentLimit": "Entiteten som viser laderens innstilte strøm. La den stå tom for OCPP 0.12-ladere, sesjonsgrensen leses da av automatisk.",
+  "entity.help.currentLimit": "Entiteten som viser laderens innstilte strøm. Automatisk bruker den SpotNav finner selv, for OCPP 0.12-ladere sesjonsgrensen.",
   "entity.help.energyRegister": "Laderens akkumulerte kWh-måler. SpotNav bruker den for å vite hva som allerede er ladet. Finnes automatisk for OCPP-ladere.",
   "entity.help.powerEntity": "For en lader bak en smartplugg: pluggens effektsensor, i W eller kW. SpotNav teller energien fra den og ser når bilen har sluttet å trekke strøm. Pluggen må være dimensjonert for laderens kontinuerlige strøm.",
   "entity.help.vehicleSoc": "Kjøretøyets ladenivå, lest fra sensoren som er valgt for kjøretøyet, eller funnet automatisk når det bare har én.",
@@ -4712,6 +4718,8 @@ var nb = {
   "entity.help.derivedApparentPower": "Tilsynelatende effekt på denne fasen, i VA. Med den blir strømmen nøyaktig.",
   "entity.help.derivedCurrent": "Målerens egen strøm på denne fasen. Med den blir strømmen nøyaktig.",
   "entity.choice.mixed": "Mer enn ett av disse er satt. Bare det valgte beholdes; de andre tømmes når du lagrer.",
+  "entity.choice.choose": "Velg en entitet",
+  "entity.limit.none": "Ingen (SpotNav stiller ikke inn strømmen)",
   "entity.grid.title": "Nettets effekt",
   "entity.grid.one": "Én sensor med retning",
   "entity.grid.two": "Import og eksport som to sensorer",
@@ -5240,7 +5248,7 @@ var sv = {
   "entity.missing.required": "Den här entiteten finns inte längre i Home Assistant. Välj en annan entitet.",
   "entity.automatic": "Automatiskt: {name}",
   "entity.help.chargeControl": "Entiteten som startar och stoppar laddningen: en strömbrytare, en väljare eller en knapp. SpotNav använder den för att följa planen.",
-  "entity.help.currentLimit": "Entiteten som visar laddarens inställda ström. Lämna tom för OCPP 0.12-laddare, sessionsgränsen läses då av automatiskt.",
+  "entity.help.currentLimit": "Entiteten som visar laddarens inställda ström. Automatiskt använder den som SpotNav hittar själv, för OCPP 0.12-laddare sessionsgränsen.",
   "entity.help.energyRegister": "Laddarens ackumulerade kWh-mätare. SpotNav använder den för att veta vad som redan laddats. Hittas automatiskt för OCPP-laddare.",
   "entity.help.powerEntity": "För en laddare bakom en smart plugg: pluggens effektsensor, i W eller kW. SpotNav räknar energin från den och ser när bilen slutat ta ström. Pluggen måste vara dimensionerad för laddarens kontinuerliga ström.",
   "entity.help.vehicleSoc": "Fordonets laddnivå, läst från sensorn som valts för fordonet, eller hittad automatiskt när det bara har en.",
@@ -5273,6 +5281,8 @@ var sv = {
   "entity.help.derivedApparentPower": "Skenbar effekt på den här fasen, i VA. Med den blir strömmen exakt.",
   "entity.help.derivedCurrent": "Mätarens egen ström på den här fasen. Med den blir strömmen exakt.",
   "entity.choice.mixed": "Fler än ett av dessa är angivet. Bara det valda behålls; de andra rensas när du sparar.",
+  "entity.choice.choose": "Välj en entitet",
+  "entity.limit.none": "Ingen (SpotNav ställer inte in strömmen)",
   "entity.grid.title": "Nätets effekt",
   "entity.grid.one": "En sensor med riktning",
   "entity.grid.two": "Import och export som två sensorer",
@@ -7967,6 +7977,7 @@ var ENTITY_KEYS = [
   "scope",
   "writable"
 ];
+var ENTITY_OPTIONAL_KEYS = ["none"];
 var NUMBER_KEYS = ["field", "kind", "minimum", "required", "scope", "value", "writable"];
 var ENUM_KEYS = ["choices", "field", "kind", "required", "scope", "value", "writable"];
 var FLAG_KEYS = ["field", "kind", "required", "scope", "value", "writable"];
@@ -7985,7 +7996,24 @@ function decodeField(raw) {
     writable: flag(source, "writable")
   };
   if (kind === "entity") {
-    exactKeys3(source, ENTITY_KEYS);
+    const rawNone = source["none"];
+    exactKeys3(
+      source,
+      rawNone === void 0 ? ENTITY_KEYS : [...ENTITY_KEYS, ...ENTITY_OPTIONAL_KEYS]
+    );
+    let none = null;
+    if (rawNone !== void 0) {
+      const choice = record3(rawNone);
+      exactKeys3(choice, ["allowed", "automatic", "chosen"]);
+      const rawAutomatic = choice["automatic"];
+      let automatic = null;
+      if (rawAutomatic !== null) {
+        const ref = record3(rawAutomatic);
+        exactKeys3(ref, ["entity_id", "friendly_name"]);
+        automatic = { entityId: text3(ref, "entity_id"), friendlyName: text3(ref, "friendly_name") };
+      }
+      none = { allowed: flag(choice, "allowed"), chosen: flag(choice, "chosen"), automatic };
+    }
     const rawCurrent = source["current"];
     let current = null;
     if (rawCurrent !== null) {
@@ -8017,6 +8045,7 @@ function decodeField(raw) {
       kind,
       current,
       effective,
+      none,
       domains: textList(source, "allowed_domains"),
       deviceClasses: textList(source, "allowed_device_classes")
     };
@@ -8468,6 +8497,7 @@ function phaseField(config, field2) {
     writable: true,
     current: null,
     effective: null,
+    none: null,
     domains: ["sensor"],
     deviceClasses: [deviceClass]
   };
@@ -8479,8 +8509,12 @@ function storedMode(config) {
   const mode = config.fields.find((entry) => entry.field === "measurement_mode");
   return mode !== void 0 && mode.kind === "enum" ? mode.value : null;
 }
+var NONE_VALUE = "none";
 function readText(field2) {
   if (field2.kind === "entity") {
+    if (field2.current === null && field2.none !== null && field2.none.chosen) {
+      return NONE_VALUE;
+    }
     return field2.current === null ? "" : field2.current.entityId;
   }
   if (field2.kind === "number") {
@@ -8704,7 +8738,10 @@ function isMissingEntity(field2) {
 }
 function automaticEntity(field2) {
   const effective = field2.effective;
-  return effective !== null && effective.source === "automatic" ? effective : null;
+  if (effective !== null && effective.source === "automatic") {
+    return effective;
+  }
+  return field2.none === null ? null : field2.none.automatic;
 }
 
 // src/entity-editor.ts
@@ -9061,6 +9098,9 @@ function entityEditorBody(doc, language, input, handlers, idPrefix) {
     disabledWhenPending.push(text4);
     return { node: text4, input: text4, picker: null };
   }
+  function isChoiceGrouped(field2) {
+    return scope === "charger" && field2.writable && (field2.field === "current_limit" || field2.field === "energy_register_entity" && automaticEntity(field2) !== null);
+  }
   function appendInfo(block, field2) {
     if (field2.kind === "entity" && isMissingEntity(field2)) {
       const warning = element(
@@ -9071,6 +9111,9 @@ function entityEditorBody(doc, language, input, handlers, idPrefix) {
       );
       warning.dataset["missing"] = field2.field;
       block.append(warning);
+    }
+    if (field2.kind === "entity" && isChoiceGrouped(field2)) {
+      return;
     }
     const automatic = field2.kind === "entity" ? automaticEntity(field2) : null;
     if (automatic !== null) {
@@ -9274,7 +9317,7 @@ function entityEditorBody(doc, language, input, handlers, idPrefix) {
     "battery_power_inverted",
     "max_age_s"
   ]);
-  const MANAGED_CHARGER = /* @__PURE__ */ new Set(["energy_register_entity", "power_entity"]);
+  const MANAGED_CHARGER = /* @__PURE__ */ new Set(["current_limit", "energy_register_entity", "power_entity"]);
   const managed = /* @__PURE__ */ new Map();
   const isManaged = (name) => scope === "site" ? MANAGED_SITE.has(name) : MANAGED_CHARGER.has(name);
   for (const field2 of fieldsOf(config, scope)) {
@@ -9310,10 +9353,17 @@ function entityEditorBody(doc, language, input, handlers, idPrefix) {
     const block = managed.get(name);
     return block === void 0 ? [] : [block];
   });
-  function choiceGroup(part, title, options, get, set) {
+  function choiceGroup(part, title, options, get, set, extra = {}) {
     const fieldset = element(doc, "fieldset", VISUAL_CLASSES.siteFieldset);
     fieldset.dataset["part"] = part;
-    fieldset.append(element(doc, "legend", VISUAL_CLASSES.siteLegend, translate(language, title)));
+    if (title !== null) {
+      fieldset.append(element(doc, "legend", VISUAL_CLASSES.siteLegend, translate(language, title)));
+    }
+    if (extra.intro !== void 0) {
+      fieldset.append(extra.intro);
+    }
+    const fields = element(doc, "div");
+    fields.dataset["choiceFields"] = part;
     const radios = [];
     for (const option of options) {
       const line = element(doc, "label", VISUAL_CLASSES.siteChoice);
@@ -9330,16 +9380,19 @@ function entityEditorBody(doc, language, input, handlers, idPrefix) {
       });
       disabledWhenPending.push(radio);
       radios.push(radio);
-      line.append(radio, doc.createTextNode(translate(language, option.label)));
+      line.append(radio, doc.createTextNode(option.text ?? translate(language, option.label)));
       fieldset.append(line);
+      if (extra.fieldsAfter === option.value) {
+        fieldset.append(fields);
+      }
     }
     const note = element(doc, "p", VISUAL_CLASSES.entityHelp, translate(language, "entity.choice.mixed"));
     note.dataset["choiceNote"] = part;
     note.hidden = true;
     fieldset.append(note);
-    const fields = element(doc, "div");
-    fields.dataset["choiceFields"] = part;
-    fieldset.append(fields);
+    if (fields.parentElement === null) {
+      fieldset.append(fields);
+    }
     return {
       fieldset,
       fields,
@@ -9353,10 +9406,69 @@ function entityEditorBody(doc, language, input, handlers, idPrefix) {
       }
     };
   }
+  function keepErrorWith(group, name) {
+    const entry = errorNodes.get(name);
+    if (entry !== void 0) {
+      group.fieldset.append(entry.node);
+    }
+  }
+  const fieldHelp = (name, key) => {
+    const help = element(doc, "p", VISUAL_CLASSES.entityHelp, translate(language, key));
+    help.dataset["help"] = name;
+    return help;
+  };
   const clearers = [];
   const isSet = (name) => (values[name] ?? "").trim() !== "";
   const isOn = (name) => values[name] === "true";
   if (scope === "charger") {
+    const limitField = config.fields.find((entry) => entry.field === "current_limit");
+    if (limitField !== void 0 && limitField.kind === "entity" && limitField.writable && managed.has("current_limit")) {
+      const automatic = automaticEntity(limitField);
+      const noneChosen = limitField.none !== null && limitField.none.chosen;
+      const noneOffered = limitField.none !== null && (limitField.none.allowed || noneChosen);
+      if (values["current_limit"] === NONE_VALUE) {
+        values["current_limit"] = "";
+      }
+      const impliedNone = !noneChosen && automatic === null && limitField.current === null;
+      let limitKind = noneChosen ? "none" : limitField.current !== null ? "choose" : automatic !== null ? "automatic" : "choose";
+      const options = [];
+      if (automatic !== null) {
+        options.push({
+          value: "automatic",
+          label: "entity.automatic",
+          text: translate(language, "entity.automatic", { name: automatic.friendlyName })
+        });
+      }
+      options.push({ value: "choose", label: "entity.choice.choose" });
+      if (noneOffered) {
+        options.push({ value: "none", label: "entity.limit.none" });
+      }
+      const paintLimit = () => {
+        limitGroup.fields.replaceChildren(...limitKind === "choose" ? blocksOf("current_limit") : []);
+        applyPending();
+      };
+      const limitGroup = choiceGroup(
+        "current-limit",
+        "entity.field.currentLimit",
+        options,
+        () => limitKind,
+        (value) => {
+          limitKind = value;
+          paintLimit();
+        },
+        { intro: fieldHelp("current_limit", "entity.help.currentLimit"), fieldsAfter: "choose" }
+      );
+      clearers.push((draft) => {
+        if (limitKind === "automatic") {
+          draft["current_limit"] = "";
+        } else if (limitKind === "none") {
+          draft["current_limit"] = impliedNone ? "" : NONE_VALUE;
+        }
+      });
+      keepErrorWith(limitGroup, "current_limit");
+      body.append(limitGroup.fieldset);
+      paintLimit();
+    }
     const hasRegister = managed.has("energy_register_entity");
     const hasPlug = managed.has("power_entity");
     const registerField = config.fields.find((entry) => entry.field === "energy_register_entity");
@@ -9373,9 +9485,37 @@ function entityEditorBody(doc, language, input, handlers, idPrefix) {
         options.push({ value: "power", label: "entity.energy.power" });
       }
       options.push({ value: "none", label: "entity.energy.none" });
+      let registerKind = isSet("energy_register_entity") ? "choose" : "automatic";
+      const paintRegister = () => {
+        registerGroup?.fields.replaceChildren(...registerKind === "choose" ? blocksOf("energy_register_entity") : []);
+        applyPending();
+      };
+      const foundRegister = registerField !== void 0 && registerField.kind === "entity" ? automaticEntity(registerField) : null;
+      const registerGroup = hasRegister && foundRegister !== null ? choiceGroup(
+        "energy-source",
+        null,
+        [
+          {
+            value: "automatic",
+            label: "entity.automatic",
+            text: translate(language, "entity.automatic", { name: foundRegister.friendlyName })
+          },
+          { value: "choose", label: "entity.choice.choose" }
+        ],
+        () => registerKind,
+        (value) => {
+          registerKind = value;
+          paintRegister();
+        },
+        { intro: fieldHelp("energy_register_entity", "entity.help.energyRegister"), fieldsAfter: "choose" }
+      ) : null;
+      if (registerGroup !== null) {
+        keepErrorWith(registerGroup, "energy_register_entity");
+        paintRegister();
+      }
       const paintEnergy = () => {
         group.fields.replaceChildren(
-          ...energy === "meter" ? blocksOf("energy_register_entity") : energy === "power" ? blocksOf("power_entity") : []
+          ...energy === "meter" ? registerGroup !== null ? [registerGroup.fieldset] : blocksOf("energy_register_entity") : energy === "power" ? blocksOf("power_entity") : []
         );
         applyPending();
       };
@@ -9385,7 +9525,7 @@ function entityEditorBody(doc, language, input, handlers, idPrefix) {
       });
       group.showNote(energyMixed);
       clearers.push((draft) => {
-        if (energy !== "meter") {
+        if (energy !== "meter" || registerGroup !== null && registerKind === "automatic") {
           draft["energy_register_entity"] = "";
         }
         if (energy !== "power") {

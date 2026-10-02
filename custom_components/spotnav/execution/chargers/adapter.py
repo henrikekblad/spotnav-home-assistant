@@ -416,6 +416,7 @@ def build_adapter(
         CONF_CONTROL_PATH,
         CONF_CURRENT_CONTROL,
         CONF_CURRENT_LIMIT,
+        CONF_CURRENT_LIMIT_NONE,
         CONF_MODE,
         CURRENT_CONTROL_CHANGE_CONFIGURATION,
         CURRENT_CONTROL_NUMBER,
@@ -427,6 +428,10 @@ def build_adapter(
     charge_control: str = config[CONF_CHARGE_CONTROL]
     control = config.get(CONF_CURRENT_CONTROL) or ""
     current_limit = config.get(CONF_CURRENT_LIMIT) or None
+    if config.get(CONF_CURRENT_LIMIT_NONE):
+        # Chosen "None": start and stop only, whatever else is stored.
+        control = ""
+        current_limit = None
     raw_path = config.get(CONF_CONTROL_PATH)
     raw_path = raw_path if isinstance(raw_path, dict) else {}
 

@@ -35,6 +35,7 @@ from homeassistant.util import dt as dt_util
 from ..const import (
     CONF_CHARGE_CONTROL,
     CONF_CURRENT_CONTROL,
+    CONF_CURRENT_LIMIT_NONE,
     CONF_CURRENT_LIMIT,
     CONF_ENERGY_REGISTER_ENTITY,
     CONF_IDLE_POWER_W,
@@ -421,10 +422,14 @@ class ChargingController:
         self._hold_guard: Callable[[], bool] | None = None
         self._last_connected: bool | None = None
         self.charge_control: str = config[CONF_CHARGE_CONTROL]
-        self.current_limit: str | None = config.get(CONF_CURRENT_LIMIT) or None
+        # "None" in the card: no current entity, no current control and no automatic session-limit lookup.
+        self.current_limit_none: bool = bool(config.get(CONF_CURRENT_LIMIT_NONE))
+        self.current_limit: str | None = (
+            None if self.current_limit_none else config.get(CONF_CURRENT_LIMIT) or None
+        )
         # How this charger's current may be set. Absent or empty records the request without
         # applying it; the explicit opt-in is the only value that changes behaviour (see const.py).
-        self.current_control: str = config.get(CONF_CURRENT_CONTROL) or ""
+        self.current_control: str = "" if self.current_limit_none else config.get(CONF_CURRENT_CONTROL) or ""
         # OCPP control identity: which connector of which charge point every OCPP write is about.
         self.ocpp_target: OcppConnectorTarget | None = None
         self.ocpp_target_source = ""
@@ -1350,7 +1355,7 @@ class ChargingController:
             if value is not None:
                 return value
         controls = self.ocpp_controls
-        if controls is None or controls.session_limit_entity is None:
+        if self.current_limit_none or controls is None or controls.session_limit_entity is None:
             return None
         return _validate_current_limit_state(
             self.hass.states.get(controls.session_limit_entity)
@@ -1368,7 +1373,8 @@ class ChargingController:
         ]
         controls = self.ocpp_controls
         if controls is not None:
-            candidates.append((controls.session_limit_entity, CURRENT_RANGE_SOURCE_SESSION_LIMIT))
+            if not self.current_limit_none:
+                candidates.append((controls.session_limit_entity, CURRENT_RANGE_SOURCE_SESSION_LIMIT))
             candidates.append((controls.station_maximum_entity, CURRENT_RANGE_SOURCE_STATION_MAXIMUM))
         lowest: tuple[int, str] | None = None
         for entity_id, source in candidates:

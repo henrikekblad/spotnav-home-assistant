@@ -11,6 +11,7 @@ import {
   DERIVED_KIND_KEYS,
   DETECT_WARNING_KEYS,
   GRID_TOTAL_FIELDS,
+  NONE_VALUE,
   INFORMATIONAL_DETECT_WARNINGS,
   batteryApplied,
   DERIVED_REQUIRED_KINDS,
@@ -527,6 +528,18 @@ export function entityEditorBody(
     return { node: text, input: text, picker: null };
   }
 
+  /**
+   * The charger fields whose radios say Automatic, Choose (and for the current limit None): the current
+   * limit always, the energy register only when something is found for it.
+   */
+  function isChoiceGrouped(field: EntityFieldEntity): boolean {
+    return (
+      scope === "charger" &&
+      field.writable &&
+      (field.field === "current_limit" || (field.field === "energy_register_entity" && automaticEntity(field) !== null))
+    );
+  }
+
   function appendInfo(block: HTMLElement, field: EntityField): void {
     if (field.kind === "entity" && isMissingEntity(field)) {
       const warning = element(
@@ -537,6 +550,10 @@ export function entityEditorBody(
       );
       warning.dataset["missing"] = field.field;
       block.append(warning);
+    }
+    if (field.kind === "entity" && isChoiceGrouped(field)) {
+      // Said once, by the group's radios.
+      return;
     }
     const automatic = field.kind === "entity" ? automaticEntity(field) : null;
     if (automatic !== null) {
@@ -772,7 +789,7 @@ export function entityEditorBody(
     "battery_power_inverted",
     "max_age_s",
   ]);
-  const MANAGED_CHARGER = new Set<string>(["energy_register_entity", "power_entity"]);
+  const MANAGED_CHARGER = new Set<string>(["current_limit", "energy_register_entity", "power_entity"]);
   const managed = new Map<string, HTMLElement>();
   const isManaged = (name: string): boolean =>
     scope === "site" ? MANAGED_SITE.has(name) : MANAGED_CHARGER.has(name);
@@ -820,17 +837,29 @@ export function entityEditorBody(
     showNote: (mixed: boolean) => void;
   }
 
-  /** One radio group: choose the kind first, then `fields` holds only that kind's fields. */
+  /**
+   * One radio group: choose the kind first, then `fields` holds only that kind's fields. `title` is the
+   * legend (none for a group nested under another's option), `intro` a line under it, `fieldsAfter`
+   * the option whose line the fields follow (default: after the last).
+   */
   function choiceGroup(
     part: string,
-    title: TranslationKey,
-    options: ReadonlyArray<{ value: string; label: TranslationKey }>,
+    title: TranslationKey | null,
+    options: ReadonlyArray<{ value: string; label: TranslationKey; text?: string }>,
     get: () => string,
     set: (value: string) => void,
+    extra: { intro?: HTMLElement; fieldsAfter?: string } = {},
   ): ChoiceGroup {
     const fieldset = element(doc, "fieldset", C.siteFieldset);
     fieldset.dataset["part"] = part;
-    fieldset.append(element(doc, "legend", C.siteLegend, translate(language, title)));
+    if (title !== null) {
+      fieldset.append(element(doc, "legend", C.siteLegend, translate(language, title)));
+    }
+    if (extra.intro !== undefined) {
+      fieldset.append(extra.intro);
+    }
+    const fields = element(doc, "div");
+    fields.dataset["choiceFields"] = part;
     const radios: HTMLInputElement[] = [];
     for (const option of options) {
       const line = element(doc, "label", C.siteChoice);
@@ -847,16 +876,19 @@ export function entityEditorBody(
       });
       disabledWhenPending.push(radio);
       radios.push(radio);
-      line.append(radio, doc.createTextNode(translate(language, option.label)));
+      line.append(radio, doc.createTextNode(option.text ?? translate(language, option.label)));
       fieldset.append(line);
+      if (extra.fieldsAfter === option.value) {
+        fieldset.append(fields);
+      }
     }
     const note = element(doc, "p", C.entityHelp, translate(language, "entity.choice.mixed"));
     note.dataset["choiceNote"] = part;
     note.hidden = true;
     fieldset.append(note);
-    const fields = element(doc, "div");
-    fields.dataset["choiceFields"] = part;
-    fieldset.append(fields);
+    if (fields.parentElement === null) {
+      fieldset.append(fields);
+    }
     return {
       fieldset,
       fields,
@@ -871,6 +903,20 @@ export function entityEditorBody(
     };
   }
 
+  /** A grouped field's error line stays with its group, whichever radio is chosen. */
+  function keepErrorWith(group: ChoiceGroup, name: string): void {
+    const entry = errorNodes.get(name);
+    if (entry !== undefined) {
+      group.fieldset.append(entry.node);
+    }
+  }
+
+  const fieldHelp = (name: string, key: TranslationKey): HTMLElement => {
+    const help = element(doc, "p", C.entityHelp, translate(language, key));
+    help.dataset["help"] = name;
+    return help;
+  };
+
   // What a save clears: the fields of every variant that is not chosen, so nothing lingers.
   const clearers: Array<(draft: EntityDraft) => void> = [];
 
@@ -878,6 +924,65 @@ export function entityEditorBody(
   const isOn = (name: string): boolean => values[name] === "true";
 
   if (scope === "charger") {
+    // The current limit: the one SpotNav finds itself, an entity of the person's choice, or none.
+    const limitField = config.fields.find((entry) => entry.field === "current_limit");
+    if (limitField !== undefined && limitField.kind === "entity" && limitField.writable && managed.has("current_limit")) {
+      const automatic = automaticEntity(limitField);
+      const noneChosen = limitField.none !== null && limitField.none.chosen;
+      const noneOffered = limitField.none !== null && (limitField.none.allowed || noneChosen);
+      // The draft holds the picked entity; "None" is only said by the radio, on save.
+      if (values["current_limit"] === NONE_VALUE) {
+        values["current_limit"] = "";
+      }
+      // Without an automatic value or a stored entity, "none" is what is already so, and it is not
+      // sent (storing it would also switch the current control off).
+      const impliedNone = !noneChosen && automatic === null && limitField.current === null;
+      let limitKind = noneChosen
+        ? "none"
+        : limitField.current !== null
+          ? "choose"
+          : automatic !== null
+            ? "automatic"
+            : "choose";
+      const options: Array<{ value: string; label: TranslationKey; text?: string }> = [];
+      if (automatic !== null) {
+        options.push({
+          value: "automatic",
+          label: "entity.automatic",
+          text: translate(language, "entity.automatic", { name: automatic.friendlyName }),
+        });
+      }
+      options.push({ value: "choose", label: "entity.choice.choose" });
+      if (noneOffered) {
+        options.push({ value: "none", label: "entity.limit.none" });
+      }
+      const paintLimit = (): void => {
+        limitGroup.fields.replaceChildren(...(limitKind === "choose" ? blocksOf("current_limit") : []));
+        applyPending();
+      };
+      const limitGroup = choiceGroup(
+        "current-limit",
+        "entity.field.currentLimit",
+        options,
+        () => limitKind,
+        (value) => {
+          limitKind = value;
+          paintLimit();
+        },
+        { intro: fieldHelp("current_limit", "entity.help.currentLimit"), fieldsAfter: "choose" },
+      );
+      clearers.push((draft) => {
+        if (limitKind === "automatic") {
+          draft["current_limit"] = "";
+        } else if (limitKind === "none") {
+          draft["current_limit"] = impliedNone ? "" : NONE_VALUE;
+        }
+      });
+      keepErrorWith(limitGroup, "current_limit");
+      body.append(limitGroup.fieldset);
+      paintLimit();
+    }
+
     // The energy the charger has delivered: its own kWh register, a smart plug's power, or nothing.
     const hasRegister = managed.has("energy_register_entity");
     const hasPlug = managed.has("power_entity");
@@ -896,9 +1001,47 @@ export function entityEditorBody(
         options.push({ value: "power", label: "entity.energy.power" });
       }
       options.push({ value: "none", label: "entity.energy.none" });
+      // Under the meter: the register SpotNav finds itself, or one the person chooses.
+      let registerKind = isSet("energy_register_entity") ? "choose" : "automatic";
+      const paintRegister = (): void => {
+        registerGroup?.fields.replaceChildren(...(registerKind === "choose" ? blocksOf("energy_register_entity") : []));
+        applyPending();
+      };
+      const foundRegister = registerField !== undefined && registerField.kind === "entity" ? automaticEntity(registerField) : null;
+      const registerGroup =
+        hasRegister && foundRegister !== null
+          ? choiceGroup(
+              "energy-source",
+              null,
+              [
+                {
+                  value: "automatic",
+                  label: "entity.automatic",
+                  text: translate(language, "entity.automatic", { name: foundRegister.friendlyName }),
+                },
+                { value: "choose", label: "entity.choice.choose" },
+              ],
+              () => registerKind,
+              (value) => {
+                registerKind = value;
+                paintRegister();
+              },
+              { intro: fieldHelp("energy_register_entity", "entity.help.energyRegister"), fieldsAfter: "choose" },
+            )
+          : null;
+      if (registerGroup !== null) {
+        keepErrorWith(registerGroup, "energy_register_entity");
+        paintRegister();
+      }
       const paintEnergy = (): void => {
         group.fields.replaceChildren(
-          ...(energy === "meter" ? blocksOf("energy_register_entity") : energy === "power" ? blocksOf("power_entity") : []),
+          ...(energy === "meter"
+            ? registerGroup !== null
+              ? [registerGroup.fieldset]
+              : blocksOf("energy_register_entity")
+            : energy === "power"
+              ? blocksOf("power_entity")
+              : []),
         );
         applyPending();
       };
@@ -908,7 +1051,7 @@ export function entityEditorBody(
       });
       group.showNote(energyMixed);
       clearers.push((draft) => {
-        if (energy !== "meter") {
+        if (energy !== "meter" || (registerGroup !== null && registerKind === "automatic")) {
           draft["energy_register_entity"] = "";
         }
         if (energy !== "power") {

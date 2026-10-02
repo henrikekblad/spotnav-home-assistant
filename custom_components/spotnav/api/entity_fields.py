@@ -45,7 +45,9 @@ from ..const import (
     CONF_CHARGER_ENTRY_IDS,
     CONF_CHARGER_PLATFORM,
     CONF_CONTROL_PATH,
+    CONF_CURRENT_CONTROL,
     CONF_CURRENT_LIMIT,
+    CONF_CURRENT_LIMIT_NONE,
     CONF_DERIVED_ENTITIES,
     CONF_DIRECT_ENTITIES,
     CONF_ENERGY_REGISTER_ENTITY,
@@ -58,6 +60,7 @@ from ..const import (
     CONF_SITE_CURRENT_SIGNED,
     CONF_SITE_CURRENT_SOURCE,
     CONF_MODE,
+    CURRENT_CONTROL_NUMBER,
     DEFAULT_MAX_AGE_S,
     DOMAIN,
     MEASUREMENT_MODE_DERIVED,
@@ -110,6 +113,9 @@ FIELD_CHARGE_CONTROL: Final = "charge_control"
 FIELD_CURRENT_LIMIT: Final = "current_limit"
 FIELD_ENERGY_REGISTER: Final = "energy_register_entity"
 FIELD_POWER_ENTITY: Final = "power_entity"
+#: The value `current_limit` takes for "SpotNav sets no current and looks nothing up" (`CONF_CURRENT_LIMIT_NONE`).
+#: An entity id always has a dot, so it cannot be mistaken for one.
+CURRENT_LIMIT_NONE: Final = "none"
 #: Read-only here; see the module docstring.
 FIELD_VEHICLE_SOC: Final = "vehicle_soc"
 CHARGER_FIELDS: Final = (
@@ -355,7 +361,10 @@ def _charger_effective(hass: HomeAssistant, entry: ConfigEntry, values: dict[str
     }
 
     limit = values[FIELD_CURRENT_LIMIT]
-    if limit and _entity_exists(hass, limit):
+    if limit == CURRENT_LIMIT_NONE:
+        # Chosen: nothing is read and nothing is looked up.
+        effective[FIELD_CURRENT_LIMIT] = None
+    elif limit and _entity_exists(hass, limit):
         effective[FIELD_CURRENT_LIMIT] = _effective_value(hass, limit, SOURCE_CONFIGURED)
     else:
         controls = getattr(controller, "ocpp_controls", None)
@@ -461,11 +470,36 @@ def duplicate_placeholders(
     return {"other": duplicate.title if duplicate is not None else ""}
 
 
+def _automatic_current_limit(hass: HomeAssistant, entry: ConfigEntry) -> dict[str, str] | None:
+    """The `{entity_id, friendly_name}` the automatic lookup finds for the current limit (the OCPP
+    session limit of the charger's connector), or `None`. Independent of any choice made.
+    """
+    controller = controller_for(hass, entry.entry_id)
+    entity_id = getattr(getattr(controller, "ocpp_controls", None), "session_limit_entity", None)
+    if not entity_id:
+        return None
+    state = hass.states.get(entity_id)
+    return {"entity_id": entity_id, "friendly_name": state.name if state is not None else entity_id}
+
+
+def current_limit_none_allowed(entry: ConfigEntry) -> bool:
+    """Whether SpotNav can do without a current limit: not while the current is set through that
+    number (`CURRENT_CONTROL_NUMBER`), which then is the actuator.
+    """
+    return entry.data.get(CONF_CURRENT_CONTROL) != CURRENT_CONTROL_NUMBER
+
+
 def current_charger_values(entry: ConfigEntry) -> dict[str, str]:
-    """The three writable charger fields' stored values, `""` for "not configured" (as `entry.data`)."""
+    """The writable charger fields' stored values, `""` for "not configured" (as `entry.data`), except
+    `current_limit`, which is `CURRENT_LIMIT_NONE` once the person chose "None".
+    """
     return {
         FIELD_CHARGE_CONTROL: entry.data.get(CONF_CHARGE_CONTROL) or "",
-        FIELD_CURRENT_LIMIT: entry.data.get(CONF_CURRENT_LIMIT) or "",
+        FIELD_CURRENT_LIMIT: (
+            CURRENT_LIMIT_NONE
+            if entry.data.get(CONF_CURRENT_LIMIT_NONE)
+            else entry.data.get(CONF_CURRENT_LIMIT) or ""
+        ),
         FIELD_ENERGY_REGISTER: entry.data.get(CONF_ENERGY_REGISTER_ENTITY) or "",
         FIELD_POWER_ENTITY: entry.data.get(CONF_POWER_ENTITY) or "",
     }
@@ -496,6 +530,12 @@ def charger_field_errors(
             and value != current_charger_values(entry)[FIELD_CHARGE_CONTROL]
         ):
             errors.append(FieldError(field, ERR_NOT_WRITABLE))
+            continue
+        if field == FIELD_CURRENT_LIMIT and value == CURRENT_LIMIT_NONE:
+            if current_limit_none_allowed(entry) or current_charger_values(entry)[field] == CURRENT_LIMIT_NONE:
+                resolved[field] = ""
+            else:
+                errors.append(FieldError(field, ERR_INVALID_VALUE))
             continue
         if not value:
             if field == FIELD_CHARGE_CONTROL:
@@ -531,7 +571,8 @@ def charger_field_errors(
     ):
         current = current_charger_values(entry)
         charge_control = resolved.get(FIELD_CHARGE_CONTROL, current[FIELD_CHARGE_CONTROL])
-        current_limit = resolved.get(FIELD_CURRENT_LIMIT, current[FIELD_CURRENT_LIMIT]) or None
+        current_limit = resolved.get(FIELD_CURRENT_LIMIT, current[FIELD_CURRENT_LIMIT])
+        current_limit = None if current_limit in ("", CURRENT_LIMIT_NONE) else current_limit
         conflicts = validate_charger_entities(
             hass,
             charge_control=charge_control,
@@ -565,8 +606,14 @@ def charger_field_descriptors(hass: HomeAssistant, entry: ConfigEntry) -> list[d
             scope="charger",
             required=False,
             writable=True,
-            current_entity_id=values[FIELD_CURRENT_LIMIT] or None,
+            current_entity_id=None if values[FIELD_CURRENT_LIMIT] == CURRENT_LIMIT_NONE else values[FIELD_CURRENT_LIMIT] or None,
             effective=effective[FIELD_CURRENT_LIMIT],
+            none_choice={
+                "allowed": current_limit_none_allowed(entry),
+                "chosen": values[FIELD_CURRENT_LIMIT] == CURRENT_LIMIT_NONE,
+                # What automatic would find, also while "None" is chosen, so it can be chosen again.
+                "automatic": _automatic_current_limit(hass, entry),
+            },
         ),
         _entity_field_descriptor(
             hass,
@@ -822,10 +869,11 @@ def _entity_field_descriptor(
     current_entity_id: str | None,
     effective: dict[str, str] | None | Literal["configured"] = "configured",
     domains: tuple[str, ...] | None = None,
+    none_choice: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     if effective == "configured":
         effective = _effective_value(hass, current_entity_id, SOURCE_CONFIGURED)
-    return {
+    descriptor = {
         "field": field,
         "scope": scope,
         "kind": "entity",
@@ -836,6 +884,10 @@ def _entity_field_descriptor(
         "allowed_domains": list(domains or (_ENTITY_DOMAIN[field],)),
         "allowed_device_classes": list(_ENTITY_DEVICE_CLASSES.get(field, ())),
     }
+    if none_choice is not None:
+        # Additive, `current_limit` only: whether "None" is offered and whether it is the stored choice.
+        descriptor["none"] = none_choice
+    return descriptor
 
 
 def _flag_descriptor(field: str, values: dict[str, Any]) -> dict[str, Any]:

@@ -352,7 +352,207 @@ describe("the charger's energy: meter, power or none", () => {
     register.effective = { entityId: "sensor.auto_kwh", friendlyName: "Auto kWh", source: "automatic" };
     open(cfg, "charger");
     expect(checked("energy")).toBe("meter");
+    // The automatic one is the first radio under the meter; the picker waits for "Choose an entity".
+    expect(checked("energy-source")).toBe("automatic");
+    expect(has("energy_register_entity")).toBe(false);
+    expect(document.querySelector("[data-part='energy-source']")?.textContent).toContain("Automatic: Auto kWh");
+    pick("energy-source", "choose");
     expect(has("energy_register_entity")).toBe(true);
+  });
+});
+
+/** The charger's current limit as the backend describes it, with what each case needs set on the decoded field. */
+function limitConfig(state: {
+  stored?: string;
+  automatic?: string;
+  none?: { allowed: boolean; chosen: boolean } | null;
+}): EntityConfig {
+  const cfg = config("get_direct");
+  const field = cfg.fields.find((entry) => entry.field === "current_limit");
+  if (field?.kind !== "entity") {
+    throw new Error("no current limit");
+  }
+  const automatic =
+    state.automatic === undefined ? null : { entityId: state.automatic, friendlyName: "Session limit" };
+  if (state.stored !== undefined) {
+    field.current = { entityId: state.stored, friendlyName: state.stored, exists: true };
+    field.effective = { entityId: state.stored, friendlyName: state.stored, source: "configured" };
+  } else if (automatic !== null && !(state.none?.chosen ?? false)) {
+    field.effective = { ...automatic, source: "automatic" };
+  }
+  field.none = state.none === null ? null : { allowed: true, chosen: false, ...state.none, automatic };
+  return cfg;
+}
+
+const radioText = (part: string, value: string): string =>
+  choice(part, value)?.closest("label")?.textContent ?? "";
+const pickerOf = (field: string): HTMLInputElement | null =>
+  document.querySelector<HTMLInputElement>(`[data-field='${field}']`);
+const typeInto = (field: string, value: string): void => {
+  const input = pickerOf(field);
+  if (input === null) {
+    throw new Error(`no ${field}`);
+  }
+  input.value = value;
+  input.dispatchEvent(new Event("input", { bubbles: true }));
+};
+
+describe("the charger's current limit: automatic, a chosen entity, or none", () => {
+  it("opens on Automatic, naming the entity, when nothing is configured and one is found", () => {
+    const { sent } = open(limitConfig({ automatic: "number.session" }), "charger");
+    expect(checked("current-limit")).toBe("automatic");
+    expect(radioText("current-limit", "automatic")).toBe("Automatic: Session limit");
+    expect(radioText("current-limit", "choose")).toBe("Choose an entity");
+    expect(radioText("current-limit", "none")).toBe("None (SpotNav does not set the current)");
+    expect(has("current_limit")).toBe(false);
+    // Said once: not again as a line under a picker.
+    expect(document.querySelectorAll("[data-help='current_limit']")).toHaveLength(1);
+    expect(sent()).toEqual({ ok: true, changed: false });
+  });
+
+  it("opens on Choose with the entity in its picker when one is configured, and still offers Automatic", () => {
+    const { sent } = open(limitConfig({ stored: "number.mine", automatic: "number.session" }), "charger");
+    expect(checked("current-limit")).toBe("choose");
+    expect(pickerOf("current_limit")?.value).toBe("number.mine");
+    expect(radioText("current-limit", "automatic")).toBe("Automatic: Session limit");
+    expect(sent()).toEqual({ ok: true, changed: false });
+    pick("current-limit", "automatic");
+    expect(has("current_limit")).toBe(false);
+    expect(changes(sent())).toEqual({ current_limit: "" });
+  });
+
+  it("saves the entity from Choose, and clears on Automatic even after one was typed", () => {
+    const { sent } = open(limitConfig({ automatic: "number.session" }), "charger");
+    pick("current-limit", "choose");
+    expect(has("current_limit")).toBe(true);
+    typeInto("current_limit", "number.mine");
+    expect(changes(sent())).toEqual({ current_limit: "number.mine" });
+    pick("current-limit", "automatic");
+    expect(sent()).toEqual({ ok: true, changed: false });
+  });
+
+  it("offers no Automatic when nothing is found, and opens on Choose", () => {
+    open(limitConfig({}), "charger");
+    expect(choice("current-limit", "automatic")).toBeNull();
+    expect(checked("current-limit")).toBe("choose");
+    expect(has("current_limit")).toBe(true);
+  });
+
+  it("sends none as the value and what it read as expected, and clears nothing else", () => {
+    const { sent } = open(limitConfig({ stored: "number.mine", automatic: "number.session" }), "charger");
+    pick("current-limit", "none");
+    expect(has("current_limit")).toBe(false);
+    const result = sent();
+    expect(changes(result)).toEqual({ current_limit: "none" });
+    expect(result.ok && result.changed ? result.request.expected : null).toEqual({ current_limit: "number.mine" });
+  });
+
+  it("opens on None when that is stored, offers Automatic again, and leaving None sends the way back", () => {
+    const { sent } = open(limitConfig({ automatic: "number.session", none: { allowed: true, chosen: true } }), "charger");
+    expect(checked("current-limit")).toBe("none");
+    expect(sent()).toEqual({ ok: true, changed: false });
+    expect(radioText("current-limit", "automatic")).toBe("Automatic: Session limit");
+    pick("current-limit", "automatic");
+    const result = sent();
+    expect(changes(result)).toEqual({ current_limit: "" });
+    expect(result.ok && result.changed ? result.request.expected : null).toEqual({ current_limit: "none" });
+  });
+
+  it("does not send none when it is already so: nothing configured and nothing found", () => {
+    const { sent } = open(limitConfig({}), "charger");
+    pick("current-limit", "none");
+    expect(sent()).toEqual({ ok: true, changed: false });
+  });
+
+  it("hides None where the current is set through this entity, but keeps it when it is what is stored", () => {
+    open(limitConfig({ stored: "number.mine", none: { allowed: false, chosen: false } }), "charger");
+    expect(choice("current-limit", "none")).toBeNull();
+    expect(choice("current-limit", "choose")).not.toBeNull();
+    document.body.replaceChildren();
+    open(limitConfig({ none: { allowed: false, chosen: true } }), "charger");
+    expect(checked("current-limit")).toBe("none");
+  });
+
+  it("hides None for a backend that does not describe it", () => {
+    open(limitConfig({ stored: "number.mine", none: null }), "charger");
+    expect(choice("current-limit", "none")).toBeNull();
+  });
+
+  it("leaves the picker's value out of a save while None is chosen, and brings it back on Choose", () => {
+    const { sent } = open(limitConfig({ stored: "number.mine" }), "charger");
+    pick("current-limit", "none");
+    pick("current-limit", "choose");
+    expect(pickerOf("current_limit")?.value).toBe("number.mine");
+    expect(sent()).toEqual({ ok: true, changed: false });
+  });
+
+  it("keeps its radios disabled for a reader who may not change entities", () => {
+    open(limitConfig({ automatic: "number.session" }), "charger", { readOnly: true });
+    for (const radio of document.querySelectorAll<HTMLInputElement>("[data-part='current-limit'] input")) {
+      expect(radio.disabled).toBe(true);
+    }
+  });
+
+  it("is worded in every language", () => {
+    for (const language of LANGUAGES) {
+      open(limitConfig({ automatic: "number.session" }), "charger", { language });
+      const text = document.body.textContent ?? "";
+      expect(text, language).not.toMatch(/entity\.(limit|choice|automatic)/);
+      for (const key of ["entity.choice.choose", "entity.limit.none"] as const) {
+        expect(text, `${language} ${key}`).toContain(translate(language, key));
+      }
+      expect(text, language).toContain(translate(language, "entity.automatic", { name: "Session limit" }));
+    }
+    expect(translate("sv", "entity.limit.none")).toBe("Ingen (SpotNav ställer inte in strömmen)");
+  });
+});
+
+describe("the charger's energy register: automatic or chosen, under the meter", () => {
+  function withRegister(stored: string | null) {
+    const cfg = config("get_direct", stored === null ? {} : { energy_register_entity: stored });
+    const register = cfg.fields.find((entry) => entry.field === "energy_register_entity");
+    if (register?.kind !== "entity") {
+      throw new Error("no register");
+    }
+    register.effective = {
+      entityId: stored ?? "sensor.auto_kwh",
+      friendlyName: stored ?? "Auto kWh",
+      source: stored === null ? "automatic" : "configured",
+    };
+    return cfg;
+  }
+
+  it("opens on Automatic with nothing configured, sends nothing, and has no None of its own", () => {
+    const { sent } = open(withRegister(null), "charger");
+    expect(checked("energy")).toBe("meter");
+    expect(checked("energy-source")).toBe("automatic");
+    expect(choice("energy-source", "none")).toBeNull();
+    expect(sent()).toEqual({ ok: true, changed: false });
+  });
+
+  it("saves the chosen register, and clears it again on Automatic", () => {
+    const { sent } = open(withRegister(null), "charger");
+    pick("energy-source", "choose");
+    typeInto("energy_register_entity", "sensor.my_kwh");
+    expect(changes(sent())).toEqual({ energy_register_entity: "sensor.my_kwh" });
+    pick("energy-source", "automatic");
+    expect(sent()).toEqual({ ok: true, changed: false });
+  });
+
+  it("is a plain picker, with the help, when nothing is found automatically", () => {
+    open(config("get_direct"), "charger");
+    pick("energy", "meter");
+    expect(document.querySelector("[data-part='energy-source']")).toBeNull();
+    expect(has("energy_register_entity")).toBe(true);
+    expect(document.querySelector("[data-help='energy_register_entity']")).not.toBeNull();
+  });
+
+  it("shows a stored register's picker directly (the backend names no automatic one then), and None above clears it", () => {
+    const { sent } = open(withRegister("sensor.my_kwh"), "charger");
+    expect(document.querySelector("[data-part='energy-source']")).toBeNull();
+    expect(checked("energy")).toBe("meter");
+    pick("energy", "none");
+    expect(changes(sent())).toEqual({ energy_register_entity: "" });
   });
 });
 

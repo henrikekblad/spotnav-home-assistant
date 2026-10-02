@@ -103,6 +103,22 @@ async def _success_charger(hass, ws, _token) -> dict[str, Any]:
     return frame["result"]
 
 
+async def _success_current_limit_none(hass, ws, _token) -> dict[str, Any]:
+    """The answer to choosing "None" for the current limit: `none.chosen` true, nothing effective."""
+    charger, _ = await setup_charger_and_site(hass, "ok_none")
+    frame = await ws_call(
+        await admin(hass, ws),
+        update_entity_config_message(
+            charger.entry_id,
+            scope="charger",
+            expected={"current_limit": ""},
+            changes={"current_limit": "none"},
+        ),
+    )
+    assert frame["result"]["ok"] is True
+    return frame["result"]
+
+
 async def _success_site(hass, ws, _token) -> dict[str, Any]:
     charger, _ = await setup_charger_and_site(hass, "ok_site")
     battery = register(hass, "sensor", "ok_battery", "Battery power", device_class="power")
@@ -269,6 +285,7 @@ ENTITY_CONFIG_V1_FIXTURES: Final[dict[str, Builder]] = {
     "get_detected.json": _get_detected,
     "get_no_site.json": _get_no_site,
     "success_charger.json": _success_charger,
+    "success_current_limit_none.json": _success_current_limit_none,
     "success_site.json": _success_site,
     "conflict.json": _conflict,
     "field_errors_charger.json": _field_errors_charger,
