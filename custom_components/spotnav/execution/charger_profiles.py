@@ -112,7 +112,6 @@ class WritePolicy:
             "ignored_while_paused": self.ignored_while_paused,
             "installation_wide": self.installation_wide,
             "resend_after_plug_in": self.resend_after_plug_in,
-            "call_timeout_s": self.call_timeout_s,
         }
 
 

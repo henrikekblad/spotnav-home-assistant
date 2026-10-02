@@ -32,6 +32,7 @@ from .const import (
     PLATFORMS,
     SITE_PLATFORMS,
 )
+from .entity_renames import async_setup_entity_renames
 from .execution.auto_execution import AutoExecutor, pause_blocks_execution
 from .execution.controller import ChargingController
 from .execution.solar_execution import (
@@ -84,6 +85,8 @@ async def async_setup(hass: HomeAssistant, config: dict[str, Any]) -> bool:
     # every mutation. Domain setup is never unloaded, so the cancel callable is kept, not called.
     await async_sync_resolution_repairs(hass)
     data.resync_cancel = await async_arm_resolution_sync(hass)
+    # An entity renamed in Home Assistant is renamed in the entries that store it.
+    async_setup_entity_renames(hass)
     # One price repository and one refresh manager for the installation. Setup only constructs them;
     # the manager polls nothing until an area has a subscriber and stops with Home Assistant.
     repository = await async_setup_price_repository(hass)
@@ -212,20 +215,27 @@ async def _async_setup_charger_entry(hass: HomeAssistant, entry: ChargerConfigEn
     await async_apply_site_join(hass, entry)
     # After the join, so the site's wiring and fuse are known to the defaults.
     await async_seed_first_run(hass, entry, controller, data.preview)
-    if price_manager is not None and settings_store is not None:
-        # A relay that was unreachable at setup answers later: suggest the area then.
+    if (
+        price_manager is not None
+        and settings_store is not None
+        and settings_store.settings(entry.entry_id).area_id is None
+        and settings_store.suggested(entry.entry_id)
+    ):
+        # The relay was unreachable when the defaults were written, so the area is empty: suggest it
+        # when the relay first answers, then stop listening.
+        remove_listener: list[Any] = []
+
         @callback
         def _on_catalogue(snapshot) -> None:
-            if (
-                snapshot.catalogue is not None
-                and settings_store.settings(entry.entry_id).area_id is None
-                and settings_store.suggested(entry.entry_id)
-            ):
-                hass.async_create_task(
-                    async_seed_first_run(hass, entry, controller, data.preview)
-                )
+            if snapshot.catalogue is None:
+                return
+            for remove in remove_listener:
+                remove()
+            remove_listener.clear()
+            hass.async_create_task(async_seed_first_run(hass, entry, controller, data.preview))
 
-        entry.async_on_unload(price_manager.add_catalogue_listener(_on_catalogue))
+        remove_listener.append(price_manager.add_catalogue_listener(_on_catalogue))
+        entry.async_on_unload(lambda: [remove() for remove in remove_listener])
     return True
 
 
