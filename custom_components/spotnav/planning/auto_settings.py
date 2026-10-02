@@ -983,6 +983,28 @@ class AutoSettingsStore:
             await self._async_commit(entry_id, entry)
             return True
 
+    async def async_suggest_area(self, entry_id: str, area_id: str) -> bool:
+        """Fill in a still empty area from the catalogue, marked as suggested.
+
+        For a charger whose first-run defaults were written while the relay could not be reached.
+        Never replaces an area that is set. Returns whether it wrote.
+        """
+        async with self._lock:
+            existing = self._entries.get(entry_id)
+            if existing is None or existing.settings.area_id is not None:
+                return False
+            settings = replace(
+                existing.settings, area_id=area_id, revision=existing.settings.revision + 1
+            ).validated()
+            entry = _Entry(
+                settings=settings,
+                proposal=existing.proposal,
+                energy_baseline=existing.energy_baseline,
+                suggested=tuple(dict.fromkeys((*existing.suggested, "area"))),
+            )
+            await self._async_commit(entry_id, entry)
+            return True
+
     async def async_remove(self, entry_id: str) -> bool:
         """Forget one charger's Auto state, and only that charger's.
 

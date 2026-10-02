@@ -13,7 +13,7 @@ from typing import Any
 
 from homeassistant.config_entries import ConfigEntry, ConfigEntryState
 from homeassistant.const import EVENT_HOMEASSISTANT_STARTED, EVENT_HOMEASSISTANT_STOP
-from homeassistant.core import CoreState, Event, HomeAssistant
+from homeassistant.core import CoreState, Event, HomeAssistant, callback
 
 from .api.dashboard import async_setup_dashboard_api
 from .api.entity_config import async_setup_entity_config_api
@@ -212,6 +212,20 @@ async def _async_setup_charger_entry(hass: HomeAssistant, entry: ChargerConfigEn
     await async_apply_site_join(hass, entry)
     # After the join, so the site's wiring and fuse are known to the defaults.
     await async_seed_first_run(hass, entry, controller, data.preview)
+    if price_manager is not None and settings_store is not None:
+        # A relay that was unreachable at setup answers later: suggest the area then.
+        @callback
+        def _on_catalogue(snapshot) -> None:
+            if (
+                snapshot.catalogue is not None
+                and settings_store.settings(entry.entry_id).area_id is None
+                and settings_store.suggested(entry.entry_id)
+            ):
+                hass.async_create_task(
+                    async_seed_first_run(hass, entry, controller, data.preview)
+                )
+
+        entry.async_on_unload(price_manager.add_catalogue_listener(_on_catalogue))
     return True
 
 

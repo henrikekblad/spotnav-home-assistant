@@ -282,9 +282,9 @@ async def async_seed_first_run(
     manager = domain_data(hass).price_refresh
     if store is None:
         return False
-    if store.settings(entry.entry_id).revision != 0:
-        return False
     catalogue = None if manager is None else manager.catalogue_snapshot().catalogue
+    if store.settings(entry.entry_id).revision != 0:
+        return await _async_suggest_missing_area(hass, entry, store, catalogue, preview)
     site = site_for_charger(hass, entry.entry_id)
     current_range = controller.current_range()
     charger_max = (
@@ -305,6 +305,33 @@ async def async_seed_first_run(
         written = await store.async_seed(entry.entry_id, settings, suggested)
     except Exception as err:  # noqa: BLE001 - defaults are a convenience, never a setup failure
         _LOGGER.warning("Storing first-run defaults failed: %s", type(err).__name__)
+        return False
+    if written and preview is not None:
+        await preview.async_settings_seeded()
+    return written
+
+
+async def _async_suggest_missing_area(
+    hass: HomeAssistant, entry: ConfigEntry, store: Any, catalogue: AreaCatalogue | None, preview: Any
+) -> bool:
+    """Suggest the area on the first successful catalogue read while it is still unset, whatever the
+    settings' revision and only while no person has saved a setting since first run: first-run defaults written while the relay was unreachable have no area, and
+    nothing else would ever fill it in.
+    """
+    # `suggested` is emptied by a person's own save, so an area a person cleared stays cleared.
+    if (
+        catalogue is None
+        or store.settings(entry.entry_id).area_id is not None
+        or not store.suggested(entry.entry_id)
+    ):
+        return False
+    area = suggest_area(catalogue, hass.config.country, hass.config.latitude, hass.config.longitude)
+    if area is None:
+        return False
+    try:
+        written = await store.async_suggest_area(entry.entry_id, area)
+    except Exception as err:  # noqa: BLE001 - a suggestion is a convenience, never a setup failure
+        _LOGGER.warning("Storing the suggested area failed: %s", type(err).__name__)
         return False
     if written and preview is not None:
         await preview.async_settings_seeded()

@@ -117,7 +117,6 @@ async def test_a_charger_command_that_never_answers_is_given_up_on(hass: HomeAss
     assert gave_up
 
 
-@pytest.mark.xfail(strict=True, reason="BH-4: first-run defaults written while the relay is unreachable leave the area empty for good")
 async def test_the_area_is_suggested_once_the_relay_answers_after_a_first_run_without_it(hass: HomeAssistant) -> None:
     from .test_first_run import _Controller, _Manager, _setup, CATALOGUE
     from custom_components.spotnav.planning.first_run import async_seed_first_run
@@ -143,3 +142,18 @@ def test_an_unreadable_control_is_no_observation_and_the_first_readable_state_is
     assert hold.observe(control_on=False, connected=None, gap=True) == NOTHING
     assert hold.observe(control_on=None, connected=None, gap=True) == NOTHING
     assert hold.observe(control_on=True, connected=None, gap=True) == HOLD  # a real start
+
+
+async def test_an_area_a_person_cleared_is_not_suggested_again(hass: HomeAssistant) -> None:
+    from .test_first_run import _Controller, _Manager, _setup, CATALOGUE
+    from custom_components.spotnav.planning.auto_settings import AutoSettings
+    from custom_components.spotnav.planning.first_run import async_seed_first_run
+    from custom_components.spotnav.runtime import domain_data
+
+    store, entry = await _setup(hass, catalogue=None)
+    await async_seed_first_run(hass, entry, _Controller(None), None)
+    await store.async_update(entry.entry_id, mutate=lambda current: AutoSettings(area_id=None), confirm=True)
+
+    domain_data(hass).price_refresh = _Manager(CATALOGUE)
+    assert not await async_seed_first_run(hass, entry, _Controller(None), None)
+    assert store.settings(entry.entry_id).area_id is None
