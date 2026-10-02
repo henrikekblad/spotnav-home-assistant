@@ -256,8 +256,10 @@ export interface ControlCapabilities {
 
 /** `own_mode`: one of the charger's own controllers is on and can fight SpotNav; `disabled`: its own enable
  * switch is off, so SpotNav cannot start it; `duplicate_charger`: another SpotNav entry (named in `state`) is
- * the same physical charger, sharing what `label` says (`entity_id` holds the shared identifier). */
-export type ControlConflictKind = "own_mode" | "disabled" | "duplicate_charger";
+ * the same physical charger, sharing what `label` says (`entity_id` holds the shared identifier);
+ * `other_controller`: another integration (named in `label`) that switches or limits chargers is set up and
+ * fights SpotNav, for this charger (`state` is `charger`) or for the installation (`installation`). */
+export type ControlConflictKind = "own_mode" | "disabled" | "duplicate_charger" | "other_controller";
 
 export interface ControlConflict {
   kind: ControlConflictKind;
@@ -674,7 +676,7 @@ function decodeControl(raw: unknown): EntityControl {
       const item = record(entry);
       exactKeys(item, ["kind", "entity_id", "label", "state"]);
       return {
-        kind: oneOf(item, "kind", ["own_mode", "disabled", "duplicate_charger"] as const),
+        kind: oneOf(item, "kind", ["own_mode", "disabled", "duplicate_charger", "other_controller"] as const),
         entityId: text(item, "entity_id"),
         label: text(item, "label"),
         state: text(item, "state"),

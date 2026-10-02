@@ -618,4 +618,5 @@ export const fi: Record<keyof typeof en, string> = {
   "control.current.off": "SpotNav ei aseta virtaa. Ota se käyttöön laturin asetuksissa.",
   "control.conflict": "Laturin oma {label} on päällä ({name}). Se voi häiritä SpotNavia: sammuta se.",
   "control.disabled": "Laturin oma käyttöönottokytkin on pois päältä ({name}). SpotNav ei voi käynnistää latausta: kytke se päälle.",
+  "control.otherController": "{name} ohjaa myös latauslaitteita; sammuta se tälle latauslaitteelle, muuten {name} ja SpotNav toimivat toisiaan vastaan.",
 };

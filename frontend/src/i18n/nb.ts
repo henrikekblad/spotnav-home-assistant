@@ -618,4 +618,5 @@ export const nb: Record<keyof typeof en, string> = {
   "control.current.off": "SpotNav setter ikke strømmen. Slå det på i ladernes alternativer.",
   "control.conflict": "Laderens egen {label} er på ({name}). Den kan motarbeide SpotNav: slå den av.",
   "control.disabled": "Laderens egen aktiveringsbryter er av ({name}). SpotNav kan ikke starte den: slå den på.",
+  "control.otherController": "{name} styrer også ladere; slå den av for denne laderen, ellers motarbeider {name} og SpotNav hverandre.",
 };

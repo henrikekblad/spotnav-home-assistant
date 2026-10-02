@@ -632,4 +632,5 @@ export const en = {
   "control.current.off": "SpotNav does not set the current. Turn it on in the charger's options.",
   "control.conflict": "The charger's own {label} is on ({name}). It can fight SpotNav: turn it off.",
   "control.disabled": "The charger's own enable switch is off ({name}). SpotNav cannot start it: turn it on.",
+  "control.otherController": "{name} also controls chargers; turn it off for this charger or SpotNav and {name} will fight.",
 } as const;

@@ -158,6 +158,7 @@ _DETECTED_TEXT: dict[str, dict[str, str]] = {
         "disabled": "Disabled by default, and useful (they are enabled if you leave the box below ticked):",
         "balanced": "Perific balances this charger's installation through Zaptec's cloud and sets the same "
         "available current SpotNav would. No current is suggested: SpotNav only starts and stops the charger.",
+        "controller": "{name} also controls chargers; turn it off for this charger or SpotNav and {name} will fight.",
     },
     "sv": {
         "external": "En annan styrning (evcc eller openWB) är installerad och kan redan styra den här "
@@ -165,6 +166,7 @@ _DETECTED_TEXT: dict[str, dict[str, str]] = {
         "disabled": "Avstängda som standard men användbara (de aktiveras om rutan nedan är ikryssad):",
         "balanced": "Perific balanserar den här laddarens installation via Zaptecs moln och ställer in samma "
         "tillgängliga ström som SpotNav skulle göra. Ingen ström föreslås: SpotNav startar och stoppar bara laddaren.",
+        "controller": "{name} styr också laddare; stäng av den för den här laddaren, annars motverkar {name} och SpotNav varandra.",
     },
 }
 
@@ -720,7 +722,8 @@ class SpotNavChargingConfigFlow(ChargerWiringSteps, config_entries.ConfigFlow, d
                     else f"{text['balanced']}\n\n"
                     if detected.balanced_by
                     else ""
-                ),
+                )
+                + "".join(f"{text['controller'].format(name=found.name)}\n\n" for found in detected.controllers),
                 "disabled": (
                     f"\n\n{text['disabled']} "
                     + ", ".join(self._entity_name(entity_id) for entity_id in detected.disabled_useful)

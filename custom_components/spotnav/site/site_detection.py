@@ -180,6 +180,9 @@ class MeterRow:
     # A device whose model contains this is not a grid meter for the total (HomeWizard's battery
     # reports the same `active_power_w` for its own power).
     totals_reject_model: str | None = None
+    # The row's name in `docs/supported.md` where the platform names alone do not tell two rows apart
+    # (the HACS and the core `solaredge_modbus`).
+    label: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -194,6 +197,8 @@ class BatteryRow:
     discharge_regex: re.Pattern[str] | None = None
     device_model: str | None = None
     reject: re.Pattern[str] | None = None
+    # As `MeterRow.label`.
+    label: str | None = None
 
 
 def _re(pattern: str) -> re.Pattern[str]:
@@ -365,6 +370,7 @@ METER_ROWS: Final[tuple[MeterRow, ...]] = (
         ),
         signed_current=True,
         invert_power=True,
+        label="SolarEdge Modbus Multi / SolarEdge Modbus (HACS)",
     ),
     # Home Assistant core's `solaredge_modbus` (2026.10, library `solaredged` 0.4.0), which shares the
     # platform name with the HACS integration above. The meter's entities are `<serial>_meter_<id>_<key>`
@@ -382,6 +388,7 @@ METER_ROWS: Final[tuple[MeterRow, ...]] = (
         totals=(_p("grid_power", r"_meter_(?P<m>.+?)_ac_power$"),),
         signed_current=True,
         invert_power=True,
+        label="SolarEdge Modbus (Home Assistant core)",
     ),
     # Bitvis Power Hub (core `bitvis`, 2026.10), a Swedish HAN reader. Unique ids are `<mac>_<key>`. Active
     # power is two non-negative kW floats, `delivered_to_client` (the grid delivers: import) and
@@ -505,11 +512,17 @@ BATTERY_ROWS: Final[tuple[BatteryRow, ...]] = (
     BatteryRow(("huawei_solar",), _re(r"storage_charge_discharge_power$")),
     BatteryRow(("sigen",), _re(r"plant_ess_power$")),
     BatteryRow(("victron_gx", "victron_mqtt", "victron"), _re(r"system_dc_battery_power$")),
-    BatteryRow(("solaredge_modbus_multi", "solaredge_modbus"), _re(r"(?:^|_)b1_dc_power$")),
+    BatteryRow(
+        ("solaredge_modbus_multi", "solaredge_modbus"),
+        _re(r"(?:^|_)b1_dc_power$"),
+        label="SolarEdge Modbus Multi / SolarEdge Modbus (HACS)",
+    ),
     # Core `solaredge_modbus`: the battery's `dc_power` on its own "Battery n" sub-device
     # (`<serial>_battery_<id>_dc_power`; the inverter's `<serial>_dc_power` is the PV side). The library
     # reads the StorageEdge register unchanged, charge positive as the HACS integration's is.
-    BatteryRow(("solaredge_modbus",), _re(r"_battery_.+_dc_power$")),
+    BatteryRow(
+        ("solaredge_modbus",), _re(r"_battery_.+_dc_power$"), label="SolarEdge Modbus (Home Assistant core)"
+    ),
     BatteryRow(("homewizard",), _re(r"_active_power_w$"), device_model="bat"),
     # Discharge-positive: negate.
     BatteryRow(("powerwall",), _re(r"battery_instant_power$"), inverted=True),

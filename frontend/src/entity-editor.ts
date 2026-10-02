@@ -332,6 +332,9 @@ export function conflictText(language: Language, conflict: ControlConflict, name
   if (conflict.kind === "duplicate_charger") {
     return translate(language, "issue.duplicateCharger", { other: conflict.state });
   }
+  if (conflict.kind === "other_controller") {
+    return translate(language, "control.otherController", { name: conflict.label });
+  }
   return conflict.kind === "disabled"
     ? translate(language, "control.disabled", { name })
     : translate(language, "control.conflict", { label: conflict.label, name });

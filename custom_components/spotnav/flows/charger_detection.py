@@ -31,6 +31,7 @@ from ..execution.charger_entities import (
     own_mode_conflicts,
     OwnModeConflict,
 )
+from ..execution.other_controllers import other_controllers, OtherController
 from ..execution.charger_profiles import (
     entity_matches_keys,
     PlatformProfile,
@@ -85,6 +86,9 @@ class DetectedCharger:
     #: The domain of an integration that balances this charger's installation-wide current limit through
     #: its own cloud (Perific for Zaptec): the current is not suggested, start and stop only.
     balanced_by: str | None = None
+    #: Other integrations that switch or limit this charger (or, for the installation, any charger) by
+    #: themselves: warn, still suggest (`execution.other_controllers`).
+    controllers: list[OtherController] = field(default_factory=list)
 
     @property
     def found_control(self) -> bool:
@@ -399,4 +403,5 @@ def detect_charger(hass: HomeAssistant, device_id: str) -> DetectedCharger | Non
         # evcc or openWB is installed: it may own this charger. Suggest nothing, say so.
         found.external_controller = True
     found.disabled_useful = list(dict.fromkeys(found.disabled_useful))
+    found.controllers = other_controllers(hass, charge_control=found.charge_control, device_id=device_id)
     return found

@@ -1164,6 +1164,27 @@ describe("the charger editor's control path and write policy", () => {
     );
   });
 
+  it("words another controller that also controls chargers, in all five languages", async () => {
+    const other = {
+      ...wallbox,
+      conflicts: [{ kind: "other_controller", entity_id: "switch.wb_control", label: "EV Smart Charging", state: "charger" }],
+    };
+    const { element } = await mounted({ patch: withControl(other) });
+    openSettings(element);
+    await settle();
+    edit(element, "charger");
+
+    const warning = controlBlock(element)?.querySelector("[data-conflict='switch.wb_control']");
+    expect(warning?.textContent).toBe(
+      "EV Smart Charging also controls chargers; turn it off for this charger or SpotNav and EV Smart Charging will fight.",
+    );
+    for (const language of ["en", "sv", "nb", "da", "fi"] as const) {
+      const text = translate(language, "control.otherController", { name: "EV Smart Charging" });
+      expect(text).not.toContain("{name}");
+      expect(text.split("EV Smart Charging")).toHaveLength(3);
+    }
+  });
+
   it("draws nothing when the charger is not loaded", async () => {
     const { element } = await mounted({
       patch: (answer) => ({ ...answer, config: { ...(answer["config"] as Record<string, unknown>), control: null } }),

@@ -89,6 +89,7 @@ from ..execution.charger_entities import (
 )
 from ..execution.chargers.registry import external_balancer
 from ..execution.charger_profiles import PATH_EASEE, profile_for
+from ..execution.other_controllers import other_controllers
 from ..vehicles.duplicate_chargers import (
     candidate_identity,
     DUPLICATE_CHARGER_ERROR,
@@ -212,6 +213,7 @@ ERR_CURRENT_LIMIT_IN_USE: Final = "current_limit_in_use"
 ERR_DUPLICATE_CHARGER: Final = DUPLICATE_CHARGER_ERROR
 #: `control.conflicts` kind for another entry that is the same physical charger.
 CONFLICT_DUPLICATE: Final = "duplicate_charger"
+CONFLICT_OTHER_CONTROLLER: Final = "other_controller"
 
 _ENTITY_DOMAIN: Final[dict[str, str]] = {
     FIELD_CHARGE_CONTROL: "switch",
@@ -673,6 +675,17 @@ def charger_control_descriptor(hass: HomeAssistant, entry: ConfigEntry) -> dict[
                 *((CONFLICT_DISABLED, item) for item in disabled_switches(hass, entries, profile)),
             )
         ]
+    registered_control = er.async_get(hass).async_get(controller.charge_control)
+    conflicts.extend(
+        # Another integration that switches or limits this charger (or any charger): its name in `label`,
+        # the charge control it is set against in `entity_id` and its scope in `state`.
+        {"kind": CONFLICT_OTHER_CONTROLLER, "entity_id": controller.charge_control, "label": found.name, "state": found.scope}
+        for found in other_controllers(
+            hass,
+            charge_control=controller.charge_control,
+            device_id=registered_control.device_id if registered_control is not None else None,
+        )
+    )
     conflicts.extend(
         # What the two share goes in `label` and its identifier in `entity_id`; `state` names the other.
         {"kind": CONFLICT_DUPLICATE, "entity_id": found.what, "label": found.shared, "state": found.title}

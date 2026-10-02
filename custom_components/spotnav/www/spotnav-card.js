@@ -3402,7 +3402,8 @@ var da = {
   "control.current.service": "Easees dynamiske strømgrænse",
   "control.current.off": "SpotNav indstiller ikke strømmen. Slå det til i laderens indstillinger.",
   "control.conflict": "Laderens egen {label} er tændt ({name}). Den kan modarbejde SpotNav: slå den fra.",
-  "control.disabled": "Laderens egen aktiveringskontakt er slået fra ({name}). SpotNav kan ikke starte den: slå den til."
+  "control.disabled": "Laderens egen aktiveringskontakt er slået fra ({name}). SpotNav kan ikke starte den: slå den til.",
+  "control.otherController": "{name} styrer også ladere; slå den fra for denne lader, ellers modarbejder {name} og SpotNav hinanden."
 };
 
 // src/i18n/en.ts
@@ -3948,7 +3949,8 @@ var en = {
   "control.current.service": "Easee's dynamic current limit",
   "control.current.off": "SpotNav does not set the current. Turn it on in the charger's options.",
   "control.conflict": "The charger's own {label} is on ({name}). It can fight SpotNav: turn it off.",
-  "control.disabled": "The charger's own enable switch is off ({name}). SpotNav cannot start it: turn it on."
+  "control.disabled": "The charger's own enable switch is off ({name}). SpotNav cannot start it: turn it on.",
+  "control.otherController": "{name} also controls chargers; turn it off for this charger or SpotNav and {name} will fight."
 };
 
 // src/i18n/fi.ts
@@ -4494,7 +4496,8 @@ var fi = {
   "control.current.service": "Easeen dynaaminen virtaraja",
   "control.current.off": "SpotNav ei aseta virtaa. Ota se käyttöön laturin asetuksissa.",
   "control.conflict": "Laturin oma {label} on päällä ({name}). Se voi häiritä SpotNavia: sammuta se.",
-  "control.disabled": "Laturin oma käyttöönottokytkin on pois päältä ({name}). SpotNav ei voi käynnistää latausta: kytke se päälle."
+  "control.disabled": "Laturin oma käyttöönottokytkin on pois päältä ({name}). SpotNav ei voi käynnistää latausta: kytke se päälle.",
+  "control.otherController": "{name} ohjaa myös latauslaitteita; sammuta se tälle latauslaitteelle, muuten {name} ja SpotNav toimivat toisiaan vastaan."
 };
 
 // src/i18n/nb.ts
@@ -5040,7 +5043,8 @@ var nb = {
   "control.current.service": "Easees dynamiske strømgrense",
   "control.current.off": "SpotNav setter ikke strømmen. Slå det på i ladernes alternativer.",
   "control.conflict": "Laderens egen {label} er på ({name}). Den kan motarbeide SpotNav: slå den av.",
-  "control.disabled": "Laderens egen aktiveringsbryter er av ({name}). SpotNav kan ikke starte den: slå den på."
+  "control.disabled": "Laderens egen aktiveringsbryter er av ({name}). SpotNav kan ikke starte den: slå den på.",
+  "control.otherController": "{name} styrer også ladere; slå den av for denne laderen, ellers motarbeider {name} og SpotNav hverandre."
 };
 
 // src/i18n/sv.ts
@@ -5586,7 +5590,8 @@ var sv = {
   "control.current.service": "Easees dynamiska strömgräns",
   "control.current.off": "SpotNav sätter inte strömmen. Slå på det i laddarens alternativ.",
   "control.conflict": "Laddarens egen {label} är på ({name}). Den kan motverka SpotNav: stäng av den.",
-  "control.disabled": "Laddarens egen aktiveringsbrytare är av ({name}). SpotNav kan inte starta den: slå på den."
+  "control.disabled": "Laddarens egen aktiveringsbrytare är av ({name}). SpotNav kan inte starta den: slå på den.",
+  "control.otherController": "{name} styr också laddare; stäng av den för den här laddaren, annars motverkar {name} och SpotNav varandra."
 };
 
 // src/i18n/index.ts
@@ -8235,7 +8240,7 @@ function decodeControl2(raw) {
       const item = record3(entry);
       exactKeys3(item, ["kind", "entity_id", "label", "state"]);
       return {
-        kind: oneOf2(item, "kind", ["own_mode", "disabled", "duplicate_charger"]),
+        kind: oneOf2(item, "kind", ["own_mode", "disabled", "duplicate_charger", "other_controller"]),
         entityId: text3(item, "entity_id"),
         label: text3(item, "label"),
         state: text3(item, "state")
@@ -8862,6 +8867,9 @@ function controlNotes(doc, language, control, nameOf) {
 function conflictText(language, conflict, name) {
   if (conflict.kind === "duplicate_charger") {
     return translate(language, "issue.duplicateCharger", { other: conflict.state });
+  }
+  if (conflict.kind === "other_controller") {
+    return translate(language, "control.otherController", { name: conflict.label });
   }
   return conflict.kind === "disabled" ? translate(language, "control.disabled", { name }) : translate(language, "control.conflict", { label: conflict.label, name });
 }
