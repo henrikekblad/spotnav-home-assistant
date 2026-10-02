@@ -246,29 +246,6 @@ export async function ensureHaSelector(win: Window | null | undefined, timeoutMs
   }
 }
 
-function controlStartStopText(language: Language, control: EntityControl): string {
-  const path = control.startStop;
-  if (path.kind === "select") {
-    return translate(language, "control.startStop.select", {
-      start: path.startOption ?? "",
-      stop: path.stopOption ?? "",
-    });
-  }
-  if (path.kind === "buttons") {
-    return translate(language, "control.startStop.buttons");
-  }
-  if (path.kind === "easee") {
-    return translate(language, "control.startStop.easee");
-  }
-  if (path.kind === "number_pause") {
-    return translate(language, "control.startStop.numberPause");
-  }
-  if (path.kind === "other") {
-    return translate(language, "control.startStop.other");
-  }
-  return translate(language, path.inverted ? "control.startStop.switchInverted" : "control.startStop.switch");
-}
-
 export function controlCurrentText(language: Language, control: EntityControl, name: string): string {
   const current = control.current;
   if (current.kind === "none") {
@@ -286,91 +263,67 @@ export function controlCurrentText(language: Language, control: EntityControl, n
   return translate(language, "control.current.number", { name });
 }
 
-/** The write limits the policy states, one sentence each; a policy with none says so. */
-function controlPolicyLines(language: Language, control: EntityControl): string[] {
-  const policy = control.policy;
+/**
+ * The restrictions the charger's control description puts on the current limit that the person should
+ * know about, one sentence each; none for a charger whose current can be written freely (an OCPP
+ * charger with ChangeConfiguration). A charger whose current SpotNav does not set has none to name.
+ */
+export function currentRestrictions(language: Language, control: EntityControl): string[] {
+  if (control.current.kind === "none") {
+    return [];
+  }
+  const { policy, capabilities } = control;
   const lines: string[] = [];
-  if (policy.minIntervalS > 0) {
-    lines.push(translate(language, "control.policy.interval", { seconds: formatNumber(language, policy.minIntervalS, 0) }));
+  if (policy.minIntervalS >= 60) {
+    const wholeMinutes = policy.minIntervalS % 60 === 0 && policy.minIntervalS >= 120;
+    lines.push(
+      wholeMinutes
+        ? translate(language, "control.limit.minutes", { count: formatNumber(language, policy.minIntervalS / 60, 0) })
+        : translate(language, "control.limit.seconds", { count: formatNumber(language, policy.minIntervalS, 0) }),
+    );
   }
-  if (policy.maxWritesPerMinute !== null) {
-    lines.push(translate(language, "control.policy.perMinute", { count: formatNumber(language, policy.maxWritesPerMinute, 0) }));
+  if (policy.flashStored || !policy.regulatorWrites) {
+    lines.push(translate(language, "control.limit.flash"));
   }
-  if (policy.flashStored) {
-    lines.push(translate(language, "control.policy.flash"));
-  }
-  if (policy.zeroPauses) {
-    lines.push(translate(language, "control.policy.zeroPauses"));
-  }
-  if (policy.ignoredWhilePaused) {
-    lines.push(translate(language, "control.policy.ignoredWhilePaused"));
+  if (capabilities.startStop && !capabilities.regulatedCurrent) {
+    lines.push(translate(language, "control.limit.stopOnly"));
   }
   if (policy.installationWide) {
-    lines.push(translate(language, "control.policy.installation"));
+    lines.push(translate(language, "control.limit.installation"));
   }
-  if (policy.resendAfterPlugIn) {
-    lines.push(translate(language, "control.policy.resend"));
-  }
-  return lines.length > 0 ? lines : [translate(language, "control.policy.free")];
+  return lines;
 }
 
 /**
- * The chosen control path and its write policy, read only: how the charger is started and stopped, how
- * its current is set (and whether load balancing may change it during a charge), where its charging
- * state comes from, the limits every write obeys, and the charger's own modes that are on and would
- * fight SpotNav. Drawn from the decoded configuration; nothing here asks the backend.
+ * What stays at the top of the charger dialog from the control description: the fixed-path sentence
+ * for Easee and the charger's own modes that are on (or its enable switch off) and would fight
+ * SpotNav. `null` when there is neither. Drawn from the decoded configuration; nothing here asks the
+ * backend.
  */
-export function controlRows(doc: Document, language: Language, control: EntityControl, nameOf: (entityId: string) => string): HTMLElement {
-  const block = element(doc, "div", C.entityRow);
-  block.dataset["control"] = "path";
-  block.append(element(doc, "div", C.entityRowLabel, translate(language, "control.title")));
-  const row = (key: string, label: TranslationKey, text: string): void => {
-    const line = element(doc, "div");
-    line.dataset["controlRow"] = key;
-    line.append(element(doc, "span", C.entityRowLabel, translate(language, label)));
-    line.append(element(doc, "span", `${C.settingsValue} ${C.entityRowValue}`, text));
-    block.append(line);
-  };
-  row("start_stop", "control.startStop", controlStartStopText(language, control));
+export function controlNotes(
+  doc: Document,
+  language: Language,
+  control: EntityControl,
+  nameOf: (entityId: string) => string,
+): HTMLElement | null {
+  const nodes: HTMLElement[] = [];
   if (control.startStop.kind === "easee") {
     // Its charge-control entity is only the charger's identity, so nothing is offered to pick.
     const fixed = element(doc, "p", C.entityHelp, translate(language, "control.startStop.easeeFixed"));
     fixed.dataset["controlRow"] = "start_stop_fixed";
-    block.append(fixed);
-  }
-  const currentEntity = control.current.entityId;
-  row(
-    "current",
-    "control.current",
-    controlCurrentText(language, control, currentEntity === null ? "" : nameOf(currentEntity)),
-  );
-  row(
-    "charging_state",
-    "control.state",
-    translate(language, control.chargingState.source === "status" ? "control.state.status" : "control.state.control"),
-  );
-  if (control.current.kind !== "none") {
-    const policy = element(doc, "div");
-    policy.dataset["controlRow"] = "policy";
-    policy.append(element(doc, "span", C.entityRowLabel, translate(language, "control.policy")));
-    for (const line of controlPolicyLines(language, control)) {
-      policy.append(element(doc, "p", C.entityHelp, line));
-    }
-    block.append(policy);
-    block.append(
-      element(
-        doc,
-        "p",
-        C.capabilityNote,
-        translate(language, control.capabilities.regulatedCurrent ? "control.regulated.yes" : "control.regulated.no"),
-      ),
-    );
+    nodes.push(fixed);
   }
   for (const conflict of control.conflicts) {
     const warning = element(doc, "p", C.entityWarning, conflictText(language, conflict, nameOf(conflict.entityId)));
     warning.dataset["conflict"] = conflict.entityId;
-    block.append(warning);
+    nodes.push(warning);
   }
+  if (nodes.length === 0) {
+    return null;
+  }
+  const block = element(doc, "div", C.entityRow);
+  block.dataset["control"] = "path";
+  block.append(...nodes);
   return block;
 }
 
@@ -476,7 +429,10 @@ export function entityEditorBody(
     );
   }
   if (scope === "charger" && config.control !== null) {
-    body.append(controlRows(doc, language, config.control, (entityId) => entityNameIn(config, entityId)));
+    const notes = controlNotes(doc, language, config.control, (entityId) => entityNameIn(config, entityId));
+    if (notes !== null) {
+      body.append(notes);
+    }
   }
   if (scope === "site" && config.site !== null) {
     const notices = siteNotices(doc, language, config.site);
@@ -620,7 +576,12 @@ export function entityEditorBody(
   }
 
   function entityField(field: EntityFieldEntity, label: string, showLabel = true): HTMLElement {
-    return fieldBlock(field.field, label, entityControl(field, label), showLabel, field);
+    const control = entityControl(field, label);
+    if (!showLabel && control.picker !== null) {
+      // The heading above says it; the picker would say it a second time.
+      (control.picker as PickerElement).label = "";
+    }
+    return fieldBlock(field.field, label, control, showLabel, field);
   }
 
   function flagField(field: EntityFieldFlag, label: string): HTMLElement {
@@ -800,7 +761,12 @@ export function entityEditorBody(
     }
     const label = labelOf(language, field.field);
     let block: HTMLElement | null = null;
-    if (field.kind === "entity") {
+    if (field.kind === "entity" && scope === "charger" && field.field === "charge_control") {
+      // Headed like the Current limit and Energy groups: one heading style in the dialog.
+      block = element(doc, "fieldset", C.siteFieldset);
+      block.dataset["part"] = "charge-control";
+      block.append(element(doc, "legend", C.siteLegend, label), entityField(field, label, false));
+    } else if (field.kind === "entity") {
       block = entityField(field, label);
     } else if (field.kind === "flag") {
       block = flagField(field, label);
@@ -979,6 +945,12 @@ export function entityEditorBody(
         }
       });
       keepErrorWith(limitGroup, "current_limit");
+      const restrictions = config.control === null ? [] : currentRestrictions(language, config.control);
+      if (restrictions.length > 0) {
+        const line = element(doc, "p", C.entityHelp, restrictions.join(" "));
+        line.dataset["limitRestrictions"] = "current";
+        limitGroup.fieldset.querySelector("[data-help='current_limit']")?.after(line);
+      }
       body.append(limitGroup.fieldset);
       paintLimit();
     }

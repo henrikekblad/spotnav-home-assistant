@@ -3388,36 +3388,19 @@ var da = {
   "settings.phases.unset": "Antallet af faser er ikke angivet.",
   "settings.phases.help": "Styrer den effekt, planen regner med for en given strøm. En trefaselader kan stadig lade en bil på én fase.",
   "cap.targetSocNote": "Kræver en sensor for bilens ladetilstand og batteriets kapacitet. Angiv dem i Plan og Indstillinger.",
-  "control.title": "Sådan styrer SpotNav denne lader",
   "control.startStop": "Start og stop",
-  "control.startStop.switch": "En kontakt",
-  "control.startStop.switchInverted": "En kontakt, der sætter laderen på pause, mens den er tændt",
-  "control.startStop.select": "En vælger: {start} starter, {stop} stopper",
-  "control.startStop.buttons": "En startknap og en stopknap",
-  "control.startStop.easee": "Easee-integrationens tjeneste til pause og genoptagelse",
-  "control.startStop.numberPause": "Via strømgrænsen: 0 A sætter på pause, den planlagte strøm genoptager",
-  "control.startStop.other": "En start- og stopmetode, som denne version ikke beskriver. Opdater SpotNav.",
   "control.startStop.easeeFixed": "SpotNav starter og stopper laderen via Easee-integrationens tjeneste (pause og genoptag), så der er ingen start- eller stopenhed at vælge.",
+  "control.limit.minutes": "Strømmen kan højst ændres hvert {count}. minut.",
+  "control.limit.seconds": "Strømmen kan højst ændres hvert {count}. sekund.",
+  "control.limit.flash": "Strømmen gemmes i laderen og ændres kun, når en opladning starter.",
+  "control.limit.stopOnly": "Belastningsfordeling kan kun stoppe opladningen, ikke sænke strømmen.",
+  "control.limit.installation": "Grænsen gælder hele installationen.",
   "control.current": "Ladestrøm",
   "control.current.none": "Indstilles ikke af SpotNav (laderen beholder sin egen grænse)",
   "control.current.ocpp": "OCPP ChangeConfiguration",
   "control.current.number": "En talentitet: {name}",
   "control.current.service": "Easees dynamiske strømgrænse",
   "control.current.off": "SpotNav indstiller ikke strømmen. Slå det til i laderens indstillinger.",
-  "control.state": "Ladestatus",
-  "control.state.status": "Laderens statussensor",
-  "control.state.control": "Selve ladestyringen",
-  "control.policy": "Skrivegrænser",
-  "control.policy.interval": "Højst én strømændring hvert {seconds}. sekund.",
-  "control.policy.perMinute": "Højst {count} indstillingsændringer i minuttet.",
-  "control.policy.flash": "Gemmes i laderen: skrives, når en opladning starter, aldrig mens belastningsfordeling kører.",
-  "control.policy.zeroPauses": "Nul ampere ville sætte opladningen på pause, så SpotNav stopper den i stedet.",
-  "control.policy.ignoredWhilePaused": "Ignoreres under pause, så den skrives, efter at opladningen er startet.",
-  "control.policy.installation": "Begrænser hele installationen: bruges kun, når den har én lader.",
-  "control.policy.resend": "Sendes igen, når en bil tilsluttes, og efter en genstart.",
-  "control.policy.free": "Ingen grænse for, hvor ofte strømmen skrives.",
-  "control.regulated.yes": "Belastningsfordeling kan ændre strømmen under en opladning.",
-  "control.regulated.no": "Belastningsfordeling kan ikke ændre strømmen under en opladning. Den kan kun stoppe opladningen.",
   "control.conflict": "Laderens egen {label} er tændt ({name}). Den kan modarbejde SpotNav: slå den fra.",
   "control.disabled": "Laderens egen aktiveringskontakt er slået fra ({name}). SpotNav kan ikke starte den: slå den til."
 };
@@ -3951,36 +3934,19 @@ var en = {
   "settings.phases.unset": "The phase count is not set.",
   "settings.phases.help": "Sets the power the plan assumes for a given current. A three-phase charger can still charge a vehicle on one phase.",
   "cap.targetSocNote": "Needs a charge-level sensor for the vehicle and its battery capacity. Set them in Plan and Settings.",
-  "control.title": "How SpotNav controls this charger",
   "control.startStop": "Start and stop",
-  "control.startStop.switch": "A switch",
-  "control.startStop.switchInverted": "A switch that pauses the charger while it is on",
-  "control.startStop.select": "A selector: {start} starts, {stop} stops",
-  "control.startStop.buttons": "A start button and a stop button",
-  "control.startStop.easee": "Easee integration's pause and resume service",
-  "control.startStop.numberPause": "Through the current limit: 0 A pauses, the planned current resumes",
-  "control.startStop.other": "A start and stop method this version does not describe. Update SpotNav.",
   "control.startStop.easeeFixed": "SpotNav starts and stops the charger through the Easee integration's service (pause and resume), so there is no start or stop entity to choose.",
+  "control.limit.minutes": "The current can change at most every {count} minutes.",
+  "control.limit.seconds": "The current can change at most every {count} seconds.",
+  "control.limit.flash": "The current is stored in the charger and is only changed at a charge start.",
+  "control.limit.stopOnly": "Load balancing can only stop the charge, not lower the current.",
+  "control.limit.installation": "The limit applies to the whole installation.",
   "control.current": "Charging current",
   "control.current.none": "Not set by SpotNav (the charger keeps its own limit)",
   "control.current.ocpp": "OCPP ChangeConfiguration",
   "control.current.number": "A number entity: {name}",
   "control.current.service": "Easee's dynamic current limit",
   "control.current.off": "SpotNav does not set the current. Turn it on in the charger's options.",
-  "control.state": "Charging state",
-  "control.state.status": "The charger's status sensor",
-  "control.state.control": "The charge control itself",
-  "control.policy": "Write limits",
-  "control.policy.interval": "At most one current change every {seconds} s.",
-  "control.policy.perMinute": "At most {count} settings changes a minute.",
-  "control.policy.flash": "Stored in the charger: written when a charge starts, never while load balancing runs.",
-  "control.policy.zeroPauses": "Zero amps would pause the charge, so SpotNav stops it instead.",
-  "control.policy.ignoredWhilePaused": "Ignored while paused, so it is written after the charge starts.",
-  "control.policy.installation": "Limits the whole installation: used only when it has one charger.",
-  "control.policy.resend": "Sent again after a car is plugged in and after a restart.",
-  "control.policy.free": "No limit on how often the current is written.",
-  "control.regulated.yes": "Load balancing may change the current during a charge.",
-  "control.regulated.no": "Load balancing cannot change the current during a charge. It can only stop the charge.",
   "control.conflict": "The charger's own {label} is on ({name}). It can fight SpotNav: turn it off.",
   "control.disabled": "The charger's own enable switch is off ({name}). SpotNav cannot start it: turn it on."
 };
@@ -4514,36 +4480,19 @@ var fi = {
   "settings.phases.unset": "Vaiheiden määrää ei ole asetettu.",
   "settings.phases.help": "Määrää tehon, jota suunnitelma olettaa tietyllä virralla. Kolmivaiheinen laturi voi silti ladata ajoneuvoa yhdellä vaiheella.",
   "cap.targetSocNote": "Vaatii ajoneuvon lataustasoanturin ja akun kapasiteetin. Aseta ne Suunnitelmassa ja Asetuksissa.",
-  "control.title": "Miten SpotNav ohjaa tätä laturia",
   "control.startStop": "Käynnistys ja pysäytys",
-  "control.startStop.switch": "Kytkin",
-  "control.startStop.switchInverted": "Kytkin, joka keskeyttää latauksen ollessaan päällä",
-  "control.startStop.select": "Valitsin: {start} käynnistää, {stop} pysäyttää",
-  "control.startStop.buttons": "Käynnistyspainike ja pysäytyspainike",
-  "control.startStop.easee": "Easee-integraation tauko- ja jatkopalvelu",
-  "control.startStop.numberPause": "Virtarajan kautta: 0 A keskeyttää, suunniteltu virta jatkaa",
-  "control.startStop.other": "Käynnistys- ja pysäytystapa, jota tämä versio ei kuvaa. Päivitä SpotNav.",
   "control.startStop.easeeFixed": "SpotNav käynnistää ja pysäyttää laturin Easee-integraation palvelulla (tauko ja jatko), joten käynnistys- tai pysäytysentiteettiä ei valita.",
+  "control.limit.minutes": "Virtaa voi muuttaa enintään {count} minuutin välein.",
+  "control.limit.seconds": "Virtaa voi muuttaa enintään {count} sekunnin välein.",
+  "control.limit.flash": "Virta tallentuu laturiin ja muuttuu vain latauksen alkaessa.",
+  "control.limit.stopOnly": "Kuormanhallinta voi vain pysäyttää latauksen, ei pienentää virtaa.",
+  "control.limit.installation": "Raja koskee koko asennusta.",
   "control.current": "Latausvirta",
   "control.current.none": "SpotNav ei aseta sitä (laturi pitää oman rajansa)",
   "control.current.ocpp": "OCPP ChangeConfiguration",
   "control.current.number": "Numeroentiteetti: {name}",
   "control.current.service": "Easeen dynaaminen virtaraja",
   "control.current.off": "SpotNav ei aseta virtaa. Ota se käyttöön laturin asetuksissa.",
-  "control.state": "Lataustila",
-  "control.state.status": "Laturin tila-anturi",
-  "control.state.control": "Latauksen ohjaus itse",
-  "control.policy": "Kirjoitusrajat",
-  "control.policy.interval": "Enintään yksi virtamuutos {seconds} sekunnin välein.",
-  "control.policy.perMinute": "Enintään {count} asetusmuutosta minuutissa.",
-  "control.policy.flash": "Tallentuu laturiin: kirjoitetaan latauksen alkaessa, ei koskaan kuormanhallinnan aikana.",
-  "control.policy.zeroPauses": "Nolla ampeeria keskeyttäisi latauksen, joten SpotNav pysäyttää sen.",
-  "control.policy.ignoredWhilePaused": "Ohitetaan tauon aikana, joten se kirjoitetaan latauksen alettua.",
-  "control.policy.installation": "Rajoittaa koko asennusta: käytetään vain, kun siinä on yksi laturi.",
-  "control.policy.resend": "Lähetetään uudelleen auton kytkemisen ja uudelleenkäynnistyksen jälkeen.",
-  "control.policy.free": "Virran kirjoitustiheydelle ei ole rajaa.",
-  "control.regulated.yes": "Kuormanhallinta voi muuttaa virtaa latauksen aikana.",
-  "control.regulated.no": "Kuormanhallinta ei voi muuttaa virtaa latauksen aikana. Se voi vain pysäyttää latauksen.",
   "control.conflict": "Laturin oma {label} on päällä ({name}). Se voi häiritä SpotNavia: sammuta se.",
   "control.disabled": "Laturin oma käyttöönottokytkin on pois päältä ({name}). SpotNav ei voi käynnistää latausta: kytke se päälle."
 };
@@ -5077,36 +5026,19 @@ var nb = {
   "settings.phases.unset": "Antall faser er ikke satt.",
   "settings.phases.help": "Styrer effekten planen regner med for en gitt strøm. En trefaselader kan likevel lade en bil på én fase.",
   "cap.targetSocNote": "Krever en sensor for bilens ladenivå og batteriets kapasitet. Angi dem i Plan og Innstillinger.",
-  "control.title": "Hvordan SpotNav styrer denne laderen",
   "control.startStop": "Start og stopp",
-  "control.startStop.switch": "En bryter",
-  "control.startStop.switchInverted": "En bryter som setter laderen på pause mens den er på",
-  "control.startStop.select": "En velger: {start} starter, {stop} stopper",
-  "control.startStop.buttons": "En startknapp og en stoppknapp",
-  "control.startStop.easee": "Easee-integrasjonens tjeneste for pause og gjenopptak",
-  "control.startStop.numberPause": "Via strømgrensen: 0 A setter på pause, den planlagte strømmen gjenopptar",
-  "control.startStop.other": "En start- og stoppmetode som denne versjonen ikke beskriver. Oppdater SpotNav.",
   "control.startStop.easeeFixed": "SpotNav starter og stopper laderen via Easee-integrasjonens tjeneste (pause og gjenoppta), så det finnes ingen start- eller stoppenhet å velge.",
+  "control.limit.minutes": "Strømmen kan endres høyst hvert {count}. minutt.",
+  "control.limit.seconds": "Strømmen kan endres høyst hvert {count}. sekund.",
+  "control.limit.flash": "Strømmen lagres i laderen og endres bare når en lading starter.",
+  "control.limit.stopOnly": "Lastbalansering kan bare stoppe ladingen, ikke senke strømmen.",
+  "control.limit.installation": "Grensen gjelder hele installasjonen.",
   "control.current": "Ladestrøm",
   "control.current.none": "Settes ikke av SpotNav (laderen beholder sin egen grense)",
   "control.current.ocpp": "OCPP ChangeConfiguration",
   "control.current.number": "En tallentitet: {name}",
   "control.current.service": "Easees dynamiske strømgrense",
   "control.current.off": "SpotNav setter ikke strømmen. Slå det på i ladernes alternativer.",
-  "control.state": "Ladestatus",
-  "control.state.status": "Laderens statussensor",
-  "control.state.control": "Selve ladestyringen",
-  "control.policy": "Skrivegrenser",
-  "control.policy.interval": "Høyst én strømendring hvert {seconds}. sekund.",
-  "control.policy.perMinute": "Høyst {count} innstillingsendringer i minuttet.",
-  "control.policy.flash": "Lagres i laderen: skrives når en lading starter, aldri mens lastbalansering pågår.",
-  "control.policy.zeroPauses": "Null ampere ville satt ladingen på pause, så SpotNav stopper den i stedet.",
-  "control.policy.ignoredWhilePaused": "Ignoreres under pause, så den skrives etter at ladingen har startet.",
-  "control.policy.installation": "Begrenser hele installasjonen: brukes bare når den har én lader.",
-  "control.policy.resend": "Sendes på nytt når en bil kobles til og etter en omstart.",
-  "control.policy.free": "Ingen grense for hvor ofte strømmen skrives.",
-  "control.regulated.yes": "Lastbalansering kan endre strømmen under en lading.",
-  "control.regulated.no": "Lastbalansering kan ikke endre strømmen under en lading. Den kan bare stoppe ladingen.",
   "control.conflict": "Laderens egen {label} er på ({name}). Den kan motarbeide SpotNav: slå den av.",
   "control.disabled": "Laderens egen aktiveringsbryter er av ({name}). SpotNav kan ikke starte den: slå den på."
 };
@@ -5640,36 +5572,19 @@ var sv = {
   "settings.phases.unset": "Antalet faser är inte angivet.",
   "settings.phases.help": "Styr vilken effekt planen räknar med för en viss ström. En trefasladdare kan ändå ladda ett fordon på en fas.",
   "cap.targetSocNote": "Kräver en sensor för fordonets laddnivå och batteriets kapacitet. Ange dem i Plan och Inställningar.",
-  "control.title": "Hur SpotNav styr den här laddaren",
   "control.startStop": "Start och stopp",
-  "control.startStop.switch": "En strömbrytare",
-  "control.startStop.switchInverted": "En strömbrytare som pausar laddaren när den är på",
-  "control.startStop.select": "En väljare: {start} startar, {stop} stoppar",
-  "control.startStop.buttons": "En startknapp och en stoppknapp",
-  "control.startStop.easee": "Easee-integrationens tjänst för paus och återupptagning",
-  "control.startStop.numberPause": "Via strömgränsen: 0 A pausar, planerad ström återupptar",
-  "control.startStop.other": "En start- och stoppmetod som den här versionen inte beskriver. Uppdatera SpotNav.",
   "control.startStop.easeeFixed": "SpotNav startar och stoppar laddaren via Easee-integrationens tjänst (pausa och återuppta), så det finns ingen start- eller stoppentitet att välja.",
+  "control.limit.minutes": "Det går minst {count} minuter mellan två strömändringar.",
+  "control.limit.seconds": "Det går minst {count} sekunder mellan två strömändringar.",
+  "control.limit.flash": "Strömmen lagras i laddaren och ändras bara när en laddning startar.",
+  "control.limit.stopOnly": "Lastbalansering kan bara stoppa laddningen, inte sänka strömmen.",
+  "control.limit.installation": "Gränsen gäller hela installationen.",
   "control.current": "Laddström",
   "control.current.none": "Sätts inte av SpotNav (laddaren behåller sin egen gräns)",
   "control.current.ocpp": "OCPP ChangeConfiguration",
   "control.current.number": "En nummerentitet: {name}",
   "control.current.service": "Easees dynamiska strömgräns",
   "control.current.off": "SpotNav sätter inte strömmen. Slå på det i laddarens alternativ.",
-  "control.state": "Laddningsstatus",
-  "control.state.status": "Laddarens statussensor",
-  "control.state.control": "Själva laddstyrningen",
-  "control.policy": "Skrivgränser",
-  "control.policy.interval": "Högst en strömändring var {seconds}:e sekund.",
-  "control.policy.perMinute": "Högst {count} inställningsändringar i minuten.",
-  "control.policy.flash": "Lagras i laddaren: skrivs när en laddning startar, aldrig medan lastbalansering pågår.",
-  "control.policy.zeroPauses": "Noll ampere skulle pausa laddningen, så SpotNav stoppar den i stället.",
-  "control.policy.ignoredWhilePaused": "Ignoreras under paus, så den skrivs efter att laddningen startat.",
-  "control.policy.installation": "Begränsar hela installationen: används bara när den har en laddare.",
-  "control.policy.resend": "Skickas igen när en bil ansluts och efter en omstart.",
-  "control.policy.free": "Ingen gräns för hur ofta strömmen skrivs.",
-  "control.regulated.yes": "Lastbalansering kan ändra strömmen under en laddning.",
-  "control.regulated.no": "Lastbalansering kan inte ändra strömmen under en laddning. Den kan bara stoppa laddningen.",
   "control.conflict": "Laddarens egen {label} är på ({name}). Den kan motverka SpotNav: stäng av den.",
   "control.disabled": "Laddarens egen aktiveringsbrytare är av ({name}). SpotNav kan inte starta den: slå på den."
 };
@@ -8885,28 +8800,6 @@ async function ensureHaSelector(win, timeoutMs = 3e3) {
   } catch {
   }
 }
-function controlStartStopText(language, control) {
-  const path = control.startStop;
-  if (path.kind === "select") {
-    return translate(language, "control.startStop.select", {
-      start: path.startOption ?? "",
-      stop: path.stopOption ?? ""
-    });
-  }
-  if (path.kind === "buttons") {
-    return translate(language, "control.startStop.buttons");
-  }
-  if (path.kind === "easee") {
-    return translate(language, "control.startStop.easee");
-  }
-  if (path.kind === "number_pause") {
-    return translate(language, "control.startStop.numberPause");
-  }
-  if (path.kind === "other") {
-    return translate(language, "control.startStop.other");
-  }
-  return translate(language, path.inverted ? "control.startStop.switchInverted" : "control.startStop.switch");
-}
 function controlCurrentText(language, control, name) {
   const current = control.current;
   if (current.kind === "none") {
@@ -8923,82 +8816,47 @@ function controlCurrentText(language, control, name) {
   }
   return translate(language, "control.current.number", { name });
 }
-function controlPolicyLines(language, control) {
-  const policy = control.policy;
+function currentRestrictions(language, control) {
+  if (control.current.kind === "none") {
+    return [];
+  }
+  const { policy, capabilities } = control;
   const lines = [];
-  if (policy.minIntervalS > 0) {
-    lines.push(translate(language, "control.policy.interval", { seconds: formatNumber(language, policy.minIntervalS, 0) }));
+  if (policy.minIntervalS >= 60) {
+    const wholeMinutes = policy.minIntervalS % 60 === 0 && policy.minIntervalS >= 120;
+    lines.push(
+      wholeMinutes ? translate(language, "control.limit.minutes", { count: formatNumber(language, policy.minIntervalS / 60, 0) }) : translate(language, "control.limit.seconds", { count: formatNumber(language, policy.minIntervalS, 0) })
+    );
   }
-  if (policy.maxWritesPerMinute !== null) {
-    lines.push(translate(language, "control.policy.perMinute", { count: formatNumber(language, policy.maxWritesPerMinute, 0) }));
+  if (policy.flashStored || !policy.regulatorWrites) {
+    lines.push(translate(language, "control.limit.flash"));
   }
-  if (policy.flashStored) {
-    lines.push(translate(language, "control.policy.flash"));
-  }
-  if (policy.zeroPauses) {
-    lines.push(translate(language, "control.policy.zeroPauses"));
-  }
-  if (policy.ignoredWhilePaused) {
-    lines.push(translate(language, "control.policy.ignoredWhilePaused"));
+  if (capabilities.startStop && !capabilities.regulatedCurrent) {
+    lines.push(translate(language, "control.limit.stopOnly"));
   }
   if (policy.installationWide) {
-    lines.push(translate(language, "control.policy.installation"));
+    lines.push(translate(language, "control.limit.installation"));
   }
-  if (policy.resendAfterPlugIn) {
-    lines.push(translate(language, "control.policy.resend"));
-  }
-  return lines.length > 0 ? lines : [translate(language, "control.policy.free")];
+  return lines;
 }
-function controlRows(doc, language, control, nameOf) {
-  const block = element(doc, "div", VISUAL_CLASSES.entityRow);
-  block.dataset["control"] = "path";
-  block.append(element(doc, "div", VISUAL_CLASSES.entityRowLabel, translate(language, "control.title")));
-  const row = (key, label, text4) => {
-    const line = element(doc, "div");
-    line.dataset["controlRow"] = key;
-    line.append(element(doc, "span", VISUAL_CLASSES.entityRowLabel, translate(language, label)));
-    line.append(element(doc, "span", `${VISUAL_CLASSES.settingsValue} ${VISUAL_CLASSES.entityRowValue}`, text4));
-    block.append(line);
-  };
-  row("start_stop", "control.startStop", controlStartStopText(language, control));
+function controlNotes(doc, language, control, nameOf) {
+  const nodes = [];
   if (control.startStop.kind === "easee") {
     const fixed = element(doc, "p", VISUAL_CLASSES.entityHelp, translate(language, "control.startStop.easeeFixed"));
     fixed.dataset["controlRow"] = "start_stop_fixed";
-    block.append(fixed);
-  }
-  const currentEntity = control.current.entityId;
-  row(
-    "current",
-    "control.current",
-    controlCurrentText(language, control, currentEntity === null ? "" : nameOf(currentEntity))
-  );
-  row(
-    "charging_state",
-    "control.state",
-    translate(language, control.chargingState.source === "status" ? "control.state.status" : "control.state.control")
-  );
-  if (control.current.kind !== "none") {
-    const policy = element(doc, "div");
-    policy.dataset["controlRow"] = "policy";
-    policy.append(element(doc, "span", VISUAL_CLASSES.entityRowLabel, translate(language, "control.policy")));
-    for (const line of controlPolicyLines(language, control)) {
-      policy.append(element(doc, "p", VISUAL_CLASSES.entityHelp, line));
-    }
-    block.append(policy);
-    block.append(
-      element(
-        doc,
-        "p",
-        VISUAL_CLASSES.capabilityNote,
-        translate(language, control.capabilities.regulatedCurrent ? "control.regulated.yes" : "control.regulated.no")
-      )
-    );
+    nodes.push(fixed);
   }
   for (const conflict of control.conflicts) {
     const warning = element(doc, "p", VISUAL_CLASSES.entityWarning, conflictText(language, conflict, nameOf(conflict.entityId)));
     warning.dataset["conflict"] = conflict.entityId;
-    block.append(warning);
+    nodes.push(warning);
   }
+  if (nodes.length === 0) {
+    return null;
+  }
+  const block = element(doc, "div", VISUAL_CLASSES.entityRow);
+  block.dataset["control"] = "path";
+  block.append(...nodes);
   return block;
 }
 function conflictText(language, conflict, name) {
@@ -9049,7 +8907,10 @@ function entityEditorBody(doc, language, input, handlers, idPrefix) {
     );
   }
   if (scope === "charger" && config.control !== null) {
-    body.append(controlRows(doc, language, config.control, (entityId) => entityNameIn(config, entityId)));
+    const notes = controlNotes(doc, language, config.control, (entityId) => entityNameIn(config, entityId));
+    if (notes !== null) {
+      body.append(notes);
+    }
   }
   if (scope === "site" && config.site !== null) {
     const notices = siteNotices(doc, language, config.site);
@@ -9171,7 +9032,11 @@ function entityEditorBody(doc, language, input, handlers, idPrefix) {
     return { node: number, input: number, picker: null };
   }
   function entityField(field2, label, showLabel = true) {
-    return fieldBlock(field2.field, label, entityControl(field2, label), showLabel, field2);
+    const control = entityControl(field2, label);
+    if (!showLabel && control.picker !== null) {
+      control.picker.label = "";
+    }
+    return fieldBlock(field2.field, label, control, showLabel, field2);
   }
   function flagField(field2, label) {
     const block = element(doc, "div", VISUAL_CLASSES.settingsField);
@@ -9326,7 +9191,11 @@ function entityEditorBody(doc, language, input, handlers, idPrefix) {
     }
     const label = labelOf(language, field2.field);
     let block = null;
-    if (field2.kind === "entity") {
+    if (field2.kind === "entity" && scope === "charger" && field2.field === "charge_control") {
+      block = element(doc, "fieldset", VISUAL_CLASSES.siteFieldset);
+      block.dataset["part"] = "charge-control";
+      block.append(element(doc, "legend", VISUAL_CLASSES.siteLegend, label), entityField(field2, label, false));
+    } else if (field2.kind === "entity") {
       block = entityField(field2, label);
     } else if (field2.kind === "flag") {
       block = flagField(field2, label);
@@ -9466,6 +9335,12 @@ function entityEditorBody(doc, language, input, handlers, idPrefix) {
         }
       });
       keepErrorWith(limitGroup, "current_limit");
+      const restrictions = config.control === null ? [] : currentRestrictions(language, config.control);
+      if (restrictions.length > 0) {
+        const line = element(doc, "p", VISUAL_CLASSES.entityHelp, restrictions.join(" "));
+        line.dataset["limitRestrictions"] = "current";
+        limitGroup.fieldset.querySelector("[data-help='current_limit']")?.after(line);
+      }
       body.append(limitGroup.fieldset);
       paintLimit();
     }

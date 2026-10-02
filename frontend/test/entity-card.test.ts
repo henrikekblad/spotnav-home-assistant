@@ -987,51 +987,126 @@ const controlBlock = (element: Element): HTMLElement | null =>
 const controlRow = (element: Element, key: string): string =>
   controlBlock(element)?.querySelector(`[data-control-row="${key}"]`)?.textContent ?? "";
 
+const restriction = (element: Element): string | null =>
+  openDialog(element)?.querySelector("[data-limit-restrictions]")?.textContent ?? null;
+
 describe("the charger editor's control path and write policy", () => {
   const wallbox = {
     platform: "wallbox",
     start_stop: { kind: "switch", entity_ids: ["switch.wb"], inverted: false, start_option: null, stop_option: null },
     current: { kind: "number", entity_id: "number.wb_limit", service: "number.set_value", enabled: true },
     charging_state: { source: "status", entity_id: "sensor.wb_status" },
-    policy: { ...POLICY_FREE, min_interval_s: 90 },
+    policy: { ...POLICY_FREE },
     capabilities: CAPABILITIES,
     conflicts: [],
   };
-
-  it("says how the charger is controlled and the limit every write obeys", async () => {
-    const { element } = await mounted({ patch: withControl(wallbox) });
+  const open = async (control: Record<string, unknown>) => {
+    const { element } = await mounted({ patch: withControl(control) });
     openSettings(element);
     await settle();
     edit(element, "charger");
+    return element;
+  };
 
-    expect(controlRow(element, "start_stop")).toContain(translate("en", "control.startStop.switch"));
-    expect(controlRow(element, "current")).toContain(translate("en", "control.current.number", { name: "number.wb_limit" }));
-    expect(controlRow(element, "charging_state")).toContain(translate("en", "control.state.status"));
-    expect(controlRow(element, "policy")).toContain(translate("en", "control.policy.interval", { seconds: "90" }));
-    expect(controlBlock(element)?.textContent).toContain(translate("en", "control.regulated.yes"));
-    expect(controlBlock(element)?.querySelector("[data-conflict]")).toBeNull();
+  it("draws no summary block of how the charger is controlled", async () => {
+    const element = await open({ ...wallbox, policy: { ...POLICY_FREE, min_interval_s: 90 } });
+    const dialog = openDialog(element);
+    expect(dialog?.textContent).not.toContain("How SpotNav controls this charger");
+    for (const key of ["start_stop", "current", "charging_state", "policy"]) {
+      expect(dialog?.querySelector(`[data-control-row="${key}"]`), key).toBeNull();
+    }
+    expect(dialog?.textContent).not.toContain("Write limits");
+    expect(dialog?.textContent).not.toContain("Charging state");
+    expect(controlBlock(element)).toBeNull();
   });
 
-  it("names a stored setting as written at a session start only, and says load balancing can only stop", async () => {
-    const stored = {
-      ...wallbox,
-      start_stop: { kind: "select", entity_ids: ["select.garo"], inverted: false, start_option: "ALWAYS_ON", stop_option: "ALWAYS_OFF" },
-      policy: { ...POLICY_FREE, min_interval_s: 60, flash_stored: true, regulator_writes: false },
-      capabilities: { ...CAPABILITIES, regulated_current: false },
-    };
-    const { element } = await mounted({ patch: withControl(stored) });
-    openSettings(element);
-    await settle();
-    edit(element, "charger");
+  it("says nothing under the current limit for a charger whose current is written freely", async () => {
+    const element = await open(wallbox);
+    expect(openDialog(element)?.querySelector("[data-part='current-limit']")).not.toBeNull();
+    expect(restriction(element)).toBeNull();
+  });
 
-    expect(controlRow(element, "start_stop")).toContain(
-      translate("en", "control.startStop.select", { start: "ALWAYS_ON", stop: "ALWAYS_OFF" }),
+  it("says a minimum interval of a minute or more, in minutes when whole and seconds otherwise", async () => {
+    expect(restriction(await open({ ...wallbox, policy: { ...POLICY_FREE, min_interval_s: 300 } }))).toBe(
+      translate("en", "control.limit.minutes", { count: "5" }),
     );
-    expect(controlRow(element, "policy")).toContain(translate("en", "control.policy.flash"));
-    expect(controlBlock(element)?.textContent).toContain(translate("en", "control.regulated.no"));
+    expect(restriction(await open({ ...wallbox, policy: { ...POLICY_FREE, min_interval_s: 90 } }))).toBe(
+      translate("en", "control.limit.seconds", { count: "90" }),
+    );
+    expect(translate("en", "control.limit.minutes", { count: "5" })).toBe("The current can change at most every 5 minutes.");
+    expect(restriction(await open({ ...wallbox, policy: { ...POLICY_FREE, min_interval_s: 30 } }))).toBeNull();
   });
 
-  it("shows Easee's service path with its per-minute budget and the plug-in resend", async () => {
+  it("says a stored current is only changed at a charge start", async () => {
+    const element = await open({ ...wallbox, policy: { ...POLICY_FREE, flash_stored: true } });
+    expect(restriction(element)).toBe("The current is stored in the charger and is only changed at a charge start.");
+    const noRegulator = await open({ ...wallbox, policy: { ...POLICY_FREE, regulator_writes: false } });
+    expect(restriction(noRegulator)).toBe(translate("en", "control.limit.flash"));
+  });
+
+  it("says load balancing can only stop the charge when it cannot change the current", async () => {
+    const element = await open({ ...wallbox, capabilities: { ...CAPABILITIES, regulated_current: false } });
+    expect(restriction(element)).toBe("Load balancing can only stop the charge, not lower the current.");
+  });
+
+  it("says the limit applies to the whole installation", async () => {
+    const element = await open({ ...wallbox, policy: { ...POLICY_FREE, installation_wide: true } });
+    expect(restriction(element)).toBe("The limit applies to the whole installation.");
+  });
+
+  it("combines several restrictions in one line under the current limit", async () => {
+    const element = await open({
+      ...wallbox,
+      policy: { ...POLICY_FREE, min_interval_s: 900, flash_stored: true, regulator_writes: false, installation_wide: true },
+      capabilities: { ...CAPABILITIES, regulated_current: false },
+    });
+    const lines = openDialog(element)?.querySelectorAll("[data-limit-restrictions]") ?? [];
+    expect(lines.length).toBe(1);
+    expect(lines[0]?.textContent).toBe(
+      [
+        translate("en", "control.limit.minutes", { count: "15" }),
+        translate("en", "control.limit.flash"),
+        translate("en", "control.limit.stopOnly"),
+        translate("en", "control.limit.installation"),
+      ].join(" "),
+    );
+    expect(lines[0]?.closest("[data-part='current-limit']")).not.toBeNull();
+  });
+
+  it("says nothing when SpotNav does not set the current", async () => {
+    const element = await open({
+      ...wallbox,
+      current: { kind: "none", entity_id: null, service: null, enabled: false },
+      policy: { ...POLICY_FREE, min_interval_s: 900 },
+      capabilities: { ...CAPABILITIES, set_current: false, regulated_current: false },
+    });
+    expect(restriction(element)).toBeNull();
+  });
+
+  it("words the restrictions in every language", () => {
+    for (const language of ["sv", "nb", "da", "fi"] as const) {
+      for (const key of ["minutes", "seconds", "flash", "stopOnly", "installation"] as const) {
+        const text = translate(language, `control.limit.${key}`, { count: "5" });
+        expect(text, `${language} ${key}`).not.toBe(translate("en", `control.limit.${key}`, { count: "5" }));
+        expect(text).not.toContain("{count}");
+      }
+    }
+  });
+
+  it("uses one heading style for Charge control, Current limit and Energy", async () => {
+    const element = await open(wallbox);
+    const legend = (part: string) => openDialog(element)?.querySelector(`[data-part='${part}'] > legend`);
+    const control = legend("charge-control");
+    expect(control?.textContent).toBe(translate("en", "entity.field.chargeControl"));
+    expect(legend("current-limit")?.textContent).toBe(translate("en", "entity.field.currentLimit"));
+    expect(legend("energy")?.textContent).toBe(translate("en", "entity.energy.title"));
+    expect(control?.className).toBe(legend("current-limit")?.className);
+    expect(control?.className).toBe(legend("energy")?.className);
+    // The heading is not said a second time by a caption over the entity.
+    expect(openDialog(element)?.querySelector("[data-part='charge-control'] label")).toBeNull();
+  });
+
+  it("keeps the fixed-path sentence for Easee", async () => {
     const easee = {
       ...wallbox,
       platform: "easee",
@@ -1044,26 +1119,7 @@ describe("the charger editor's control path and write policy", () => {
     await settle();
     edit(element, "charger");
 
-    expect(controlRow(element, "start_stop")).toContain(translate("en", "control.startStop.easee"));
     expect(controlRow(element, "start_stop_fixed")).toBe(translate("en", "control.startStop.easeeFixed"));
-    expect(controlRow(element, "current")).toContain(translate("en", "control.current.service"));
-    expect(controlRow(element, "policy")).toContain(translate("en", "control.policy.perMinute", { count: "20" }));
-    expect(controlRow(element, "policy")).toContain(translate("en", "control.policy.resend"));
-  });
-
-  it("says when SpotNav does not set the current, and draws no write limits for it", async () => {
-    const startStopOnly = {
-      ...wallbox,
-      current: { kind: "none", entity_id: null, service: null, enabled: false },
-      capabilities: { ...CAPABILITIES, set_current: false, regulated_current: false },
-    };
-    const { element } = await mounted({ patch: withControl(startStopOnly) });
-    openSettings(element);
-    await settle();
-    edit(element, "charger");
-
-    expect(controlRow(element, "current")).toContain(translate("en", "control.current.none"));
-    expect(controlBlock(element)?.querySelector("[data-control-row='policy']")).toBeNull();
   });
 
   it("says a current the person has not allowed is off, and warns about the charger's own mode", async () => {
@@ -1080,7 +1136,6 @@ describe("the charger editor's control path and write policy", () => {
     await settle();
     edit(element, "charger");
 
-    expect(controlRow(element, "current")).toContain(translate("en", "control.current.off"));
     const warning = controlBlock(element)?.querySelector("[data-conflict='switch.wb_solar']");
     expect(warning?.textContent).toBe(
       translate("en", "control.conflict", { label: "solar divert", name: "switch.wb_solar" }),
@@ -1121,16 +1176,7 @@ describe("the charger editor's control path and write policy", () => {
   });
 });
 
-describe("the charger audit's start and stop kinds and the external balancer warning", () => {
-  const abb = {
-    platform: "abb",
-    start_stop: { kind: "number_pause", entity_ids: ["button.abb_start", "number.abb_current"], inverted: false, start_option: null, stop_option: null },
-    current: { kind: "number", entity_id: "number.abb_current", service: "number.set_value", enabled: true },
-    charging_state: { source: "status", entity_id: "sensor.abb_status" },
-    policy: { ...POLICY_FREE, min_interval_s: 60 },
-    capabilities: CAPABILITIES,
-    conflicts: [],
-  };
+describe("the external balancer warning", () => {
   const balancerWarning = {
     code: "external_current_balancer",
     integration: "perific",
@@ -1144,26 +1190,6 @@ describe("the charger audit's start and stop kinds and the external balancer war
     const config = answer["config"] as { site: Record<string, unknown> };
     return { ...answer, config: { ...config, site: { ...config.site, warnings } } };
   };
-
-  it("words number_pause, and any kind the card does not know, in every language", async () => {
-    const { element } = await mounted({ patch: withControl(abb) });
-    openSettings(element);
-    await settle();
-    edit(element, "charger");
-    expect(controlRow(element, "start_stop")).toContain("Through the current limit: 0 A pauses, the planned current resumes");
-    expect(controlRow(element, "start_stop")).not.toContain(translate("en", "control.startStop.switch"));
-
-    const unknown = { ...abb, start_stop: { ...abb.start_stop, kind: "from_the_future" } };
-    const later = await mounted({ patch: withControl(unknown) });
-    openSettings(later.element);
-    await settle();
-    edit(later.element, "charger");
-    expect(controlRow(later.element, "start_stop")).toContain(translate("en", "control.startStop.other"));
-    expect(controlRow(later.element, "start_stop")).not.toContain("from_the_future");
-    expect(translate("sv", "control.startStop.numberPause")).toBe(
-      "Via strömgränsen: 0 A pausar, planerad ström återupptar",
-    );
-  });
 
   it("shows the external balancer warning in the Site card and the Site dialog, worded", async () => {
     const { element } = await mounted({ patch: withSiteWarnings([balancerWarning]) });
