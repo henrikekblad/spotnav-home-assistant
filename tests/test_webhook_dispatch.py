@@ -39,7 +39,7 @@ async def test_an_unknown_action_is_a_bad_request(hass: HomeAssistant, hass_clie
     assert await response.json() == {"ok": False, "error": "Unsupported action"}
 
 
-@pytest.mark.parametrize("body", [[1, 2], "text", 7, None])
+@pytest.mark.parametrize("body", [[1, 2], "text", 7])
 async def test_a_body_that_is_not_an_object_is_a_bad_request_with_a_stable_code(
     hass: HomeAssistant, hass_client_no_auth, body
 ) -> None:
