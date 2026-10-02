@@ -2917,6 +2917,7 @@ var da = {
   "issue.chargingWithoutPrices": "Lader uden offentliggjorte priser for at overholde sluttidspunktet.",
   "issue.pendingProposal": "Et nyere forslag er klar, men er ikke installeret endnu.",
   "issue.loadBalancing": "Lastbalancering er ikke tilgængelig for denne lader.",
+  "issue.heldByCharger": "Laderens eget skema eller lastbalancering holder opladningen tilbage, så den er ikke startet.",
   "issue.unknown": "Backend rapporterede noget, kortet endnu ikke kender.",
   "header.info": "Om kortet",
   "header.settings": "Kortindstillinger",
@@ -3431,6 +3432,7 @@ var en = {
   "issue.chargingWithoutPrices": "Charging without published prices to keep the deadline.",
   "issue.pendingProposal": "A newer proposal is ready but is not installed yet.",
   "issue.loadBalancing": "Load balancing is not available for this charger.",
+  "issue.heldByCharger": "The charger's own schedule or load balancing is holding the charge, so it has not started.",
   "issue.unknown": "The backend reported something this card does not know yet.",
   "header.info": "About this card",
   "header.settings": "Card settings",
@@ -3945,6 +3947,7 @@ var fi = {
   "issue.chargingWithoutPrices": "Ladataan ilman julkaistuja hintoja, jotta määräaika pysyy.",
   "issue.pendingProposal": "Uudempi ehdotus on valmis, mutta sitä ei ole vielä asennettu.",
   "issue.loadBalancing": "Kuormanhallinta ei ole käytettävissä tälle laturille.",
+  "issue.heldByCharger": "Laturin oma aikataulu tai kuormanhallinta pidättää latausta, joten se ei ole alkanut.",
   "issue.unknown": "Taustajärjestelmä raportoi jotain, mitä kortti ei vielä tunne.",
   "header.info": "Tietoja kortista",
   "header.settings": "Kortin asetukset",
@@ -4459,6 +4462,7 @@ var nb = {
   "issue.chargingWithoutPrices": "Lader uten publiserte priser for å holde sluttiden.",
   "issue.pendingProposal": "Et nyere forslag er klart, men er ikke installert ennå.",
   "issue.loadBalancing": "Lastbalansering er ikke tilgjengelig for denne laderen.",
+  "issue.heldByCharger": "Laderens egen timeplan eller lastbalansering holder tilbake ladingen, så den har ikke startet.",
   "issue.unknown": "Backend rapporterte noe kortet ikke kjenner igjen ennå.",
   "header.info": "Om kortet",
   "header.settings": "Kortinnstillinger",
@@ -4973,6 +4977,7 @@ var sv = {
   "issue.chargingWithoutPrices": "Laddar utan publicerade priser för att hålla sluttiden.",
   "issue.pendingProposal": "Ett nyare förslag är klart men är inte installerat ännu.",
   "issue.loadBalancing": "Lastbalansering är inte tillgänglig för den här laddaren.",
+  "issue.heldByCharger": "Laddarens eget schema eller lastbalansering håller tillbaka laddningen, så den har inte startat.",
   "issue.unknown": "Backend rapporterade något som kortet inte känner igen ännu.",
   "header.info": "Om kortet",
   "header.settings": "Kortinställningar",
@@ -6745,7 +6750,8 @@ var STATUS_CODE_TABLE = {
   price_data_degraded: ["notice", { reason: "textOrNull" }],
   unpriced: ["notice", {}],
   load_balancing_limited: ["notice", { limit_a: "numberOrNull", phase: "textOrNull" }],
-  load_balancing_unavailable: ["notice", {}]
+  load_balancing_unavailable: ["notice", {}],
+  held_by_charger: ["notice", {}]
 };
 function decodeStatusParam(source, key, kind) {
   switch (kind) {
@@ -7065,7 +7071,8 @@ var STATUS_WORDING = {
   price_data_degraded: "issue.priceDegraded",
   unpriced: "issue.unpriced",
   load_balancing_limited: "status.loadBalancingLimitedTo",
-  load_balancing_unavailable: "issue.loadBalancing"
+  load_balancing_unavailable: "issue.loadBalancing",
+  held_by_charger: "issue.heldByCharger"
 };
 var MISSING_FIELD_KEYS = {
   area: "status.missing.area",
