@@ -304,7 +304,7 @@ async def test_the_entity_config_names_the_own_modes_that_are_on(hass: HomeAssis
     config = await async_get_entity_config(hass, entry.entry_id)
 
     assert config["control"]["conflicts"] == [
-        {"entity_id": "switch.openevse_solar_pv_divert", "label": "solar divert", "state": "on"}
+        {"kind": "own_mode", "entity_id": "switch.openevse_solar_pv_divert", "label": "solar divert", "state": "on"}
     ]
 
 
@@ -419,7 +419,7 @@ async def test_the_dashboard_says_what_the_adapter_supports(hass: HomeAssistant)
     assert capabilities(opted_out)["regulated_current"] is False
 
 
-async def test_diagnostics_state_the_adapter_and_its_policy_without_an_entity_id(hass: HomeAssistant) -> None:
+async def test_diagnostics_state_the_adapter_and_its_policy(hass: HomeAssistant) -> None:
     entry = await _loaded_detected_charger(hass, "wallbox")
 
     adapter = (await async_get_config_entry_diagnostics(hass, entry))["controller"]["adapter"]
@@ -427,7 +427,6 @@ async def test_diagnostics_state_the_adapter_and_its_policy_without_an_entity_id
     assert adapter["platform"] == "wallbox" and adapter["start_stop"] == "switch"
     assert adapter["current"] == "number" and adapter["current_enabled"] is True
     assert adapter["policy"]["min_interval_s"] == 90.0
-    assert "switch.wallbox_pause_resume" not in str(adapter)
 
 
 async def test_easee_charge_control_is_fixed_and_not_offered_for_editing(hass: HomeAssistant) -> None:

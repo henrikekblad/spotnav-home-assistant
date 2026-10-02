@@ -70,6 +70,7 @@ export const sv: Record<keyof typeof en, string> = {
   "issue.pendingProposal": "Ett nyare förslag är klart men är inte installerat ännu.",
   "issue.loadBalancing": "Lastbalansering är inte tillgänglig för den här laddaren.",
   "issue.heldByCharger": "Laddarens eget schema eller lastbalansering håller tillbaka laddningen, så den har inte startat.",
+  "issue.chargerDisabled": "Laddarens egen aktiveringsbrytare är av, så den kan inte starta. Slå på den i laddarens inställningar.",
   "issue.unknown": "Backend rapporterade något som kortet inte känner igen ännu.",
   "header.info": "Om kortet",
   "header.settings": "Kortinställningar",
@@ -593,4 +594,5 @@ export const sv: Record<keyof typeof en, string> = {
   "control.regulated.yes": "Lastbalansering kan ändra strömmen under en laddning.",
   "control.regulated.no": "Lastbalansering kan inte ändra strömmen under en laddning. Den kan bara stoppa laddningen.",
   "control.conflict": "Laddarens egen {label} är på ({name}). Den kan motverka SpotNav: stäng av den.",
+  "control.disabled": "Laddarens egen aktiveringsbrytare är av ({name}). SpotNav kan inte starta den: slå på den.",
 };

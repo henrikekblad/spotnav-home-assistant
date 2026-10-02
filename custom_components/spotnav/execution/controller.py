@@ -53,6 +53,7 @@ from ..vehicles.ocpp_identity import (
     OcppCurrentControls,
     resolve_target,
 )
+from .charger_entities import charger_is_disabled
 from .chargers.adapter import build_adapter, ChargerAdapter
 from .chargers.base import (
     ASSIGN_ASSIGNED,
@@ -615,6 +616,13 @@ class ChargingController:
     def held_by_charger(self) -> bool:
         """Whether the charger's own scheduler or load balancer holds the charge."""
         return self.adapter.held_by_charger()
+
+    @property
+    def charger_disabled(self) -> bool:
+        """Whether the charger's own enable switch is off (Easee's `is_enabled`): it cannot start while
+        it is, and SpotNav never writes that switch.
+        """
+        return charger_is_disabled(self.hass, self.charge_control, self.adapter.platform)
 
     @property
     def charge_progress_subject(self) -> str:
@@ -1308,6 +1316,7 @@ class ChargingController:
         self._async_disarm_probe_listener()
         self._async_disarm_charge_state_listener()
         self._async_disarm_progress_listener()
+        self.adapter.cancel_pending_reads()
         # Terminal and silent: an unexpired grace period must not produce an advisory about a
         # charger nobody is observing.
         self._charge_progress.shutdown()

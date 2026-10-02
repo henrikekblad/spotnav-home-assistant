@@ -17,6 +17,16 @@ const block = (...lines: Array<ReturnType<typeof statusLine>>): Status =>
   ({ tone: "normal", lines }) as unknown as Status;
 
 describe("the status line renders the block and nothing else", () => {
+  it("explains a charger whose own enable switch is off, in every language", () => {
+    const status = block(statusLine("waiting_for_tomorrow"), statusLine("charger_disabled"));
+    expect(statusText(status, format("en"), NOW)).toBe(
+      "Waiting for tomorrow's prices · The charger's own enable switch is off, so it cannot start. Turn it on in the charger's settings.",
+    );
+    expect(statusText(status, format("sv"), NOW)).toContain(
+      "Laddarens egen aktiveringsbrytare är av, så den kan inte starta. Slå på den i laddarens inställningar.",
+    );
+  });
+
   it("keeps the suggestion note out of the plan line and gives it its own", () => {
     const status = block(
       statusLine("auto_planned", { start: "2026-09-22T04:00:00+00:00" }),

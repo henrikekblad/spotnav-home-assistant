@@ -71,6 +71,7 @@ export const en = {
   "issue.pendingProposal": "A newer proposal is ready but is not installed yet.",
   "issue.loadBalancing": "Load balancing is not available for this charger.",
   "issue.heldByCharger": "The charger's own schedule or load balancing is holding the charge, so it has not started.",
+  "issue.chargerDisabled": "The charger's own enable switch is off, so it cannot start. Turn it on in the charger's settings.",
   "issue.unknown": "The backend reported something this card does not know yet.",
   "header.info": "About this card",
   "header.settings": "Card settings",
@@ -606,4 +607,5 @@ export const en = {
   "control.regulated.yes": "Load balancing may change the current during a charge.",
   "control.regulated.no": "Load balancing cannot change the current during a charge. It can only stop the charge.",
   "control.conflict": "The charger's own {label} is on ({name}). It can fight SpotNav: turn it off.",
+  "control.disabled": "The charger's own enable switch is off ({name}). SpotNav cannot start it: turn it on.",
 } as const;

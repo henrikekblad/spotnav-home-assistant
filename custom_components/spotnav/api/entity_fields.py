@@ -72,7 +72,14 @@ from ..site.site_detection import (
     MeterCandidate,
 )
 from ..site.measurement_source import source_from_dict
-from ..execution.charger_entities import control_path_for_entity, own_mode_conflicts
+from ..execution.charger_entities import (
+    charger_entries,
+    CONFLICT_DISABLED,
+    CONFLICT_OWN_MODE,
+    control_path_for_entity,
+    disabled_switches,
+    own_mode_conflicts,
+)
 from ..execution.chargers.registry import external_balancer
 from ..execution.charger_profiles import PATH_EASEE, profile_for
 from ..vehicles.entity_conflicts import conflict_errors
@@ -501,21 +508,14 @@ def charger_control_descriptor(hass: HomeAssistant, entry: ConfigEntry) -> dict[
     profile = profile_for(adapter.platform)
     conflicts: list[dict[str, str]] = []
     if profile is not None:
-        registry = er.async_get(hass)
-        device_id = None
-        charge_control = registry.async_get(controller.charge_control)
-        if charge_control is not None:
-            device_id = charge_control.device_id
-        if device_id is not None:
-            entries = [
-                candidate
-                for candidate in er.async_entries_for_device(registry, device_id)
-                if candidate.platform == profile.platform
-            ]
-            conflicts = [
-                {"entity_id": conflict.entity_id, "label": conflict.label, "state": conflict.state}
-                for conflict in own_mode_conflicts(hass, entries, profile)
-            ]
+        entries = charger_entries(hass, controller.charge_control, profile)
+        conflicts = [
+            {"kind": kind, "entity_id": found.entity_id, "label": found.label, "state": found.state}
+            for kind, found in (
+                *((CONFLICT_OWN_MODE, item) for item in own_mode_conflicts(hass, entries, profile)),
+                *((CONFLICT_DISABLED, item) for item in disabled_switches(hass, entries, profile)),
+            )
+        ]
     return {
         "platform": description["platform"],
         "start_stop": description["start_stop"],

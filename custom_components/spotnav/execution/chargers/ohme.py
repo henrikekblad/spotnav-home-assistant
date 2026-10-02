@@ -16,7 +16,7 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers import entity_registry as er
 
 from ..charger_profiles import entity_matches_keys, PATH_SELECT, PATH_SELECT_APPROVE
-from .base import _entity_unavailable, path_description, StartStopPath
+from .base import _entity_unavailable, call_service, path_description, StartStopPath
 from .generic import SelectPath
 from .registry import ChargerContext, register_start_stop
 
@@ -63,12 +63,18 @@ class ApprovingSelectPath(SelectPath):
         if self._status() == _PENDING_APPROVAL:
             button = approve_button(self.hass, self.entity_id)
             if button is not None and not _entity_unavailable(self.hass, button):
-                await self.hass.services.async_call("button", "press", {"entity_id": button}, blocking=True)
+                await call_service(self.hass, "button", "press", {"entity_id": button}, blocking=True)
                 # The approval is the start; the mode select comes back once the charger has a mode.
                 if not _entity_unavailable(self.hass, self.entity_id):
                     await self._select(self.start_option)
                 return True
         return await super().async_start()
+
+    def describe_state(self) -> dict[str, Any]:
+        return {
+            "pending_approval": self._status() == _PENDING_APPROVAL,
+            "approve_button_found": approve_button(self.hass, self.entity_id) is not None,
+        }
 
     def describe(self) -> dict[str, Any]:
         # To a reader it is the select it is built on.

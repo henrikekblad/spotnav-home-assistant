@@ -11,7 +11,8 @@ import logging
 import math
 from abc import ABC, abstractmethod
 from collections import deque
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
+from contextvars import ContextVar
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Any, Final
@@ -79,6 +80,56 @@ WRITE_RESTORE: Final = "restore"
 WRITE_RESEND: Final = "resend"
 
 _AMPERE_UNITS: Final = {"a": 1.0, "amp": 1.0, "amps": 1.0, "ampere": 1.0, "amperes": 1.0, "ma": 1000.0}
+
+
+#: Data keys never recorded in the command log, whatever service carries them.
+_SECRET_KEYS: Final = frozenset(
+    {"token", "access_token", "refresh_token", "api_key", "password", "secret", "webhook_id", "devid", "charge_point_id"}
+)
+
+#: The calls a running command makes, collected by `call_service` for the adapter's command log. `None`
+#: outside a command (a read, a restore), where nothing is recorded.
+_CALL_TAP: ContextVar[list[dict[str, Any]] | None] = ContextVar("spotnav_charger_call_tap", default=None)
+
+
+def start_call_tap() -> tuple[list[dict[str, Any]], Any]:
+    """Begin collecting the service calls of one command; returns the list and the reset token."""
+    calls: list[dict[str, Any]] = []
+    return calls, _CALL_TAP.set(calls)
+
+
+def end_call_tap(token: Any) -> None:
+    _CALL_TAP.reset(token)
+
+
+def loggable_data(data: Mapping[str, Any] | None) -> dict[str, Any]:
+    """A service call's data for the log: entity and device ids and plain values stay, secrets and the
+    OCPP charge point id (`devid`) are replaced.
+    """
+    return {
+        str(key): ("**REDACTED**" if str(key).lower() in _SECRET_KEYS else value)
+        for key, value in (data or {}).items()
+    }
+
+
+async def call_service(
+    hass: HomeAssistant,
+    domain: str,
+    service: str,
+    data: Mapping[str, Any] | None = None,
+    *,
+    blocking: bool = True,
+    return_response: bool = False,
+) -> Any:
+    """`hass.services.async_call`, noted in the running command's call list (see `CommandLog`)."""
+    tap = _CALL_TAP.get()
+    if tap is not None:
+        tap.append({"service": f"{domain}.{service}", "data": loggable_data(data)})
+    if return_response:
+        return await hass.services.async_call(
+            domain, service, data, blocking=blocking, return_response=True
+        )
+    return await hass.services.async_call(domain, service, data, blocking=blocking)
 
 
 def _lower(state: State | None) -> str | None:
@@ -224,6 +275,12 @@ class StartStopPath(ABC):
     @abstractmethod
     def describe(self) -> dict[str, Any]: ...
 
+    def describe_state(self) -> dict[str, Any]:
+        """What the path itself remembers or reads that decides what a start does (diagnostics only;
+        never an entity id or a secret). `{}` for a path with no state of its own.
+        """
+        return {}
+
 
 # --- current paths -------------------------------------------------------------------------------
 
@@ -267,6 +324,10 @@ class CurrentPath(ABC):
 
     def describe(self) -> dict[str, Any]:
         return current_description(self.kind)
+
+    def describe_state(self) -> dict[str, Any]:
+        """What this path remembers or reads that decides what a write does (diagnostics only)."""
+        return {}
 
 
 @dataclass(frozen=True, slots=True)

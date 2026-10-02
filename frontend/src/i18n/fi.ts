@@ -70,6 +70,7 @@ export const fi: Record<keyof typeof en, string> = {
   "issue.pendingProposal": "Uudempi ehdotus on valmis, mutta sitä ei ole vielä asennettu.",
   "issue.loadBalancing": "Kuormanhallinta ei ole käytettävissä tälle laturille.",
   "issue.heldByCharger": "Laturin oma aikataulu tai kuormanhallinta pidättää latausta, joten se ei ole alkanut.",
+  "issue.chargerDisabled": "Laturin oma käyttöönottokytkin on pois päältä, joten lataus ei voi alkaa. Kytke se päälle laturin asetuksista.",
   "issue.unknown": "Taustajärjestelmä raportoi jotain, mitä kortti ei vielä tunne.",
   "header.info": "Tietoja kortista",
   "header.settings": "Kortin asetukset",
@@ -592,4 +593,5 @@ export const fi: Record<keyof typeof en, string> = {
   "control.regulated.yes": "Kuormanhallinta voi muuttaa virtaa latauksen aikana.",
   "control.regulated.no": "Kuormanhallinta ei voi muuttaa virtaa latauksen aikana. Se voi vain pysäyttää latauksen.",
   "control.conflict": "Laturin oma {label} on päällä ({name}). Se voi häiritä SpotNavia: sammuta se.",
+  "control.disabled": "Laturin oma käyttöönottokytkin on pois päältä ({name}). SpotNav ei voi käynnistää latausta: kytke se päälle.",
 };

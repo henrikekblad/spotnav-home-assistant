@@ -43,7 +43,8 @@ Precedence (first match wins the headline; "add" rows append a fact line)
    (area, phases, amps) are unconfirmed; any settings edit clears it.
 6. Notices appended after the headline (and after the target fact): price_data_stale,
    price_data_degraded (usable rows exist, or degraded/incomplete), unpriced,
-   held_by_charger (the charger's own scheduler or load balancer holds the charge), load_balancing_limited,
+   held_by_charger (the charger's own scheduler or load balancer holds the charge), charger_disabled
+   (its own enable switch is off, so it cannot start), load_balancing_limited,
    load_balancing_unavailable. Tone `notice` if any is present or a
    proposal waits for a boundary (the card's pending_proposal issue); otherwise `normal`.
 
@@ -144,6 +145,8 @@ STATUS_CODES: Final[dict[str, tuple[str, tuple[str, ...]]]] = {
     # The charger's own scheduler, smart start or load balancer holds the charge (Easee): nothing is
     # wrong, and nothing SpotNav sends releases it.
     "held_by_charger": (TONE_NOTICE, ()),
+    # The charger's own enable switch is off (Easee's `is_enabled`): it cannot start, whatever is sent.
+    "charger_disabled": (TONE_NOTICE, ()),
 }
 
 STATUS_TONES: Final = (TONE_NORMAL, TONE_NOTICE, TONE_BLOCKING)
@@ -233,6 +236,8 @@ class StatusFacts:
     charging: bool = False
     #: The charger itself reports that its own scheduler or load balancer holds the charge.
     held_by_charger: bool = False
+    #: The charger's own enable switch is off, so it cannot start.
+    charger_disabled: bool = False
     paused: bool = False
     pause_until: datetime | None = None
     pause_choice: str | None = None
@@ -458,6 +463,8 @@ def _notices(facts: StatusFacts) -> list[dict[str, Any]]:
         lines.append(_line("unpriced"))
     if facts.held_by_charger and not facts.charging:
         lines.append(_line("held_by_charger"))
+    if facts.charger_disabled and not facts.charging:
+        lines.append(_line("charger_disabled"))
     site = facts.load_balancing
     if site is not None:
         if (

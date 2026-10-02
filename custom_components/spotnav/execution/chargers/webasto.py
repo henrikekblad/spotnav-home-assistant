@@ -45,6 +45,9 @@ class TogglingButtonPath(ButtonPath):
             self._last = "stop"
         return stopped
 
+    def describe_state(self) -> dict[str, Any]:
+        return {"last_command": self._last, "start_sends_cancel_first": self._last != "stop"}
+
     def describe(self) -> dict[str, Any]:
         return path_description(PATH_BUTTONS, entity_ids=(self.start_entity_id, self.stop_entity_id))
 

@@ -21,7 +21,7 @@ from homeassistant.util import dt as dt_util
 
 from ...const import DEFAULT_MIN_CURRENT_A
 from ..charger_profiles import PATH_SWITCH, PATH_SWITCH_BUDGET
-from .base import _entity_unavailable, _not_executed, path_description, StartStopPath
+from .base import _entity_unavailable, _not_executed, call_service, path_description, StartStopPath
 from .generic import SwitchPath
 from .registry import ChargerContext, register_start_stop
 
@@ -72,13 +72,17 @@ class PauseBudgetSwitchPath(SwitchPath):
         )
         if self._floor_entity_id is None or _entity_unavailable(self.hass, self._floor_entity_id):
             return _not_executed(self._floor_entity_id or self.entity_id)
-        await self.hass.services.async_call(
+        await call_service(
+            self.hass,
             "number",
             "set_value",
             {"entity_id": self._floor_entity_id, "value": int(DEFAULT_MIN_CURRENT_A)},
             blocking=True,
         )
         return True
+
+    def describe_state(self) -> dict[str, Any]:
+        return {"pauses_in_window": self._pauses_in_window(), "pause_budget": self._budget}
 
     def describe(self) -> dict[str, Any]:
         # To a reader it is the switch it is built on.

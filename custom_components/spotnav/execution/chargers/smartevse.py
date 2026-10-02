@@ -61,6 +61,9 @@ class RestoringSelectPath(SelectPath):
             return None
         return not self._paused(text)
 
+    def describe_state(self) -> dict[str, Any]:
+        return {"resume_option": self._resume_option, "start_target": self._start_target()}
+
     def describe(self) -> dict[str, Any]:
         # To a reader it is the select it is built on.
         return path_description(

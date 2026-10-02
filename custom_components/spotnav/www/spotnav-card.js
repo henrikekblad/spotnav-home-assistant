@@ -2918,6 +2918,7 @@ var da = {
   "issue.pendingProposal": "Et nyere forslag er klar, men er ikke installeret endnu.",
   "issue.loadBalancing": "Lastbalancering er ikke tilgængelig for denne lader.",
   "issue.heldByCharger": "Laderens eget skema eller lastbalancering holder opladningen tilbage, så den er ikke startet.",
+  "issue.chargerDisabled": "Laderens egen aktiveringskontakt er slået fra, så den kan ikke starte. Slå den til i laderens indstillinger.",
   "issue.unknown": "Backend rapporterede noget, kortet endnu ikke kender.",
   "header.info": "Om kortet",
   "header.settings": "Kortindstillinger",
@@ -3367,7 +3368,8 @@ var da = {
   "control.policy.free": "Ingen grænse for, hvor ofte strømmen skrives.",
   "control.regulated.yes": "Belastningsfordeling kan ændre strømmen under en opladning.",
   "control.regulated.no": "Belastningsfordeling kan ikke ændre strømmen under en opladning. Den kan kun stoppe opladningen.",
-  "control.conflict": "Laderens egen {label} er tændt ({name}). Den kan modarbejde SpotNav: slå den fra."
+  "control.conflict": "Laderens egen {label} er tændt ({name}). Den kan modarbejde SpotNav: slå den fra.",
+  "control.disabled": "Laderens egen aktiveringskontakt er slået fra ({name}). SpotNav kan ikke starte den: slå den til."
 };
 
 // src/i18n/en.ts
@@ -3439,6 +3441,7 @@ var en = {
   "issue.pendingProposal": "A newer proposal is ready but is not installed yet.",
   "issue.loadBalancing": "Load balancing is not available for this charger.",
   "issue.heldByCharger": "The charger's own schedule or load balancing is holding the charge, so it has not started.",
+  "issue.chargerDisabled": "The charger's own enable switch is off, so it cannot start. Turn it on in the charger's settings.",
   "issue.unknown": "The backend reported something this card does not know yet.",
   "header.info": "About this card",
   "header.settings": "Card settings",
@@ -3888,7 +3891,8 @@ var en = {
   "control.policy.free": "No limit on how often the current is written.",
   "control.regulated.yes": "Load balancing may change the current during a charge.",
   "control.regulated.no": "Load balancing cannot change the current during a charge. It can only stop the charge.",
-  "control.conflict": "The charger's own {label} is on ({name}). It can fight SpotNav: turn it off."
+  "control.conflict": "The charger's own {label} is on ({name}). It can fight SpotNav: turn it off.",
+  "control.disabled": "The charger's own enable switch is off ({name}). SpotNav cannot start it: turn it on."
 };
 
 // src/i18n/fi.ts
@@ -3960,6 +3964,7 @@ var fi = {
   "issue.pendingProposal": "Uudempi ehdotus on valmis, mutta sitä ei ole vielä asennettu.",
   "issue.loadBalancing": "Kuormanhallinta ei ole käytettävissä tälle laturille.",
   "issue.heldByCharger": "Laturin oma aikataulu tai kuormanhallinta pidättää latausta, joten se ei ole alkanut.",
+  "issue.chargerDisabled": "Laturin oma käyttöönottokytkin on pois päältä, joten lataus ei voi alkaa. Kytke se päälle laturin asetuksista.",
   "issue.unknown": "Taustajärjestelmä raportoi jotain, mitä kortti ei vielä tunne.",
   "header.info": "Tietoja kortista",
   "header.settings": "Kortin asetukset",
@@ -4409,7 +4414,8 @@ var fi = {
   "control.policy.free": "Virran kirjoitustiheydelle ei ole rajaa.",
   "control.regulated.yes": "Kuormanhallinta voi muuttaa virtaa latauksen aikana.",
   "control.regulated.no": "Kuormanhallinta ei voi muuttaa virtaa latauksen aikana. Se voi vain pysäyttää latauksen.",
-  "control.conflict": "Laturin oma {label} on päällä ({name}). Se voi häiritä SpotNavia: sammuta se."
+  "control.conflict": "Laturin oma {label} on päällä ({name}). Se voi häiritä SpotNavia: sammuta se.",
+  "control.disabled": "Laturin oma käyttöönottokytkin on pois päältä ({name}). SpotNav ei voi käynnistää latausta: kytke se päälle."
 };
 
 // src/i18n/nb.ts
@@ -4481,6 +4487,7 @@ var nb = {
   "issue.pendingProposal": "Et nyere forslag er klart, men er ikke installert ennå.",
   "issue.loadBalancing": "Lastbalansering er ikke tilgjengelig for denne laderen.",
   "issue.heldByCharger": "Laderens egen timeplan eller lastbalansering holder tilbake ladingen, så den har ikke startet.",
+  "issue.chargerDisabled": "Laderens egen aktiveringsbryter er av, så den kan ikke starte. Slå den på i laderens innstillinger.",
   "issue.unknown": "Backend rapporterte noe kortet ikke kjenner igjen ennå.",
   "header.info": "Om kortet",
   "header.settings": "Kortinnstillinger",
@@ -4930,7 +4937,8 @@ var nb = {
   "control.policy.free": "Ingen grense for hvor ofte strømmen skrives.",
   "control.regulated.yes": "Lastbalansering kan endre strømmen under en lading.",
   "control.regulated.no": "Lastbalansering kan ikke endre strømmen under en lading. Den kan bare stoppe ladingen.",
-  "control.conflict": "Laderens egen {label} er på ({name}). Den kan motarbeide SpotNav: slå den av."
+  "control.conflict": "Laderens egen {label} er på ({name}). Den kan motarbeide SpotNav: slå den av.",
+  "control.disabled": "Laderens egen aktiveringsbryter er av ({name}). SpotNav kan ikke starte den: slå den på."
 };
 
 // src/i18n/sv.ts
@@ -5002,6 +5010,7 @@ var sv = {
   "issue.pendingProposal": "Ett nyare förslag är klart men är inte installerat ännu.",
   "issue.loadBalancing": "Lastbalansering är inte tillgänglig för den här laddaren.",
   "issue.heldByCharger": "Laddarens eget schema eller lastbalansering håller tillbaka laddningen, så den har inte startat.",
+  "issue.chargerDisabled": "Laddarens egen aktiveringsbrytare är av, så den kan inte starta. Slå på den i laddarens inställningar.",
   "issue.unknown": "Backend rapporterade något som kortet inte känner igen ännu.",
   "header.info": "Om kortet",
   "header.settings": "Kortinställningar",
@@ -5451,7 +5460,8 @@ var sv = {
   "control.policy.free": "Ingen gräns för hur ofta strömmen skrivs.",
   "control.regulated.yes": "Lastbalansering kan ändra strömmen under en laddning.",
   "control.regulated.no": "Lastbalansering kan inte ändra strömmen under en laddning. Den kan bara stoppa laddningen.",
-  "control.conflict": "Laddarens egen {label} är på ({name}). Den kan motverka SpotNav: stäng av den."
+  "control.conflict": "Laddarens egen {label} är på ({name}). Den kan motverka SpotNav: stäng av den.",
+  "control.disabled": "Laddarens egen aktiveringsbrytare är av ({name}). SpotNav kan inte starta den: slå på den."
 };
 
 // src/i18n/index.ts
@@ -6781,7 +6791,8 @@ var STATUS_CODE_TABLE = {
   unpriced: ["notice", {}],
   load_balancing_limited: ["notice", { limit_a: "numberOrNull", phase: "textOrNull" }],
   load_balancing_unavailable: ["notice", {}],
-  held_by_charger: ["notice", {}]
+  held_by_charger: ["notice", {}],
+  charger_disabled: ["notice", {}]
 };
 function decodeStatusParam(source, key, kind) {
   switch (kind) {
@@ -7102,7 +7113,8 @@ var STATUS_WORDING = {
   unpriced: "issue.unpriced",
   load_balancing_limited: "status.loadBalancingLimitedTo",
   load_balancing_unavailable: "issue.loadBalancing",
-  held_by_charger: "issue.heldByCharger"
+  held_by_charger: "issue.heldByCharger",
+  charger_disabled: "issue.chargerDisabled"
 };
 var MISSING_FIELD_KEYS = {
   area: "status.missing.area",
@@ -7985,8 +7997,13 @@ function decodeControl2(raw) {
     },
     conflicts: conflicts.map((entry) => {
       const item = record3(entry);
-      exactKeys3(item, ["entity_id", "label", "state"]);
-      return { entityId: text3(item, "entity_id"), label: text3(item, "label"), state: text3(item, "state") };
+      exactKeys3(item, ["kind", "entity_id", "label", "state"]);
+      return {
+        kind: oneOf2(item, "kind", ["own_mode", "disabled"]),
+        entityId: text3(item, "entity_id"),
+        label: text3(item, "label"),
+        state: text3(item, "state")
+      };
     })
   };
 }
@@ -8608,16 +8625,14 @@ function controlRows(doc, language, control, nameOf) {
     );
   }
   for (const conflict of control.conflicts) {
-    const warning = element(
-      doc,
-      "p",
-      VISUAL_CLASSES.entityWarning,
-      translate(language, "control.conflict", { label: conflict.label, name: nameOf(conflict.entityId) })
-    );
+    const warning = element(doc, "p", VISUAL_CLASSES.entityWarning, conflictText(language, conflict, nameOf(conflict.entityId)));
     warning.dataset["conflict"] = conflict.entityId;
     block.append(warning);
   }
   return block;
+}
+function conflictText(language, conflict, name) {
+  return conflict.kind === "disabled" ? translate(language, "control.disabled", { name }) : translate(language, "control.conflict", { label: conflict.label, name });
 }
 function entityNameIn(config, entityId) {
   for (const field2 of config.fields) {
@@ -11993,10 +12008,7 @@ function createCardView(input) {
         doc,
         "p",
         VISUAL_CLASSES.entityWarning,
-        translate(model.language, "control.conflict", {
-          label: conflict.label,
-          name: entityNameIn(config, conflict.entityId)
-        })
+        conflictText(model.language, conflict, entityNameIn(config, conflict.entityId))
       );
       warning.dataset["conflict"] = conflict.entityId;
       nodes.push(warning);

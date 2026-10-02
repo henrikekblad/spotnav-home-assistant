@@ -339,6 +339,18 @@ CASES: list[tuple[str, StatusFacts, str, list[dict[str, Any]]]] = [
         [{"code": "waiting_for_tomorrow", "params": {}}, {"code": "held_by_charger", "params": {}}],
     ),
     (
+        "a charger whose own enable switch is off says so, and only while it is not charging",
+        base(charger_disabled=True, waiting_for_tomorrow=True),
+        "notice",
+        [{"code": "waiting_for_tomorrow", "params": {}}, {"code": "charger_disabled", "params": {}}],
+    ),
+    (
+        "a charge that is running is not disabled, whatever a stale switch says",
+        base(charger_disabled=True, charging=True),
+        "normal",
+        [{"code": "charging_now", "params": {"until": None}}],
+    ),
+    (
         "a charge that is running is not held, whatever a stale status says",
         base(held_by_charger=True, charging=True),
         "normal",

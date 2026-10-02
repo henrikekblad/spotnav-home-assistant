@@ -126,6 +126,10 @@
       ],
       "tone": "normal"
     },
+    "charger_disabled": {
+      "params": [],
+      "tone": "notice"
+    },
     "charger_unavailable": {
       "params": [],
       "tone": "blocking"

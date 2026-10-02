@@ -33,6 +33,7 @@ from .base import (
     ASSIGN_UNIT_UNKNOWN,
     ASSIGN_UNSUPPORTED,
     ASSIGN_WRITE_FAILED,
+    call_service,
     current_description,
     CurrentPath,
     path_description,
@@ -63,7 +64,8 @@ class SwitchPath(StartStopPath):
     async def _switch(self, service: str) -> bool:
         if _entity_unavailable(self.hass, self.entity_id):
             return _not_executed(self.entity_id)
-        await self.hass.services.async_call(
+        await call_service(
+            self.hass,
             "switch", service, {"entity_id": self.entity_id}, blocking=True
         )
         return True
@@ -101,7 +103,8 @@ class SelectPath(StartStopPath):
     async def _select(self, option: str) -> bool:
         if _entity_unavailable(self.hass, self.entity_id):
             return _not_executed(self.entity_id)
-        await self.hass.services.async_call(
+        await call_service(
+            self.hass,
             "select", "select_option", {"entity_id": self.entity_id, "option": option}, blocking=True
         )
         return True
@@ -148,7 +151,7 @@ class ButtonPath(StartStopPath):
     async def _press(self, entity_id: str) -> bool:
         if _entity_unavailable(self.hass, entity_id):
             return _not_executed(entity_id)
-        await self.hass.services.async_call("button", "press", {"entity_id": entity_id}, blocking=True)
+        await call_service(self.hass, "button", "press", {"entity_id": entity_id}, blocking=True)
         return True
 
     async def async_start(self, amps: int | None = None) -> bool:
@@ -321,7 +324,8 @@ class NumberCurrent(CurrentPath):
         # budget counts attempts.
         self._limiter.record()
         try:
-            await self.hass.services.async_call(
+            await call_service(
+                self.hass,
                 "number", "set_value", {"entity_id": self.entity_id, "value": value}, blocking=True
             )
         except Exception:

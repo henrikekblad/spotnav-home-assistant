@@ -61,6 +61,7 @@ export const STATUS_WORDING: Readonly<Record<StatusCode, TranslationKey>> = {
   load_balancing_limited: "status.loadBalancingLimitedTo",
   load_balancing_unavailable: "issue.loadBalancing",
   held_by_charger: "issue.heldByCharger",
+  charger_disabled: "issue.chargerDisabled",
 };
 
 export const STATUS_VARIANT_KEYS: readonly TranslationKey[] = [

@@ -190,6 +190,11 @@ class PlatformProfile:
     #: Sensors measuring the current, per phase (A or mA).
     current_sensor_keys: tuple[str, ...] = ()
     own_modes: tuple[OwnModeRule, ...] = ()
+    #: The charger's own "enabled" switch when SpotNav does not use it as its start/stop control (Easee's
+    #: `is_enabled`: a stored setting that is never written). While it reads one of
+    #: `enable_switch_off_values` the charger cannot start, whatever SpotNav sends.
+    enable_switch_keys: tuple[str, ...] = ()
+    enable_switch_off_values: tuple[str, ...] = ("off",)
     #: The lowest current a charge is started (and re-sent after a plug-in) at, when that is above the
     #: 6 A floor the regulator may still go down to while it runs. `None`: no such minimum.
     min_start_current_a: float | None = None
@@ -243,6 +248,7 @@ _PROFILES: Final[tuple[PlatformProfile, ...]] = (
         own_modes=(
             _rule("switch", ("smart_charging",), ("off",), "smart charging"),
         ),
+        enable_switch_keys=("is_enabled",),
         min_start_current_a=7.0,
         held_values=(
             "awaiting_scheduled_start",

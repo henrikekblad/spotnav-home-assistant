@@ -27,6 +27,7 @@ from .base import (
     ASSIGN_UNCHANGED,
     ASSIGN_UNCONFIRMED,
     ASSIGN_WRITE_FAILED,
+    call_service,
     current_description,
     CurrentPath,
     path_description,
@@ -146,7 +147,8 @@ class EaseeCommandPath(StartStopPath):
         # Counted against the settings budget, never refused by it: a stop is a safety action.
         if self._limiter is not None:
             self._limiter.record()
-        await self.hass.services.async_call(
+        await call_service(
+            self.hass,
             _EASEE_DOMAIN,
             "action_command",
             {"device_id": self.device_id, "action_command": action},
@@ -174,6 +176,17 @@ class EaseeCommandPath(StartStopPath):
 
     def describe(self) -> dict[str, Any]:
         return path_description(self.kind)
+
+    def describe_state(self) -> dict[str, Any]:
+        """Why a Start may do nothing: our own pause memory, what the status sensor says about
+        authorization, and whether the next Start would send `start` before `resume`.
+        """
+        return {
+            "paused": self.paused,
+            "authorization_required": self._authorization_required(),
+            "start_owed": self._start_owed(),
+            "limit_read_back_a": self._read_back(),
+        }
 
 
 def _easee_authorization_required(hass: HomeAssistant, status_entity_id: str | None) -> bool | None:
@@ -278,7 +291,8 @@ class EaseeDynamicLimit(CurrentPath):
     async def _send(self, amps: int) -> bool:
         self._limiter.record()
         try:
-            await self.hass.services.async_call(
+            await call_service(
+                self.hass,
                 _EASEE_DOMAIN,
                 "set_charger_dynamic_limit",
                 {
@@ -370,6 +384,15 @@ class EaseeDynamicLimit(CurrentPath):
 
     def describe(self) -> dict[str, Any]:
         return current_description(self.kind, service=f"{_EASEE_DOMAIN}.set_charger_dynamic_limit")
+
+    def describe_state(self) -> dict[str, Any]:
+        return {
+            "last_written_a": self.last_written_a,
+            "read_back_a": self.read_back_a(),
+            "limit_sensor_enabled": self.limit_entity_id() is not None,
+            "cache_suspect": self._suspect,
+            "holding_start_floor": self._holding_start_floor(),
+        }
 
 
 def _easee_path(context: ChargerContext) -> StartStopPath | None:

@@ -25,6 +25,7 @@ from .base import (
     ASSIGN_REBOOT_REQUIRED,
     ASSIGN_UNCONFIRMED,
     ASSIGN_WRITE_FAILED,
+    call_service,
     current_description,
     CurrentPath,
 )
@@ -205,15 +206,15 @@ class OcppAssignedCurrent(CurrentPath):
         self.reboot_required = False
         try:
             try:
-                response = await self.hass.services.async_call(
-                    _OCPP_DOMAIN, _OCPP_CONFIGURE_SERVICE, data, blocking=True, return_response=True
+                response = await call_service(
+                    self.hass, _OCPP_DOMAIN, _OCPP_CONFIGURE_SERVICE, data, blocking=True, return_response=True
                 )
             except ServiceValidationError as error:
                 if error.translation_key != "service_does_not_support_response":
                     raise
                 response = None
-                await self.hass.services.async_call(
-                    _OCPP_DOMAIN, _OCPP_CONFIGURE_SERVICE, data, blocking=True
+                await call_service(
+                    self.hass, _OCPP_DOMAIN, _OCPP_CONFIGURE_SERVICE, data, blocking=True
                 )
         except Exception:
             return False

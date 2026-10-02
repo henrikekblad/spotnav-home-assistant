@@ -70,6 +70,7 @@ export const da: Record<keyof typeof en, string> = {
   "issue.pendingProposal": "Et nyere forslag er klar, men er ikke installeret endnu.",
   "issue.loadBalancing": "Lastbalancering er ikke tilgængelig for denne lader.",
   "issue.heldByCharger": "Laderens eget skema eller lastbalancering holder opladningen tilbage, så den er ikke startet.",
+  "issue.chargerDisabled": "Laderens egen aktiveringskontakt er slået fra, så den kan ikke starte. Slå den til i laderens indstillinger.",
   "issue.unknown": "Backend rapporterede noget, kortet endnu ikke kender.",
   "header.info": "Om kortet",
   "header.settings": "Kortindstillinger",
@@ -592,4 +593,5 @@ export const da: Record<keyof typeof en, string> = {
   "control.regulated.yes": "Belastningsfordeling kan ændre strømmen under en opladning.",
   "control.regulated.no": "Belastningsfordeling kan ikke ændre strømmen under en opladning. Den kan kun stoppe opladningen.",
   "control.conflict": "Laderens egen {label} er tændt ({name}). Den kan modarbejde SpotNav: slå den fra.",
+  "control.disabled": "Laderens egen aktiveringskontakt er slået fra ({name}). SpotNav kan ikke starte den: slå den til.",
 };

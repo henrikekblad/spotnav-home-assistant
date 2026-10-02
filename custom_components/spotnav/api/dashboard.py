@@ -209,6 +209,8 @@ class CapturedLive:
     measured_current_a: float | None
     #: The charger's own scheduler or load balancer holds the charge (Easee's waiting statuses).
     held_by_charger: bool = False
+    #: The charger's own enable switch is off, so it cannot start.
+    charger_disabled: bool = False
 
 
 @dataclass(frozen=True, slots=True)
@@ -837,6 +839,7 @@ def capture_dashboard(
             setpoint_current_a=None if controller is None else controller.setpoint_current_a,
             measured_current_a=None,
             held_by_charger=bool(controller is not None and controller.held_by_charger),
+            charger_disabled=bool(controller is not None and controller.charger_disabled),
         ),
         execution=CapturedExecution(
             state=EXECUTION_NOT_APPLIED if executor is None else executor.execution_state(),
@@ -1667,6 +1670,7 @@ def status_facts(capture: CapturedDashboard) -> StatusFacts:
         prices_unpriced=None if snapshot is None else snapshot.unpriced,
         charging=capture.live.charging,
         held_by_charger=capture.live.held_by_charger,
+        charger_disabled=capture.live.charger_disabled,
         paused=capture.execution.paused is True,
         pause_until=None if pause is None else _utc(pause.expires_at),
         pause_choice=None if pause is None else pause.choice,

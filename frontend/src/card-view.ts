@@ -31,6 +31,7 @@ import {
 } from "./model";
 import type { ActiveControlNotice } from "./site-settings";
 import {
+  conflictText,
   controlCurrentText,
   entityEditorBody,
   entityNameIn,
@@ -1771,10 +1772,7 @@ export function createCardView(input: CardViewInput): CardView {
         doc,
         "p",
         C.entityWarning,
-        translate(model.language, "control.conflict", {
-          label: conflict.label,
-          name: entityNameIn(config, conflict.entityId),
-        }),
+        conflictText(model.language, conflict, entityNameIn(config, conflict.entityId)),
       );
       warning.dataset["conflict"] = conflict.entityId;
       nodes.push(warning);

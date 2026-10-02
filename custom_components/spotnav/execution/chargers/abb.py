@@ -18,7 +18,7 @@ from homeassistant.core import HomeAssistant
 
 from ...const import DEFAULT_MIN_CURRENT_A
 from ..charger_profiles import PATH_NUMBER_PAUSE
-from .base import _entity_unavailable, _finite, _not_executed, path_description, StartStopPath
+from .base import _entity_unavailable, _finite, _not_executed, call_service, path_description, StartStopPath
 from .registry import ChargerContext, register_start_stop
 
 
@@ -49,7 +49,8 @@ class NumberPausePath(StartStopPath):
     async def _write(self, value: int) -> bool:
         if _entity_unavailable(self.hass, self.number_entity_id):
             return _not_executed(self.number_entity_id)
-        await self.hass.services.async_call(
+        await call_service(
+            self.hass,
             "number", "set_value", {"entity_id": self.number_entity_id, "value": value}, blocking=True
         )
         return True
@@ -83,7 +84,8 @@ class NumberPausePath(StartStopPath):
             and status.startswith(_AWAITING_AUTHORIZATION)
             and not _entity_unavailable(self.hass, self.start_entity_id)
         ):
-            await self.hass.services.async_call(
+            await call_service(
+                self.hass,
                 "button", "press", {"entity_id": self.start_entity_id}, blocking=True
             )
         return await self._write(self._start_current(amps))
@@ -96,6 +98,13 @@ class NumberPausePath(StartStopPath):
 
     def entity_ids(self) -> tuple[str, ...]:
         return (self.number_entity_id,)
+
+    def describe_state(self) -> dict[str, Any]:
+        return {
+            "limit_a": self._limit(),
+            "resume_a": self._resume_a,
+            "awaiting_authorization": (self._status() or "").startswith(_AWAITING_AUTHORIZATION),
+        }
 
     def describe(self) -> dict[str, Any]:
         ids = ((self.start_entity_id,) if self.start_entity_id else ()) + (self.number_entity_id,)

@@ -22,12 +22,14 @@ the service call returned.
 
 from __future__ import annotations
 
-from collections.abc import Callable
+from collections import deque
+from collections.abc import Awaitable, Callable
 from dataclasses import replace
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Any, Final
 
-from homeassistant.core import HomeAssistant
+from homeassistant.core import callback, CALLBACK_TYPE, HassJob, HomeAssistant
+from homeassistant.helpers.event import async_call_later
 from homeassistant.util import dt as dt_util
 
 from ...const import DEFAULT_MIN_CURRENT_A
@@ -39,7 +41,11 @@ from .base import (
     _finite,
     _lower,
     AdapterCapabilities,
+    ASSIGN_WRITE_FAILED,
     CurrentPath,
+    end_call_tap,
+    IN_EFFECT_OUTCOMES,
+    start_call_tap,
     StartStopPath,
     WriteRateLimiter,
 )
@@ -52,6 +58,18 @@ from .registry import build_current, build_start_stop, ChargerContext
 #: started for the one rule that depends on it (a current is not written while paused). Its report
 #: lags the command; a start that really failed leaves the value stored, not lost.
 START_GRACE_S: Final = 30.0
+
+#: How many commands the adapter remembers for diagnostics, and how long after one the status is read
+#: again (the charger's report lags the command).
+COMMAND_LOG_SIZE: Final = 20
+COMMAND_AFTER_S: Final = 5.0
+
+COMMAND_START: Final = "start"
+COMMAND_STOP: Final = "stop"
+COMMAND_CURRENT: Final = "current"
+RESULT_SENT: Final = "sent"
+RESULT_NOT_EXECUTED: Final = "not_executed"
+RESULT_ERROR: Final = "error"
 
 #: The status values the progress check reads, in OCPP's own spelling (`charge_progress.py`).
 PROGRESS_CHARGING: Final = "Charging"
@@ -97,13 +115,18 @@ class ChargerAdapter:
         self.min_start_current_a = max(DEFAULT_MIN_CURRENT_A, min_start_current_a or 0.0)
         self.current_entity_ids = current_entity_ids
         self.energy_entity_id = energy_entity_id
+        #: The last `COMMAND_LOG_SIZE` commands sent through this adapter, oldest first (memory only).
+        self._commands: deque[dict[str, Any]] = deque(maxlen=COMMAND_LOG_SIZE)
+        #: What the last current assignment came to, whether or not anything was sent.
+        self._last_current: dict[str, Any] | None = None
+        self._after_reads: set[CALLBACK_TYPE] = set()
 
     # -- commands
 
     async def async_start(self, amps: int | None = None) -> bool:
         """Start the charge; `False` when the command was not executed (its entity is unavailable)."""
         self._started_at = self._now()
-        executed = await self.path.async_start(amps)
+        executed = await self._logged(COMMAND_START, lambda: self.path.async_start(amps))
         if not executed:
             self._started_at = None
         return executed
@@ -111,10 +134,112 @@ class ChargerAdapter:
     async def async_stop(self) -> bool:
         """Stop the charge; `False` when the command was not executed (its entity is unavailable)."""
         self._started_at = None
-        return await self.path.async_stop()
+        return await self._logged(COMMAND_STOP, lambda: self.path.async_stop())
 
     async def async_set_current(self, amps: int, *, reason: str, verify: bool = False) -> str:
-        return await self.current.async_set(amps, reason=reason, verify=verify)
+        outcome: str | None = None
+
+        async def run() -> str:
+            nonlocal outcome
+            outcome = await self.current.async_set(amps, reason=reason, verify=verify)
+            return outcome
+
+        try:
+            return await self._logged(COMMAND_CURRENT, run, only_when_sent=True)
+        finally:
+            self._last_current = {
+                "at": self._now().isoformat(),
+                "amps": amps,
+                "reason": reason,
+                "outcome": outcome,
+                "in_effect": None if outcome is None else outcome in IN_EFFECT_OUTCOMES,
+            }
+
+    async def _logged(self, kind: str, run: Callable[[], Awaitable[Any]], *, only_when_sent: bool = False) -> Any:
+        """Run one command and note it in the log: when, what was called, how it ended, and the status
+        read before and (scheduled, never waited for) about `COMMAND_AFTER_S` later. A current write
+        that sent nothing (unchanged, rate limited) is not a command and is left out.
+        """
+        calls, token = start_call_tap()
+        record: dict[str, Any] = {
+            "at": self._now().isoformat(),
+            "kind": kind,
+            "calls": calls,
+            "result": RESULT_NOT_EXECUTED,
+            "error": None,
+            "status_before": self._status_text(),
+            "status_after": None,
+        }
+        try:
+            value = await run()
+        except Exception as err:
+            record["result"] = RESULT_ERROR
+            record["error"] = {"type": type(err).__name__, "message": str(err)[:200]}
+            raise
+        else:
+            if isinstance(value, str):
+                record["outcome"] = value
+            sent = value is True or (isinstance(value, str) and bool(calls))
+            record["result"] = RESULT_SENT if sent else RESULT_NOT_EXECUTED
+            if value == ASSIGN_WRITE_FAILED:
+                # The path caught the exception itself; only its outcome code is left.
+                record["result"] = RESULT_ERROR
+                record["error"] = {"type": None, "message": ASSIGN_WRITE_FAILED}
+            return value
+        finally:
+            end_call_tap(token)
+            if not only_when_sent or calls or record["result"] == RESULT_ERROR:
+                self._commands.append(record)
+                self._schedule_after_read(record)
+
+    def _schedule_after_read(self, record: dict[str, Any]) -> None:
+        """Read the status again shortly: best effort, in the background, never awaited."""
+        handles: list[CALLBACK_TYPE] = []
+
+        @callback
+        def read(_now: datetime) -> None:
+            self._after_reads.discard(handles[0])
+            record["status_after"] = self._status_text()
+
+        handles.append(async_call_later(
+                self.hass, timedelta(seconds=COMMAND_AFTER_S), HassJob(read, cancel_on_shutdown=True)
+            ))
+        self._after_reads.add(handles[0])
+
+    def cancel_pending_reads(self) -> None:
+        """Drop the scheduled status reads (the controller is shutting down)."""
+        for cancel in tuple(self._after_reads):
+            cancel()
+        self._after_reads.clear()
+
+    def _status_text(self) -> str | None:
+        """The status entity's raw state, or `None` with none configured or no state."""
+        if not self.status_entity_id:
+            return None
+        state = self.hass.states.get(self.status_entity_id)
+        return None if state is None else str(state.state)
+
+    def command_log(self) -> list[dict[str, Any]]:
+        """The remembered commands, oldest first, as plain data."""
+        return [{**record, "calls": [dict(call) for call in record["calls"]]} for record in self._commands]
+
+    def diagnostics(self, charge_control: str | None) -> dict[str, Any]:
+        """Why a Start may have done nothing: the status and the charge control as they read now, the
+        paths' own state, the last current outcome and the command log. Ids and states only, no secrets.
+        """
+        control_id = charge_control or next(iter(self.path.entity_ids()), None)
+        control = None if control_id is None else self.hass.states.get(control_id)
+        return {
+            "status": {"entity_id": self.status_entity_id, "state": self._status_text()},
+            "charge_control": {
+                "entity_id": control_id,
+                "state": None if control is None else str(control.state),
+            },
+            "start_stop_state": self.path.describe_state(),
+            "current_state": self.current.describe_state(),
+            "last_current": None if self._last_current is None else dict(self._last_current),
+            "commands": self.command_log(),
+        }
 
     # -- reads
 

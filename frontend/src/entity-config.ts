@@ -240,7 +240,12 @@ export interface ControlCapabilities {
   readsEnergyRegister: boolean;
 }
 
+/** `own_mode`: one of the charger's own controllers is on and can fight SpotNav; `disabled`: its own enable
+ * switch is off, so SpotNav cannot start it. */
+export type ControlConflictKind = "own_mode" | "disabled";
+
 export interface ControlConflict {
+  kind: ControlConflictKind;
   entityId: string;
   label: string;
   state: string;
@@ -616,8 +621,13 @@ function decodeControl(raw: unknown): EntityControl {
     },
     conflicts: conflicts.map((entry): ControlConflict => {
       const item = record(entry);
-      exactKeys(item, ["entity_id", "label", "state"]);
-      return { entityId: text(item, "entity_id"), label: text(item, "label"), state: text(item, "state") };
+      exactKeys(item, ["kind", "entity_id", "label", "state"]);
+      return {
+        kind: oneOf(item, "kind", ["own_mode", "disabled"] as const),
+        entityId: text(item, "entity_id"),
+        label: text(item, "label"),
+        state: text(item, "state"),
+      };
     }),
   };
 }

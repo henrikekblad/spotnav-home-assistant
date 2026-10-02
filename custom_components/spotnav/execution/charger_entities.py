@@ -21,7 +21,13 @@ from .charger_profiles import (
     PATH_SELECT,
     PATH_SWITCH,
     PlatformProfile,
+    profile_for,
 )
+
+#: The label of a charger's own enable switch that is off (`conflict.kind == "disabled"`).
+DISABLED_LABEL: Final = "enabled"
+CONFLICT_OWN_MODE: Final = "own_mode"
+CONFLICT_DISABLED: Final = "disabled"
 
 
 @dataclass(frozen=True, slots=True)
@@ -95,6 +101,47 @@ def own_mode_conflicts(
     for rule in profile.own_modes:
         conflicts.extend(_rule_conflicts(hass, matcher, rule))
     return conflicts
+
+
+def disabled_switches(
+    hass: HomeAssistant, entries: list[er.RegistryEntry], profile: PlatformProfile
+) -> list[OwnModeConflict]:
+    """The charger's own "enabled" switch when it is off: the charger cannot start while it is, and
+    SpotNav neither uses nor writes it. One that is unreadable or disabled in the registry is not
+    reported (nothing is claimed from silence).
+    """
+    if not profile.enable_switch_keys:
+        return []
+    entry = EntityMatcher(hass, entries, profile).first("switch", profile.enable_switch_keys)
+    if entry is None or entry.disabled_by is not None:
+        return []
+    text = state_text(hass, entry.entity_id)
+    if text is None or text not in profile.enable_switch_off_values:
+        return []
+    return [OwnModeConflict(entry.entity_id, DISABLED_LABEL, text)]
+
+
+def charger_entries(hass: HomeAssistant, charge_control: str, profile: PlatformProfile) -> list[er.RegistryEntry]:
+    """The registry entries of the charger's device that belong to the profile's integration, found
+    from its charge-control entity; empty when the entity or its device is unknown.
+    """
+    registry = er.async_get(hass)
+    control = registry.async_get(charge_control)
+    if control is None or control.device_id is None:
+        return []
+    return [
+        candidate
+        for candidate in er.async_entries_for_device(registry, control.device_id)
+        if candidate.platform == profile.platform
+    ]
+
+
+def charger_is_disabled(hass: HomeAssistant, charge_control: str, platform: str | None) -> bool:
+    """Whether the charger's own enable switch is off (see `disabled_switches`)."""
+    profile = profile_for(platform)
+    if profile is None or not profile.enable_switch_keys:
+        return False
+    return bool(disabled_switches(hass, charger_entries(hass, charge_control, profile), profile))
 
 
 def _rule_conflicts(hass: HomeAssistant, matcher: EntityMatcher, rule: OwnModeRule) -> list[OwnModeConflict]:

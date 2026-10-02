@@ -38,6 +38,7 @@ import {
   type DetectedMeter,
   type EntityFieldEntity,
   type EntityFieldError,
+  type ControlConflict,
   type EntityFieldFlag,
   type EntityScope,
   type EntitySite,
@@ -312,16 +313,18 @@ export function controlRows(doc: Document, language: Language, control: EntityCo
     );
   }
   for (const conflict of control.conflicts) {
-    const warning = element(
-      doc,
-      "p",
-      C.entityWarning,
-      translate(language, "control.conflict", { label: conflict.label, name: nameOf(conflict.entityId) }),
-    );
+    const warning = element(doc, "p", C.entityWarning, conflictText(language, conflict, nameOf(conflict.entityId)));
     warning.dataset["conflict"] = conflict.entityId;
     block.append(warning);
   }
   return block;
+}
+
+/** The sentence for one conflict: a charger's own mode that is on, or its own enable switch that is off. */
+export function conflictText(language: Language, conflict: ControlConflict, name: string): string {
+  return conflict.kind === "disabled"
+    ? translate(language, "control.disabled", { name })
+    : translate(language, "control.conflict", { label: conflict.label, name });
 }
 
 /** An entity's friendly name when the configuration states it, else its id. */

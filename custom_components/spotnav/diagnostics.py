@@ -60,16 +60,20 @@ def _charger_diagnostics(hass: HomeAssistant, entry: ConfigEntry) -> dict[str, A
             # target exists, whether the station ceiling and session limit were found. Role facts,
             # not entity ids, so the redaction above stays the only place that knows what is private.
             "ocpp": controller.ocpp_control_facts(),
-            # How the charger is driven and under which write policy (`execution/chargers/`):
-            # kinds and facts only, never an entity id.
-            "adapter": {
+            # How the charger is driven and under which write policy (`execution/chargers/`), and
+            # why a Start may have done nothing: the status and charge control as they read now,
+            # each path's own state, the last current outcome and the last 20 commands with the
+            # status around them. Entity and device ids are included; secrets never are.
+            "adapter": async_redact_data({
+                **controller.adapter.diagnostics(controller.charge_control),
                 "platform": controller.adapter.platform,
                 "start_stop": controller.adapter.path.describe()["kind"],
                 "current": controller.adapter.current.kind,
                 "current_enabled": controller.adapter.current_enabled,
                 "policy": controller.adapter.policy.as_dict(),
                 "capabilities": controller.adapter.capabilities.as_dict(),
-            },
+                "charger_disabled": controller.charger_disabled,
+            }, TO_REDACT),
             "plan": asdict(controller.plan) if controller.plan else None,
         },
     }

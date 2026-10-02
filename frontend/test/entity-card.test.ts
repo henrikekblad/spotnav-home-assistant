@@ -955,7 +955,10 @@ describe("the charger editor's control path and write policy", () => {
     const off = {
       ...wallbox,
       current: { kind: "number", entity_id: "number.wb_limit", service: "number.set_value", enabled: false },
-      conflicts: [{ entity_id: "switch.wb_solar", label: "solar divert", state: "on" }],
+      conflicts: [
+        { kind: "own_mode", entity_id: "switch.wb_solar", label: "solar divert", state: "on" },
+        { kind: "disabled", entity_id: "switch.wb_enabled", label: "enabled", state: "off" },
+      ],
     };
     const { element } = await mounted({ patch: withControl(off) });
     openSettings(element);
@@ -967,6 +970,10 @@ describe("the charger editor's control path and write policy", () => {
     expect(warning?.textContent).toBe(
       translate("en", "control.conflict", { label: "solar divert", name: "switch.wb_solar" }),
     );
+    // The charger's own enable switch being off has its own sentence, not the "it can fight SpotNav" one.
+    const disabled = controlBlock(element)?.querySelector("[data-conflict='switch.wb_enabled']");
+    expect(disabled?.textContent).toBe(translate("en", "control.disabled", { name: "switch.wb_enabled" }));
+    expect(disabled?.textContent).toBe("The charger's own enable switch is off (switch.wb_enabled). SpotNav cannot start it: turn it on.");
   });
 
   it("draws nothing when the charger is not loaded", async () => {
