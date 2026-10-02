@@ -114,9 +114,12 @@ Measurement is either direct (a current per phase) or derived (power and voltage
 | Sigenergy (`sigen`) | Derived from power and voltage, current exact | None needed | Voltage is taken from the inverter, which is on another device of the same integration. | Tested: charging verified (Sigenergy) |
 | MQTT (`mqtt`) | Derived from power and voltage, current exact | Import and export are two entities | Only devices from amsleser.no. | Detected from the integration's source |
 | ESPHome (`esphome`) | Derived from power and voltage, current exact | Import and export are two entities |  | Detected from the integration's source |
+| Sungrow (`sungrow`) | Derived from power and voltage, current exact | None needed |  | Detected from the integration's source |
+| Sungrow Modbus package (`modbus`) | Derived from power and voltage, current exact | None needed |  | Detected from the integration's source |
+| SolaX Modbus (`solax_modbus`) | Derived from power and voltage, current estimated | Export-positive power, negated | Only devices from solax. Updates about every 15 s. | Detected from the integration's source |
 | Easee Equalizer (`easee`) | Direct phase current, all phases on one entity | None needed | The Equalizer balances load by itself and may fight active control. | Set up by users: detected and configured, charging not yet confirmed (Easee Equalizer) |
 
-Devices known to balance load by themselves, which SpotNav warns about: Easee Equalizer; Zaptec Sense; Zaptec APM; Ferroamp; ONEp1.
+Devices known to balance load by themselves, which SpotNav warns about: Easee Equalizer; Zaptec Sense; Zaptec APM; Ferroamp; ONEp1; Perific.
 
 ## Supported house batteries
 
@@ -136,7 +139,10 @@ The site uses a house battery's power to tell the car's draw from the house's, a
 | Solarman (`solarman`) | Discharge-positive, negated |  | Detected from the integration's source |
 | FoxESS Modbus (`foxess_modbus`) | Discharge-positive, negated |  | Detected from the integration's source |
 | Enphase Envoy (`enphase_envoy`) | Discharge-positive, negated |  | Detected from the integration's source |
-| Sungrow (`sungrow`, `sungrow_sungrow`) | Discharge-positive, negated |  | Detected from the integration's source |
+| Sungrow (`sungrow`) | Discharge-positive, negated |  | Detected from the integration's source |
+| Sungrow Modbus package (`modbus`) | Discharge-positive, negated |  | Detected from the integration's source |
+| Sungrow (`sungrow`) | Charge-positive, used as it is |  | Detected from the integration's source |
+| Sungrow (`sungrow`) | Charge and discharge are two entities, combined |  | Detected from the integration's source |
 | Solis Modbus (`solis_modbus`) | Discharge-positive, negated |  | Detected from the integration's source |
 | SMA (`sma`) | Charge and discharge are two entities, combined |  | Detected from the integration's source |
 

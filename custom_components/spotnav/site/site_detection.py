@@ -365,10 +365,50 @@ METER_ROWS: Final[tuple[MeterRow, ...]] = (
         ),
         reject=_re(r"reactive"),
     ),
+    # Sungrow, KRoperUK's `sungrow` integration (local Modbus through a WiNet-S, or iSolarCloud). The
+    # smart meter behind the inverter reports power per phase with the sign of the grid: positive is
+    # import, so the power is read as it is. The current is a magnitude with no direction, so it is
+    # never taken as signed; power and voltage carry the measurement and the current completes it.
+    MeterRow(
+        platforms=("sungrow",),
+        patterns=(
+            _p("power", r"meter_phase_(?P<a>[abc])_active_power$"),
+            _p("voltage", r"meter_phase_(?P<a>[abc])_voltage$"),
+            _p("current", r"meter_phase_(?P<a>[abc])_current$"),
+        ),
+    ),
+    # The community Sungrow Modbus package (mkaiser): plain `modbus` sensors with `sg_` unique ids and no
+    # device. Only those ids are read, since the `modbus` platform hosts everyone's sensors; a second
+    # inverter's set carries an `_inv_N` suffix and is its own meter.
+    MeterRow(
+        platforms=("modbus",),
+        patterns=(
+            _p("power", r"^sg_meter_phase_(?P<a>[abc])_active_power(?:_(?P<m>inv_\d))?$"),
+            _p("voltage", r"^sg_meter_phase_(?P<a>[abc])_voltage(?:_(?P<m>inv_\d))?$"),
+            _p("current", r"^sg_meter_phase_(?P<a>[abc])_current(?:_(?P<m>inv_\d))?$"),
+        ),
+    ),
+    # SolaX's own plugin of the `solax_modbus` integration (other plugins of it have their own
+    # conventions). `measured_power_l1..3` is the grid meter's power per phase; the integration's own
+    # computed Grid Export reads it as export when positive, and its house load is the inverter's power
+    # minus it, so the power is negated to import-positive. The sign is read from the code, not
+    # confirmed on a device, which the candidate says. The meter 2 entities end the same way and are
+    # left out.
+    MeterRow(
+        platforms=("solax_modbus",),
+        device_manufacturer="solax",
+        patterns=(
+            _p("power", r"measured_power_l(?P<n>[123])$"),
+            _p("voltage", r"grid_voltage_l(?P<n>[123])$"),
+        ),
+        invert_power=True,
+        reject=_re(r"meter_2"),
+        warnings=(WARNING_SIGN_UNVERIFIED,),
+    ),
 )
 
 # Integrations whose rows are device-filtered because the platform hosts unrelated devices.
-_SHARED_PLATFORMS: Final = frozenset({"mqtt", "esphome"})
+_SHARED_PLATFORMS: Final = frozenset({"mqtt", "esphome", "modbus"})
 _CATALOGUED_PLATFORMS: Final = frozenset(
     platform for row in METER_ROWS for platform in row.platforms if platform not in _SHARED_PLATFORMS
 ) | {"easee"}
@@ -388,7 +428,20 @@ BATTERY_ROWS: Final[tuple[BatteryRow, ...]] = (
     BatteryRow(("solarman",), _re(r"battery_power$"), inverted=True),
     BatteryRow(("foxess_modbus",), _re(r"invbatpower$"), inverted=True),
     BatteryRow(("enphase_envoy",), _re(r"battery_discharge$"), inverted=True),
-    BatteryRow(("sungrow", "sungrow_sungrow"), _re(r"battery_power$"), inverted=True),
+    # Sungrow reports the battery in two conventions. Local Modbus (the `battery_power` register of
+    # KRoperUK's integration and of the community Modbus package) is discharge-positive. The iSolarCloud
+    # transport names `total_field_energy_storage_active_power` "Battery Power" and documents it as
+    # charge-positive, so it is read as it is, by its code and never by that name; its ESS devices also
+    # report charge and discharge as two non-negative entities.
+    BatteryRow(
+        ("sungrow",),
+        _re(r"(?:^|_)battery_power$"),
+        inverted=True,
+        reject=_re(r"total_field_energy_storage_active_power"),
+    ),
+    BatteryRow(("modbus",), _re(r"^sg_battery_power$"), inverted=True),
+    BatteryRow(("sungrow",), _re(r"total_field_energy_storage_active_power$")),
+    BatteryRow(("sungrow",), _re(r"battery_charge_power$"), discharge_regex=_re(r"battery_discharge_power$")),
     BatteryRow(("solis_modbus",), _re(r"battery_power_net$"), inverted=True),
     # Charge and discharge as two non-negative entities.
     BatteryRow(("sma",), _re(r"battery_power_charge$"), discharge_regex=_re(r"battery_power_discharge$")),
@@ -931,6 +984,7 @@ def _battery_candidates(
     excluded_device_ids: frozenset[str],
 ) -> list[BatteryCandidate]:
     found: list[BatteryCandidate] = []
+    taken: set[str] = set()
     for row in BATTERY_ROWS:
         charge: dict[str, RegistryEntity] = {}
         discharge: dict[str, RegistryEntity] = {}
@@ -942,6 +996,8 @@ def _battery_candidates(
                 continue
             texts = _texts(entity)
             scope = entity.config_entry_id or entity.device_id or ""
+            if row.reject is not None and any(row.reject.search(text) for text in texts):
+                continue
             if any(row.regex.search(text) for text in texts):
                 charge.setdefault(scope, entity)
             elif row.discharge_regex is not None and any(row.discharge_regex.search(t) for t in texts):
@@ -950,10 +1006,14 @@ def _battery_candidates(
             other = discharge.get(scope)
             if row.discharge_regex is not None and other is None:
                 continue
+            candidate_id = f"battery:{entity.platform}:{scope}"
+            if candidate_id in taken:
+                continue  # an earlier row already found this integration's battery
+            taken.add(candidate_id)
             used = [entity] + ([other] if other is not None else [])
             found.append(
                 BatteryCandidate(
-                    candidate_id=f"battery:{entity.platform}:{scope}",
+                    candidate_id=candidate_id,
                     integration=entity.platform,
                     title=_title(devices, used, entity.platform),
                     entity_id=entity.entity_id,
@@ -1044,6 +1104,9 @@ _OWN_BALANCING: Final[tuple[tuple[str, str | None], ...]] = (
     ("zaptec", "apm"),
     ("ferroamp", None),
     ("onep1", None),
+    # Perific/Enegic's reporter balances a Zaptec (or Easee) installation through the vendor cloud, on
+    # any of its models.
+    ("perific", None),
 )
 
 
@@ -1093,7 +1156,8 @@ UPDATE_BEHAVIOUR: Final[dict[str, UpdateBehaviour]] = {
     "ferroamp": UpdateBehaviour(30.0, None),
     "solax_modbus": UpdateBehaviour(15.0, "Polling interval"),
     "solis_modbus": UpdateBehaviour(10.0, "Scan interval"),
-    "sungrow": UpdateBehaviour(30.0, None),
+    # `sungrow` is not listed: its local Modbus entries poll every 30 s but its iSolarCloud entries every
+    # 300 s, and nothing in the registry tells the two apart.
     "tesla_custom": UpdateBehaviour(660.0, "Scan interval"),
     "tesla_fleet": UpdateBehaviour(60.0, None),
     "powerwall": UpdateBehaviour(30.0, None),

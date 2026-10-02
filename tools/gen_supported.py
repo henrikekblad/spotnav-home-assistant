@@ -93,7 +93,6 @@ NAMES: dict[str, str] = {
     "tesla_custom": "Tesla Custom Integration",
     "foxess_modbus": "FoxESS Modbus",
     "sungrow": "Sungrow",
-    "sungrow_sungrow": "Sungrow",
     "modbus": "Sungrow Modbus package",
     "solax_modbus": "SolaX Modbus",
     "perific": "Perific",
