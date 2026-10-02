@@ -26,6 +26,8 @@ Precedence (first match wins the headline; "add" rows append a fact line)
 3. Strategy headline when `strategy_state` exists (solar / hybrid), in place of 4.
 4. Plan headline, the card's `statusSentence` chain:
      charging_without_prices (+plan_energy) > charging_now (+plan_energy +plan_cost) >
+     held_until_window{time} (a charge that started by itself outside the plan was stopped, or a car
+     waits for the next window) >
      waiting_for_history > waiting_for_publication > buying_before_publication > auto_planned (+energy +cost +distance) >
      auto_installed > proposal_pending (+energy +cost +distance) > waiting_for_tomorrow > no_plan
    `nothing_to_charge` takes no_plan's place when the plan says there is nothing to charge.
@@ -43,6 +45,7 @@ Precedence (first match wins the headline; "add" rows append a fact line)
    (area, phases, amps) are unconfirmed; any settings edit clears it.
 6. Notices appended after the headline (and after the target fact): price_data_stale,
    price_data_degraded (usable rows exist, or degraded/incomplete), unpriced,
+   hold_overridden (a person started the charge again after SpotNav held it, and it may go on),
    held_by_charger (the charger's own scheduler or load balancer holds the charge), charger_disabled
    (its own enable switch is off, so it cannot start), load_balancing_limited,
    load_balancing_unavailable. Tone `notice` if any is present or a
@@ -147,6 +150,11 @@ STATUS_CODES: Final[dict[str, tuple[str, tuple[str, ...]]]] = {
     "held_by_charger": (TONE_NOTICE, ()),
     # The charger's own enable switch is off (Easee's `is_enabled`): it cannot start, whatever is sent.
     "charger_disabled": (TONE_NOTICE, ()),
+    # A charge that started by itself outside every planned window was stopped (or a car waits): it
+    # starts at `time`, the next window's start.
+    "held_until_window": (TONE_NORMAL, ("time",)),
+    # A person started the charge again after that stop: the plan is overridden and it may go on.
+    "hold_overridden": (TONE_NOTICE, ()),
 }
 
 STATUS_TONES: Final = (TONE_NORMAL, TONE_NOTICE, TONE_BLOCKING)
@@ -238,6 +246,10 @@ class StatusFacts:
     held_by_charger: bool = False
     #: The charger's own enable switch is off, so it cannot start.
     charger_disabled: bool = False
+    #: The next window's start while a charge is held back for it (`ChargingController.hold_until`).
+    hold_until: datetime | None = None
+    #: A person started the charge again after the hold and it is allowed to continue.
+    hold_overridden: bool = False
     paused: bool = False
     pause_until: datetime | None = None
     pause_choice: str | None = None
@@ -403,6 +415,8 @@ def _plan_headline(facts: StatusFacts) -> list[dict[str, Any]]:
         ]
     if facts.charging:
         return [_line("charging_now", until=None)]
+    if facts.hold_until is not None:
+        return [_line("held_until_window", time=aware_iso(facts.hold_until))]
     if planning is not None and planning.reason == "waiting_for_history":
         return [
             _line(
@@ -461,6 +475,8 @@ def _notices(facts: StatusFacts) -> list[dict[str, Any]]:
         or (proposal is not None and proposal.unpriced is True)
     ):
         lines.append(_line("unpriced"))
+    if facts.hold_overridden and facts.charging:
+        lines.append(_line("hold_overridden"))
     if facts.held_by_charger and not facts.charging:
         lines.append(_line("held_by_charger"))
     if facts.charger_disabled and not facts.charging:

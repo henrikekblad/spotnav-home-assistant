@@ -244,6 +244,7 @@ _PROFILES: Final[tuple[PlatformProfile, ...]] = (
         status_keys=("status", "easee_status"),
         charging_values=("charging",),
         vehicle_idle_values=("ready_to_charge", "completed"),
+        disconnected_values=("disconnected",),
         current_sensor_keys=("current",),
         own_modes=(
             _rule("switch", ("smart_charging",), ("off",), "smart charging"),
@@ -271,6 +272,7 @@ _PROFILES: Final[tuple[PlatformProfile, ...]] = (
         status_keys=("status_description",),
         charging_values=("charging",),
         vehicle_idle_values=("waiting for car demand",),
+        disconnected_values=("disconnected",),
         own_modes=(_rule("select", ("ecosmart", "eco_smart"), ("off", "disabled"), "Eco-Smart"),),
         held_values=(
             "waiting in queue by power sharing",
@@ -294,6 +296,7 @@ _PROFILES: Final[tuple[PlatformProfile, ...]] = (
         status_keys=("charger_operation_mode", "charger_mode"),
         charging_values=("connected_charging",),
         vehicle_idle_values=("connected_finished",),
+        disconnected_values=("disconnected",),
         current_sensor_keys=("current_phase1", "current_phase2", "current_phase3"),
         note="The limit is installation-wide: used only for a single-charger installation, "
         "and at most every 15 minutes.",

@@ -27,6 +27,22 @@ describe("the status line renders the block and nothing else", () => {
     );
   });
 
+  it("words a hold until the planned start and a person's override, in every language", () => {
+    const held = block(statusLine("held_until_window", { time: "2026-09-22T22:00:00+00:00" }));
+    expect(statusText(held, format("en"), NOW)).toContain("Charging waits for the planned start at");
+    expect(statusText(held, format("sv"), NOW)).toContain("Laddningen väntar till planerad start kl.");
+    for (const language of ["da", "fi", "nb"] as const) {
+      expect(statusText(held, format(language), NOW)).not.toContain("{time}");
+    }
+    const overridden = block(statusLine("charging_now"), statusLine("hold_overridden"));
+    expect(statusText(overridden, format("en"), NOW)).toContain(
+      "Charging was started outside the plan and is allowed to continue.",
+    );
+    expect(statusText(overridden, format("sv"), NOW)).toContain(
+      "Laddningen startades utanför planen och får fortsätta.",
+    );
+  });
+
   it("keeps the suggestion note out of the plan line and gives it its own", () => {
     const status = block(
       statusLine("auto_planned", { start: "2026-09-22T04:00:00+00:00" }),

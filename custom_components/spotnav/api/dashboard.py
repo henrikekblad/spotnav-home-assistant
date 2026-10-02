@@ -211,6 +211,9 @@ class CapturedLive:
     held_by_charger: bool = False
     #: The charger's own enable switch is off, so it cannot start.
     charger_disabled: bool = False
+    #: The next window's start while a charge is held back for it, and whether a person overrode it.
+    hold_until: datetime | None = None
+    hold_overridden: bool = False
 
 
 @dataclass(frozen=True, slots=True)
@@ -840,6 +843,8 @@ def capture_dashboard(
             measured_current_a=None,
             held_by_charger=bool(controller is not None and controller.held_by_charger),
             charger_disabled=bool(controller is not None and controller.charger_disabled),
+            hold_until=None if controller is None else controller.hold_until,
+            hold_overridden=bool(controller is not None and controller.hold_overridden),
         ),
         execution=CapturedExecution(
             state=EXECUTION_NOT_APPLIED if executor is None else executor.execution_state(),
@@ -1671,6 +1676,8 @@ def status_facts(capture: CapturedDashboard) -> StatusFacts:
         charging=capture.live.charging,
         held_by_charger=capture.live.held_by_charger,
         charger_disabled=capture.live.charger_disabled,
+        hold_until=None if capture.live.hold_until is None else _utc(capture.live.hold_until),
+        hold_overridden=capture.live.hold_overridden,
         paused=capture.execution.paused is True,
         pause_until=None if pause is None else _utc(pause.expires_at),
         pause_choice=None if pause is None else pause.choice,

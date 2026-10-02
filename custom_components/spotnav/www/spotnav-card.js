@@ -2865,6 +2865,7 @@ var da = {
   "status.chargingNow": "Lader nu; planlagt til {time}.",
   "status.autoPlanned": "Planlagt fra {time}.",
   "status.autoInstalled": "Opladning er planlagt fra {time}.",
+  "status.heldUntilWindow": "Opladningen venter til den planlagte start kl. {time}.",
   "status.proposalPending": "Et nyt opladningsforslag er klar.",
   "status.waitingForTomorrow": "Venter på morgendagens priser.",
   "status.waitingForPublication": "Venter på morgendagens priser (~{time}), planlægger derefter.",
@@ -2919,6 +2920,7 @@ var da = {
   "issue.loadBalancing": "Lastbalancering er ikke tilgængelig for denne lader.",
   "issue.heldByCharger": "Laderens eget skema eller lastbalancering holder opladningen tilbage, så den er ikke startet.",
   "issue.chargerDisabled": "Laderens egen aktiveringskontakt er slået fra, så den kan ikke starte. Slå den til i laderens indstillinger.",
+  "issue.holdOverridden": "Opladningen blev startet uden for planen og må fortsætte.",
   "issue.unknown": "Backend rapporterede noget, kortet endnu ikke kender.",
   "header.info": "Om kortet",
   "header.settings": "Kortindstillinger",
@@ -3388,6 +3390,7 @@ var en = {
   "status.chargingNow": "Charging now; scheduled until {time}.",
   "status.autoPlanned": "Planned from {time}.",
   "status.autoInstalled": "Charging is scheduled from {time}.",
+  "status.heldUntilWindow": "Charging waits for the planned start at {time}.",
   "status.proposalPending": "A new charging proposal is ready.",
   "status.waitingForTomorrow": "Waiting for tomorrow's prices.",
   "status.waitingForPublication": "Waiting for tomorrow's prices (~{time}), will plan then.",
@@ -3442,6 +3445,7 @@ var en = {
   "issue.loadBalancing": "Load balancing is not available for this charger.",
   "issue.heldByCharger": "The charger's own schedule or load balancing is holding the charge, so it has not started.",
   "issue.chargerDisabled": "The charger's own enable switch is off, so it cannot start. Turn it on in the charger's settings.",
+  "issue.holdOverridden": "Charging was started outside the plan and is allowed to continue.",
   "issue.unknown": "The backend reported something this card does not know yet.",
   "header.info": "About this card",
   "header.settings": "Card settings",
@@ -3911,6 +3915,7 @@ var fi = {
   "status.chargingNow": "Ladataan nyt; aikataulun mukaan {time} asti.",
   "status.autoPlanned": "Suunniteltu klo {time} alkaen.",
   "status.autoInstalled": "Lataus on aikataulutettu klo {time} alkaen.",
+  "status.heldUntilWindow": "Lataus odottaa suunniteltua alkamisaikaa klo {time}.",
   "status.proposalPending": "Uusi latausehdotus on valmis.",
   "status.waitingForTomorrow": "Odotetaan huomisen hintoja.",
   "status.waitingForPublication": "Odotetaan huomisen hintoja (~{time}), suunnitellaan sen jälkeen.",
@@ -3965,6 +3970,7 @@ var fi = {
   "issue.loadBalancing": "Kuormanhallinta ei ole käytettävissä tälle laturille.",
   "issue.heldByCharger": "Laturin oma aikataulu tai kuormanhallinta pidättää latausta, joten se ei ole alkanut.",
   "issue.chargerDisabled": "Laturin oma käyttöönottokytkin on pois päältä, joten lataus ei voi alkaa. Kytke se päälle laturin asetuksista.",
+  "issue.holdOverridden": "Lataus käynnistettiin suunnitelman ulkopuolella ja sen annetaan jatkua.",
   "issue.unknown": "Taustajärjestelmä raportoi jotain, mitä kortti ei vielä tunne.",
   "header.info": "Tietoja kortista",
   "header.settings": "Kortin asetukset",
@@ -4434,6 +4440,7 @@ var nb = {
   "status.chargingNow": "Lader nå; planlagt til {time}.",
   "status.autoPlanned": "Planlagt fra {time}.",
   "status.autoInstalled": "Lading er planlagt fra {time}.",
+  "status.heldUntilWindow": "Ladingen venter til planlagt start kl. {time}.",
   "status.proposalPending": "Et nytt ladeforslag er klart.",
   "status.waitingForTomorrow": "Venter på morgendagens priser.",
   "status.waitingForPublication": "Venter på morgendagens priser (~{time}), planlegger da.",
@@ -4488,6 +4495,7 @@ var nb = {
   "issue.loadBalancing": "Lastbalansering er ikke tilgjengelig for denne laderen.",
   "issue.heldByCharger": "Laderens egen timeplan eller lastbalansering holder tilbake ladingen, så den har ikke startet.",
   "issue.chargerDisabled": "Laderens egen aktiveringsbryter er av, så den kan ikke starte. Slå den på i laderens innstillinger.",
+  "issue.holdOverridden": "Ladingen ble startet utenfor planen og får fortsette.",
   "issue.unknown": "Backend rapporterte noe kortet ikke kjenner igjen ennå.",
   "header.info": "Om kortet",
   "header.settings": "Kortinnstillinger",
@@ -4957,6 +4965,7 @@ var sv = {
   "status.chargingNow": "Laddar nu; schemalagd till {time}.",
   "status.autoPlanned": "Planerat från {time}.",
   "status.autoInstalled": "Laddning är schemalagd från {time}.",
+  "status.heldUntilWindow": "Laddningen väntar till planerad start kl. {time}.",
   "status.proposalPending": "Ett nytt laddförslag är klart.",
   "status.waitingForTomorrow": "Väntar på morgondagens priser.",
   "status.waitingForPublication": "Väntar på morgondagens priser (~{time}), planerar då.",
@@ -5011,6 +5020,7 @@ var sv = {
   "issue.loadBalancing": "Lastbalansering är inte tillgänglig för den här laddaren.",
   "issue.heldByCharger": "Laddarens eget schema eller lastbalansering håller tillbaka laddningen, så den har inte startat.",
   "issue.chargerDisabled": "Laddarens egen aktiveringsbrytare är av, så den kan inte starta. Slå på den i laddarens inställningar.",
+  "issue.holdOverridden": "Laddningen startades utanför planen och får fortsätta.",
   "issue.unknown": "Backend rapporterade något som kortet inte känner igen ännu.",
   "header.info": "Om kortet",
   "header.settings": "Kortinställningar",
@@ -6792,7 +6802,9 @@ var STATUS_CODE_TABLE = {
   load_balancing_limited: ["notice", { limit_a: "numberOrNull", phase: "textOrNull" }],
   load_balancing_unavailable: ["notice", {}],
   held_by_charger: ["notice", {}],
-  charger_disabled: ["notice", {}]
+  charger_disabled: ["notice", {}],
+  held_until_window: ["normal", { time: "instant" }],
+  hold_overridden: ["notice", {}]
 };
 function decodeStatusParam(source, key, kind) {
   switch (kind) {
@@ -7114,7 +7126,9 @@ var STATUS_WORDING = {
   load_balancing_limited: "status.loadBalancingLimitedTo",
   load_balancing_unavailable: "issue.loadBalancing",
   held_by_charger: "issue.heldByCharger",
-  charger_disabled: "issue.chargerDisabled"
+  charger_disabled: "issue.chargerDisabled",
+  held_until_window: "status.heldUntilWindow",
+  hold_overridden: "issue.holdOverridden"
 };
 var MISSING_FIELD_KEYS = {
   area: "status.missing.area",
@@ -7177,6 +7191,10 @@ function lineText(line, format, nowMs) {
     case "auto_installed": {
       const start = ms(p["start"]);
       return start === null || !zoned ? say("status.scheduledNoTime") : say(STATUS_WORDING[line.code], { time: clock(format, start) });
+    }
+    case "held_until_window": {
+      const time = ms(p["time"]);
+      return time === null || !zoned ? say("status.scheduledNoTime") : say("status.heldUntilWindow", { time: clock(format, time) });
     }
     case "plan_energy":
       return say("status.planEnergy", { kwh: formatNumber(language, num(p["kwh"]) ?? 0, 1) });

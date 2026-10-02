@@ -148,6 +148,16 @@
       "params": [],
       "tone": "notice"
     },
+    "held_until_window": {
+      "params": [
+        "time"
+      ],
+      "tone": "normal"
+    },
+    "hold_overridden": {
+      "params": [],
+      "tone": "notice"
+    },
     "hybrid_grid": {
       "params": [
         "credit_kwh",

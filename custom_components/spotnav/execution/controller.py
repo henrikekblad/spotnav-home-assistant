@@ -80,6 +80,7 @@ from .charge_progress import (
 )
 from .pilot_floor_probe import connector_entity_id, PilotFloorProbe, PROBE_TOKEN, STORE_KEY
 from .target_stop import decide_target_stop, SocReading
+from .window_hold import HOLD, OVERRIDE, WindowHold
 
 
 _LOGGER = logging.getLogger(__name__)
@@ -409,6 +410,11 @@ class ChargingController:
         # Hybrid mode's one hook into window-end handling (see `set_end_window_guard` and
         # `_async_end_callback`); `None` is inert.
         self._end_window_guard = end_window_guard
+        # What the hold of a charge that starts by itself outside a window remembers
+        # (`window_hold.py`), and the one hook that tells it something else owns the charger.
+        self._hold = WindowHold()
+        self._hold_guard: Callable[[], bool] | None = None
+        self._last_connected: bool | None = None
         self.charge_control: str = config[CONF_CHARGE_CONTROL]
         self.current_limit: str | None = config.get(CONF_CURRENT_LIMIT) or None
         # How this charger's current may be set. Absent or empty records the request without
@@ -680,8 +686,92 @@ class ChargingController:
         """
         self._maybe_resend_current(event)
         self._maybe_write_after_start(event)
-        if self._charge_progress.evaluate():
+        changed = self._observe_hold()
+        if self._charge_progress.evaluate() or changed:
             self._notify()
+
+    def _hold_blocked(self) -> bool:
+        """Whether something else owns the charger (a pause, solar execution): nothing is held then."""
+        return self._hold_guard is not None and self._hold_guard()
+
+    def _next_window_start(self) -> datetime | None:
+        """The start of the next window while the time is outside every window of the plan, else
+        `None`: no plan, a plan whose windows are all past, or a window open now.
+        """
+        plan = self.plan
+        if plan is None:
+            return None
+        try:
+            windows = plan.windows
+        except ValueError:
+            return None
+        now = dt_util.utcnow()
+        if any(start <= now < end for start, end in windows):
+            return None
+        return min((start for start, _ in windows if start > now), default=None)
+
+    def _observe_hold(self) -> bool:
+        """Decide, once per report, whether a charge that started by itself outside a window is
+        stopped (`window_hold.py`). Returns whether what the status says moved.
+        """
+        hold = self._hold
+        connected = self.adapter.vehicle_connected()
+        before = (hold.held, hold.overridden, self._last_connected)
+        self._last_connected = connected
+        decision = hold.observe(
+            control_on=self._control_on,
+            connected=connected,
+            gap=self._next_window_start() is not None and not self._hold_blocked(),
+        )
+        if decision == HOLD:
+            self.hass.async_create_task(self._async_hold_stop())
+        return decision in (HOLD, OVERRIDE) or before != (hold.held, hold.overridden, connected)
+
+    async def _async_hold_stop(self) -> None:
+        """The one stop of a charge that started by itself outside a window: the ordinary stop,
+        decided again under the lock, since a window may have opened meanwhile.
+        """
+        async with self._lock:
+            if (
+                self._next_window_start() is None
+                or self._hold_blocked()
+                or self._hold.owned
+                or not self._control_on
+            ):
+                return
+            await self._stop_locked(clear_schedule=False)
+
+    def set_hold_guard(self, guard: Callable[[], bool] | None) -> None:
+        """Set (or clear with `None`) the guard that says something else owns the charger (Auto
+        paused by the person, solar or hybrid execution running it). A setter for the reason
+        `set_end_window_guard` is one: the answer comes from objects built after this controller.
+        """
+        self._hold_guard = guard
+
+    @property
+    def hold_until(self) -> datetime | None:
+        """While a charge is held back for a window still ahead, that window's start: the plan has
+        one ahead, nothing else owns the charger, SpotNav has not started a charge, it is not
+        charging and a vehicle is there (reported
+        plugged in, or the hold itself stopped a charge it started). Else `None`.
+        """
+        start = self._next_window_start()
+        if (
+            start is None
+            or self._hold_blocked()
+            or self._hold.owned
+            or self.charging
+            or self._hold.overridden
+        ):
+            return None
+        if self._hold.held or self.adapter.vehicle_connected() is True:
+            return start
+        return None
+
+    @property
+    def hold_overridden(self) -> bool:
+        """Whether a person started the charge again after the hold, and it is allowed to go on."""
+        return self._hold.overridden and self.charging
 
     def _maybe_resend_current(self, event: Any) -> None:
         current = self.adapter.current
@@ -760,6 +850,9 @@ class ChargingController:
         # One evaluation now, so the value is honest before anything reads it. A predicate that
         # already holds begins a new grace period, the only honest thing a restart can do.
         self._charge_progress.evaluate()
+        # A charge that already runs is not "seen" later: only a start after this point is.
+        self._hold.baseline(self._control_on)
+        self._last_connected = self.adapter.vehicle_connected()
 
     def _async_disarm_progress_listener(self) -> None:
         """Drop the observation's subscription, if one is held."""
@@ -932,6 +1025,10 @@ class ChargingController:
                 )
             await self._async_save()
         executed = True
+        # From here the charge is SpotNav's, whoever asked (a window, a manual Start, a webhook,
+        # solar or hybrid execution): the hold of a charge that starts by itself leaves it alone.
+        was_owned = self._hold.owned
+        self._hold.spotnav_started()
         if not self._control_on:
             # Recorded before the first await: an accepted Start the charger has not answered is not
             # a failure, and the observation must not blame the car (see `charge_progress.py`).
@@ -941,6 +1038,7 @@ class ChargingController:
                 # The command never went out: nothing is awaiting an answer, and nothing may say so.
                 self._start_sent_at = None
                 self._start_write_pending = False
+                self._hold.owned = was_owned
             elif (
                 explicit_amps is not None
                 and self._writes_current_at_start
@@ -1291,6 +1389,7 @@ class ChargingController:
         the window-end stop and an explicit cancel record nothing. Clearing the plan drops the state-change
         subscription, since a gone plan enforces nothing.
         """
+        self._hold.spotnav_stopped()
         if self._stop_needed:
             await self.adapter.async_stop()
         if clear_schedule:
@@ -1481,7 +1580,12 @@ class ChargingController:
             if await self._start_window_locked():
                 return
         else:
+            # Re-arming outside a window stops a charge that runs; a person who starts it again
+            # after that is respected, as after the hold (`window_hold.py`).
+            was_charging = self.charging
             await self._stop_locked(clear_schedule=False)
+            if was_charging:
+                self._hold.held_now()
         for index, (start, end) in enumerate(windows):
             if start > now:
                 self._timer_cancels.append(async_track_point_in_utc_time(
@@ -1515,6 +1619,8 @@ class ChargingController:
         the target ended the plan instead of starting anything, so a caller arming timers knows there is no
         plan left to arm.
         """
+        # The plug-in session a hold belonged to ends where the next window starts.
+        self._hold.end_session()
         if self._target_stopping:
             # A stop is in flight and the plan stays live until its turn_off is awaited: starting now
             # would race it. Report the charge as over so no caller arms timers or starts it.

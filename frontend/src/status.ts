@@ -62,6 +62,8 @@ export const STATUS_WORDING: Readonly<Record<StatusCode, TranslationKey>> = {
   load_balancing_unavailable: "issue.loadBalancing",
   held_by_charger: "issue.heldByCharger",
   charger_disabled: "issue.chargerDisabled",
+  held_until_window: "status.heldUntilWindow",
+  hold_overridden: "issue.holdOverridden",
 };
 
 export const STATUS_VARIANT_KEYS: readonly TranslationKey[] = [
@@ -164,6 +166,12 @@ export function lineText(line: StatusLine, format: FormatContext, nowMs: number)
       return start === null || !zoned
         ? say("status.scheduledNoTime")
         : say(STATUS_WORDING[line.code], { time: clock(format, start) });
+    }
+    case "held_until_window": {
+      const time = ms(p["time"]);
+      return time === null || !zoned
+        ? say("status.scheduledNoTime")
+        : say("status.heldUntilWindow", { time: clock(format, time) });
     }
     case "plan_energy":
       return say("status.planEnergy", { kwh: formatNumber(language, num(p["kwh"]) ?? 0, 1) });

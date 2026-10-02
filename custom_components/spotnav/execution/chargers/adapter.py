@@ -35,7 +35,9 @@ from homeassistant.util import dt as dt_util
 from ...const import DEFAULT_MIN_CURRENT_A
 from ...vehicles.ocpp_identity import OcppConnectorTarget
 from ...vehicles.soc_estimate import read_energy_register_kwh
+from ..charge_progress import connector_status
 from ..charger_profiles import OCPP_NUMBER_POLICY, OCPP_POLICY, WritePolicy
+from ..pilot_floor_probe import connector_entity_id
 from .base import (
     _amps_factor,
     _finite,
@@ -75,6 +77,10 @@ RESULT_ERROR: Final = "error"
 PROGRESS_CHARGING: Final = "Charging"
 PROGRESS_SUSPENDED_EV: Final = "SuspendedEV"
 
+#: OCPP's connector status with no vehicle at the connector (`Available`); every other status, a
+#: faulted or unavailable one included, still says nothing about a cable, except that it is not this.
+OCPP_NO_VEHICLE: Final = "available"
+
 
 class ChargerAdapter:
     """One charger as the controller drives it. See the module docstring."""
@@ -91,6 +97,8 @@ class ChargerAdapter:
         charging_values: tuple[str, ...] = (),
         vehicle_idle_values: tuple[str, ...] = (),
         held_values: tuple[str, ...] = (),
+        disconnected_values: tuple[str, ...] = (),
+        connector_status_entity: Callable[[], str | None] | None = None,
         min_start_current_a: float | None = None,
         current_entity_ids: tuple[str, ...] = (),
         energy_entity_id: str | None = None,
@@ -111,6 +119,8 @@ class ChargerAdapter:
         self._charging_values = tuple(value.lower() for value in charging_values)
         self._idle_values = tuple(value.lower() for value in vehicle_idle_values)
         self._held_values = tuple(value.lower() for value in held_values)
+        self._disconnected_values = tuple(value.lower() for value in disconnected_values)
+        self._connector_status_entity = connector_status_entity
         #: The lowest current a charge is started at: the profile's, never below the 6 A floor.
         self.min_start_current_a = max(DEFAULT_MIN_CURRENT_A, min_start_current_a or 0.0)
         self.current_entity_ids = current_entity_ids
@@ -278,6 +288,27 @@ class ChargerAdapter:
         status = self._status()
         return status is not None and status in self._held_values
 
+    def vehicle_connected(self) -> bool | None:
+        """Whether a vehicle is plugged in, or `None` when this charger cannot say.
+
+        An OCPP connector says it through its status (`Available` is no vehicle); another charger
+        through its status sensor, when its profile names the values that mean no vehicle. A plain
+        switch says nothing. An unreadable status is unknown, never "unplugged".
+        """
+        if self._connector_status_entity is not None:
+            entity_id = self._connector_status_entity()
+            if entity_id is not None:
+                status = connector_status(self.hass.states.get(entity_id))
+                if status is None:
+                    return None
+                return status.lower() != OCPP_NO_VEHICLE
+        if not self._disconnected_values:
+            return None
+        status = self._status()
+        if status is None:
+            return None
+        return status not in self._disconnected_values
+
     def progress_status(self) -> str | None:
         """The status in the progress check's vocabulary: `Charging`, `SuspendedEV` (connected, the
         vehicle asks for no current) or the raw text; `None` with no readable status sensor.
@@ -345,6 +376,20 @@ class ChargerAdapter:
             "policy": self.policy.as_dict(),
             "capabilities": self.capabilities.as_dict(),
         }
+
+
+def _connector_status_entity_of(
+    ocpp_target: Callable[[], OcppConnectorTarget | None],
+) -> Callable[[], str | None]:
+    """The entity that reports the OCPP connector's status, once the connector is known."""
+
+    def entity_id() -> str | None:
+        target = ocpp_target()
+        if target is None:
+            return None
+        return connector_entity_id(target.devid, target.connector_id, "status_connector")
+
+    return entity_id
 
 
 def build_adapter(
@@ -448,6 +493,8 @@ def build_adapter(
         energy_entity_id=energy_entity_id,
         current_enabled=bool(control),
         now=now,
+        disconnected_values=tuple(profile.disconnected_values) if profile is not None else (),
+        connector_status_entity=_connector_status_entity_of(ocpp_target),
     )
     holder["adapter"] = adapter
     return adapter

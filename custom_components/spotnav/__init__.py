@@ -32,7 +32,7 @@ from .const import (
     PLATFORMS,
     SITE_PLATFORMS,
 )
-from .execution.auto_execution import AutoExecutor
+from .execution.auto_execution import AutoExecutor, pause_blocks_execution
 from .execution.controller import ChargingController
 from .execution.solar_execution import (
     async_rebind_solar_execution,
@@ -183,6 +183,19 @@ async def _async_setup_charger_entry(hass: HomeAssistant, entry: ChargerConfigEn
         controller.set_end_window_guard(
             lambda: (state := solar_execution_state(hass, entry.entry_id)) is not None
             and state.state in ("on", "disarming")
+        )
+        # A charge that starts by itself outside a window is held back, except while Auto is paused
+        # by the person (an Auto plan only) or solar execution is running the charger.
+        controller.set_hold_guard(
+            lambda: (
+                (plan := controller.plan) is not None
+                and plan.auto_owned
+                and pause_blocks_execution(settings_store.settings(entry.entry_id))
+            )
+            or (
+                (state := solar_execution_state(hass, entry.entry_id)) is not None
+                and state.state in ("on", "arming", "disarming")
+            )
         )
         if price_manager is not None:
             await _async_setup_auto_preview(hass, entry, data, settings_store, price_manager)

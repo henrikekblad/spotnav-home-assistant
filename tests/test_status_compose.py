@@ -553,6 +553,24 @@ CASES: list[tuple[str, StatusFacts, str, list[dict[str, Any]]]] = [
         [{"code": "settings_incomplete", "params": {"reason": "settings_missing", "missing": ["area"]}}],
     ),
     (
+        "a car waiting for the next window says when charging starts, ahead of the plan's own sentence",
+        base(hold_until=at(2), installed_periods=((at(2), at(3)),)),
+        "normal",
+        [{"code": "held_until_window", "params": {"time": iso(2)}}],
+    ),
+    (
+        "a charge that runs is never held, whatever the hold says",
+        base(hold_until=at(2), charging=True),
+        "normal",
+        [{"code": "charging_now", "params": {"until": None}}],
+    ),
+    (
+        "a person's override of the hold is a notice beside the charge",
+        base(hold_overridden=True, charging=True),
+        "notice",
+        [{"code": "charging_now", "params": {"until": None}}, {"code": "hold_overridden", "params": {}}],
+    ),
+    (
         "blocking beats a pause and a charge",
         base(paused=True, charging=True, planning=planning("incomplete_settings", "settings_missing")),
         "notice",
