@@ -94,6 +94,16 @@ function field(element: Element, name: string): HTMLInputElement {
   return found;
 }
 
+/** Pick one radio of a choice group (grid, current-source, battery, energy), as a person would. */
+function choose(element: Element, part: string, value: string): void {
+  const radio = openDialog(element)?.querySelector<HTMLInputElement>(`[data-part='${part}'] input[data-choice='${value}']`) ?? null;
+  if (radio === null) {
+    throw new Error(`no choice ${part}/${value}`);
+  }
+  radio.checked = true;
+  radio.dispatchEvent(new Event("change", { bubbles: true }));
+}
+
 function type(element: Element, name: string, value: string): void {
   const input = field(element, name);
   input.value = value;
@@ -296,6 +306,7 @@ describe("the charger's editor", () => {
     edit(element, "charger");
     type(element, "charge_control", "sensor.not_a_switch");
     type(element, "current_limit", "number.missing");
+    choose(element, "energy", "meter");
     save(element);
     await settle();
     expect(updates(hass)).toHaveLength(1);
@@ -457,15 +468,11 @@ describe("the site's editor", () => {
     derived!.dispatchEvent(new Event("change", { bubbles: true }));
     const dialog = openDialog(element);
     const names = Array.from(dialog?.querySelectorAll<HTMLElement>("[data-field]") ?? []).map((node) => node.dataset["field"]);
-    // Per phase the two required sources first, then the optional ones inside "more sources".
+    // Per phase power and voltage only: nothing is stored, so one sensor with direction and an estimated
+    // current, and the other kinds' fields are not in the dialog.
     expect(names.filter((name) => name?.startsWith("derived_"))).toEqual(
-      ["L1", "L2", "L3"].flatMap((phase) =>
-        ["power", "voltage", "power_export", "reactive_power", "apparent_power", "current"].map(
-          (kind) => `derived_${phase}_${kind}`,
-        ),
-      ),
+      ["L1", "L2", "L3"].flatMap((phase) => ["power", "voltage"].map((kind) => `derived_${phase}_${kind}`)),
     );
-    expect(dialog?.querySelector("[data-optional-sources='L1']")).not.toBeNull();
     expect(names.some((name) => name?.startsWith("direct_"))).toBe(false);
     // And back: the direct three return with what was there.
     const direct = dialog?.querySelector<HTMLInputElement>("input[type='radio'][data-mode='direct_phase_current']");
@@ -560,6 +567,7 @@ describe("Home Assistant's own picker", () => {
     expect(picker!.selector).toEqual({ entity: { domain: ["switch"] } });
     expect(picker!.value).toBe("switch.get_direct_control");
     expect(picker!.hass).toBeTruthy();
+    choose(element, "energy", "meter");
     const energy = openDialog(element)?.querySelector<FakeSelector>("ha-selector[data-field='energy_register_entity']");
     expect(energy!.selector).toEqual({ entity: { domain: ["sensor"], device_class: ["energy"] } });
     expect(energy!.value).toBeUndefined();
@@ -895,24 +903,6 @@ describe("the site's estimate, warnings, sign options and detected meters", () =
     });
   });
 
-  it("shows the total grid power in direct mode and hides it in derived mode, where the sign option stays", async () => {
-    const { element } = await mounted();
-    openSettings(element);
-    await settle();
-    edit(element, "site");
-    const block = (name: string) => openDialog(element)?.querySelector<HTMLElement>(`[data-field-block='${name}']`);
-    expect(block("grid_power_source_power")?.hidden).toBe(false);
-    expect(block("grid_power_source_power_export")?.hidden).toBe(false);
-    // The sign applies to the total in direct mode as to the per-phase power in derived mode.
-    expect(block("grid_power_inverted")?.hidden).toBe(false);
-    const derived = openDialog(element)?.querySelector<HTMLInputElement>("input[type='radio'][data-mode='derived_phase_current']");
-    derived!.checked = true;
-    derived!.dispatchEvent(new Event("change", { bubbles: true }));
-    expect(block("grid_power_source_power")?.hidden).toBe(true);
-    expect(block("grid_power_source_power_export")?.hidden).toBe(true);
-    expect(block("grid_power_inverted")?.hidden).toBe(false);
-  });
-
   it("labels the total grid power for solar, says what it is for, and saves it as a changed field", async () => {
     const { hass, element } = await mounted({ update: "success_site" });
     openSettings(element);
@@ -955,16 +945,6 @@ describe("the site's estimate, warnings, sign options and detected meters", () =
     expect(meter?.querySelector("[data-detect='gridPower']")?.textContent).toBe(
       translate("en", "entity.detect.gridPower"),
     );
-  });
-
-
-  it("keeps the optional sources folded unless one is set", async () => {
-    const { element } = await mounted({ get: "get_detected" });
-    openSettings(element);
-    await settle();
-    edit(element, "site");
-    const more = openDialog(element)?.querySelector<HTMLDetailsElement>("[data-optional-sources='L1']");
-    expect(more?.open).toBe(false);
   });
 });
 

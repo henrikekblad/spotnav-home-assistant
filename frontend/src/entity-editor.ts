@@ -9,7 +9,6 @@
 import {
   APPLY_DETECTION,
   DERIVED_KIND_KEYS,
-  DERIVED_OPTIONAL_KINDS,
   DETECT_WARNING_KEYS,
   GRID_TOTAL_FIELDS,
   INFORMATIONAL_DETECT_WARNINGS,
@@ -404,6 +403,7 @@ export interface EntityEditorInput {
   config: EntityConfig;
   hass: () => unknown;
   appliesText: string | null;
+  readOnly?: boolean;
 }
 
 export interface EntityEditorBody {
@@ -451,6 +451,9 @@ export function entityEditorBody(
   const disabledWhenPending: Array<HTMLElement & { disabled: boolean }> = [];
   const errorNodes = new Map<string, { node: HTMLElement; input: HTMLElement }>();
   let pending = false;
+  // A reader who may not change entities sees the same layout, disabled (only Cancel stays usable).
+  const locked = input.readOnly === true;
+  const keepEnabled = new Set<HTMLElement>();
 
   const body = element(doc, "form");
   body.noValidate = true;
@@ -758,15 +761,32 @@ export function entityEditorBody(
     return card;
   }
 
+  // Fields that belong to one choice (grid power, battery, energy) are built here like any other, kept
+  // aside and placed by their group: only the chosen variant's fields are in the dialog.
+  const MANAGED_SITE = new Set<string>([
+    "site_current_signed",
+    ...GRID_TOTAL_FIELDS,
+    "grid_power_inverted",
+    "battery_aggregate_power_entity",
+    "battery_discharge_power_entity",
+    "battery_power_inverted",
+    "max_age_s",
+  ]);
+  const MANAGED_CHARGER = new Set<string>(["energy_register_entity", "power_entity"]);
+  const managed = new Map<string, HTMLElement>();
+  const isManaged = (name: string): boolean =>
+    scope === "site" ? MANAGED_SITE.has(name) : MANAGED_CHARGER.has(name);
+
   for (const field of fieldsOf(config, scope)) {
     if (!field.writable || isPhaseField(field.field) || field.field === "measurement_mode") {
       continue;
     }
     const label = labelOf(language, field.field);
+    let block: HTMLElement | null = null;
     if (field.kind === "entity") {
-      body.append(entityField(field, label));
+      block = entityField(field, label);
     } else if (field.kind === "flag") {
-      body.append(flagField(field, label));
+      block = flagField(field, label);
     } else if (field.kind === "number") {
       const row = fieldBlock(field.field, label, numberControl(field, label), true, field);
       const control = row.querySelector<HTMLElement>("input");
@@ -775,7 +795,128 @@ export function entityEditorBody(
         control.replaceWith(line);
         line.append(control, element(doc, "span", C.settingsUnit, field.field === "main_fuse_a" ? "A" : "s"));
       }
-      body.append(row);
+      block = row;
+    }
+    if (block === null) {
+      continue;
+    }
+    if (isManaged(field.field)) {
+      managed.set(field.field, block);
+    } else {
+      body.append(block);
+    }
+  }
+
+  const blocksOf = (...names: string[]): HTMLElement[] =>
+    names.flatMap((name) => {
+      const block = managed.get(name);
+      return block === undefined ? [] : [block];
+    });
+
+  interface ChoiceGroup {
+    fieldset: HTMLElement;
+    fields: HTMLElement;
+    sync: () => void;
+    showNote: (mixed: boolean) => void;
+  }
+
+  /** One radio group: choose the kind first, then `fields` holds only that kind's fields. */
+  function choiceGroup(
+    part: string,
+    title: TranslationKey,
+    options: ReadonlyArray<{ value: string; label: TranslationKey }>,
+    get: () => string,
+    set: (value: string) => void,
+  ): ChoiceGroup {
+    const fieldset = element(doc, "fieldset", C.siteFieldset);
+    fieldset.dataset["part"] = part;
+    fieldset.append(element(doc, "legend", C.siteLegend, translate(language, title)));
+    const radios: HTMLInputElement[] = [];
+    for (const option of options) {
+      const line = element(doc, "label", C.siteChoice);
+      const radio = doc.createElement("input");
+      radio.type = "radio";
+      radio.name = `${idPrefix}-choice-${part}`;
+      radio.value = option.value;
+      radio.dataset["choice"] = option.value;
+      radio.checked = get() === option.value;
+      radio.addEventListener("change", () => {
+        if (radio.checked) {
+          set(option.value);
+        }
+      });
+      disabledWhenPending.push(radio);
+      radios.push(radio);
+      line.append(radio, doc.createTextNode(translate(language, option.label)));
+      fieldset.append(line);
+    }
+    const note = element(doc, "p", C.entityHelp, translate(language, "entity.choice.mixed"));
+    note.dataset["choiceNote"] = part;
+    note.hidden = true;
+    fieldset.append(note);
+    const fields = element(doc, "div");
+    fields.dataset["choiceFields"] = part;
+    fieldset.append(fields);
+    return {
+      fieldset,
+      fields,
+      sync() {
+        for (const radio of radios) {
+          radio.checked = get() === radio.value;
+        }
+      },
+      showNote(mixed) {
+        note.hidden = !mixed;
+      },
+    };
+  }
+
+  // What a save clears: the fields of every variant that is not chosen, so nothing lingers.
+  const clearers: Array<(draft: EntityDraft) => void> = [];
+
+  const isSet = (name: string): boolean => (values[name] ?? "").trim() !== "";
+  const isOn = (name: string): boolean => values[name] === "true";
+
+  if (scope === "charger") {
+    // The energy the charger has delivered: its own kWh register, a smart plug's power, or nothing.
+    const hasRegister = managed.has("energy_register_entity");
+    const hasPlug = managed.has("power_entity");
+    const registerField = config.fields.find((entry) => entry.field === "energy_register_entity");
+    const found = registerField !== undefined && registerField.kind === "entity" && automaticEntity(registerField) !== null;
+    const energyKind = (): string =>
+      isSet("energy_register_entity") || found ? "meter" : hasPlug && isSet("power_entity") ? "power" : "none";
+    let energy = energyKind();
+    const energyMixed = isSet("energy_register_entity") && isSet("power_entity");
+    if (hasRegister || hasPlug) {
+      const options: Array<{ value: string; label: TranslationKey }> = [];
+      if (hasRegister) {
+        options.push({ value: "meter", label: "entity.energy.meter" });
+      }
+      if (hasPlug) {
+        options.push({ value: "power", label: "entity.energy.power" });
+      }
+      options.push({ value: "none", label: "entity.energy.none" });
+      const paintEnergy = (): void => {
+        group.fields.replaceChildren(
+          ...(energy === "meter" ? blocksOf("energy_register_entity") : energy === "power" ? blocksOf("power_entity") : []),
+        );
+        applyPending();
+      };
+      const group = choiceGroup("energy", "entity.energy.title", options, () => energy, (value) => {
+        energy = value;
+        paintEnergy();
+      });
+      group.showNote(energyMixed);
+      clearers.push((draft) => {
+        if (energy !== "meter") {
+          draft["energy_register_entity"] = "";
+        }
+        if (energy !== "power") {
+          draft["power_entity"] = "";
+        }
+      });
+      body.append(group.fieldset);
+      paintEnergy();
     }
   }
 
@@ -789,16 +930,40 @@ export function entityEditorBody(
       modeHelp.dataset["help"] = "measurement_mode";
       fieldset.append(modeHelp);
       const radioName = `${idPrefix}-mode`;
+      const head = element(doc, "div");
+      head.dataset["part"] = "head";
       const phases = element(doc, "div", C.entityMeters);
       phases.dataset["part"] = "phases";
+      const tail = element(doc, "div");
+      tail.dataset["part"] = "tail";
       const currentMode = (): string => values["measurement_mode"] ?? storedMode(config) ?? MEASUREMENT_DIRECT;
+      const phaseValue = (name: string): string => values[name] ?? phaseField(config, name).current?.entityId ?? "";
+      const anyPhase = (kind: string): boolean =>
+        PHASES.some((phase) => phaseValue(derivedFieldName(phase, kind)).trim() !== "");
+
+      // The radios are read from what is stored; a mixed state opens on the variant in use by precedence.
+      const CURRENT_KINDS: ReadonlyArray<readonly [string, string]> = [
+        ["measured", "current"],
+        ["apparent", "apparent_power"],
+        ["reactive", "reactive_power"],
+      ];
+      const usedKinds = CURRENT_KINDS.filter(([, kind]) => anyPhase(kind));
+      let currentKind = usedKinds[0]?.[0] ?? "estimated";
+      const currentMixed = usedKinds.length > 1;
+      const gridFromValues = (): string =>
+        (currentMode() === MEASUREMENT_DERIVED ? anyPhase("power_export") : phaseValue(GRID_TOTAL_FIELDS[1]).trim() !== "")
+          ? "two"
+          : "one";
+      let gridKind = gridFromValues();
+      let batteryKind = isSet("battery_discharge_power_entity")
+        ? "two"
+        : isSet("battery_aggregate_power_entity")
+          ? "one"
+          : "none";
 
       const paintPhases = (): void => {
         for (const name of phaseFieldNames(MEASUREMENT_DIRECT).concat(phaseFieldNames(MEASUREMENT_DERIVED))) {
-          const gone = errorNodes.get(name);
-          if (gone !== undefined) {
-            errorNodes.delete(name);
-          }
+          errorNodes.delete(name);
         }
         for (const picker of [...pickers]) {
           if (picker.dataset["field"] !== undefined && isPhaseField(picker.dataset["field"])) {
@@ -808,19 +973,21 @@ export function entityEditorBody(
         phases.replaceChildren();
         const mode = currentMode();
         phases.dataset["mode"] = mode;
+        const derived = mode === MEASUREMENT_DERIVED;
+        const currentName = CURRENT_KINDS.find(([choice]) => choice === currentKind)?.[1] ?? null;
         // Each phase repeats the same fields, so their help is said once, under the last phase.
         const phaseHelp = element(doc, "div");
         phaseHelp.dataset["help"] = "phases";
-        const helpKeys: TranslationKey[] =
-          mode === MEASUREMENT_DERIVED
-            ? ["entity.help.derivedPower", "entity.help.derivedVoltage"]
-            : ["entity.help.phaseDirect"];
-        // The meter's total grid power is what a site that reports current only reads for solar; a derived
-        // site has its per-phase power and ignores it. The sign option applies to both.
-        for (const name of GRID_TOTAL_FIELDS) {
-          const total = body.querySelector<HTMLElement>(`[data-field-block="${name}"]`);
-          if (total !== null) {
-            total.hidden = mode === MEASUREMENT_DERIVED;
+        const helpKeys: TranslationKey[] = derived
+          ? ["entity.help.derivedPower", "entity.help.derivedVoltage"]
+          : ["entity.help.phaseDirect"];
+        if (derived && gridKind === "two") {
+          helpKeys.push("entity.help.derivedPowerExport");
+        }
+        if (derived && currentName !== null) {
+          const key = fieldHelpKey(derivedFieldName("L1", currentName));
+          if (key !== null) {
+            helpKeys.push(key);
           }
         }
         for (const key of helpKeys) {
@@ -831,10 +998,13 @@ export function entityEditorBody(
           group.dataset["phase"] = phase;
           group.append(element(doc, "legend", C.siteLegend, phase));
           const cells = element(doc, "div", C.entityLineCells);
-          const names =
-            mode === MEASUREMENT_DERIVED
-              ? DERIVED_REQUIRED_KINDS.map((kind) => derivedFieldName(phase, kind))
-              : [directFieldName(phase)];
+          const names = derived
+            ? [
+                ...DERIVED_REQUIRED_KINDS.map((kind) => derivedFieldName(phase, kind)),
+                ...(gridKind === "two" ? [derivedFieldName(phase, "power_export")] : []),
+                ...(currentName === null ? [] : [derivedFieldName(phase, currentName)]),
+              ]
+            : [directFieldName(phase)];
           for (const name of names) {
             const field = phaseField(config, name);
             if (values[name] === undefined) {
@@ -843,31 +1013,134 @@ export function entityEditorBody(
             cells.append(entityField(field, labelOf(language, name)));
           }
           group.append(cells);
-          if (mode === MEASUREMENT_DERIVED) {
-            // The optional sources only sharpen the fuse check; without any of current, apparent or
-            // reactive power the current is estimated from power.
-            const more = element(doc, "details");
-            more.dataset["optionalSources"] = phase;
-            more.append(element(doc, "summary", undefined, translate(language, "entity.phase.optional")));
-            const optionalCells = element(doc, "div", C.entityLineCells);
-            let anySet = false;
-            for (const kind of DERIVED_OPTIONAL_KINDS) {
-              const name = derivedFieldName(phase, kind);
-              const field = phaseField(config, name);
-              if (values[name] === undefined) {
-                values[name] = field.current === null ? "" : field.current.entityId;
-              }
-              anySet = anySet || values[name] !== "";
-              optionalCells.append(entityField(field, labelOf(language, name)));
-            }
-            more.open = anySet;
-            more.append(optionalCells);
-            group.append(more);
-          }
           phases.append(group);
         }
         phases.append(phaseHelp);
+        applyPending();
       };
+
+      // Grid power: one sensor with a direction, or import and export as two. Per phase in derived mode,
+      // the meter's total (for solar) in direct mode.
+      const grid = choiceGroup(
+        "grid",
+        "entity.grid.title",
+        [
+          { value: "one", label: "entity.grid.one" },
+          { value: "two", label: "entity.grid.two" },
+        ],
+        () => gridKind,
+        (value) => {
+          gridKind = value;
+          paintGrid();
+          if (currentMode() === MEASUREMENT_DERIVED) {
+            paintPhases();
+          }
+        },
+      );
+      const paintGrid = (): void => {
+        const derived = currentMode() === MEASUREMENT_DERIVED;
+        grid.fields.replaceChildren(
+          ...(derived ? [] : blocksOf(GRID_TOTAL_FIELDS[0], ...(gridKind === "two" ? [GRID_TOTAL_FIELDS[1]] : []))),
+          ...(gridKind === "one" ? blocksOf("grid_power_inverted") : []),
+        );
+        grid.showNote(gridKind === "two" && isOn("grid_power_inverted"));
+        applyPending();
+      };
+
+      // Current, derived mode only: one kind for every phase.
+      const current = choiceGroup(
+        "current-source",
+        "entity.current.title",
+        [
+          { value: "measured", label: "entity.current.measured" },
+          { value: "apparent", label: "entity.current.apparent" },
+          { value: "reactive", label: "entity.current.reactive" },
+          { value: "estimated", label: "entity.current.estimated" },
+        ],
+        () => currentKind,
+        (value) => {
+          currentKind = value;
+          paintCurrent();
+          paintPhases();
+        },
+      );
+      current.showNote(currentMixed);
+      const paintCurrent = (): void => {
+        const note = element(doc, "p", C.entityHelp, translate(language, "entity.current.estimatedNote"));
+        note.dataset["help"] = "current-estimated";
+        current.fields.replaceChildren(...(currentKind === "estimated" ? [note] : []));
+      };
+
+      const battery = choiceGroup(
+        "battery",
+        "entity.battery.title",
+        [
+          { value: "none", label: "entity.battery.none" },
+          { value: "one", label: "entity.battery.one" },
+          { value: "two", label: "entity.battery.two" },
+        ],
+        () => batteryKind,
+        (value) => {
+          batteryKind = value;
+          paintBattery();
+        },
+      );
+      const paintBattery = (): void => {
+        battery.fields.replaceChildren(
+          ...(batteryKind === "none" ? [] : blocksOf("battery_aggregate_power_entity")),
+          ...(batteryKind === "two" ? blocksOf("battery_discharge_power_entity") : []),
+          ...(batteryKind === "one" ? blocksOf("battery_power_inverted") : []),
+        );
+        battery.showNote(batteryKind !== "one" && isOn("battery_power_inverted"));
+        applyPending();
+      };
+
+      const layoutMode = (): void => {
+        const derived = currentMode() === MEASUREMENT_DERIVED;
+        gridKind = gridFromValues();
+        grid.sync();
+        paintGrid();
+        paintCurrent();
+        head.replaceChildren(...(derived ? [grid.fieldset, current.fieldset] : []));
+        tail.replaceChildren(
+          ...(derived ? [] : [grid.fieldset]),
+          ...blocksOf("site_current_signed"),
+          battery.fieldset,
+          ...blocksOf("max_age_s"),
+        );
+        paintPhases();
+      };
+
+      clearers.push((draft) => {
+        const derived = currentMode() === MEASUREMENT_DERIVED;
+        if (derived) {
+          const keep = CURRENT_KINDS.find(([choice]) => choice === currentKind)?.[1] ?? null;
+          for (const phase of PHASES) {
+            for (const [, kind] of CURRENT_KINDS) {
+              if (kind !== keep) {
+                draft[derivedFieldName(phase, kind)] = "";
+              }
+            }
+            if (gridKind === "one") {
+              draft[derivedFieldName(phase, "power_export")] = "";
+            }
+          }
+        } else if (gridKind === "one") {
+          draft[GRID_TOTAL_FIELDS[1]] = "";
+        }
+        if (gridKind === "two") {
+          draft["grid_power_inverted"] = "false";
+        }
+        if (batteryKind === "none") {
+          draft["battery_aggregate_power_entity"] = "";
+        }
+        if (batteryKind !== "two") {
+          draft["battery_discharge_power_entity"] = "";
+        }
+        if (batteryKind !== "one") {
+          draft["battery_power_inverted"] = "false";
+        }
+      });
 
       for (const choice of modeField.choices) {
         const label = element(doc, "label", C.siteChoice);
@@ -880,7 +1153,7 @@ export function entityEditorBody(
         radio.addEventListener("change", () => {
           if (radio.checked) {
             values["measurement_mode"] = choice;
-            paintPhases();
+            layoutMode();
           }
         });
         disabledWhenPending.push(radio);
@@ -893,24 +1166,9 @@ export function entityEditorBody(
       modeError.setAttribute("role", "alert");
       errorNodes.set("measurement_mode", { node: modeError, input: fieldset });
       fieldset.append(modeError);
-      body.append(fieldset);
-      paintPhases();
-      body.append(phases);
-      // The battery meter and maximum age come after the phases they qualify, as the backend lists them.
-      for (const name of [
-        "site_current_signed",
-        ...GRID_TOTAL_FIELDS,
-        "grid_power_inverted",
-        "battery_aggregate_power_entity",
-        "battery_discharge_power_entity",
-        "battery_power_inverted",
-        "max_age_s",
-      ]) {
-        const block = body.querySelector(`[data-field-block="${name}"]`);
-        if (block !== null) {
-          body.append(block);
-        }
-      }
+      body.append(fieldset, head, phases, tail);
+      paintBattery();
+      layoutMode();
     }
   }
 
@@ -922,28 +1180,39 @@ export function entityEditorBody(
   actions.append(save, cancel);
   body.append(actions);
   disabledWhenPending.push(save, cancel);
+  keepEnabled.add(cancel);
   body.addEventListener("submit", (event) => {
     event.preventDefault();
-    if (!pending) {
-      handlers.onSave({ ...values });
+    if (!pending && !locked) {
+      handlers.onSave(resolvedDraft());
     }
   });
   cancel.addEventListener("click", () => {
     handlers.onCancel();
   });
 
+  /** The draft as a save sends it: every field of an unchosen variant cleared. */
+  function resolvedDraft(): EntityDraft {
+    const draft: EntityDraft = { ...values };
+    for (const clear of clearers) {
+      clear(draft);
+    }
+    return draft;
+  }
+
   function applyPending(): void {
     for (const control of disabledWhenPending) {
-      control.disabled = pending;
+      control.disabled = pending || (locked && !keepEnabled.has(control));
     }
     for (const picker of pickers) {
-      picker.disabled = pending;
+      picker.disabled = pending || locked;
     }
   }
+  applyPending();
 
   return {
     body,
-    draft: () => ({ ...values }),
+    draft: resolvedDraft,
     markErrors(errors) {
       for (const [, entry] of errorNodes) {
         entry.node.hidden = true;

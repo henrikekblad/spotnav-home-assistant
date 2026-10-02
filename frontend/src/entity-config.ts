@@ -823,9 +823,6 @@ export const GRID_TOTAL_FIELDS = ["grid_power_source_power", "grid_power_source_
 /** Derived mode's readings per phase: the first two are required, the rest optional sharpeners. */
 export const DERIVED_KINDS = ["power", "voltage", "power_export", "reactive_power", "apparent_power", "current"] as const;
 export const DERIVED_REQUIRED_KINDS: readonly string[] = ["power", "voltage"];
-export const DERIVED_OPTIONAL_KINDS: readonly string[] = DERIVED_KINDS.filter(
-  (kind) => !DERIVED_REQUIRED_KINDS.includes(kind),
-);
 
 export function directFieldName(phase: string): string {
   return `direct_${phase}`;

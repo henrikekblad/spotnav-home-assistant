@@ -2997,7 +2997,7 @@ var da = {
   "entity.help.vehicleSoc": "Køretøjets opladningsniveau, læst fra den sensor der er valgt til køretøjet, eller fundet automatisk når det kun har én.",
   "entity.help.mainFuse": "Anlæggets hovedsikring i ampere. Alle ladere på anlægget holder sig samlet under den.",
   "entity.help.measurementMode": "Om din måler angiver hver fases strøm direkte, eller SpotNav regner den ud fra effekt og spænding.",
-  "entity.help.batteryPower": "Valgfrit. En sensor for hjemmebatteriets effekt, så SpotNav kan tage højde for batteriet.",
+  "entity.help.batteryPower": "En sensor for hjemmebatteriets effekt, så SpotNav kan tage højde for batteriet.",
   "entity.help.maxAge": "Hvor gammel en måling må være, i sekunder, før SpotNav holder op med at stole på den.",
   "entity.help.phaseDirect": "Sensoren der måler strømmen på denne fase, i ampere.",
   "entity.help.derivedPower": "Sensoren for aktiv effekt på denne fase.",
@@ -3006,11 +3006,11 @@ var da = {
   "entity.flag.on": "Til",
   "entity.flag.off": "Fra",
   "entity.field.siteCurrentSigned": "Netstrømmen har fortegn",
-  "entity.field.gridPowerInverted": "Nettets effekt har eksport som positiv",
+  "entity.field.gridPowerInverted": "Sensoren viser eksport som positiv",
   "entity.field.gridPowerSource": "Nettets samlede effekt (til sol)",
   "entity.field.gridPowerSourceExport": "Samlet eksporteffekt (hvis adskilt)",
   "entity.field.batteryDischargePower": "Batteriets afladningseffekt",
-  "entity.field.batteryPowerInverted": "Batteriets effekt har afladning som positiv",
+  "entity.field.batteryPowerInverted": "Sensoren viser afladning som positiv",
   "entity.derived.powerExport": "Eksporteffekt",
   "entity.derived.apparentPower": "Tilsyneladende effekt",
   "entity.derived.current": "Strøm",
@@ -3019,11 +3019,28 @@ var da = {
   "entity.help.gridPowerSource": "Kræves til sol- og hybridopladning, når faserne kun angiver strøm.",
   "entity.help.gridPowerSourceExport": "Kun hvis måleren angiver import og eksport som to sensorer: feltet ovenfor er så importen, og dette er eksporten.",
   "entity.help.batteryPowerInverted": "Slå til, hvis batteriets effekt er positiv ved afladning (Tesla, Fronius, Enphase, GoodWe og lignende). SpotNav læser så opladning som positiv.",
-  "entity.help.batteryDischargePower": "Valgfrit. Kun for et batteri, der angiver opladning og afladning som to sensorer: dette er afladningen, og batterisensoren ovenfor er opladningen.",
-  "entity.help.derivedPowerExport": "Valgfrit. Kun når måleren angiver import og eksport som to sensorer: effektsensoren ovenfor er så import, og denne er eksport.",
-  "entity.help.derivedApparentPower": "Valgfrit. Tilsyneladende effekt på denne fase, i VA. Med den bliver strømmen nøjagtig.",
-  "entity.help.derivedCurrent": "Valgfrit. Målerens egen strøm på denne fase. Med den bliver strømmen nøjagtig.",
-  "entity.phase.optional": "Flere kilder (valgfrit)",
+  "entity.help.batteryDischargePower": "Kun for et batteri, der angiver opladning og afladning som to sensorer: dette er afladningen, og batterisensoren ovenfor er opladningen.",
+  "entity.help.derivedPowerExport": "Kun når måleren angiver import og eksport som to sensorer: effektsensoren ovenfor er så import, og denne er eksport.",
+  "entity.help.derivedApparentPower": "Tilsyneladende effekt på denne fase, i VA. Med den bliver strømmen nøjagtig.",
+  "entity.help.derivedCurrent": "Målerens egen strøm på denne fase. Med den bliver strømmen nøjagtig.",
+  "entity.choice.mixed": "Mere end én af disse er angivet. Kun den valgte beholdes; de andre ryddes, når du gemmer.",
+  "entity.grid.title": "Nettets effekt",
+  "entity.grid.one": "Én sensor med retning",
+  "entity.grid.two": "Import og eksport som to sensorer",
+  "entity.current.title": "Strømmen hentes fra",
+  "entity.current.measured": "Målerens egen strøm",
+  "entity.current.apparent": "Tilsyneladende effekt",
+  "entity.current.reactive": "Reaktiv effekt",
+  "entity.current.estimated": "Anslået (effektfaktor 0,9)",
+  "entity.current.estimatedNote": "SpotNav anslår strømmen ud fra effekten. Anslaget er markeret i kortet.",
+  "entity.battery.title": "Batteri",
+  "entity.battery.none": "Intet",
+  "entity.battery.one": "Én sensor",
+  "entity.battery.two": "Opladning og afladning som to sensorer",
+  "entity.energy.title": "Energi",
+  "entity.energy.meter": "Energitæller (kWh)",
+  "entity.energy.power": "Effekt (W) — SpotNav beregner energien",
+  "entity.energy.none": "Ingen",
   "entity.notice.estimated": "Strømmen er anslået ud fra effekten med effektfaktor {pf} eller bedre som forudsætning. Anslaget er aldrig lavere end den virkelige strøm ved den effektfaktor eller bedre, og undervurderer den under det. Tilføj målerens strøm, tilsyneladende effekt eller reaktive effekt for en nøjagtig værdi.",
   "entity.notice.estimatedShort": "Anslået",
   "entity.warning.updateInterval": "{integration} opdaterer hvert {seconds} s, langsommere end højeste måleralder.",
@@ -3541,7 +3558,7 @@ var en = {
   "entity.help.vehicleSoc": "The vehicle's charge level, read from the sensor chosen for the vehicle, or found automatically when it has only one.",
   "entity.help.mainFuse": "The site's main fuse in amperes. All chargers on the site together stay below it.",
   "entity.help.measurementMode": "Whether your meter reports each phase's current directly, or SpotNav works it out from power and voltage.",
-  "entity.help.batteryPower": "Optional. A sensor for the home battery's power, so SpotNav can take the battery into account.",
+  "entity.help.batteryPower": "A sensor for the home battery's power, so SpotNav can take the battery into account.",
   "entity.help.maxAge": "How old a measurement may be, in seconds, before SpotNav stops trusting it.",
   "entity.help.phaseDirect": "The sensor that measures the current on this phase, in amperes.",
   "entity.help.derivedPower": "The sensor for active power on this phase.",
@@ -3550,11 +3567,11 @@ var en = {
   "entity.flag.on": "On",
   "entity.flag.off": "Off",
   "entity.field.siteCurrentSigned": "Grid current is signed",
-  "entity.field.gridPowerInverted": "Grid power is export-positive",
+  "entity.field.gridPowerInverted": "The sensor shows export as positive",
   "entity.field.gridPowerSource": "Total grid power (for solar)",
   "entity.field.gridPowerSourceExport": "Total export power (if separate)",
   "entity.field.batteryDischargePower": "Battery discharge power",
-  "entity.field.batteryPowerInverted": "Battery power is discharge-positive",
+  "entity.field.batteryPowerInverted": "The sensor shows discharge as positive",
   "entity.derived.powerExport": "Export power",
   "entity.derived.apparentPower": "Apparent power",
   "entity.derived.current": "Current",
@@ -3563,11 +3580,28 @@ var en = {
   "entity.help.gridPowerSource": "Needed for solar and hybrid charging when the phases only report current.",
   "entity.help.gridPowerSourceExport": "Only if the meter reports import and export as two sensors: the field above is then the import and this is the export.",
   "entity.help.batteryPowerInverted": "Turn on if the battery's power is positive while discharging (Tesla, Fronius, Enphase, GoodWe and similar). SpotNav then reads charging as positive.",
-  "entity.help.batteryDischargePower": "Optional. Only for a battery that reports charging and discharging as two sensors: this is the discharge one, and the battery power sensor above is the charge one.",
-  "entity.help.derivedPowerExport": "Optional. Only when the meter reports import and export as two sensors: the power sensor above is then import and this one is export.",
-  "entity.help.derivedApparentPower": "Optional. Apparent power on this phase, in VA. With it the current is exact.",
-  "entity.help.derivedCurrent": "Optional. The meter's own current on this phase. With it the current is exact.",
-  "entity.phase.optional": "More sources (optional)",
+  "entity.help.batteryDischargePower": "Only for a battery that reports charging and discharging as two sensors: this is the discharge one, and the battery power sensor above is the charge one.",
+  "entity.help.derivedPowerExport": "Only when the meter reports import and export as two sensors: the power sensor above is then import and this one is export.",
+  "entity.help.derivedApparentPower": "Apparent power on this phase, in VA. With it the current is exact.",
+  "entity.help.derivedCurrent": "The meter's own current on this phase. With it the current is exact.",
+  "entity.choice.mixed": "More than one of these is set. Only the chosen one is kept; the others are cleared when you save.",
+  "entity.grid.title": "Grid power",
+  "entity.grid.one": "One sensor with direction",
+  "entity.grid.two": "Import and export as two sensors",
+  "entity.current.title": "Current is taken from",
+  "entity.current.measured": "The meter's own current",
+  "entity.current.apparent": "Apparent power",
+  "entity.current.reactive": "Reactive power",
+  "entity.current.estimated": "Estimated (power factor 0.9)",
+  "entity.current.estimatedNote": "SpotNav estimates the current from power. The estimate is marked in the card.",
+  "entity.battery.title": "Battery",
+  "entity.battery.none": "None",
+  "entity.battery.one": "One sensor",
+  "entity.battery.two": "Charging and discharging as two sensors",
+  "entity.energy.title": "Energy",
+  "entity.energy.meter": "Energy meter (kWh)",
+  "entity.energy.power": "Power (W) — SpotNav calculates the energy",
+  "entity.energy.none": "None",
   "entity.notice.estimated": "The current is estimated from power (uppskattad), assuming a power factor of {pf} or better. The estimate is never below the real current at that power factor or better, and understates it below that. Add the meter's current, apparent power or reactive power for an exact value.",
   "entity.notice.estimatedShort": "Estimated",
   "entity.warning.updateInterval": "{integration} updates every {seconds} s, slower than the maximum measurement age.",
@@ -4085,7 +4119,7 @@ var fi = {
   "entity.help.vehicleSoc": "Ajoneuvon varaustaso, luettuna ajoneuvolle valitusta anturista tai löydettynä automaattisesti, kun sillä on vain yksi.",
   "entity.help.mainFuse": "Kohteen pääsulake ampeereina. Kaikki kohteen laturit pysyvät yhdessä sen alapuolella.",
   "entity.help.measurementMode": "Ilmoittaako mittarisi kunkin vaiheen virran suoraan vai laskeeko SpotNav sen tehosta ja jännitteestä.",
-  "entity.help.batteryPower": "Valinnainen. Kotiakun tehon anturi, jotta SpotNav voi ottaa akun huomioon.",
+  "entity.help.batteryPower": "Kotiakun tehon anturi, jotta SpotNav voi ottaa akun huomioon.",
   "entity.help.maxAge": "Kuinka vanha mittaus saa olla sekunteina, ennen kuin SpotNav lakkaa luottamasta siihen.",
   "entity.help.phaseDirect": "Anturi, joka mittaa tämän vaiheen virran ampeereina.",
   "entity.help.derivedPower": "Anturi tämän vaiheen pätöteholle.",
@@ -4094,11 +4128,11 @@ var fi = {
   "entity.flag.on": "Päällä",
   "entity.flag.off": "Pois",
   "entity.field.siteCurrentSigned": "Verkkovirralla on etumerkki",
-  "entity.field.gridPowerInverted": "Verkon teho on vienti positiivinen",
+  "entity.field.gridPowerInverted": "Anturi näyttää viennin positiivisena",
   "entity.field.gridPowerSource": "Verkon kokonaisteho (aurinkoa varten)",
   "entity.field.gridPowerSourceExport": "Viennin kokonaisteho (jos erillinen)",
   "entity.field.batteryDischargePower": "Akun purkausteho",
-  "entity.field.batteryPowerInverted": "Akun teho on purku positiivinen",
+  "entity.field.batteryPowerInverted": "Anturi näyttää purun positiivisena",
   "entity.derived.powerExport": "Vientiteho",
   "entity.derived.apparentPower": "Näennäisteho",
   "entity.derived.current": "Virta",
@@ -4107,11 +4141,28 @@ var fi = {
   "entity.help.gridPowerSource": "Tarvitaan aurinko- ja hybridilatauksessa, kun vaiheet ilmoittavat vain virran.",
   "entity.help.gridPowerSourceExport": "Vain jos mittari ilmoittaa oton ja viennin kahtena anturina: yllä oleva kenttä on silloin otto ja tämä on vienti.",
   "entity.help.batteryPowerInverted": "Kytke päälle, jos akun teho on positiivinen purun aikana (Tesla, Fronius, Enphase, GoodWe ja vastaavat). SpotNav lukee silloin latauksen positiivisena.",
-  "entity.help.batteryDischargePower": "Valinnainen. Vain akulle, joka ilmoittaa latauksen ja purun kahtena anturina: tämä on purku, ja yllä oleva akkuanturi on lataus.",
-  "entity.help.derivedPowerExport": "Valinnainen. Vain kun mittari ilmoittaa oton ja viennin kahtena anturina: yllä oleva tehoanturi on silloin otto ja tämä on vienti.",
-  "entity.help.derivedApparentPower": "Valinnainen. Näennäisteho tällä vaiheella, VA. Sen kanssa virta on tarkka.",
-  "entity.help.derivedCurrent": "Valinnainen. Mittarin oma virta tällä vaiheella. Sen kanssa virta on tarkka.",
-  "entity.phase.optional": "Lisää lähteitä (valinnainen)",
+  "entity.help.batteryDischargePower": "Vain akulle, joka ilmoittaa latauksen ja purun kahtena anturina: tämä on purku, ja yllä oleva akkuanturi on lataus.",
+  "entity.help.derivedPowerExport": "Vain kun mittari ilmoittaa oton ja viennin kahtena anturina: yllä oleva tehoanturi on silloin otto ja tämä on vienti.",
+  "entity.help.derivedApparentPower": "Näennäisteho tällä vaiheella, VA. Sen kanssa virta on tarkka.",
+  "entity.help.derivedCurrent": "Mittarin oma virta tällä vaiheella. Sen kanssa virta on tarkka.",
+  "entity.choice.mixed": "Useampi näistä on asetettu. Vain valittu säilytetään; muut tyhjennetään tallennettaessa.",
+  "entity.grid.title": "Verkon teho",
+  "entity.grid.one": "Yksi anturi suunnan kanssa",
+  "entity.grid.two": "Otto ja vienti kahtena anturina",
+  "entity.current.title": "Virta otetaan",
+  "entity.current.measured": "Mittarin oma virta",
+  "entity.current.apparent": "Näennäisteho",
+  "entity.current.reactive": "Loisteho",
+  "entity.current.estimated": "Arvioitu (tehokerroin 0,9)",
+  "entity.current.estimatedNote": "SpotNav arvioi virran tehosta. Arvio on merkitty kortissa.",
+  "entity.battery.title": "Akku",
+  "entity.battery.none": "Ei mitään",
+  "entity.battery.one": "Yksi anturi",
+  "entity.battery.two": "Lataus ja purku kahtena anturina",
+  "entity.energy.title": "Energia",
+  "entity.energy.meter": "Energiamittari (kWh)",
+  "entity.energy.power": "Teho (W) — SpotNav laskee energian",
+  "entity.energy.none": "Ei mitään",
   "entity.notice.estimated": "Virta on arvioitu tehosta olettaen tehokertoimeksi {pf} tai parempi. Arvio ei ole koskaan pienempi kuin todellinen virta tällä tehokertoimella tai paremmalla, ja aliarvioi sen sen alapuolella. Lisää mittarin virta, näennäisteho tai loisteho saadaksesi tarkan arvon.",
   "entity.notice.estimatedShort": "Arvioitu",
   "entity.warning.updateInterval": "{integration} päivittää {seconds} s välein, hitaammin kuin mittausten enimmäisikä.",
@@ -4629,7 +4680,7 @@ var nb = {
   "entity.help.vehicleSoc": "Kjøretøyets ladenivå, lest fra sensoren som er valgt for kjøretøyet, eller funnet automatisk når det bare har én.",
   "entity.help.mainFuse": "Anleggets hovedsikring i ampere. Alle laderne på anlegget holder seg samlet under den.",
   "entity.help.measurementMode": "Om måleren oppgir strømmen for hver fase direkte, eller SpotNav regner den ut fra effekt og spenning.",
-  "entity.help.batteryPower": "Valgfritt. En sensor for hjemmebatteriets effekt, slik at SpotNav kan ta hensyn til batteriet.",
+  "entity.help.batteryPower": "En sensor for hjemmebatteriets effekt, slik at SpotNav kan ta hensyn til batteriet.",
   "entity.help.maxAge": "Hvor gammel en måling kan være, i sekunder, før SpotNav slutter å stole på den.",
   "entity.help.phaseDirect": "Sensoren som måler strømmen på denne fasen, i ampere.",
   "entity.help.derivedPower": "Sensoren for aktiv effekt på denne fasen.",
@@ -4638,11 +4689,11 @@ var nb = {
   "entity.flag.on": "På",
   "entity.flag.off": "Av",
   "entity.field.siteCurrentSigned": "Nettstrømmen har fortegn",
-  "entity.field.gridPowerInverted": "Nettets effekt har eksport som positiv",
+  "entity.field.gridPowerInverted": "Sensoren viser eksport som positiv",
   "entity.field.gridPowerSource": "Nettets samlede effekt (for sol)",
   "entity.field.gridPowerSourceExport": "Samlet eksporteffekt (hvis separat)",
   "entity.field.batteryDischargePower": "Batteriets utladingseffekt",
-  "entity.field.batteryPowerInverted": "Batteriets effekt har utlading som positiv",
+  "entity.field.batteryPowerInverted": "Sensoren viser utlading som positiv",
   "entity.derived.powerExport": "Eksporteffekt",
   "entity.derived.apparentPower": "Tilsynelatende effekt",
   "entity.derived.current": "Strøm",
@@ -4651,11 +4702,28 @@ var nb = {
   "entity.help.gridPowerSource": "Trengs for sol- og hybridlading når fasene bare oppgir strøm.",
   "entity.help.gridPowerSourceExport": "Bare hvis måleren oppgir import og eksport som to sensorer: feltet over er da importen, og dette er eksporten.",
   "entity.help.batteryPowerInverted": "Slå på hvis batteriets effekt er positiv ved utlading (Tesla, Fronius, Enphase, GoodWe og lignende). SpotNav leser da lading som positiv.",
-  "entity.help.batteryDischargePower": "Valgfritt. Bare for et batteri som oppgir lading og utlading som to sensorer: dette er utladingen, og batterisensoren over er ladingen.",
-  "entity.help.derivedPowerExport": "Valgfritt. Bare når måleren oppgir import og eksport som to sensorer: effektsensoren over er da import og denne er eksport.",
-  "entity.help.derivedApparentPower": "Valgfritt. Tilsynelatende effekt på denne fasen, i VA. Med den blir strømmen nøyaktig.",
-  "entity.help.derivedCurrent": "Valgfritt. Målerens egen strøm på denne fasen. Med den blir strømmen nøyaktig.",
-  "entity.phase.optional": "Flere kilder (valgfritt)",
+  "entity.help.batteryDischargePower": "Bare for et batteri som oppgir lading og utlading som to sensorer: dette er utladingen, og batterisensoren over er ladingen.",
+  "entity.help.derivedPowerExport": "Bare når måleren oppgir import og eksport som to sensorer: effektsensoren over er da import og denne er eksport.",
+  "entity.help.derivedApparentPower": "Tilsynelatende effekt på denne fasen, i VA. Med den blir strømmen nøyaktig.",
+  "entity.help.derivedCurrent": "Målerens egen strøm på denne fasen. Med den blir strømmen nøyaktig.",
+  "entity.choice.mixed": "Mer enn ett av disse er satt. Bare det valgte beholdes; de andre tømmes når du lagrer.",
+  "entity.grid.title": "Nettets effekt",
+  "entity.grid.one": "Én sensor med retning",
+  "entity.grid.two": "Import og eksport som to sensorer",
+  "entity.current.title": "Strømmen hentes fra",
+  "entity.current.measured": "Målerens egen strøm",
+  "entity.current.apparent": "Tilsynelatende effekt",
+  "entity.current.reactive": "Reaktiv effekt",
+  "entity.current.estimated": "Anslått (effektfaktor 0,9)",
+  "entity.current.estimatedNote": "SpotNav anslår strømmen ut fra effekten. Anslaget er markert i kortet.",
+  "entity.battery.title": "Batteri",
+  "entity.battery.none": "Ingen",
+  "entity.battery.one": "Én sensor",
+  "entity.battery.two": "Lading og utlading som to sensorer",
+  "entity.energy.title": "Energi",
+  "entity.energy.meter": "Energiteller (kWh)",
+  "entity.energy.power": "Effekt (W) — SpotNav beregner energien",
+  "entity.energy.none": "Ingen",
   "entity.notice.estimated": "Strømmen er anslått ut fra effekten, med effektfaktor {pf} eller bedre som forutsetning. Anslaget er aldri lavere enn den virkelige strømmen ved den effektfaktoren eller bedre, og undervurderer den under det. Legg til målerens strøm, tilsynelatende effekt eller reaktive effekt for en nøyaktig verdi.",
   "entity.notice.estimatedShort": "Anslått",
   "entity.warning.updateInterval": "{integration} oppdaterer hvert {seconds} s, tregere enn høyeste måleralder.",
@@ -5173,7 +5241,7 @@ var sv = {
   "entity.help.vehicleSoc": "Fordonets laddnivå, läst från sensorn som valts för fordonet, eller hittad automatiskt när det bara har en.",
   "entity.help.mainFuse": "Anläggningens huvudsäkring i ampere. Alla laddare på anläggningen håller sig tillsammans under den.",
   "entity.help.measurementMode": "Om din mätare anger varje fas ström direkt, eller om SpotNav räknar ut den från effekt och spänning.",
-  "entity.help.batteryPower": "Valfritt. En sensor för hemmabatteriets effekt, så att SpotNav kan ta hänsyn till batteriet.",
+  "entity.help.batteryPower": "En sensor för hemmabatteriets effekt, så att SpotNav kan ta hänsyn till batteriet.",
   "entity.help.maxAge": "Hur gammal en mätning får vara, i sekunder, innan SpotNav slutar lita på den.",
   "entity.help.phaseDirect": "Sensorn som mäter strömmen på den här fasen, i ampere.",
   "entity.help.derivedPower": "Sensorn för aktiv effekt på den här fasen.",
@@ -5182,11 +5250,11 @@ var sv = {
   "entity.flag.on": "På",
   "entity.flag.off": "Av",
   "entity.field.siteCurrentSigned": "Nätströmmen är teckenmärkt",
-  "entity.field.gridPowerInverted": "Nätets effekt har export som positiv",
+  "entity.field.gridPowerInverted": "Sensorn visar export som positiv",
   "entity.field.gridPowerSource": "Nätets totala effekt (för sol)",
   "entity.field.gridPowerSourceExport": "Total exporteffekt (om separat)",
   "entity.field.batteryDischargePower": "Batteriets urladdningseffekt",
-  "entity.field.batteryPowerInverted": "Batteriets effekt har urladdning som positiv",
+  "entity.field.batteryPowerInverted": "Sensorn visar urladdning som positiv",
   "entity.derived.powerExport": "Exporteffekt",
   "entity.derived.apparentPower": "Skenbar effekt",
   "entity.derived.current": "Ström",
@@ -5195,11 +5263,28 @@ var sv = {
   "entity.help.gridPowerSource": "Behövs för sol- och hybridladdning när faserna bara anger ström.",
   "entity.help.gridPowerSourceExport": "Bara om mätaren anger import och export som två sensorer: fältet ovan är då importen och det här är exporten.",
   "entity.help.batteryPowerInverted": "Slå på om batteriets effekt är positiv vid urladdning (Tesla, Fronius, Enphase, GoodWe och liknande). SpotNav läser då laddning som positiv.",
-  "entity.help.batteryDischargePower": "Valfritt. Bara för ett batteri som anger laddning och urladdning som två sensorer: det här är urladdningen, och batterisensorn ovan är laddningen.",
-  "entity.help.derivedPowerExport": "Valfritt. Bara när mätaren anger import och export som två sensorer: effektsensorn ovan är då import och den här är export.",
-  "entity.help.derivedApparentPower": "Valfritt. Skenbar effekt på den här fasen, i VA. Med den blir strömmen exakt.",
-  "entity.help.derivedCurrent": "Valfritt. Mätarens egen ström på den här fasen. Med den blir strömmen exakt.",
-  "entity.phase.optional": "Fler källor (valfritt)",
+  "entity.help.batteryDischargePower": "Bara för ett batteri som anger laddning och urladdning som två sensorer: det här är urladdningen, och batterisensorn ovan är laddningen.",
+  "entity.help.derivedPowerExport": "Bara när mätaren anger import och export som två sensorer: effektsensorn ovan är då import och den här är export.",
+  "entity.help.derivedApparentPower": "Skenbar effekt på den här fasen, i VA. Med den blir strömmen exakt.",
+  "entity.help.derivedCurrent": "Mätarens egen ström på den här fasen. Med den blir strömmen exakt.",
+  "entity.choice.mixed": "Fler än ett av dessa är angivet. Bara det valda behålls; de andra rensas när du sparar.",
+  "entity.grid.title": "Nätets effekt",
+  "entity.grid.one": "En sensor med riktning",
+  "entity.grid.two": "Import och export som två sensorer",
+  "entity.current.title": "Strömmen hämtas från",
+  "entity.current.measured": "Mätarens egen ström",
+  "entity.current.apparent": "Skenbar effekt",
+  "entity.current.reactive": "Reaktiv effekt",
+  "entity.current.estimated": "Uppskattad (effektfaktor 0,9)",
+  "entity.current.estimatedNote": "SpotNav uppskattar strömmen från effekten. Uppskattningen markeras i kortet.",
+  "entity.battery.title": "Batteri",
+  "entity.battery.none": "Inget",
+  "entity.battery.one": "En sensor",
+  "entity.battery.two": "Laddning och urladdning som två sensorer",
+  "entity.energy.title": "Energi",
+  "entity.energy.meter": "Energiräknare (kWh)",
+  "entity.energy.power": "Effekt (W) — SpotNav räknar ut energin",
+  "entity.energy.none": "Ingen",
   "entity.notice.estimated": "Strömmen är uppskattad från effekten, med effektfaktor {pf} eller bättre som antagande. Uppskattningen är aldrig lägre än den verkliga strömmen vid den effektfaktorn eller bättre, och underskattar den under det. Lägg till mätarens ström, skenbara effekt eller reaktiva effekt för ett exakt värde.",
   "entity.notice.estimatedShort": "Uppskattad",
   "entity.warning.updateInterval": "{integration} uppdaterar var {seconds} s, långsammare än högsta mätvärdesålder.",
@@ -8339,9 +8424,6 @@ var PHASES = ["L1", "L2", "L3"];
 var GRID_TOTAL_FIELDS = ["grid_power_source_power", "grid_power_source_power_export"];
 var DERIVED_KINDS = ["power", "voltage", "power_export", "reactive_power", "apparent_power", "current"];
 var DERIVED_REQUIRED_KINDS = ["power", "voltage"];
-var DERIVED_OPTIONAL_KINDS = DERIVED_KINDS.filter(
-  (kind) => !DERIVED_REQUIRED_KINDS.includes(kind)
-);
 function directFieldName(phase) {
   return `direct_${phase}`;
 }
@@ -8905,6 +8987,8 @@ function entityEditorBody(doc, language, input, handlers, idPrefix) {
   const disabledWhenPending = [];
   const errorNodes = /* @__PURE__ */ new Map();
   let pending = false;
+  const locked = input.readOnly === true;
+  const keepEnabled = /* @__PURE__ */ new Set();
   const body = element(doc, "form");
   body.noValidate = true;
   body.dataset["entityEditor"] = scope;
@@ -9176,15 +9260,28 @@ function entityEditorBody(doc, language, input, handlers, idPrefix) {
     }
     return card;
   }
+  const MANAGED_SITE = /* @__PURE__ */ new Set([
+    "site_current_signed",
+    ...GRID_TOTAL_FIELDS,
+    "grid_power_inverted",
+    "battery_aggregate_power_entity",
+    "battery_discharge_power_entity",
+    "battery_power_inverted",
+    "max_age_s"
+  ]);
+  const MANAGED_CHARGER = /* @__PURE__ */ new Set(["energy_register_entity", "power_entity"]);
+  const managed = /* @__PURE__ */ new Map();
+  const isManaged = (name) => scope === "site" ? MANAGED_SITE.has(name) : MANAGED_CHARGER.has(name);
   for (const field2 of fieldsOf(config, scope)) {
     if (!field2.writable || isPhaseField(field2.field) || field2.field === "measurement_mode") {
       continue;
     }
     const label = labelOf(language, field2.field);
+    let block = null;
     if (field2.kind === "entity") {
-      body.append(entityField(field2, label));
+      block = entityField(field2, label);
     } else if (field2.kind === "flag") {
-      body.append(flagField(field2, label));
+      block = flagField(field2, label);
     } else if (field2.kind === "number") {
       const row = fieldBlock(field2.field, label, numberControl(field2, label), true, field2);
       const control = row.querySelector("input");
@@ -9193,7 +9290,105 @@ function entityEditorBody(doc, language, input, handlers, idPrefix) {
         control.replaceWith(line);
         line.append(control, element(doc, "span", VISUAL_CLASSES.settingsUnit, field2.field === "main_fuse_a" ? "A" : "s"));
       }
-      body.append(row);
+      block = row;
+    }
+    if (block === null) {
+      continue;
+    }
+    if (isManaged(field2.field)) {
+      managed.set(field2.field, block);
+    } else {
+      body.append(block);
+    }
+  }
+  const blocksOf = (...names) => names.flatMap((name) => {
+    const block = managed.get(name);
+    return block === void 0 ? [] : [block];
+  });
+  function choiceGroup(part, title, options, get, set) {
+    const fieldset = element(doc, "fieldset", VISUAL_CLASSES.siteFieldset);
+    fieldset.dataset["part"] = part;
+    fieldset.append(element(doc, "legend", VISUAL_CLASSES.siteLegend, translate(language, title)));
+    const radios = [];
+    for (const option of options) {
+      const line = element(doc, "label", VISUAL_CLASSES.siteChoice);
+      const radio = doc.createElement("input");
+      radio.type = "radio";
+      radio.name = `${idPrefix}-choice-${part}`;
+      radio.value = option.value;
+      radio.dataset["choice"] = option.value;
+      radio.checked = get() === option.value;
+      radio.addEventListener("change", () => {
+        if (radio.checked) {
+          set(option.value);
+        }
+      });
+      disabledWhenPending.push(radio);
+      radios.push(radio);
+      line.append(radio, doc.createTextNode(translate(language, option.label)));
+      fieldset.append(line);
+    }
+    const note = element(doc, "p", VISUAL_CLASSES.entityHelp, translate(language, "entity.choice.mixed"));
+    note.dataset["choiceNote"] = part;
+    note.hidden = true;
+    fieldset.append(note);
+    const fields = element(doc, "div");
+    fields.dataset["choiceFields"] = part;
+    fieldset.append(fields);
+    return {
+      fieldset,
+      fields,
+      sync() {
+        for (const radio of radios) {
+          radio.checked = get() === radio.value;
+        }
+      },
+      showNote(mixed) {
+        note.hidden = !mixed;
+      }
+    };
+  }
+  const clearers = [];
+  const isSet = (name) => (values[name] ?? "").trim() !== "";
+  const isOn = (name) => values[name] === "true";
+  if (scope === "charger") {
+    const hasRegister = managed.has("energy_register_entity");
+    const hasPlug = managed.has("power_entity");
+    const registerField = config.fields.find((entry) => entry.field === "energy_register_entity");
+    const found = registerField !== void 0 && registerField.kind === "entity" && automaticEntity(registerField) !== null;
+    const energyKind = () => isSet("energy_register_entity") || found ? "meter" : hasPlug && isSet("power_entity") ? "power" : "none";
+    let energy = energyKind();
+    const energyMixed = isSet("energy_register_entity") && isSet("power_entity");
+    if (hasRegister || hasPlug) {
+      const options = [];
+      if (hasRegister) {
+        options.push({ value: "meter", label: "entity.energy.meter" });
+      }
+      if (hasPlug) {
+        options.push({ value: "power", label: "entity.energy.power" });
+      }
+      options.push({ value: "none", label: "entity.energy.none" });
+      const paintEnergy = () => {
+        group.fields.replaceChildren(
+          ...energy === "meter" ? blocksOf("energy_register_entity") : energy === "power" ? blocksOf("power_entity") : []
+        );
+        applyPending();
+      };
+      const group = choiceGroup("energy", "entity.energy.title", options, () => energy, (value) => {
+        energy = value;
+        paintEnergy();
+      });
+      group.showNote(energyMixed);
+      clearers.push((draft) => {
+        if (energy !== "meter") {
+          draft["energy_register_entity"] = "";
+        }
+        if (energy !== "power") {
+          draft["power_entity"] = "";
+        }
+      });
+      body.append(group.fieldset);
+      paintEnergy();
     }
   }
   if (scope === "site") {
@@ -9206,15 +9401,29 @@ function entityEditorBody(doc, language, input, handlers, idPrefix) {
       modeHelp.dataset["help"] = "measurement_mode";
       fieldset.append(modeHelp);
       const radioName = `${idPrefix}-mode`;
+      const head = element(doc, "div");
+      head.dataset["part"] = "head";
       const phases = element(doc, "div", VISUAL_CLASSES.entityMeters);
       phases.dataset["part"] = "phases";
+      const tail = element(doc, "div");
+      tail.dataset["part"] = "tail";
       const currentMode = () => values["measurement_mode"] ?? storedMode(config) ?? MEASUREMENT_DIRECT;
+      const phaseValue = (name) => values[name] ?? phaseField(config, name).current?.entityId ?? "";
+      const anyPhase = (kind) => PHASES.some((phase) => phaseValue(derivedFieldName(phase, kind)).trim() !== "");
+      const CURRENT_KINDS = [
+        ["measured", "current"],
+        ["apparent", "apparent_power"],
+        ["reactive", "reactive_power"]
+      ];
+      const usedKinds = CURRENT_KINDS.filter(([, kind]) => anyPhase(kind));
+      let currentKind = usedKinds[0]?.[0] ?? "estimated";
+      const currentMixed = usedKinds.length > 1;
+      const gridFromValues = () => (currentMode() === MEASUREMENT_DERIVED ? anyPhase("power_export") : phaseValue(GRID_TOTAL_FIELDS[1]).trim() !== "") ? "two" : "one";
+      let gridKind = gridFromValues();
+      let batteryKind = isSet("battery_discharge_power_entity") ? "two" : isSet("battery_aggregate_power_entity") ? "one" : "none";
       const paintPhases = () => {
         for (const name of phaseFieldNames(MEASUREMENT_DIRECT).concat(phaseFieldNames(MEASUREMENT_DERIVED))) {
-          const gone = errorNodes.get(name);
-          if (gone !== void 0) {
-            errorNodes.delete(name);
-          }
+          errorNodes.delete(name);
         }
         for (const picker of [...pickers]) {
           if (picker.dataset["field"] !== void 0 && isPhaseField(picker.dataset["field"])) {
@@ -9224,13 +9433,18 @@ function entityEditorBody(doc, language, input, handlers, idPrefix) {
         phases.replaceChildren();
         const mode = currentMode();
         phases.dataset["mode"] = mode;
+        const derived = mode === MEASUREMENT_DERIVED;
+        const currentName = CURRENT_KINDS.find(([choice]) => choice === currentKind)?.[1] ?? null;
         const phaseHelp = element(doc, "div");
         phaseHelp.dataset["help"] = "phases";
-        const helpKeys = mode === MEASUREMENT_DERIVED ? ["entity.help.derivedPower", "entity.help.derivedVoltage"] : ["entity.help.phaseDirect"];
-        for (const name of GRID_TOTAL_FIELDS) {
-          const total = body.querySelector(`[data-field-block="${name}"]`);
-          if (total !== null) {
-            total.hidden = mode === MEASUREMENT_DERIVED;
+        const helpKeys = derived ? ["entity.help.derivedPower", "entity.help.derivedVoltage"] : ["entity.help.phaseDirect"];
+        if (derived && gridKind === "two") {
+          helpKeys.push("entity.help.derivedPowerExport");
+        }
+        if (derived && currentName !== null) {
+          const key = fieldHelpKey(derivedFieldName("L1", currentName));
+          if (key !== null) {
+            helpKeys.push(key);
           }
         }
         for (const key of helpKeys) {
@@ -9241,7 +9455,11 @@ function entityEditorBody(doc, language, input, handlers, idPrefix) {
           group.dataset["phase"] = phase;
           group.append(element(doc, "legend", VISUAL_CLASSES.siteLegend, phase));
           const cells = element(doc, "div", VISUAL_CLASSES.entityLineCells);
-          const names = mode === MEASUREMENT_DERIVED ? DERIVED_REQUIRED_KINDS.map((kind) => derivedFieldName(phase, kind)) : [directFieldName(phase)];
+          const names = derived ? [
+            ...DERIVED_REQUIRED_KINDS.map((kind) => derivedFieldName(phase, kind)),
+            ...gridKind === "two" ? [derivedFieldName(phase, "power_export")] : [],
+            ...currentName === null ? [] : [derivedFieldName(phase, currentName)]
+          ] : [directFieldName(phase)];
           for (const name of names) {
             const field2 = phaseField(config, name);
             if (values[name] === void 0) {
@@ -9250,29 +9468,126 @@ function entityEditorBody(doc, language, input, handlers, idPrefix) {
             cells.append(entityField(field2, labelOf(language, name)));
           }
           group.append(cells);
-          if (mode === MEASUREMENT_DERIVED) {
-            const more = element(doc, "details");
-            more.dataset["optionalSources"] = phase;
-            more.append(element(doc, "summary", void 0, translate(language, "entity.phase.optional")));
-            const optionalCells = element(doc, "div", VISUAL_CLASSES.entityLineCells);
-            let anySet = false;
-            for (const kind of DERIVED_OPTIONAL_KINDS) {
-              const name = derivedFieldName(phase, kind);
-              const field2 = phaseField(config, name);
-              if (values[name] === void 0) {
-                values[name] = field2.current === null ? "" : field2.current.entityId;
-              }
-              anySet = anySet || values[name] !== "";
-              optionalCells.append(entityField(field2, labelOf(language, name)));
-            }
-            more.open = anySet;
-            more.append(optionalCells);
-            group.append(more);
-          }
           phases.append(group);
         }
         phases.append(phaseHelp);
+        applyPending();
       };
+      const grid = choiceGroup(
+        "grid",
+        "entity.grid.title",
+        [
+          { value: "one", label: "entity.grid.one" },
+          { value: "two", label: "entity.grid.two" }
+        ],
+        () => gridKind,
+        (value) => {
+          gridKind = value;
+          paintGrid();
+          if (currentMode() === MEASUREMENT_DERIVED) {
+            paintPhases();
+          }
+        }
+      );
+      const paintGrid = () => {
+        const derived = currentMode() === MEASUREMENT_DERIVED;
+        grid.fields.replaceChildren(
+          ...derived ? [] : blocksOf(GRID_TOTAL_FIELDS[0], ...gridKind === "two" ? [GRID_TOTAL_FIELDS[1]] : []),
+          ...gridKind === "one" ? blocksOf("grid_power_inverted") : []
+        );
+        grid.showNote(gridKind === "two" && isOn("grid_power_inverted"));
+        applyPending();
+      };
+      const current = choiceGroup(
+        "current-source",
+        "entity.current.title",
+        [
+          { value: "measured", label: "entity.current.measured" },
+          { value: "apparent", label: "entity.current.apparent" },
+          { value: "reactive", label: "entity.current.reactive" },
+          { value: "estimated", label: "entity.current.estimated" }
+        ],
+        () => currentKind,
+        (value) => {
+          currentKind = value;
+          paintCurrent();
+          paintPhases();
+        }
+      );
+      current.showNote(currentMixed);
+      const paintCurrent = () => {
+        const note = element(doc, "p", VISUAL_CLASSES.entityHelp, translate(language, "entity.current.estimatedNote"));
+        note.dataset["help"] = "current-estimated";
+        current.fields.replaceChildren(...currentKind === "estimated" ? [note] : []);
+      };
+      const battery = choiceGroup(
+        "battery",
+        "entity.battery.title",
+        [
+          { value: "none", label: "entity.battery.none" },
+          { value: "one", label: "entity.battery.one" },
+          { value: "two", label: "entity.battery.two" }
+        ],
+        () => batteryKind,
+        (value) => {
+          batteryKind = value;
+          paintBattery();
+        }
+      );
+      const paintBattery = () => {
+        battery.fields.replaceChildren(
+          ...batteryKind === "none" ? [] : blocksOf("battery_aggregate_power_entity"),
+          ...batteryKind === "two" ? blocksOf("battery_discharge_power_entity") : [],
+          ...batteryKind === "one" ? blocksOf("battery_power_inverted") : []
+        );
+        battery.showNote(batteryKind !== "one" && isOn("battery_power_inverted"));
+        applyPending();
+      };
+      const layoutMode = () => {
+        const derived = currentMode() === MEASUREMENT_DERIVED;
+        gridKind = gridFromValues();
+        grid.sync();
+        paintGrid();
+        paintCurrent();
+        head.replaceChildren(...derived ? [grid.fieldset, current.fieldset] : []);
+        tail.replaceChildren(
+          ...derived ? [] : [grid.fieldset],
+          ...blocksOf("site_current_signed"),
+          battery.fieldset,
+          ...blocksOf("max_age_s")
+        );
+        paintPhases();
+      };
+      clearers.push((draft) => {
+        const derived = currentMode() === MEASUREMENT_DERIVED;
+        if (derived) {
+          const keep = CURRENT_KINDS.find(([choice]) => choice === currentKind)?.[1] ?? null;
+          for (const phase of PHASES) {
+            for (const [, kind] of CURRENT_KINDS) {
+              if (kind !== keep) {
+                draft[derivedFieldName(phase, kind)] = "";
+              }
+            }
+            if (gridKind === "one") {
+              draft[derivedFieldName(phase, "power_export")] = "";
+            }
+          }
+        } else if (gridKind === "one") {
+          draft[GRID_TOTAL_FIELDS[1]] = "";
+        }
+        if (gridKind === "two") {
+          draft["grid_power_inverted"] = "false";
+        }
+        if (batteryKind === "none") {
+          draft["battery_aggregate_power_entity"] = "";
+        }
+        if (batteryKind !== "two") {
+          draft["battery_discharge_power_entity"] = "";
+        }
+        if (batteryKind !== "one") {
+          draft["battery_power_inverted"] = "false";
+        }
+      });
       for (const choice of modeField.choices) {
         const label = element(doc, "label", VISUAL_CLASSES.siteChoice);
         const radio = doc.createElement("input");
@@ -9284,7 +9599,7 @@ function entityEditorBody(doc, language, input, handlers, idPrefix) {
         radio.addEventListener("change", () => {
           if (radio.checked) {
             values["measurement_mode"] = choice;
-            paintPhases();
+            layoutMode();
           }
         });
         disabledWhenPending.push(radio);
@@ -9297,23 +9612,9 @@ function entityEditorBody(doc, language, input, handlers, idPrefix) {
       modeError.setAttribute("role", "alert");
       errorNodes.set("measurement_mode", { node: modeError, input: fieldset });
       fieldset.append(modeError);
-      body.append(fieldset);
-      paintPhases();
-      body.append(phases);
-      for (const name of [
-        "site_current_signed",
-        ...GRID_TOTAL_FIELDS,
-        "grid_power_inverted",
-        "battery_aggregate_power_entity",
-        "battery_discharge_power_entity",
-        "battery_power_inverted",
-        "max_age_s"
-      ]) {
-        const block = body.querySelector(`[data-field-block="${name}"]`);
-        if (block !== null) {
-          body.append(block);
-        }
-      }
+      body.append(fieldset, head, phases, tail);
+      paintBattery();
+      layoutMode();
     }
   }
   const actions = element(doc, "div", VISUAL_CLASSES.settingsActions);
@@ -9324,26 +9625,35 @@ function entityEditorBody(doc, language, input, handlers, idPrefix) {
   actions.append(save, cancel);
   body.append(actions);
   disabledWhenPending.push(save, cancel);
+  keepEnabled.add(cancel);
   body.addEventListener("submit", (event) => {
     event.preventDefault();
-    if (!pending) {
-      handlers.onSave({ ...values });
+    if (!pending && !locked) {
+      handlers.onSave(resolvedDraft());
     }
   });
   cancel.addEventListener("click", () => {
     handlers.onCancel();
   });
+  function resolvedDraft() {
+    const draft = { ...values };
+    for (const clear of clearers) {
+      clear(draft);
+    }
+    return draft;
+  }
   function applyPending() {
     for (const control of disabledWhenPending) {
-      control.disabled = pending;
+      control.disabled = pending || locked && !keepEnabled.has(control);
     }
     for (const picker of pickers) {
-      picker.disabled = pending;
+      picker.disabled = pending || locked;
     }
   }
+  applyPending();
   return {
     body,
-    draft: () => ({ ...values }),
+    draft: resolvedDraft,
     markErrors(errors) {
       for (const [, entry] of errorNodes) {
         entry.node.hidden = true;
