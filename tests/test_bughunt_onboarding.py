@@ -1,14 +1,12 @@
-"""Onboarding bug hunt 2026-10-03: each test pins one real bug and is xfail until it is fixed.
+"""Onboarding bug hunt 2026-10-03: each test pins one real bug that has since been fixed.
 
-The id in each reason (BH-n) is the entry in plans/bughunt_2026-10-03.md. Remove the marker when
-the fix lands; strict, so a fix that is not accompanied by removing it fails the run.
+The BH-n ids are the entries in plans/bughunt_2026-10-03.md.
 """
 
 from __future__ import annotations
 
 from datetime import timedelta
 
-import pytest
 from homeassistant.core import HomeAssistant
 from homeassistant.util import dt as dt_util
 from pytest_homeassistant_custom_component.common import async_mock_service
@@ -63,7 +61,6 @@ async def test_a_safety_margin_at_or_above_the_main_fuse_is_refused(hass: HomeAs
     assert result["errors"] == {"safety_margin_a": "safety_margin_at_or_above_fuse"}
 
 
-@pytest.mark.xfail(strict=True, reason="BH-2: a charge control that was renamed or removed still reads 'available'; nothing tells the person the charger is dead")
 async def test_a_charger_whose_charge_control_entity_is_gone_is_reported_unavailable(
     hass: HomeAssistant, offline_relay
 ) -> None:
@@ -156,3 +153,64 @@ async def test_an_area_a_person_cleared_is_not_suggested_again(hass: HomeAssista
     domain_data(hass).price_refresh = _Manager(CATALOGUE)
     assert not await async_seed_first_run(hass, entry, _Controller(None), None)
     assert store.settings(entry.entry_id).area_id is None
+
+
+async def test_a_disabled_or_removed_charge_control_says_which_and_names_the_entity(
+    hass: HomeAssistant, offline_relay
+) -> None:
+    from homeassistant.helpers import entity_registry as er
+
+    from custom_components.spotnav.api.dashboard import capture_charger
+
+    from .world import setup_charger
+
+    registry = er.async_get(hass)
+    registry.async_get_or_create("switch", "demo", "ctl", suggested_object_id="garage")
+    entry = await setup_charger(hass, charge_control="switch.garage")
+    assert capture_charger(hass, entry).problem is None
+
+    registry.async_update_entity("switch.garage", disabled_by=er.RegistryEntryDisabler.USER)
+    captured = capture_charger(hass, entry)
+    assert (captured.available, captured.problem, captured.problem_entity) == (
+        False,
+        "control_disabled",
+        "switch.garage",
+    )
+
+    registry.async_update_entity("switch.garage", disabled_by=None)
+    hass.states.async_remove("switch.garage")
+    assert capture_charger(hass, entry).problem == "control_missing"
+
+    hass.states.async_set("switch.garage", "unavailable")  # unavailable is not gone
+    assert capture_charger(hass, entry).problem is None
+
+
+async def test_renaming_the_charge_control_follows_the_new_entity_id(hass: HomeAssistant, offline_relay) -> None:
+    from homeassistant.helpers import entity_registry as er
+
+    from custom_components.spotnav.runtime import charger_data
+
+    from .world import setup_charger
+
+    registry = er.async_get(hass)
+    registry.async_get_or_create("switch", "demo", "ctl", suggested_object_id="garage")
+    entry = await setup_charger(hass, charge_control="switch.garage")
+
+    registry.async_update_entity("switch.garage", new_entity_id="switch.garage_box")
+    await hass.async_block_till_done()
+    hass.states.async_set("switch.garage_box", "off")
+
+    assert entry.data[CONF_CHARGE_CONTROL] == "switch.garage_box"
+    controller = hass.config_entries.async_get_entry(entry.entry_id).runtime_data.controller
+    assert controller.charge_control == "switch.garage_box"
+    assert charger_data(hass, entry.entry_id) is not None
+
+
+def test_replacing_an_entity_id_walks_nested_values_and_never_keys() -> None:
+    from custom_components.spotnav.entity_renames import replace_entity_id
+
+    value = {"a": "sensor.x", "b": {"sensor.x": ["sensor.x", "sensor.y"]}, "n": 3}
+    result, changed = replace_entity_id(value, "sensor.x", "sensor.z")
+    assert changed
+    assert result == {"a": "sensor.z", "b": {"sensor.x": ["sensor.z", "sensor.y"]}, "n": 3}
+    assert replace_entity_id(value, "sensor.q", "sensor.z") == (value, False)

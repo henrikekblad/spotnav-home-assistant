@@ -49,6 +49,8 @@ export const fi: Record<keyof typeof en, string> = {
   "issue.banner.blocking": "Jotain on korjattava ennen kuin lataus voidaan suunnitella.",
   "issue.banner.notice": "Hyvä tietää.",
   "issue.chargerMissing": "Valittua laturia ei voi käyttää: se on tuntematon, ei ladattu tai kyseessä on asema.",
+  "issue.chargeControlMissing": "Latauksen ohjausta {entity} ei enää ole. Se on luultavasti nimetty uudelleen tai poistettu: valitse laturin ohjaus uudelleen sen asetuksista.",
+  "issue.chargeControlDisabled": "Latauksen ohjaus {entity} on poistettu käytöstä Home Assistantissa, joten SpotNav ei voi käynnistää tai pysäyttää laturia. Ota se uudelleen käyttöön.",
   "issue.unsupported": "Kortti ja integraatio käyttävät eri API-versioita.",
   "issue.malformed": "Taustajärjestelmän vastaus ei ollut kelvollinen API v2 -vastaus.",
   "status.finishSetupArea": "Viimeistele asetukset: valitse hinta-alue Asetuksissa.",

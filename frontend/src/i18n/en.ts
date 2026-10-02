@@ -50,6 +50,8 @@ export const en = {
   "issue.banner.blocking": "Something needs attention before charging can be planned.",
   "issue.banner.notice": "Good to know.",
   "issue.chargerMissing": "The configured charger is not usable: it is unknown, unloaded or a site.",
+  "issue.chargeControlMissing": "The charge control {entity} no longer exists. It was probably renamed or removed: choose the charger's control again in its settings.",
+  "issue.chargeControlDisabled": "The charge control {entity} is disabled in Home Assistant, so SpotNav cannot start or stop the charger. Enable it again.",
   "issue.unsupported": "The card and the integration speak different API versions.",
   "issue.malformed": "The backend answer was not a valid API v2 response.",
   "status.finishSetupArea": "Finish setting up: choose a price area in Settings.",

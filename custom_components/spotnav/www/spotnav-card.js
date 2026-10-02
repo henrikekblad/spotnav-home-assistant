@@ -2907,6 +2907,8 @@ var da = {
   "issue.banner.blocking": "Noget skal ordnes, før opladning kan planlægges.",
   "issue.banner.notice": "Godt at vide.",
   "issue.chargerMissing": "Den valgte lader kan ikke bruges: den er ukendt, ikke indlæst eller et anlæg.",
+  "issue.chargeControlMissing": "Ladestyringen {entity} findes ikke længere. Den er sandsynligvis omdøbt eller fjernet: vælg laderens styring igen i dens indstillinger.",
+  "issue.chargeControlDisabled": "Ladestyringen {entity} er deaktiveret i Home Assistant, så SpotNav kan ikke starte eller stoppe laderen. Aktivér den igen.",
   "issue.unsupported": "Kortet og integrationen taler forskellige API-versioner.",
   "issue.malformed": "Svaret fra backend var ikke et gyldigt API v2-svar.",
   "status.finishSetupArea": "Færdiggør opsætningen: vælg et prisområde i Indstillinger.",
@@ -3453,6 +3455,8 @@ var en = {
   "issue.banner.blocking": "Something needs attention before charging can be planned.",
   "issue.banner.notice": "Good to know.",
   "issue.chargerMissing": "The configured charger is not usable: it is unknown, unloaded or a site.",
+  "issue.chargeControlMissing": "The charge control {entity} no longer exists. It was probably renamed or removed: choose the charger's control again in its settings.",
+  "issue.chargeControlDisabled": "The charge control {entity} is disabled in Home Assistant, so SpotNav cannot start or stop the charger. Enable it again.",
   "issue.unsupported": "The card and the integration speak different API versions.",
   "issue.malformed": "The backend answer was not a valid API v2 response.",
   "status.finishSetupArea": "Finish setting up: choose a price area in Settings.",
@@ -3999,6 +4003,8 @@ var fi = {
   "issue.banner.blocking": "Jotain on korjattava ennen kuin lataus voidaan suunnitella.",
   "issue.banner.notice": "Hyvä tietää.",
   "issue.chargerMissing": "Valittua laturia ei voi käyttää: se on tuntematon, ei ladattu tai kyseessä on asema.",
+  "issue.chargeControlMissing": "Latauksen ohjausta {entity} ei enää ole. Se on luultavasti nimetty uudelleen tai poistettu: valitse laturin ohjaus uudelleen sen asetuksista.",
+  "issue.chargeControlDisabled": "Latauksen ohjaus {entity} on poistettu käytöstä Home Assistantissa, joten SpotNav ei voi käynnistää tai pysäyttää laturia. Ota se uudelleen käyttöön.",
   "issue.unsupported": "Kortti ja integraatio käyttävät eri API-versioita.",
   "issue.malformed": "Taustajärjestelmän vastaus ei ollut kelvollinen API v2 -vastaus.",
   "status.finishSetupArea": "Viimeistele asetukset: valitse hinta-alue Asetuksissa.",
@@ -4545,6 +4551,8 @@ var nb = {
   "issue.banner.blocking": "Noe må ordnes før lading kan planlegges.",
   "issue.banner.notice": "Greit å vite.",
   "issue.chargerMissing": "Den valgte laderen kan ikke brukes: den er ukjent, ikke lastet eller et anlegg.",
+  "issue.chargeControlMissing": "Ladestyringen {entity} finnes ikke lenger. Den er sannsynligvis omdøpt eller fjernet: velg laderens styring på nytt i innstillingene.",
+  "issue.chargeControlDisabled": "Ladestyringen {entity} er deaktivert i Home Assistant, så SpotNav kan ikke starte eller stoppe laderen. Aktiver den igjen.",
   "issue.unsupported": "Kortet og integrasjonen snakker ulike API-versjoner.",
   "issue.malformed": "Svaret fra backend var ikke et gyldig API v2-svar.",
   "status.finishSetupArea": "Fullfør oppsettet: velg et prisområde i Innstillinger.",
@@ -5091,6 +5099,8 @@ var sv = {
   "issue.banner.blocking": "Något behöver åtgärdas innan laddning kan planeras.",
   "issue.banner.notice": "Bra att veta.",
   "issue.chargerMissing": "Den valda laddaren går inte att använda: den är okänd, inte laddad eller en anläggning.",
+  "issue.chargeControlMissing": "Laddstyrningen {entity} finns inte längre. Den har troligen bytt namn eller tagits bort: välj laddarens styrning igen i dess inställningar.",
+  "issue.chargeControlDisabled": "Laddstyrningen {entity} är avstängd i Home Assistant, så SpotNav kan inte starta eller stoppa laddaren. Aktivera den igen.",
   "issue.unsupported": "Kortet och integrationen talar olika API-versioner.",
   "issue.malformed": "Svaret från backend var inte ett giltigt API v2-svar.",
   "status.finishSetupArea": "Slutför inställningen: välj ett prisområde i Inställningar.",
@@ -6870,7 +6880,7 @@ function decodeSite(source) {
 }
 var STATUS_TONES = ["normal", "notice", "blocking"];
 var STATUS_CODE_TABLE = {
-  charger_unavailable: ["blocking", {}],
+  charger_unavailable: ["blocking", { problem: "textOrNull", entity: "textOrNull" }],
   price_data_invalid: ["blocking", { reason: "textOrNull" }],
   price_data_unavailable: ["blocking", { reason: "textOrNull" }],
   settings_incomplete: ["notice", { reason: "textOrNull", missing: "codes" }],
@@ -7295,6 +7305,12 @@ var MISSING_FIELD_KEYS = {
   vehicle: "status.missing.vehicle",
   target_percent: "status.missing.target_percent"
 };
+function chargerProblemKey(problem) {
+  if (problem === "control_missing") {
+    return "issue.chargeControlMissing";
+  }
+  return problem === "control_disabled" ? "issue.chargeControlDisabled" : null;
+}
 function ms(value) {
   if (typeof value !== "string") {
     return null;
@@ -7408,6 +7424,10 @@ function lineText(line, format, nowMs) {
       return measurementLineText(language, p);
     case "duplicate_charger":
       return say("issue.duplicateCharger", { other: typeof p["other"] === "string" ? p["other"] : "" });
+    case "charger_unavailable": {
+      const key = chargerProblemKey(p["problem"]);
+      return key === null ? say("issue.chargerMissing") : say(key, { entity: typeof p["entity"] === "string" ? p["entity"] : "" });
+    }
     default:
       return say(STATUS_WORDING[line.code]);
   }
@@ -7456,6 +7476,12 @@ function issuesOf(status, language) {
     if (line.code === "duplicate_charger") {
       const other = typeof line.params["other"] === "string" ? line.params["other"] : "";
       issues.push({ code: line.code, severity, textKey: STATUS_WORDING[line.code], params: { other }, technical: null });
+      continue;
+    }
+    if (line.code === "charger_unavailable") {
+      const key = chargerProblemKey(line.params["problem"]);
+      const entity = typeof line.params["entity"] === "string" ? line.params["entity"] : "";
+      issues.push({ code: line.code, severity, textKey: key ?? STATUS_WORDING[line.code], params: key === null ? {} : { entity }, technical: null });
       continue;
     }
     const limit = line.code === "load_balancing_limited" ? num(line.params["limit_a"]) : null;

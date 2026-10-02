@@ -49,6 +49,8 @@ export const nb: Record<keyof typeof en, string> = {
   "issue.banner.blocking": "Noe må ordnes før lading kan planlegges.",
   "issue.banner.notice": "Greit å vite.",
   "issue.chargerMissing": "Den valgte laderen kan ikke brukes: den er ukjent, ikke lastet eller et anlegg.",
+  "issue.chargeControlMissing": "Ladestyringen {entity} finnes ikke lenger. Den er sannsynligvis omdøpt eller fjernet: velg laderens styring på nytt i innstillingene.",
+  "issue.chargeControlDisabled": "Ladestyringen {entity} er deaktivert i Home Assistant, så SpotNav kan ikke starte eller stoppe laderen. Aktiver den igjen.",
   "issue.unsupported": "Kortet og integrasjonen snakker ulike API-versjoner.",
   "issue.malformed": "Svaret fra backend var ikke et gyldig API v2-svar.",
   "status.finishSetupArea": "Fullfør oppsettet: velg et prisområde i Innstillinger.",

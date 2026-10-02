@@ -425,7 +425,7 @@ CASES: list[tuple[str, StatusFacts, str, list[dict[str, Any]]]] = [
         base(charger_available=False, price_state="invalid", price_reason="bad"),
         "blocking",
         [
-            {"code": "charger_unavailable", "params": {}},
+            {"code": "charger_unavailable", "params": {"problem": None, "entity": None}},
             {"code": "price_data_invalid", "params": {"reason": "bad"}},
         ],
     ),

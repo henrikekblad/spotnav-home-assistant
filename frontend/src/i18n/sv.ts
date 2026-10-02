@@ -49,6 +49,8 @@ export const sv: Record<keyof typeof en, string> = {
   "issue.banner.blocking": "Något behöver åtgärdas innan laddning kan planeras.",
   "issue.banner.notice": "Bra att veta.",
   "issue.chargerMissing": "Den valda laddaren går inte att använda: den är okänd, inte laddad eller en anläggning.",
+  "issue.chargeControlMissing": "Laddstyrningen {entity} finns inte längre. Den har troligen bytt namn eller tagits bort: välj laddarens styrning igen i dess inställningar.",
+  "issue.chargeControlDisabled": "Laddstyrningen {entity} är avstängd i Home Assistant, så SpotNav kan inte starta eller stoppa laddaren. Aktivera den igen.",
   "issue.unsupported": "Kortet och integrationen talar olika API-versioner.",
   "issue.malformed": "Svaret från backend var inte ett giltigt API v2-svar.",
   "status.finishSetupArea": "Slutför inställningen: välj ett prisområde i Inställningar.",

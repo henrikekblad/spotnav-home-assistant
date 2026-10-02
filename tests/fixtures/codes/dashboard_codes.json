@@ -131,7 +131,10 @@
       "tone": "notice"
     },
     "charger_unavailable": {
-      "params": [],
+      "params": [
+        "entity",
+        "problem"
+      ],
       "tone": "blocking"
     },
     "charging_now": {

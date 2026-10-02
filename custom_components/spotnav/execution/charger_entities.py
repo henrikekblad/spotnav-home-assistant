@@ -11,7 +11,7 @@ from dataclasses import dataclass
 from typing import Any, Final
 
 from homeassistant.const import STATE_UNAVAILABLE, STATE_UNKNOWN
-from homeassistant.core import HomeAssistant
+from homeassistant.core import CoreState, HomeAssistant
 from homeassistant.helpers import entity_registry as er
 
 from .charger_profiles import (
@@ -212,3 +212,24 @@ def control_path_for_entity(
         if start is not None and stop is not None:
             return {"kind": PATH_SELECT, "entity_id": charge_control, "start_option": start, "stop_option": stop}
     return None
+
+
+#: The charge control entity no longer exists (removed, or renamed without SpotNav following).
+CONTROL_MISSING = "control_missing"
+#: The charge control entity is disabled in the entity registry.
+CONTROL_DISABLED = "control_disabled"
+
+
+def charge_control_problem(hass: HomeAssistant, charge_control: str) -> str | None:
+    """Why the charge control cannot work at all: `CONTROL_DISABLED` when its registry entry is
+    disabled, `CONTROL_MISSING` when it has no state at all; `None` when it is there, even if unavailable for now. Judged only once Home
+    Assistant is running, since before that a loading integration has not written its states.
+    """
+    registry_entry = er.async_get(hass).async_get(charge_control)
+    if registry_entry is not None and registry_entry.disabled_by is not None:
+        return CONTROL_DISABLED
+    if hass.states.get(charge_control) is not None:
+        return None
+    if hass.state is not CoreState.running:
+        return None
+    return CONTROL_MISSING

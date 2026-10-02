@@ -157,6 +157,14 @@ const MISSING_FIELD_KEYS: Readonly<Record<string, TranslationKey>> = {
   target_percent: "status.missing.target_percent",
 };
 
+/** The wording for why a charger is unavailable when its charge control is gone or disabled. */
+function chargerProblemKey(problem: StatusParam | undefined): TranslationKey | null {
+  if (problem === "control_missing") {
+    return "issue.chargeControlMissing";
+  }
+  return problem === "control_disabled" ? "issue.chargeControlDisabled" : null;
+}
+
 function ms(value: StatusParam | undefined): number | null {
   if (typeof value !== "string") {
     return null;
@@ -300,6 +308,10 @@ export function lineText(line: StatusLine, format: FormatContext, nowMs: number)
       return measurementLineText(language, p);
     case "duplicate_charger":
       return say("issue.duplicateCharger", { other: typeof p["other"] === "string" ? p["other"] : "" });
+    case "charger_unavailable": {
+      const key = chargerProblemKey(p["problem"]);
+      return key === null ? say("issue.chargerMissing") : say(key, { entity: typeof p["entity"] === "string" ? p["entity"] : "" });
+    }
     default:
       return say(STATUS_WORDING[line.code]);
   }
@@ -362,6 +374,12 @@ export function issuesOf(status: Status | null, language: Language): Issue[] {
     if (line.code === "duplicate_charger") {
       const other = typeof line.params["other"] === "string" ? line.params["other"] : "";
       issues.push({ code: line.code, severity, textKey: STATUS_WORDING[line.code], params: { other }, technical: null });
+      continue;
+    }
+    if (line.code === "charger_unavailable") {
+      const key = chargerProblemKey(line.params["problem"]);
+      const entity = typeof line.params["entity"] === "string" ? line.params["entity"] : "";
+      issues.push({ code: line.code, severity, textKey: key ?? STATUS_WORDING[line.code], params: key === null ? {} : { entity }, technical: null });
       continue;
     }
     const limit = line.code === "load_balancing_limited" ? num(line.params["limit_a"]) : null;
