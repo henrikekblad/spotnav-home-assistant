@@ -446,7 +446,7 @@
         "name": "Återuppta Auto-prisplaneringen"
       },
       "clear_departure_date": {
-        "name": "Rensa avgångsdatum"
+        "name": "Rensa avresedatum"
       }
     },
     "sensor": {
@@ -579,17 +579,17 @@
     },
     "date": {
       "departure_date": {
-        "name": "Avgångsdatum"
+        "name": "Avresedatum"
       }
     },
     "switch": {
       "departure_enabled": {
-        "name": "Avgångstid gäller"
+        "name": "Avresetid gäller"
       }
     },
     "time": {
       "departure_time": {
-        "name": "Avgångstid"
+        "name": "Avresetid"
       }
     }
   },
@@ -649,7 +649,7 @@
       "message": "Antalet perioder måste vara ett heltal från 1 till 8."
     },
     "invalid_departure": {
-      "message": "Avgångstiden måste vara en lokal klocktid."
+      "message": "Avresetiden måste vara en lokal klocktid."
     },
     "invalid_fiscal": {
       "message": "Det avgiftsvärdet kan inte sparas som det är."
