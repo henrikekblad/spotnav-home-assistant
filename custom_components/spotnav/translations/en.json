@@ -66,10 +66,12 @@
         "data": {
           "charge_control": "Charge control",
           "current_limit": "Charging current (optional)",
-          "energy_register_entity": "Energy meter (lifetime)"
+          "energy_register_entity": "Energy meter (lifetime)",
+          "power_entity": "Power sensor, smart plug (optional)"
         },
         "data_description": {
-          "energy_register_entity": "The charger's total energy sensor, used to count energy already delivered. Optional."
+          "energy_register_entity": "The charger's total energy sensor, used to count energy already delivered. Optional.",
+          "power_entity": "A dumb charger behind a smart plug: the plug's power sensor (W or kW). SpotNav counts the energy from it and sees when the car has stopped drawing. The plug must be rated for the charger's continuous current. Optional."
         }
       },
       "site": {
@@ -265,7 +267,12 @@
           "charge_control": "Charge control",
           "current_limit": "Charging current (optional)",
           "current_control": "Set the charger current",
-          "energy_register_entity": "Energy meter (lifetime, optional)"
+          "energy_register_entity": "Energy meter (lifetime, optional)",
+          "power_entity": "Power sensor, smart plug (optional)",
+          "idle_power_w": "Not drawing below (W)"
+        },
+        "data_description": {
+          "idle_power_w": "Below this power for five minutes during a planned charge, SpotNav says the car is not drawing. Default 100 W."
         }
       },
       "site_init": {
@@ -513,6 +520,9 @@
       },
       "auto_settings_revision": {
         "name": "Auto settings revision"
+      },
+      "integrated_energy": {
+        "name": "Energy from power"
       }
     },
     "select": {

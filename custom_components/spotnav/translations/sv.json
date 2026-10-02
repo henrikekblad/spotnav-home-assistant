@@ -66,10 +66,12 @@
         "data": {
           "charge_control": "Laddstyrning",
           "current_limit": "Laddström (valfri)",
-          "energy_register_entity": "Energimätare (total)"
+          "energy_register_entity": "Energimätare (total)",
+          "power_entity": "Effektsensor, smart plugg (valfri)"
         },
         "data_description": {
-          "energy_register_entity": "Laddarens sensor för total energi, används för att räkna redan levererad energi. Valfri."
+          "energy_register_entity": "Laddarens sensor för total energi, används för att räkna redan levererad energi. Valfri.",
+          "power_entity": "En enkel laddare bakom en smart plugg: pluggens effektsensor (W eller kW). SpotNav räknar energin från den och ser när bilen slutat ta ström. Pluggen måste vara dimensionerad för laddarens kontinuerliga ström. Valfri."
         }
       },
       "site": {
@@ -265,7 +267,12 @@
           "charge_control": "Laddstyrning",
           "current_limit": "Laddström (valfri)",
           "current_control": "Ställ in laddarens ström",
-          "energy_register_entity": "Energimätare (total, valfritt)"
+          "energy_register_entity": "Energimätare (total, valfritt)",
+          "power_entity": "Effektsensor, smart plugg (valfri)",
+          "idle_power_w": "Drar ingen ström under (W)"
+        },
+        "data_description": {
+          "idle_power_w": "Under den här effekten i fem minuter under en planerad laddning säger SpotNav att bilen inte drar ström. Standard 100 W."
         }
       },
       "site_init": {
@@ -513,6 +520,9 @@
       },
       "auto_settings_revision": {
         "name": "Auto-inställningarnas version"
+      },
+      "integrated_energy": {
+        "name": "Energi från effekt"
       }
     },
     "select": {

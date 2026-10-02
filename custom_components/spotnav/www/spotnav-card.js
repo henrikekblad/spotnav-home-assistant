@@ -2959,6 +2959,7 @@ var da = {
   "entity.field.chargeControl": "Afbryder til ladestyring",
   "entity.field.currentLimit": "Strømgrænse",
   "entity.field.energyRegister": "Energitæller",
+  "entity.field.powerEntity": "Effektsensor (smart stik)",
   "entity.field.vehicleSoc": "Køretøjets opladningsniveau",
   "entity.field.mainFuse": "Hovedsikring",
   "entity.field.measurementMode": "Målemetode",
@@ -2990,6 +2991,7 @@ var da = {
   "entity.help.chargeControl": "Kontakten der starter og stopper opladningen. SpotNav tænder og slukker den efter planen.",
   "entity.help.currentLimit": "Entiteten der viser laderens indstillede strøm. Lad den stå tom for OCPP 0.12-ladere, sessionsgrænsen aflæses så automatisk.",
   "entity.help.energyRegister": "Laderens akkumulerede kWh-måler. SpotNav bruger den til at vide, hvad der allerede er ladet. Findes automatisk for OCPP-ladere.",
+  "entity.help.powerEntity": "Til en lader bag et smart stik: stikkets effektsensor, i W eller kW. SpotNav tæller energien fra den og kan se, når bilen er holdt op med at trække strøm. Stikket skal være dimensioneret til laderens kontinuerlige strøm.",
   "entity.help.vehicleSoc": "Køretøjets opladningsniveau, læst fra den sensor der er valgt til køretøjet, eller fundet automatisk når det kun har én.",
   "entity.help.mainFuse": "Anlæggets hovedsikring i ampere. Alle ladere på anlægget holder sig samlet under den.",
   "entity.help.measurementMode": "Om din måler angiver hver fases strøm direkte, eller SpotNav regner den ud fra effekt og spænding.",
@@ -3199,6 +3201,7 @@ var da = {
   "strategy.status.hybrid.satisfied": "Hybrid · ladebehovet er allerede opfyldt",
   "strategy.status.hybrid.unknown": "Hybrid · planlægger",
   "advisory.vehicleNotRequestingCurrent": "Opladningen blev startet, men køretøjet anmoder ikke om strøm. Kontrollér køretøjets opladningsindstillinger, eller tilslut kablet igen.",
+  "advisory.powerBelowThreshold": "Opladningen blev startet, men laderen trækker næsten ingen effekt. Bilen kan være færdig eller lader ikke: kontrollér køretøjets opladningsindstillinger, eller tilslut kablet igen.",
   "control.noSettings": "Denne lader har endnu ingen indstillinger, så der er intet at starte eller stoppe.",
   "control.pauseUnsettled": "En pause er gemt, men er ikke trådt i kraft endnu. Intet anvendes.",
   "control.pauseClearFailed": "En pause er udløbet, men kunne ikke ryddes, så intet anvendes.",
@@ -3498,6 +3501,7 @@ var en = {
   "entity.field.chargeControl": "Charge control",
   "entity.field.currentLimit": "Current limit",
   "entity.field.energyRegister": "Energy register",
+  "entity.field.powerEntity": "Power sensor (smart plug)",
   "entity.field.vehicleSoc": "Vehicle charge level",
   "entity.field.mainFuse": "Main fuse",
   "entity.field.measurementMode": "Measurement mode",
@@ -3529,6 +3533,7 @@ var en = {
   "entity.help.chargeControl": "The entity that starts and stops charging: a switch, a selector or a button. SpotNav uses it to follow the plan.",
   "entity.help.currentLimit": "The entity that reports the charger's current setpoint. Leave empty for OCPP 0.12 chargers, the session limit is then read automatically.",
   "entity.help.energyRegister": "Your charger's cumulative kWh meter. SpotNav uses it to know what has already been charged. Found automatically for OCPP chargers.",
+  "entity.help.powerEntity": "For a charger behind a smart plug: the plug's power sensor, in W or kW. SpotNav counts the energy from it and sees when the car has stopped drawing. The plug must be rated for the charger's continuous current.",
   "entity.help.vehicleSoc": "The vehicle's charge level, read from the sensor chosen for the vehicle, or found automatically when it has only one.",
   "entity.help.mainFuse": "The site's main fuse in amperes. All chargers on the site together stay below it.",
   "entity.help.measurementMode": "Whether your meter reports each phase's current directly, or SpotNav works it out from power and voltage.",
@@ -3738,6 +3743,7 @@ var en = {
   "strategy.reason.hybrid": "Requires solar and price control",
   "strategy.reason.totalPower": "Solar needs the meter's total grid power",
   "advisory.vehicleNotRequestingCurrent": "Charging was started, but the vehicle is not requesting current. Check the vehicle's charging settings or reconnect the cable.",
+  "advisory.powerBelowThreshold": "Charging was started, but the charger draws almost no power. The car may be finished or not charging: check the vehicle's charging settings or reconnect the cable.",
   "control.noSettings": "This charger has no settings yet, so there is nothing to start or stop.",
   "control.pauseUnsettled": "A pause is stored but has not taken effect yet. Nothing is being applied.",
   "control.pauseClearFailed": "A pause has elapsed but could not be cleared, so nothing is being applied.",
@@ -4037,6 +4043,7 @@ var fi = {
   "entity.field.chargeControl": "Latauksen ohjauskytkin",
   "entity.field.currentLimit": "Virtaraja",
   "entity.field.energyRegister": "Energialaskuri",
+  "entity.field.powerEntity": "Tehoanturi (älypistoke)",
   "entity.field.vehicleSoc": "Ajoneuvon lataustaso",
   "entity.field.mainFuse": "Pääsulake",
   "entity.field.measurementMode": "Mittaustapa",
@@ -4068,6 +4075,7 @@ var fi = {
   "entity.help.chargeControl": "Kytkin, joka käynnistää ja pysäyttää latauksen. SpotNav kytkee sen päälle ja pois suunnitelman mukaan.",
   "entity.help.currentLimit": "Entiteetti, joka kertoo laturin asetetun virran. Jätä tyhjäksi OCPP 0.12 -latureilla, jolloin istuntoraja luetaan automaattisesti.",
   "entity.help.energyRegister": "Laturin kumulatiivinen kWh-mittari. SpotNav käyttää sitä tietääkseen, mitä on jo ladattu. Löytyy automaattisesti OCPP-latureille.",
+  "entity.help.powerEntity": "Älypistokkeen takana olevalle latauslaitteelle: pistokkeen tehoanturi, W tai kW. SpotNav laskee energian siitä ja huomaa, kun auto ei enää ota virtaa. Pistokkeen on kestettävä latauslaitteen jatkuva virta.",
   "entity.help.vehicleSoc": "Ajoneuvon varaustaso, luettuna ajoneuvolle valitusta anturista tai löydettynä automaattisesti, kun sillä on vain yksi.",
   "entity.help.mainFuse": "Kohteen pääsulake ampeereina. Kaikki kohteen laturit pysyvät yhdessä sen alapuolella.",
   "entity.help.measurementMode": "Ilmoittaako mittarisi kunkin vaiheen virran suoraan vai laskeeko SpotNav sen tehosta ja jännitteestä.",
@@ -4277,6 +4285,7 @@ var fi = {
   "strategy.status.hybrid.satisfied": "Hybridi · lataustarve on jo täytetty",
   "strategy.status.hybrid.unknown": "Hybridi · suunnittelee",
   "advisory.vehicleNotRequestingCurrent": "Lataus aloitettiin, mutta ajoneuvo ei pyydä virtaa. Tarkista ajoneuvon latausasetukset tai kytke kaapeli uudelleen.",
+  "advisory.powerBelowThreshold": "Lataus käynnistettiin, mutta latauslaite ei ota juuri lainkaan tehoa. Auto voi olla valmis tai ei lataa: tarkista ajoneuvon latausasetukset tai kytke kaapeli uudelleen.",
   "control.noSettings": "Tällä laturilla ei ole vielä asetuksia, joten aloitettavaa tai pysäytettävää ei ole.",
   "control.pauseUnsettled": "Tauko on tallennettu, mutta se ei ole vielä voimassa. Mitään ei sovelleta.",
   "control.pauseClearFailed": "Tauko on päättynyt, mutta sitä ei voitu poistaa, joten mitään ei sovelleta.",
@@ -4576,6 +4585,7 @@ var nb = {
   "entity.field.chargeControl": "Bryter for ladestyring",
   "entity.field.currentLimit": "Strømgrense",
   "entity.field.energyRegister": "Energiteller",
+  "entity.field.powerEntity": "Effektsensor (smartplugg)",
   "entity.field.vehicleSoc": "Kjøretøyets ladenivå",
   "entity.field.mainFuse": "Hovedsikring",
   "entity.field.measurementMode": "Målemetode",
@@ -4607,6 +4617,7 @@ var nb = {
   "entity.help.chargeControl": "Bryteren som starter og stopper ladingen. SpotNav slår den av og på etter planen.",
   "entity.help.currentLimit": "Entiteten som viser laderens innstilte strøm. La den stå tom for OCPP 0.12-ladere, sesjonsgrensen leses da av automatisk.",
   "entity.help.energyRegister": "Laderens akkumulerte kWh-måler. SpotNav bruker den for å vite hva som allerede er ladet. Finnes automatisk for OCPP-ladere.",
+  "entity.help.powerEntity": "For en lader bak en smartplugg: pluggens effektsensor, i W eller kW. SpotNav teller energien fra den og ser når bilen har sluttet å trekke strøm. Pluggen må være dimensjonert for laderens kontinuerlige strøm.",
   "entity.help.vehicleSoc": "Kjøretøyets ladenivå, lest fra sensoren som er valgt for kjøretøyet, eller funnet automatisk når det bare har én.",
   "entity.help.mainFuse": "Anleggets hovedsikring i ampere. Alle laderne på anlegget holder seg samlet under den.",
   "entity.help.measurementMode": "Om måleren oppgir strømmen for hver fase direkte, eller SpotNav regner den ut fra effekt og spenning.",
@@ -4816,6 +4827,7 @@ var nb = {
   "strategy.status.hybrid.satisfied": "Hybrid · ladebehovet er allerede dekket",
   "strategy.status.hybrid.unknown": "Hybrid · planlegger",
   "advisory.vehicleNotRequestingCurrent": "Ladingen ble startet, men kjøretøyet ber ikke om strøm. Kontroller kjøretøyets ladeinnstillinger, eller koble til kabelen på nytt.",
+  "advisory.powerBelowThreshold": "Ladingen ble startet, men laderen trekker nesten ingen effekt. Bilen kan være ferdig eller lader ikke: kontroller kjøretøyets ladeinnstillinger, eller koble til kabelen på nytt.",
   "control.noSettings": "Denne laderen har ingen innstillinger ennå, så det er ingenting å starte eller stoppe.",
   "control.pauseUnsettled": "En pause er lagret, men har ikke trådt i kraft ennå. Ingenting brukes.",
   "control.pauseClearFailed": "En pause har utløpt, men kunne ikke ryddes, så ingenting brukes.",
@@ -5115,6 +5127,7 @@ var sv = {
   "entity.field.chargeControl": "Laddstyrning",
   "entity.field.currentLimit": "Strömgräns",
   "entity.field.energyRegister": "Energiräknare",
+  "entity.field.powerEntity": "Effektsensor (smart plugg)",
   "entity.field.vehicleSoc": "Fordonets laddnivå",
   "entity.field.mainFuse": "Huvudsäkring",
   "entity.field.measurementMode": "Mätsätt",
@@ -5146,6 +5159,7 @@ var sv = {
   "entity.help.chargeControl": "Entiteten som startar och stoppar laddningen: en strömbrytare, en väljare eller en knapp. SpotNav använder den för att följa planen.",
   "entity.help.currentLimit": "Entiteten som visar laddarens inställda ström. Lämna tom för OCPP 0.12-laddare, sessionsgränsen läses då av automatiskt.",
   "entity.help.energyRegister": "Laddarens ackumulerade kWh-mätare. SpotNav använder den för att veta vad som redan laddats. Hittas automatiskt för OCPP-laddare.",
+  "entity.help.powerEntity": "För en laddare bakom en smart plugg: pluggens effektsensor, i W eller kW. SpotNav räknar energin från den och ser när bilen slutat ta ström. Pluggen måste vara dimensionerad för laddarens kontinuerliga ström.",
   "entity.help.vehicleSoc": "Fordonets laddnivå, läst från sensorn som valts för fordonet, eller hittad automatiskt när det bara har en.",
   "entity.help.mainFuse": "Anläggningens huvudsäkring i ampere. Alla laddare på anläggningen håller sig tillsammans under den.",
   "entity.help.measurementMode": "Om din mätare anger varje fas ström direkt, eller om SpotNav räknar ut den från effekt och spänning.",
@@ -5355,6 +5369,7 @@ var sv = {
   "strategy.status.hybrid.satisfied": "Hybrid · laddbehovet är redan uppfyllt",
   "strategy.status.hybrid.unknown": "Hybrid · planerar",
   "advisory.vehicleNotRequestingCurrent": "Laddningen startades, men fordonet begär ingen ström. Kontrollera fordonets laddningsinställningar eller anslut kabeln igen.",
+  "advisory.powerBelowThreshold": "Laddningen startades, men laddaren drar nästan ingen effekt. Bilen kan vara klar eller inte ladda: kontrollera fordonets laddningsinställningar eller anslut kabeln igen.",
   "control.noSettings": "Den här laddaren har inga inställningar ännu, så det finns inget att starta eller stoppa.",
   "control.pauseUnsettled": "En paus är sparad men har inte börjat gälla ännu. Inget tillämpas.",
   "control.pauseClearFailed": "En paus har löpt ut men kunde inte rensas, så inget tillämpas.",
@@ -7602,7 +7617,11 @@ function advisoryFor(dashboard, language) {
     return null;
   }
   return {
-    text: translate(language, "advisory.vehicleNotRequestingCurrent"),
+    // A charger behind a smart plug is judged by its power; a connector status says it differently.
+    text: translate(
+      language,
+      progress.reason === "power_below_threshold" ? "advisory.powerBelowThreshold" : "advisory.vehicleNotRequestingCurrent"
+    ),
     code: progress.reason
   };
 }
@@ -8470,6 +8489,7 @@ var FIELD_LABELS = {
   charge_control: "entity.field.chargeControl",
   current_limit: "entity.field.currentLimit",
   energy_register_entity: "entity.field.energyRegister",
+  power_entity: "entity.field.powerEntity",
   vehicle_soc: "entity.field.vehicleSoc",
   main_fuse_a: "entity.field.mainFuse",
   measurement_mode: "entity.field.measurementMode",
@@ -8550,6 +8570,7 @@ var FIELD_HELP = {
   charge_control: "entity.help.chargeControl",
   current_limit: "entity.help.currentLimit",
   energy_register_entity: "entity.help.energyRegister",
+  power_entity: "entity.help.powerEntity",
   vehicle_soc: "entity.help.vehicleSoc",
   main_fuse_a: "entity.help.mainFuse",
   measurement_mode: "entity.help.measurementMode",
@@ -12239,6 +12260,10 @@ function createCardView(input) {
       }
     }
     nodes.push(overviewRow("energy_register", translate(model.language, "entity.field.energyRegister"), energy));
+    const powerField = fieldsOf(config, "charger").find((entry) => entry.field === "power_entity");
+    if (powerField !== void 0 && powerField.kind === "entity" && powerField.current !== null) {
+      nodes.push(overviewRow("power_entity", translate(model.language, "entity.field.powerEntity"), powerField.current.friendlyName));
+    }
     for (const conflict of control?.conflicts ?? []) {
       const warning = element6(
         doc,

@@ -302,6 +302,16 @@ describe("the vehicle-side advisory", () => {
     return element;
   }
 
+  it("words a charger judged by its power, not by a connector status, in its own sentence", async () => {
+    const element = await rendered({ ...ADVISORY, reason: "power_below_threshold" });
+
+    const node = shadow(element).querySelector(`.${VISUAL_CLASSES.advisory}`);
+    expect(node?.textContent).toBe(translate("en", "advisory.powerBelowThreshold"));
+    expect(node?.textContent).toContain("draws almost no power");
+    expect(translate("sv", "advisory.powerBelowThreshold")).toContain("laddaren drar nästan ingen effekt");
+    expect(node?.textContent).not.toContain("power_below_threshold");
+  });
+
   it("renders one subdued sentence for the backend's own advisory, and no action beside it", async () => {
     const element = await rendered(ADVISORY);
 

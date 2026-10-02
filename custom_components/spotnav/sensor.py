@@ -1,7 +1,8 @@
 """Schedule, connection and site-capacity sensors for SpotNav charging control."""
 
 import json
-from datetime import datetime
+import math
+from datetime import datetime, timedelta
 from typing import Any
 from urllib.parse import urlencode
 
@@ -11,7 +12,10 @@ from homeassistant.const import EntityCategory, UnitOfElectricCurrent, UnitOfEne
 from homeassistant.core import callback, HomeAssistant
 from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.dispatcher import async_dispatcher_connect
+from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
+from homeassistant.helpers.event import async_track_state_change_event, async_track_time_interval
+from homeassistant.helpers.restore_state import RestoreEntity
 from homeassistant.util import dt as dt_util
 
 from .const import (
@@ -19,12 +23,14 @@ from .const import (
     CONF_ENTRY_TYPE,
     CONF_SOLAR_PRIORITY,
     CONF_WEBHOOK_ID,
+    DEFAULT_MAX_AGE_S,
     DEFAULT_SOLAR_PRIORITY,
     DOMAIN,
     ENTRY_TYPE_SITE,
 )
 from .entity import AutoSurface, SpotNavAutoEntity, SpotNavChargingEntity, SpotNavSiteEntity
 from .execution.controller import ChargingController
+from .execution.power_energy import fresh_power_w, integrated_energy_unique_id, PowerIntegrator
 from .runtime import controller_for
 from .site.site_capacity_controller import SiteCapacityController
 from .vehicles.charger_inventory import (
@@ -33,6 +39,10 @@ from .vehicles.charger_inventory import (
     site_entry,
     webhook_base_url,
 )
+
+
+#: How often a smart plug's power is sampled between its own reports.
+INTEGRATION_TICK_S = 30
 
 
 async def async_setup_entry(
@@ -58,10 +68,27 @@ async def async_setup_entry(
         PlanTimeEntity(entry, controller, "start"),
         PlanTimeEntity(entry, controller, "end"),
     ]
+    entities.extend(integrated_energy_entities(hass, entry, controller))
     entities.extend(auto_entities(entry, controller, AutoSurface.resolve(hass, entry.entry_id)))
     if entry.entry_id == instance_owner_entry_id(hass):
         entities.append(InstanceConnectionEntity(hass, entry))
     async_add_entities(entities)
+
+
+def integrated_energy_entities(
+    hass: HomeAssistant, entry: ConfigEntry, controller: ChargingController
+) -> list[Any]:
+    """The energy SpotNav integrates from a smart plug's power sensor, only while it stands in for an
+    energy register (a power sensor and no register of the person's own); otherwise a leftover one is
+    removed from the registry.
+    """
+    if controller.power_entity_id is not None and controller.energy_from_power:
+        return [IntegratedEnergySensor(hass, entry, controller)]
+    registry = er.async_get(hass)
+    leftover = registry.async_get_entity_id("sensor", DOMAIN, integrated_energy_unique_id(entry.entry_id))
+    if leftover is not None:
+        registry.async_remove(leftover)
+    return []
 
 
 def auto_entities(
@@ -108,6 +135,72 @@ def instance_pairing_uri(base_url: str, chargers: list[dict[str, str]]) -> str:
             "chargers": json.dumps(chargers, separators=(",", ":")),
         }
     )
+
+
+class IntegratedEnergySensor(SpotNavChargingEntity, RestoreEntity, SensorEntity):
+    """Energy from a smart plug's power sensor: a cumulative kWh counter SpotNav integrates itself.
+
+    Trapezoid over fresh samples (`power_energy.PowerIntegrator`); an interval longer than the maximum
+    measurement age is not integrated, and the total survives a restart. It is the charger's energy
+    register for delivered-energy accounting and the stopping estimate.
+    """
+
+    _attr_translation_key = "integrated_energy"
+    _attr_device_class = SensorDeviceClass.ENERGY
+    _attr_state_class = SensorStateClass.TOTAL_INCREASING
+    _attr_native_unit_of_measurement = UnitOfEnergy.KILO_WATT_HOUR
+    _attr_suggested_display_precision = 3
+
+    def __init__(self, hass: HomeAssistant, entry: ConfigEntry, controller: ChargingController) -> None:
+        super().__init__(entry, controller)
+        self._hass = hass
+        self._attr_unique_id = integrated_energy_unique_id(entry.entry_id)
+        self._integrator = PowerIntegrator(DEFAULT_MAX_AGE_S)
+
+    @property
+    def native_value(self) -> float:
+        return round(self._integrator.total_kwh, 6)
+
+    async def async_added_to_hass(self) -> None:
+        await super().async_added_to_hass()
+        last = await self.async_get_last_state()
+        if last is not None:
+            try:
+                restored = float(last.state)
+            except (TypeError, ValueError):
+                restored = 0.0
+            if math.isfinite(restored) and restored > 0:
+                self._integrator.total_kwh = restored
+        self.controller.set_integrated_energy_entity(self.entity_id)
+        power_entity = self.controller.power_entity_id
+        if power_entity is not None:
+            self.async_on_remove(
+                async_track_state_change_event(self._hass, [power_entity], self._on_power_changed)
+            )
+            self.async_on_remove(
+                async_track_time_interval(
+                    self._hass, self._on_tick, timedelta(seconds=INTEGRATION_TICK_S)
+                )
+            )
+        self._take_sample()
+
+    @callback
+    def _on_power_changed(self, _event: Any) -> None:
+        self._take_sample()
+
+    @callback
+    def _on_tick(self, _now: datetime) -> None:
+        self._take_sample()
+
+    @callback
+    def _take_sample(self) -> None:
+        """One sample now: the sensor's value only while it is fresh, else a gap."""
+        now = dt_util.utcnow()
+        self._integrator.sample(
+            now,
+            fresh_power_w(self._hass, self.controller.power_entity_id, now, self._integrator.max_age_s),
+        )
+        self.async_write_ha_state()
 
 
 class ConnectionEntity(SpotNavChargingEntity, SensorEntity):

@@ -431,7 +431,11 @@ function advisoryFor(dashboard: Dashboard, language: Language): AdvisoryFacts | 
     return null;
   }
   return {
-    text: translate(language, "advisory.vehicleNotRequestingCurrent"),
+    // A charger behind a smart plug is judged by its power; a connector status says it differently.
+    text: translate(
+      language,
+      progress.reason === "power_below_threshold" ? "advisory.powerBelowThreshold" : "advisory.vehicleNotRequestingCurrent",
+    ),
     code: progress.reason,
   };
 }

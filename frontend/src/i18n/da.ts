@@ -106,6 +106,7 @@ export const da: Record<keyof typeof en, string> = {
   "entity.field.chargeControl": "Afbryder til ladestyring",
   "entity.field.currentLimit": "Strømgrænse",
   "entity.field.energyRegister": "Energitæller",
+  "entity.field.powerEntity": "Effektsensor (smart stik)",
   "entity.field.vehicleSoc": "Køretøjets opladningsniveau",
   "entity.field.mainFuse": "Hovedsikring",
   "entity.field.measurementMode": "Målemetode",
@@ -137,6 +138,7 @@ export const da: Record<keyof typeof en, string> = {
   "entity.help.chargeControl": "Kontakten der starter og stopper opladningen. SpotNav tænder og slukker den efter planen.",
   "entity.help.currentLimit": "Entiteten der viser laderens indstillede strøm. Lad den stå tom for OCPP 0.12-ladere, sessionsgrænsen aflæses så automatisk.",
   "entity.help.energyRegister": "Laderens akkumulerede kWh-måler. SpotNav bruger den til at vide, hvad der allerede er ladet. Findes automatisk for OCPP-ladere.",
+  "entity.help.powerEntity": "Til en lader bag et smart stik: stikkets effektsensor, i W eller kW. SpotNav tæller energien fra den og kan se, når bilen er holdt op med at trække strøm. Stikket skal være dimensioneret til laderens kontinuerlige strøm.",
   "entity.help.vehicleSoc": "Køretøjets opladningsniveau, læst fra den sensor der er valgt til køretøjet, eller fundet automatisk når det kun har én.",
   "entity.help.mainFuse": "Anlæggets hovedsikring i ampere. Alle ladere på anlægget holder sig samlet under den.",
   "entity.help.measurementMode": "Om din måler angiver hver fases strøm direkte, eller SpotNav regner den ud fra effekt og spænding.",
@@ -354,6 +356,8 @@ export const da: Record<keyof typeof en, string> = {
   "strategy.status.hybrid.unknown": "Hybrid · planlægger",
   "advisory.vehicleNotRequestingCurrent":
     "Opladningen blev startet, men køretøjet anmoder ikke om strøm. Kontrollér køretøjets opladningsindstillinger, eller tilslut kablet igen.",
+  "advisory.powerBelowThreshold":
+    "Opladningen blev startet, men laderen trækker næsten ingen effekt. Bilen kan være færdig eller lader ikke: kontrollér køretøjets opladningsindstillinger, eller tilslut kablet igen.",
   "control.noSettings": "Denne lader har endnu ingen indstillinger, så der er intet at starte eller stoppe.",
   "control.pauseUnsettled": "En pause er gemt, men er ikke trådt i kraft endnu. Intet anvendes.",
   "control.pauseClearFailed": "En pause er udløbet, men kunne ikke ryddes, så intet anvendes.",

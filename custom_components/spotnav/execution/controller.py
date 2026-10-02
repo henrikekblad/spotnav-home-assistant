@@ -28,6 +28,7 @@ from homeassistant.helpers.event import (
     async_track_point_in_utc_time,
     async_track_state_change_event,
 )
+from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers.storage import Store
 from homeassistant.util import dt as dt_util
 
@@ -36,11 +37,14 @@ from ..const import (
     CONF_CURRENT_CONTROL,
     CONF_CURRENT_LIMIT,
     CONF_ENERGY_REGISTER_ENTITY,
+    CONF_IDLE_POWER_W,
     CONF_MODE,
     CONF_OCPP_CHARGE_POINT_ID,
     CONF_OCPP_CONNECTOR_ID,
     CONF_OCPP_TARGET_UNRESOLVED,
+    CONF_POWER_ENTITY,
     CURRENT_CONTROL_CHANGE_CONFIGURATION,
+    DEFAULT_IDLE_POWER_W,
     DEFAULT_MIN_CURRENT_A,
     DOMAIN,
     MAX_SCHEDULE_PERIODS,
@@ -54,6 +58,7 @@ from ..vehicles.ocpp_identity import (
     resolve_target,
 )
 from .charger_entities import charger_is_disabled
+from .power_energy import integrated_energy_unique_id, read_power_w
 from .chargers.adapter import build_adapter, ChargerAdapter
 from .chargers.base import (
     ASSIGN_ASSIGNED,
@@ -444,6 +449,17 @@ class ChargingController:
         self.energy_register_entity_id: str | None = config.get(CONF_ENERGY_REGISTER_ENTITY) or None
         if self.energy_register_entity_id is None and self.ocpp_target is not None:
             self.energy_register_entity_id = energy_register_entity_for(hass, self.ocpp_target)
+        # A charger behind a smart plug: its power sensor. With no energy register of its own, SpotNav's
+        # integrated-energy sensor (`sensor.py`) stands in for one once it exists.
+        self.power_entity_id: str | None = config.get(CONF_POWER_ENTITY) or None
+        self.idle_power_w: float = float(config.get(CONF_IDLE_POWER_W) or DEFAULT_IDLE_POWER_W)
+        self.energy_from_power: bool = (
+            self.energy_register_entity_id is None and self.power_entity_id is not None
+        )
+        if self.energy_from_power:
+            self.energy_register_entity_id = er.async_get(hass).async_get_entity_id(
+                "sensor", DOMAIN, integrated_energy_unique_id(entry_id)
+            )
         # How this charger is started, stopped, read and given a current (`chargers/adapter.py`):
         # the OCPP `ChangeConfiguration` path and the generic switch are two of its parts. The
         # target is read through a getter, so the OCPP part always sees the controller's own.
@@ -575,6 +591,16 @@ class ChargingController:
         """
         return self._current_limit_entity_value()
 
+    @callback
+    def set_integrated_energy_entity(self, entity_id: str) -> None:
+        """The integrated-energy sensor was added: it is this charger's energy register, unless the
+        person set one (then it is only an extra sensor and nothing reads it as the register).
+        """
+        if not self.energy_from_power:
+            return
+        self.energy_register_entity_id = entity_id
+        self.adapter.energy_entity_id = entity_id
+
     @property
     def charge_progress(self) -> ChargeProgress:
         """What is known about whether the vehicle is taking the charge (`charge_progress.py`).
@@ -665,12 +691,22 @@ class ChargingController:
                     connector_entity_id(target.devid, target.connector_id, "current_import")
                 )
             )
+        # A charger with a power sensor and no status sensor is judged by its power.
+        power_mode = (
+            target is None
+            and not self.adapter.is_ocpp
+            and not self.adapter.status_entity_id
+            and self.power_entity_id is not None
+        )
         return ChargeProgressFacts(
             expected=self.charge_expected_now,
             start_pending=self.start_pending,
             connector_status=status,
             current_import_a=current,
             subject=self.charge_progress_subject,
+            power_mode=power_mode,
+            power_w=read_power_w(self.hass, self.power_entity_id) if power_mode else None,
+            idle_power_w=self.idle_power_w,
         )
 
     @callback
@@ -841,7 +877,11 @@ class ChargingController:
             )
         entity_ids.extend(
             entity_id
-            for entity_id in (*self.adapter.current_entity_ids, *self.adapter.current.retry_entity_ids())
+            for entity_id in (
+                *self.adapter.current_entity_ids,
+                *self.adapter.current.retry_entity_ids(),
+                *((self.power_entity_id,) if self.power_entity_id else ()),
+            )
             if entity_id not in entity_ids
         )
         self._progress_listener_cancel = async_track_state_change_event(

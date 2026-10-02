@@ -24,6 +24,9 @@ from ..const import (
     CONF_DERIVED_ENTITIES,
     CONF_DIRECT_ENTITIES,
     CONF_ENERGY_REGISTER_ENTITY,
+    CONF_IDLE_POWER_W,
+    CONF_POWER_ENTITY,
+    DEFAULT_IDLE_POWER_W,
     CONF_GRID_POWER_INVERTED,
     CONF_MAIN_FUSE_A,
     CONF_MAX_AGE_S,
@@ -119,6 +122,15 @@ class SpotNavChargingOptionsFlow(config_entries.OptionsFlow):
                 CONF_ENERGY_REGISTER_ENTITY,
                 description={"suggested_value": energy_register_default},
             )
+        # Optional per charger: the power sensor of a charger behind a smart plug, and the power
+        # below which it counts as not drawing.
+        power_field: Any = vol.Optional(CONF_POWER_ENTITY)
+        if power_default := self._entry.data.get(CONF_POWER_ENTITY) or None:
+            power_field = vol.Optional(CONF_POWER_ENTITY, description={"suggested_value": power_default})
+        idle_power_field: Any = vol.Optional(
+            CONF_IDLE_POWER_W,
+            description={"suggested_value": self._entry.data.get(CONF_IDLE_POWER_W) or DEFAULT_IDLE_POWER_W},
+        )
         current_control_field: Any = vol.Optional(
             CONF_CURRENT_CONTROL,
             description={
@@ -141,6 +153,15 @@ class SpotNavChargingOptionsFlow(config_entries.OptionsFlow):
                 selector.EntitySelectorConfig(domain="sensor", device_class="energy")
             ),
         }
+        if self._entry.data.get(CONF_MODE) != MODE_OCPP:
+            schema_fields[power_field] = selector.EntitySelector(
+                selector.EntitySelectorConfig(domain="sensor", device_class="power")
+            )
+            schema_fields[idle_power_field] = selector.NumberSelector(
+                selector.NumberSelectorConfig(
+                    min=1, max=5000, step=1, unit_of_measurement="W", mode=selector.NumberSelectorMode.BOX
+                )
+            )
         if self._entry.data.get(CONF_MODE) == MODE_OCPP:
             # The same choice the OCPP config step offers; a generic charger has no OCPP integration.
             # The number kind is offered when the entry already uses it or the connector has a
@@ -205,6 +226,14 @@ class SpotNavChargingOptionsFlow(config_entries.OptionsFlow):
                     CONF_CURRENT_CONTROL: user_input.get(CONF_CURRENT_CONTROL) or "",
                     CONF_ENERGY_REGISTER_ENTITY: user_input.get(CONF_ENERGY_REGISTER_ENTITY) or "",
                 }
+                for key in (CONF_POWER_ENTITY, CONF_IDLE_POWER_W):
+                    # Stored only while set, so a charger without them keeps exactly its old data.
+                    if user_input.get(key):
+                        updated_data[key] = user_input[key]
+                    else:
+                        updated_data.pop(key, None)
+                if updated_data.get(CONF_IDLE_POWER_W) == DEFAULT_IDLE_POWER_W:
+                    updated_data.pop(CONF_IDLE_POWER_W)
                 if detected:
                     updated_data[CONF_CONTROL_PATH] = path
                 if self._entry.data.get(CONF_MODE) == MODE_OCPP:

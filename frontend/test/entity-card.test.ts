@@ -608,6 +608,36 @@ function ownersInstallation(answer: Record<string, unknown>): Record<string, unk
   return { ...answer, config: { ...config, fields: patched } };
 }
 
+describe("a charger behind a smart plug", () => {
+  const withPlug = (answer: Record<string, unknown>) => {
+    const config = answer["config"] as { fields: Array<Record<string, unknown>> };
+    const fields = config.fields.map((entry) =>
+      entry["field"] === "power_entity"
+        ? { ...entry, current: { entity_id: "sensor.plug_power", friendly_name: "Garage plug power", exists: true } }
+        : entry,
+    );
+    return { ...answer, config: { ...config, fields } };
+  };
+
+  it("shows the plug's power sensor on the overview only once one is chosen, and offers it in the dialog", async () => {
+    const none = await mounted();
+    openSettings(none.element);
+    await settle();
+    expect(openDialog(none.element)?.querySelector("[data-row='power_entity']")).toBeNull();
+
+    const { element } = await mounted({ patch: withPlug });
+    openSettings(element);
+    await settle();
+    expect(rowText(element, "power_entity")).toContain("Garage plug power");
+    expect(rowText(element, "power_entity")).toContain(translate("en", "entity.field.powerEntity"));
+    edit(element, "charger");
+    const block = openDialog(element)?.querySelector("[data-field-block='power_entity'], [data-field='power_entity']");
+    expect(block).not.toBeNull();
+    expect(openDialog(element)?.textContent).toContain(translate("en", "entity.help.powerEntity"));
+    expect(translate("sv", "entity.help.powerEntity")).toContain("smart plugg");
+  });
+});
+
 describe("what is actually in use, and what no longer exists", () => {
   it("says an automatically found energy meter as such on the overview, not as 'Not set'", async () => {
     const { element } = await mounted({ patch: ownersInstallation });

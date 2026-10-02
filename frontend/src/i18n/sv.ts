@@ -106,6 +106,7 @@ export const sv: Record<keyof typeof en, string> = {
   "entity.field.chargeControl": "Laddstyrning",
   "entity.field.currentLimit": "Strömgräns",
   "entity.field.energyRegister": "Energiräknare",
+  "entity.field.powerEntity": "Effektsensor (smart plugg)",
   "entity.field.vehicleSoc": "Fordonets laddnivå",
   "entity.field.mainFuse": "Huvudsäkring",
   "entity.field.measurementMode": "Mätsätt",
@@ -137,6 +138,7 @@ export const sv: Record<keyof typeof en, string> = {
   "entity.help.chargeControl": "Entiteten som startar och stoppar laddningen: en strömbrytare, en väljare eller en knapp. SpotNav använder den för att följa planen.",
   "entity.help.currentLimit": "Entiteten som visar laddarens inställda ström. Lämna tom för OCPP 0.12-laddare, sessionsgränsen läses då av automatiskt.",
   "entity.help.energyRegister": "Laddarens ackumulerade kWh-mätare. SpotNav använder den för att veta vad som redan laddats. Hittas automatiskt för OCPP-laddare.",
+  "entity.help.powerEntity": "För en laddare bakom en smart plugg: pluggens effektsensor, i W eller kW. SpotNav räknar energin från den och ser när bilen slutat ta ström. Pluggen måste vara dimensionerad för laddarens kontinuerliga ström.",
   "entity.help.vehicleSoc": "Fordonets laddnivå, läst från sensorn som valts för fordonet, eller hittad automatiskt när det bara har en.",
   "entity.help.mainFuse": "Anläggningens huvudsäkring i ampere. Alla laddare på anläggningen håller sig tillsammans under den.",
   "entity.help.measurementMode": "Om din mätare anger varje fas ström direkt, eller om SpotNav räknar ut den från effekt och spänning.",
@@ -355,6 +357,8 @@ export const sv: Record<keyof typeof en, string> = {
   "strategy.status.hybrid.unknown": "Hybrid · planerar",
   "advisory.vehicleNotRequestingCurrent":
     "Laddningen startades, men fordonet begär ingen ström. Kontrollera fordonets laddningsinställningar eller anslut kabeln igen.",
+  "advisory.powerBelowThreshold":
+    "Laddningen startades, men laddaren drar nästan ingen effekt. Bilen kan vara klar eller inte ladda: kontrollera fordonets laddningsinställningar eller anslut kabeln igen.",
   "control.noSettings": "Den här laddaren har inga inställningar ännu, så det finns inget att starta eller stoppa.",
   "control.pauseUnsettled": "En paus är sparad men har inte börjat gälla ännu. Inget tillämpas.",
   "control.pauseClearFailed": "En paus har löpt ut men kunde inte rensas, så inget tillämpas.",

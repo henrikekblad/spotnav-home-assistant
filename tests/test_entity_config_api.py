@@ -48,7 +48,7 @@ async def test_get_reports_charger_and_direct_site_fields(hass: HomeAssistant, h
     assert set(site_block) == {"name", "charger_count", "measurement", "warnings", "detection"}
     names = [item["field"] for item in result["config"]["fields"]]
     assert names == [
-        "charge_control", "current_limit", "energy_register_entity", "vehicle_soc",
+        "charge_control", "current_limit", "energy_register_entity", "power_entity", "vehicle_soc",
         "main_fuse_a", "measurement_mode", "direct_L1", "direct_L2", "direct_L3",
         "site_current_signed", "grid_power_source_power", "grid_power_source_power_export", "grid_power_inverted",
         "battery_aggregate_power_entity", "battery_discharge_power_entity",

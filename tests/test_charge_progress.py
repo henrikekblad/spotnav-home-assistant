@@ -210,7 +210,7 @@ def state(value: str, attributes: dict[str, Any] | None = None) -> Any:
 # --------------------------------------------------------------- the frozen vocabulary
 
 
-def test_the_vocabulary_is_exactly_the_three_states_and_the_nine_reasons() -> None:
+def test_the_vocabulary_is_exactly_the_three_states_and_the_thirteen_reasons() -> None:
     """The wire vocabulary is frozen here, once: a client's decoder is written against this list.
 
     Both clients switch on these strings, and the card shows the advisory's own code as subdued
@@ -227,6 +227,11 @@ def test_the_vocabulary_is_exactly_the_three_states_and_the_nine_reasons() -> No
         "current_import_unavailable",
         "suspended_ev_zero_current_pending",
         "suspended_ev_zero_current",
+        # A charger behind a smart plug is judged by its power (no connector status exists).
+        "power_unavailable",
+        "power_flowing",
+        "power_below_threshold_pending",
+        "power_below_threshold",
     )
 
 

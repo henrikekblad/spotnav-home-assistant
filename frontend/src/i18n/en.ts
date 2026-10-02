@@ -107,6 +107,7 @@ export const en = {
   "entity.field.chargeControl": "Charge control",
   "entity.field.currentLimit": "Current limit",
   "entity.field.energyRegister": "Energy register",
+  "entity.field.powerEntity": "Power sensor (smart plug)",
   "entity.field.vehicleSoc": "Vehicle charge level",
   "entity.field.mainFuse": "Main fuse",
   "entity.field.measurementMode": "Measurement mode",
@@ -138,6 +139,7 @@ export const en = {
   "entity.help.chargeControl": "The entity that starts and stops charging: a switch, a selector or a button. SpotNav uses it to follow the plan.",
   "entity.help.currentLimit": "The entity that reports the charger's current setpoint. Leave empty for OCPP 0.12 chargers, the session limit is then read automatically.",
   "entity.help.energyRegister": "Your charger's cumulative kWh meter. SpotNav uses it to know what has already been charged. Found automatically for OCPP chargers.",
+  "entity.help.powerEntity": "For a charger behind a smart plug: the plug's power sensor, in W or kW. SpotNav counts the energy from it and sees when the car has stopped drawing. The plug must be rated for the charger's continuous current.",
   "entity.help.vehicleSoc": "The vehicle's charge level, read from the sensor chosen for the vehicle, or found automatically when it has only one.",
   "entity.help.mainFuse": "The site's main fuse in amperes. All chargers on the site together stay below it.",
   "entity.help.measurementMode": "Whether your meter reports each phase's current directly, or SpotNav works it out from power and voltage.",
@@ -358,6 +360,8 @@ export const en = {
   "strategy.reason.totalPower": "Solar needs the meter's total grid power",
   "advisory.vehicleNotRequestingCurrent":
     "Charging was started, but the vehicle is not requesting current. Check the vehicle's charging settings or reconnect the cable.",
+  "advisory.powerBelowThreshold":
+    "Charging was started, but the charger draws almost no power. The car may be finished or not charging: check the vehicle's charging settings or reconnect the cable.",
   "control.noSettings": "This charger has no settings yet, so there is nothing to start or stop.",
   "control.pauseUnsettled":
     "A pause is stored but has not taken effect yet. Nothing is being applied.",

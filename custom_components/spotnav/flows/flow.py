@@ -37,6 +37,7 @@ from ..const import (
     CONF_DIRECT_ENTITIES,
     CONF_GRID_POWER_SOURCE,
     CONF_ENERGY_REGISTER_ENTITY,
+    CONF_POWER_ENTITY,
     CONF_ENERGY_REGISTER_IS_SESSION,
     CONF_ENTRY_TYPE,
     CONF_MAIN_FUSE_A,
@@ -878,6 +879,11 @@ class SpotNavChargingConfigFlow(ChargerWiringSteps, config_entries.ConfigFlow, d
                 vol.Optional(CONF_ENERGY_REGISTER_ENTITY): selector.EntitySelector(
                     selector.EntitySelectorConfig(domain="sensor", device_class="energy")
                 ),
+                # A dumb charger behind a smart plug reports power, not energy: SpotNav integrates
+                # it to energy itself and reads "not drawing" from it.
+                vol.Optional(CONF_POWER_ENTITY): selector.EntitySelector(
+                    selector.EntitySelectorConfig(domain="sensor", device_class="power")
+                ),
             }
         )
         if user_input is not None:
@@ -918,6 +924,8 @@ class SpotNavChargingConfigFlow(ChargerWiringSteps, config_entries.ConfigFlow, d
             CONF_ENERGY_REGISTER_ENTITY: user_input.get(CONF_ENERGY_REGISTER_ENTITY) or "",
             CONF_WEBHOOK_ID: secrets.token_urlsafe(32),
         }
+        if user_input.get(CONF_POWER_ENTITY):
+            data[CONF_POWER_ENTITY] = user_input[CONF_POWER_ENTITY]
         if self._mode == MODE_OCPP:
             # The explicit connector target from the chosen charge control. An unresolvable entity
             # is marked and the entry still created: the current is recorded but not applied.

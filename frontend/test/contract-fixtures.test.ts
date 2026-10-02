@@ -896,7 +896,7 @@ const SITE_TAIL = [
   "battery_power_inverted",
   "max_age_s",
 ];
-const CHARGER = ["charge_control", "current_limit", "energy_register_entity", "vehicle_soc"];
+const CHARGER = ["charge_control", "current_limit", "energy_register_entity", "power_entity", "vehicle_soc"];
 const SITE_FIXED = ["main_fuse_a", "measurement_mode"];
 
 /**

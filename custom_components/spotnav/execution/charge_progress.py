@@ -20,6 +20,11 @@ after the main state has gone to `0`. `unavailable`, `unknown` and non-numeric s
 unobservable, not zero. `SuspendedEVSE` is the charger's own pilot (see `pilot_floor_probe`), not
 the vehicle's failure, and a connector that reports `Charging` is the charger doing as told.
 
+A charger with a power sensor and no status sensor (a dumb charger behind a smart plug) has no
+connector status: it is judged by its power instead. The advisory is the same state, with the reason
+`power_below_threshold`, once the power has stayed under the idle threshold (100 W unless set) for
+`POWER_GRACE_PERIOD_S` (five minutes) while a charge is expected.
+
 The grace timer (`GRACE_PERIOD_S`) is armed when the full predicate first becomes true, cancelled
 the instant any fact stops holding or the subject changes, and publishes only if the same
 subject/connector/plan still owns it. Nothing is persisted; a restart begins a new grace period.
@@ -68,6 +73,15 @@ REASON_CURRENT_IMPORT_UNAVAILABLE = "current_import_unavailable"
 REASON_SUSPENDED_EV_ZERO_CURRENT_PENDING = "suspended_ev_zero_current_pending"
 #: The published advisory: started, `SuspendedEV`, no current, past the grace period.
 REASON_SUSPENDED_EV_ZERO_CURRENT = "suspended_ev_zero_current"
+#: A charger with a power sensor and no status sensor (a dumb charger behind a smart plug): the
+#: power cannot be read.
+REASON_POWER_UNAVAILABLE = "power_unavailable"
+#: The power is above the idle threshold: the charger is drawing.
+REASON_POWER_FLOWING = "power_flowing"
+#: The power is below the idle threshold and the grace period has not run out yet.
+REASON_POWER_BELOW_THRESHOLD_PENDING = "power_below_threshold_pending"
+#: The published advisory: started, power below the threshold for the whole grace period.
+REASON_POWER_BELOW_THRESHOLD = "power_below_threshold"
 
 #: Every reason this contract may carry; a reason is always present.
 CHARGE_PROGRESS_REASONS = (
@@ -80,6 +94,10 @@ CHARGE_PROGRESS_REASONS = (
     REASON_CURRENT_IMPORT_UNAVAILABLE,
     REASON_SUSPENDED_EV_ZERO_CURRENT_PENDING,
     REASON_SUSPENDED_EV_ZERO_CURRENT,
+    REASON_POWER_UNAVAILABLE,
+    REASON_POWER_FLOWING,
+    REASON_POWER_BELOW_THRESHOLD_PENDING,
+    REASON_POWER_BELOW_THRESHOLD,
 )
 
 #: OCPP's own spelling of the two statuses this rule names, compared exactly: an
@@ -93,6 +111,9 @@ ZERO_CURRENT_A = 0.5
 
 #: How long the full predicate must hold before the advisory is published.
 GRACE_PERIOD_S = 120.0
+
+#: A power reading is noisier than a connector status, so "not drawing" must hold for five minutes.
+POWER_GRACE_PERIOD_S = 300.0
 
 #: How long an accepted Start may go unacknowledged before it stops counting as pending.
 START_ACK_TIMEOUT_S = 30.0
@@ -143,6 +164,15 @@ class ChargeProgressFacts:
     connector_status: str | None
     current_import_a: float | None
     subject: str
+    #: A charger with a power sensor and no status sensor is judged by `power_w` against
+    #: `idle_power_w` instead of by a connector status; `power_w` is `None` when unreadable.
+    power_mode: bool = False
+    power_w: float | None = None
+    idle_power_w: float = 100.0
+
+    @property
+    def grace_period_s(self) -> float:
+        return POWER_GRACE_PERIOD_S if self.power_mode else GRACE_PERIOD_S
 
 
 @dataclass(frozen=True, slots=True)
@@ -189,6 +219,12 @@ def decide(facts: ChargeProgressFacts) -> ChargeProgress:
         return ChargeProgress(STATE_NORMAL, REASON_START_PENDING)
     if not facts.expected:
         return ChargeProgress(STATE_NORMAL, REASON_CHARGE_NOT_EXPECTED)
+    if facts.power_mode:
+        if facts.power_w is None:
+            return ChargeProgress(STATE_UNKNOWN, REASON_POWER_UNAVAILABLE)
+        if facts.power_w >= facts.idle_power_w:
+            return ChargeProgress(STATE_NORMAL, REASON_POWER_FLOWING)
+        return ChargeProgress(STATE_VEHICLE_NOT_REQUESTING_CURRENT, REASON_POWER_BELOW_THRESHOLD)
     if facts.connector_status is None:
         return ChargeProgress(STATE_UNKNOWN, REASON_CONNECTOR_STATUS_UNAVAILABLE)
     if facts.current_import_a is None:
@@ -213,16 +249,16 @@ def observe(
     if decision.state != STATE_VEHICLE_NOT_REQUESTING_CURRENT:
         # A fact that stops holding ends the observation and its grace period.
         return Observation(INSTRUCTION_CLEAR, decision, None)
+    power = facts.power_mode
+    pending_reason = REASON_POWER_BELOW_THRESHOLD_PENDING if power else REASON_SUSPENDED_EV_ZERO_CURRENT_PENDING
     if since is None:
         # The predicate just became true: the grace period starts now.
-        pending = ChargeProgress(STATE_NORMAL, REASON_SUSPENDED_EV_ZERO_CURRENT_PENDING, now)
+        pending = ChargeProgress(STATE_NORMAL, pending_reason, now)
         return Observation(INSTRUCTION_START, pending, now)
-    if (now - since).total_seconds() >= GRACE_PERIOD_S:
-        advisory = ChargeProgress(
-            STATE_VEHICLE_NOT_REQUESTING_CURRENT, REASON_SUSPENDED_EV_ZERO_CURRENT, since
-        )
+    if (now - since).total_seconds() >= facts.grace_period_s:
+        advisory = ChargeProgress(STATE_VEHICLE_NOT_REQUESTING_CURRENT, decision.reason, since)
         return Observation(INSTRUCTION_PUBLISH, advisory, since)
-    pending = ChargeProgress(STATE_NORMAL, REASON_SUSPENDED_EV_ZERO_CURRENT_PENDING, since)
+    pending = ChargeProgress(STATE_NORMAL, pending_reason, since)
     return Observation(INSTRUCTION_WAIT, pending, since)
 
 
@@ -266,6 +302,7 @@ class ChargeProgressObserver:
         self._generation = 0
         self._subject: str | None = None
         self._since: datetime | None = None
+        self._grace_s = GRACE_PERIOD_S
         self._cancel: Callable[[], None] | None = None
         self._current = NOT_OBSERVED
         self._shutdown = False
@@ -301,6 +338,7 @@ class ChargeProgressObserver:
             self._subject = facts.subject
             self._since = None
             self._cancel_timer()
+        self._grace_s = facts.grace_period_s
         observation = observe(facts, self._since, self._now())
         self._since = observation.since
         if observation.instruction == INSTRUCTION_START:
@@ -334,7 +372,7 @@ class ChargeProgressObserver:
         def fired(_now: datetime) -> None:
             self._grace_period_expired(token)
 
-        self._cancel = self._arm(fired, since + timedelta(seconds=GRACE_PERIOD_S))
+        self._cancel = self._arm(fired, since + timedelta(seconds=self._grace_s))
 
     @callback
     def _grace_period_expired(self, token: int) -> None:

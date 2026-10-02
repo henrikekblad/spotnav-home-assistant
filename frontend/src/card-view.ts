@@ -1788,6 +1788,11 @@ export function createCardView(input: CardViewInput): CardView {
       }
     }
     nodes.push(overviewRow("energy_register", translate(model.language, "entity.field.energyRegister"), energy));
+    // Only a charger behind a smart plug has a power sensor; the others get no row.
+    const powerField = fieldsOf(config, "charger").find((entry) => entry.field === "power_entity");
+    if (powerField !== undefined && powerField.kind === "entity" && powerField.current !== null) {
+      nodes.push(overviewRow("power_entity", translate(model.language, "entity.field.powerEntity"), powerField.current.friendlyName));
+    }
     for (const conflict of control?.conflicts ?? []) {
       const warning = element(
         doc,

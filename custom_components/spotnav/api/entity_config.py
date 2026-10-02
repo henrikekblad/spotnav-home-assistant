@@ -53,6 +53,7 @@ from ..const import (
     CONF_DERIVED_ENTITIES,
     CONF_DIRECT_ENTITIES,
     CONF_ENERGY_REGISTER_ENTITY,
+    CONF_POWER_ENTITY,
     CONF_GRID_POWER_SOURCE,
     CONF_MAIN_FUSE_A,
     CONF_MAX_AGE_S,
@@ -96,6 +97,7 @@ from .entity_fields import (
     FIELD_CHARGE_CONTROL,
     FIELD_CURRENT_LIMIT,
     FIELD_ENERGY_REGISTER,
+    FIELD_POWER_ENTITY,
     FIELD_GRID_POWER_SOURCE_EXPORT,
     FIELD_GRID_POWER_SOURCE_POWER,
     FIELD_MAIN_FUSE_A,
@@ -196,6 +198,12 @@ def _write_charger(hass: HomeAssistant, entry: ConfigEntry, changes: dict[str, A
         updated[CONF_CURRENT_LIMIT] = changes[FIELD_CURRENT_LIMIT] or ""
     if FIELD_ENERGY_REGISTER in changes:
         updated[CONF_ENERGY_REGISTER_ENTITY] = changes[FIELD_ENERGY_REGISTER] or ""
+    if FIELD_POWER_ENTITY in changes:
+        # Stored only while set, so a charger without one keeps exactly its old data.
+        if changes[FIELD_POWER_ENTITY]:
+            updated[CONF_POWER_ENTITY] = changes[FIELD_POWER_ENTITY]
+        else:
+            updated.pop(CONF_POWER_ENTITY, None)
     if entry.data.get(CONF_MODE) == MODE_OCPP:
         apply_target(
             updated,

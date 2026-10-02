@@ -106,6 +106,7 @@ export const fi: Record<keyof typeof en, string> = {
   "entity.field.chargeControl": "Latauksen ohjauskytkin",
   "entity.field.currentLimit": "Virtaraja",
   "entity.field.energyRegister": "Energialaskuri",
+  "entity.field.powerEntity": "Tehoanturi (älypistoke)",
   "entity.field.vehicleSoc": "Ajoneuvon lataustaso",
   "entity.field.mainFuse": "Pääsulake",
   "entity.field.measurementMode": "Mittaustapa",
@@ -137,6 +138,7 @@ export const fi: Record<keyof typeof en, string> = {
   "entity.help.chargeControl": "Kytkin, joka käynnistää ja pysäyttää latauksen. SpotNav kytkee sen päälle ja pois suunnitelman mukaan.",
   "entity.help.currentLimit": "Entiteetti, joka kertoo laturin asetetun virran. Jätä tyhjäksi OCPP 0.12 -latureilla, jolloin istuntoraja luetaan automaattisesti.",
   "entity.help.energyRegister": "Laturin kumulatiivinen kWh-mittari. SpotNav käyttää sitä tietääkseen, mitä on jo ladattu. Löytyy automaattisesti OCPP-latureille.",
+  "entity.help.powerEntity": "Älypistokkeen takana olevalle latauslaitteelle: pistokkeen tehoanturi, W tai kW. SpotNav laskee energian siitä ja huomaa, kun auto ei enää ota virtaa. Pistokkeen on kestettävä latauslaitteen jatkuva virta.",
   "entity.help.vehicleSoc": "Ajoneuvon varaustaso, luettuna ajoneuvolle valitusta anturista tai löydettynä automaattisesti, kun sillä on vain yksi.",
   "entity.help.mainFuse": "Kohteen pääsulake ampeereina. Kaikki kohteen laturit pysyvät yhdessä sen alapuolella.",
   "entity.help.measurementMode": "Ilmoittaako mittarisi kunkin vaiheen virran suoraan vai laskeeko SpotNav sen tehosta ja jännitteestä.",
@@ -354,6 +356,8 @@ export const fi: Record<keyof typeof en, string> = {
   "strategy.status.hybrid.unknown": "Hybridi · suunnittelee",
   "advisory.vehicleNotRequestingCurrent":
     "Lataus aloitettiin, mutta ajoneuvo ei pyydä virtaa. Tarkista ajoneuvon latausasetukset tai kytke kaapeli uudelleen.",
+  "advisory.powerBelowThreshold":
+    "Lataus käynnistettiin, mutta latauslaite ei ota juuri lainkaan tehoa. Auto voi olla valmis tai ei lataa: tarkista ajoneuvon latausasetukset tai kytke kaapeli uudelleen.",
   "control.noSettings": "Tällä laturilla ei ole vielä asetuksia, joten aloitettavaa tai pysäytettävää ei ole.",
   "control.pauseUnsettled": "Tauko on tallennettu, mutta se ei ole vielä voimassa. Mitään ei sovelleta.",
   "control.pauseClearFailed": "Tauko on päättynyt, mutta sitä ei voitu poistaa, joten mitään ei sovelleta.",

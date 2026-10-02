@@ -87,6 +87,15 @@ These integrations are recognised as not being EV chargers, so their devices are
 - JuiceNet (`juicenet`)
 - Smappee (`smappee`)
 
+### A dumb charger behind a smart plug
+
+A charger with no integration of its own, such as a granny charger or a simple wallbox, can be switched by a smart plug that reports power. Add it with **Manual**: the plug's switch is the **Charge control** and the plug's power sensor (device class power, W or kW) is the **Power sensor (smart plug)**. Both can be changed later in the card's charger settings.
+
+- SpotNav integrates the power into an energy counter of its own (the "Energy from power" sensor, trapezoid between readings). A gap longer than the maximum measurement age is not integrated, and the counter is kept across restarts. It stands in for the energy register unless you choose one.
+- With no status sensor, SpotNav reads "the car is finished or not drawing" from the power: below 100 W for five minutes during a planned charge, the card says the charger draws almost no power. The limit can be changed under the integration's **Configure** (*Not drawing below (W)*).
+- The plug must be rated for the charger's continuous current (a charger at 16 A needs a plug that carries 16 A for hours, which many cheap plugs do not), and the charger must start charging again by itself when power returns. SpotNav can switch the plug but cannot tell the charger to start.
+- There is no current control: the charger charges at its own current and SpotNav only switches it.
+
 ## Supported grid meters
 
 When you add a site, SpotNav scans the entity registry for these meters, including entities their integration ships disabled, and offers what it found. Nothing is applied until you confirm, and only entities the integration disabled are ever enabled. A meter that is not listed is still found when its entities carry a per-phase current or power and voltage, or you can pick the entities yourself.

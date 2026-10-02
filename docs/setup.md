@@ -152,6 +152,8 @@ Choose **Manual** for any charger that exposes a switch. The form asks for:
 - **Charging current (optional)**: a number entity that sets the current.
 - An optional energy meter sensor (a total energy sensor), which lets SpotNav know how much energy
   a charge has already delivered.
+- An optional **power sensor (smart plug)**, for a charger that is only a plug with a charger behind
+  it. See [a dumb charger behind a smart plug](supported.md#a-dumb-charger-behind-a-smart-plug).
 
 ### When detection finds nothing
 

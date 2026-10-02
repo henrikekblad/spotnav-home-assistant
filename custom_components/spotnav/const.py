@@ -11,6 +11,14 @@ CONF_CURRENT_CONTROL = "current_control"
 # does not buy it twice (baseline: `auto_settings.EnergyBaseline`).
 CONF_ENERGY_REGISTER_ENTITY = "energy_register_entity"
 CONF_WEBHOOK_ID = "webhook_id"
+# Optional per charger: a `sensor` with device class power (W or kW), for a charger behind a smart
+# plug. SpotNav integrates it to energy itself (`execution/power_energy.py`) when no energy register
+# is set, and with no status sensor reads "not drawing" from it (`charge_progress.py`).
+CONF_POWER_ENTITY = "power_entity"
+# Optional per charger: the power (W) below which a charger with a power sensor and no status sensor
+# counts as not drawing. Absent means `DEFAULT_IDLE_POWER_W`.
+CONF_IDLE_POWER_W = "idle_power_w"
+DEFAULT_IDLE_POWER_W = 100.0
 MODE_OCPP = "ocpp"
 MODE_GENERIC = "generic"
 # A charger found from its device: the integration's entities are matched by platform and key

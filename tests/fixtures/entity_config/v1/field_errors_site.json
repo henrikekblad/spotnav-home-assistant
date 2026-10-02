@@ -95,6 +95,21 @@
       },
       {
         "allowed_device_classes": [
+          "power"
+        ],
+        "allowed_domains": [
+          "sensor"
+        ],
+        "current": null,
+        "effective": null,
+        "field": "power_entity",
+        "kind": "entity",
+        "required": false,
+        "scope": "charger",
+        "writable": true
+      },
+      {
+        "allowed_device_classes": [
           "battery"
         ],
         "allowed_domains": [

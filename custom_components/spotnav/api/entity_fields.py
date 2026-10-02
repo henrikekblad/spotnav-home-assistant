@@ -49,6 +49,7 @@ from ..const import (
     CONF_DERIVED_ENTITIES,
     CONF_DIRECT_ENTITIES,
     CONF_ENERGY_REGISTER_ENTITY,
+    CONF_POWER_ENTITY,
     CONF_GRID_POWER_INVERTED,
     CONF_GRID_POWER_SOURCE,
     CONF_MAIN_FUSE_A,
@@ -108,9 +109,16 @@ DERIVED_REQUIRED_SUBFIELDS: Final = ("power", "voltage")
 FIELD_CHARGE_CONTROL: Final = "charge_control"
 FIELD_CURRENT_LIMIT: Final = "current_limit"
 FIELD_ENERGY_REGISTER: Final = "energy_register_entity"
+FIELD_POWER_ENTITY: Final = "power_entity"
 #: Read-only here; see the module docstring.
 FIELD_VEHICLE_SOC: Final = "vehicle_soc"
-CHARGER_FIELDS: Final = (FIELD_CHARGE_CONTROL, FIELD_CURRENT_LIMIT, FIELD_ENERGY_REGISTER, FIELD_VEHICLE_SOC)
+CHARGER_FIELDS: Final = (
+    FIELD_CHARGE_CONTROL,
+    FIELD_CURRENT_LIMIT,
+    FIELD_ENERGY_REGISTER,
+    FIELD_POWER_ENTITY,
+    FIELD_VEHICLE_SOC,
+)
 FIELD_MAIN_FUSE_A: Final = "main_fuse_a"
 FIELD_MEASUREMENT_MODE: Final = "measurement_mode"
 FIELD_MAX_AGE_S: Final = "max_age_s"
@@ -203,6 +211,7 @@ _ENTITY_DOMAIN: Final[dict[str, str]] = {
     FIELD_CHARGE_CONTROL: "switch",
     FIELD_CURRENT_LIMIT: "number",
     FIELD_ENERGY_REGISTER: "sensor",
+    FIELD_POWER_ENTITY: "sensor",
     FIELD_VEHICLE_SOC: "sensor",
     FIELD_BATTERY_AGGREGATE_POWER: "sensor",
     FIELD_BATTERY_DISCHARGE_POWER: "sensor",
@@ -220,6 +229,7 @@ _ENTITY_DEVICE_CLASSES: Final[dict[str, tuple[str, ...]]] = {
     FIELD_CHARGE_CONTROL: (),
     FIELD_CURRENT_LIMIT: (),
     FIELD_ENERGY_REGISTER: ("energy",),
+    FIELD_POWER_ENTITY: ("power",),
     FIELD_VEHICLE_SOC: ("battery",),
     FIELD_BATTERY_AGGREGATE_POWER: ("power",),
     FIELD_BATTERY_DISCHARGE_POWER: ("power",),
@@ -360,6 +370,8 @@ def _charger_effective(hass: HomeAssistant, entry: ConfigEntry, values: dict[str
         effective[FIELD_ENERGY_REGISTER] = _effective_value(
             hass, getattr(controller, "energy_register_entity_id", None), SOURCE_AUTOMATIC
         )
+    power = values[FIELD_POWER_ENTITY]
+    effective[FIELD_POWER_ENTITY] = _effective_value(hass, power, SOURCE_CONFIGURED) if power else None
     return effective
 
 
@@ -455,6 +467,7 @@ def current_charger_values(entry: ConfigEntry) -> dict[str, str]:
         FIELD_CHARGE_CONTROL: entry.data.get(CONF_CHARGE_CONTROL) or "",
         FIELD_CURRENT_LIMIT: entry.data.get(CONF_CURRENT_LIMIT) or "",
         FIELD_ENERGY_REGISTER: entry.data.get(CONF_ENERGY_REGISTER_ENTITY) or "",
+        FIELD_POWER_ENTITY: entry.data.get(CONF_POWER_ENTITY) or "",
     }
 
 
@@ -473,7 +486,7 @@ def charger_field_errors(
     """
     errors: list[FieldError] = []
     resolved: dict[str, str] = {}
-    for field in (FIELD_CHARGE_CONTROL, FIELD_CURRENT_LIMIT, FIELD_ENERGY_REGISTER):
+    for field in (FIELD_CHARGE_CONTROL, FIELD_CURRENT_LIMIT, FIELD_ENERGY_REGISTER, FIELD_POWER_ENTITY):
         if field not in changes:
             continue
         value = changes[field]
@@ -563,6 +576,15 @@ def charger_field_descriptors(hass: HomeAssistant, entry: ConfigEntry) -> list[d
             writable=True,
             current_entity_id=values[FIELD_ENERGY_REGISTER] or None,
             effective=effective[FIELD_ENERGY_REGISTER],
+        ),
+        _entity_field_descriptor(
+            hass,
+            field=FIELD_POWER_ENTITY,
+            scope="charger",
+            required=False,
+            writable=True,
+            current_entity_id=values[FIELD_POWER_ENTITY] or None,
+            effective=effective[FIELD_POWER_ENTITY],
         ),
         vehicle_soc_descriptor(hass),
     ]
