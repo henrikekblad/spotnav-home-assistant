@@ -26,6 +26,9 @@ charging start*, *Planned cost* and *Auto settings revision*. On a site: *Capaci
   and submit again, or choose how yourself.
 - **"The charger's own control is still on."** The charger's own smart, solar or load-balancing mode
   is on. Turn it off in the charger's integration or app and continue, or choose to continue anyway.
+- **A start is sent but the charger does not charge, or something else changes it back.** Only one
+  controller may drive a charger. Turn off the charger's own smart charging (Easee: its smart
+  charging switch) and any other integration that controls it, such as EV Smart Charging.
 - **"This charge control is already used by another SpotNav charger."** A charge control or current
   number can belong to only one SpotNav charger.
 - **A new charger was not added to the site.** Only a charger whose wiring SpotNav can tell (three

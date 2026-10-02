@@ -36,6 +36,7 @@ from custom_components.spotnav.execution.charger_adapter import (
     ASSIGN_UNSUPPORTED,
     build_adapter,
     WRITE_REGULATOR,
+    WRITE_RESEND,
     WRITE_SESSION_START,
 )
 from custom_components.spotnav.vehicles.ocpp_identity import OcppConnectorTarget
@@ -107,8 +108,8 @@ async def test_easee_starts_and_stops_through_its_own_service_and_never_writes_a
     await adapter.async_set_current(12, reason=WRITE_SESSION_START)
 
     assert [dict(call.data) for call in commands] == [
-        {"device_id": ids["device_id"], "action_command": "start"},
-        {"device_id": ids["device_id"], "action_command": "stop"},
+        {"device_id": ids["device_id"], "action_command": "resume"},
+        {"device_id": ids["device_id"], "action_command": "pause"},
     ]
     assert all(calls == [] for calls in flash)
 
@@ -679,3 +680,77 @@ async def test_an_ocpp_entry_with_the_number_path_writes_the_number_under_the_lo
 
     assert isinstance(adapter.current, NumberCurrent)
     assert adapter.policy.min_interval_s == 10.0 and adapter.policy.zero_pauses is False
+
+
+async def _easee_commands(hass: HomeAssistant, clock: Clock | None = None):
+    ids, adapter, limits = await _easee(hass, clock or Clock())
+    commands = async_mock_service(hass, "easee", "action_command")
+    return adapter, commands, limits
+
+
+def _names(commands) -> list[str]:
+    return [call.data["action_command"] for call in commands]
+
+
+async def test_easee_start_from_awaiting_start_resumes(hass: HomeAssistant) -> None:
+    adapter, commands, _ = await _easee_commands(hass)
+    hass.states.async_set("sensor.easee_status", "awaiting_start")
+
+    await adapter.async_start()
+
+    assert _names(commands) == ["resume"]
+
+
+async def test_easee_start_from_awaiting_authorization_authorizes_then_resumes(hass: HomeAssistant) -> None:
+    adapter, commands, _ = await _easee_commands(hass)
+    hass.states.async_set("sensor.easee_status", "awaiting_authorization")
+
+    await adapter.async_start()
+
+    assert _names(commands) == ["start", "resume"]
+
+
+async def test_easee_stop_pauses_and_never_deauthorizes(hass: HomeAssistant) -> None:
+    adapter, commands, _ = await _easee_commands(hass)
+    hass.states.async_set("sensor.easee_status", "charging")
+
+    await adapter.async_stop()
+
+    assert _names(commands) == ["pause"]
+
+
+async def test_easee_writes_no_dynamic_limit_while_paused_and_sends_it_after_the_resume(
+    hass: HomeAssistant,
+) -> None:
+    adapter, commands, limits = await _easee_commands(hass)
+    hass.states.async_set("sensor.easee_status", "charging")
+    await adapter.async_stop()
+    hass.states.async_set("sensor.easee_status", "awaiting_start")
+
+    assert await adapter.async_set_current(10, reason=WRITE_REGULATOR) == ASSIGN_IGNORED_WHILE_PAUSED
+    assert limits == []
+
+    await adapter.async_start()
+    hass.states.async_set("sensor.easee_status", "charging")
+    assert await adapter.async_set_current(10, reason=WRITE_SESSION_START) == ASSIGN_ASSIGNED
+    assert [call.data["current"] for call in limits] == [10]
+
+
+async def test_easee_does_not_hold_back_a_limit_when_it_never_paused(hass: HomeAssistant) -> None:
+    adapter, _, limits = await _easee_commands(hass)
+    hass.states.async_set("sensor.easee_status", "awaiting_start")
+
+    assert await adapter.async_set_current(10, reason=WRITE_REGULATOR) == ASSIGN_ASSIGNED
+    assert len(limits) == 1
+
+
+async def test_easee_resends_the_limit_after_a_plug_in_that_followed_a_pause(hass: HomeAssistant) -> None:
+    adapter, _, limits = await _easee_commands(hass)
+    hass.states.async_set("sensor.easee_status", "charging")
+    await adapter.async_stop()
+    hass.states.async_set("sensor.easee_status", "disconnected")
+    hass.states.async_set("sensor.easee_status", "awaiting_start")
+    assert adapter.current.needs_resend("disconnected", "awaiting_start") is True
+
+    assert await adapter.async_set_current(8, reason=WRITE_RESEND) == ASSIGN_ASSIGNED
+    assert limits[-1].data["current"] == 8

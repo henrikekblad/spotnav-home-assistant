@@ -18,8 +18,9 @@ still usable through the generic flow; it then gets `DEFAULT_POLICY`, the conser
   session start at most and **never from the regulator loop**;
 * `zero_pauses`: writing 0 A pauses the charge, so SpotNav never writes below the 6 A floor and uses
   its stop instead;
-* `ignored_while_paused`: a write while the charger is paused only stores the value (Peblar), so the
-  current is written after the start, never before, and not while paused;
+* `ignored_while_paused`: a write while the charger is paused only stores the value (Peblar) or, for
+  Easee, a limit above 0 would resume it, so the current is written after the start, never before,
+  and not while paused;
 * `installation_wide`: the number caps every charger of an installation (Zaptec), so it is used only
   when the installation has a single charger;
 * `resend_after_plug_in`: the charger forgets the limit on plug-in and reboot (Easee), so it is sent
@@ -178,7 +179,7 @@ _PROFILES: Final[tuple[PlatformProfile, ...]] = (
         name="Easee",
         start_stop=StartStop(PATH_EASEE),
         easee_current=True,
-        policy=WritePolicy(max_writes_per_minute=20, resend_after_plug_in=True),
+        policy=WritePolicy(max_writes_per_minute=20, resend_after_plug_in=True, ignored_while_paused=True),
         energy_keys=("lifetime_energy",),
         session_energy_keys=("session_energy",),
         status_keys=("status", "easee_status"),
@@ -188,7 +189,7 @@ _PROFILES: Final[tuple[PlatformProfile, ...]] = (
         own_modes=(
             _rule("switch", ("smart_charging",), ("off",), "smart charging"),
         ),
-        note="Start and stop and the dynamic limit go through Easee's own services; "
+        note="Start and stop (resume and pause) and the dynamic limit go through Easee's own services; "
         "the max-limit services are never used (flash).",
     ),
     PlatformProfile(

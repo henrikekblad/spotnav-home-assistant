@@ -119,6 +119,8 @@ EASEE_READBACK_DELAY_S: Final = 2.0
 EASEE_CONFIRM_AFTER_S: Final = 20.0
 #: Easee statuses in which no cable is connected, so a move out of one is a plug-in.
 _EASEE_DISCONNECTED: Final = frozenset({"disconnected", "offline", STATE_UNAVAILABLE, STATE_UNKNOWN, ""})
+#: Easee statuses in which a `start` (authorize) is what the charger waits for.
+_EASEE_AWAITING_AUTHORIZATION: Final = frozenset({"awaiting_authorization", "authenticating"})
 
 
 def _lower(state: State | None) -> str | None:
@@ -357,18 +359,55 @@ class ButtonPath(StartStopPath):
 
 
 class EaseeCommandPath(StartStopPath):
-    """`easee.action_command` start and stop. Easee has no switch that means charging, and the
-    `is_enabled` switch is a stored charger setting that is never written.
+    """`easee.action_command`: `pause` and `resume` start and stop a charge, `start` only authorizes.
+
+    Easee's own labels are "Authorize (start) charging" and "Deauthorize (stop) charging": they
+    matter only while the charger waits for an authorization. On a charger that does not need one,
+    `start` does nothing visible, which is why a Start sent that way was never acknowledged. What
+    actually holds a charge is `pause_charging` (it keeps the authorization and limits the dynamic
+    charger current to 0) and `resume_charging` (it lifts that again). Easee's `is_enabled` switch is
+    a stored charger setting and is never written.
+
+    The path remembers that it has paused the charger (`paused`): the status alone cannot say, a
+    paused charger reports `awaiting_start` exactly as one that was never started does. A dynamic
+    limit written meanwhile would raise the paused charger's current and resume it behind our back.
     """
 
     kind = PATH_EASEE
 
     def __init__(
-        self, hass: HomeAssistant, device_id: str, *, limiter: WriteRateLimiter | None = None
+        self,
+        hass: HomeAssistant,
+        device_id: str,
+        *,
+        limiter: WriteRateLimiter | None = None,
+        status: Callable[[], str | None] = lambda: None,
     ) -> None:
         super().__init__(hass)
         self.device_id = device_id
         self._limiter = limiter
+        self._status = status
+        #: `True` after a pause of ours, `False` after a resume, `None` when nothing is known (a
+        #: restart, a plug-in).
+        self.paused: bool | None = None
+
+    def is_paused(self) -> bool:
+        """Whether a dynamic limit must not be written now: the charger was paused by us and
+        nothing since has said otherwise. Unknown counts as not paused: after a plug-in the charger
+        sits in `awaiting_start` and is owed its limit (`EaseeDynamicLimit.needs_resend`).
+        """
+        status = self._status()
+        if status is None:
+            return bool(self.paused)
+        if status in _EASEE_DISCONNECTED:
+            self.paused = None  # a plug-in clears Easee's dynamic limit and with it the pause
+            return False
+        if status == "charging":
+            self.paused = False  # someone resumed it; what the charger does is the truth
+        return bool(self.paused)
+
+    def forget_pause(self) -> None:
+        self.paused = None
 
     async def _command(self, action: str) -> None:
         # Counted against the settings budget, never refused by it: a stop is a safety action.
@@ -382,10 +421,15 @@ class EaseeCommandPath(StartStopPath):
         )
 
     async def async_start(self) -> None:
-        await self._command("start")
+        if self._status() in _EASEE_AWAITING_AUTHORIZATION:
+            await self._command("start")
+        await self._command("resume")
+        self.paused = False
 
     async def async_stop(self) -> None:
-        await self._command("stop")
+        # Never `stop`: deauthorizing would make the next Start wait for an authorization again.
+        await self._command("pause")
+        self.paused = True
 
     def enabled_state(self) -> None:
         return None
@@ -776,8 +820,12 @@ class EaseeDynamicLimit(CurrentPath):
         status_entity_id: str | None,
         limiter: WriteRateLimiter,
         now: Callable[[], datetime] = dt_util.utcnow,
+        paused: Callable[[], bool] = lambda: False,
+        on_plug_in: Callable[[], None] = lambda: None,
     ) -> None:
         super().__init__(policy)
+        self._paused = paused
+        self._on_plug_in = on_plug_in
         self.hass = hass
         self.device_id = device_id
         self.status_entity_id = status_entity_id
@@ -841,6 +889,9 @@ class EaseeDynamicLimit(CurrentPath):
     async def async_set(self, amps: int, *, reason: str, verify: bool = False) -> str:
         if amps < DEFAULT_MIN_CURRENT_A:
             return ASSIGN_BELOW_MINIMUM
+        if self._paused():
+            # A limit above 0 would lift the pause; the Start that follows sends it again.
+            return ASSIGN_IGNORED_WHILE_PAUSED
         self._note_confirmation()
         read = self.read_back_a()
         if reason != WRITE_RESEND and read == amps:
@@ -879,7 +930,10 @@ class EaseeDynamicLimit(CurrentPath):
             return False
         old = (old_status or "").strip().lower()
         new = (new_status or "").strip().lower()
-        return old in _EASEE_DISCONNECTED and new not in _EASEE_DISCONNECTED
+        plugged_in = old in _EASEE_DISCONNECTED and new not in _EASEE_DISCONNECTED
+        if plugged_in:
+            self._on_plug_in()  # the charger cleared its limit, and our pause with it
+        return plugged_in
 
     def describe(self) -> dict[str, Any]:
         return current_description(self.kind, service=f"{_EASEE_DOMAIN}.set_charger_dynamic_limit")
@@ -1126,7 +1180,12 @@ def build_adapter(
     elif kind == PATH_BUTTONS and raw_path.get("start_entity_id") and raw_path.get("stop_entity_id"):
         path = ButtonPath(hass, str(raw_path["start_entity_id"]), str(raw_path["stop_entity_id"]))
     elif kind == PATH_EASEE and raw_path.get("device_id"):
-        path = EaseeCommandPath(hass, str(raw_path["device_id"]), limiter=limiter)
+        path = EaseeCommandPath(
+            hass,
+            str(raw_path["device_id"]),
+            limiter=limiter,
+            status=lambda: holder["adapter"]._status(),  # noqa: SLF001 - the adapter reads its own sensor
+        )
     else:
         path = SwitchPath(
             hass,
@@ -1167,6 +1226,8 @@ def build_adapter(
             status_entity_id=status_entity_id,
             limiter=limiter,
             now=now,
+            paused=path.is_paused,
+            on_plug_in=path.forget_pause,
         )
 
     current_entities = config.get(CONF_CHARGER_CURRENT_ENTITIES)
