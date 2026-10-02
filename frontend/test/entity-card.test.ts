@@ -1016,7 +1016,7 @@ describe("the charger audit's start and stop kinds and the external balancer war
     openSettings(element);
     await settle();
     edit(element, "charger");
-    expect(controlRow(element, "start_stop")).toContain("The current number: stop writes 0 A, start writes the planned current");
+    expect(controlRow(element, "start_stop")).toContain("Through the current limit: 0 A pauses, the planned current resumes");
     expect(controlRow(element, "start_stop")).not.toContain(translate("en", "control.startStop.switch"));
 
     const unknown = { ...abb, start_stop: { ...abb.start_stop, kind: "from_the_future" } };
@@ -1027,7 +1027,7 @@ describe("the charger audit's start and stop kinds and the external balancer war
     expect(controlRow(later.element, "start_stop")).toContain(translate("en", "control.startStop.other"));
     expect(controlRow(later.element, "start_stop")).not.toContain("from_the_future");
     expect(translate("sv", "control.startStop.numberPause")).toBe(
-      "Strömnumret: stopp skriver 0 A, start skriver den planerade strömmen",
+      "Via strömgränsen: 0 A pausar, planerad ström återupptar",
     );
   });
 
