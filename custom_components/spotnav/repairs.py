@@ -24,7 +24,7 @@ from homeassistant.helpers import (
 )
 from homeassistant.helpers.event import async_call_later
 
-from .const import CONF_ENTRY_TYPE, DOMAIN, ENTRY_TYPE_SITE
+from .const import CONF_CHARGER_ENTRY_IDS, CONF_ENTRY_TYPE, DOMAIN, ENTRY_TYPE_SITE
 from .vehicles.duplicate_chargers import charger_entries_except, duplicate_pairs
 from .vehicles.choices import (
     DISMISS_VEHICLE_CHOICE,
@@ -102,8 +102,8 @@ def _setup_issue_fields(
     hass: HomeAssistant, exclude_entry_ids: Iterable[str] = ()
 ) -> dict[str, dict[str, Any]]:
     """The issues about how entries are set up, by issue id: two charger entries that are one physical
-    charger (named on both, nothing removed for the person) and a site with no charger yet (how to add
-    one). Not fixable: the person decides which entry stays.
+    charger (named on both, nothing removed for the person) and a site none of whose members is a charger
+    (how to add one). Not fixable: the person decides which entry stays.
     """
     excluded = set(exclude_entry_ids)
     issues: dict[str, dict[str, Any]] = {}
@@ -114,16 +114,17 @@ def _setup_issue_fields(
             "is_fixable": False,
             "severity": ir.IssueSeverity.WARNING,
         }
-    chargers = charger_entries_except(hass, excluded)
-    if not chargers:
-        for site in hass.config_entries.async_entries(DOMAIN):
-            if site.entry_id not in excluded and site.data.get(CONF_ENTRY_TYPE) == ENTRY_TYPE_SITE:
-                issues[f"{SITE_WITHOUT_CHARGERS_ISSUE}_{site.entry_id}"] = {
-                    "translation_key": SITE_WITHOUT_CHARGERS_ISSUE,
-                    "translation_placeholders": {"site": site.title},
-                    "is_fixable": False,
-                    "severity": ir.IssueSeverity.WARNING,
-                }
+    existing = {entry.entry_id for entry in charger_entries_except(hass, excluded)}
+    for site in hass.config_entries.async_entries(DOMAIN):
+        if site.entry_id in excluded or site.data.get(CONF_ENTRY_TYPE) != ENTRY_TYPE_SITE:
+            continue
+        if not existing.intersection(site.data.get(CONF_CHARGER_ENTRY_IDS) or []):
+            issues[f"{SITE_WITHOUT_CHARGERS_ISSUE}_{site.entry_id}"] = {
+                "translation_key": SITE_WITHOUT_CHARGERS_ISSUE,
+                "translation_placeholders": {"site": site.title},
+                "is_fixable": False,
+                "severity": ir.IssueSeverity.WARNING,
+            }
     return issues
 
 

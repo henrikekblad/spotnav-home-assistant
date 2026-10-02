@@ -90,6 +90,7 @@ from ..site.site_detection import (
     MeterCandidate,
 )
 from ..site.site_membership import site_membership_errors
+from ..vehicles.charger_inventory import charger_entries
 from ..vehicles.choices import (
     ambiguous_vehicle_option,
     DISMISS_VEHICLE_CHOICE,
@@ -123,6 +124,7 @@ from .measured_source import (
     site_device_scope,
 )
 from .options import SiteCapacityOptionsFlow, SpotNavChargingOptionsFlow
+from ..setup_hints import ADD_CHARGER_HINT
 from .site_confirm import site_confirm_summary, site_join_summary
 from .site_form import (
     default_site_name,
@@ -1007,7 +1009,13 @@ class SpotNavChargingConfigFlow(ChargerWiringSteps, config_entries.ConfigFlow, d
             if user_input[CONF_MEASUREMENT_MODE] == MEASUREMENT_MODE_DIRECT:
                 return await self.async_step_site_current_suggestions()
             return await self.async_step_site_details()
-        return self.async_show_form(step_id="site", data_schema=site_basic_schema(self.hass))
+        # With no charger yet, the form says how to add one (it will then offer to join this site).
+        hint = "" if charger_entries(self.hass) else f"\n\n{ADD_CHARGER_HINT[flow_language(self.hass)]}"
+        return self.async_show_form(
+            step_id="site",
+            data_schema=site_basic_schema(self.hass),
+            description_placeholders={"charger_hint": hint},
+        )
 
     async def async_step_site_detected(
         self, user_input: dict[str, Any] | None = None

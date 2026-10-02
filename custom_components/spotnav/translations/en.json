@@ -76,7 +76,7 @@
       },
       "site": {
         "title": "Site",
-        "description": "The site keeps its chargers' combined current under the main fuse. Active control can be switched on and off later; it is best effort, not a protective device. The main fuse rating must be entered explicitly -- it is never guessed from measured load.",
+        "description": "The site keeps its chargers' combined current under the main fuse. Active control can be switched on and off later; it is best effort, not a protective device. The main fuse rating must be entered explicitly -- it is never guessed from measured load. {charger_hint}",
         "data": {
           "name": "Site name",
           "main_fuse_a": "Main fuse rating (A)",

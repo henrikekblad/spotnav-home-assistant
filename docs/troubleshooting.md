@@ -40,6 +40,9 @@ charging start*, *Planned cost* and *Auto settings revision*. On a site: *Capaci
 - **A new charger was not added to the site.** Only a charger whose wiring SpotNav can tell (three
   phases and exactly one measured-current source on its device) is offered to the site. Add it from
   the site's **Configure**.
+- **A site has no charger.** The card is shown per charger, so a site on its own has no card. Add a
+  charger: **Settings, Devices & services, SpotNav, Add entry, Charger**; it offers to join the
+  site. The same sentence is in the site's Repairs entry and in its sensor's `next_step` attribute.
 - **The site needs its meter chosen.** When no grid meter is found, pick the entities yourself or
   skip and finish later under the site's **Configure**. See
   [Set up SpotNav](setup.md#when-the-meter-is-not-found).

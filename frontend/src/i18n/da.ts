@@ -6,6 +6,8 @@ export const da: Record<keyof typeof en, string> = {
   "card.title": "SpotNav",
   "state.loading": "Læser ladeplanen…",
   "state.unconfigured": "Vælg én SpotNav-lader i kortets editor.",
+  "state.addCharger": "Tilføj en lader: Indstillinger → Enheder og tjenester → SpotNav → Tilføj post → Lader; den tilbyder at blive en del af dette anlæg.",
+  "state.noChargers": "Ingen SpotNav-lader er sat op i denne Home Assistant endnu.",
   "state.requestFailed": "Anmodningen mislykkedes. Kontrollér forbindelsen til Home Assistant, og prøv igen.",
   "state.unsupported": "Kortet og integrationen taler forskellige API-versioner. Opdatér begge, så de passer sammen.",
   "state.malformed": "Integrationen svarede med noget, som kortet ikke kan læse. Opdater begge, så de passer sammen.",

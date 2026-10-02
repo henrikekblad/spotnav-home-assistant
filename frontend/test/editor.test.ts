@@ -89,6 +89,19 @@ describe("choosing a charger", () => {
     await settle();
     expect(options(element)).toEqual(["Select a charger"]);
     expect(shadow(element).textContent).toContain("No SpotNav charger is configured");
+    // And how to add one, so a site on its own is not a dead end.
+    expect(shadow(element).textContent).toContain(
+      "Add a charger: Settings \u2192 Devices & services \u2192 SpotNav \u2192 Add entry \u2192 Charger; it will offer to join this site.",
+    );
+  });
+
+  it("says how to add a charger in the reader's own language", async () => {
+    const hass = new FakeHass();
+    (hass as unknown as { language: string }).language = "sv";
+    const element = mountEditor({ type: "custom:spotnav-card", charger: "" }, hass);
+    hass.resolveNext(chargerList([]));
+    await settle();
+    expect(shadow(element).textContent).toContain("Lägg till en laddare: Inställningar → Enheter och tjänster → SpotNav");
   });
 });
 

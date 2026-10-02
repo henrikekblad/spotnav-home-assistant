@@ -7,6 +7,8 @@ export const en = {
   "card.title": "SpotNav",
   "state.loading": "Reading the charging plan…",
   "state.unconfigured": "Choose one SpotNav charger in this card's editor.",
+  "state.addCharger": "Add a charger: Settings → Devices & services → SpotNav → Add entry → Charger; it will offer to join this site.",
+  "state.noChargers": "No SpotNav charger is configured in this Home Assistant yet.",
   "state.requestFailed": "The request failed. Check the connection to Home Assistant and try again.",
   "state.unsupported": "This card and the integration speak different API versions. Update both so they match.",
   "state.malformed": "The integration answered with something this card cannot read. Update both so they match.",

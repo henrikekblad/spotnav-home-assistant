@@ -6,6 +6,8 @@ export const sv: Record<keyof typeof en, string> = {
   "card.title": "SpotNav",
   "state.loading": "Läser laddplanen…",
   "state.unconfigured": "Välj en SpotNav-laddare i kortets redigerare.",
+  "state.addCharger": "Lägg till en laddare: Inställningar → Enheter och tjänster → SpotNav → Lägg till post → Laddare; den erbjuder sig att ansluta till den här anläggningen.",
+  "state.noChargers": "Ingen SpotNav-laddare är inrättad i den här Home Assistant ännu.",
   "state.requestFailed": "Begäran misslyckades. Kontrollera anslutningen till Home Assistant och försök igen.",
   "state.unsupported": "Kortet och integrationen talar olika API-versioner. Uppdatera båda så att de matchar.",
   "state.malformed": "Integrationen svarade med något som kortet inte kan läsa. Uppdatera båda så att de matchar.",

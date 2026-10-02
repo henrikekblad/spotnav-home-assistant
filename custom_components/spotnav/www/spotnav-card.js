@@ -2859,6 +2859,8 @@ var da = {
   "card.title": "SpotNav",
   "state.loading": "Læser ladeplanen…",
   "state.unconfigured": "Vælg én SpotNav-lader i kortets editor.",
+  "state.addCharger": "Tilføj en lader: Indstillinger → Enheder og tjenester → SpotNav → Tilføj post → Lader; den tilbyder at blive en del af dette anlæg.",
+  "state.noChargers": "Ingen SpotNav-lader er sat op i denne Home Assistant endnu.",
   "state.requestFailed": "Anmodningen mislykkedes. Kontrollér forbindelsen til Home Assistant, og prøv igen.",
   "state.unsupported": "Kortet og integrationen taler forskellige API-versioner. Opdatér begge, så de passer sammen.",
   "state.malformed": "Integrationen svarede med noget, som kortet ikke kan læse. Opdater begge, så de passer sammen.",
@@ -3401,6 +3403,8 @@ var en = {
   "card.title": "SpotNav",
   "state.loading": "Reading the charging plan…",
   "state.unconfigured": "Choose one SpotNav charger in this card's editor.",
+  "state.addCharger": "Add a charger: Settings → Devices & services → SpotNav → Add entry → Charger; it will offer to join this site.",
+  "state.noChargers": "No SpotNav charger is configured in this Home Assistant yet.",
   "state.requestFailed": "The request failed. Check the connection to Home Assistant and try again.",
   "state.unsupported": "This card and the integration speak different API versions. Update both so they match.",
   "state.malformed": "The integration answered with something this card cannot read. Update both so they match.",
@@ -3943,6 +3947,8 @@ var fi = {
   "card.title": "SpotNav",
   "state.loading": "Luetaan lataussuunnitelmaa…",
   "state.unconfigured": "Valitse yksi SpotNav-laturi kortin muokkaimessa.",
+  "state.addCharger": "Lisää latauslaite: Asetukset → Laitteet ja palvelut → SpotNav → Lisää merkintä → Latauslaite; se tarjoutuu liittymään tähän kohteeseen.",
+  "state.noChargers": "Tähän Home Assistantiin ei ole vielä asetettu SpotNav-latauslaitetta.",
   "state.requestFailed": "Pyyntö epäonnistui. Tarkista yhteys Home Assistant -palveluun ja yritä uudelleen.",
   "state.unsupported": "Kortti ja integraatio käyttävät eri API-versioita. Päivitä molemmat, jotta ne täsmäävät.",
   "state.malformed": "Integraatio vastasi jotain, mitä kortti ei pysty lukemaan. Päivitä molemmat, jotta ne vastaavat toisiaan.",
@@ -4485,6 +4491,8 @@ var nb = {
   "card.title": "SpotNav",
   "state.loading": "Leser ladeplanen…",
   "state.unconfigured": "Velg én SpotNav-lader i kortets redigeringsverktøy.",
+  "state.addCharger": "Legg til en lader: Innstillinger → Enheter og tjenester → SpotNav → Legg til oppføring → Lader; den tilbyr å bli med i dette anlegget.",
+  "state.noChargers": "Ingen SpotNav-lader er satt opp i denne Home Assistant ennå.",
   "state.requestFailed": "Forespørselen mislyktes. Sjekk forbindelsen til Home Assistant, og prøv igjen.",
   "state.unsupported": "Kortet og integrasjonen snakker ulike API-versjoner. Oppdater begge så de samsvarer.",
   "state.malformed": "Integrasjonen svarte med noe kortet ikke kan lese. Oppdater begge så de samsvarer.",
@@ -5027,6 +5035,8 @@ var sv = {
   "card.title": "SpotNav",
   "state.loading": "Läser laddplanen…",
   "state.unconfigured": "Välj en SpotNav-laddare i kortets redigerare.",
+  "state.addCharger": "Lägg till en laddare: Inställningar → Enheter och tjänster → SpotNav → Lägg till post → Laddare; den erbjuder sig att ansluta till den här anläggningen.",
+  "state.noChargers": "Ingen SpotNav-laddare är inrättad i den här Home Assistant ännu.",
   "state.requestFailed": "Begäran misslyckades. Kontrollera anslutningen till Home Assistant och försök igen.",
   "state.unsupported": "Kortet och integrationen talar olika API-versioner. Uppdatera båda så att de matchar.",
   "state.malformed": "Integrationen svarade med något som kortet inte kan läsa. Uppdatera båda så att de matchar.",
@@ -15145,7 +15155,8 @@ var SpotnavCardEditor = class extends HTMLElement {
     }
     const options = chargerOptions(this.list, this.config.charger);
     if (this.list !== null && options.length === 0) {
-      return status("No SpotNav charger is configured in this Home Assistant yet.");
+      const language = resolveLanguage(this.hassObject?.language);
+      return status(`${translate(language, "state.noChargers")} ${translate(language, "state.addCharger")}`);
     }
     if (this.list === null) {
       return status("Loading chargers…");

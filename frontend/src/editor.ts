@@ -14,6 +14,7 @@
 
 import { listChargers } from "./api";
 import { chargerOption, labelledButton, textParagraph } from "./dom";
+import { resolveLanguage, translate } from "./i18n";
 import { CARD_TYPE } from "./types";
 import type { ChargerList, HomeAssistantLike } from "./types";
 import { chargerOptions, editorConfig, parseCardConfig, stubChargerId, type CardConfig } from "./view";
@@ -193,7 +194,9 @@ export class SpotnavCardEditor extends HTMLElement {
     }
     const options = chargerOptions(this.list, this.config.charger);
     if (this.list !== null && options.length === 0) {
-      return status("No SpotNav charger is configured in this Home Assistant yet.");
+      // The charger list is empty, so say how to add one (a site on its own has no card to configure).
+      const language = resolveLanguage(this.hassObject?.language);
+      return status(`${translate(language, "state.noChargers")} ${translate(language, "state.addCharger")}`);
     }
     if (this.list === null) {
       return status("Loading chargers\u2026");
