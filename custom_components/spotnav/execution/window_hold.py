@@ -38,9 +38,12 @@ class WindowHold:
         self.overridden = False
         self._on: bool | None = None
 
-    def baseline(self, control_on: bool) -> None:
-        """Take the control's state as it is now, so what already runs is never "seen"."""
-        self._on = control_on
+    def baseline(self, control_on: bool | None) -> None:
+        """Take the control's state as it is now, so what already runs is never "seen". `None`
+        (unreadable: unavailable or unknown) takes nothing: the baseline is the first readable state.
+        """
+        if control_on is not None:
+            self._on = control_on
 
     def spotnav_started(self) -> None:
         """SpotNav started (or took over) the charge."""
@@ -62,10 +65,16 @@ class WindowHold:
         self.held = False
         self.overridden = False
 
-    def observe(self, *, control_on: bool, connected: bool | None, gap: bool) -> str:
+    def observe(self, *, control_on: bool | None, connected: bool | None, gap: bool) -> str:
         """One observation of the charger. `gap`: a window is still ahead, the time is outside every
-        one, and nothing else (a pause, solar) owns the charger.
+        one, and nothing else (a pause, solar) owns the charger. `control_on` is tri-state: `None`
+        is an unreadable control, which is no observation and never a "seen" start. The first
+        readable state only sets the baseline.
         """
+        if control_on is None:
+            if connected is False:
+                self.end_session()
+            return NOTHING
         was_on = self._on
         self._on = control_on
         if connected is False:
