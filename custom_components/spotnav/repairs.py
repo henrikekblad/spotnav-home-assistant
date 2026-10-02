@@ -9,7 +9,7 @@ same `valid_*_entity_id` and records through the same store calls as the service
 
 from __future__ import annotations
 
-from collections.abc import Callable
+from collections.abc import Callable, Iterable
 from typing import Any
 
 import voluptuous as vol
@@ -24,7 +24,8 @@ from homeassistant.helpers import (
 )
 from homeassistant.helpers.event import async_call_later
 
-from .const import DOMAIN
+from .const import CONF_ENTRY_TYPE, DOMAIN, ENTRY_TYPE_SITE
+from .vehicles.duplicate_chargers import charger_entries_except, duplicate_pairs
 from .vehicles.choices import (
     DISMISS_VEHICLE_CHOICE,
     entity_option,
@@ -58,6 +59,10 @@ _ISSUE_TRANSLATION_KEYS = {
     "soc": "vehicle_soc_needs_decision",
     "charge_limit": "vehicle_charge_limit_needs_decision",
 }
+
+#: Issues about how entries are set up (translation keys under `issues`, issue-id prefixes).
+DUPLICATE_CHARGER_ISSUE = "duplicate_charger"
+SITE_WITHOUT_CHARGERS_ISSUE = "site_without_chargers"
 
 #: Abort reason when the decision is already gone; not an error, the human's goal is met.
 _NO_LONGER_NEEDS_DECISION = "no_longer_needs_decision"
@@ -93,23 +98,55 @@ def _issue_fields(decision: ResolutionDecision) -> dict[str, Any]:
     }
 
 
-async def async_sync_resolution_repairs(hass: HomeAssistant) -> None:
-    """Create and delete repair issues so they mirror `resolve_required` exactly.
+def _setup_issue_fields(
+    hass: HomeAssistant, exclude_entry_ids: Iterable[str] = ()
+) -> dict[str, dict[str, Any]]:
+    """The issues about how entries are set up, by issue id: two charger entries that are one physical
+    charger (named on both, nothing removed for the person) and a site with no charger yet (how to add
+    one). Not fixable: the person decides which entry stays.
+    """
+    excluded = set(exclude_entry_ids)
+    issues: dict[str, dict[str, Any]] = {}
+    for first, second, _ in duplicate_pairs(hass, excluded):
+        issues[f"{DUPLICATE_CHARGER_ISSUE}_{first.entry_id}_{second.entry_id}"] = {
+            "translation_key": DUPLICATE_CHARGER_ISSUE,
+            "translation_placeholders": {"charger": first.title, "other": second.title},
+            "is_fixable": False,
+            "severity": ir.IssueSeverity.WARNING,
+        }
+    chargers = charger_entries_except(hass, excluded)
+    if not chargers:
+        for site in hass.config_entries.async_entries(DOMAIN):
+            if site.entry_id not in excluded and site.data.get(CONF_ENTRY_TYPE) == ENTRY_TYPE_SITE:
+                issues[f"{SITE_WITHOUT_CHARGERS_ISSUE}_{site.entry_id}"] = {
+                    "translation_key": SITE_WITHOUT_CHARGERS_ISSUE,
+                    "translation_placeholders": {"site": site.title},
+                    "is_fixable": False,
+                    "severity": ir.IssueSeverity.WARNING,
+                }
+    return issues
 
-    Called at setup and after every decision mutation; idempotent (an unchanged issue is left alone
-    by `async_get_or_create`), so over-calling costs one read of live state. Deletion is scoped to
-    this integration's own issues.
+
+async def async_sync_resolution_repairs(
+    hass: HomeAssistant, exclude_entry_ids: Iterable[str] = ()
+) -> None:
+    """Create and delete repair issues so they mirror `resolve_required` and the setup issues exactly.
+
+    Called at setup and after every decision mutation or entry change; idempotent (an unchanged issue
+    is left alone by `async_get_or_create`), so over-calling costs one read of live state. Deletion is
+    scoped to this integration's own issues. `exclude_entry_ids` are entries being removed.
     """
     wanted = {
-        issue_id_for(decision.kind, decision.device_id): decision
+        issue_id_for(decision.kind, decision.device_id): _issue_fields(decision)
         for decision in resolve_required(hass)
     }
+    wanted.update(_setup_issue_fields(hass, exclude_entry_ids))
     registry = ir.async_get(hass)
     for issue_id in [key[1] for key in registry.issues if key[0] == DOMAIN]:
         if issue_id not in wanted:
             ir.async_delete_issue(hass, DOMAIN, issue_id)
-    for issue_id, decision in wanted.items():
-        ir.async_create_issue(hass, DOMAIN, issue_id, **_issue_fields(decision))
+    for issue_id, fields in wanted.items():
+        ir.async_create_issue(hass, DOMAIN, issue_id, **fields)
 
 
 async def async_arm_resolution_sync(hass: HomeAssistant) -> Callable[[], None]:

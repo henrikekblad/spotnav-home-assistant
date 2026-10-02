@@ -144,6 +144,12 @@
       "params": [],
       "tone": "notice"
     },
+    "duplicate_charger": {
+      "params": [
+        "other"
+      ],
+      "tone": "notice"
+    },
     "held_by_charger": {
       "params": [],
       "tone": "notice"
@@ -284,6 +290,15 @@
         "fields"
       ],
       "tone": "normal"
+    },
+    "site_measurement_problem": {
+      "params": [
+        "max_age_s",
+        "no_value_entities",
+        "no_value_phases",
+        "stale_phases"
+      ],
+      "tone": "notice"
     },
     "solar_arming": {
       "params": [],

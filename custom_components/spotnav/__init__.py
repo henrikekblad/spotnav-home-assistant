@@ -128,8 +128,13 @@ async def _async_stop(hass: HomeAssistant, _event: Event | None = None) -> None:
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     if entry.data.get(CONF_ENTRY_TYPE) == ENTRY_TYPE_SITE:
-        return await _async_setup_site_entry(hass, entry)
-    return await _async_setup_charger_entry(hass, entry)
+        loaded = await _async_setup_site_entry(hass, entry)
+    else:
+        loaded = await _async_setup_charger_entry(hass, entry)
+    if loaded:
+        # An entry that arrives or changes can make two chargers one, or give a site its first charger.
+        await async_sync_resolution_repairs(hass)
+    return loaded
 
 
 async def _async_setup_charger_entry(hass: HomeAssistant, entry: ChargerConfigEntry) -> bool:
@@ -295,6 +300,7 @@ async def async_remove_entry(hass: HomeAssistant, entry: ConfigEntry) -> None:
     Unload does not come here (a reload must find its settings). Charger entries only; a site entry
     never writes settings.
     """
+    await async_sync_resolution_repairs(hass, (entry.entry_id,))
     if entry.data.get(CONF_ENTRY_TYPE) == ENTRY_TYPE_SITE:
         return
     async_leave_sites(hass, entry.entry_id)

@@ -78,6 +78,7 @@ from ..planning.status_compose import (
     PlanningFacts,
     ProposalFacts,
     SocFacts,
+    SiteMeasurementFacts,
     SolarFacts,
     StatusFacts,
     TargetFacts,
@@ -98,11 +99,13 @@ from ..site.phase_detection import (
     PhaseDetectionResult,
     UNKNOWN as UNKNOWN_PHASES,
 )
+from ..site.measurement_problem import MeasurementProblem
 from ..site.site_capacity_controller import SiteCapacityController
 from ..site.solar_capability import REASON_NEEDS_TOTAL_GRID_POWER
 from ..util import aware_iso, finite_number
 from ..vehicles import vehicle_properties
 from ..vehicles.charger_inventory import charger_entries
+from ..vehicles.duplicate_chargers import duplicates_of
 from ..vehicles.soc_estimate import CHARGE_EFFICIENCY, target_need_kwh
 from ..vehicles.vehicle_discovery import discover_vehicles, resolve_target_vehicle
 from .common import (
@@ -277,6 +280,8 @@ class CapturedSite:
     #: This charger's row of `SiteCapacityController.solar_surplus_snapshot` / `.hybrid_snapshot`.
     solar_state: dict[str, Any] | None
     hybrid_state: dict[str, Any] | None
+    #: The phases that make the site's measurement unusable, and why (`site/measurement_problem.py`).
+    measurement_problem: MeasurementProblem | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -375,6 +380,8 @@ class CapturedDashboard:
     #: Settings first-run defaults filled in that no edit has confirmed (`AutoSettingsStore.suggested`).
     suggested: tuple[str, ...] = ()
     summary: CapturedSummary | None = None
+    #: The titles of the other charger entries that are this same physical charger.
+    duplicates: tuple[str, ...] = ()
 
 
 def capture_target(controller: ChargingController | None) -> CapturedTarget | None:
@@ -762,6 +769,7 @@ def capture_site(
         active_control_reason=_active_control_reason(controller),
         solar_state=dict(solar_snapshot) if solar_snapshot is not None else None,
         hybrid_state=dict(hybrid_snapshot) if hybrid_snapshot is not None else None,
+        measurement_problem=controller.measurement_problem,
     )
 
 
@@ -887,6 +895,7 @@ def capture_dashboard(
         strategy_options=tuple(strategy_options_for(hass, entry_id)),
         suggested=() if store is None else store.suggested(entry_id),
         summary=capture_summary(hass, entry, vehicles),
+        duplicates=tuple(found.title for found in duplicates_of(hass, entry)),
     )
 
 
@@ -1619,6 +1628,18 @@ def serialize_vehicle(vehicle: CapturedVehicle) -> dict[str, Any]:
     }
 
 
+def _measurement_facts(problem: MeasurementProblem | None) -> SiteMeasurementFacts | None:
+    if problem is None:
+        return None
+    no_value = problem.of("no_value")
+    return SiteMeasurementFacts(
+        no_value_phases=tuple(item.phase for item in no_value),
+        no_value_entities=tuple(item.entity_id for item in no_value if item.entity_id),
+        stale_phases=tuple(item.phase for item in problem.of("stale")),
+        max_age_s=finite_number(problem.max_age_s),
+    )
+
+
 def status_facts(capture: CapturedDashboard) -> StatusFacts:
     """The captured moment as the typed facts `status_compose.compose_status` reads; nothing live, and
     every decision is the composer's.
@@ -1704,6 +1725,8 @@ def status_facts(capture: CapturedDashboard) -> StatusFacts:
             stop_reading_age_s=capture.target.stop_reading_age_s,
             unverifiable_reason=capture.target.unverifiable_reason,
         ),
+        site_measurement=None if site is None else _measurement_facts(site.measurement_problem),
+        duplicate_chargers=capture.duplicates,
         load_balancing_capable=bool(capture.charger.capability_map().get("load_balancing")),
         load_balancing=None
         if site is None

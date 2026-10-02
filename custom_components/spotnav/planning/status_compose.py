@@ -47,8 +47,9 @@ Precedence (first match wins the headline; "add" rows append a fact line)
    price_data_degraded (usable rows exist, or degraded/incomplete), unpriced,
    hold_overridden (a person started the charge again after SpotNav held it, and it may go on),
    held_by_charger (the charger's own scheduler or load balancer holds the charge), charger_disabled
-   (its own enable switch is off, so it cannot start), load_balancing_limited,
-   load_balancing_unavailable. Tone `notice` if any is present or a
+   (its own enable switch is off, so it cannot start), site_measurement_problem (the phases that
+   make the site's measurement unusable and why), duplicate_charger (another entry is the same physical
+   charger), load_balancing_limited, load_balancing_unavailable. Tone `notice` if any is present or a
    proposal waits for a boundary (the card's pending_proposal issue); otherwise `normal`.
 
 Rules chosen where the card and the app differ
@@ -155,6 +156,14 @@ STATUS_CODES: Final[dict[str, tuple[str, tuple[str, ...]]]] = {
     "held_until_window": (TONE_NORMAL, ("time",)),
     # A person started the charge again after that stop: the plan is overridden and it may go on.
     "hold_overridden": (TONE_NOTICE, ()),
+    # The site's measurement is unusable: `no_value_phases` (L1/L2/L3) read nothing usable, from
+    # `no_value_entities`; `stale_phases` are older than `max_age_s`.
+    "site_measurement_problem": (
+        TONE_NOTICE,
+        ("no_value_phases", "no_value_entities", "stale_phases", "max_age_s"),
+    ),
+    # Another SpotNav charger entry, titled `other`, is the same physical charger as this one.
+    "duplicate_charger": (TONE_NOTICE, ("other",)),
 }
 
 STATUS_TONES: Final = (TONE_NORMAL, TONE_NOTICE, TONE_BLOCKING)
@@ -226,6 +235,17 @@ class LoadBalancingFacts:
 
 
 @dataclass(frozen=True, slots=True)
+class SiteMeasurementFacts:
+    """Why the site's measurement is unusable: the phases with no usable value (and the entities they
+    are read from) and the phases whose value is older than `max_age_s`."""
+
+    no_value_phases: tuple[str, ...] = ()
+    no_value_entities: tuple[str, ...] = ()
+    stale_phases: tuple[str, ...] = ()
+    max_age_s: float | None = None
+
+
+@dataclass(frozen=True, slots=True)
 class StatusFacts:
     now: datetime
     charger_available: bool = True
@@ -264,6 +284,10 @@ class StatusFacts:
     load_balancing_capable: bool = False
     load_balancing: LoadBalancingFacts | None = None
     target: TargetFacts | None = None
+    #: The site's measurement problem, `None` while it is healthy or there is no site.
+    site_measurement: SiteMeasurementFacts | None = None
+    #: Titles of the other charger entries that are this same physical charger.
+    duplicate_chargers: tuple[str, ...] = ()
 
 
 def _line(code: str, **params: Any) -> dict[str, Any]:
@@ -481,6 +505,19 @@ def _notices(facts: StatusFacts) -> list[dict[str, Any]]:
         lines.append(_line("held_by_charger"))
     if facts.charger_disabled and not facts.charging:
         lines.append(_line("charger_disabled"))
+    measurement = facts.site_measurement
+    if measurement is not None and (measurement.no_value_phases or measurement.stale_phases):
+        lines.append(
+            _line(
+                "site_measurement_problem",
+                no_value_phases=list(measurement.no_value_phases),
+                no_value_entities=list(measurement.no_value_entities),
+                stale_phases=list(measurement.stale_phases),
+                max_age_s=measurement.max_age_s,
+            )
+        )
+    for title in facts.duplicate_chargers:
+        lines.append(_line("duplicate_charger", other=title))
     site = facts.load_balancing
     if site is not None:
         if (

@@ -236,6 +236,7 @@
     "error": {
       "charge_control_in_use": "Denna laddstyrning används redan av en annan SpotNav-laddare.",
       "current_limit_in_use": "Denna laddströmsstyrning används redan av en annan SpotNav-laddare.",
+      "duplicate_charger": "{other} och den här laddaren är samma fysiska laddare. Två SpotNav-laddare på en laddare skickar motstridiga kommandon, så behåll bara en: ta bort den andra under Inställningar → Enheter och tjänster → SpotNav. SpotNav tar aldrig bort en åt dig.",
       "charger_already_in_another_site": "En av dessa laddare är redan kopplad till en annan site.",
       "manual_source_entity_invalid": "Välj en sensorentitet som finns i Home Assistant.",
       "manual_source_entity_wrong_device": "Den entiteten är inte registrerad på den här laddarens egen enhet och kan därför inte vara laddarens uppmätta ström.",
@@ -374,6 +375,7 @@
     "error": {
       "charge_control_in_use": "Denna laddstyrning används redan av en annan SpotNav-laddare.",
       "current_limit_in_use": "Denna laddströmsstyrning används redan av en annan SpotNav-laddare.",
+      "duplicate_charger": "{other} och den här laddaren är samma fysiska laddare. Två SpotNav-laddare på en laddare skickar motstridiga kommandon, så behåll bara en: ta bort den andra under Inställningar → Enheter och tjänster → SpotNav. SpotNav tar aldrig bort en åt dig.",
       "charger_already_in_another_site": "En av dessa laddare är redan kopplad till en annan site.",
       "manual_source_entity_invalid": "Välj en sensorentitet som finns i Home Assistant.",
       "manual_source_entity_wrong_device": "Den entiteten är inte registrerad på den här laddarens egen enhet och kan därför inte vara laddarens uppmätta ström.",
@@ -627,6 +629,14 @@
           }
         }
       }
+    },
+    "duplicate_charger": {
+      "title": "Två SpotNav-laddare är samma laddare",
+      "description": "**{charger}** och **{other}** är samma fysiska laddare: de delar enhet, uppmätt ström, OCPP-uttag eller Easee-enhet. Två SpotNav-laddare på en laddare skickar motstridiga kommandon. Ta bort en av dem: Inställningar → Enheter och tjänster → SpotNav → postens meny → Ta bort. SpotNav tar aldrig bort en åt dig."
+    },
+    "site_without_chargers": {
+      "title": "Lägg till en laddare på anläggningen",
+      "description": "Anläggningen **{site}** har ingen laddare än. Lägg till en laddare: Inställningar → Enheter och tjänster → SpotNav → Lägg till post → Laddare; den erbjuder sig att ansluta till den här anläggningen."
     }
   },
   "exceptions": {

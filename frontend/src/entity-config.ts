@@ -137,6 +137,14 @@ export interface SiteMeasurement {
   basis: Record<(typeof PHASES)[number], CurrentBasis | null>;
 }
 
+/** One phase that makes the site's measurement unusable: it read nothing usable, or is stale. */
+export interface SiteWarningPhase {
+  phase: string;
+  cause: "no_value" | "stale";
+  entityId: string | null;
+  ageS: number | null;
+}
+
 export interface SiteWarning {
   code: string;
   integration: string | null;
@@ -144,6 +152,7 @@ export interface SiteWarning {
   intervalS: number | null;
   option: string | null;
   deviceName: string | null;
+  phases: SiteWarningPhase[];
 }
 
 export interface DetectedEntityRow {
@@ -241,8 +250,9 @@ export interface ControlCapabilities {
 }
 
 /** `own_mode`: one of the charger's own controllers is on and can fight SpotNav; `disabled`: its own enable
- * switch is off, so SpotNav cannot start it. */
-export type ControlConflictKind = "own_mode" | "disabled";
+ * switch is off, so SpotNav cannot start it; `duplicate_charger`: another SpotNav entry (named in `state`) is
+ * the same physical charger, sharing what `label` says (`entity_id` holds the shared identifier). */
+export type ControlConflictKind = "own_mode" | "disabled" | "duplicate_charger";
 
 export interface ControlConflict {
   kind: ControlConflictKind;
@@ -409,9 +419,24 @@ function decodeMeasurement(raw: unknown): SiteMeasurement {
   };
 }
 
+function decodeWarningPhase(raw: unknown): SiteWarningPhase {
+  const source = record(raw);
+  exactKeys(source, ["phase", "cause", "entity_id", "age_s"]);
+  return {
+    phase: text(source, "phase"),
+    cause: oneOf(source, "cause", ["no_value", "stale"] as const),
+    entityId: textOrNull(source, "entity_id"),
+    ageS: intervalOrNull(source, "age_s"),
+  };
+}
+
 function decodeWarning(raw: unknown): SiteWarning {
   const source = record(raw);
-  exactKeys(source, ["code", "integration", "entity_id", "interval_s", "option", "device_name"]);
+  exactKeys(source, ["code", "integration", "entity_id", "interval_s", "option", "device_name", "phases"]);
+  const phases = source["phases"];
+  if (!Array.isArray(phases)) {
+    return bad();
+  }
   return {
     code: text(source, "code"),
     integration: textOrNull(source, "integration"),
@@ -419,6 +444,7 @@ function decodeWarning(raw: unknown): SiteWarning {
     intervalS: intervalOrNull(source, "interval_s"),
     option: textOrNull(source, "option"),
     deviceName: textOrNull(source, "device_name"),
+    phases: phases.map(decodeWarningPhase),
   };
 }
 
@@ -623,7 +649,7 @@ function decodeControl(raw: unknown): EntityControl {
       const item = record(entry);
       exactKeys(item, ["kind", "entity_id", "label", "state"]);
       return {
-        kind: oneOf(item, "kind", ["own_mode", "disabled"] as const),
+        kind: oneOf(item, "kind", ["own_mode", "disabled", "duplicate_charger"] as const),
         entityId: text(item, "entity_id"),
         label: text(item, "label"),
         state: text(item, "state"),
@@ -1088,6 +1114,7 @@ const FIELD_ERROR_KEYS: Record<string, TranslationKey> = {
   unknown_field: "entity.error.field.unknown",
   charge_control_in_use: "entity.error.field.chargeControlInUse",
   current_limit_in_use: "entity.error.field.currentLimitInUse",
+  duplicate_charger: "entity.error.field.duplicateCharger",
   unknown_vehicle: "entity.error.field.unknownVehicle",
   invalid_capacity: "settings.vehicle.error.capacity",
   invalid_consumption: "settings.vehicle.error.consumption",

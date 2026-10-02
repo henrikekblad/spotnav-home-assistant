@@ -236,6 +236,7 @@
     "error": {
       "charge_control_in_use": "This charge control is already used by another SpotNav charger.",
       "current_limit_in_use": "This charging current control is already used by another SpotNav charger.",
+      "duplicate_charger": "{other} and this charger are the same physical charger. Two SpotNav chargers on one charger send it conflicting commands, so keep only one: remove the other in Settings → Devices & services → SpotNav. SpotNav never removes one for you.",
       "charger_already_in_another_site": "One of these chargers is already assigned to a different site.",
       "manual_source_entity_invalid": "Choose a sensor entity that exists in Home Assistant.",
       "manual_source_entity_wrong_device": "That entity is not registered on this charger's own device, so it cannot be this charger's measured current.",
@@ -374,6 +375,7 @@
     "error": {
       "charge_control_in_use": "This charge control is already used by another SpotNav charger.",
       "current_limit_in_use": "This charging current control is already used by another SpotNav charger.",
+      "duplicate_charger": "{other} and this charger are the same physical charger. Two SpotNav chargers on one charger send it conflicting commands, so keep only one: remove the other in Settings → Devices & services → SpotNav. SpotNav never removes one for you.",
       "charger_already_in_another_site": "One of these chargers is already assigned to a different site.",
       "manual_source_entity_invalid": "Choose a sensor entity that exists in Home Assistant.",
       "manual_source_entity_wrong_device": "That entity is not registered on this charger's own device, so it cannot be this charger's measured current.",
@@ -627,6 +629,14 @@
           }
         }
       }
+    },
+    "duplicate_charger": {
+      "title": "Two SpotNav chargers are the same charger",
+      "description": "**{charger}** and **{other}** are the same physical charger: they share a device, a measured current, an OCPP connector or an Easee device. Two SpotNav chargers on one charger send it conflicting commands. Remove one of them: Settings → Devices & services → SpotNav → the entry's menu → Delete. SpotNav never removes one for you."
+    },
+    "site_without_chargers": {
+      "title": "Add a charger to the site",
+      "description": "The site **{site}** has no charger yet. Add a charger: Settings → Devices & services → SpotNav → Add entry → Charger; it will offer to join this site."
     }
   },
   "exceptions": {

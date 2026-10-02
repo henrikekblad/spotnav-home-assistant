@@ -706,12 +706,41 @@
       "name": "Site",
       "warnings": [
         {
+          "code": "measurement_unhealthy",
+          "device_name": null,
+          "entity_id": null,
+          "integration": null,
+          "interval_s": 120.0,
+          "option": null,
+          "phases": [
+            {
+              "age_s": null,
+              "cause": "no_value",
+              "entity_id": "sensor.site_req_derived_l1",
+              "phase": "L1"
+            },
+            {
+              "age_s": null,
+              "cause": "no_value",
+              "entity_id": "sensor.site_req_derived_l2",
+              "phase": "L2"
+            },
+            {
+              "age_s": null,
+              "cause": "no_value",
+              "entity_id": "sensor.site_req_derived_l3",
+              "phase": "L3"
+            }
+          ]
+        },
+        {
           "code": "own_load_balancing",
           "device_name": "Easee Equalizer",
           "entity_id": null,
           "integration": "easee",
           "interval_s": null,
-          "option": null
+          "option": null,
+          "phases": []
         }
       ]
     },

@@ -6,7 +6,7 @@ import { join } from "node:path";
 
 import { describe, expect, it } from "vitest";
 
-import { statusNote, statusText } from "../src/status";
+import { issuesOf, issueText, statusNote, statusText } from "../src/status";
 import type { Status } from "../src/validate";
 import { statusLine } from "./dashboard-fixtures";
 
@@ -41,6 +41,58 @@ describe("the status line renders the block and nothing else", () => {
     expect(statusText(overridden, format("sv"), NOW)).toContain(
       "Laddningen startades utanför planen och får fortsätta.",
     );
+  });
+
+  it("names the phases that make the site measurement unusable, and where they are read from", () => {
+    const empty = block(
+      statusLine("waiting_for_tomorrow"),
+      statusLine("site_measurement_problem", {
+        no_value_phases: ["L2", "L3"],
+        no_value_entities: ["sensor.tibber_pulse_hus_current_l2", "sensor.tibber_pulse_hus_current_l3"],
+        stale_phases: [],
+        max_age_s: 120,
+      }),
+    );
+    expect(statusText(empty, format("en"), NOW)).toBe(
+      "Waiting for tomorrow's prices · L2 and L3 have no value (sensor.tibber_pulse_hus_current_l2, sensor.tibber_pulse_hus_current_l3).",
+    );
+    expect(statusText(empty, format("sv"), NOW)).toContain(
+      "L2 och L3 saknar värde (sensor.tibber_pulse_hus_current_l2, sensor.tibber_pulse_hus_current_l3).",
+    );
+    const stale = block(
+      statusLine("site_measurement_problem", {
+        no_value_phases: [],
+        no_value_entities: [],
+        stale_phases: ["L1"],
+        max_age_s: 120,
+      }),
+    );
+    expect(statusText(stale, format("en"), NOW)).toBe("L1 is older than 120 s.");
+    expect(statusText(stale, format("sv"), NOW)).toBe("L1 är äldre än 120 s.");
+    for (const language of ["nb", "da", "fi"] as const) {
+      const said = statusText(stale, format(language), NOW) ?? "";
+      expect(said).toContain("L1");
+      expect(said).not.toMatch(/[{}]/u);
+    }
+    // The issue list says the same sentence, and both causes together read as two sentences.
+    const both = statusLine("site_measurement_problem", {
+      no_value_phases: ["L2"],
+      no_value_entities: ["sensor.l2"],
+      stale_phases: ["L1"],
+      max_age_s: 120,
+    });
+    const issues = issuesOf({ tone: "notice", lines: [both] } as unknown as Status, "en");
+    expect(issues.map((issue) => issueText("en", issue))).toEqual([
+      "L2 has no value (sensor.l2). L1 is older than 120 s.",
+    ]);
+  });
+
+  it("names the other entry when two chargers are the same charger", () => {
+    const status = block(statusLine("waiting_for_tomorrow"), statusLine("duplicate_charger", { other: "Garage Easee" }));
+    expect(statusText(status, format("en"), NOW)).toContain("Garage Easee and this charger are the same physical charger.");
+    expect(statusText(status, format("sv"), NOW)).toContain("Garage Easee och den här laddaren är samma fysiska laddare.");
+    const issues = issuesOf({ tone: "notice", lines: [statusLine("duplicate_charger", { other: "Garage Easee" })] } as unknown as Status, "en");
+    expect(issues.map((issue) => issueText("en", issue))[0]).toContain("Garage Easee and this charger");
   });
 
   it("keeps the suggestion note out of the plan line and gives it its own", () => {

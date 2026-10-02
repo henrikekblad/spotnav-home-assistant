@@ -85,6 +85,13 @@ from ..execution.charger_entities import (
 )
 from ..execution.chargers.registry import external_balancer
 from ..execution.charger_profiles import PATH_EASEE, profile_for
+from ..vehicles.duplicate_chargers import (
+    candidate_identity,
+    DUPLICATE_CHARGER_ERROR,
+    duplicates_of,
+    find_duplicate,
+    identity_of_entry,
+)
 from ..vehicles.entity_conflicts import conflict_errors
 from ..vehicles.vehicle_discovery import discover_vehicles, soc_choices, vehicle_soc_entity_id
 
@@ -188,6 +195,9 @@ ERR_UNKNOWN_VEHICLE: Final = "unknown_vehicle"
 # Re-exported so a caller never has to import `entity_conflicts` just to compare a code.
 ERR_CHARGE_CONTROL_IN_USE: Final = "charge_control_in_use"
 ERR_CURRENT_LIMIT_IN_USE: Final = "current_limit_in_use"
+ERR_DUPLICATE_CHARGER: Final = DUPLICATE_CHARGER_ERROR
+#: `control.conflicts` kind for another entry that is the same physical charger.
+CONFLICT_DUPLICATE: Final = "duplicate_charger"
 
 _ENTITY_DOMAIN: Final[dict[str, str]] = {
     FIELD_CHARGE_CONTROL: "switch",
@@ -360,18 +370,83 @@ def validate_charger_entities(
     charge_control: str,
     current_limit: str | None,
     exclude_entry_id: str | None = None,
+    measured_entities: tuple[str, ...] = (),
 ) -> dict[str, str]:
-    """The cross-entry duplicate-target guard for a charger's charge-control switch and current-limit
-    number (`entity_conflicts.conflict_errors`).
+    """The cross-entry guards for a charger's entities: the same charge-control switch or current-limit
+    number (`entity_conflicts.conflict_errors`), then the same physical charger through other entities
+    (`duplicate_chargers`, `ERR_DUPLICATE_CHARGER` on the charge control).
 
-    Returns `{field: code}` (`ERR_CHARGE_CONTROL_IN_USE` / `ERR_CURRENT_LIMIT_IN_USE`) or `{}`.
+    Returns `{field: code}` or `{}`.
     """
-    return conflict_errors(
+    errors = conflict_errors(
         hass,
         charge_control=charge_control,
         current_limit=current_limit,
         exclude_entry_id=exclude_entry_id,
     )
+    if errors:
+        return errors
+    if duplicate_charger_of(
+        hass,
+        charge_control=charge_control,
+        current_limit=current_limit,
+        exclude_entry_id=exclude_entry_id,
+        measured_entities=measured_entities,
+    ):
+        return {FIELD_CHARGE_CONTROL: ERR_DUPLICATE_CHARGER}
+    return {}
+
+
+def duplicate_charger_of(
+    hass: HomeAssistant,
+    *,
+    charge_control: str,
+    current_limit: str | None,
+    exclude_entry_id: str | None = None,
+    measured_entities: tuple[str, ...] = (),
+) -> Any:
+    """The other charger entry this candidate duplicates (`DuplicateCharger`), or `None`.
+
+    An entry being edited keeps the measured-current entities it already has.
+    """
+    if exclude_entry_id and not measured_entities:
+        edited = hass.config_entries.async_get_entry(exclude_entry_id)
+        if edited is not None:
+            measured_entities = tuple(sorted(identity_of_entry(hass, edited).measured))
+    return find_duplicate(
+        hass,
+        candidate_identity(
+            hass,
+            charge_control=charge_control,
+            current_limit=current_limit,
+            measured=measured_entities,
+        ),
+        exclude_entry_id=exclude_entry_id,
+    )
+
+
+def duplicate_placeholders(
+    hass: HomeAssistant,
+    errors: dict[str, str],
+    *,
+    charge_control: str,
+    current_limit: str | None,
+    exclude_entry_id: str | None = None,
+    measured_entities: tuple[str, ...] = (),
+) -> dict[str, str]:
+    """The `description_placeholders` a flow form needs when `errors` holds `duplicate_charger`:
+    `other` is the title of the entry that is the same charger (empty otherwise).
+    """
+    if errors.get(FIELD_CHARGE_CONTROL) != ERR_DUPLICATE_CHARGER:
+        return {}
+    duplicate = duplicate_charger_of(
+        hass,
+        charge_control=charge_control,
+        current_limit=current_limit,
+        exclude_entry_id=exclude_entry_id,
+        measured_entities=measured_entities,
+    )
+    return {"other": duplicate.title if duplicate is not None else ""}
 
 
 def current_charger_values(entry: ConfigEntry) -> dict[str, str]:
@@ -529,6 +604,11 @@ def charger_control_descriptor(hass: HomeAssistant, entry: ConfigEntry) -> dict[
                 *((CONFLICT_DISABLED, item) for item in disabled_switches(hass, entries, profile)),
             )
         ]
+    conflicts.extend(
+        # What the two share goes in `label` and its identifier in `entity_id`; `state` names the other.
+        {"kind": CONFLICT_DUPLICATE, "entity_id": found.what, "label": found.shared, "state": found.title}
+        for found in duplicates_of(hass, entry)
+    )
     return {
         "platform": description["platform"],
         "start_stop": description["start_stop"],
@@ -895,6 +975,7 @@ def _external_balancer_warnings(hass: HomeAssistant) -> list[dict[str, Any]]:
                     "interval_s": None,
                     "option": None,
                     "device_name": profile.name,
+                    "phases": [],
                 }
             ]
     return []
@@ -905,8 +986,9 @@ def site_measurement_info(hass: HomeAssistant, entry: ConfigEntry) -> dict[str, 
 
     * `measurement`: the mode, how each phase's current is obtained (`measured`, `apparent`,
       `reactive` or `estimated`) and whether any is an estimate, with the power factor assumed.
-    * `warnings`: measurement sources whose integration updates more slowly than the site's maximum
-      age (naming the integration's option where known), and devices with their own load balancing.
+    * `warnings`: the phases that make the measurement unusable and why (`measurement_unhealthy`, first),
+      measurement sources whose integration updates more slowly than the site's maximum age (naming the
+      integration's option where known), and devices with their own load balancing.
     * `detection`: the fresh meter and battery candidates and whether the stored setup is one.
     """
     controller = site_controller_for(hass, entry.entry_id)
@@ -933,6 +1015,7 @@ def site_measurement_info(hass: HomeAssistant, entry: ConfigEntry) -> dict[str, 
             "interval_s": warning.interval_s,
             "option": warning.option,
             "device_name": None,
+            "phases": [],
         }
         for warning in freshness_warnings(platforms, max_age_s)
     ]
@@ -945,10 +1028,34 @@ def site_measurement_info(hass: HomeAssistant, entry: ConfigEntry) -> dict[str, 
                 "interval_s": None,
                 "option": None,
                 "device_name": own.device_name,
+                "phases": [],
             }
         )
 
     warnings.extend(_external_balancer_warnings(hass))
+    problem = None if controller is None else controller.measurement_problem
+    if problem is not None:
+        warnings.insert(
+            0,
+            {
+                "code": "measurement_unhealthy",
+                "integration": None,
+                "entity_id": None,
+                "interval_s": problem.max_age_s,
+                "option": None,
+                "device_name": None,
+                # The phases that read nothing usable (`no_value`) or are older than `interval_s` (`stale`).
+                "phases": [
+                    {
+                        "phase": item.phase,
+                        "cause": item.cause,
+                        "entity_id": item.entity_id,
+                        "age_s": None if item.age_s is None else round(item.age_s, 1),
+                    }
+                    for item in problem.phases
+                ],
+            },
+        )
     detection = site_detection(hass, entry)
     return {
         "measurement": measurement,

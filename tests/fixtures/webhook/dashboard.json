@@ -2187,9 +2187,26 @@
         "params": {
           "mil": 10.062
         }
+      },
+      {
+        "code": "site_measurement_problem",
+        "params": {
+          "max_age_s": 120.0,
+          "no_value_entities": [
+            "sensor.site_a_l1",
+            "sensor.site_a_l2",
+            "sensor.site_a_l3"
+          ],
+          "no_value_phases": [
+            "L1",
+            "L2",
+            "L3"
+          ],
+          "stale_phases": []
+        }
       }
     ],
-    "tone": "normal"
+    "tone": "notice"
   },
   "strategy": {
     "available": [

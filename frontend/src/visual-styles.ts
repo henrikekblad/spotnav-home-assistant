@@ -64,6 +64,7 @@ export const VISUAL_CLASSES = {
   entityRowValue: "spotnav-entity-row-value",
   entityHelp: "spotnav-entity-help",
   entityWarning: "spotnav-entity-warning",
+  entityNotices: "spotnav-entity-notices",
   entityAutomatic: "spotnav-entity-automatic",
   entityDialog: "spotnav-entity-dialog",
   actionIcon: "spotnav-action-icon",
@@ -1072,6 +1073,10 @@ export const VISUAL_STYLES = `
     margin: 2px 0 0;
     font-size: 0.8rem;
     overflow-wrap: break-word;
+  }
+  .${VISUAL_CLASSES.entityNotices} {
+    margin: 8px 0 0;
+    padding: 0 0 0 18px;
   }
   .${VISUAL_CLASSES.entityHelp},
   .${VISUAL_CLASSES.entityAutomatic} {

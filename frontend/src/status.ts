@@ -4,7 +4,7 @@
 
 import { localDayKey } from "./chart";
 import { clock, distanceText, formatNumber, hasZone, weekdayDate, weekdayPlural, type FormatContext } from "./format";
-import { translate, type Language, type TranslationKey } from "./i18n";
+import { pluralForm, translate, type Language, type TranslationKey } from "./i18n";
 import { STATUS_CODE_TABLE, type StatusCode, type StatusLine, type StatusParam, type StatusTone, type Status } from "./validate";
 
 export interface Issue {
@@ -13,6 +13,62 @@ export interface Issue {
   textKey: TranslationKey;
   params: Record<string, string>;
   technical: string | null;
+  /** A sentence composed from the line's facts, shown instead of `textKey` when present. */
+  text?: string;
+}
+
+/** What an issue says, in the reader's language. */
+export function issueText(language: Language, issue: Issue): string {
+  return issue.text ?? translate(language, issue.textKey, issue.params);
+}
+
+/** The facts behind a site measurement the card cannot use: which phases, read from which entities. */
+export interface MeasurementFacts {
+  noValuePhases: readonly string[];
+  noValueEntities: readonly string[];
+  stalePhases: readonly string[];
+  maxAgeS: number | null;
+}
+
+function listOf(language: Language, items: readonly string[]): string {
+  return new Intl.ListFormat(language, { style: "long", type: "conjunction" }).format(items);
+}
+
+/**
+ * The sentence for a measurement that cannot be used: the phases with no value (and the entities they
+ * are read from) and the phases older than the maximum age. A fact without a phase says it generally.
+ */
+export function measurementProblemText(language: Language, facts: MeasurementFacts): string {
+  const parts: string[] = [];
+  if (facts.noValuePhases.length > 0) {
+    const where = facts.noValueEntities.length > 0 ? ` (${facts.noValueEntities.join(", ")})` : "";
+    const key = `status.siteMeasurement.noValue.${pluralForm(language, facts.noValuePhases.length)}` as TranslationKey;
+    parts.push(translate(language, key, { phases: listOf(language, facts.noValuePhases), where }));
+  }
+  if (facts.stalePhases.length > 0) {
+    const key = `status.siteMeasurement.stale.${pluralForm(language, facts.stalePhases.length)}` as TranslationKey;
+    parts.push(
+      translate(language, key, {
+        phases: listOf(language, facts.stalePhases),
+        seconds: formatNumber(language, facts.maxAgeS ?? 0, 0),
+      }),
+    );
+  }
+  return parts.length === 0 ? translate(language, "issue.siteMeasurement") : parts.join(" ");
+}
+
+function strings(value: StatusParam | undefined): string[] {
+  return Array.isArray(value) ? value.filter((entry): entry is string => typeof entry === "string") : [];
+}
+
+/** The measurement sentence of a `site_measurement_problem` line. */
+function measurementLineText(language: Language, p: StatusLine["params"]): string {
+  return measurementProblemText(language, {
+    noValuePhases: strings(p["no_value_phases"]),
+    noValueEntities: strings(p["no_value_entities"]),
+    stalePhases: strings(p["stale_phases"]),
+    maxAgeS: num(p["max_age_s"]),
+  });
 }
 
 export const STATUS_WORDING: Readonly<Record<StatusCode, TranslationKey>> = {
@@ -64,6 +120,8 @@ export const STATUS_WORDING: Readonly<Record<StatusCode, TranslationKey>> = {
   charger_disabled: "issue.chargerDisabled",
   held_until_window: "status.heldUntilWindow",
   hold_overridden: "issue.holdOverridden",
+  site_measurement_problem: "issue.siteMeasurement",
+  duplicate_charger: "issue.duplicateCharger",
 };
 
 export const STATUS_VARIANT_KEYS: readonly TranslationKey[] = [
@@ -238,6 +296,10 @@ export function lineText(line: StatusLine, format: FormatContext, nowMs: number)
       }
       return say(estimated ? "status.targetStoppedEstimateAge" : "status.targetStoppedAge", { soc, age });
     }
+    case "site_measurement_problem":
+      return measurementLineText(language, p);
+    case "duplicate_charger":
+      return say("issue.duplicateCharger", { other: typeof p["other"] === "string" ? p["other"] : "" });
     default:
       return say(STATUS_WORDING[line.code]);
   }
@@ -284,6 +346,22 @@ export function issuesOf(status: Status | null, language: Language): Issue[] {
   for (const line of status.lines) {
     const severity = STATUS_CODE_TABLE[line.code][0];
     if (severity === "normal") {
+      continue;
+    }
+    if (line.code === "site_measurement_problem") {
+      issues.push({
+        code: line.code,
+        severity,
+        textKey: STATUS_WORDING[line.code],
+        params: {},
+        technical: null,
+        text: measurementLineText(language, line.params),
+      });
+      continue;
+    }
+    if (line.code === "duplicate_charger") {
+      const other = typeof line.params["other"] === "string" ? line.params["other"] : "";
+      issues.push({ code: line.code, severity, textKey: STATUS_WORDING[line.code], params: { other }, technical: null });
       continue;
     }
     const limit = line.code === "load_balancing_limited" ? num(line.params["limit_a"]) : null;

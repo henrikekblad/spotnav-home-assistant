@@ -31,6 +31,12 @@ charging start*, *Planned cost* and *Auto settings revision*. On a site: *Capaci
   charging switch) and any other integration that controls it, such as EV Smart Charging.
 - **"This charge control is already used by another SpotNav charger."** A charge control or current
   number can belong to only one SpotNav charger.
+- **"{name} and this charger are the same physical charger."** Two SpotNav chargers share a Home
+  Assistant device, a measured-current sensor, an OCPP connector or an Easee device, so they would
+  send one charger conflicting commands. The setup refuses the second one. For two that already
+  exist, the card names the other charger and **Settings, System, Repairs** lists the pair: remove
+  one under **Settings, Devices & services, SpotNav** (the entry's menu, **Delete**). SpotNav never
+  removes one for you. Two connectors of one charge point are two chargers and are not flagged.
 - **A new charger was not added to the site.** Only a charger whose wiring SpotNav can tell (three
   phases and exactly one measured-current source on its device) is offered to the site. Add it from
   the site's **Configure**.
@@ -76,6 +82,11 @@ charging start*, *Planned cost* and *Auto settings revision*. On a site: *Capaci
   a phase. Usually a wrong sensor, a sensor mapped twice, or the wrong phase.
 - **Load balancing cannot be turned on.** The card says why: no commandable charger, a
   measurement that is missing, or a charger that belongs to more than one site.
+- **"L2 and L3 have no value (sensor.…)" or "L1 is older than 120 s."** The card's status line and the
+  site's measurement settings name the phases that make the site's measurement unusable and the
+  sensors they are read from. No value means the sensor is missing, unavailable or not a current;
+  older than the maximum age means it stopped reporting. Fix that sensor or the mapping; load
+  balancing and solar wait until all three phases read.
 - **Measurements are old.** Raise *maximum measurement age* only if the sensor really updates that slowly.
 
 ## Phone and pairing

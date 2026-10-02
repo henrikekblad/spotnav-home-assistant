@@ -1230,6 +1230,11 @@ export const STATUS_CODE_TABLE = {
   charger_disabled: ["notice", {}],
   held_until_window: ["normal", { time: "instant" }],
   hold_overridden: ["notice", {}],
+  site_measurement_problem: [
+    "notice",
+    { no_value_phases: "codes", no_value_entities: "codes", stale_phases: "codes", max_age_s: "numberOrNull" },
+  ],
+  duplicate_charger: ["notice", { other: "text" }],
 } as const satisfies Record<string, readonly [StatusTone, Record<string, StatusParamKind>]>;
 
 export type StatusCode = keyof typeof STATUS_CODE_TABLE;

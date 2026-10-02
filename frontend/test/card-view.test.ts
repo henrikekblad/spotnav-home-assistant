@@ -138,6 +138,37 @@ describe("the banner and the issue dialog", () => {
     shown.view.destroy();
   });
 
+  it("leaves out the neutral banner when the headline is itself the notice, and when the notice carries the line's own facts", () => {
+    const headline = modelWith({ status: { tone: "notice", lines: [statusLine("charging_without_prices")] } });
+    expect(headline.severity).toBe("notice");
+    expect(translate("en", headline.issues[0]!.textKey).replace(/\.$/, "")).toBe(headline.status?.replace(/\.$/, ""));
+    const alone = view(headline, {}, "notice");
+    expect(alone.root.querySelector(`.${VISUAL_CLASSES.banner}`)).toBeNull();
+    alone.view.destroy();
+
+    const measured = modelWith({
+      status: {
+        tone: "notice",
+        lines: [
+          statusLine("auto_installed", { start: "2026-09-22T04:00:00+00:00" }),
+          statusLine("site_measurement_problem", {
+            no_value_phases: ["L2", "L3"],
+            no_value_entities: ["sensor.l2", "sensor.l3"],
+            stale_phases: [],
+            max_age_s: 120,
+          }),
+        ],
+      },
+    });
+    expect(measured.issues.map((issue) => issue.code)).toEqual(["site_measurement_problem"]);
+    const shown = view(measured, {}, "notice");
+    expect(shown.root.querySelector(`.${VISUAL_CLASSES.status}`)?.textContent).toContain(
+      "L2 and L3 have no value (sensor.l2, sensor.l3).",
+    );
+    expect(shown.root.querySelector(`.${VISUAL_CLASSES.banner}`)).toBeNull();
+    shown.view.destroy();
+  });
+
   it("shows a notice as a neutral banner, never as the red one, when the headline does not say it", () => {
     const notice = modelWith({
       status: { tone: "notice", lines: [statusLine("auto_installed", { start: "2026-09-22T04:00:00+00:00" })] },

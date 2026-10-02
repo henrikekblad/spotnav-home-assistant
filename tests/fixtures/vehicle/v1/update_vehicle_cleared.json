@@ -317,7 +317,36 @@
         "mode": "direct_phase_current"
       },
       "name": "Site",
-      "warnings": []
+      "warnings": [
+        {
+          "code": "measurement_unhealthy",
+          "device_name": null,
+          "entity_id": null,
+          "integration": null,
+          "interval_s": 120.0,
+          "option": null,
+          "phases": [
+            {
+              "age_s": null,
+              "cause": "no_value",
+              "entity_id": "sensor.site_charger_l1",
+              "phase": "L1"
+            },
+            {
+              "age_s": null,
+              "cause": "no_value",
+              "entity_id": "sensor.site_charger_l2",
+              "phase": "L2"
+            },
+            {
+              "age_s": null,
+              "cause": "no_value",
+              "entity_id": "sensor.site_charger_l3",
+              "phase": "L3"
+            }
+          ]
+        }
+      ]
     },
     "vehicles": [
       {

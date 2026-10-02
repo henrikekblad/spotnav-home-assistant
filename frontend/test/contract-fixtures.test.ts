@@ -384,8 +384,19 @@ const V7_STATUS_EXPECTED: Record<string, { tone: string; codes: string[]; englis
     codes: ["charging_without_prices", "plan_energy"],
     english: "Charging without published prices to keep the deadline · 20.1 kWh",
   },
-  "cheapest_direct_site_admin.json": { tone: "normal", codes: PLANNED, english: "Planned from 08:45 · 20.1 kWh · 34.6 kr · 101 km" },
-  "cheapest_direct_site_read_only.json": { tone: "normal", codes: PLANNED, english: "Planned from 08:45 · 20.1 kWh · 34.6 kr · 101 km" },
+  // The site's phase sensors read nothing here, so the status says which phases and where from.
+  "cheapest_direct_site_admin.json": {
+    tone: "notice",
+    codes: [...PLANNED, "site_measurement_problem"],
+    english:
+      "Planned from 08:45 · 20.1 kWh · 34.6 kr · 101 km · L1, L2, and L3 have no value (sensor.cheapest_direct_admin_site_l1, sensor.cheapest_direct_admin_site_l2, sensor.cheapest_direct_admin_site_l3).",
+  },
+  "cheapest_direct_site_read_only.json": {
+    tone: "notice",
+    codes: [...PLANNED, "site_measurement_problem"],
+    english:
+      "Planned from 08:45 · 20.1 kWh · 34.6 kr · 101 km · L1, L2, and L3 have no value (sensor.cheapest_direct_reader_site_l1, sensor.cheapest_direct_reader_site_l2, sensor.cheapest_direct_reader_site_l3).",
+  },
   "cheapest_no_site.json": { tone: "normal", codes: PLANNED, english: "Planned from 08:45 · 20.1 kWh · 34.6 kr · 101 km" },
   "hybrid_derived_site_no_forecast.json": {
     tone: "normal",

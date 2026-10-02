@@ -15,6 +15,7 @@ from custom_components.spotnav.planning.status_compose import (
     LoadBalancingFacts,
     PlanningFacts,
     ProposalFacts,
+    SiteMeasurementFacts,
     SocFacts,
     SolarFacts,
     StatusFacts,
@@ -569,6 +570,54 @@ CASES: list[tuple[str, StatusFacts, str, list[dict[str, Any]]]] = [
         base(hold_overridden=True, charging=True),
         "notice",
         [{"code": "charging_now", "params": {"until": None}}, {"code": "hold_overridden", "params": {}}],
+    ),
+    (
+        "a site measurement with phases that read nothing names them and their entities",
+        base(
+            waiting_for_tomorrow=True,
+            site_measurement=SiteMeasurementFacts(
+                no_value_phases=("L2", "L3"),
+                no_value_entities=("sensor.pulse_current_l2", "sensor.pulse_current_l3"),
+                max_age_s=120.0,
+            ),
+        ),
+        "notice",
+        [
+            {"code": "waiting_for_tomorrow", "params": {}},
+            {
+                "code": "site_measurement_problem",
+                "params": {
+                    "no_value_phases": ["L2", "L3"],
+                    "no_value_entities": ["sensor.pulse_current_l2", "sensor.pulse_current_l3"],
+                    "stale_phases": [],
+                    "max_age_s": 120.0,
+                },
+            },
+        ],
+    ),
+    (
+        "a stale phase says it is older than the maximum age",
+        base(
+            waiting_for_tomorrow=True,
+            site_measurement=SiteMeasurementFacts(stale_phases=("L1",), max_age_s=120.0),
+        ),
+        "notice",
+        [
+            {"code": "waiting_for_tomorrow", "params": {}},
+            {
+                "code": "site_measurement_problem",
+                "params": {"no_value_phases": [], "no_value_entities": [], "stale_phases": ["L1"], "max_age_s": 120.0},
+            },
+        ],
+    ),
+    (
+        "a charger that is the same physical charger as another entry says which",
+        base(waiting_for_tomorrow=True, duplicate_chargers=("Garage Easee",)),
+        "notice",
+        [
+            {"code": "waiting_for_tomorrow", "params": {}},
+            {"code": "duplicate_charger", "params": {"other": "Garage Easee"}},
+        ],
     ),
     (
         "blocking beats a pause and a charge",

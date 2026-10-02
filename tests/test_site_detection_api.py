@@ -75,7 +75,8 @@ async def test_get_entity_config_lists_candidates_measurement_and_warnings(
     assert {item["role"] for item in meter["entities"]} == {"power", "voltage", "current"}
     assert [b["inverted"] for b in site["detection"]["batteries"]] == [False]
     assert site["measurement"]["mode"] == MEASUREMENT_MODE_DIRECT
-    assert site["warnings"] == []
+    # Nothing about slow or self-balancing devices; the site's own phase sensors read nothing here.
+    assert [w["code"] for w in site["warnings"]] == ["measurement_unhealthy"]
 
 
 async def test_apply_detection_writes_the_setup_and_enables_only_what_the_integration_disabled(
@@ -181,8 +182,8 @@ async def test_an_easee_equalizer_warns_and_applies_an_attributes_source(hass: H
     client = await admin(hass, hass_ws_client)
     site = block(await ws_call(client, get_message(charger.entry_id)))
 
-    assert [w["code"] for w in site["warnings"]] == ["own_load_balancing"]
-    assert site["warnings"][0]["integration"] == "easee"
+    assert [w["code"] for w in site["warnings"]] == ["measurement_unhealthy", "own_load_balancing"]
+    assert site["warnings"][1]["integration"] == "easee"
     [meter] = site["detection"]["meters"]
     assert "own_load_balancing" in meter["warnings"]
 

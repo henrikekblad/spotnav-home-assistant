@@ -960,7 +960,8 @@
           "entity_id": "sensor.se_m1_power_a",
           "integration": "solaredge_modbus_multi",
           "interval_s": 300.0,
-          "option": "Polling frequency (Modbus poll interval, 1-10 s)"
+          "option": "Polling frequency (Modbus poll interval, 1-10 s)",
+          "phases": []
         },
         {
           "code": "own_load_balancing",
@@ -968,7 +969,8 @@
           "entity_id": null,
           "integration": "easee",
           "interval_s": null,
-          "option": null
+          "option": null,
+          "phases": []
         }
       ]
     },

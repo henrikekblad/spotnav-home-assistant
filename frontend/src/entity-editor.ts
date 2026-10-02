@@ -48,6 +48,7 @@ import {
   vehicleChoice,
 } from "./entity-config";
 import { formatFixed, formatNumber } from "./format";
+import { measurementProblemText } from "./status";
 import {
   CAPACITY_MAX_KWH,
   CAPACITY_MIN_KWH,
@@ -96,8 +97,17 @@ function labelOf(language: Language, field: string): string {
   return field;
 }
 
-function warningText(language: Language, warning: SiteWarning): string[] {
+function warningText(language: Language, warning: SiteWarning): string {
   const integration = warning.integration ?? "";
+  if (warning.code === "measurement_unhealthy") {
+    const of = (cause: "no_value" | "stale") => warning.phases.filter((item) => item.cause === cause);
+    return measurementProblemText(language, {
+      noValuePhases: of("no_value").map((item) => item.phase),
+      noValueEntities: of("no_value").flatMap((item) => (item.entityId === null ? [] : [item.entityId])),
+      stalePhases: of("stale").map((item) => item.phase),
+      maxAgeS: warning.intervalS,
+    });
+  }
   if (warning.code === "update_interval_exceeds_max_age") {
     const lines = [
       translate(language, "entity.warning.updateInterval", {
@@ -108,55 +118,98 @@ function warningText(language: Language, warning: SiteWarning): string[] {
     if (warning.option !== null) {
       lines.push(translate(language, "entity.warning.updateIntervalOption", { option: warning.option }));
     }
-    return lines;
+    return lines.join(" ");
   }
   if (warning.code === "reports_on_change_only") {
-    return [translate(language, "entity.warning.onChange", { integration })];
+    return translate(language, "entity.warning.onChange", { integration });
   }
   if (warning.code === "own_load_balancing") {
-    return [translate(language, "entity.warning.ownBalancing", { name: warning.deviceName ?? integration, integration })];
+    return translate(language, "entity.warning.ownBalancing", { name: warning.deviceName ?? integration, integration });
   }
   if (warning.code === "external_current_balancer") {
-    return [translate(language, "entity.warning.externalBalancer", { name: warning.deviceName ?? "", integration })];
+    return translate(language, "entity.warning.externalBalancer", { name: warning.deviceName ?? "", integration });
   }
-  return [translate(language, "entity.warning.unknown")];
+  return translate(language, "entity.warning.unknown");
 }
 
-/** The site's warnings, one worded row each (a code this card does not know gets a generic sentence). */
-export function siteWarningRows(doc: Document, language: Language, site: EntitySite): HTMLElement[] {
-  const rows: HTMLElement[] = [];
-  for (const warning of site.warnings) {
-    for (const line of warningText(language, warning)) {
-      const row = element(doc, "p", C.entityWarning, line);
-      row.dataset["warning"] = warning.code;
-      rows.push(row);
-    }
+/** How much a site note matters: the lower the number, the earlier it is listed. */
+const NOTE_RANK: Readonly<Record<string, number>> = {
+  measurement_unhealthy: 0,
+  own_load_balancing: 1,
+  external_current_balancer: 2,
+  update_interval_exceeds_max_age: 3,
+  reports_on_change_only: 4,
+  estimated: 5,
+};
+const UNKNOWN_NOTE_RANK = 6;
+
+interface SiteNote {
+  code: string;
+  kind: "notice" | "warning";
+  text: string;
+}
+
+/** Every note the site has, most important first, each sentence once. */
+function siteNotes(language: Language, site: EntitySite, includeEstimate = true): SiteNote[] {
+  const notes: SiteNote[] = site.warnings.map((warning) => ({
+    code: warning.code,
+    kind: "warning",
+    text: warningText(language, warning),
+  }));
+  if (includeEstimate && site.measurement.currentEstimated) {
+    notes.push({
+      code: "estimated",
+      kind: "notice",
+      text: translate(language, "entity.notice.estimated", {
+        pf: formatNumber(language, site.measurement.assumedPowerFactor ?? 0.9, 1),
+      }),
+    });
   }
-  return rows;
+  const seen = new Set<string>();
+  return notes
+    .map((note, index) => ({ note, index }))
+    .sort(
+      (a, b) =>
+        (NOTE_RANK[a.note.code] ?? UNKNOWN_NOTE_RANK) - (NOTE_RANK[b.note.code] ?? UNKNOWN_NOTE_RANK) || a.index - b.index,
+    )
+    .map(({ note }) => note)
+    .filter((note) => {
+      if (seen.has(note.text)) {
+        return false;
+      }
+      seen.add(note.text);
+      return true;
+    });
+}
+
+/** The site's warnings (not the estimate notice), most important first, one worded row each. */
+export function siteWarningRows(doc: Document, language: Language, site: EntitySite): HTMLElement[] {
+  return siteNotes(language, site, false).map((note) => {
+    const row = element(doc, "p", C.entityWarning, note.text);
+    row.dataset["warning"] = note.code;
+    return row;
+  });
 }
 
 /**
- * What the site's measurement wants said: that the current is estimated from power (with the power
- * factor assumed), sources that update more slowly than the maximum age, and devices that balance load
- * themselves. `null` when there is nothing to say.
+ * What the site's measurement wants said, as one list with the most important note first and no
+ * heading or banner of its own: phases that make the measurement unusable, devices that balance load
+ * themselves, sources that update more slowly than the maximum age, and a current estimated from
+ * power (with the power factor assumed). `null` when there is nothing to say.
  */
 export function siteNotices(doc: Document, language: Language, site: EntitySite): HTMLElement | null {
-  const notices = element(doc, "div");
-  notices.dataset["notices"] = "site";
-  if (site.measurement.currentEstimated) {
-    const estimated = element(
-      doc,
-      "p",
-      C.entityWarning,
-      translate(language, "entity.notice.estimated", {
-        pf: formatNumber(language, site.measurement.assumedPowerFactor ?? 0.9, 1),
-      }),
-    );
-    estimated.dataset["notice"] = "estimated";
-    notices.append(estimated);
+  const notes = siteNotes(language, site);
+  if (notes.length === 0) {
+    return null;
   }
-  notices.append(...siteWarningRows(doc, language, site));
-  return notices.childElementCount === 0 ? null : notices;
+  const list = element(doc, "ul", C.entityNotices);
+  list.dataset["notices"] = "site";
+  for (const note of notes) {
+    const item = element(doc, "li", C.entityWarning, note.text);
+    item.dataset[note.kind] = note.code;
+    list.append(item);
+  }
+  return list;
 }
 
 /**
@@ -323,6 +376,9 @@ export function controlRows(doc: Document, language: Language, control: EntityCo
 
 /** The sentence for one conflict: a charger's own mode that is on, or its own enable switch that is off. */
 export function conflictText(language: Language, conflict: ControlConflict, name: string): string {
+  if (conflict.kind === "duplicate_charger") {
+    return translate(language, "issue.duplicateCharger", { other: conflict.state });
+  }
   return conflict.kind === "disabled"
     ? translate(language, "control.disabled", { name })
     : translate(language, "control.conflict", { label: conflict.label, name });

@@ -673,6 +673,7 @@ var VISUAL_CLASSES = {
   entityRowValue: "spotnav-entity-row-value",
   entityHelp: "spotnav-entity-help",
   entityWarning: "spotnav-entity-warning",
+  entityNotices: "spotnav-entity-notices",
   entityAutomatic: "spotnav-entity-automatic",
   entityDialog: "spotnav-entity-dialog",
   actionIcon: "spotnav-action-icon",
@@ -1672,6 +1673,10 @@ var VISUAL_STYLES = `
     margin: 2px 0 0;
     font-size: 0.8rem;
     overflow-wrap: break-word;
+  }
+  .${VISUAL_CLASSES.entityNotices} {
+    margin: 8px 0 0;
+    padding: 0 0 0 18px;
   }
   .${VISUAL_CLASSES.entityHelp},
   .${VISUAL_CLASSES.entityAutomatic} {
@@ -2921,6 +2926,12 @@ var da = {
   "issue.heldByCharger": "Laderens eget skema eller lastbalancering holder opladningen tilbage, så den er ikke startet.",
   "issue.chargerDisabled": "Laderens egen aktiveringskontakt er slået fra, så den kan ikke starte. Slå den til i laderens indstillinger.",
   "issue.holdOverridden": "Opladningen blev startet uden for planen og må fortsætte.",
+  "status.siteMeasurement.stale.other": "{phases} er ældre end {seconds} s.",
+  "status.siteMeasurement.stale.one": "{phases} er ældre end {seconds} s.",
+  "status.siteMeasurement.noValue.other": "{phases} har ingen værdi{where}.",
+  "status.siteMeasurement.noValue.one": "{phases} har ingen værdi{where}.",
+  "issue.duplicateCharger": "{other} og denne lader er den samme fysiske lader. To SpotNav-ladere på én lader sender modstridende kommandoer, så behold kun én: fjern den anden under Indstillinger → Enheder og tjenester → SpotNav. SpotNav fjerner aldrig en for dig.",
+  "issue.siteMeasurement": "Anlæggets måling kan ikke bruges lige nu.",
   "issue.unknown": "Backend rapporterede noget, kortet endnu ikke kender.",
   "header.info": "Om kortet",
   "header.settings": "Kortindstillinger",
@@ -2968,6 +2979,7 @@ var da = {
   "entity.error.field.unknown": "Feltet genkendes ikke.",
   "entity.error.field.chargeControlInUse": "En anden lader bruger allerede denne afbryder.",
   "entity.error.field.currentLimitInUse": "En anden lader bruger allerede denne strømgrænse.",
+  "entity.error.field.duplicateCharger": "En anden SpotNav-lader er allerede den samme lader.",
   "entity.error.conflict": "Ændret et andet sted. De aktuelle værdier vises, og intet blev gemt.",
   "entity.error.invalid": "Nogle værdier blev ikke accepteret. Intet blev gemt.",
   "entity.error.generic": "Entiteterne kunne ikke ændres. Intet er ændret.",
@@ -3453,6 +3465,12 @@ var en = {
   "issue.heldByCharger": "The charger's own schedule or load balancing is holding the charge, so it has not started.",
   "issue.chargerDisabled": "The charger's own enable switch is off, so it cannot start. Turn it on in the charger's settings.",
   "issue.holdOverridden": "Charging was started outside the plan and is allowed to continue.",
+  "status.siteMeasurement.stale.other": "{phases} are older than {seconds} s.",
+  "status.siteMeasurement.stale.one": "{phases} is older than {seconds} s.",
+  "status.siteMeasurement.noValue.other": "{phases} have no value{where}.",
+  "status.siteMeasurement.noValue.one": "{phases} has no value{where}.",
+  "issue.duplicateCharger": "{other} and this charger are the same physical charger. Two SpotNav chargers on one charger send it conflicting commands, so keep only one: remove the other in Settings → Devices & services → SpotNav. SpotNav never removes one for you.",
+  "issue.siteMeasurement": "The site's measurement cannot be used right now.",
   "issue.unknown": "The backend reported something this card does not know yet.",
   "header.info": "About this card",
   "header.settings": "Card settings",
@@ -3500,6 +3518,7 @@ var en = {
   "entity.error.field.unknown": "That field is not recognised.",
   "entity.error.field.chargeControlInUse": "Another charger already uses this switch.",
   "entity.error.field.currentLimitInUse": "Another charger already uses this current limit.",
+  "entity.error.field.duplicateCharger": "Another SpotNav charger is already this same charger.",
   "entity.error.conflict": "Changed elsewhere. The current values are shown and nothing was saved.",
   "entity.error.invalid": "Some values were not accepted. Nothing was saved.",
   "entity.error.generic": "The entities could not be changed. Nothing changed.",
@@ -3985,6 +4004,12 @@ var fi = {
   "issue.heldByCharger": "Laturin oma aikataulu tai kuormanhallinta pidättää latausta, joten se ei ole alkanut.",
   "issue.chargerDisabled": "Laturin oma käyttöönottokytkin on pois päältä, joten lataus ei voi alkaa. Kytke se päälle laturin asetuksista.",
   "issue.holdOverridden": "Lataus käynnistettiin suunnitelman ulkopuolella ja sen annetaan jatkua.",
+  "status.siteMeasurement.stale.other": "{phases}: arvot ovat yli {seconds} s vanhoja.",
+  "status.siteMeasurement.stale.one": "{phases}: arvo on yli {seconds} s vanha.",
+  "status.siteMeasurement.noValue.other": "{phases}: ei arvoa{where}.",
+  "status.siteMeasurement.noValue.one": "{phases}: ei arvoa{where}.",
+  "issue.duplicateCharger": "{other} ja tämä latauslaite ovat sama fyysinen laite. Kaksi SpotNav-latauslaitetta yhdellä laitteella lähettää sille ristiriitaisia komentoja, joten säilytä vain yksi: poista toinen kohdasta Asetukset → Laitteet ja palvelut → SpotNav. SpotNav ei koskaan poista kumpaakaan puolestasi.",
+  "issue.siteMeasurement": "Kohteen mittausta ei voi käyttää juuri nyt.",
   "issue.unknown": "Taustajärjestelmä raportoi jotain, mitä kortti ei vielä tunne.",
   "header.info": "Tietoja kortista",
   "header.settings": "Kortin asetukset",
@@ -4032,6 +4057,7 @@ var fi = {
   "entity.error.field.unknown": "Kenttää ei tunnisteta.",
   "entity.error.field.chargeControlInUse": "Toinen latauslaite käyttää jo tätä kytkintä.",
   "entity.error.field.currentLimitInUse": "Toinen latauslaite käyttää jo tätä virtarajaa.",
+  "entity.error.field.duplicateCharger": "Toinen SpotNav-latauslaite on jo sama laite.",
   "entity.error.conflict": "Muutettu muualla. Nykyiset arvot näytetään, eikä mitään tallennettu.",
   "entity.error.invalid": "Joitakin arvoja ei hyväksytty. Mitään ei tallennettu.",
   "entity.error.generic": "Entiteettejä ei voitu muuttaa. Mikään ei muuttunut.",
@@ -4517,6 +4543,12 @@ var nb = {
   "issue.heldByCharger": "Laderens egen timeplan eller lastbalansering holder tilbake ladingen, så den har ikke startet.",
   "issue.chargerDisabled": "Laderens egen aktiveringsbryter er av, så den kan ikke starte. Slå den på i laderens innstillinger.",
   "issue.holdOverridden": "Ladingen ble startet utenfor planen og får fortsette.",
+  "status.siteMeasurement.stale.other": "{phases} er eldre enn {seconds} s.",
+  "status.siteMeasurement.stale.one": "{phases} er eldre enn {seconds} s.",
+  "status.siteMeasurement.noValue.other": "{phases} har ingen verdi{where}.",
+  "status.siteMeasurement.noValue.one": "{phases} har ingen verdi{where}.",
+  "issue.duplicateCharger": "{other} og denne laderen er den samme fysiske laderen. To SpotNav-ladere på én lader sender motstridende kommandoer, så behold bare én: fjern den andre under Innstillinger → Enheter og tjenester → SpotNav. SpotNav fjerner aldri en for deg.",
+  "issue.siteMeasurement": "Anleggets måling kan ikke brukes akkurat nå.",
   "issue.unknown": "Backend rapporterte noe kortet ikke kjenner igjen ennå.",
   "header.info": "Om kortet",
   "header.settings": "Kortinnstillinger",
@@ -4564,6 +4596,7 @@ var nb = {
   "entity.error.field.unknown": "Feltet gjenkjennes ikke.",
   "entity.error.field.chargeControlInUse": "En annen lader bruker allerede denne bryteren.",
   "entity.error.field.currentLimitInUse": "En annen lader bruker allerede denne strømgrensen.",
+  "entity.error.field.duplicateCharger": "En annen SpotNav-lader er allerede den samme laderen.",
   "entity.error.conflict": "Endret et annet sted. De gjeldende verdiene vises, og ingenting ble lagret.",
   "entity.error.invalid": "Noen verdier ble ikke godtatt. Ingenting ble lagret.",
   "entity.error.generic": "Entitetene kunne ikke endres. Ingenting ble endret.",
@@ -5049,6 +5082,12 @@ var sv = {
   "issue.heldByCharger": "Laddarens eget schema eller lastbalansering håller tillbaka laddningen, så den har inte startat.",
   "issue.chargerDisabled": "Laddarens egen aktiveringsbrytare är av, så den kan inte starta. Slå på den i laddarens inställningar.",
   "issue.holdOverridden": "Laddningen startades utanför planen och får fortsätta.",
+  "status.siteMeasurement.stale.other": "{phases} är äldre än {seconds} s.",
+  "status.siteMeasurement.stale.one": "{phases} är äldre än {seconds} s.",
+  "status.siteMeasurement.noValue.other": "{phases} saknar värde{where}.",
+  "status.siteMeasurement.noValue.one": "{phases} saknar värde{where}.",
+  "issue.duplicateCharger": "{other} och den här laddaren är samma fysiska laddare. Två SpotNav-laddare på en laddare skickar motstridiga kommandon, så behåll bara en: ta bort den andra under Inställningar → Enheter och tjänster → SpotNav. SpotNav tar aldrig bort en åt dig.",
+  "issue.siteMeasurement": "Anläggningens mätning kan inte användas just nu.",
   "issue.unknown": "Backend rapporterade något som kortet inte känner igen ännu.",
   "header.info": "Om kortet",
   "header.settings": "Kortinställningar",
@@ -5096,6 +5135,7 @@ var sv = {
   "entity.error.field.unknown": "Fältet känns inte igen.",
   "entity.error.field.chargeControlInUse": "En annan laddare använder redan den här brytaren.",
   "entity.error.field.currentLimitInUse": "En annan laddare använder redan den här strömgränsen.",
+  "entity.error.field.duplicateCharger": "En annan SpotNav-laddare är redan samma laddare.",
   "entity.error.conflict": "Ändrat någon annanstans. De aktuella värdena visas och inget sparades.",
   "entity.error.invalid": "Några värden godtogs inte. Inget sparades.",
   "entity.error.generic": "Entiteterna kunde inte ändras. Inget ändrades.",
@@ -6840,7 +6880,12 @@ var STATUS_CODE_TABLE = {
   held_by_charger: ["notice", {}],
   charger_disabled: ["notice", {}],
   held_until_window: ["normal", { time: "instant" }],
-  hold_overridden: ["notice", {}]
+  hold_overridden: ["notice", {}],
+  site_measurement_problem: [
+    "notice",
+    { no_value_phases: "codes", no_value_entities: "codes", stale_phases: "codes", max_age_s: "numberOrNull" }
+  ],
+  duplicate_charger: ["notice", { other: "text" }]
 };
 function decodeStatusParam(source, key, kind) {
   switch (kind) {
@@ -7116,6 +7161,41 @@ function progressOrNull(root) {
 }
 
 // src/status.ts
+function issueText(language, issue) {
+  return issue.text ?? translate(language, issue.textKey, issue.params);
+}
+function listOf(language, items) {
+  return new Intl.ListFormat(language, { style: "long", type: "conjunction" }).format(items);
+}
+function measurementProblemText(language, facts) {
+  const parts = [];
+  if (facts.noValuePhases.length > 0) {
+    const where = facts.noValueEntities.length > 0 ? ` (${facts.noValueEntities.join(", ")})` : "";
+    const key = `status.siteMeasurement.noValue.${pluralForm(language, facts.noValuePhases.length)}`;
+    parts.push(translate(language, key, { phases: listOf(language, facts.noValuePhases), where }));
+  }
+  if (facts.stalePhases.length > 0) {
+    const key = `status.siteMeasurement.stale.${pluralForm(language, facts.stalePhases.length)}`;
+    parts.push(
+      translate(language, key, {
+        phases: listOf(language, facts.stalePhases),
+        seconds: formatNumber(language, facts.maxAgeS ?? 0, 0)
+      })
+    );
+  }
+  return parts.length === 0 ? translate(language, "issue.siteMeasurement") : parts.join(" ");
+}
+function strings(value) {
+  return Array.isArray(value) ? value.filter((entry) => typeof entry === "string") : [];
+}
+function measurementLineText(language, p) {
+  return measurementProblemText(language, {
+    noValuePhases: strings(p["no_value_phases"]),
+    noValueEntities: strings(p["no_value_entities"]),
+    stalePhases: strings(p["stale_phases"]),
+    maxAgeS: num(p["max_age_s"])
+  });
+}
 var STATUS_WORDING = {
   charger_unavailable: "issue.chargerMissing",
   price_data_invalid: "issue.priceInvalid",
@@ -7164,7 +7244,9 @@ var STATUS_WORDING = {
   held_by_charger: "issue.heldByCharger",
   charger_disabled: "issue.chargerDisabled",
   held_until_window: "status.heldUntilWindow",
-  hold_overridden: "issue.holdOverridden"
+  hold_overridden: "issue.holdOverridden",
+  site_measurement_problem: "issue.siteMeasurement",
+  duplicate_charger: "issue.duplicateCharger"
 };
 var MISSING_FIELD_KEYS = {
   area: "status.missing.area",
@@ -7282,6 +7364,10 @@ function lineText(line, format, nowMs) {
       }
       return say(estimated ? "status.targetStoppedEstimateAge" : "status.targetStoppedAge", { soc, age });
     }
+    case "site_measurement_problem":
+      return measurementLineText(language, p);
+    case "duplicate_charger":
+      return say("issue.duplicateCharger", { other: typeof p["other"] === "string" ? p["other"] : "" });
     default:
       return say(STATUS_WORDING[line.code]);
   }
@@ -7314,6 +7400,22 @@ function issuesOf(status, language) {
   for (const line of status.lines) {
     const severity = STATUS_CODE_TABLE[line.code][0];
     if (severity === "normal") {
+      continue;
+    }
+    if (line.code === "site_measurement_problem") {
+      issues.push({
+        code: line.code,
+        severity,
+        textKey: STATUS_WORDING[line.code],
+        params: {},
+        technical: null,
+        text: measurementLineText(language, line.params)
+      });
+      continue;
+    }
+    if (line.code === "duplicate_charger") {
+      const other = typeof line.params["other"] === "string" ? line.params["other"] : "";
+      issues.push({ code: line.code, severity, textKey: STATUS_WORDING[line.code], params: { other }, technical: null });
       continue;
     }
     const limit = line.code === "load_balancing_limited" ? num(line.params["limit_a"]) : null;
@@ -7852,16 +7954,31 @@ function decodeMeasurement(raw) {
     }
   };
 }
+function decodeWarningPhase(raw) {
+  const source = record3(raw);
+  exactKeys3(source, ["phase", "cause", "entity_id", "age_s"]);
+  return {
+    phase: text3(source, "phase"),
+    cause: oneOf2(source, "cause", ["no_value", "stale"]),
+    entityId: textOrNull3(source, "entity_id"),
+    ageS: intervalOrNull(source, "age_s")
+  };
+}
 function decodeWarning(raw) {
   const source = record3(raw);
-  exactKeys3(source, ["code", "integration", "entity_id", "interval_s", "option", "device_name"]);
+  exactKeys3(source, ["code", "integration", "entity_id", "interval_s", "option", "device_name", "phases"]);
+  const phases = source["phases"];
+  if (!Array.isArray(phases)) {
+    return bad3();
+  }
   return {
     code: text3(source, "code"),
     integration: textOrNull3(source, "integration"),
     entityId: textOrNull3(source, "entity_id"),
     intervalS: intervalOrNull(source, "interval_s"),
     option: textOrNull3(source, "option"),
-    deviceName: textOrNull3(source, "device_name")
+    deviceName: textOrNull3(source, "device_name"),
+    phases: phases.map(decodeWarningPhase)
   };
 }
 function decodeDetectedEntity(raw) {
@@ -8055,7 +8172,7 @@ function decodeControl2(raw) {
       const item = record3(entry);
       exactKeys3(item, ["kind", "entity_id", "label", "state"]);
       return {
-        kind: oneOf2(item, "kind", ["own_mode", "disabled"]),
+        kind: oneOf2(item, "kind", ["own_mode", "disabled", "duplicate_charger"]),
         entityId: text3(item, "entity_id"),
         label: text3(item, "label"),
         state: text3(item, "state")
@@ -8406,6 +8523,7 @@ var FIELD_ERROR_KEYS = {
   unknown_field: "entity.error.field.unknown",
   charge_control_in_use: "entity.error.field.chargeControlInUse",
   current_limit_in_use: "entity.error.field.currentLimitInUse",
+  duplicate_charger: "entity.error.field.duplicateCharger",
   unknown_vehicle: "entity.error.field.unknownVehicle",
   invalid_capacity: "settings.vehicle.error.capacity",
   invalid_consumption: "settings.vehicle.error.consumption"
@@ -8504,6 +8622,15 @@ function labelOf(language, field2) {
 }
 function warningText(language, warning) {
   const integration = warning.integration ?? "";
+  if (warning.code === "measurement_unhealthy") {
+    const of = (cause) => warning.phases.filter((item) => item.cause === cause);
+    return measurementProblemText(language, {
+      noValuePhases: of("no_value").map((item) => item.phase),
+      noValueEntities: of("no_value").flatMap((item) => item.entityId === null ? [] : [item.entityId]),
+      stalePhases: of("stale").map((item) => item.phase),
+      maxAgeS: warning.intervalS
+    });
+  }
   if (warning.code === "update_interval_exceeds_max_age") {
     const lines = [
       translate(language, "entity.warning.updateInterval", {
@@ -8514,47 +8641,74 @@ function warningText(language, warning) {
     if (warning.option !== null) {
       lines.push(translate(language, "entity.warning.updateIntervalOption", { option: warning.option }));
     }
-    return lines;
+    return lines.join(" ");
   }
   if (warning.code === "reports_on_change_only") {
-    return [translate(language, "entity.warning.onChange", { integration })];
+    return translate(language, "entity.warning.onChange", { integration });
   }
   if (warning.code === "own_load_balancing") {
-    return [translate(language, "entity.warning.ownBalancing", { name: warning.deviceName ?? integration, integration })];
+    return translate(language, "entity.warning.ownBalancing", { name: warning.deviceName ?? integration, integration });
   }
   if (warning.code === "external_current_balancer") {
-    return [translate(language, "entity.warning.externalBalancer", { name: warning.deviceName ?? "", integration })];
+    return translate(language, "entity.warning.externalBalancer", { name: warning.deviceName ?? "", integration });
   }
-  return [translate(language, "entity.warning.unknown")];
+  return translate(language, "entity.warning.unknown");
 }
-function siteWarningRows(doc, language, site) {
-  const rows = [];
-  for (const warning of site.warnings) {
-    for (const line of warningText(language, warning)) {
-      const row = element(doc, "p", VISUAL_CLASSES.entityWarning, line);
-      row.dataset["warning"] = warning.code;
-      rows.push(row);
-    }
-  }
-  return rows;
-}
-function siteNotices(doc, language, site) {
-  const notices = element(doc, "div");
-  notices.dataset["notices"] = "site";
-  if (site.measurement.currentEstimated) {
-    const estimated = element(
-      doc,
-      "p",
-      VISUAL_CLASSES.entityWarning,
-      translate(language, "entity.notice.estimated", {
+var NOTE_RANK = {
+  measurement_unhealthy: 0,
+  own_load_balancing: 1,
+  external_current_balancer: 2,
+  update_interval_exceeds_max_age: 3,
+  reports_on_change_only: 4,
+  estimated: 5
+};
+var UNKNOWN_NOTE_RANK = 6;
+function siteNotes(language, site, includeEstimate = true) {
+  const notes = site.warnings.map((warning) => ({
+    code: warning.code,
+    kind: "warning",
+    text: warningText(language, warning)
+  }));
+  if (includeEstimate && site.measurement.currentEstimated) {
+    notes.push({
+      code: "estimated",
+      kind: "notice",
+      text: translate(language, "entity.notice.estimated", {
         pf: formatNumber(language, site.measurement.assumedPowerFactor ?? 0.9, 1)
       })
-    );
-    estimated.dataset["notice"] = "estimated";
-    notices.append(estimated);
+    });
   }
-  notices.append(...siteWarningRows(doc, language, site));
-  return notices.childElementCount === 0 ? null : notices;
+  const seen = /* @__PURE__ */ new Set();
+  return notes.map((note, index) => ({ note, index })).sort(
+    (a, b) => (NOTE_RANK[a.note.code] ?? UNKNOWN_NOTE_RANK) - (NOTE_RANK[b.note.code] ?? UNKNOWN_NOTE_RANK) || a.index - b.index
+  ).map(({ note }) => note).filter((note) => {
+    if (seen.has(note.text)) {
+      return false;
+    }
+    seen.add(note.text);
+    return true;
+  });
+}
+function siteWarningRows(doc, language, site) {
+  return siteNotes(language, site, false).map((note) => {
+    const row = element(doc, "p", VISUAL_CLASSES.entityWarning, note.text);
+    row.dataset["warning"] = note.code;
+    return row;
+  });
+}
+function siteNotices(doc, language, site) {
+  const notes = siteNotes(language, site);
+  if (notes.length === 0) {
+    return null;
+  }
+  const list3 = element(doc, "ul", VISUAL_CLASSES.entityNotices);
+  list3.dataset["notices"] = "site";
+  for (const note of notes) {
+    const item = element(doc, "li", VISUAL_CLASSES.entityWarning, note.text);
+    item.dataset[note.kind] = note.code;
+    list3.append(item);
+  }
+  return list3;
 }
 async function ensureHaSelector(win, timeoutMs = 3e3) {
   const registry = win?.customElements;
@@ -8693,6 +8847,9 @@ function controlRows(doc, language, control, nameOf) {
   return block;
 }
 function conflictText(language, conflict, name) {
+  if (conflict.kind === "duplicate_charger") {
+    return translate(language, "issue.duplicateCharger", { other: conflict.state });
+  }
   return conflict.kind === "disabled" ? translate(language, "control.disabled", { name }) : translate(language, "control.conflict", { label: conflict.label, name });
 }
 function entityNameIn(config, entityId) {
@@ -10906,7 +11063,7 @@ function bannerRepeatsStatus(model, severity) {
   }
   const strip = (text4) => text4.trim().replace(/[.。]$/u, "");
   const shown = model.status.split(" · ").map(strip);
-  return model.issues.every((issue) => shown.includes(strip(translate(model.language, issue.textKey, issue.params))));
+  return model.issues.every((issue) => shown.includes(strip(issueText(model.language, issue))));
 }
 var SOLAR_SETUP_ROWS = /* @__PURE__ */ new Set(["solar", "hybrid"]);
 var STRATEGY_NEEDS_TOTAL_POWER = "needs_total_grid_power";
@@ -11191,7 +11348,7 @@ function issueRow(doc, model, issue) {
   row.dataset["code"] = issue.code;
   row.dataset["severity"] = issue.severity;
   row.append(
-    element6(doc, "span", VISUAL_CLASSES.issueText, translate(model.language, issue.textKey, issue.params))
+    element6(doc, "span", VISUAL_CLASSES.issueText, issueText(model.language, issue))
   );
   return row;
 }

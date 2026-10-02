@@ -67,6 +67,7 @@ from ..execution.yield_stepping import YieldConfig, YieldObservation, YieldStepp
 from ..planning.auto_settings import STRATEGY_HYBRID, STRATEGY_SOLAR
 from ..runtime import charger_data, controller_for, domain_data
 from ..vehicles.capability import build_capability_snapshot, SiteCapabilitySnapshot
+from .measurement_problem import measurement_problem, MeasurementProblem
 from .solar_capability import solar_capability
 from .measurement_source import (
     combine_power_pair,
@@ -1262,6 +1263,38 @@ class SiteCapacityController:
         return PhaseMeasurementSource(
             kind="separate_entities", entity_ids=dict(entities), signed_current=signed
         )
+
+    def phase_entities(self) -> dict[PhaseName, str | None]:
+        """The entity each phase's measurement is read from, for naming the one that fails: the
+        phase's own sensor in direct mode, its current (else apparent, else active power) sensor in
+        derived mode, the one entity of a source that carries all three phases.
+        """
+        found: dict[PhaseName, str | None] = {"L1": None, "L2": None, "L3": None}
+        if self.config.get(CONF_MEASUREMENT_MODE) == MEASUREMENT_MODE_DERIVED:
+            entities: dict[str, dict[str, str]] = self.config.get(CONF_DERIVED_ENTITIES) or {}
+            for phase in found:
+                phase_entities = entities.get(phase) or {}
+                found[phase] = (
+                    phase_entities.get("current")
+                    or phase_entities.get("apparent_power")
+                    or phase_entities.get("power")
+                    or None
+                )
+            return found
+        source = self._resolve_site_current_source()
+        if source is None:
+            return found
+        for phase in found:
+            if source.kind == "attributes":
+                found[phase] = source.entity_id
+            else:
+                found[phase] = (source.entity_ids or {}).get(phase)
+        return found
+
+    @property
+    def measurement_problem(self) -> MeasurementProblem | None:
+        """The phases that make the site's measurement unusable right now (`site/measurement_problem.py`)."""
+        return measurement_problem(self.result, self.phase_entities())
 
     def _read_direct_entities(self) -> DirectPhaseMeasurement:
         source = self._resolve_site_current_source()

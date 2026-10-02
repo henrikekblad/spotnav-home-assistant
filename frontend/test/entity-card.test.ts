@@ -660,8 +660,57 @@ describe("the site's estimate, warnings, sign options and detected meters", () =
     expect(notices?.querySelector("[data-warning='own_load_balancing']")?.textContent).toContain("Easee Equalizer");
   });
 
+  it("lists the site's notes once each, as one list, the measurement problem first", async () => {
+    const note = (code: string, extra: Record<string, unknown> = {}) => ({
+      code,
+      integration: "tibber",
+      entity_id: null,
+      interval_s: 300,
+      option: null,
+      device_name: "Easee Equalizer",
+      phases: [],
+      ...extra,
+    });
+    const warnings = [
+      note("update_interval_exceeds_max_age"),
+      note("update_interval_exceeds_max_age"),
+      note("own_load_balancing"),
+      note("measurement_unhealthy", {
+        interval_s: 120,
+        phases: [
+          { phase: "L2", cause: "no_value", entity_id: "sensor.pulse_l2", age_s: null },
+          { phase: "L3", cause: "no_value", entity_id: "sensor.pulse_l3", age_s: null },
+          { phase: "L1", cause: "stale", entity_id: "sensor.pulse_l1", age_s: 400 },
+        ],
+      }),
+    ];
+    const { element } = await mounted({
+      get: "get_detected",
+      patch: (answer: Record<string, unknown>) => {
+        const config = answer["config"] as { site: Record<string, unknown> };
+        return { ...answer, config: { ...config, site: { ...config.site, warnings } } };
+      },
+    });
+    openSettings(element);
+    await settle();
+    edit(element, "site");
+    const list = openDialog(element)?.querySelector("[data-notices='site']");
+    expect(list?.tagName).toBe("UL");
+    expect(list?.querySelectorAll("li").length).toBe(4);
+    const order = [...(list?.querySelectorAll("li") ?? [])].map((item) => item.dataset["warning"] ?? item.dataset["notice"]);
+    expect(order).toEqual(["measurement_unhealthy", "own_load_balancing", "update_interval_exceeds_max_age", "estimated"]);
+    expect(list?.querySelector("[data-warning='measurement_unhealthy']")?.textContent).toBe(
+      "L2 and L3 have no value (sensor.pulse_l2, sensor.pulse_l3). L1 is older than 120 s.",
+    );
+  });
+
   it("shows no notices for a site with nothing to say", async () => {
-    const { element } = await mounted();
+    const { element } = await mounted({
+      patch: (answer: Record<string, unknown>) => {
+        const config = answer["config"] as { site: Record<string, unknown> };
+        return { ...answer, config: { ...config, site: { ...config.site, warnings: [] } } };
+      },
+    });
     openSettings(element);
     await settle();
     edit(element, "site");
@@ -1026,6 +1075,24 @@ describe("the charger editor's control path and write policy", () => {
     expect(disabled?.textContent).toBe("The charger's own enable switch is off (switch.wb_enabled). SpotNav cannot start it: turn it on.");
   });
 
+  it("words a second SpotNav entry on the same charger, naming it", async () => {
+    const twice = {
+      ...wallbox,
+      conflicts: [{ kind: "duplicate_charger", entity_id: "ocpp:garage:1", label: "ocpp", state: "Garage Easee" }],
+    };
+    const { element } = await mounted({ patch: withControl(twice) });
+    openSettings(element);
+    await settle();
+    edit(element, "charger");
+
+    const warning = controlBlock(element)?.querySelector("[data-conflict='ocpp:garage:1']");
+    expect(warning?.textContent).toBe(translate("en", "issue.duplicateCharger", { other: "Garage Easee" }));
+    expect(warning?.textContent).toContain("Garage Easee and this charger are the same physical charger.");
+    expect(translate("sv", "issue.duplicateCharger", { other: "Garage Easee" })).toContain(
+      "Garage Easee och den här laddaren är samma fysiska laddare.",
+    );
+  });
+
   it("draws nothing when the charger is not loaded", async () => {
     const { element } = await mounted({
       patch: (answer) => ({ ...answer, config: { ...(answer["config"] as Record<string, unknown>), control: null } }),
@@ -1055,6 +1122,7 @@ describe("the charger audit's start and stop kinds and the external balancer war
     interval_s: null,
     option: null,
     device_name: "Zaptec",
+    phases: [],
   };
   const withSiteWarnings = (warnings: Array<Record<string, unknown>>) => (answer: Record<string, unknown>) => {
     const config = answer["config"] as { site: Record<string, unknown> };

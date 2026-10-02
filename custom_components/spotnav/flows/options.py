@@ -11,7 +11,7 @@ from homeassistant.components import persistent_notification
 from homeassistant.config_entries import ConfigFlowResult
 from homeassistant.helpers import selector
 
-from ..api.entity_fields import MAX_AGE_MIN_S, validate_charger_entities
+from ..api.entity_fields import duplicate_placeholders, MAX_AGE_MIN_S, validate_charger_entities
 from ..const import (
     CONF_ACTIVE_CONTROL_ENABLED,
     CONF_BATTERY_AGGREGATE_POWER_ENTITY,
@@ -220,7 +220,18 @@ class SpotNavChargingOptionsFlow(config_entries.OptionsFlow):
                 )
                 await self.hass.config_entries.async_reload(self._entry.entry_id)
                 return self.async_create_entry(title="", data={})
-            return self.async_show_form(step_id="init", data_schema=schema, errors=errors)
+            return self.async_show_form(
+                step_id="init",
+                data_schema=schema,
+                errors=errors,
+                description_placeholders=duplicate_placeholders(
+                    self.hass,
+                    errors,
+                    charge_control=user_input[CONF_CHARGE_CONTROL],
+                    current_limit=user_input.get(CONF_CURRENT_LIMIT) or None,
+                    exclude_entry_id=self._entry.entry_id,
+                ),
+            )
         return self.async_show_form(step_id="init", data_schema=schema)
 
 

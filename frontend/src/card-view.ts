@@ -60,6 +60,7 @@ import {
 import { settingsEditorBody, settingsTrigger, type SettingsEditorForm } from "./settings-editor";
 import type { Vehicle } from "./validate";
 import { vehicleSummary } from "./vehicle-settings";
+import { issueText } from "./status";
 import { vehicleChoicesFor, vehicleLineFor } from "./vehicle-line";
 import {
   fiscalRows,
@@ -335,7 +336,7 @@ export function bannerRepeatsStatus(model: CardModel, severity: "blocking" | "no
   }
   const strip = (text: string): string => text.trim().replace(/[.。]$/u, "");
   const shown = model.status.split(" \u00b7 ").map(strip);
-  return model.issues.every((issue) => shown.includes(strip(translate(model.language, issue.textKey, issue.params))));
+  return model.issues.every((issue) => shown.includes(strip(issueText(model.language, issue))));
 }
 
 /** The strategy rows whose availability hangs on the site's solar setup. */
@@ -692,7 +693,7 @@ function issueRow(doc: Document, model: CardModel, issue: Issue): HTMLElement {
   row.dataset["code"] = issue.code;
   row.dataset["severity"] = issue.severity;
   row.append(
-    element(doc, "span", C.issueText, translate(model.language, issue.textKey, issue.params)),
+    element(doc, "span", C.issueText, issueText(model.language, issue)),
   );
   return row;
 }

@@ -21,7 +21,7 @@ from homeassistant.helpers import (
 )
 from homeassistant.util import slugify
 
-from ..api.entity_fields import validate_charger_entities
+from ..api.entity_fields import duplicate_placeholders, validate_charger_entities
 from ..api.pairing import PairingRegister
 from ..const import (
     CONF_ACTIVE_CONTROL_ENABLED,
@@ -525,7 +525,15 @@ class SpotNavChargingConfigFlow(ChargerWiringSteps, config_entries.ConfigFlow, d
             if not errors:
                 return await self._create_entry(user_input)
             return self.async_show_form(
-                step_id="ocpp_entities", data_schema=vol.Schema(schema), errors=errors
+                step_id="ocpp_entities",
+                data_schema=vol.Schema(schema),
+                errors=errors,
+                description_placeholders=duplicate_placeholders(
+                    self.hass,
+                    errors,
+                    charge_control=user_input[CONF_CHARGE_CONTROL],
+                    current_limit=user_input.get(CONF_CURRENT_LIMIT) or None,
+                ),
             )
         return self.async_show_form(step_id="ocpp_entities", data_schema=vol.Schema(schema))
 
@@ -716,6 +724,17 @@ class SpotNavChargingConfigFlow(ChargerWiringSteps, config_entries.ConfigFlow, d
                     if detected.disabled_useful
                     else ""
                 ),
+                **(
+                    duplicate_placeholders(
+                        self.hass,
+                        errors,
+                        charge_control=user_input[CONF_CHARGE_CONTROL],
+                        current_limit=user_input.get(CONF_CURRENT_LIMIT) or None,
+                        measured_entities=tuple(detected.current_entities),
+                    )
+                    if user_input is not None
+                    else {}
+                ),
             },
         )
 
@@ -776,6 +795,7 @@ class SpotNavChargingConfigFlow(ChargerWiringSteps, config_entries.ConfigFlow, d
                 self.hass,
                 charge_control=charge_control,
                 current_limit=user_input.get(CONF_CURRENT_LIMIT) or None,
+                measured_entities=tuple(detected.current_entities),
             )
         )
         path = control_path_for_entity(
@@ -868,7 +888,17 @@ class SpotNavChargingConfigFlow(ChargerWiringSteps, config_entries.ConfigFlow, d
             )
             if not errors:
                 return await self._create_entry(user_input)
-            return self.async_show_form(step_id="generic", data_schema=schema, errors=errors)
+            return self.async_show_form(
+                step_id="generic",
+                data_schema=schema,
+                errors=errors,
+                description_placeholders=duplicate_placeholders(
+                    self.hass,
+                    errors,
+                    charge_control=user_input[CONF_CHARGE_CONTROL],
+                    current_limit=user_input.get(CONF_CURRENT_LIMIT) or None,
+                ),
+            )
         return self.async_show_form(step_id="generic", data_schema=schema)
 
     async def _create_entry(self, user_input: dict[str, Any]) -> ConfigFlowResult:
