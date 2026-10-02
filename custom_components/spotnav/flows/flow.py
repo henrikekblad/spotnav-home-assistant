@@ -109,7 +109,7 @@ from ..vehicles.ocpp_identity import (
     resolve_target,
 )
 from ..vehicles.vehicle_discovery import discover_ambiguous_vehicles
-from ..execution.charger_adapter import assigned_amps_for_connector, read_assigned_current_value
+from ..execution.chargers.ocpp import assigned_amps_for_connector, read_assigned_current_value
 from ..execution.charger_entities import control_path_for_entity, own_mode_conflicts
 from .charger_wiring import ChargerWiringSteps
 from .charger_detection import detect_charger, DetectedCharger, identifier_domains

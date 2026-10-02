@@ -60,7 +60,7 @@ def _charger_diagnostics(hass: HomeAssistant, entry: ConfigEntry) -> dict[str, A
             # target exists, whether the station ceiling and session limit were found. Role facts,
             # not entity ids, so the redaction above stays the only place that knows what is private.
             "ocpp": controller.ocpp_control_facts(),
-            # How the charger is driven and under which write policy (`execution/charger_adapter.py`):
+            # How the charger is driven and under which write policy (`execution/chargers/`):
             # kinds and facts only, never an entity id.
             "adapter": {
                 "platform": controller.adapter.platform,

@@ -21,7 +21,7 @@ from custom_components.spotnav.const import (
     CONF_MODE,
     MODE_DETECTED,
 )
-from custom_components.spotnav.execution.charger_adapter import build_adapter, ChargerAdapter
+from custom_components.spotnav.execution.chargers.adapter import build_adapter, ChargerAdapter
 
 
 class Clock:

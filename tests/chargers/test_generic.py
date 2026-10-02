@@ -1,50 +1,38 @@
-"""The charger adapter, per supported integration, from recorded entity shapes.
-
-For each integration: how a charge is started and stopped, how the charging state is read (from the
-status sensor, with the switch as the fallback), how a current is written, and what it supports.
-Then the write policy on its own: rate limits, the flash guard, the pause rules.
+"""The vendor-neutral paths from recorded entity shapes: how each integration is started, stopped, read and
+given a current, and the write policy on its own (rate limits, the flash guard, the pause rules).
 """
 
 from __future__ import annotations
 
 import pytest
 from homeassistant.core import HomeAssistant
-from homeassistant.helpers import entity_registry as er
 from pytest_homeassistant_custom_component.common import async_mock_service
 
-from custom_components.spotnav.flows.charger_detection import detect_charger
-from custom_components.spotnav.const import (
-    CONF_CHARGE_CONTROL,
-    CONF_CURRENT_CONTROL,
-    CONF_CURRENT_LIMIT,
-    CONF_MODE,
-    CONF_OCPP_CHARGE_POINT_ID,
-    CONF_OCPP_CONNECTOR_ID,
-    CURRENT_CONTROL_CHANGE_CONFIGURATION,
-    MODE_OCPP,
-)
-from custom_components.spotnav.execution.charger_adapter import (
+from custom_components.spotnav.const import CONF_CHARGE_CONTROL, CONF_CURRENT_LIMIT, CONF_MODE
+from custom_components.spotnav.execution.chargers.adapter import build_adapter
+from custom_components.spotnav.execution.chargers.base import (
     ASSIGN_ASSIGNED,
     ASSIGN_BELOW_MINIMUM,
     ASSIGN_FLASH_GUARD,
     ASSIGN_IGNORED_WHILE_PAUSED,
-    ASSIGN_INSTALLATION_SHARED,
     ASSIGN_RATE_LIMITED,
     ASSIGN_TARGET_UNAVAILABLE,
     ASSIGN_UNCHANGED,
     ASSIGN_UNIT_UNKNOWN,
     ASSIGN_UNSUPPORTED,
-    build_adapter,
     WRITE_REGULATOR,
-    WRITE_RESEND,
     WRITE_SESSION_START,
 )
-from custom_components.spotnav.vehicles.ocpp_identity import OcppConnectorTarget
+from custom_components.spotnav.execution.chargers.generic import ButtonPath, SelectPath, SwitchPath
+from custom_components.spotnav.execution.controller import ChargingController
+from custom_components.spotnav.flows.charger_detection import detect_charger
 
-from .charger_helpers import adapter_for, Clock, enable_easee_limit_sensor, set_easee_limit
-from .charger_shapes import E, NUMBER_A, register_shape, Shape, SHAPES
+from ..charger_helpers import adapter_for, Clock, detected_config
+from ..charger_shapes import E, NUMBER_A, register_shape, Shape, SHAPES
+
 
 CONTROLLABLE = [name for name, shape in SHAPES.items() if shape.expect["path"] is not None]
+
 
 #: What starting and stopping each integration's charger must call, per its recorded shape.
 START_STOP_CALLS = {
@@ -88,33 +76,6 @@ async def test_start_and_stop_call_the_integrations_own_control(hass: HomeAssist
     assert calls[0] == (start_domain, start_service, start_data)
     assert calls[-1] == (stop_domain, stop_service, stop_data)
     assert adapter.capabilities.start_stop is True
-
-
-async def test_easee_starts_and_stops_through_its_own_service_and_never_writes_a_max_limit(
-    hass: HomeAssistant,
-) -> None:
-    ids = register_shape(hass, SHAPES["easee"])
-    found = detect_charger(hass, ids["device_id"])
-    adapter = adapter_for(hass, found)
-    commands = async_mock_service(hass, "easee", "action_command")
-    flash = [
-        async_mock_service(hass, "easee", name)
-        for name in ("set_charger_max_limit", "set_circuit_max_limit", "set_charger_offline_limit")
-    ]
-    async_mock_service(hass, "easee", "set_charger_dynamic_limit")
-
-    await adapter.async_start()
-    await adapter.async_stop()
-    await adapter.async_set_current(12, reason=WRITE_SESSION_START)
-
-    assert [dict(call.data) for call in commands] == [
-        {"device_id": ids["device_id"], "action_command": "resume"},
-        {"device_id": ids["device_id"], "action_command": "pause"},
-    ]
-    assert all(calls == [] for calls in flash)
-
-
-# --------------------------------------------------------------------------- charging state
 
 
 async def test_the_charging_state_is_the_status_sensor_not_the_switch(hass: HomeAssistant) -> None:
@@ -201,9 +162,6 @@ async def test_a_vehicle_that_asks_for_no_current_is_suspended_ev_to_the_progres
     assert adapter.progress_status() == "awaiting_start"
 
 
-# ------------------------------------------------------------------------------ measurements
-
-
 async def test_measured_current_is_the_highest_phase_in_amps_and_milliamps_are_converted(
     hass: HomeAssistant,
 ) -> None:
@@ -235,8 +193,6 @@ async def test_the_energy_register_is_read_in_kwh_whatever_the_unit(hass: HomeAs
     assert wh.capabilities.reads_energy_register and wh.capabilities.reads_measured_current
 
 
-# ------------------------------------------------------------------------------ current writes
-
 NUMBER_WRITES = {
     "wallbox": ("number.wallbox_maximum_charging_current", 10),
     "goecharger_api2": ("number.goecharger_api2_amp", 10),
@@ -265,38 +221,6 @@ async def test_a_current_is_written_through_the_integrations_number(hass: HomeAs
     assert adapter.current.last_written_a == 10
 
 
-async def test_zaptec_writes_the_installation_limit_only_for_a_single_charger_installation(
-    hass: HomeAssistant,
-) -> None:
-    ids = register_shape(hass, SHAPES["zaptec"])
-    adapter = adapter_for(hass, detect_charger(hass, ids["device_id"]))
-    calls = async_mock_service(hass, "number", "set_value")
-
-    assert await adapter.async_set_current(10, reason=WRITE_SESSION_START) == ASSIGN_ASSIGNED
-    assert [dict(call.data) for call in calls] == [{"entity_id": "number.zaptec_available_current", "value": 10}]
-    assert adapter.policy.installation_wide and adapter.policy.min_interval_s == 900.0
-
-    # A second charger under the same installation: the limit would lower it too.
-    from homeassistant.helpers import device_registry as dr
-
-    config_entry = hass.config_entries.async_get_entry("zaptec")
-    devices = dr.async_get(hass)
-    second = devices.async_get_or_create(
-        config_entry_id=config_entry.entry_id,
-        identifiers={("zaptec", "ZAP2")},
-        name="zaptec second",
-        via_device_id=ids["installation_device_id"],
-    )
-    er.async_get(hass).async_get_or_create(
-        "switch", "zaptec", "ZAP2_charger_operation_mode", config_entry=config_entry, device_id=second.id
-    )
-    calls.clear()
-
-    assert await adapter.async_set_current(8, reason=WRITE_SESSION_START) == ASSIGN_INSTALLATION_SHARED
-    assert calls == []
-    assert adapter.capabilities.set_current is False and adapter.capabilities.regulated_current is False
-
-
 async def test_a_charger_without_a_current_path_supports_none(hass: HomeAssistant) -> None:
     """myenergi and Monta start and stop only; the regulator and the plan must never assume more."""
     for platform in ("myenergi", "monta"):
@@ -317,9 +241,6 @@ async def test_without_the_opt_in_no_current_is_ever_written(hass: HomeAssistant
     assert await adapter.async_set_current(10, reason=WRITE_SESSION_START) == ASSIGN_UNSUPPORTED
     assert calls == []
     assert adapter.capabilities.set_current is False
-
-
-# ---------------------------------------------------------------------------------------- policy
 
 
 async def test_the_minimum_interval_refuses_an_early_write_and_allows_it_later(hass: HomeAssistant) -> None:
@@ -487,160 +408,6 @@ async def test_a_number_with_no_ampere_unit_is_never_assumed_to_be_amps(hass: Ho
     assert calls == []
 
 
-# ------------------------------------------------------------------------------------------ Easee
-
-
-async def _easee(hass: HomeAssistant, clock: Clock):
-    ids = register_shape(hass, SHAPES["easee"])
-    adapter = adapter_for(hass, detect_charger(hass, ids["device_id"]), clock=clock)
-    limits = async_mock_service(hass, "easee", "set_charger_dynamic_limit")
-    return ids, adapter, limits
-
-
-async def test_easee_sets_the_dynamic_limit_with_no_expiry(hass: HomeAssistant) -> None:
-    ids, adapter, limits = await _easee(hass, Clock())
-
-    assert await adapter.async_set_current(12, reason=WRITE_REGULATOR) == ASSIGN_ASSIGNED
-
-    assert [dict(call.data) for call in limits] == [
-        {"device_id": ids["device_id"], "current": 12, "time_to_live": 0}
-    ]
-    assert adapter.policy.max_writes_per_minute == 20 and adapter.policy.resend_after_plug_in
-    assert adapter.capabilities.regulated_current is True
-
-
-async def test_easee_does_not_trust_its_own_memory_of_a_write_after_a_plug_in(hass: HomeAssistant) -> None:
-    """With no read-back the last value sent may have been cleared by the charger since."""
-    clock = Clock()
-    ids, adapter, limits = await _easee(hass, clock)
-    hass.states.async_set("sensor.easee_status", "charging")
-    assert await adapter.async_set_current(12, reason=WRITE_SESSION_START) == ASSIGN_ASSIGNED
-    clock.advance(1)
-
-    assert await adapter.async_set_current(12, reason=WRITE_SESSION_START) == ASSIGN_ASSIGNED
-
-    assert [call.data["current"] for call in limits] == [12, 12]
-
-
-async def test_easee_skips_a_value_the_charger_already_reports(hass: HomeAssistant) -> None:
-    ids, adapter, limits = await _easee(hass, Clock())
-    enable_easee_limit_sensor(hass, "12")
-
-    assert await adapter.async_set_current(12, reason=WRITE_REGULATOR) == ASSIGN_UNCHANGED
-    assert limits == []
-
-
-async def test_easee_never_exceeds_twenty_settings_changes_a_minute(hass: HomeAssistant) -> None:
-    clock = Clock()
-    ids, adapter, limits = await _easee(hass, clock)
-    enable_easee_limit_sensor(hass, "99")
-
-    outcomes = []
-    for index in range(25):
-        outcomes.append(await adapter.async_set_current(6 + (index % 2) * 2, reason=WRITE_REGULATOR))
-        clock.advance(1)
-
-    assert outcomes.count(ASSIGN_ASSIGNED) == 20
-    assert outcomes[20:] == [ASSIGN_RATE_LIMITED] * 5
-    assert len(limits) == 20
-    clock.advance(60)
-    assert await adapter.async_set_current(9, reason=WRITE_REGULATOR) == ASSIGN_ASSIGNED
-
-
-async def test_easee_commands_count_against_the_budget_but_are_never_refused(hass: HomeAssistant) -> None:
-    clock = Clock()
-    ids, adapter, limits = await _easee(hass, clock)
-    commands = async_mock_service(hass, "easee", "action_command")
-    enable_easee_limit_sensor(hass, "99")
-
-    for _ in range(30):
-        await adapter.async_stop()
-
-    assert len(commands) == 30
-    assert await adapter.async_set_current(9, reason=WRITE_REGULATOR) == ASSIGN_RATE_LIMITED
-
-
-async def test_easee_sends_the_limit_again_after_a_plug_in_and_a_reboot(hass: HomeAssistant) -> None:
-    ids, adapter, limits = await _easee(hass, Clock())
-    current = adapter.current
-
-    assert current.needs_resend("disconnected", "awaiting_start") is True
-    assert current.needs_resend("unavailable", "charging") is True  # a reboot
-    assert current.needs_resend("awaiting_start", "charging") is False
-    assert current.needs_resend("charging", "disconnected") is False
-
-
-async def test_a_resend_reaches_the_charger_even_though_the_service_skips_an_unchanged_value(
-    hass: HomeAssistant,
-) -> None:
-    """The service short-circuits on its cached value, so a resend of the same number would do
-    nothing: it is preceded by one amp lower, the safe direction, and then the wanted value.
-    """
-    clock = Clock()
-    ids, adapter, limits = await _easee(hass, clock)
-    assert await adapter.async_set_current(12, reason=WRITE_REGULATOR) == ASSIGN_ASSIGNED
-    limits.clear()
-    clock.advance(5)
-
-    from custom_components.spotnav.execution.charger_adapter import WRITE_RESEND
-
-    assert await adapter.async_set_current(12, reason=WRITE_RESEND) == ASSIGN_ASSIGNED
-
-    assert [call.data["current"] for call in limits] == [11, 12]
-
-
-async def test_an_easee_write_the_charger_never_reports_marks_the_cache_suspect(hass: HomeAssistant) -> None:
-    clock = Clock()
-    ids, adapter, limits = await _easee(hass, clock)
-    enable_easee_limit_sensor(hass, "16")
-    assert await adapter.async_set_current(12, reason=WRITE_REGULATOR) == ASSIGN_ASSIGNED
-    limits.clear()
-
-    # Well after the write the charger still reports 16: the service did nothing.
-    clock.advance(60)
-    assert await adapter.async_set_current(10, reason=WRITE_REGULATOR) == ASSIGN_ASSIGNED
-    assert [call.data["current"] for call in limits] == [9, 10]
-
-
-async def test_an_easee_limit_is_read_back_when_asked(hass: HomeAssistant, monkeypatch: pytest.MonkeyPatch) -> None:
-    from custom_components.spotnav.execution import charger_adapter
-
-    async def no_wait(_seconds: float) -> None:
-        return None
-
-    monkeypatch.setattr(charger_adapter.asyncio, "sleep", no_wait)
-    ids, adapter, limits = await _easee(hass, Clock())
-    enable_easee_limit_sensor(hass, "16")
-
-    assert await adapter.async_set_current(12, reason=WRITE_REGULATOR, verify=True) == "unconfirmed"
-    set_easee_limit(hass, "10")
-    assert await adapter.async_set_current(10, reason=WRITE_REGULATOR, verify=True) == ASSIGN_UNCHANGED
-
-
-# ------------------------------------------------------------------------------------------ OCPP
-
-
-async def test_the_ocpp_adapter_is_the_original_path_with_no_policy_of_its_own(hass: HomeAssistant) -> None:
-    hass.states.async_set("switch.cp_charge_control", "off")
-    config = {
-        CONF_MODE: MODE_OCPP,
-        CONF_CHARGE_CONTROL: "switch.cp_charge_control",
-        CONF_CURRENT_LIMIT: "",
-        CONF_CURRENT_CONTROL: CURRENT_CONTROL_CHANGE_CONFIGURATION,
-        CONF_OCPP_CHARGE_POINT_ID: "cp",
-        CONF_OCPP_CONNECTOR_ID: 1,
-    }
-    adapter = build_adapter(
-        hass, config, ocpp_target=lambda: OcppConnectorTarget("cp", 1), energy_entity_id=None
-    )
-
-    assert adapter.is_ocpp
-    assert adapter.policy.min_interval_s == 0 and not adapter.policy.flash_stored
-    assert adapter.capabilities.regulated_current is True
-    assert adapter.describe()["current"]["service"] == "ocpp.configure"
-    assert adapter.describe()["start_stop"]["kind"] == "switch"
-
-
 async def test_a_plain_generic_charger_keeps_its_switch_as_control_and_state(hass: HomeAssistant) -> None:
     hass.states.async_set("switch.plain", "on")
     adapter = build_adapter(
@@ -657,101 +424,93 @@ async def test_a_plain_generic_charger_keeps_its_switch_as_control_and_state(has
     assert calls == []
 
 
-async def test_an_ocpp_entry_with_the_number_path_writes_the_number_under_the_local_policy(hass) -> None:
-    from custom_components.spotnav.const import (
-        CONF_CHARGE_CONTROL,
-        CONF_CURRENT_CONTROL,
-        CONF_CURRENT_LIMIT,
-        CONF_MODE,
-        MODE_OCPP,
-    )
-    from custom_components.spotnav.execution.charger_adapter import NumberCurrent
-
-    adapter = build_adapter(
-        hass,
-        {
-            CONF_MODE: MODE_OCPP,
-            CONF_CHARGE_CONTROL: "switch.x_connector_1_charge_control",
-            CONF_CURRENT_CONTROL: "number",
-            CONF_CURRENT_LIMIT: "number.x_connector_1_session_current_limit",
-        },
-        ocpp_target=lambda: None,
-        energy_entity_id=None,
+async def _paths(hass: HomeAssistant):
+    for entity_id in ("switch.s", "select.x", "button.start", "button.stop"):
+        hass.states.async_set(entity_id, "unavailable")
+    return (
+        SwitchPath(hass, "switch.s"),
+        SwitchPath(hass, "switch.s", inverted=True),
+        SelectPath(hass, "select.x", start_option="on", stop_option="off"),
+        ButtonPath(hass, "button.start", "button.stop"),
     )
 
-    assert isinstance(adapter.current, NumberCurrent)
-    assert adapter.policy.min_interval_s == 10.0 and adapter.policy.zero_pauses is False
+
+async def test_a_switch_that_is_unavailable_is_not_commanded(hass: HomeAssistant) -> None:
+    on = async_mock_service(hass, "switch", "turn_on")
+    off = async_mock_service(hass, "switch", "turn_off")
+    plain, inverted, _, _ = await _paths(hass)
+
+    for path in (plain, inverted):
+        assert await path.async_start() is False
+        assert await path.async_stop() is False
+    assert on == [] and off == []
+
+    hass.states.async_set("switch.s", "off")
+    assert await plain.async_start() is True
+    assert await plain.async_stop() is True
+    assert len(on) == 1 and len(off) == 1
 
 
-async def _easee_commands(hass: HomeAssistant, clock: Clock | None = None):
-    ids, adapter, limits = await _easee(hass, clock or Clock())
-    commands = async_mock_service(hass, "easee", "action_command")
-    return adapter, commands, limits
+async def test_a_select_that_is_unavailable_is_not_commanded(hass: HomeAssistant) -> None:
+    calls = async_mock_service(hass, "select", "select_option")
+    _, _, select, _ = await _paths(hass)
+
+    assert await select.async_start() is False
+    assert await select.async_stop() is False
+    assert calls == []
+
+    hass.states.async_set("select.x", "off")
+    assert await select.async_start() is True
+    assert [call.data["option"] for call in calls] == ["on"]
 
 
-def _names(commands) -> list[str]:
-    return [call.data["action_command"] for call in commands]
+async def test_a_button_that_is_unavailable_is_not_pressed(hass: HomeAssistant) -> None:
+    presses = async_mock_service(hass, "button", "press")
+    _, _, _, buttons = await _paths(hass)
+
+    assert await buttons.async_start() is False
+    assert await buttons.async_stop() is False
+    assert presses == []
+
+    hass.states.async_set("button.start", "unknown")  # a button is `unknown` until pressed: available
+    assert await buttons.async_start() is True
+    assert await buttons.async_stop() is False, "the stop button is still unavailable"
+    assert [call.data["entity_id"] for call in presses] == ["button.start"]
 
 
-async def test_easee_start_from_awaiting_start_resumes(hass: HomeAssistant) -> None:
-    adapter, commands, _ = await _easee_commands(hass)
-    hass.states.async_set("sensor.easee_status", "awaiting_start")
+async def test_a_missing_entity_is_not_commanded_either(hass: HomeAssistant) -> None:
+    calls = async_mock_service(hass, "switch", "turn_on")
 
-    await adapter.async_start()
-
-    assert _names(commands) == ["resume"]
+    assert await SwitchPath(hass, "switch.gone").async_start() is False
+    assert calls == []
 
 
-async def test_easee_start_from_awaiting_authorization_authorizes_then_resumes(hass: HomeAssistant) -> None:
-    adapter, commands, _ = await _easee_commands(hass)
-    hass.states.async_set("sensor.easee_status", "awaiting_authorization")
+async def test_the_controller_does_not_claim_a_start_that_never_went_out(hass: HomeAssistant) -> None:
+    ids = register_shape(hass, SHAPES["wallbox"])
+    found = detect_charger(hass, ids["device_id"])
+    turn_on = async_mock_service(hass, "switch", "turn_on")
+    controller = ChargingController(hass, "entry_wallbox", detected_config(found))
+    await controller.async_initialize()
+    hass.states.async_set("sensor.wallbox_status_description", "Paused")
+    hass.states.async_set("switch.wallbox_pause_resume", "unavailable")
 
-    await adapter.async_start()
+    assert await controller.async_start() is False
 
-    assert _names(commands) == ["start", "resume"]
-
-
-async def test_easee_stop_pauses_and_never_deauthorizes(hass: HomeAssistant) -> None:
-    adapter, commands, _ = await _easee_commands(hass)
-    hass.states.async_set("sensor.easee_status", "charging")
-
-    await adapter.async_stop()
-
-    assert _names(commands) == ["pause"]
-
-
-async def test_easee_writes_no_dynamic_limit_while_paused_and_sends_it_after_the_resume(
-    hass: HomeAssistant,
-) -> None:
-    adapter, commands, limits = await _easee_commands(hass)
-    hass.states.async_set("sensor.easee_status", "charging")
-    await adapter.async_stop()
-    hass.states.async_set("sensor.easee_status", "awaiting_start")
-
-    assert await adapter.async_set_current(10, reason=WRITE_REGULATOR) == ASSIGN_IGNORED_WHILE_PAUSED
-    assert limits == []
-
-    await adapter.async_start()
-    hass.states.async_set("sensor.easee_status", "charging")
-    assert await adapter.async_set_current(10, reason=WRITE_SESSION_START) == ASSIGN_ASSIGNED
-    assert [call.data["current"] for call in limits] == [10]
+    assert turn_on == []
+    assert controller.start_pending is False, "nothing is awaiting an answer"
+    hass.states.async_set("switch.wallbox_pause_resume", "off")
+    assert await controller.async_start() is True
+    assert len(turn_on) == 1 and controller.start_pending is True
+    await controller.async_shutdown()
 
 
-async def test_easee_does_not_hold_back_a_limit_when_it_never_paused(hass: HomeAssistant) -> None:
-    adapter, _, limits = await _easee_commands(hass)
-    hass.states.async_set("sensor.easee_status", "awaiting_start")
+async def test_the_wallbox_idle_status_is_the_one_home_assistant_reports(hass: HomeAssistant) -> None:
+    ids = register_shape(hass, SHAPES["wallbox"])
+    adapter = adapter_for(hass, detect_charger(hass, ids["device_id"]), clock=Clock())
 
-    assert await adapter.async_set_current(10, reason=WRITE_REGULATOR) == ASSIGN_ASSIGNED
-    assert len(limits) == 1
-
-
-async def test_easee_resends_the_limit_after_a_plug_in_that_followed_a_pause(hass: HomeAssistant) -> None:
-    adapter, _, limits = await _easee_commands(hass)
-    hass.states.async_set("sensor.easee_status", "charging")
-    await adapter.async_stop()
-    hass.states.async_set("sensor.easee_status", "disconnected")
-    hass.states.async_set("sensor.easee_status", "awaiting_start")
-    assert adapter.current.needs_resend("disconnected", "awaiting_start") is True
-
-    assert await adapter.async_set_current(8, reason=WRITE_RESEND) == ASSIGN_ASSIGNED
-    assert limits[-1].data["current"] == 8
+    hass.states.async_set("sensor.wallbox_status_description", "Waiting for car demand")
+    assert adapter.progress_status() == "SuspendedEV"
+    hass.states.async_set("sensor.wallbox_status_description", "waiting for car demand")
+    assert adapter.progress_status() == "SuspendedEV", "the match ignores case"
+    hass.states.async_set("sensor.wallbox_status_description", "Connected: waiting car demand")
+    assert adapter.progress_status() == "connected: waiting car demand", "the portal wording is not it"

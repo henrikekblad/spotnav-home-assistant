@@ -22,7 +22,7 @@ MODE_DETECTED = "detected"
 # values, and the sensors that measure its current. All optional; a charger without them behaves
 # exactly as before (the switch is the charging state, nothing is read from the charger).
 CONF_CHARGER_PLATFORM = "charger_platform"
-# `{"kind": "switch"|"select"|"buttons"|"easee", ...}`, see `execution/charger_adapter.py`.
+# `{"kind": "switch"|"select"|"buttons"|"easee", ...}`, see `execution/chargers/`.
 CONF_CONTROL_PATH = "control_path"
 # `{"entity_id": "sensor....", "charging_values": ["charging", ...]}`.
 CONF_CHARGING_STATE = "charging_state"

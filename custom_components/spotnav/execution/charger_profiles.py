@@ -9,7 +9,7 @@ Entities are matched by platform plus `translation_key` or the tail of the `uniq
 entity id or friendly name (`config_flow/charger_detection.py`). An integration that is not listed is
 still usable through the generic flow; it then gets `DEFAULT_POLICY`, the conservative one.
 
-`WritePolicy` is what the adapter enforces (`execution/charger_adapter.py`):
+`WritePolicy` is what the adapter enforces (`execution/chargers/`):
 
 * `min_interval_s`: the least time between two writes of the current (cloud APIs answer 429 or get
   abused; Zaptec asks for minutes);

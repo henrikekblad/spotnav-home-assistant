@@ -380,7 +380,7 @@ class SolarExecutionCoordinator:
         ) or {}
         min_current_a = float(wiring.get("min_current_a", DEFAULT_MIN_CURRENT_A))
         config_kwargs: dict[str, Any] = {"priority": priority, "min_current_a": min_current_a}
-        # A charge starts at the charger's own start minimum (Easee: 7 A); once running it may still
+        # A charge starts at the charger's own start minimum (a profile may set it above 6 A); once running it may still
         # go down to `min_current_a`.
         start_a = max(min_current_a, self._controller.adapter.min_start_current_a)
         if start_a > min_current_a:

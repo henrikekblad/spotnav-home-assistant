@@ -53,7 +53,8 @@ from ..vehicles.ocpp_identity import (
     OcppCurrentControls,
     resolve_target,
 )
-from .charger_adapter import (
+from .chargers.adapter import build_adapter, ChargerAdapter
+from .chargers.base import (
     ASSIGN_ASSIGNED,
     ASSIGN_NO_TARGET,
     ASSIGN_PROBE_IN_FLIGHT,
@@ -61,17 +62,13 @@ from .charger_adapter import (
     ASSIGN_TARGET_UNAVAILABLE,
     ASSIGN_UNCONFIRMED,
     ASSIGN_UNSUPPORTED,
-    assigned_amps_for_connector,
-    build_adapter,
-    ChargerAdapter,
     IN_EFFECT_OUTCOMES,
-    OcppAssignedCurrent,
-    rewrite_assigned_current,
     WRITE_REGULATOR,
     WRITE_RESEND,
     WRITE_RESTORE,
     WRITE_SESSION_START,
 )
+from .chargers.ocpp import assigned_amps_for_connector, OcppAssignedCurrent, rewrite_assigned_current
 from .charge_progress import (
     ChargeProgress,
     ChargeProgressFacts,
@@ -440,7 +437,7 @@ class ChargingController:
         self.energy_register_entity_id: str | None = config.get(CONF_ENERGY_REGISTER_ENTITY) or None
         if self.energy_register_entity_id is None and self.ocpp_target is not None:
             self.energy_register_entity_id = energy_register_entity_for(hass, self.ocpp_target)
-        # How this charger is started, stopped, read and given a current (`charger_adapter.py`):
+        # How this charger is started, stopped, read and given a current (`chargers/adapter.py`):
         # the OCPP `ChangeConfiguration` path and the generic switch are two of its parts. The
         # target is read through a getter, so the OCPP part always sees the controller's own.
         self.adapter: ChargerAdapter = build_adapter(
@@ -671,7 +668,7 @@ class ChargingController:
     def _async_progress_state_changed(self, event: Any = None) -> None:
         """A watched fact reported: decide the diagnostic again, and tell readers if it moved.
 
-        A charger that forgets its current limit on plug-in or reboot (Easee) is told it again.
+        A charger that forgets its current limit on plug-in or reboot is told it again.
         """
         self._maybe_resend_current(event)
         self._maybe_write_after_start(event)
@@ -1326,8 +1323,8 @@ class ChargingController:
     def _control_on(self) -> bool:
         """Whether a Start is in effect: charging, or the charge control enabled as commanded.
 
-        A charger that reports what it is doing separately from whether it is enabled (Wallbox's
-        switch means not paused, the status says waiting for the car) must not be started again, and
+        A charger that reports what it is doing separately from whether it is enabled (its switch
+        means not paused, its status says waiting for the car) must not be started again, and
         must still be stopped while enabled. For a plain switch the two are one fact.
         """
         return self.charging or self.adapter.enabled_state() is True

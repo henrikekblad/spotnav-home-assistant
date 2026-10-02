@@ -9,7 +9,7 @@ from homeassistant.core import HomeAssistant, ServiceCall
 from pytest_homeassistant_custom_component.common import async_mock_service
 
 from custom_components.spotnav.flows.charger_detection import detect_charger
-from custom_components.spotnav.execution.charger_adapter import (
+from custom_components.spotnav.execution.chargers.base import (
     ASSIGN_FLASH_GUARD,
     ASSIGN_RATE_LIMITED,
 )

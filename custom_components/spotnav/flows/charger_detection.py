@@ -22,7 +22,8 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers import device_registry as dr, entity_registry as er
 
 from ..const import CURRENT_CONTROL_EASEE, CURRENT_CONTROL_NUMBER
-from ..execution.charger_adapter import EASEE_LIMIT_SENSOR_KEY, single_charger_installation
+from ..execution.chargers.easee import EASEE_LIMIT_SENSOR_KEY
+from ..execution.chargers.zaptec import single_charger_installation
 from ..execution.charger_entities import (
     EntityMatcher,
     option_for,

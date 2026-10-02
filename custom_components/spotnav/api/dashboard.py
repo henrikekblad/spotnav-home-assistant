@@ -142,7 +142,7 @@ STRATEGY_HYBRID_REASON: Final = "needs_solar_and_price_control"
 MAX_RESPONSE_BYTES: Final = 256 * 1024
 
 #: Capability facts every charger advertises, all of them, in this order. The first six are about
-#: this charger's configuration and adapter (`execution/charger_adapter.py`); the last three are the
+#: this charger's configuration and adapter (`execution/chargers/`); the last three are the
 #: server's abilities and always `true`. `current_limit`: the charger has a dynamic current limit
 #: (a configured number, or a service path); `set_current`: SpotNav may write a current to it (the
 #: person opted in and its adapter can); `regulated_current`: load balancing may write it during a
