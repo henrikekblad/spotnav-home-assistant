@@ -126,6 +126,19 @@ NAMES: dict[str, str] = {
     "leafspy": "Leaf Spy",
     "cupra_we_connect": "Cupra We Connect",
     "toyota_na": "Toyota (North America)",
+    "smartcar": "Smartcar",
+    "pycupra": "PyCupra (Cupra and Seat)",
+    "volkswagen_we_connect_id": "Volkswagen We Connect ID",
+    "lynkco": "Lynk & Co",
+    "zeekr_ev": "Zeekr",
+    "hello_smart": "Hello Smart",
+    "abrp": "A Better Route Planner",
+    "teslafi": "TeslaFi",
+    "lucidmotors": "Lucid Motors",
+    "skodaconnect": "Skoda Connect (legacy)",
+    "leapmotor": "Leapmotor",
+    "nissan_carwings": "Nissan Carwings",
+    "uconnect": "Uconnect (Fiat, Jeep, Alfa Romeo)",
 }
 
 #: Solar forecast integrations: Home Assistant domain, display name. Any integration that feeds the

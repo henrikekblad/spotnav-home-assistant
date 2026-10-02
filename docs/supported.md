@@ -178,31 +178,44 @@ The integrations below are the ones the detection was checked against, from each
 
 | Integration | Charge limit | Notes | Verification |
 | --- | --- | --- | --- |
+| A Better Route Planner (`abrp`) | None found | Health and calibration are percent sensors, the capacity is a static energy_storage. | Detected from the integration's source |
 | Audi Connect (`audiconnect`) | Can be set | global, current-location and per-profile targets. | Detected from the integration's source |
 | BYD (`byd_vehicle`) | None found |  | Detected from the integration's source |
 | BMW CarData (`cardata`) | Read only, used as the ceiling |  | Detected from the integration's source |
 | FordPass (`fordpass`) | Can be set | Percent selects, the 12 V battery has no class. | Detected from the integration's source |
 | Kia and Hyundai (community integration) (`ha_kia_hyundai`) | Can be set | AC and DC limits. | Detected from the integration's source |
+| Hello Smart (`hello_smart`) | Can be set | The 12 V and backup batteries and the target mirror have no class. | Detected from the integration's source |
 | Kia Uvo (`kia_uvo`) | Can be set | SoH, AC/DC/V2L limits, kJ capacity and remaining. | Tested: charging verified (Kia EV6) |
 | Leaf Spy (`leafspy`) | None found | The phone's battery is not the car's. | Detected from the integration's source |
+| Leapmotor (`leapmotor`) | Can be set | The one-decimal level is a diagnostic battery sensor, the remaining energy is not a capacity. | Detected from the integration's source |
+| Lucid Motors (`lucidmotors`) | Can be set | capacity_kwhr is the pack, kwhr the energy left in it. | Detected from the integration's source |
+| Lynk & Co (`lynkco`) | Read only, used as the ceiling | The read-only charge limit is a percent sensor, a service sets it. | Detected from the integration's source |
 | Mercedes-Benz (`mbapi2020`) | Read only, used as the ceiling | max_soc sensor is a ceiling only. | Detected from the integration's source |
 | MG (SAIC) (`mg_saic`) | Can be set | Target SOC and fuel level are battery class; capacity is declared a meter. | Detected from the integration's source |
 | MySkoda (`myskoda`) | Can be set |  | Detected from the integration's source |
+| Nissan Carwings (`nissan_carwings`) | None found | Electric mileage declares itself energy storage and is not the capacity. | Detected from the integration's source |
 | Nissan Connect (`nissan_connect`) | None found |  | Detected from the integration's source |
 | Polestar (`polestar_api`) | Read only, used as the ceiling | Target level is a read-only sensor. | Detected from the integration's source |
 | Porsche Connect (`porscheconnect`) | Can be set |  | Detected from the integration's source |
+| PyCupra (Cupra and Seat) (`pycupra`) | Can be set | Target and minimum levels are percent sensors without a class, the limit is a number. | Detected from the integration's source |
 | Renault (`renault`) | Can be set | Target and the 15-45 minimum level, remaining energy meter. | Detected from the integration's source |
 | Rivian (`rivian`) | Can be set | read-only battery_limit sensor next to the number. | Detected from the integration's source |
+| Skoda Connect (legacy) (`skodaconnect`) | None found | The minimum charge level is a battery sensor. | Detected from the integration's source |
+| Smartcar (`smartcar`) | Can be set | The 12 V battery is a battery-class percent sensor too, and the energy added is not a capacity. | Detected from the integration's source |
 | smart #1 and #3 (`smarthashtag`) | Read only, used as the ceiling | Target SOC sensor is battery class. | Detected from the integration's source |
 | Stellantis Vehicles (`stellantis_vehicles`) | None found | The 15-95 limit is the integration's own soft limit. | Detected from the integration's source |
 | Subaru (`subaru`) | None found |  | Detected from the integration's source |
 | Tesla Custom Integration (`tesla_custom`) | Can be set |  | Detected from the integration's source |
 | Tesla Fleet (`tesla_fleet`) | Can be set | Usable level, route arrival and a charge_energy_added meter. | Detected from the integration's source |
+| TeslaFi (`teslafi`) | Can be set | The charge limit number starts at 0. | Detected from the integration's source |
 | Teslemetry (`teslemetry`) | Can be set |  | Detected from the integration's source |
 | Tessie (`tessie`) | Can be set | usable_battery_level is the only level; energy_remaining is not a capacity. | Detected from the integration's source |
 | Toyota (`toyota`) | None found | The PHEV usable level is a soft demotion. | Set up by users: detected and configured, charging not yet confirmed (Subaru e-Outback through the Toyota integration) |
+| Uconnect (Fiat, Jeep, Alfa Romeo) (`uconnect`) | None found | The extrapolated level and the 12 V state are not the charge level. | Detected from the integration's source |
+| Volkswagen We Connect ID (`volkswagen_we_connect_id`) | Can be set | The charge target is a battery sensor and a number. | Detected from the integration's source |
 | Volkswagen We Connect (`volkswagencarnet`) | Can be set | The charge target is tagged as a battery sensor too. | Detected from the integration's source |
 | Volvo (`volvo`) | Read only, used as the ceiling | Target is a read-only sensor, capacity from the model data. | Detected from the integration's source |
+| Zeekr (`zeekr_ev`) | Can be set | A number sets the charging limit. | Detected from the integration's source |
 
 ### Known pitfalls
 

@@ -75,7 +75,7 @@ _MIN_CHARGE_LIMIT_CEILING = 50.0
 _SOC_NEGATIVE_PHRASES = (
     "soh", "state of health", "health", "target", "limit", "min", "max", "arrival", "departure",
     "predicted", "extrapolated", "precise", "trip", "segment", "route", "threshold", "fuel",
-    "12v", "12 v", "aux", "auxiliary", "service battery", "starter", "car battery",
+    "12v", "12 v", "aux", "auxiliary", "service battery", "starter", "car battery", "low voltage",
     "phone", "key", "fob",
 )
 # Only a soft demotion: the sole charge-level sensor of some integrations says `usable`.
@@ -109,9 +109,12 @@ _SELECT_LIMIT_WINDOW = (50.0, 100.0)
 
 # Capacity keys: never a remaining/added/delta energy; capacity-like keys come first.
 _CAPACITY_EXCLUDED_FRAGMENTS = (
-    "remain", "available", "residual", "energyleft", "added", "delta", "mileage", "kwhr",
+    "remain", "available", "residual", "energyleft", "added", "delta", "mileage",
     "consumption", "tofull", "fullycharged",
 )
+# `kwhr` ends a remaining-energy key (`kwhr`), but also a capacity one (`capacity_kwhr`): excluded unless the
+# key says capacity.
+_CAPACITY_EXCLUDED_UNLESS_NAMED = ("kwhr",)
 _CAPACITY_EXCLUDED_PHRASES = ("soe",)
 _CAPACITY_PREFERRED_FRAGMENTS = ("capacity", "size", "maxenergy")
 
@@ -848,6 +851,8 @@ def _capacity_readings(
             ):
                 continue
             named = key.contains_any(_CAPACITY_PREFERRED_FRAGMENTS)
+            if not named and key.contains_any(_CAPACITY_EXCLUDED_UNLESS_NAMED):
+                continue
             kwh = predicate(entry, state, named)
             if kwh is not None:
                 keyed.append((tier, entry.entity_id, kwh))
