@@ -21,6 +21,7 @@ from freezegun import freeze_time
 from homeassistant.core import HomeAssistant
 
 from custom_components.spotnav.api import dashboard as dashboard_api
+from tests.helpers import as_app_sees
 from custom_components.spotnav.api import site_settings as site_settings_module
 from custom_components.spotnav.planning.auto_settings import STRATEGY_CHEAPEST
 from custom_components.spotnav.const import (
@@ -106,8 +107,28 @@ async def test_the_webhook_dashboard_is_the_websocket_dashboard_bar_writability(
     assert admin_frame["site"]["active_control"]["writable"] is True
     expected = copy.deepcopy(admin_frame)
     expected["site"]["active_control"]["writable"] = False
+    # The one other documented difference: the webhook leaves out what the app cannot read yet.
+    assert "departure_date" in expected["settings"]
+    expected["settings"] = as_app_sees(expected["settings"])
     assert payload == expected
     _pinned("dashboard.json", _pin(body))
+
+
+def test_no_webhook_fixture_carries_a_field_the_app_cannot_read() -> None:
+    from custom_components.spotnav.api.webhook import APP_UNREAD_SETTINGS
+
+    def keys(node: Any) -> set[str]:
+        if isinstance(node, dict):
+            return set(node) | {key for child in node.values() for key in keys(child)}
+        if isinstance(node, list):
+            return {key for child in node for key in keys(child)}
+        return set()
+
+    fixtures = sorted(FIXTURE_DIR.glob("*.json"))
+    assert fixtures
+    for path in fixtures:
+        found = keys(json.loads(path.read_text(encoding="utf-8"))) & set(APP_UNREAD_SETTINGS)
+        assert not found, f"{path.name} carries {sorted(found)}"
 
 
 async def test_a_read_only_socket_sees_no_writability(

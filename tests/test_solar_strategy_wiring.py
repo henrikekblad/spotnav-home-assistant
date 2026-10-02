@@ -39,7 +39,7 @@ from custom_components.spotnav.api.settings import (
     encode_settings,
 )
 
-from .helpers import make_site_entry, webhook_dashboard
+from .helpers import as_app_sees, make_site_entry, webhook_dashboard
 from .relay import StubTransport
 from .world import call, entity_id, go_auto, setup_charger, settings_of
 from .world import ws_call
@@ -91,7 +91,7 @@ async def test_a_settings_write_over_the_webhook_can_change_strategy_to_solar_or
     after = store.settings(entry.entry_id)
     assert after.strategy == strategy
     assert after.revision == before.revision + 1
-    assert answer["settings"] == encode_settings(after)
+    assert answer["settings"] == as_app_sees(encode_settings(after))
 
 
 # --------------------------------------------------------------------------- the strategy select

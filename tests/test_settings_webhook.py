@@ -21,7 +21,7 @@ from custom_components.spotnav.planning.auto_settings import PAUSE_UNTIL_RESUMED
 from custom_components.spotnav.execution.auto_execution import decide_axes
 from custom_components.spotnav.api.common import ERROR_UNSUPPORTED_VERSION
 from custom_components.spotnav.api.settings import SETTINGS_API_VERSION, encode_settings
-from tests.helpers import webhook_dashboard
+from tests.helpers import as_app_sees, webhook_dashboard
 from tests.relay import SE4
 from tests.world import setup_charger
 from tests.messages import (
@@ -113,7 +113,8 @@ async def test_the_dashboard_settings_equal_the_websocket_read_value(
     frame = await ws_call(socket, read_settings_message(entry.entry_id))
 
     assert frame["success"] is True
-    assert dashboard["settings"] == frame["result"]["settings"]
+    assert dashboard["settings"] == as_app_sees(frame["result"]["settings"])
+    assert "departure_date" in frame["result"]["settings"] and "departure_date" not in dashboard["settings"]
     assert dashboard["settings"]["revision"] == 1
     assert dashboard["control"]["pause"] == frame["result"]["pause"]
 
@@ -182,7 +183,7 @@ async def test_a_valid_replacement_returns_the_success_envelope_and_subscribes(
     assert envelope["ok"] is True and envelope["error"] is None
     committed = stored(hass)
     assert committed.revision == 1
-    assert envelope["settings"] == encode_settings(committed)
+    assert envelope["settings"] == as_app_sees(encode_settings(committed))
     assert committed.amps == 16
     # The real side effect: reaching Auto with an area subscribes to that area's prices.
     manager = domain_data(hass).price_refresh
@@ -204,7 +205,7 @@ async def test_an_invalid_replacement_returns_400_with_the_current_record(
     assert answer["action"] == "settings"
     assert answer["api_version"] == SETTINGS_API_VERSION
     assert answer["ok"] is False and answer["error"] == "invalid_amps"
-    assert answer["settings"] == encode_settings(before)
+    assert answer["settings"] == as_app_sees(encode_settings(before))
     assert stored(hass) == before
 
 
@@ -223,7 +224,7 @@ async def test_a_retired_key_is_refused_by_name_and_nothing_is_committed(
         )
         assert status_code == 400, retired
         assert answer["ok"] is False and answer["error"] == "unknown_field", retired
-        assert answer["settings"] == encode_settings(before)
+        assert answer["settings"] == as_app_sees(encode_settings(before))
     assert stored(hass) == before, "nothing was committed"
 
 
@@ -243,7 +244,7 @@ async def test_a_stale_revision_returns_409_with_revision_conflict(
     assert status_code == 409
     assert answer["api_version"] == SETTINGS_API_VERSION
     assert answer["ok"] is False and answer["error"] == "revision_conflict"
-    assert answer["settings"] == encode_settings(current)
+    assert answer["settings"] == as_app_sees(encode_settings(current))
     assert stored(hass).amps == 10
 
 
@@ -267,7 +268,7 @@ async def test_a_persistence_failure_is_500_with_the_old_record(
     assert answer["api_version"] == SETTINGS_API_VERSION
     assert answer["ok"] is False
     assert answer["error"] == "spotnav_settings_not_committed"
-    assert answer["settings"] == encode_settings(before)
+    assert answer["settings"] == as_app_sees(encode_settings(before))
     assert "disk said no" not in str(answer)
     assert stored(hass) == before
     assert stored(hass).revision == 0
@@ -294,7 +295,7 @@ async def test_a_post_commit_reconcile_failure_is_500_with_the_committed_record(
     # Committed, so the record that travels back is the *new* one; no rollback, no prose.
     committed = stored(hass)
     assert committed.revision == 1 and committed.amps == 16
-    assert answer["settings"] == encode_settings(committed)
+    assert answer["settings"] == as_app_sees(encode_settings(committed))
     assert "exploded" not in str(answer)
 
 
@@ -341,8 +342,8 @@ async def test_two_webhooks_mutate_only_their_own_records(
     assert mine.revision == 1 and mine.amps == 16 and mine.phases == other.phases
     assert theirs.revision == 1 and theirs.phases == 3 and theirs.amps == other.amps
     assert [_canonical(first_answer["settings"]), _canonical(second_answer["settings"])] == [
-        _canonical(encode_settings(mine)),
-        _canonical(encode_settings(theirs)),
+        _canonical(as_app_sees(encode_settings(mine))),
+        _canonical(as_app_sees(encode_settings(theirs))),
     ]
 
 
@@ -510,7 +511,9 @@ async def test_websocket_and_webhook_agree_on_identical_state_and_input(
     assert frame["success"] is True
     socket_envelope = frame["result"]
     hook_envelope = {key: value for key, value in answer.items() if key != "action"}
-    assert hook_envelope == socket_envelope
+    # The one documented difference: the webhook leaves out what the app cannot read yet.
+    assert "departure_date" in socket_envelope["settings"] and "departure_date" not in hook_envelope["settings"]
+    assert hook_envelope == {**socket_envelope, "settings": as_app_sees(socket_envelope["settings"])}
     assert socket_envelope["api_version"] == SETTINGS_API_VERSION == 1
     assert status == EXPECTED_HTTP[case]
     assert socket_envelope["ok"] is (case == "success")

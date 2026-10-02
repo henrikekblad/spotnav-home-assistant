@@ -485,3 +485,10 @@ async def install_schedule(controller, payload: dict) -> None:
     )
     controller.validate_plan(plan)
     await controller.async_install(plan)
+
+
+def as_app_sees(settings: dict) -> dict:
+    """A WebSocket settings record as the webhook answers it: without `APP_UNREAD_SETTINGS`."""
+    from custom_components.spotnav.api.webhook import APP_UNREAD_SETTINGS
+
+    return {key: value for key, value in settings.items() if key not in APP_UNREAD_SETTINGS}

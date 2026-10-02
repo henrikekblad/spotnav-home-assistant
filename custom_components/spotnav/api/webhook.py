@@ -53,6 +53,28 @@ _REJECTED_WARNING_INTERVAL_S: Final = 60.0
 _last_rejected_warning: float | None = None
 
 
+#: Settings fields the paired Android app does not read yet. Its decoder refuses a settings record
+#: with an unknown field, and with it the whole dashboard, so the webhook leaves them out until an
+#: app that reads them is out. A request opts in per field with a top-level `reads` list. A
+#: replacement without one keeps the stored value.
+APP_UNREAD_SETTINGS: Final = ("departure_date",)
+
+
+def _for_app(body: dict[str, Any], payload: dict[str, Any]) -> dict[str, Any]:
+    """`body` with the fields the app cannot read yet taken out of its settings record.
+
+    A request opts in per field with a top-level `reads` list; anything else in it, or a `reads`
+    that is not a list, is ignored.
+    """
+    settings = body.get("settings")
+    if not isinstance(settings, dict):
+        return body
+    reads = payload.get("reads")
+    opted_in = {name for name in reads if isinstance(name, str)} if isinstance(reads, list) else set()
+    withheld = set(APP_UNREAD_SETTINGS) - opted_in
+    return {**body, "settings": {key: value for key, value in settings.items() if key not in withheld}}
+
+
 def _log_rejected(error: Exception) -> None:
     global _last_rejected_warning  # noqa: PLW0603 - one process-wide rate limit
     now = time.monotonic()
@@ -146,7 +168,7 @@ async def _dashboard(hass: HomeAssistant, entry: ChargerConfigEntry, payload: di
         return web.json_response(
             {"ok": False, "error": dashboard.code, "action": "dashboard"}, status=400
         )
-    return web.json_response({"ok": True, "action": "dashboard", **dashboard})
+    return web.json_response(_for_app({"ok": True, "action": "dashboard", **dashboard}, payload))
 
 
 async def _settings(hass: HomeAssistant, entry: ChargerConfigEntry, payload: dict[str, Any]) -> Outcome:
@@ -169,21 +191,21 @@ async def _settings(hass: HomeAssistant, entry: ChargerConfigEntry, payload: dic
             replacement=payload.get("settings"),
         )
     except SettingsRefusal as refusal:
-        return web.json_response({**settings_failure(refusal.code, None), "action": action}, status=400)
+        return web.json_response(_for_app({**settings_failure(refusal.code, None), "action": action}, payload), status=400)
     except (SettingsReconcileError, SettingsNotCommitted) as failure:
         # Valid request, resolvable charger: our follow-up or persistence failed (502 here means
         # the charger's own command failed).
         return web.json_response(
-            {**settings_failure(failure.code, failure.settings), "action": action}, status=500
+            _for_app({**settings_failure(failure.code, failure.settings), "action": action}, payload), status=500
         )
     except AutoSettingsError as refusal:
         store = domain_data(hass).auto_store
         current = None if store is None else store.settings(entry.entry_id)
         return web.json_response(
-            {**settings_failure(refusal.code, current), "action": action},
+            _for_app({**settings_failure(refusal.code, current), "action": action}, payload),
             status=409 if refusal.code == "revision_conflict" else 400,
         )
-    return web.json_response({**settings_envelope(committed), "action": action})
+    return web.json_response(_for_app({**settings_envelope(committed), "action": action}, payload))
 
 
 def _bounded_write(

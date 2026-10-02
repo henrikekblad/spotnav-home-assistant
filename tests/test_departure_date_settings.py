@@ -32,7 +32,7 @@ from custom_components.spotnav.api.settings import (
 )
 from custom_components.spotnav.planning.auto_settings import AutoSettings, AutoSettingsError
 
-from .messages import update_settings_message
+from .messages import read_settings_message, update_settings_message
 from .world import admin, call, entity_id, settings_of, setup_charger, ws_call
 
 pytestmark = pytest.mark.usefixtures("offline_relay")
@@ -248,54 +248,87 @@ async def test_the_date_is_judged_in_the_areas_zone_not_utc(hass: HomeAssistant,
 # ----------------------------------------------------------------------------- the webhook path
 
 
-async def test_the_app_writes_the_date_over_the_webhook(hass: HomeAssistant, hass_client_no_auth) -> None:
-    entry = await setup_charger(hass)
-    client = await hass_client_no_auth()
-    before = settings_of(hass, entry.entry_id)
-    payload = {
-        "version": 1,
-        "action": "settings",
-        "expected_revision": before.revision,
-        "settings": body_of(before, departure_date="2026-09-27"),
-    }
-
-    with freeze_time(TODAY):
-        response = await client.post("/api/webhook/webhook-a", json=payload)
-    answer = await response.json()
-
-    assert response.status == 200 and answer["ok"] is True
-    assert answer["settings"]["departure_date"] == "2026-09-27"
-    assert settings_of(hass, entry.entry_id).departure_date == date(2026, 9, 27)
-
-    refused_payload = {**payload, "expected_revision": answer["settings"]["revision"]}
-    refused_payload["settings"] = body_of(settings_of(hass, entry.entry_id), departure_date="2026-09-01")
-    with freeze_time(TODAY):
-        refused = await client.post("/api/webhook/webhook-a", json=refused_payload)
-    refusal = await refused.json()
-    assert refusal["ok"] is False and refusal["error"] == "invalid_departure"
-    assert refusal["settings"]["departure_date"] == "2026-09-27"
+async def post_settings(client: Any, revision: int, settings_body: dict[str, Any]) -> tuple[int, dict[str, Any]]:
+    response = await client.post(
+        "/api/webhook/webhook-a",
+        json={"version": 1, "action": "settings", "expected_revision": revision, "settings": settings_body},
+    )
+    return response.status, await response.json()
 
 
-async def test_the_dashboards_settings_record_carries_the_date(
-    hass: HomeAssistant, hass_client_no_auth
+async def test_the_webhook_never_shows_the_date_but_the_websocket_does(
+    hass: HomeAssistant, hass_client_no_auth, hass_ws_client
 ) -> None:
     from .helpers import webhook_dashboard
 
     entry = await setup_charger(hass)
+    socket = await admin(hass, hass_ws_client)
     client = await hass_client_no_auth()
     before = settings_of(hass, entry.entry_id)
     with freeze_time(TODAY):
-        await client.post(
-            "/api/webhook/webhook-a",
-            json={
-                "version": 1,
-                "action": "settings",
-                "expected_revision": before.revision,
-                "settings": body_of(before, departure_date="2026-09-27"),
-            },
+        await write(socket, entry.entry_id, before.revision, body_of(before, departure_date="2026-09-27"))
+    dated = settings_of(hass, entry.entry_id)
+    assert dated.departure_date == date(2026, 9, 27)
+
+    with freeze_time(TODAY):
+        dashboard = await webhook_dashboard(client, "webhook-a")
+        bad_status, invalid = await post_settings(client, dated.revision, body_of(dated, amps=0))
+        stale_status, refusal = await post_settings(client, dated.revision + 5, body_of(dated, amps=17))
+        status, answer = await post_settings(client, dated.revision, body_of(dated, amps=16))
+        read = await ws_call(socket, read_settings_message(entry.entry_id))
+
+    assert "departure_date" not in dashboard["settings"]
+    assert bad_status == 400 and "departure_date" not in invalid["settings"]
+    assert stale_status == 409 and "departure_date" not in refusal["settings"]
+    assert status == 200 and answer["ok"] is True and "departure_date" not in answer["settings"]
+    assert read["result"]["settings"]["departure_date"] == "2026-09-27"
+
+
+async def test_a_webhook_replacement_without_the_date_keeps_one_set_by_the_card(
+    hass: HomeAssistant, hass_client_no_auth, hass_ws_client
+) -> None:
+    entry = await setup_charger(hass)
+    socket = await admin(hass, hass_ws_client)
+    client = await hass_client_no_auth()
+    before = settings_of(hass, entry.entry_id)
+    with freeze_time(TODAY):
+        await write(socket, entry.entry_id, before.revision, body_of(before, departure_date="2026-09-27"))
+    dated = settings_of(hass, entry.entry_id)
+
+    app_body = body_of(dated, amps=16)
+    del app_body["departure_date"]
+    with freeze_time(TODAY):
+        status, answer = await post_settings(client, dated.revision, app_body)
+
+    assert status == 200 and answer["ok"] is True and answer["settings"]["amps"] == 16
+    stored = settings_of(hass, entry.entry_id)
+    assert stored.amps == 16 and stored.departure_date == date(2026, 9, 27)
+
+
+async def test_a_webhook_replacement_that_names_the_date_is_applied_but_not_echoed(
+    hass: HomeAssistant, hass_client_no_auth
+) -> None:
+    """A future app that reads the date may write it; the answer still leaves it out until then."""
+    entry = await setup_charger(hass)
+    client = await hass_client_no_auth()
+    before = settings_of(hass, entry.entry_id)
+
+    with freeze_time(TODAY):
+        status, answer = await post_settings(client, before.revision, body_of(before, departure_date="2026-09-27"))
+    assert status == 200 and answer["ok"] is True and "departure_date" not in answer["settings"]
+    assert settings_of(hass, entry.entry_id).departure_date == date(2026, 9, 27)
+
+    with freeze_time(TODAY):
+        status, refusal = await post_settings(
+            client,
+            answer["settings"]["revision"],
+            body_of(settings_of(hass, entry.entry_id), departure_date="2026-09-01"),
         )
-    dashboard = await webhook_dashboard(client, "webhook-a")
-    assert dashboard["settings"]["departure_date"] == "2026-09-27"
+    assert status == 400 and refusal["error"] == "invalid_departure"
+    assert "departure_date" not in refusal["settings"]
+    assert settings_of(hass, entry.entry_id).departure_date == date(2026, 9, 27)
+
+
 
 
 # ------------------------------------------------------------------------------- the entities
@@ -339,3 +372,69 @@ async def test_changing_the_time_with_a_date_set_keeps_the_date(hass: HomeAssist
         await call(hass, "time", "set_value", {"entity_id": clock, "time": time(7, 35)})
     stored = settings_of(hass, entry.entry_id)
     assert (stored.departure, stored.departure_date) == (time(7, 35), date(2026, 9, 27))
+
+
+# ------------------------------------------------------------------ the webhook's `reads` opt-in
+
+
+@pytest.mark.parametrize(
+    ("reads", "shown"),
+    [
+        (None, False),
+        (["departure_date"], True),
+        (["departure_date", "nonsense", 7, None], True),
+        (["nonsense"], False),
+        ("departure_date", False),
+        ({"departure_date": True}, False),
+        (7, False),
+        ([["departure_date"]], False),
+        ([], False),
+    ],
+    ids=["absent", "named", "named among junk", "unknown only", "string", "dict", "number", "nested", "empty"],
+)
+async def test_reads_opts_a_webhook_answer_into_the_date_and_a_malformed_value_withholds_it(
+    hass: HomeAssistant, hass_client_no_auth, hass_ws_client, reads: Any, shown: bool
+) -> None:
+    entry = await setup_charger(hass)
+    socket = await admin(hass, hass_ws_client)
+    client = await hass_client_no_auth()
+    before = settings_of(hass, entry.entry_id)
+    with freeze_time(TODAY):
+        await write(socket, entry.entry_id, before.revision, body_of(before, departure_date="2026-09-27"))
+    dated = settings_of(hass, entry.entry_id)
+    extra = {} if reads is None else {"reads": reads}
+
+    with freeze_time(TODAY):
+        dashboard_response = await client.post(
+            "/api/webhook/webhook-a", json={"version": 1, "action": "dashboard", "api_version": 1, **extra}
+        )
+        dashboard = await dashboard_response.json()
+        refused = await client.post(
+            "/api/webhook/webhook-a",
+            json={
+                "version": 1,
+                "action": "settings",
+                "expected_revision": dated.revision + 5,
+                "settings": body_of(dated),
+                **extra,
+            },
+        )
+        refusal = await refused.json()
+        accepted = await client.post(
+            "/api/webhook/webhook-a",
+            json={
+                "version": 1,
+                "action": "settings",
+                "expected_revision": dated.revision,
+                "settings": body_of(dated, amps=16),
+                **extra,
+            },
+        )
+        answer = await accepted.json()
+
+    assert dashboard_response.status == 200 and refused.status == 409 and accepted.status == 200
+    for record in (dashboard["settings"], refusal["settings"], answer["settings"]):
+        if shown:
+            assert record["departure_date"] == "2026-09-27"
+        else:
+            assert "departure_date" not in record
