@@ -286,6 +286,8 @@ def _auto_price_section(hass: HomeAssistant, entry: ConfigEntry) -> dict[str, An
             # The last weighing of a dated departure against history: expected vs known price and the
             # margin (effective minor units per kWh), or null when nothing needed unpublished hours.
             history_wait=None if snapshot.history is None else snapshot.history.as_diagnostics(),
+            # Which rule decided a plan that needed unpublished prices: `history`, `implicit` or null.
+            wait_rule=snapshot.wait_rule,
             proposal=_proposal_summary(
                 snapshot.proposal, historical=False, applied=snapshot.applied
             ),

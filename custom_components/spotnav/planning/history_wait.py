@@ -79,6 +79,9 @@ class HistoryDecision:
     weeks: int | None = None
     #: How many unknown quarter-hours the profile priced.
     unknown_slots: int = 0
+    #: The published placement is cheaper than the expected unpublished one by more than the margin
+    #: (a daily departure does not wait then). Informational for a dated departure.
+    known_cheaper: bool = False
 
     def as_diagnostics(self) -> dict[str, Any]:
         return {
@@ -90,6 +93,7 @@ class HistoryDecision:
             "percent": self.percent,
             "weeks": self.weeks,
             "unknown_slots": self.unknown_slots,
+            "known_cheaper": self.known_cheaper,
         }
 
 
@@ -194,6 +198,7 @@ def evaluate(
         percent=percent,
         weeks=profile.weeks,
         unknown_slots=len(candidates),
+        known_cheaper=-saving - margin > EPSILON_MINOR,
     )
 
 
