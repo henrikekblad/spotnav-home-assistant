@@ -261,6 +261,12 @@ export function controlRows(doc: Document, language: Language, control: EntityCo
     block.append(line);
   };
   row("start_stop", "control.startStop", controlStartStopText(language, control));
+  if (control.startStop.kind === "easee") {
+    // Its charge-control entity is only the charger's identity, so nothing is offered to pick.
+    const fixed = element(doc, "p", C.entityHelp, translate(language, "control.startStop.easeeFixed"));
+    fixed.dataset["controlRow"] = "start_stop_fixed";
+    block.append(fixed);
+  }
   const currentEntity = control.current.entityId;
   row(
     "current",

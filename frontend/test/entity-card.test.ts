@@ -930,6 +930,7 @@ describe("the charger editor's control path and write policy", () => {
     edit(element, "charger");
 
     expect(controlRow(element, "start_stop")).toContain(translate("en", "control.startStop.easee"));
+    expect(controlRow(element, "start_stop_fixed")).toBe(translate("en", "control.startStop.easeeFixed"));
     expect(controlRow(element, "current")).toContain(translate("en", "control.current.service"));
     expect(controlRow(element, "policy")).toContain(translate("en", "control.policy.perMinute", { count: "20" }));
     expect(controlRow(element, "policy")).toContain(translate("en", "control.policy.resend"));

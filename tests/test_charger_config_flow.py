@@ -424,3 +424,47 @@ async def test_diagnostics_state_the_adapter_and_its_policy_without_an_entity_id
     assert adapter["current"] == "number" and adapter["current_enabled"] is True
     assert adapter["policy"]["min_interval_s"] == 90.0
     assert "switch.wallbox_pause_resume" not in str(adapter)
+
+
+async def test_easee_charge_control_is_fixed_and_not_offered_for_editing(hass: HomeAssistant) -> None:
+    """Easee is started and stopped by its own commands: the status sensor stored as `charge_control`
+    only identifies the charger, so the dialog may not offer it as a choice.
+    """
+    entry = await _loaded_detected_charger(hass, "easee")
+
+    config = await async_get_entity_config(hass, entry.entry_id)
+
+    charge_control = next(item for item in config["fields"] if item["field"] == "charge_control")
+    assert charge_control["writable"] is False
+    assert config["control"]["start_stop"]["kind"] == "easee"
+
+
+@pytest.mark.parametrize("domain", ["button", "switch"])
+async def test_a_picked_entity_never_replaces_easees_own_commands(hass: HomeAssistant, domain: str) -> None:
+    entry = await _loaded_detected_charger(hass, "easee")
+    other = register(hass, domain, "easee_start_charging", "Start charging")
+
+    with pytest.raises(EntityConfigRefusal) as refusal:
+        await async_update_entity_config(
+            hass, entry.entry_id, scope="charger", expected={}, changes={"charge_control": other}
+        )
+
+    # A code the card words for people, never a bare "unknown field".
+    assert [error.as_dict() for error in refusal.value.field_errors] == [
+        {"field": "charge_control", "code": "not_writable"}
+    ]
+    assert hass.config_entries.async_get_entry(entry.entry_id).data[CONF_CHARGE_CONTROL] == "sensor.easee_status"
+
+
+async def test_a_button_on_another_detected_charger_is_refused_with_the_path_code(hass: HomeAssistant) -> None:
+    entry = await _loaded_detected_charger(hass, "wallbox")
+    button = register(hass, "button", "some_button", "Some button")
+
+    with pytest.raises(EntityConfigRefusal) as refusal:
+        await async_update_entity_config(
+            hass, entry.entry_id, scope="charger", expected={}, changes={"charge_control": button}
+        )
+
+    assert [error.as_dict() for error in refusal.value.field_errors] == [
+        {"field": "charge_control", "code": "control_path_unknown"}
+    ]

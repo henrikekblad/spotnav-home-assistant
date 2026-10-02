@@ -355,3 +355,64 @@ async def test_a_restore_the_policy_refuses_is_reported_as_failed_with_its_code(
 
     assert (restore.outcome, restore.code) == (RESTORE_FAILED, ASSIGN_RATE_LIMITED)
     await controller.async_shutdown()
+
+
+async def _easee_commands(hass: HomeAssistant) -> list[str]:
+    calls: list[str] = []
+
+    async def handler(call: ServiceCall) -> None:
+        calls.append(call.data["action_command"])
+
+    hass.services.async_register("easee", "action_command", handler)
+    return calls
+
+
+@pytest.mark.parametrize("status", ["awaiting_start", "ready_to_charge"])
+async def test_a_manual_start_on_easee_sends_resume_whatever_the_idle_status(
+    hass: HomeAssistant, status: str
+) -> None:
+    """Manual Start -> `ChargingController.async_start(manual=True)` -> adapter -> `EaseeCommandPath`.
+
+    Neither idle status is `charging`, a held status or an enabled switch (Easee reports none), so the
+    controller does not skip the command, and the charge control being a sensor changes nothing: the
+    Easee path calls its own service by device id and never looks at an entity's availability.
+    """
+    controller = await _controller(hass, "easee")
+    hass.states.async_set("sensor.easee_status", status, {"config_authorizationRequired": False})
+    commands = await _easee_commands(hass)
+
+    assert controller.charging is False and controller.held_by_charger is False
+
+    assert await controller.async_start(manual=True) is True
+
+    assert commands == ["resume"]
+    await controller.async_shutdown()
+
+
+async def test_a_manual_start_on_easee_still_resumes_with_a_pause_flag_left_set_and_a_low_current(
+    hass: HomeAssistant,
+) -> None:
+    controller = await _controller(hass, "easee")
+    hass.states.async_set("sensor.easee_status", "awaiting_start", {"config_authorizationRequired": False})
+    commands = await _easee_commands(hass)
+    async_mock_service(hass, "easee", "set_charger_dynamic_limit")
+    await controller.async_stop()
+    assert commands == ["pause"] and controller.adapter.path.paused is True
+    commands.clear()
+
+    assert await controller.async_start(6, manual=True) is True
+
+    assert commands == ["resume"]
+    assert controller.adapter.path.paused is False
+    await controller.async_shutdown()
+
+
+async def test_a_manual_start_on_easee_authorizes_first_when_authorization_is_owed(hass: HomeAssistant) -> None:
+    controller = await _controller(hass, "easee")
+    hass.states.async_set("sensor.easee_status", "awaiting_start", {"config_authorizationRequired": True})
+    commands = await _easee_commands(hass)
+
+    assert await controller.async_start(manual=True) is True
+
+    assert commands == ["start", "resume"]
+    await controller.async_shutdown()

@@ -71,7 +71,7 @@ from ..site.site_detection import (
 )
 from ..site.measurement_source import source_from_dict
 from ..execution.charger_entities import control_path_for_entity, own_mode_conflicts
-from ..execution.charger_profiles import profile_for
+from ..execution.charger_profiles import PATH_EASEE, profile_for
 from ..vehicles.entity_conflicts import conflict_errors
 from ..vehicles.vehicle_discovery import discover_vehicles, soc_choices, vehicle_soc_entity_id
 
@@ -218,6 +218,18 @@ class FieldError:
 #: A detected charger's charge control may be a select, a button or (Easee) the status sensor that
 #: identifies it; every other charger's is a switch.
 DETECTED_CHARGE_CONTROL_DOMAINS: Final = ("switch", "select", "button", "sensor")
+
+
+def charge_control_is_fixed(entry: ConfigEntry) -> bool:
+    """Whether the charger's start and stop is not an entity at all: Easee is paused and resumed
+    through its own `action_command` service, and the entity stored as `charge_control` (its status
+    sensor) only identifies the charger. Choosing another entity there could never change how it is
+    started, so the field is read-only for it.
+    """
+    path = entry.data.get(CONF_CONTROL_PATH)
+    return (
+        entry.data.get(CONF_MODE) == MODE_DETECTED and isinstance(path, dict) and path.get("kind") == PATH_EASEE
+    )
 
 
 def _charge_control_domains(entry: ConfigEntry) -> tuple[str, ...]:
@@ -367,6 +379,13 @@ def charger_field_errors(
         if field not in changes:
             continue
         value = changes[field]
+        if (
+            field == FIELD_CHARGE_CONTROL
+            and charge_control_is_fixed(entry)
+            and value != current_charger_values(entry)[FIELD_CHARGE_CONTROL]
+        ):
+            errors.append(FieldError(field, ERR_NOT_WRITABLE))
+            continue
         if not value:
             if field == FIELD_CHARGE_CONTROL:
                 errors.append(FieldError(field, ERR_REQUIRED))
@@ -424,7 +443,7 @@ def charger_field_descriptors(hass: HomeAssistant, entry: ConfigEntry) -> list[d
             field=FIELD_CHARGE_CONTROL,
             scope="charger",
             required=True,
-            writable=True,
+            writable=not charge_control_is_fixed(entry),
             current_entity_id=values[FIELD_CHARGE_CONTROL] or None,
             effective=effective[FIELD_CHARGE_CONTROL],
             domains=_charge_control_domains(entry),
