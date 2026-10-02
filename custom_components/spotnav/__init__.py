@@ -11,9 +11,9 @@ import logging
 from functools import partial
 from typing import Any
 
-from homeassistant.config_entries import ConfigEntry
-from homeassistant.const import EVENT_HOMEASSISTANT_STOP
-from homeassistant.core import Event, HomeAssistant
+from homeassistant.config_entries import ConfigEntry, ConfigEntryState
+from homeassistant.const import EVENT_HOMEASSISTANT_STARTED, EVENT_HOMEASSISTANT_STOP
+from homeassistant.core import CoreState, Event, HomeAssistant
 
 from .api.dashboard import async_setup_dashboard_api
 from .api.entity_config import async_setup_entity_config_api
@@ -61,7 +61,7 @@ from .runtime import (
     SiteData,
 )
 from .services import async_register_services
-from .site.site_join import async_apply_site_join
+from .site.site_join import async_apply_site_join, async_leave_sites, prune_missing_members
 from .site.site_capacity_controller import SiteCapacityController
 from .vehicles.discovery_decisions import async_setup_decisions
 from .vehicles.soc_estimate import SocReader
@@ -245,6 +245,15 @@ async def _async_setup_auto_preview(
 
 async def _async_setup_site_entry(hass: HomeAssistant, entry: SiteConfigEntry) -> bool:
     """Set up a site capacity (dynamic load balancing) entry. Registers no webhook."""
+    if hass.state is not CoreState.running:
+        # At boot every entry is known once Home Assistant has started: then drop members a former
+        # version left behind when their charger was deleted, and reload if any were.
+        # Not tied to the entry's unload: a once-listener that has fired cannot be removed again.
+        async def _prune(_event: Event) -> None:
+            if entry.state is ConfigEntryState.LOADED and prune_missing_members(hass, entry):
+                await hass.config_entries.async_reload(entry.entry_id)
+
+        hass.bus.async_listen_once(EVENT_HOMEASSISTANT_STARTED, _prune)
     controller = SiteCapacityController(hass, entry.entry_id, dict(entry.data))
     entry.runtime_data = SiteData(controller)
     entry.async_on_unload(controller.async_shutdown)
@@ -268,12 +277,13 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
 
 async def async_remove_entry(hass: HomeAssistant, entry: ConfigEntry) -> None:
-    """An entry was deleted for good: remove its own Auto state and nothing else.
+    """An entry was deleted for good: take a charger out of its site and remove its own Auto state.
 
     Unload does not come here (a reload must find its settings). Charger entries only; a site entry
     never writes settings.
     """
     if entry.data.get(CONF_ENTRY_TYPE) == ENTRY_TYPE_SITE:
         return
+    async_leave_sites(hass, entry.entry_id)
     await async_remove_auto_state(hass, entry.entry_id)
     await SocReader.async_remove_stored(hass, entry.entry_id)
