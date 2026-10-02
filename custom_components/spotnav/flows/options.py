@@ -94,6 +94,7 @@ from .site_form import (
     site_default_current_choice,
     site_details_schema,
     site_details_unit_errors,
+    site_margin_errors,
 )
 
 
@@ -486,6 +487,7 @@ class SiteCapacityOptionsFlow(ChargerWiringSteps, config_entries.OptionsFlow):
                 charger_entry_ids=charger_entry_ids,
                 exclude_entry_id=self._entry.entry_id,
             )
+            errors.update(site_margin_errors(user_input))
             # The yield ceiling must exceed the main fuse, or `execution/yield_stepping.py`'s
             # hard-ceiling check would license steps at or past the site's limit (see
             # `default_yield_ceiling_a`). Not a `vol.Range` because it depends on this

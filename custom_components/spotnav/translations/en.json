@@ -236,6 +236,7 @@
       "charger_not_controllable": "SpotNav cannot start or stop this charger. It can only be read."
     },
     "error": {
+      "safety_margin_at_or_above_fuse": "The safety margin must be lower than the main fuse, or no current is left for the chargers.",
       "charge_control_in_use": "This charge control is already used by another SpotNav charger.",
       "current_limit_in_use": "This charging current control is already used by another SpotNav charger.",
       "duplicate_charger": "{other} and this charger are the same physical charger. Two SpotNav chargers on one charger send it conflicting commands, so keep only one: remove the other in Settings → Devices & services → SpotNav. SpotNav never removes one for you.",
@@ -380,6 +381,7 @@
       "no_pending_site": "This site's details were not submitted before the manual charger entry was opened, so nothing was saved."
     },
     "error": {
+      "safety_margin_at_or_above_fuse": "The safety margin must be lower than the main fuse, or no current is left for the chargers.",
       "charge_control_in_use": "This charge control is already used by another SpotNav charger.",
       "current_limit_in_use": "This charging current control is already used by another SpotNav charger.",
       "duplicate_charger": "{other} and this charger are the same physical charger. Two SpotNav chargers on one charger send it conflicting commands, so keep only one: remove the other in Settings → Devices & services → SpotNav. SpotNav never removes one for you.",

@@ -236,6 +236,7 @@
       "charger_not_controllable": "SpotNav kan inte starta eller stoppa den här laddaren. Den kan bara läsas."
     },
     "error": {
+      "safety_margin_at_or_above_fuse": "Säkerhetsmarginalen måste vara lägre än huvudsäkringen, annars blir ingen ström kvar till laddarna.",
       "charge_control_in_use": "Denna laddstyrning används redan av en annan SpotNav-laddare.",
       "current_limit_in_use": "Denna laddströmsstyrning används redan av en annan SpotNav-laddare.",
       "duplicate_charger": "{other} och den här laddaren är samma fysiska laddare. Två SpotNav-laddare på en laddare skickar motstridiga kommandon, så behåll bara en: ta bort den andra under Inställningar → Enheter och tjänster → SpotNav. SpotNav tar aldrig bort en åt dig.",
@@ -380,6 +381,7 @@
       "no_pending_site": "Sitens uppgifter skickades inte in innan den manuella laddarinmatningen öppnades, så inget sparades."
     },
     "error": {
+      "safety_margin_at_or_above_fuse": "Säkerhetsmarginalen måste vara lägre än huvudsäkringen, annars blir ingen ström kvar till laddarna.",
       "charge_control_in_use": "Denna laddstyrning används redan av en annan SpotNav-laddare.",
       "current_limit_in_use": "Denna laddströmsstyrning används redan av en annan SpotNav-laddare.",
       "duplicate_charger": "{other} och den här laddaren är samma fysiska laddare. Två SpotNav-laddare på en laddare skickar motstridiga kommandon, så behåll bara en: ta bort den andra under Inställningar → Enheter och tjänster → SpotNav. SpotNav tar aldrig bort en åt dig.",

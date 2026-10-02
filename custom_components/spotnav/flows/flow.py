@@ -137,6 +137,7 @@ from .site_form import (
     site_current_suggestions_schema,
     site_default_current_choice,
     site_detected_schema,
+    site_margin_errors,
     site_details_schema,
     site_details_unit_errors,
     charger_wiring_schema,
@@ -997,6 +998,13 @@ class SpotNavChargingConfigFlow(ChargerWiringSteps, config_entries.ConfigFlow, d
         measurement age is an advanced option editable only via the options flow.
         """
         if user_input is not None:
+            if errors := site_margin_errors(user_input):
+                return self.async_show_form(
+                    step_id="site",
+                    data_schema=site_basic_schema(self.hass, defaults=user_input),
+                    errors=errors,
+                    description_placeholders={"charger_hint": ""},
+                )
             self._site_basic = user_input
             charger_entry_ids: list[str] = user_input.get(CONF_CHARGER_ENTRY_IDS, [])
             detection = detect_site_from_hass(

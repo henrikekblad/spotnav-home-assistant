@@ -162,6 +162,19 @@ def site_current_suggestions_schema(
 DEFAULT_SAFETY_MARGIN_A = 1.0
 
 
+def site_margin_errors(user_input: dict[str, Any]) -> dict[str, str]:
+    """A safety margin at or above the main fuse leaves no current for any charger: refused."""
+    fuse = user_input.get(CONF_MAIN_FUSE_A)
+    margin = user_input.get(CONF_SAFETY_MARGIN_A, DEFAULT_SAFETY_MARGIN_A)
+    if (
+        isinstance(fuse, (int, float))
+        and isinstance(margin, (int, float))
+        and margin >= fuse
+    ):
+        return {CONF_SAFETY_MARGIN_A: "safety_margin_at_or_above_fuse"}
+    return {}
+
+
 def default_site_name(hass) -> str:
     return "Anl\u00e4ggning" if flow_language(hass) == "sv" else "Site"
 

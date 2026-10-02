@@ -39,7 +39,6 @@ async def test_a_charge_already_running_when_the_charger_loads_late_is_not_held(
     assert stops == []
 
 
-@pytest.mark.xfail(strict=True, reason="BH-6: the site form accepts a safety margin at or above the main fuse, which leaves no headroom for any charger")
 async def test_a_safety_margin_at_or_above_the_main_fuse_is_refused(hass: HomeAssistant) -> None:
     from homeassistant.data_entry_flow import FlowResultType, InvalidData
 
@@ -61,7 +60,7 @@ async def test_a_safety_margin_at_or_above_the_main_fuse_is_refused(hass: HomeAs
     except InvalidData:
         return  # refused by the schema: fine
     assert result["type"] is FlowResultType.FORM and result["step_id"] == "site"
-    assert result.get("errors")
+    assert result["errors"] == {"safety_margin_a": "safety_margin_at_or_above_fuse"}
 
 
 @pytest.mark.xfail(strict=True, reason="BH-2: a charge control that was renamed or removed still reads 'available'; nothing tells the person the charger is dead")
