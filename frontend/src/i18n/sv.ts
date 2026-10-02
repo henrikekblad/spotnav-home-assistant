@@ -438,7 +438,7 @@ export const sv: Record<keyof typeof en, string> = {
   "settings.deadline.dateClear":
     "Varje dag",
   "settings.deadline.dateHelp":
-    "Välj en dag upp till 7 dagar fram för att åka det datumet. Planen kan då vänta på timmar vars priser inte är publicerade än, när de senaste veckorna visar att de brukar vara billigare. Avgången hålls alltid.",
+    "Planen kan vänta på timmar som brukar vara billigare. Avgången hålls alltid.",
   "settings.deadline.datePast":
     "Datumet har passerat och ignoreras. Sparar du tas det bort.",
   "settings.deadline.today":

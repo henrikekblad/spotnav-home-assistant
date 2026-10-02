@@ -451,7 +451,7 @@ export const en = {
   "settings.deadline.dateClear":
     "Every day",
   "settings.deadline.dateHelp":
-    "Choose a day up to 7 days ahead to leave on that date. The plan may then wait for hours whose prices are not published yet, when the last weeks show they are usually cheaper; it always keeps the departure.",
+    "The plan may wait for hours that are usually cheaper. The departure is always kept.",
   "settings.deadline.datePast":
     "This date has gone by and is ignored. Saving removes it.",
   "settings.deadline.today":

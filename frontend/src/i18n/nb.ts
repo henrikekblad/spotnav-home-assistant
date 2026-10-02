@@ -437,7 +437,7 @@ export const nb: Record<keyof typeof en, string> = {
   "settings.deadline.dateClear":
     "Hver dag",
   "settings.deadline.dateHelp":
-    "Velg en dag opptil 7 dager frem for å reise den datoen. Planen kan da vente på timer der prisene ikke er publisert ennå, når de siste ukene viser at de pleier å være billigere. Avreisen holdes alltid.",
+    "Planen kan vente på timer som pleier å være billigere. Avreisen holdes alltid.",
   "settings.deadline.datePast":
     "Datoen er passert og ignoreres. Lagring fjerner den.",
   "settings.deadline.today":

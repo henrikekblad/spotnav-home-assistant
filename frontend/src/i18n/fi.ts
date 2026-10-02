@@ -437,7 +437,7 @@ export const fi: Record<keyof typeof en, string> = {
   "settings.deadline.dateClear":
     "Joka päivä",
   "settings.deadline.dateHelp":
-    "Valitse päivä enintään 7 päivän päästä lähteäksesi sinä päivänä. Suunnitelma voi silloin odottaa tunteja, joiden hintoja ei ole vielä julkaistu, kun viime viikot osoittavat niiden olevan yleensä halvempia. Lähtö pidetään aina.",
+    "Suunnitelma voi odottaa tunteja, jotka ovat yleensä halvempia. Lähtö pidetään aina.",
   "settings.deadline.datePast":
     "Päivämäärä on mennyt ohi ja sitä ei huomioida. Tallennus poistaa sen.",
   "settings.deadline.today":
