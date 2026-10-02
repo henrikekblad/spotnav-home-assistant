@@ -1020,6 +1020,27 @@ export const DETECT_WARNING_KEYS: Record<string, TranslationKey> = {
   reports_on_change_only: "entity.detect.warning.reports_on_change_only",
 };
 
+/** Detection notes that only inform; every other code asks the person to check something. */
+export const INFORMATIONAL_DETECT_WARNINGS: ReadonlySet<string> = new Set([
+  "voltage_from_other_device",
+  "reports_on_change_only",
+]);
+
+/** Whether the site already uses this detected battery exactly as it would be applied. */
+export function batteryApplied(config: EntityConfig, battery: DetectedBattery): boolean {
+  const entity = (name: string): string => {
+    const field = config.fields.find((entry) => entry.field === name);
+    return field !== undefined && field.kind === "entity" && field.current !== null ? field.current.entityId : "";
+  };
+  const flagField = config.fields.find((entry) => entry.field === "battery_power_inverted");
+  const inverted = flagField !== undefined && flagField.kind === "flag" ? flagField.value : false;
+  return (
+    entity("battery_aggregate_power_entity") === battery.entityId &&
+    entity("battery_discharge_power_entity") === (battery.dischargeEntityId ?? "") &&
+    inverted === battery.inverted
+  );
+}
+
 export const DERIVED_KIND_KEYS: Record<string, TranslationKey> = {
   power: "entity.derived.power",
   power_export: "entity.derived.powerExport",

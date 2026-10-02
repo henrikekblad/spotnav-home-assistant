@@ -2952,10 +2952,11 @@ var da = {
   "entity.warning.onChange": "{integration} rapporterer kun, når en værdi ændres, så en stabil værdi kan se gammel ud. Hæv højeste måleralder, hvis anlægget ofte regnes som forældet.",
   "entity.warning.ownBalancing": "{name} ({integration}) balancerer last selv og kan modvirke SpotNavs aktive styring. Brug en af dem.",
   "entity.detect.title": "Fundet i Home Assistant",
-  "entity.detect.intro": "SpotNav genkendte disse målere og batterier. Intet ændres, før du vælger en.",
+  "entity.detect.intro": "Disse blev genkendt i din opsætning. Intet ændres, før du trykker på Brug.",
+  "entity.site.intro": "Måling for anlægget. {applies}",
   "entity.detect.meters": "Elmålere",
   "entity.detect.batteries": "Hjemmebatterier",
-  "entity.detect.use": "Brug denne",
+  "entity.detect.use": "Brug",
   "entity.detect.inUse": "I brug",
   "entity.detect.direct": "Måler fasestrømmen direkte",
   "entity.detect.derived": "Udledt af effekt og spænding",
@@ -2968,7 +2969,7 @@ var da = {
   "entity.detect.confidence.low": "Lav sikkerhed: kontroller, at fortegnene passer.",
   "entity.detect.warning.own_load_balancing": "Denne enhed balancerer last selv.",
   "entity.detect.warning.sign_unverified": "Effektens fortegn er ukendt: kontroller, at eksport er negativ.",
-  "entity.detect.warning.voltage_from_other_device": "Spændingen hentes fra vekselretteren, ikke fra måleren.",
+  "entity.detect.warning.voltage_from_other_device": "Måleren rapporterer ingen spænding, så fasespændingen fra en anden enhed, som regel vekselretteren, bruges. Det er normalt.",
   "entity.detect.warning.may_measure_subcircuit": "Kontroller, at måleren måler hele hovedtilførslen, ikke en delkreds.",
   "entity.detect.warning.reports_on_change_only": "Rapporterer kun, når en værdi ændres.",
   "market.edit": "Skift prisområde og afgifter",
@@ -3453,10 +3454,11 @@ var en = {
   "entity.warning.onChange": "{integration} reports only when a value changes, so a steady value can look old. Raise the maximum measurement age if the site is often reported stale.",
   "entity.warning.ownBalancing": "{name} ({integration}) balances load by itself and may fight SpotNav's active control. Use one of them.",
   "entity.detect.title": "Found in Home Assistant",
-  "entity.detect.intro": "SpotNav recognised these meters and batteries. Nothing changes until you choose one.",
+  "entity.detect.intro": "These were recognised in your setup. Nothing changes until you press Use.",
+  "entity.site.intro": "Measurement for the site. {applies}",
   "entity.detect.meters": "Grid meters",
   "entity.detect.batteries": "Home batteries",
-  "entity.detect.use": "Use this",
+  "entity.detect.use": "Use",
   "entity.detect.inUse": "In use",
   "entity.detect.direct": "Measures phase current directly",
   "entity.detect.derived": "Derived from power and voltage",
@@ -3469,7 +3471,7 @@ var en = {
   "entity.detect.confidence.low": "Low confidence: check that the signs are right.",
   "entity.detect.warning.own_load_balancing": "This device balances load by itself.",
   "entity.detect.warning.sign_unverified": "The sign of the power is not known: check that export is negative.",
-  "entity.detect.warning.voltage_from_other_device": "Voltage is taken from the inverter, not the meter.",
+  "entity.detect.warning.voltage_from_other_device": "This meter reports no voltage, so the phase voltage of another device, usually the inverter, is used. This is normal.",
   "entity.detect.warning.may_measure_subcircuit": "Make sure this meter measures the whole main feed, not a sub-circuit.",
   "entity.detect.warning.reports_on_change_only": "Reports only when a value changes.",
   "market.edit": "Edit price area and taxes",
@@ -3954,10 +3956,11 @@ var fi = {
   "entity.warning.onChange": "{integration} ilmoittaa vain arvon muuttuessa, joten vakaa arvo voi näyttää vanhalta. Nosta mittausten enimmäisikää, jos kohde ilmoitetaan usein vanhentuneeksi.",
   "entity.warning.ownBalancing": "{name} ({integration}) tasapainottaa kuorman itse ja voi häiritä SpotNavin aktiivista ohjausta. Käytä toista.",
   "entity.detect.title": "Löytyi Home Assistantista",
-  "entity.detect.intro": "SpotNav tunnisti nämä mittarit ja akut. Mikään ei muutu ennen kuin valitset yhden.",
+  "entity.detect.intro": "Nämä tunnistettiin asetuksistasi. Mikään ei muutu ennen kuin painat Käytä.",
+  "entity.site.intro": "Kohteen mittaus. {applies}",
   "entity.detect.meters": "Sähkömittarit",
   "entity.detect.batteries": "Kotiakut",
-  "entity.detect.use": "Käytä tätä",
+  "entity.detect.use": "Käytä",
   "entity.detect.inUse": "Käytössä",
   "entity.detect.direct": "Mittaa vaihevirran suoraan",
   "entity.detect.derived": "Johdettu tehosta ja jännitteestä",
@@ -3970,7 +3973,7 @@ var fi = {
   "entity.detect.confidence.low": "Alhainen varmuus: tarkista, että etumerkit ovat oikein.",
   "entity.detect.warning.own_load_balancing": "Tämä laite tasapainottaa kuorman itse.",
   "entity.detect.warning.sign_unverified": "Tehon etumerkki on tuntematon: tarkista, että vienti on negatiivinen.",
-  "entity.detect.warning.voltage_from_other_device": "Jännite otetaan vaihtosuuntaajasta, ei mittarista.",
+  "entity.detect.warning.voltage_from_other_device": "Mittari ei raportoi jännitettä, joten käytetään toisen laitteen, yleensä vaihtosuuntaajan, vaihejännitettä. Tämä on normaalia.",
   "entity.detect.warning.may_measure_subcircuit": "Varmista, että mittari mittaa koko pääsyötön, ei alipiiriä.",
   "entity.detect.warning.reports_on_change_only": "Ilmoittaa vain arvon muuttuessa.",
   "market.edit": "Muuta hinta-aluetta ja veroja",
@@ -4455,10 +4458,11 @@ var nb = {
   "entity.warning.onChange": "{integration} rapporterer bare når en verdi endres, så en stabil verdi kan se gammel ut. Øk høyeste måleralder hvis anlegget ofte regnes som utdatert.",
   "entity.warning.ownBalancing": "{name} ({integration}) balanserer last selv og kan motvirke SpotNavs aktive styring. Bruk én av dem.",
   "entity.detect.title": "Funnet i Home Assistant",
-  "entity.detect.intro": "SpotNav kjente igjen disse målerne og batteriene. Ingenting endres før du velger en.",
+  "entity.detect.intro": "Disse ble gjenkjent i oppsettet ditt. Ingenting endres før du trykker på Bruk.",
+  "entity.site.intro": "Måling for anlegget. {applies}",
   "entity.detect.meters": "Strømmålere",
   "entity.detect.batteries": "Hjemmebatterier",
-  "entity.detect.use": "Bruk denne",
+  "entity.detect.use": "Bruk",
   "entity.detect.inUse": "I bruk",
   "entity.detect.direct": "Måler fasestrømmen direkte",
   "entity.detect.derived": "Utledet fra effekt og spenning",
@@ -4471,7 +4475,7 @@ var nb = {
   "entity.detect.confidence.low": "Lav sikkerhet: kontroller at fortegnene stemmer.",
   "entity.detect.warning.own_load_balancing": "Denne enheten balanserer last selv.",
   "entity.detect.warning.sign_unverified": "Effektens fortegn er ukjent: kontroller at eksport er negativ.",
-  "entity.detect.warning.voltage_from_other_device": "Spenningen hentes fra vekselretteren, ikke fra måleren.",
+  "entity.detect.warning.voltage_from_other_device": "Måleren rapporterer ingen spenning, så fasespenningen fra en annen enhet, vanligvis vekselretteren, brukes. Dette er normalt.",
   "entity.detect.warning.may_measure_subcircuit": "Kontroller at måleren måler hele hovedtilførselen, ikke en delkrets.",
   "entity.detect.warning.reports_on_change_only": "Rapporterer bare når en verdi endres.",
   "market.edit": "Endre prisområde og avgifter",
@@ -4956,10 +4960,11 @@ var sv = {
   "entity.warning.onChange": "{integration} rapporterar bara när ett värde ändras, så ett stabilt värde kan se gammalt ut. Höj högsta mätvärdesålder om anläggningen ofta anses inaktuell.",
   "entity.warning.ownBalancing": "{name} ({integration}) balanserar last själv och kan motverka SpotNavs aktiva styrning. Använd en av dem.",
   "entity.detect.title": "Hittat i Home Assistant",
-  "entity.detect.intro": "SpotNav kände igen de här mätarna och batterierna. Inget ändras förrän du väljer ett.",
+  "entity.detect.intro": "De här känns igen i din installation. Inget ändras förrän du trycker på Använd.",
+  "entity.site.intro": "Mätning för anläggningen. {applies}",
   "entity.detect.meters": "Elmätare",
   "entity.detect.batteries": "Hembatterier",
-  "entity.detect.use": "Använd den här",
+  "entity.detect.use": "Använd",
   "entity.detect.inUse": "Används",
   "entity.detect.direct": "Mäter fasströmmen direkt",
   "entity.detect.derived": "Räknas fram ur effekt och spänning",
@@ -4972,7 +4977,7 @@ var sv = {
   "entity.detect.confidence.low": "Låg säkerhet: kontrollera att tecknen stämmer.",
   "entity.detect.warning.own_load_balancing": "Den här enheten balanserar last själv.",
   "entity.detect.warning.sign_unverified": "Effektens tecken är okänt: kontrollera att export är negativ.",
-  "entity.detect.warning.voltage_from_other_device": "Spänningen hämtas från växelriktaren, inte från mätaren.",
+  "entity.detect.warning.voltage_from_other_device": "Mätaren rapporterar ingen spänning, så fasspänningen från en annan enhet, oftast växelriktaren, används. Det är normalt.",
   "entity.detect.warning.may_measure_subcircuit": "Kontrollera att mätaren mäter hela huvudmatningen, inte en delkrets.",
   "entity.detect.warning.reports_on_change_only": "Rapporterar bara när ett värde ändras.",
   "market.edit": "Ändra elområde och skatter",
@@ -8059,6 +8064,19 @@ var DETECT_WARNING_KEYS = {
   may_measure_subcircuit: "entity.detect.warning.may_measure_subcircuit",
   reports_on_change_only: "entity.detect.warning.reports_on_change_only"
 };
+var INFORMATIONAL_DETECT_WARNINGS = /* @__PURE__ */ new Set([
+  "voltage_from_other_device",
+  "reports_on_change_only"
+]);
+function batteryApplied(config, battery) {
+  const entity = (name) => {
+    const field2 = config.fields.find((entry) => entry.field === name);
+    return field2 !== void 0 && field2.kind === "entity" && field2.current !== null ? field2.current.entityId : "";
+  };
+  const flagField = config.fields.find((entry) => entry.field === "battery_power_inverted");
+  const inverted = flagField !== void 0 && flagField.kind === "flag" ? flagField.value : false;
+  return entity("battery_aggregate_power_entity") === battery.entityId && entity("battery_discharge_power_entity") === (battery.dischargeEntityId ?? "") && inverted === battery.inverted;
+}
 var DERIVED_KIND_KEYS = {
   power: "entity.derived.power",
   power_export: "entity.derived.powerExport",
@@ -8376,7 +8394,14 @@ function entityEditorBody(doc, language, input, handlers, idPrefix) {
   notice.hidden = true;
   body.append(notice);
   if (input.appliesText !== null) {
-    body.append(element(doc, "p", VISUAL_CLASSES.siteApplies, input.appliesText));
+    body.append(
+      element(
+        doc,
+        "p",
+        VISUAL_CLASSES.siteApplies,
+        scope === "site" ? translate(language, "entity.site.intro", { applies: input.appliesText }) : input.appliesText
+      )
+    );
   }
   if (scope === "charger" && config.control !== null) {
     body.append(controlRows(doc, language, config.control, (entityId) => entityNameIn(config, entityId)));
@@ -8386,7 +8411,7 @@ function entityEditorBody(doc, language, input, handlers, idPrefix) {
     if (notices !== null) {
       body.append(notices);
     }
-    const detection = detectionSection(config.site);
+    const detection = detectionSection(config, config.site);
     if (detection !== null) {
       body.append(detection);
     }
@@ -8522,16 +8547,19 @@ function entityEditorBody(doc, language, input, handlers, idPrefix) {
     errorNodes.set(field2.field, { node: error, input: box });
     return block;
   }
-  function detectionSection(site) {
-    if (site.meters.length === 0 && site.batteries.length === 0) {
+  function detectionSection(full, site) {
+    const batteryInUse = new Map(site.batteries.map((battery) => [battery.id, batteryApplied(full, battery)]));
+    const differs = site.meters.some((meter) => !meter.applied) || site.batteries.some((battery) => batteryInUse.get(battery.id) !== true);
+    if (!differs) {
       return null;
     }
     const section = element(doc, "fieldset", VISUAL_CLASSES.siteFieldset);
     section.dataset["detection"] = "site";
     section.append(element(doc, "legend", VISUAL_CLASSES.siteLegend, translate(language, "entity.detect.title")));
     section.append(element(doc, "p", VISUAL_CLASSES.entityHelp, translate(language, "entity.detect.intro")));
-    const apply = (id) => {
+    const apply = (id, name) => {
       const button = element(doc, "button", VISUAL_CLASSES.button, translate(language, "entity.detect.use"));
+      button.setAttribute("aria-label", `${translate(language, "entity.detect.use")}: ${name}`);
       button.type = "button";
       button.dataset["apply"] = id;
       button.addEventListener("click", () => {
@@ -8558,7 +8586,7 @@ function entityEditorBody(doc, language, input, handlers, idPrefix) {
       section.append(element(doc, "strong", void 0, translate(language, "entity.detect.batteries")));
     }
     for (const battery of site.batteries) {
-      section.append(batteryCard(battery, apply, line, enableLine));
+      section.append(batteryCard(battery, batteryInUse.get(battery.id) === true, apply, line, enableLine));
     }
     return section;
   }
@@ -8590,7 +8618,7 @@ function entityEditorBody(doc, language, input, handlers, idPrefix) {
       const key = DETECT_WARNING_KEYS[code];
       if (key !== void 0) {
         const warning = line(translate(language, key), code);
-        warning.className = VISUAL_CLASSES.entityWarning;
+        warning.className = INFORMATIONAL_DETECT_WARNINGS.has(code) ? VISUAL_CLASSES.entityHelp : VISUAL_CLASSES.entityWarning;
         card.append(warning);
       }
     }
@@ -8601,11 +8629,11 @@ function entityEditorBody(doc, language, input, handlers, idPrefix) {
     if (meter.applied) {
       card.append(element(doc, "span", VISUAL_CLASSES.entityAutomatic, translate(language, "entity.detect.inUse")));
     } else {
-      card.append(apply(meter.id));
+      card.append(apply(meter.id, meter.title));
     }
     return card;
   }
-  function batteryCard(battery, apply, line, enableLine) {
+  function batteryCard(battery, inUse, apply, line, enableLine) {
     const card = element(doc, "div", VISUAL_CLASSES.entityRow);
     card.dataset["detectedBattery"] = battery.id;
     card.append(element(doc, "span", VISUAL_CLASSES.entityRowLabel, `${battery.friendlyName} (${battery.integration})`));
@@ -8619,7 +8647,11 @@ function entityEditorBody(doc, language, input, handlers, idPrefix) {
     if (enable !== null) {
       card.append(enable);
     }
-    card.append(apply(battery.id));
+    if (inUse) {
+      card.append(element(doc, "span", VISUAL_CLASSES.entityAutomatic, translate(language, "entity.detect.inUse")));
+    } else {
+      card.append(apply(battery.id, battery.friendlyName));
+    }
     return card;
   }
   for (const field2 of fieldsOf(config, scope)) {
@@ -8680,7 +8712,6 @@ function entityEditorBody(doc, language, input, handlers, idPrefix) {
         for (const key of helpKeys) {
           phaseHelp.append(element(doc, "p", VISUAL_CLASSES.entityHelp, translate(language, key)));
         }
-        phases.append(phaseHelp);
         for (const phase of PHASES) {
           const group = element(doc, "fieldset", VISUAL_CLASSES.entityLine);
           group.dataset["phase"] = phase;
@@ -8716,6 +8747,7 @@ function entityEditorBody(doc, language, input, handlers, idPrefix) {
           }
           phases.append(group);
         }
+        phases.append(phaseHelp);
       };
       for (const choice of modeField.choices) {
         const label = element(doc, "label", VISUAL_CLASSES.siteChoice);

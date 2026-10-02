@@ -693,6 +693,112 @@ describe("the site's estimate, warnings, sign options and detected meters", () =
     ]);
   });
 
+  type DetectionRows = { meters: Array<Record<string, unknown>>; batteries: Array<Record<string, unknown>> };
+  const detectionOf = (answer: Record<string, unknown>): DetectionRows =>
+    ((answer["config"] as { site: { detection: DetectionRows } }).site.detection);
+
+  it("shows a meter the site already uses as In use, with no button, and a differing one with Use that applies", async () => {
+    const { hass, element } = await mounted({
+      get: "get_detected",
+      update: "success_site",
+      patch: (answer) => {
+        const meters = detectionOf(answer).meters;
+        meters[0]!["applied"] = true;
+        return answer;
+      },
+    });
+    openSettings(element);
+    await settle();
+    edit(element, "site");
+    const dialog = openDialog(element);
+    const cards = [...(dialog?.querySelectorAll<HTMLElement>("[data-detected-meter]") ?? [])];
+    const inUse = cards[0];
+    expect(inUse?.querySelector("button")).toBeNull();
+    expect(inUse?.textContent).toContain(translate("en", "entity.detect.inUse"));
+    const other = cards[1];
+    const use = other?.querySelector<HTMLButtonElement>("[data-apply]");
+    expect(use?.textContent).toBe(translate("en", "entity.detect.use"));
+    use?.click();
+    await settle();
+    expect(updates(hass)[0]).toMatchObject({ changes: { apply_detection: other?.dataset["detectedMeter"] } });
+  });
+
+  it("leaves the Found block out when every candidate is what the site uses", async () => {
+    const { element } = await mounted({
+      get: "get_detected",
+      patch: (answer) => {
+        const detection = detectionOf(answer);
+        for (const meter of detection.meters) {
+          meter["applied"] = true;
+        }
+        detection.batteries = [];
+        return answer;
+      },
+    });
+    openSettings(element);
+    await settle();
+    edit(element, "site");
+    expect(openDialog(element)?.querySelector("[data-detection]")).toBeNull();
+    expect(openDialog(element)?.textContent).toContain("Measurement for the site.");
+  });
+
+  it("shows a battery the site already uses as In use", async () => {
+    const { element } = await mounted({
+      get: "get_detected",
+      patch: (answer) => {
+        const config = answer["config"] as { fields: Array<Record<string, unknown>> };
+        const battery = detectionOf(answer).batteries[0]!;
+        for (const entry of config.fields) {
+          if (entry["field"] === "battery_aggregate_power_entity") {
+            const ref = { entity_id: battery["entity_id"], friendly_name: "b", exists: true };
+            entry["current"] = ref;
+          }
+          if (entry["field"] === "battery_power_inverted") {
+            entry["value"] = battery["inverted"];
+          }
+        }
+        return answer;
+      },
+    });
+    openSettings(element);
+    await settle();
+    edit(element, "site");
+    const card = openDialog(element)?.querySelector<HTMLElement>("[data-detected-battery]");
+    expect(card?.querySelector("button")).toBeNull();
+    expect(card?.textContent).toContain(translate("en", "entity.detect.inUse"));
+    const next = openDialog(element)?.querySelectorAll<HTMLElement>("[data-detected-battery]")[1];
+    expect(next?.querySelector("[data-apply]")).not.toBeNull();
+  });
+
+  it("keeps an informational detection note neutral and a note that needs a check in the warning colour", async () => {
+    const { element } = await mounted({
+      get: "get_detected",
+      patch: (answer) => {
+        detectionOf(answer).meters[0]!["warnings"] = ["voltage_from_other_device", "sign_unverified"];
+        return answer;
+      },
+    });
+    openSettings(element);
+    await settle();
+    edit(element, "site");
+    const card = openDialog(element)?.querySelector<HTMLElement>("[data-detected-meter]");
+    const info = card?.querySelector<HTMLElement>("[data-detect='voltage_from_other_device']");
+    expect(info?.className).toBe("spotnav-entity-help");
+    expect(info?.textContent).toContain("This is normal.");
+    expect(card?.querySelector<HTMLElement>("[data-detect='sign_unverified']")?.className).toBe("spotnav-entity-warning");
+  });
+
+  it("puts each phase heading before the fields and says their help once after the phases", async () => {
+    const { element } = await mounted({ get: "get_detected" });
+    openSettings(element);
+    await settle();
+    edit(element, "site");
+    const phases = openDialog(element)?.querySelector<HTMLElement>("[data-part='phases']");
+    const children = [...(phases?.children ?? [])] as HTMLElement[];
+    expect(children.map((child) => child.dataset["phase"] ?? child.dataset["help"])).toEqual(["L1", "L2", "L3", "phases"]);
+    expect(children[0]?.querySelector("legend")?.textContent).toBe("L1");
+  });
+
   it("offers a checkbox per sign option and sends a changed one as a boolean", async () => {
     const { hass, element } = await mounted({ update: "success_site" });
     openSettings(element);

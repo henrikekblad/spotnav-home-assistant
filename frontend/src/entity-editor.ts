@@ -11,6 +11,8 @@ import {
   DERIVED_KIND_KEYS,
   DERIVED_OPTIONAL_KINDS,
   DETECT_WARNING_KEYS,
+  INFORMATIONAL_DETECT_WARNINGS,
+  batteryApplied,
   DERIVED_REQUIRED_KINDS,
   MEASUREMENT_DERIVED,
   MEASUREMENT_DIRECT,
@@ -376,7 +378,16 @@ export function entityEditorBody(
   notice.hidden = true;
   body.append(notice);
   if (input.appliesText !== null) {
-    body.append(element(doc, "p", C.siteApplies, input.appliesText));
+    body.append(
+      element(
+        doc,
+        "p",
+        C.siteApplies,
+        scope === "site"
+          ? translate(language, "entity.site.intro", { applies: input.appliesText })
+          : input.appliesText,
+      ),
+    );
   }
   if (scope === "charger" && config.control !== null) {
     body.append(controlRows(doc, language, config.control, (entityId) => entityNameIn(config, entityId)));
@@ -386,7 +397,7 @@ export function entityEditorBody(
     if (notices !== null) {
       body.append(notices);
     }
-    const detection = detectionSection(config.site);
+    const detection = detectionSection(config, config.site);
     if (detection !== null) {
       body.append(detection);
     }
@@ -536,8 +547,11 @@ export function entityEditorBody(
     return block;
   }
 
-  function detectionSection(site: EntitySite): HTMLElement | null {
-    if (site.meters.length === 0 && site.batteries.length === 0) {
+  function detectionSection(full: EntityConfig, site: EntitySite): HTMLElement | null {
+    const batteryInUse = new Map(site.batteries.map((battery) => [battery.id, batteryApplied(full, battery)]));
+    const differs =
+      site.meters.some((meter) => !meter.applied) || site.batteries.some((battery) => batteryInUse.get(battery.id) !== true);
+    if (!differs) {
       return null;
     }
     const section = element(doc, "fieldset", C.siteFieldset);
@@ -545,8 +559,9 @@ export function entityEditorBody(
     section.append(element(doc, "legend", C.siteLegend, translate(language, "entity.detect.title")));
     section.append(element(doc, "p", C.entityHelp, translate(language, "entity.detect.intro")));
 
-    const apply = (id: string): HTMLButtonElement => {
+    const apply = (id: string, name: string): HTMLButtonElement => {
       const button = element(doc, "button", C.button, translate(language, "entity.detect.use"));
+      button.setAttribute("aria-label", `${translate(language, "entity.detect.use")}: ${name}`);
       button.type = "button";
       button.dataset["apply"] = id;
       button.addEventListener("click", () => {
@@ -575,14 +590,14 @@ export function entityEditorBody(
       section.append(element(doc, "strong", undefined, translate(language, "entity.detect.batteries")));
     }
     for (const battery of site.batteries) {
-      section.append(batteryCard(battery, apply, line, enableLine));
+      section.append(batteryCard(battery, batteryInUse.get(battery.id) === true, apply, line, enableLine));
     }
     return section;
   }
 
   function meterCard(
     meter: DetectedMeter,
-    apply: (id: string) => HTMLButtonElement,
+    apply: (id: string, name: string) => HTMLButtonElement,
     line: (text: string, code: string) => HTMLElement,
     enableLine: (count: number) => HTMLElement | null,
   ): HTMLElement {
@@ -613,7 +628,8 @@ export function entityEditorBody(
       const key = DETECT_WARNING_KEYS[code];
       if (key !== undefined) {
         const warning = line(translate(language, key), code);
-        warning.className = C.entityWarning;
+        // Only a note that asks for a check is a warning; the rest is plain information.
+        warning.className = INFORMATIONAL_DETECT_WARNINGS.has(code) ? C.entityHelp : C.entityWarning;
         card.append(warning);
       }
     }
@@ -624,14 +640,15 @@ export function entityEditorBody(
     if (meter.applied) {
       card.append(element(doc, "span", C.entityAutomatic, translate(language, "entity.detect.inUse")));
     } else {
-      card.append(apply(meter.id));
+      card.append(apply(meter.id, meter.title));
     }
     return card;
   }
 
   function batteryCard(
     battery: DetectedBattery,
-    apply: (id: string) => HTMLButtonElement,
+    inUse: boolean,
+    apply: (id: string, name: string) => HTMLButtonElement,
     line: (text: string, code: string) => HTMLElement,
     enableLine: (count: number) => HTMLElement | null,
   ): HTMLElement {
@@ -648,7 +665,11 @@ export function entityEditorBody(
     if (enable !== null) {
       card.append(enable);
     }
-    card.append(apply(battery.id));
+    if (inUse) {
+      card.append(element(doc, "span", C.entityAutomatic, translate(language, "entity.detect.inUse")));
+    } else {
+      card.append(apply(battery.id, battery.friendlyName));
+    }
     return card;
   }
 
@@ -702,6 +723,7 @@ export function entityEditorBody(
         phases.replaceChildren();
         const mode = currentMode();
         phases.dataset["mode"] = mode;
+        // Each phase repeats the same fields, so their help is said once, under the last phase.
         const phaseHelp = element(doc, "div");
         phaseHelp.dataset["help"] = "phases";
         const helpKeys: TranslationKey[] =
@@ -715,7 +737,6 @@ export function entityEditorBody(
         for (const key of helpKeys) {
           phaseHelp.append(element(doc, "p", C.entityHelp, translate(language, key)));
         }
-        phases.append(phaseHelp);
         for (const phase of PHASES) {
           const group = element(doc, "fieldset", C.entityLine);
           group.dataset["phase"] = phase;
@@ -756,6 +777,7 @@ export function entityEditorBody(
           }
           phases.append(group);
         }
+        phases.append(phaseHelp);
       };
 
       for (const choice of modeField.choices) {
