@@ -218,6 +218,7 @@ describe("the words", () => {
     "wrong_domain",
     "invalid_value",
     "not_writable",
+    "control_path_unknown",
     "unknown_field",
     "charge_control_in_use",
     "current_limit_in_use",
@@ -240,6 +241,13 @@ describe("the words", () => {
       for (const code of FIELD_CODES) {
         expect(translate(language, fieldErrorKey(code)).length, `${language} ${code}`).toBeGreaterThan(3);
       }
+    }
+  });
+
+  it("words every code the backend sends for a field the card rendered, never as an unknown field", () => {
+    // The codes of `api/entity_fields.py` a charger dialog can meet; `unknown_field` is not one of them.
+    for (const code of ["required", "entity_not_found", "wrong_domain", "not_writable", "control_path_unknown"]) {
+      expect(fieldErrorKey(code), code).not.toBe("entity.error.field.unknown");
     }
   });
 

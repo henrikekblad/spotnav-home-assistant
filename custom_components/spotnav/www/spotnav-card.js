@@ -2961,6 +2961,7 @@ var da = {
   "entity.error.field.wrongDomain": "Det er den forkerte type entitet.",
   "entity.error.field.invalid": "Værdien accepteres ikke.",
   "entity.error.field.notWritable": "Det kan ikke ændres her.",
+  "entity.error.field.controlPathUnknown": "SpotNav kan ikke afgøre, hvordan en opladning startes og stoppes med den enhed. Vælg laderens kontakt, eller en vælger med tydelige start- og stopvalg.",
   "entity.error.field.unknown": "Feltet genkendes ikke.",
   "entity.error.field.chargeControlInUse": "En anden lader bruger allerede denne afbryder.",
   "entity.error.field.currentLimitInUse": "En anden lader bruger allerede denne strømgrænse.",
@@ -3341,6 +3342,7 @@ var da = {
   "control.startStop.select": "En vælger: {start} starter, {stop} stopper",
   "control.startStop.buttons": "En startknap og en stopknap",
   "control.startStop.easee": "Easees egne start- og stopkommandoer",
+  "control.startStop.easeeFixed": "Easee sættes på pause og genoptages med sine egne kommandoer, så der er ingen start- eller stopenhed at vælge.",
   "control.current": "Ladestrøm",
   "control.current.none": "Indstilles ikke af SpotNav (laderen beholder sin egen grænse)",
   "control.current.ocpp": "OCPP ChangeConfiguration",
@@ -3476,6 +3478,7 @@ var en = {
   "entity.error.field.wrongDomain": "That is not the right kind of entity.",
   "entity.error.field.invalid": "That value is not accepted.",
   "entity.error.field.notWritable": "This cannot be changed here.",
+  "entity.error.field.controlPathUnknown": "SpotNav cannot tell how to start and stop a charge with that entity. Choose the charger's switch, or a selector with clear start and stop options.",
   "entity.error.field.unknown": "That field is not recognised.",
   "entity.error.field.chargeControlInUse": "Another charger already uses this switch.",
   "entity.error.field.currentLimitInUse": "Another charger already uses this current limit.",
@@ -3856,6 +3859,7 @@ var en = {
   "control.startStop.select": "A selector: {start} starts, {stop} stops",
   "control.startStop.buttons": "A start button and a stop button",
   "control.startStop.easee": "Easee's own start and stop commands",
+  "control.startStop.easeeFixed": "Easee is paused and resumed with its own commands, so there is no start or stop entity to choose.",
   "control.current": "Charging current",
   "control.current.none": "Not set by SpotNav (the charger keeps its own limit)",
   "control.current.ocpp": "OCPP ChangeConfiguration",
@@ -3991,6 +3995,7 @@ var fi = {
   "entity.error.field.wrongDomain": "Entiteetti on väärää tyyppiä.",
   "entity.error.field.invalid": "Arvoa ei hyväksytä.",
   "entity.error.field.notWritable": "Tätä ei voi muuttaa täällä.",
+  "entity.error.field.controlPathUnknown": "SpotNav ei voi päätellä, miten lataus käynnistetään ja pysäytetään tällä entiteetillä. Valitse laturin kytkin tai valitsin, jossa on selkeät käynnistys- ja pysäytysvaihtoehdot.",
   "entity.error.field.unknown": "Kenttää ei tunnisteta.",
   "entity.error.field.chargeControlInUse": "Toinen latauslaite käyttää jo tätä kytkintä.",
   "entity.error.field.currentLimitInUse": "Toinen latauslaite käyttää jo tätä virtarajaa.",
@@ -4371,6 +4376,7 @@ var fi = {
   "control.startStop.select": "Valitsin: {start} käynnistää, {stop} pysäyttää",
   "control.startStop.buttons": "Käynnistyspainike ja pysäytyspainike",
   "control.startStop.easee": "Easeen omat käynnistys- ja pysäytyskomennot",
+  "control.startStop.easeeFixed": "Easee keskeytetään ja jatketaan sen omilla komennoilla, joten käynnistys- tai pysäytysentiteettiä ei valita.",
   "control.current": "Latausvirta",
   "control.current.none": "SpotNav ei aseta sitä (laturi pitää oman rajansa)",
   "control.current.ocpp": "OCPP ChangeConfiguration",
@@ -4506,6 +4512,7 @@ var nb = {
   "entity.error.field.wrongDomain": "Det er feil type entitet.",
   "entity.error.field.invalid": "Verdien godtas ikke.",
   "entity.error.field.notWritable": "Dette kan ikke endres her.",
+  "entity.error.field.controlPathUnknown": "SpotNav kan ikke avgjøre hvordan en lading startes og stoppes med den enheten. Velg laderens bryter, eller en velger med tydelige start- og stoppvalg.",
   "entity.error.field.unknown": "Feltet gjenkjennes ikke.",
   "entity.error.field.chargeControlInUse": "En annen lader bruker allerede denne bryteren.",
   "entity.error.field.currentLimitInUse": "En annen lader bruker allerede denne strømgrensen.",
@@ -4886,6 +4893,7 @@ var nb = {
   "control.startStop.select": "En velger: {start} starter, {stop} stopper",
   "control.startStop.buttons": "En startknapp og en stoppknapp",
   "control.startStop.easee": "Easees egne start- og stoppkommandoer",
+  "control.startStop.easeeFixed": "Easee settes på pause og gjenopptas med sine egne kommandoer, så det finnes ingen start- eller stoppenhet å velge.",
   "control.current": "Ladestrøm",
   "control.current.none": "Settes ikke av SpotNav (laderen beholder sin egen grense)",
   "control.current.ocpp": "OCPP ChangeConfiguration",
@@ -5021,6 +5029,7 @@ var sv = {
   "entity.error.field.wrongDomain": "Det är fel typ av entitet.",
   "entity.error.field.invalid": "Värdet godtas inte.",
   "entity.error.field.notWritable": "Det här kan inte ändras här.",
+  "entity.error.field.controlPathUnknown": "SpotNav kan inte avgöra hur en laddning startas och stoppas med den entiteten. Välj laddarens strömbrytare, eller en väljare med tydliga start- och stoppalternativ.",
   "entity.error.field.unknown": "Fältet känns inte igen.",
   "entity.error.field.chargeControlInUse": "En annan laddare använder redan den här brytaren.",
   "entity.error.field.currentLimitInUse": "En annan laddare använder redan den här strömgränsen.",
@@ -5401,6 +5410,7 @@ var sv = {
   "control.startStop.select": "En väljare: {start} startar, {stop} stoppar",
   "control.startStop.buttons": "En startknapp och en stoppknapp",
   "control.startStop.easee": "Easees egna start- och stoppkommandon",
+  "control.startStop.easeeFixed": "Easee pausas och återupptas med sina egna kommandon, så det finns ingen start- eller stoppentitet att välja.",
   "control.current": "Laddström",
   "control.current.none": "Sätts inte av SpotNav (laddaren behåller sin egen gräns)",
   "control.current.ocpp": "OCPP ChangeConfiguration",
@@ -8288,6 +8298,7 @@ var FIELD_ERROR_KEYS = {
   wrong_domain: "entity.error.field.wrongDomain",
   invalid_value: "entity.error.field.invalid",
   not_writable: "entity.error.field.notWritable",
+  control_path_unknown: "entity.error.field.controlPathUnknown",
   unknown_field: "entity.error.field.unknown",
   charge_control_in_use: "entity.error.field.chargeControlInUse",
   current_limit_in_use: "entity.error.field.currentLimitInUse",
@@ -8521,6 +8532,11 @@ function controlRows(doc, language, control, nameOf) {
     block.append(line);
   };
   row("start_stop", "control.startStop", controlStartStopText(language, control));
+  if (control.startStop.kind === "easee") {
+    const fixed = element(doc, "p", VISUAL_CLASSES.entityHelp, translate(language, "control.startStop.easeeFixed"));
+    fixed.dataset["controlRow"] = "start_stop_fixed";
+    block.append(fixed);
+  }
   const currentEntity = control.current.entityId;
   row(
     "current",

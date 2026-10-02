@@ -1056,6 +1056,7 @@ const FIELD_ERROR_KEYS: Record<string, TranslationKey> = {
   wrong_domain: "entity.error.field.wrongDomain",
   invalid_value: "entity.error.field.invalid",
   not_writable: "entity.error.field.notWritable",
+  control_path_unknown: "entity.error.field.controlPathUnknown",
   unknown_field: "entity.error.field.unknown",
   charge_control_in_use: "entity.error.field.chargeControlInUse",
   current_limit_in_use: "entity.error.field.currentLimitInUse",
