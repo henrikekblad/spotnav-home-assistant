@@ -70,6 +70,7 @@ export const en = {
   "issue.chargingWithoutPrices": "Charging without published prices to keep the deadline.",
   "issue.pendingProposal": "A newer proposal is ready but is not installed yet.",
   "issue.loadBalancing": "Load balancing is not available for this charger.",
+  "issue.heldByCharger": "The charger's own schedule or load balancing is holding the charge, so it has not started.",
   "issue.unknown": "The backend reported something this card does not know yet.",
   "header.info": "About this card",
   "header.settings": "Card settings",

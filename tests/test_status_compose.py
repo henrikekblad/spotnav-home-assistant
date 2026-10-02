@@ -333,6 +333,18 @@ CASES: list[tuple[str, StatusFacts, str, list[dict[str, Any]]]] = [
         [{"code": "waiting_for_tomorrow", "params": {}}, {"code": "load_balancing_unavailable", "params": {}}],
     ),
     (
+        "a charger whose own scheduler holds the charge says so, and only while it is not charging",
+        base(held_by_charger=True, waiting_for_tomorrow=True),
+        "notice",
+        [{"code": "waiting_for_tomorrow", "params": {}}, {"code": "held_by_charger", "params": {}}],
+    ),
+    (
+        "a charge that is running is not held, whatever a stale status says",
+        base(held_by_charger=True, charging=True),
+        "normal",
+        [{"code": "charging_now", "params": {"until": None}}],
+    ),
+    (
         "stale prices are a notice fact",
         base(price_state="stale", price_reason="fetch_failed", waiting_for_tomorrow=True),
         "notice",

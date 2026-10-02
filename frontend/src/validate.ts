@@ -1225,6 +1225,7 @@ export const STATUS_CODE_TABLE = {
   unpriced: ["notice", {}],
   load_balancing_limited: ["notice", { limit_a: "numberOrNull", phase: "textOrNull" }],
   load_balancing_unavailable: ["notice", {}],
+  held_by_charger: ["notice", {}],
 } as const satisfies Record<string, readonly [StatusTone, Record<string, StatusParamKind>]>;
 
 export type StatusCode = keyof typeof STATUS_CODE_TABLE;

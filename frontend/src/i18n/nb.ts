@@ -69,6 +69,7 @@ export const nb: Record<keyof typeof en, string> = {
   "issue.chargingWithoutPrices": "Lader uten publiserte priser for å holde sluttiden.",
   "issue.pendingProposal": "Et nyere forslag er klart, men er ikke installert ennå.",
   "issue.loadBalancing": "Lastbalansering er ikke tilgjengelig for denne laderen.",
+  "issue.heldByCharger": "Laderens egen timeplan eller lastbalansering holder tilbake ladingen, så den har ikke startet.",
   "issue.unknown": "Backend rapporterte noe kortet ikke kjenner igjen ennå.",
   "header.info": "Om kortet",
   "header.settings": "Kortinnstillinger",

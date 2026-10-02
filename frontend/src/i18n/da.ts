@@ -69,6 +69,7 @@ export const da: Record<keyof typeof en, string> = {
   "issue.chargingWithoutPrices": "Lader uden offentliggjorte priser for at overholde sluttidspunktet.",
   "issue.pendingProposal": "Et nyere forslag er klar, men er ikke installeret endnu.",
   "issue.loadBalancing": "Lastbalancering er ikke tilgængelig for denne lader.",
+  "issue.heldByCharger": "Laderens eget skema eller lastbalancering holder opladningen tilbage, så den er ikke startet.",
   "issue.unknown": "Backend rapporterede noget, kortet endnu ikke kender.",
   "header.info": "Om kortet",
   "header.settings": "Kortindstillinger",

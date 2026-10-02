@@ -175,6 +175,10 @@ async def async_plan_hybrid(
         # `solar_start_w` to build a valid `HybridConfig`.
         min_current_a = DEFAULT_MIN_CURRENT_A
         car_phases = 3
+    # The lowest power a charge can start at: the charger's own start minimum counts (Easee: 7 A).
+    data = charger_data(hass, charger_entry_id)
+    if data is not None:
+        min_current_a = max(min_current_a, data.controller.adapter.min_start_current_a)
     solar_start_w = power_kw(min_current_a, car_phases) * 1000.0
 
     if documents:

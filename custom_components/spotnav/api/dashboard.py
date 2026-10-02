@@ -207,6 +207,8 @@ class CapturedLive:
     requested_current_a: int | None
     setpoint_current_a: int | None
     measured_current_a: float | None
+    #: The charger's own scheduler or load balancer holds the charge (Easee's waiting statuses).
+    held_by_charger: bool = False
 
 
 @dataclass(frozen=True, slots=True)
@@ -834,6 +836,7 @@ def capture_dashboard(
             requested_current_a=None if controller is None else controller.requested_current_a,
             setpoint_current_a=None if controller is None else controller.setpoint_current_a,
             measured_current_a=None,
+            held_by_charger=bool(controller is not None and controller.held_by_charger),
         ),
         execution=CapturedExecution(
             state=EXECUTION_NOT_APPLIED if executor is None else executor.execution_state(),
@@ -1663,6 +1666,7 @@ def status_facts(capture: CapturedDashboard) -> StatusFacts:
         waiting_for_tomorrow=None if area is None else area.waiting_for_tomorrow,
         prices_unpriced=None if snapshot is None else snapshot.unpriced,
         charging=capture.live.charging,
+        held_by_charger=capture.live.held_by_charger,
         paused=capture.execution.paused is True,
         pause_until=None if pause is None else _utc(pause.expires_at),
         pause_choice=None if pause is None else pause.choice,
