@@ -82,7 +82,8 @@
           "main_fuse_a": "Huvudsäkring (A)",
           "safety_margin_a": "Säkerhetsmarginal (A)",
           "measurement_mode": "Mätkälla",
-          "charger_entry_ids": "Laddare som delar sitens kapacitet"
+          "charger_entry_ids": "Laddare som delar sitens kapacitet",
+          "voltage_between_phases_v": "Spänning mellan faser"
         }
       },
       "site_detected": {
@@ -218,6 +219,14 @@
           "entity_L2": "Ström L2",
           "entity_L3": "Ström L3"
         }
+      },
+      "charger_installation": {
+        "title": "Laddarens faser, spänning mellan faser",
+        "description": "Laddarens entiteter säger inte hur många faser den laddar på. Välj en fas eller tre: planerna räknas ut från det. Där en stor del av nätet är IT-nät (som i Norge) anger du också spänningen mellan faserna: 230 V i ett IT-nät, annars 400 V.",
+        "data": {
+          "charger_phases": "Laddarens faser",
+          "voltage_between_phases_v": "Spänning mellan faser"
+        }
       }
     },
     "abort": {
@@ -236,6 +245,7 @@
       "charger_not_controllable": "SpotNav kan inte starta eller stoppa den här laddaren. Den kan bara läsas."
     },
     "error": {
+      "safety_margin_at_or_above_fuse": "Säkerhetsmarginalen måste vara lägre än huvudsäkringen, annars blir ingen ström kvar till laddarna.",
       "charge_control_in_use": "Denna laddstyrning används redan av en annan SpotNav-laddare.",
       "current_limit_in_use": "Denna laddströmsstyrning används redan av en annan SpotNav-laddare.",
       "duplicate_charger": "{other} och den här laddaren är samma fysiska laddare. Två SpotNav-laddare på en laddare skickar motstridiga kommandon, så behåll bara en: ta bort den andra under Inställningar → Enheter och tjänster → SpotNav. SpotNav tar aldrig bort en åt dig.",
@@ -294,7 +304,8 @@
           "change_measurement": "Ändra mätning och fasinkoppling",
           "measurement_mode": "Mätkälla",
           "charger_entry_ids": "Laddare som delar sitens kapacitet",
-          "solar_forecast_entries": "Solprognoskällor (valfritt, används av hybridstrategin)"
+          "solar_forecast_entries": "Solprognoskällor (valfritt, används av hybridstrategin)",
+          "voltage_between_phases_v": "Spänning mellan faser"
         }
       },
       "site_current_suggestions": {
@@ -380,6 +391,7 @@
       "no_pending_site": "Sitens uppgifter skickades inte in innan den manuella laddarinmatningen öppnades, så inget sparades."
     },
     "error": {
+      "safety_margin_at_or_above_fuse": "Säkerhetsmarginalen måste vara lägre än huvudsäkringen, annars blir ingen ström kvar till laddarna.",
       "charge_control_in_use": "Denna laddstyrning används redan av en annan SpotNav-laddare.",
       "current_limit_in_use": "Denna laddströmsstyrning används redan av en annan SpotNav-laddare.",
       "duplicate_charger": "{other} och den här laddaren är samma fysiska laddare. Två SpotNav-laddare på en laddare skickar motstridiga kommandon, så behåll bara en: ta bort den andra under Inställningar → Enheter och tjänster → SpotNav. SpotNav tar aldrig bort en åt dig.",
@@ -423,6 +435,18 @@
       "options": {
         "car_first": "Bilen först",
         "battery_first": "Hembatteriet först"
+      }
+    },
+    "voltage_between_phases": {
+      "options": {
+        "400": "400 V (TN-nät, det vanliga)",
+        "230": "230 V (IT-nät, vanligt i Norge)"
+      }
+    },
+    "charger_phases": {
+      "options": {
+        "1": "En fas",
+        "3": "Tre faser"
       }
     }
   },

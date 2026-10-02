@@ -61,6 +61,7 @@ from ..const import (
     CONF_MAX_AGE_S,
     CONF_MEASUREMENT_MODE,
     CONF_MODE,
+    CONF_VOLTAGE_BETWEEN_PHASES_V,
     MODE_DETECTED,
     MODE_OCPP,
 )
@@ -107,6 +108,7 @@ from .entity_fields import (
     FIELD_MAX_AGE_S,
     FIELD_MEASUREMENT_MODE,
     FIELD_VEHICLE_SOC,
+    FIELD_VOLTAGE_BETWEEN_PHASES,
     FieldError,
     FLAG_FIELDS,
     PHASES,
@@ -214,6 +216,8 @@ def _write_charger(hass: HomeAssistant, entry: ConfigEntry, changes: dict[str, A
             updated[CONF_POWER_ENTITY] = changes[FIELD_POWER_ENTITY]
         else:
             updated.pop(CONF_POWER_ENTITY, None)
+    if FIELD_VOLTAGE_BETWEEN_PHASES in changes:
+        updated[CONF_VOLTAGE_BETWEEN_PHASES_V] = int(changes[FIELD_VOLTAGE_BETWEEN_PHASES])
     if entry.data.get(CONF_MODE) == MODE_OCPP:
         apply_target(
             updated,
@@ -255,6 +259,8 @@ def _write_site(hass: HomeAssistant, entry: ConfigEntry, changes: dict[str, Any]
         updated[CONF_MAX_AGE_S] = float(changes[FIELD_MAX_AGE_S])
     if FIELD_MEASUREMENT_MODE in changes:
         updated[CONF_MEASUREMENT_MODE] = changes[FIELD_MEASUREMENT_MODE]
+    if FIELD_VOLTAGE_BETWEEN_PHASES in changes:
+        updated[CONF_VOLTAGE_BETWEEN_PHASES_V] = int(changes[FIELD_VOLTAGE_BETWEEN_PHASES])
     if FIELD_BATTERY_AGGREGATE_POWER in changes:
         updated[CONF_BATTERY_AGGREGATE_POWER_ENTITY] = changes[FIELD_BATTERY_AGGREGATE_POWER] or ""
     if FIELD_BATTERY_DISCHARGE_POWER in changes:

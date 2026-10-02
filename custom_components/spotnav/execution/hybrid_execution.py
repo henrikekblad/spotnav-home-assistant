@@ -23,6 +23,7 @@ from homeassistant.util import dt as dt_util
 
 from ..const import CONF_PHASE_WIRING, CONF_SOLAR_FORECAST_ENTRIES, DEFAULT_MIN_CURRENT_A
 from ..planning.auto_settings import AutoSettings
+from ..planning.grid_voltage import voltage_between_phases_v
 from ..planning.hybrid_forecast import async_read_forecast_wh, ForecastReadResult
 from ..planning.hybrid_plan import (
     HybridConfig,
@@ -164,7 +165,8 @@ async def async_plan_hybrid(
 
     amps = settings.amps if settings.amps is not None else 0
     phases = settings.phases if settings.phases is not None else 3
-    max_charge_kw = power_kw(amps, phases)
+    voltage_ll = voltage_between_phases_v(hass, charger_entry_id)
+    max_charge_kw = power_kw(amps, phases, voltage_ll)
 
     if site is not None:
         wiring = _phase_wiring(site, charger_entry_id)
@@ -179,7 +181,7 @@ async def async_plan_hybrid(
     data = charger_data(hass, charger_entry_id)
     if data is not None:
         min_current_a = max(min_current_a, data.controller.adapter.min_start_current_a)
-    solar_start_w = power_kw(min_current_a, car_phases) * 1000.0
+    solar_start_w = power_kw(min_current_a, car_phases, voltage_ll) * 1000.0
 
     if documents:
         if settings.departure_enabled:

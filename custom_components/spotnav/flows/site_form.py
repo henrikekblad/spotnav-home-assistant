@@ -19,14 +19,18 @@ from ..const import (
     CONF_MEASUREMENT_MODE,
     CONF_SAFETY_MARGIN_A,
     CONF_SITE_CURRENT_SIGNED,
+    CONF_VOLTAGE_BETWEEN_PHASES_V,
+    DEFAULT_VOLTAGE_BETWEEN_PHASES_V,
     DOMAIN,
     ENTRY_TYPE_CHARGER,
     MEASUREMENT_MODE_DERIVED,
     MEASUREMENT_MODE_DIRECT,
+    VOLTAGE_BETWEEN_PHASES_CHOICES,
 )
 from ..site.measurement_source import source_to_dict
 from ..site.site_detection import MeterCandidate
 from ..site.site_membership import chargers_claimed_by_other_sites
+from ..planning.grid_voltage import default_voltage_between_phases_v
 from ..vehicles.choices import flow_language
 from ..vehicles.discovery import DiscoveryCandidate
 from .labels import (
@@ -162,6 +166,45 @@ def site_current_suggestions_schema(
 DEFAULT_SAFETY_MARGIN_A = 1.0
 
 
+def site_margin_errors(user_input: dict[str, Any]) -> dict[str, str]:
+    """A safety margin at or above the main fuse leaves no current for any charger: refused."""
+    fuse = user_input.get(CONF_MAIN_FUSE_A)
+    margin = user_input.get(CONF_SAFETY_MARGIN_A, DEFAULT_SAFETY_MARGIN_A)
+    if (
+        isinstance(fuse, (int, float))
+        and isinstance(margin, (int, float))
+        and margin >= fuse
+    ):
+        return {CONF_SAFETY_MARGIN_A: "safety_margin_at_or_above_fuse"}
+    return {}
+
+
+def voltage_between_phases_selector() -> selector.SelectSelector:
+    """The two choices of the voltage between phases, worded by the `voltage_between_phases` selector
+    translation: 400 V (TN, the usual network) and 230 V (IT, much of Norway).
+    """
+    return selector.SelectSelector(
+        selector.SelectSelectorConfig(
+            options=[str(volts) for volts in VOLTAGE_BETWEEN_PHASES_CHOICES],
+            translation_key="voltage_between_phases",
+            mode=selector.SelectSelectorMode.DROPDOWN,
+        )
+    )
+
+
+def voltage_between_phases_from_form(user_input: dict[str, Any], default: float | None = None) -> int:
+    """The submitted voltage between phases as the whole number stored; an absent or unknown value is
+    `default`, else the TN default.
+    """
+    try:
+        value = int(float(user_input.get(CONF_VOLTAGE_BETWEEN_PHASES_V)))  # type: ignore[arg-type]
+    except (TypeError, ValueError):
+        value = None
+    if value in VOLTAGE_BETWEEN_PHASES_CHOICES:
+        return value
+    return int(default if default is not None else DEFAULT_VOLTAGE_BETWEEN_PHASES_V)
+
+
 def default_site_name(hass) -> str:
     return "Anl\u00e4ggning" if flow_language(hass) == "sv" else "Site"
 
@@ -201,6 +244,14 @@ def site_basic_schema(
             vol.Optional(
                 CONF_SAFETY_MARGIN_A, default=defaults.get(CONF_SAFETY_MARGIN_A, DEFAULT_SAFETY_MARGIN_A)
             ): vol.All(vol.Coerce(float), vol.Range(min=0)),
+            vol.Required(
+                CONF_VOLTAGE_BETWEEN_PHASES_V,
+                default=str(
+                    voltage_between_phases_from_form(
+                        defaults, default=default_voltage_between_phases_v(hass)
+                    )
+                ),
+            ): voltage_between_phases_selector(),
             vol.Required(
                 CONF_MEASUREMENT_MODE,
                 default=defaults.get(CONF_MEASUREMENT_MODE, MEASUREMENT_MODE_DIRECT),

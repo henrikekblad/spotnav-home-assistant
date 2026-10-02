@@ -760,7 +760,7 @@ class ChargingController:
         before = (hold.held, hold.overridden, self._last_connected)
         self._last_connected = connected
         decision = hold.observe(
-            control_on=self._control_on,
+            control_on=self._control_observation,
             connected=connected,
             gap=self._next_window_start() is not None and not self._hold_blocked(),
         )
@@ -896,7 +896,7 @@ class ChargingController:
         # already holds begins a new grace period, the only honest thing a restart can do.
         self._charge_progress.evaluate()
         # A charge that already runs is not "seen" later: only a start after this point is.
-        self._hold.baseline(self._control_on)
+        self._hold.baseline(self._control_observation)
         self._last_connected = self.adapter.vehicle_connected()
 
     def _async_disarm_progress_listener(self) -> None:
@@ -1482,6 +1482,18 @@ class ChargingController:
         must still be stopped while enabled. For a plain switch the two are one fact.
         """
         return self.charging or self.adapter.enabled_state() is True
+
+    @property
+    def _control_observation(self) -> bool | None:
+        """`_control_on` as an observation: `None` while the charge control cannot be read
+        (missing, unavailable or unknown) and no status says the charger is charging, so a charge
+        already running is never mistaken for one that just started (`window_hold.py`).
+        """
+        if not self.charging:
+            state = self.hass.states.get(self.charge_control)
+            if state is None or state.state in (STATE_UNAVAILABLE, STATE_UNKNOWN):
+                return None
+        return self._control_on
 
     @property
     def _stop_needed(self) -> bool:

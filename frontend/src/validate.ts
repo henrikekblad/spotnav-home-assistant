@@ -1179,7 +1179,7 @@ type StatusParamKind = "text" | "textOrNull" | "instant" | "instantOrNull" | "nu
  * outside it is refused by the decoder.
  */
 export const STATUS_CODE_TABLE = {
-  charger_unavailable: ["blocking", {}],
+  charger_unavailable: ["blocking", { problem: "textOrNull", entity: "textOrNull" }],
   price_data_invalid: ["blocking", { reason: "textOrNull" }],
   price_data_unavailable: ["blocking", { reason: "textOrNull" }],
   settings_incomplete: ["notice", { reason: "textOrNull", missing: "codes" }],

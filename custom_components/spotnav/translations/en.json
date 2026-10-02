@@ -82,7 +82,8 @@
           "main_fuse_a": "Main fuse rating (A)",
           "safety_margin_a": "Safety margin (A)",
           "measurement_mode": "Measurement source",
-          "charger_entry_ids": "Chargers sharing this site's capacity"
+          "charger_entry_ids": "Chargers sharing this site's capacity",
+          "voltage_between_phases_v": "Voltage between phases"
         }
       },
       "site_detected": {
@@ -218,6 +219,14 @@
           "entity_L2": "L2 current",
           "entity_L3": "L3 current"
         }
+      },
+      "charger_installation": {
+        "title": "The charger's phases, voltage between phases",
+        "description": "The charger's entities do not say how many phases it charges on. Choose one phase or three: plans are figured from it. Where much of the network is IT (as in Norway) also say the voltage between phases; 230 V on an IT network, 400 V otherwise.",
+        "data": {
+          "charger_phases": "Phases of the charger",
+          "voltage_between_phases_v": "Voltage between phases"
+        }
       }
     },
     "abort": {
@@ -236,6 +245,7 @@
       "charger_not_controllable": "SpotNav cannot start or stop this charger. It can only be read."
     },
     "error": {
+      "safety_margin_at_or_above_fuse": "The safety margin must be lower than the main fuse, or no current is left for the chargers.",
       "charge_control_in_use": "This charge control is already used by another SpotNav charger.",
       "current_limit_in_use": "This charging current control is already used by another SpotNav charger.",
       "duplicate_charger": "{other} and this charger are the same physical charger. Two SpotNav chargers on one charger send it conflicting commands, so keep only one: remove the other in Settings → Devices & services → SpotNav. SpotNav never removes one for you.",
@@ -294,7 +304,8 @@
           "change_measurement": "Change measurement and phase wiring",
           "measurement_mode": "Measurement source",
           "charger_entry_ids": "Chargers sharing this site's capacity",
-          "solar_forecast_entries": "Solar forecast sources (optional, used by the hybrid strategy)"
+          "solar_forecast_entries": "Solar forecast sources (optional, used by the hybrid strategy)",
+          "voltage_between_phases_v": "Voltage between phases"
         }
       },
       "site_current_suggestions": {
@@ -380,6 +391,7 @@
       "no_pending_site": "This site's details were not submitted before the manual charger entry was opened, so nothing was saved."
     },
     "error": {
+      "safety_margin_at_or_above_fuse": "The safety margin must be lower than the main fuse, or no current is left for the chargers.",
       "charge_control_in_use": "This charge control is already used by another SpotNav charger.",
       "current_limit_in_use": "This charging current control is already used by another SpotNav charger.",
       "duplicate_charger": "{other} and this charger are the same physical charger. Two SpotNav chargers on one charger send it conflicting commands, so keep only one: remove the other in Settings → Devices & services → SpotNav. SpotNav never removes one for you.",
@@ -423,6 +435,18 @@
       "options": {
         "car_first": "Car first",
         "battery_first": "House battery first"
+      }
+    },
+    "voltage_between_phases": {
+      "options": {
+        "400": "400 V (TN network, the usual one)",
+        "230": "230 V (IT network, common in Norway)"
+      }
+    },
+    "charger_phases": {
+      "options": {
+        "1": "One phase",
+        "3": "Three phases"
       }
     }
   },

@@ -152,7 +152,7 @@ def evaluate(
     best = cheapest_slots(
         slots,
         needed,
-        energy_per_slot_kwh(request.amps, request.phases),
+        energy_per_slot_kwh(request.amps, request.phases, request.voltage_between_phases_v),
         request.max_periods,
         request.fiscal,
         gap.deadline.astimezone(timezone.utc),

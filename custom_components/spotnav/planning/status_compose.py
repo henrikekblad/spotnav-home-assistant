@@ -99,7 +99,9 @@ QUIET_PLANNING_REASONS: Final = frozenset(
 
 # Every status code, its tone and its param names; a test pins this table.
 STATUS_CODES: Final[dict[str, tuple[str, tuple[str, ...]]]] = {
-    "charger_unavailable": (TONE_BLOCKING, ()),
+    # `problem` says why when the charge control is gone or disabled (`control_missing`,
+    # `control_disabled`), with its `entity`; both are `None` for any other reason.
+    "charger_unavailable": (TONE_BLOCKING, ("problem", "entity")),
     "price_data_invalid": (TONE_BLOCKING, ("reason",)),
     "price_data_unavailable": (TONE_BLOCKING, ("reason",)),
     # Informational, not red: a new charger that still needs a price area is being set up, not broken.
@@ -249,6 +251,8 @@ class SiteMeasurementFacts:
 class StatusFacts:
     now: datetime
     charger_available: bool = True
+    charger_problem: str | None = None
+    charger_problem_entity: str | None = None
     #: A settings record exists (Auto is configured for this charger).
     has_settings: bool = False
     #: Settings filled in by first-run defaults (`area`, `phases`, `amps`) that no edit has confirmed.
@@ -305,7 +309,13 @@ def _blocking_lines(facts: StatusFacts) -> list[dict[str, Any]]:
     lines: list[dict[str, Any]] = []
     planning = facts.planning
     if not facts.charger_available:
-        lines.append(_line("charger_unavailable"))
+        lines.append(
+            _line(
+                "charger_unavailable",
+                problem=facts.charger_problem,
+                entity=facts.charger_problem_entity,
+            )
+        )
     if facts.has_settings:
         if facts.price_state == "invalid":
             lines.append(_line("price_data_invalid", reason=facts.price_reason))

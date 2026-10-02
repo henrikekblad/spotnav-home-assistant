@@ -40,6 +40,7 @@ from ..const import (
     ENTRY_TYPE_SITE,
     MEASUREMENT_MODE_DIRECT,
 )
+from ..planning.grid_voltage import stored_voltage_between_phases_v
 from ..planning.auto_settings import AutoSettingsStore, STRATEGY_HYBRID, STRATEGY_SOLAR
 from ..runtime import charger_data, preview_for, site_controller_for
 from ..site.site_capacity import PhaseName, PHASES
@@ -158,6 +159,19 @@ def _car_phases(site: SiteCapacityController, charger_entry_id: str) -> tuple[Ph
 #: The phase voltage assumed for a site with no voltage readings (direct measurement), the Nordic
 #: nominal one.
 NOMINAL_PHASE_VOLTAGE_V: Final = 230.0
+#: The voltage between two phases that `NOMINAL_PHASE_VOLTAGE_V` goes with (a TN network).
+NOMINAL_VOLTAGE_BETWEEN_PHASES_V: Final = 400.0
+
+
+def nominal_phase_voltage_v(voltage_between_phases_v: float, car_phases: int) -> float:
+    """The per-phase voltage the surplus reasons with on a direct site. Three-phase power is
+    `sqrt(3) x U x I`, which at the nominal 230 V per phase (400 V between phases) is figured as
+    `3 x 230 V x I`; at another voltage between phases (230 V on an IT network) the per-phase voltage
+    scales with it. One phase is 230 V on either network.
+    """
+    if car_phases != 3:
+        return NOMINAL_PHASE_VOLTAGE_V
+    return NOMINAL_PHASE_VOLTAGE_V * voltage_between_phases_v / NOMINAL_VOLTAGE_BETWEEN_PHASES_V
 
 
 def _split_total(
@@ -212,9 +226,10 @@ def _build_observation(
     if site.config.get("measurement_mode") == MEASUREMENT_MODE_DIRECT:
         total_w, _state = site.grid_total_reading()
         signed_grid_w: dict[PhaseName, float | None] = _split_total(total_w, car_phases)
-        voltage_v: dict[PhaseName, float | None] = {
-            phase: NOMINAL_PHASE_VOLTAGE_V for phase in PHASES
-        }
+        nominal_v = nominal_phase_voltage_v(
+            stored_voltage_between_phases_v(site.config), len(car_phases)
+        )
+        voltage_v: dict[PhaseName, float | None] = {phase: nominal_v for phase in PHASES}
         phase_cap_a = _fuse_caps(result, car_phases, car_delivered_a)
     else:
         signed_grid_w = {

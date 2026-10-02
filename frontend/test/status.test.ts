@@ -95,6 +95,19 @@ describe("the status line renders the block and nothing else", () => {
     expect(issues.map((issue) => issueText("en", issue))[0]).toContain("Garage Easee and this charger");
   });
 
+  it("names the charge control that is gone or disabled, and keeps the general wording otherwise", () => {
+    const gone = block(statusLine("charger_unavailable", { problem: "control_missing", entity: "switch.garage" }));
+    for (const language of ["en", "sv", "da", "fi", "nb"] as const) {
+      expect(statusText(gone, format(language), NOW)).toContain("switch.garage");
+      const disabled = block(statusLine("charger_unavailable", { problem: "control_disabled", entity: "switch.garage" }));
+      expect(statusText(disabled, format(language), NOW)).toContain("switch.garage");
+      expect(statusText(disabled, format(language), NOW)).not.toBe(statusText(gone, format(language), NOW));
+    }
+    const issues = issuesOf({ tone: "blocking", lines: gone.lines } as unknown as Status, "en");
+    expect(issues.map((issue) => issueText("en", issue))[0]).toContain("no longer exists");
+    expect(statusText(block(statusLine("charger_unavailable")), format("en"), NOW)).toContain("not usable");
+  });
+
   it("keeps the suggestion note out of the plan line and gives it its own", () => {
     const status = block(
       statusLine("auto_planned", { start: "2026-09-22T04:00:00+00:00" }),

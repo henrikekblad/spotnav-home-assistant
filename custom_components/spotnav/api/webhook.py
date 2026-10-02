@@ -242,6 +242,9 @@ def _handler_for(entry: ChargerConfigEntry) -> Callable[..., Awaitable[web.Respo
     ) -> web.Response:
         try:
             payload: dict[str, Any] = await request.json()
+            if not isinstance(payload, dict):
+                # A list, string or number is a bad request with a stable code, not a failure.
+                return web.json_response({"ok": False, "error": "payload_not_object"}, status=400)
             if payload.get("version") != 1:
                 raise ValueError("Unsupported payload version")
             action = payload.get("action")

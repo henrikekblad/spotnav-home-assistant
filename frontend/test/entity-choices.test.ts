@@ -657,3 +657,35 @@ describe("every group in all five languages", () => {
     }
   });
 });
+
+describe("voltage between phases: 400 V or 230 V, chosen like a type", () => {
+  it("is offered in the site dialog, opens on what is stored and saves only a change", () => {
+    const { sent } = open(config("get_direct"), "site");
+    expect(checked("voltage")).toBe("400");
+    expect(sent()).toEqual({ ok: true, changed: false });
+    pick("voltage", "230");
+    const result = sent();
+    expect(result.ok && result.changed && result.request.changes).toEqual({ voltage_between_phases_v: "230" });
+    expect(result.ok && result.changed && result.request.expected).toEqual({ voltage_between_phases_v: "400" });
+  });
+
+  it("is offered in the dialog of a charger that is in no site, and not for a charger in a site", () => {
+    open(config("get_no_site"), "charger");
+    expect(choice("voltage", "230")).not.toBeNull();
+    open(config("get_direct"), "charger");
+    expect(choice("voltage", "230")).toBeNull();
+  });
+
+  it("is worded in every language", () => {
+    for (const language of LANGUAGES) {
+      open(config("get_direct"), "site", { language });
+      const text = document.body.textContent ?? "";
+      for (const key of ["entity.field.voltageBetweenPhases", "entity.help.voltageBetweenPhases", "entity.voltage.tn", "entity.voltage.it"] as const) {
+        expect(text, `${language} ${key}`).toContain(translate(language, key));
+      }
+      if (language !== "en") {
+        expect(translate(language, "entity.voltage.it")).not.toBe(translate("en", "entity.voltage.it"));
+      }
+    }
+  });
+});

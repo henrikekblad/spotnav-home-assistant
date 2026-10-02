@@ -93,6 +93,9 @@ class WritePolicy:
     session_bound: bool = False
     state_is_not_setpoint: bool = False
     max_pauses_per_10min: int | None = None
+    #: How long one service call to the charger may take before it is given up on (a cloud
+    #: round trip is allowed longer).
+    call_timeout_s: float = 30.0
 
     @property
     def regulator_writes(self) -> bool:
@@ -123,7 +126,7 @@ OCPP_NUMBER_POLICY: Final = WritePolicy(min_interval_s=10.0, session_bound=True)
 
 _LOCAL = WritePolicy(min_interval_s=10.0)
 _LOCAL_ZERO_PAUSES = WritePolicy(min_interval_s=10.0, zero_pauses=True)
-_CLOUD = WritePolicy(min_interval_s=60.0)
+_CLOUD = WritePolicy(min_interval_s=60.0, call_timeout_s=45.0)
 
 
 @dataclass(frozen=True, slots=True)
@@ -238,7 +241,9 @@ _PROFILES: Final[tuple[PlatformProfile, ...]] = (
         name="Easee",
         start_stop=StartStop(PATH_EASEE),
         easee_current=True,
-        policy=WritePolicy(max_writes_per_minute=20, resend_after_plug_in=True, ignored_while_paused=True),
+        policy=WritePolicy(
+            max_writes_per_minute=20, resend_after_plug_in=True, ignored_while_paused=True, call_timeout_s=45.0
+        ),
         energy_keys=("lifetime_energy",),
         session_energy_keys=("session_energy",),
         status_keys=("status", "easee_status"),
@@ -267,7 +272,7 @@ _PROFILES: Final[tuple[PlatformProfile, ...]] = (
         name="Wallbox",
         start_stop=_switch("pause_resume"),
         current_keys=("maximum_charging_current",),
-        policy=WritePolicy(min_interval_s=90.0),
+        policy=WritePolicy(min_interval_s=90.0, call_timeout_s=45.0),
         session_energy_keys=("added_energy",),
         status_keys=("status_description",),
         charging_values=("charging",),
@@ -291,7 +296,9 @@ _PROFILES: Final[tuple[PlatformProfile, ...]] = (
         name="Zaptec",
         start_stop=_switch("charger_operation_mode", "charging"),
         current_keys=("available_current",),
-        policy=WritePolicy(min_interval_s=900.0, zero_pauses=True, installation_wide=True),
+        policy=WritePolicy(
+            min_interval_s=900.0, zero_pauses=True, installation_wide=True, call_timeout_s=45.0
+        ),
         energy_keys=("signed_meter_value_kwh", "signed_meter_value"),
         status_keys=("charger_operation_mode", "charger_mode"),
         charging_values=("connected_charging",),

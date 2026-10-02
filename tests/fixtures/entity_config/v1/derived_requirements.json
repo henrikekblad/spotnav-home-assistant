@@ -150,6 +150,18 @@
         "writable": true
       },
       {
+        "choices": [
+          "400",
+          "230"
+        ],
+        "field": "voltage_between_phases_v",
+        "kind": "enum",
+        "required": true,
+        "scope": "site",
+        "value": "400",
+        "writable": true
+      },
+      {
         "allowed_device_classes": [
           "current"
         ],

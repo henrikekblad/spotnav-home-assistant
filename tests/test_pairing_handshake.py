@@ -55,6 +55,8 @@ async def _loaded(hass: HomeAssistant) -> None:
     )
     assert await hass.config_entries.async_setup(entry.entry_id)
     await hass.async_block_till_done()
+    # These tests make many requests from one address; the address limit has its own test.
+    domain_data(hass).pairing = PairingRegister(remote_interval_s=0.0)
 
 
 def _register(hass: HomeAssistant) -> PairingRegister:
@@ -249,7 +251,7 @@ async def test_an_unknown_request_is_indistinguishable_from_an_expired_one(
     await _loaded(hass)
     client = await hass_client_no_auth()
     clock = Clock()
-    domain_data(hass).pairing = PairingRegister(now=clock)
+    domain_data(hass).pairing = PairingRegister(now=clock, remote_interval_s=0.0)
     timed_out = await _request(client)
     clock.advance(301.0)
 
@@ -309,6 +311,31 @@ async def test_a_request_past_the_cap_is_refused_with_a_reason(
     assert "too many" in body["error"].lower()
 
 
+async def test_a_second_request_from_one_address_is_refused_until_the_interval_has_passed(
+    hass: HomeAssistant, hass_client_no_auth
+) -> None:
+    await _loaded(hass)
+    clock = Clock()
+    domain_data(hass).pairing = PairingRegister(now=clock)
+    client = await hass_client_no_auth()
+    await _request(client)
+
+    response = await client.post(
+        f"/api/webhook/{PAIRING_WEBHOOK_ID}",
+        json={"version": 1, "action": "request", "device": "Pixel 8", "code": CODE},
+    )
+    body = await response.json()
+    assert response.status == 429
+    assert body["ok"] is False and "request_id" not in body
+    assert body["retry_after_s"] == 10 and response.headers["Retry-After"] == "10"
+    assert "wait 10 seconds" in body["error"]
+    assert _register(hass).pending_count() == 1
+
+    clock.advance(10.0)
+    await _request(client)
+    assert _register(hass).pending_count() == 2
+
+
 # --- approving, by hand, in Home Assistant ----------------------------------
 
 
@@ -356,7 +383,7 @@ async def test_no_path_creates_a_config_entry(hass: HomeAssistant, hass_client_n
     assert (await _configure_only_flow(hass, "pair_deny"))["type"] == "abort"
     # ...and a request that has already run out of time have the same answer.
     clock = Clock()
-    domain_data(hass).pairing = PairingRegister(now=clock)
+    domain_data(hass).pairing = PairingRegister(now=clock, remote_interval_s=0.0)
     await _request(client)
     await hass.async_block_till_done()
     assert (await _configure_only_flow(hass, "pair_approve"))["type"] == "abort"

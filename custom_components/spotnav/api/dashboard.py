@@ -53,6 +53,7 @@ from ..execution.auto_execution import (
     EXECUTION_NOT_APPLIED,
     pause_blocks_execution,
 )
+from ..execution.charger_entities import charge_control_problem
 from ..execution.charge_progress import ChargeProgress, NOT_OBSERVED
 from ..execution.controller import (
     ChargingController,
@@ -193,6 +194,10 @@ class CapturedCharger:
     charger_name: str
     available: bool
     capabilities: tuple[tuple[str, bool], ...]
+    #: Why the charger is unavailable when its charge control is gone or disabled (`control_missing`,
+    #: `control_disabled`), with the entity id; `None` otherwise.
+    problem: str | None = None
+    problem_entity: str | None = None
 
     def capability_map(self) -> dict[str, bool]:
         return dict(self.capabilities)
@@ -654,11 +659,16 @@ def capture_summary(
 def capture_charger(hass: HomeAssistant, entry: ConfigEntry) -> CapturedCharger:
     """One charger as the contract states it, captured now."""
     controller = controller_for(hass, entry.entry_id)
+    problem = (
+        None if controller is None else charge_control_problem(hass, controller.charge_control)
+    )
     return CapturedCharger(
         charger_id=entry.entry_id,
         charger_name=entry.title,
-        available=controller is not None,
+        available=controller is not None and problem is None,
         capabilities=capabilities_for(hass, entry, controller),
+        problem=problem,
+        problem_entity=None if problem is None or controller is None else controller.charge_control,
     )
 
 
@@ -1692,6 +1702,8 @@ def status_facts(capture: CapturedDashboard) -> StatusFacts:
     return StatusFacts(
         now=capture.generated_at,
         charger_available=capture.charger.available,
+        charger_problem=capture.charger.problem,
+        charger_problem_entity=capture.charger.problem_entity,
         has_settings=settings is not None,
         suggested=capture.suggested,
         strategy=strategy,

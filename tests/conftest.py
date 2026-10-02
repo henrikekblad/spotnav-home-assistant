@@ -45,6 +45,21 @@ def no_first_run_defaults(request, monkeypatch):
 
 
 @pytest.fixture(autouse=True)
+def no_installation_questions(request, monkeypatch):
+    """Let a new charger's flow create the entry at once, as the flow tests that are about something
+    else expect. The step that asks the charger's phases and the voltage between phases
+    (`charger_installation`) is exercised by the tests marked `installation_questions`.
+    """
+    if request.node.get_closest_marker("installation_questions") is not None:
+        return
+    from custom_components.spotnav.flows.flow import SpotNavChargingConfigFlow
+
+    monkeypatch.setattr(
+        SpotNavChargingConfigFlow, "_installation_questions", lambda self, data: (False, False)
+    )
+
+
+@pytest.fixture(autouse=True)
 def frontend_is_set_up(request):
     """`frontend` is a hard dependency of the integration, and the real one cannot be set up here.
 

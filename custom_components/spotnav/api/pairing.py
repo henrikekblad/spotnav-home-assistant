@@ -15,6 +15,7 @@ it grants nothing on its own:
 from __future__ import annotations
 
 import logging
+import math
 import secrets
 import time
 from dataclasses import dataclass
@@ -40,7 +41,11 @@ PAIRING_TIMEOUT_S = 300.0
 
 #: Maximum requests awaiting a decision. Enough for a household, too few for a stranger to
 #: achieve anything (each needs a person to read a code and tap Approve), and a cap on prompts.
-MAX_PENDING_REQUESTS = 8
+MAX_PENDING_REQUESTS = 5
+
+#: The least time between two requests from one remote address. A person starting a pairing makes
+#: one request; a script making them faster only fills the household's Settings with prompts.
+REMOTE_INTERVAL_S = 10.0
 
 #: How long a delivered verdict can be fetched again by the same request id, so a response lost in
 #: transit (a VPN, a flaky link) does not waste the approval.
@@ -77,21 +82,37 @@ class PairingRegister:
         timeout_s: float = PAIRING_TIMEOUT_S,
         limit: int = MAX_PENDING_REQUESTS,
         redelivery_s: float = REDELIVERY_WINDOW_S,
+        remote_interval_s: float = REMOTE_INTERVAL_S,
     ) -> None:
         self._now = now
         self._timeout_s = timeout_s
         self._limit = limit
         self._redelivery_s = redelivery_s
+        self._remote_interval_s = remote_interval_s
+        # remote address -> when it last opened a request
+        self._last_by_remote: dict[str, float] = {}
         self._open: dict[str, PendingPairing] = {}
         self._decided: dict[str, str] = {}
         # request id -> (verdict, record, first delivered at)
         self._delivered: dict[str, tuple[str, PendingPairing, float]] = {}
 
-    def open(self, code: str, device: str) -> PendingPairing | None:
+    def retry_after_s(self, remote: str | None) -> float:
+        """How long this remote address must wait before it may open another request; `0` when it
+        may now. An unknown address is not limited here (the global cap still holds).
+        """
+        self._prune()
+        last = None if remote is None else self._last_by_remote.get(remote)
+        if last is None:
+            return 0.0
+        return max(0.0, last + self._remote_interval_s - self._now())
+
+    def open(self, code: str, device: str, remote: str | None = None) -> PendingPairing | None:
         """Record a request, or `None` when too many are already waiting."""
         self._prune()
         if len(self._open) >= self._limit:
             return None
+        if remote is not None:
+            self._last_by_remote[remote] = self._now()
         record = PendingPairing(
             request_id=secrets.token_urlsafe(REQUEST_ID_BYTES),
             code=code,
@@ -160,6 +181,12 @@ class PairingRegister:
         ]
         for request_id in expired:
             self._delivered.pop(request_id, None)
+        for remote in [
+            remote
+            for remote, at in self._last_by_remote.items()
+            if at <= self._now() - self._remote_interval_s
+        ]:
+            self._last_by_remote.pop(remote, None)
 
 
 def instance_base_url(hass: HomeAssistant) -> str:
@@ -181,7 +208,7 @@ async def async_handle_pairing_webhook(
             raise ValueError("Unsupported payload version")
         action = payload.get("action")
         if action == "request":
-            return _async_request(hass, payload)
+            return _async_request(hass, payload, request.remote)
         if action == "poll":
             return _async_poll(hass, payload)
         raise ValueError("Unsupported action")
@@ -191,7 +218,7 @@ async def async_handle_pairing_webhook(
         return web.json_response({"ok": False, "error": str(error)}, status=400)
 
 
-def _async_request(hass: HomeAssistant, payload: dict[str, Any]) -> web.Response:
+def _async_request(hass: HomeAssistant, payload: dict[str, Any], remote: str | None) -> web.Response:
     """A phone asking to be paired: record it, and put it in front of a person."""
     code = payload.get("code")
     if not isinstance(code, str) or not _is_code(code):
@@ -201,7 +228,20 @@ def _async_request(hass: HomeAssistant, payload: dict[str, Any]) -> web.Response
     device_label = device.strip() if isinstance(device, str) and device.strip() else "(unknown device)"
 
     register = domain_data(hass).pairing
-    record = register.open(code, device_label)
+    wait_s = register.retry_after_s(remote)
+    if wait_s > 0:
+        retry_after_s = max(1, math.ceil(wait_s))
+        _LOGGER.warning("Refused a SpotNav pairing request: too soon after the last from this address")
+        return web.json_response(
+            {
+                "ok": False,
+                "error": f"Too many pairing requests from this address: wait {retry_after_s} seconds and try again",
+                "retry_after_s": retry_after_s,
+            },
+            status=429,
+            headers={"Retry-After": str(retry_after_s)},
+        )
+    record = register.open(code, device_label, remote)
     if record is None:
         _LOGGER.warning("Refused a SpotNav pairing request: too many awaiting approval")
         raise ValueError("Too many pairing requests are awaiting approval")

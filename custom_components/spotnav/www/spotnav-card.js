@@ -2907,6 +2907,8 @@ var da = {
   "issue.banner.blocking": "Noget skal ordnes, før opladning kan planlægges.",
   "issue.banner.notice": "Godt at vide.",
   "issue.chargerMissing": "Den valgte lader kan ikke bruges: den er ukendt, ikke indlæst eller et anlæg.",
+  "issue.chargeControlMissing": "Ladestyringen {entity} findes ikke længere. Den er sandsynligvis omdøbt eller fjernet: vælg laderens styring igen i dens indstillinger.",
+  "issue.chargeControlDisabled": "Ladestyringen {entity} er deaktiveret i Home Assistant, så SpotNav kan ikke starte eller stoppe laderen. Aktivér den igen.",
   "issue.unsupported": "Kortet og integrationen taler forskellige API-versioner.",
   "issue.malformed": "Svaret fra backend var ikke et gyldigt API v2-svar.",
   "status.finishSetupArea": "Færdiggør opsætningen: vælg et prisområde i Indstillinger.",
@@ -2970,6 +2972,7 @@ var da = {
   "entity.field.vehicleSoc": "Køretøjets opladningsniveau",
   "entity.field.mainFuse": "Hovedsikring",
   "entity.field.measurementMode": "Målemetode",
+  "entity.field.voltageBetweenPhases": "Spænding mellem faser",
   "entity.field.batteryPower": "Batteriets effekt",
   "entity.field.maxAge": "Højeste måleralder",
   "entity.mode.direct": "Fasestrømme måles direkte",
@@ -3002,6 +3005,9 @@ var da = {
   "entity.help.vehicleSoc": "Køretøjets opladningsniveau, læst fra den sensor der er valgt til køretøjet, eller fundet automatisk når det kun har én.",
   "entity.help.mainFuse": "Anlæggets hovedsikring i ampere. Alle ladere på anlægget holder sig samlet under den.",
   "entity.help.measurementMode": "Om din måler angiver hver fases strøm direkte, eller SpotNav regner den ud fra effekt og spænding.",
+  "entity.help.voltageBetweenPhases": "Spændingen mellem to faser i din elinstallation. Trefaset ladeeffekt regnes ud fra den.",
+  "entity.voltage.tn": "400 V (TN-net, det sædvanlige)",
+  "entity.voltage.it": "230 V (IT-net, almindeligt i Norge)",
   "entity.help.batteryPower": "En sensor for hjemmebatteriets effekt, så SpotNav kan tage højde for batteriet.",
   "entity.help.maxAge": "Hvor gammel en måling må være, i sekunder, før SpotNav holder op med at stole på den.",
   "entity.help.phaseDirect": "Sensoren der måler strømmen på denne fase, i ampere.",
@@ -3454,6 +3460,8 @@ var en = {
   "issue.banner.blocking": "Something needs attention before charging can be planned.",
   "issue.banner.notice": "Good to know.",
   "issue.chargerMissing": "The configured charger is not usable: it is unknown, unloaded or a site.",
+  "issue.chargeControlMissing": "The charge control {entity} no longer exists. It was probably renamed or removed: choose the charger's control again in its settings.",
+  "issue.chargeControlDisabled": "The charge control {entity} is disabled in Home Assistant, so SpotNav cannot start or stop the charger. Enable it again.",
   "issue.unsupported": "The card and the integration speak different API versions.",
   "issue.malformed": "The backend answer was not a valid API v2 response.",
   "status.finishSetupArea": "Finish setting up: choose a price area in Settings.",
@@ -3517,6 +3525,7 @@ var en = {
   "entity.field.vehicleSoc": "Vehicle charge level",
   "entity.field.mainFuse": "Main fuse",
   "entity.field.measurementMode": "Measurement mode",
+  "entity.field.voltageBetweenPhases": "Voltage between phases",
   "entity.field.batteryPower": "Battery power",
   "entity.field.maxAge": "Maximum measurement age",
   "entity.mode.direct": "Phase currents measured directly",
@@ -3549,6 +3558,9 @@ var en = {
   "entity.help.vehicleSoc": "The vehicle's charge level, read from the sensor chosen for the vehicle, or found automatically when it has only one.",
   "entity.help.mainFuse": "The site's main fuse in amperes. All chargers on the site together stay below it.",
   "entity.help.measurementMode": "Whether your meter reports each phase's current directly, or SpotNav works it out from power and voltage.",
+  "entity.help.voltageBetweenPhases": "The voltage between two phases of your electrical installation. Three-phase charging power is figured from it.",
+  "entity.voltage.tn": "400 V (TN network, the usual one)",
+  "entity.voltage.it": "230 V (IT network, common in Norway)",
   "entity.help.batteryPower": "A sensor for the home battery's power, so SpotNav can take the battery into account.",
   "entity.help.maxAge": "How old a measurement may be, in seconds, before SpotNav stops trusting it.",
   "entity.help.phaseDirect": "The sensor that measures the current on this phase, in amperes.",
@@ -4001,6 +4013,8 @@ var fi = {
   "issue.banner.blocking": "Jotain on korjattava ennen kuin lataus voidaan suunnitella.",
   "issue.banner.notice": "Hyvä tietää.",
   "issue.chargerMissing": "Valittua laturia ei voi käyttää: se on tuntematon, ei ladattu tai kyseessä on asema.",
+  "issue.chargeControlMissing": "Latauksen ohjausta {entity} ei enää ole. Se on luultavasti nimetty uudelleen tai poistettu: valitse laturin ohjaus uudelleen sen asetuksista.",
+  "issue.chargeControlDisabled": "Latauksen ohjaus {entity} on poistettu käytöstä Home Assistantissa, joten SpotNav ei voi käynnistää tai pysäyttää laturia. Ota se uudelleen käyttöön.",
   "issue.unsupported": "Kortti ja integraatio käyttävät eri API-versioita.",
   "issue.malformed": "Taustajärjestelmän vastaus ei ollut kelvollinen API v2 -vastaus.",
   "status.finishSetupArea": "Viimeistele asetukset: valitse hinta-alue Asetuksissa.",
@@ -4064,6 +4078,7 @@ var fi = {
   "entity.field.vehicleSoc": "Ajoneuvon lataustaso",
   "entity.field.mainFuse": "Pääsulake",
   "entity.field.measurementMode": "Mittaustapa",
+  "entity.field.voltageBetweenPhases": "Vaiheiden välinen jännite",
   "entity.field.batteryPower": "Akun teho",
   "entity.field.maxAge": "Mittauksen enimmäisikä",
   "entity.mode.direct": "Vaihevirrat mitataan suoraan",
@@ -4096,6 +4111,9 @@ var fi = {
   "entity.help.vehicleSoc": "Ajoneuvon varaustaso, luettuna ajoneuvolle valitusta anturista tai löydettynä automaattisesti, kun sillä on vain yksi.",
   "entity.help.mainFuse": "Kohteen pääsulake ampeereina. Kaikki kohteen laturit pysyvät yhdessä sen alapuolella.",
   "entity.help.measurementMode": "Ilmoittaako mittarisi kunkin vaiheen virran suoraan vai laskeeko SpotNav sen tehosta ja jännitteestä.",
+  "entity.help.voltageBetweenPhases": "Sähköasennuksesi kahden vaiheen välinen jännite. Kolmivaiheinen latausteho lasketaan siitä.",
+  "entity.voltage.tn": "400 V (TN-verkko, tavallinen)",
+  "entity.voltage.it": "230 V (IT-verkko, yleinen Norjassa)",
   "entity.help.batteryPower": "Kotiakun tehon anturi, jotta SpotNav voi ottaa akun huomioon.",
   "entity.help.maxAge": "Kuinka vanha mittaus saa olla sekunteina, ennen kuin SpotNav lakkaa luottamasta siihen.",
   "entity.help.phaseDirect": "Anturi, joka mittaa tämän vaiheen virran ampeereina.",
@@ -4548,6 +4566,8 @@ var nb = {
   "issue.banner.blocking": "Noe må ordnes før lading kan planlegges.",
   "issue.banner.notice": "Greit å vite.",
   "issue.chargerMissing": "Den valgte laderen kan ikke brukes: den er ukjent, ikke lastet eller et anlegg.",
+  "issue.chargeControlMissing": "Ladestyringen {entity} finnes ikke lenger. Den er sannsynligvis omdøpt eller fjernet: velg laderens styring på nytt i innstillingene.",
+  "issue.chargeControlDisabled": "Ladestyringen {entity} er deaktivert i Home Assistant, så SpotNav kan ikke starte eller stoppe laderen. Aktiver den igjen.",
   "issue.unsupported": "Kortet og integrasjonen snakker ulike API-versjoner.",
   "issue.malformed": "Svaret fra backend var ikke et gyldig API v2-svar.",
   "status.finishSetupArea": "Fullfør oppsettet: velg et prisområde i Innstillinger.",
@@ -4611,6 +4631,7 @@ var nb = {
   "entity.field.vehicleSoc": "Kjøretøyets ladenivå",
   "entity.field.mainFuse": "Hovedsikring",
   "entity.field.measurementMode": "Målemetode",
+  "entity.field.voltageBetweenPhases": "Spenning mellom faser",
   "entity.field.batteryPower": "Batteriets effekt",
   "entity.field.maxAge": "Høyeste målealder",
   "entity.mode.direct": "Fasestrømmer måles direkte",
@@ -4643,6 +4664,9 @@ var nb = {
   "entity.help.vehicleSoc": "Kjøretøyets ladenivå, lest fra sensoren som er valgt for kjøretøyet, eller funnet automatisk når det bare har én.",
   "entity.help.mainFuse": "Anleggets hovedsikring i ampere. Alle laderne på anlegget holder seg samlet under den.",
   "entity.help.measurementMode": "Om måleren oppgir strømmen for hver fase direkte, eller SpotNav regner den ut fra effekt og spenning.",
+  "entity.help.voltageBetweenPhases": "Spenningen mellom to faser i det elektriske anlegget ditt. Trefaset ladeeffekt regnes ut fra den.",
+  "entity.voltage.tn": "400 V (TN-nett, det vanlige)",
+  "entity.voltage.it": "230 V (IT-nett, vanlig i Norge)",
   "entity.help.batteryPower": "En sensor for hjemmebatteriets effekt, slik at SpotNav kan ta hensyn til batteriet.",
   "entity.help.maxAge": "Hvor gammel en måling kan være, i sekunder, før SpotNav slutter å stole på den.",
   "entity.help.phaseDirect": "Sensoren som måler strømmen på denne fasen, i ampere.",
@@ -5095,6 +5119,8 @@ var sv = {
   "issue.banner.blocking": "Något behöver åtgärdas innan laddning kan planeras.",
   "issue.banner.notice": "Bra att veta.",
   "issue.chargerMissing": "Den valda laddaren går inte att använda: den är okänd, inte laddad eller en anläggning.",
+  "issue.chargeControlMissing": "Laddstyrningen {entity} finns inte längre. Den har troligen bytt namn eller tagits bort: välj laddarens styrning igen i dess inställningar.",
+  "issue.chargeControlDisabled": "Laddstyrningen {entity} är avstängd i Home Assistant, så SpotNav kan inte starta eller stoppa laddaren. Aktivera den igen.",
   "issue.unsupported": "Kortet och integrationen talar olika API-versioner.",
   "issue.malformed": "Svaret från backend var inte ett giltigt API v2-svar.",
   "status.finishSetupArea": "Slutför inställningen: välj ett prisområde i Inställningar.",
@@ -5158,6 +5184,7 @@ var sv = {
   "entity.field.vehicleSoc": "Fordonets laddnivå",
   "entity.field.mainFuse": "Huvudsäkring",
   "entity.field.measurementMode": "Mätsätt",
+  "entity.field.voltageBetweenPhases": "Spänning mellan faser",
   "entity.field.batteryPower": "Batteriets effekt",
   "entity.field.maxAge": "Högsta mätvärdesålder",
   "entity.mode.direct": "Fasströmmar mäts direkt",
@@ -5190,6 +5217,9 @@ var sv = {
   "entity.help.vehicleSoc": "Fordonets laddnivå, läst från sensorn som valts för fordonet, eller hittad automatiskt när det bara har en.",
   "entity.help.mainFuse": "Anläggningens huvudsäkring i ampere. Alla laddare på anläggningen håller sig tillsammans under den.",
   "entity.help.measurementMode": "Om din mätare anger varje fas ström direkt, eller om SpotNav räknar ut den från effekt och spänning.",
+  "entity.help.voltageBetweenPhases": "Spänningen mellan två faser i din elanläggning. Trefasig laddeffekt räknas ut från den.",
+  "entity.voltage.tn": "400 V (TN-nät, det vanliga)",
+  "entity.voltage.it": "230 V (IT-nät, vanligt i Norge)",
   "entity.help.batteryPower": "En sensor för hemmabatteriets effekt, så att SpotNav kan ta hänsyn till batteriet.",
   "entity.help.maxAge": "Hur gammal en mätning får vara, i sekunder, innan SpotNav slutar lita på den.",
   "entity.help.phaseDirect": "Sensorn som mäter strömmen på den här fasen, i ampere.",
@@ -6875,7 +6905,7 @@ function decodeSite(source) {
 }
 var STATUS_TONES = ["normal", "notice", "blocking"];
 var STATUS_CODE_TABLE = {
-  charger_unavailable: ["blocking", {}],
+  charger_unavailable: ["blocking", { problem: "textOrNull", entity: "textOrNull" }],
   price_data_invalid: ["blocking", { reason: "textOrNull" }],
   price_data_unavailable: ["blocking", { reason: "textOrNull" }],
   settings_incomplete: ["notice", { reason: "textOrNull", missing: "codes" }],
@@ -7300,6 +7330,12 @@ var MISSING_FIELD_KEYS = {
   vehicle: "status.missing.vehicle",
   target_percent: "status.missing.target_percent"
 };
+function chargerProblemKey(problem) {
+  if (problem === "control_missing") {
+    return "issue.chargeControlMissing";
+  }
+  return problem === "control_disabled" ? "issue.chargeControlDisabled" : null;
+}
 function ms(value) {
   if (typeof value !== "string") {
     return null;
@@ -7413,6 +7449,10 @@ function lineText(line, format, nowMs) {
       return measurementLineText(language, p);
     case "duplicate_charger":
       return say("issue.duplicateCharger", { other: typeof p["other"] === "string" ? p["other"] : "" });
+    case "charger_unavailable": {
+      const key = chargerProblemKey(p["problem"]);
+      return key === null ? say("issue.chargerMissing") : say(key, { entity: typeof p["entity"] === "string" ? p["entity"] : "" });
+    }
     default:
       return say(STATUS_WORDING[line.code]);
   }
@@ -7461,6 +7501,12 @@ function issuesOf(status, language) {
     if (line.code === "duplicate_charger") {
       const other = typeof line.params["other"] === "string" ? line.params["other"] : "";
       issues.push({ code: line.code, severity, textKey: STATUS_WORDING[line.code], params: { other }, technical: null });
+      continue;
+    }
+    if (line.code === "charger_unavailable") {
+      const key = chargerProblemKey(line.params["problem"]);
+      const entity = typeof line.params["entity"] === "string" ? line.params["entity"] : "";
+      issues.push({ code: line.code, severity, textKey: key ?? STATUS_WORDING[line.code], params: key === null ? {} : { entity }, technical: null });
       continue;
     }
     const limit = line.code === "load_balancing_limited" ? num(line.params["limit_a"]) : null;
@@ -8544,6 +8590,7 @@ var FIELD_LABELS = {
   vehicle_soc: "entity.field.vehicleSoc",
   main_fuse_a: "entity.field.mainFuse",
   measurement_mode: "entity.field.measurementMode",
+  voltage_between_phases_v: "entity.field.voltageBetweenPhases",
   battery_aggregate_power_entity: "entity.field.batteryPower",
   battery_discharge_power_entity: "entity.field.batteryDischargePower",
   battery_power_inverted: "entity.field.batteryPowerInverted",
@@ -8625,6 +8672,7 @@ var FIELD_HELP = {
   vehicle_soc: "entity.help.vehicleSoc",
   main_fuse_a: "entity.help.mainFuse",
   measurement_mode: "entity.help.measurementMode",
+  voltage_between_phases_v: "entity.help.voltageBetweenPhases",
   battery_aggregate_power_entity: "entity.help.batteryPower",
   battery_discharge_power_entity: "entity.help.batteryDischargePower",
   battery_power_inverted: "entity.help.batteryPowerInverted",
@@ -9650,6 +9698,30 @@ function entityEditorBody(doc, language, input, handlers, idPrefix) {
       paintBattery();
       layoutMode();
     }
+  }
+  const voltageField = fieldsOf(config, scope).find((entry) => entry.field === "voltage_between_phases_v");
+  if (voltageField !== void 0 && voltageField.kind === "enum" && voltageField.writable) {
+    const voltageOptions = voltageField.choices.map((choice) => ({
+      value: choice,
+      label: choice === "230" ? "entity.voltage.it" : "entity.voltage.tn"
+    }));
+    const voltage = choiceGroup(
+      "voltage",
+      "entity.field.voltageBetweenPhases",
+      voltageOptions,
+      () => values["voltage_between_phases_v"] ?? voltageField.value ?? "400",
+      (value) => {
+        values["voltage_between_phases_v"] = value;
+      },
+      { intro: fieldHelp("voltage_between_phases_v", "entity.help.voltageBetweenPhases") }
+    );
+    const voltageError = element(doc, "p", VISUAL_CLASSES.settingsError);
+    voltageError.hidden = true;
+    voltageError.dataset["fieldError"] = "voltage_between_phases_v";
+    voltageError.setAttribute("role", "alert");
+    errorNodes.set("voltage_between_phases_v", { node: voltageError, input: voltage.fieldset });
+    voltage.fieldset.append(voltageError);
+    body.append(voltage.fieldset);
   }
   const actions = element(doc, "div", VISUAL_CLASSES.settingsActions);
   const save = element(doc, "button", `${VISUAL_CLASSES.button} ${VISUAL_CLASSES.settingsSave}`, translate(language, "settings.save"));

@@ -56,6 +56,7 @@ from .auto_settings import (
     STRATEGY_HYBRID,
     STRATEGY_SOLAR,
 )
+from .grid_voltage import voltage_between_phases_v
 from .planner import (
     calculate_plan,
     FiscalChoice,
@@ -809,6 +810,7 @@ class AutoPlannerController:
             max_periods=settings.max_periods,
             departure=settings.departure if settings.departure_enabled else None,
             departure_date=self._effective_departure_date(settings, entry, calculated_at),
+            voltage_between_phases_v=voltage_between_phases_v(self._hass, self._entry_id),
         )
         wait_facts: dict[str, Any] = {}
         try:
@@ -883,7 +885,7 @@ class AutoPlannerController:
         zone = dt_util.get_time_zone(entry.tz)
         missing_day = gap.missing_from.astimezone(zone).date()
         publication_at = price_wait.expected_publication_at(missing_day)
-        max_kw = power_kw(request.amps, request.phases)
+        max_kw = power_kw(request.amps, request.phases, request.voltage_between_phases_v)
         decision = price_wait.decide(
             now=calculated_at,
             deadline=gap.deadline,
@@ -964,7 +966,7 @@ class AutoPlannerController:
             now=calculated_at,
             deadline=gap.deadline,
             need_kwh=request.requested_kwh,
-            max_charge_kw=power_kw(request.amps, request.phases),
+            max_charge_kw=power_kw(request.amps, request.phases, request.voltage_between_phases_v),
             known=tuple(
                 price_wait.KnownInterval(
                     start=slot.start,
