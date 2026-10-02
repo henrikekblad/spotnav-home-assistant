@@ -242,3 +242,26 @@ async def test_the_sigen_candidate_keeps_the_owners_three_field_shape(hass: Home
         "reactive_power": made["sigen_plant_grid_phase_a_reactive"],
         "voltage": made["sigen_inverter_phase_a_voltage"],
     }
+
+
+async def test_a_site_stored_without_the_sign_flags_still_reads_the_same_meter_as_applied(
+    hass: HomeAssistant, hass_ws_client
+) -> None:
+    """A site created before the sign flags existed has no such keys; absent means off, so the
+    detected meter it already uses must not be offered again."""
+    materialize(hass, sigen())
+    charger, site_entry = await setup_charger_and_site(hass)
+    client = await admin(hass, hass_ws_client)
+    candidate_id = block(await ws_call(client, get_message(charger.entry_id)))["detection"]["meters"][0]["id"]
+    await ws_call(
+        client,
+        update_entity_config_message(charger.entry_id, scope="site", changes={"apply_detection": candidate_id}),
+    )
+    entry = hass.config_entries.async_get_entry(site_entry.entry_id)
+    assert entry.data[CONF_SITE_CURRENT_SIGNED] is False and entry.data[CONF_GRID_POWER_INVERTED] is False
+    older = {key: value for key, value in entry.data.items() if key not in (CONF_SITE_CURRENT_SIGNED, CONF_GRID_POWER_INVERTED)}
+    hass.config_entries.async_update_entry(entry, data=older)
+
+    [meter] = block(await ws_call(client, get_message(charger.entry_id)))["detection"]["meters"]
+
+    assert meter["applied"] is True

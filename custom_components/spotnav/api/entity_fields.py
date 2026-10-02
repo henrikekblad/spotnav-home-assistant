@@ -879,7 +879,10 @@ def _friendly(hass: HomeAssistant, entity_id: str) -> str:
 
 def _meter_row(hass: HomeAssistant, entry: ConfigEntry, candidate: MeterCandidate) -> dict[str, Any]:
     applied = apply_meter_candidate(entry.data, candidate)
-    active = all(applied.get(key) == entry.data.get(key) for key in _APPLIED_KEYS)
+    active = all(
+        _applied_value(key, applied.get(key)) == _applied_value(key, entry.data.get(key))
+        for key in _APPLIED_KEYS
+    )
     return {
         "id": candidate.candidate_id,
         "integration": candidate.integration,
@@ -916,6 +919,14 @@ def _battery_row(hass: HomeAssistant, candidate: BatteryCandidate) -> dict[str, 
         "discharge_entity_id": candidate.discharge_entity_id,
         "disabled_entities": list(candidate.disabled_entity_ids),
     }
+
+
+# Flags a site stored before they existed read as off, so an absent flag equals False here.
+_APPLIED_FLAG_KEYS: Final = frozenset({CONF_SITE_CURRENT_SIGNED, CONF_GRID_POWER_INVERTED})
+
+
+def _applied_value(key: str, value: Any) -> Any:
+    return bool(value) if key in _APPLIED_FLAG_KEYS else value
 
 
 _APPLIED_KEYS: Final = (
