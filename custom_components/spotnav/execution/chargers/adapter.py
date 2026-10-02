@@ -170,7 +170,7 @@ class ChargerAdapter:
         read before and (scheduled, never waited for) about `COMMAND_AFTER_S` later. A current write
         that sent nothing (unchanged, rate limited) is not a command and is left out.
         """
-        calls, token = start_call_tap()
+        calls, token = start_call_tap(self.policy.call_timeout_s)
         record: dict[str, Any] = {
             "at": self._now().isoformat(),
             "kind": kind,

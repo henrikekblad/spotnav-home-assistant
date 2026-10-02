@@ -81,7 +81,6 @@ async def test_a_charger_whose_charge_control_entity_is_gone_is_reported_unavail
     assert capture_charger(hass, entry).available is False
 
 
-@pytest.mark.xfail(strict=True, reason="BH-3: a charger command that never answers (a hung cloud call) holds the controller's operation lock for good")
 async def test_a_charger_command_that_never_answers_is_given_up_on(hass: HomeAssistant) -> None:
     import asyncio
 
@@ -105,6 +104,12 @@ async def test_a_charger_command_that_never_answers_is_given_up_on(hass: HomeAss
     await asyncio.sleep(0)
     await asyncio.sleep(0)
     gave_up = task.done()
+    results = await asyncio.gather(task, return_exceptions=True) if gave_up else []
+    if gave_up:
+        assert not controller._lock.locked()
+        last = controller.adapter.command_log()[-1]
+        assert last["result"] == "error" and last["error"]["type"] == "TimeoutError"
+        del results
 
     never.set()  # let the stuck call end so the test can clean up either way
     await asyncio.gather(task, return_exceptions=True)

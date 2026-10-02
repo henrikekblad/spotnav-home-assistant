@@ -7,6 +7,7 @@ registers itself in `registry.py`.
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import math
 from abc import ABC, abstractmethod
@@ -92,14 +93,23 @@ _SECRET_KEYS: Final = frozenset(
 _CALL_TAP: ContextVar[list[dict[str, Any]] | None] = ContextVar("spotnav_charger_call_tap", default=None)
 
 
-def start_call_tap() -> tuple[list[dict[str, Any]], Any]:
-    """Begin collecting the service calls of one command; returns the list and the reset token."""
+#: How long a charger service call may take when no command says otherwise.
+DEFAULT_CALL_TIMEOUT_S: Final = 30.0
+_CALL_TIMEOUT: ContextVar[float] = ContextVar("spotnav_charger_call_timeout", default=DEFAULT_CALL_TIMEOUT_S)
+
+
+def start_call_tap(timeout_s: float = DEFAULT_CALL_TIMEOUT_S) -> tuple[list[dict[str, Any]], Any]:
+    """Begin collecting the service calls of one command, each given up on after `timeout_s`;
+    returns the list and the reset token.
+    """
     calls: list[dict[str, Any]] = []
-    return calls, _CALL_TAP.set(calls)
+    return calls, (_CALL_TAP.set(calls), _CALL_TIMEOUT.set(timeout_s))
 
 
 def end_call_tap(token: Any) -> None:
-    _CALL_TAP.reset(token)
+    tap_token, timeout_token = token
+    _CALL_TIMEOUT.reset(timeout_token)
+    _CALL_TAP.reset(tap_token)
 
 
 def loggable_data(data: Mapping[str, Any] | None) -> dict[str, Any]:
@@ -121,15 +131,21 @@ async def call_service(
     blocking: bool = True,
     return_response: bool = False,
 ) -> Any:
-    """`hass.services.async_call`, noted in the running command's call list (see `CommandLog`)."""
+    """`hass.services.async_call`, noted in the running command's call list (see `CommandLog`).
+
+    Given up on after the command's timeout (30 s, 45 s for a known cloud integration): a call that
+    never answers raises `TimeoutError`, which the command log records as an error, so it can never
+    hold a controller's lock for good.
+    """
     tap = _CALL_TAP.get()
     if tap is not None:
         tap.append({"service": f"{domain}.{service}", "data": loggable_data(data)})
-    if return_response:
-        return await hass.services.async_call(
-            domain, service, data, blocking=blocking, return_response=True
-        )
-    return await hass.services.async_call(domain, service, data, blocking=blocking)
+    async with asyncio.timeout(_CALL_TIMEOUT.get()):
+        if return_response:
+            return await hass.services.async_call(
+                domain, service, data, blocking=blocking, return_response=True
+            )
+        return await hass.services.async_call(domain, service, data, blocking=blocking)
 
 
 def _lower(state: State | None) -> str | None:
