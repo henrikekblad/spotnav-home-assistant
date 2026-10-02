@@ -4,7 +4,7 @@
 // card own every judgement and request.
 
 import { ageSentence as sharedAgeSentence } from "./vehicle-line";
-import { dateLabel, energyAmount, formatFixed, formatNumber, percentAmount } from "./format";
+import { energyAmount, formatFixed, formatNumber, percentAmount } from "./format";
 import { translate, type Language, type TranslationKey } from "./i18n";
 import {
   CURRENT_SLIDER_STEP_A,
@@ -344,66 +344,73 @@ export function settingsEditorBody(
   };
 
   /**
-   * The departure day beside the time: empty is the ordinary daily departure, a date makes it that day
-   * (up to seven days ahead). "Choose a date" starts at the next occurrence of the time; "Every day" clears.
+   * The departure day below the time: "Every day" (no date) or "On a date" (up to seven days ahead). Choosing
+   * the date starts at the next occurrence of the time. Appended to `into`.
    */
-  const appendDate = (): void => {
+  const appendDate = (into: HTMLElement): void => {
     const days = form.days ?? null;
     if (days === null && dateInput.value === "") {
       return;
     }
-    const block = element(doc, "div", C.settingsField);
-    block.dataset["part"] = "departure-date";
-    const label = element(doc, "label", C.settingsLabel, translate(language, "settings.deadline.date"));
+    const group = element(doc, "fieldset", C.siteFieldset);
+    group.dataset["part"] = "departure-date";
+    group.append(element(doc, "legend", C.siteLegend, translate(language, "settings.deadline.date")));
+    const radioName = `${idPrefix}-departure-day`;
+    const dailyRadio = doc.createElement("input") as HTMLInputElement;
+    const dateRadio = doc.createElement("input") as HTMLInputElement;
+    const choice = (radio: HTMLInputElement, value: string, labelKey: TranslationKey): HTMLElement => {
+      radio.type = "radio";
+      radio.name = radioName;
+      radio.value = value;
+      radio.disabled = form.readOnly;
+      const label = element(doc, "label", C.siteChoice);
+      label.append(radio, doc.createTextNode(translate(language, labelKey)));
+      return label;
+    };
+    dailyRadio.dataset["departureDay"] = "daily";
+    dateRadio.dataset["departureDay"] = "date";
+    dateRadio.checked = dateInput.value !== "";
+    dailyRadio.checked = !dateRadio.checked;
+    // The date field sits on the "On a date" row, right-aligned, and is shown only while that row is chosen.
+    const dateRow = element(doc, "div");
+    dateRow.dataset["part"] = "departure-date-row";
+    dateRow.style.cssText = "display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap";
+    dateRow.append(choice(dateRadio, "date", "settings.deadline.dateOn"), dateInput);
+    group.append(choice(dailyRadio, "daily", "settings.deadline.dateDaily"), dateRow);
     dateInput.id = `${idPrefix}-deadline-date`;
-    label.setAttribute("for", dateInput.id);
-    const shown = element(doc, "output", C.settingsUnit);
-    shown.dataset["departureDateLabel"] = "true";
-    shown.setAttribute("aria-live", "polite");
-    const choose = doc.createElement("button") as HTMLButtonElement;
-    choose.type = "button";
-    choose.className = C.button;
-    choose.dataset["action"] = "date-choose";
-    choose.textContent = translate(language, "settings.deadline.dateChoose");
-    const clear = doc.createElement("button") as HTMLButtonElement;
-    clear.type = "button";
-    clear.className = C.button;
-    clear.dataset["action"] = "date-clear";
-    clear.textContent = translate(language, "settings.deadline.dateClear");
+    dateInput.setAttribute("aria-label", translate(language, "settings.deadline.dateOn"));
     const note = element(doc, "p", C.settingsNote);
     note.dataset["departureDateNote"] = "true";
+    const help = element(doc, "p", C.settingsNote, translate(language, "settings.deadline.dateHelp"));
+    help.dataset["departureDateHelp"] = "true";
+    const dated = element(doc, "div");
+    dated.dataset["part"] = "departure-date-picker";
+    dated.append(note, help);
     const paint = (): void => {
       const value = dateInput.value;
-      const off = form.readOnly || !enabledInput.checked;
-      shown.textContent = value === "" ? translate(language, "settings.deadline.dateDaily") : dateLabel(language, value);
-      dateInput.disabled = off || days === null;
-      choose.hidden = value !== "" || days === null;
-      choose.disabled = off;
-      clear.hidden = value === "";
-      clear.disabled = off;
+      dated.hidden = !dateRadio.checked;
+      dateInput.hidden = !dateRadio.checked;
+      dateInput.disabled = form.readOnly || days === null;
       // A date that has gone by is ignored by planning and forgotten by the next save.
-      const gone = days !== null && value !== "" && value < days.today;
+      const gone = days !== null && dateRadio.checked && value !== "" && value < days.today;
       note.hidden = !gone;
       note.textContent = gone ? translate(language, "settings.deadline.datePast") : "";
     };
-    choose.addEventListener("click", () => {
-      if (days !== null) {
+    dateRadio.addEventListener("change", () => {
+      if (dateRadio.checked && dateInput.value === "" && days !== null) {
         dateInput.value = days.nextOccurrence(timeInput.value);
-        paint();
       }
+      paint();
     });
-    clear.addEventListener("click", () => {
-      dateInput.value = "";
+    dailyRadio.addEventListener("change", () => {
+      if (dailyRadio.checked) {
+        dateInput.value = "";
+      }
       paint();
     });
     dateInput.addEventListener("input", paint);
     dateInput.addEventListener("change", paint);
-    timeInput.addEventListener("input", paint);
-    enabledInput.addEventListener("change", paint);
-    const pair = element(doc, "div", C.settingsPair);
-    pair.append(dateInput, shown, choose, clear);
-    block.append(label, pair, note, element(doc, "p", C.settingsNote, translate(language, "settings.deadline.dateHelp")));
-    body.append(block);
+    into.append(group, dated);
     paint();
   };
 
@@ -414,8 +421,16 @@ export function settingsEditorBody(
     body.append(
       checkboxField(doc, `${idPrefix}-deadline-enabled`, translate(language, "settings.deadline.enabled"), enabledInput),
     );
-    body.append(field(doc, `${idPrefix}-deadline-time`, translate(language, "settings.deadline.time"), timeInput));
-    appendDate();
+    // The departure (time and day) only exists while the deadline is on; off, the time is today.
+    const departure = element(doc, "div");
+    departure.dataset["part"] = "departure";
+    departure.append(field(doc, `${idPrefix}-deadline-time`, translate(language, "settings.deadline.time"), timeInput));
+    appendDate(departure);
+    departure.hidden = !enabledInput.checked;
+    enabledInput.addEventListener("change", () => {
+      departure.hidden = !enabledInput.checked;
+    });
+    body.append(departure);
     const periodsValue = element(doc, "output", C.settingsUnit, periodsInput.value);
     periodsValue.dataset["periodsValue"] = "true";
     periodsInput.addEventListener("input", () => {

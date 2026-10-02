@@ -3245,12 +3245,11 @@ var da = {
   "settings.deadline.intro": "Hvornår opladningen skal være færdig, og hvor mange perioder den må bruge.",
   "settings.deadline.enabled": "Færdig inden en frist",
   "settings.deadline.time": "Afgangstid",
-  "settings.deadline.date": "Afgangsdag",
+  "settings.deadline.date": "Afgang",
   "settings.deadline.dateDaily": "Hver dag",
-  "settings.deadline.dateChoose": "Vælg dato",
-  "settings.deadline.dateClear": "Hver dag",
+  "settings.deadline.dateOn": "En bestemt dato",
   "settings.deadline.dateHelp": "Planen kan vente på timer, der plejer at være billigere. Afgangen holdes altid.",
-  "settings.deadline.datePast": "Datoen er passeret og ignoreres. Gemmer du, fjernes den.",
+  "settings.deadline.datePast": "Datoen er passeret, så planen kører hver dag, indtil du vælger en ny dato. Gemmer du, ryddes den.",
   "settings.deadline.today": "i dag",
   "settings.deadline.tomorrow": "i morgen",
   "settings.deadline.periods": "Højeste antal ladeperioder",
@@ -3767,12 +3766,11 @@ var en = {
   "settings.deadline.intro": "When the charge must be finished, and how many periods it may use.",
   "settings.deadline.enabled": "Finish by a deadline",
   "settings.deadline.time": "Departure time",
-  "settings.deadline.date": "Departure day",
+  "settings.deadline.date": "Departure",
   "settings.deadline.dateDaily": "Every day",
-  "settings.deadline.dateChoose": "Choose a date",
-  "settings.deadline.dateClear": "Every day",
+  "settings.deadline.dateOn": "On a date",
   "settings.deadline.dateHelp": "The plan may wait for hours that are usually cheaper. The departure is always kept.",
-  "settings.deadline.datePast": "This date has gone by and is ignored. Saving removes it.",
+  "settings.deadline.datePast": "This date has gone by, so the plan runs every day until you choose a new date. Saving clears it.",
   "settings.deadline.today": "today",
   "settings.deadline.tomorrow": "tomorrow",
   "settings.deadline.periods": "Maximum charging periods",
@@ -4289,12 +4287,11 @@ var fi = {
   "settings.deadline.intro": "Milloin lataus on viimeistään valmis ja kuinka monta jaksoa se saa käyttää.",
   "settings.deadline.enabled": "Valmis määräaikaan mennessä",
   "settings.deadline.time": "Lähtöaika",
-  "settings.deadline.date": "Lähtöpäivä",
+  "settings.deadline.date": "Lähtö",
   "settings.deadline.dateDaily": "Joka päivä",
-  "settings.deadline.dateChoose": "Valitse päivämäärä",
-  "settings.deadline.dateClear": "Joka päivä",
+  "settings.deadline.dateOn": "Tietty päivämäärä",
   "settings.deadline.dateHelp": "Suunnitelma voi odottaa tunteja, jotka ovat yleensä halvempia. Lähtö pidetään aina.",
-  "settings.deadline.datePast": "Päivämäärä on mennyt ohi ja sitä ei huomioida. Tallennus poistaa sen.",
+  "settings.deadline.datePast": "Päivämäärä on mennyt ohi, joten suunnitelma toimii joka päivä, kunnes valitset uuden päivämäärän. Tallennus tyhjentää sen.",
   "settings.deadline.today": "tänään",
   "settings.deadline.tomorrow": "huomenna",
   "settings.deadline.periods": "Latausjaksojen enimmäismäärä",
@@ -4811,12 +4808,11 @@ var nb = {
   "settings.deadline.intro": "Når ladingen må være ferdig, og hvor mange perioder den kan bruke.",
   "settings.deadline.enabled": "Ferdig innen en frist",
   "settings.deadline.time": "Avreisetid",
-  "settings.deadline.date": "Avreisedag",
+  "settings.deadline.date": "Avreise",
   "settings.deadline.dateDaily": "Hver dag",
-  "settings.deadline.dateChoose": "Velg dato",
-  "settings.deadline.dateClear": "Hver dag",
+  "settings.deadline.dateOn": "En bestemt dato",
   "settings.deadline.dateHelp": "Planen kan vente på timer som pleier å være billigere. Avreisen holdes alltid.",
-  "settings.deadline.datePast": "Datoen er passert og ignoreres. Lagring fjerner den.",
+  "settings.deadline.datePast": "Datoen er passert, så planen kjører hver dag til du velger en ny dato. Lagring fjerner den.",
   "settings.deadline.today": "i dag",
   "settings.deadline.tomorrow": "i morgen",
   "settings.deadline.periods": "Høyeste antall ladeperioder",
@@ -5333,12 +5329,11 @@ var sv = {
   "settings.deadline.intro": "När laddningen senast ska vara klar, och hur många perioder den får använda.",
   "settings.deadline.enabled": "Klar senast en tid",
   "settings.deadline.time": "Avgångstid",
-  "settings.deadline.date": "Avgångsdag",
+  "settings.deadline.date": "Avgång",
   "settings.deadline.dateDaily": "Varje dag",
-  "settings.deadline.dateChoose": "Välj datum",
-  "settings.deadline.dateClear": "Varje dag",
+  "settings.deadline.dateOn": "Ett visst datum",
   "settings.deadline.dateHelp": "Planen kan vänta på timmar som brukar vara billigare. Avgången hålls alltid.",
-  "settings.deadline.datePast": "Datumet har passerat och ignoreras. Sparar du tas det bort.",
+  "settings.deadline.datePast": "Datumet har passerat, så planen körs varje dag tills du väljer ett nytt datum. Sparar du rensas det.",
   "settings.deadline.today": "idag",
   "settings.deadline.tomorrow": "imorgon",
   "settings.deadline.periods": "Högsta antal laddperioder",
@@ -10283,62 +10278,68 @@ function settingsEditorBody(doc, language, form, handlers, idPrefix) {
       }).field
     );
   };
-  const appendDate = () => {
+  const appendDate = (into) => {
     const days = form.days ?? null;
     if (days === null && dateInput.value === "") {
       return;
     }
-    const block = element4(doc, "div", VISUAL_CLASSES.settingsField);
-    block.dataset["part"] = "departure-date";
-    const label = element4(doc, "label", VISUAL_CLASSES.settingsLabel, translate(language, "settings.deadline.date"));
+    const group = element4(doc, "fieldset", VISUAL_CLASSES.siteFieldset);
+    group.dataset["part"] = "departure-date";
+    group.append(element4(doc, "legend", VISUAL_CLASSES.siteLegend, translate(language, "settings.deadline.date")));
+    const radioName = `${idPrefix}-departure-day`;
+    const dailyRadio = doc.createElement("input");
+    const dateRadio = doc.createElement("input");
+    const choice = (radio, value, labelKey) => {
+      radio.type = "radio";
+      radio.name = radioName;
+      radio.value = value;
+      radio.disabled = form.readOnly;
+      const label = element4(doc, "label", VISUAL_CLASSES.siteChoice);
+      label.append(radio, doc.createTextNode(translate(language, labelKey)));
+      return label;
+    };
+    dailyRadio.dataset["departureDay"] = "daily";
+    dateRadio.dataset["departureDay"] = "date";
+    dateRadio.checked = dateInput.value !== "";
+    dailyRadio.checked = !dateRadio.checked;
+    const dateRow = element4(doc, "div");
+    dateRow.dataset["part"] = "departure-date-row";
+    dateRow.style.cssText = "display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap";
+    dateRow.append(choice(dateRadio, "date", "settings.deadline.dateOn"), dateInput);
+    group.append(choice(dailyRadio, "daily", "settings.deadline.dateDaily"), dateRow);
     dateInput.id = `${idPrefix}-deadline-date`;
-    label.setAttribute("for", dateInput.id);
-    const shown = element4(doc, "output", VISUAL_CLASSES.settingsUnit);
-    shown.dataset["departureDateLabel"] = "true";
-    shown.setAttribute("aria-live", "polite");
-    const choose = doc.createElement("button");
-    choose.type = "button";
-    choose.className = VISUAL_CLASSES.button;
-    choose.dataset["action"] = "date-choose";
-    choose.textContent = translate(language, "settings.deadline.dateChoose");
-    const clear = doc.createElement("button");
-    clear.type = "button";
-    clear.className = VISUAL_CLASSES.button;
-    clear.dataset["action"] = "date-clear";
-    clear.textContent = translate(language, "settings.deadline.dateClear");
+    dateInput.setAttribute("aria-label", translate(language, "settings.deadline.dateOn"));
     const note = element4(doc, "p", VISUAL_CLASSES.settingsNote);
     note.dataset["departureDateNote"] = "true";
+    const help = element4(doc, "p", VISUAL_CLASSES.settingsNote, translate(language, "settings.deadline.dateHelp"));
+    help.dataset["departureDateHelp"] = "true";
+    const dated = element4(doc, "div");
+    dated.dataset["part"] = "departure-date-picker";
+    dated.append(note, help);
     const paint = () => {
       const value = dateInput.value;
-      const off = form.readOnly || !enabledInput.checked;
-      shown.textContent = value === "" ? translate(language, "settings.deadline.dateDaily") : dateLabel(language, value);
-      dateInput.disabled = off || days === null;
-      choose.hidden = value !== "" || days === null;
-      choose.disabled = off;
-      clear.hidden = value === "";
-      clear.disabled = off;
-      const gone = days !== null && value !== "" && value < days.today;
+      dated.hidden = !dateRadio.checked;
+      dateInput.hidden = !dateRadio.checked;
+      dateInput.disabled = form.readOnly || days === null;
+      const gone = days !== null && dateRadio.checked && value !== "" && value < days.today;
       note.hidden = !gone;
       note.textContent = gone ? translate(language, "settings.deadline.datePast") : "";
     };
-    choose.addEventListener("click", () => {
-      if (days !== null) {
+    dateRadio.addEventListener("change", () => {
+      if (dateRadio.checked && dateInput.value === "" && days !== null) {
         dateInput.value = days.nextOccurrence(timeInput.value);
-        paint();
       }
+      paint();
     });
-    clear.addEventListener("click", () => {
-      dateInput.value = "";
+    dailyRadio.addEventListener("change", () => {
+      if (dailyRadio.checked) {
+        dateInput.value = "";
+      }
       paint();
     });
     dateInput.addEventListener("input", paint);
     dateInput.addEventListener("change", paint);
-    timeInput.addEventListener("input", paint);
-    enabledInput.addEventListener("change", paint);
-    const pair = element4(doc, "div", VISUAL_CLASSES.settingsPair);
-    pair.append(dateInput, shown, choose, clear);
-    block.append(label, pair, note, element4(doc, "p", VISUAL_CLASSES.settingsNote, translate(language, "settings.deadline.dateHelp")));
-    body.append(block);
+    into.append(group, dated);
     paint();
   };
   const appendDeadline = () => {
@@ -10348,8 +10349,15 @@ function settingsEditorBody(doc, language, form, handlers, idPrefix) {
     body.append(
       checkboxField(doc, `${idPrefix}-deadline-enabled`, translate(language, "settings.deadline.enabled"), enabledInput)
     );
-    body.append(field(doc, `${idPrefix}-deadline-time`, translate(language, "settings.deadline.time"), timeInput));
-    appendDate();
+    const departure = element4(doc, "div");
+    departure.dataset["part"] = "departure";
+    departure.append(field(doc, `${idPrefix}-deadline-time`, translate(language, "settings.deadline.time"), timeInput));
+    appendDate(departure);
+    departure.hidden = !enabledInput.checked;
+    enabledInput.addEventListener("change", () => {
+      departure.hidden = !enabledInput.checked;
+    });
+    body.append(departure);
     const periodsValue = element4(doc, "output", VISUAL_CLASSES.settingsUnit, periodsInput.value);
     periodsValue.dataset["periodsValue"] = "true";
     periodsInput.addEventListener("input", () => {

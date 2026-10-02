@@ -429,17 +429,15 @@ export const da: Record<keyof typeof en, string> = {
   "settings.deadline.time":
     "Afgangstid",
   "settings.deadline.date":
-    "Afgangsdag",
+    "Afgang",
   "settings.deadline.dateDaily":
     "Hver dag",
-  "settings.deadline.dateChoose":
-    "Vælg dato",
-  "settings.deadline.dateClear":
-    "Hver dag",
+  "settings.deadline.dateOn":
+    "En bestemt dato",
   "settings.deadline.dateHelp":
     "Planen kan vente på timer, der plejer at være billigere. Afgangen holdes altid.",
   "settings.deadline.datePast":
-    "Datoen er passeret og ignoreres. Gemmer du, fjernes den.",
+    "Datoen er passeret, så planen kører hver dag, indtil du vælger en ny dato. Gemmer du, ryddes den.",
   "settings.deadline.today":
     "i dag",
   "settings.deadline.tomorrow":

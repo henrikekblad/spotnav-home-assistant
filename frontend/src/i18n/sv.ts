@@ -430,17 +430,15 @@ export const sv: Record<keyof typeof en, string> = {
   "settings.deadline.time":
     "Avgångstid",
   "settings.deadline.date":
-    "Avgångsdag",
+    "Avgång",
   "settings.deadline.dateDaily":
     "Varje dag",
-  "settings.deadline.dateChoose":
-    "Välj datum",
-  "settings.deadline.dateClear":
-    "Varje dag",
+  "settings.deadline.dateOn":
+    "Ett visst datum",
   "settings.deadline.dateHelp":
     "Planen kan vänta på timmar som brukar vara billigare. Avgången hålls alltid.",
   "settings.deadline.datePast":
-    "Datumet har passerat och ignoreras. Sparar du tas det bort.",
+    "Datumet har passerat, så planen körs varje dag tills du väljer ett nytt datum. Sparar du rensas det.",
   "settings.deadline.today":
     "idag",
   "settings.deadline.tomorrow":

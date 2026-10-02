@@ -429,17 +429,15 @@ export const nb: Record<keyof typeof en, string> = {
   "settings.deadline.time":
     "Avreisetid",
   "settings.deadline.date":
-    "Avreisedag",
+    "Avreise",
   "settings.deadline.dateDaily":
     "Hver dag",
-  "settings.deadline.dateChoose":
-    "Velg dato",
-  "settings.deadline.dateClear":
-    "Hver dag",
+  "settings.deadline.dateOn":
+    "En bestemt dato",
   "settings.deadline.dateHelp":
     "Planen kan vente på timer som pleier å være billigere. Avreisen holdes alltid.",
   "settings.deadline.datePast":
-    "Datoen er passert og ignoreres. Lagring fjerner den.",
+    "Datoen er passert, så planen kjører hver dag til du velger en ny dato. Lagring fjerner den.",
   "settings.deadline.today":
     "i dag",
   "settings.deadline.tomorrow":

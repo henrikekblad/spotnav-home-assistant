@@ -798,8 +798,8 @@ describe("the departure in the Plan cell", () => {
   it("is worded in every language", () => {
     for (const language of LANGUAGES) {
       for (const key of [
-        "settings.deadline.date", "settings.deadline.dateDaily", "settings.deadline.dateChoose",
-        "settings.deadline.dateClear", "settings.deadline.dateHelp", "settings.deadline.datePast",
+        "settings.deadline.date", "settings.deadline.dateDaily", "settings.deadline.dateOn",
+        "settings.deadline.dateHelp", "settings.deadline.datePast",
         "settings.deadline.today", "settings.deadline.tomorrow", "settings.error.invalidDate",
         "settings.error.dateRange",
       ] as const) {

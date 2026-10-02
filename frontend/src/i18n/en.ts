@@ -443,17 +443,15 @@ export const en = {
   "settings.deadline.time":
     "Departure time",
   "settings.deadline.date":
-    "Departure day",
+    "Departure",
   "settings.deadline.dateDaily":
     "Every day",
-  "settings.deadline.dateChoose":
-    "Choose a date",
-  "settings.deadline.dateClear":
-    "Every day",
+  "settings.deadline.dateOn":
+    "On a date",
   "settings.deadline.dateHelp":
     "The plan may wait for hours that are usually cheaper. The departure is always kept.",
   "settings.deadline.datePast":
-    "This date has gone by and is ignored. Saving removes it.",
+    "This date has gone by, so the plan runs every day until you choose a new date. Saving clears it.",
   "settings.deadline.today":
     "today",
   "settings.deadline.tomorrow":

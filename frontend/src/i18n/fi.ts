@@ -429,17 +429,15 @@ export const fi: Record<keyof typeof en, string> = {
   "settings.deadline.time":
     "Lähtöaika",
   "settings.deadline.date":
-    "Lähtöpäivä",
+    "Lähtö",
   "settings.deadline.dateDaily":
     "Joka päivä",
-  "settings.deadline.dateChoose":
-    "Valitse päivämäärä",
-  "settings.deadline.dateClear":
-    "Joka päivä",
+  "settings.deadline.dateOn":
+    "Tietty päivämäärä",
   "settings.deadline.dateHelp":
     "Suunnitelma voi odottaa tunteja, jotka ovat yleensä halvempia. Lähtö pidetään aina.",
   "settings.deadline.datePast":
-    "Päivämäärä on mennyt ohi ja sitä ei huomioida. Tallennus poistaa sen.",
+    "Päivämäärä on mennyt ohi, joten suunnitelma toimii joka päivä, kunnes valitset uuden päivämäärän. Tallennus tyhjentää sen.",
   "settings.deadline.today":
     "tänään",
   "settings.deadline.tomorrow":

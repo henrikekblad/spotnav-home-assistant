@@ -1327,58 +1327,76 @@ describe("the departure date picker", () => {
 
   const dateField = (element: Element): HTMLInputElement | null =>
     editorDialog(element)?.querySelector<HTMLInputElement>("input[type='date']") ?? null;
-  const dateLabelText = (element: Element): string | null =>
-    editorDialog(element)?.querySelector("[data-departure-date-label]")?.textContent ?? null;
-  const dateButton = (element: Element, action: "date-choose" | "date-clear"): HTMLButtonElement | null =>
-    editorDialog(element)?.querySelector<HTMLButtonElement>(`button[data-action='${action}']`) ?? null;
+  const radio = (element: Element, which: "daily" | "date"): HTMLInputElement | null =>
+    editorDialog(element)?.querySelector<HTMLInputElement>(`input[data-departure-day='${which}']`) ?? null;
+  const choose = (element: Element, which: "daily" | "date"): void => {
+    const input = radio(element, which)!;
+    input.checked = true;
+    input.dispatchEvent(new Event("change", { bubbles: true }));
+  };
+  const pickerPart = (element: Element): HTMLElement | null =>
+    editorDialog(element)?.querySelector<HTMLElement>("[data-part='departure-date-picker']") ?? null;
+  const departurePart = (element: Element): HTMLElement | null =>
+    editorDialog(element)?.querySelector<HTMLElement>("[data-part='departure']") ?? null;
+  const helpOf = (element: Element): HTMLElement | null =>
+    editorDialog(element)?.querySelector<HTMLElement>("[data-departure-date-help]") ?? null;
   const noteOf = (element: Element): HTMLElement | null =>
     editorDialog(element)?.querySelector<HTMLElement>("[data-departure-date-note]") ?? null;
 
-  it("sits right after the departure time, empty for a daily departure, limited to today..+7", async () => {
+  it("offers Every day and On a date below the time; the picker waits for the date option", async () => {
     const { element } = await openEditor("deadline");
-    const date = dateField(element)!;
     const time = editorDialog(element)!.querySelector<HTMLInputElement>("input[type='time']")!;
+    const group = editorDialog(element)!.querySelector<HTMLElement>("[data-part='departure-date']")!;
 
-    expect(date.value).toBe("");
-    expect([date.min, date.max]).toEqual(["2026-10-02", "2026-10-09"]);
-    expect(time.compareDocumentPosition(date) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
-    expect(dateLabelText(element)).toBe(translate("en", "settings.deadline.dateDaily"));
-    expect(dateButton(element, "date-choose")!.hidden).toBe(false);
-    expect(dateButton(element, "date-clear")!.hidden).toBe(true);
-    expect(date.labels?.[0]?.textContent).toBe(translate("en", "settings.deadline.date"));
+    expect(time.compareDocumentPosition(group) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(group.querySelector("legend")!.textContent).toBe(translate("en", "settings.deadline.date"));
+    expect(group.textContent).toContain(translate("en", "settings.deadline.dateDaily"));
+    expect(group.textContent).toContain(translate("en", "settings.deadline.dateOn"));
+    expect(radio(element, "daily")!.checked).toBe(true);
+    expect(radio(element, "date")!.checked).toBe(false);
+    expect(pickerPart(element)!.hidden).toBe(true);
+    expect(dateField(element)!.value).toBe("");
+    expect([dateField(element)!.min, dateField(element)!.max]).toEqual(["2026-10-02", "2026-10-09"]);
   });
 
-  it("starts at the next occurrence of the time when a date is chosen: tomorrow once today's has passed", async () => {
+  it("preselects tomorrow when today's time has passed, and shows the help under the date option only", async () => {
     const { element } = await openEditor("deadline"); // 06:30, and it is 20:00
-    dateButton(element, "date-choose")!.click();
+    expect(helpOf(element)!.closest("[hidden]")).not.toBeNull();
+    choose(element, "date");
 
+    expect(pickerPart(element)!.hidden).toBe(false);
     expect(dateField(element)!.value).toBe("2026-10-03");
-    expect(dateLabelText(element)).toBe("Sat 3 Oct");
-    expect(dateButton(element, "date-choose")!.hidden).toBe(true);
-    expect(dateButton(element, "date-clear")!.hidden).toBe(false);
+    expect(helpOf(element)!.textContent).toBe(translate("en", "settings.deadline.dateHelp"));
+    expect(helpOf(element)!.closest("[hidden]")).toBeNull();
+    expect(pickerPart(element)!.contains(helpOf(element))).toBe(true);
   });
 
-  it("starts today when the time is still ahead", async () => {
+  it("preselects today when the time is still ahead", async () => {
     const { element } = await openEditor("deadline", { record: aRecord({ departure_time: "21:30" }) });
-    dateButton(element, "date-choose")!.click();
+    choose(element, "date");
     expect(dateField(element)!.value).toBe("2026-10-02");
-    expect(dateLabelText(element)).toBe("Fri 2 Oct");
   });
 
-  it("shows the chosen day in the card's language", async () => {
+  it("goes back to Every day: the picker is hidden again and its date is dropped", async () => {
+    const { element } = await openEditor("deadline");
+    choose(element, "date");
+    choose(element, "daily");
+    expect(pickerPart(element)!.hidden).toBe(true);
+    expect(dateField(element)!.value).toBe("");
+  });
+
+  it("is worded in the card's language", async () => {
     const { element } = await openEditor("deadline", { language: "sv" });
-    const date = dateField(element)!;
-    date.value = "2026-10-04";
-    date.dispatchEvent(new Event("change", { bubbles: true }));
-    expect(dateLabelText(element)).toBe("sön 4 okt.");
+    expect(editorDialog(element)!.textContent).toContain("Ett visst datum");
+    expect(editorDialog(element)!.textContent).toContain("Varje dag");
   });
 
   it("writes the chosen date with the rest of the record, in one replacement", async () => {
     const { hass, element, record } = await openEditor("deadline");
+    choose(element, "date");
     const date = dateField(element)!;
     date.value = "2026-10-04";
     date.dispatchEvent(new Event("change", { bubbles: true }));
-    expect(dateLabelText(element)).toBe("Sun 4 Oct");
 
     button(element, "spotnav-settings-save")!.click();
     await settle();
@@ -1392,25 +1410,34 @@ describe("the departure date picker", () => {
     expect(body).toEqual(expected);
   });
 
-  it("opens on the stored date, and clearing it returns to a daily departure", async () => {
+  it("opens on the stored date, and Every day clears it on Save", async () => {
     const { hass, element } = await openEditor("deadline", { record: aRecord({ departure_date: "2026-10-04" }) });
+    expect(radio(element, "date")!.checked).toBe(true);
+    expect(pickerPart(element)!.hidden).toBe(false);
     expect(dateField(element)!.value).toBe("2026-10-04");
-    expect(dateLabelText(element)).toBe("Sun 4 Oct");
 
-    dateButton(element, "date-clear")!.click();
-    expect(dateField(element)!.value).toBe("");
-    expect(dateLabelText(element)).toBe(translate("en", "settings.deadline.dateDaily"));
-    expect(dateButton(element, "date-choose")!.hidden).toBe(false);
+    choose(element, "daily");
+    expect(pickerPart(element)!.hidden).toBe(true);
 
     button(element, "spotnav-settings-save")!.click();
     await settle();
     expect((updates(hass)[0]!["settings"] as Record<string, unknown>)["departure_date"]).toBeNull();
   });
 
+  it("Cancel keeps the stored date, even after Every day was chosen", async () => {
+    const { hass, element } = await openEditor("deadline", { record: aRecord({ departure_date: "2026-10-04" }) });
+    choose(element, "daily");
+    editorDialog(element)?.querySelector<HTMLButtonElement>("button[data-action='cancel']")?.click();
+    await settle();
+    expect(updates(hass)).toHaveLength(0);
+    expect(editorDialog(element)).toBeNull();
+  });
+
   it("refuses a typed date outside today..+7 with its own sentence and sends nothing", async () => {
     for (const value of ["2026-10-01", "2026-10-10"]) {
       document.body.innerHTML = "";
       const { hass, element } = await openEditor("deadline");
+      choose(element, "date");
       const date = dateField(element)!;
       date.value = value;
       date.dispatchEvent(new Event("change", { bubbles: true }));
@@ -1424,8 +1451,11 @@ describe("the departure date picker", () => {
 
   it("marks a stored date that has gone by, and lets a save carry on without judging it", async () => {
     const { hass, element } = await openEditor("deadline", { record: aRecord({ departure_date: "2026-09-30" }) });
+    expect(radio(element, "date")!.checked).toBe(true);
+    expect(dateField(element)!.value).toBe("2026-09-30");
     expect(noteOf(element)!.hidden).toBe(false);
     expect(noteOf(element)!.textContent).toBe(translate("en", "settings.deadline.datePast"));
+    expect(translate("en", "settings.deadline.datePast")).toMatch(/every day until you choose a new date.*clears it/);
 
     const periods = editorDialog(element)!.querySelector<HTMLInputElement>("input[id$='-deadline-periods']")!;
     periods.value = "5";
@@ -1435,13 +1465,14 @@ describe("the departure date picker", () => {
     expect((updates(hass)[0]!["settings"] as Record<string, unknown>)["departure_date"]).toBe("2026-09-30");
   });
 
-  it("is set aside with the deadline: switching the deadline off disables the date and saves none", async () => {
+  it("is set aside with the deadline: off hides the time and the day and saves no date", async () => {
     const { hass, element } = await openEditor("deadline", { record: aRecord({ departure_date: "2026-10-04" }) });
+    expect(departurePart(element)!.hidden).toBe(false);
     const enabled = editorDialog(element)!.querySelector<HTMLInputElement>("input[type='checkbox']")!;
     enabled.checked = false;
     enabled.dispatchEvent(new Event("change", { bubbles: true }));
-    expect(dateField(element)!.disabled).toBe(true);
-    expect(dateButton(element, "date-clear")!.disabled).toBe(true);
+    expect(departurePart(element)!.hidden).toBe(true);
+    expect(departurePart(element)!.querySelector("input[type='time']")).not.toBeNull();
 
     button(element, "spotnav-settings-save")!.click();
     await settle();
@@ -1450,13 +1481,19 @@ describe("the departure date picker", () => {
     expect(body["departure_date"]).toBeNull();
   });
 
+  it("is hidden from the start when the deadline is off", async () => {
+    const { element } = await openEditor("deadline", { record: aRecord({ departure_enabled: false }) });
+    expect(departurePart(element)!.hidden).toBe(true);
+  });
+
   it("is read-only for a non-administrator", async () => {
     const { element } = await openEditor("deadline", {
       admin: false,
       record: aRecord({ departure_date: "2026-10-04" }),
     });
     expect(dateField(element)!.disabled).toBe(true);
-    expect(dateButton(element, "date-clear")!.disabled).toBe(true);
+    expect(radio(element, "daily")!.disabled).toBe(true);
+    expect(radio(element, "date")!.disabled).toBe(true);
     expect(button(element, "spotnav-settings-save")).toBeNull();
   });
 
@@ -1467,17 +1504,25 @@ describe("the departure date picker", () => {
     expect(dateField(current)).not.toBeNull();
   });
 
-  it("is not offered a picker without the market's zone, but a date already there can be cleared", async () => {
+  it("is not offered without the market's zone, but a date already there is shown and can be cleared", async () => {
     const payload = fixture("start_idle");
     (payload["market"] as Record<string, unknown>)["timezone"] = null;
-    const { element } = await openEditor("deadline", {
+    const { element: bare } = await openEditor("deadline", { payload });
+    expect(radio(bare, "date")).toBeNull();
+    expect(editorDialog(bare)!.querySelector("[data-part='departure-date']")).toBeNull();
+
+    document.body.innerHTML = "";
+    const { hass, element } = await openEditor("deadline", {
       payload,
       record: aRecord({ departure_date: "2026-10-04" }),
     });
-    const date = dateField(element)!;
-    expect(date.disabled).toBe(true);
-    expect(dateButton(element, "date-clear")!.disabled).toBe(false);
-    expect(dateButton(element, "date-choose")!.hidden).toBe(true);
+    expect(radio(element, "date")!.checked).toBe(true);
+    expect(dateField(element)!.disabled).toBe(true);
+    expect(radio(element, "daily")!.disabled).toBe(false);
+    choose(element, "daily");
+    button(element, "spotnav-settings-save")!.click();
+    await settle();
+    expect((updates(hass)[0]!["settings"] as Record<string, unknown>)["departure_date"]).toBeNull();
   });
 
   it("names the departure day in the Plan cell: today, tomorrow, or the weekday and date", async () => {
