@@ -94,6 +94,9 @@ NAMES: dict[str, str] = {
     "foxess_modbus": "FoxESS Modbus",
     "sungrow": "Sungrow",
     "sungrow_sungrow": "Sungrow",
+    "modbus": "Sungrow Modbus package",
+    "solax_modbus": "SolaX Modbus",
+    "perific": "Perific",
     "solis_modbus": "Solis Modbus",
     # vehicles
     "kia_uvo": "Kia Uvo",
@@ -188,8 +191,16 @@ def start_stop_text(profile: cp.PlatformProfile) -> str:
         return "Switch (on means paused)" if path.inverted else "Switch"
     if path.kind == cp.PATH_SELECT:
         return "Mode select"
-    if path.kind == cp.PATH_BUTTONS:
+    if path.kind == cp.PATH_SELECT_RESTORE:
+        return "Mode select, the previous mode is put back on a start"
+    if path.kind == cp.PATH_SELECT_APPROVE:
+        return "Mode select, a charge waiting for approval is approved first"
+    if path.kind in (cp.PATH_BUTTONS, cp.PATH_BUTTONS_TOGGLE):
         return "Start and stop buttons"
+    if path.kind == cp.PATH_NUMBER_PAUSE:
+        return "Current limit (0 A pauses) and a start button"
+    if path.kind == cp.PATH_SWITCH_BUDGET:
+        return "Switch, at most three pauses in ten minutes"
     if path.kind == cp.PATH_EASEE:
         return "Easee services"
     return path.kind
@@ -230,6 +241,10 @@ def policy_sentences(policy: cp.WritePolicy) -> list[str]:
         lines.append("Limits the whole installation: used only with one charger.")
     if policy.resend_after_plug_in:
         lines.append("Sent again after a car is plugged in and after a restart.")
+    if policy.state_is_not_setpoint:
+        lines.append("The number shows a stored limit, not what is applied, so it is never taken as already set.")
+    if policy.max_pauses_per_10min:
+        lines.append(f"At most {policy.max_pauses_per_10min} pauses in ten minutes; beyond that it holds at the floor.")
     return lines
 
 

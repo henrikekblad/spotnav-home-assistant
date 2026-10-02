@@ -100,10 +100,10 @@ class ChargerAdapter:
 
     # -- commands
 
-    async def async_start(self) -> bool:
+    async def async_start(self, amps: int | None = None) -> bool:
         """Start the charge; `False` when the command was not executed (its entity is unavailable)."""
         self._started_at = self._now()
-        executed = await self.path.async_start()
+        executed = await self.path.async_start(amps)
         if not executed:
             self._started_at = None
         return executed

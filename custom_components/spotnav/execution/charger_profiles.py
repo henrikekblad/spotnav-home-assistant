@@ -25,6 +25,11 @@ still usable through the generic flow; it then gets `DEFAULT_POLICY`, the conser
   when the installation has a single charger;
 * `resend_after_plug_in`: the charger forgets the limit on plug-in and reboot (Easee), so it is sent
   again;
+* `state_is_not_setpoint`: the number's state is not what the charger applies (OpenEVSE reads its stored
+  soft maximum while a write is a per-session claim), so "the number already shows the target" never
+  skips a write, and the setpoint is what was last written;
+* `max_pauses_per_10min`: the vendor's relay-protection budget for pausing (Peblar: three in a rolling
+  ten minutes); a stop beyond it lowers the current to the floor instead;
 * `session_bound`: the number exists only for a running session (OCPP's session limit): it is
   unavailable before the transaction and `unknown` after it starts until the first write, so `unknown`
   is writable and a write that found it unavailable is retried once the session is there.
@@ -50,7 +55,28 @@ PATH_SWITCH: Final = "switch"
 PATH_SELECT: Final = "select"
 PATH_BUTTONS: Final = "buttons"
 PATH_EASEE: Final = "easee"
-PATH_KINDS: Final = (PATH_SWITCH, PATH_SELECT, PATH_BUTTONS, PATH_EASEE)
+#: A select whose Start puts back the mode the person had before SpotNav's Stop (SmartEVSE).
+PATH_SELECT_RESTORE: Final = "select_restore"
+#: A charge is paused by writing 0 A to the current number, and started by writing the current (ABB).
+PATH_NUMBER_PAUSE: Final = "number_pause"
+#: Buttons whose Start needs the register toggled 0 then 1 (Webasto Next).
+PATH_BUTTONS_TOGGLE: Final = "buttons_toggle"
+#: A select whose Start first presses the integration's approve button while the charger waits for
+#: an approval (Ohme).
+PATH_SELECT_APPROVE: Final = "select_approve"
+#: A switch whose pauses are counted against the vendor's relay-protection budget (Peblar).
+PATH_SWITCH_BUDGET: Final = "switch_budget"
+PATH_KINDS: Final = (
+    PATH_SWITCH,
+    PATH_SELECT,
+    PATH_BUTTONS,
+    PATH_EASEE,
+    PATH_SELECT_RESTORE,
+    PATH_NUMBER_PAUSE,
+    PATH_BUTTONS_TOGGLE,
+    PATH_SELECT_APPROVE,
+    PATH_SWITCH_BUDGET,
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -65,6 +91,8 @@ class WritePolicy:
     installation_wide: bool = False
     resend_after_plug_in: bool = False
     session_bound: bool = False
+    state_is_not_setpoint: bool = False
+    max_pauses_per_10min: int | None = None
 
     @property
     def regulator_writes(self) -> bool:
@@ -109,6 +137,9 @@ class OwnModeRule:
     inactive_values: tuple[str, ...]
     #: Short name shown to the person ("Eco-Smart", "load balancing").
     label: str
+    #: Entities whose `unique_id` contains any of these are other entities that end in the same key
+    #: (Hypervolt's per-schedule-session charge modes) and are not this rule's.
+    exclude: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True, slots=True)
@@ -144,11 +175,18 @@ class PlatformProfile:
     #: Lifetime (`total_increasing`) register keys, in order of preference, and per-session ones.
     energy_keys: tuple[str, ...] = ()
     session_energy_keys: tuple[str, ...] = ()
+    #: The state classes a lifetime register named in `energy_keys` may have. Only `total_increasing`
+    #: is accepted for one that is merely found on the device; a register the profile names itself may
+    #: be `total` (DEFA's meter reading), which is still a lifetime counter.
+    energy_state_classes: tuple[str, ...] = ("total_increasing",)
     #: The sensor that says what the charger is doing, the values meaning "charging" and the values
     #: meaning "a vehicle is connected but asks for no current" (the `SuspendedEV` of OCPP).
     status_keys: tuple[str, ...] = ()
     charging_values: tuple[str, ...] = ()
     vehicle_idle_values: tuple[str, ...] = ()
+    #: Status values meaning no vehicle is connected, so a move out of one is a plug-in (the point after
+    #: which a charger that forgets its limit is told it again, `WritePolicy.resend_after_plug_in`).
+    disconnected_values: tuple[str, ...] = ()
     #: Sensors measuring the current, per phase (A or mA).
     current_sensor_keys: tuple[str, ...] = ()
     own_modes: tuple[OwnModeRule, ...] = ()
@@ -179,8 +217,14 @@ def _buttons(start: tuple[str, ...], stop: tuple[str, ...]) -> StartStop:
     return StartStop(PATH_BUTTONS, start_keys=start, stop_keys=stop)
 
 
-def _rule(domain: str, keys: tuple[str, ...], inactive: tuple[str, ...], label: str) -> OwnModeRule:
-    return OwnModeRule(domain, keys, inactive, label)
+def _rule(
+    domain: str,
+    keys: tuple[str, ...],
+    inactive: tuple[str, ...],
+    label: str,
+    exclude: tuple[str, ...] = (),
+) -> OwnModeRule:
+    return OwnModeRule(domain, keys, inactive, label, exclude)
 
 
 _PROFILES: Final[tuple[PlatformProfile, ...]] = (
@@ -221,9 +265,18 @@ _PROFILES: Final[tuple[PlatformProfile, ...]] = (
         status_keys=("status_description",),
         charging_values=("charging",),
         vehicle_idle_values=("waiting for car demand",),
-        own_modes=(_rule("select", ("ecosmart", "eco_smart"), ("off",), "Eco-Smart"),),
+        own_modes=(_rule("select", ("ecosmart", "eco_smart"), ("off", "disabled"), "Eco-Smart"),),
+        held_values=(
+            "waiting in queue by power sharing",
+            "waiting in queue by power boost",
+            "waiting in queue by eco-smart",
+        ),
         key_first=True,
-        note="Cloud: at most one current write every 90 s.",
+        note="Cloud: at most one current write every 90 s. Pause and resume end the charger's own schedule "
+        "until its Resume schedule button is pressed; a charger in Ready cannot be started from Home "
+        "Assistant. The integration has no entity for Power Boost, Power Sharing or the app's schedule, so "
+        "only Eco-Smart is shown as a conflict, and a charge held in a Power Sharing, Power Boost or "
+        "Eco-Smart queue is reported as held by the charger.",
     ),
     PlatformProfile(
         platform="zaptec",
@@ -247,12 +300,15 @@ _PROFILES: Final[tuple[PlatformProfile, ...]] = (
         policy=_LOCAL,
         energy_keys=("eto",),
         status_keys=("car", "car_value"),
-        charging_values=("charging", "2"),
+        charging_values=("charging", "2", "laden"),
         current_sensor_keys=("nrg_4", "nrg_5", "nrg_6"),
         own_modes=(
             _rule("select", ("lmo",), ("3", "default", "default mode"), "charging mode"),
             _rule("switch", ("fup",), ("off",), "PV surplus"),
         ),
+        note="The raw `car` sensor is disabled by default; the enabled `car_value` sensor reports the "
+        "state in Home Assistant's language, so the German word is accepted as well. The charger "
+        "returns the force state to neutral on unplug.",
     ),
     PlatformProfile(
         platform="goecharger_mqtt",
@@ -273,29 +329,40 @@ _PROFILES: Final[tuple[PlatformProfile, ...]] = (
         platform="goecharger",
         name="go-e Charger (legacy)",
         start_stop=_switch("allow_charging", "alw"),
-        note="Current is only reachable through a service: start and stop only.",
+        status_keys=("car_status",),
+        charging_values=("charging",),
+        vehicle_idle_values=("waiting for vehicle",),
+        note="Current is only reachable through a service: start and stop only. The switch means "
+        "charging is allowed, so the status sensor decides whether it is charging.",
     ),
     PlatformProfile(
         platform="wattpilot",
         name="Fronius Wattpilot",
         start_stop=_buttons(("frc2",), ("frc1",)),
-        current_keys=("amp",),
+        current_keys=("amp", "amp_22kw"),
         policy=_LOCAL,
+        status_keys=("car", "car_state"),
+        charging_values=("charging",),
+        vehicle_idle_values=("wait car",),
         own_modes=(_rule("select", ("lmo",), ("3", "default", "default mode"), "charging mode"),),
     ),
     PlatformProfile(
         platform="peblar",
         name="Peblar",
-        start_stop=_switch("charge"),
+        start_stop=StartStop(PATH_SWITCH_BUDGET, keys=("charge",)),
         current_keys=("charge_current_limit",),
-        policy=WritePolicy(min_interval_s=10.0, zero_pauses=True, ignored_while_paused=True),
+        policy=WritePolicy(min_interval_s=10.0, zero_pauses=True, max_pauses_per_10min=3),
         energy_keys=("energy_total",),
         session_energy_keys=("energy_session",),
         status_keys=("cp_state",),
         charging_values=("charging",),
+        vehicle_idle_values=("suspended",),
         current_sensor_keys=("current_phase_1", "current_phase_2", "current_phase_3"),
         own_modes=(_rule("select", ("smart_charging",), ("default",), "smart charging"),),
-        note="The switch and the current share one register: the current is not written while paused.",
+        note="The switch and the current share one register. While paused a current written to the number "
+        "is only stored, so the current is written before the switch is turned on, never after. Peblar "
+        "allows at most three pauses in ten minutes (relay protection): beyond that a stop holds the "
+        "charge at 6 A instead.",
     ),
     PlatformProfile(
         platform="nrgkick",
@@ -325,6 +392,18 @@ _PROFILES: Final[tuple[PlatformProfile, ...]] = (
         start_stop=_switch("charging"),
         current_keys=("max_current",),
         policy=_CLOUD,
+        own_modes=(
+            _rule("select", ("activation_mode",), ("plug and charge",), "activation mode"),
+            _rule(
+                "select",
+                ("charge_mode",),
+                ("boost",),
+                "charge mode",
+                exclude=("schedule_session",),
+            ),
+        ),
+        note="Stop sets the charger's force-stop flag and Start only clears it, so a Start does nothing "
+        "while the activation mode is Schedule or Octopus or the charge mode is Eco or Super Eco.",
     ),
     PlatformProfile(
         platform="chargeamps",
@@ -337,6 +416,10 @@ _PROFILES: Final[tuple[PlatformProfile, ...]] = (
         charging_values=("charging",),
         vehicle_idle_values=("suspendedev",),
         current_sensor_keys=("l1_current", "l2_current", "l3_current"),
+        own_modes=(_rule("switch", ("schedule",), ("off",), "schedule"),),
+        note="The enable switch writes the connector's stored mode: Stop sets Off and replaces the "
+        "schedule, and Start does nothing while the mode is Schedule. Stop may not end a running "
+        "session on a unit with OCPP enabled.",
     ),
     PlatformProfile(
         platform="lektrico",
@@ -356,15 +439,20 @@ _PROFILES: Final[tuple[PlatformProfile, ...]] = (
         name="OpenEVSE",
         start_stop=_select(("override_state",), ("active",), ("disabled",)),
         current_keys=("charge_rate",),
-        policy=_LOCAL,
+        policy=WritePolicy(min_interval_s=10.0, state_is_not_setpoint=True, resend_after_plug_in=True),
         energy_keys=("usage_total",),
         session_energy_keys=("usage_session",),
-        status_keys=("state",),
+        status_keys=("status", "state"),
         charging_values=("charging",),
+        vehicle_idle_values=("connected",),
+        disconnected_values=("not_connected",),
         own_modes=(
             _rule("switch", ("solar_pv_divert", "divert"), ("off",), "solar divert"),
             _rule("switch", ("current_shaper",), ("off",), "current shaper"),
         ),
+        note="A current is written as a claim for the running session (firmware 4.1.2 or newer), not as "
+        "the stored limit. The number shows the stored maximum, which a claim never changes, so it is "
+        "never trusted as what is applied, and the claim is sent again after a plug-in.",
     ),
     PlatformProfile(
         platform="alfen_wallbox",
@@ -376,9 +464,14 @@ _PROFILES: Final[tuple[PlatformProfile, ...]] = (
     PlatformProfile(
         platform="alfen_modbus",
         name="Alfen (Modbus)",
-        start_stop=_switch("charger_enabled"),
-        current_keys=("max_current_limit", "max_current_limit_s1"),
-        policy=_LOCAL_ZERO_PAUSES,
+        start_stop=_switch("charger_enabled", "charger_enabled_socket"),
+        current_keys=("max_current_limit", "max_current_limit_socket"),
+        policy=WritePolicy(min_interval_s=10.0, zero_pauses=True, ignored_while_paused=True),
+        status_keys=("mode_3_state", "mode_3_state_socket"),
+        charging_values=("c2", "d2"),
+        vehicle_idle_values=("b1", "b2", "c1", "d1"),
+        note="The switch and the current share one register: a current written while the charge is "
+        "stopped would start it again, so the current is written after a start only.",
     ),
     PlatformProfile(
         platform="heidelberg_energy_control",
@@ -386,30 +479,60 @@ _PROFILES: Final[tuple[PlatformProfile, ...]] = (
         start_stop=_switch("virtual_enable"),
         current_keys=("virtual_current",),
         policy=_LOCAL_ZERO_PAUSES,
+        status_keys=("charging_state",),
+        charging_values=("c",),
+        vehicle_idle_values=("b",),
     ),
     PlatformProfile(
         platform="garo_wallbox",
         name="GARO",
-        start_stop=_select(("mode",), ("always_on",), ("always_off",)),
+        start_stop=_select(("sensor", "mode"), ("always_on",), ("always_off",)),
         current_keys=("current_limit",),
         policy=WritePolicy(min_interval_s=60.0, flash_stored=True),
-        session_energy_keys=("acc_energy",),
-        note="The limit is stored with the charger's schedule: written at a session start only.",
+        energy_keys=("acc_energy",),
+        session_energy_keys=("acc_session_energy",),
+        status_keys=("status",),
+        charging_values=("charging",),
+        vehicle_idle_values=("charging_paused", "charging_finished"),
+        own_modes=(_rule("select", ("sensor", "mode"), ("always_on", "always_off"), "schedule"),),
+        note="Writing the current replaces the user's reduced-current schedule with one all-day interval "
+        "and needs the Charge Limiter switch on, so it is written at a session start only. Start "
+        "replaces the Schedule mode with Always on and Stop leaves Always off.",
     ),
     PlatformProfile(
         platform="smaev",
         name="SMA EV Charger",
-        start_stop=_select(("operating_mode_of_charge_session",), ("boost",), ("off", "stop", "optimized")),
+        start_stop=_select(("operating_mode_of_charge_session",), ("boost_charging",), ("charge_stop",)),
         current_keys=("charge_current_limit",),
         policy=WritePolicy(min_interval_s=60.0, flash_stored=True),
-        note="The limit is a stored parameter: written at a session start only.",
+        energy_keys=("charging_station_meter_reading",),
+        session_energy_keys=("charging_session_energy",),
+        status_keys=("charging_session_status",),
+        charging_values=("active_mode",),
+        vehicle_idle_values=("sleep_mode",),
+        note="Optimised charging is PV-surplus charging and is never taken as a stop. The limit is a "
+        "stored parameter that needs an installer login and is disabled by default: written at a "
+        "session start only.",
     ),
     PlatformProfile(
         platform="smartevse",
         name="SmartEVSE",
-        start_stop=_select(("mode",), ("normal",), ("off", "pause")),
+        start_stop=StartStop(
+            PATH_SELECT_RESTORE,
+            keys=("smartevse_mode_id",),
+            start_options=("normal",),
+            stop_options=("pause", "off"),
+        ),
         current_keys=("override_current",),
         policy=_LOCAL,
+        energy_keys=("smartevse_ev_total_kwh",),
+        session_energy_keys=("smartevse_ev_charged_kwh",),
+        status_keys=("smartevse_state", "state"),
+        charging_values=("charging",),
+        vehicle_idle_values=("connected to ev",),
+        note="Start puts back the mode the charger was in before SpotNav's Stop (Smart or Solar), and "
+        "Normal when that is not known. The charger keeps a written current in RAM only, accepts it in "
+        "Normal and Smart mode only, and the Home Assistant number stops at 16 A.",
     ),
     PlatformProfile(
         platform="defa_power",
@@ -418,20 +541,39 @@ _PROFILES: Final[tuple[PlatformProfile, ...]] = (
         current_keys=("ampere",),
         policy=_CLOUD,
         energy_keys=("meter_value",),
+        session_energy_keys=("transaction_meter_value",),
+        energy_state_classes=("total", "total_increasing"),
+        status_keys=("charging_state",),
+        charging_values=("charging",),
+        vehicle_idle_values=("suspended_ev", "ev_connected"),
+        own_modes=(_rule("switch", ("eco_mode_active",), ("off",), "eco mode"),),
+        note="The buttons exist only in some states: Start while the vehicle is connected, Stop while "
+        "charging, and neither while the charger's eco mode or a manual schedule has paused it.",
     ),
     PlatformProfile(
         platform="webasto_next_modbus",
         name="Webasto Next",
-        start_stop=_buttons(("start_session",), ("stop_session",)),
+        start_stop=StartStop(PATH_BUTTONS_TOGGLE, start_keys=("start_session",), stop_keys=("stop_session",)),
         current_keys=("set_current_a",),
         policy=_LOCAL,
+        status_keys=("charging_state", "charge_point_state"),
+        charging_values=("charging",),
+        note="Register 5006 starts a session only when its value changes, so Start sends a cancel first "
+        "unless the last command was one. Stop cancels the session. The current number is write-only "
+        "and shows the last value written.",
     ),
     PlatformProfile(
         platform="abb_terra_ac",
         name="ABB Terra AC",
-        start_stop=_buttons(("start_charging",), ("stop_charging",)),
+        start_stop=StartStop(PATH_NUMBER_PAUSE, keys=("current_limit",), start_keys=("start_charging",)),
         current_keys=("current_limit",),
-        policy=_LOCAL_ZERO_PAUSES,
+        policy=WritePolicy(min_interval_s=10.0, ignored_while_paused=True),
+        status_keys=("charging_state",),
+        charging_values=("state c2 - charging",),
+        vehicle_idle_values=("state c1 - ev ready for charge", "state b2 - ev plug in, charging complete"),
+        note="ABB's Stop button ends the session and asks for a new badge, so a pause is 0 A written to "
+        "the current limit (below 6 A pauses and keeps the session) and a start writes the current. "
+        "The start button is pressed only while the charger waits for authorization.",
     ),
     PlatformProfile(
         platform="myenergi",
@@ -442,10 +584,19 @@ _PROFILES: Final[tuple[PlatformProfile, ...]] = (
     PlatformProfile(
         platform="ohme",
         name="Ohme",
-        start_stop=_select(("charge_mode",), ("max_charge",), ("paused",)),
+        start_stop=StartStop(
+            PATH_SELECT_APPROVE, keys=("charge_mode",), start_options=("max_charge",), stop_options=("paused",)
+        ),
         status_keys=("status",),
-        own_modes=(),
-        note="No current control; Ohme's own smart schedule may fight external control.",
+        charging_values=("charging",),
+        vehicle_idle_values=("plugged_in", "finished", "pending_approval"),
+        own_modes=(
+            _rule("switch", ("price_cap",), ("off",), "price cap"),
+            _rule("switch", ("solar_boost",), ("off",), "solar boost"),
+        ),
+        note="No current control. The integration offers no resume call: a charge waiting for approval "
+        "is approved with its button before max charge is selected. Ohme's own smart schedule may fight "
+        "external control and its cloud has blocked pausing before.",
     ),
     PlatformProfile(
         platform="monta",
@@ -460,14 +611,16 @@ _PROFILES: Final[tuple[PlatformProfile, ...]] = (
     PlatformProfile(
         platform="pod_point",
         name="Pod Point",
-        start_stop=_switch("charging_allowed"),
-        note="No current control: start and stop only.",
+        role=ROLE_UNSUPPORTED,
+        note="Its switch replaces the stored weekly schedule with one-second windows and is unavailable "
+        "in manual mode, and the integration no longer works with the new Pod Home app.",
     ),
     PlatformProfile(
         platform="chargepoint",
         name="ChargePoint",
-        start_stop=_buttons(("start_charging",), ("stop_charging",)),
-        note="Its current limit is a select: start and stop only.",
+        start_stop=_buttons(("start_charging_session",), ("stop_charging_session",)),
+        note="Its current limit is a select: start and stop only. Stop ends the session and Start may stay "
+        "refused until the cable is replugged.",
     ),
     PlatformProfile(
         platform="tesla_wall_connector",

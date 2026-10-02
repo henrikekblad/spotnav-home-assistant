@@ -153,7 +153,7 @@ class EaseeCommandPath(StartStopPath):
             blocking=True,
         )
 
-    async def async_start(self) -> bool:
+    async def async_start(self, amps: int | None = None) -> bool:
         if self._start_owed():
             await self._command("start")
         await self._command("resume")

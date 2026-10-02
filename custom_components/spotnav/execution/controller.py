@@ -928,7 +928,7 @@ class ChargingController:
             # Recorded before the first await: an accepted Start the charger has not answered is not
             # a failure, and the observation must not blame the car (see `charge_progress.py`).
             self._start_sent_at = dt_util.utcnow()
-            executed = await self.adapter.async_start()
+            executed = await self.adapter.async_start(explicit_amps)
             if not executed:
                 # The command never went out: nothing is awaiting an answer, and nothing may say so.
                 self._start_sent_at = None

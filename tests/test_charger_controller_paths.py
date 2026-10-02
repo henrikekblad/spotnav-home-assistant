@@ -128,7 +128,9 @@ async def test_a_session_start_writes_the_current_before_the_start(hass: HomeAss
     await controller.async_shutdown()
 
 
-async def test_peblar_is_started_first_because_it_ignores_a_current_while_paused(hass: HomeAssistant) -> None:
+async def test_peblar_gets_its_current_before_it_is_switched_on(hass: HomeAssistant) -> None:
+    """While paused a number write is only stored by the integration, so it is free and the charge
+    never starts at the stale limit of the last session."""
     controller = await _controller(hass, "peblar")
     hass.states.async_set("switch.peblar_charge", "off")
     hass.states.async_set("sensor.peblar_cp_state", "no_ev_connected")
@@ -137,6 +139,27 @@ async def test_peblar_is_started_first_because_it_ignores_a_current_while_paused
     async def turn_on(call: ServiceCall) -> None:
         order.append("switch.turn_on")
         hass.states.async_set("switch.peblar_charge", "on")
+
+    hass.services.async_register("switch", "turn_on", turn_on)
+    _record(hass, order, "number", "set_value")
+
+    await controller.async_start(10)
+
+    assert order == ["number.set_value", "switch.turn_on"]
+    await controller.async_shutdown()
+
+
+async def test_alfen_modbus_is_started_first_because_its_current_would_restart_a_stopped_charge(
+    hass: HomeAssistant,
+) -> None:
+    controller = await _controller(hass, "alfen_modbus")
+    hass.states.async_set("switch.alfen_modbus_charger_enabled", "off")
+    hass.states.async_set("sensor.alfen_modbus_mode_3_state", "B1")
+    order: list[str] = []
+
+    async def turn_on(call: ServiceCall) -> None:
+        order.append("switch.turn_on")
+        hass.states.async_set("switch.alfen_modbus_charger_enabled", "on")
 
     hass.services.async_register("switch", "turn_on", turn_on)
     _record(hass, order, "number", "set_value")

@@ -152,11 +152,15 @@ _DETECTED_TEXT: dict[str, dict[str, str]] = {
         "external": "Another controller (evcc or openWB) is installed and may already control this "
         "charger. Nothing is suggested: choose only what you are sure SpotNav should drive.",
         "disabled": "Disabled by default, and useful (they are enabled if you leave the box below ticked):",
+        "balanced": "Perific balances this charger's installation through Zaptec's cloud and sets the same "
+        "available current SpotNav would. No current is suggested: SpotNav only starts and stops the charger.",
     },
     "sv": {
         "external": "En annan styrning (evcc eller openWB) är installerad och kan redan styra den här "
         "laddaren. Inget föreslås: välj bara det du är säker på att SpotNav ska styra.",
         "disabled": "Avstängda som standard men användbara (de aktiveras om rutan nedan är ikryssad):",
+        "balanced": "Perific balanserar den här laddarens installation via Zaptecs moln och ställer in samma "
+        "tillgängliga ström som SpotNav skulle göra. Ingen ström föreslås: SpotNav startar och stoppar bara laddaren.",
     },
 }
 
@@ -698,7 +702,13 @@ class SpotNavChargingConfigFlow(ChargerWiringSteps, config_entries.ConfigFlow, d
             errors=errors,
             description_placeholders={
                 "device": detected.device_name,
-                "warning": f"{text['external']}\n\n" if detected.external_controller else "",
+                "warning": (
+                    f"{text['external']}\n\n"
+                    if detected.external_controller
+                    else f"{text['balanced']}\n\n"
+                    if detected.balanced_by
+                    else ""
+                ),
                 "disabled": (
                     f"\n\n{text['disabled']} "
                     + ", ".join(self._entity_name(entity_id) for entity_id in detected.disabled_useful)

@@ -22,6 +22,7 @@ from .base import (
     _not_executed,
     ASSIGN_ASSIGNED,
     ASSIGN_BELOW_MINIMUM,
+    ASSIGN_EXTERNAL_BALANCER,
     ASSIGN_FLASH_GUARD,
     ASSIGN_IGNORED_WHILE_PAUSED,
     ASSIGN_INSTALLATION_SHARED,
@@ -41,6 +42,7 @@ from .base import (
 )
 from .registry import (
     ChargerContext,
+    external_balancer,
     installation_check,
     register_current,
     register_start_stop,
@@ -66,7 +68,7 @@ class SwitchPath(StartStopPath):
         )
         return True
 
-    async def async_start(self) -> bool:
+    async def async_start(self, amps: int | None = None) -> bool:
         return await self._switch("turn_off" if self.inverted else "turn_on")
 
     async def async_stop(self) -> bool:
@@ -104,7 +106,7 @@ class SelectPath(StartStopPath):
         )
         return True
 
-    async def async_start(self) -> bool:
+    async def async_start(self, amps: int | None = None) -> bool:
         return await self._select(self.start_option)
 
     async def async_stop(self) -> bool:
@@ -149,7 +151,7 @@ class ButtonPath(StartStopPath):
         await self.hass.services.async_call("button", "press", {"entity_id": entity_id}, blocking=True)
         return True
 
-    async def async_start(self) -> bool:
+    async def async_start(self, amps: int | None = None) -> bool:
         return await self._press(self.start_entity_id)
 
     async def async_stop(self) -> bool:
@@ -184,6 +186,11 @@ class NumberCurrent(CurrentPath):
     number, which reads `unknown` until its first write), a value it already carries (nothing sent), a flash
     setting asked by the regulator, a charger that would ignore the write while paused, a number that
     caps several chargers, and an interval or budget not yet elapsed.
+
+    A number whose state is not what the charger applies (`WritePolicy.state_is_not_setpoint`,
+    OpenEVSE) is never skipped for "already showing the target": the regulator skips a write only when
+    it is the very value last written, a session start or a re-send always writes, and the setpoint is
+    what was last written.
     """
 
     kind = "number"
@@ -198,6 +205,8 @@ class NumberCurrent(CurrentPath):
         enabled: Callable[[], bool | None],
         limiter: WriteRateLimiter | None = None,
         single_charger: Callable[[], bool] | None = None,
+        balanced_elsewhere: Callable[[], bool] | None = None,
+        disconnected_values: tuple[str, ...] = (),
     ) -> None:
         super().__init__(policy)
         self.hass = hass
@@ -205,6 +214,8 @@ class NumberCurrent(CurrentPath):
         self._enabled = enabled
         self._limiter = limiter or WriteRateLimiter(policy)
         self._single_charger = single_charger
+        self._balanced_elsewhere = balanced_elsewhere
+        self._disconnected = tuple(value.lower() for value in disconnected_values)
 
     def _native_value(self, state: State, amps: int, factor: float) -> float | None:
         native = amps * factor
@@ -226,6 +237,8 @@ class NumberCurrent(CurrentPath):
         return None if value is None else value / factor
 
     def setpoint_a(self) -> int | None:
+        if self.policy.state_is_not_setpoint:
+            return self.last_written_a
         state = self.hass.states.get(self.entity_id)
         factor = _amps_factor(state)
         if state is None or factor is None:
@@ -236,6 +249,8 @@ class NumberCurrent(CurrentPath):
         return int(math.floor(present + 1e-9))
 
     def available(self) -> str | None:
+        if self.policy.installation_wide and self._balanced_elsewhere is not None and self._balanced_elsewhere():
+            return ASSIGN_EXTERNAL_BALANCER
         if self.policy.installation_wide and (
             self._single_charger is None or not self._single_charger()
         ):
@@ -247,6 +262,24 @@ class NumberCurrent(CurrentPath):
 
     def retry_entity_ids(self) -> tuple[str, ...]:
         return (self.entity_id,) if self.policy.session_bound else ()
+
+    def needs_resend(self, old_status: str | None, new_status: str | None) -> bool:
+        """Whether a status change is a plug-in, after which a charger that forgets its limit with
+        the session (`WritePolicy.resend_after_plug_in`) is told the current again.
+        """
+        if not self.policy.resend_after_plug_in or not self._disconnected:
+            return False
+        was_away = old_status is None or old_status.lower() in (*self._disconnected, STATE_UNAVAILABLE, STATE_UNKNOWN, "")
+        now_there = new_status is not None and new_status.lower() not in (
+            *self._disconnected,
+            STATE_UNAVAILABLE,
+            STATE_UNKNOWN,
+            "",
+        )
+        if was_away and now_there:
+            self.last_written_a = None  # the charger dropped the claim with the session
+            return True
+        return False
 
     async def async_set(self, amps: int, *, reason: str, verify: bool = False) -> str:
         if amps < DEFAULT_MIN_CURRENT_A:
@@ -263,7 +296,16 @@ class NumberCurrent(CurrentPath):
         if native is None:
             return ASSIGN_BELOW_MINIMUM
         present = _finite(state.state)
-        if present is not None and abs(present - native) < 1e-9:
+        if self.policy.state_is_not_setpoint:
+            # What the number shows is not what is applied: only a repeat of our own last write is
+            # skipped, and only from the regulator.
+            if (
+                reason == WRITE_REGULATOR
+                and self.last_written_a is not None
+                and self.last_written_a == int(math.floor(native / factor + 1e-9))
+            ):
+                return ASSIGN_UNCHANGED
+        elif present is not None and abs(present - native) < 1e-9:
             return ASSIGN_UNCHANGED
         if reason == WRITE_REGULATOR and not self.policy.regulator_writes:
             return ASSIGN_FLASH_GUARD
@@ -342,6 +384,14 @@ def _number_current(context: ChargerContext) -> CurrentPath | None:
         def single_charger() -> bool:
             return check(hass, current_limit)
 
+    profile = context.profile
+    balanced_elsewhere = None
+    if context.policy.installation_wide:
+        hass_for_balancer = context.hass
+
+        def balanced_elsewhere() -> bool:
+            return external_balancer(hass_for_balancer) is not None
+
     return NumberCurrent(
         context.hass,
         current_limit,
@@ -349,6 +399,8 @@ def _number_current(context: ChargerContext) -> CurrentPath | None:
         enabled=context.enabled_for_writes,
         limiter=context.limiter,
         single_charger=single_charger,
+        balanced_elsewhere=balanced_elsewhere,
+        disconnected_values=profile.disconnected_values if profile is not None else (),
     )
 
 

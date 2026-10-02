@@ -310,31 +310,46 @@ async def test_a_flash_setting_that_already_holds_the_value_is_not_written_at_al
     assert calls == []
 
 
-async def test_peblar_ignores_a_write_while_paused_so_none_is_made(hass: HomeAssistant) -> None:
+async def test_alfen_modbus_ignores_a_write_while_paused_so_none_is_made(hass: HomeAssistant) -> None:
+    """Its switch and its current share one register: a current written while stopped restarts it."""
+    ids = register_shape(hass, SHAPES["alfen_modbus"])
+    adapter = adapter_for(hass, detect_charger(hass, ids["device_id"]))
+    calls = async_mock_service(hass, "number", "set_value")
+    hass.states.async_set("switch.alfen_modbus_charger_enabled", "off")
+
+    assert await adapter.async_set_current(10, reason=WRITE_SESSION_START) == ASSIGN_IGNORED_WHILE_PAUSED
+    assert calls == []
+
+    hass.states.async_set("switch.alfen_modbus_charger_enabled", "on")
+    assert await adapter.async_set_current(10, reason=WRITE_SESSION_START) == ASSIGN_ASSIGNED
+    assert adapter.policy.ignored_while_paused and adapter.policy.zero_pauses
+
+
+async def test_peblar_takes_a_write_while_paused_because_the_integration_only_stores_it(
+    hass: HomeAssistant,
+) -> None:
     ids = register_shape(hass, SHAPES["peblar"])
     adapter = adapter_for(hass, detect_charger(hass, ids["device_id"]))
     calls = async_mock_service(hass, "number", "set_value")
     hass.states.async_set("switch.peblar_charge", "off")
 
-    assert await adapter.async_set_current(10, reason=WRITE_SESSION_START) == ASSIGN_IGNORED_WHILE_PAUSED
-    assert calls == []
-
-    hass.states.async_set("switch.peblar_charge", "on")
     assert await adapter.async_set_current(10, reason=WRITE_SESSION_START) == ASSIGN_ASSIGNED
-    assert adapter.policy.ignored_while_paused and adapter.policy.zero_pauses
+
+    assert [call.data["value"] for call in calls] == [10]
+    assert adapter.policy.ignored_while_paused is False and adapter.policy.zero_pauses
 
 
 async def test_a_charger_just_started_counts_as_enabled_until_it_says_so(hass: HomeAssistant) -> None:
     """Its report lags the command: a current written straight after a Start must not be refused as
-    "paused" (Peblar), but a charger that never came up is treated as paused again after a while.
+    "paused" (Alfen Modbus), but a charger that never came up is treated as paused again after a while.
     """
-    ids = register_shape(hass, SHAPES["peblar"])
+    ids = register_shape(hass, SHAPES["alfen_modbus"])
     clock = Clock()
     adapter = adapter_for(hass, detect_charger(hass, ids["device_id"]), clock=clock)
     async_mock_service(hass, "switch", "turn_on")
     async_mock_service(hass, "switch", "turn_off")
     calls = async_mock_service(hass, "number", "set_value")
-    hass.states.async_set("switch.peblar_charge", "off")
+    hass.states.async_set("switch.alfen_modbus_charger_enabled", "off")
 
     await adapter.async_start()
     assert await adapter.async_set_current(10, reason=WRITE_SESSION_START) == ASSIGN_ASSIGNED

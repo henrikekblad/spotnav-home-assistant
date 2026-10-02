@@ -48,10 +48,13 @@ class ChargerContext:
 StartStopFactory = Callable[[ChargerContext], StartStopPath | None]
 CurrentFactory = Callable[[ChargerContext], CurrentPath | None]
 InstallationCheck = Callable[[HomeAssistant, str], bool]
+#: Which other system, if any, writes an installation-wide current limit of this charger's platform.
+ExternalBalancerCheck = Callable[[HomeAssistant], str | None]
 
 _START_STOP: dict[str, StartStopFactory] = {}
 _CURRENT: dict[str, CurrentFactory] = {}
 _installation_check: InstallationCheck | None = None
+_external_balancer_check: ExternalBalancerCheck | None = None
 
 
 def register_start_stop(kind: str, factory: StartStopFactory) -> None:
@@ -70,6 +73,17 @@ def register_installation_check(check: InstallationCheck) -> None:
 
 def installation_check() -> InstallationCheck | None:
     return _installation_check
+
+
+def register_external_balancer(check: ExternalBalancerCheck) -> None:
+    """How to tell that another system writes the installation-wide limit (Perific for Zaptec)."""
+    global _external_balancer_check
+    _external_balancer_check = check
+
+
+def external_balancer(hass: HomeAssistant) -> str | None:
+    """The domain of the system that balances the installation-wide limit, or `None`."""
+    return _external_balancer_check(hass) if _external_balancer_check is not None else None
 
 
 def build_start_stop(context: ChargerContext) -> StartStopPath:

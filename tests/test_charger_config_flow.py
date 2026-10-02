@@ -97,7 +97,11 @@ async def test_a_charger_is_found_from_its_device_and_confirmed(hass: HomeAssist
         assert data[key] == value, key
     assert data[CONF_ENTRY_TYPE] == ENTRY_TYPE_CHARGER and data[CONF_MODE] == MODE_DETECTED
     assert data[CONF_CHARGER_PLATFORM] == "peblar"
-    assert data[CONF_CONTROL_PATH] == {"kind": "switch", "entity_id": "switch.peblar_charge", "inverted": False}
+    assert data[CONF_CONTROL_PATH] == {
+        "kind": "switch_budget",
+        "entity_id": "switch.peblar_charge",
+        "inverted": False,
+    }
     assert data[CONF_CHARGING_STATE] == {"entity_id": "sensor.peblar_cp_state", "charging_values": ["charging"]}
     assert len(data[CONF_CHARGER_CURRENT_ENTITIES]) == 3
     assert data[CONF_ENERGY_REGISTER_IS_SESSION] is False

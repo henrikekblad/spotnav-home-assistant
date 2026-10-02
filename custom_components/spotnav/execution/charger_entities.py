@@ -72,9 +72,13 @@ class EntityMatcher:
 
 
 def option_for(options: list[str], wanted: tuple[str, ...]) -> str | None:
-    for option in options:
-        if option.strip().lower() in wanted:
-            return option
+    """The entity's option that `wanted` names, the first of `wanted` that it offers (so a profile can
+    prefer `pause` to `off`), matched lower-case.
+    """
+    by_name = {option.strip().lower(): option for option in reversed(options)}
+    for name in wanted:
+        if name in by_name:
+            return by_name[name]
     return None
 
 
@@ -94,7 +98,14 @@ def own_mode_conflicts(
 
 
 def _rule_conflicts(hass: HomeAssistant, matcher: EntityMatcher, rule: OwnModeRule) -> list[OwnModeConflict]:
-    entry = matcher.first(rule.domain, rule.keys)
+    entry = next(
+        (
+            candidate
+            for candidate in matcher.find(rule.domain, rule.keys)
+            if not any(token in (candidate.unique_id or "").lower() for token in rule.exclude)
+        ),
+        None,
+    )
     if entry is None or entry.disabled_by is not None:
         return []
     text = state_text(hass, entry.entity_id)

@@ -41,6 +41,7 @@ from ..const import (
     CONF_BATTERY_POWER_INVERTED,
     CONF_CHARGE_CONTROL,
     CONF_CHARGER_ENTRY_IDS,
+    CONF_CHARGER_PLATFORM,
     CONF_CONTROL_PATH,
     CONF_CURRENT_LIMIT,
     CONF_DERIVED_ENTITIES,
@@ -54,6 +55,7 @@ from ..const import (
     CONF_SITE_CURRENT_SOURCE,
     CONF_MODE,
     DEFAULT_MAX_AGE_S,
+    DOMAIN,
     MEASUREMENT_MODE_DERIVED,
     MEASUREMENT_MODE_DIRECT,
     MODE_DETECTED,
@@ -71,6 +73,7 @@ from ..site.site_detection import (
 )
 from ..site.measurement_source import source_from_dict
 from ..execution.charger_entities import control_path_for_entity, own_mode_conflicts
+from ..execution.chargers.registry import external_balancer
 from ..execution.charger_profiles import PATH_EASEE, profile_for
 from ..vehicles.entity_conflicts import conflict_errors
 from ..vehicles.vehicle_discovery import discover_vehicles, soc_choices, vehicle_soc_entity_id
@@ -832,6 +835,30 @@ def _measurement_entity_ids(entry: ConfigEntry) -> set[str]:
     return entity_ids
 
 
+def _external_balancer_warnings(hass: HomeAssistant) -> list[dict[str, Any]]:
+    """One warning when an integration that balances a charger's installation-wide limit through its own
+    cloud (Perific for Zaptec) is set up beside a SpotNav charger of that platform: the charger is
+    started and stopped only, and its limit is not written.
+    """
+    balancer = external_balancer(hass)
+    if balancer is None:
+        return []
+    for charger in hass.config_entries.async_entries(DOMAIN):
+        profile = profile_for(charger.data.get(CONF_CHARGER_PLATFORM))
+        if profile is not None and profile.policy.installation_wide:
+            return [
+                {
+                    "code": "external_current_balancer",
+                    "integration": balancer,
+                    "entity_id": None,
+                    "interval_s": None,
+                    "option": None,
+                    "device_name": profile.name,
+                }
+            ]
+    return []
+
+
 def site_measurement_info(hass: HomeAssistant, entry: ConfigEntry) -> dict[str, Any]:
     """The `measurement`, `warnings` and `detection` blocks of `get_entity_config`'s `site`.
 
@@ -880,6 +907,7 @@ def site_measurement_info(hass: HomeAssistant, entry: ConfigEntry) -> dict[str, 
             }
         )
 
+    warnings.extend(_external_balancer_warnings(hass))
     detection = site_detection(hass, entry)
     return {
         "measurement": measurement,

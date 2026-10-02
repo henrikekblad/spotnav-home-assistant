@@ -23,6 +23,7 @@ from homeassistant.helpers import device_registry as dr, entity_registry as er
 
 from ..const import CURRENT_CONTROL_EASEE, CURRENT_CONTROL_NUMBER
 from ..execution.chargers.easee import EASEE_LIMIT_SENSOR_KEY
+from ..execution.chargers.registry import external_balancer
 from ..execution.chargers.zaptec import single_charger_installation
 from ..execution.charger_entities import (
     EntityMatcher,
@@ -31,10 +32,17 @@ from ..execution.charger_entities import (
     OwnModeConflict,
 )
 from ..execution.charger_profiles import (
+    entity_matches_keys,
+    PlatformProfile,
     PATH_BUTTONS,
+    PATH_BUTTONS_TOGGLE,
     PATH_EASEE,
+    PATH_NUMBER_PAUSE,
     PATH_SELECT,
+    PATH_SELECT_APPROVE,
+    PATH_SELECT_RESTORE,
     PATH_SWITCH,
+    PATH_SWITCH_BUDGET,
     profile_for,
     PROFILES,
     ROLE_CHARGER,
@@ -74,6 +82,9 @@ class DetectedCharger:
     notes: list[str] = field(default_factory=list)
     #: Another controller (evcc, openWB) owns or may own the charger: warn, suggest nothing.
     external_controller: bool = False
+    #: The domain of an integration that balances this charger's installation-wide current limit through
+    #: its own cloud (Perific for Zaptec): the current is not suggested, start and stop only.
+    balanced_by: str | None = None
 
     @property
     def found_control(self) -> bool:
@@ -128,17 +139,17 @@ def _detect_start_stop(
     if rule is None:
         found.notes.append("no_start_stop")
         return
-    if rule.kind == PATH_SWITCH:
+    if rule.kind in (PATH_SWITCH, PATH_SWITCH_BUDGET):
         entry = matcher.first("switch", rule.keys)
         if entry is None:
             found.notes.append("no_charge_switch")
             return
         found.charge_control = entry.entity_id
-        found.control_path = {"kind": PATH_SWITCH, "entity_id": entry.entity_id, "inverted": rule.inverted}
+        found.control_path = {"kind": rule.kind, "entity_id": entry.entity_id, "inverted": rule.inverted}
         if entry.disabled_by is not None:
             found.disabled_useful.append(entry.entity_id)
         return
-    if rule.kind == PATH_SELECT:
+    if rule.kind in (PATH_SELECT, PATH_SELECT_RESTORE, PATH_SELECT_APPROVE):
         entry = matcher.first("select", rule.keys)
         if entry is None:
             found.notes.append("no_charge_select")
@@ -153,13 +164,13 @@ def _detect_start_stop(
             return
         found.charge_control = entry.entity_id
         found.control_path = {
-            "kind": PATH_SELECT,
+            "kind": rule.kind,
             "entity_id": entry.entity_id,
             "start_option": start,
             "stop_option": stop,
         }
         return
-    if rule.kind == PATH_BUTTONS:
+    if rule.kind in (PATH_BUTTONS, PATH_BUTTONS_TOGGLE):
         start_entry = matcher.first("button", rule.start_keys)
         stop_entry = matcher.first("button", rule.stop_keys)
         if start_entry is None or stop_entry is None:
@@ -167,9 +178,24 @@ def _detect_start_stop(
             return
         found.charge_control = start_entry.entity_id
         found.control_path = {
-            "kind": PATH_BUTTONS,
+            "kind": rule.kind,
             "start_entity_id": start_entry.entity_id,
             "stop_entity_id": stop_entry.entity_id,
+        }
+        return
+    if rule.kind == PATH_NUMBER_PAUSE:
+        # A pause is 0 A written to the current number, so the number is part of the path; the start
+        # button (pressed only while the charger waits for authorization) is the charge control.
+        number = matcher.first("number", rule.keys)
+        start_entry = matcher.first("button", rule.start_keys)
+        if number is None or start_entry is None:
+            found.notes.append("no_number_pause_pair")
+            return
+        found.charge_control = start_entry.entity_id
+        found.control_path = {
+            "kind": PATH_NUMBER_PAUSE,
+            "start_entity_id": start_entry.entity_id,
+            "number_entity_id": number.entity_id,
         }
         return
     if rule.kind == PATH_EASEE:
@@ -214,6 +240,12 @@ def _detect_current(
     if not _unit_is_amps(hass, entry):
         found.notes.append("current_unit_not_amps")
         return
+    balancer = external_balancer(hass) if profile.policy.installation_wide else None
+    if balancer is not None:
+        # Two writers on one installation-wide field, the other one holding the fuse: start and stop only.
+        found.balanced_by = balancer
+        found.notes.append("external_balancer")
+        return
     if profile.policy.installation_wide and not single_charger_installation(hass, entry.entity_id):
         # A limit that caps every charger of the installation is never used for one of several.
         found.notes.append("installation_shared")
@@ -224,23 +256,56 @@ def _detect_current(
         found.disabled_useful.append(entry.entity_id)
 
 
-def _is_energy_register(hass: HomeAssistant, entry: er.RegistryEntry) -> bool:
+def _is_energy_register(
+    hass: HomeAssistant, entry: er.RegistryEntry, state_classes: tuple[str, ...] = ("total_increasing",)
+) -> bool:
     state = hass.states.get(entry.entity_id)
     device_class = (state.attributes.get("device_class") if state else None) or entry.device_class or entry.original_device_class
     state_class = (state.attributes.get("state_class") if state else None) or (entry.capabilities or {}).get("state_class")
-    return device_class == "energy" and state_class == "total_increasing"
+    return device_class == "energy" and state_class in state_classes
+
+
+def _register_owner(profile: PlatformProfile, entry: er.RegistryEntry) -> str | None:
+    """Which list an energy sensor belongs to, `"lifetime"` or `"session"`, by the longest of the
+    profile's keys it matches. A key can be the tail of another (Lektrico's `energy` ends
+    `lifetime_energy`; DEFA's `meter_value` ends `transaction_meter_value`), and the longer one is
+    what the entity is.
+    """
+    best_length = 0
+    owner: str | None = None
+    for name, keys in (("lifetime", profile.energy_keys), ("session", profile.session_energy_keys)):
+        for key in keys:
+            if len(key) > best_length and entity_matches_keys(
+                translation_key=entry.translation_key,
+                unique_id=entry.unique_id,
+                keys=(key,),
+                key_first=profile.key_first,
+            ):
+                best_length = len(key)
+                owner = name
+    return owner
 
 
 def _detect_energy(hass: HomeAssistant, found: DetectedCharger, matcher: EntityMatcher) -> None:
     profile = matcher.profile
     sensors = [e for e in matcher.entries if e.domain == "sensor" and _is_energy_register(hass, e)]
-    by_key = matcher.find("sensor", profile.energy_keys)
-    lifetime = next((e for e in by_key if e in sensors), None)
-    session_keys = matcher.find("sensor", profile.session_energy_keys)
-    session = next((e for e in session_keys if e in sensors), None)
+    session_named = [
+        e for e in matcher.find("sensor", profile.session_energy_keys) if _register_owner(profile, e) == "session"
+    ]
+    # A register the profile names may carry a state class the generic search would refuse (`total`).
+    lifetime = next(
+        (
+            e
+            for e in matcher.find("sensor", profile.energy_keys)
+            if _register_owner(profile, e) == "lifetime"
+            and _is_energy_register(hass, e, profile.energy_state_classes)
+        ),
+        None,
+    )
+    session = next((e for e in session_named if e in sensors), None)
     if lifetime is None:
         # Any other meter register on the device that is not a known session counter.
-        lifetime = next((e for e in sensors if e is not session and e not in session_keys), None)
+        lifetime = next((e for e in sensors if e is not session and e not in session_named), None)
     if lifetime is not None:
         found.energy_register = lifetime.entity_id
         if lifetime.disabled_by is not None:

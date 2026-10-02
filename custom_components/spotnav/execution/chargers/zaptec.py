@@ -5,7 +5,22 @@ from __future__ import annotations
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers import device_registry as dr, entity_registry as er
 
-from .registry import register_installation_check
+from .registry import register_external_balancer, register_installation_check
+
+#: Home Assistant integrations whose load balancer writes the Zaptec installation's available current
+#: through Zaptec's cloud (Perific/Enegic: its reporter runs in Enegic's cloud, the installation is
+#: put in Manual Power Control and Enegic is its owner). Two writers on one field: the last one wins,
+#: and a value above the balancer's is a fuse risk until its next write.
+EXTERNAL_BALANCERS = ("perific",)
+
+
+def zaptec_balanced_elsewhere(hass: HomeAssistant) -> str | None:
+    """The domain of the integration that balances Zaptec through its own cloud, when it is set up."""
+    for domain in EXTERNAL_BALANCERS:
+        if hass.config_entries.async_entries(domain):
+            return domain
+    return None
+
 
 def single_charger_installation(hass: HomeAssistant, number_entity_id: str) -> bool:
     """Whether the installation a limit number belongs to has exactly one charger.
@@ -32,3 +47,4 @@ def single_charger_installation(hass: HomeAssistant, number_entity_id: str) -> b
 
 
 register_installation_check(single_charger_installation)
+register_external_balancer(zaptec_balanced_elsewhere)

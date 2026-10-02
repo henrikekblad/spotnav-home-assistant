@@ -42,6 +42,9 @@ ASSIGN_FLASH_GUARD: Final = "flash_guard"
 ASSIGN_IGNORED_WHILE_PAUSED: Final = "ignored_while_paused"
 #: The number caps every charger of an installation that has more than one.
 ASSIGN_INSTALLATION_SHARED: Final = "installation_shared"
+#: Another system writes the same installation-wide limit (Perific balancing a Zaptec installation),
+#: so SpotNav starts and stops only.
+ASSIGN_EXTERNAL_BALANCER: Final = "external_balancer"
 #: This charger has no way to take a current.
 ASSIGN_UNSUPPORTED: Final = "unsupported"
 #: The number's unit is neither A nor mA, so its value is never assumed to be amperes.
@@ -60,6 +63,7 @@ REFUSED_OUTCOMES: Final = frozenset(
         ASSIGN_FLASH_GUARD,
         ASSIGN_IGNORED_WHILE_PAUSED,
         ASSIGN_INSTALLATION_SHARED,
+        ASSIGN_EXTERNAL_BALANCER,
         ASSIGN_UNSUPPORTED,
         ASSIGN_UNIT_UNKNOWN,
         ASSIGN_TARGET_UNAVAILABLE,
@@ -195,9 +199,12 @@ class StartStopPath(ABC):
         self.hass = hass
 
     @abstractmethod
-    async def async_start(self) -> bool:
+    async def async_start(self, amps: int | None = None) -> bool:
         """Send the start; `False` when it was not executed (the entity is unavailable and Home
         Assistant would have skipped the call), so nothing may claim a start that never happened.
+
+        `amps` is the current the charge is requested at, when known: a path whose start is itself
+        a current write (ABB's pause by 0 A) needs it; every other ignores it.
         """
 
     @abstractmethod
