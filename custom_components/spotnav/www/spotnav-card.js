@@ -2972,6 +2972,7 @@ var da = {
   "entity.field.vehicleSoc": "Køretøjets opladningsniveau",
   "entity.field.mainFuse": "Hovedsikring",
   "entity.field.measurementMode": "Målemetode",
+  "entity.field.voltageBetweenPhases": "Spænding mellem faser",
   "entity.field.batteryPower": "Batteriets effekt",
   "entity.field.maxAge": "Højeste måleralder",
   "entity.mode.direct": "Fasestrømme måles direkte",
@@ -3004,6 +3005,9 @@ var da = {
   "entity.help.vehicleSoc": "Køretøjets opladningsniveau, læst fra den sensor der er valgt til køretøjet, eller fundet automatisk når det kun har én.",
   "entity.help.mainFuse": "Anlæggets hovedsikring i ampere. Alle ladere på anlægget holder sig samlet under den.",
   "entity.help.measurementMode": "Om din måler angiver hver fases strøm direkte, eller SpotNav regner den ud fra effekt og spænding.",
+  "entity.help.voltageBetweenPhases": "Spændingen mellem to faser i din elinstallation. Trefaset ladeeffekt regnes ud fra den.",
+  "entity.voltage.tn": "400 V (TN-net, det sædvanlige)",
+  "entity.voltage.it": "230 V (IT-net, almindeligt i Norge)",
   "entity.help.batteryPower": "En sensor for hjemmebatteriets effekt, så SpotNav kan tage højde for batteriet.",
   "entity.help.maxAge": "Hvor gammel en måling må være, i sekunder, før SpotNav holder op med at stole på den.",
   "entity.help.phaseDirect": "Sensoren der måler strømmen på denne fase, i ampere.",
@@ -3520,6 +3524,7 @@ var en = {
   "entity.field.vehicleSoc": "Vehicle charge level",
   "entity.field.mainFuse": "Main fuse",
   "entity.field.measurementMode": "Measurement mode",
+  "entity.field.voltageBetweenPhases": "Voltage between phases",
   "entity.field.batteryPower": "Battery power",
   "entity.field.maxAge": "Maximum measurement age",
   "entity.mode.direct": "Phase currents measured directly",
@@ -3552,6 +3557,9 @@ var en = {
   "entity.help.vehicleSoc": "The vehicle's charge level, read from the sensor chosen for the vehicle, or found automatically when it has only one.",
   "entity.help.mainFuse": "The site's main fuse in amperes. All chargers on the site together stay below it.",
   "entity.help.measurementMode": "Whether your meter reports each phase's current directly, or SpotNav works it out from power and voltage.",
+  "entity.help.voltageBetweenPhases": "The voltage between two phases of your electrical installation. Three-phase charging power is figured from it.",
+  "entity.voltage.tn": "400 V (TN network, the usual one)",
+  "entity.voltage.it": "230 V (IT network, common in Norway)",
   "entity.help.batteryPower": "A sensor for the home battery's power, so SpotNav can take the battery into account.",
   "entity.help.maxAge": "How old a measurement may be, in seconds, before SpotNav stops trusting it.",
   "entity.help.phaseDirect": "The sensor that measures the current on this phase, in amperes.",
@@ -4068,6 +4076,7 @@ var fi = {
   "entity.field.vehicleSoc": "Ajoneuvon lataustaso",
   "entity.field.mainFuse": "Pääsulake",
   "entity.field.measurementMode": "Mittaustapa",
+  "entity.field.voltageBetweenPhases": "Vaiheiden välinen jännite",
   "entity.field.batteryPower": "Akun teho",
   "entity.field.maxAge": "Mittauksen enimmäisikä",
   "entity.mode.direct": "Vaihevirrat mitataan suoraan",
@@ -4100,6 +4109,9 @@ var fi = {
   "entity.help.vehicleSoc": "Ajoneuvon varaustaso, luettuna ajoneuvolle valitusta anturista tai löydettynä automaattisesti, kun sillä on vain yksi.",
   "entity.help.mainFuse": "Kohteen pääsulake ampeereina. Kaikki kohteen laturit pysyvät yhdessä sen alapuolella.",
   "entity.help.measurementMode": "Ilmoittaako mittarisi kunkin vaiheen virran suoraan vai laskeeko SpotNav sen tehosta ja jännitteestä.",
+  "entity.help.voltageBetweenPhases": "Sähköasennuksesi kahden vaiheen välinen jännite. Kolmivaiheinen latausteho lasketaan siitä.",
+  "entity.voltage.tn": "400 V (TN-verkko, tavallinen)",
+  "entity.voltage.it": "230 V (IT-verkko, yleinen Norjassa)",
   "entity.help.batteryPower": "Kotiakun tehon anturi, jotta SpotNav voi ottaa akun huomioon.",
   "entity.help.maxAge": "Kuinka vanha mittaus saa olla sekunteina, ennen kuin SpotNav lakkaa luottamasta siihen.",
   "entity.help.phaseDirect": "Anturi, joka mittaa tämän vaiheen virran ampeereina.",
@@ -4616,6 +4628,7 @@ var nb = {
   "entity.field.vehicleSoc": "Kjøretøyets ladenivå",
   "entity.field.mainFuse": "Hovedsikring",
   "entity.field.measurementMode": "Målemetode",
+  "entity.field.voltageBetweenPhases": "Spenning mellom faser",
   "entity.field.batteryPower": "Batteriets effekt",
   "entity.field.maxAge": "Høyeste målealder",
   "entity.mode.direct": "Fasestrømmer måles direkte",
@@ -4648,6 +4661,9 @@ var nb = {
   "entity.help.vehicleSoc": "Kjøretøyets ladenivå, lest fra sensoren som er valgt for kjøretøyet, eller funnet automatisk når det bare har én.",
   "entity.help.mainFuse": "Anleggets hovedsikring i ampere. Alle laderne på anlegget holder seg samlet under den.",
   "entity.help.measurementMode": "Om måleren oppgir strømmen for hver fase direkte, eller SpotNav regner den ut fra effekt og spenning.",
+  "entity.help.voltageBetweenPhases": "Spenningen mellom to faser i det elektriske anlegget ditt. Trefaset ladeeffekt regnes ut fra den.",
+  "entity.voltage.tn": "400 V (TN-nett, det vanlige)",
+  "entity.voltage.it": "230 V (IT-nett, vanlig i Norge)",
   "entity.help.batteryPower": "En sensor for hjemmebatteriets effekt, slik at SpotNav kan ta hensyn til batteriet.",
   "entity.help.maxAge": "Hvor gammel en måling kan være, i sekunder, før SpotNav slutter å stole på den.",
   "entity.help.phaseDirect": "Sensoren som måler strømmen på denne fasen, i ampere.",
@@ -5164,6 +5180,7 @@ var sv = {
   "entity.field.vehicleSoc": "Fordonets laddnivå",
   "entity.field.mainFuse": "Huvudsäkring",
   "entity.field.measurementMode": "Mätsätt",
+  "entity.field.voltageBetweenPhases": "Spänning mellan faser",
   "entity.field.batteryPower": "Batteriets effekt",
   "entity.field.maxAge": "Högsta mätvärdesålder",
   "entity.mode.direct": "Fasströmmar mäts direkt",
@@ -5196,6 +5213,9 @@ var sv = {
   "entity.help.vehicleSoc": "Fordonets laddnivå, läst från sensorn som valts för fordonet, eller hittad automatiskt när det bara har en.",
   "entity.help.mainFuse": "Anläggningens huvudsäkring i ampere. Alla laddare på anläggningen håller sig tillsammans under den.",
   "entity.help.measurementMode": "Om din mätare anger varje fas ström direkt, eller om SpotNav räknar ut den från effekt och spänning.",
+  "entity.help.voltageBetweenPhases": "Spänningen mellan två faser i din elanläggning. Trefasig laddeffekt räknas ut från den.",
+  "entity.voltage.tn": "400 V (TN-nät, det vanliga)",
+  "entity.voltage.it": "230 V (IT-nät, vanligt i Norge)",
   "entity.help.batteryPower": "En sensor för hemmabatteriets effekt, så att SpotNav kan ta hänsyn till batteriet.",
   "entity.help.maxAge": "Hur gammal en mätning får vara, i sekunder, innan SpotNav slutar lita på den.",
   "entity.help.phaseDirect": "Sensorn som mäter strömmen på den här fasen, i ampere.",
@@ -8565,6 +8585,7 @@ var FIELD_LABELS = {
   vehicle_soc: "entity.field.vehicleSoc",
   main_fuse_a: "entity.field.mainFuse",
   measurement_mode: "entity.field.measurementMode",
+  voltage_between_phases_v: "entity.field.voltageBetweenPhases",
   battery_aggregate_power_entity: "entity.field.batteryPower",
   battery_discharge_power_entity: "entity.field.batteryDischargePower",
   battery_power_inverted: "entity.field.batteryPowerInverted",
@@ -8646,6 +8667,7 @@ var FIELD_HELP = {
   vehicle_soc: "entity.help.vehicleSoc",
   main_fuse_a: "entity.help.mainFuse",
   measurement_mode: "entity.help.measurementMode",
+  voltage_between_phases_v: "entity.help.voltageBetweenPhases",
   battery_aggregate_power_entity: "entity.help.batteryPower",
   battery_discharge_power_entity: "entity.help.batteryDischargePower",
   battery_power_inverted: "entity.help.batteryPowerInverted",
@@ -9668,6 +9690,30 @@ function entityEditorBody(doc, language, input, handlers, idPrefix) {
       paintBattery();
       layoutMode();
     }
+  }
+  const voltageField = fieldsOf(config, scope).find((entry) => entry.field === "voltage_between_phases_v");
+  if (voltageField !== void 0 && voltageField.kind === "enum" && voltageField.writable) {
+    const voltageOptions = voltageField.choices.map((choice) => ({
+      value: choice,
+      label: choice === "230" ? "entity.voltage.it" : "entity.voltage.tn"
+    }));
+    const voltage = choiceGroup(
+      "voltage",
+      "entity.field.voltageBetweenPhases",
+      voltageOptions,
+      () => values["voltage_between_phases_v"] ?? voltageField.value ?? "400",
+      (value) => {
+        values["voltage_between_phases_v"] = value;
+      },
+      { intro: fieldHelp("voltage_between_phases_v", "entity.help.voltageBetweenPhases") }
+    );
+    const voltageError = element(doc, "p", VISUAL_CLASSES.settingsError);
+    voltageError.hidden = true;
+    voltageError.dataset["fieldError"] = "voltage_between_phases_v";
+    voltageError.setAttribute("role", "alert");
+    errorNodes.set("voltage_between_phases_v", { node: voltageError, input: voltage.fieldset });
+    voltage.fieldset.append(voltageError);
+    body.append(voltage.fieldset);
   }
   const actions = element(doc, "div", VISUAL_CLASSES.settingsActions);
   const save = element(doc, "button", `${VISUAL_CLASSES.button} ${VISUAL_CLASSES.settingsSave}`, translate(language, "settings.save"));

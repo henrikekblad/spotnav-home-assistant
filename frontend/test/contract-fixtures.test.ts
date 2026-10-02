@@ -897,7 +897,9 @@ const SITE_TAIL = [
   "max_age_s",
 ];
 const CHARGER = ["charge_control", "current_limit", "energy_register_entity", "power_entity", "vehicle_soc"];
-const SITE_FIXED = ["main_fuse_a", "measurement_mode"];
+const SITE_FIXED = ["main_fuse_a", "measurement_mode", "voltage_between_phases_v"];
+/** A charger in no site holds the voltage between phases itself, listed before the vehicle sensor. */
+const CHARGER_NO_SITE = ["charge_control", "current_limit", "energy_register_entity", "power_entity", "voltage_between_phases_v", "vehicle_soc"];
 
 /**
  * One row per fixture: the outcome, the field errors in the order the backend wrote them, and -- when
@@ -1048,7 +1050,7 @@ const ENTITY_CONFIG_V1_EXPECTED: Record<
     fieldErrors: [],
     config: {
       charger: "get_lone",
-      fields: CHARGER,
+      fields: CHARGER_NO_SITE,
       mode: null,
       chargeControl: "switch.get_lone_control",
       currentLimit: null,

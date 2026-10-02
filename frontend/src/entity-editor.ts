@@ -1294,6 +1294,33 @@ export function entityEditorBody(
     }
   }
 
+  // The voltage between two phases: 400 V (the usual TN network) or 230 V (an IT network, as in much of
+  // Norway). A site holds it for its chargers; a charger in no site holds its own. Chosen like a type.
+  const voltageField = fieldsOf(config, scope).find((entry) => entry.field === "voltage_between_phases_v");
+  if (voltageField !== undefined && voltageField.kind === "enum" && voltageField.writable) {
+    const voltageOptions = voltageField.choices.map((choice) => ({
+      value: choice,
+      label: (choice === "230" ? "entity.voltage.it" : "entity.voltage.tn") as TranslationKey,
+    }));
+    const voltage = choiceGroup(
+      "voltage",
+      "entity.field.voltageBetweenPhases",
+      voltageOptions,
+      () => values["voltage_between_phases_v"] ?? voltageField.value ?? "400",
+      (value) => {
+        values["voltage_between_phases_v"] = value;
+      },
+      { intro: fieldHelp("voltage_between_phases_v", "entity.help.voltageBetweenPhases") },
+    );
+    const voltageError = element(doc, "p", C.settingsError);
+    voltageError.hidden = true;
+    voltageError.dataset["fieldError"] = "voltage_between_phases_v";
+    voltageError.setAttribute("role", "alert");
+    errorNodes.set("voltage_between_phases_v", { node: voltageError, input: voltage.fieldset });
+    voltage.fieldset.append(voltageError);
+    body.append(voltage.fieldset);
+  }
+
   const actions = element(doc, "div", C.settingsActions);
   const save = element(doc, "button", `${C.button} ${C.settingsSave}`, translate(language, "settings.save"));
   save.type = "submit";
