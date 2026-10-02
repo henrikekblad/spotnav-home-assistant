@@ -184,13 +184,13 @@ def _names(commands) -> list[str]:
     return [call.data["action_command"] for call in commands]
 
 
-async def test_easee_start_from_awaiting_start_resumes(hass: HomeAssistant) -> None:
+async def test_easee_start_from_awaiting_start_authorizes_then_resumes(hass: HomeAssistant) -> None:
     adapter, commands, _ = await _easee_commands(hass)
     hass.states.async_set("sensor.easee_status", "awaiting_start")
 
     await adapter.async_start()
 
-    assert _names(commands) == ["resume"]
+    assert _names(commands) == ["start", "resume"]
 
 
 async def test_easee_start_from_awaiting_authorization_authorizes_then_resumes(hass: HomeAssistant) -> None:

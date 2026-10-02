@@ -385,7 +385,9 @@ async def test_a_manual_start_on_easee_sends_resume_whatever_the_idle_status(
 
     assert await controller.async_start(manual=True) is True
 
-    assert commands == ["resume"]
+    # `awaiting_start` without a pause of ours may be a charger an earlier version deauthorized,
+    # so the start authorizes first; `ready_to_charge` is authorized already.
+    assert commands == (["start", "resume"] if status == "awaiting_start" else ["resume"])
     await controller.async_shutdown()
 
 

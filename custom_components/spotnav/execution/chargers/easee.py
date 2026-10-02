@@ -129,17 +129,18 @@ class EaseeCommandPath(StartStopPath):
 
     def _start_owed(self) -> bool:
         """Whether a `start` (authorize) must precede the `resume`: the charger says it waits for an
-        authorization, or the status sensor says authorization is required and the charger sits in
-        `awaiting_start` without a pause of ours to explain it.
+        authorization, or it sits in `awaiting_start` without a pause of ours to explain it.
+
+        The second case does not ask the `config_authorizationRequired` attribute: a charger an
+        earlier version deauthorized with `stop` also reads `awaiting_start`, whatever that setting
+        says, and a `start` on a charger that needs no authorization does nothing (Easee's own
+        label: "Authorize (start) charging"). Sending it costs one command; leaving it out leaves
+        such a charger unable to start.
         """
         status = self._status()
         if status in _EASEE_AWAITING_AUTHORIZATION:
             return True
-        return (
-            status == _EASEE_AWAITING_START
-            and self.paused is not True
-            and self._authorization_required() is True
-        )
+        return status == _EASEE_AWAITING_START and self.paused is not True
 
     async def _command(self, action: str) -> None:
         # Counted against the settings budget, never refused by it: a stop is a safety action.

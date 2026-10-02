@@ -166,7 +166,8 @@ async def test_after_a_restart_a_limit_that_reads_zero_is_a_pause(hass: HomeAssi
 
     await adapter.async_start()
     set_easee_limit(hass, "16")
-    assert [call.data["action_command"] for call in commands] == ["resume"]
+    # After a restart the pause is not known to be ours, so the start authorizes first.
+    assert [call.data["action_command"] for call in commands] == ["start", "resume"]
     assert await adapter.async_set_current(10, reason=WRITE_SESSION_START) == ASSIGN_ASSIGNED
 
 
@@ -227,13 +228,14 @@ async def test_a_required_authorization_is_a_second_signal_for_start_before_resu
     assert [call.data["action_command"] for call in commands] == ["start", "resume"]
 
 
-async def test_no_start_is_sent_when_authorization_is_not_required_or_the_pause_is_ours(
+async def test_a_start_authorizes_unless_the_pause_is_ours(
     hass: HomeAssistant,
 ) -> None:
     ids, adapter, _, commands = await _easee(hass)
+    # A charger an earlier version deauthorized reads `awaiting_start` whatever its setting says.
     hass.states.async_set("sensor.easee_status", "awaiting_start", {"config_authorizationRequired": False})
     await adapter.async_start()
-    assert [call.data["action_command"] for call in commands] == ["resume"]
+    assert [call.data["action_command"] for call in commands] == ["start", "resume"]
 
     commands.clear()
     hass.states.async_set("sensor.easee_status", "charging", {"config_authorizationRequired": True})
