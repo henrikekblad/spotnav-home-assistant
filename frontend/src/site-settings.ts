@@ -276,6 +276,7 @@ const RESTORE_FAILURE_KEYS: Record<string, TranslationKey> = {
   probe_in_flight: "site.activeControl.restore.failed.probe_in_flight",
   below_minimum: "site.activeControl.restore.failed.below_minimum",
   no_connector_target: "site.activeControl.restore.failed.no_connector_target",
+  external_balancer: "site.activeControl.restore.failed.external_balancer",
 };
 
 export interface ActiveControlNotice {

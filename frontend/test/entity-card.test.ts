@@ -980,3 +980,75 @@ describe("the charger editor's control path and write policy", () => {
     expect(controlBlock(element)).toBeNull();
   });
 });
+
+describe("the charger audit's start and stop kinds and the external balancer warning", () => {
+  const abb = {
+    platform: "abb",
+    start_stop: { kind: "number_pause", entity_ids: ["button.abb_start", "number.abb_current"], inverted: false, start_option: null, stop_option: null },
+    current: { kind: "number", entity_id: "number.abb_current", service: "number.set_value", enabled: true },
+    charging_state: { source: "status", entity_id: "sensor.abb_status" },
+    policy: { ...POLICY_FREE, min_interval_s: 60 },
+    capabilities: CAPABILITIES,
+    conflicts: [],
+  };
+  const balancerWarning = {
+    code: "external_current_balancer",
+    integration: "perific",
+    entity_id: null,
+    interval_s: null,
+    option: null,
+    device_name: "Zaptec",
+  };
+  const withSiteWarnings = (warnings: Array<Record<string, unknown>>) => (answer: Record<string, unknown>) => {
+    const config = answer["config"] as { site: Record<string, unknown> };
+    return { ...answer, config: { ...config, site: { ...config.site, warnings } } };
+  };
+
+  it("words number_pause, and any kind the card does not know, in every language", async () => {
+    const { element } = await mounted({ patch: withControl(abb) });
+    openSettings(element);
+    await settle();
+    edit(element, "charger");
+    expect(controlRow(element, "start_stop")).toContain("The current number: stop writes 0 A, start writes the planned current");
+    expect(controlRow(element, "start_stop")).not.toContain(translate("en", "control.startStop.switch"));
+
+    const unknown = { ...abb, start_stop: { ...abb.start_stop, kind: "from_the_future" } };
+    const later = await mounted({ patch: withControl(unknown) });
+    openSettings(later.element);
+    await settle();
+    edit(later.element, "charger");
+    expect(controlRow(later.element, "start_stop")).toContain(translate("en", "control.startStop.other"));
+    expect(controlRow(later.element, "start_stop")).not.toContain("from_the_future");
+    expect(translate("sv", "control.startStop.numberPause")).toBe(
+      "Strömnumret: stopp skriver 0 A, start skriver den planerade strömmen",
+    );
+  });
+
+  it("shows the external balancer warning in the Site card and the Site dialog, worded", async () => {
+    const { element } = await mounted({ patch: withSiteWarnings([balancerWarning]) });
+    openSettings(element);
+    await settle();
+    const expected = translate("en", "entity.warning.externalBalancer", { name: "Zaptec", integration: "perific" });
+    expect(shadow(element).textContent).toContain(expected);
+    expect(translate("en", "entity.warning.externalBalancer", { name: "Zaptec", integration: "perific" })).toBe(
+      "perific balances the current of Zaptec itself, so SpotNav starts and stops the charger but does not write its current.",
+    );
+    edit(element, "site");
+    const row = openDialog(element)?.querySelector("[data-notices='site'] [data-warning='external_current_balancer']");
+    expect(row?.textContent).toBe(expected);
+    expect(row?.className).toBe("spotnav-entity-warning");
+  });
+
+  it("lets no raw code reach the text, and words an unknown warning code", async () => {
+    const unknown = { ...balancerWarning, code: "brand_new_code" };
+    const { element } = await mounted({ patch: withSiteWarnings([balancerWarning, unknown]) });
+    openSettings(element);
+    await settle();
+    edit(element, "site");
+    const dialog = openDialog(element);
+    expect(dialog?.querySelector("[data-warning='brand_new_code']")?.textContent).toBe(translate("en", "entity.warning.unknown"));
+    for (const raw of ["external_current_balancer", "brand_new_code", "number_pause", "external_balancer"]) {
+      expect(dialog?.textContent).not.toContain(raw);
+    }
+  });
+});

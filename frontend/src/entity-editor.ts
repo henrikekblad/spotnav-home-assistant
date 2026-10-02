@@ -114,7 +114,23 @@ function warningText(language: Language, warning: SiteWarning): string[] {
   if (warning.code === "own_load_balancing") {
     return [translate(language, "entity.warning.ownBalancing", { name: warning.deviceName ?? integration, integration })];
   }
-  return [];
+  if (warning.code === "external_current_balancer") {
+    return [translate(language, "entity.warning.externalBalancer", { name: warning.deviceName ?? "", integration })];
+  }
+  return [translate(language, "entity.warning.unknown")];
+}
+
+/** The site's warnings, one worded row each (a code this card does not know gets a generic sentence). */
+export function siteWarningRows(doc: Document, language: Language, site: EntitySite): HTMLElement[] {
+  const rows: HTMLElement[] = [];
+  for (const warning of site.warnings) {
+    for (const line of warningText(language, warning)) {
+      const row = element(doc, "p", C.entityWarning, line);
+      row.dataset["warning"] = warning.code;
+      rows.push(row);
+    }
+  }
+  return rows;
 }
 
 /**
@@ -137,13 +153,7 @@ export function siteNotices(doc: Document, language: Language, site: EntitySite)
     estimated.dataset["notice"] = "estimated";
     notices.append(estimated);
   }
-  for (const warning of site.warnings) {
-    for (const line of warningText(language, warning)) {
-      const row = element(doc, "p", C.entityWarning, line);
-      row.dataset["warning"] = warning.code;
-      notices.append(row);
-    }
-  }
+  notices.append(...siteWarningRows(doc, language, site));
   return notices.childElementCount === 0 ? null : notices;
 }
 
@@ -194,6 +204,12 @@ function controlStartStopText(language: Language, control: EntityControl): strin
   }
   if (path.kind === "easee") {
     return translate(language, "control.startStop.easee");
+  }
+  if (path.kind === "number_pause") {
+    return translate(language, "control.startStop.numberPause");
+  }
+  if (path.kind === "other") {
+    return translate(language, "control.startStop.other");
   }
   return translate(language, path.inverted ? "control.startStop.switchInverted" : "control.startStop.switch");
 }

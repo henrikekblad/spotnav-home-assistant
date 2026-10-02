@@ -3007,6 +3007,8 @@ var da = {
   "entity.warning.updateIntervalOption": 'Sænk det med "{option}" i den integration.',
   "entity.warning.onChange": "{integration} rapporterer kun, når en værdi ændres, så en stabil værdi kan se gammel ud. Hæv højeste måleralder, hvis anlægget ofte regnes som forældet.",
   "entity.warning.ownBalancing": "{name} ({integration}) balancerer last selv og kan modvirke SpotNavs aktive styring. Brug en af dem.",
+  "entity.warning.externalBalancer": "{integration} balancerer strømmen for {name} selv, så SpotNav starter og stopper laderen, men skriver ikke dens strøm.",
+  "entity.warning.unknown": "Anlægget har en meddelelse, som denne version af kortet ikke kan formulere. Opdater kortet.",
   "entity.detect.title": "Fundet i Home Assistant",
   "entity.detect.intro": "Disse blev genkendt i din opsætning. Intet ændres, før du trykker på Brug.",
   "entity.site.intro": "Måling for anlægget. {applies}",
@@ -3073,6 +3075,7 @@ var da = {
   "site.activeControl.restore.failed.membership_conflict": "Laderen tilhører mere end ét anlæg og blev ikke rørt, så den kan stadig være begrænset.",
   "site.activeControl.restore.failed.probe_in_flight": "Laderen var optaget af en strømtest og kan stadig være begrænset.",
   "site.activeControl.restore.failed.below_minimum": "Strømmen, der skulle genoprettes, er lavere end laderen accepterer, og den kan stadig være begrænset.",
+  "site.activeControl.restore.failed.external_balancer": "En anden integration balancerer laderens strøm, så SpotNav skrev den ikke, og den kan stadig være begrænset.",
   "site.activeControl.restore.failed.no_connector_target": "SpotNav kunne ikke finde laderens stik at styre, og laderen kan stadig være begrænset.",
   "site.activeControl.restore.failed.unknown": "Laderen kunne ikke genoprettes og kan stadig være begrænset.",
   "site.error.conflict": "Ændret et andet sted. De aktuelle værdier vises.",
@@ -3342,6 +3345,8 @@ var da = {
   "control.startStop.select": "En vælger: {start} starter, {stop} stopper",
   "control.startStop.buttons": "En startknap og en stopknap",
   "control.startStop.easee": "Easees egne start- og stopkommandoer",
+  "control.startStop.numberPause": "Strømtallet: stop skriver 0 A, start skriver den planlagte strøm",
+  "control.startStop.other": "En start- og stopmetode, som kortet endnu ikke har ord for",
   "control.startStop.easeeFixed": "Easee sættes på pause og genoptages med sine egne kommandoer, så der er ingen start- eller stopenhed at vælge.",
   "control.current": "Ladestrøm",
   "control.current.none": "Indstilles ikke af SpotNav (laderen beholder sin egen grænse)",
@@ -3524,6 +3529,8 @@ var en = {
   "entity.warning.updateIntervalOption": 'Lower it with "{option}" in that integration.',
   "entity.warning.onChange": "{integration} reports only when a value changes, so a steady value can look old. Raise the maximum measurement age if the site is often reported stale.",
   "entity.warning.ownBalancing": "{name} ({integration}) balances load by itself and may fight SpotNav's active control. Use one of them.",
+  "entity.warning.externalBalancer": "{integration} balances the current of {name} itself, so SpotNav starts and stops the charger but does not write its current.",
+  "entity.warning.unknown": "The site has a notice this version of the card cannot word. Update the card.",
   "entity.detect.title": "Found in Home Assistant",
   "entity.detect.intro": "These were recognised in your setup. Nothing changes until you press Use.",
   "entity.site.intro": "Measurement for the site. {applies}",
@@ -3590,6 +3597,7 @@ var en = {
   "site.activeControl.restore.failed.membership_conflict": "The charger belongs to more than one site and was left untouched, so it may still be limited.",
   "site.activeControl.restore.failed.probe_in_flight": "The charger was busy with a current test, so it may still be limited.",
   "site.activeControl.restore.failed.below_minimum": "The current to restore is below what the charger accepts, so it may still be limited.",
+  "site.activeControl.restore.failed.external_balancer": "Another integration balances the charger's current, so SpotNav did not write it and it may still be limited.",
   "site.activeControl.restore.failed.no_connector_target": "SpotNav could not find the charger's connector to command, so it may still be limited.",
   "site.activeControl.restore.failed.unknown": "The charger could not be restored, so it may still be limited.",
   "site.error.conflict": "Changed elsewhere. The current values are shown.",
@@ -3859,6 +3867,8 @@ var en = {
   "control.startStop.select": "A selector: {start} starts, {stop} stops",
   "control.startStop.buttons": "A start button and a stop button",
   "control.startStop.easee": "Easee's own start and stop commands",
+  "control.startStop.numberPause": "The current number: stop writes 0 A, start writes the planned current",
+  "control.startStop.other": "A start and stop method this card has no words for yet",
   "control.startStop.easeeFixed": "Easee is paused and resumed with its own commands, so there is no start or stop entity to choose.",
   "control.current": "Charging current",
   "control.current.none": "Not set by SpotNav (the charger keeps its own limit)",
@@ -4041,6 +4051,8 @@ var fi = {
   "entity.warning.updateIntervalOption": 'Lyhennä sitä asetuksella "{option}" kyseisessä integraatiossa.',
   "entity.warning.onChange": "{integration} ilmoittaa vain arvon muuttuessa, joten vakaa arvo voi näyttää vanhalta. Nosta mittausten enimmäisikää, jos kohde ilmoitetaan usein vanhentuneeksi.",
   "entity.warning.ownBalancing": "{name} ({integration}) tasapainottaa kuorman itse ja voi häiritä SpotNavin aktiivista ohjausta. Käytä toista.",
+  "entity.warning.externalBalancer": "{integration} tasapainottaa laitteen {name} virran itse, joten SpotNav käynnistää ja pysäyttää laturin mutta ei kirjoita sen virtaa.",
+  "entity.warning.unknown": "Kohteella on ilmoitus, jota kortin tämä versio ei osaa sanoittaa. Päivitä kortti.",
   "entity.detect.title": "Löytyi Home Assistantista",
   "entity.detect.intro": "Nämä tunnistettiin asetuksistasi. Mikään ei muutu ennen kuin painat Käytä.",
   "entity.site.intro": "Kohteen mittaus. {applies}",
@@ -4107,6 +4119,7 @@ var fi = {
   "site.activeControl.restore.failed.membership_conflict": "Laturi kuuluu useampaan kuin yhteen kohteeseen eikä sitä muutettu, joten se voi yhä olla rajoitettu.",
   "site.activeControl.restore.failed.probe_in_flight": "Laturi oli varattu virtatestiin ja voi yhä olla rajoitettu.",
   "site.activeControl.restore.failed.below_minimum": "Palautettava virta on pienempi kuin laturi hyväksyy, joten se voi yhä olla rajoitettu.",
+  "site.activeControl.restore.failed.external_balancer": "Toinen integraatio tasapainottaa laturin virran, joten SpotNav ei kirjoittanut sitä, ja se voi yhä olla rajoitettu.",
   "site.activeControl.restore.failed.no_connector_target": "SpotNav ei löytänyt ohjattavaa laturin liitintä, joten laturi voi yhä olla rajoitettu.",
   "site.activeControl.restore.failed.unknown": "Laturia ei voitu palauttaa, joten se voi yhä olla rajoitettu.",
   "site.error.conflict": "Muutettu muualla. Nykyiset arvot näytetään.",
@@ -4376,6 +4389,8 @@ var fi = {
   "control.startStop.select": "Valitsin: {start} käynnistää, {stop} pysäyttää",
   "control.startStop.buttons": "Käynnistyspainike ja pysäytyspainike",
   "control.startStop.easee": "Easeen omat käynnistys- ja pysäytyskomennot",
+  "control.startStop.numberPause": "Virtaluku: pysäytys kirjoittaa 0 A, käynnistys kirjoittaa suunnitellun virran",
+  "control.startStop.other": "Käynnistys- ja pysäytystapa, jolle kortilla ei vielä ole sanoja",
   "control.startStop.easeeFixed": "Easee keskeytetään ja jatketaan sen omilla komennoilla, joten käynnistys- tai pysäytysentiteettiä ei valita.",
   "control.current": "Latausvirta",
   "control.current.none": "SpotNav ei aseta sitä (laturi pitää oman rajansa)",
@@ -4558,6 +4573,8 @@ var nb = {
   "entity.warning.updateIntervalOption": "Senk det med «{option}» i den integrasjonen.",
   "entity.warning.onChange": "{integration} rapporterer bare når en verdi endres, så en stabil verdi kan se gammel ut. Øk høyeste måleralder hvis anlegget ofte regnes som utdatert.",
   "entity.warning.ownBalancing": "{name} ({integration}) balanserer last selv og kan motvirke SpotNavs aktive styring. Bruk én av dem.",
+  "entity.warning.externalBalancer": "{integration} balanserer strømmen for {name} selv, så SpotNav starter og stopper laderen, men skriver ikke strømmen.",
+  "entity.warning.unknown": "Anlegget har en melding som denne versjonen av kortet ikke kan formulere. Oppdater kortet.",
   "entity.detect.title": "Funnet i Home Assistant",
   "entity.detect.intro": "Disse ble gjenkjent i oppsettet ditt. Ingenting endres før du trykker på Bruk.",
   "entity.site.intro": "Måling for anlegget. {applies}",
@@ -4624,6 +4641,7 @@ var nb = {
   "site.activeControl.restore.failed.membership_conflict": "Laderen tilhører mer enn ett anlegg og ble ikke rørt, så den kan fortsatt være begrenset.",
   "site.activeControl.restore.failed.probe_in_flight": "Laderen var opptatt med en strømtest og kan fortsatt være begrenset.",
   "site.activeControl.restore.failed.below_minimum": "Strømmen som skulle gjenopprettes er lavere enn laderen godtar, og den kan fortsatt være begrenset.",
+  "site.activeControl.restore.failed.external_balancer": "En annen integrasjon balanserer laderens strøm, så SpotNav skrev den ikke, og den kan fortsatt være begrenset.",
   "site.activeControl.restore.failed.no_connector_target": "SpotNav fant ikke laderens kontakt å styre, og laderen kan fortsatt være begrenset.",
   "site.activeControl.restore.failed.unknown": "Laderen kunne ikke gjenopprettes og kan fortsatt være begrenset.",
   "site.error.conflict": "Endret et annet sted. De gjeldende verdiene vises.",
@@ -4893,6 +4911,8 @@ var nb = {
   "control.startStop.select": "En velger: {start} starter, {stop} stopper",
   "control.startStop.buttons": "En startknapp og en stoppknapp",
   "control.startStop.easee": "Easees egne start- og stoppkommandoer",
+  "control.startStop.numberPause": "Strømtallet: stopp skriver 0 A, start skriver den planlagte strømmen",
+  "control.startStop.other": "En start- og stoppmetode som kortet ennå ikke har ord for",
   "control.startStop.easeeFixed": "Easee settes på pause og gjenopptas med sine egne kommandoer, så det finnes ingen start- eller stoppenhet å velge.",
   "control.current": "Ladestrøm",
   "control.current.none": "Settes ikke av SpotNav (laderen beholder sin egen grense)",
@@ -5075,6 +5095,8 @@ var sv = {
   "entity.warning.updateIntervalOption": 'Sänk det med "{option}" i den integrationen.',
   "entity.warning.onChange": "{integration} rapporterar bara när ett värde ändras, så ett stabilt värde kan se gammalt ut. Höj högsta mätvärdesålder om anläggningen ofta anses inaktuell.",
   "entity.warning.ownBalancing": "{name} ({integration}) balanserar last själv och kan motverka SpotNavs aktiva styrning. Använd en av dem.",
+  "entity.warning.externalBalancer": "{integration} balanserar strömmen för {name} själv, så SpotNav startar och stoppar laddaren men skriver inte dess ström.",
+  "entity.warning.unknown": "Anläggningen har en avisering som den här versionen av kortet inte kan formulera. Uppdatera kortet.",
   "entity.detect.title": "Hittat i Home Assistant",
   "entity.detect.intro": "De här känns igen i din installation. Inget ändras förrän du trycker på Använd.",
   "entity.site.intro": "Mätning för anläggningen. {applies}",
@@ -5141,6 +5163,7 @@ var sv = {
   "site.activeControl.restore.failed.membership_conflict": "Laddaren tillhör mer än en anläggning och lämnades orörd, så den kan fortfarande vara begränsad.",
   "site.activeControl.restore.failed.probe_in_flight": "Laddaren var upptagen med ett strömtest och kan fortfarande vara begränsad.",
   "site.activeControl.restore.failed.below_minimum": "Strömmen som skulle återställas är lägre än laddaren accepterar och den kan fortfarande vara begränsad.",
+  "site.activeControl.restore.failed.external_balancer": "En annan integration balanserar laddarens ström, så SpotNav skrev den inte och den kan fortfarande vara begränsad.",
   "site.activeControl.restore.failed.no_connector_target": "SpotNav hittade inte laddarens kontakt att styra och laddaren kan fortfarande vara begränsad.",
   "site.activeControl.restore.failed.unknown": "Laddaren kunde inte återställas och kan fortfarande vara begränsad.",
   "site.error.conflict": "Ändrat någon annanstans. De aktuella värdena visas.",
@@ -5410,6 +5433,8 @@ var sv = {
   "control.startStop.select": "En väljare: {start} startar, {stop} stoppar",
   "control.startStop.buttons": "En startknapp och en stoppknapp",
   "control.startStop.easee": "Easees egna start- och stoppkommandon",
+  "control.startStop.numberPause": "Strömnumret: stopp skriver 0 A, start skriver den planerade strömmen",
+  "control.startStop.other": "En start- och stoppmetod som kortet ännu saknar ord för",
   "control.startStop.easeeFixed": "Easee pausas och återupptas med sina egna kommandon, så det finns ingen start- eller stoppentitet att välja.",
   "control.current": "Laddström",
   "control.current.none": "Sätts inte av SpotNav (laddaren behåller sin egen gräns)",
@@ -7873,6 +7898,14 @@ function oneOf2(source, key, allowed) {
   const value = source[key];
   return allowed.find((candidate) => candidate === value) ?? bad3();
 }
+var START_STOP_KINDS = ["switch", "select", "buttons", "easee", "number_pause"];
+function lenientKind(source, key, allowed) {
+  const value = source[key];
+  if (typeof value !== "string" || value === "") {
+    return bad3();
+  }
+  return allowed.find((candidate) => candidate === value) ?? "other";
+}
 function integer2(source, key) {
   const value = source[key];
   return typeof value === "number" && Number.isInteger(value) && value >= 0 ? value : bad3();
@@ -7921,7 +7954,7 @@ function decodeControl2(raw) {
   return {
     platform: textOrNull3(source, "platform"),
     startStop: {
-      kind: oneOf2(startStop, "kind", ["switch", "select", "buttons", "easee"]),
+      kind: lenientKind(startStop, "kind", START_STOP_KINDS),
       entityIds: textList(startStop, "entity_ids"),
       inverted: flag(startStop, "inverted"),
       startOption: textOrNull3(startStop, "start_option"),
@@ -8416,7 +8449,21 @@ function warningText(language, warning) {
   if (warning.code === "own_load_balancing") {
     return [translate(language, "entity.warning.ownBalancing", { name: warning.deviceName ?? integration, integration })];
   }
-  return [];
+  if (warning.code === "external_current_balancer") {
+    return [translate(language, "entity.warning.externalBalancer", { name: warning.deviceName ?? "", integration })];
+  }
+  return [translate(language, "entity.warning.unknown")];
+}
+function siteWarningRows(doc, language, site) {
+  const rows = [];
+  for (const warning of site.warnings) {
+    for (const line of warningText(language, warning)) {
+      const row = element(doc, "p", VISUAL_CLASSES.entityWarning, line);
+      row.dataset["warning"] = warning.code;
+      rows.push(row);
+    }
+  }
+  return rows;
 }
 function siteNotices(doc, language, site) {
   const notices = element(doc, "div");
@@ -8433,13 +8480,7 @@ function siteNotices(doc, language, site) {
     estimated.dataset["notice"] = "estimated";
     notices.append(estimated);
   }
-  for (const warning of site.warnings) {
-    for (const line of warningText(language, warning)) {
-      const row = element(doc, "p", VISUAL_CLASSES.entityWarning, line);
-      row.dataset["warning"] = warning.code;
-      notices.append(row);
-    }
-  }
+  notices.append(...siteWarningRows(doc, language, site));
   return notices.childElementCount === 0 ? null : notices;
 }
 async function ensureHaSelector(win, timeoutMs = 3e3) {
@@ -8475,6 +8516,12 @@ function controlStartStopText(language, control) {
   }
   if (path.kind === "easee") {
     return translate(language, "control.startStop.easee");
+  }
+  if (path.kind === "number_pause") {
+    return translate(language, "control.startStop.numberPause");
+  }
+  if (path.kind === "other") {
+    return translate(language, "control.startStop.other");
   }
   return translate(language, path.inverted ? "control.startStop.switchInverted" : "control.startStop.switch");
 }
@@ -11967,6 +12014,9 @@ function createCardView(input) {
         fieldEntityName(config, "site", "battery_aggregate_power_entity") ?? translate(model.language, "settings.value.none")
       )
     );
+    if (config.site !== null) {
+      nodes.push(...siteWarningRows(doc, model.language, config.site));
+    }
     return nodes;
   }
   function paintEntities() {
@@ -12958,7 +13008,8 @@ var RESTORE_FAILURE_KEYS = {
   membership_conflict: "site.activeControl.restore.failed.membership_conflict",
   probe_in_flight: "site.activeControl.restore.failed.probe_in_flight",
   below_minimum: "site.activeControl.restore.failed.below_minimum",
-  no_connector_target: "site.activeControl.restore.failed.no_connector_target"
+  no_connector_target: "site.activeControl.restore.failed.no_connector_target",
+  external_balancer: "site.activeControl.restore.failed.external_balancer"
 };
 function restoreLines(language, restore) {
   const acted = restore.chargers.filter((charger) => charger.outcome !== "not_needed");

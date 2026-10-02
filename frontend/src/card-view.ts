@@ -35,6 +35,7 @@ import {
   entityEditorBody,
   entityNameIn,
   modeLabel,
+  siteWarningRows,
   vehicleEditorBody,
   type EntityEditorBody,
 } from "./entity-editor";
@@ -1801,6 +1802,9 @@ export function createCardView(input: CardViewInput): CardView {
         fieldEntityName(config, "site", "battery_aggregate_power_entity") ?? translate(model.language, "settings.value.none"),
       ),
     );
+    if (config.site !== null) {
+      nodes.push(...siteWarningRows(doc, model.language, config.site));
+    }
     return nodes;
   }
 

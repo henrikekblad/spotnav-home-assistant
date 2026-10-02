@@ -273,6 +273,7 @@ describe("the sentences, in five locales", () => {
       "probe_in_flight",
       "below_minimum",
       "no_connector_target",
+      "external_balancer",
     ];
     const sentences = new Set<string>();
     for (const code of codes) {

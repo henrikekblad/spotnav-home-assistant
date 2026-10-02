@@ -204,7 +204,7 @@ export interface VehicleSoc {
 
 /** How a charger is started and stopped, as its adapter describes it. */
 export interface ControlStartStop {
-  kind: "switch" | "select" | "buttons" | "easee";
+  kind: "switch" | "select" | "buttons" | "easee" | "number_pause" | "other";
   entityIds: string[];
   inverted: boolean;
   startOption: string | null;
@@ -520,6 +520,17 @@ function oneOf<T extends string>(source: Record<string, unknown>, key: string, a
   return allowed.find((candidate) => candidate === value) ?? bad();
 }
 
+const START_STOP_KINDS = ["switch", "select", "buttons", "easee", "number_pause"] as const;
+
+/** A kind this card knows, or `other` for one a newer backend added: it is worded, never rejected. */
+function lenientKind<T extends string>(source: Record<string, unknown>, key: string, allowed: readonly T[]): T | "other" {
+  const value = source[key];
+  if (typeof value !== "string" || value === "") {
+    return bad();
+  }
+  return allowed.find((candidate) => candidate === value) ?? "other";
+}
+
 function integer(source: Record<string, unknown>, key: string): number {
   const value = source[key];
   return typeof value === "number" && Number.isInteger(value) && value >= 0 ? value : bad();
@@ -569,7 +580,7 @@ function decodeControl(raw: unknown): EntityControl {
   return {
     platform: textOrNull(source, "platform"),
     startStop: {
-      kind: oneOf(startStop, "kind", ["switch", "select", "buttons", "easee"] as const),
+      kind: lenientKind(startStop, "kind", START_STOP_KINDS),
       entityIds: textList(startStop, "entity_ids"),
       inverted: flag(startStop, "inverted"),
       startOption: textOrNull(startStop, "start_option"),
