@@ -349,6 +349,7 @@ EXPECTED_FIXTURES: Final = frozenset(
         "hybrid_derived_site_no_forecast.json",
         "hybrid_derived_site_with_forecast.json",
         "waiting_for_publication.json",
+        "waiting_for_history.json",
         "buying_before_publication.json",
         "charging_without_prices.json",
         # This module: a target charge with an estimated state of charge, and one that ended on it.
@@ -421,6 +422,54 @@ async def test_the_price_wait_fixtures_waiting_and_buying_are_the_serializers_ow
     assert waiting["plan"]["proposal"] is None
 
     _write_or_compare({"waiting_for_publication.json": waiting})
+
+
+#: Thursday evening in Stockholm (CEST): tomorrow's prices are out, the departure is on Sunday at 08:00.
+THURSDAY_EVENING = "2026-10-01 18:00:00"
+
+
+@freeze_time(THURSDAY_EVENING)
+async def test_the_history_wait_fixture_is_the_serializers_own_output(
+    hass: HomeAssistant, transport: Any, offline_relay: None
+) -> None:
+    """A dated departure whose unpublished weekend hours the history says are cheaper: waiting, with its
+    weekday, saving and weeks as typed status params, and the date carried in the settings record."""
+    from datetime import date, timedelta
+
+    from tests.relay import flat_day, index_listing, serve_profile
+
+    charger = await _setup_charger(hass, entry_id="history_wait")
+    today = date(2026, 10, 1)
+    days = (today, today + timedelta(days=1))
+    serve(transport, days=days, listed=days)
+    for day in days:
+        transport.serve(transport.day_path(SE4, day), 200, flat_day(SE4, day, price=0.10))
+    transport.serve("/v1/index.json", 200, index_listing(SE4, [day.isoformat() for day in days]))
+    serve_profile(
+        transport, to="2026-10-01", generated="2026-10-01T14:05:00+02:00",
+        cheap={(7, hour): 0.03 for hour in range(8)},
+    )
+    await go_auto(
+        hass,
+        charger.entry_id,
+        strategy=STRATEGY_CHEAPEST,
+        departure_enabled=True,
+        departure=time(8, 0),
+        departure_date=date(2026, 10, 4),
+        requested_kwh=10.0,
+    )
+    waiting = await _payload(hass, charger, can_act=True)
+
+    planning = waiting["planning"]
+    assert planning["state"] == "waiting_for_publication" and planning["reason"] == "waiting_for_history"
+    assert waiting["settings"]["departure_date"] == "2026-10-04"
+    line = waiting["status"]["lines"][0]
+    assert line["code"] == "waiting_for_history"
+    assert line["params"]["weekday"] == 7 and line["params"]["weeks"] == 4
+    assert isinstance(line["params"]["percent"], int) and line["params"]["percent"] > 0
+    assert waiting["plan"]["proposal"] is None
+
+    _write_or_compare({"waiting_for_history.json": waiting})
 
 
 @freeze_time(NOW)

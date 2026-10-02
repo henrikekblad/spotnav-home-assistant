@@ -57,6 +57,7 @@ import { ensureHaSelector } from "./entity-editor";
 import {
   SETTINGS_EDITOR_KINDS,
   decodeSettingsAnswer,
+  departureDays,
   formFromRecord,
   manualEnergyReadOnly,
   checkCapacity,
@@ -67,6 +68,7 @@ import {
   vehicleReplacement,
   type ReplacementCheck,
   type CurrentRange,
+  type DepartureDays,
   type SettingsEditorKind,
   type SettingsFormValues,
 } from "./settings";
@@ -550,6 +552,7 @@ export class SpotnavCard extends HTMLElement {
         conflict: null,
         soc: this.socFacts(),
         vehicles: this.vehicleFacts(),
+        days: this.departureDays(),
       });
     } catch (error) {
       if (!this.editorIsCurrent(generation, operation)) {
@@ -849,6 +852,13 @@ export class SpotnavCard extends HTMLElement {
       : DEFAULT_CURRENT_RANGE;
   }
 
+  /** What the departure date picker offers now, in the market's own zone; `null` while that is unknown. */
+  private departureDays(): DepartureDays | null {
+    return this.cardState.kind === "ready"
+      ? departureDays(this.cardState.dashboard.market?.timezone ?? "", Date.now())
+      : null;
+  }
+
   private socFacts(): Soc | null {
     return this.cardState.kind === "ready" ? socFor(this.cardState.dashboard) : null;
   }
@@ -883,7 +893,14 @@ export class SpotnavCard extends HTMLElement {
     if (base === null) {
       return;
     }
-    const check = replacementFor(kind, base, values, this.currentRange(), reapply ? editor.record : null);
+    const check = replacementFor(
+      kind,
+      base,
+      values,
+      this.currentRange(),
+      reapply ? editor.record : null,
+      this.departureDays(),
+    );
     if (!check.ok) {
       this.showEditorNotice(kind, check.errorKey, null);
       return;
@@ -1002,6 +1019,7 @@ export class SpotnavCard extends HTMLElement {
         conflict: null,
         soc: this.socFacts(),
         vehicles: this.vehicleFacts(),
+        days: this.departureDays(),
       });
     } catch (error) {
       if (!this.editorIsCurrent(generation, operation)) {

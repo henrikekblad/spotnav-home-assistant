@@ -1133,6 +1133,7 @@
   "settings": {
     "amps": 10,
     "area_id": "SE4",
+    "departure_date": null,
     "departure_enabled": true,
     "departure_time": "08:00",
     "driver": "manual_kwh",

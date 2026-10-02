@@ -1,0 +1,82 @@
+{
+  "v": 1,
+  "area": "SE4",
+  "tz": "Europe/Stockholm",
+  "unit": "EUR/kWh",
+  "generated": "2026-10-01T14:05:00+02:00",
+  "from": "2026-09-04",
+  "to": "2026-10-01",
+  "weeks": 4,
+  "hours": [
+    {
+      "weekday": 4,
+      "hour": 18,
+      "median": 0.1,
+      "std": 0.01,
+      "n": 16
+    },
+    {
+      "weekday": 4,
+      "hour": 19,
+      "median": 0.1,
+      "std": 0.01,
+      "n": 16
+    },
+    {
+      "weekday": 7,
+      "hour": 0,
+      "median": 0.03,
+      "std": 0.01,
+      "n": 16
+    },
+    {
+      "weekday": 7,
+      "hour": 1,
+      "median": 0.03,
+      "std": 0.01,
+      "n": 16
+    },
+    {
+      "weekday": 7,
+      "hour": 2,
+      "median": 0.03,
+      "std": 0.01,
+      "n": 16
+    },
+    {
+      "weekday": 7,
+      "hour": 3,
+      "median": 0.03,
+      "std": 0.01,
+      "n": 16
+    },
+    {
+      "weekday": 7,
+      "hour": 4,
+      "median": 0.03,
+      "std": 0.01,
+      "n": 16
+    },
+    {
+      "weekday": 7,
+      "hour": 5,
+      "median": 0.03,
+      "std": 0.01,
+      "n": 16
+    },
+    {
+      "weekday": 7,
+      "hour": 6,
+      "median": 0.03,
+      "std": 0.01,
+      "n": 16
+    },
+    {
+      "weekday": 7,
+      "hour": 7,
+      "median": 0.03,
+      "std": 0.01,
+      "n": 16
+    }
+  ]
+}

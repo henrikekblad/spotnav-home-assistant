@@ -14,14 +14,14 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass, replace
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
 from typing import Any, Callable, Final, Literal
 
 from homeassistant.core import callback, HomeAssistant
 from homeassistant.exceptions import HomeAssistantError
 from homeassistant.util import dt as dt_util
 
-from . import price_wait
+from . import history_wait, price_wait
 from ..execution import hybrid_execution
 from ..execution.auto_execution import (
     ACTION_RESUME,
@@ -59,6 +59,8 @@ from .auto_settings import (
 from .planner import (
     calculate_plan,
     FiscalChoice,
+    local_instant,
+    MAX_DEPARTURE_DAYS_AHEAD,
     plan_unpriced,
     PlannerInputError,
     PlanRequest,
@@ -102,6 +104,9 @@ AutoReason = Literal[
     "unpriced",
     #: `waiting_for_publication`: nothing to plan until the missing day's prices arrive.
     "publication_pending",
+    #: `waiting_for_publication`: a dated departure, and the weekday history says the hours not yet
+    #: published are clearly cheaper than anything published; nothing is planned until they are.
+    "waiting_for_history",
     #: `proposal_ready`: only the energy that cannot wait is planned, in known prices.
     "buying_before_publication",
     #: `proposal_unpriced`: the prices never came and the latest safe start arrived; the
@@ -223,6 +228,9 @@ class AutoSnapshot:
     price_wait: str | None = None
     publication_at: datetime | None = None
     must_buy_kwh: float | None = None
+    #: The last history weighing for a dated departure (`history_wait.evaluate`), whatever it decided; `None`
+    #: when the departure is daily or the plan never needed unpublished hours.
+    history: history_wait.HistoryDecision | None = None
 
     def meaningful_key(self) -> tuple[Any, ...]:
         """What a listener hears about, and is not told twice.
@@ -252,6 +260,7 @@ class AutoSnapshot:
             self.price_wait,
             self.publication_at,
             self.must_buy_kwh,
+            None if self.history is None else (self.history.outcome, self.history.percent, self.history.weekday),
             None if self.proposal is None else self._proposal_key(self.proposal),
         )
 
@@ -398,6 +407,8 @@ class AutoPlannerController:
         expected_revision: int | None = None,
     ) -> AutoSnapshot:
         """The one way a caller changes Auto settings: write them, then reconcile."""
+        if mutate is not None:
+            mutate = self._with_departure_date_guard(mutate)
         try:
             if self._executor is not None:
                 # Through the executor: the attempt moves before the write so in-flight work cannot
@@ -438,6 +449,64 @@ class AutoPlannerController:
             )
             raise SettingsReconcileError(committed) from None
         return self.snapshot()
+
+    def _area_zone(self, settings: AutoSettings) -> Any:
+        """The zone the departure date is read in: the chosen area's, else the installation's own.
+
+        From the held catalogue, not the subscription: a write that moves the area is judged in the new
+        area's zone before anything is subscribed to it.
+        """
+        entry = None if not settings.area_id else self._manager.catalogue_snapshot().area(settings.area_id)
+        zone = None if entry is None else dt_util.get_time_zone(entry.tz)
+        return zone if zone is not None else dt_util.get_default_time_zone()
+
+    def _with_departure_date_guard(
+        self, mutate: Callable[[AutoSettings], AutoSettings]
+    ) -> Callable[[AutoSettings], AutoSettings]:
+        """Judge `departure_date` against today in the area's zone, at every write, whichever transport.
+
+        * a date newly set must not be in the past and at most 7 days ahead (`invalid_departure`);
+        * a stored date that has gone by and is carried through unchanged is cleared by this write: it
+          was already ignored by planning, and the write is the first chance to forget it.
+        """
+
+        def guarded(current: AutoSettings) -> AutoSettings:
+            updated = mutate(current)
+            chosen = updated.departure_date
+            if chosen is None:
+                return updated
+            today = self._now().astimezone(self._area_zone(updated)).date()
+            if chosen < today:
+                if chosen == current.departure_date:
+                    return replace(updated, departure_date=None)
+                raise AutoSettingsError("invalid_departure", "departure_date is in the past")
+            if chosen > today + timedelta(days=MAX_DEPARTURE_DAYS_AHEAD):
+                raise AutoSettingsError(
+                    "invalid_departure",
+                    f"departure_date is more than {MAX_DEPARTURE_DAYS_AHEAD} days ahead",
+                )
+            return updated
+
+        return guarded
+
+    def _effective_departure_date(
+        self, settings: AutoSettings, entry: AreaEntry, calculated_at: datetime
+    ) -> date | None:
+        """The date planning honours: the stored one while its deadline is still ahead, else none.
+
+        A date that has gone by (or whose deadline is not after `calculated_at`) is ignored, so the
+        departure reads as the daily one, until a write clears it. Also none without a departure.
+        """
+        chosen = settings.departure_date
+        if chosen is None or not settings.departure_enabled:
+            return None
+        zone = dt_util.get_time_zone(entry.tz)
+        if zone is None:
+            return None
+        deadline = local_instant(chosen, settings.departure, zone)
+        if deadline.astimezone(timezone.utc) <= calculated_at.astimezone(timezone.utc):
+            return None
+        return chosen
 
     async def async_pause(self, choice: PauseChoice = PAUSE_UNTIL_RESUMED) -> AutoSnapshot:
         """Pause automatic execution for this charger, and keep calculating.
@@ -735,14 +804,19 @@ class AutoPlannerController:
             fiscal=fiscal,
             max_periods=settings.max_periods,
             departure=settings.departure if settings.departure_enabled else None,
+            departure_date=self._effective_departure_date(settings, entry, calculated_at),
         )
         wait_facts: dict[str, Any] = {}
         try:
             result = calculate_plan(plan_request)
             if result.reason == "insufficient_price_horizon":
-                waited = self._plan_while_prices_are_missing(
-                    plan_request, result, entry, calculated_at
-                )
+                waited = None
+                if plan_request.departure_date is not None:
+                    waited = await self._plan_dated_departure(plan_request, result, entry, calculated_at)
+                if waited is None:
+                    waited = self._plan_while_prices_are_missing(
+                        plan_request, result, entry, calculated_at
+                    )
                 if waited is not None:
                     result, wait_facts, early = waited
                     if early is not None:
@@ -843,6 +917,71 @@ class AutoPlannerController:
             facts["price_wait_action"] = "guarantee"
             facts["must_buy_kwh"] = request.requested_kwh
         return (plan_unpriced(request), facts, None)
+
+    async def _plan_dated_departure(
+        self, request: PlanRequest, refusal: PlanResult, entry: AreaEntry, calculated_at: datetime
+    ) -> tuple[PlanResult, dict[str, Any], tuple[AutoState, AutoReason] | None] | None:
+        """A dated departure whose window runs past the last published price.
+
+        Same answer shape as `_plan_while_prices_are_missing`, which this falls back to (`None`) whenever the
+        published intervals cannot hold the whole need. Otherwise:
+
+        1. `known`: the cheapest placement of the whole need in published intervals.
+        2. With a usable history profile, `history_wait.evaluate` weighs it against what the unpublished hours
+           usually cost. A clear saving (beyond one standard deviation) argues for waiting, and then
+           `price_wait.decide` judges whether that is safe: nothing is planned (`wait`) or only what cannot
+           wait is bought (`buy_now`), exactly the daily rule.
+        3. Everything else (no profile, no clear saving, waiting not safe) installs `known`. Prices only ever
+           add intervals, so the next publication can only improve it, and every publication replans.
+        """
+        gap = price_gap(request)
+        if gap is None:
+            return None
+        known = calculate_plan(replace(request, window_end=gap.missing_from))
+        if not known.has_plan:
+            return None
+        profile = await self._manager.async_profile(request.area_id)
+        decision = history_wait.evaluate(request, gap, known, profile)
+        facts: dict[str, Any] = {"history": decision}
+        if decision.outcome != "wait":
+            return (known, facts, None)
+
+        zone = dt_util.get_time_zone(entry.tz)
+        missing_day = gap.missing_from.astimezone(zone).date()
+        waited = price_wait.decide(
+            now=calculated_at,
+            deadline=gap.deadline,
+            need_kwh=request.requested_kwh,
+            max_charge_kw=power_kw(request.amps, request.phases),
+            known=tuple(
+                price_wait.KnownInterval(
+                    start=slot.start,
+                    end=slot.start + timedelta(minutes=15),
+                    price=slot.local_major_per_kwh,
+                )
+                for slot in gap.known
+            ),
+            publication_at=price_wait.expected_publication_at(missing_day),
+        )
+        if waited.action == "guarantee":
+            # Waiting would miss the deadline: the published plan stands, the price given up is only the hope.
+            return (known, {"history": history_wait.unsafe(decision)}, None)
+        # A replan is also owed when waiting stops being safe (the latest safe start less one slot).
+        self._arm_wake(waited.act_by)
+        facts.update(
+            price_wait_action="waiting" if waited.action == "wait" else "buy_now",
+            publication_at=waited.publication_at,
+            must_buy_kwh=waited.must_buy_kwh,
+        )
+        if waited.action == "wait":
+            return (refusal, facts, ("waiting_for_publication", "waiting_for_history"))
+        bought = calculate_plan(
+            replace(request, requested_kwh=waited.must_buy_kwh, window_end=waited.window_end)
+        )
+        if bought.has_plan:
+            return (bought, facts, None)
+        # The cheapest published slots could not hold even the part that cannot wait: install the whole plan.
+        return (known, {"history": history_wait.unsafe(decision)}, None)
 
     def _arm_wake(self, when: datetime) -> None:
         """Replan at `when` (the latest safe start), replacing any earlier appointment."""
@@ -1075,6 +1214,10 @@ class AutoPlannerController:
         """
         if not settings.departure_enabled:
             return "no_deadline"
+        dated = self._effective_departure_date(settings, entry, calculated_at)
+        if dated is not None:
+            zone = dt_util.get_time_zone(entry.tz)
+            return local_instant(dated, settings.departure, zone).isoformat()
         resolved = resolve_departure(calculated_at, entry.tz, settings.departure, calculated_at)
         return resolved.isoformat()
 
@@ -1167,6 +1310,7 @@ class AutoPlannerController:
         price_wait_action: str | None = None,
         publication_at: datetime | None = None,
         must_buy_kwh: float | None = None,
+        history: history_wait.HistoryDecision | None = None,
     ) -> AutoSnapshot:
         """Build one immutable snapshot from the settings and whatever is known."""
         execution, applied_identity, pending_identity, latest_attempt = self._execution_facts()
@@ -1209,6 +1353,7 @@ class AutoPlannerController:
             price_wait=price_wait_action,
             publication_at=publication_at,
             must_buy_kwh=must_buy_kwh,
+            history=history,
         )
 
     async def _state_only(self, state: AutoState, reason: AutoReason) -> AutoSnapshot:

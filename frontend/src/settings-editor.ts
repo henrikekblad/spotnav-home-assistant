@@ -4,7 +4,7 @@
 // card own every judgement and request.
 
 import { ageSentence as sharedAgeSentence } from "./vehicle-line";
-import { energyAmount, formatFixed, formatNumber, percentAmount } from "./format";
+import { dateLabel, energyAmount, formatFixed, formatNumber, percentAmount } from "./format";
 import { translate, type Language, type TranslationKey } from "./i18n";
 import {
   CURRENT_SLIDER_STEP_A,
@@ -20,6 +20,7 @@ import {
   nominalPowerKw,
   sliderRepresents,
   type CurrentRange,
+  type DepartureDays,
   type SettingsEditorKind,
   type SettingsFormValues,
 } from "./settings";
@@ -45,6 +46,11 @@ export interface SettingsEditorForm {
    */
   soc: Soc | null;
   vehicles: readonly Vehicle[];
+  /**
+   * What the departure date picker offers (today..+7 in the market's zone, and where a date starts), or
+   * `null` while the zone is unknown: then a date can be seen and cleared but not chosen.
+   */
+  days?: DepartureDays | null;
 }
 
 export interface SettingsEditorHandlers {
@@ -282,6 +288,14 @@ export function settingsEditorBody(
   timeInput.type = "time";
   timeInput.className = C.settingsInput;
   timeInput.value = form.values.deadlineTime;
+  const dateInput = doc.createElement("input") as HTMLInputElement;
+  dateInput.type = "date";
+  dateInput.className = C.settingsInput;
+  if (form.days != null) {
+    dateInput.min = form.days.today;
+    dateInput.max = form.days.max;
+  }
+  dateInput.value = form.values.departureDate;
   const periodsInput = rangeInput(doc, {
     min: PERIODS_MIN,
     max: PERIODS_MAX,
@@ -329,6 +343,70 @@ export function settingsEditorBody(
     );
   };
 
+  /**
+   * The departure day beside the time: empty is the ordinary daily departure, a date makes it that day
+   * (up to seven days ahead). "Choose a date" starts at the next occurrence of the time; "Every day" clears.
+   */
+  const appendDate = (): void => {
+    const days = form.days ?? null;
+    if (days === null && dateInput.value === "") {
+      return;
+    }
+    const block = element(doc, "div", C.settingsField);
+    block.dataset["part"] = "departure-date";
+    const label = element(doc, "label", C.settingsLabel, translate(language, "settings.deadline.date"));
+    dateInput.id = `${idPrefix}-deadline-date`;
+    label.setAttribute("for", dateInput.id);
+    const shown = element(doc, "output", C.settingsUnit);
+    shown.dataset["departureDateLabel"] = "true";
+    shown.setAttribute("aria-live", "polite");
+    const choose = doc.createElement("button") as HTMLButtonElement;
+    choose.type = "button";
+    choose.className = C.button;
+    choose.dataset["action"] = "date-choose";
+    choose.textContent = translate(language, "settings.deadline.dateChoose");
+    const clear = doc.createElement("button") as HTMLButtonElement;
+    clear.type = "button";
+    clear.className = C.button;
+    clear.dataset["action"] = "date-clear";
+    clear.textContent = translate(language, "settings.deadline.dateClear");
+    const note = element(doc, "p", C.settingsNote);
+    note.dataset["departureDateNote"] = "true";
+    const paint = (): void => {
+      const value = dateInput.value;
+      const off = form.readOnly || !enabledInput.checked;
+      shown.textContent = value === "" ? translate(language, "settings.deadline.dateDaily") : dateLabel(language, value);
+      dateInput.disabled = off || days === null;
+      choose.hidden = value !== "" || days === null;
+      choose.disabled = off;
+      clear.hidden = value === "";
+      clear.disabled = off;
+      // A date that has gone by is ignored by planning and forgotten by the next save.
+      const gone = days !== null && value !== "" && value < days.today;
+      note.hidden = !gone;
+      note.textContent = gone ? translate(language, "settings.deadline.datePast") : "";
+    };
+    choose.addEventListener("click", () => {
+      if (days !== null) {
+        dateInput.value = days.nextOccurrence(timeInput.value);
+        paint();
+      }
+    });
+    clear.addEventListener("click", () => {
+      dateInput.value = "";
+      paint();
+    });
+    dateInput.addEventListener("input", paint);
+    dateInput.addEventListener("change", paint);
+    timeInput.addEventListener("input", paint);
+    enabledInput.addEventListener("change", paint);
+    const pair = element(doc, "div", C.settingsPair);
+    pair.append(dateInput, shown, choose, clear);
+    block.append(label, pair, note, element(doc, "p", C.settingsNote, translate(language, "settings.deadline.dateHelp")));
+    body.append(block);
+    paint();
+  };
+
   const appendDeadline = (): void => {
     enabledInput.disabled = form.readOnly;
     timeInput.disabled = form.readOnly;
@@ -337,6 +415,7 @@ export function settingsEditorBody(
       checkboxField(doc, `${idPrefix}-deadline-enabled`, translate(language, "settings.deadline.enabled"), enabledInput),
     );
     body.append(field(doc, `${idPrefix}-deadline-time`, translate(language, "settings.deadline.time"), timeInput));
+    appendDate();
     const periodsValue = element(doc, "output", C.settingsUnit, periodsInput.value);
     periodsValue.dataset["periodsValue"] = "true";
     periodsInput.addEventListener("input", () => {
@@ -676,6 +755,7 @@ export function settingsEditorBody(
     values.energy = energyInput.value;
     values.deadlineEnabled = enabledInput.checked;
     values.deadlineTime = timeInput.value;
+    values.departureDate = dateInput.value;
     values.maxPeriods = periodsInput.value;
     values.current = currentInput.value;
     if (form.kind === "plan") {

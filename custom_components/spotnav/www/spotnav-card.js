@@ -2796,6 +2796,58 @@ function distanceText(language, mil) {
   }
   return `${formatNumber(language, mil * 10, 0)} km`;
 }
+function referenceWeekday(isoWeekday) {
+  return Date.UTC(2024, 0, isoWeekday, 12);
+}
+function dateLabel(language, isoDate) {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(isoDate);
+  if (match === null) {
+    return "";
+  }
+  const instant2 = Date.UTC(Number(match[1]), Number(match[2]) - 1, Number(match[3]), 12);
+  return dateFormat(language === "en" ? "en-GB" : language, {
+    weekday: "short",
+    day: "numeric",
+    month: "short",
+    timeZone: "UTC"
+  }).format(new Date(instant2));
+}
+function departureDayLabel(language, isoDate, today, words) {
+  const label = dateLabel(language, isoDate);
+  if (label === "") {
+    return null;
+  }
+  if (today === null) {
+    return label;
+  }
+  if (isoDate < today) {
+    return null;
+  }
+  if (isoDate === today) {
+    return words.today;
+  }
+  const next = /* @__PURE__ */ new Date(`${today}T12:00:00Z`);
+  next.setUTCDate(next.getUTCDate() + 1);
+  return isoDate === next.toISOString().slice(0, 10) ? words.tomorrow : label;
+}
+function weekdayPlural(language, isoWeekday) {
+  if (!Number.isInteger(isoWeekday) || isoWeekday < 1 || isoWeekday > 7) {
+    return null;
+  }
+  const name = dateFormat(language, { weekday: "long", timeZone: "UTC" }).format(new Date(referenceWeekday(isoWeekday))).toLocaleLowerCase(language);
+  switch (language) {
+    case "sv":
+      return `${name}ar`;
+    case "nb":
+      return `${name}er`;
+    case "da":
+      return `${name}e`;
+    case "fi":
+      return name.endsWith("i") ? `${name}sin` : `${name}isin`;
+    default:
+      return `${name.charAt(0).toLocaleUpperCase(language)}${name.slice(1)}s`;
+  }
+}
 
 // src/i18n/da.ts
 var da = {
@@ -2816,6 +2868,8 @@ var da = {
   "status.proposalPending": "Et nyt opladningsforslag er klar.",
   "status.waitingForTomorrow": "Venter på morgendagens priser.",
   "status.waitingForPublication": "Venter på morgendagens priser (~{time}), planlægger derefter.",
+  "status.waitingForHistory": "Venter: {weekday} har været {percent} % billigere de seneste {weeks} uger.",
+  "status.waitingForHistoryNoDetail": "Venter på timer, der plejer at være billigere, planlægger derefter.",
   "status.waitingForPublicationNoTime": "Venter på morgendagens priser, planlægger derefter.",
   "status.buyingBeforePublication": "Køber {kwh} kWh nu, resten når priserne er offentliggjort.",
   "status.noPlan": "Der kunne ikke beregnes en ladeplan lige nu.",
@@ -3186,6 +3240,14 @@ var da = {
   "settings.deadline.intro": "Hvornår opladningen skal være færdig, og hvor mange perioder den må bruge.",
   "settings.deadline.enabled": "Færdig inden en frist",
   "settings.deadline.time": "Afgangstid",
+  "settings.deadline.date": "Afgangsdag",
+  "settings.deadline.dateDaily": "Hver dag",
+  "settings.deadline.dateChoose": "Vælg dato",
+  "settings.deadline.dateClear": "Hver dag",
+  "settings.deadline.dateHelp": "Vælg en dag op til 7 dage frem for at rejse den dato. Planen kan så vente på timer, hvor priserne endnu ikke er offentliggjort, når de seneste uger viser, at de plejer at være billigere. Afgangen holdes altid.",
+  "settings.deadline.datePast": "Datoen er passeret og ignoreres. Gemmer du, fjernes den.",
+  "settings.deadline.today": "i dag",
+  "settings.deadline.tomorrow": "i morgen",
   "settings.deadline.periods": "Højeste antal ladeperioder",
   "settings.current.title": "Planlagt strøm",
   "settings.current.intro": "Strømmen planen må bede om. Det er en planværdi, ikke en kommando til laderen.",
@@ -3201,6 +3263,8 @@ var da = {
   "settings.error.required": "Udfyld dette, før du gemmer.",
   "settings.error.invalidNumber": "Det er ikke et tal.",
   "settings.error.outOfRange": "Værdien ligger uden for det tilladte interval.",
+  "settings.error.invalidDate": "Vælg en gyldig dato.",
+  "settings.error.dateRange": "Vælg en dato fra i dag og op til 7 dage frem.",
   "settings.error.invalidTime": "Brug et klokkeslæt som 06:30.",
   "settings.error.read": "Indstillingerne kunne ikke læses.",
   "settings.error.refused": "Indstillingerne blev afvist. Intet blev ændret.",
@@ -3318,6 +3382,8 @@ var en = {
   "status.proposalPending": "A new charging proposal is ready.",
   "status.waitingForTomorrow": "Waiting for tomorrow's prices.",
   "status.waitingForPublication": "Waiting for tomorrow's prices (~{time}), will plan then.",
+  "status.waitingForHistory": "Waiting: {weekday} were {percent} % cheaper the last {weeks} weeks.",
+  "status.waitingForHistoryNoDetail": "Waiting for hours that usually cost less, will plan then.",
   "status.waitingForPublicationNoTime": "Waiting for tomorrow's prices, will plan then.",
   "status.buyingBeforePublication": "Buying {kwh} kWh now, the rest when the prices are published.",
   "status.noPlan": "No charging plan could be calculated right now.",
@@ -3688,6 +3754,14 @@ var en = {
   "settings.deadline.intro": "When the charge must be finished, and how many periods it may use.",
   "settings.deadline.enabled": "Finish by a deadline",
   "settings.deadline.time": "Departure time",
+  "settings.deadline.date": "Departure day",
+  "settings.deadline.dateDaily": "Every day",
+  "settings.deadline.dateChoose": "Choose a date",
+  "settings.deadline.dateClear": "Every day",
+  "settings.deadline.dateHelp": "Choose a day up to 7 days ahead to leave on that date. The plan may then wait for hours whose prices are not published yet, when the last weeks show they are usually cheaper; it always keeps the departure.",
+  "settings.deadline.datePast": "This date has gone by and is ignored. Saving removes it.",
+  "settings.deadline.today": "today",
+  "settings.deadline.tomorrow": "tomorrow",
   "settings.deadline.periods": "Maximum charging periods",
   "settings.current.title": "Planned current",
   "settings.current.intro": "The current the plan may ask for. It is a planning value, not a command to the charger.",
@@ -3703,6 +3777,8 @@ var en = {
   "settings.error.required": "Fill this in before saving.",
   "settings.error.invalidNumber": "That is not a number.",
   "settings.error.outOfRange": "That value is outside the allowed range.",
+  "settings.error.invalidDate": "Choose a valid date.",
+  "settings.error.dateRange": "Choose a date from today up to 7 days ahead.",
   "settings.error.invalidTime": "Use a time like 06:30.",
   "settings.error.read": "The settings could not be read.",
   "settings.error.refused": "Those settings were refused. Nothing changed.",
@@ -3820,6 +3896,8 @@ var fi = {
   "status.proposalPending": "Uusi latausehdotus on valmis.",
   "status.waitingForTomorrow": "Odotetaan huomisen hintoja.",
   "status.waitingForPublication": "Odotetaan huomisen hintoja (~{time}), suunnitellaan sen jälkeen.",
+  "status.waitingForHistory": "Odotetaan: {weekday} on ollut {percent} % halvempaa viimeisten {weeks} viikon aikana.",
+  "status.waitingForHistoryNoDetail": "Odotetaan tunteja, jotka ovat yleensä halvempia, suunnitellaan sen jälkeen.",
   "status.waitingForPublicationNoTime": "Odotetaan huomisen hintoja, suunnitellaan sen jälkeen.",
   "status.buyingBeforePublication": "Ostetaan {kwh} kWh nyt, loput kun hinnat on julkaistu.",
   "status.noPlan": "Lataussuunnitelmaa ei voitu laskea juuri nyt.",
@@ -4190,6 +4268,14 @@ var fi = {
   "settings.deadline.intro": "Milloin lataus on viimeistään valmis ja kuinka monta jaksoa se saa käyttää.",
   "settings.deadline.enabled": "Valmis määräaikaan mennessä",
   "settings.deadline.time": "Lähtöaika",
+  "settings.deadline.date": "Lähtöpäivä",
+  "settings.deadline.dateDaily": "Joka päivä",
+  "settings.deadline.dateChoose": "Valitse päivämäärä",
+  "settings.deadline.dateClear": "Joka päivä",
+  "settings.deadline.dateHelp": "Valitse päivä enintään 7 päivän päästä lähteäksesi sinä päivänä. Suunnitelma voi silloin odottaa tunteja, joiden hintoja ei ole vielä julkaistu, kun viime viikot osoittavat niiden olevan yleensä halvempia. Lähtö pidetään aina.",
+  "settings.deadline.datePast": "Päivämäärä on mennyt ohi ja sitä ei huomioida. Tallennus poistaa sen.",
+  "settings.deadline.today": "tänään",
+  "settings.deadline.tomorrow": "huomenna",
   "settings.deadline.periods": "Latausjaksojen enimmäismäärä",
   "settings.current.title": "Suunniteltu virta",
   "settings.current.intro": "Virta, jota suunnitelma saa pyytää. Se on suunnitteluarvo, ei komento laturille.",
@@ -4205,6 +4291,8 @@ var fi = {
   "settings.error.required": "Täytä tämä ennen tallentamista.",
   "settings.error.invalidNumber": "Se ei ole luku.",
   "settings.error.outOfRange": "Arvo on sallitun alueen ulkopuolella.",
+  "settings.error.invalidDate": "Valitse kelvollinen päivämäärä.",
+  "settings.error.dateRange": "Valitse päivämäärä tästä päivästä enintään 7 päivän päähän.",
   "settings.error.invalidTime": "Käytä aikaa kuten 06:30.",
   "settings.error.read": "Asetuksia ei voitu lukea.",
   "settings.error.refused": "Asetukset hylättiin. Mikään ei muuttunut.",
@@ -4322,6 +4410,8 @@ var nb = {
   "status.proposalPending": "Et nytt ladeforslag er klart.",
   "status.waitingForTomorrow": "Venter på morgendagens priser.",
   "status.waitingForPublication": "Venter på morgendagens priser (~{time}), planlegger da.",
+  "status.waitingForHistory": "Venter: {weekday} har vært {percent} % billigere de siste {weeks} ukene.",
+  "status.waitingForHistoryNoDetail": "Venter på timer som pleier å være billigere, planlegger da.",
   "status.waitingForPublicationNoTime": "Venter på morgendagens priser, planlegger da.",
   "status.buyingBeforePublication": "Kjøper {kwh} kWh nå, resten når prisene er publisert.",
   "status.noPlan": "Ingen ladeplan kunne beregnes akkurat nå.",
@@ -4692,6 +4782,14 @@ var nb = {
   "settings.deadline.intro": "Når ladingen må være ferdig, og hvor mange perioder den kan bruke.",
   "settings.deadline.enabled": "Ferdig innen en frist",
   "settings.deadline.time": "Avreisetid",
+  "settings.deadline.date": "Avreisedag",
+  "settings.deadline.dateDaily": "Hver dag",
+  "settings.deadline.dateChoose": "Velg dato",
+  "settings.deadline.dateClear": "Hver dag",
+  "settings.deadline.dateHelp": "Velg en dag opptil 7 dager frem for å reise den datoen. Planen kan da vente på timer der prisene ikke er publisert ennå, når de siste ukene viser at de pleier å være billigere. Avreisen holdes alltid.",
+  "settings.deadline.datePast": "Datoen er passert og ignoreres. Lagring fjerner den.",
+  "settings.deadline.today": "i dag",
+  "settings.deadline.tomorrow": "i morgen",
   "settings.deadline.periods": "Høyeste antall ladeperioder",
   "settings.current.title": "Planlagt strøm",
   "settings.current.intro": "Strømmen planen kan be om. Det er en planverdi, ikke en kommando til laderen.",
@@ -4707,6 +4805,8 @@ var nb = {
   "settings.error.required": "Fyll inn dette før du lagrer.",
   "settings.error.invalidNumber": "Det er ikke et tall.",
   "settings.error.outOfRange": "Verdien er utenfor det tillatte området.",
+  "settings.error.invalidDate": "Velg en gyldig dato.",
+  "settings.error.dateRange": "Velg en dato fra i dag og opptil 7 dager frem.",
   "settings.error.invalidTime": "Bruk et klokkeslett som 06:30.",
   "settings.error.read": "Innstillingene kunne ikke leses.",
   "settings.error.refused": "Innstillingene ble avvist. Ingenting ble endret.",
@@ -4824,6 +4924,8 @@ var sv = {
   "status.proposalPending": "Ett nytt laddförslag är klart.",
   "status.waitingForTomorrow": "Väntar på morgondagens priser.",
   "status.waitingForPublication": "Väntar på morgondagens priser (~{time}), planerar då.",
+  "status.waitingForHistory": "Väntar: {weekday} har varit {percent} % billigare de senaste {weeks} veckorna.",
+  "status.waitingForHistoryNoDetail": "Väntar på timmar som brukar vara billigare, planerar då.",
   "status.waitingForPublicationNoTime": "Väntar på morgondagens priser, planerar då.",
   "status.buyingBeforePublication": "Köper {kwh} kWh nu, resten när priserna publiceras.",
   "status.noPlan": "Ingen laddplan kunde beräknas just nu.",
@@ -5194,6 +5296,14 @@ var sv = {
   "settings.deadline.intro": "När laddningen senast ska vara klar, och hur många perioder den får använda.",
   "settings.deadline.enabled": "Klar senast en tid",
   "settings.deadline.time": "Avgångstid",
+  "settings.deadline.date": "Avgångsdag",
+  "settings.deadline.dateDaily": "Varje dag",
+  "settings.deadline.dateChoose": "Välj datum",
+  "settings.deadline.dateClear": "Varje dag",
+  "settings.deadline.dateHelp": "Välj en dag upp till 7 dagar fram för att åka det datumet. Planen kan då vänta på timmar vars priser inte är publicerade än, när de senaste veckorna visar att de brukar vara billigare. Avgången hålls alltid.",
+  "settings.deadline.datePast": "Datumet har passerat och ignoreras. Sparar du tas det bort.",
+  "settings.deadline.today": "idag",
+  "settings.deadline.tomorrow": "imorgon",
   "settings.deadline.periods": "Högsta antal laddperioder",
   "settings.current.title": "Planerad ström",
   "settings.current.intro": "Strömmen planen får begära. Det är ett planeringsvärde, inte ett kommando till laddaren.",
@@ -5209,6 +5319,8 @@ var sv = {
   "settings.error.required": "Fyll i detta innan du sparar.",
   "settings.error.invalidNumber": "Det är inte ett tal.",
   "settings.error.outOfRange": "Värdet ligger utanför tillåtet intervall.",
+  "settings.error.invalidDate": "Välj ett giltigt datum.",
+  "settings.error.dateRange": "Välj ett datum från idag och upp till 7 dagar fram.",
   "settings.error.invalidTime": "Använd en tid som 06:30.",
   "settings.error.read": "Inställningarna kunde inte läsas.",
   "settings.error.refused": "Inställningarna avvisades. Inget ändrades.",
@@ -5402,6 +5514,18 @@ function list(source, key) {
   return Array.isArray(value) ? value : bad();
 }
 var WALL_TIME = /^(?:[01][0-9]|2[0-3]):[0-5][0-9]$/;
+var ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
+function isIsoDate(value) {
+  if (!ISO_DATE.test(value)) {
+    return false;
+  }
+  const parsed = /* @__PURE__ */ new Date(`${value}T00:00:00Z`);
+  return !Number.isNaN(parsed.getTime()) && parsed.toISOString().slice(0, 10) === value;
+}
+function dateOrNull(source, key) {
+  const value = textOrNull(source, key);
+  return value === null || isIsoDate(value) ? value : bad();
+}
 function wallTime(source, key) {
   const value = text(source, key);
   return WALL_TIME.test(value) ? value : bad();
@@ -5473,7 +5597,8 @@ function decodeTarget(source) {
 }
 function decodeSettingsRecord(raw) {
   const source = record(raw);
-  exactKeys(source, RECORD_KEYS);
+  const hasDate = Object.prototype.hasOwnProperty.call(source, "departure_date");
+  exactKeys(source, hasDate ? [...RECORD_KEYS, "departure_date"] : RECORD_KEYS);
   const revision = whole(source, "revision");
   if (revision < 0) {
     return bad();
@@ -5488,6 +5613,7 @@ function decodeSettingsRecord(raw) {
     max_periods: whole(source, "max_periods"),
     departure_enabled: booleanValue(source, "departure_enabled"),
     departure_time: wallTime(source, "departure_time"),
+    departure_date: hasDate ? dateOrNull(source, "departure_date") : null,
     strategy: oneOf(source, "strategy", STRATEGIES),
     driver: oneOf(source, "driver", DRIVERS),
     target: decodeTarget(record(source["target"]))
@@ -5567,6 +5693,7 @@ function encodeBody(record6) {
     max_periods: record6.max_periods,
     departure_enabled: record6.departure_enabled,
     departure_time: record6.departure_time,
+    departure_date: record6.departure_date,
     strategy: record6.strategy,
     driver: record6.driver,
     target: { ...record6.target }
@@ -5594,6 +5721,7 @@ function formFromRecord(record6) {
     energy: String(record6.requested_kwh),
     deadlineEnabled: record6.departure_enabled,
     deadlineTime: record6.departure_time,
+    departureDate: record6.departure_date ?? "",
     maxPeriods: String(record6.max_periods),
     current: record6.amps === null ? "" : String(record6.amps),
     driver: record6.driver,
@@ -5651,6 +5779,39 @@ function checkDeadlineTime(text4) {
   }
   return WALL_TIME.test(trimmed) ? { ok: true, value: trimmed } : { ok: false, errorKey: "settings.error.invalidTime" };
 }
+var DEPARTURE_DAYS_AHEAD = 7;
+function departureDays(timeZone, nowMs) {
+  if (!hasZone({ language: "en", timeZone, unit: "", currency: null, majorUnit: null })) {
+    return null;
+  }
+  const midnight = localMidnightAt(nowMs, timeZone);
+  const HOUR = 36e5;
+  const dayAfter = (days) => localDayKey(midnight + days * 24 * HOUR + 12 * HOUR, timeZone);
+  const today = localDayKey(nowMs, timeZone);
+  return {
+    today,
+    max: dayAfter(DEPARTURE_DAYS_AHEAD),
+    nextOccurrence: (wallTime2) => {
+      const match = /^(\d{2}):(\d{2})$/.exec(wallTime2);
+      const wallMs = match === null ? Number.NaN : (Number(match[1]) * 60 + Number(match[2])) * 6e4;
+      const sinceMidnight = nowMs - midnight;
+      return Number.isFinite(wallMs) && wallMs > sinceMidnight ? today : dayAfter(1);
+    }
+  };
+}
+function checkDepartureDate(text4, days, moved) {
+  const trimmed = text4.trim();
+  if (trimmed === "") {
+    return { ok: true, value: null };
+  }
+  if (!isIsoDate(trimmed)) {
+    return { ok: false, errorKey: "settings.error.invalidDate" };
+  }
+  if (moved && days !== null && (trimmed < days.today || trimmed > days.max)) {
+    return { ok: false, errorKey: "settings.error.dateRange" };
+  }
+  return { ok: true, value: trimmed };
+}
 function checkMaxPeriods(text4) {
   return integer(text4, PERIODS_MIN, PERIODS_MAX);
 }
@@ -5704,7 +5865,7 @@ var CONSUMPTION_MAX_KWH_PER_10KM = 50;
 function checkConsumption(text4) {
   return decimal(text4, CONSUMPTION_MIN_KWH_PER_10KM, CONSUMPTION_MAX_KWH_PER_10KM);
 }
-function replacementFor(kind, record6, values, range = null, opened = null) {
+function replacementFor(kind, record6, values, range = null, opened = null, days = null) {
   const body = encodeBody(record6);
   const energy = kind === "energy" || kind === "plan" ? checkEnergy(values.energy) : null;
   if (energy !== null && !energy.ok) {
@@ -5721,6 +5882,12 @@ function replacementFor(kind, record6, values, range = null, opened = null) {
   const periods = kind === "deadline" || kind === "plan" ? checkMaxPeriods(values.maxPeriods) : null;
   if (periods !== null && !periods.ok) {
     return periods;
+  }
+  const dateBase = opened === null ? record6 : opened;
+  const dateMoved = values.departureDate !== (dateBase.departure_date ?? "");
+  const date = kind === "deadline" || kind === "plan" ? checkDepartureDate(values.deadlineEnabled ? values.departureDate : "", days, dateMoved) : null;
+  if (date !== null && !date.ok) {
+    return date;
   }
   const driverOk = values.driver === "manual_kwh" || values.driver === SETTINGS_DRIVER_TARGET_SOC;
   if (kind === "plan" && !driverOk) {
@@ -5765,12 +5932,15 @@ function replacementFor(kind, record6, values, range = null, opened = null) {
     next.amps = amps.value;
     changed = changed || amps.value !== record6.amps;
   }
-  const deadlineMoved = opened === null || time !== null && time.ok && periods !== null && periods.ok && (values.deadlineEnabled !== opened.departure_enabled || time.value !== opened.departure_time || periods.value !== opened.max_periods);
+  const deadlineMoved = opened === null || time !== null && time.ok && periods !== null && periods.ok && (values.deadlineEnabled !== opened.departure_enabled || time.value !== opened.departure_time || periods.value !== opened.max_periods || date !== null && date.ok && date.value !== opened.departure_date);
   if (time !== null && time.ok && periods !== null && periods.ok && deadlineMoved) {
     next.departure_enabled = values.deadlineEnabled;
     next.departure_time = time.value;
     next.max_periods = periods.value;
-    changed = changed || values.deadlineEnabled !== record6.departure_enabled || time.value !== record6.departure_time || periods.value !== record6.max_periods;
+    if (date !== null && date.ok) {
+      next.departure_date = date.value;
+    }
+    changed = changed || values.deadlineEnabled !== record6.departure_enabled || time.value !== record6.departure_time || periods.value !== record6.max_periods || date !== null && date.ok && date.value !== record6.departure_date;
   }
   return { ok: true, body: next, changed };
 }
@@ -5781,18 +5951,25 @@ function currentCheck(values, record6, range) {
   }
   return checkCurrentInRange(values.current, range);
 }
-function settingsSummaries(language, settings) {
+function settingsSummaries(language, settings, today = null) {
   const energy = settings?.requested_kwh ?? null;
   const amps = settings?.amps ?? null;
   const time = settings?.departure_time ?? null;
   return {
     energy: energy === null || !Number.isFinite(energy) ? translate(language, "settings.energy.unset") : energyAmount(language, energy),
-    deadline: settings?.departure_enabled === true && time !== null && WALL_TIME.test(time) ? time : translate(language, "settings.deadline.none"),
+    deadline: settings?.departure_enabled === true && time !== null && WALL_TIME.test(time) ? departureText(language, settings.departure_date, time, today) : translate(language, "settings.deadline.none"),
     current: amps === null || !Number.isFinite(amps) ? translate(language, "settings.current.unset") : `${formatNumber(language, amps, 0)} A`
   };
 }
-function planSummaryParts(language, settings) {
-  const summaries = settingsSummaries(language, settings);
+function departureText(language, date, time, today) {
+  const day = date === null ? null : departureDayLabel(language, date, today, {
+    today: translate(language, "settings.deadline.today"),
+    tomorrow: translate(language, "settings.deadline.tomorrow")
+  });
+  return day === null ? time : `${day} ${time}`;
+}
+function planSummaryParts(language, settings, today = null) {
+  const summaries = settingsSummaries(language, settings, today);
   const first = settings?.driver === SETTINGS_DRIVER_TARGET_SOC ? settings.target.target_percent === null || !Number.isFinite(settings.target.target_percent) ? translate(language, "settings.energy.unset") : percentAmount(language, settings.target.target_percent) : summaries.energy;
   return [first, summaries.deadline, summaries.current];
 }
@@ -6535,6 +6712,7 @@ var STATUS_CODE_TABLE = {
   charging_now: ["normal", { until: "instantOrNull" }],
   charging_without_prices: ["notice", {}],
   waiting_for_publication: ["normal", { publication_at: "instantOrNull" }],
+  waiting_for_history: ["normal", { weekday: "int", percent: "int", weeks: "int" }],
   buying_before_publication: ["normal", { kwh: "number" }],
   auto_planned: ["normal", { start: "instant" }],
   auto_installed: ["normal", { start: "instant" }],
@@ -6857,6 +7035,7 @@ var STATUS_WORDING = {
   charging_now: "status.chargingNow",
   charging_without_prices: "issue.chargingWithoutPrices",
   waiting_for_publication: "status.waitingForPublication",
+  waiting_for_history: "status.waitingForHistory",
   buying_before_publication: "status.buyingBeforePublication",
   auto_planned: "status.autoPlanned",
   auto_installed: "status.autoInstalled",
@@ -6932,6 +7111,16 @@ function lineText(line, format, nowMs) {
     case "waiting_for_publication": {
       const at = ms(p["publication_at"]);
       return at === null || !zoned ? say("status.waitingForPublicationNoTime") : say("status.waitingForPublication", { time: clock(format, at) });
+    }
+    case "waiting_for_history": {
+      const weekday = weekdayPlural(language, num(p["weekday"]) ?? Number.NaN);
+      const percent = num(p["percent"]);
+      const weeks = num(p["weeks"]);
+      return weekday === null || percent === null || weeks === null ? say("status.waitingForHistoryNoDetail") : say("status.waitingForHistory", {
+        weekday,
+        percent: formatNumber(language, percent, 0),
+        weeks: formatNumber(language, weeks, 0)
+      });
     }
     case "buying_before_publication":
       return say("status.buyingBeforePublication", { kwh: formatNumber(language, num(p["kwh"]) ?? 0, 1) });
@@ -7343,6 +7532,7 @@ function buildModel(input) {
     timesAvailable: zone,
     chargerName: dashboard.charger.charger_name ?? dashboard.charger.charger_id,
     dashboardSettings: dashboard.settings,
+    today: zone ? localDayKey(input.nowMs, format.timeZone) : null,
     dashboardFiscal: dashboard.fiscal,
     status: statusText(status, format, input.nowMs),
     statusNote: statusNote(status, format, input.nowMs),
@@ -9971,6 +10161,14 @@ function settingsEditorBody(doc, language, form, handlers, idPrefix) {
   timeInput.type = "time";
   timeInput.className = VISUAL_CLASSES.settingsInput;
   timeInput.value = form.values.deadlineTime;
+  const dateInput = doc.createElement("input");
+  dateInput.type = "date";
+  dateInput.className = VISUAL_CLASSES.settingsInput;
+  if (form.days != null) {
+    dateInput.min = form.days.today;
+    dateInput.max = form.days.max;
+  }
+  dateInput.value = form.values.departureDate;
   const periodsInput = rangeInput(doc, {
     min: PERIODS_MIN,
     max: PERIODS_MAX,
@@ -10015,6 +10213,64 @@ function settingsEditorBody(doc, language, form, handlers, idPrefix) {
       }).field
     );
   };
+  const appendDate = () => {
+    const days = form.days ?? null;
+    if (days === null && dateInput.value === "") {
+      return;
+    }
+    const block = element4(doc, "div", VISUAL_CLASSES.settingsField);
+    block.dataset["part"] = "departure-date";
+    const label = element4(doc, "label", VISUAL_CLASSES.settingsLabel, translate(language, "settings.deadline.date"));
+    dateInput.id = `${idPrefix}-deadline-date`;
+    label.setAttribute("for", dateInput.id);
+    const shown = element4(doc, "output", VISUAL_CLASSES.settingsUnit);
+    shown.dataset["departureDateLabel"] = "true";
+    shown.setAttribute("aria-live", "polite");
+    const choose = doc.createElement("button");
+    choose.type = "button";
+    choose.className = VISUAL_CLASSES.button;
+    choose.dataset["action"] = "date-choose";
+    choose.textContent = translate(language, "settings.deadline.dateChoose");
+    const clear = doc.createElement("button");
+    clear.type = "button";
+    clear.className = VISUAL_CLASSES.button;
+    clear.dataset["action"] = "date-clear";
+    clear.textContent = translate(language, "settings.deadline.dateClear");
+    const note = element4(doc, "p", VISUAL_CLASSES.settingsNote);
+    note.dataset["departureDateNote"] = "true";
+    const paint = () => {
+      const value = dateInput.value;
+      const off = form.readOnly || !enabledInput.checked;
+      shown.textContent = value === "" ? translate(language, "settings.deadline.dateDaily") : dateLabel(language, value);
+      dateInput.disabled = off || days === null;
+      choose.hidden = value !== "" || days === null;
+      choose.disabled = off;
+      clear.hidden = value === "";
+      clear.disabled = off;
+      const gone = days !== null && value !== "" && value < days.today;
+      note.hidden = !gone;
+      note.textContent = gone ? translate(language, "settings.deadline.datePast") : "";
+    };
+    choose.addEventListener("click", () => {
+      if (days !== null) {
+        dateInput.value = days.nextOccurrence(timeInput.value);
+        paint();
+      }
+    });
+    clear.addEventListener("click", () => {
+      dateInput.value = "";
+      paint();
+    });
+    dateInput.addEventListener("input", paint);
+    dateInput.addEventListener("change", paint);
+    timeInput.addEventListener("input", paint);
+    enabledInput.addEventListener("change", paint);
+    const pair = element4(doc, "div", VISUAL_CLASSES.settingsPair);
+    pair.append(dateInput, shown, choose, clear);
+    block.append(label, pair, note, element4(doc, "p", VISUAL_CLASSES.settingsNote, translate(language, "settings.deadline.dateHelp")));
+    body.append(block);
+    paint();
+  };
   const appendDeadline = () => {
     enabledInput.disabled = form.readOnly;
     timeInput.disabled = form.readOnly;
@@ -10023,6 +10279,7 @@ function settingsEditorBody(doc, language, form, handlers, idPrefix) {
       checkboxField(doc, `${idPrefix}-deadline-enabled`, translate(language, "settings.deadline.enabled"), enabledInput)
     );
     body.append(field(doc, `${idPrefix}-deadline-time`, translate(language, "settings.deadline.time"), timeInput));
+    appendDate();
     const periodsValue = element4(doc, "output", VISUAL_CLASSES.settingsUnit, periodsInput.value);
     periodsValue.dataset["periodsValue"] = "true";
     periodsInput.addEventListener("input", () => {
@@ -10326,6 +10583,7 @@ function settingsEditorBody(doc, language, form, handlers, idPrefix) {
     values.energy = energyInput.value;
     values.deadlineEnabled = enabledInput.checked;
     values.deadlineTime = timeInput.value;
+    values.departureDate = dateInput.value;
     values.maxPeriods = periodsInput.value;
     values.current = currentInput.value;
     if (form.kind === "plan") {
@@ -11318,7 +11576,7 @@ function createCardView(input) {
     });
     bar.append(strategyButton);
   }
-  const planParts = planSummaryParts(model.language, model.dashboardSettings);
+  const planParts = planSummaryParts(model.language, model.dashboardSettings, model.today);
   const planCaption = axisName("bar.plan");
   const planTrigger = cell(
     VISUAL_CLASSES.settingsTrigger,
@@ -13123,7 +13381,8 @@ var SpotnavCard = class extends HTMLElement {
         currentRange: this.currentRange(),
         conflict: null,
         soc: this.socFacts(),
-        vehicles: this.vehicleFacts()
+        vehicles: this.vehicleFacts(),
+        days: this.departureDays()
       });
     } catch (error) {
       if (!this.editorIsCurrent(generation, operation)) {
@@ -13403,6 +13662,10 @@ var SpotnavCard = class extends HTMLElement {
   currentRange() {
     return this.cardState.kind === "ready" ? currentRangeFor(this.cardState.dashboard) : DEFAULT_CURRENT_RANGE;
   }
+  /** What the departure date picker offers now, in the market's own zone; `null` while that is unknown. */
+  departureDays() {
+    return this.cardState.kind === "ready" ? departureDays(this.cardState.dashboard.market?.timezone ?? "", Date.now()) : null;
+  }
   socFacts() {
     return this.cardState.kind === "ready" ? socFor(this.cardState.dashboard) : null;
   }
@@ -13430,7 +13693,14 @@ var SpotnavCard = class extends HTMLElement {
     if (base === null) {
       return;
     }
-    const check = replacementFor(kind, base, values, this.currentRange(), reapply ? editor.record : null);
+    const check = replacementFor(
+      kind,
+      base,
+      values,
+      this.currentRange(),
+      reapply ? editor.record : null,
+      this.departureDays()
+    );
     if (!check.ok) {
       this.showEditorNotice(kind, check.errorKey, null);
       return;
@@ -13547,7 +13817,8 @@ var SpotnavCard = class extends HTMLElement {
         currentRange: this.currentRange(),
         conflict: null,
         soc: this.socFacts(),
-        vehicles: this.vehicleFacts()
+        vehicles: this.vehicleFacts(),
+        days: this.departureDays()
       });
     } catch (error) {
       if (!this.editorIsCurrent(generation, operation)) {

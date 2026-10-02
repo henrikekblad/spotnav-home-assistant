@@ -1614,6 +1614,9 @@ def status_facts(capture: CapturedDashboard) -> StatusFacts:
             missing=tuple(snapshot.missing),
             publication_at=_utc(snapshot.publication_at),
             must_buy_now_kwh=finite_number(snapshot.must_buy_kwh),
+            history_weekday=None if snapshot.history is None else snapshot.history.weekday,
+            history_percent=None if snapshot.history is None else snapshot.history.percent,
+            history_weeks=None if snapshot.history is None else snapshot.history.weeks,
         )
     proposal = None
     section = _proposal_section(capture)

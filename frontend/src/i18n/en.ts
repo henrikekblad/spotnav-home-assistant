@@ -21,6 +21,8 @@ export const en = {
   "status.proposalPending": "A new charging proposal is ready.",
   "status.waitingForTomorrow": "Waiting for tomorrow's prices.",
   "status.waitingForPublication": "Waiting for tomorrow's prices (~{time}), will plan then.",
+  "status.waitingForHistory": "Waiting: {weekday} were {percent} % cheaper the last {weeks} weeks.",
+  "status.waitingForHistoryNoDetail": "Waiting for hours that usually cost less, will plan then.",
   "status.waitingForPublicationNoTime": "Waiting for tomorrow's prices, will plan then.",
   "status.buyingBeforePublication": "Buying {kwh} kWh now, the rest when the prices are published.",
   "status.noPlan": "No charging plan could be calculated right now.",
@@ -435,6 +437,22 @@ export const en = {
     "Finish by a deadline",
   "settings.deadline.time":
     "Departure time",
+  "settings.deadline.date":
+    "Departure day",
+  "settings.deadline.dateDaily":
+    "Every day",
+  "settings.deadline.dateChoose":
+    "Choose a date",
+  "settings.deadline.dateClear":
+    "Every day",
+  "settings.deadline.dateHelp":
+    "Choose a day up to 7 days ahead to leave on that date. The plan may then wait for hours whose prices are not published yet, when the last weeks show they are usually cheaper; it always keeps the departure.",
+  "settings.deadline.datePast":
+    "This date has gone by and is ignored. Saving removes it.",
+  "settings.deadline.today":
+    "today",
+  "settings.deadline.tomorrow":
+    "tomorrow",
   "settings.deadline.periods":
     "Maximum charging periods",
   "settings.current.title":
@@ -465,6 +483,10 @@ export const en = {
     "That is not a number.",
   "settings.error.outOfRange":
     "That value is outside the allowed range.",
+  "settings.error.invalidDate":
+    "Choose a valid date.",
+  "settings.error.dateRange":
+    "Choose a date from today up to 7 days ahead.",
   "settings.error.invalidTime":
     "Use a time like 06:30.",
   "settings.error.read":

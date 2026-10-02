@@ -159,6 +159,21 @@ CASES: list[tuple[str, StatusFacts, str, list[dict[str, Any]]]] = [
         [{"code": "waiting_for_publication", "params": {"publication_at": None}}],
     ),
     (
+        "waiting for history names the weekday, the saving and the weeks behind it",
+        base(
+            planning=planning(
+                "waiting_for_publication",
+                "waiting_for_history",
+                publication_at=at(15),
+                history_weekday=7,
+                history_percent=30,
+                history_weeks=4,
+            )
+        ),
+        "normal",
+        [{"code": "waiting_for_history", "params": {"weekday": 7, "percent": 30, "weeks": 4}}],
+    ),
+    (
         "buying before publication",
         base(planning=planning(reason="buying_before_publication", must_buy_now_kwh=4.5), proposal=proposal(), relation_applied=True),
         "normal",

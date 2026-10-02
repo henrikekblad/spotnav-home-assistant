@@ -32,7 +32,7 @@ function numberFormat(language: Language, options: Intl.NumberFormatOptions): In
   return created;
 }
 
-function dateFormat(language: Language, options: Intl.DateTimeFormatOptions): Intl.DateTimeFormat {
+function dateFormat(language: Language | "en-GB", options: Intl.DateTimeFormatOptions): Intl.DateTimeFormat {
   const key = `${language}|${JSON.stringify(options)}`;
   const existing = dateFormats.get(key);
   if (existing !== undefined) {
@@ -181,4 +181,82 @@ export function distanceText(language: Language, mil: number): string {
     return `${formatNumber(language, mil, 1)} mil`;
   }
   return `${formatNumber(language, mil * 10, 0)} km`;
+}
+
+/** The ISO weekday (1 = Monday) as a reference date: 2024-01-01 was a Monday. */
+function referenceWeekday(isoWeekday: number): number {
+  return Date.UTC(2024, 0, isoWeekday, 12);
+}
+
+/**
+ * A calendar date `YYYY-MM-DD` as people read it in the card language, e.g. `Sun 4 Oct`: the same short
+ * weekday-day-month shape a period uses. The date is zone-free, so it is formatted in UTC from noon.
+ */
+export function dateLabel(language: Language, isoDate: string): string {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(isoDate);
+  if (match === null) {
+    return "";
+  }
+  const instant = Date.UTC(Number(match[1]), Number(match[2]) - 1, Number(match[3]), 12);
+  // English is read day-first (`Sun 4 Oct`), like the other four languages, not `Sun, Oct 4`.
+  return dateFormat(language === "en" ? "en-GB" : language, {
+    weekday: "short",
+    day: "numeric",
+    month: "short",
+    timeZone: "UTC",
+  }).format(new Date(instant));
+}
+
+/**
+ * A departure date named for the reader: today and tomorrow in words (the caller's, already translated),
+ * a later day by its weekday and date. `null` for a day that has gone by (planning ignores it) or text
+ * that is not a date. With no known `today` the date is just spelled.
+ */
+export function departureDayLabel(
+  language: Language,
+  isoDate: string,
+  today: string | null,
+  words: { today: string; tomorrow: string },
+): string | null {
+  const label = dateLabel(language, isoDate);
+  if (label === "") {
+    return null;
+  }
+  if (today === null) {
+    return label;
+  }
+  if (isoDate < today) {
+    return null;
+  }
+  if (isoDate === today) {
+    return words.today;
+  }
+  const next = new Date(`${today}T12:00:00Z`);
+  next.setUTCDate(next.getUTCDate() + 1);
+  return isoDate === next.toISOString().slice(0, 10) ? words.tomorrow : label;
+}
+
+/**
+ * A weekday in the plural the language uses for "every Sunday" (`Sundays`, `söndagar`, `søndager`,
+ * `søndage`, `sunnuntaisin`), from the weekday name `Intl` gives. `null` for a number that is no ISO weekday.
+ */
+export function weekdayPlural(language: Language, isoWeekday: number): string | null {
+  if (!Number.isInteger(isoWeekday) || isoWeekday < 1 || isoWeekday > 7) {
+    return null;
+  }
+  const name = dateFormat(language, { weekday: "long", timeZone: "UTC" })
+    .format(new Date(referenceWeekday(isoWeekday)))
+    .toLocaleLowerCase(language);
+  switch (language) {
+    case "sv":
+      return `${name}ar`;
+    case "nb":
+      return `${name}er`;
+    case "da":
+      return `${name}e`;
+    case "fi":
+      return name.endsWith("i") ? `${name}sin` : `${name}isin`;
+    default:
+      return `${name.charAt(0).toLocaleUpperCase(language)}${name.slice(1)}s`;
+  }
 }

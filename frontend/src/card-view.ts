@@ -1376,7 +1376,7 @@ export function createCardView(input: CardViewInput): CardView {
     bar.append(strategyButton);
   }
   // The Plan cell: requested energy, finish by and current in one popover. Area/fiscal and consumption live in Settings.
-  const planParts = planSummaryParts(model.language, model.dashboardSettings);
+  const planParts = planSummaryParts(model.language, model.dashboardSettings, model.today);
   const planCaption = axisName("bar.plan");
   const planTrigger = cell(
     C.settingsTrigger,

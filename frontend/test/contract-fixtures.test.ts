@@ -235,6 +235,7 @@ const V7_EXPECTED: Record<string, ExpectedV7> = {
   },
   "cheapest_no_site.json": { selected: "cheapest", strategyState: null, site: null },
   "waiting_for_publication.json": { selected: "cheapest", strategyState: null, site: null },
+  "waiting_for_history.json": { selected: "cheapest", strategyState: null, site: null },
   "buying_before_publication.json": { selected: "cheapest", strategyState: null, site: null },
   "charging_without_prices.json": { selected: "cheapest", strategyState: null, site: null },
   "target_soc_estimated.json": { selected: "cheapest", strategyState: null, site: null },
@@ -319,6 +320,14 @@ const PRICE_WAIT_EXPECTED: Record<
     mustBuy: 0,
     unpriced: false,
   },
+  "waiting_for_history.json": {
+    state: "waiting_for_publication",
+    reason: "waiting_for_history",
+    wait: "waiting",
+    publicationAt: "2026-10-02T11:45:00+00:00",
+    mustBuy: 0,
+    unpriced: false,
+  },
   "buying_before_publication.json": {
     state: "proposal_ready",
     reason: "buying_before_publication",
@@ -384,6 +393,11 @@ const V7_STATUS_EXPECTED: Record<string, { tone: string; codes: string[]; englis
     tone: "normal",
     codes: ["waiting_for_publication"],
     english: "Waiting for tomorrow's prices (~13:45), will plan then.",
+  },
+  "waiting_for_history.json": {
+    tone: "normal",
+    codes: ["waiting_for_history"],
+    english: "Waiting: Sundays were 70 % cheaper the last 4 weeks.",
   },
 };
 
@@ -702,12 +716,20 @@ describe("the backend's v7 current_range", () => {
 
 const SETTINGS_EXPECTED: Record<
   string,
-  { ok: boolean; code: string | null; strategy: string; revision: number }
+  { ok: boolean; code: string | null; strategy: string; revision: number; date?: string | null }
 > = {
-  "success.json": { ok: true, code: null, strategy: "solar", revision: 2 },
+  "success.json": { ok: true, code: null, strategy: "solar", revision: 2, date: null },
   "revision_conflict.json": { ok: false, code: "revision_conflict", strategy: "cheapest", revision: 3 },
   "refusal_invalid_strategy.json": { ok: false, code: "invalid_strategy", strategy: "cheapest", revision: 4 },
   "refusal_unknown_field.json": { ok: false, code: "unknown_field", strategy: "cheapest", revision: 5 },
+  "success_dated.json": { ok: true, code: null, strategy: "cheapest", revision: 7, date: "2026-09-27" },
+  "refusal_invalid_departure_date.json": {
+    ok: false,
+    code: "invalid_departure",
+    strategy: "cheapest",
+    revision: 8,
+    date: null,
+  },
 };
 
 describe("the backend's settings contract fixtures", () => {
@@ -728,6 +750,9 @@ describe("the backend's settings contract fixtures", () => {
     expect(answer.ok, name).toBe(expected.ok);
     expect(answer.settings?.strategy, name).toBe(expected.strategy);
     expect(answer.settings?.revision, name).toBe(expected.revision);
+    if (expected.date !== undefined) {
+      expect(answer.settings?.departure_date, name).toBe(expected.date);
+    }
     if (!answer.ok) {
       expect(answer.code, name).toBe(expected.code);
     }

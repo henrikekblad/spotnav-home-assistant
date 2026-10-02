@@ -52,7 +52,8 @@
     "target_capacity_unknown",
     "target_soc_unknown",
     "unexpected_failure",
-    "unpriced"
+    "unpriced",
+    "waiting_for_history"
   ],
   "planning_states": [
     "error",
@@ -323,6 +324,14 @@
     "unpriced": {
       "params": [],
       "tone": "notice"
+    },
+    "waiting_for_history": {
+      "params": [
+        "percent",
+        "weekday",
+        "weeks"
+      ],
+      "tone": "normal"
     },
     "waiting_for_publication": {
       "params": [

@@ -8,7 +8,8 @@
 // record over `spotnav/get_settings`, keeps it as an immutable base, and saves one full replacement
 // built from it, so fields a focused edit does not own cannot be lost.
 
-import { energyAmount, formatNumber, percentAmount } from "./format";
+import { localDayKey, localMidnightAt } from "./chart";
+import { departureDayLabel, energyAmount, formatNumber, hasZone, percentAmount } from "./format";
 import { translate, type Language, type TranslationKey } from "./i18n";
 import {
   SETTINGS_API_VERSION,
@@ -105,6 +106,21 @@ function list(source: Record<string, unknown>, key: string): unknown[] {
 }
 
 const WALL_TIME = /^(?:[01][0-9]|2[0-3]):[0-5][0-9]$/;
+const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
+
+/** Whether text is a real calendar date `YYYY-MM-DD` (no `2026-02-30`). */
+export function isIsoDate(value: string): boolean {
+  if (!ISO_DATE.test(value)) {
+    return false;
+  }
+  const parsed = new Date(`${value}T00:00:00Z`);
+  return !Number.isNaN(parsed.getTime()) && parsed.toISOString().slice(0, 10) === value;
+}
+
+function dateOrNull(source: Record<string, unknown>, key: string): string | null {
+  const value = textOrNull(source, key);
+  return value === null || isIsoDate(value) ? value : bad();
+}
 
 function wallTime(source: Record<string, unknown>, key: string): string {
   const value = text(source, key);
@@ -133,6 +149,7 @@ const FISCAL_KEYS = ["enabled", "value"] as const;
 const OVERRIDE_KEYS = ["area_id", "vat", "tax", "transfer"] as const;
 const TARGET_KEYS = ["vehicle_id", "target_percent"] as const;
 
+/** The keys every record carries; `departure_date` was added later and may be absent (read as `null`). */
 const BODY_KEYS = [
   "area_id",
   "overrides",
@@ -206,7 +223,9 @@ function decodeTarget(source: Record<string, unknown>): SettingsRecord["target"]
  */
 export function decodeSettingsRecord(raw: unknown): SettingsRecord {
   const source = record(raw);
-  exactKeys(source, RECORD_KEYS);
+  // `departure_date` is the one optional key; every other key is required and nothing else is allowed.
+  const hasDate = Object.prototype.hasOwnProperty.call(source, "departure_date");
+  exactKeys(source, hasDate ? [...RECORD_KEYS, "departure_date"] : RECORD_KEYS);
   const revision = whole(source, "revision");
   if (revision < 0) {
     return bad();
@@ -221,6 +240,7 @@ export function decodeSettingsRecord(raw: unknown): SettingsRecord {
     max_periods: whole(source, "max_periods"),
     departure_enabled: booleanValue(source, "departure_enabled"),
     departure_time: wallTime(source, "departure_time"),
+    departure_date: hasDate ? dateOrNull(source, "departure_date") : null,
     strategy: oneOf(source, "strategy", STRATEGIES),
     driver: oneOf(source, "driver", DRIVERS),
     target: decodeTarget(record(source["target"])),
@@ -346,6 +366,7 @@ export function encodeBody(record: SettingsRecord): SettingsBody {
     max_periods: record.max_periods,
     departure_enabled: record.departure_enabled,
     departure_time: record.departure_time,
+    departure_date: record.departure_date,
     strategy: record.strategy,
     driver: record.driver,
     target: { ...record.target },
@@ -384,6 +405,8 @@ export interface SettingsFormValues {
   energy: string;
   deadlineEnabled: boolean;
   deadlineTime: string;
+  /** `YYYY-MM-DD`, or `""` for a daily departure. */
+  departureDate: string;
   maxPeriods: string;
   current: string;
   driver: string;
@@ -398,6 +421,7 @@ export function formFromRecord(record: SettingsRecord): SettingsFormValues {
     energy: String(record.requested_kwh),
     deadlineEnabled: record.departure_enabled,
     deadlineTime: record.departure_time,
+    departureDate: record.departure_date ?? "",
     maxPeriods: String(record.max_periods),
     current: record.amps === null ? "" : String(record.amps),
     driver: record.driver,
@@ -473,6 +497,64 @@ export function checkDeadlineTime(text: string): FormCheck<string> {
   return WALL_TIME.test(trimmed)
     ? { ok: true, value: trimmed }
     : { ok: false, errorKey: "settings.error.invalidTime" };
+}
+
+/** How many local days ahead a dated departure may lie (the planner's own limit). */
+export const DEPARTURE_DAYS_AHEAD = 7;
+
+/**
+ * The days the date picker offers, in the market's zone: today, seven days on, and the next occurrence
+ * of a wall time (today while it is still ahead, otherwise tomorrow), which is where a date starts.
+ */
+export interface DepartureDays {
+  today: string;
+  max: string;
+  nextOccurrence: (wallTime: string) => string;
+}
+
+/** The picker's limits for a zone and a moment, or `null` when the market's zone is not known. */
+export function departureDays(timeZone: string, nowMs: number): DepartureDays | null {
+  if (!hasZone({ language: "en", timeZone, unit: "", currency: null, majorUnit: null })) {
+    return null;
+  }
+  const midnight = localMidnightAt(nowMs, timeZone);
+  const HOUR = 3_600_000;
+  // Noon of a later day: an hour either way across a clock change still lands on the right date.
+  const dayAfter = (days: number): string => localDayKey(midnight + days * 24 * HOUR + 12 * HOUR, timeZone);
+  const today = localDayKey(nowMs, timeZone);
+  return {
+    today,
+    max: dayAfter(DEPARTURE_DAYS_AHEAD),
+    nextOccurrence: (wallTime: string): string => {
+      const match = /^(\d{2}):(\d{2})$/.exec(wallTime);
+      const wallMs = match === null ? Number.NaN : (Number(match[1]) * 60 + Number(match[2])) * 60_000;
+      const sinceMidnight = nowMs - midnight;
+      return Number.isFinite(wallMs) && wallMs > sinceMidnight ? today : dayAfter(1);
+    },
+  };
+}
+
+/**
+ * The departure date a Save writes: none (`""`), or a calendar date inside today..+7 when the days are
+ * known. A date the reader did not move is never re-judged (a stored one may have gone by; the backend
+ * forgets it on the next write).
+ */
+export function checkDepartureDate(
+  text: string,
+  days: DepartureDays | null,
+  moved: boolean,
+): FormCheck<string | null> {
+  const trimmed = text.trim();
+  if (trimmed === "") {
+    return { ok: true, value: null };
+  }
+  if (!isIsoDate(trimmed)) {
+    return { ok: false, errorKey: "settings.error.invalidDate" };
+  }
+  if (moved && days !== null && (trimmed < days.today || trimmed > days.max)) {
+    return { ok: false, errorKey: "settings.error.dateRange" };
+  }
+  return { ok: true, value: trimmed };
 }
 
 export function checkMaxPeriods(text: string): FormCheck<number> {
@@ -611,6 +693,8 @@ export function replacementFor(
    * client's concurrent change is kept.
    */
   opened: SettingsRecord | null = null,
+  /** The picker's days (today..+7 in the market's zone), when known; the date is range-checked against them. */
+  days: DepartureDays | null = null,
 ): ReplacementCheck {
   const body = encodeBody(record);
   const energy = kind === "energy" || kind === "plan" ? checkEnergy(values.energy) : null;
@@ -628,6 +712,16 @@ export function replacementFor(
   const periods = kind === "deadline" || kind === "plan" ? checkMaxPeriods(values.maxPeriods) : null;
   if (periods !== null && !periods.ok) {
     return periods;
+  }
+  // The departure date: only judged against today when the reader moved it from what they opened.
+  const dateBase = opened === null ? record : opened;
+  const dateMoved = values.departureDate !== (dateBase.departure_date ?? "");
+  const date =
+    kind === "deadline" || kind === "plan"
+      ? checkDepartureDate(values.deadlineEnabled ? values.departureDate : "", days, dateMoved)
+      : null;
+  if (date !== null && !date.ok) {
+    return date;
   }
   // Mode switch: the driver, and on the target its percentage and vehicle. A field the form did not
   // move is not judged, so a stored out-of-bounds figure never blocks a Save of something else.
@@ -698,16 +792,22 @@ export function replacementFor(
       periods.ok &&
       (values.deadlineEnabled !== opened.departure_enabled ||
         time.value !== opened.departure_time ||
-        periods.value !== opened.max_periods));
+        periods.value !== opened.max_periods ||
+        (date !== null && date.ok && date.value !== opened.departure_date)));
   if (time !== null && time.ok && periods !== null && periods.ok && deadlineMoved) {
     next.departure_enabled = values.deadlineEnabled;
     next.departure_time = time.value;
     next.max_periods = periods.value;
+    // The date goes with the deadline: switching the deadline off drops it (a date means nothing without one).
+    if (date !== null && date.ok) {
+      next.departure_date = date.value;
+    }
     changed =
       changed ||
       values.deadlineEnabled !== record.departure_enabled ||
       time.value !== record.departure_time ||
-      periods.value !== record.max_periods;
+      periods.value !== record.max_periods ||
+      (date !== null && date.ok && date.value !== record.departure_date);
   }
   return { ok: true, body: next, changed };
 }
@@ -742,6 +842,8 @@ export interface SettingsSummaries {
 export function settingsSummaries(
   language: Language,
   settings: SettingsRecord | null,
+  /** Today's local date in the market's zone, when known: names the day as today/tomorrow and drops a past one. */
+  today: string | null = null,
 ): SettingsSummaries {
   const energy = settings?.requested_kwh ?? null;
   const amps = settings?.amps ?? null;
@@ -753,7 +855,7 @@ export function settingsSummaries(
         : energyAmount(language, energy),
     deadline:
       settings?.departure_enabled === true && time !== null && WALL_TIME.test(time)
-        ? time
+        ? departureText(language, settings.departure_date, time, today)
         : translate(language, "settings.deadline.none"),
     current:
       amps === null || !Number.isFinite(amps)
@@ -763,11 +865,27 @@ export function settingsSummaries(
 }
 
 /**
+ * The departure as one value: the time, led by its day when the departure is dated (`Sun 4 Oct 08:00`,
+ * `tomorrow 08:00`). A date that has gone by is not shown: planning ignores it.
+ */
+function departureText(language: Language, date: string | null, time: string, today: string | null): string {
+  const day = date === null ? null : departureDayLabel(language, date, today, {
+    today: translate(language, "settings.deadline.today"),
+    tomorrow: translate(language, "settings.deadline.tomorrow"),
+  });
+  return day === null ? time : `${day} ${time}`;
+}
+
+/**
  * The Plan cell's one line, e.g. `20 kWh · No deadline · 16 A`: the three planning values in the
  * popover's order, from the reduced dashboard section.
  */
-export function planSummaryParts(language: Language, settings: SettingsRecord | null): string[] {
-  const summaries = settingsSummaries(language, settings);
+export function planSummaryParts(
+  language: Language,
+  settings: SettingsRecord | null,
+  today: string | null = null,
+): string[] {
+  const summaries = settingsSummaries(language, settings, today);
   // A target-SoC charger leads with the target (`80 %`), a manual one with its energy (`20 kWh`).
   const first =
     settings?.driver === SETTINGS_DRIVER_TARGET_SOC

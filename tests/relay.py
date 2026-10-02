@@ -400,3 +400,52 @@ def serve(
         transport.serve(transport.day_path(area, day), 200, body)
     listing = days if listed is None else listed
     transport.serve("/v1/index.json", 200, index_listing(area, [day.isoformat() for day in listing]))
+
+
+def profile_path(area: str = SE4) -> str:
+    return f"/v1/{area}/profile.json"
+
+
+def profile_document(
+    area: str = SE4,
+    *,
+    generated: str = "2026-10-01T14:05:00+02:00",
+    to: str = "2026-10-01",
+    weeks: int = 4,
+    median: float = 0.10,
+    std: float = 0.01,
+    n: int = 16,
+    cheap: dict[tuple[int, int], float] | None = None,
+    omit: set[tuple[int, int]] | None = None,
+) -> dict[str, Any]:
+    """A history profile as the relay publishes it (`/v1/<area>/profile.json`, contract v1).
+
+    Every weekday-hour has the same `median` and `std`, except the ones named in `cheap` (a median of
+    its own, same spread) and the ones in `omit` (left out, as the relay does for fewer than 8 samples).
+    The window is the 28 local dates ending with `to`, the generation date.
+    """
+    last = date.fromisoformat(to)
+    hours = []
+    for weekday in range(1, 8):
+        for hour in range(24):
+            key = (weekday, hour)
+            if omit is not None and key in omit:
+                continue
+            value = median if cheap is None or key not in cheap else cheap[key]
+            hours.append({"weekday": weekday, "hour": hour, "median": value, "std": std, "n": n})
+    return {
+        "v": 1,
+        "area": area,
+        "tz": AREA_TZ.get(area, "Europe/Stockholm"),
+        "unit": "EUR/kWh",
+        "generated": generated,
+        "from": (last - timedelta(days=27)).isoformat(),
+        "to": to,
+        "weeks": weeks,
+        "hours": hours,
+    }
+
+
+def serve_profile(transport: StubTransport, area: str = SE4, **kwargs: Any) -> None:
+    """Publish a history profile for one area (see [profile_document])."""
+    transport.serve(profile_path(area), 200, json.dumps(profile_document(area, **kwargs)))

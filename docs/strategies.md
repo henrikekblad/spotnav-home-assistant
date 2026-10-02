@@ -28,6 +28,16 @@ periods, and an optional departure time. The card marks what is missing.
 Buys the required energy in the cheapest quarter-hours before the departure time, within the
 maximum number of periods. With no departure time the plan covers the priced horizon.
 
+**A departure on a particular day.** In the card's Plan dialog, next to the departure time, you can
+choose a date up to seven days ahead ("Sun 4 Oct"); clearing it returns to a departure that repeats
+every day. With a date the plan reaches that far, but SpotNav still only charges in prices that are
+published. If the weeks behind show that the same weekday and hours that are not published yet were
+clearly cheaper (more than one standard deviation of the spread, from a history the relay publishes),
+it waits and says so: *Waiting: Sundays were 30 % cheaper the last 4 weeks*. It only waits while the
+charge can still be finished in time, buys what cannot wait, and plans again each time prices are
+published. Without a usable history, or without a clear saving, it plans on the published prices.
+A date that has gone by is ignored and forgotten the next time the settings are saved.
+
 ## Solar
 
 Charges only from surplus solar power, modulating the charger's current with the surplus.

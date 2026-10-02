@@ -20,6 +20,8 @@ export const sv: Record<keyof typeof en, string> = {
   "status.proposalPending": "Ett nytt laddförslag är klart.",
   "status.waitingForTomorrow": "Väntar på morgondagens priser.",
   "status.waitingForPublication": "Väntar på morgondagens priser (~{time}), planerar då.",
+  "status.waitingForHistory": "Väntar: {weekday} har varit {percent} % billigare de senaste {weeks} veckorna.",
+  "status.waitingForHistoryNoDetail": "Väntar på timmar som brukar vara billigare, planerar då.",
   "status.waitingForPublicationNoTime": "Väntar på morgondagens priser, planerar då.",
   "status.buyingBeforePublication": "Köper {kwh} kWh nu, resten när priserna publiceras.",
   "status.noPlan": "Ingen laddplan kunde beräknas just nu.",
@@ -422,6 +424,22 @@ export const sv: Record<keyof typeof en, string> = {
     "Klar senast en tid",
   "settings.deadline.time":
     "Avgångstid",
+  "settings.deadline.date":
+    "Avgångsdag",
+  "settings.deadline.dateDaily":
+    "Varje dag",
+  "settings.deadline.dateChoose":
+    "Välj datum",
+  "settings.deadline.dateClear":
+    "Varje dag",
+  "settings.deadline.dateHelp":
+    "Välj en dag upp till 7 dagar fram för att åka det datumet. Planen kan då vänta på timmar vars priser inte är publicerade än, när de senaste veckorna visar att de brukar vara billigare. Avgången hålls alltid.",
+  "settings.deadline.datePast":
+    "Datumet har passerat och ignoreras. Sparar du tas det bort.",
+  "settings.deadline.today":
+    "idag",
+  "settings.deadline.tomorrow":
+    "imorgon",
   "settings.deadline.periods":
     "Högsta antal laddperioder",
   "settings.current.title":
@@ -452,6 +470,10 @@ export const sv: Record<keyof typeof en, string> = {
     "Det är inte ett tal.",
   "settings.error.outOfRange":
     "Värdet ligger utanför tillåtet intervall.",
+  "settings.error.invalidDate":
+    "Välj ett giltigt datum.",
+  "settings.error.dateRange":
+    "Välj ett datum från idag och upp till 7 dagar fram.",
   "settings.error.invalidTime":
     "Använd en tid som 06:30.",
   "settings.error.read":

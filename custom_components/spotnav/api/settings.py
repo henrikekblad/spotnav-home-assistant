@@ -5,6 +5,8 @@ public face, so nothing here serializes `as_dict()` or accepts `from_stored()` p
 
 * Full replacement, never a patch: "absent" has exactly one meaning, and the client states every
   value it wants.
+* One additive exception, `departure_date`: a replacement body may leave it out (an older client), and then the
+  stored date is kept; `null` clears it. Every other key is still required.
 * `revision` is not part of the body: the client names it in `expected_revision`, and a body
   carrying `revision` is refused as an unknown field rather than overriding the compare-and-set.
 * Absence is not zero: a fiscal component is off, on with a value, or on with none; `null` never
@@ -23,7 +25,7 @@ from __future__ import annotations
 import logging
 import re
 from dataclasses import replace
-from datetime import datetime, time
+from datetime import date, datetime, time
 from typing import Any, Callable, Final, Mapping
 
 from homeassistant.components import websocket_api
@@ -49,7 +51,7 @@ from .common import ERROR_CHARGER_UNLOADED, lookup_charger, send_unsupported_ver
 #: site settings'.
 SETTINGS_API_VERSION: Final = 1
 
-#: The keys a replacement body must carry, exactly; without `revision`.
+#: Every key of the settings record, without `revision`.
 SETTINGS_KEYS: Final = frozenset(
     {
         "strategy",
@@ -61,10 +63,18 @@ SETTINGS_KEYS: Final = frozenset(
         "max_periods",
         "departure_enabled",
         "departure_time",
+        "departure_date",
         "driver",
         "target",
     }
 )
+
+#: Keys a replacement body may leave out (added after the first release of this contract). Absent means "keep
+#: what is stored": a client that does not know the field must not clear what another one set. `null` clears.
+OPTIONAL_SETTINGS_KEYS: Final = frozenset({"departure_date"})
+
+#: The keys a replacement body must carry; the rest of `SETTINGS_KEYS` may be left out.
+REQUIRED_SETTINGS_KEYS: Final = SETTINGS_KEYS - OPTIONAL_SETTINGS_KEYS
 
 SETTINGS_RESPONSE_KEYS: Final = SETTINGS_KEYS | {"revision"}
 
@@ -78,6 +88,7 @@ PAUSE_KEYS: Final = frozenset({"choice", "admitted_at", "expires_at"})
 SETTINGS_ENVELOPE_KEYS: Final = frozenset({"api_version", "ok", "error", "settings", "pause"})
 
 WALL_TIME = re.compile(r"^([01][0-9]|2[0-3]):([0-5][0-9])$")
+ISO_DATE = re.compile(r"^[0-9]{4}-[0-9]{2}-[0-9]{2}$")
 
 NOT_A_BODY: Final[SettingsCode] = "unknown_field"
 
@@ -86,14 +97,19 @@ def _refuse(code: SettingsCode, message: str) -> None:
     raise AutoSettingsError(code, message)
 
 
-def _object(raw: Any, keys: frozenset[str], what: str) -> Mapping[str, Any]:
-    """An exact-shape object: every key present, none unknown, nothing coerced."""
+def _object(
+    raw: Any, keys: frozenset[str], what: str, optional: frozenset[str] = frozenset()
+) -> Mapping[str, Any]:
+    """An exact-shape object: every key present, none unknown, nothing coerced.
+
+    `optional` keys may be left out and are not unknown when present.
+    """
     if not isinstance(raw, Mapping):
         _refuse(NOT_A_BODY, f"{what} must be an object")
     missing = keys - set(raw)
     if missing:
         _refuse("missing_field", f"{what} is missing {sorted(missing)}")
-    unknown = set(raw) - keys
+    unknown = set(raw) - keys - optional
     if unknown:
         # A `revision` in a replacement body lands here on purpose.
         _refuse("unknown_field", f"{what} has unknown fields {sorted(unknown)}")
@@ -174,6 +190,23 @@ def departure_from_wire(value: Any) -> time:
     return time(int(match.group(1)), int(match.group(2)))
 
 
+def departure_date_from_wire(value: Any) -> date | None:
+    """`"YYYY-MM-DD"` as a calendar date, `null` as no date, or a refusal. Never a datetime, never coerced."""
+    if value is None:
+        return None
+    if not isinstance(value, str) or not ISO_DATE.match(value):
+        _refuse("invalid_departure", "departure_date must be YYYY-MM-DD or null")
+    try:
+        return date.fromisoformat(value)
+    except ValueError:
+        _refuse("invalid_departure", "departure_date is not a calendar date")
+    raise AssertionError("unreachable")  # pragma: no cover
+
+
+def departure_date_to_wire(value: date | None) -> str | None:
+    return None if value is None else value.isoformat()
+
+
 def departure_to_wire(departure: time) -> str:
     """A wall time as the dashboard already spells it."""
     return f"{departure.hour:02d}:{departure.minute:02d}"
@@ -213,6 +246,7 @@ def encode_settings(settings: AutoSettings) -> dict[str, Any]:
         "max_periods": settings.max_periods,
         "departure_enabled": settings.departure_enabled,
         "departure_time": departure_to_wire(settings.departure),
+        "departure_date": departure_date_to_wire(settings.departure_date),
         "driver": settings.driver,
         "target": encoded_target(settings.target),
     }
@@ -230,7 +264,7 @@ def decode_settings(raw: Any) -> AutoSettings:
     Every key is required and every type exact; the result passes the same `AutoSettings.validated()`
     the store uses. The pause is never part of a body (see `replacement_mutator`).
     """
-    stored = _object(raw, SETTINGS_KEYS, "settings")
+    stored = _object(raw, REQUIRED_SETTINGS_KEYS, "settings", OPTIONAL_SETTINGS_KEYS)
     overrides = stored["overrides"]
     if not isinstance(overrides, list):
         _refuse("invalid_area", "overrides must be a list")
@@ -252,12 +286,15 @@ def decode_settings(raw: Any) -> AutoSettings:
             stored["departure_enabled"], "departure_enabled", "invalid_departure"
         ),
         departure=departure_from_wire(stored["departure_time"]),
+        departure_date=departure_date_from_wire(stored.get("departure_date")),
         driver=_enum(stored["driver"], ("manual_kwh", "target_soc"), "invalid_driver"),
         target=_target(stored["target"]),
     ).validated()
 
 
-def replacement_mutator(replacement: AutoSettings) -> Callable[[AutoSettings], AutoSettings]:
+def replacement_mutator(
+    replacement: AutoSettings, *, keep_departure_date: bool = False
+) -> Callable[[AutoSettings], AutoSettings]:
     """A full replacement expressed as the store's own mutation hook.
 
     Every planning field comes from the replacement and the pause exactly as stored, in one atomic
@@ -266,6 +303,9 @@ def replacement_mutator(replacement: AutoSettings) -> Callable[[AutoSettings], A
     """
 
     def mutate(current: AutoSettings) -> AutoSettings:
+        if keep_departure_date:
+            # The body did not mention `departure_date`: an older client, which leaves it as it is.
+            return replace(replacement, pause=current.pause, departure_date=current.departure_date)
         return replace(replacement, pause=current.pause)
 
     return mutate
@@ -443,7 +483,10 @@ async def async_update_settings(
         raise SettingsRefusal(ERROR_SETTINGS_UNAVAILABLE)
     revision = expected_revision_from(expected_revision)
     decoded = decode_settings(replacement)
-    mutate = replacement_mutator(decoded)
+    mutate = replacement_mutator(
+        decoded,
+        keep_departure_date=isinstance(replacement, Mapping) and "departure_date" not in replacement,
+    )
     _refuse_amps_above_charger_range(hass, entry_id, decoded)
     controller = preview_for(hass, entry_id)
     if controller is None:

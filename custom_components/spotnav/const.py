@@ -50,7 +50,7 @@ CURRENT_CONTROL_CHANGE_CONFIGURATION = "change_configuration"
 CURRENT_CONTROL_NUMBER = "number"
 # Set the current through Easee's own services (`easee.set_charger_dynamic_limit`).
 CURRENT_CONTROL_EASEE = "easee_dynamic_limit"
-PLATFORMS = ["binary_sensor", "button", "number", "select", "sensor", "switch", "time"]
+PLATFORMS = ["binary_sensor", "button", "date", "number", "select", "sensor", "switch", "time"]
 
 MAX_SCHEDULE_PERIODS = 8
 

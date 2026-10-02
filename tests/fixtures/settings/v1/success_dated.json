@@ -1,24 +1,24 @@
 {
   "api_version": 1,
-  "error": "revision_conflict",
-  "ok": false,
+  "error": null,
+  "ok": true,
   "pause": {
     "admitted_at": null,
     "choice": null,
     "expires_at": null
   },
   "settings": {
-    "amps": null,
-    "area_id": null,
-    "departure_date": null,
+    "amps": 16,
+    "area_id": "SE4",
+    "departure_date": "2026-09-27",
     "departure_enabled": true,
     "departure_time": "08:00",
     "driver": "manual_kwh",
     "max_periods": 1,
     "overrides": [],
-    "phases": null,
+    "phases": 3,
     "requested_kwh": 20.0,
-    "revision": 3,
+    "revision": 7,
     "strategy": "cheapest",
     "target": {
       "target_percent": null,

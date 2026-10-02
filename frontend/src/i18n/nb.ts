@@ -20,6 +20,8 @@ export const nb: Record<keyof typeof en, string> = {
   "status.proposalPending": "Et nytt ladeforslag er klart.",
   "status.waitingForTomorrow": "Venter på morgendagens priser.",
   "status.waitingForPublication": "Venter på morgendagens priser (~{time}), planlegger da.",
+  "status.waitingForHistory": "Venter: {weekday} har vært {percent} % billigere de siste {weeks} ukene.",
+  "status.waitingForHistoryNoDetail": "Venter på timer som pleier å være billigere, planlegger da.",
   "status.waitingForPublicationNoTime": "Venter på morgendagens priser, planlegger da.",
   "status.buyingBeforePublication": "Kjøper {kwh} kWh nå, resten når prisene er publisert.",
   "status.noPlan": "Ingen ladeplan kunne beregnes akkurat nå.",
@@ -421,6 +423,22 @@ export const nb: Record<keyof typeof en, string> = {
     "Ferdig innen en frist",
   "settings.deadline.time":
     "Avreisetid",
+  "settings.deadline.date":
+    "Avreisedag",
+  "settings.deadline.dateDaily":
+    "Hver dag",
+  "settings.deadline.dateChoose":
+    "Velg dato",
+  "settings.deadline.dateClear":
+    "Hver dag",
+  "settings.deadline.dateHelp":
+    "Velg en dag opptil 7 dager frem for å reise den datoen. Planen kan da vente på timer der prisene ikke er publisert ennå, når de siste ukene viser at de pleier å være billigere. Avreisen holdes alltid.",
+  "settings.deadline.datePast":
+    "Datoen er passert og ignoreres. Lagring fjerner den.",
+  "settings.deadline.today":
+    "i dag",
+  "settings.deadline.tomorrow":
+    "i morgen",
   "settings.deadline.periods":
     "Høyeste antall ladeperioder",
   "settings.current.title":
@@ -451,6 +469,10 @@ export const nb: Record<keyof typeof en, string> = {
     "Det er ikke et tall.",
   "settings.error.outOfRange":
     "Verdien er utenfor det tillatte området.",
+  "settings.error.invalidDate":
+    "Velg en gyldig dato.",
+  "settings.error.dateRange":
+    "Velg en dato fra i dag og opptil 7 dager frem.",
   "settings.error.invalidTime":
     "Bruk et klokkeslett som 06:30.",
   "settings.error.read":

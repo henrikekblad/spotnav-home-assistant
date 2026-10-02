@@ -24,6 +24,7 @@ const record = (overrides: Partial<SettingsRecord> = {}): SettingsRecord => ({
   max_periods: 1,
   departure_enabled: false,
   departure_time: "08:00",
+  departure_date: null,
   strategy: "cheapest",
   driver: "target_soc",
   target: { vehicle_id: "vehicle_ev6", target_percent: 80 },

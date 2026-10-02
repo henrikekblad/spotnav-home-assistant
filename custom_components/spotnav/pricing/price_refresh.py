@@ -891,6 +891,27 @@ class PriceRefreshManager:
         """The relay's area list as the repository holds it, for a selector at a closed market. No fetch."""
         return self._repository.catalogue_snapshot()
 
+    async def async_profile(self, area_id: str):
+        """The area's history profile, requested at most once per local day, or `None` ("no usable profile").
+
+        Asked for by a consumer that needs it (a dated departure), not by the refresh cycle, so an
+        installation that never plans a dated departure makes no profile request. Never raises.
+        """
+        entry = self._repository.catalogue_snapshot().area(area_id)
+        if self._shutdown or entry is None:
+            return None
+        try:
+            return await self._repository.async_get_profile(area_id, local_dates(self._now(), entry.tz)[0])
+        except asyncio.CancelledError:
+            raise
+        except Exception as err:  # noqa: BLE001 - a missing profile only means planning on known prices
+            _LOGGER.warning("Reading the history profile for %s failed: %s", area_id, type(err).__name__)
+            return None
+
+    def profile_summary(self, area_id: str) -> dict[str, Any]:
+        """Diagnostics' view of the held profile (no price rows)."""
+        return self._repository.profile_summary(area_id)
+
     def area_snapshot(self, area_id: str) -> AreaPriceSnapshot | None:
         record = self._areas.get(area_id)
         if record is None or not record.active:

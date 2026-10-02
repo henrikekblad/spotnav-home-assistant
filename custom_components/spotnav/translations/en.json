@@ -444,6 +444,9 @@
       },
       "resume_auto": {
         "name": "Resume Auto price planning"
+      },
+      "clear_departure_date": {
+        "name": "Clear departure date"
       }
     },
     "sensor": {
@@ -572,6 +575,11 @@
       },
       "transfer_fee": {
         "name": "Grid transfer fee"
+      }
+    },
+    "date": {
+      "departure_date": {
+        "name": "Departure date"
       }
     },
     "switch": {

@@ -20,6 +20,8 @@ export const fi: Record<keyof typeof en, string> = {
   "status.proposalPending": "Uusi latausehdotus on valmis.",
   "status.waitingForTomorrow": "Odotetaan huomisen hintoja.",
   "status.waitingForPublication": "Odotetaan huomisen hintoja (~{time}), suunnitellaan sen jälkeen.",
+  "status.waitingForHistory": "Odotetaan: {weekday} on ollut {percent} % halvempaa viimeisten {weeks} viikon aikana.",
+  "status.waitingForHistoryNoDetail": "Odotetaan tunteja, jotka ovat yleensä halvempia, suunnitellaan sen jälkeen.",
   "status.waitingForPublicationNoTime": "Odotetaan huomisen hintoja, suunnitellaan sen jälkeen.",
   "status.buyingBeforePublication": "Ostetaan {kwh} kWh nyt, loput kun hinnat on julkaistu.",
   "status.noPlan": "Lataussuunnitelmaa ei voitu laskea juuri nyt.",
@@ -421,6 +423,22 @@ export const fi: Record<keyof typeof en, string> = {
     "Valmis määräaikaan mennessä",
   "settings.deadline.time":
     "Lähtöaika",
+  "settings.deadline.date":
+    "Lähtöpäivä",
+  "settings.deadline.dateDaily":
+    "Joka päivä",
+  "settings.deadline.dateChoose":
+    "Valitse päivämäärä",
+  "settings.deadline.dateClear":
+    "Joka päivä",
+  "settings.deadline.dateHelp":
+    "Valitse päivä enintään 7 päivän päästä lähteäksesi sinä päivänä. Suunnitelma voi silloin odottaa tunteja, joiden hintoja ei ole vielä julkaistu, kun viime viikot osoittavat niiden olevan yleensä halvempia. Lähtö pidetään aina.",
+  "settings.deadline.datePast":
+    "Päivämäärä on mennyt ohi ja sitä ei huomioida. Tallennus poistaa sen.",
+  "settings.deadline.today":
+    "tänään",
+  "settings.deadline.tomorrow":
+    "huomenna",
   "settings.deadline.periods":
     "Latausjaksojen enimmäismäärä",
   "settings.current.title":
@@ -451,6 +469,10 @@ export const fi: Record<keyof typeof en, string> = {
     "Se ei ole luku.",
   "settings.error.outOfRange":
     "Arvo on sallitun alueen ulkopuolella.",
+  "settings.error.invalidDate":
+    "Valitse kelvollinen päivämäärä.",
+  "settings.error.dateRange":
+    "Valitse päivämäärä tästä päivästä enintään 7 päivän päähän.",
   "settings.error.invalidTime":
     "Käytä aikaa kuten 06:30.",
   "settings.error.read":

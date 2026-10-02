@@ -44,6 +44,36 @@ describe("the status line renders the block and nothing else", () => {
     expect(statusText(swapped, format("en"), NOW)).toBe("20 kWh · No charging plan could be calculated right now.");
   });
 
+  it("words waiting on history with the weekday's plural, the saving and the weeks, in every language", () => {
+    const waiting = block(statusLine("waiting_for_history", { weekday: 7, percent: 30, weeks: 4 }));
+    expect(statusText(waiting, format("en"), NOW)).toBe("Waiting: Sundays were 30 % cheaper the last 4 weeks.");
+    expect(statusText(waiting, format("sv"), NOW)).toBe("Väntar: söndagar har varit 30 % billigare de senaste 4 veckorna.");
+    expect(statusText(waiting, format("nb"), NOW)).toBe("Venter: søndager har vært 30 % billigere de siste 4 ukene.");
+    expect(statusText(waiting, format("da"), NOW)).toBe("Venter: søndage har været 30 % billigere de seneste 4 uger.");
+    expect(statusText(waiting, format("fi"), NOW)).toBe(
+      "Odotetaan: sunnuntaisin on ollut 30 % halvempaa viimeisten 4 viikon aikana.",
+    );
+  });
+
+  it("names the weekday of the market's own week, whatever the card's zone", () => {
+    const monday = block(statusLine("waiting_for_history", { weekday: 1, percent: 12, weeks: 3 }));
+    expect(statusText(monday, format("en", "Pacific/Auckland"), NOW)).toBe(
+      "Waiting: Mondays were 12 % cheaper the last 3 weeks.",
+    );
+  });
+
+  it("says the plain fact when the composer left a number out, never a placeholder", () => {
+    for (const params of [
+      { weekday: null, percent: 30, weeks: 4 },
+      { weekday: 7, percent: null, weeks: 4 },
+      { weekday: 7, percent: 30, weeks: null },
+      { weekday: 9, percent: 30, weeks: 4 },
+    ]) {
+      const text = statusText(block(statusLine("waiting_for_history", params)), format("en"), NOW);
+      expect(text).toBe("Waiting for hours that usually cost less, will plan then.");
+    }
+  });
+
   it("says nothing for an idle block", () => {
     expect(statusText(block(), format("en"), NOW)).toBeNull();
     expect(statusText(null, format("en"), NOW)).toBeNull();

@@ -444,6 +444,9 @@
       },
       "resume_auto": {
         "name": "Återuppta Auto-prisplaneringen"
+      },
+      "clear_departure_date": {
+        "name": "Rensa avgångsdatum"
       }
     },
     "sensor": {
@@ -572,6 +575,11 @@
       },
       "transfer_fee": {
         "name": "Nätavgift"
+      }
+    },
+    "date": {
+      "departure_date": {
+        "name": "Avgångsdatum"
       }
     },
     "switch": {

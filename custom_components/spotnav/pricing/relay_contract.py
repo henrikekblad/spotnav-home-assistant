@@ -57,6 +57,7 @@ ParseCode = Literal[
     "duplicate_area",
     "unsorted_days",
     "duplicate_day",
+    "duplicate_hour",
 ]
 
 
@@ -585,6 +586,104 @@ def parse_day(document: Any, *, area_id: str, day: date) -> PriceDocument:
         src=_optional_text(document, "src", "the day document"),
         published=_timestamp(document, "published", "the day document", required=False),
         retrieved=_timestamp(document, "retrieved", "the day document", required=False),
+    )
+
+
+@dataclass(frozen=True, slots=True)
+class ProfileHour:
+    """One local weekday-hour of the history profile: the median and spread of its spot prices.
+
+    EUR per kWh before taxes, VAT or fees, exactly as the relay states them. `n` is how many
+    prices the entry aggregates (the relay omits entries below 8).
+    """
+
+    median: float
+    std: float
+    n: int
+
+
+@dataclass(frozen=True, slots=True)
+class PriceProfile:
+    """The relay's history profile for one area: median and spread per local weekday x hour.
+
+    Prices are what the market did over `from_date..to_date` (`weeks` full weeks of it), never a
+    forecast. `hours` is keyed by `(iso_weekday, local_hour)`; a key that is absent has no usable
+    history.
+    """
+
+    version: int
+    area_id: str
+    tz: str
+    unit: str
+    generated: datetime
+    from_date: date
+    to_date: date
+    weeks: int
+    hours: Mapping[tuple[int, int], ProfileHour]
+
+    def hour(self, weekday: int, hour: int) -> ProfileHour | None:
+        return self.hours.get((weekday, hour))
+
+
+def parse_profile(document: Any, *, area_id: str) -> PriceProfile:
+    """`/v1/<area>/profile.json`, checked strictly against the area asked for.
+
+    Identity, unit and every number are checked, not trusted: an entry with a weekday outside 1..7, an
+    hour outside 0..23, a negative spread or a count below one refuses the whole file, and so does a
+    weekday-hour listed twice. Nothing is repaired; a refused profile means "no usable profile".
+    """
+    what = "the profile document"
+    document = _object(document, what)
+    version = _version(document, what)
+    document_area = _text(document, "area", what)
+    if document_area != area_id:
+        _fail("area_mismatch", f"the profile is for {document_area!r}, not {area_id!r}")
+    timezone = _text(document, "tz", what)
+    if dt_util.get_time_zone(timezone) is None:
+        _fail("invalid_field", f"{what}: {timezone!r} is not a known timezone")
+    unit = _text(document, "unit", what)
+    if unit != RELAY_PRICE_UNIT:
+        _fail("unit_mismatch", f"{what} is priced in {unit!r}, not {RELAY_PRICE_UNIT!r}")
+    generated = _timestamp(document, "generated", what)
+    assert generated is not None
+    from_date = _local_date(document, "from", what)
+    to_date = _local_date(document, "to", what)
+    if to_date < from_date:
+        _fail("invalid_field", f"{what}: 'to' is before 'from'")
+    weeks = _require(document, "weeks", what)
+    if isinstance(weeks, bool) or not isinstance(weeks, int) or weeks < 1:
+        _fail("invalid_field", f"{what}: 'weeks' must be a positive whole number")
+    raw_hours = _require(document, "hours", what)
+    if not isinstance(raw_hours, list):
+        _fail("invalid_field", f"{what}: 'hours' must be a list")
+    hours: dict[tuple[int, int], ProfileHour] = {}
+    for index, raw in enumerate(raw_hours):
+        entry = _object(raw, f"{what}: hours[{index}]")
+        weekday = _require(entry, "weekday", f"hours[{index}]")
+        hour = _require(entry, "hour", f"hours[{index}]")
+        count = _require(entry, "n", f"hours[{index}]")
+        for name, value in (("weekday", weekday), ("hour", hour), ("n", count)):
+            if isinstance(value, bool) or not isinstance(value, int):
+                _fail("invalid_field", f"{what}: hours[{index}].{name} must be a whole number")
+        if not 1 <= weekday <= 7 or not 0 <= hour <= 23 or count < 1:
+            _fail("invalid_field", f"{what}: hours[{index}] is out of range")
+        median = _number(_require(entry, "median", f"hours[{index}]"), f"{what}: hours[{index}].median")
+        std = _number(_require(entry, "std", f"hours[{index}]"), f"{what}: hours[{index}].std")
+        if std < 0:
+            _fail("invalid_number", f"{what}: hours[{index}].std must not be negative")
+        if (weekday, hour) in hours:
+            _fail("duplicate_hour", f"{what} lists weekday {weekday} hour {hour} twice")
+        hours[(weekday, hour)] = ProfileHour(median=median, std=std, n=count)
+    return PriceProfile(
+        version=version,
+        area_id=document_area,
+        tz=timezone,
+        unit=unit,
+        generated=generated,
+        from_date=from_date,
+        to_date=to_date,
+        weeks=weeks,
+        hours=MappingProxyType(hours),
     )
 
 

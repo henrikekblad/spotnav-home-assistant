@@ -1,10 +1,12 @@
 """Control buttons for SpotNav charging control."""
 
 from collections.abc import Awaitable, Callable
+from dataclasses import replace
 from typing import Any
 
 from homeassistant.components.button import ButtonEntity
 from homeassistant.config_entries import ConfigEntry
+from homeassistant.const import EntityCategory
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import HomeAssistantError, ServiceValidationError
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
@@ -30,6 +32,7 @@ async def async_setup_entry(
             AutoRecalculateButton(entry, controller, auto),
             AutoPauseButton(entry, controller, auto),
             AutoResumeButton(entry, controller, auto),
+            AutoClearDepartureDateButton(entry, controller, auto),
         ]
     )
     async_add_entities(entities)
@@ -129,6 +132,27 @@ class AutoRecalculateButton(AutoActionButton):
     async def async_press(self) -> None:
         self.require_auto_mode()
         await self.preview().async_recalculate()
+
+
+class AutoClearDepartureDateButton(AutoActionButton):
+    """Return to a daily departure: forget the departure date."""
+
+    _attr_translation_key = "clear_departure_date"
+    _attr_entity_category = EntityCategory.CONFIG
+
+    def __init__(
+        self, entry: ConfigEntry, controller: ChargingController, auto: AutoSurface
+    ) -> None:
+        super().__init__(entry, controller, auto, key="clear_departure_date")
+
+    @property
+    def available(self) -> bool:
+        settings = self.settings
+        return super().available and settings is not None and settings.departure_date is not None
+
+    async def async_press(self) -> None:
+        self.require_auto_mode()
+        await self.async_write_settings(lambda settings: replace(settings, departure_date=None))
 
 
 class AutoPauseButton(AutoActionButton):

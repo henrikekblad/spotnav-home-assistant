@@ -3,7 +3,7 @@
 
 import { describe, expect, it } from "vitest";
 
-import { clock, energyAmount, formatNumber, hasZone, money, offsetLabel, periodIsAmbiguous, periodLabel, pricePerKwh, wallTimeRepeats, weekdayDate } from "../src/format";
+import { clock, dateLabel, departureDayLabel, energyAmount, formatNumber, hasZone, money, offsetLabel, periodIsAmbiguous, periodLabel, pricePerKwh, wallTimeRepeats, weekdayDate, weekdayPlural } from "../src/format";
 import { LANGUAGES, type Language } from "../src/i18n";
 
 const stockholm = {
@@ -131,5 +131,60 @@ describe("market-local times", () => {
   it("labels offsets from the zone, not from arithmetic", () => {
     expect(offsetLabel(stockholm, Date.parse("2026-01-15T12:00:00Z"))).toContain("+1");
     expect(offsetLabel(stockholm, Date.parse("2026-07-15T12:00:00Z"))).toContain("+2");
+  });
+});
+
+
+describe("a departure date for people", () => {
+  it("is written as a short weekday, day and month in the card's language", () => {
+    expect(dateLabel("en", "2026-10-04")).toBe("Sun 4 Oct");
+    expect(dateLabel("sv", "2026-10-04")).toBe("sön 4 okt.");
+    expect(dateLabel("nb", "2026-10-04")).toContain("4. okt");
+    expect(dateLabel("da", "2026-10-04")).toContain("4. okt");
+    expect(dateLabel("fi", "2026-10-04")).toContain("4.10.");
+    expect(dateLabel("en", "not a date")).toBe("");
+  });
+
+  it("never moves a day by the reader's zone: the date is the date", () => {
+    expect(dateLabel("en", "2026-01-01")).toBe("Thu 1 Jan");
+    expect(dateLabel("en", "2026-12-31")).toBe("Thu 31 Dec");
+  });
+
+  const words = { today: "today", tomorrow: "tomorrow" };
+
+  it("says today and tomorrow in words, a later day by its date, and nothing for a day gone by", () => {
+    expect(departureDayLabel("en", "2026-10-02", "2026-10-02", words)).toBe("today");
+    expect(departureDayLabel("en", "2026-10-03", "2026-10-02", words)).toBe("tomorrow");
+    expect(departureDayLabel("en", "2026-10-04", "2026-10-02", words)).toBe("Sun 4 Oct");
+    expect(departureDayLabel("en", "2026-10-01", "2026-10-02", words)).toBeNull();
+    expect(departureDayLabel("en", "2026-10-02", null, words)).toBe("Fri 2 Oct");
+    expect(departureDayLabel("en", "garbage", "2026-10-02", words)).toBeNull();
+  });
+
+  it("knows tomorrow across a month and a year end", () => {
+    expect(departureDayLabel("en", "2026-11-01", "2026-10-31", words)).toBe("tomorrow");
+    expect(departureDayLabel("en", "2027-01-01", "2026-12-31", words)).toBe("tomorrow");
+  });
+});
+
+describe("a weekday in the plural", () => {
+  it.each([
+    ["en", 7, "Sundays"],
+    ["en", 1, "Mondays"],
+    ["sv", 7, "söndagar"],
+    ["sv", 3, "onsdagar"],
+    ["nb", 7, "søndager"],
+    ["da", 7, "søndage"],
+    ["fi", 7, "sunnuntaisin"],
+    ["fi", 3, "keskiviikkoisin"],
+    ["fi", 1, "maanantaisin"],
+  ] as const)("%s weekday %s is %s", (language, weekday, expected) => {
+    expect(weekdayPlural(language, weekday)).toBe(expected);
+  });
+
+  it("is null for a number that is no ISO weekday", () => {
+    for (const bad of [0, 8, 1.5, Number.NaN, 1234]) {
+      expect(weekdayPlural("en", bad)).toBeNull();
+    }
   });
 });

@@ -13,6 +13,7 @@ served by `https://spotnav.sensnology.se` when these were captured. The field na
 |---|---|
 | `areas.json` | `v`, `generated`, `areas[]` — `id`, `eic`, `countries`, `name`, `tz`, `currency`, `major_unit`, `minor_unit`, and the optional `vat_percent`, `suggested_tax`, `suggested_grid_fee` |
 | `index.json` | `v`, `generated`, `res_default`, `areas_rev`, `areas{id: {days[], res?}}` |
+| `<area>/profile.json` | `v`, `area`, `tz`, `unit`, `generated`, `from`, `to`, `weeks`, `hours[]` — `weekday` (ISO 1..7), `hour` (local 0..23), `median`, `std`, `n` |
 | day document | `v`, `area`, `date`, `tz`, `start`, `res`, `unit`, `prices[]`, `fx`, `fx_date`, `fx_src`, `src`, `published`, `retrieved` |
 
 No field is invented because a client would find it convenient. Where the relay
@@ -74,3 +75,7 @@ coverage) are exercised two ways instead:
   interval lists by hand to prove the validators reject a duplicate and an
   inversion. That is a test of the validator, not of a wire case, and it is named
   as such.
+
+* `profile_SE4.json` — a history profile (4 weeks ending 2026-10-01): Sunday 00:00-07:59 at
+  0.03 EUR/kWh and Thursday 18:00-19:59 at 0.10, every other weekday-hour omitted as the relay
+  does below 8 samples. Built to the "Profile contract (relay -> HA), v1".

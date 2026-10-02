@@ -26,6 +26,14 @@
       },
       "resume_auto": {
         "default": "mdi:play"
+      },
+      "clear_departure_date": {
+        "default": "mdi:calendar-remove-outline"
+      }
+    },
+    "date": {
+      "departure_date": {
+        "default": "mdi:calendar-clock"
       }
     },
     "sensor": {

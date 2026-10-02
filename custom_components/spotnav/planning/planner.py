@@ -30,6 +30,10 @@ SLOT_HOURS: Final = STEP_MINUTES / 60
 
 HORIZON_HOURS: Final = 24
 
+#: The farthest a dated departure may lie ahead, in local calendar days (the relay publishes one day
+#: ahead, so a longer wait gains nothing). Enforced where a date is written; the planner trusts it.
+MAX_DEPARTURE_DAYS_AHEAD: Final = 7
+
 #: Bounds on the number of contiguous runs.
 MIN_PERIODS: Final = 1
 MAX_PERIODS: Final = 8
@@ -314,6 +318,10 @@ class PlanRequest:
     fiscal: FiscalChoice = FiscalChoice()
     max_periods: int = MIN_PERIODS
     departure: time | None = None
+    #: The local date the departure falls on, or `None` for the next occurrence of `departure`. With a
+    #: date the deadline is that wall time on that date and the horizon reaches it (up to 7 days), so
+    #: intervals after the last published one are unknown, not absent.
+    departure_date: date | None = None
     #: Latest instant a selected slot may end at, tighter than the departure or horizon.
     #: Lets `planning/price_wait.py` plan inside the priced part of the window.
     window_end: datetime | None = None
@@ -338,6 +346,11 @@ class PlanRequest:
                 _refuse("invalid_departure", "departure must be an area-local wall time, not an instant")
             if not (0 <= self.departure.hour <= 23 and 0 <= self.departure.minute <= 59):
                 _refuse("invalid_departure", "departure must be a valid time of day")
+        if self.departure_date is not None:
+            if self.departure is None:
+                _refuse("invalid_departure", "a departure date needs a departure time")
+            if not isinstance(self.departure_date, date) or isinstance(self.departure_date, datetime):
+                _refuse("invalid_departure", "departure_date must be a calendar date")
         if dt_util.get_time_zone(self.timezone) is None:
             _refuse("timezone_mismatch", f"{self.timezone!r} is not a known timezone")
         for document in self.documents:
@@ -368,6 +381,7 @@ class PlanRequest:
             fiscal=self.fiscal.validated(),
             max_periods=_as_int(self.max_periods),
             departure=self.departure,
+            departure_date=self.departure_date,
             window_end=self.window_end,
         )
 
@@ -617,7 +631,12 @@ def _window(request: PlanRequest) -> _Window | PlannerReason:
 
     deadline: datetime | None = None
     if request.departure is not None:
-        deadline = resolve_departure(request.now, request.timezone, request.departure, first_start)
+        if request.departure_date is not None:
+            deadline = local_instant(request.departure_date, request.departure, zone)
+            # A dated departure reaches as far as its deadline, past the 24 hours of a daily one.
+            horizon = max(horizon, deadline)
+        else:
+            deadline = resolve_departure(request.now, request.timezone, request.departure, first_start)
     if request.window_end is not None:
         deadline = request.window_end if deadline is None else min(deadline, request.window_end)
 
@@ -634,6 +653,10 @@ def _window(request: PlanRequest) -> _Window | PlannerReason:
         if latest_start_exclusive <= first_start:
             return "deadline_too_short"
         required_end = latest_start_exclusive + duration
+        if request.window_end is not None and deadline == request.window_end:
+            # A caller's own window (the published part, or what must be bought before a publication) ends
+            # where it says: no slot can be chosen past it, so no price past it is required either.
+            required_end = min(required_end, deadline)
     return _Window(
         slots=slots,
         zone=zone,
@@ -907,6 +930,23 @@ def _choose(
         if best is None or (state.cost, state.slots) < (best.cost, best.slots):
             best = state
     return None if best is None else best.slots
+
+
+def cheapest_slots(
+    candidates: list[PlanningSlot],
+    needed: int,
+    per_slot: float,
+    period_cap: int,
+    fiscal: FiscalChoice,
+    latest_end_inclusive: datetime | None,
+) -> tuple[PlanningSlot, ...] | None:
+    """The cheapest `needed` of these slots in at most `period_cap` runs, or `None` when none fit.
+
+    The planner's own search over candidates the caller supplies, for readers that must price a
+    hypothetical window the same way a real one is priced (see `planning/history_wait.py`).
+    """
+    chosen = _choose(candidates, needed, per_slot, period_cap, fiscal, latest_end_inclusive)
+    return None if chosen is None else tuple(candidates[index] for index in chosen)
 
 
 def _periods(selected: tuple[PlanningSlot, ...]) -> tuple[tuple[datetime, datetime], ...]:

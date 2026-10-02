@@ -37,6 +37,7 @@ export function rawDashboard(overrides: Record<string, unknown> = {}): Record<st
       max_periods: 1,
       departure_enabled: false,
       departure_time: "08:00",
+      departure_date: null,
       driver: "manual_kwh",
       target: { vehicle_id: null, target_percent: null },
     },

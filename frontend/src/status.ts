@@ -3,7 +3,7 @@
 // formats its typed facts. `tone` alone decides banner colour (`blocking` red, `notice` neutral).
 
 import { localDayKey } from "./chart";
-import { clock, distanceText, formatNumber, hasZone, weekdayDate, type FormatContext } from "./format";
+import { clock, distanceText, formatNumber, hasZone, weekdayDate, weekdayPlural, type FormatContext } from "./format";
 import { translate, type Language, type TranslationKey } from "./i18n";
 import { STATUS_CODE_TABLE, type StatusCode, type StatusLine, type StatusParam, type StatusTone, type Status } from "./validate";
 
@@ -29,6 +29,7 @@ export const STATUS_WORDING: Readonly<Record<StatusCode, TranslationKey>> = {
   charging_now: "status.chargingNow",
   charging_without_prices: "issue.chargingWithoutPrices",
   waiting_for_publication: "status.waitingForPublication",
+  waiting_for_history: "status.waitingForHistory",
   buying_before_publication: "status.buyingBeforePublication",
   auto_planned: "status.autoPlanned",
   auto_installed: "status.autoInstalled",
@@ -80,6 +81,7 @@ export const STATUS_VARIANT_KEYS: readonly TranslationKey[] = [
   "status.chargingNowOpen",
   "status.scheduledNoTime",
   "status.waitingForPublicationNoTime",
+  "status.waitingForHistoryNoDetail",
   "status.loadBalancingLimited",
   "strategy.status.solar.chargingUnknown",
   "strategy.status.hybrid.creditSuffix",
@@ -138,6 +140,19 @@ export function lineText(line: StatusLine, format: FormatContext, nowMs: number)
       return at === null || !zoned
         ? say("status.waitingForPublicationNoTime")
         : say("status.waitingForPublication", { time: clock(format, at) });
+    }
+    case "waiting_for_history": {
+      // The weekday's plural, the saving and the weeks behind it; without all three, only the plain fact.
+      const weekday = weekdayPlural(language, num(p["weekday"]) ?? Number.NaN);
+      const percent = num(p["percent"]);
+      const weeks = num(p["weeks"]);
+      return weekday === null || percent === null || weeks === null
+        ? say("status.waitingForHistoryNoDetail")
+        : say("status.waitingForHistory", {
+            weekday,
+            percent: formatNumber(language, percent, 0),
+            weeks: formatNumber(language, weeks, 0),
+          });
     }
     case "buying_before_publication":
       return say("status.buyingBeforePublication", { kwh: formatNumber(language, num(p["kwh"]) ?? 0, 1) });

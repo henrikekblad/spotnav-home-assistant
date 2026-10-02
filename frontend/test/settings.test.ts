@@ -23,13 +23,17 @@ import {
   checkDeadlineTime,
   checkEnergy,
   checkMaxPeriods,
+  checkDepartureDate,
   decodeSettingsAnswer,
+  departureDays,
   encodeBody,
   formFromRecord,
+  isIsoDate,
   manualEnergyReadOnly,
   nominalPowerKw,
   replacementFor,
   settingsErrorKey,
+  planSummaryParts,
   settingsSummaries,
   sliderRepresents,
   type SettingsFormValues,
@@ -60,6 +64,7 @@ function aRecord(overrides: Partial<SettingsRecord> = {}): SettingsRecord {
     max_periods: 4,
     departure_enabled: true,
     departure_time: "06:30",
+    departure_date: null,
     strategy: "cheapest",
     driver: "manual_kwh",
     target: { vehicle_id: null, target_percent: null },
@@ -98,6 +103,7 @@ function form(overrides: Partial<SettingsFormValues> = {}): SettingsFormValues {
     energy: "20.5",
     deadlineEnabled: true,
     deadlineTime: "06:30",
+    departureDate: "",
     maxPeriods: "4",
     current: "10",
     driver: "manual_kwh",
@@ -295,6 +301,7 @@ describe("the pure replacement builders", () => {
       [
         "amps",
         "area_id",
+        "departure_date",
         "departure_enabled",
         "departure_time",
         "driver",
@@ -327,6 +334,7 @@ describe("the pure replacement builders", () => {
       energy: "12.5",
       deadlineEnabled: false,
       deadlineTime: "05:15",
+      departureDate: "",
       maxPeriods: "8",
       current: "16",
     });
@@ -470,6 +478,7 @@ describe("the pure replacement builders", () => {
       energy: "20.5",
       deadlineEnabled: true,
       deadlineTime: "06:30",
+      departureDate: "",
       maxPeriods: "4",
       current: "10",
       driver: "manual_kwh",
@@ -601,5 +610,201 @@ describe("the nominal power and the slider rule", () => {
     expect(ENERGY_SLIDER_STEP_KWH).toBe(0.5);
     expect(ENERGY_MIN_KWH).toBe(0.1);
     expect(ENERGY_MAX_KWH).toBe(1000);
+  });
+});
+
+
+// ---------------------------------------------------------------------- the departure date
+
+describe("the departure date on the wire", () => {
+  it("is read as a date or null, and a record that never had the key reads as null", () => {
+    const dated = decode(success(aRecord({ departure_date: "2026-10-04" })));
+    expect(dated.ok && dated.value.ok && dated.value.settings?.departure_date).toBe("2026-10-04");
+
+    const legacy = success() as { settings: Json };
+    delete legacy.settings["departure_date"];
+    const read = decode(legacy);
+    expect(read.ok && read.value.ok && read.value.settings?.departure_date).toBe(null);
+  });
+
+  it.each([20261004, "Sunday", "2026-10-4", "2026-02-30", "2026-10-04T08:00:00", "", true])(
+    "refuses %s as a departure date",
+    (value) => {
+      const raw = success() as { settings: Json };
+      raw.settings["departure_date"] = value;
+      expect(decode(raw).ok).toBe(false);
+    },
+  );
+
+  it("still refuses a key the contract does not know", () => {
+    const raw = success() as { settings: Json };
+    raw.settings["departure_day"] = "2026-10-04";
+    expect(decode(raw).ok).toBe(false);
+  });
+
+  it("is carried by every full replacement, and by the form", () => {
+    const record = aRecord({ departure_date: "2026-10-04" });
+    expect(encodeBody(record).departure_date).toBe("2026-10-04");
+    expect(formFromRecord(record).departureDate).toBe("2026-10-04");
+    expect(formFromRecord(aRecord()).departureDate).toBe("");
+  });
+
+  it("knows a calendar date from a string shaped like one", () => {
+    expect(isIsoDate("2026-10-04")).toBe(true);
+    expect(isIsoDate("2024-02-29")).toBe(true);
+    expect(isIsoDate("2026-02-29")).toBe(false);
+    expect(isIsoDate("2026-10-4")).toBe(false);
+  });
+});
+
+describe("the days a date picker offers", () => {
+  // Friday 2026-10-02, 20:00 in Stockholm (CEST).
+  const evening = Date.parse("2026-10-02T18:00:00Z");
+
+  it("runs from today to seven days on, in the market's zone", () => {
+    const days = departureDays("Europe/Stockholm", evening);
+    expect(days).not.toBeNull();
+    expect([days?.today, days?.max]).toEqual(["2026-10-02", "2026-10-09"]);
+  });
+
+  it("reads today in the market's zone, not the reader's: 23:30 UTC is already tomorrow in Stockholm", () => {
+    const late = Date.parse("2026-10-02T23:30:00Z");
+    expect(departureDays("Europe/Stockholm", late)?.today).toBe("2026-10-03");
+    expect(departureDays("UTC", late)?.today).toBe("2026-10-02");
+  });
+
+  it("starts a date at the next occurrence of the time: today while it is ahead, otherwise tomorrow", () => {
+    const days = departureDays("Europe/Stockholm", evening);
+    expect(days?.nextOccurrence("21:00")).toBe("2026-10-02");
+    expect(days?.nextOccurrence("08:00")).toBe("2026-10-03");
+    expect(days?.nextOccurrence("20:00")).toBe("2026-10-03");
+    expect(days?.nextOccurrence("nonsense")).toBe("2026-10-03");
+  });
+
+  it("counts seven calendar days across a clock change, not 168 hours", () => {
+    // Friday 2026-10-23 evening; Sunday 10-25 is the 25-hour day.
+    const days = departureDays("Europe/Stockholm", Date.parse("2026-10-23T18:00:00Z"));
+    expect([days?.today, days?.max]).toEqual(["2026-10-23", "2026-10-30"]);
+    const spring = departureDays("Europe/Stockholm", Date.parse("2026-03-27T18:00:00Z"));
+    expect([spring?.today, spring?.max]).toEqual(["2026-03-27", "2026-04-03"]);
+  });
+
+  it("is unavailable while the market's zone is not known", () => {
+    expect(departureDays("", evening)).toBeNull();
+  });
+});
+
+describe("a Save with a departure date", () => {
+  const days = departureDays("Europe/Stockholm", Date.parse("2026-10-02T18:00:00Z"));
+
+  it("writes a date inside today..+7 with the rest of the record untouched", () => {
+    const record = aRecord();
+    const check = replacementFor("deadline", record, form({ departureDate: "2026-10-04" }), null, null, days);
+    expect(check.ok && check.changed).toBe(true);
+    if (!check.ok) {
+      return;
+    }
+    expect(check.body.departure_date).toBe("2026-10-04");
+    expect({ ...check.body, departure_date: null }).toEqual({ ...encodeBody(record) });
+  });
+
+  it("clears the date with an empty field, back to the daily departure", () => {
+    const record = aRecord({ departure_date: "2026-10-04" });
+    const check = replacementFor("deadline", record, form({ departureDate: "" }), null, null, days);
+    expect(check.ok && check.changed && check.body.departure_date).toBe(null);
+  });
+
+  it("sends nothing when the date did not move", () => {
+    const record = aRecord({ departure_date: "2026-10-04" });
+    expect(replacementFor("deadline", record, form({ departureDate: "2026-10-04" }), null, null, days)).toMatchObject({
+      ok: true,
+      changed: false,
+    });
+  });
+
+  it.each([
+    ["yesterday", "2026-10-01"],
+    ["eight days ahead", "2026-10-10"],
+  ])("refuses a new date %s, with its own sentence", (_name, value) => {
+    const check = replacementFor("deadline", aRecord(), form({ departureDate: value }), null, null, days);
+    expect(check).toEqual({ ok: false, errorKey: "settings.error.dateRange" });
+  });
+
+  it("refuses text that is not a date", () => {
+    expect(checkDepartureDate("next sunday", days, true)).toEqual({ ok: false, errorKey: "settings.error.invalidDate" });
+  });
+
+  it("does not re-judge a stored date that has gone by when the reader did not move it", () => {
+    const record = aRecord({ departure_date: "2026-09-20" });
+    const check = replacementFor("deadline", record, form({ departureDate: "2026-09-20", maxPeriods: "5" }), null, null, days);
+    expect(check.ok && check.body.departure_date).toBe("2026-09-20");
+  });
+
+  it("drops the date when the deadline is switched off", () => {
+    const record = aRecord({ departure_date: "2026-10-04" });
+    const check = replacementFor("deadline", record, form({ deadlineEnabled: false, departureDate: "2026-10-04" }), null, null, days);
+    expect(check.ok && check.body.departure_date).toBe(null);
+    expect(check.ok && check.body.departure_enabled).toBe(false);
+  });
+
+  it("reapplies only a date the reader moved onto a newer record", () => {
+    const opened = aRecord();
+    const newer = aRecord({ revision: 9, departure_date: "2026-10-05", amps: 16 });
+    // The reader did not touch the date: another client's choice stays.
+    const kept = replacementFor("plan", newer, form({ departureDate: "" }), null, opened, days);
+    expect(kept.ok && kept.body.departure_date).toBe("2026-10-05");
+    // The reader moved it: theirs wins.
+    const moved = replacementFor("plan", newer, form({ departureDate: "2026-10-04" }), null, opened, days);
+    expect(moved.ok && moved.body.departure_date).toBe("2026-10-04");
+  });
+
+  it("is not part of the energy or current editors", () => {
+    const record = aRecord({ departure_date: "2026-10-04" });
+    const check = replacementFor("energy", record, form({ energy: "30", departureDate: "" }), null, null, days);
+    expect(check.ok && check.body.departure_date).toBe("2026-10-04");
+  });
+});
+
+describe("the departure in the Plan cell", () => {
+  const today = "2026-10-02";
+  const dated = (date: string | null) => aRecord({ departure_date: date, departure_time: "08:00" });
+
+  it("shows the time alone for a daily departure", () => {
+    expect(settingsSummaries("en", dated(null), today).deadline).toBe("08:00");
+  });
+
+  it("names today and tomorrow in words and a later day by weekday and date", () => {
+    expect(settingsSummaries("en", dated("2026-10-02"), today).deadline).toBe("today 08:00");
+    expect(settingsSummaries("en", dated("2026-10-03"), today).deadline).toBe("tomorrow 08:00");
+    expect(settingsSummaries("en", dated("2026-10-04"), today).deadline).toBe("Sun 4 Oct 08:00");
+    expect(settingsSummaries("sv", dated("2026-10-03"), today).deadline).toBe("imorgon 08:00");
+    expect(settingsSummaries("sv", dated("2026-10-04"), today).deadline).toBe("sön 4 okt. 08:00");
+  });
+
+  it("leaves a date that has gone by out: planning ignores it", () => {
+    expect(settingsSummaries("en", dated("2026-09-30"), today).deadline).toBe("08:00");
+  });
+
+  it("spells the date without today's date when the zone is not known", () => {
+    expect(settingsSummaries("en", dated("2026-10-04"), null).deadline).toBe("Sun 4 Oct 08:00");
+  });
+
+  it("is one line with the energy and current, and says nothing of a date with no deadline", () => {
+    expect(planSummaryParts("en", dated("2026-10-04"), today)).toEqual(["20.5 kWh", "Sun 4 Oct 08:00", "10 A"]);
+    const off = aRecord({ departure_enabled: false, departure_date: "2026-10-04" });
+    expect(settingsSummaries("en", off, today).deadline).toBe(translate("en", "settings.deadline.none"));
+  });
+
+  it("is worded in every language", () => {
+    for (const language of LANGUAGES) {
+      for (const key of [
+        "settings.deadline.date", "settings.deadline.dateDaily", "settings.deadline.dateChoose",
+        "settings.deadline.dateClear", "settings.deadline.dateHelp", "settings.deadline.datePast",
+        "settings.deadline.today", "settings.deadline.tomorrow", "settings.error.invalidDate",
+        "settings.error.dateRange",
+      ] as const) {
+        expect(translate(language, key).length, `${language} ${key}`).toBeGreaterThan(0);
+      }
+    }
   });
 });

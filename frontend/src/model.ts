@@ -7,6 +7,7 @@
 
 import {
   chartSeries,
+  localDayKey,
   plannedBands,
   type ChartSeries,
   type PlanBands,
@@ -179,6 +180,8 @@ export interface CardModel {
    * and reduced, and must never be the base of an edit: a dialog reads the full record first.
    */
   dashboardSettings: SettingsRecord | null;
+  /** Today's local date in the market's zone (`YYYY-MM-DD`), or `null` while the zone is unknown. */
+  today: string | null;
   dashboardFiscal: Fiscal | null;
   status: string | null;
   /** The "suggested from your location and charger" note: its own muted line under the status. */
@@ -642,6 +645,7 @@ export function buildModel(input: BuildInput): CardModel {
     timesAvailable: zone,
     chargerName: dashboard.charger.charger_name ?? dashboard.charger.charger_id,
     dashboardSettings: dashboard.settings,
+    today: zone ? localDayKey(input.nowMs, format.timeZone) : null,
     dashboardFiscal: dashboard.fiscal,
     status: statusText(status, format, input.nowMs),
     statusNote: statusNote(status, format, input.nowMs),

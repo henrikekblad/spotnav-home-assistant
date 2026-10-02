@@ -1191,6 +1191,7 @@ export const STATUS_CODE_TABLE = {
   charging_now: ["normal", { until: "instantOrNull" }],
   charging_without_prices: ["notice", {}],
   waiting_for_publication: ["normal", { publication_at: "instantOrNull" }],
+  waiting_for_history: ["normal", { weekday: "int", percent: "int", weeks: "int" }],
   buying_before_publication: ["normal", { kwh: "number" }],
   auto_planned: ["normal", { start: "instant" }],
   auto_installed: ["normal", { start: "instant" }],

@@ -19,7 +19,7 @@ import asyncio
 import logging
 import math
 from dataclasses import dataclass, field, replace
-from datetime import datetime, time
+from datetime import date, datetime, time
 from typing import Any, Callable, Final, Literal
 
 from homeassistant.core import HomeAssistant
@@ -100,11 +100,19 @@ def _refuse(code: SettingsCode, message: str) -> None:
     raise AutoSettingsError(code, message)
 
 
-def _exact_shape(raw: Any, expected: frozenset[str], code: SettingsCode, what: str) -> dict[str, Any]:
+def _exact_shape(
+    raw: Any,
+    expected: frozenset[str],
+    code: SettingsCode,
+    what: str,
+    *,
+    optional: frozenset[str] = frozenset(),
+) -> dict[str, Any]:
     """A stored record carrying exactly these keys, or a refusal naming the wrong shape.
 
     `as_dict` is the only writer and emits every key, so a missing or unknown key means
-    the record is not this schema's. Which keys are required is defined by `as_dict` itself.
+    the record is not this schema's. Which keys are required is defined by `as_dict` itself;
+    `optional` names the keys a later release added, which `as_dict` writes only when set.
     """
     if not isinstance(raw, dict):
         _refuse(code, f"{what} must be a stored object")
@@ -112,7 +120,7 @@ def _exact_shape(raw: Any, expected: frozenset[str], code: SettingsCode, what: s
     if missing:
         # Counted, not listed: a log line about stored data must not quote it.
         _refuse("missing_field", f"{what} is missing {len(missing)} field(s) of its shape")
-    unknown = set(raw) - expected
+    unknown = set(raw) - expected - optional
     if unknown:
         _refuse("unknown_field", f"{what} has {len(unknown)} field(s) this release does not know")
     return raw
@@ -416,6 +424,10 @@ class AutoSettings:
     max_periods: int = DEFAULT_MAX_PERIODS
     departure_enabled: bool = True
     departure: time = DEFAULT_DEPARTURE
+    #: The local date (in the area's zone) the departure falls on, or `None` for a daily departure
+    #: (the next occurrence of `departure`). Ranges against today are the controller's to judge, at the
+    #: write; a date that has gone by is ignored by planning and cleared by the next write.
+    departure_date: date | None = None
     #: Suspends automatic execution; a paused charger keeps calculating. Whether it is
     #: still in force is answered by `pause.is_active_at(now)`.
     pause: PauseIntent = field(default_factory=PauseIntent)
@@ -490,6 +502,10 @@ class AutoSettings:
             _refuse("invalid_departure", "departure must be a local wall time")
         if not isinstance(self.departure_enabled, bool):
             _refuse("invalid_departure", "the departure switch must be a boolean")
+        if self.departure_date is not None and (
+            not isinstance(self.departure_date, date) or isinstance(self.departure_date, datetime)
+        ):
+            _refuse("invalid_departure", "departure_date must be a calendar date or absent")
         if not isinstance(self.execution_paused, bool):
             _refuse("invalid_pause", "execution_paused must be a boolean")
         seen: set[str] = set()
@@ -511,7 +527,7 @@ class AutoSettings:
         )
 
     def as_dict(self) -> dict[str, Any]:
-        return {
+        stored: dict[str, Any] = {
             "revision": self.revision,
             "area_id": self.area_id,
             "overrides": [item.as_dict() for item in self.overrides],
@@ -526,6 +542,11 @@ class AutoSettings:
             "target": self.target.as_dict(),
             "strategy": self.strategy,
         }
+        if self.departure_date is not None:
+            # Additive: written only when set, so a record without a date stays what an older release
+            # reads, and a stored record without the key is simply a daily departure.
+            stored["departure_date"] = self.departure_date.isoformat()
+        return stored
 
     @classmethod
     def from_stored(cls, raw: Any) -> AutoSettings:
@@ -534,7 +555,11 @@ class AutoSettings:
         Unknown fields are refused: a newer release may mean something different by them.
         """
         stored = _exact_shape(
-            raw, frozenset(cls().as_dict()), "unknown_field", "a stored settings record"
+            raw,
+            frozenset(cls().as_dict()),
+            "unknown_field",
+            "a stored settings record",
+            optional=frozenset({"departure_date"}),
         )
         revision = stored["revision"]
         if isinstance(revision, bool) or not isinstance(revision, int) or revision < 0:
@@ -551,6 +576,15 @@ class AutoSettings:
         overrides = stored["overrides"]
         if not isinstance(overrides, list):
             _refuse("invalid_area", "stored overrides must be a list")
+        departure_date = None
+        stored_date = stored.get("departure_date")
+        if stored_date is not None:
+            if not isinstance(stored_date, str):
+                _refuse("invalid_departure", "a stored departure date must be an ISO date string")
+            try:
+                departure_date = date.fromisoformat(stored_date)
+            except ValueError:
+                _refuse("invalid_departure", "a stored departure date must be an ISO date")
         return cls(
             revision=revision,
             area_id=stored["area_id"],
@@ -561,6 +595,7 @@ class AutoSettings:
             max_periods=stored["max_periods"],
             departure_enabled=stored["departure_enabled"],
             departure=departure,
+            departure_date=departure_date,
             pause=PauseIntent.from_stored(stored["pause"]),
             driver=stored["driver"],
             target=TargetSocIntent.from_stored(stored["target"]),

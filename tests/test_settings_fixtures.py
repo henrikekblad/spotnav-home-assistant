@@ -18,6 +18,7 @@ from pathlib import Path
 from typing import Any, Awaitable, Callable, Final
 
 import pytest
+from freezegun import freeze_time
 from homeassistant.core import HomeAssistant
 
 from custom_components.spotnav.planning.auto_settings import AutoSettings
@@ -105,6 +106,43 @@ async def _state_refusal_unknown_field(
     return result
 
 
+async def _state_success_dated(hass: HomeAssistant, entry: Any, client: Any) -> dict[str, Any]:
+    """A write that gives the departure a date: `departure_date` is an ISO date, the clock frozen so the
+    date is "tomorrow" and the fixture does not depend on the day it is written."""
+    before = await _fresh(hass, entry.entry_id)
+    with freeze_time("2026-09-22 06:00:00"):
+        frame = await ws_call(
+            client,
+            update_settings_message(
+                entry.entry_id,
+                before.revision,
+                body_of(before, area_id="SE4", amps=16, phases=3, departure_date="2026-09-27"),
+            ),
+        )
+    assert frame["success"] is True
+    assert frame["result"]["ok"] is True
+    assert frame["result"]["settings"]["departure_date"] == "2026-09-27"
+    return frame["result"]
+
+
+async def _state_refusal_invalid_departure_date(
+    hass: HomeAssistant, entry: Any, client: Any
+) -> dict[str, Any]:
+    """A departure date that is not an ISO date: refused as `invalid_departure`, nothing committed."""
+    before = await _fresh(hass, entry.entry_id)
+    frame = await ws_call(
+        client,
+        update_settings_message(
+            entry.entry_id, before.revision, body_of(before, departure_date="next sunday")
+        ),
+    )
+    assert frame["success"] is True
+    result = frame["result"]
+    assert result["ok"] is False and result["error"] == "invalid_departure"
+    assert result["settings"]["revision"] == before.revision, "nothing was committed"
+    return result
+
+
 Builder = Callable[[HomeAssistant, Any, Any], Awaitable[dict[str, Any]]]
 
 #: The backend-owned settings fixtures the card and the app decode.
@@ -113,6 +151,9 @@ SETTINGS_FIXTURES: Final[dict[str, Builder]] = {
     "revision_conflict.json": _state_revision_conflict,
     "refusal_invalid_strategy.json": _state_refusal_invalid_strategy,
     "refusal_unknown_field.json": _state_refusal_unknown_field,
+    # Last, so the revisions of the fixtures above (each is built on the one before) did not move.
+    "success_dated.json": _state_success_dated,
+    "refusal_invalid_departure_date.json": _state_refusal_invalid_departure_date,
 }
 
 

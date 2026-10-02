@@ -198,6 +198,8 @@ def _price_data(hass: HomeAssistant) -> dict[str, Any]:
                 "next_attempt": _iso(area.next_attempt),
                 "today_data": day_summary(area.today_snapshot),
                 "tomorrow_data": day_summary(area.tomorrow_snapshot),
+                # The history profile a dated departure weighs (window, weeks, coverage; no prices).
+                "history_profile": manager.profile_summary(area.area_id),
             }
             for area in snapshot.areas
         ]
@@ -274,12 +276,17 @@ def _auto_price_section(hass: HomeAssistant, entry: ConfigEntry) -> dict[str, An
             unpriced=snapshot.unpriced,
             applied=snapshot.applied,
             error_code=snapshot.last_error_code,
+            # The last weighing of a dated departure against history: expected vs known price and the
+            # margin (effective minor units per kWh), or null when nothing needed unpublished hours.
+            history_wait=None if snapshot.history is None else snapshot.history.as_diagnostics(),
             proposal=_proposal_summary(
                 snapshot.proposal, historical=False, applied=snapshot.applied
             ),
         )
     if store is not None:
         stored = store.proposal(entry.entry_id)
+        departure_date = store.settings(entry.entry_id).departure_date
+        data["departure_date"] = None if departure_date is None else departure_date.isoformat()
         if controller is None or data.get("proposal") is None:
             data["settings_revision"] = store.settings(entry.entry_id).revision
             data["proposal"] = (

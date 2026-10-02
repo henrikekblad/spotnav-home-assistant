@@ -20,6 +20,8 @@ export const da: Record<keyof typeof en, string> = {
   "status.proposalPending": "Et nyt opladningsforslag er klar.",
   "status.waitingForTomorrow": "Venter på morgendagens priser.",
   "status.waitingForPublication": "Venter på morgendagens priser (~{time}), planlægger derefter.",
+  "status.waitingForHistory": "Venter: {weekday} har været {percent} % billigere de seneste {weeks} uger.",
+  "status.waitingForHistoryNoDetail": "Venter på timer, der plejer at være billigere, planlægger derefter.",
   "status.waitingForPublicationNoTime": "Venter på morgendagens priser, planlægger derefter.",
   "status.buyingBeforePublication": "Køber {kwh} kWh nu, resten når priserne er offentliggjort.",
   "status.noPlan": "Der kunne ikke beregnes en ladeplan lige nu.",
@@ -421,6 +423,22 @@ export const da: Record<keyof typeof en, string> = {
     "Færdig inden en frist",
   "settings.deadline.time":
     "Afgangstid",
+  "settings.deadline.date":
+    "Afgangsdag",
+  "settings.deadline.dateDaily":
+    "Hver dag",
+  "settings.deadline.dateChoose":
+    "Vælg dato",
+  "settings.deadline.dateClear":
+    "Hver dag",
+  "settings.deadline.dateHelp":
+    "Vælg en dag op til 7 dage frem for at rejse den dato. Planen kan så vente på timer, hvor priserne endnu ikke er offentliggjort, når de seneste uger viser, at de plejer at være billigere. Afgangen holdes altid.",
+  "settings.deadline.datePast":
+    "Datoen er passeret og ignoreres. Gemmer du, fjernes den.",
+  "settings.deadline.today":
+    "i dag",
+  "settings.deadline.tomorrow":
+    "i morgen",
   "settings.deadline.periods":
     "Højeste antal ladeperioder",
   "settings.current.title":
@@ -451,6 +469,10 @@ export const da: Record<keyof typeof en, string> = {
     "Det er ikke et tal.",
   "settings.error.outOfRange":
     "Værdien ligger uden for det tilladte interval.",
+  "settings.error.invalidDate":
+    "Vælg en gyldig dato.",
+  "settings.error.dateRange":
+    "Vælg en dato fra i dag og op til 7 dage frem.",
   "settings.error.invalidTime":
     "Brug et klokkeslæt som 06:30.",
   "settings.error.read":

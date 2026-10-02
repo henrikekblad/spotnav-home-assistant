@@ -1,6 +1,6 @@
 {
   "api_version": 1,
-  "error": "revision_conflict",
+  "error": "invalid_departure",
   "ok": false,
   "pause": {
     "admitted_at": null,
@@ -18,7 +18,7 @@
     "overrides": [],
     "phases": null,
     "requested_kwh": 20.0,
-    "revision": 3,
+    "revision": 8,
     "strategy": "cheapest",
     "target": {
       "target_percent": null,

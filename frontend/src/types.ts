@@ -107,7 +107,7 @@ export interface SettingsTarget {
 }
 
 /**
- * One full settings replacement as the contract spells it: eleven keys and no `revision`. The card
+ * One full settings replacement as the contract spells it: twelve keys and no `revision`. The card
  * copies the accepted record and changes only the fields one dialog owns; `revision` travels beside
  * the body as `expected_revision`.
  */
@@ -120,6 +120,11 @@ export interface SettingsBody {
   max_periods: number;
   departure_enabled: boolean;
   departure_time: string;
+  /**
+   * The local date (in the market's zone) the departure falls on, or `null` for a daily departure.
+   * Added after the first release of the contract: a record without it reads as `null`.
+   */
+  departure_date: string | null;
   strategy: string;
   driver: string;
   target: SettingsTarget;

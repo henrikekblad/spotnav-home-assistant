@@ -34,7 +34,7 @@ from __future__ import annotations
 import asyncio
 import logging
 from dataclasses import dataclass
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from typing import Any, Final, Literal
 from urllib.parse import quote
 
@@ -52,8 +52,10 @@ from .relay_contract import (
     parse_catalogue,
     parse_day,
     parse_index,
+    parse_profile,
     ParseCode,
     PriceDocument,
+    PriceProfile,
     RelayIndex,
     RelayParseError,
 )
@@ -73,6 +75,13 @@ MAX_RESPONSE_BYTES: Final = 512 * 1024
 #: the overall timeout.
 CHUNK_BYTES: Final = 64 * 1024
 
+
+#: A history profile older than this (by its own `generated`) is not used, whatever the cache holds:
+#: the relay withdraws a stale one itself, so an old copy means the relay could not be asked.
+PROFILE_MAX_AGE: Final = timedelta(days=2)
+
+#: After a failed profile request nobody asks again for this long (a calculation asks on every publication).
+PROFILE_RETRY_AFTER: Final = timedelta(minutes=30)
 
 STORAGE_VERSION: Final = 1
 STORAGE_KEY: Final = f"{DOMAIN}_relay_cache"
@@ -226,11 +235,12 @@ async def _read_bounded(stream) -> bytes:
 
 
 class _Failure(Exception):
-    """A fetch that did not produce a document, carrying its stable code."""
+    """A fetch that did not produce a document, carrying its stable code (and the HTTP status, if any)."""
 
-    def __init__(self, code: FetchCode) -> None:
+    def __init__(self, code: FetchCode, status: int | None = None) -> None:
         super().__init__(code)
         self.code: FetchCode = code
+        self.status = status
 
 
 class PriceRepository:
@@ -261,6 +271,11 @@ class PriceRepository:
         self._catalogue: _Cached | None = None
         self._index: _Cached | None = None
         self._days: dict[tuple[str, date], _Cached] = {}
+        # The history profile per area; the local day it was last asked for with a definite answer (a
+        # document, or the relay's 404), so it is requested once per area per day; and the last failed try.
+        self._profiles: dict[str, _Cached] = {}
+        self._profile_checked: dict[str, date] = {}
+        self._profile_failed_at: dict[str, datetime] = {}
         # One entry per resource key ever attempted: when it was tried and how it failed (`None` on success).
         self._attempts: dict[tuple[str, ...], tuple[datetime, FailureCode | None]] = {}
         self._inflight: dict[tuple[str, ...], asyncio.Task[Any]] = {}
@@ -333,6 +348,60 @@ class PriceRepository:
             return await self._load_day(area_id, day, authority=authority)
 
         return await self._shared(key, load)
+
+    def profile_for(self, area_id: str) -> PriceProfile | None:
+        """The area's history profile when one is held and recent enough to use, else `None`. No I/O.
+
+        "No profile" covers every reason (never fetched, the relay's 404, an invalid body, too old): the
+        planner treats them alike and plans on published prices.
+        """
+        cached = self._profiles.get(area_id)
+        if cached is None:
+            return None
+        profile: PriceProfile = cached.parsed
+        if self._now() - profile.generated >= PROFILE_MAX_AGE:
+            return None
+        return profile
+
+    async def async_get_profile(self, area_id: str, today: date, *, refresh: bool = False) -> PriceProfile | None:
+        """The area's history profile, requested at most once per local day (`today`).
+
+        The relay's 404 is a definite "no profile" (a cached copy is dropped: the relay withdrew it) and, like a
+        valid document, is not asked again until the next day. A transport failure or an invalid body keeps
+        the last good copy and is retried after [PROFILE_RETRY_AFTER].
+        """
+        await self.async_restore()
+        if not refresh:
+            if self._profile_checked.get(area_id) == today:
+                return self.profile_for(area_id)
+            failed = self._profile_failed_at.get(area_id)
+            if failed is not None and self._now() - failed < PROFILE_RETRY_AFTER:
+                return self.profile_for(area_id)
+
+        async def load() -> PriceProfile | None:
+            return await self._load_profile(area_id, today)
+
+        return await self._shared(("profile", area_id), load)
+
+    def profile_summary(self, area_id: str) -> dict[str, Any]:
+        """The profile as diagnostics prints it: identity, window and coverage, never the price rows."""
+        cached = self._profiles.get(area_id)
+        profile = None if cached is None else cached.parsed
+        failed = self._profile_failed_at.get(area_id)
+        checked = self._profile_checked.get(area_id)
+        return {
+            "area": area_id,
+            "held": profile is not None,
+            "usable": self.profile_for(area_id) is not None,
+            "fetched_at": None if cached is None else _stamp(cached.fetched_at),
+            "generated": None if profile is None else _stamp(profile.generated),
+            "from": None if profile is None else profile.from_date.isoformat(),
+            "to": None if profile is None else profile.to_date.isoformat(),
+            "weeks": None if profile is None else profile.weeks,
+            "hour_entries": None if profile is None else len(profile.hours),
+            "checked_day": None if checked is None else checked.isoformat(),
+            "last_failure_at": _stamp(failed),
+        }
 
     async def _shared(self, key: tuple[str, ...], load) -> Any:
         """One in-flight request per resource, whoever asks and however often.
@@ -427,6 +496,12 @@ class PriceRepository:
         index = self._restore_one(raw.get("index"), "index", parse_index)
         if index is not None and _older_than(self._index, index):
             self._index = index
+        profiles = raw.get("profiles")
+        if isinstance(profiles, dict):
+            for area_id, entry in profiles.items():
+                restored_profile = self._restore_profile(area_id, entry)
+                if restored_profile is not None and _older_than(self._profiles.get(area_id), restored_profile):
+                    self._profiles[area_id] = restored_profile
         days = raw.get("days")
         if isinstance(days, dict):
             for key, entry in days.items():
@@ -454,6 +529,13 @@ class PriceRepository:
             _LOGGER.warning("Ignoring stored %s: %s", what, err.code)
             return None
         return _Cached(document=document, fetched_at=fetched_at, parsed=parsed, source="store")
+
+    def _restore_profile(self, area_id: Any, entry: Any) -> _Cached | None:
+        if not isinstance(area_id, str) or not isinstance(entry, dict):
+            return None
+        return self._restore_one(
+            entry, f"profile {area_id}", lambda document: parse_profile(document, area_id=area_id)
+        )
 
     def _restore_day(self, key: Any, entry: Any) -> tuple[tuple[str, date], _Cached] | None:
         if not isinstance(key, str) or "|" not in key or not isinstance(entry, dict):
@@ -514,6 +596,35 @@ class PriceRepository:
         self._days[(area_id, day)] = _Cached(document=document, fetched_at=self._now(), parsed=parsed)
         await self._persist()
         return self._day_snapshot(area_id, day, authority=authority, source="network", settled=True)
+
+    async def _load_profile(self, area_id: str, today: date) -> PriceProfile | None:
+        key = ("profile", area_id)
+        self._attempts[key] = (self._now(), None)
+        path = f"/v1/{quote(area_id, safe='')}/profile.json"
+        try:
+            document = await self._fetch_json(path)
+            parsed = parse_profile(document, area_id=area_id)
+        except _Failure as err:
+            if err.status == 404:
+                # The relay's definite "no usable profile": nothing held is still true.
+                self._profiles.pop(area_id, None)
+                self._profile_failed_at.pop(area_id, None)
+                self._profile_checked[area_id] = today
+                await self._persist()
+                return None
+            self._record_failure(key, err)
+            self._profile_failed_at[area_id] = self._now()
+            return self.profile_for(area_id)
+        except RelayParseError as err:
+            self._record_failure(key, err)
+            self._profile_failed_at[area_id] = self._now()
+            self._profile_checked[area_id] = today
+            return self.profile_for(area_id)
+        self._profiles[area_id] = _Cached(document=document, fetched_at=self._now(), parsed=parsed)
+        self._profile_failed_at.pop(area_id, None)
+        self._profile_checked[area_id] = today
+        await self._persist()
+        return self.profile_for(area_id)
 
     def _after_failure(self, key: tuple[str, ...], err: Exception, snapshot):
         self._record_failure(key, err)
@@ -640,7 +751,7 @@ class PriceRepository:
             async with asyncio.timeout(REQUEST_TIMEOUT_S):
                 async with self._client().get(url) as response:
                     if response.status != 200:
-                        raise _Failure("http_status")
+                        raise _Failure("http_status", response.status)
                     body = await _read_bounded(response.content)
         except TimeoutError as err:
             raise _Failure("timeout") from err
@@ -657,6 +768,7 @@ class PriceRepository:
             "catalogue": _entry(self._catalogue),
             "index": _entry(self._index),
             "days": {f"{area_id}|{day.isoformat()}": _entry(cached) for (area_id, day), cached in self._days.items()},
+            "profiles": {area_id: _entry(cached) for area_id, cached in self._profiles.items()},
         }
 
     async def _persist(self) -> None:

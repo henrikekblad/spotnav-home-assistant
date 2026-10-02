@@ -10,6 +10,7 @@
   "settings": {
     "amps": null,
     "area_id": null,
+    "departure_date": null,
     "departure_enabled": true,
     "departure_time": "08:00",
     "driver": "manual_kwh",

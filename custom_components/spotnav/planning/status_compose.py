@@ -26,7 +26,7 @@ Precedence (first match wins the headline; "add" rows append a fact line)
 3. Strategy headline when `strategy_state` exists (solar / hybrid), in place of 4.
 4. Plan headline, the card's `statusSentence` chain:
      charging_without_prices (+plan_energy) > charging_now (+plan_energy +plan_cost) >
-     waiting_for_publication > buying_before_publication > auto_planned (+energy +cost +distance) >
+     waiting_for_history > waiting_for_publication > buying_before_publication > auto_planned (+energy +cost +distance) >
      auto_installed > proposal_pending (+energy +cost +distance) > waiting_for_tomorrow > no_plan
    `nothing_to_charge` takes no_plan's place when the plan says there is nothing to charge.
    Nothing matched (a plan that exists but says nothing) leaves `lines` empty: idle.
@@ -82,6 +82,7 @@ QUIET_PLANNING_REASONS: Final = frozenset(
         "ready",
         "unpriced",
         "publication_pending",
+        "waiting_for_history",
         "buying_before_publication",
         "charging_without_prices",
         "already_at_target",
@@ -106,6 +107,9 @@ STATUS_CODES: Final[dict[str, tuple[str, tuple[str, ...]]]] = {
     "charging_now": (TONE_NORMAL, ("until",)),
     "charging_without_prices": (TONE_NOTICE, ()),
     "waiting_for_publication": (TONE_NORMAL, ("publication_at",)),
+    # A dated departure leaves the unpublished hours for later because the same weekday-hours were
+    # `percent` % cheaper over the last `weeks` weeks; `weekday` is ISO 1 (Monday) .. 7 (Sunday).
+    "waiting_for_history": (TONE_NORMAL, ("weekday", "percent", "weeks")),
     "buying_before_publication": (TONE_NORMAL, ("kwh",)),
     "auto_planned": (TONE_NORMAL, ("start",)),
     "auto_installed": (TONE_NORMAL, ("start",)),
@@ -148,6 +152,10 @@ class PlanningFacts:
     missing: tuple[str, ...] = ()
     publication_at: datetime | None = None
     must_buy_now_kwh: float | None = None
+    #: `waiting_for_history` only: the weekday (ISO 1..7), whole percent and weeks of history behind the wait.
+    history_weekday: int | None = None
+    history_percent: int | None = None
+    history_weeks: int | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -384,6 +392,15 @@ def _plan_headline(facts: StatusFacts) -> list[dict[str, Any]]:
         ]
     if facts.charging:
         return [_line("charging_now", until=None)]
+    if planning is not None and planning.reason == "waiting_for_history":
+        return [
+            _line(
+                "waiting_for_history",
+                weekday=planning.history_weekday,
+                percent=planning.history_percent,
+                weeks=planning.history_weeks,
+            )
+        ]
     if planning is not None and planning.state == "waiting_for_publication":
         return [_line("waiting_for_publication", publication_at=aware_iso(planning.publication_at))]
     if (
