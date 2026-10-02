@@ -82,12 +82,33 @@ Set on the site, used by the [solar and hybrid strategies](strategies.md): **sol
 (car first or house battery first), an optional **home battery power** sensor (positive means
 charging), and the **solar forecast sources** for hybrid.
 
+## Total grid power (for solar)
+
+Solar and hybrid need the grid's signed power. A derived site has it per phase. A direct site
+(a current per phase, no direction, such as a Tibber Pulse) has it only when you give it the
+meter's **total grid power**, as one signed sensor (positive = import, or tick *Grid power is
+export-positive*) or as an import and an export sensor (combined as import minus export; a missing
+half makes the total missing, never zero). Units W and kW are read; anything else is refused at
+read time. The total is detected where the integration has it (see
+[supported hardware](supported.md)) and is edited in the site editor, field *Total grid power (for
+solar)*; a derived site may also have one, which it ignores for the surplus.
+
+The total only decides the surplus; the fuse protection and load balancing stay per phase on the
+measured currents. Swedish and most Nordic meters settle the phases summed, so the surplus is the
+total export. The solar controller spreads the total evenly over the phases the charger uses (a
+third each for three phases, the whole total on the charger's phase for one phase), assumes 230 V
+per phase and caps the result by that phase's fuse headroom on top of what the car already draws.
+A stale (older than the maximum measurement age, unless Home Assistant keeps hearing from the
+sensor) or missing total is an unknown surplus, never zero export. The site sensor's
+`solar_capable`, `solar_reason` and `grid_power` attributes and the diagnostics' `grid_power`
+block show the state; `solar_reason` is `needs_total_grid_power` when a direct site lacks it.
+
 ## Meter detection, signs and estimated current
 
 SpotNav scans the entity registry (including entities an integration ships disabled) for grid meters and home batteries and offers them in the site editor and the create flow (the recognised integrations are listed under [supported hardware](supported.md)); nothing is applied until confirmed, and applying enables only entities the integration disabled, never ones a person disabled. Each integration carries its sign conventions:
 
 * `site_current_signed`: the meter reports export as a negative current; the fuse carries |I|, so the magnitude is read. Without the flag a negative current is invalid.
-* `grid_power_inverted` / `battery_power_inverted`: export-positive grid power and discharge-positive battery power are negated.
+* `grid_power_inverted` / `battery_power_inverted`: export-positive grid power (the per-phase power of a derived site and the total grid power) and discharge-positive battery power are negated.
 * Import and export reported as two entities (`power` and `power_export`, or a battery's charge and discharge) are combined as import minus export; a missing half makes the value missing, never zero.
 
 Derived mode needs only signed active power and voltage per phase. The current is, in order: the meter's own current (as |I|), S / U from apparent power, sqrt(P^2 + Q^2) / U from reactive power, else `|P| / (U x 0.9)`, which is marked **estimated** in the site state and the card. The estimate is never below the real current for a power factor of 0.9 or better and understates it below that. A configured source that is unavailable never falls back to a cruder one.

@@ -215,6 +215,36 @@
         "writable": true
       },
       {
+        "allowed_device_classes": [
+          "power"
+        ],
+        "allowed_domains": [
+          "sensor"
+        ],
+        "current": null,
+        "effective": null,
+        "field": "grid_power_source_power",
+        "kind": "entity",
+        "required": false,
+        "scope": "site",
+        "writable": true
+      },
+      {
+        "allowed_device_classes": [
+          "power"
+        ],
+        "allowed_domains": [
+          "sensor"
+        ],
+        "current": null,
+        "effective": null,
+        "field": "grid_power_source_power_export",
+        "kind": "entity",
+        "required": false,
+        "scope": "site",
+        "writable": true
+      },
+      {
         "field": "grid_power_inverted",
         "kind": "flag",
         "required": false,

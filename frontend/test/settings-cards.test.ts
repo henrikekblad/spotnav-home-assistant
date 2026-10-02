@@ -272,14 +272,49 @@ describe("the strategy dialog's way to Solar", () => {
     return element;
   }
 
+  const heldForSolarSettings = (payload: Record<string, any>) => {
+    payload["strategy"]["available"] = [
+      { strategy: "cheapest", available: true, reason: null },
+      { strategy: "solar", available: false, reason: "needs_solar_surplus_measurement" },
+      { strategy: "hybrid", available: false, reason: "needs_solar_and_price_control" },
+    ];
+  };
+
   it("links a solar strategy held back for lack of solar settings to the Solar card", async () => {
-    const element = await strategy(dashboard());
+    const element = await strategy(dashboard(heldForSolarSettings));
     const link = dlg(element).querySelector<HTMLButtonElement>("[data-action='setup-solar']");
     expect(link?.textContent).toBe(translate("en", "strategy.setupSolar"));
     link!.click();
     await settle();
     expect(dlg(element).querySelector("[data-section='solar']")).not.toBeNull();
     expect(dlg(element).textContent).toContain(translate("en", "settings.overview.titleNamed", { name: "cheapest_direct_admin" }));
+  });
+
+  it("says a direct site lacks the meter's total grid power and links to the site's entities, not to Solar", async () => {
+    const element = await strategy(dashboard());
+    expect(dlg(element).textContent).toContain("Solar needs the meter's total grid power");
+    expect(dlg(element).querySelector("[data-action='setup-solar']")).toBeNull();
+    const link = dlg(element).querySelector<HTMLButtonElement>("[data-action='setup-site']");
+    expect(link?.textContent).toBe(translate("en", "strategy.setupSite"));
+    link!.click();
+    await settle();
+    await settle();
+    expect(dlg(element).querySelector("[data-entity-editor='site']")).not.toBeNull();
+    expect(dlg(element).querySelector("[data-field-block='grid_power_source_power']")).not.toBeNull();
+  });
+
+  it("offers an administrator only that link, none to a reader", async () => {
+    const hass = new FakeHass();
+    hass.entityHandler = async () => read("entity_config", "v1", "get_direct.json");
+    const element = mountCard(CONFIG, hass);
+    element.hass = hass.snapshot("snapshot", "en");
+    await settle();
+    hass.resolveNext(dashboard());
+    await settle();
+    shadow(element).querySelector<HTMLButtonElement>("[data-cell='strategy']")!.click();
+    await settle();
+    expect(dlg(element).textContent).toContain("Solar needs the meter's total grid power");
+    expect(dlg(element).querySelector("[data-action='setup-site']")).toBeNull();
   });
 
   it("offers no link when the charger has no site to set solar up on", async () => {

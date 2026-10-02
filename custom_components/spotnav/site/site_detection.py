@@ -40,16 +40,33 @@ from ..const import (
     CONF_DERIVED_ENTITIES,
     CONF_DIRECT_ENTITIES,
     CONF_GRID_POWER_INVERTED,
+    CONF_GRID_POWER_SOURCE,
     CONF_MEASUREMENT_MODE,
     CONF_SITE_CURRENT_SIGNED,
     CONF_SITE_CURRENT_SOURCE,
     MEASUREMENT_MODE_DERIVED,
     MEASUREMENT_MODE_DIRECT,
 )
-from .measurement_source import PhaseMeasurementSource, source_to_dict
+from .measurement_source import (
+    GridPowerSource,
+    grid_power_source_to_dict,
+    PhaseMeasurementSource,
+    source_to_dict,
+)
 from .site_capacity import PHASES, PhaseName
 
-Role = Literal["current", "power", "power_export", "voltage", "reactive_power", "apparent_power"]
+Role = Literal[
+    "current",
+    "power",
+    "power_export",
+    "voltage",
+    "reactive_power",
+    "apparent_power",
+    # The meter's total grid power, not per phase: one signed entity, or with `grid_power_export` an
+    # import/export pair. Solar and hybrid read it on a site whose phases report current only.
+    "grid_power",
+    "grid_power_export",
+]
 Confidence = Literal["high", "medium", "low"]
 
 # Warning codes (stable, translated by the card).
@@ -71,6 +88,8 @@ _ROLE_ORDER: Final[tuple[Role, ...]] = (
     "current",
     "apparent_power",
     "reactive_power",
+    "grid_power",
+    "grid_power_export",
 )
 
 _LETTER_PHASE: Final[dict[str, PhaseName]] = {"a": "L1", "b": "L2", "c": "L3", "r": "L1", "s": "L2", "t": "L3"}
@@ -153,6 +172,14 @@ class MeterRow:
     # config entry) completes the set, and the candidate says so.
     voltage_any_device: bool = False
     warnings: tuple[str, ...] = ()
+    # The integration's total grid power entities (roles `grid_power` and, for an integration that
+    # reports import and export as two entities, `grid_power_export`). They only complete a meter that
+    # already has its per-phase entities, never make one. A pair needs both halves, or none is used:
+    # an import without its export would read as never exporting.
+    totals: tuple[Pattern, ...] = ()
+    # A device whose model contains this is not a grid meter for the total (HomeWizard's battery
+    # reports the same `active_power_w` for its own power).
+    totals_reject_model: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -189,6 +216,8 @@ METER_ROWS: Final[tuple[MeterRow, ...]] = (
             _p("voltage", r"-em1:(?P<z>[012])-voltage_em1$"),
             _p("apparent_power", r"-em:\d+-(?P<a>[abc])_aprt_power$"),
         ),
+        # Gen2 `em` component's `total_act_power`: the sum of the phases' active power, signed as they are.
+        totals=(_p("grid_power", r"-em:\d+-total_act_power$"),),
         warnings=(WARNING_MAY_MEASURE_SUBCIRCUIT,),
     ),
     MeterRow(
@@ -200,6 +229,9 @@ METER_ROWS: Final[tuple[MeterRow, ...]] = (
             _p("reactive_power", r"_active_reactive_power_l(?P<n>[123])_var$"),
             _p("apparent_power", r"_active_apparent_power_l(?P<n>[123])_va$"),
         ),
+        # `active_power_w`: import positive (the integration's own production sensor is it negated).
+        totals=(_p("grid_power", r"_active_power_w$"),),
+        totals_reject_model="bat",
         signed_current=True,
     ),
     MeterRow(
@@ -207,6 +239,11 @@ METER_ROWS: Final[tuple[MeterRow, ...]] = (
         patterns=(
             _p("current", r"_rt_currentl(?P<n>[123])$"),
             _p("voltage", r"_rt_voltagephase(?P<n>[123])$"),
+        ),
+        # The Pulse's real-time `power` (consumption) and `powerProduction` (export), both >= 0.
+        totals=(
+            _p("grid_power", r"_rt_power$"),
+            _p("grid_power_export", r"_rt_powerproduction$"),
         ),
     ),
     MeterRow(
@@ -217,6 +254,11 @@ METER_ROWS: Final[tuple[MeterRow, ...]] = (
             _p("power_export", r"(?:^|_)(?:instantaneous_)?active_power_l(?P<n>[123])_negative$"),
             _p("voltage", r"(?:^|_)(?:instantaneous_)?voltage_l(?P<n>[123])$"),
         ),
+        # `current_electricity_usage` and `current_electricity_delivery` (OBIS 1.7.0 and 2.7.0), both >= 0.
+        totals=(
+            _p("grid_power", r"(?:^|_)current_electricity_usage$"),
+            _p("grid_power_export", r"(?:^|_)current_electricity_delivery$"),
+        ),
     ),
     MeterRow(
         platforms=("dsmr_reader",),
@@ -226,6 +268,11 @@ METER_ROWS: Final[tuple[MeterRow, ...]] = (
             _p("power_export", r"phase_currently_returned_l(?P<n>[123])$"),
             _p("voltage", r"phase_voltage_l(?P<n>[123])$"),
         ),
+        # `electricity_currently_delivered` is what the grid delivers (import), `..._returned` the export.
+        totals=(
+            _p("grid_power", r"electricity_currently_delivered$"),
+            _p("grid_power_export", r"electricity_currently_returned$"),
+        ),
     ),
     MeterRow(
         platforms=("p1_monitor",),
@@ -234,6 +281,11 @@ METER_ROWS: Final[tuple[MeterRow, ...]] = (
             _p("power", r"power_consumed_phase_l(?P<n>[123])$"),
             _p("power_export", r"power_produced_phase_l(?P<n>[123])$"),
             _p("voltage", r"voltage_phase_l(?P<n>[123])$"),
+        ),
+        # The smart meter service's `power_consumption` and `power_production`, both >= 0.
+        totals=(
+            _p("grid_power", r"(?:^|_)power_consumption$"),
+            _p("grid_power_export", r"(?:^|_)power_production$"),
         ),
     ),
     MeterRow(
@@ -482,6 +534,8 @@ class MeterCandidate:
     estimated: bool = False
     entities: tuple[DetectedEntity, ...] = ()
     warnings: tuple[str, ...] = ()
+    # The meter's total grid power where the integration reports one (`MeterRow.totals`).
+    grid_power: GridPowerSource | None = None
 
     @property
     def disabled_entity_ids(self) -> tuple[str, ...]:
@@ -610,6 +664,7 @@ def _catalogue_candidates(
     for row in METER_ROWS:
         for platform in row.platforms:
             groups: dict[tuple[str, str], dict[Role, dict[PhaseName, RegistryEntity]]] = {}
+            totals: dict[str, dict[Role, RegistryEntity]] = {}
             for entity in by_platform.get(platform, []):
                 if not _usable(entity, excluded_device_ids):
                     continue
@@ -620,12 +675,21 @@ def _catalogue_candidates(
                     continue
                 matched = _match_row(row, texts)
                 if matched is None:
+                    total_role = _match_total(row, texts)
+                    if total_role is not None and _total_device_ok(
+                        row, devices.get(entity.device_id or "")
+                    ):
+                        totals.setdefault(entity.config_entry_id or entity.device_id or "", {}).setdefault(
+                            total_role, entity
+                        )
                     continue
                 role, phase, meter = matched
                 key = (entity.config_entry_id or entity.device_id or "", meter)
                 groups.setdefault(key, {}).setdefault(role, {})[phase] = entity
             for (entry_key, meter), roles in groups.items():
-                candidate = _build_row_candidate(row, platform, entry_key, meter, roles, devices)
+                candidate = _build_row_candidate(
+                    row, platform, entry_key, meter, roles, devices, totals.get(entry_key, {})
+                )
                 if candidate is None:
                     continue
                 candidates.append(candidate)
@@ -646,6 +710,39 @@ def _match_row(row: MeterRow, texts: list[str]) -> tuple[Role, PhaseName, str] |
     return None
 
 
+def _match_total(row: MeterRow, texts: list[str]) -> Role | None:
+    for pattern in row.totals:
+        if any(pattern.regex.search(text) for text in texts):
+            return pattern.role
+    return None
+
+
+def _total_device_ok(row: MeterRow, device: RegistryDevice | None) -> bool:
+    if row.totals_reject_model is None or device is None:
+        return True
+    return row.totals_reject_model not in (device.model or "").lower()
+
+
+def _grid_power_of(
+    row: MeterRow, totals: Mapping[Role, RegistryEntity]
+) -> tuple[GridPowerSource, list[tuple[Role, PhaseName | None, RegistryEntity]]] | None:
+    """The total grid power a meter's `totals` complete, with the entities it uses: the one signed
+    entity, or for a row that reports import and export separately both halves (never one alone).
+    """
+    power = totals.get("grid_power")
+    if power is None:
+        return None
+    if any(pattern.role == "grid_power_export" for pattern in row.totals):
+        export = totals.get("grid_power_export")
+        if export is None:
+            return None
+        return (
+            GridPowerSource(power=power.entity_id, power_export=export.entity_id),
+            [("grid_power", None, power), ("grid_power_export", None, export)],
+        )
+    return GridPowerSource(power=power.entity_id), [("grid_power", None, power)]
+
+
 def _complete(roles: Mapping[Role, Mapping[PhaseName, RegistryEntity]], role: Role) -> bool:
     return all(phase in roles.get(role, {}) for phase in PHASES)
 
@@ -657,9 +754,10 @@ def _build_row_candidate(
     meter: str,
     roles: dict[Role, dict[PhaseName, RegistryEntity]],
     devices: Mapping[str, RegistryDevice],
+    totals: Mapping[Role, RegistryEntity] | None = None,
 ) -> MeterCandidate | None:
     candidate_id = ":".join(part for part in (platform, entry_key, meter) if part)
-    used: list[tuple[Role, PhaseName, RegistryEntity]] = []
+    used: list[tuple[Role, PhaseName | None, RegistryEntity]] = []
 
     def take(role: Role) -> dict[PhaseName, RegistryEntity] | None:
         if not _complete(roles, role):
@@ -677,6 +775,15 @@ def _build_row_candidate(
     }:
         warnings.append(WARNING_VOLTAGE_OTHER_DEVICE)
 
+    grid_power = _grid_power_of(row, totals or {})
+
+    def total_entities() -> GridPowerSource | None:
+        # Only once the per-phase entities have made this a candidate at all.
+        if grid_power is None:
+            return None
+        used.extend(grid_power[1])
+        return grid_power[0]
+
     if derived_possible:
         power = take("power")
         voltage = take("voltage")
@@ -690,6 +797,7 @@ def _build_row_candidate(
                     entry[role] = by_phase[phase].entity_id
             derived[phase] = entry
         estimated = not any(extras[role] is not None for role in ("current", "apparent_power", "reactive_power"))
+        grid_source = total_entities()
         return MeterCandidate(
             candidate_id=candidate_id,
             integration=platform,
@@ -702,10 +810,12 @@ def _build_row_candidate(
             estimated=estimated,
             entities=_display(used),
             warnings=tuple(warnings),
+            grid_power=grid_source,
         )
     current = take("current")
     if current is None:
         return None
+    grid_source = total_entities()
     return MeterCandidate(
         candidate_id=candidate_id,
         integration=platform,
@@ -716,10 +826,11 @@ def _build_row_candidate(
         signed_current=row.signed_current,
         entities=_display(used),
         warnings=tuple(warnings),
+        grid_power=grid_source,
     )
 
 
-def _display(used: list[tuple[Role, PhaseName, RegistryEntity]]) -> tuple[DetectedEntity, ...]:
+def _display(used: list[tuple[Role, PhaseName | None, RegistryEntity]]) -> tuple[DetectedEntity, ...]:
     return tuple(
         DetectedEntity(
             role=role,
@@ -728,7 +839,11 @@ def _display(used: list[tuple[Role, PhaseName, RegistryEntity]]) -> tuple[Detect
             disabled=entity.disabled_by == _DISABLED_BY_INTEGRATION,
         )
         for role, phase, entity in sorted(
-            used, key=lambda item: (_ROLE_ORDER.index(item[0]), PHASES.index(item[1]))
+            used,
+            key=lambda item: (
+                _ROLE_ORDER.index(item[0]),
+                -1 if item[1] is None else PHASES.index(item[1]),
+            ),
         )
     )
 
@@ -1210,12 +1325,18 @@ def freshness_warnings(
 
 
 def apply_meter_candidate(data: Mapping[str, Any], candidate: MeterCandidate) -> dict[str, Any]:
-    """`data` with the candidate's meter choices written: measurement mode, entities, source and sign
-    flags. Only those keys change; the inactive mode's stored entities are kept."""
+    """`data` with the candidate's meter choices written: measurement mode, entities, source, total grid
+    power and sign flags. Only those keys change; the inactive mode's stored entities are kept."""
     updated = dict(data)
     updated[CONF_MEASUREMENT_MODE] = candidate.mode
     updated[CONF_SITE_CURRENT_SIGNED] = candidate.signed_current
     updated[CONF_GRID_POWER_INVERTED] = candidate.power_inverted
+    # The meter's total comes with the meter: a total left from the previous meter would be read as
+    # this one's.
+    if candidate.grid_power is not None:
+        updated[CONF_GRID_POWER_SOURCE] = grid_power_source_to_dict(candidate.grid_power)
+    else:
+        updated.pop(CONF_GRID_POWER_SOURCE, None)
     if candidate.mode == MEASUREMENT_MODE_DERIVED:
         updated[CONF_DERIVED_ENTITIES] = {
             phase: dict(values) for phase, values in (candidate.derived_entities or {}).items()

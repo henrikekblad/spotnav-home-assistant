@@ -1,0 +1,274 @@
+{
+  "api_version": 1,
+  "charge_progress": {
+    "reason": "charge_not_expected",
+    "since": null,
+    "state": "normal"
+  },
+  "charger": {
+    "available": true,
+    "capabilities": {
+      "auto_price": true,
+      "current_limit": false,
+      "load_balancing": true,
+      "refresh_vehicle": true,
+      "regulated_current": false,
+      "set_charge_limit": true,
+      "set_current": false,
+      "target_soc": false,
+      "target_stop": true
+    },
+    "charger_id": "solar_direct",
+    "charger_name": "solar_direct"
+  },
+  "chargers": [
+    {
+      "id": "cheapest_no_site",
+      "name": "cheapest_no_site"
+    },
+    {
+      "id": "cheapest_direct_admin",
+      "name": "cheapest_direct_admin"
+    },
+    {
+      "id": "limited_charger",
+      "name": "limited_charger"
+    },
+    {
+      "id": "cheapest_direct_reader",
+      "name": "cheapest_direct_reader"
+    },
+    {
+      "id": "solar_derived",
+      "name": "solar_derived"
+    },
+    {
+      "id": "hybrid_no_forecast",
+      "name": "hybrid_no_forecast"
+    },
+    {
+      "id": "hybrid_with_forecast",
+      "name": "hybrid_with_forecast"
+    },
+    {
+      "id": "solar_direct",
+      "name": "solar_direct"
+    }
+  ],
+  "control": {
+    "automatic_action": "pause",
+    "automatic_action_reason": null,
+    "can_act": true,
+    "execution_error": null,
+    "immediate_action": "start",
+    "immediate_action_reason": null,
+    "pause": {
+      "admitted_at": null,
+      "choice": null,
+      "expires_at": null
+    },
+    "pause_blocks_execution": false,
+    "pause_choices": [
+      "until_resumed"
+    ]
+  },
+  "current_range": {
+    "max_a": 32,
+    "min_a": 6,
+    "source": "default"
+  },
+  "detected_phases": null,
+  "fiscal": null,
+  "generated_at": "2026-09-22T06:00:00+00:00",
+  "live": {
+    "charging": false,
+    "measured_current_a": null,
+    "requested_current_a": null,
+    "schedule_active": false,
+    "setpoint_current_a": null
+  },
+  "market": {
+    "area_id": null,
+    "area_name": null,
+    "catalogue_attempt_error": null,
+    "catalogue_fetched_at": "2026-09-22T06:00:00+00:00",
+    "catalogue_state": "ready",
+    "countries": null,
+    "currency": null,
+    "major_unit": null,
+    "minor_unit": null,
+    "suggested_grid_fee": null,
+    "suggested_tax": null,
+    "suggested_vat_percent": null,
+    "timezone": null
+  },
+  "phase_detection": {
+    "confidence": "none",
+    "source": "unknown"
+  },
+  "plan": {
+    "delivered_kwh": null,
+    "installed": null,
+    "proposal": null,
+    "relation": {
+      "applied": false,
+      "applied_identity": null,
+      "pending_identity": null
+    },
+    "remaining_kwh": null
+  },
+  "planning": {
+    "applied": false,
+    "applied_identity": null,
+    "calculated_at": "2026-09-22T06:00:00+00:00",
+    "execution_paused": false,
+    "execution_reason": null,
+    "execution_state": "not_applied",
+    "generation": 0,
+    "historical": true,
+    "missing": [
+      "area",
+      "phases",
+      "amps"
+    ],
+    "must_buy_now_kwh": null,
+    "pending_attempt": null,
+    "pending_identity": null,
+    "price_identity": null,
+    "price_state": null,
+    "price_wait": null,
+    "publication_at": null,
+    "reason": "settings_missing",
+    "settings_revision": 0,
+    "state": "incomplete_settings",
+    "today": null,
+    "tomorrow": null
+  },
+  "prices": {
+    "area_id": null,
+    "index_revision": null,
+    "index_state": null,
+    "interval_count": 0,
+    "intervals": [],
+    "priced_slots": 0,
+    "reason": null,
+    "resolution_minutes": null,
+    "resolutions_minutes": [],
+    "state": null,
+    "today": null,
+    "today_attempt_at": null,
+    "today_attempt_error": null,
+    "today_fetched_at": null,
+    "today_source": null,
+    "today_state": null,
+    "tomorrow": null,
+    "tomorrow_attempt_at": null,
+    "tomorrow_attempt_error": null,
+    "tomorrow_fetched_at": null,
+    "tomorrow_source": null,
+    "tomorrow_state": null,
+    "unpriced": false,
+    "unpriced_slots": 0,
+    "waiting_for_tomorrow": null
+  },
+  "settings": {
+    "amps": null,
+    "area_id": null,
+    "departure_date": null,
+    "departure_enabled": true,
+    "departure_time": "08:00",
+    "driver": "manual_kwh",
+    "max_periods": 1,
+    "overrides": [],
+    "phases": null,
+    "requested_kwh": 20.0,
+    "revision": 1,
+    "strategy": "solar",
+    "target": {
+      "target_percent": null,
+      "vehicle_id": null
+    }
+  },
+  "site": {
+    "active_control": {
+      "available": false,
+      "enabled": false,
+      "reason": "no_commandable_charger",
+      "writable": true
+    },
+    "charger_count": 1,
+    "name": "Site",
+    "solar_forecast": {
+      "choices": [],
+      "selected": []
+    },
+    "solar_priority": "car_first",
+    "writable": true
+  },
+  "soc": null,
+  "status": {
+    "lines": [
+      {
+        "code": "settings_incomplete",
+        "params": {
+          "missing": [
+            "area",
+            "phases",
+            "amps"
+          ],
+          "reason": "settings_missing"
+        }
+      }
+    ],
+    "tone": "notice"
+  },
+  "strategy": {
+    "available": [
+      {
+        "available": true,
+        "reason": null,
+        "strategy": "cheapest"
+      },
+      {
+        "available": true,
+        "reason": null,
+        "strategy": "solar"
+      },
+      {
+        "available": true,
+        "reason": null,
+        "strategy": "hybrid"
+      }
+    ],
+    "selected": "solar"
+  },
+  "strategy_options": [
+    "cheapest",
+    "solar",
+    "hybrid"
+  ],
+  "strategy_state": {
+    "available_w": 0.0,
+    "priority_effective": "battery_first",
+    "reason": "off_no_surplus",
+    "requested_a": null,
+    "state": "off"
+  },
+  "summary": {
+    "charger": {
+      "current_entity_name": null,
+      "current_path": "none",
+      "energy_automatic": true,
+      "energy_name": null,
+      "start_stop_name": "solar direct"
+    },
+    "site": {
+      "battery_name": null,
+      "main_fuse_a": 25.0,
+      "measurement_mode": "direct_phase_current"
+    },
+    "vehicles": {}
+  },
+  "target_vehicle_id": null,
+  "vehicles": []
+}

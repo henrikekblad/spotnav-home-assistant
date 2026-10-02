@@ -11,6 +11,7 @@ import {
   DERIVED_KIND_KEYS,
   DERIVED_OPTIONAL_KINDS,
   DETECT_WARNING_KEYS,
+  GRID_TOTAL_FIELDS,
   INFORMATIONAL_DETECT_WARNINGS,
   batteryApplied,
   DERIVED_REQUIRED_KINDS,
@@ -641,6 +642,9 @@ export function entityEditorBody(
     if (meter.powerInverted) {
       card.append(line(translate(language, "entity.detect.inverted"), "inverted"));
     }
+    if (meter.entities.some((entity) => entity.role === "grid_power")) {
+      card.append(line(translate(language, "entity.detect.gridPower"), "gridPower"));
+    }
     if (meter.estimated) {
       const estimated = line(translate(language, "entity.detect.estimated"), "estimated");
       estimated.className = C.entityWarning;
@@ -755,9 +759,13 @@ export function entityEditorBody(
           mode === MEASUREMENT_DERIVED
             ? ["entity.help.derivedPower", "entity.help.derivedVoltage"]
             : ["entity.help.phaseDirect"];
-        const inverted = body.querySelector<HTMLElement>('[data-field-block="grid_power_inverted"]');
-        if (inverted !== null) {
-          inverted.hidden = mode !== MEASUREMENT_DERIVED;
+        // The meter's total grid power is what a site that reports current only reads for solar; a derived
+        // site has its per-phase power and ignores it. The sign option applies to both.
+        for (const name of GRID_TOTAL_FIELDS) {
+          const total = body.querySelector<HTMLElement>(`[data-field-block="${name}"]`);
+          if (total !== null) {
+            total.hidden = mode === MEASUREMENT_DERIVED;
+          }
         }
         for (const key of helpKeys) {
           phaseHelp.append(element(doc, "p", C.entityHelp, translate(language, key)));
@@ -835,6 +843,7 @@ export function entityEditorBody(
       // The battery meter and maximum age come after the phases they qualify, as the backend lists them.
       for (const name of [
         "site_current_signed",
+        ...GRID_TOTAL_FIELDS,
         "grid_power_inverted",
         "battery_aggregate_power_entity",
         "battery_discharge_power_entity",

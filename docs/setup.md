@@ -240,7 +240,10 @@ and apparent power in VA or kVA; a sensor in another unit is refused.
   the per-phase sensors: a current sensor per phase in direct mode, or a power sensor and a voltage
   sensor per phase in derived mode, with optional export power, reactive power, apparent power and
   current. Two tick boxes say how your meter's signs work: **The grid current is signed (export is
-  negative)** and, in derived mode, **Grid power is export-positive (negate it)**. Each charger
+  negative)** and **Grid power is export-positive (negate it)**, which applies to the per-phase
+  power in derived mode and to the total grid power in either mode. In the card's site editor,
+  direct mode also has **Total grid power (for solar)**, needed for solar and hybrid charging when
+  the phases only report current (and an optional separate export sensor). Each charger
   also has an optional measured-current source, chosen from what SpotNav found on the charger's
   device, entered manually, or skipped. Never use a commanded current there: a car can draw less
   than its setpoint.

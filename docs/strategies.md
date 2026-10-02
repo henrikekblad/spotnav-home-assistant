@@ -42,8 +42,11 @@ A date that has gone by is ignored and forgotten the next time the settings are 
 
 Charges only from surplus solar power, modulating the charger's current with the surplus.
 Requires a [site](site-and-load-balancing.md) whose measurements let SpotNav compute the
-surplus (derived phase measurement from power and voltage, and optionally the charger's own
-measured current and a house battery power sensor). The card says when a site cannot.
+surplus: derived phase measurement from power and voltage, or a direct (current per phase) site
+that also has the meter's **total grid power** (see
+[Total grid power](site-and-load-balancing.md#total-grid-power-for-solar)), and optionally the
+charger's own measured current and a house battery power sensor. The card says when a site
+cannot, and for a direct site without the total it says the meter's total grid power is needed.
 
 - The surplus is computed from the site's energy balance (grid, house battery and the car's
   own draw), never from export alone, so that the car's draw does not count as surplus.

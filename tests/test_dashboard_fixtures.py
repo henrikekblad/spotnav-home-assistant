@@ -34,7 +34,11 @@ from custom_components.spotnav.planning.auto_settings import (
     STRATEGY_HYBRID,
     STRATEGY_SOLAR,
 )
-from custom_components.spotnav.const import CONF_MEASURED_CURRENT_SOURCE, MEASUREMENT_MODE_DERIVED
+from custom_components.spotnav.const import (
+    CONF_GRID_POWER_SOURCE,
+    CONF_MEASURED_CURRENT_SOURCE,
+    MEASUREMENT_MODE_DERIVED,
+)
 from custom_components.spotnav.planning.hybrid_forecast import ForecastReadResult
 from custom_components.spotnav.site.measurement_source import (
     PhaseMeasurementSource,
@@ -234,6 +238,46 @@ async def _state_solar_derived_site(hass: HomeAssistant) -> dict[str, Any]:
     return await _payload(hass, charger, can_act=True)
 
 
+async def _state_solar_direct_site_with_total(hass: HomeAssistant) -> dict[str, Any]:
+    """`solar` selected on a direct-mode site (per-phase current only) that carries the meter's total grid
+    power: `solar` and `hybrid` are offered, and `strategy_state.solar` is the real, ticked row.
+    Strategy before site, for the ordering reason `_state_solar_derived_site` documents."""
+    charger = await _setup_charger(hass, entry_id="solar_direct")
+    await _set_strategy(hass, charger.entry_id, STRATEGY_SOLAR)
+    prefix = charger.entry_id
+    for phase in PHASES:
+        hass.states.async_set(f"sensor.{prefix}_{phase.lower()}", "0", {"unit_of_measurement": "A"})
+        hass.states.async_set(
+            f"sensor.solar_direct_site_{phase.lower()}", "3", {"unit_of_measurement": "A"}
+        )
+    hass.states.async_set("sensor.solar_direct_grid_power", "0", {"unit_of_measurement": "W"})
+    site = make_site_entry(
+        hass,
+        entry_id="solar_direct_site",
+        charger_entry_ids=[charger.entry_id],
+        phase_wiring={
+            charger.entry_id: {
+                "phases": 3,
+                "phase": None,
+                "min_current_a": 6.0,
+                CONF_MEASURED_CURRENT_SOURCE: source_to_dict(
+                    PhaseMeasurementSource(
+                        kind="separate_entities",
+                        entity_ids={p: f"sensor.{prefix}_{p.lower()}" for p in PHASES},
+                    )
+                ),
+            }
+        },
+        extra_data={CONF_GRID_POWER_SOURCE: {"power": "sensor.solar_direct_grid_power"}},
+    )
+    assert await hass.config_entries.async_setup(site.entry_id)
+    await hass.async_block_till_done()
+    controller: SiteCapacityController = controller_of(hass, site.entry_id)
+    controller._recompute()  # noqa: SLF001 - the reviewed explicit-tick technique
+    await hass.async_block_till_done()
+    return await _payload(hass, charger, can_act=True)
+
+
 async def _state_hybrid_derived_site_no_forecast(hass: HomeAssistant) -> dict[str, Any]:
     """`hybrid` selected, a healthy derived-mode site, no forecast source named anywhere:
     `strategy_state.hybrid.forecast_configured` is `false`. Strategy set before the site, for
@@ -318,6 +362,8 @@ async def test_the_committed_strategy_and_site_fixtures_are_the_serializers_own_
         "hybrid_derived_site_with_forecast.json": await _state_hybrid_derived_site_with_forecast(
             hass, monkeypatch
         ),
+        # Last: a charger set up earlier shows in every later payload's `chargers` list.
+        "solar_direct_site_with_total.json": await _state_solar_direct_site_with_total(hass),
     }
     for name, payload in produced.items():
         assert payload["api_version"] == 1, name
@@ -346,6 +392,7 @@ EXPECTED_FIXTURES: Final = frozenset(
         "cheapest_direct_site_read_only.json",
         "charger_states_its_maximum.json",
         "solar_derived_site.json",
+        "solar_direct_site_with_total.json",
         "hybrid_derived_site_no_forecast.json",
         "hybrid_derived_site_with_forecast.json",
         "waiting_for_publication.json",

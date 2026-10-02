@@ -84,6 +84,11 @@ CONF_SITE_CURRENT_SIGNED = "site_current_signed"
 # The grid power entities are export-positive (Huawei, SolarEdge Modbus, GoodWe ...): negate them so
 # the site sees import positive.
 CONF_GRID_POWER_INVERTED = "grid_power_inverted"
+# The meter's total grid power, `{"power": entity_id, optional "power_export": entity_id}`: one signed
+# entity (import positive, or export positive with `CONF_GRID_POWER_INVERTED`), or an import/export pair
+# combined as import minus export. It lets a site whose phases report current only (direct mode) run
+# solar and hybrid; a derived site keeps its per-phase signed power and ignores it for the surplus.
+CONF_GRID_POWER_SOURCE = "grid_power_source"
 # The site's total current as a serialized `measurement_source.PhaseMeasurementSource`; takes
 # precedence over `CONF_DIRECT_ENTITIES` (a plain {"L1": entity_id, ...} dict the entity picker writes).
 CONF_SITE_CURRENT_SOURCE = "site_current_source"

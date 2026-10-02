@@ -53,6 +53,7 @@ from ..const import (
     CONF_DERIVED_ENTITIES,
     CONF_DIRECT_ENTITIES,
     CONF_ENERGY_REGISTER_ENTITY,
+    CONF_GRID_POWER_SOURCE,
     CONF_MAIN_FUSE_A,
     CONF_MAX_AGE_S,
     CONF_MEASUREMENT_MODE,
@@ -95,6 +96,8 @@ from .entity_fields import (
     FIELD_CHARGE_CONTROL,
     FIELD_CURRENT_LIMIT,
     FIELD_ENERGY_REGISTER,
+    FIELD_GRID_POWER_SOURCE_EXPORT,
+    FIELD_GRID_POWER_SOURCE_POWER,
     FIELD_MAIN_FUSE_A,
     FIELD_MAX_AGE_S,
     FIELD_MEASUREMENT_MODE,
@@ -241,6 +244,15 @@ def _write_site(hass: HomeAssistant, entry: ConfigEntry, changes: dict[str, Any]
     for flag_field, key in FLAG_FIELDS.items():
         if flag_field in changes:
             updated[key] = bool(changes[flag_field])
+    if FIELD_GRID_POWER_SOURCE_POWER in changes or FIELD_GRID_POWER_SOURCE_EXPORT in changes:
+        current = current_site_values(entry)
+        power = changes.get(FIELD_GRID_POWER_SOURCE_POWER, current[FIELD_GRID_POWER_SOURCE_POWER])
+        export = changes.get(FIELD_GRID_POWER_SOURCE_EXPORT, current[FIELD_GRID_POWER_SOURCE_EXPORT])
+        if power:
+            updated[CONF_GRID_POWER_SOURCE] = {"power": power, **({"power_export": export} if export else {})}
+        else:
+            # Cleared: the export half goes with it (validation refused an export alone).
+            updated.pop(CONF_GRID_POWER_SOURCE, None)
     if any(direct_field(phase) in changes for phase in PHASES):
         direct = dict(entry.data.get(CONF_DIRECT_ENTITIES) or {})
         for phase in PHASES:

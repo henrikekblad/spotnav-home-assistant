@@ -816,18 +816,68 @@ describe("the site's estimate, warnings, sign options and detected meters", () =
     });
   });
 
-  it("hides the grid-power sign in direct mode and shows it in derived mode", async () => {
+  it("shows the total grid power in direct mode and hides it in derived mode, where the sign option stays", async () => {
     const { element } = await mounted();
     openSettings(element);
     await settle();
     edit(element, "site");
-    const block = () => openDialog(element)?.querySelector<HTMLElement>("[data-field-block='grid_power_inverted']");
-    expect(block()?.hidden).toBe(true);
+    const block = (name: string) => openDialog(element)?.querySelector<HTMLElement>(`[data-field-block='${name}']`);
+    expect(block("grid_power_source_power")?.hidden).toBe(false);
+    expect(block("grid_power_source_power_export")?.hidden).toBe(false);
+    // The sign applies to the total in direct mode as to the per-phase power in derived mode.
+    expect(block("grid_power_inverted")?.hidden).toBe(false);
     const derived = openDialog(element)?.querySelector<HTMLInputElement>("input[type='radio'][data-mode='derived_phase_current']");
     derived!.checked = true;
     derived!.dispatchEvent(new Event("change", { bubbles: true }));
-    expect(block()?.hidden).toBe(false);
+    expect(block("grid_power_source_power")?.hidden).toBe(true);
+    expect(block("grid_power_source_power_export")?.hidden).toBe(true);
+    expect(block("grid_power_inverted")?.hidden).toBe(false);
   });
+
+  it("labels the total grid power for solar, says what it is for, and saves it as a changed field", async () => {
+    const { hass, element } = await mounted({ update: "success_site" });
+    openSettings(element);
+    await settle();
+    edit(element, "site");
+    const power = openDialog(element)?.querySelector<HTMLElement>("[data-field-block='grid_power_source_power']");
+    expect(power?.textContent).toContain("Needed for solar and hybrid charging when the phases only report current.");
+    expect(translate("en", "entity.field.gridPowerSource")).toBe("Total grid power (for solar)");
+    // A picker when Home Assistant's selector is defined (an earlier test may have defined it), else text.
+    const control = field(element, "grid_power_source_power");
+    if (control.tagName.toLowerCase() === "ha-selector") {
+      control.dispatchEvent(new CustomEvent("value-changed", { detail: { value: "sensor.grid_total" }, bubbles: true }));
+    } else {
+      type(element, "grid_power_source_power", "sensor.grid_total");
+    }
+    save(element);
+    await settle();
+    expect(updates(hass)[0]).toMatchObject({
+      expected: { grid_power_source_power: "" },
+      changes: { grid_power_source_power: "sensor.grid_total" },
+    });
+  });
+
+  it("shows the detected total in the meter's card and the stored one in the field", async () => {
+    const { element } = await mounted({
+      get: "get_direct_total",
+      // The detected meter is offered (not yet in use), so its card is drawn.
+      patch: (answer) => {
+        const meters = (answer["config"] as any).site.detection.meters;
+        meters[0].applied = false;
+        return answer;
+      },
+    });
+    openSettings(element);
+    await settle();
+    edit(element, "site");
+    expect(field(element, "grid_power_source_power").value).toBe("sensor.tibber_power");
+    expect(field(element, "grid_power_source_power_export").value).toBe("sensor.tibber_power_production");
+    const meter = openDialog(element)?.querySelector<HTMLElement>("[data-detected-meter]");
+    expect(meter?.querySelector("[data-detect='gridPower']")?.textContent).toBe(
+      translate("en", "entity.detect.gridPower"),
+    );
+  });
+
 
   it("keeps the optional sources folded unless one is set", async () => {
     const { element } = await mounted({ get: "get_detected" });

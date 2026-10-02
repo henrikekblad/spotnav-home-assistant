@@ -385,6 +385,12 @@ def meter_notes(row: sd.MeterRow) -> str:
     if row.voltage_any_device:
         lines.append("Voltage is taken from the inverter, which is on another device of the same integration.")
     lines.extend(_WARNING_TEXT[code] for code in row.warnings if code in _WARNING_TEXT)
+    if row.totals:
+        pair = any(pattern.role == "grid_power_export" for pattern in row.totals)
+        lines.append(
+            "Total grid power for solar and hybrid: "
+            + ("an import and an export entity." if pair else "one signed entity.")
+        )
     behaviour = [sd.UPDATE_BEHAVIOUR[p] for p in row.platforms if p in sd.UPDATE_BEHAVIOUR]
     if behaviour and behaviour[0].interval_s > 0:
         lines.append(f"Updates about every {duration(behaviour[0].interval_s)}.")
@@ -433,6 +439,10 @@ def meters_section() -> list[str]:
         "Measurement is either direct (a current per phase) or derived (power and voltage per phase). "
         "Derived current is exact when the meter also reports its own current, apparent power or "
         "reactive power, and estimated from power with a power factor of 0.9 otherwise.",
+        "",
+        "Solar and hybrid need the grid's signed power. A derived site has it per phase; a direct site "
+        "has it only with the meter's total grid power, which the rows below mark where SpotNav detects "
+        "it. Without it, pick the meter's total power sensor yourself in the site editor.",
         "",
     ]
     lines += table(("Integration", "Measurement", "Sign handling", "Notes", "Verification"), rows)

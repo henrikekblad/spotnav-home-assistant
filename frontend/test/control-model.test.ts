@@ -180,19 +180,38 @@ describe("the strategy facts", () => {
     const model = modelFor("start_idle.json");
     expect(model.strategy.selected).toBe("Cheapest");
     expect(model.strategy.rows).toEqual([
-      { id: "cheapest", labelKey: "strategy.cheapest", available: true, reason: null },
+      { id: "cheapest", labelKey: "strategy.cheapest", available: true, reason: null, reasonCode: null },
       {
         id: "solar",
         labelKey: "strategy.solar",
         available: false,
         reason: "Requires solar-surplus measurement",
+        reasonCode: "needs_solar_surplus_measurement",
       },
       {
         id: "hybrid",
         labelKey: "strategy.hybrid",
         available: false,
         reason: "Requires solar and price control",
+        reasonCode: "needs_solar_and_price_control",
       },
+    ]);
+  });
+
+  it("words a direct site's missing total grid power, for solar and hybrid, and offers them on a site with it", () => {
+    const held = modelFor("cheapest_direct_site_admin.json");
+    expect(held.strategy.rows.map((row) => [row.id, row.available, row.reasonCode])).toEqual([
+      ["cheapest", true, null],
+      ["solar", false, "needs_total_grid_power"],
+      ["hybrid", false, "needs_total_grid_power"],
+    ]);
+    expect(held.strategy.rows[1]?.reason).toBe("Solar needs the meter's total grid power");
+
+    const offered = modelFor("solar_direct_site_with_total.json");
+    expect(offered.strategy.rows.map((row) => [row.id, row.available, row.reason])).toEqual([
+      ["cheapest", true, null],
+      ["solar", true, null],
+      ["hybrid", true, null],
     ]);
   });
 

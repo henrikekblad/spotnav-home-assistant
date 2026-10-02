@@ -417,6 +417,24 @@ describe("the strategy block", () => {
     }
   });
 
+  it("accepts the missing total grid power as the reason for either solar row", () => {
+    const hybrid = { strategy: "hybrid", available: false, reason: "needs_total_grid_power" };
+    const result = decode(
+      withStrategy({ selected: "cheapest", available: [selected(), solar("needs_total_grid_power"), hybrid] }),
+    );
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.value.strategy.rows.map((row) => row.reason)).toEqual([
+        null,
+        "needs_total_grid_power",
+        "needs_total_grid_power",
+      ]);
+    }
+    // It explains a held-back solar or hybrid row only, never a Cheapest one.
+    const cheapest = { strategy: "cheapest", available: false, reason: "needs_total_grid_power" };
+    expect(decode(withStrategy({ selected: "solar", available: [cheapest] })).ok).toBe(false);
+  });
+
   it("refuses a block whose keys are not exactly the contract's", () => {
     expect(decode(withStrategy({ selected: "cheapest", available: [] })).ok).toBe(false);
     expect(

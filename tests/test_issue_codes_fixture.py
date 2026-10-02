@@ -21,6 +21,7 @@ from custom_components.spotnav.planning.auto_controller import AutoReason, AutoS
 from custom_components.spotnav.vehicles.capability import HealthState
 from custom_components.spotnav.planning.hybrid_plan import HybridReason
 from custom_components.spotnav.pricing.price_refresh import RefreshReason, RefreshState
+from custom_components.spotnav.site.solar_capability import REASON_NEEDS_TOTAL_GRID_POWER
 from custom_components.spotnav.site.solar_surplus import SolarReason
 from custom_components.spotnav.planning.status_compose import STATUS_CODES, STATUS_TONES
 
@@ -56,7 +57,11 @@ def produced_codes() -> dict[str, Any]:
             ]
         ),
         "strategy_reasons": _sorted(
-            [dashboard_api.STRATEGY_SOLAR_REASON, dashboard_api.STRATEGY_HYBRID_REASON]
+            [
+                dashboard_api.STRATEGY_SOLAR_REASON,
+                dashboard_api.STRATEGY_HYBRID_REASON,
+                REASON_NEEDS_TOTAL_GRID_POWER,
+            ]
         ),
         "active_control_reasons": _sorted(
             [f"site_measurement_{state}" for state in get_args(HealthState) if state != "healthy"]

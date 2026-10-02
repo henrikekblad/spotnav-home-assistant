@@ -9,7 +9,9 @@
   (`site/solar_surplus.py`) on each of its recomputes. No timer is created here.
 * The observation adapter (`_build_observation`) reads signed grid power and voltage per phase from
   `SiteCapacityResult`'s diagnostic fields (never discarded merely for age) and gates them by
-  `phase_liveness` (usable only when `fresh` or `confirmed_unchanged`). The car's delivered current
+  `phase_liveness` (usable only when `fresh` or `confirmed_unchanged`). A direct site (current per
+  phase only) instead reads the meter's total grid power from the site controller (unknown unless fresh),
+  splits it over the charger's phases at the nominal voltage and caps it by each phase's fuse headroom. The car's delivered current
   comes from `SiteCapacityController.charger_measured_current`. The battery comes from
   `battery_aggregate_power`, usable only when fresh, with `battery_configured` set from whether an
   aggregate entity exists, never inferred from the reading itself.
@@ -29,17 +31,20 @@ from ..const import (
     CONF_ACTIVE_CONTROL_ENABLED,
     CONF_CHARGER_ENTRY_IDS,
     CONF_ENTRY_TYPE,
+    CONF_GRID_POWER_SOURCE,
     CONF_PHASE_WIRING,
     CONF_SOLAR_PRIORITY,
     DEFAULT_MIN_CURRENT_A,
     DEFAULT_SOLAR_PRIORITY,
     DOMAIN,
     ENTRY_TYPE_SITE,
+    MEASUREMENT_MODE_DIRECT,
 )
 from ..planning.auto_settings import AutoSettingsStore, STRATEGY_HYBRID, STRATEGY_SOLAR
 from ..runtime import charger_data, preview_for, site_controller_for
 from ..site.site_capacity import PhaseName, PHASES
 from ..site.site_capacity_controller import SiteCapacityController
+from ..site.solar_capability import solar_capability
 from ..site.solar_surplus import SolarConfig, SolarController, SolarObservation, SolarVerdict
 from .auto_execution import AutoExecutor
 from .controller import ChargingController
@@ -74,14 +79,16 @@ def site_controller_for_charger(hass: HomeAssistant, charger_entry_id: str) -> S
 
 
 def site_supports_solar(hass: HomeAssistant, charger_entry_id: str) -> bool:
-    """Whether this charger's site can run solar execution at all: a loaded site in
-    `derived_phase_current` mode, the one that produces the signed power and voltage readings
-    `_build_observation` needs.
+    """Whether this charger's site can run solar execution at all: a loaded site that knows the grid's
+    signed power, either per phase (`derived_phase_current` mode, with its voltages) or as the meter's
+    total on a site that reports only current (`site/solar_capability.py`).
     """
     site = site_controller_for_charger(hass, charger_entry_id)
     if site is None:
         return False
-    return site.config.get("measurement_mode") == "derived_phase_current"
+    return solar_capability(
+        site.config.get("measurement_mode"), site.config.get(CONF_GRID_POWER_SOURCE)
+    ).capable
 
 
 @dataclass(frozen=True, slots=True)
@@ -148,26 +155,78 @@ def _car_phases(site: SiteCapacityController, charger_entry_id: str) -> tuple[Ph
     return (phase,) if phase else ()
 
 
+#: The phase voltage assumed for a site with no voltage readings (direct measurement), the Nordic
+#: nominal one.
+NOMINAL_PHASE_VOLTAGE_V: Final = 230.0
+
+
+def _split_total(
+    total_w: float | None, car_phases: tuple[PhaseName, ...]
+) -> dict[PhaseName, float | None]:
+    """The meter's total grid power as the per-phase figures the surplus reasons with. The phases are
+    settled summed, so the total is spread evenly over the phases the charger uses (three: a third
+    each; one: the whole total on that phase) and the other phases carry nothing; the sum is the
+    total either way. An unknown total, or no known phase, is unknown on every phase.
+    """
+    if total_w is None or not car_phases:
+        return {phase: None for phase in PHASES}
+    share = total_w / len(car_phases)
+    return {phase: (share if phase in car_phases else 0.0) for phase in PHASES}
+
+
+def _fuse_caps(
+    result: Any,
+    car_phases: tuple[PhaseName, ...],
+    car_delivered_a: dict[PhaseName, float | None],
+) -> dict[PhaseName, float | None]:
+    """The most current the charger may draw on each of its phases: what it draws now plus the
+    phase's fuse headroom from the measured current. `None` where either is unknown.
+    """
+    caps: dict[PhaseName, float | None] = {}
+    for phase in car_phases:
+        delivered = car_delivered_a.get(phase)
+        headroom = result.phase_headroom_a.get(phase)
+        caps[phase] = None if delivered is None or headroom is None else delivered + headroom
+    return caps
+
+
 def _build_observation(
     site: SiteCapacityController, charger_entry_id: str, *, now: float
 ) -> SolarObservation:
     """One tick's `SolarObservation` from the site's computed result plus this charger's
     measured current.
+
+    A derived site reads the signed power and voltage of every phase. A direct site reads the
+    meter's total grid power (`SiteCapacityController.grid_total_reading`, unknown unless fresh),
+    splits it over the charger's phases at the nominal voltage and caps the result by each phase's
+    fuse headroom.
     """
     result = site.result
-    signed_grid_w: dict[PhaseName, float | None] = {
-        phase: _liveness_gated(result.phase_liveness, result.phase_signed_active_power_diagnostic_w, phase)
-        for phase in PHASES
-    }
-    voltage_v: dict[PhaseName, float | None] = {
-        phase: _liveness_gated(result.phase_liveness, result.phase_voltage_v, phase) for phase in PHASES
-    }
-
     car_phases = _car_phases(site, charger_entry_id)
     measured = site.charger_measured_current(charger_entry_id)
     car_delivered_a: dict[PhaseName, float | None] = {
         phase: (None if measured is None else measured.get(phase).value) for phase in car_phases
     }
+
+    phase_cap_a: dict[PhaseName, float | None] | None = None
+    if site.config.get("measurement_mode") == MEASUREMENT_MODE_DIRECT:
+        total_w, _state = site.grid_total_reading()
+        signed_grid_w: dict[PhaseName, float | None] = _split_total(total_w, car_phases)
+        voltage_v: dict[PhaseName, float | None] = {
+            phase: NOMINAL_PHASE_VOLTAGE_V for phase in PHASES
+        }
+        phase_cap_a = _fuse_caps(result, car_phases, car_delivered_a)
+    else:
+        signed_grid_w = {
+            phase: _liveness_gated(
+                result.phase_liveness, result.phase_signed_active_power_diagnostic_w, phase
+            )
+            for phase in PHASES
+        }
+        voltage_v = {
+            phase: _liveness_gated(result.phase_liveness, result.phase_voltage_v, phase)
+            for phase in PHASES
+        }
 
     battery_reading = site.battery_aggregate_power()
     battery_configured = battery_reading is not None
@@ -189,6 +248,7 @@ def _build_observation(
         battery_w=battery_w,
         car_phases=car_phases,
         battery_configured=battery_configured,
+        phase_cap_a=phase_cap_a,
     )
 
 

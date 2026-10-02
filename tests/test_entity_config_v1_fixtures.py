@@ -14,7 +14,7 @@ from typing import Any, Awaitable, Callable, Final
 
 from homeassistant.core import HomeAssistant
 
-from custom_components.spotnav.const import MEASUREMENT_MODE_DERIVED
+from custom_components.spotnav.const import CONF_GRID_POWER_SOURCE, MEASUREMENT_MODE_DERIVED
 from tests.helpers import add_ambiguous_vehicle_device
 from tests.test_vehicle_soc_command import set_message
 from tests.messages import get_message, register, update_entity_config_message
@@ -26,6 +26,29 @@ FIXTURE_DIR = Path(__file__).resolve().parent / "fixtures" / "entity_config" / "
 
 async def _get_direct(hass, ws, _token) -> dict[str, Any]:
     charger, _ = await setup_charger_and_site(hass, "get_direct")
+    return (await ws_call(await admin(hass, ws), get_message(charger.entry_id)))["result"]
+
+
+async def _get_direct_total(hass, ws, _token) -> dict[str, Any]:
+    """A direct site (per-phase current only) that carries the meter's total grid power as an
+    import/export pair: the two `grid_power_source_*` fields populated, and the detected Tibber Pulse
+    listing its total as `grid_power` and `grid_power_export` rows with no phase."""
+    from tests.site_registry import materialize
+    from tests.test_site_detection import tibber_pulse_with_production
+
+    made = materialize(hass, tibber_pulse_with_production())
+    direct = {phase: made[f"tibber_current_l{n}"] for phase, n in zip(("L1", "L2", "L3"), "123")}
+    charger, _ = await setup_charger_and_site(
+        hass,
+        "get_direct_total",
+        direct_entities=direct,
+        extra_data={
+            CONF_GRID_POWER_SOURCE: {
+                "power": made["tibber_power"],
+                "power_export": made["tibber_power_production"],
+            }
+        },
+    )
     return (await ws_call(await admin(hass, ws), get_message(charger.entry_id)))["result"]
 
 
@@ -241,6 +264,7 @@ Builder = Callable[..., Awaitable[dict[str, Any]]]
 
 ENTITY_CONFIG_V1_FIXTURES: Final[dict[str, Builder]] = {
     "get_direct.json": _get_direct,
+    "get_direct_total.json": _get_direct_total,
     "get_derived.json": _get_derived,
     "get_detected.json": _get_detected,
     "get_no_site.json": _get_no_site,

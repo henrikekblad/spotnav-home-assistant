@@ -23,6 +23,7 @@ from ..site.site_capacity import (
     MeasurementMode,
     SiteCalculationConfig,
 )
+from ..site.solar_capability import SolarCapability
 
 
 HealthState = Literal[
@@ -76,6 +77,10 @@ class SiteCapabilitySnapshot:
     site_measurement: MeasurementHealth
     charger_measurement: Mapping[str, ChargerMeasurementHealth]
     load_balancing: LoadBalancingCapability
+    # Whether solar and hybrid can run on this site's measurement, and the stable reason when not
+    # (`site/solar_capability.py`). The default is "not capable" with no reason, for a caller that
+    # never reported it.
+    solar: SolarCapability = SolarCapability(False)
 
 
 def build_capability_snapshot(
@@ -87,6 +92,7 @@ def build_capability_snapshot(
     membership_conflict_charger_ids: Sequence[str],
     charger_is_commandable: Mapping[str, bool] | None = None,
     active_control_enabled: bool = False,
+    solar: SolarCapability | None = None,
 ) -> SiteCapabilitySnapshot:
     """Build the snapshot. `requests` is what would be passed to `calculate_site_capacity` now.
 
@@ -147,6 +153,7 @@ def build_capability_snapshot(
         site_measurement=site_measurement,
         charger_measurement=charger_measurement,
         load_balancing=load_balancing,
+        solar=solar if solar is not None else SolarCapability(False),
     )
 
 

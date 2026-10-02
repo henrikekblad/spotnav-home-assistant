@@ -2211,12 +2211,12 @@
       },
       {
         "available": false,
-        "reason": "needs_solar_surplus_measurement",
+        "reason": "needs_total_grid_power",
         "strategy": "solar"
       },
       {
         "available": false,
-        "reason": "needs_solar_and_price_control",
+        "reason": "needs_total_grid_power",
         "strategy": "hybrid"
       }
     ],

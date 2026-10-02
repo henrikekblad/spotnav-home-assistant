@@ -285,6 +285,26 @@ const V7_EXPECTED: Record<string, ExpectedV7> = {
       writable: true,
     },
   },
+  "solar_direct_site_with_total.json": {
+    selected: "solar",
+    strategyState: {
+      kind: "solar",
+      state: "off",
+      reason: "off_no_surplus",
+      available_w: 0.0,
+      requested_a: null,
+      priority_effective: "battery_first",
+    },
+    site: {
+      name: "Site",
+      charger_count: 1,
+      solar_priority: "car_first",
+      forecastSelected: [],
+      forecastChoices: [],
+      activeControlReason: "no_commandable_charger",
+      writable: true,
+    },
+  },
   "solar_derived_site.json": {
     selected: "solar",
     strategyState: {
@@ -376,6 +396,11 @@ const V7_STATUS_EXPECTED: Record<string, { tone: string; codes: string[]; englis
     tone: "normal",
     codes: ["hybrid_grid"],
     english: "Hybrid · 20 kWh from grid 12:15–15:15",
+  },
+  "solar_direct_site_with_total.json": {
+    tone: "notice",
+    codes: ["settings_incomplete"],
+    english: "Finish setting up in Settings: price area, phases, charging current.",
   },
   "solar_derived_site.json": {
     tone: "notice",
@@ -849,9 +874,11 @@ const DERIVED = ["L1", "L2", "L3"].flatMap((phase) =>
 const DERIVED_REQUIRED = ["L1", "L2", "L3"].flatMap((phase) =>
   ["power", "voltage"].map((kind) => `derived_${phase}_${kind}`),
 );
-/** What follows the phase meters: the sign options, the battery sensors and the maximum age. */
+/** What follows the phase meters: the sign options, the meter's total grid power, the battery sensors and the maximum age. */
 const SITE_TAIL = [
   "site_current_signed",
+  "grid_power_source_power",
+  "grid_power_source_power_export",
   "grid_power_inverted",
   "battery_aggregate_power_entity",
   "battery_discharge_power_entity",
@@ -953,6 +980,21 @@ const ENTITY_CONFIG_V1_EXPECTED: Record<
       fields: [...CHARGER, ...SITE_FIXED, ...DIRECT, ...SITE_TAIL],
       mode: "direct_phase_current",
       chargeControl: "switch.get_direct_control",
+      currentLimit: null,
+      fuse: 25,
+      maxAge: 120,
+      siteChargers: 1,
+    },
+  },
+  "get_direct_total.json": {
+    ok: true,
+    code: null,
+    fieldErrors: [],
+    config: {
+      charger: "get_direct_total",
+      fields: [...CHARGER, ...SITE_FIXED, ...DIRECT, ...SITE_TAIL],
+      mode: "direct_phase_current",
+      chargeControl: "switch.get_direct_total_control",
       currentLimit: null,
       fuse: 25,
       maxAge: 120,

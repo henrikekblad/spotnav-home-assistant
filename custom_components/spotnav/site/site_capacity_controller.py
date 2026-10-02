@@ -32,6 +32,7 @@ from ..const import (
     CONF_DERIVED_ENTITIES,
     CONF_DIRECT_ENTITIES,
     CONF_GRID_POWER_INVERTED,
+    CONF_GRID_POWER_SOURCE,
     CONF_MAIN_FUSE_A,
     CONF_MAX_AGE_S,
     CONF_MEASURED_CURRENT_SOURCE,
@@ -66,8 +67,10 @@ from ..execution.yield_stepping import YieldConfig, YieldObservation, YieldStepp
 from ..planning.auto_settings import STRATEGY_HYBRID, STRATEGY_SOLAR
 from ..runtime import charger_data, controller_for, domain_data
 from ..vehicles.capability import build_capability_snapshot, SiteCapabilitySnapshot
+from .solar_capability import solar_capability
 from .measurement_source import (
     combine_power_pair,
+    grid_power_source_from_dict,
     PhaseMeasurementSource,
     read_phase_measurement,
     source_from_dict,
@@ -92,6 +95,7 @@ from .site_capacity import (
     ChargerRequest,
     classify_apparent_power,
     classify_current,
+    classify_phase_liveness,
     classify_power,
     classify_voltage,
     DerivedPhaseInput,
@@ -314,6 +318,9 @@ class SiteCapacityController:
             )
             if measured_source is not None:
                 entity_ids.update(_source_entity_ids(measured_source))
+        grid_total = grid_power_source_from_dict(self.config.get(CONF_GRID_POWER_SOURCE))
+        if grid_total is not None:
+            entity_ids.update(grid_total.entity_ids)
         battery_source = source_from_dict(self.config.get(CONF_BATTERY_PER_PHASE_SOURCE))
         if battery_source is not None:
             entity_ids.update(_source_entity_ids(battery_source))
@@ -1098,6 +1105,65 @@ class SiteCapacityController:
         phase_wiring: dict[str, dict[str, Any]] = self.config.get(CONF_PHASE_WIRING) or {}
         return self._read_charger_measured_current(phase_wiring.get(charger_entry_id) or {})
 
+    def grid_total_power(self) -> PhaseValue | None:
+        """The meter's total grid power, live: signed (positive = import) with its freshness.
+
+        `None` only when no total is configured (`CONF_GRID_POWER_SOURCE`); a configured one always
+        returns a `PhaseValue`, even if currently unusable. An import/export pair is import minus
+        export, and a missing or invalid half makes the whole value missing or invalid, never zero.
+        `CONF_GRID_POWER_INVERTED` negates it for an export-positive meter. Used by the solar
+        executor and diagnostics; never by the fuse protection, which stays per phase on the measured
+        currents.
+        """
+        source = grid_power_source_from_dict(self.config.get(CONF_GRID_POWER_SOURCE))
+        if source is None:
+            return None
+        return combine_power_pair(
+            self._power_phase_value(source.power),
+            self._power_phase_value(source.power_export) if source.power_export else None,
+            invert=bool(self.config.get(CONF_GRID_POWER_INVERTED, False)),
+        )
+
+    def grid_total_reading(self) -> tuple[float | None, str]:
+        """`(watts, state)` of the meter's total grid power, signed (positive = import).
+
+        `state` is `not_configured`, `missing`, `invalid`, `stale` or, for a usable reading, `fresh` or
+        `confirmed_unchanged` (as `classify_phase_liveness` grades the phases: a value Home Assistant
+        stopped updating but keeps hearing from is accepted). Watts only for a usable reading, so a
+        stale or missing total is unknown, never zero export.
+        """
+        total = self.grid_total_power()
+        if total is None:
+            return None, "not_configured"
+        if total.problem == "invalid":
+            return None, "invalid"
+        if total.problem is not None or total.value is None:
+            return None, "missing"
+        max_age_s = float(self.config.get(CONF_MAX_AGE_S, DEFAULT_MAX_AGE_S))
+        liveness = classify_phase_liveness(total.age_s, total.report_age_s, max_age_s)
+        if liveness in ("fresh", "confirmed_unchanged") and total.age_s is not None:
+            return total.value, liveness
+        return None, "stale"
+
+    def grid_power_snapshot(self) -> dict[str, Any]:
+        """The total grid power's diagnostics for the site sensor and the diagnostics dump: whether
+        and where it is configured, its value and age, and the export derived from it."""
+        source = grid_power_source_from_dict(self.config.get(CONF_GRID_POWER_SOURCE))
+        total = self.grid_total_power()
+        value_w, state = self.grid_total_reading()
+        return {
+            "configured": source is not None,
+            "power_entity_id": None if source is None else source.power,
+            "power_export_entity_id": None if source is None else source.power_export,
+            "inverted": bool(self.config.get(CONF_GRID_POWER_INVERTED, False)),
+            "state": state,
+            "value_w": value_w,
+            "age_s": None if total is None else total.age_s,
+            "export_w": None if value_w is None else max(0.0, -value_w),
+            "used_for_surplus": source is not None
+            and self.config.get(CONF_MEASUREMENT_MODE) == MEASUREMENT_MODE_DIRECT,
+        }
+
     def battery_aggregate_power(self) -> PhaseValue | None:
         """This site's `battery_aggregate_power_entity` reading, live: signed (positive = charging)
         with its freshness.
@@ -1162,6 +1228,9 @@ class SiteCapacityController:
             membership_conflict_charger_ids=[
                 conflict.charger_entry_id for conflict in self.membership_conflicts
             ],
+            solar=solar_capability(
+                self.config.get(CONF_MEASUREMENT_MODE), self.config.get(CONF_GRID_POWER_SOURCE)
+            ),
         )
 
     def _charger_requested_current(self, charger_entry_id: str) -> float | None:

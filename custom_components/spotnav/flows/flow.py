@@ -35,6 +35,7 @@ from ..const import (
     CONF_CURRENT_LIMIT,
     CONF_DERIVED_ENTITIES,
     CONF_DIRECT_ENTITIES,
+    CONF_GRID_POWER_SOURCE,
     CONF_ENERGY_REGISTER_ENTITY,
     CONF_ENERGY_REGISTER_IS_SESSION,
     CONF_ENTRY_TYPE,
@@ -78,7 +79,7 @@ from ..execution.charger_profiles import (
 )
 from ..repairs import async_sync_resolution_repairs
 from ..runtime import domain_data
-from ..site.measurement_source import source_to_dict
+from ..site.measurement_source import grid_power_source_to_dict, source_to_dict
 from ..site.site_join import queue_site_join
 from ..site.site_detection import (
     apply_battery_candidate,
@@ -1270,6 +1271,11 @@ class SpotNavChargingConfigFlow(ChargerWiringSteps, config_entries.ConfigFlow, d
             # so a stored copy could only go stale when the fuse is edited.
             CONF_YIELD_STEPPING_ENABLED: DEFAULT_YIELD_STEPPING_ENABLED,
         }
+        detected = self._site_detected
+        if detected is not None and detected.grid_power is not None and detected.mode == pending.mode:
+            # The detected meter's total grid power comes with it: solar and hybrid read it on a
+            # site whose phases report current only.
+            data[CONF_GRID_POWER_SOURCE] = grid_power_source_to_dict(detected.grid_power)
         if self._site_battery is not None:
             data = apply_battery_candidate(data, self._site_battery)
         name = self._site_basic.get("name") or default_site_name(self.hass)

@@ -89,6 +89,9 @@ def _site_diagnostics(hass: HomeAssistant, entry: ConfigEntry) -> dict[str, Any]
         "capability": None
         if controller is None
         else _capability_to_dict(controller.capability_snapshot),
+        # The meter's total grid power (what solar and hybrid read on a direct site): where it is
+        # configured, its value and age, and the export derived from it.
+        "grid_power": None if controller is None else controller.grid_power_snapshot(),
         "membership_conflicts": []
         if controller is None
         else [
@@ -383,4 +386,6 @@ def _capability_to_dict(snapshot: SiteCapabilitySnapshot) -> dict[str, Any]:
             for charger_entry_id, health in snapshot.charger_measurement.items()
         },
         "load_balancing": asdict(snapshot.load_balancing),
+        "solar_capable": snapshot.solar.capable,
+        "solar_reason": snapshot.solar.reason,
     }

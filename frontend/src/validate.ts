@@ -829,6 +829,7 @@ const UNAVAILABLE_STRATEGIES = ["solar", "hybrid"] as const;
 const STRATEGY_REASONS = [
   "needs_solar_surplus_measurement",
   "needs_solar_and_price_control",
+  "needs_total_grid_power",
 ] as const;
 
 /**

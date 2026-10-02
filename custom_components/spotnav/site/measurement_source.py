@@ -281,3 +281,44 @@ def source_from_dict(data: Any) -> PhaseMeasurementSource | None:
         trust_entity_unit_for_attributes=trust_flag,
         signed_current=signed_flag,
     )
+
+
+@dataclass(frozen=True, slots=True)
+class GridPowerSource:
+    """The meter's total grid power: one entity (`power`, signed) or an import/export pair
+    (`power` is the import half, `power_export` the export half; both >= 0). Read through
+    `combine_power_pair`, so a missing half makes the total missing, never zero."""
+
+    power: str
+    power_export: str | None = None
+
+    @property
+    def entity_ids(self) -> tuple[str, ...]:
+        return (self.power,) if self.power_export is None else (self.power, self.power_export)
+
+
+def grid_power_source_to_dict(source: GridPowerSource | None) -> dict[str, str] | None:
+    """Serialize a total grid power source for a config entry's `data`."""
+    if source is None:
+        return None
+    stored = {"power": source.power}
+    if source.power_export is not None:
+        stored["power_export"] = source.power_export
+    return stored
+
+
+def grid_power_source_from_dict(data: Any) -> GridPowerSource | None:
+    """The inverse of `grid_power_source_to_dict`. Storage is untrusted: anything that is not a mapping
+    with an entity-id shaped `power` (and, if present, an entity-id shaped `power_export`) is "not
+    configured"."""
+    if not isinstance(data, Mapping):
+        return None
+    power = data.get("power")
+    if not _is_valid_entity_id(power):
+        return None
+    export = data.get("power_export")
+    if export in (None, ""):
+        return GridPowerSource(power=power)
+    if not _is_valid_entity_id(export):
+        return None
+    return GridPowerSource(power=power, power_export=export)

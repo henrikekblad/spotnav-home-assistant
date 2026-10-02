@@ -26,6 +26,9 @@ setting because a battery regulating the grid to zero leaves export ~0.
 `priority_effective = "battery_first"`. With `battery_configured=True` it means
 the battery is unreadable, which is no basis (0.0 would hide a discharge).
 
+With the meter's total power instead of per-phase power (`SolarObservation.phase_cap_a`), the total is
+split evenly over the phases the car uses and each phase's figure is capped by its fuse headroom.
+
 Freshness: a `None` where a reading is needed means no basis this tick. From
 `off` or `arming` that means never start; a running charge is kept for
 `stale_grace_s`. Stale ticks neither advance nor reset the timers.
@@ -115,6 +118,12 @@ class SolarObservation:
     car_phases: tuple[PhaseName, ...]
     # Whether a battery entity exists (wiring fact from the caller, not inferred from `battery_w`).
     battery_configured: bool = False
+    # The most current this charger may draw on each phase, `None` for no cap. A site that reports only
+    # the meter's total power (no per-phase power) has the total split evenly over the phases the car
+    # uses, which says nothing about one phase being loaded: the cap is that phase's fuse headroom on
+    # top of the car's own draw. Given, it covers every phase of `car_phases`, and a `None` entry there
+    # is no basis.
+    phase_cap_a: Mapping[PhaseName, float | None] | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -219,6 +228,14 @@ class SolarController:
         if mean_voltage <= 0:
             return None
         available_a = available_w / (len(car_phases) * mean_voltage)
+        if observation.phase_cap_a is not None:
+            caps = [observation.phase_cap_a.get(phase) for phase in car_phases]
+            if any(cap is None for cap in caps):
+                return None
+            cap_a = min(caps)  # type: ignore[type-var]
+            if available_a > cap_a:
+                available_a = cap_a
+                available_w = cap_a * len(car_phases) * mean_voltage
 
         self._net_grid_w = net_grid_w
         self._export_w = export_w

@@ -153,7 +153,7 @@ class AutoStrategySelect(SpotNavAutoEntity, SelectEntity):
     """Which strategy Auto runs: `cheapest` always, `solar`/`hybrid` when the site can measure the
     signal both need.
 
-    `strategy_options_for` (which folds in `_site_has_derived_measurement`) is also what the
+    `strategy_options_for` (which folds in `_site_is_solar_capable`) is also what the
     dashboard reports as `strategy_options`, so the two cannot disagree. Writes through
     `SpotNavAutoEntity.async_write_settings`.
     """

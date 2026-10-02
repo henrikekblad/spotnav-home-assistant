@@ -1208,12 +1208,23 @@ export class SpotnavCard extends HTMLElement {
   }
 
   private openEntityEditor(scope: EntityScope): void {
-    const config = this.entityConfig;
-    if (config === null || !this.isAdmin) {
+    if (!this.isAdmin) {
       return;
     }
-    this.entityOperation += 1;
-    this.view?.openEntityEditor(scope, config);
+    const open = (): void => {
+      const config = this.entityConfig;
+      if (config === null) {
+        return;
+      }
+      this.entityOperation += 1;
+      this.view?.openEntityEditor(scope, config);
+    };
+    if (this.entityConfig !== null) {
+      open();
+      return;
+    }
+    // The strategy dialog links here before Settings has ever been opened, so nothing was read yet.
+    void this.loadEntityConfig().then(open);
   }
 
   /**

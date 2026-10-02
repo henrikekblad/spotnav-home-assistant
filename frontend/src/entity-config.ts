@@ -789,6 +789,11 @@ export function decodeVehicleAnswer(raw: unknown): VehicleDecodeResult {
 
 
 export const PHASES = ["L1", "L2", "L3"] as const;
+/**
+ * The meter's total grid power, which solar and hybrid read on a site whose phases report current only:
+ * one signed sensor, or with the second an import/export pair (the first is then the import).
+ */
+export const GRID_TOTAL_FIELDS = ["grid_power_source_power", "grid_power_source_power_export"] as const;
 /** Derived mode's readings per phase: the first two are required, the rest optional sharpeners. */
 export const DERIVED_KINDS = ["power", "voltage", "power_export", "reactive_power", "apparent_power", "current"] as const;
 export const DERIVED_REQUIRED_KINDS: readonly string[] = ["power", "voltage"];
@@ -1025,6 +1030,8 @@ const FIELD_LABELS: Record<string, TranslationKey> = {
   battery_power_inverted: "entity.field.batteryPowerInverted",
   site_current_signed: "entity.field.siteCurrentSigned",
   grid_power_inverted: "entity.field.gridPowerInverted",
+  grid_power_source_power: "entity.field.gridPowerSource",
+  grid_power_source_power_export: "entity.field.gridPowerSourceExport",
   max_age_s: "entity.field.maxAge",
 };
 
@@ -1122,6 +1129,8 @@ const FIELD_HELP: Record<string, TranslationKey> = {
   battery_power_inverted: "entity.help.batteryPowerInverted",
   site_current_signed: "entity.help.siteCurrentSigned",
   grid_power_inverted: "entity.help.gridPowerInverted",
+  grid_power_source_power: "entity.help.gridPowerSource",
+  grid_power_source_power_export: "entity.help.gridPowerSourceExport",
   max_age_s: "entity.help.maxAge",
 };
 

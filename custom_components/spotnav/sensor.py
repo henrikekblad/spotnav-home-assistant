@@ -327,6 +327,12 @@ class SiteStateEntity(SpotNavSiteEntity, SensorEntity):
             # load balancing is running. See vehicles/capability.py.
             "active_load_balancing_available": snapshot.load_balancing.active_available,
             "active_load_balancing_enabled": snapshot.load_balancing.active_enabled,
+            # Whether solar and hybrid can run on this site's measurement, and the stable reason when
+            # not (a direct site needs the meter's total grid power).
+            "solar_capable": snapshot.solar.capable,
+            "solar_reason": snapshot.solar.reason,
+            # The meter's total grid power, its age and the export derived from it.
+            "grid_power": self.controller.grid_power_snapshot(),
             # Yield-verified stepping (see `site_capacity_controller.yield_stepping_snapshot`): one
             # entry per associated charger, present even while the site option is off.
             "yield_stepping": self.controller.yield_stepping_snapshot,

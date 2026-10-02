@@ -2991,13 +2991,17 @@ var da = {
   "entity.flag.off": "Fra",
   "entity.field.siteCurrentSigned": "Netstrømmen har fortegn",
   "entity.field.gridPowerInverted": "Nettets effekt har eksport som positiv",
+  "entity.field.gridPowerSource": "Nettets samlede effekt (til sol)",
+  "entity.field.gridPowerSourceExport": "Samlet eksporteffekt (hvis adskilt)",
   "entity.field.batteryDischargePower": "Batteriets afladningseffekt",
   "entity.field.batteryPowerInverted": "Batteriets effekt har afladning som positiv",
   "entity.derived.powerExport": "Eksporteffekt",
   "entity.derived.apparentPower": "Tilsyneladende effekt",
   "entity.derived.current": "Strøm",
   "entity.help.siteCurrentSigned": "Slå til, hvis måleren angiver negativ strøm ved eksport. SpotNav bruger så strømmens størrelse, som er det, der belaster sikringen, i stedet for at afvise den.",
-  "entity.help.gridPowerInverted": "Slå til, hvis målerens effekt er positiv ved eksport (Huawei, SolarEdge, GoodWe og lignende). SpotNav læser så import som positiv.",
+  "entity.help.gridPowerInverted": "Slå til, hvis målerens effekt er positiv ved eksport (Huawei, SolarEdge, GoodWe og lignende). SpotNav læser så import som positiv. Det gælder også nettets samlede effekt.",
+  "entity.help.gridPowerSource": "Kræves til sol- og hybridopladning, når faserne kun angiver strøm.",
+  "entity.help.gridPowerSourceExport": "Kun hvis måleren angiver import og eksport som to sensorer: feltet ovenfor er så importen, og dette er eksporten.",
   "entity.help.batteryPowerInverted": "Slå til, hvis batteriets effekt er positiv ved afladning (Tesla, Fronius, Enphase, GoodWe og lignende). SpotNav læser så opladning som positiv.",
   "entity.help.batteryDischargePower": "Valgfrit. Kun for et batteri, der angiver opladning og afladning som to sensorer: dette er afladningen, og batterisensoren ovenfor er opladningen.",
   "entity.help.derivedPowerExport": "Valgfrit. Kun når måleren angiver import og eksport som to sensorer: effektsensoren ovenfor er så import, og denne er eksport.",
@@ -3023,6 +3027,7 @@ var da = {
   "entity.detect.derived": "Udledt af effekt og spænding",
   "entity.detect.signed": "Strøm med fortegn: læses som sin størrelse",
   "entity.detect.inverted": "Effekt med eksport som positiv: negeres",
+  "entity.detect.gridPower": "Nettets samlede effekt fundet: bruges til sol- og hybridopladning",
   "entity.detect.estimated": "Anslået strøm: ingen strøm, tilsyneladende eller reaktiv effekt fundet",
   "entity.detect.enable": "Aktiverer {count} entiteter, som integrationen leverer deaktiveret.",
   "entity.detect.battery.inverted": "Afladning som positiv: negeres",
@@ -3045,6 +3050,7 @@ var da = {
   "site.solar.change": "Skift solindstillinger",
   "site.solar.dialogTitle": "Solindstillinger",
   "strategy.setupSolar": "Indstil sol under Indstillinger",
+  "strategy.setupSite": "Åbn anlæggets indstillinger",
   "site.none": "Denne lader har intet anlæg.",
   "site.applies.one": "Gælder den ene lader på dette anlæg.",
   "site.applies.other": "Gælder alle {count} ladere på dette anlæg.",
@@ -3165,6 +3171,7 @@ var da = {
   "strategy.hybrid": "Hybrid",
   "strategy.reason.solar": "Kræver måling af soloverskud",
   "strategy.reason.hybrid": "Kræver sol- og prisstyring",
+  "strategy.reason.totalPower": "Sol kræver målerens samlede effekt på nettet",
   "strategy.status.solar.charging": "Sol · lader med {amps} A fra overskud",
   "strategy.status.solar.chargingUnknown": "Sol · lader fra overskud",
   "strategy.status.solar.arming": "Sol · overskud fundet, starter snart",
@@ -3516,13 +3523,17 @@ var en = {
   "entity.flag.off": "Off",
   "entity.field.siteCurrentSigned": "Grid current is signed",
   "entity.field.gridPowerInverted": "Grid power is export-positive",
+  "entity.field.gridPowerSource": "Total grid power (for solar)",
+  "entity.field.gridPowerSourceExport": "Total export power (if separate)",
   "entity.field.batteryDischargePower": "Battery discharge power",
   "entity.field.batteryPowerInverted": "Battery power is discharge-positive",
   "entity.derived.powerExport": "Export power",
   "entity.derived.apparentPower": "Apparent power",
   "entity.derived.current": "Current",
   "entity.help.siteCurrentSigned": "Turn on if the meter reports a negative current while exporting. SpotNav then uses the size of the current, which is what loads the fuse, instead of rejecting it.",
-  "entity.help.gridPowerInverted": "Turn on if the meter's power is positive while exporting (Huawei, SolarEdge, GoodWe and similar). SpotNav then reads import as positive.",
+  "entity.help.gridPowerInverted": "Turn on if the meter's power is positive while exporting (Huawei, SolarEdge, GoodWe and similar). SpotNav then reads import as positive. It also applies to the total grid power.",
+  "entity.help.gridPowerSource": "Needed for solar and hybrid charging when the phases only report current.",
+  "entity.help.gridPowerSourceExport": "Only if the meter reports import and export as two sensors: the field above is then the import and this is the export.",
   "entity.help.batteryPowerInverted": "Turn on if the battery's power is positive while discharging (Tesla, Fronius, Enphase, GoodWe and similar). SpotNav then reads charging as positive.",
   "entity.help.batteryDischargePower": "Optional. Only for a battery that reports charging and discharging as two sensors: this is the discharge one, and the battery power sensor above is the charge one.",
   "entity.help.derivedPowerExport": "Optional. Only when the meter reports import and export as two sensors: the power sensor above is then import and this one is export.",
@@ -3548,6 +3559,7 @@ var en = {
   "entity.detect.derived": "Derived from power and voltage",
   "entity.detect.signed": "Signed current: read as its size",
   "entity.detect.inverted": "Export-positive power: negated",
+  "entity.detect.gridPower": "Total grid power found: used for solar and hybrid charging",
   "entity.detect.estimated": "Estimated current: no current, apparent or reactive power found",
   "entity.detect.enable": "Enables {count} entities their integration ships disabled.",
   "entity.detect.battery.inverted": "Discharge-positive: negated",
@@ -3570,6 +3582,7 @@ var en = {
   "site.solar.change": "Change solar settings",
   "site.solar.dialogTitle": "Solar settings",
   "strategy.setupSolar": "Set up solar in Settings",
+  "strategy.setupSite": "Open the site settings",
   "site.none": "This charger has no site.",
   "site.applies.one": "Applies to the one charger on this site.",
   "site.applies.other": "Applies to all {count} chargers on this site.",
@@ -3704,6 +3717,7 @@ var en = {
   "strategy.hybrid": "Hybrid",
   "strategy.reason.solar": "Requires solar-surplus measurement",
   "strategy.reason.hybrid": "Requires solar and price control",
+  "strategy.reason.totalPower": "Solar needs the meter's total grid power",
   "advisory.vehicleNotRequestingCurrent": "Charging was started, but the vehicle is not requesting current. Check the vehicle's charging settings or reconnect the cable.",
   "control.noSettings": "This charger has no settings yet, so there is nothing to start or stop.",
   "control.pauseUnsettled": "A pause is stored but has not taken effect yet. Nothing is being applied.",
@@ -4041,13 +4055,17 @@ var fi = {
   "entity.flag.off": "Pois",
   "entity.field.siteCurrentSigned": "Verkkovirralla on etumerkki",
   "entity.field.gridPowerInverted": "Verkon teho on vienti positiivinen",
+  "entity.field.gridPowerSource": "Verkon kokonaisteho (aurinkoa varten)",
+  "entity.field.gridPowerSourceExport": "Viennin kokonaisteho (jos erillinen)",
   "entity.field.batteryDischargePower": "Akun purkausteho",
   "entity.field.batteryPowerInverted": "Akun teho on purku positiivinen",
   "entity.derived.powerExport": "Vientiteho",
   "entity.derived.apparentPower": "Näennäisteho",
   "entity.derived.current": "Virta",
   "entity.help.siteCurrentSigned": "Kytke päälle, jos mittari ilmoittaa negatiivisen virran viennin aikana. SpotNav käyttää silloin virran suuruutta, joka kuormittaa sulaketta, sen sijaan että hylkäisi sen.",
-  "entity.help.gridPowerInverted": "Kytke päälle, jos mittarin teho on positiivinen viennin aikana (Huawei, SolarEdge, GoodWe ja vastaavat). SpotNav lukee silloin oton positiivisena.",
+  "entity.help.gridPowerInverted": "Kytke päälle, jos mittarin teho on positiivinen viennin aikana (Huawei, SolarEdge, GoodWe ja vastaavat). SpotNav lukee silloin oton positiivisena. Se koskee myös verkon kokonaistehoa.",
+  "entity.help.gridPowerSource": "Tarvitaan aurinko- ja hybridilatauksessa, kun vaiheet ilmoittavat vain virran.",
+  "entity.help.gridPowerSourceExport": "Vain jos mittari ilmoittaa oton ja viennin kahtena anturina: yllä oleva kenttä on silloin otto ja tämä on vienti.",
   "entity.help.batteryPowerInverted": "Kytke päälle, jos akun teho on positiivinen purun aikana (Tesla, Fronius, Enphase, GoodWe ja vastaavat). SpotNav lukee silloin latauksen positiivisena.",
   "entity.help.batteryDischargePower": "Valinnainen. Vain akulle, joka ilmoittaa latauksen ja purun kahtena anturina: tämä on purku, ja yllä oleva akkuanturi on lataus.",
   "entity.help.derivedPowerExport": "Valinnainen. Vain kun mittari ilmoittaa oton ja viennin kahtena anturina: yllä oleva tehoanturi on silloin otto ja tämä on vienti.",
@@ -4073,6 +4091,7 @@ var fi = {
   "entity.detect.derived": "Johdettu tehosta ja jännitteestä",
   "entity.detect.signed": "Virralla on etumerkki: luetaan suuruutena",
   "entity.detect.inverted": "Teho vienti positiivinen: käännetään",
+  "entity.detect.gridPower": "Verkon kokonaisteho löytyi: käytetään aurinko- ja hybridilatauksessa",
   "entity.detect.estimated": "Arvioitu virta: virtaa, näennäis- tai loistehoa ei löytynyt",
   "entity.detect.enable": "Ottaa käyttöön {count} entiteettiä, jotka integraatio toimittaa poissa käytöstä.",
   "entity.detect.battery.inverted": "Purku positiivinen: käännetään",
@@ -4095,6 +4114,7 @@ var fi = {
   "site.solar.change": "Muuta aurinkoasetuksia",
   "site.solar.dialogTitle": "Aurinkoasetukset",
   "strategy.setupSolar": "Määritä aurinko asetuksissa",
+  "strategy.setupSite": "Avaa laitoksen asetukset",
   "site.none": "Tällä laturilla ei ole kohdetta.",
   "site.applies.one": "Koskee tämän kohteen ainoaa laturia.",
   "site.applies.other": "Koskee kaikkia {count} laturia tässä kohteessa.",
@@ -4215,6 +4235,7 @@ var fi = {
   "strategy.hybrid": "Hybridi",
   "strategy.reason.solar": "Vaatii aurinkoylijäämän mittauksen",
   "strategy.reason.hybrid": "Vaatii aurinko- ja hintaohjauksen",
+  "strategy.reason.totalPower": "Aurinko vaatii mittarin verkon kokonaistehon",
   "strategy.status.solar.charging": "Aurinko · lataa {amps} A ylijäämästä",
   "strategy.status.solar.chargingUnknown": "Aurinko · lataa ylijäämästä",
   "strategy.status.solar.arming": "Aurinko · ylijäämää löytyi, käynnistyy pian",
@@ -4566,13 +4587,17 @@ var nb = {
   "entity.flag.off": "Av",
   "entity.field.siteCurrentSigned": "Nettstrømmen har fortegn",
   "entity.field.gridPowerInverted": "Nettets effekt har eksport som positiv",
+  "entity.field.gridPowerSource": "Nettets samlede effekt (for sol)",
+  "entity.field.gridPowerSourceExport": "Samlet eksporteffekt (hvis separat)",
   "entity.field.batteryDischargePower": "Batteriets utladingseffekt",
   "entity.field.batteryPowerInverted": "Batteriets effekt har utlading som positiv",
   "entity.derived.powerExport": "Eksporteffekt",
   "entity.derived.apparentPower": "Tilsynelatende effekt",
   "entity.derived.current": "Strøm",
   "entity.help.siteCurrentSigned": "Slå på hvis måleren oppgir negativ strøm ved eksport. SpotNav bruker da strømmens størrelse, som er det som belaster sikringen, i stedet for å avvise den.",
-  "entity.help.gridPowerInverted": "Slå på hvis målerens effekt er positiv ved eksport (Huawei, SolarEdge, GoodWe og lignende). SpotNav leser da import som positiv.",
+  "entity.help.gridPowerInverted": "Slå på hvis målerens effekt er positiv ved eksport (Huawei, SolarEdge, GoodWe og lignende). SpotNav leser da import som positiv. Det gjelder også nettets samlede effekt.",
+  "entity.help.gridPowerSource": "Trengs for sol- og hybridlading når fasene bare oppgir strøm.",
+  "entity.help.gridPowerSourceExport": "Bare hvis måleren oppgir import og eksport som to sensorer: feltet over er da importen, og dette er eksporten.",
   "entity.help.batteryPowerInverted": "Slå på hvis batteriets effekt er positiv ved utlading (Tesla, Fronius, Enphase, GoodWe og lignende). SpotNav leser da lading som positiv.",
   "entity.help.batteryDischargePower": "Valgfritt. Bare for et batteri som oppgir lading og utlading som to sensorer: dette er utladingen, og batterisensoren over er ladingen.",
   "entity.help.derivedPowerExport": "Valgfritt. Bare når måleren oppgir import og eksport som to sensorer: effektsensoren over er da import og denne er eksport.",
@@ -4598,6 +4623,7 @@ var nb = {
   "entity.detect.derived": "Utledet fra effekt og spenning",
   "entity.detect.signed": "Strøm med fortegn: leses som sin størrelse",
   "entity.detect.inverted": "Effekt med eksport som positiv: negeres",
+  "entity.detect.gridPower": "Nettets samlede effekt funnet: brukes til sol- og hybridlading",
   "entity.detect.estimated": "Anslått strøm: ingen strøm, tilsynelatende eller reaktiv effekt funnet",
   "entity.detect.enable": "Aktiverer {count} entiteter integrasjonen leverer deaktivert.",
   "entity.detect.battery.inverted": "Utlading som positiv: negeres",
@@ -4620,6 +4646,7 @@ var nb = {
   "site.solar.change": "Endre solinnstillinger",
   "site.solar.dialogTitle": "Solinnstillinger",
   "strategy.setupSolar": "Sett opp sol under Innstillinger",
+  "strategy.setupSite": "Åpne anleggets innstillinger",
   "site.none": "Denne laderen har ikke noe anlegg.",
   "site.applies.one": "Gjelder den ene laderen på dette anlegget.",
   "site.applies.other": "Gjelder alle {count} ladere på dette anlegget.",
@@ -4740,6 +4767,7 @@ var nb = {
   "strategy.hybrid": "Hybrid",
   "strategy.reason.solar": "Krever måling av soloverskudd",
   "strategy.reason.hybrid": "Krever sol- og prisstyring",
+  "strategy.reason.totalPower": "Sol krever målerens samlede effekt på nettet",
   "strategy.status.solar.charging": "Sol · lader med {amps} A fra overskudd",
   "strategy.status.solar.chargingUnknown": "Sol · lader fra overskudd",
   "strategy.status.solar.arming": "Sol · overskudd funnet, starter snart",
@@ -5091,13 +5119,17 @@ var sv = {
   "entity.flag.off": "Av",
   "entity.field.siteCurrentSigned": "Nätströmmen är teckenmärkt",
   "entity.field.gridPowerInverted": "Nätets effekt har export som positiv",
+  "entity.field.gridPowerSource": "Nätets totala effekt (för sol)",
+  "entity.field.gridPowerSourceExport": "Total exporteffekt (om separat)",
   "entity.field.batteryDischargePower": "Batteriets urladdningseffekt",
   "entity.field.batteryPowerInverted": "Batteriets effekt har urladdning som positiv",
   "entity.derived.powerExport": "Exporteffekt",
   "entity.derived.apparentPower": "Skenbar effekt",
   "entity.derived.current": "Ström",
   "entity.help.siteCurrentSigned": "Slå på om mätaren anger negativ ström vid export. SpotNav använder då strömmens storlek, som är det som belastar säkringen, i stället för att avvisa den.",
-  "entity.help.gridPowerInverted": "Slå på om mätarens effekt är positiv vid export (Huawei, SolarEdge, GoodWe och liknande). SpotNav läser då import som positiv.",
+  "entity.help.gridPowerInverted": "Slå på om mätarens effekt är positiv vid export (Huawei, SolarEdge, GoodWe och liknande). SpotNav läser då import som positiv. Det gäller även nätets totala effekt.",
+  "entity.help.gridPowerSource": "Behövs för sol- och hybridladdning när faserna bara anger ström.",
+  "entity.help.gridPowerSourceExport": "Bara om mätaren anger import och export som två sensorer: fältet ovan är då importen och det här är exporten.",
   "entity.help.batteryPowerInverted": "Slå på om batteriets effekt är positiv vid urladdning (Tesla, Fronius, Enphase, GoodWe och liknande). SpotNav läser då laddning som positiv.",
   "entity.help.batteryDischargePower": "Valfritt. Bara för ett batteri som anger laddning och urladdning som två sensorer: det här är urladdningen, och batterisensorn ovan är laddningen.",
   "entity.help.derivedPowerExport": "Valfritt. Bara när mätaren anger import och export som två sensorer: effektsensorn ovan är då import och den här är export.",
@@ -5123,6 +5155,7 @@ var sv = {
   "entity.detect.derived": "Räknas fram ur effekt och spänning",
   "entity.detect.signed": "Teckenmärkt ström: läses som sin storlek",
   "entity.detect.inverted": "Effekt med export som positiv: negeras",
+  "entity.detect.gridPower": "Total näteffekt hittad: används för sol- och hybridladdning",
   "entity.detect.estimated": "Uppskattad ström: ingen ström, skenbar eller reaktiv effekt hittades",
   "entity.detect.enable": "Aktiverar {count} entiteter som integrationen levererar avaktiverade.",
   "entity.detect.battery.inverted": "Urladdning som positiv: negeras",
@@ -5145,6 +5178,7 @@ var sv = {
   "site.solar.change": "Ändra solinställningar",
   "site.solar.dialogTitle": "Solinställningar",
   "strategy.setupSolar": "Ställ in sol under Inställningar",
+  "strategy.setupSite": "Öppna anläggningens inställningar",
   "site.none": "Den här laddaren har ingen anläggning.",
   "site.applies.one": "Gäller den enda laddaren på den här anläggningen.",
   "site.applies.other": "Gäller alla {count} laddare på den här anläggningen.",
@@ -5265,6 +5299,7 @@ var sv = {
   "strategy.hybrid": "Hybrid",
   "strategy.reason.solar": "Kräver mätning av solöverskott",
   "strategy.reason.hybrid": "Kräver sol- och prisstyrning",
+  "strategy.reason.totalPower": "Sol kräver mätarens totala näteffekt",
   "strategy.status.solar.charging": "Sol · laddar med {amps} A från överskott",
   "strategy.status.solar.chargingUnknown": "Sol · laddar från överskott",
   "strategy.status.solar.arming": "Sol · överskott hittat, startar snart",
@@ -6494,7 +6529,8 @@ var STRATEGIES2 = ["cheapest", "solar", "hybrid"];
 var UNAVAILABLE_STRATEGIES = ["solar", "hybrid"];
 var STRATEGY_REASONS = [
   "needs_solar_surplus_measurement",
-  "needs_solar_and_price_control"
+  "needs_solar_and_price_control",
+  "needs_total_grid_power"
 ];
 var IMMEDIATE_ACTIONS = [ACTION_START, ACTION_STOP, "none"];
 var AUTOMATIC_ACTIONS = [ACTION_PAUSE, ACTION_RESUME, "none"];
@@ -7397,7 +7433,8 @@ var STRATEGY_KEYS = {
 };
 var STRATEGY_REASON_KEYS = {
   needs_solar_surplus_measurement: "strategy.reason.solar",
-  needs_solar_and_price_control: "strategy.reason.hybrid"
+  needs_solar_and_price_control: "strategy.reason.hybrid",
+  needs_total_grid_power: "strategy.reason.totalPower"
 };
 function controlNotice(language, reason, executionError) {
   if (reason !== null) {
@@ -7476,7 +7513,8 @@ function strategyFactsFor(dashboard, language) {
       id: row.strategy,
       labelKey: STRATEGY_KEYS[row.strategy] ?? "strategy.cheapest",
       available: row.available,
-      reason: row.reason === null ? null : translate(language, STRATEGY_REASON_KEYS[row.reason] ?? "issue.unknown")
+      reason: row.reason === null ? null : translate(language, STRATEGY_REASON_KEYS[row.reason] ?? "issue.unknown"),
+      reasonCode: row.reason
     }))
   };
 }
@@ -8152,6 +8190,7 @@ function decodeVehicleAnswer(raw) {
   }
 }
 var PHASES = ["L1", "L2", "L3"];
+var GRID_TOTAL_FIELDS = ["grid_power_source_power", "grid_power_source_power_export"];
 var DERIVED_KINDS = ["power", "voltage", "power_export", "reactive_power", "apparent_power", "current"];
 var DERIVED_REQUIRED_KINDS = ["power", "voltage"];
 var DERIVED_OPTIONAL_KINDS = DERIVED_KINDS.filter(
@@ -8322,6 +8361,8 @@ var FIELD_LABELS = {
   battery_power_inverted: "entity.field.batteryPowerInverted",
   site_current_signed: "entity.field.siteCurrentSigned",
   grid_power_inverted: "entity.field.gridPowerInverted",
+  grid_power_source_power: "entity.field.gridPowerSource",
+  grid_power_source_power_export: "entity.field.gridPowerSourceExport",
   max_age_s: "entity.field.maxAge"
 };
 function fieldLabelKey(field2) {
@@ -8399,6 +8440,8 @@ var FIELD_HELP = {
   battery_power_inverted: "entity.help.batteryPowerInverted",
   site_current_signed: "entity.help.siteCurrentSigned",
   grid_power_inverted: "entity.help.gridPowerInverted",
+  grid_power_source_power: "entity.help.gridPowerSource",
+  grid_power_source_power_export: "entity.help.gridPowerSourceExport",
   max_age_s: "entity.help.maxAge"
 };
 var DERIVED_HELP = {
@@ -8894,6 +8937,9 @@ function entityEditorBody(doc, language, input, handlers, idPrefix) {
     if (meter.powerInverted) {
       card.append(line(translate(language, "entity.detect.inverted"), "inverted"));
     }
+    if (meter.entities.some((entity) => entity.role === "grid_power")) {
+      card.append(line(translate(language, "entity.detect.gridPower"), "gridPower"));
+    }
     if (meter.estimated) {
       const estimated = line(translate(language, "entity.detect.estimated"), "estimated");
       estimated.className = VISUAL_CLASSES.entityWarning;
@@ -8993,9 +9039,11 @@ function entityEditorBody(doc, language, input, handlers, idPrefix) {
         const phaseHelp = element(doc, "div");
         phaseHelp.dataset["help"] = "phases";
         const helpKeys = mode === MEASUREMENT_DERIVED ? ["entity.help.derivedPower", "entity.help.derivedVoltage"] : ["entity.help.phaseDirect"];
-        const inverted = body.querySelector('[data-field-block="grid_power_inverted"]');
-        if (inverted !== null) {
-          inverted.hidden = mode !== MEASUREMENT_DERIVED;
+        for (const name of GRID_TOTAL_FIELDS) {
+          const total = body.querySelector(`[data-field-block="${name}"]`);
+          if (total !== null) {
+            total.hidden = mode === MEASUREMENT_DERIVED;
+          }
         }
         for (const key of helpKeys) {
           phaseHelp.append(element(doc, "p", VISUAL_CLASSES.entityHelp, translate(language, key)));
@@ -9066,6 +9114,7 @@ function entityEditorBody(doc, language, input, handlers, idPrefix) {
       body.append(phases);
       for (const name of [
         "site_current_signed",
+        ...GRID_TOTAL_FIELDS,
         "grid_power_inverted",
         "battery_aggregate_power_entity",
         "battery_discharge_power_entity",
@@ -10860,6 +10909,7 @@ function bannerRepeatsStatus(model, severity) {
   return model.issues.every((issue) => shown.includes(strip(translate(model.language, issue.textKey, issue.params))));
 }
 var SOLAR_SETUP_ROWS = /* @__PURE__ */ new Set(["solar", "hybrid"]);
+var STRATEGY_NEEDS_TOTAL_POWER = "needs_total_grid_power";
 function issueCountText(language, count) {
   const key = pluralForm(language, count) === "one" ? "issue.count.one" : "issue.count.other";
   return translate(language, key, { count: String(count) });
@@ -11856,7 +11906,7 @@ function createCardView(input) {
       item.append(button);
       if (row.reason !== null) {
         item.append(element6(doc, "span", VISUAL_CLASSES.strategyReason, row.reason));
-        if (!row.available && model.site !== null && SOLAR_SETUP_ROWS.has(row.id)) {
+        if (!row.available && model.site !== null && SOLAR_SETUP_ROWS.has(row.id) && row.reasonCode !== STRATEGY_NEEDS_TOTAL_POWER) {
           const link = element6(doc, "button", VISUAL_CLASSES.strategyLink, translate(model.language, "strategy.setupSolar"));
           link.type = "button";
           link.dataset["action"] = "setup-solar";
@@ -11866,6 +11916,17 @@ function createCardView(input) {
             openSettingsOverview();
             overviewBodyNode?.querySelector("[data-section='solar']")?.scrollIntoView?.({ block: "nearest" });
             overviewBodyNode?.querySelector("[data-edit-solar]")?.focus();
+          });
+          item.append(link);
+        }
+        if (!row.available && row.reasonCode === STRATEGY_NEEDS_TOTAL_POWER && input.isAdmin) {
+          const link = element6(doc, "button", VISUAL_CLASSES.strategyLink, translate(model.language, "strategy.setupSite"));
+          link.type = "button";
+          link.dataset["action"] = "setup-site";
+          link.addEventListener("click", () => {
+            strategyDialog.hide({ restoreFocus: false });
+            vehicleDialog.hide({ restoreFocus: false });
+            input.onOpenEntityEditor?.("site");
           });
           item.append(link);
         }
@@ -14102,12 +14163,22 @@ var SpotnavCard = class extends HTMLElement {
     }
   }
   openEntityEditor(scope) {
-    const config = this.entityConfig;
-    if (config === null || !this.isAdmin) {
+    if (!this.isAdmin) {
       return;
     }
-    this.entityOperation += 1;
-    this.view?.openEntityEditor(scope, config);
+    const open = () => {
+      const config = this.entityConfig;
+      if (config === null) {
+        return;
+      }
+      this.entityOperation += 1;
+      this.view?.openEntityEditor(scope, config);
+    };
+    if (this.entityConfig !== null) {
+      open();
+      return;
+    }
+    void this.loadEntityConfig().then(open);
   }
   /**
    * One Save of one group: only changed fields, `expected` from the configuration last read, one request,

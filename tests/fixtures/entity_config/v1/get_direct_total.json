@@ -1,7 +1,7 @@
 {
   "api_version": 1,
   "config": {
-    "charger_id": "get_derived",
+    "charger_id": "get_direct_total",
     "control": {
       "capabilities": {
         "reads_charging_state": false,
@@ -35,7 +35,7 @@
       },
       "start_stop": {
         "entity_ids": [
-          "switch.get_derived_control"
+          "switch.get_direct_total_control"
         ],
         "inverted": false,
         "kind": "switch",
@@ -50,13 +50,13 @@
           "switch"
         ],
         "current": {
-          "entity_id": "switch.get_derived_control",
+          "entity_id": "switch.get_direct_total_control",
           "exists": true,
-          "friendly_name": "Control get_derived"
+          "friendly_name": "Control get_direct_total"
         },
         "effective": {
-          "entity_id": "switch.get_derived_control",
-          "friendly_name": "Control get_derived",
+          "entity_id": "switch.get_direct_total_control",
+          "friendly_name": "Control get_direct_total",
           "source": "configured"
         },
         "field": "charge_control",
@@ -126,81 +126,29 @@
         "kind": "enum",
         "required": true,
         "scope": "site",
-        "value": "derived_phase_current",
+        "value": "direct_phase_current",
         "writable": true
       },
       {
         "allowed_device_classes": [
-          "power"
+          "current"
         ],
         "allowed_domains": [
           "sensor"
         ],
-        "current": null,
-        "effective": null,
-        "field": "derived_L1_power",
+        "current": {
+          "entity_id": "sensor.tibber_current_l1",
+          "exists": true,
+          "friendly_name": "tibber current l1"
+        },
+        "effective": {
+          "entity_id": "sensor.tibber_current_l1",
+          "friendly_name": "tibber current l1",
+          "source": "configured"
+        },
+        "field": "direct_L1",
         "kind": "entity",
         "required": true,
-        "scope": "site",
-        "writable": true
-      },
-      {
-        "allowed_device_classes": [
-          "voltage"
-        ],
-        "allowed_domains": [
-          "sensor"
-        ],
-        "current": null,
-        "effective": null,
-        "field": "derived_L1_voltage",
-        "kind": "entity",
-        "required": true,
-        "scope": "site",
-        "writable": true
-      },
-      {
-        "allowed_device_classes": [
-          "power"
-        ],
-        "allowed_domains": [
-          "sensor"
-        ],
-        "current": null,
-        "effective": null,
-        "field": "derived_L1_power_export",
-        "kind": "entity",
-        "required": false,
-        "scope": "site",
-        "writable": true
-      },
-      {
-        "allowed_device_classes": [
-          "reactive_power"
-        ],
-        "allowed_domains": [
-          "sensor"
-        ],
-        "current": null,
-        "effective": null,
-        "field": "derived_L1_reactive_power",
-        "kind": "entity",
-        "required": false,
-        "scope": "site",
-        "writable": true
-      },
-      {
-        "allowed_device_classes": [
-          "apparent_power"
-        ],
-        "allowed_domains": [
-          "sensor"
-        ],
-        "current": null,
-        "effective": null,
-        "field": "derived_L1_apparent_power",
-        "kind": "entity",
-        "required": false,
         "scope": "site",
         "writable": true
       },
@@ -211,86 +159,19 @@
         "allowed_domains": [
           "sensor"
         ],
-        "current": null,
-        "effective": null,
-        "field": "derived_L1_current",
-        "kind": "entity",
-        "required": false,
-        "scope": "site",
-        "writable": true
-      },
-      {
-        "allowed_device_classes": [
-          "power"
-        ],
-        "allowed_domains": [
-          "sensor"
-        ],
-        "current": null,
-        "effective": null,
-        "field": "derived_L2_power",
+        "current": {
+          "entity_id": "sensor.tibber_current_l2",
+          "exists": true,
+          "friendly_name": "tibber current l2"
+        },
+        "effective": {
+          "entity_id": "sensor.tibber_current_l2",
+          "friendly_name": "tibber current l2",
+          "source": "configured"
+        },
+        "field": "direct_L2",
         "kind": "entity",
         "required": true,
-        "scope": "site",
-        "writable": true
-      },
-      {
-        "allowed_device_classes": [
-          "voltage"
-        ],
-        "allowed_domains": [
-          "sensor"
-        ],
-        "current": null,
-        "effective": null,
-        "field": "derived_L2_voltage",
-        "kind": "entity",
-        "required": true,
-        "scope": "site",
-        "writable": true
-      },
-      {
-        "allowed_device_classes": [
-          "power"
-        ],
-        "allowed_domains": [
-          "sensor"
-        ],
-        "current": null,
-        "effective": null,
-        "field": "derived_L2_power_export",
-        "kind": "entity",
-        "required": false,
-        "scope": "site",
-        "writable": true
-      },
-      {
-        "allowed_device_classes": [
-          "reactive_power"
-        ],
-        "allowed_domains": [
-          "sensor"
-        ],
-        "current": null,
-        "effective": null,
-        "field": "derived_L2_reactive_power",
-        "kind": "entity",
-        "required": false,
-        "scope": "site",
-        "writable": true
-      },
-      {
-        "allowed_device_classes": [
-          "apparent_power"
-        ],
-        "allowed_domains": [
-          "sensor"
-        ],
-        "current": null,
-        "effective": null,
-        "field": "derived_L2_apparent_power",
-        "kind": "entity",
-        "required": false,
         "scope": "site",
         "writable": true
       },
@@ -301,101 +182,19 @@
         "allowed_domains": [
           "sensor"
         ],
-        "current": null,
-        "effective": null,
-        "field": "derived_L2_current",
-        "kind": "entity",
-        "required": false,
-        "scope": "site",
-        "writable": true
-      },
-      {
-        "allowed_device_classes": [
-          "power"
-        ],
-        "allowed_domains": [
-          "sensor"
-        ],
-        "current": null,
-        "effective": null,
-        "field": "derived_L3_power",
+        "current": {
+          "entity_id": "sensor.tibber_current_l3",
+          "exists": true,
+          "friendly_name": "tibber current l3"
+        },
+        "effective": {
+          "entity_id": "sensor.tibber_current_l3",
+          "friendly_name": "tibber current l3",
+          "source": "configured"
+        },
+        "field": "direct_L3",
         "kind": "entity",
         "required": true,
-        "scope": "site",
-        "writable": true
-      },
-      {
-        "allowed_device_classes": [
-          "voltage"
-        ],
-        "allowed_domains": [
-          "sensor"
-        ],
-        "current": null,
-        "effective": null,
-        "field": "derived_L3_voltage",
-        "kind": "entity",
-        "required": true,
-        "scope": "site",
-        "writable": true
-      },
-      {
-        "allowed_device_classes": [
-          "power"
-        ],
-        "allowed_domains": [
-          "sensor"
-        ],
-        "current": null,
-        "effective": null,
-        "field": "derived_L3_power_export",
-        "kind": "entity",
-        "required": false,
-        "scope": "site",
-        "writable": true
-      },
-      {
-        "allowed_device_classes": [
-          "reactive_power"
-        ],
-        "allowed_domains": [
-          "sensor"
-        ],
-        "current": null,
-        "effective": null,
-        "field": "derived_L3_reactive_power",
-        "kind": "entity",
-        "required": false,
-        "scope": "site",
-        "writable": true
-      },
-      {
-        "allowed_device_classes": [
-          "apparent_power"
-        ],
-        "allowed_domains": [
-          "sensor"
-        ],
-        "current": null,
-        "effective": null,
-        "field": "derived_L3_apparent_power",
-        "kind": "entity",
-        "required": false,
-        "scope": "site",
-        "writable": true
-      },
-      {
-        "allowed_device_classes": [
-          "current"
-        ],
-        "allowed_domains": [
-          "sensor"
-        ],
-        "current": null,
-        "effective": null,
-        "field": "derived_L3_current",
-        "kind": "entity",
-        "required": false,
         "scope": "site",
         "writable": true
       },
@@ -414,8 +213,16 @@
         "allowed_domains": [
           "sensor"
         ],
-        "current": null,
-        "effective": null,
+        "current": {
+          "entity_id": "sensor.tibber_power",
+          "exists": true,
+          "friendly_name": "tibber power"
+        },
+        "effective": {
+          "entity_id": "sensor.tibber_power",
+          "friendly_name": "tibber power",
+          "source": "configured"
+        },
         "field": "grid_power_source_power",
         "kind": "entity",
         "required": false,
@@ -429,8 +236,16 @@
         "allowed_domains": [
           "sensor"
         ],
-        "current": null,
-        "effective": null,
+        "current": {
+          "entity_id": "sensor.tibber_power_production",
+          "exists": true,
+          "friendly_name": "tibber power production"
+        },
+        "effective": {
+          "entity_id": "sensor.tibber_power_production",
+          "friendly_name": "tibber power production",
+          "source": "configured"
+        },
         "field": "grid_power_source_power_export",
         "kind": "entity",
         "required": false,
@@ -499,7 +314,7 @@
         "batteries": [],
         "meters": [
           {
-            "applied": false,
+            "applied": true,
             "confidence": "high",
             "current_signed": false,
             "disabled_entities": [],
@@ -553,12 +368,12 @@
       "measurement": {
         "assumed_power_factor": null,
         "basis": {
-          "L1": null,
-          "L2": null,
-          "L3": null
+          "L1": "measured",
+          "L2": "measured",
+          "L3": "measured"
         },
         "current_estimated": false,
-        "mode": "derived_phase_current"
+        "mode": "direct_phase_current"
       },
       "name": "Site",
       "warnings": []

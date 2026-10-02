@@ -13,6 +13,7 @@ from dataclasses import dataclass, field, replace
 import pytest
 
 from custom_components.spotnav.const import MEASUREMENT_MODE_DERIVED, MEASUREMENT_MODE_DIRECT
+from custom_components.spotnav.site.measurement_source import GridPowerSource
 from custom_components.spotnav.site.site_detection import (
     apply_battery_candidate,
     apply_meter_candidate,
@@ -152,6 +153,51 @@ def tibber_pulse() -> Registry:
         r.add("tibber", f"tibber_current_l{n}", f"home1_rt_currentL{n}", device_class="current", unit="A", entry="tibber", translation_key=f"current_l{n}")
         r.add("tibber", f"tibber_voltage_l{n}", f"home1_rt_voltagePhase{n}", device_class="voltage", unit="V", entry="tibber")
     r.add("tibber", "tibber_power", "home1_rt_power", device_class="power", unit="W", entry="tibber")
+    return r
+
+
+def tibber_pulse_with_production() -> Registry:
+    """A Pulse in a home with solar: core `tibber` creates `<home>_rt_power` (key `power`) and
+    `<home>_rt_powerProduction` (key `powerProduction`) next to the per-phase current and voltage."""
+    r = tibber_pulse()
+    r.add("tibber", "tibber_power_production", "home1_rt_powerProduction", device_class="power", unit="W", entry="tibber", translation_key="power_production")
+    return r
+
+
+def dsmr_p1_with_totals() -> Registry:
+    """Core `dsmr`: unique ids are `<serial>_<key>`; the totals are `current_electricity_usage` and
+    `current_electricity_delivery`, in kW, next to the (disabled) per-phase entities."""
+    r = dsmr_meter()
+    r.add("dsmr", "dsmr_power_consumption", "SN1_current_electricity_usage", device_class="power", unit="kW", entry="dsmr", translation_key="current_electricity_usage")
+    r.add("dsmr", "dsmr_power_production", "SN1_current_electricity_delivery", device_class="power", unit="kW", entry="dsmr", translation_key="current_electricity_delivery")
+    return r
+
+
+def dsmr_reader() -> Registry:
+    """Core `dsmr_reader` (MQTT): unique ids are `<entry>-dsmr_reading_<topic>`, in kW; the per-phase
+    entities ship disabled."""
+    r = Registry()
+    for n in "123":
+        r.add("dsmr_reader", f"dsmr_reading_phase_currently_delivered_l{n}", f"dsrentry-dsmr_reading_phase_currently_delivered_l{n}", device_class="power", unit="kW", entry="dsr", disabled=True)
+        r.add("dsmr_reader", f"dsmr_reading_phase_currently_returned_l{n}", f"dsrentry-dsmr_reading_phase_currently_returned_l{n}", device_class="power", unit="kW", entry="dsr", disabled=True)
+        r.add("dsmr_reader", f"dsmr_reading_phase_voltage_l{n}", f"dsrentry-dsmr_reading_phase_voltage_l{n}", device_class="voltage", unit="V", entry="dsr", disabled=True)
+        r.add("dsmr_reader", f"dsmr_reading_phase_power_current_l{n}", f"dsrentry-dsmr_reading_phase_power_current_l{n}", device_class="current", unit="A", entry="dsr", disabled=True)
+    r.add("dsmr_reader", "dsmr_reading_electricity_currently_delivered", "dsrentry-dsmr_reading_electricity_currently_delivered", device_class="power", unit="kW", entry="dsr", translation_key="current_power_usage")
+    r.add("dsmr_reader", "dsmr_reading_electricity_currently_returned", "dsrentry-dsmr_reading_electricity_currently_returned", device_class="power", unit="kW", entry="dsr", translation_key="current_power_return")
+    return r
+
+
+def p1_monitor() -> Registry:
+    """Core `p1_monitor`: `<entry>_phases_<key>` for the per-phase values and `<entry>_smartmeter_<key>`
+    for the total consumption and production, in W, on separate service devices of one entry."""
+    r = Registry()
+    for n in "123":
+        r.add("p1_monitor", f"p1_current_phase_l{n}", f"p1e_phases_current_phase_l{n}", device_class="current", unit="A", entry="p1e", translation_key=f"current_phase_l{n}")
+        r.add("p1_monitor", f"p1_voltage_phase_l{n}", f"p1e_phases_voltage_phase_l{n}", device_class="voltage", unit="V", entry="p1e", translation_key=f"voltage_phase_l{n}")
+        r.add("p1_monitor", f"p1_power_consumed_phase_l{n}", f"p1e_phases_power_consumed_phase_l{n}", device_class="power", unit="W", entry="p1e", translation_key=f"power_consumed_phase_l{n}")
+        r.add("p1_monitor", f"p1_power_produced_phase_l{n}", f"p1e_phases_power_produced_phase_l{n}", device_class="power", unit="W", entry="p1e", translation_key=f"power_produced_phase_l{n}")
+    r.add("p1_monitor", "p1_power_consumption", "p1e_smartmeter_power_consumption", device_class="power", unit="W", entry="p1e", translation_key="power_consumption")
+    r.add("p1_monitor", "p1_power_production", "p1e_smartmeter_power_production", device_class="power", unit="W", entry="p1e", translation_key="power_production")
     return r
 
 
@@ -336,7 +382,7 @@ class Expect:
 CASES = {
     "shelly_pro_3em": (
         shelly_pro_3em,
-        Expect(MEASUREMENT_MODE_DERIVED, roles=frozenset({"power", "voltage", "current", "apparent_power"}), disabled=6, integration="shelly"),
+        Expect(MEASUREMENT_MODE_DERIVED, roles=frozenset({"power", "voltage", "current", "apparent_power", "grid_power"}), disabled=6, integration="shelly"),
     ),
     "shelly_gen1_3em": (
         shelly_gen1_3em,
@@ -348,11 +394,27 @@ CASES = {
     ),
     "homewizard_p1": (
         homewizard_p1,
-        Expect(MEASUREMENT_MODE_DERIVED, signed_current=True, roles=frozenset({"power", "voltage", "current"}), disabled=6, integration="homewizard"),
+        Expect(MEASUREMENT_MODE_DERIVED, signed_current=True, roles=frozenset({"power", "voltage", "current", "grid_power"}), disabled=6, integration="homewizard"),
     ),
     "tibber": (
         tibber_pulse,
         Expect(MEASUREMENT_MODE_DIRECT, roles=frozenset({"current"}), integration="tibber"),
+    ),
+    "tibber_with_production": (
+        tibber_pulse_with_production,
+        Expect(MEASUREMENT_MODE_DIRECT, roles=frozenset({"current", "grid_power", "grid_power_export"}), integration="tibber"),
+    ),
+    "dsmr_totals": (
+        dsmr_p1_with_totals,
+        Expect(MEASUREMENT_MODE_DERIVED, roles=frozenset({"power", "power_export", "voltage", "current", "grid_power", "grid_power_export"}), disabled=12, integration="dsmr"),
+    ),
+    "dsmr_reader": (
+        dsmr_reader,
+        Expect(MEASUREMENT_MODE_DERIVED, roles=frozenset({"power", "power_export", "voltage", "current", "grid_power", "grid_power_export"}), disabled=12, integration="dsmr_reader"),
+    ),
+    "p1_monitor": (
+        p1_monitor,
+        Expect(MEASUREMENT_MODE_DERIVED, roles=frozenset({"power", "power_export", "voltage", "current", "grid_power", "grid_power_export"}), integration="p1_monitor"),
     ),
     "dsmr": (
         dsmr_meter,
@@ -452,8 +514,151 @@ def test_shelly_pro_3em_uses_apparent_power_so_it_is_not_estimated_and_lists_wha
 def test_the_shelly_total_power_and_power_factor_entities_are_not_picked_as_phases() -> None:
     candidate = one_meter(shelly_pro_3em())
 
-    assert "sensor.pro3em_total_power" not in {item.entity_id for item in candidate.entities}
+    assert "sensor.pro3em_total_power" not in {
+        item.entity_id for item in candidate.entities if item.phase is not None
+    }
     assert not any(item.entity_id.endswith("_pf") for item in candidate.entities)
+
+
+# ---- the meter's total grid power ---------------------------------------------------------------
+
+
+def test_the_shelly_gen2_total_active_power_is_the_one_signed_total() -> None:
+    candidate = one_meter(shelly_pro_3em())
+
+    assert candidate.grid_power == GridPowerSource(power="sensor.pro3em_total_power")
+    assert [(item.role, item.phase) for item in candidate.entities if item.role == "grid_power"] == [
+        ("grid_power", None)
+    ]
+
+
+def test_the_shelly_gen1_and_em1_shapes_have_no_total_to_detect() -> None:
+    assert one_meter(shelly_gen1_3em()).grid_power is None
+    assert one_meter(shelly_em1_channels()).grid_power is None
+
+
+def test_the_homewizard_total_is_the_meter_and_never_the_batterys_active_power() -> None:
+    detection = homewizard_p1().detect()
+
+    assert detection.meters[0].grid_power == GridPowerSource(power="sensor.p1_power")
+    assert "sensor.battery_power" not in {item.entity_id for item in detection.meters[0].entities}
+    # The same unique-id suffix on the battery device is its own power, a battery candidate only.
+    assert [b.entity_id for b in detection.batteries] == ["sensor.battery_power"]
+
+
+def test_a_homewizard_battery_alone_is_not_a_meter_total() -> None:
+    r = Registry()
+    r.device("hw_bat", model="Plug-In Battery", manufacturer="HomeWizard", entry="hw")
+    for n in "123":
+        r.add("homewizard", f"b_current_l{n}", f"aabb_active_current_l{n}_a", device_class="current", unit="A", device="hw_bat", entry="hw")
+    r.add("homewizard", "b_power", "aabb_active_power_w", device_class="power", unit="W", device="hw_bat", entry="hw")
+
+    candidates = [c for c in r.detect().meters if c.integration == "homewizard"]
+
+    assert all(candidate.grid_power is None for candidate in candidates)
+
+
+def test_tibber_pairs_consumption_and_production_as_import_and_export() -> None:
+    candidate = one_meter(tibber_pulse_with_production())
+
+    assert candidate.mode == MEASUREMENT_MODE_DIRECT
+    assert candidate.grid_power == GridPowerSource(
+        power="sensor.tibber_power", power_export="sensor.tibber_power_production"
+    )
+    assert candidate.power_inverted is False
+
+
+def test_tibber_without_a_production_sensor_has_no_total_because_import_alone_never_exports() -> None:
+    candidate = one_meter(tibber_pulse())
+
+    assert candidate.grid_power is None
+    assert "grid_power" not in roles(candidate)
+
+
+def test_the_tibber_averages_and_extremes_are_not_the_total() -> None:
+    r = tibber_pulse_with_production()
+    for key in ("averagePower", "minPower", "maxPower", "powerFactor", "accumulatedProduction"):
+        r.add("tibber", f"tibber_{key.lower()}", f"home1_rt_{key}", device_class="power", unit="W", entry="tibber")
+
+    candidate = one_meter(r)
+
+    assert candidate.grid_power == GridPowerSource(
+        power="sensor.tibber_power", power_export="sensor.tibber_power_production"
+    )
+
+
+def test_a_production_sensor_without_its_consumption_half_makes_no_total() -> None:
+    r = tibber_pulse()
+    r.entities = [e for e in r.entities if not e.unique_id.endswith("_rt_power")]
+    r.add("tibber", "tibber_power_production", "home1_rt_powerProduction", device_class="power", unit="W", entry="tibber")
+
+    assert one_meter(r).grid_power is None
+
+
+def test_dsmr_totals_are_usage_and_delivery_as_a_pair() -> None:
+    candidate = one_meter(dsmr_p1_with_totals())
+
+    assert candidate.grid_power == GridPowerSource(
+        power="sensor.dsmr_power_consumption", power_export="sensor.dsmr_power_production"
+    )
+    assert candidate.mode == MEASUREMENT_MODE_DERIVED
+
+
+def test_dsmr_reader_totals_are_currently_delivered_and_returned_not_the_phases() -> None:
+    candidate = one_meter(dsmr_reader())
+
+    assert candidate.grid_power == GridPowerSource(
+        power="sensor.dsmr_reading_electricity_currently_delivered",
+        power_export="sensor.dsmr_reading_electricity_currently_returned",
+    )
+    assert candidate.derived_entities["L1"]["power"] == "sensor.dsmr_reading_phase_currently_delivered_l1"
+
+
+def test_p1_monitor_totals_come_from_the_smart_meter_service_of_the_same_entry() -> None:
+    candidate = one_meter(p1_monitor())
+
+    assert candidate.grid_power == GridPowerSource(
+        power="sensor.p1_power_consumption", power_export="sensor.p1_power_production"
+    )
+    assert candidate.derived_entities["L2"]["power"] == "sensor.p1_power_consumed_phase_l2"
+
+
+def test_totals_never_make_a_meter_of_their_own() -> None:
+    r = Registry()
+    r.add("tibber", "tibber_power", "home1_rt_power", device_class="power", unit="W", entry="tibber")
+    r.add("tibber", "tibber_power_production", "home1_rt_powerProduction", device_class="power", unit="W", entry="tibber")
+    r.add("dsmr", "dsmr_usage", "SN1_current_electricity_usage", device_class="power", unit="kW", entry="dsmr")
+    r.add("dsmr", "dsmr_delivery", "SN1_current_electricity_delivery", device_class="power", unit="kW", entry="dsmr")
+
+    assert r.detect().meters == ()
+
+
+def test_totals_of_two_entries_stay_with_their_own_meter() -> None:
+    r = tibber_pulse_with_production()
+    other = dsmr_p1_with_totals()
+    r.entities += other.entities
+
+    detection = r.detect()
+
+    by_integration = {candidate.integration: candidate for candidate in detection.meters}
+    assert by_integration["tibber"].grid_power.power == "sensor.tibber_power"
+    assert by_integration["dsmr"].grid_power.power == "sensor.dsmr_power_consumption"
+
+
+def test_the_total_of_a_meter_with_inversion_is_not_claimed_by_a_catalogue_row_without_one() -> None:
+    # Huawei, SolarEdge, GoodWe and SolaX have no total row: SolaX's `measured_power` is signed
+    # inconsistently in its own source, so it is left out rather than guessed.
+    r = Registry()
+    r.device("sx", model="X3", manufacturer="Solax", entry="solax")
+    for n in "123":
+        r.add("solax_modbus", f"sx_measured_power_l{n}", f"SolaX_measured_power_l{n}", device_class="power", unit="W", device="sx", entry="solax")
+        r.add("solax_modbus", f"sx_grid_voltage_l{n}", f"SolaX_grid_voltage_l{n}", device_class="voltage", unit="V", device="sx", entry="solax")
+    r.add("solax_modbus", "sx_measured_power", "SolaX_measured_power", device_class="power", unit="W", device="sx", entry="solax")
+
+    candidate = one_meter(r)
+
+    assert candidate.power_inverted is True
+    assert candidate.grid_power is None
 
 
 def test_homewizard_p1_reads_its_signed_current_as_a_magnitude_and_ignores_the_battery_device() -> None:
@@ -971,6 +1176,25 @@ def test_applying_a_direct_candidate_keeps_the_derived_entities_and_sets_the_fla
     assert data["direct_entities"]["L2"] == "sensor.tibber_current_l2"
     assert data["derived_entities"] == {"L1": {"power": "sensor.keep"}}
     assert data["site_current_source"] is None
+
+
+def test_applying_a_candidate_with_a_total_stores_it_and_one_without_clears_the_old_one() -> None:
+    with_total = one_meter(tibber_pulse_with_production())
+    without = one_meter(tibber_pulse())
+
+    data = apply_meter_candidate({}, with_total)
+    assert data["grid_power_source"] == {
+        "power": "sensor.tibber_power",
+        "power_export": "sensor.tibber_power_production",
+    }
+    assert data["grid_power_inverted"] is False
+
+    # A total left from the previous meter would be read as the new meter's.
+    assert "grid_power_source" not in apply_meter_candidate(data, without)
+    assert apply_meter_candidate({"grid_power_source": {"power": "sensor.x"}}, with_total)["grid_power_source"] == {
+        "power": "sensor.tibber_power",
+        "power_export": "sensor.tibber_power_production",
+    }
 
 
 def test_applying_the_easee_candidate_stores_an_attributes_source() -> None:

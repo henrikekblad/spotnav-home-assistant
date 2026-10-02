@@ -340,6 +340,8 @@ export function bannerRepeatsStatus(model: CardModel, severity: "blocking" | "no
 
 /** The strategy rows whose availability hangs on the site's solar setup. */
 const SOLAR_SETUP_ROWS: ReadonlySet<string> = new Set(["solar", "hybrid"]);
+/** The reason code of a solar strategy held back because a direct site lacks the meter's total grid power. */
+const STRATEGY_NEEDS_TOTAL_POWER = "needs_total_grid_power";
 
 export function issueCountText(language: Language, count: number): string {
   const key: TranslationKey = pluralForm(language, count) === "one" ? "issue.count.one" : "issue.count.other";
@@ -1570,7 +1572,12 @@ export function createCardView(input: CardViewInput): CardView {
       if (row.reason !== null) {
         item.append(element(doc, "span", C.strategyReason, row.reason));
         // A solar strategy held back for lack of solar settings points at the card that sets them.
-        if (!row.available && model.site !== null && SOLAR_SETUP_ROWS.has(row.id)) {
+        if (
+          !row.available &&
+          model.site !== null &&
+          SOLAR_SETUP_ROWS.has(row.id) &&
+          row.reasonCode !== STRATEGY_NEEDS_TOTAL_POWER
+        ) {
           const link = element(doc, "button", C.strategyLink, translate(model.language, "strategy.setupSolar"));
           link.type = "button";
           link.dataset["action"] = "setup-solar";
@@ -1582,6 +1589,19 @@ export function createCardView(input: CardViewInput): CardView {
               ?.querySelector<HTMLElement>("[data-section='solar']")
               ?.scrollIntoView?.({ block: "nearest" });
             overviewBodyNode?.querySelector<HTMLElement>("[data-edit-solar]")?.focus();
+          });
+          item.append(link);
+        }
+        // A direct site held back for lack of the meter's total grid power points at the site's entities,
+        // where the field is, for the administrator who can change it.
+        if (!row.available && row.reasonCode === STRATEGY_NEEDS_TOTAL_POWER && input.isAdmin) {
+          const link = element(doc, "button", C.strategyLink, translate(model.language, "strategy.setupSite"));
+          link.type = "button";
+          link.dataset["action"] = "setup-site";
+          link.addEventListener("click", () => {
+            strategyDialog.hide({ restoreFocus: false });
+            vehicleDialog.hide({ restoreFocus: false });
+            input.onOpenEntityEditor?.("site");
           });
           item.append(link);
         }

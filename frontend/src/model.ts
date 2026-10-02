@@ -150,7 +150,10 @@ export interface StrategyRowFacts {
   id: string;
   labelKey: TranslationKey;
   available: boolean;
+  /** The sentence for why the strategy is held back, or `null`. */
   reason: string | null;
+  /** The backend's stable code behind `reason`, or `null`. */
+  reasonCode: string | null;
 }
 
 export interface StrategyFacts {
@@ -329,6 +332,7 @@ const STRATEGY_KEYS: Record<string, TranslationKey> = {
 export const STRATEGY_REASON_KEYS: Record<string, TranslationKey> = {
   needs_solar_surplus_measurement: "strategy.reason.solar",
   needs_solar_and_price_control: "strategy.reason.hybrid",
+  needs_total_grid_power: "strategy.reason.totalPower",
 };
 
 /**
@@ -446,6 +450,7 @@ function strategyFactsFor(dashboard: Dashboard, language: Language): StrategyFac
         row.reason === null
           ? null
           : translate(language, STRATEGY_REASON_KEYS[row.reason] ?? "issue.unknown"),
+      reasonCode: row.reason,
     })),
   };
 }

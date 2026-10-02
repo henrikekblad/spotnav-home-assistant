@@ -16,17 +16,20 @@ from .test_site_detection import sigen
 
 
 
-def _owner_world(hass: HomeAssistant, *, voltage: bool = True, chargers: int = 1) -> list[str]:
-    registry = sigen()
+def _owner_world(
+    hass: HomeAssistant, *, voltage: bool = True, chargers: int = 1, registry: Any = None
+) -> list[str]:
+    registry = sigen() if registry is None else registry
     if not voltage:
         registry.entities = [e for e in registry.entities if not e.unique_id.endswith("_voltage")]
     materialize(hass, registry)
     entities = er.async_get(hass)
     for phase in "abc":
         # Disabled entities have a registry name and no state until they are enabled.
-        entities.async_update_entity(
-            f"sensor.sigen_plant_grid_phase_{phase}_active", name=f"Grid power {phase.upper()}"
-        )
+        if entities.async_get(f"sensor.sigen_plant_grid_phase_{phase}_active") is not None:
+            entities.async_update_entity(
+                f"sensor.sigen_plant_grid_phase_{phase}_active", name=f"Grid power {phase.upper()}"
+            )
     owner = make_ocpp_config_entry(hass, entry_id="owner")
     ids = []
     for number in range(1, chargers + 1):
@@ -200,3 +203,41 @@ async def test_the_summary_has_a_voltage_line(hass: HomeAssistant) -> None:
     )
 
     assert "Voltage: L1 " in confirm["description_placeholders"]["summary"]
+
+
+async def test_the_detected_total_grid_power_is_stored_with_the_meter(hass: HomeAssistant) -> None:
+    """A Tibber Pulse is a direct site; its consumption and production sensors become the total that
+    solar and hybrid read, stored with the meter the user confirmed through the form."""
+    from .test_site_detection import tibber_pulse_with_production
+
+    charger_ids = _owner_world(hass, registry=tibber_pulse_with_production())
+    result = await _to_detected(hass, charger_ids)
+    choice = _choice(result)
+
+    form = await hass.config_entries.flow.async_configure(result["flow_id"], {"choice": choice})
+    form = await hass.config_entries.flow.async_configure(form["flow_id"], {"adjust": True})
+    assert form["step_id"] == "site_details"
+    form = await hass.config_entries.flow.async_configure(form["flow_id"], {})
+    assert form["step_id"] == "site_charger_wiring"
+    schema_keys = {str(key): key for key in form["data_schema"].schema}
+    measured = schema_keys["measured_source"].default()
+    created = await hass.config_entries.flow.async_configure(form["flow_id"], {"measured_source": measured})
+
+    assert created["type"] is FlowResultType.CREATE_ENTRY
+    data = dict(created["data"])
+    assert data["measurement_mode"] == "direct_phase_current"
+    assert data["grid_power_source"] == {
+        "power": "sensor.tibber_power",
+        "power_export": "sensor.tibber_power_production",
+    }
+
+
+async def test_a_meter_without_a_total_stores_none(hass: HomeAssistant) -> None:
+    charger_ids = _owner_world(hass)
+    result = await _to_detected(hass, charger_ids)
+    confirm = await hass.config_entries.flow.async_configure(
+        result["flow_id"], {"choice": _choice(result), "enable_disabled": True}
+    )
+    created = await hass.config_entries.flow.async_configure(confirm["flow_id"], {})
+
+    assert "grid_power_source" not in dict(created["data"])

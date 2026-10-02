@@ -456,6 +456,36 @@
         "writable": true
       },
       {
+        "allowed_device_classes": [
+          "power"
+        ],
+        "allowed_domains": [
+          "sensor"
+        ],
+        "current": null,
+        "effective": null,
+        "field": "grid_power_source_power",
+        "kind": "entity",
+        "required": false,
+        "scope": "site",
+        "writable": true
+      },
+      {
+        "allowed_device_classes": [
+          "power"
+        ],
+        "allowed_domains": [
+          "sensor"
+        ],
+        "current": null,
+        "effective": null,
+        "field": "grid_power_source_power_export",
+        "kind": "entity",
+        "required": false,
+        "scope": "site",
+        "writable": true
+      },
+      {
         "field": "grid_power_inverted",
         "kind": "flag",
         "required": false,
@@ -832,6 +862,56 @@
             "mode": "derived_phase_current",
             "power_inverted": true,
             "title": "solaredge_modbus_multi",
+            "warnings": []
+          },
+          {
+            "applied": false,
+            "confidence": "high",
+            "current_signed": false,
+            "disabled_entities": [],
+            "entities": [
+              {
+                "disabled": false,
+                "entity_id": "sensor.tibber_current_l1",
+                "friendly_name": "tibber current l1",
+                "phase": "L1",
+                "role": "current"
+              },
+              {
+                "disabled": false,
+                "entity_id": "sensor.tibber_current_l2",
+                "friendly_name": "tibber current l2",
+                "phase": "L2",
+                "role": "current"
+              },
+              {
+                "disabled": false,
+                "entity_id": "sensor.tibber_current_l3",
+                "friendly_name": "tibber current l3",
+                "phase": "L3",
+                "role": "current"
+              },
+              {
+                "disabled": false,
+                "entity_id": "sensor.tibber_power",
+                "friendly_name": "tibber power",
+                "phase": null,
+                "role": "grid_power"
+              },
+              {
+                "disabled": false,
+                "entity_id": "sensor.tibber_power_production",
+                "friendly_name": "tibber power production",
+                "phase": null,
+                "role": "grid_power_export"
+              }
+            ],
+            "estimated": false,
+            "id": "tibber:tibber_tibber",
+            "integration": "tibber",
+            "mode": "direct_phase_current",
+            "power_inverted": false,
+            "title": "tibber",
             "warnings": []
           },
           {

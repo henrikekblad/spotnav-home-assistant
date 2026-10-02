@@ -44,7 +44,6 @@ from ..const import (
     DEFAULT_SOLAR_PRIORITY,
     DOMAIN,
     ENTRY_TYPE_SITE,
-    MEASUREMENT_MODE_DERIVED,
 )
 from ..entity import fiscal_view
 from ..execution import auto_execution as execution
@@ -100,6 +99,7 @@ from ..site.phase_detection import (
     UNKNOWN as UNKNOWN_PHASES,
 )
 from ..site.site_capacity_controller import SiteCapacityController
+from ..site.solar_capability import REASON_NEEDS_TOTAL_GRID_POWER
 from ..util import aware_iso, finite_number
 from ..vehicles import vehicle_properties
 from ..vehicles.charger_inventory import charger_entries
@@ -254,9 +254,12 @@ class CapturedSite:
     proposed_current_a: float | None
     limiting_phase: str | None
     active_control_enabled: bool
-    #: The site's measurement mode (`const.MEASUREMENT_MODE_DIRECT`/`_DERIVED` or `"unavailable"`);
-    #: the strategy block reads it to decide whether `solar` and `hybrid` are available.
+    #: The site's measurement mode (`const.MEASUREMENT_MODE_DIRECT`/`_DERIVED` or `"unavailable"`).
     measurement_mode: str
+    #: Whether `solar` and `hybrid` can run on this site's measurement, and why not
+    #: (`site/solar_capability.py`); the strategy block reads both.
+    solar_capable: bool
+    solar_reason: str | None
     #: Count of `CONF_CHARGER_ENTRY_IDS`, for "applies to all N chargers on this site" wording.
     charger_count: int
     #: Solar priority (`const.CONF_SOLAR_PRIORITY`) and hybrid's forecast sources
@@ -733,6 +736,7 @@ def capture_site(
     selected_forecast_ids = tuple(entry.data.get(CONF_SOLAR_FORECAST_ENTRIES, []) or ())
     solar_snapshot = controller.solar_surplus_snapshot.get(charger_entry_id)
     hybrid_snapshot = controller.hybrid_snapshot.get(charger_entry_id)
+    capability = controller.capability_snapshot
     return CapturedSite(
         site_name=entry.title,
         state=str(result.state),
@@ -746,13 +750,15 @@ def capture_site(
         # The running controller's opt-in, which every gate reads and `update_site_settings` changes.
         active_control_enabled=controller.active_control_enabled,
         measurement_mode=str(result.measurement_mode),
+        solar_capable=capability.solar.capable,
+        solar_reason=capability.solar.reason,
         charger_count=len(members),
         solar_priority=str(solar_priority),
         solar_forecast_selected=selected_forecast_ids,
         solar_forecast_choices=solar_forecast_choices(
             hass, forecast_domains, selected_forecast_ids
         ),
-        active_control_available=controller.capability_snapshot.load_balancing.active_available,
+        active_control_available=capability.load_balancing.active_available,
         active_control_reason=_active_control_reason(controller),
         solar_state=dict(solar_snapshot) if solar_snapshot is not None else None,
         hybrid_state=dict(hybrid_snapshot) if hybrid_snapshot is not None else None,
@@ -1417,14 +1423,13 @@ def serialize_summary(summary: CapturedSummary | None) -> dict[str, Any] | None:
 def serialize_strategy(capture: CapturedDashboard) -> dict[str, Any]:
     """What the system optimizes: the selected strategy and every strategy row with its availability.
 
-    `cheapest` is always runnable; `solar` and `hybrid` only when the site has derived measurement
-    (`MEASUREMENT_MODE_DERIVED`), the signal both need, the same condition `select.AutoStrategySelect`
-    uses; otherwise they carry the stable reason.
+    `cheapest` is always runnable; `solar` and `hybrid` only when the site knows the grid's signed
+    power (derived measurement, or the meter's total grid power on a direct site), the signal both
+    need, the same condition `select.AutoStrategySelect` uses; otherwise they carry the stable reason:
+    `needs_total_grid_power` on a direct site without the total, else the generic ones.
     """
     selected = None if capture.settings is None else strategy_of(capture.settings)
-    supports_solar_and_hybrid = (
-        capture.site is not None and capture.site.measurement_mode == MEASUREMENT_MODE_DERIVED
-    )
+    supports_solar_and_hybrid = capture.site is not None and capture.site.solar_capable
     if supports_solar_and_hybrid:
         rows = [
             {"strategy": strategy, "available": True, "reason": None}
@@ -1435,9 +1440,12 @@ def serialize_strategy(capture: CapturedDashboard) -> dict[str, Any]:
     if selected is not None:
         rows.append({"strategy": selected, "available": True, "reason": None})
     # Placeholder rows only for non-selected strategies; the selected row already states it.
+    needs_total = (
+        capture.site is not None and capture.site.solar_reason == REASON_NEEDS_TOTAL_GRID_POWER
+    )
     for strategy, reason in (
-        (STRATEGY_SOLAR, STRATEGY_SOLAR_REASON),
-        (STRATEGY_HYBRID, STRATEGY_HYBRID_REASON),
+        (STRATEGY_SOLAR, REASON_NEEDS_TOTAL_GRID_POWER if needs_total else STRATEGY_SOLAR_REASON),
+        (STRATEGY_HYBRID, REASON_NEEDS_TOTAL_GRID_POWER if needs_total else STRATEGY_HYBRID_REASON),
     ):
         if strategy != selected:
             rows.append({"strategy": strategy, "available": False, "reason": reason})

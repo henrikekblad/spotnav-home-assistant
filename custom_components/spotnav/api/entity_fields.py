@@ -15,7 +15,9 @@ into a wire refusal and a pass into a write.
   meters each mode needs (three `direct_L{n}`, or per phase in derived mode the required
   `derived_L{n}_{power,voltage}` and the optional `_power_export` (the export half of an import/export
   pair), `_reactive_power`, `_apparent_power` and `_current`; without the last three the fuse check
-  estimates the current from power), the sign options (`site_current_signed`, `grid_power_inverted`,
+  estimates the current from power), the meter's total grid power (`grid_power_source_power` and the
+  optional `grid_power_source_power_export`, the export half of an import/export pair; it is what
+  solar and hybrid read on a direct site), the sign options (`site_current_signed`, `grid_power_inverted`,
   `battery_power_inverted`), the battery aggregate power sensor with its optional discharge half, and
   the maximum measurement age. `apply_detection` (write only) applies a detected meter or battery
   (`site/site_detection.py`) chosen by id; the server recomputes the detection and never takes a mapping
@@ -48,6 +50,7 @@ from ..const import (
     CONF_DIRECT_ENTITIES,
     CONF_ENERGY_REGISTER_ENTITY,
     CONF_GRID_POWER_INVERTED,
+    CONF_GRID_POWER_SOURCE,
     CONF_MAIN_FUSE_A,
     CONF_MAX_AGE_S,
     CONF_MEASUREMENT_MODE,
@@ -71,7 +74,7 @@ from ..site.site_detection import (
     freshness_warnings,
     MeterCandidate,
 )
-from ..site.measurement_source import source_from_dict
+from ..site.measurement_source import grid_power_source_from_dict, source_from_dict
 from ..execution.charger_entities import (
     charger_entries,
     CONFLICT_DISABLED,
@@ -106,6 +109,11 @@ FIELD_MEASUREMENT_MODE: Final = "measurement_mode"
 FIELD_MAX_AGE_S: Final = "max_age_s"
 FIELD_BATTERY_AGGREGATE_POWER: Final = "battery_aggregate_power_entity"
 FIELD_BATTERY_DISCHARGE_POWER: Final = "battery_discharge_power_entity"
+#: The meter's total grid power (`CONF_GRID_POWER_SOURCE`): one signed entity, or with the second field
+#: an import/export pair (import minus export). Solar and hybrid read it on a direct site.
+FIELD_GRID_POWER_SOURCE_POWER: Final = "grid_power_source_power"
+FIELD_GRID_POWER_SOURCE_EXPORT: Final = "grid_power_source_power_export"
+GRID_POWER_SOURCE_FIELDS: Final = (FIELD_GRID_POWER_SOURCE_POWER, FIELD_GRID_POWER_SOURCE_EXPORT)
 FIELD_SITE_CURRENT_SIGNED: Final = "site_current_signed"
 FIELD_GRID_POWER_INVERTED: Final = "grid_power_inverted"
 FIELD_BATTERY_POWER_INVERTED: Final = "battery_power_inverted"
@@ -138,6 +146,7 @@ def site_fixed_fields() -> tuple[str, ...]:
         FIELD_MAX_AGE_S,
         FIELD_BATTERY_AGGREGATE_POWER,
         FIELD_BATTERY_DISCHARGE_POWER,
+        *GRID_POWER_SOURCE_FIELDS,
         *FLAG_FIELDS,
         FIELD_APPLY_DETECTION,
     )
@@ -187,6 +196,8 @@ _ENTITY_DOMAIN: Final[dict[str, str]] = {
     FIELD_VEHICLE_SOC: "sensor",
     FIELD_BATTERY_AGGREGATE_POWER: "sensor",
     FIELD_BATTERY_DISCHARGE_POWER: "sensor",
+    FIELD_GRID_POWER_SOURCE_POWER: "sensor",
+    FIELD_GRID_POWER_SOURCE_EXPORT: "sensor",
 }
 for _phase in PHASES:
     _ENTITY_DOMAIN[direct_field(_phase)] = "sensor"
@@ -202,6 +213,8 @@ _ENTITY_DEVICE_CLASSES: Final[dict[str, tuple[str, ...]]] = {
     FIELD_VEHICLE_SOC: ("battery",),
     FIELD_BATTERY_AGGREGATE_POWER: ("power",),
     FIELD_BATTERY_DISCHARGE_POWER: ("power",),
+    FIELD_GRID_POWER_SOURCE_POWER: ("power",),
+    FIELD_GRID_POWER_SOURCE_EXPORT: ("power",),
 }
 for _phase in PHASES:
     _ENTITY_DEVICE_CLASSES[direct_field(_phase)] = ("current",)
@@ -577,7 +590,10 @@ def current_site_values(entry: ConfigEntry) -> dict[str, Any]:
     """
     direct = entry.data.get(CONF_DIRECT_ENTITIES) or {}
     derived = entry.data.get(CONF_DERIVED_ENTITIES) or {}
+    grid_total = grid_power_source_from_dict(entry.data.get(CONF_GRID_POWER_SOURCE))
     values: dict[str, Any] = {
+        FIELD_GRID_POWER_SOURCE_POWER: "" if grid_total is None else grid_total.power,
+        FIELD_GRID_POWER_SOURCE_EXPORT: "" if grid_total is None else (grid_total.power_export or ""),
         FIELD_MAIN_FUSE_A: entry.data.get(CONF_MAIN_FUSE_A),
         FIELD_MEASUREMENT_MODE: entry.data.get(CONF_MEASUREMENT_MODE, MEASUREMENT_MODE_DIRECT),
         FIELD_MAX_AGE_S: entry.data.get(CONF_MAX_AGE_S, DEFAULT_MAX_AGE_S),
@@ -640,7 +656,7 @@ def site_field_errors(
     if mode_error is not None:
         errors.append(mode_error)
 
-    for field in (FIELD_BATTERY_AGGREGATE_POWER, FIELD_BATTERY_DISCHARGE_POWER):
+    for field in (FIELD_BATTERY_AGGREGATE_POWER, FIELD_BATTERY_DISCHARGE_POWER, *GRID_POWER_SOURCE_FIELDS):
         if field in changes:
             value = changes[field]
             if value:
@@ -672,6 +688,15 @@ def site_field_errors(
 
     failed_fields = {error.field for error in errors}
     current = current_site_values(entry)
+    if (
+        FIELD_GRID_POWER_SOURCE_POWER not in failed_fields
+        and FIELD_GRID_POWER_SOURCE_EXPORT not in failed_fields
+        and FIELD_APPLY_DETECTION not in changes
+        and not changes.get(FIELD_GRID_POWER_SOURCE_POWER, current[FIELD_GRID_POWER_SOURCE_POWER])
+        and changes.get(FIELD_GRID_POWER_SOURCE_EXPORT, current[FIELD_GRID_POWER_SOURCE_EXPORT])
+    ):
+        # The export half has no meaning alone: a pair is import minus export.
+        errors.append(FieldError(FIELD_GRID_POWER_SOURCE_POWER, ERR_REQUIRED))
     if FIELD_APPLY_DETECTION in changes:
         # The detected candidate supplies the whole set; nothing else is required of this write.
         return errors
@@ -761,8 +786,21 @@ def site_field_descriptors(hass: HomeAssistant, entry: ConfigEntry) -> list[dict
             )
         )
     descriptors.append(_flag_descriptor(FIELD_SITE_CURRENT_SIGNED, values))
-    # Listed in both modes so a switch to derived mode can set it in the same save; it has no effect
-    # in direct mode, which reads no power.
+    # The meter's total grid power, in both modes so a mode switch can set it in the same save: a direct
+    # site needs it for solar and hybrid, a derived site ignores it for the surplus.
+    for field in GRID_POWER_SOURCE_FIELDS:
+        descriptors.append(
+            _entity_field_descriptor(
+                hass,
+                field=field,
+                scope="site",
+                required=False,
+                writable=True,
+                current_entity_id=values[field] or None,
+            )
+        )
+    # Listed in both modes so a switch to derived mode can set it in the same save. It negates the
+    # per-phase power of a derived site and the total grid power of either mode.
     descriptors.append(_flag_descriptor(FIELD_GRID_POWER_INVERTED, values))
     for field in (FIELD_BATTERY_AGGREGATE_POWER, FIELD_BATTERY_DISCHARGE_POWER):
         descriptors.append(
@@ -829,6 +867,9 @@ def _measurement_entity_ids(entry: ConfigEntry) -> set[str]:
     elif mode == MEASUREMENT_MODE_DERIVED:
         for phase_entities in (data.get(CONF_DERIVED_ENTITIES) or {}).values():
             entity_ids.update(value for value in (phase_entities or {}).values() if value)
+    grid_total = grid_power_source_from_dict(data.get(CONF_GRID_POWER_SOURCE))
+    if grid_total is not None:
+        entity_ids.update(grid_total.entity_ids)
     for key in (CONF_BATTERY_AGGREGATE_POWER_ENTITY, CONF_BATTERY_DISCHARGE_POWER_ENTITY):
         if data.get(key):
             entity_ids.add(data[key])
@@ -973,6 +1014,9 @@ _APPLIED_FLAG_KEYS: Final = frozenset({CONF_SITE_CURRENT_SIGNED, CONF_GRID_POWER
 
 
 def _applied_value(key: str, value: Any) -> Any:
+    if key == CONF_GRID_POWER_SOURCE:
+        # Absent, empty and unreadable all mean "no total".
+        return grid_power_source_from_dict(value)
     return bool(value) if key in _APPLIED_FLAG_KEYS else value
 
 
@@ -983,4 +1027,5 @@ _APPLIED_KEYS: Final = (
     CONF_SITE_CURRENT_SIGNED,
     CONF_SITE_CURRENT_SOURCE,
     CONF_GRID_POWER_INVERTED,
+    CONF_GRID_POWER_SOURCE,
 )
