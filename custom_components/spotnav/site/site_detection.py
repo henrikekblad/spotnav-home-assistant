@@ -366,6 +366,23 @@ METER_ROWS: Final[tuple[MeterRow, ...]] = (
         signed_current=True,
         invert_power=True,
     ),
+    # Home Assistant core's `solaredge_modbus` (2026.10, library `solaredged` 0.4.0), which shares the
+    # platform name with the HACS integration above. The meter's entities are `<serial>_meter_<id>_<key>`
+    # on a "Meter n" sub-device (the inverter's own `<serial>_ac_current_phase_a` has no `_meter_`, so the
+    # inverter is never read as a meter). The library hands the SunSpec meter registers on unchanged, as
+    # the HACS integration does, so the signs are the same: current and power signed with export
+    # positive, and the meter's total `ac_power` likewise. Only a wye meter has the neutral voltages.
+    MeterRow(
+        platforms=("solaredge_modbus",),
+        patterns=(
+            _p("current", r"_meter_(?P<m>.+?)_ac_current_phase_(?P<a>[abc])$"),
+            _p("power", r"_meter_(?P<m>.+?)_ac_power_phase_(?P<a>[abc])$"),
+            _p("voltage", r"_meter_(?P<m>.+?)_ac_voltage_phase_(?P<a>[abc])n$"),
+        ),
+        totals=(_p("grid_power", r"_meter_(?P<m>.+?)_ac_power$"),),
+        signed_current=True,
+        invert_power=True,
+    ),
     MeterRow(
         platforms=("victron_gx", "victron_mqtt", "victron"),
         patterns=(
@@ -470,7 +487,11 @@ BATTERY_ROWS: Final[tuple[BatteryRow, ...]] = (
     BatteryRow(("huawei_solar",), _re(r"storage_charge_discharge_power$")),
     BatteryRow(("sigen",), _re(r"plant_ess_power$")),
     BatteryRow(("victron_gx", "victron_mqtt", "victron"), _re(r"system_dc_battery_power$")),
-    BatteryRow(("solaredge_modbus_multi", "solaredge_modbus"), _re(r"b1_dc_power$")),
+    BatteryRow(("solaredge_modbus_multi", "solaredge_modbus"), _re(r"(?:^|_)b1_dc_power$")),
+    # Core `solaredge_modbus`: the battery's `dc_power` on its own "Battery n" sub-device
+    # (`<serial>_battery_<id>_dc_power`; the inverter's `<serial>_dc_power` is the PV side). The library
+    # reads the StorageEdge register unchanged, charge positive as the HACS integration's is.
+    BatteryRow(("solaredge_modbus",), _re(r"_battery_.+_dc_power$")),
     BatteryRow(("homewizard",), _re(r"_active_power_w$"), device_model="bat"),
     # Discharge-positive: negate.
     BatteryRow(("powerwall",), _re(r"battery_instant_power$"), inverted=True),
@@ -664,7 +685,7 @@ def _catalogue_candidates(
     for row in METER_ROWS:
         for platform in row.platforms:
             groups: dict[tuple[str, str], dict[Role, dict[PhaseName, RegistryEntity]]] = {}
-            totals: dict[str, dict[Role, RegistryEntity]] = {}
+            totals: dict[tuple[str, str], dict[Role, RegistryEntity]] = {}
             for entity in by_platform.get(platform, []):
                 if not _usable(entity, excluded_device_ids):
                     continue
@@ -675,20 +696,19 @@ def _catalogue_candidates(
                     continue
                 matched = _match_row(row, texts)
                 if matched is None:
-                    total_role = _match_total(row, texts)
-                    if total_role is not None and _total_device_ok(
-                        row, devices.get(entity.device_id or "")
-                    ):
-                        totals.setdefault(entity.config_entry_id or entity.device_id or "", {}).setdefault(
-                            total_role, entity
-                        )
+                    total = _match_total(row, texts)
+                    if total is not None and _total_device_ok(row, devices.get(entity.device_id or "")):
+                        total_role, total_meter = total
+                        totals.setdefault(
+                            (entity.config_entry_id or entity.device_id or "", total_meter), {}
+                        ).setdefault(total_role, entity)
                     continue
                 role, phase, meter = matched
                 key = (entity.config_entry_id or entity.device_id or "", meter)
                 groups.setdefault(key, {}).setdefault(role, {})[phase] = entity
             for (entry_key, meter), roles in groups.items():
                 candidate = _build_row_candidate(
-                    row, platform, entry_key, meter, roles, devices, totals.get(entry_key, {})
+                    row, platform, entry_key, meter, roles, devices, totals.get((entry_key, meter), {})
                 )
                 if candidate is None:
                     continue
@@ -710,10 +730,13 @@ def _match_row(row: MeterRow, texts: list[str]) -> tuple[Role, PhaseName, str] |
     return None
 
 
-def _match_total(row: MeterRow, texts: list[str]) -> Role | None:
+def _match_total(row: MeterRow, texts: list[str]) -> tuple[Role, str] | None:
+    """A total's role and, for a row whose meters are told apart (a `m` group), which meter's it is."""
     for pattern in row.totals:
-        if any(pattern.regex.search(text) for text in texts):
-            return pattern.role
+        for text in texts:
+            match = pattern.regex.search(text)
+            if match is not None:
+                return pattern.role, match.groupdict().get("m") or ""
     return None
 
 
@@ -824,6 +847,8 @@ def _build_row_candidate(
         confidence="high",
         direct_entities={phase: current[phase].entity_id for phase in PHASES},
         signed_current=row.signed_current,
+        # The sign of the meter's total grid power; there is no per-phase power in direct mode.
+        power_inverted=row.invert_power and grid_source is not None,
         entities=_display(used),
         warnings=tuple(warnings),
         grid_power=grid_source,

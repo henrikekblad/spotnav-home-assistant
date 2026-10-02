@@ -307,6 +307,34 @@ def solaredge_modbus_multi(meters=("m1",)) -> Registry:
     return r
 
 
+def solaredge_modbus_core(meters=("SN7E1_m1",), *, battery: bool = True, wye: bool = True) -> Registry:
+    """Home Assistant core's `solaredge_modbus` (2026.10): a meter's entities are
+    `<serial>_meter_<identity>_<key>` on a "Meter n" device, the inverter's `<serial>_<key>`; the voltages
+    ship disabled and a delta meter has line-to-line voltages only."""
+    r = Registry()
+    serial = "SN7E1"
+    r.device("se_inv", model="SE10K", manufacturer="SolarEdge", name="SolarEdge SE10K", entry="se")
+    for ph in "abc":
+        r.add("solaredge_modbus", f"inverter_current_phase_{ph}", f"{serial}_ac_current_phase_{ph}", device_class="current", unit="A", device="se_inv", entry="se", translation_key=f"current_phase_{ph}")
+    r.add("solaredge_modbus", "inverter_power", f"{serial}_ac_power", device_class="power", unit="W", device="se_inv", entry="se")
+    r.add("solaredge_modbus", "inverter_dc_power", f"{serial}_dc_power", device_class="power", unit="W", device="se_inv", entry="se", translation_key="dc_power")
+    for index, identity in enumerate(meters, start=1):
+        device = r.device(f"se_meter_{index}", model="SE-MTR-3Y-400V-A", manufacturer="SolarEdge", name=f"Meter {index}", entry="se")
+        r.add("solaredge_modbus", f"meter_{index}_power", f"{serial}_meter_{identity}_ac_power", device_class="power", unit="W", device=device, entry="se")
+        r.add("solaredge_modbus", f"meter_{index}_current", f"{serial}_meter_{identity}_ac_current", device_class="current", unit="A", device=device, entry="se")
+        r.add("solaredge_modbus", f"meter_{index}_voltage_ab", f"{serial}_meter_{identity}_ac_voltage_phase_ab", device_class="voltage", unit="V", device=device, entry="se", disabled=True, translation_key="voltage_phase_ab")
+        r.add("solaredge_modbus", f"meter_{index}_apparent", f"{serial}_meter_{identity}_ac_apparent_power", device_class="apparent_power", unit="VA", device=device, entry="se", disabled=True)
+        for ph in "abc":
+            r.add("solaredge_modbus", f"meter_{index}_current_phase_{ph}", f"{serial}_meter_{identity}_ac_current_phase_{ph}", device_class="current", unit="A", device=device, entry="se", translation_key=f"current_phase_{ph}")
+            r.add("solaredge_modbus", f"meter_{index}_power_phase_{ph}", f"{serial}_meter_{identity}_ac_power_phase_{ph}", device_class="power", unit="W", device=device, entry="se", translation_key=f"power_phase_{ph}")
+            if wye:
+                r.add("solaredge_modbus", f"meter_{index}_voltage_phase_{ph}n", f"{serial}_meter_{identity}_ac_voltage_phase_{ph}n", device_class="voltage", unit="V", device=device, entry="se", disabled=True, translation_key=f"voltage_phase_{ph}n")
+    if battery:
+        device = r.device("se_battery", model="StorEdge", manufacturer="LG", name="Battery 1", entry="se")
+        r.add("solaredge_modbus", "battery_1_power", f"{serial}_battery_SNB1_dc_power", device_class="power", unit="W", device=device, entry="se", translation_key="dc_power")
+    return r
+
+
 def victron_gx() -> Registry:
     r = Registry()
     for n in "123":
@@ -447,6 +475,10 @@ CASES = {
     "solaredge_modbus_multi": (
         solaredge_modbus_multi,
         Expect(MEASUREMENT_MODE_DERIVED, signed_current=True, power_inverted=True, roles=frozenset({"power", "voltage", "current", "reactive_power"}), disabled=3, integration="solaredge_modbus_multi"),
+    ),
+    "solaredge_modbus_core": (
+        solaredge_modbus_core,
+        Expect(MEASUREMENT_MODE_DERIVED, signed_current=True, power_inverted=True, roles=frozenset({"power", "voltage", "current", "grid_power"}), disabled=3, integration="solaredge_modbus"),
     ),
     "victron_gx": (
         victron_gx,
@@ -1211,3 +1243,65 @@ def test_applying_a_huawei_candidate_sets_both_sign_flags() -> None:
     assert data["site_current_signed"] is True
     assert data["grid_power_inverted"] is True
     assert data["derived_entities"]["L1"]["current"] == "sensor.meter_current_a"
+
+
+# ---- core `solaredge_modbus` (HA 2026.10) next to the HACS integration of the same platform name -----
+
+
+def test_core_solaredge_modbus_reads_the_meter_not_the_inverter_with_the_sign_of_the_registers() -> None:
+    candidate = one_meter(solaredge_modbus_core())
+
+    assert candidate.derived_entities["L2"] == {
+        "power": "sensor.meter_1_power_phase_b",
+        "voltage": "sensor.meter_1_voltage_phase_bn",
+        "current": "sensor.meter_1_current_phase_b",
+    }
+    assert candidate.grid_power == GridPowerSource(power="sensor.meter_1_power")
+    assert candidate.signed_current and candidate.power_inverted
+    assert not any("inverter" in item.entity_id for item in candidate.entities)
+    assert candidate.estimated is False
+
+
+def test_core_solaredge_modbus_without_neutral_voltages_is_a_direct_meter_whose_total_is_export_positive() -> None:
+    candidate = one_meter(solaredge_modbus_core(wye=False))
+
+    assert candidate.mode == MEASUREMENT_MODE_DIRECT
+    assert candidate.direct_entities == {phase: f"sensor.meter_1_current_phase_{ph}" for phase, ph in zip(PHASES, "abc")}
+    assert candidate.grid_power == GridPowerSource(power="sensor.meter_1_power")
+    assert candidate.signed_current
+    assert candidate.power_inverted
+    applied = apply_meter_candidate({}, candidate)
+    assert applied["grid_power_inverted"] is True
+    assert applied["grid_power_source"] == {"power": "sensor.meter_1_power"}
+
+
+def test_core_solaredge_modbus_keeps_each_meters_total_with_that_meter() -> None:
+    detection = solaredge_modbus_core(meters=("SNM1", "slot_2")).detect()
+
+    totals = {c.candidate_id.rsplit(":", 1)[-1]: c.grid_power for c in detection.meters}
+    assert totals == {
+        "snm1": GridPowerSource(power="sensor.meter_1_power"),
+        "slot_2": GridPowerSource(power="sensor.meter_2_power"),
+    }
+
+
+def test_core_solaredge_modbus_battery_is_the_batterys_dc_power_charge_positive() -> None:
+    detection = solaredge_modbus_core().detect()
+
+    assert [(b.entity_id, b.inverted) for b in detection.batteries] == [("sensor.battery_1_power", False)]
+    assert not solaredge_modbus_core(battery=False).detect().batteries
+
+
+def test_core_and_hacs_solaredge_modbus_both_keep_working_side_by_side() -> None:
+    merged = solaredge_modbus_multi()
+    core = solaredge_modbus_core()
+    both = Registry(entities=merged.entities + core.entities, devices=merged.devices + core.devices)
+
+    detection = both.detect()
+
+    assert sorted(m.integration for m in detection.meters) == ["solaredge_modbus", "solaredge_modbus_multi"]
+    assert sorted(b.integration for b in detection.batteries) == ["solaredge_modbus", "solaredge_modbus_multi"]
+    hacs = Registry(entities=[replace(e, platform="solaredge_modbus") for e in merged.entities], devices=merged.devices)
+    hacs_meter = one_meter(hacs)
+    assert hacs_meter.derived_entities["L1"]["power"] == "sensor.se_m1_power_a"
+    assert [b.entity_id for b in hacs.detect().batteries] == ["sensor.se_b1_dc_power"]
