@@ -163,4 +163,3 @@ async def test_the_entity_configuration_lists_the_controller_as_a_conflict(hass:
         {"kind": "other_controller", "entity_id": CONTROL, "label": "EV Smart Charging", "state": "charger"},
         {"kind": "other_controller", "entity_id": CONTROL, "label": "PeaqEV", "state": "installation"},
     ]
-
