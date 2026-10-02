@@ -978,20 +978,9 @@ export function entityEditorBody(
         // Each phase repeats the same fields, so their help is said once, under the last phase.
         const phaseHelp = element(doc, "div");
         phaseHelp.dataset["help"] = "phases";
-        const helpKeys: TranslationKey[] = derived
-          ? ["entity.help.derivedPower", "entity.help.derivedVoltage"]
-          : ["entity.help.phaseDirect"];
-        if (derived && gridKind === "two") {
-          helpKeys.push("entity.help.derivedPowerExport");
-        }
-        if (derived && currentName !== null) {
-          const key = fieldHelpKey(derivedFieldName("L1", currentName));
-          if (key !== null) {
-            helpKeys.push(key);
-          }
-        }
-        for (const key of helpKeys) {
-          phaseHelp.append(element(doc, "p", C.entityHelp, translate(language, key)));
+        // In derived mode the help sits under the grid power and current choices, not repeated here.
+        if (!derived) {
+          phaseHelp.append(element(doc, "p", C.entityHelp, translate(language, "entity.help.phaseDirect")));
         }
         for (const phase of PHASES) {
           const group = element(doc, "fieldset", C.entityLine);
@@ -1037,10 +1026,24 @@ export function entityEditorBody(
           }
         },
       );
+      // The sign of the grid current applies to measured currents: always in direct mode, in derived mode
+      // only when the meter's own current is what is read.
+      const signedShown = (): boolean => currentMode() !== MEASUREMENT_DERIVED || currentKind === "measured";
       const paintGrid = (): void => {
         const derived = currentMode() === MEASUREMENT_DERIVED;
+        const help = element(
+          doc,
+          "p",
+          C.entityHelp,
+          [
+            translate(language, "entity.help.derivedPower"),
+            translate(language, "entity.help.derivedVoltage"),
+            ...(gridKind === "two" ? [translate(language, "entity.help.derivedPowerExport")] : []),
+          ].join(" "),
+        );
+        help.dataset["help"] = "grid-phases";
         grid.fields.replaceChildren(
-          ...(derived ? [] : blocksOf(GRID_TOTAL_FIELDS[0], ...(gridKind === "two" ? [GRID_TOTAL_FIELDS[1]] : []))),
+          ...(derived ? [help] : blocksOf(GRID_TOTAL_FIELDS[0], ...(gridKind === "two" ? [GRID_TOTAL_FIELDS[1]] : []))),
           ...(gridKind === "one" ? blocksOf("grid_power_inverted") : []),
         );
         grid.showNote(gridKind === "two" && isOn("grid_power_inverted"));
@@ -1066,9 +1069,11 @@ export function entityEditorBody(
       );
       current.showNote(currentMixed);
       const paintCurrent = (): void => {
-        const note = element(doc, "p", C.entityHelp, translate(language, "entity.current.estimatedNote"));
-        note.dataset["help"] = "current-estimated";
-        current.fields.replaceChildren(...(currentKind === "estimated" ? [note] : []));
+        const kind = CURRENT_KINDS.find(([choice]) => choice === currentKind)?.[1] ?? null;
+        const helpKey = kind === null ? "entity.current.estimatedNote" : fieldHelpKey(derivedFieldName("L1", kind));
+        const help = element(doc, "p", C.entityHelp, helpKey === null ? "" : translate(language, helpKey));
+        help.dataset["help"] = kind === null ? "current-estimated" : "current-source";
+        current.fields.replaceChildren(help, ...(signedShown() ? blocksOf("site_current_signed") : []));
       };
 
       const battery = choiceGroup(
@@ -1103,8 +1108,7 @@ export function entityEditorBody(
         paintCurrent();
         head.replaceChildren(...(derived ? [grid.fieldset, current.fieldset] : []));
         tail.replaceChildren(
-          ...(derived ? [] : [grid.fieldset]),
-          ...blocksOf("site_current_signed"),
+          ...(derived ? [] : [grid.fieldset, ...blocksOf("site_current_signed")]),
           battery.fieldset,
           ...blocksOf("max_age_s"),
         );
@@ -1130,6 +1134,9 @@ export function entityEditorBody(
         }
         if (gridKind === "two") {
           draft["grid_power_inverted"] = "false";
+        }
+        if (!signedShown()) {
+          draft["site_current_signed"] = "false";
         }
         if (batteryKind === "none") {
           draft["battery_aggregate_power_entity"] = "";

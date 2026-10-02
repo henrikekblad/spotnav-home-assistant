@@ -218,6 +218,48 @@ describe("current is taken from: one kind for every phase", () => {
   });
 });
 
+describe("help under each choice, and where the sign of the current applies", () => {
+  const helpIn = (part: string): string[] =>
+    Array.from(document.querySelectorAll<HTMLElement>(
+        `[data-part='${part}'] [data-help='grid-phases'], [data-part='${part}'] [data-help^='current-']`,
+      )).map((node) => node.textContent ?? "");
+
+  it("says the power and voltage once under Grid power and the current's help once under its choice, not per phase", () => {
+    open(config("get_derived", { derived_L1_apparent_power: "sensor.l1_s" }), "site");
+    expect(helpIn("grid")).toEqual([
+      `${translate("en", "entity.help.derivedPower")} ${translate("en", "entity.help.derivedVoltage")}`,
+    ]);
+    expect(helpIn("current-source")).toEqual([translate("en", "entity.help.derivedApparentPower")]);
+    expect(document.querySelector("[data-help='phases']")?.children.length).toBe(0);
+    pick("current-source", "estimated");
+    expect(helpIn("current-source")).toEqual([translate("en", "entity.current.estimatedNote")]);
+    pick("grid", "two");
+    expect(helpIn("grid")[0]).toContain(translate("en", "entity.help.derivedPowerExport"));
+  });
+
+  it("keeps the phase help in direct mode", () => {
+    open(config("get_direct"), "site");
+    expect(document.querySelector("[data-help='phases']")?.textContent).toBe(translate("en", "entity.help.phaseDirect"));
+  });
+
+  it("shows the signed current in direct mode, and in derived mode only for the meter's own current", () => {
+    open(config("get_direct"), "site");
+    expect(has("site_current_signed")).toBe(true);
+    document.body.replaceChildren();
+    const { sent } = open(config("get_derived", { derived_L1_current: "sensor.l1_i", site_current_signed: true }), "site");
+    expect(checked("current-source")).toBe("measured");
+    expect(has("site_current_signed")).toBe(true);
+    expect(changes(sent())).toEqual({});
+    pick("current-source", "apparent");
+    expect(has("site_current_signed")).toBe(false);
+    pick("current-source", "estimated");
+    expect(has("site_current_signed")).toBe(false);
+    expect(changes(sent())).toEqual({ derived_L1_current: "", site_current_signed: false });
+    pick("current-source", "measured");
+    expect(has("site_current_signed")).toBe(true);
+  });
+});
+
 describe("battery: none, one sensor, or charging and discharging as two", () => {
   it("is none by default, and shows the fields of the chosen variant only", () => {
     open(config("get_direct"), "site");

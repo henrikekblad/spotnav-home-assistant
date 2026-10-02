@@ -1103,6 +1103,11 @@ export const VISUAL_STYLES = `
     font-size: 1rem;
     color: var(--primary-text-color, inherit);
   }
+  .${VISUAL_CLASSES.entityDialog} .${VISUAL_CLASSES.siteFieldset} > .${VISUAL_CLASSES.siteLegend} {
+    font-weight: 600;
+    font-size: 0.95rem;
+    color: var(--primary-text-color, inherit);
+  }
   .${VISUAL_CLASSES.entityGroup} > .${VISUAL_CLASSES.siteLegend} {
     display: block;
     font-weight: 500;
