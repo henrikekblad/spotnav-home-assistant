@@ -383,6 +383,24 @@ METER_ROWS: Final[tuple[MeterRow, ...]] = (
         signed_current=True,
         invert_power=True,
     ),
+    # Bitvis Power Hub (core `bitvis`, 2026.10), a Swedish HAN reader. Unique ids are `<mac>_<key>`. Active
+    # power is two non-negative kW floats, `delivered_to_client` (the grid delivers: import) and
+    # `delivered_by_client` (export), per phase (disabled by default) and in total (`bitvis-protobuf`
+    # `han_port.proto`, both `optional float`, named for the direction rather than signed); current
+    # is the per-phase magnitude. The per-phase reactive power is left out: a pair that needs a sign.
+    MeterRow(
+        platforms=("bitvis",),
+        patterns=(
+            _p("current", r"(?:^|_)phase_current_l(?P<n>[123])$"),
+            _p("voltage", r"(?:^|_)phase_voltage_l(?P<n>[123])$"),
+            _p("power", r"(?:^|_)power_active_l(?P<n>[123])_delivered_to_client$"),
+            _p("power_export", r"(?:^|_)power_active_l(?P<n>[123])_delivered_by_client$"),
+        ),
+        totals=(
+            _p("grid_power", r"(?:^|_)power_active_delivered_to_client$"),
+            _p("grid_power_export", r"(?:^|_)power_active_delivered_by_client$"),
+        ),
+    ),
     MeterRow(
         platforms=("victron_gx", "victron_mqtt", "victron"),
         patterns=(

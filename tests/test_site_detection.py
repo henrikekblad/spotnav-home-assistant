@@ -335,6 +335,25 @@ def solaredge_modbus_core(meters=("SN7E1_m1",), *, battery: bool = True, wye: bo
     return r
 
 
+def bitvis_power_hub(*, current_only: bool = False) -> Registry:
+    """Core `bitvis` (2026.10): `<mac>_<key>`, kW; per-phase voltage and active power ship disabled."""
+    r = Registry()
+    r.device("bv", model="Power Hub", manufacturer="Bitvis", name="Power Hub", entry="bv")
+    mac = "aabbccddeeff"
+    for n in "123":
+        r.add("bitvis", f"power_hub_current_l{n}", f"{mac}_phase_current_l{n}", device_class="current", unit="A", device="bv", entry="bv", translation_key="phase_current")
+        if current_only:
+            continue
+        r.add("bitvis", f"power_hub_voltage_l{n}", f"{mac}_phase_voltage_l{n}", device_class="voltage", unit="V", device="bv", entry="bv", disabled=True, translation_key="phase_voltage")
+        r.add("bitvis", f"power_hub_import_l{n}", f"{mac}_power_active_l{n}_delivered_to_client", device_class="power", unit="kW", device="bv", entry="bv", disabled=True, translation_key="power_active_phase_import")
+        r.add("bitvis", f"power_hub_export_l{n}", f"{mac}_power_active_l{n}_delivered_by_client", device_class="power", unit="kW", device="bv", entry="bv", disabled=True, translation_key="power_active_phase_export")
+        r.add("bitvis", f"power_hub_reactive_import_l{n}", f"{mac}_power_reactive_l{n}_delivered_to_client", device_class="reactive_power", unit="kvar", device="bv", entry="bv", disabled=True, translation_key="power_reactive_phase_import")
+    r.add("bitvis", "power_hub_active_power_import", f"{mac}_power_active_delivered_to_client", device_class="power", unit="kW", device="bv", entry="bv", translation_key="power_active_import")
+    r.add("bitvis", "power_hub_active_power_export", f"{mac}_power_active_delivered_by_client", device_class="power", unit="kW", device="bv", entry="bv", translation_key="power_active_export")
+    r.add("bitvis", "power_hub_reactive_power_import", f"{mac}_power_reactive_delivered_to_client", device_class="reactive_power", unit="kvar", device="bv", entry="bv", disabled=True, translation_key="power_reactive_import")
+    return r
+
+
 def victron_gx() -> Registry:
     r = Registry()
     for n in "123":
@@ -479,6 +498,10 @@ CASES = {
     "solaredge_modbus_core": (
         solaredge_modbus_core,
         Expect(MEASUREMENT_MODE_DERIVED, signed_current=True, power_inverted=True, roles=frozenset({"power", "voltage", "current", "grid_power"}), disabled=3, integration="solaredge_modbus"),
+    ),
+    "bitvis": (
+        bitvis_power_hub,
+        Expect(MEASUREMENT_MODE_DERIVED, roles=frozenset({"power", "power_export", "voltage", "current", "grid_power", "grid_power_export"}), disabled=9, integration="bitvis"),
     ),
     "victron_gx": (
         victron_gx,
@@ -1305,3 +1328,37 @@ def test_core_and_hacs_solaredge_modbus_both_keep_working_side_by_side() -> None
     hacs_meter = one_meter(hacs)
     assert hacs_meter.derived_entities["L1"]["power"] == "sensor.se_m1_power_a"
     assert [b.entity_id for b in hacs.detect().batteries] == ["sensor.se_b1_dc_power"]
+
+
+# ---- Bitvis Power Hub (core `bitvis`) ----------------------------------------------------------------
+
+
+def test_bitvis_total_import_and_export_is_the_pair_and_the_per_phase_power_is_not_taken_as_a_total() -> None:
+    candidate = one_meter(bitvis_power_hub())
+
+    assert candidate.grid_power == GridPowerSource(
+        power="sensor.power_hub_active_power_import", power_export="sensor.power_hub_active_power_export"
+    )
+    assert candidate.derived_entities["L3"] == {
+        "power": "sensor.power_hub_import_l3",
+        "power_export": "sensor.power_hub_export_l3",
+        "voltage": "sensor.power_hub_voltage_l3",
+        "current": "sensor.power_hub_current_l3",
+    }
+    assert not candidate.signed_current and not candidate.power_inverted
+    assert not any("reactive" in item.entity_id for item in candidate.entities)
+
+
+def test_bitvis_with_only_the_enabled_currents_still_offers_the_total_pair_on_a_direct_site() -> None:
+    r = bitvis_power_hub(current_only=True)
+
+    candidate = one_meter(r)
+
+    assert candidate.mode == MEASUREMENT_MODE_DIRECT
+    assert candidate.grid_power == GridPowerSource(
+        power="sensor.power_hub_active_power_import", power_export="sensor.power_hub_active_power_export"
+    )
+    assert apply_meter_candidate({}, candidate)["grid_power_source"] == {
+        "power": "sensor.power_hub_active_power_import",
+        "power_export": "sensor.power_hub_active_power_export",
+    }
