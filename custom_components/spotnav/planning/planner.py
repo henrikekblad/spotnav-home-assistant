@@ -59,6 +59,7 @@ TargetEnergyReason = Literal["ok", "unknown_capacity", "already_at_target"]
 PlannerCode = Literal[
     "invalid_phases",
     "invalid_amps",
+    "invalid_voltage",
     "invalid_energy",
     "invalid_consumption",
     "invalid_periods",
@@ -183,28 +184,43 @@ def effective_minor_per_kwh(local_major_per_kwh: float, fiscal: FiscalChoice) ->
     return minor
 
 
-def power_kw(amps: int, phases: int) -> float:
-    """The power a connector draws: 230 V single phase, or 400 V three-phase.
+#: The voltage between two phases on a TN network, what the planner assumed before it was a setting.
+DEFAULT_VOLTAGE_BETWEEN_PHASES_V: Final = 400.0
 
-    Three-phase uses `sqrt(3)` times the line current, not a "230 x 3" shortcut.
+
+def power_kw(amps: int, phases: int, voltage_between_phases_v: float = DEFAULT_VOLTAGE_BETWEEN_PHASES_V) -> float:
+    """The power a connector draws: 230 V single phase, or three-phase at the voltage between phases
+    (400 V on a TN network, 230 V on an IT network).
+
+    Three-phase uses `sqrt(3)` times that voltage times the line current, not a "230 x 3" shortcut. A
+    single-phase charger sees 230 V either way (on an IT network between two phases).
     """
     if phases == 1:
         return 230.0 * amps / 1000.0
-    return math.sqrt(3.0) * 400.0 * amps / 1000.0
+    return math.sqrt(3.0) * voltage_between_phases_v * amps / 1000.0
 
 
-def energy_per_slot_kwh(amps: int, phases: int) -> float:
+def energy_per_slot_kwh(
+    amps: int, phases: int, voltage_between_phases_v: float = DEFAULT_VOLTAGE_BETWEEN_PHASES_V
+) -> float:
     """What one whole 15-minute slot delivers at that power."""
-    return power_kw(amps, phases) * SLOT_HOURS
+    return power_kw(amps, phases, voltage_between_phases_v) * SLOT_HOURS
 
 
-def slots_needed(requested_kwh: float, amps: int, phases: int) -> int:
+def slots_needed(
+    requested_kwh: float,
+    amps: int,
+    phases: int,
+    voltage_between_phases_v: float = DEFAULT_VOLTAGE_BETWEEN_PHASES_V,
+) -> int:
     """How many whole slots the request needs, and never fewer than one.
 
     Delivered energy may exceed the request by up to one slot; rounding down would
     deliver less than asked for.
     """
-    return max(1, math.ceil(requested_kwh / energy_per_slot_kwh(amps, phases)))
+    return max(
+        1, math.ceil(requested_kwh / energy_per_slot_kwh(amps, phases, voltage_between_phases_v))
+    )
 
 
 @dataclass(frozen=True, slots=True)
@@ -325,6 +341,8 @@ class PlanRequest:
     #: Latest instant a selected slot may end at, tighter than the departure or horizon.
     #: Lets `planning/price_wait.py` plan inside the priced part of the window.
     window_end: datetime | None = None
+    #: The voltage between two phases (400 V TN, 230 V IT): what three-phase power is figured from.
+    voltage_between_phases_v: float = DEFAULT_VOLTAGE_BETWEEN_PHASES_V
 
     def validated(self) -> PlanRequest:
         """The same request, once every field is known to be plannable."""
@@ -332,6 +350,8 @@ class PlanRequest:
             _refuse("invalid_phases", "phases must be 1 or 3")
         if isinstance(self.amps, bool) or not isinstance(self.amps, int) or self.amps <= 0:
             _refuse("invalid_amps", "amps must be a positive whole number")
+        if self.voltage_between_phases_v not in (230.0, 400.0):
+            _refuse("invalid_voltage", "the voltage between phases must be 230 or 400")
         if not MIN_PERIODS <= _as_int(self.max_periods) <= MAX_PERIODS:
             _refuse("invalid_periods", f"max_periods must be between {MIN_PERIODS} and {MAX_PERIODS}")
         _positive(self.requested_kwh, "invalid_energy", "requested_kwh")
@@ -383,6 +403,7 @@ class PlanRequest:
             departure=self.departure,
             departure_date=self.departure_date,
             window_end=self.window_end,
+            voltage_between_phases_v=float(self.voltage_between_phases_v),
         )
 
 
@@ -625,8 +646,10 @@ def _window(request: PlanRequest) -> _Window | PlannerReason:
     first_start = floored if floored >= now else floored + timedelta(minutes=STEP_MINUTES)
     horizon = first_start + timedelta(hours=HORIZON_HOURS)
 
-    per_slot = energy_per_slot_kwh(request.amps, request.phases)
-    needed = slots_needed(request.requested_kwh, request.amps, request.phases)
+    per_slot = energy_per_slot_kwh(request.amps, request.phases, request.voltage_between_phases_v)
+    needed = slots_needed(
+        request.requested_kwh, request.amps, request.phases, request.voltage_between_phases_v
+    )
     duration = timedelta(minutes=STEP_MINUTES * needed)
 
     deadline: datetime | None = None
@@ -737,7 +760,7 @@ def plan_unpriced(request: PlanRequest) -> PlanResult:
         minor_unit=request.minor_unit,
         now=request.now,
         reason=None,
-        power_kw=power_kw(request.amps, request.phases),
+        power_kw=power_kw(request.amps, request.phases, request.voltage_between_phases_v),
         requested_kwh=request.requested_kwh,
         delivered_kwh=delivered,
         distance_mil=delivered / request.consumption_kwh_per_10km,
@@ -816,7 +839,7 @@ def calculate_plan(request: PlanRequest) -> PlanResult:
         minor_unit=request.minor_unit,
         now=request.now,
         reason=None,
-        power_kw=power_kw(request.amps, request.phases),
+        power_kw=power_kw(request.amps, request.phases, request.voltage_between_phases_v),
         requested_kwh=request.requested_kwh,
         delivered_kwh=delivered,
         distance_mil=delivered / request.consumption_kwh_per_10km,
@@ -852,7 +875,7 @@ def _no_plan(request: PlanRequest, reason: PlannerReason) -> PlanResult:
         minor_unit=request.minor_unit,
         now=request.now,
         reason=reason,
-        power_kw=power_kw(request.amps, request.phases),
+        power_kw=power_kw(request.amps, request.phases, request.voltage_between_phases_v),
         requested_kwh=request.requested_kwh,
         delivered_kwh=0.0,
         distance_mil=0.0,

@@ -65,8 +65,11 @@ from ..const import (
     DOMAIN,
     MEASUREMENT_MODE_DERIVED,
     MEASUREMENT_MODE_DIRECT,
+    VOLTAGE_BETWEEN_PHASES_CHOICES,
     MODE_DETECTED,
 )
+from ..planning.first_run import site_for_charger
+from ..planning.grid_voltage import stored_voltage_between_phases_v
 from ..runtime import controller_for, site_controller_for
 from ..site.site_detection import (
     apply_meter_candidate,
@@ -118,11 +121,16 @@ FIELD_POWER_ENTITY: Final = "power_entity"
 CURRENT_LIMIT_NONE: Final = "none"
 #: Read-only here; see the module docstring.
 FIELD_VEHICLE_SOC: Final = "vehicle_soc"
+#: The voltage between phases, as the text of the whole number ("400" TN, "230" IT). A site field, and
+#: the field of a charger that is in no site (a charger in a site takes its site's).
+FIELD_VOLTAGE_BETWEEN_PHASES: Final = "voltage_between_phases_v"
+VOLTAGE_CHOICES: Final = tuple(str(volts) for volts in VOLTAGE_BETWEEN_PHASES_CHOICES)
 CHARGER_FIELDS: Final = (
     FIELD_CHARGE_CONTROL,
     FIELD_CURRENT_LIMIT,
     FIELD_ENERGY_REGISTER,
     FIELD_POWER_ENTITY,
+    FIELD_VOLTAGE_BETWEEN_PHASES,
     FIELD_VEHICLE_SOC,
 )
 FIELD_MAIN_FUSE_A: Final = "main_fuse_a"
@@ -164,6 +172,7 @@ def site_fixed_fields() -> tuple[str, ...]:
     return (
         FIELD_MAIN_FUSE_A,
         FIELD_MEASUREMENT_MODE,
+        FIELD_VOLTAGE_BETWEEN_PHASES,
         FIELD_MAX_AGE_S,
         FIELD_BATTERY_AGGREGATE_POWER,
         FIELD_BATTERY_DISCHARGE_POWER,
@@ -489,6 +498,32 @@ def current_limit_none_allowed(entry: ConfigEntry) -> bool:
     return entry.data.get(CONF_CURRENT_CONTROL) != CURRENT_CONTROL_NUMBER
 
 
+def _voltage_text(entry: ConfigEntry) -> str:
+    """The entry's stored voltage between phases as the text a field carries."""
+    return str(int(stored_voltage_between_phases_v(entry.data)))
+
+
+def _voltage_error(changes: dict[str, Any]) -> FieldError | None:
+    if FIELD_VOLTAGE_BETWEEN_PHASES not in changes:
+        return None
+    value = changes[FIELD_VOLTAGE_BETWEEN_PHASES]
+    if isinstance(value, bool) or str(value) not in VOLTAGE_CHOICES:
+        return FieldError(FIELD_VOLTAGE_BETWEEN_PHASES, ERR_INVALID_VALUE)
+    return None
+
+
+def _voltage_descriptor(scope: Scope, value: str) -> dict[str, Any]:
+    return {
+        "field": FIELD_VOLTAGE_BETWEEN_PHASES,
+        "scope": scope,
+        "kind": "enum",
+        "required": True,
+        "writable": True,
+        "value": value,
+        "choices": list(VOLTAGE_CHOICES),
+    }
+
+
 def current_charger_values(entry: ConfigEntry) -> dict[str, str]:
     """The writable charger fields' stored values, `""` for "not configured" (as `entry.data`), except
     `current_limit`, which is `CURRENT_LIMIT_NONE` once the person chose "None".
@@ -502,6 +537,7 @@ def current_charger_values(entry: ConfigEntry) -> dict[str, str]:
         ),
         FIELD_ENERGY_REGISTER: entry.data.get(CONF_ENERGY_REGISTER_ENTITY) or "",
         FIELD_POWER_ENTITY: entry.data.get(CONF_POWER_ENTITY) or "",
+        FIELD_VOLTAGE_BETWEEN_PHASES: _voltage_text(entry),
     }
 
 
@@ -556,6 +592,13 @@ def charger_field_errors(
 
     if FIELD_VEHICLE_SOC in changes:
         errors.append(FieldError(FIELD_VEHICLE_SOC, ERR_NOT_WRITABLE))
+
+    if FIELD_VOLTAGE_BETWEEN_PHASES in changes:
+        if site_for_charger(hass, entry.entry_id) is not None:
+            # The site holds it for its chargers.
+            errors.append(FieldError(FIELD_VOLTAGE_BETWEEN_PHASES, ERR_NOT_WRITABLE))
+        elif (error := _voltage_error(changes)) is not None:
+            errors.append(error)
 
     if (
         FIELD_CHARGE_CONTROL in resolved
@@ -632,6 +675,11 @@ def charger_field_descriptors(hass: HomeAssistant, entry: ConfigEntry) -> list[d
             writable=True,
             current_entity_id=values[FIELD_POWER_ENTITY] or None,
             effective=effective[FIELD_POWER_ENTITY],
+        ),
+        *(
+            [_voltage_descriptor("charger", values[FIELD_VOLTAGE_BETWEEN_PHASES])]
+            if site_for_charger(hass, entry.entry_id) is None
+            else []
         ),
         vehicle_soc_descriptor(hass),
     ]
@@ -745,6 +793,7 @@ def current_site_values(entry: ConfigEntry) -> dict[str, Any]:
         FIELD_GRID_POWER_SOURCE_EXPORT: "" if grid_total is None else (grid_total.power_export or ""),
         FIELD_MAIN_FUSE_A: entry.data.get(CONF_MAIN_FUSE_A),
         FIELD_MEASUREMENT_MODE: entry.data.get(CONF_MEASUREMENT_MODE, MEASUREMENT_MODE_DIRECT),
+        FIELD_VOLTAGE_BETWEEN_PHASES: _voltage_text(entry),
         FIELD_MAX_AGE_S: entry.data.get(CONF_MAX_AGE_S, DEFAULT_MAX_AGE_S),
         FIELD_BATTERY_AGGREGATE_POWER: entry.data.get(CONF_BATTERY_AGGREGATE_POWER_ENTITY) or "",
         FIELD_BATTERY_DISCHARGE_POWER: entry.data.get(CONF_BATTERY_DISCHARGE_POWER_ENTITY) or "",
@@ -804,6 +853,8 @@ def site_field_errors(
     mode, mode_error = _resulting_measurement_mode(entry, changes)
     if mode_error is not None:
         errors.append(mode_error)
+    if (voltage_error := _voltage_error(changes)) is not None:
+        errors.append(voltage_error)
 
     for field in (FIELD_BATTERY_AGGREGATE_POWER, FIELD_BATTERY_DISCHARGE_POWER, *GRID_POWER_SOURCE_FIELDS):
         if field in changes:
@@ -926,6 +977,7 @@ def site_field_descriptors(hass: HomeAssistant, entry: ConfigEntry) -> list[dict
             "value": mode,
             "choices": [MEASUREMENT_MODE_DIRECT, MEASUREMENT_MODE_DERIVED],
         },
+        _voltage_descriptor("site", values[FIELD_VOLTAGE_BETWEEN_PHASES]),
     ]
     phase_fields = direct_fields() if mode == MEASUREMENT_MODE_DIRECT else derived_fields()
     for field in phase_fields:

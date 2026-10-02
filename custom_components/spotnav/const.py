@@ -40,6 +40,9 @@ CONF_CONTROL_PATH = "control_path"
 CONF_CHARGING_STATE = "charging_state"
 # One entity with L1/L2/L3 attributes, or up to three phase sensors, in A or mA.
 CONF_CHARGER_CURRENT_ENTITIES = "charger_current_entities"
+# The charger's phases (1 or 3), read from its entities or answered in the flow; first-run defaults use it
+# when no site wiring says.
+CONF_CHARGER_PHASES = "charger_phases"
 # Whether the energy register is a per-session one (it resets), chosen knowingly.
 CONF_ENERGY_REGISTER_IS_SESSION = "energy_register_is_session"
 
@@ -80,6 +83,14 @@ CONF_SITE_ENABLED = "site_enabled"
 # separate from `ACTIVE_CONTROL_READY` in `site/site_capacity.py`; both must hold before any write.
 CONF_ACTIVE_CONTROL_ENABLED = "active_control_enabled"
 CONF_MAIN_FUSE_A = "main_fuse_a"
+# The voltage between two phases, on the site entry (or, for a charger with no site, on the charger
+# entry): 400 V on a TN network (the default), 230 V on an IT network (much of Norway). Three-phase power
+# is sqrt(3) x this x the line current.
+CONF_VOLTAGE_BETWEEN_PHASES_V = "voltage_between_phases_v"
+VOLTAGE_BETWEEN_PHASES_TN_V = 400
+VOLTAGE_BETWEEN_PHASES_IT_V = 230
+VOLTAGE_BETWEEN_PHASES_CHOICES = (VOLTAGE_BETWEEN_PHASES_TN_V, VOLTAGE_BETWEEN_PHASES_IT_V)
+DEFAULT_VOLTAGE_BETWEEN_PHASES_V = VOLTAGE_BETWEEN_PHASES_TN_V
 CONF_SAFETY_MARGIN_A = "safety_margin_a"
 CONF_MEASUREMENT_MODE = "measurement_mode"
 CONF_CHARGER_ENTRY_IDS = "charger_entry_ids"

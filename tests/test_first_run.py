@@ -9,6 +9,8 @@ import pytest
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
 from custom_components.spotnav.const import (
+    CONF_CHARGER_CURRENT_ENTITIES,
+    CONF_CHARGER_PHASES,
     CONF_CHARGER_ENTRY_IDS,
     CONF_ENTRY_TYPE,
     CONF_MAIN_FUSE_A,
@@ -125,13 +127,13 @@ def test_every_zone_the_relay_publishes_for_a_split_country_has_reference_points
 @pytest.mark.parametrize(
     ("wired", "charger_max", "site_limit", "phases", "amps"),
     [
-        (None, None, None, 3, 16),  # nothing known
+        (None, None, None, None, 16),  # nothing known: phases are asked, never guessed
         (1, None, None, 1, 16),  # the site wiring decides the phases
         (3, 32, None, 3, 32),  # the charger states its maximum
         (3, 32, 24, 3, 24),  # never above fuse minus margin
-        (None, None, 10, 3, 10),  # the unknown 16 is capped too
-        (None, 10, 25, 3, 10),
-        (None, None, 5, 3, None),  # below the charger's minimum: left empty
+        (None, None, 10, None, 10),  # the unknown 16 is capped too
+        (None, 10, 25, None, 10),
+        (None, None, 5, None, None),  # below the charger's minimum: left empty
     ],
 )
 def test_phases_and_amps(wired, charger_max, site_limit, phases, amps) -> None:
@@ -140,7 +142,9 @@ def test_phases_and_amps(wired, charger_max, site_limit, phases, amps) -> None:
         wired_phases=wired, charger_max_a=charger_max, site_limit_a=site_limit,
     )
     assert (settings.phases, settings.amps, settings.area_id) == (phases, amps, "SE3")
-    assert suggested == (("area", "phases", "amps") if amps is not None else ("area", "phases"))
+    assert suggested == tuple(
+        name for name, value in (("area", "SE3"), ("phases", phases), ("amps", amps)) if value is not None
+    )
 
 
 def test_nothing_is_defaulted_beyond_area_phases_and_amps() -> None:
@@ -185,7 +189,9 @@ class _Preview:
         self.seeded += 1
 
 
-async def _setup(hass, *, country="SE", latitude=67.86, longitude=20.23, catalogue=CATALOGUE):
+async def _setup(
+    hass, *, country="SE", latitude=67.86, longitude=20.23, catalogue=CATALOGUE, entry_data=None
+):
     hass.config.country = country
     hass.config.latitude = latitude
     hass.config.longitude = longitude
@@ -194,7 +200,9 @@ async def _setup(hass, *, country="SE", latitude=67.86, longitude=20.23, catalog
     data = domain_data(hass)
     data.auto_store = store
     data.price_refresh = _Manager(catalogue)
-    entry = MockConfigEntry(domain=DOMAIN, data={}, entry_id="charger_a")
+    entry = MockConfigEntry(
+        domain=DOMAIN, data=entry_data if entry_data is not None else {CONF_CHARGER_PHASES: 3}, entry_id="charger_a"
+    )
     entry.add_to_hass(hass)
     return store, entry
 
@@ -236,6 +244,29 @@ async def test_the_charger_maximum_and_the_site_shape_the_defaults(hass) -> None
     await async_seed_first_run(hass, entry, _Controller(32), None)
     settings = store.settings(entry.entry_id)
     assert (settings.area_id, settings.phases, settings.amps) == ("NO5", 1, 17)
+
+
+async def test_phases_come_from_what_the_charger_flow_recorded_or_its_three_current_entities(hass) -> None:
+    store, entry = await _setup(hass, entry_data={CONF_CHARGER_PHASES: 1})
+    await async_seed_first_run(hass, entry, _Controller(None), None)
+    assert store.settings(entry.entry_id).phases == 1
+
+
+async def test_three_current_entities_show_three_phases(hass) -> None:
+    store, entry = await _setup(
+        hass, entry_data={CONF_CHARGER_CURRENT_ENTITIES: ["sensor.l1", "sensor.l2", "sensor.l3"]}
+    )
+    await async_seed_first_run(hass, entry, _Controller(None), None)
+    assert store.settings(entry.entry_id).phases == 3
+
+
+async def test_phases_nothing_says_are_left_empty_and_asked_for_not_guessed(hass) -> None:
+    store, entry = await _setup(hass, entry_data={})
+    await async_seed_first_run(hass, entry, _Controller(None), None)
+    settings = store.settings(entry.entry_id)
+    assert settings.phases is None
+    assert store.suggested(entry.entry_id) == ("area", "amps")
+    assert settings.missing_for_auto() == ("phases",)
 
 
 async def test_no_country_seeds_phases_and_amps_but_no_area(hass) -> None:

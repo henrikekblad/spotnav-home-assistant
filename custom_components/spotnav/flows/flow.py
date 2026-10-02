@@ -28,6 +28,7 @@ from ..const import (
     CONF_CHARGE_CONTROL,
     CONF_CHARGER_CURRENT_ENTITIES,
     CONF_CHARGER_ENTRY_IDS,
+    CONF_CHARGER_PHASES,
     CONF_CHARGER_PLATFORM,
     CONF_CHARGING_STATE,
     CONF_CONTROL_PATH,
@@ -51,6 +52,7 @@ from ..const import (
     CONF_REGULATOR_DEADBAND_A,
     CONF_REGULATOR_DWELL_S,
     CONF_SAFETY_MARGIN_A,
+    CONF_VOLTAGE_BETWEEN_PHASES_V,
     CONF_SITE_CURRENT_SOURCE,
     CONF_SITE_ENABLED,
     CONF_WEBHOOK_ID,
@@ -60,6 +62,7 @@ from ..const import (
     CURRENT_CONTROL_EASEE,
     CURRENT_CONTROL_NUMBER,
     DEFAULT_MAX_AGE_S,
+    DEFAULT_VOLTAGE_BETWEEN_PHASES_V,
     DEFAULT_REGULATOR_DEADBAND_A,
     DEFAULT_REGULATOR_DWELL_S,
     DEFAULT_YIELD_STEPPING_ENABLED,
@@ -80,6 +83,8 @@ from ..execution.charger_profiles import (
 )
 from ..repairs import async_sync_resolution_repairs
 from ..runtime import domain_data
+from ..planning.first_run import charger_phases_from_entry
+from ..planning.grid_voltage import default_voltage_between_phases_v
 from ..site.measurement_source import grid_power_source_to_dict, source_to_dict
 from ..site.site_join import queue_site_join
 from ..site.site_detection import (
@@ -138,6 +143,8 @@ from .site_form import (
     site_default_current_choice,
     site_detected_schema,
     site_margin_errors,
+    voltage_between_phases_from_form,
+    voltage_between_phases_selector,
     site_details_schema,
     site_details_unit_errors,
     charger_wiring_schema,
@@ -206,6 +213,8 @@ class SpotNavChargingConfigFlow(ChargerWiringSteps, config_entries.ConfigFlow, d
         self._detected_meters: list[MeterCandidate] = []
         self._detected_batteries: list[BatteryCandidate] = []
         self._join_charger: tuple[str, dict[str, Any]] | None = None
+        # The charger being created while `charger_installation` asks what its entities cannot say.
+        self._installation_charger: tuple[str, dict[str, Any]] | None = None
         self._join_site_entry: Any = None
         # The battery the confirmation step applies; `None` whenever the full form is used.
         self._site_battery: BatteryCandidate | None = None
@@ -947,6 +956,63 @@ class SpotNavChargingConfigFlow(ChargerWiringSteps, config_entries.ConfigFlow, d
         return await self._finish_charger(title, data)
 
     async def _finish_charger(self, title: str, data: dict[str, Any]) -> ConfigFlowResult:
+        """Ask what the charger's entities cannot say (its phases, and in Norway the voltage between
+        phases), then create the entry, after offering to add it to the installation's one site.
+        """
+        self._installation_charger = (title, data)
+        if any(self._installation_questions(data)):
+            return await self.async_step_charger_installation()
+        return await self._finish_charger_entry(title, data)
+
+    def _installation_questions(self, data: dict[str, Any]) -> tuple[bool, bool]:
+        """Whether to ask for the charger's phases (nothing reads them) and for the voltage between
+        phases (a country whose homes are often on an IT network, and no site yet to hold it).
+        """
+        ask_phases = charger_phases_from_entry(data) is None
+        ask_voltage = (
+            default_voltage_between_phases_v(self.hass) != DEFAULT_VOLTAGE_BETWEEN_PHASES_V
+            and not any(
+                entry.data.get(CONF_ENTRY_TYPE) == ENTRY_TYPE_SITE
+                for entry in self.hass.config_entries.async_entries(DOMAIN)
+            )
+        )
+        return ask_phases, ask_voltage
+
+    async def async_step_charger_installation(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        """The questions the charger cannot answer itself: one phase or three, and the voltage between
+        phases where IT networks are common. Without a site, the charger holds both.
+        """
+        assert self._installation_charger is not None
+        title, data = self._installation_charger
+        ask_phases, ask_voltage = self._installation_questions(data)
+        if user_input is not None:
+            data = dict(data)
+            if ask_phases:
+                data[CONF_CHARGER_PHASES] = int(user_input[CONF_CHARGER_PHASES])
+            if ask_voltage:
+                data[CONF_VOLTAGE_BETWEEN_PHASES_V] = voltage_between_phases_from_form(user_input)
+            return await self._finish_charger_entry(title, data)
+        schema: dict[Any, Any] = {}
+        if ask_phases:
+            schema[vol.Required(CONF_CHARGER_PHASES)] = selector.SelectSelector(
+                selector.SelectSelectorConfig(
+                    options=["1", "3"],
+                    translation_key="charger_phases",
+                    mode=selector.SelectSelectorMode.LIST,
+                )
+            )
+        if ask_voltage:
+            schema[
+                vol.Required(
+                    CONF_VOLTAGE_BETWEEN_PHASES_V,
+                    default=str(int(default_voltage_between_phases_v(self.hass))),
+                )
+            ] = voltage_between_phases_selector()
+        return self.async_show_form(step_id="charger_installation", data_schema=vol.Schema(schema))
+
+    async def _finish_charger_entry(self, title: str, data: dict[str, Any]) -> ConfigFlowResult:
         """Create the charger entry, after offering to add it to the installation's one site."""
         sites = [
             entry
@@ -1309,6 +1375,7 @@ class SpotNavChargingConfigFlow(ChargerWiringSteps, config_entries.ConfigFlow, d
             CONF_ACTIVE_CONTROL_ENABLED: False,
             CONF_MAIN_FUSE_A: self._site_basic[CONF_MAIN_FUSE_A],
             CONF_SAFETY_MARGIN_A: self._site_basic.get(CONF_SAFETY_MARGIN_A, 0.0),
+            CONF_VOLTAGE_BETWEEN_PHASES_V: voltage_between_phases_from_form(self._site_basic),
             CONF_MEASUREMENT_MODE: pending.mode,
             CONF_CHARGER_ENTRY_IDS: pending.charger_entry_ids,
             CONF_PHASE_WIRING: phase_wiring,

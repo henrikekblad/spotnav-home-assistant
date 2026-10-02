@@ -37,6 +37,7 @@ from ..const import (
     CONF_REGULATOR_DEADBAND_A,
     CONF_REGULATOR_DWELL_S,
     CONF_SAFETY_MARGIN_A,
+    CONF_VOLTAGE_BETWEEN_PHASES_V,
     CONF_SITE_CURRENT_SIGNED,
     CONF_SITE_CURRENT_SOURCE,
     CONF_SITE_ENABLED,
@@ -45,6 +46,7 @@ from ..const import (
     CONF_YIELD_CEILING_A,
     CONF_YIELD_STEPPING_ENABLED,
     DEFAULT_MAX_AGE_S,
+    DEFAULT_VOLTAGE_BETWEEN_PHASES_V,
     DEFAULT_REGULATOR_DEADBAND_A,
     DEFAULT_REGULATOR_DWELL_S,
     DEFAULT_SOLAR_PRIORITY,
@@ -95,6 +97,7 @@ from .site_form import (
     site_details_schema,
     site_details_unit_errors,
     site_margin_errors,
+    voltage_between_phases_from_form,
 )
 
 
@@ -336,6 +339,9 @@ class SiteCapacityOptionsFlow(ChargerWiringSteps, config_entries.OptionsFlow):
             "name": self._entry.title,
             CONF_MAIN_FUSE_A: self._entry.data[CONF_MAIN_FUSE_A],
             CONF_SAFETY_MARGIN_A: self._entry.data.get(CONF_SAFETY_MARGIN_A, 0.0),
+            CONF_VOLTAGE_BETWEEN_PHASES_V: self._entry.data.get(
+                CONF_VOLTAGE_BETWEEN_PHASES_V, DEFAULT_VOLTAGE_BETWEEN_PHASES_V
+            ),
             CONF_MEASUREMENT_MODE: self._entry.data.get(
                 CONF_MEASUREMENT_MODE, MEASUREMENT_MODE_DIRECT
             ),
@@ -759,8 +765,18 @@ class SiteCapacityOptionsFlow(ChargerWiringSteps, config_entries.OptionsFlow):
     ) -> dict[str, Any]:
         """The entry data a save writes: the basics from `self._pending_basic`, the measurement parts
         handed in (parsed from the details step, or the stored ones when it is skipped)."""
+        voltage = voltage_between_phases_from_form(
+            self._pending_basic, default=self._entry.data.get(CONF_VOLTAGE_BETWEEN_PHASES_V)
+        )
         updated_data = {
             **self._entry.data,
+            # Stored once it is chosen or already stored; a site that never chose it keeps no key.
+            **(
+                {CONF_VOLTAGE_BETWEEN_PHASES_V: voltage}
+                if CONF_VOLTAGE_BETWEEN_PHASES_V in self._entry.data
+                or voltage != DEFAULT_VOLTAGE_BETWEEN_PHASES_V
+                else {}
+            ),
             CONF_SITE_ENABLED: self._pending_basic[CONF_SITE_ENABLED],
             CONF_MAIN_FUSE_A: self._pending_basic[CONF_MAIN_FUSE_A],
             CONF_SAFETY_MARGIN_A: self._pending_basic.get(CONF_SAFETY_MARGIN_A, 0.0),

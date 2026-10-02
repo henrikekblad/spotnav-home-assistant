@@ -1761,7 +1761,7 @@ async def test_first_run_defaults_install_a_plan_without_a_person_saving(
     await session.manager.async_ensure_catalogue()
     hass = session.hass
     hass.config.country, hass.config.latitude, hass.config.longitude = "SE", 55.6, 13.0
-    entry = SimpleNamespace(entry_id=session.entry_id)
+    entry = SimpleNamespace(entry_id=session.entry_id, data={"charger_phases": 3})
     assert session.settings().revision == 0
 
     assert await async_seed_first_run(hass, entry, session.controller, session.preview)

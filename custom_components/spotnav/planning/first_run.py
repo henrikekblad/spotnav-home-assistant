@@ -9,7 +9,9 @@ person. Nothing here overwrites a saved value or runs again after a value is cle
   Assistant's configured coordinates; see `AREA_REFERENCE_POINTS`. No country, a country the
   catalogue does not list, a multi-area country without a table, or coordinates far from every
   reference point (Home Assistant's unset default is in California) leaves the area empty.
-* phases: the site's wiring for this charger when it has one, else 3.
+* phases: the site's wiring for this charger when it has one, else the phases the charger flow
+  recorded (read from the charger's current entities, or answered by the person), else three when the
+  charger's own current entities are three; otherwise left empty (the card asks), never guessed.
 * amps: the charger's own maximum when an entity states one, else 16; never above the site's main
   fuse minus its safety margin, and left empty if that leaves less than the charger's minimum.
 * fiscal figures are not defaulted here: the catalogue's suggestions resolve during calculation.
@@ -25,7 +27,9 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 
 from ..const import (
+    CONF_CHARGER_CURRENT_ENTITIES,
     CONF_CHARGER_ENTRY_IDS,
+    CONF_CHARGER_PHASES,
     CONF_ENTRY_TYPE,
     CONF_MAIN_FUSE_A,
     CONF_PHASE_WIRING,
@@ -46,8 +50,6 @@ _LOGGER = logging.getLogger(__name__)
 
 #: Current assumed for a charger that states no maximum of its own.
 UNKNOWN_CHARGER_AMPS: Final = 16
-#: Phases assumed when neither the site wiring nor anything else says.
-DEFAULT_PHASES: Final = 3
 #: A position farther than this from every reference point of the country is not trusted
 #: (Sweden is about 1,500 km long and its points are at most about 250 km apart).
 MAX_REFERENCE_DISTANCE_KM: Final = 400.0
@@ -231,6 +233,17 @@ def _wired_phases(site: ConfigEntry | None, charger_entry_id: str) -> int | None
     return phases if phases in (1, 3) and not isinstance(phases, bool) else None
 
 
+def charger_phases_from_entry(data: Any) -> int | None:
+    """The phases a charger's own entry says: what the flow recorded, else three when it has exactly
+    three current entities (one per phase). `None` when nothing says.
+    """
+    phases = data.get(CONF_CHARGER_PHASES)
+    if phases in (1, 3) and not isinstance(phases, bool):
+        return phases
+    entities = data.get(CONF_CHARGER_CURRENT_ENTITIES)
+    return 3 if isinstance(entities, (list, tuple)) and len(entities) == 3 else None
+
+
 def _site_limit_a(site: ConfigEntry | None) -> int | None:
     """The main fuse minus the safety margin, whole amps, or `None` when there is no site fuse."""
     if site is None:
@@ -256,7 +269,7 @@ def first_run_defaults(
 ) -> tuple[AutoSettings, tuple[str, ...]]:
     """The defaults as a settings record, and which of area, phases and amps they filled in."""
     area = suggest_area(catalogue, country, latitude, longitude)
-    phases = wired_phases if wired_phases in (1, 3) else DEFAULT_PHASES
+    phases = wired_phases if wired_phases in (1, 3) else None
     amps: int | None = charger_max_a if charger_max_a is not None else UNKNOWN_CHARGER_AMPS
     if site_limit_a is not None:
         amps = min(amps, site_limit_a)
@@ -295,7 +308,7 @@ async def async_seed_first_run(
         country=hass.config.country,
         latitude=hass.config.latitude,
         longitude=hass.config.longitude,
-        wired_phases=_wired_phases(site, entry.entry_id),
+        wired_phases=_wired_phases(site, entry.entry_id) or charger_phases_from_entry(getattr(entry, "data", None) or {}),
         charger_max_a=charger_max,
         site_limit_a=_site_limit_a(site),
     )
