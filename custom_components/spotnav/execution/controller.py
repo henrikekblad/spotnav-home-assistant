@@ -58,6 +58,7 @@ from .charger_adapter import (
     ASSIGN_NO_TARGET,
     ASSIGN_PROBE_IN_FLIGHT,
     ASSIGN_READ_FAILED,
+    ASSIGN_TARGET_UNAVAILABLE,
     ASSIGN_UNCONFIRMED,
     ASSIGN_UNSUPPORTED,
     assigned_amps_for_connector,
@@ -467,6 +468,9 @@ class ChargingController:
         # When a Start this controller accepted was sent to the charge control while the charger
         # has not reported it on yet, else `None`.
         self._start_sent_at: datetime | None = None
+        #: A session start found its current's target unavailable (a number that exists only while
+        #: a session runs): written once that target reports.
+        self._start_write_pending = False
         # The vehicle-side observation (`charge_progress.py`): one passive value plus the grace
         # timer. Built with this controller as its host, hence a protocol rather than an import.
         self._charge_progress = ChargeProgressObserver(self)
@@ -604,10 +608,16 @@ class ChargingController:
         sent_at = self._start_sent_at
         if sent_at is None:
             return False
-        if self.charging:
+        if self.charging or self.adapter.held_by_charger():
+            # Answered: charging, or the charger says its own scheduler holds the charge.
             self._start_sent_at = None
             return False
         return (dt_util.utcnow() - sent_at).total_seconds() < START_ACK_TIMEOUT_S
+
+    @property
+    def held_by_charger(self) -> bool:
+        """Whether the charger's own scheduler or load balancer holds the charge."""
+        return self.adapter.held_by_charger()
 
     @property
     def charge_progress_subject(self) -> str:
@@ -664,6 +674,7 @@ class ChargingController:
         A charger that forgets its current limit on plug-in or reboot (Easee) is told it again.
         """
         self._maybe_resend_current(event)
+        self._maybe_write_after_start(event)
         if self._charge_progress.evaluate():
             self._notify()
 
@@ -678,6 +689,28 @@ class ChargingController:
         old, new = data.get("old_state"), data.get("new_state")
         if needs_resend(old.state if old is not None else None, new.state if new is not None else None):
             self.hass.async_create_task(self._async_resend_current())
+
+    def _maybe_write_after_start(self, event: Any) -> None:
+        """A current that found its number unavailable at the start is written once the number is
+        there (OCPP's session limit exists only while a transaction runs).
+        """
+        if not self._start_write_pending or event is None:
+            return
+        data = getattr(event, "data", None) or {}
+        if data.get("entity_id") not in self.adapter.current.retry_entity_ids():
+            return
+        new = data.get("new_state")
+        if new is None or new.state == STATE_UNAVAILABLE:
+            return
+        self._start_write_pending = False
+        self.hass.async_create_task(self._async_write_after_start())
+
+    async def _async_write_after_start(self) -> None:
+        """Write the requested current now that the session exists; a refusal is not retried."""
+        amps = self._requested_current_a
+        if amps is None or not self.adapter.capabilities.set_current:
+            return
+        await self._async_assign_current_outcome(amps, reason=WRITE_SESSION_START)
 
     async def _async_resend_current(self) -> None:
         """Send the last requested current again, the limit having been cleared by the charger."""
@@ -713,7 +746,7 @@ class ChargingController:
             )
         entity_ids.extend(
             entity_id
-            for entity_id in self.adapter.current_entity_ids
+            for entity_id in (*self.adapter.current_entity_ids, *self.adapter.current.retry_entity_ids())
             if entity_id not in entity_ids
         )
         self._progress_listener_cancel = async_track_state_change_event(
@@ -852,14 +885,15 @@ class ChargingController:
             raise HomeAssistantError("No charging schedule is active")
         await self._reschedule_locked()
 
-    async def async_start(self, amps: int | None = None, *, manual: bool = False) -> None:
+    async def async_start(self, amps: int | None = None, *, manual: bool = False) -> bool:
         """Start charging: a window opening, a manual button, or a webhook `start` action.
-        Takes the operation lock and delegates to `_start_locked`.
+        Takes the operation lock and delegates to `_start_locked`. `False` when the start command
+        was not executed (the charge control is unavailable), so no caller may claim a start.
         """
         async with self._lock:
-            await self._start_locked(amps, manual=manual)
+            return await self._start_locked(amps, manual=manual)
 
-    async def _start_locked(self, amps: int | None = None, *, manual: bool = False) -> None:
+    async def _start_locked(self, amps: int | None = None, *, manual: bool = False) -> bool:
         """The start itself, with the operation lock held: record the requested current (if known) and
         start charging.
 
@@ -884,14 +918,25 @@ class ChargingController:
             if self.current_control == CURRENT_CONTROL_CHANGE_CONFIGURATION:
                 await self._async_assign_current(explicit_amps)
             elif self._writes_current_at_start and not self.adapter.policy.ignored_while_paused:
-                await self._async_assign_current_outcome(explicit_amps, reason=WRITE_SESSION_START)
+                outcome = await self._async_assign_current_outcome(
+                    explicit_amps, reason=WRITE_SESSION_START
+                )
+                # A session-bound number is not there before the session: write when it appears.
+                self._start_write_pending = (
+                    outcome == ASSIGN_TARGET_UNAVAILABLE and self.adapter.policy.session_bound
+                )
             await self._async_save()
+        executed = True
         if not self._control_on:
             # Recorded before the first await: an accepted Start the charger has not answered is not
             # a failure, and the observation must not blame the car (see `charge_progress.py`).
             self._start_sent_at = dt_util.utcnow()
-            await self.adapter.async_start()
-            if (
+            executed = await self.adapter.async_start()
+            if not executed:
+                # The command never went out: nothing is awaiting an answer, and nothing may say so.
+                self._start_sent_at = None
+                self._start_write_pending = False
+            elif (
                 explicit_amps is not None
                 and self._writes_current_at_start
                 and self.adapter.policy.ignored_while_paused
@@ -899,6 +944,7 @@ class ChargingController:
                 # A charger that only stores a value while paused takes it once it is running.
                 await self._async_assign_current_outcome(explicit_amps, reason=WRITE_SESSION_START)
         self._notify()
+        return executed
 
     async def async_set_requested_current(self, amps: int) -> None:
         """Record a new requested current. Writes nothing to the charger, ever.

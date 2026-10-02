@@ -24,7 +24,10 @@ still usable through the generic flow; it then gets `DEFAULT_POLICY`, the conser
 * `installation_wide`: the number caps every charger of an installation (Zaptec), so it is used only
   when the installation has a single charger;
 * `resend_after_plug_in`: the charger forgets the limit on plug-in and reboot (Easee), so it is sent
-  again.
+  again;
+* `session_bound`: the number exists only for a running session (OCPP's session limit): it is
+  unavailable before the transaction and `unknown` after it starts until the first write, so `unknown`
+  is writable and a write that found it unavailable is retried once the session is there.
 """
 
 from __future__ import annotations
@@ -61,6 +64,7 @@ class WritePolicy:
     ignored_while_paused: bool = False
     installation_wide: bool = False
     resend_after_plug_in: bool = False
+    session_bound: bool = False
 
     @property
     def regulator_writes(self) -> bool:
@@ -87,7 +91,7 @@ OCPP_POLICY: Final = WritePolicy()
 
 #: An OCPP charger whose current is set through its session-limit number: like other local chargers,
 #: and a zero does not pause it (the pilot floor is 6 A).
-OCPP_NUMBER_POLICY: Final = WritePolicy(min_interval_s=10.0)
+OCPP_NUMBER_POLICY: Final = WritePolicy(min_interval_s=10.0, session_bound=True)
 
 _LOCAL = WritePolicy(min_interval_s=10.0)
 _LOCAL_ZERO_PAUSES = WritePolicy(min_interval_s=10.0, zero_pauses=True)
@@ -148,6 +152,12 @@ class PlatformProfile:
     #: Sensors measuring the current, per phase (A or mA).
     current_sensor_keys: tuple[str, ...] = ()
     own_modes: tuple[OwnModeRule, ...] = ()
+    #: The lowest current a charge is started (and re-sent after a plug-in) at, when that is above the
+    #: 6 A floor the regulator may still go down to while it runs. `None`: no such minimum.
+    min_start_current_a: float | None = None
+    #: Statuses in which the charger's own scheduler or load balancer holds the charge: a Start was
+    #: taken, and nothing SpotNav sends will release it.
+    held_values: tuple[str, ...] = ()
     #: The integration puts the entity key first in the `unique_id` (`<key>-<serial>`).
     key_first: bool = False
     note: str = ""
@@ -189,8 +199,17 @@ _PROFILES: Final[tuple[PlatformProfile, ...]] = (
         own_modes=(
             _rule("switch", ("smart_charging",), ("off",), "smart charging"),
         ),
+        min_start_current_a=7.0,
+        held_values=(
+            "awaiting_scheduled_start",
+            "awaiting_smart_start",
+            "awaiting_load_balancing",
+            "paused_due_to_equalizer",
+        ),
         note="Start and stop (resume and pause) and the dynamic limit go through Easee's own services; "
-        "the max-limit services are never used (flash).",
+        "the max-limit services are never used (flash). A charge starts at 7 A or more, since the "
+        "firmware delays a 6 A start by about five minutes. Enable the disabled \"Dynamic charger limit\" "
+        "sensor for confirmed writes.",
     ),
     PlatformProfile(
         platform="wallbox",

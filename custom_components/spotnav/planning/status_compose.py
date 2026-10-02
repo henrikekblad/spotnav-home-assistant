@@ -43,7 +43,8 @@ Precedence (first match wins the headline; "add" rows append a fact line)
    (area, phases, amps) are unconfirmed; any settings edit clears it.
 6. Notices appended after the headline (and after the target fact): price_data_stale,
    price_data_degraded (usable rows exist, or degraded/incomplete), unpriced,
-   load_balancing_limited, load_balancing_unavailable. Tone `notice` if any is present or a
+   held_by_charger (the charger's own scheduler or load balancer holds the charge), load_balancing_limited,
+   load_balancing_unavailable. Tone `notice` if any is present or a
    proposal waits for a boundary (the card's pending_proposal issue); otherwise `normal`.
 
 Rules chosen where the card and the app differ
@@ -136,6 +137,9 @@ STATUS_CODES: Final[dict[str, tuple[str, tuple[str, ...]]]] = {
     "unpriced": (TONE_NOTICE, ()),
     "load_balancing_limited": (TONE_NOTICE, ("limit_a", "phase")),
     "load_balancing_unavailable": (TONE_NOTICE, ()),
+    # The charger's own scheduler, smart start or load balancer holds the charge (Easee): nothing is
+    # wrong, and nothing SpotNav sends releases it.
+    "held_by_charger": (TONE_NOTICE, ()),
 }
 
 STATUS_TONES: Final = (TONE_NORMAL, TONE_NOTICE, TONE_BLOCKING)
@@ -219,6 +223,8 @@ class StatusFacts:
     waiting_for_tomorrow: bool | None = None
     prices_unpriced: bool | None = None
     charging: bool = False
+    #: The charger itself reports that its own scheduler or load balancer holds the charge.
+    held_by_charger: bool = False
     paused: bool = False
     pause_until: datetime | None = None
     pause_choice: str | None = None
@@ -433,6 +439,8 @@ def _notices(facts: StatusFacts) -> list[dict[str, Any]]:
         or (proposal is not None and proposal.unpriced is True)
     ):
         lines.append(_line("unpriced"))
+    if facts.held_by_charger and not facts.charging:
+        lines.append(_line("held_by_charger"))
     site = facts.load_balancing
     if site is not None:
         if (

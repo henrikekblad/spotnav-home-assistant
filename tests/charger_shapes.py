@@ -259,10 +259,11 @@ SHAPES: dict[str, Shape] = {
         "easee",
         "EH123",
         (
-            _e("sensor", "EH123_status", "status", "charging", {"state_dynamicChargerCurrent": 16}),
+            _e("sensor", "EH123_status", "status", "charging", {"config_authorizationRequired": False}),
             _e("sensor", "EH123_lifetime_energy", "lifetime_energy", "2450.3", ENERGY_KWH),
             _e("sensor", "EH123_session_energy", "session_energy", "8.1", ENERGY_KWH),
             _e("sensor", "EH123_current", "current", "9.9", AMPS, disabled=True),
+            _e("sensor", "EH123_dynamic_charger_limit", "dynamic_charger_limit", "16", AMPS, disabled=True),
             _e("switch", "EH123_is_enabled", "is_enabled", "on"),
         ),
         {
@@ -274,7 +275,7 @@ SHAPES: dict[str, Shape] = {
             "session_energy_register": None,
             "charging_state": "sensor.easee_status",
             "current_entities": ["sensor.easee_current"],
-            "disabled_useful": ["sensor.easee_current"],
+            "disabled_useful": ["sensor.easee_current", "sensor.easee_dynamic_charger_limit"],
         },
     ),
     "v2c": Shape(

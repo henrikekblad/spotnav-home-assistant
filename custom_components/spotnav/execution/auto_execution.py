@@ -28,6 +28,7 @@ from datetime import datetime, time as dt_time, timedelta, timezone
 from typing import Any, Final
 
 from homeassistant.core import callback, HomeAssistant
+from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers.event import async_track_point_in_time
 from homeassistant.util import dt as dt_util
 
@@ -893,7 +894,10 @@ class AutoExecutor:
         """
         self.begin_attempt()
         self._pending = None
-        await self._controller.async_start(amps, manual=True)
+        if await self._controller.async_start(amps, manual=True) is False:
+            # The charger's control was unavailable and the command never went out: a failed command
+            # like any other, with nothing pending and a retry possible.
+            raise HomeAssistantError("The start command was not executed: the charge control is unavailable")
         self._note_manual_start_sent()
         await self._notify_change()
 
@@ -904,7 +908,8 @@ class AutoExecutor:
         charging nothing is pending; otherwise a state listener and one bounding appointment are armed, and
         whichever answers first clears both.
         """
-        if self._shutdown or self._controller.charging:
+        if self._shutdown or self._controller.charging or self._controller.held_by_charger:
+            # Charging, or the charger's own scheduler holds the charge: either way it has answered.
             return
         self._start_pending = True
         self._disarm_start_ack()
@@ -923,7 +928,7 @@ class AutoExecutor:
         A non-charging report is not an answer (a charger can blink through `unavailable` on the way up).
         After the appointment expired, this listener retires the obsolete failure.
         """
-        if self._shutdown or not self._controller.charging:
+        if self._shutdown or not (self._controller.charging or self._controller.held_by_charger):
             return
         answered = self._start_pending or self._start_ack_timed_out
         self._start_pending = False

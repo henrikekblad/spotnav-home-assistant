@@ -67,6 +67,7 @@ export const sv: Record<keyof typeof en, string> = {
   "issue.chargingWithoutPrices": "Laddar utan publicerade priser för att hålla sluttiden.",
   "issue.pendingProposal": "Ett nyare förslag är klart men är inte installerat ännu.",
   "issue.loadBalancing": "Lastbalansering är inte tillgänglig för den här laddaren.",
+  "issue.heldByCharger": "Laddarens eget schema eller lastbalansering håller tillbaka laddningen, så den har inte startat.",
   "issue.unknown": "Backend rapporterade något som kortet inte känner igen ännu.",
   "header.info": "Om kortet",
   "header.settings": "Kortinställningar",

@@ -6,6 +6,7 @@ from datetime import datetime, timedelta, timezone
 from typing import Any
 
 from homeassistant.core import HomeAssistant
+from homeassistant.helpers import entity_registry as er
 
 from custom_components.spotnav.flows.charger_detection import DetectedCharger
 from custom_components.spotnav.const import (
@@ -68,3 +69,18 @@ def adapter_for(
         energy_entity_id=found.energy_register,
         now=clock or Clock(),
     )
+
+
+def enable_easee_limit_sensor(hass: HomeAssistant, value: str | None = "16") -> str:
+    """Enable the charger's `dynamic_charger_limit` sensor (disabled by default in easee_hass, so the
+    real integration only has a read-back after the person enables it) and give it a state.
+    """
+    entity_id = "sensor.easee_dynamic_charger_limit"
+    er.async_get(hass).async_update_entity(entity_id, disabled_by=None)
+    if value is not None:
+        hass.states.async_set(entity_id, value, {"unit_of_measurement": "A"})
+    return entity_id
+
+
+def set_easee_limit(hass: HomeAssistant, value: str) -> None:
+    hass.states.async_set("sensor.easee_dynamic_charger_limit", value, {"unit_of_measurement": "A"})

@@ -41,7 +41,7 @@ from custom_components.spotnav.execution.charger_adapter import (
 )
 from custom_components.spotnav.vehicles.ocpp_identity import OcppConnectorTarget
 
-from .charger_helpers import adapter_for, Clock
+from .charger_helpers import adapter_for, Clock, enable_easee_limit_sensor, set_easee_limit
 from .charger_shapes import E, NUMBER_A, register_shape, Shape, SHAPES
 
 CONTROLLABLE = [name for name, shape in SHAPES.items() if shape.expect["path"] is not None]
@@ -524,7 +524,7 @@ async def test_easee_does_not_trust_its_own_memory_of_a_write_after_a_plug_in(ha
 
 async def test_easee_skips_a_value_the_charger_already_reports(hass: HomeAssistant) -> None:
     ids, adapter, limits = await _easee(hass, Clock())
-    hass.states.async_set("sensor.easee_status", "charging", {"state_dynamicChargerCurrent": 12})
+    enable_easee_limit_sensor(hass, "12")
 
     assert await adapter.async_set_current(12, reason=WRITE_REGULATOR) == ASSIGN_UNCHANGED
     assert limits == []
@@ -533,7 +533,7 @@ async def test_easee_skips_a_value_the_charger_already_reports(hass: HomeAssista
 async def test_easee_never_exceeds_twenty_settings_changes_a_minute(hass: HomeAssistant) -> None:
     clock = Clock()
     ids, adapter, limits = await _easee(hass, clock)
-    hass.states.async_set("sensor.easee_status", "charging", {"state_dynamicChargerCurrent": 99})
+    enable_easee_limit_sensor(hass, "99")
 
     outcomes = []
     for index in range(25):
@@ -551,7 +551,7 @@ async def test_easee_commands_count_against_the_budget_but_are_never_refused(has
     clock = Clock()
     ids, adapter, limits = await _easee(hass, clock)
     commands = async_mock_service(hass, "easee", "action_command")
-    hass.states.async_set("sensor.easee_status", "charging", {"state_dynamicChargerCurrent": 99})
+    enable_easee_limit_sensor(hass, "99")
 
     for _ in range(30):
         await adapter.async_stop()
@@ -592,7 +592,7 @@ async def test_a_resend_reaches_the_charger_even_though_the_service_skips_an_unc
 async def test_an_easee_write_the_charger_never_reports_marks_the_cache_suspect(hass: HomeAssistant) -> None:
     clock = Clock()
     ids, adapter, limits = await _easee(hass, clock)
-    hass.states.async_set("sensor.easee_status", "charging", {"state_dynamicChargerCurrent": 16})
+    enable_easee_limit_sensor(hass, "16")
     assert await adapter.async_set_current(12, reason=WRITE_REGULATOR) == ASSIGN_ASSIGNED
     limits.clear()
 
@@ -610,9 +610,10 @@ async def test_an_easee_limit_is_read_back_when_asked(hass: HomeAssistant, monke
 
     monkeypatch.setattr(charger_adapter.asyncio, "sleep", no_wait)
     ids, adapter, limits = await _easee(hass, Clock())
+    enable_easee_limit_sensor(hass, "16")
 
     assert await adapter.async_set_current(12, reason=WRITE_REGULATOR, verify=True) == "unconfirmed"
-    hass.states.async_set("sensor.easee_status", "charging", {"state_dynamicChargerCurrent": 10})
+    set_easee_limit(hass, "10")
     assert await adapter.async_set_current(10, reason=WRITE_REGULATOR, verify=True) == ASSIGN_UNCHANGED
 
 

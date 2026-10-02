@@ -22,7 +22,7 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers import device_registry as dr, entity_registry as er
 
 from ..const import CURRENT_CONTROL_EASEE, CURRENT_CONTROL_NUMBER
-from ..execution.charger_adapter import single_charger_installation
+from ..execution.charger_adapter import EASEE_LIMIT_SENSOR_KEY, single_charger_installation
 from ..execution.charger_entities import (
     EntityMatcher,
     option_for,
@@ -188,6 +188,11 @@ def _detect_current(
     if profile.easee_current:
         if found.control_path is not None:
             found.current_control = CURRENT_CONTROL_EASEE
+            # The only read-back of the dynamic limit is this diagnostic sensor, disabled by default:
+            # offered to be enabled (it gives confirmed writes), never required.
+            limit = matcher.first("sensor", (EASEE_LIMIT_SENSOR_KEY,))
+            if limit is not None and limit.disabled_by is not None:
+                found.disabled_useful.append(limit.entity_id)
         return
     if not profile.current_keys:
         found.notes.append("no_current_control")

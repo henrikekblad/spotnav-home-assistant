@@ -342,6 +342,29 @@ async def test_unload_during_recovery_leaves_nothing_and_a_late_report_is_inert(
     assert start_ack.armed == [], "and re-arms nothing"
 
 
+async def test_a_start_to_an_unavailable_control_is_a_failed_command_with_nothing_pending(
+    session: Session, start_ack: RecordedStateListeners, pause_appointments: Any
+) -> None:
+    """Home Assistant skips a service call to an unavailable entity and only logs it: the Start never
+    went out, so it is refused with the stable failure and nothing is left awaiting an answer.
+    """
+    await auto_with_a_plan(session)
+    turn_on = async_mock_service(session.hass, "switch", "turn_on")
+    session.hass.states.async_set(session.charge_control, "unavailable")
+
+    with pytest.raises(AutoControlRefused) as refusal:
+        await preview_of(session).async_manual_action("start")
+
+    assert refusal.value.code == EXECUTION_ACTION_FAILED
+    assert turn_on == [], "no call was made to the unavailable entity"
+    assert executor_of(session).manual_start_pending is False
+    assert start_ack.armed == [] and pause_appointments.armed == []
+
+    session.hass.states.async_set(session.charge_control, "off")
+    decision = await preview_of(session).async_manual_action("start")
+    assert decision.action == "start" and len(turn_on) == 1, "a retry goes out once it is back"
+
+
 async def test_a_start_whose_command_fails_leaves_nothing_pending_and_can_be_retried(
     session: Session, start_ack: RecordedStateListeners, pause_appointments: Any
 ) -> None:
@@ -351,11 +374,11 @@ async def test_a_start_whose_command_fails_leaves_nothing_pending_and_can_be_ret
     original = session.controller.async_start
     failures = {"left": 1}
 
-    async def sometimes(*args: Any, **kwargs: Any) -> None:
+    async def sometimes(*args: Any, **kwargs: Any) -> bool:
         if failures["left"] > 0:
             failures["left"] -= 1
             raise RuntimeError("the switch did not answer")
-        await original(*args, **kwargs)
+        return await original(*args, **kwargs)
 
     session.controller.async_start = sometimes  # type: ignore[method-assign]
     with pytest.raises(AutoControlRefused) as refusal:

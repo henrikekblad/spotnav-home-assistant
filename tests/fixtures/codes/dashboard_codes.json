@@ -139,6 +139,10 @@
       "params": [],
       "tone": "notice"
     },
+    "held_by_charger": {
+      "params": [],
+      "tone": "notice"
+    },
     "hybrid_grid": {
       "params": [
         "credit_kwh",

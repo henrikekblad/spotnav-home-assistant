@@ -23,7 +23,7 @@ from custom_components.spotnav.execution.controller import (
     RESTORE_RESTORED,
 )
 
-from .charger_helpers import Clock, detected_config
+from .charger_helpers import Clock, detected_config, enable_easee_limit_sensor
 from .charger_shapes import register_shape, SHAPES
 
 
@@ -184,14 +184,15 @@ async def test_the_progress_check_reads_a_non_ocpp_chargers_status_and_current(h
 
 async def test_easee_is_told_its_limit_again_when_a_car_is_plugged_in(hass: HomeAssistant) -> None:
     controller = await _controller(hass, "easee")
-    hass.states.async_set("sensor.easee_status", "disconnected", {"state_dynamicChargerCurrent": 0})
+    enable_easee_limit_sensor(hass, "0")
+    hass.states.async_set("sensor.easee_status", "disconnected")
     limits = async_mock_service(hass, "easee", "set_charger_dynamic_limit")
     async_mock_service(hass, "easee", "action_command")
     await controller.async_set_requested_current(12)
     await hass.async_block_till_done()
     assert limits == []
 
-    hass.states.async_set("sensor.easee_status", "awaiting_start", {"state_dynamicChargerCurrent": 0})
+    hass.states.async_set("sensor.easee_status", "awaiting_start")
     await hass.async_block_till_done()
 
     assert [call.data["current"] for call in limits] == [11, 12]

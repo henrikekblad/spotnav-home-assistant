@@ -67,6 +67,7 @@ export const fi: Record<keyof typeof en, string> = {
   "issue.chargingWithoutPrices": "Ladataan ilman julkaistuja hintoja, jotta määräaika pysyy.",
   "issue.pendingProposal": "Uudempi ehdotus on valmis, mutta sitä ei ole vielä asennettu.",
   "issue.loadBalancing": "Kuormanhallinta ei ole käytettävissä tälle laturille.",
+  "issue.heldByCharger": "Laturin oma aikataulu tai kuormanhallinta pidättää latausta, joten se ei ole alkanut.",
   "issue.unknown": "Taustajärjestelmä raportoi jotain, mitä kortti ei vielä tunne.",
   "header.info": "Tietoja kortista",
   "header.settings": "Kortin asetukset",
