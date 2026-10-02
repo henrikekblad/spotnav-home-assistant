@@ -231,6 +231,9 @@ class AutoSnapshot:
     #: The last history weighing for a dated departure (`history_wait.evaluate`), whatever it decided; `None`
     #: when the departure is daily or the plan never needed unpublished hours.
     history: history_wait.HistoryDecision | None = None
+    #: Which rule decided a plan that needed unpublished prices: `history` (`history_wait`) or `implicit`
+    #: (the daily wait for the publication, `price_wait`); `None` when nothing was unpublished.
+    wait_rule: str | None = None
 
     def meaningful_key(self) -> tuple[Any, ...]:
         """What a listener hears about, and is not told twice.
@@ -261,6 +264,7 @@ class AutoSnapshot:
             self.publication_at,
             self.must_buy_kwh,
             None if self.history is None else (self.history.outcome, self.history.percent, self.history.weekday),
+            self.wait_rule,
             None if self.proposal is None else self._proposal_key(self.proposal),
         )
 
@@ -811,8 +815,8 @@ class AutoPlannerController:
             result = calculate_plan(plan_request)
             if result.reason == "insufficient_price_horizon":
                 waited = None
-                if plan_request.departure_date is not None:
-                    waited = await self._plan_dated_departure(plan_request, result, entry, calculated_at)
+                if plan_request.departure is not None:
+                    waited = await self._plan_departure_by_history(plan_request, result, entry, calculated_at)
                 if waited is None:
                     waited = self._plan_while_prices_are_missing(
                         plan_request, result, entry, calculated_at
@@ -898,6 +902,7 @@ class AutoPlannerController:
         # A replan is also owed when the guarantee falls due (the latest safe start less one slot).
         self._arm_wake(decision.act_by)
         facts: dict[str, Any] = {
+            "wait_rule": "implicit",
             "price_wait_action": {"wait": "waiting", "buy_now": "buy_now", "guarantee": "guarantee"}[
                 decision.action
             ],
@@ -918,10 +923,15 @@ class AutoPlannerController:
             facts["must_buy_kwh"] = request.requested_kwh
         return (plan_unpriced(request), facts, None)
 
-    async def _plan_dated_departure(
+    async def _plan_departure_by_history(
         self, request: PlanRequest, refusal: PlanResult, entry: AreaEntry, calculated_at: datetime
     ) -> tuple[PlanResult, dict[str, Any], tuple[AutoState, AutoReason] | None] | None:
-        """A dated departure whose window runs past the last published price.
+        """A departure (dated or daily) whose window runs past the last published price.
+
+        A daily departure takes this path too (its deadline tomorrow morning is partly unpriced before the
+        afternoon publication), but only with a usable profile: without one it returns `None` and the
+        implicit rule (`_plan_while_prices_are_missing`) decides exactly as it always did. A dated departure
+        without a profile plans on `known`.
 
         Same answer shape as `_plan_while_prices_are_missing`, which this falls back to (`None`) whenever the
         published intervals cannot hold the whole need. Otherwise:
@@ -942,7 +952,9 @@ class AutoPlannerController:
             return None
         profile = await self._manager.async_profile(request.area_id)
         decision = history_wait.evaluate(request, gap, known, profile)
-        facts: dict[str, Any] = {"history": decision}
+        if request.departure_date is None:
+            return self._daily_by_history(request, refusal, entry, calculated_at, known, decision)
+        facts: dict[str, Any] = {"history": decision, "wait_rule": "history"}
         if decision.outcome != "wait":
             return (known, facts, None)
 
@@ -965,7 +977,7 @@ class AutoPlannerController:
         )
         if waited.action == "guarantee":
             # Waiting would miss the deadline: the published plan stands, the price given up is only the hope.
-            return (known, {"history": history_wait.unsafe(decision)}, None)
+            return (known, {"history": history_wait.unsafe(decision), "wait_rule": "history"}, None)
         # A replan is also owed when waiting stops being safe (the latest safe start less one slot).
         self._arm_wake(waited.act_by)
         facts.update(
@@ -981,7 +993,36 @@ class AutoPlannerController:
         if bought.has_plan:
             return (bought, facts, None)
         # The cheapest published slots could not hold even the part that cannot wait: install the whole plan.
-        return (known, {"history": history_wait.unsafe(decision)}, None)
+        return (known, {"history": history_wait.unsafe(decision), "wait_rule": "history"}, None)
+
+    def _daily_by_history(
+        self,
+        request: PlanRequest,
+        refusal: PlanResult,
+        entry: AreaEntry,
+        calculated_at: datetime,
+        known: PlanResult,
+        decision: history_wait.HistoryDecision,
+    ) -> tuple[PlanResult, dict[str, Any], tuple[AutoState, AutoReason] | None] | None:
+        """A daily departure: the implicit rule stands unless history says something definite.
+
+        Waiting for the publication is nearly free, so history may only (1) explain a wait the implicit rule
+        makes anyway (the unpublished hours are clearly cheaper), or (2) end it: the published hours are
+        clearly cheaper than the expected unpublished ones, so the published plan is installed. Anything
+        else (flat, no profile) returns `None`: the implicit rule, bit for bit.
+        """
+        if decision.known_cheaper:
+            return (known, {"history": decision, "wait_rule": "history"}, None)
+        if decision.outcome != "wait":
+            return None
+        implicit = self._plan_while_prices_are_missing(request, refusal, entry, calculated_at)
+        if implicit is None:
+            return None
+        result, facts, early = implicit
+        if early is not None and early[1] == "publication_pending":
+            facts = {**facts, "history": decision, "wait_rule": "history"}
+            return (result, facts, ("waiting_for_publication", "waiting_for_history"))
+        return implicit
 
     def _arm_wake(self, when: datetime) -> None:
         """Replan at `when` (the latest safe start), replacing any earlier appointment."""
@@ -1311,6 +1352,7 @@ class AutoPlannerController:
         publication_at: datetime | None = None,
         must_buy_kwh: float | None = None,
         history: history_wait.HistoryDecision | None = None,
+        wait_rule: str | None = None,
     ) -> AutoSnapshot:
         """Build one immutable snapshot from the settings and whatever is known."""
         execution, applied_identity, pending_identity, latest_attempt = self._execution_facts()
@@ -1354,6 +1396,7 @@ class AutoPlannerController:
             publication_at=publication_at,
             must_buy_kwh=must_buy_kwh,
             history=history,
+            wait_rule=wait_rule,
         )
 
     async def _state_only(self, state: AutoState, reason: AutoReason) -> AutoSnapshot:

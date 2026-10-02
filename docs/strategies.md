@@ -38,6 +38,11 @@ charge can still be finished in time, buys what cannot wait, and plans again eac
 published. Without a usable history, or without a clear saving, it plans on the published prices.
 A date that has gone by is ignored and forgotten the next time the settings are saved.
 
+A daily departure whose morning lies beyond the last published price (before the afternoon
+publication) waits for the publication when that is safe. The history only explains that wait
+(*Waiting: Saturdays were 30 % cheaper the last 4 weeks*), or ends it when the hours still available
+are clearly cheaper than the expected unpublished ones. Without a clear signal nothing changes.
+
 ## Solar
 
 Charges only from surplus solar power, modulating the charger's current with the surplus.

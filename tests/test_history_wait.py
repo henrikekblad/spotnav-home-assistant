@@ -179,7 +179,7 @@ def test_the_unsafe_flag_keeps_every_number() -> None:
     assert unsafe.known_mean_minor == decision.known_mean_minor and unsafe.weekday == 7
     assert set(unsafe.as_diagnostics()) == {
         "outcome", "known_mean_minor", "expected_mean_minor", "margin_minor",
-        "weekday", "percent", "weeks", "unknown_slots",
+        "weekday", "percent", "weeks", "unknown_slots", "known_cheaper",
     }
 
 
