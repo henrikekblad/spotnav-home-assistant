@@ -354,6 +354,78 @@ def bitvis_power_hub(*, current_only: bool = False) -> Registry:
     return r
 
 
+def solis_modbus_meter() -> Registry:
+    """Pho3niX90's `solis_modbus`: `solis_modbus_<serial>_<unique>`; the three-phase meter block, the plain
+    single-phase meter sensors, a second meter and the integration's own net grid power."""
+    r = Registry()
+    r.device("solis", model="S6-EH3P", manufacturer="Solis", name="Solis Inverter", entry="solis")
+    base = "solis_modbus_1234567_solis_modbus_inverter"
+    for ph in "abc":
+        r.add("solis_modbus", f"solis_meter_ac_current_{ph}", f"{base}_meter_ac_current_{ph}", device_class="current", unit="A", device="solis", entry="solis", original_name=f"Meter AC Current {ph.upper()}")
+        r.add("solis_modbus", f"solis_meter_ac_voltage_{ph}", f"{base}_meter_ac_voltage_{ph}", device_class="voltage", unit="V", device="solis", entry="solis", original_name=f"Meter AC Voltage {ph.upper()}")
+        r.add("solis_modbus", f"solis_meter_active_power_{ph}", f"{base}_meter_active_power_{ph}", device_class="power", unit="W", device="solis", entry="solis", original_name=f"Meter Active Power {ph.upper()}")
+        r.add("solis_modbus", f"solis_meter_2_ac_current_{ph}", f"{base}_meter2_ac_current_{ph}", device_class="current", unit="A", device="solis", entry="solis", original_name=f"Meter 2 AC Current {ph.upper()}")
+        r.add("solis_modbus", f"solis_meter_2_active_power_{ph}", f"{base}_meter2_active_power_{ph}", device_class="power", unit="W", device="solis", entry="solis", original_name=f"Meter 2 Active Power {ph.upper()}")
+        r.add("solis_modbus", f"solis_meter_2_ac_voltage_{ph}", f"{base}_meter2_ac_voltage_{ph}", device_class="voltage", unit="V", device="solis", entry="solis", original_name=f"Meter 2 AC Voltage {ph.upper()}")
+    r.add("solis_modbus", "solis_meter_current", f"{base}_meter_current", device_class="current", unit="A", device="solis", entry="solis", original_name="Meter Current")
+    r.add("solis_modbus", "solis_meter_total_active_power", f"{base}_meter_total_active_power", device_class="power", unit="W", device="solis", entry="solis", original_name="Meter Total Active Power")
+    r.add("solis_modbus", "solis_grid_power_net", f"{base}_grid_power_net", device_class="power", unit="W", device="solis", entry="solis", original_name="Grid Power Net")
+    return r
+
+
+def cozify_han() -> Registry:
+    """Cozify HAN: `<entry_id>_<key>_<index>`; `i` and `u` index 0-2 for L1-L3, `pi`/`pe` 1-3 per phase and
+    0 in total, plus the daily maximum current, the peak power and the deprecated signed power."""
+    r = Registry()
+    r.device("cozify", model="HAN Reader", manufacturer="Cozify", name="Cozify HAN", entry="cozify")
+    e = "01HXYZABC"
+    for idx in range(3):
+        r.add("cozify_han", f"cozify_han_current_l{idx + 1}", f"{e}_i_{idx}", device_class="current", unit="A", device="cozify", entry="cozify", original_name=f"Cozify HAN Current L{idx + 1}")
+        r.add("cozify_han", f"cozify_han_current_max_l{idx + 1}", f"{e}_max_i_{idx}", device_class="current", unit="A", device="cozify", entry="cozify", original_name=f"Cozify HAN Current Max L{idx + 1}")
+        r.add("cozify_han", f"cozify_han_voltage_l{idx + 1}", f"{e}_u_{idx}", device_class="voltage", unit="V", device="cozify", entry="cozify", original_name=f"Cozify HAN Voltage L{idx + 1}")
+    for idx in range(4):
+        name = "Total" if idx == 0 else f"L{idx}"
+        r.add("cozify_han", f"cozify_han_power_import_{name.lower()}", f"{e}_pi_{idx}", device_class="power", unit="W", device="cozify", entry="cozify", original_name=f"Cozify HAN Power Import {name}")
+        r.add("cozify_han", f"cozify_han_power_export_{name.lower()}", f"{e}_pe_{idx}", device_class="power", unit="W", device="cozify", entry="cozify", original_name=f"Cozify HAN Power Export {name}")
+        r.add("cozify_han", f"cozify_han_deprecated_power_{name.lower()}", f"{e}_p_{idx}", device_class="power", unit="W", device="cozify", entry="cozify", original_name=f"Cozify HAN DEPRECATED Power {name}")
+    r.add("cozify_han", "cozify_han_power_import_max", f"{e}_peak_pi", device_class="power", unit="W", device="cozify", entry="cozify", original_name="Cozify HAN Power Import MAX")
+    return r
+
+
+def ferroamp_energyhub() -> Registry:
+    """henricm's `ferroamp`: `<slug>_ehub-<key>` and `<slug>_ehub-<key>-L1..L3`."""
+    r = Registry()
+    r.device("ehub", model="EnergyHub", manufacturer="Ferroamp", name="EnergyHub", entry="ferroamp")
+    h = "ferroamp_ehub"
+    r.add("ferroamp", "ehub_grid_current", f"{h}-iext", device_class="current", unit="A", device="ehub", entry="ferroamp", original_name="Grid Current")
+    r.add("ferroamp", "ehub_grid_power", f"{h}-pext", device_class="power", unit="W", device="ehub", entry="ferroamp", original_name="Grid Power")
+    r.add("ferroamp", "ehub_battery_power", f"{h}-pbat", device_class="power", unit="W", device="ehub", entry="ferroamp", original_name="Battery Power")
+    for n in "123":
+        r.add("ferroamp", f"ehub_grid_current_l{n}", f"{h}-iext-L{n}", device_class="current", unit="A", device="ehub", entry="ferroamp", original_name=f"Grid Current L{n}")
+        r.add("ferroamp", f"ehub_active_current_l{n}", f"{h}-iextq-L{n}", device_class="current", unit="A", device="ehub", entry="ferroamp", original_name=f"External Active Current L{n}")
+        r.add("ferroamp", f"ehub_grid_power_l{n}", f"{h}-pext-L{n}", device_class="power", unit="W", device="ehub", entry="ferroamp", original_name=f"Grid Power L{n}")
+        r.add("ferroamp", f"ehub_voltage_l{n}", f"{h}-ul-L{n}", device_class="voltage", unit="V", device="ehub", entry="ferroamp", original_name=f"External Voltage L{n}")
+    return r
+
+
+def frient_emizb_zha(*, model: str = "EMIZB-132") -> Registry:
+    """A frient meter interface through ZHA: `<ieee>-<endpoint>-<cluster>-<suffix>`; phase A has no suffix
+    on its name, B and C have `_ph_b` and `_ph_c`; the voltages and the total beside them. A metering plug on
+    the same integration carries a bare `rms_current` too."""
+    r = Registry()
+    ieee = "00:15:bc:00:2a:01:6a:6e"
+    r.device("frient", model=model, manufacturer="frient A/S", name="Electricity meter", entry="zha")
+    r.add("zha", "meter_current", f"{ieee}-2-2820-rms_current", device_class="current", unit="A", device="frient", entry="zha")
+    r.add("zha", "meter_current_ph_b", f"{ieee}-2-2820-rms_current_ph_b", device_class="current", unit="A", device="frient", entry="zha", translation_key="rms_current_ph_b")
+    r.add("zha", "meter_current_ph_c", f"{ieee}-2-2820-rms_current_ph_c", device_class="current", unit="A", device="frient", entry="zha", translation_key="rms_current_ph_c")
+    r.add("zha", "meter_voltage", f"{ieee}-2-2820-rms_voltage", device_class="voltage", unit="V", device="frient", entry="zha")
+    r.add("zha", "meter_total_power", f"{ieee}-2-2820-total_active_power", device_class="power", unit="W", device="frient", entry="zha", translation_key="total_active_power")
+    r.device("plug", model="SP-120", manufacturer="frient A/S", name="Smart plug", entry="zha")
+    r.add("zha", "plug_current", "00:15:bc:00:aa:bb:cc:dd-2-2820-rms_current", device_class="current", unit="A", device="plug", entry="zha")
+    r.add("zha", "plug_total_power", "00:15:bc:00:aa:bb:cc:dd-2-2820-total_active_power", device_class="power", unit="W", device="plug", entry="zha", translation_key="total_active_power")
+    return r
+
+
 def victron_gx() -> Registry:
     r = Registry()
     for n in "123":
@@ -502,6 +574,22 @@ CASES = {
     "bitvis": (
         bitvis_power_hub,
         Expect(MEASUREMENT_MODE_DERIVED, roles=frozenset({"power", "power_export", "voltage", "current", "grid_power", "grid_power_export"}), disabled=9, integration="bitvis"),
+    ),
+    "solis_modbus": (
+        solis_modbus_meter,
+        Expect(MEASUREMENT_MODE_DERIVED, power_inverted=True, roles=frozenset({"power", "voltage", "current", "grid_power"}), integration="solis_modbus"),
+    ),
+    "cozify_han": (
+        cozify_han,
+        Expect(MEASUREMENT_MODE_DERIVED, roles=frozenset({"power", "power_export", "voltage", "current", "grid_power", "grid_power_export"}), integration="cozify_han"),
+    ),
+    "ferroamp": (
+        ferroamp_energyhub,
+        Expect(MEASUREMENT_MODE_DIRECT, signed_current=True, roles=frozenset({"current"}), integration="ferroamp"),
+    ),
+    "frient_emizb_zha": (
+        frient_emizb_zha,
+        Expect(MEASUREMENT_MODE_DIRECT, roles=frozenset({"current", "grid_power"}), integration="zha"),
     ),
     "victron_gx": (
         victron_gx,
@@ -949,7 +1037,7 @@ def test_a_charger_device_is_never_suggested_as_the_site_meter() -> None:
 
 def test_frient_emi_phase_a_without_a_suffix_is_found_by_its_ph_b_and_ph_c_siblings() -> None:
     r = Registry()
-    r.device("frient", model="EMIZB-132", manufacturer="frient", name="frient EMI", entry="zha")
+    r.device("frient", model="ACME-3PM", manufacturer="acme", name="frient EMI", entry="zha")
     r.add("zha", "frient_emi_rms_current", "00:0d:6f-2-2820", device_class="current", unit="A", device="frient", entry="zha")
     r.add("zha", "frient_emi_rms_current_ph_b", "00:0d:6f-2-2820-ph_b", device_class="current", unit="A", device="frient", entry="zha")
     r.add("zha", "frient_emi_rms_current_ph_c", "00:0d:6f-2-2820-ph_c", device_class="current", unit="A", device="frient", entry="zha")
@@ -1362,3 +1450,79 @@ def test_bitvis_with_only_the_enabled_currents_still_offers_the_total_pair_on_a_
         "power": "sensor.power_hub_active_power_import",
         "power_export": "sensor.power_hub_active_power_export",
     }
+
+
+# ---- Solis Modbus, Cozify HAN, Ferroamp and the frient meter interface over ZHA -----------------------
+
+
+def test_solis_modbus_meter_is_the_first_meter_and_its_power_is_export_positive() -> None:
+    candidate = one_meter(solis_modbus_meter())
+
+    assert candidate.derived_entities["L3"] == {
+        "power": "sensor.solis_meter_active_power_c",
+        "voltage": "sensor.solis_meter_ac_voltage_c",
+        "current": "sensor.solis_meter_ac_current_c",
+    }
+    assert candidate.grid_power == GridPowerSource(power="sensor.solis_meter_total_active_power")
+    assert candidate.power_inverted and not candidate.signed_current
+    assert WARNING_MAY_MEASURE_SUBCIRCUIT in candidate.warnings
+    assert not any("meter_2" in item.entity_id or "net" in item.entity_id for item in candidate.entities)
+
+
+def test_cozify_han_pairs_import_and_export_and_leaves_the_daily_maximum_current_out() -> None:
+    candidate = one_meter(cozify_han())
+
+    assert candidate.derived_entities["L1"] == {
+        "power": "sensor.cozify_han_power_import_l1",
+        "power_export": "sensor.cozify_han_power_export_l1",
+        "voltage": "sensor.cozify_han_voltage_l1",
+        "current": "sensor.cozify_han_current_l1",
+    }
+    assert candidate.derived_entities["L3"]["current"] == "sensor.cozify_han_current_l3"
+    assert candidate.grid_power == GridPowerSource(
+        power="sensor.cozify_han_power_import_total", power_export="sensor.cozify_han_power_export_total"
+    )
+    assert not any("max" in item.entity_id for item in candidate.entities)
+
+
+def test_ferroamp_is_a_current_only_meter_because_its_power_signs_are_not_known() -> None:
+    detection = ferroamp_energyhub().detect()
+
+    assert [m.candidate_id.split(":")[0] for m in detection.meters] == ["ferroamp"]
+    candidate = detection.meters[0]
+    assert candidate.direct_entities == {phase: f"sensor.ehub_grid_current_l{n}" for phase, n in zip(PHASES, "123")}
+    assert candidate.grid_power is None
+    assert not detection.batteries
+
+
+def test_frient_meter_interface_over_zha_gets_its_total_with_the_sign_unverified() -> None:
+    candidate = one_meter(frient_emizb_zha())
+
+    assert candidate.direct_entities == {
+        "L1": "sensor.meter_current",
+        "L2": "sensor.meter_current_ph_b",
+        "L3": "sensor.meter_current_ph_c",
+    }
+    assert candidate.grid_power == GridPowerSource(power="sensor.meter_total_power")
+    assert WARNING_SIGN_UNVERIFIED in candidate.warnings
+    assert not candidate.power_inverted
+
+
+def test_another_model_is_not_given_the_frient_row_nor_its_total() -> None:
+    r = frient_emizb_zha(model="SP-120")
+
+    detection = r.detect()
+
+    assert [m.candidate_id.split(":")[0] for m in detection.meters] == ["generic"]
+    assert all(m.grid_power is None for m in detection.meters)
+
+
+def test_the_other_zha_meters_are_still_found_by_the_generic_rules_beside_the_frient_row() -> None:
+    r = frient_emizb_zha()
+    r.device("other", model="3PM", manufacturer="Acme", name="Three phase meter", entry="zha")
+    for ph in "abc":
+        r.add("zha", f"acme_grid_current_phase_{ph}", f"00:aa:bb:cc:dd:ee:ff:00-1-2820-rms_current_ph_{ph}", device_class="current", unit="A", device="other", entry="zha")
+
+    detection = r.detect()
+
+    assert sorted(m.candidate_id.split(":")[0] for m in detection.meters) == ["generic", "zha"]

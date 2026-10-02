@@ -99,6 +99,8 @@ NAMES: dict[str, str] = {
     "perific": "Perific",
     "solis_modbus": "Solis Modbus",
     "bitvis": "Bitvis Power Hub",
+    "cozify_han": "Cozify HAN",
+    "zha": "frient EMIZB-132 (ZHA)",
     # vehicles
     "kia_uvo": "Kia Uvo",
     "ha_kia_hyundai": "Kia and Hyundai (community integration)",
@@ -138,6 +140,7 @@ FORECAST_SOURCES: tuple[tuple[str, str], ...] = (
 _WARNING_TEXT = {
     sd.WARNING_OWN_LOAD_BALANCING: "Balances load by itself and may fight active control.",
     sd.WARNING_ON_CHANGE_ONLY: "Reports only when a value changes.",
+    sd.WARNING_SIGN_UNVERIFIED: "Which way the power counts is read from the source, not confirmed on a device.",
     sd.WARNING_MAY_MEASURE_SUBCIRCUIT: "Check that the meter measures the whole main feed, not a sub-circuit.",
 }
 

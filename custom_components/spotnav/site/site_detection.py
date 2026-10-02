@@ -151,10 +151,13 @@ class Pattern:
 
     role: Role
     regex: re.Pattern[str]
+    # The phase of an entity whose name carries none: ZHA's `rms_current` is phase A and has `_ph_b` and
+    # `_ph_c` siblings. Only used when the regex names no phase group.
+    phase: PhaseName | None = None
 
 
-def _p(role: Role, pattern: str) -> Pattern:
-    return Pattern(role, re.compile(pattern))
+def _p(role: Role, pattern: str, phase: PhaseName | None = None) -> Pattern:
+    return Pattern(role, re.compile(pattern), phase)
 
 
 @dataclass(frozen=True, slots=True)
@@ -408,6 +411,64 @@ METER_ROWS: Final[tuple[MeterRow, ...]] = (
             _p("grid_power_export", r"(?:^|_)power_active_delivered_by_client$"),
         ),
     ),
+    # Solis Modbus (Pho3niX90, `3bcee0e`). Unique ids are `solis_modbus_<serial>_solis_modbus_inverter_<key>`;
+    # the meter's three-phase block is `inverter_meter_ac_current_a`, `..._ac_voltage_a`,
+    # `..._active_power_a` and `inverter_meter_total_active_power` (a second meter is `inverter_meter2_`
+    # and left out). The integration's own "Grid Power Net" is the same register 33263 negated, and its
+    # net grid energy is from-grid minus to-grid, so the raw meter power is export-positive: negated. The
+    # current has no sign, and the meter may be placed on the load or the PV side (its "Type and Location"
+    # register), which the candidate asks to be checked.
+    MeterRow(
+        platforms=("solis_modbus",),
+        patterns=(
+            _p("current", r"inverter_meter_ac_current_(?P<a>[abc])$"),
+            _p("power", r"inverter_meter_active_power_(?P<a>[abc])$"),
+            _p("voltage", r"inverter_meter_ac_voltage_(?P<a>[abc])$"),
+        ),
+        totals=(_p("grid_power", r"inverter_meter_total_active_power$"),),
+        invert_power=True,
+        warnings=(WARNING_MAY_MEASURE_SUBCIRCUIT,),
+    ),
+    # Cozify HAN (Finland, `0d27a23`). Unique ids are `<entry_id>_<key>_<index>`: `i_0..2` current and
+    # `u_0..2` voltage per phase, `pi_1..3` import and `pe_1..3` export power per phase, `pi_0` and `pe_0`
+    # the totals. Import and export are two entities (the integration is replacing its signed `p` with
+    # them). The daily maximum `max_i_<n>` has the same ending as a current and is left out.
+    MeterRow(
+        platforms=("cozify_han",),
+        patterns=(
+            _p("current", r"(?<!max)_i_(?P<z>[012])$"),
+            _p("voltage", r"_u_(?P<z>[012])$"),
+            _p("power", r"_pi_(?P<n>[123])$"),
+            _p("power_export", r"_pe_(?P<n>[123])$"),
+        ),
+        totals=(
+            _p("grid_power", r"_pi_0$"),
+            _p("grid_power_export", r"_pe_0$"),
+        ),
+    ),
+    # Ferroamp EnergyHub (henricm, `1842058`). `<slug>_ehub-iext-L1..L3` is the grid current. The grid power
+    # (`pext`) and the battery power (`pbat`) are passed on from the hub unchanged and nothing in the
+    # integration says which way they count, so neither is used: the current alone protects the fuse.
+    MeterRow(
+        platforms=("ferroamp",),
+        patterns=(_p("current", r"-iext-l(?P<n>[123])$"),),
+        signed_current=True,
+    ),
+    # frient Electricity Meter Interface (EMIZB-132) through ZHA. The electrical measurement cluster gives
+    # the current of phase A as `rms_current` and of B and C as `rms_current_ph_b` and `_ph_c`, and the
+    # total as `total_active_power`, a signed int32 that ZHA passes on unchanged; what the device reports
+    # while the household exports is not in the source, so the total's sign is unverified. No power per
+    # phase exists, so this is a direct-current meter.
+    MeterRow(
+        platforms=("zha",),
+        device_model="emizb-132",
+        patterns=(
+            _p("current", r"(?:^|[-_])rms_current$", "L1"),
+            _p("current", r"(?:^|[-_])rms_current_ph_(?P<a>[bc])$"),
+        ),
+        totals=(_p("grid_power", r"(?:^|[-_])total_active_power$"),),
+        warnings=(WARNING_SIGN_UNVERIFIED,),
+    ),
     MeterRow(
         platforms=("victron_gx", "victron_mqtt", "victron"),
         patterns=(
@@ -502,7 +563,7 @@ METER_ROWS: Final[tuple[MeterRow, ...]] = (
 )
 
 # Integrations whose rows are device-filtered because the platform hosts unrelated devices.
-_SHARED_PLATFORMS: Final = frozenset({"mqtt", "esphome", "modbus"})
+_SHARED_PLATFORMS: Final = frozenset({"mqtt", "esphome", "modbus", "zha"})
 _CATALOGUED_PLATFORMS: Final = frozenset(
     platform for row in METER_ROWS for platform in row.platforms if platform not in _SHARED_PLATFORMS
 ) | {"easee"}
@@ -754,7 +815,7 @@ def _match_row(row: MeterRow, texts: list[str]) -> tuple[Role, PhaseName, str] |
             match = pattern.regex.search(text)
             if match is None:
                 continue
-            phase = _phase_of(match)
+            phase = _phase_of(match) or pattern.phase
             if phase is None:
                 continue
             return pattern.role, phase, match.groupdict().get("m") or ""
