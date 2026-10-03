@@ -312,6 +312,8 @@ def _async_schedule_history_import(
         entry.async_on_unload(async_call_later(hass, HISTORY_IMPORT_DELAY_S, _import))
 
     entry.async_on_unload(async_at_started(hass, _begin))
+    # The same re-price once a night, so a long-running HA prices late-arriving history without a restart.
+    entry.async_on_unload(importer.schedule_daily())
 
 
 async def _async_setup_auto_preview(
