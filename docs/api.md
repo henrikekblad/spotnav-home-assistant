@@ -78,6 +78,7 @@ config entry id. Reading is open to every authenticated user; writes require an 
 | `spotnav/get_settings`, `spotnav/update_settings` | Read and replace the settings record. |
 | `spotnav/manual_action` | `start`, `stop` (with an optional pause `choice`) or `resume`. |
 | `spotnav/get_market_options` | Price areas from the relay and their suggested fiscal values. |
+| `spotnav/find_region` | A Great Britain postcode to its price region (`GB-A` … `GB-P`): `{"postcode": "SW1A 1AA"}` answers `region` (one), `regions` (the relay-listed ones) and `reason` (`null`, `invalid_postcode`, `not_found`, `unavailable`). Home Assistant asks Octopus Energy's public lookup directly; the postcode never reaches the relay and is neither stored nor logged. |
 | `spotnav/get_entity_config`, `spotnav/update_entity_config` | The entities a charger and its site use. |
 | `spotnav/choose_vehicle_soc` | Choose (or clear) a vehicle's state-of-charge sensor. |
 | `spotnav/update_vehicle` | A vehicle's battery capacity, consumption and onboard charger. |
