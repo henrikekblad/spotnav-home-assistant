@@ -775,6 +775,7 @@ export function entityEditorBody(
       block = flagField(field, label);
     } else if (field.kind === "number") {
       const row = fieldBlock(field.field, label, numberControl(field, label), true, field);
+      row.querySelector("label")?.classList.add(C.entityNumberLabel);
       const control = row.querySelector<HTMLElement>("input");
       if (control !== null) {
         const line = element(doc, "div", C.settingsRow);

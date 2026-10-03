@@ -694,6 +694,7 @@ var VISUAL_CLASSES = {
   siteApplies: "spotnav-site-applies",
   siteFieldset: "spotnav-site-fieldset",
   siteLegend: "spotnav-site-legend",
+  entityNumberLabel: "spotnav-entity-number-label",
   siteChoice: "spotnav-site-choice",
   entityMeters: "spotnav-entity-meters",
   entityLine: "spotnav-entity-line",
@@ -1753,6 +1754,12 @@ var VISUAL_STYLES = `
     color: var(--primary-text-color, inherit);
   }
   .${VISUAL_CLASSES.entityDialog} .${VISUAL_CLASSES.siteFieldset} > .${VISUAL_CLASSES.siteLegend} {
+    font-weight: 600;
+    font-size: 0.95rem;
+    color: var(--primary-text-color, inherit);
+  }
+  /* A number field (main fuse, safety margin, measurement age) is headed like the groups around it. */
+  .${VISUAL_CLASSES.entityDialog} .${VISUAL_CLASSES.settingsField} > .${VISUAL_CLASSES.entityNumberLabel} {
     font-weight: 600;
     font-size: 0.95rem;
     color: var(--primary-text-color, inherit);
@@ -9729,6 +9736,7 @@ function entityEditorBody(doc, language, input, handlers, idPrefix) {
       block = flagField(field2, label);
     } else if (field2.kind === "number") {
       const row = fieldBlock(field2.field, label, numberControl(field2, label), true, field2);
+      row.querySelector("label")?.classList.add(VISUAL_CLASSES.entityNumberLabel);
       const control = row.querySelector("input");
       if (control !== null) {
         const line = element(doc, "div", VISUAL_CLASSES.settingsRow);
