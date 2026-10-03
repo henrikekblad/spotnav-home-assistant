@@ -35,8 +35,9 @@ shown in [Set up SpotNav](setup.md#2-add-a-site-optional). You provide:
     A one-phase charger is read from T3 only (TN). The charger's dialog shows the source the
     site reads, read-only.
   - Without any measured current for a charger, the regulator holds (`charger_measurement_unusable`)
-    and solar neither starts nor stops that charger: a running charge is held at the minimum
-    current and the reason is `charger_measurement_missing`.
+    and solar never starts that charger. A running charge is held at the minimum current while the
+    grid shows export or about zero import (100 W per phase), and stopped once import beyond that
+    has lasted the solar stop delay; the reason is `charger_measurement_missing`.
 
 After the basics, SpotNav looks for your grid meter in the entity registry (see
 [Meter detection](#meter-detection-signs-and-estimated-current)). When it finds the meter and

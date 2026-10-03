@@ -30,9 +30,12 @@ With the meter's total power instead of per-phase power (`SolarObservation.phase
 split evenly over the phases the car uses and each phase's figure is capped by its fuse headroom.
 
 A charger whose own measured current is missing (not configured, or unreadable) while the grid and the
-battery read fine is a standing fault, not a passing gap: it never starts a charge, and never stops a
-running one on the strength of it (a stop would be followed by whatever resumes the charger, round
-and round); the running charge is held at the minimum current and the reason says why.
+battery read fine is a standing fault, not a passing gap: it never starts a charge, and does not
+stop a running one merely for it (a stop would be followed by whatever resumes the charger, round
+and round); the running charge is held at the minimum current only while the grid shows export or next to no import
+(`missing_import_tolerance_w` per phase the car uses); import beyond that for `stop_delay_s` and
+`min_on_s` stops it as a normal solar stop. Solar never charges from the grid on the strength of a
+fault.
 
 Freshness: a `None` where a reading is needed means no basis this tick. From
 `off` or `arming` that means never start; a running charge is kept for
@@ -66,8 +69,8 @@ SolarReason = Literal[
     "no_basis_grace",
     "no_basis_stopped",
     # The charger's own measured current is unusable while the grid and battery readings are fine:
-    # nothing to size the surplus against, so a charge neither starts nor stops (a running one is held
-    # at the minimum current) instead of cycling.
+    # nothing to size the surplus against, so no charge starts, and a running one is held at the minimum
+    # current while the grid shows no real import and stopped (once) when it does.
     "charger_measurement_missing",
     "off_no_surplus",
     "arming_delay",
@@ -104,6 +107,9 @@ class SolarConfig:
     min_on_s: float = 600.0
     min_off_s: float = 300.0
     stale_grace_s: float = 120.0
+    # While the charger's own current is missing: the import, per phase the car uses, that still counts
+    # as the sun covering the minimum-current charge.
+    missing_import_tolerance_w: float = 100.0
 
     def __post_init__(self) -> None:
         start_a = self.min_current_a if self.start_a is None else self.start_a
@@ -172,6 +178,7 @@ class SolarController:
         self._last_requested_a: float | None = None
 
         self._stale_since: float | None = None
+        self._import_since: float | None = None
 
         self._net_grid_w: float | None = None
         self._export_w: float | None = None
@@ -186,7 +193,7 @@ class SolarController:
         now = observation.now
 
         if self._charger_measurement_missing(observation):
-            return self._handle_charger_measurement_missing()
+            return self._handle_charger_measurement_missing(observation)
 
         available_a = self._refresh_breakdown(observation)
         if available_a is None:
@@ -212,18 +219,39 @@ class SolarController:
             return False
         return not (observation.battery_configured and observation.battery_w is None)
 
-    def _handle_charger_measurement_missing(self) -> SolarVerdict:
-        """Hold: never start, never stop. A running charge is brought down to the minimum current once
-        and kept there, since nothing says how much the sun covers."""
+    def _handle_charger_measurement_missing(self, observation: SolarObservation) -> SolarVerdict:
+        """Never start. A running charge is brought down to the minimum current once and held there
+        while the grid shows export or next to no import; sustained import stops it."""
+        now = observation.now
         self._stale_since = None
         if self._state in ("off", "arming"):
             self._state = "off"
             self._arming_since = None
+            self._import_since = None
             return self._verdict("hold", None, "charger_measurement_missing")
-        # `disarming` is a countdown to a stop that this fault must not complete.
+        cfg = self._config
+        net_grid_w = sum(observation.signed_grid_w[phase] for phase in PHASES)  # type: ignore[misc]
+        self._net_grid_w = net_grid_w
+        self._export_w = max(0.0, -net_grid_w)
+        importing = net_grid_w > cfg.missing_import_tolerance_w * len(observation.car_phases)
+        if not importing:
+            self._import_since = None
+        else:
+            if self._import_since is None:
+                self._import_since = now
+            on_since = self._on_since if self._on_since is not None else now
+            if now - self._import_since >= cfg.stop_delay_s and now - on_since >= cfg.min_on_s:
+                self._state = "off"
+                self._last_stop_at = now
+                self._on_since = None
+                self._disarming_since = None
+                self._import_since = None
+                self._last_requested_a = None
+                return self._verdict("stop", None, "charger_measurement_missing")
+        # `disarming` is a countdown that this branch replaces with its own.
         self._state = "on"
         self._disarming_since = None
-        minimum = self._config.min_current_a
+        minimum = cfg.min_current_a
         if self._last_requested_a != minimum:
             self._last_requested_a = minimum
             return self._verdict("set_current", minimum, "charger_measurement_missing")

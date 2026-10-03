@@ -791,3 +791,40 @@ def test_a_missing_grid_reading_is_still_an_ordinary_gap_that_stops_after_the_gr
     verdict = ctrl.observe(_obs(400.0, grid_w={"L1": None, "L2": -3000.0, "L3": -3000.0}, car_delivered_a={"L1": None, "L2": None, "L3": None}))
 
     assert verdict.action == "stop" and verdict.reason == "no_basis_stopped"
+
+
+def _import_obs(now: float, grid_w: float) -> SolarObservation:
+    return _obs(now, grid_w=grid_w, car_delivered_a={"L1": None, "L2": None, "L3": None})
+
+
+def test_missing_measurement_with_sustained_import_stops_once_and_never_restarts():
+    ctrl = SolarController(_config())
+    _running(ctrl)
+    verdicts = [ctrl.observe(_import_obs(float(t), 3000.0)) for t in range(160, 3600, 30)]
+    stops = [v for v in verdicts if v.action == "stop"]
+
+    assert len(stops) == 1 and stops[0].reason == "charger_measurement_missing" and stops[0].state == "off"
+    assert not [v for v in verdicts if v.action == "start"]
+    assert verdicts[-1].state == "off" and verdicts[-1].action == "hold"
+    # Even with export again, the stopped charger is not started without its measurement.
+    assert ctrl.observe(_no_car_reading(3700.0)).action == "hold"
+
+
+def test_missing_measurement_with_export_is_held_at_the_minimum():
+    ctrl = SolarController(_config())
+    _running(ctrl)
+    verdicts = [ctrl.observe(_import_obs(float(t), -2000.0)) for t in range(160, 3600, 30)]
+
+    assert [v.action for v in verdicts].count("stop") == 0
+    assert verdicts[0].requested_a == 6.0 and {v.state for v in verdicts} == {"on"}
+
+
+def test_small_fluctuations_around_zero_for_thirty_minutes_do_not_flap():
+    ctrl = SolarController(_config())
+    _running(ctrl)
+    # Import beyond the tolerance for a minute, then export: the stop timer starts over each time.
+    grid = [2000.0, 2000.0, -500.0, 50.0, 1500.0, -300.0]
+    verdicts = [ctrl.observe(_import_obs(160.0 + 30 * i, grid[i % len(grid)])) for i in range(60)]
+
+    assert {v.action for v in verdicts if v.action in ("start", "stop")} == set()
+    assert {v.state for v in verdicts} == {"on"}

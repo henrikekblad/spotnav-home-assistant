@@ -588,7 +588,8 @@ class SolarExecutionCoordinator:
         if verdict.reason == "charger_measurement_missing":
             _LOGGER.warning(
                 "Solar on charger %s holds: the charger's own measured current is missing, so a charge "
-                "is neither started nor stopped (a running one stays at the minimum current). Set the "
+                "is never started, and a running one stays at the minimum current only while the grid shows "
+                "no real import (it is stopped when it does). Set the "
                 "charger's measured current source in the site wiring.",
                 self._charger_entry_id,
             )
