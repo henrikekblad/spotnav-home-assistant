@@ -1774,51 +1774,47 @@ export function createCardView(input: CardViewInput): CardView {
     }
     paintEntities();
 
-    body.append(aboutSectionBody());
-    if (input.isAdmin) {
-      body.append(supportSectionBody());
-    }
+    body.append(supportSectionBody());
 
     return body;
   }
 
-  /** About this card: one button opening the capability list the header's Info button used to open. */
-  function aboutSectionBody(): HTMLElement {
-    const section = element(doc, "section", C.settingsSection);
-    section.dataset["section"] = "about";
-    section.append(
-      element(doc, "h4", C.settingsSectionHeading, translate(model.language, "settings.section.about")),
-    );
-    const button = element(doc, "button", `${C.button} ${C.settingsSectionConfigure}`);
-    button.type = "button";
-    button.dataset["about"] = "open";
-    button.textContent = translate(model.language, "settings.about.open");
-    button.addEventListener("click", () => {
-      openCapabilities();
-    });
-    section.append(button);
-    return section;
-  }
-
-  /** Support: one button that saves the debug bundle. Administrators only; nothing is sent anywhere. */
+  /**
+   * Support: "About this card" (the capability list, for everyone) and, for administrators only, the
+   * button that saves the debug bundle. Nothing is sent anywhere.
+   */
   function supportSectionBody(): HTMLElement {
     const section = element(doc, "section", C.settingsSection);
     section.dataset["section"] = "support";
     section.append(
       element(doc, "h4", C.settingsSectionHeading, translate(model.language, "settings.section.support")),
-      element(doc, "p", C.muted, translate(model.language, "debug.intro")),
     );
-    const button = element(doc, "button", `${C.button} ${C.settingsSectionConfigure}`);
-    button.type = "button";
-    button.dataset["downloadDebug"] = "true";
-    button.addEventListener("click", () => {
-      if (!debugPending) {
-        input.onDownloadDebug?.();
-      }
+    if (input.isAdmin) {
+      section.append(element(doc, "p", C.muted, translate(model.language, "debug.intro")));
+    }
+    const actions = element(doc, "div", C.settingsSupportActions);
+    const about = element(doc, "button", `${C.button} ${C.settingsSectionConfigure}`);
+    about.type = "button";
+    about.dataset["about"] = "open";
+    about.textContent = translate(model.language, "settings.about.open");
+    about.addEventListener("click", () => {
+      openCapabilities();
     });
-    debugButton = button;
-    paintDebugButton();
-    section.append(button);
+    actions.append(about);
+    if (input.isAdmin) {
+      const button = element(doc, "button", `${C.button} ${C.settingsSectionConfigure}`);
+      button.type = "button";
+      button.dataset["downloadDebug"] = "true";
+      button.addEventListener("click", () => {
+        if (!debugPending) {
+          input.onDownloadDebug?.();
+        }
+      });
+      debugButton = button;
+      paintDebugButton();
+      actions.append(button);
+    }
+    section.append(actions);
     return section;
   }
 

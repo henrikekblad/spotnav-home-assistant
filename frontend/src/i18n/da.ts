@@ -569,7 +569,6 @@ export const da: Record<keyof typeof en, string> = {
     "Planlagt strøm",
   "settings.loading":
     "Læser de aktuelle indstillinger…",
-  "settings.section.about": "Om",
   "settings.section.support":
     "Support",
   "debug.intro":

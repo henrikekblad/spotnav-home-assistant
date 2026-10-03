@@ -569,7 +569,6 @@ export const fi: Record<keyof typeof en, string> = {
     "Suunniteltu virta",
   "settings.loading":
     "Luetaan nykyisiä asetuksia…",
-  "settings.section.about": "Tietoja",
   "settings.section.support":
     "Tuki",
   "debug.intro":

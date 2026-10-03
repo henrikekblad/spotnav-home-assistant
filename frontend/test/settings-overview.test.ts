@@ -125,7 +125,7 @@ describe("the general Settings popover", () => {
     const sections = Array.from(dialog?.querySelectorAll("[data-section]") ?? []).map((node) =>
       node.getAttribute("data-section"),
     );
-    expect(sections).toEqual(["market", "vehicle", "entities", "site", "about", "support"]);
+    expect(sections).toEqual(["market", "vehicle", "entities", "site", "support"]);
     // Every fact shown came from the dashboard already read; the one thing asked of the backend is the
     // entity configuration (administrators only, on its own line in the fake transport).
     expect(hass.messages.length).toBe(before);
@@ -260,14 +260,25 @@ describe("Download debug info", () => {
     await settle();
   }
 
-  it("is offered to administrators only", async () => {
+  it("is offered to administrators only, beside About this card in Support", async () => {
     const admin = await mounted();
     await openSettings(admin.element);
     expect(debugButton(admin.element)?.textContent).toBe(translate("en", "debug.download"));
+    const support = section(admin.element, "support");
+    expect(Array.from(support?.querySelectorAll("button") ?? []).map((button) => button.textContent)).toEqual([
+      translate("en", "settings.about.open"),
+      translate("en", "debug.download"),
+    ]);
 
     const reader = await mounted(fixture("start_idle"), false);
     await openSettings(reader.element);
     expect(debugButton(reader.element)).toBeNull();
+    // About this card is for everyone: a reader's Support section holds it alone.
+    const readerSupport = section(reader.element, "support");
+    expect(Array.from(readerSupport?.querySelectorAll("button") ?? []).map((button) => button.textContent)).toEqual([
+      translate("en", "settings.about.open"),
+    ]);
+    expect(section(reader.element, "about")).toBeNull();
   });
 
   it("asks for the bundle and saves it as spotnav-debug-<date>.json", async () => {

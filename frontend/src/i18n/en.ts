@@ -583,7 +583,6 @@ export const en = {
     "Planned current",
   "settings.loading":
     "Reading the current settings…",
-  "settings.section.about": "About",
   "settings.section.support":
     "Support",
   "debug.intro":

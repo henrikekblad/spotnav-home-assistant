@@ -57,6 +57,7 @@ export const VISUAL_CLASSES = {
   settingsSectionHeading: "spotnav-settings-section-heading",
   settingsSectionValue: "spotnav-settings-section-value",
   settingsSectionConfigure: "spotnav-settings-section-configure",
+  settingsSupportActions: "spotnav-settings-support-actions",
   siteApplies: "spotnav-site-applies",
   siteFieldset: "spotnav-site-fieldset",
   siteLegend: "spotnav-site-legend",
@@ -433,6 +434,12 @@ export const VISUAL_STYLES = `
     grid-column: 3 / -1;
     font-size: 0.85em;
     color: var(--primary-text-color, #212121);
+  }
+  /* Support's buttons side by side, wrapping on a narrow card. */
+  .spotnav-settings-support-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
   }
   .spotnav-market-source {
     margin: 4px 0 0;

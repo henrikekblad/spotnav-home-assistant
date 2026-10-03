@@ -570,7 +570,6 @@ export const sv: Record<keyof typeof en, string> = {
     "Planerad ström",
   "settings.loading":
     "Läser in de aktuella inställningarna…",
-  "settings.section.about": "Om",
   "settings.section.support":
     "Support",
   "debug.intro":

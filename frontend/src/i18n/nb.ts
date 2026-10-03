@@ -569,7 +569,6 @@ export const nb: Record<keyof typeof en, string> = {
     "Planlagt strøm",
   "settings.loading":
     "Leser de gjeldende innstillingene…",
-  "settings.section.about": "Om",
   "settings.section.support":
     "Støtte",
   "debug.intro":
