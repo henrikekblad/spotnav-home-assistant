@@ -11,7 +11,8 @@ one site.
 shown in [Set up SpotNav](setup.md#2-add-a-site-optional). You provide:
 
 - **Main fuse rating (A).** Always entered by you; it is never guessed from measured load.
-- **Safety margin (A)** kept below the fuse rating. It starts at 1 A.
+- **Safety margin (A)** kept below the fuse rating. It starts at 1 A. It can also be changed in the
+  card, in the site dialog next to the main fuse; it must stay below the fuse.
 - **Measurement source** for the site's per-phase current:
   - *Direct*: a sensor per phase reporting current, or one entity carrying every phase as
     attributes (you name the attribute for each phase and its unit, A or mA). The flow suggests
@@ -73,6 +74,22 @@ It is best effort and is not a protective device. Turning it off gives back any 
   draws more, for example a house battery holding the grid at its setpoint. SpotNav then judges a
   step by whether it moves the site current, within a hard ceiling that must be above the main
   fuse and below 1.25 times it.
+  - **A home battery that charges from the grid and gives way.** With a *home battery power*
+    sensor and solar priority *car first* (the default), SpotNav also checks that the battery's
+    own charge falls when the car takes more. Once that is verified the car may climb in larger
+    steps (up to 3 A, never more than the battery's charge per phase, and 1 A near the plan's
+    current), the damper's dwell does not hold such a step, and the card says why the car is below
+    its plan: "The home battery charges from the grid and shares the main fuse: the car gets 11 A."
+    With *battery first*, or a battery that does not give way, nothing is credited and the steps
+    stay at 2 A.
+  - **A short overload is not a reset.** While yield stepping is verified, one sample above the
+    ceiling (and at most 4 A above it) steps the car back once instead of to the minimum. A second
+    sample in a row, a larger excess, or two such samples within two minutes still stops at the
+    safe level, and the measured per-phase current stays the fuse protection throughout.
+- **Decision log.** Every change the regulator makes or holds (time, from and to amps, the reason,
+  the limiting phase, the battery power and the measured currents) is kept in a bounded list per
+  site, the last 200, shown as `regulator_decision_log` in the site's diagnostics (and so in the
+  debug bundle).
 - Reading a measurement that has not changed is told apart from a dead link before the reading
   is treated as stale.
 

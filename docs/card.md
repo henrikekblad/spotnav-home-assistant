@@ -79,6 +79,7 @@ serious each is. Examples:
 | Automatic charging is paused. / Paused until 07:00. | A pause is in effect. |
 | Stopped at 80 % (estimated, reading 40 min old) | The target was reached; shows the level the charge stopped at and how old or estimated it was. |
 | Charging is limited to 10 A by the site's load balancing. | Active load balancing has lowered the current. |
+| The home battery charges from the grid and shares the main fuse: the car gets 11 A. / House consumption limits the car to 11 A. | The same, with the cause when SpotNav knows it. |
 | Solar · charging 9 A from surplus | The solar strategy's state: waiting for sun, surplus found and starting soon, surplus fading, charging, or no usable reading. |
 | Hybrid · 12 kWh from grid, 8 kWh expected from sun | The hybrid plan's split; with no forecast source it says it plans like Cheapest. |
 | Charging was started, but the vehicle is not requesting current. | The connector reports the car is not asking for current. It is an observation only: check the car's charging settings or reconnect the cable. |
@@ -158,7 +159,7 @@ several. A charger with no site says so.
   charger on the site accepts a current command, or the site's own power measurement is not healthy.
   Turning it off gives back any current it had lowered, and the card reports each charger it
   restored.
-- **Change site entities**: the main fuse, the measurement mode, the per-phase sensors, the signs
+- **Change site entities**: the main fuse and its safety margin, the measurement mode, the per-phase sensors, the signs
   of the meter, the home battery power and the maximum measurement age. **Found in Home
   Assistant** lists the grid meters and home batteries SpotNav recognised, with **Use this** to
   apply one. The editor warns about a source that updates more slowly than the maximum measurement
