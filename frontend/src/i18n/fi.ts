@@ -30,6 +30,8 @@ export const fi: Record<keyof typeof en, string> = {
   "status.noPlan": "Lataussuunnitelmaa ei voitu laskea juuri nyt.",
   "status.loadBalancingLimited": "Aseman kuormanhallinta rajoittaa latausta juuri nyt.",
   "status.loadBalancingLimitedTo": "Aseman kuormanhallinta rajoittaa latauksen {limit} A:iin.",
+  "status.loadBalancingLimitedByBattery": "Kotiakku lataa verkosta ja jakaa pääsulakkeen: auto saa {limit} A.",
+  "status.loadBalancingLimitedByHouse": "Talon kulutus rajoittaa auton {limit} A:iin.",
   "status.chargingNowOpen": "Ladataan nyt.",
   "status.scheduledNoTime": "Lataus on aikataulutettu.",
   "status.nothingToCharge": "Ei mitään ladattavaa juuri nyt.",

@@ -30,6 +30,8 @@ export const sv: Record<keyof typeof en, string> = {
   "status.noPlan": "Ingen laddplan kunde beräknas just nu.",
   "status.loadBalancingLimited": "Laddningen begränsas av anläggningens lastbalansering just nu.",
   "status.loadBalancingLimitedTo": "Laddningen begränsas till {limit} A av anläggningens lastbalansering.",
+  "status.loadBalancingLimitedByBattery": "Hemmabatteriet laddar från nätet och delar huvudsäkringen: bilen får {limit} A.",
+  "status.loadBalancingLimitedByHouse": "Hushållets förbrukning begränsar bilen till {limit} A.",
   "status.chargingNowOpen": "Laddar nu.",
   "status.scheduledNoTime": "Laddning är schemalagd.",
   "status.nothingToCharge": "Inget att ladda just nu.",

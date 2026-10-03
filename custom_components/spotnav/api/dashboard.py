@@ -287,6 +287,10 @@ class CapturedSite:
     hybrid_state: dict[str, Any] | None
     #: The phases that make the site's measurement unusable, and why (`site/measurement_problem.py`).
     measurement_problem: MeasurementProblem | None = None
+    #: The current active control last gave this charger while it holds the car below what it asked
+    #: for, and why where known (`SiteCapacityController.load_balancing_limit`).
+    limit_a: float | None = None
+    limit_cause: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -754,6 +758,7 @@ def capture_site(
     solar_snapshot = controller.solar_surplus_snapshot.get(charger_entry_id)
     hybrid_snapshot = controller.hybrid_snapshot.get(charger_entry_id)
     capability = controller.capability_snapshot
+    limit_a, limit_cause = controller.load_balancing_limit(charger_entry_id)
     return CapturedSite(
         site_name=entry.title,
         state=str(result.state),
@@ -780,6 +785,8 @@ def capture_site(
         solar_state=dict(solar_snapshot) if solar_snapshot is not None else None,
         hybrid_state=dict(hybrid_snapshot) if hybrid_snapshot is not None else None,
         measurement_problem=controller.measurement_problem,
+        limit_a=finite_number(limit_a),
+        limit_cause=limit_cause,
     )
 
 
@@ -1745,8 +1752,13 @@ def status_facts(capture: CapturedDashboard) -> StatusFacts:
         else LoadBalancingFacts(
             state=site.state,
             active_control_enabled=site.active_control_enabled,
-            proposed_current_a=finite_number(site.proposed_current_a),
+            # What active control gave the charger beats the allocation's own number once it holds
+            # the car below the plan: that is the limit the person sees at the charger.
+            proposed_current_a=finite_number(
+                site.limit_a if site.limit_a is not None else site.proposed_current_a
+            ),
             limiting_phase=_text(site.limiting_phase),
+            cause=site.limit_cause,
         ),
     )
 

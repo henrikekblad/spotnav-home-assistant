@@ -194,6 +194,7 @@
     },
     "load_balancing_limited": {
       "params": [
+        "cause",
         "limit_a",
         "phase"
       ],

@@ -314,7 +314,43 @@ CASES: list[tuple[str, StatusFacts, str, list[dict[str, Any]]]] = [
         "notice",
         [
             {"code": "charging_now", "params": {"until": None}},
-            {"code": "load_balancing_limited", "params": {"limit_a": 10.0, "phase": "L2"}},
+            {"code": "load_balancing_limited", "params": {"limit_a": 10.0, "phase": "L2", "cause": None}},
+        ],
+    ),
+    (
+        "load balancing names the battery sharing the fuse, even when the allocation itself is not limited",
+        base(
+            charging=True,
+            load_balancing=LoadBalancingFacts(
+                "below_minimum_current", True, 11.0, "L2", "battery_shares_fuse"
+            ),
+            load_balancing_capable=True,
+        ),
+        "notice",
+        [
+            {"code": "charging_now", "params": {"until": None}},
+            {
+                "code": "load_balancing_limited",
+                "params": {"limit_a": 11.0, "phase": "L2", "cause": "battery_shares_fuse"},
+            },
+        ],
+    ),
+    (
+        "load balancing names house consumption",
+        base(
+            charging=True,
+            load_balancing=LoadBalancingFacts(
+                "capacity_limited", True, 11.0, "L2", "house_consumption"
+            ),
+            load_balancing_capable=True,
+        ),
+        "notice",
+        [
+            {"code": "charging_now", "params": {"until": None}},
+            {
+                "code": "load_balancing_limited",
+                "params": {"limit_a": 11.0, "phase": "L2", "cause": "house_consumption"},
+            },
         ],
     ),
     (

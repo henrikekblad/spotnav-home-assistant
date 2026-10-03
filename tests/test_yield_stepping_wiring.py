@@ -53,6 +53,8 @@ async def _yield_setup(
     yield_stepping_enabled: bool = True,
     yield_ceiling_a: float | None = None,
     min_current_a: float = 6.0,
+    battery_entity: str | None = None,
+    solar_priority: str | None = None,
 ) -> tuple[object, object, list]:
     """A site opted into active control with one 3-phase charger wired for charge control and a measured (delivered) current source.
 
@@ -104,6 +106,8 @@ async def _yield_setup(
         active_control_enabled=True,
         yield_stepping_enabled=yield_stepping_enabled,
         yield_ceiling_a=yield_ceiling_a,
+        battery_aggregate_power_entity=battery_entity,
+        solar_priority=solar_priority,
     )
     assert await hass.config_entries.async_setup(site_entry.entry_id)
     await hass.async_block_till_done()

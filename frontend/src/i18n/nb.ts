@@ -30,6 +30,8 @@ export const nb: Record<keyof typeof en, string> = {
   "status.noPlan": "Ingen ladeplan kunne beregnes akkurat nå.",
   "status.loadBalancingLimited": "Ladingen begrenses av anleggets lastbalansering akkurat nå.",
   "status.loadBalancingLimitedTo": "Ladingen begrenses til {limit} A av anleggets lastbalansering.",
+  "status.loadBalancingLimitedByBattery": "Hjemmebatteriet lader fra nettet og deler hovedsikringen: bilen får {limit} A.",
+  "status.loadBalancingLimitedByHouse": "Husets forbruk begrenser bilen til {limit} A.",
   "status.chargingNowOpen": "Lader nå.",
   "status.scheduledNoTime": "Lading er planlagt.",
   "status.nothingToCharge": "Ingenting å lade akkurat nå.",

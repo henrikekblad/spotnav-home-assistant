@@ -31,6 +31,8 @@ export const en = {
   "status.noPlan": "No charging plan could be calculated right now.",
   "status.loadBalancingLimited": "Charging is limited by the site's load balancing right now.",
   "status.loadBalancingLimitedTo": "Charging is limited to {limit} A by the site's load balancing.",
+  "status.loadBalancingLimitedByBattery": "The home battery charges from the grid and shares the main fuse: the car gets {limit} A.",
+  "status.loadBalancingLimitedByHouse": "House consumption limits the car to {limit} A.",
   "status.chargingNowOpen": "Charging now.",
   "status.scheduledNoTime": "Charging is scheduled.",
   "status.nothingToCharge": "Nothing to charge right now.",

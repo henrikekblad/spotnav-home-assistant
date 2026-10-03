@@ -30,6 +30,8 @@ export const da: Record<keyof typeof en, string> = {
   "status.noPlan": "Der kunne ikke beregnes en ladeplan lige nu.",
   "status.loadBalancingLimited": "Opladningen begrænses af anlæggets lastbalancering lige nu.",
   "status.loadBalancingLimitedTo": "Opladningen begrænses til {limit} A af anlæggets lastbalancering.",
+  "status.loadBalancingLimitedByBattery": "Hjemmebatteriet oplader fra nettet og deler hovedsikringen: bilen får {limit} A.",
+  "status.loadBalancingLimitedByHouse": "Husets forbrug begrænser bilen til {limit} A.",
   "status.chargingNowOpen": "Lader nu.",
   "status.scheduledNoTime": "Opladning er planlagt.",
   "status.nothingToCharge": "Der er intet at lade lige nu.",

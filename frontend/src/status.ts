@@ -165,6 +165,17 @@ function chargerProblemKey(problem: StatusParam | undefined): TranslationKey | n
   return problem === "control_disabled" ? "issue.chargeControlDisabled" : null;
 }
 
+/** The wording for a load-balancing limit: the cause when the server names one, else the plain limit. */
+function loadBalancingLimitKey(cause: StatusParam | undefined): TranslationKey {
+  if (cause === "battery_shares_fuse") {
+    return "status.loadBalancingLimitedByBattery";
+  }
+  if (cause === "house_consumption") {
+    return "status.loadBalancingLimitedByHouse";
+  }
+  return "status.loadBalancingLimitedTo";
+}
+
 function ms(value: StatusParam | undefined): number | null {
   if (typeof value !== "string") {
     return null;
@@ -272,7 +283,7 @@ export function lineText(line: StatusLine, format: FormatContext, nowMs: number)
       const limit = num(p["limit_a"]);
       return limit === null
         ? say("status.loadBalancingLimited")
-        : say("status.loadBalancingLimitedTo", { limit: formatNumber(language, limit, 0) });
+        : say(loadBalancingLimitKey(p["cause"]), { limit: formatNumber(language, limit, 0) });
     }
     case "settings_incomplete": {
       // Setup, not a fault: name what is still needed when the fields are known words.
@@ -386,7 +397,12 @@ export function issuesOf(status: Status | null, language: Language): Issue[] {
     issues.push({
       code: line.code,
       severity,
-      textKey: line.code === "load_balancing_limited" && limit === null ? "status.loadBalancingLimited" : STATUS_WORDING[line.code],
+      textKey:
+        line.code === "load_balancing_limited"
+          ? limit === null
+            ? "status.loadBalancingLimited"
+            : loadBalancingLimitKey(line.params["cause"])
+          : STATUS_WORDING[line.code],
       params: limit === null ? {} : { limit: formatNumber(language, limit, 0) },
       technical: reasonOf(line),
     });

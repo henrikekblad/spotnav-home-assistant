@@ -1224,7 +1224,7 @@ export const STATUS_CODE_TABLE = {
   price_data_stale: ["notice", { reason: "textOrNull" }],
   price_data_degraded: ["notice", { reason: "textOrNull" }],
   unpriced: ["notice", {}],
-  load_balancing_limited: ["notice", { limit_a: "numberOrNull", phase: "textOrNull" }],
+  load_balancing_limited: ["notice", { limit_a: "numberOrNull", phase: "textOrNull", cause: "textOrNull" }],
   load_balancing_unavailable: ["notice", {}],
   held_by_charger: ["notice", {}],
   charger_disabled: ["notice", {}],

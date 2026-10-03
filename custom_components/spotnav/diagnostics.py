@@ -110,6 +110,9 @@ def _site_diagnostics(hass: HomeAssistant, entry: ConfigEntry) -> dict[str, Any]
             charger_entry_id: _regulator_decision_to_dict(decision)
             for charger_entry_id, decision in controller.regulator_decisions.items()
         },
+        # What the regulator did, newest last, bounded: when, from and to amps, why, the limiting
+        # phase, the battery's power and the measured currents. A plain list a bundle can read.
+        "regulator_decision_log": [] if controller is None else controller.regulator_decision_log,
     }
 
 
