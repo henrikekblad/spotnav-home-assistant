@@ -103,6 +103,8 @@ the month, green for the cheapest to red for the dearest; hover or tap a bar for
 cost, price and solar share), and the month's charges with how each started: a planned window, by
 hand, solar surplus, hybrid, or started elsewhere.
 
+![The charge history dialog with a month's totals, a bar for every day and the month's charges](images/card-history.png)
+
 - **Energy** comes from the charger's energy register, or from the power SpotNav integrates for a
   charger behind a smart plug. A charger with neither is **estimated** from the current it was
   asked for, and every figure built on it says so.
@@ -221,7 +223,7 @@ several. A charger with no site says so.
 
 The **Plan** cell opens **Charging plan**.
 
-![The plan settings: energy, deadline, periods and current](images/card-settings-plan.png)
+![The plan settings: the charge target, departure time and weekdays, number of periods and current](images/card-settings-plan.png)
 
 - **Charge by**: **Energy (kWh)** or **Target SoC (%)**. With a target SoC, see
   [target state of charge](target-soc.md).
