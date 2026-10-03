@@ -26,7 +26,7 @@ const EDITOR_STYLES = `
   select { font: inherit; margin-top: 4px; max-width: 100%; padding: 6px;
            color: inherit; background: var(--card-background-color, #fff);
            border: 1px solid var(--divider-color, #e0e0e0); border-radius: 6px; }
-  p { margin: 8px 0 0; font-size: 0.85rem; overflow-wrap: anywhere; }
+  p { margin: 8px 0 0; font-size: 0.85rem; overflow-wrap: break-word; }
   .error { color: var(--error-color, #db4437); }
   button { margin-top: 8px; font: inherit; color: inherit; background: transparent;
            border: 1px solid var(--divider-color, #e0e0e0); border-radius: 6px; padding: 6px 10px; }

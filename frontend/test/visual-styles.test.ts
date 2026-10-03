@@ -45,7 +45,7 @@ describe("responsive and hostile-content rules", () => {
     expect(fixedWidths).toEqual([]);
     expect(VISUAL_STYLES).toContain("max-width: 100%");
     expect(VISUAL_STYLES).toContain("box-sizing: border-box");
-    expect(VISUAL_STYLES).toContain("overflow-wrap: anywhere");
+    expect(VISUAL_STYLES).toContain("overflow-wrap: break-word");
     expect(VISUAL_STYLES).toContain("min-width: 0");
   });
 
@@ -257,7 +257,7 @@ describe("the compact dialog header and the fiscal row", () => {
     const title = rule(VISUAL_CLASSES.dialogTitle);
     expect(title).toContain("flex: 1 1 auto");
     expect(title).toContain("min-width: 0");
-    expect(title).toContain("overflow-wrap: anywhere");
+    expect(title).toContain("overflow-wrap: break-word");
     // And the close keeps its tap target, sized by its own rule, in that same row.
     const close = rule(VISUAL_CLASSES.dialogClose);
     expect(close).toContain("flex: none");

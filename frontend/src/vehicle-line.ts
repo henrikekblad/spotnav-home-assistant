@@ -13,7 +13,8 @@ export const STALE_READING_S = 3600;
 
 export interface VehicleLineFacts {
   vehicleId: string;
-  name: string;
+  /** The vehicle's own name, or `null` when it has none: the line then starts with the charge. */
+  name: string | null;
   /** `92 %`, or `62 % → 80 %` while the target drives the plan. */
   charge: string;
   /** `~` while the figure is an estimate between readings. */
@@ -59,7 +60,7 @@ export function vehicleLineFor(
   if (soc === null || soc.vehicle_id === null || soc.value === null) {
     return null;
   }
-  const name = vehicleName(language, soc.vehicle_name);
+  const name = soc.vehicle_name !== null && soc.vehicle_name.trim() !== "" ? soc.vehicle_name : null;
   const target =
     settings?.driver === SETTINGS_DRIVER_TARGET_SOC
       ? (settings.target.target_percent ?? soc.target_percent)
@@ -80,7 +81,7 @@ export function vehicleLineFor(
     estimatePrefix,
     age,
     estimateTitle,
-    ariaLabel: translate(language, "vehicleLine.aria", { name, summary: spoken }),
+    ariaLabel: translate(language, "vehicleLine.aria", { name: vehicleName(language, soc.vehicle_name), summary: spoken }),
   };
 }
 

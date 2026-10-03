@@ -411,7 +411,7 @@ export const VISUAL_STYLES = `
   }
   .spotnav-market-value > .spotnav-settings-label {
     min-width: 0;
-    overflow-wrap: anywhere;
+    overflow-wrap: break-word;
   }
   .spotnav-market-value > .spotnav-settings-input {
     width: 100%;
@@ -600,7 +600,7 @@ export const VISUAL_STYLES = `
    */
   .spotnav-advisory {
     margin: 8px 0 0;
-    overflow-wrap: anywhere;
+    overflow-wrap: break-word;
     color: var(--warning-color, #ffa600);
   }
   /** A question the card puts to the administrator: the sentence and its one-tap answers. */
@@ -609,7 +609,7 @@ export const VISUAL_STYLES = `
   }
   .spotnav-suggestion-text {
     margin: 0;
-    overflow-wrap: anywhere;
+    overflow-wrap: break-word;
   }
   .spotnav-suggestion-answers {
     display: flex;
@@ -692,7 +692,7 @@ export const VISUAL_STYLES = `
     flex: 1 1 auto;
     min-width: 0;
     font-weight: 500;
-    overflow-wrap: anywhere;
+    overflow-wrap: break-word;
   }
   /*
    * The header's Info and cog buttons: a flex container centres the icon on both axes, and
@@ -844,7 +844,7 @@ export const VISUAL_STYLES = `
   .${VISUAL_CLASSES.vehicleChoiceName} {
     flex: 1 1 auto;
     min-width: 0;
-    overflow-wrap: anywhere;
+    overflow-wrap: break-word;
   }
   .${VISUAL_CLASSES.vehicleChoiceCharge} {
     flex: none;
@@ -853,12 +853,12 @@ export const VISUAL_STYLES = `
   }
   .${VISUAL_CLASSES.status} {
     margin: 8px 0 0;
-    overflow-wrap: anywhere;
+    overflow-wrap: break-word;
   }
   .${VISUAL_CLASSES.muted} {
     color: var(--secondary-text-color, #727272);
     font-size: 0.85rem;
-    overflow-wrap: anywhere;
+    overflow-wrap: break-word;
   }
   .${VISUAL_CLASSES.unavailable} {
     color: var(--secondary-text-color, #727272);
@@ -1126,7 +1126,7 @@ export const VISUAL_STYLES = `
   .${VISUAL_CLASSES.entityRowValue} {
     display: block;
     min-width: 0;
-    overflow-wrap: anywhere;
+    overflow-wrap: break-word;
   }
   .${VISUAL_CLASSES.entityHelp},
   .${VISUAL_CLASSES.entityAutomatic},
@@ -1203,7 +1203,7 @@ export const VISUAL_STYLES = `
   .${VISUAL_CLASSES.figureValue} {
     font-weight: 500;
     font-variant-numeric: tabular-nums;
-    overflow-wrap: anywhere;
+    overflow-wrap: break-word;
   }
   .${VISUAL_CLASSES.periods} {
     margin-top: 10px;
@@ -1226,7 +1226,7 @@ export const VISUAL_STYLES = `
     display: flex;
     gap: 8px;
     font-variant-numeric: tabular-nums;
-    overflow-wrap: anywhere;
+    overflow-wrap: break-word;
   }
   .${VISUAL_CLASSES.periodActive} {
     font-weight: 600;
@@ -1235,7 +1235,7 @@ export const VISUAL_STYLES = `
     margin-top: 10px;
     color: var(--secondary-text-color, #727272);
     font-size: 0.8rem;
-    overflow-wrap: anywhere;
+    overflow-wrap: break-word;
   }
   .${VISUAL_CLASSES.overlay} {
     position: fixed;
@@ -1281,7 +1281,7 @@ export const VISUAL_STYLES = `
     margin: 0;
     font-size: 1rem;
     font-weight: 600;
-    overflow-wrap: anywhere;
+    overflow-wrap: break-word;
   }
   .${VISUAL_CLASSES.dialogClose} {
     flex: none;
@@ -1334,7 +1334,7 @@ export const VISUAL_STYLES = `
   .${VISUAL_CLASSES.historyFigures},
   .${VISUAL_CLASSES.historyRowFigures} {
     font-variant-numeric: tabular-nums;
-    overflow-wrap: anywhere;
+    overflow-wrap: break-word;
   }
   .${VISUAL_CLASSES.historyFigures} {
     font-size: 1rem;
@@ -1344,7 +1344,7 @@ export const VISUAL_STYLES = `
   .${VISUAL_CLASSES.historyRowNote},
   .${VISUAL_CLASSES.historyFootnote} {
     font-size: 0.82rem;
-    overflow-wrap: anywhere;
+    overflow-wrap: break-word;
   }
   .${VISUAL_CLASSES.historyOpen} {
     margin: 0;
@@ -1393,7 +1393,7 @@ export const VISUAL_STYLES = `
   }
   .${VISUAL_CLASSES.historyRowTitle} {
     font-weight: 500;
-    overflow-wrap: anywhere;
+    overflow-wrap: break-word;
   }
   .${VISUAL_CLASSES.historyExport} {
     display: flex;
@@ -1511,7 +1511,7 @@ export const VISUAL_STYLES = `
     margin: 4px 0 0;
     min-height: 2.6em;
     font-size: 0.85rem;
-    overflow-wrap: anywhere;
+    overflow-wrap: break-word;
   }
   .${VISUAL_CLASSES.issueItem} {
     display: flex;
@@ -1520,7 +1520,7 @@ export const VISUAL_STYLES = `
     min-width: 0;
   }
   .${VISUAL_CLASSES.issueText} {
-    overflow-wrap: anywhere;
+    overflow-wrap: break-word;
   }
   .${VISUAL_CLASSES.capabilityItem} {
     display: flex;
@@ -1529,7 +1529,7 @@ export const VISUAL_STYLES = `
     min-width: 0;
   }
   .${VISUAL_CLASSES.capabilityLabel} {
-    overflow-wrap: anywhere;
+    overflow-wrap: break-word;
   }
   /*
    * A summary row on the Settings page: the label never breaks mid-label (ellipsis only as a last
@@ -1554,7 +1554,7 @@ export const VISUAL_STYLES = `
     flex: 1 1 auto;
     min-width: 0;
     text-align: right;
-    overflow-wrap: anywhere;
+    overflow-wrap: break-word;
   }
   .${VISUAL_CLASSES.settingsSection} .${VISUAL_CLASSES.capabilityItem} > .${VISUAL_CLASSES.settingsValueLong} {
     flex: 1 0 100%;
@@ -1573,7 +1573,7 @@ export const VISUAL_STYLES = `
     display: block;
     color: var(--secondary-text-color, #727272);
     font-size: 0.78rem;
-    overflow-wrap: anywhere;
+    overflow-wrap: break-word;
   }
   .${VISUAL_CLASSES.switchGroup} {
     display: flex;
@@ -1631,7 +1631,7 @@ export const VISUAL_STYLES = `
     padding: 6px 8px;
     border-inline-start: 3px solid var(--success-color, #43a047);
     font-size: 0.82rem;
-    overflow-wrap: anywhere;
+    overflow-wrap: break-word;
   }
   .${VISUAL_CLASSES.activeNotice} > span {
     display: block;
