@@ -74,6 +74,12 @@ PLANNED = [
 ]
 
 CASES: list[tuple[str, StatusFacts, str, list[dict[str, Any]]]] = [
+    (
+        "starting up: one line, whatever else is not yet known",
+        base(charger_available=False, charger_problem="control_missing", strategy="hybrid", starting_up=True),
+        "normal",
+        [{"code": "starting_up", "params": {}}],
+    ),
     ("idle: a plan that says nothing", base(relation_applied=True, proposal=proposal(planned_kwh=None, requested_kwh=None)), "normal", []),
     ("planned and applied", base(relation_applied=True, proposal=proposal()), "normal", PLANNED),
     (

@@ -258,6 +258,8 @@ export interface Dashboard {
   status: Status;
   /** The charger's connection state; `null` when the backend leaves it out or the block is unreadable. */
   connection: ConnectionState | null;
+  /** The start-up grace: `null` when the backend says nothing (an older one). */
+  starting_up: StartingUp | null;
 }
 
 /**
@@ -1201,6 +1203,7 @@ type StatusParamKind = "text" | "textOrNull" | "instant" | "instantOrNull" | "nu
  * outside it is refused by the decoder.
  */
 export const STATUS_CODE_TABLE = {
+  starting_up: ["normal", {}],
   charger_unavailable: ["blocking", { problem: "textOrNull", entity: "textOrNull" }],
   price_data_invalid: ["blocking", { reason: "textOrNull" }],
   price_data_unavailable: ["blocking", { reason: "textOrNull" }],
@@ -1264,6 +1267,13 @@ export type StatusCode = keyof typeof STATUS_CODE_TABLE;
 export interface StatusLine {
   code: StatusCode;
   params: Readonly<Record<string, StatusParam>>;
+}
+
+/** The `starting_up` block: what is still awaited right after the integration loaded. */
+export interface StartingUp {
+  active: boolean;
+  until: string | null;
+  waiting_for: string[];
 }
 
 export interface Status {
@@ -1385,6 +1395,7 @@ export function decodeDashboard(raw: unknown): DecodeResult {
         }),
         status: decodeStatus(record(required(root, "status"))),
         connection: connectionOrNull(root),
+        starting_up: startingUpOrNull(root),
       },
     };
   } catch {
@@ -1428,7 +1439,7 @@ const DASHBOARD_KEYS = [
  * `sessions_summary` (this and last month's charge sessions, for a client that wants them there)
  * is accepted and never read (the card's History view asks `spotnav/get_sessions`).
  */
-const OPTIONAL_DASHBOARD_KEYS = ["sessions_summary", "connection"] as const;
+const OPTIONAL_DASHBOARD_KEYS = ["sessions_summary", "connection", "starting_up"] as const;
 
 /**
  * The `connection`, or `null` when the block is missing or unreadable. Independent like `charge_progress`:
@@ -1446,6 +1457,27 @@ function connectionOrNull(root: Record<string, unknown>): ConnectionState | null
       return null;
     }
     return { state: state as ConnectionStateName, source: textOrNull(value, "source") };
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * The `starting_up` block, or `null` when it is missing or unreadable (an older backend): the card then
+ * behaves as before. Independent like `connection`.
+ */
+function startingUpOrNull(root: Record<string, unknown>): StartingUp | null {
+  const value = root.starting_up;
+  if (!isRecord(value)) {
+    return null;
+  }
+  try {
+    exactKeys(value, ["active", "until", "waiting_for"]);
+    return {
+      active: booleanValue(value, "active"),
+      until: textOrNull(value, "until"),
+      waiting_for: arrayValue(value, "waiting_for").map((entry) => (typeof entry === "string" ? entry : bad())),
+    };
   } catch {
     return null;
   }

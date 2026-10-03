@@ -72,6 +72,7 @@ function measurementLineText(language: Language, p: StatusLine["params"]): strin
 }
 
 export const STATUS_WORDING: Readonly<Record<StatusCode, TranslationKey>> = {
+  starting_up: "status.startingUp",
   charger_unavailable: "issue.chargerMissing",
   price_data_invalid: "issue.priceInvalid",
   price_data_unavailable: "issue.priceUnavailable",

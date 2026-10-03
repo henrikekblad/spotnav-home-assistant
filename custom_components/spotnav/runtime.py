@@ -13,11 +13,13 @@ Everything an entry starts is stopped with `entry.async_on_unload` where it is s
 from __future__ import annotations
 
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, field
+from datetime import datetime
 from typing import TYPE_CHECKING
 
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
+from homeassistant.util import dt as dt_util
 from homeassistant.util.hass_dict import HassKey
 
 from .const import CONF_ENTRY_TYPE, DOMAIN, ENTRY_TYPE_SITE
@@ -84,6 +86,8 @@ class SpotNavData:
     resync_cancel: Callable[[], None] | None = None
     card_served: bool = False
     log_buffer: SpotNavLogBuffer | None = None
+    #: When the integration loaded; the start-up grace (`startup.py`) counts from here.
+    started_at: datetime = field(default_factory=dt_util.utcnow)
 
 
 DATA_KEY: HassKey[SpotNavData] = HassKey(DOMAIN)

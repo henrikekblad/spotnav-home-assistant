@@ -101,6 +101,8 @@ QUIET_PLANNING_REASONS: Final = frozenset(
 STATUS_CODES: Final[dict[str, tuple[str, tuple[str, ...]]]] = {
     # `problem` says why when the charge control is gone or disabled (`control_missing`,
     # `control_disabled`), with its `entity`; both are `None` for any other reason.
+    # The first minutes after start: what is not yet known is not answered with a fallback. Alone.
+    "starting_up": (TONE_NORMAL, ()),
     "charger_unavailable": (TONE_BLOCKING, ("problem", "entity")),
     "price_data_invalid": (TONE_BLOCKING, ("reason",)),
     "price_data_unavailable": (TONE_BLOCKING, ("reason",)),
@@ -298,6 +300,8 @@ class StatusFacts:
     site_measurement: SiteMeasurementFacts | None = None
     #: Titles of the other charger entries that are this same physical charger.
     duplicate_chargers: tuple[str, ...] = ()
+    #: Right after the integration loaded and a source is still awaited (`startup.py`).
+    starting_up: bool = False
 
 
 def _line(code: str, **params: Any) -> dict[str, Any]:
@@ -598,6 +602,8 @@ def _pending_line(facts: StatusFacts) -> dict[str, Any]:
 
 def compose_status(facts: StatusFacts) -> dict[str, Any]:
     """The whole status block for one moment, from typed facts only."""
+    if facts.starting_up:
+        return {"tone": TONE_NORMAL, "lines": [_line("starting_up")]}
     blocking = _blocking_lines(facts)
     if blocking:
         # A charging car is always shown, even when something else blocks planning:

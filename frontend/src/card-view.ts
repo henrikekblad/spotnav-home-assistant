@@ -1411,8 +1411,10 @@ export function createCardView(input: CardViewInput): CardView {
       `${axisName("bar.charging")}: ${axisName(running ? "bar.state.charging" : "bar.state.notCharging")}. ${axisName(immediateLabelKey)}`,
     );
     actionButton.dataset["action"] = action;
-    actionButton.disabled = !model.control.canAct;
-    actionButton.dataset["renderedDisabled"] = String(!model.control.canAct);
+    // While the integration is starting up the charger's state is not known: no Start or Stop.
+    const actionDisabled = !model.control.canAct || model.startingUp;
+    actionButton.disabled = actionDisabled;
+    actionButton.dataset["renderedDisabled"] = String(actionDisabled);
     actionButton.addEventListener("click", () => {
       // The immediate axis is exactly one command and carries no choice: a bare Stop changes the
       // charger now and leaves the planning record alone. Taking a pause is the *other* cell.

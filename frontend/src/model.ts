@@ -218,6 +218,8 @@ export interface CardModel {
   soc: Soc | null;
   /** The charger's connection state for the header line; `null` when the backend says nothing. */
   connection: ConnectionState | null;
+  /** The start-up grace is on: the status says "Starting up…" and Start/Stop are offered disabled. */
+  startingUp: boolean;
   vehicles: Vehicle[];
   targetVehicleId: string | null;
   planRelation: PlanRelationKind;
@@ -711,6 +713,7 @@ export function buildModel(input: BuildInput): CardModel {
     currentRange: currentRangeFor(dashboard),
     soc: socFor(dashboard),
     connection: dashboard.connection,
+    startingUp: dashboard.starting_up?.active === true,
     vehicles: vehiclesFor(dashboard),
     targetVehicleId: targetVehicleIdFor(dashboard),
     contextArea: market?.area_id ?? market?.area_name ?? null,

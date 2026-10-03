@@ -281,6 +281,10 @@ class ChargerAdapter:
             return None
         return _lower(self.hass.states.get(self.status_entity_id))
 
+    def status_readable(self) -> bool:
+        """Whether the status sensor is configured and says something (not unavailable or unknown)."""
+        return self._status() is not None
+
     def held_by_charger(self) -> bool:
         """Whether the charger's own scheduler or load balancer holds the charge (Easee's
         `awaiting_scheduled_start`, `awaiting_smart_start`, `awaiting_load_balancing`,

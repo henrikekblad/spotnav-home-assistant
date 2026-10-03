@@ -2290,5 +2290,10 @@
       "soc_percent": 81.1428571428572,
       "suggested_onboard_phases": null
     }
-  ]
+  ],
+  "starting_up": {
+    "active": false,
+    "until": null,
+    "waiting_for": []
+  }
 }

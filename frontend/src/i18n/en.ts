@@ -35,6 +35,7 @@ export const en = {
   "status.loadBalancingLimitedByBattery": "The home battery charges from the grid and shares the main fuse: the car gets {limit} A.",
   "status.loadBalancingLimitedByHouse": "House consumption limits the car to {limit} A.",
   "status.chargingNowOpen": "Charging now.",
+  "status.startingUp": "Starting up…",
   "status.scheduledNoTime": "Charging is scheduled.",
   "status.nothingToCharge": "Nothing to charge right now.",
   "status.pausedShort": "Automatic charging is paused.",
