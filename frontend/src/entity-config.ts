@@ -158,6 +158,8 @@ export interface SiteWarning {
   option: string | null;
   deviceName: string | null;
   phases: SiteWarningPhase[];
+  /** `battery_import_limit_differs` only: the battery's grid import limit and SpotNav's, in A per phase. */
+  limitsA: { battery: number; spotnav: number } | null;
 }
 
 export interface DetectedEntityRow {
@@ -459,7 +461,7 @@ function decodeWarningPhase(raw: unknown): SiteWarningPhase {
 
 function decodeWarning(raw: unknown): SiteWarning {
   const source = record(raw);
-  exactKeys(source, ["code", "integration", "entity_id", "interval_s", "option", "device_name", "phases"]);
+  exactKeys(source, ["code", "integration", "entity_id", "interval_s", "option", "device_name", "phases", "limits_a"]);
   const phases = source["phases"];
   if (!Array.isArray(phases)) {
     return bad();
@@ -472,7 +474,21 @@ function decodeWarning(raw: unknown): SiteWarning {
     option: textOrNull(source, "option"),
     deviceName: textOrNull(source, "device_name"),
     phases: phases.map(decodeWarningPhase),
+    limitsA: decodeLimits(source["limits_a"]),
   };
+}
+
+function decodeLimits(raw: unknown): { battery: number; spotnav: number } | null {
+  if (raw === null) {
+    return null;
+  }
+  const source = record(raw);
+  exactKeys(source, ["battery", "spotnav"]);
+  const battery = source["battery"];
+  const spotnav = source["spotnav"];
+  return typeof battery === "number" && Number.isFinite(battery) && typeof spotnav === "number" && Number.isFinite(spotnav)
+    ? { battery, spotnav }
+    : bad();
 }
 
 function decodeDetectedEntity(raw: unknown): DetectedEntityRow {

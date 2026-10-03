@@ -129,6 +129,13 @@ function warningText(language: Language, warning: SiteWarning): string {
   if (warning.code === "external_current_balancer") {
     return translate(language, "entity.warning.externalBalancer", { name: warning.deviceName ?? "", integration });
   }
+  if (warning.code === "battery_import_limit_differs" && warning.limitsA !== null) {
+    return translate(language, "entity.warning.batteryImportLimit", {
+      battery: formatNumber(language, warning.limitsA.battery, 1),
+      spotnav: formatNumber(language, warning.limitsA.spotnav, 1),
+      integration,
+    });
+  }
   return translate(language, "entity.warning.unknown");
 }
 
@@ -353,6 +360,8 @@ export function entityNameIn(config: EntityConfig, entityId: string): string {
 export interface EntityEditorHandlers {
   onSave: (draft: EntityDraft) => void;
   onCancel: () => void;
+  /** A charger in a site: open the site's entities, where the wiring is held. */
+  onOpenSite?: () => void;
 }
 
 export interface EntityEditorInput {
@@ -1350,6 +1359,27 @@ export function entityEditorBody(
     errorNodes.set("charger_phases", { node: phasesError, input: wired.fieldset });
     wired.fieldset.append(phasesError);
     body.append(wired.fieldset);
+  }
+
+  // A charger in a site: the site's wiring says how many phases it is wired for. Read-only here, with the way
+  // to where it is changed.
+  if (phasesField !== undefined && phasesField.kind === "enum" && !phasesField.writable) {
+    const wiredLine = element(doc, "p", C.siteApplies);
+    wiredLine.dataset["wiredPhases"] = phasesField.value ?? "3";
+    wiredLine.append(
+      translate(language, "entity.phases.fromSite", {
+        phases: translate(language, phasesField.value === "1" ? "settings.phases.one" : "settings.phases.three"),
+      }),
+    );
+    if (handlers.onOpenSite !== undefined && !locked) {
+      const link = element(doc, "button", C.strategyLink, translate(language, "entity.phases.openSite"));
+      link.type = "button";
+      link.dataset["action"] = "open-site";
+      link.addEventListener("click", () => handlers.onOpenSite?.());
+      wiredLine.append(" ", link);
+      disabledWhenPending.push(link);
+    }
+    body.append(wiredLine);
   }
 
   // The charger's place in its site's allocation order: first, normal (the default) or last.

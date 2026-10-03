@@ -164,6 +164,8 @@ export interface CardViewInput {
   /** A vehicle card's Change button, and that dialog's Save (sensor, capacity, consumption as typed). */
   onOpenVehicleEditor?: (vehicleId: string) => void;
   onSaveVehicle?: (vehicleId: string, draft: EntityDraft) => void;
+  /** The one-tap answer to "set its onboard charger to 1-phase?": `1` accepts, `3` keeps it as it was. */
+  onAnswerOnboardPhases?: (vehicleId: string, phases: 1 | 3) => void;
 }
 
 export type EntityViewState =
@@ -903,6 +905,8 @@ export function createCardView(input: CardViewInput): CardView {
     background: () => card,
     onClose: notifyDialogsChanged,
   });
+  // The plan dialog's group headings read like the entity dialogs' (one heading style across the card).
+  settingsDialog.element.classList.add(C.planDialog);
   const marketDialog: DialogHandle = createDialog({
     owner: input.mount,
     idPrefix: `${idPrefix}-market`,
@@ -1023,6 +1027,32 @@ export function createCardView(input: CardViewInput): CardView {
     const advisory = element(doc, "p", C.advisory, model.advisory.text);
     advisory.setAttribute("role", "status");
     card.append(advisory);
+  }
+
+  // What the charges showed about the planned car: it seems to charge on one phase. A question with a
+  // one-tap answer for the administrator, never a change made by itself.
+  const suggestedVehicle = model.vehicles.find((row) => row.id === model.targetVehicleId);
+  if (input.isAdmin && suggestedVehicle !== undefined && suggestedVehicle.suggested_onboard_phases === 1) {
+    const suggestion = element(doc, "div", C.suggestion);
+    suggestion.dataset["suggestion"] = "onboard-phases";
+    suggestion.setAttribute("role", "status");
+    suggestion.append(element(doc, "p", C.suggestionText, translate(model.language, "suggestion.onboardOne.text")));
+    const answers = element(doc, "div", C.suggestionAnswers);
+    for (const [phases, label, action] of [
+      [1, "suggestion.onboardOne.accept", "accept"],
+      [3, "suggestion.onboardOne.dismiss", "dismiss"],
+    ] as const) {
+      const answer = element(doc, "button", C.choiceButton, translate(model.language, label));
+      answer.type = "button";
+      answer.dataset["action"] = action;
+      answer.addEventListener("click", () => {
+        answer.disabled = true;
+        input.onAnswerOnboardPhases?.(suggestedVehicle.id, phases);
+      });
+      answers.append(answer);
+    }
+    suggestion.append(answers);
+    card.append(suggestion);
   }
 
   if (model.status !== null) {
@@ -1947,6 +1977,7 @@ export function createCardView(input: CardViewInput): CardView {
                 max_percent: null,
                 soc_percent: null,
                 onboard_phases: 3,
+                suggested_onboard_phases: null,
               }))
           : [];
       for (const row of [...vehicleRows, ...extra]) {
@@ -2645,6 +2676,10 @@ export function createCardView(input: CardViewInput): CardView {
       {
         onSave: (draft) => input.onSaveEntities?.(scope, draft),
         onCancel: () => leaveSettingsChild(entityDialog, input.onCancelEntities),
+        onOpenSite: () => {
+          entityDialog.hide({ restoreFocus: false });
+          input.onOpenEntityEditor?.("site");
+        },
       },
       idPrefix,
     );

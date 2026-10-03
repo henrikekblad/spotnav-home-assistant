@@ -706,6 +706,40 @@ describe("the phases the charger is wired for: 1 or 3, chosen like a type, for a
     expect(choice("charger-phases", "1")).toBeNull();
   });
 
+  it("is stated read-only for a charger in a site, with a way to the site's wiring, and saves nothing", () => {
+    let opened = 0;
+    const cfg = config("get_direct");
+    const built = entityEditorBody(
+      document,
+      "en",
+      { scope: "charger", config: cfg, hass: () => undefined, appliesText: null },
+      { onSave: () => undefined, onCancel: () => undefined, onOpenSite: () => (opened += 1) },
+      "t",
+    );
+    document.body.replaceChildren(built.body);
+    const line = document.querySelector<HTMLElement>("[data-wired-phases]")!;
+    expect(line.dataset["wiredPhases"]).toBe("3");
+    expect(line.textContent).toContain("The charger is wired for 3 phases (from the site).");
+    expect(line.querySelector("button")?.textContent).toBe("Site wiring");
+    expect(entityChange(cfg, "charger", built.draft())).toEqual({ ok: true, changed: false });
+    line.querySelector<HTMLButtonElement>("[data-action='open-site']")!.click();
+    expect(opened).toBe(1);
+  });
+
+  it("is not stated for a charger in no site, which chooses it", () => {
+    open(config("get_no_site"), "charger");
+    expect(document.querySelector("[data-wired-phases]")).toBeNull();
+  });
+
+  it("is stated in every language", () => {
+    for (const language of LANGUAGES) {
+      open(config("get_direct"), "charger", { language });
+      const line = document.querySelector("[data-wired-phases]")?.textContent ?? "";
+      expect(line, language).toContain(translate(language, "settings.phases.three"));
+      expect(line, language).toContain(translate(language, "entity.phases.fromSite", { phases: translate(language, "settings.phases.three") }));
+    }
+  });
+
   it("is worded in every language", () => {
     for (const language of LANGUAGES) {
       open(config("get_no_site"), "charger", { language });
