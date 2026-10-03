@@ -975,6 +975,16 @@ async def test_an_older_installed_plan_and_a_newer_pending_proposal_are_never_mi
     assert plan["relation"]["applied"] is False, "the proposal in this snapshot is not applied"
     assert plan["proposal"]["planned_kwh"] > 0
 
+    # The wait is a normal status line naming the end of the open window, not an item to review.
+    status = response_for(hass, entry)["status"]
+    pending = [line for line in status["lines"] if line["code"] == "proposal_pending"]
+    assert len(pending) == 1
+    assert pending[0]["params"]["waits_for"] == "window_end"
+    window_end = datetime.fromisoformat(pending[0]["params"]["installs_at"])
+    active = plan["installed"]["periods"][plan["installed"]["active_period_index"]]
+    assert window_end == datetime.fromisoformat(active["end"])
+    assert status["tone"] == "normal"
+
 
 @freeze_time(NOW)
 async def test_a_re_described_plan_the_charger_already_runs_is_reported_as_applied(

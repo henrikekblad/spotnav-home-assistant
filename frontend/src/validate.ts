@@ -1196,7 +1196,7 @@ export const STATUS_CODE_TABLE = {
   buying_before_publication: ["normal", { kwh: "number" }],
   auto_planned: ["normal", { start: "instant" }],
   auto_installed: ["normal", { start: "instant" }],
-  proposal_pending: ["normal", {}],
+  proposal_pending: ["normal", { installs_at: "instantOrNull", waits_for: "textOrNull" }],
   waiting_for_tomorrow: ["normal", {}],
   no_plan: ["normal", {}],
   nothing_to_charge: ["normal", {}],

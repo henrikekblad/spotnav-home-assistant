@@ -2180,12 +2180,19 @@
     }
   ],
   "status": {
-    "tone": "notice",
+    "tone": "normal",
     "lines": [
       {
         "code": "auto_installed",
         "params": {
           "start": "2026-09-22T06:00:00+00:00"
+        }
+      },
+      {
+        "code": "proposal_pending",
+        "params": {
+          "installs_at": "2026-09-22T14:45:00+00:00",
+          "waits_for": "window_end"
         }
       }
     ]

@@ -279,7 +279,10 @@
       "tone": "blocking"
     },
     "proposal_pending": {
-      "params": [],
+      "params": [
+        "installs_at",
+        "waits_for"
+      ],
       "tone": "normal"
     },
     "settings_incomplete": {

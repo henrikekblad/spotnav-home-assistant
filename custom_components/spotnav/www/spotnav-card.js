@@ -3050,6 +3050,7 @@ var da = {
   "status.autoInstalled": "Opladning er planlagt fra {time}.",
   "status.heldUntilWindow": "Opladningen venter til den planlagte start kl. {time}.",
   "status.proposalPending": "Et nyt opladningsforslag er klar.",
+  "status.proposalPendingAt": "En ny plan er klar og installeres, når det igangværende opladningsvindue slutter kl. {time}.",
   "status.waitingForTomorrow": "Venter på morgendagens priser.",
   "status.waitingForPublication": "Venter på morgendagens priser (~{time}), planlægger derefter.",
   "status.waitingForHistory": "Venter: {weekday} har været {percent} % billigere de seneste {weeks} uger.",
@@ -3103,7 +3104,6 @@ var da = {
   "issue.priceStale": "Priserne er forældede: den seneste vellykkede hentning bruges stadig.",
   "issue.unpriced": "En del af planen lader uden offentliggjorte priser.",
   "issue.chargingWithoutPrices": "Lader uden offentliggjorte priser for at overholde sluttidspunktet.",
-  "issue.pendingProposal": "Et nyere forslag er klar, men er ikke installeret endnu.",
   "issue.loadBalancing": "Lastbalancering er ikke tilgængelig for denne lader.",
   "issue.heldByCharger": "Laderens eget skema eller lastbalancering holder opladningen tilbage, så den er ikke startet.",
   "issue.chargerDisabled": "Laderens egen aktiveringskontakt er slået fra, så den kan ikke starte. Slå den til i laderens indstillinger.",
@@ -3656,6 +3656,7 @@ var en = {
   "status.autoInstalled": "Charging is scheduled from {time}.",
   "status.heldUntilWindow": "Charging waits for the planned start at {time}.",
   "status.proposalPending": "A new charging proposal is ready.",
+  "status.proposalPendingAt": "A new plan is ready and is installed when the current charging window ends at {time}.",
   "status.waitingForTomorrow": "Waiting for tomorrow's prices.",
   "status.waitingForPublication": "Waiting for tomorrow's prices (~{time}), will plan then.",
   "status.waitingForHistory": "Waiting: {weekday} were {percent} % cheaper the last {weeks} weeks.",
@@ -3709,7 +3710,6 @@ var en = {
   "issue.priceStale": "The prices are stale: the last successful fetch is still being used.",
   "issue.unpriced": "Part of the plan charges without published prices.",
   "issue.chargingWithoutPrices": "Charging without published prices to keep the deadline.",
-  "issue.pendingProposal": "A newer proposal is ready but is not installed yet.",
   "issue.loadBalancing": "Load balancing is not available for this charger.",
   "issue.heldByCharger": "The charger's own schedule or load balancing is holding the charge, so it has not started.",
   "issue.chargerDisabled": "The charger's own enable switch is off, so it cannot start. Turn it on in the charger's settings.",
@@ -4262,6 +4262,7 @@ var fi = {
   "status.autoInstalled": "Lataus on aikataulutettu klo {time} alkaen.",
   "status.heldUntilWindow": "Lataus odottaa suunniteltua alkamisaikaa klo {time}.",
   "status.proposalPending": "Uusi latausehdotus on valmis.",
+  "status.proposalPendingAt": "Uusi suunnitelma on valmis ja otetaan käyttöön, kun käynnissä oleva latausikkuna päättyy klo {time}.",
   "status.waitingForTomorrow": "Odotetaan huomisen hintoja.",
   "status.waitingForPublication": "Odotetaan huomisen hintoja (~{time}), suunnitellaan sen jälkeen.",
   "status.waitingForHistory": "Odotetaan: {weekday} on ollut {percent} % halvempaa viimeisten {weeks} viikon aikana.",
@@ -4315,7 +4316,6 @@ var fi = {
   "issue.priceStale": "Hinnat ovat vanhentuneita: viimeisin onnistunut haku on yhä käytössä.",
   "issue.unpriced": "Osa suunnitelmasta latautuu ilman julkaistuja hintoja.",
   "issue.chargingWithoutPrices": "Ladataan ilman julkaistuja hintoja, jotta määräaika pysyy.",
-  "issue.pendingProposal": "Uudempi ehdotus on valmis, mutta sitä ei ole vielä asennettu.",
   "issue.loadBalancing": "Kuormanhallinta ei ole käytettävissä tälle laturille.",
   "issue.heldByCharger": "Laturin oma aikataulu tai kuormanhallinta pidättää latausta, joten se ei ole alkanut.",
   "issue.chargerDisabled": "Laturin oma käyttöönottokytkin on pois päältä, joten lataus ei voi alkaa. Kytke se päälle laturin asetuksista.",
@@ -4868,6 +4868,7 @@ var nb = {
   "status.autoInstalled": "Lading er planlagt fra {time}.",
   "status.heldUntilWindow": "Ladingen venter til planlagt start kl. {time}.",
   "status.proposalPending": "Et nytt ladeforslag er klart.",
+  "status.proposalPendingAt": "En ny plan er klar og installeres når det pågående ladevinduet slutter kl. {time}.",
   "status.waitingForTomorrow": "Venter på morgendagens priser.",
   "status.waitingForPublication": "Venter på morgendagens priser (~{time}), planlegger da.",
   "status.waitingForHistory": "Venter: {weekday} har vært {percent} % billigere de siste {weeks} ukene.",
@@ -4921,7 +4922,6 @@ var nb = {
   "issue.priceStale": "Prisene er utdaterte: den siste vellykkede hentingen brukes fortsatt.",
   "issue.unpriced": "En del av planen lader uten publiserte priser.",
   "issue.chargingWithoutPrices": "Lader uten publiserte priser for å holde sluttiden.",
-  "issue.pendingProposal": "Et nyere forslag er klart, men er ikke installert ennå.",
   "issue.loadBalancing": "Lastbalansering er ikke tilgjengelig for denne laderen.",
   "issue.heldByCharger": "Laderens egen timeplan eller lastbalansering holder tilbake ladingen, så den har ikke startet.",
   "issue.chargerDisabled": "Laderens egen aktiveringsbryter er av, så den kan ikke starte. Slå den på i laderens innstillinger.",
@@ -5474,6 +5474,7 @@ var sv = {
   "status.autoInstalled": "Laddning är schemalagd från {time}.",
   "status.heldUntilWindow": "Laddningen väntar till planerad start kl. {time}.",
   "status.proposalPending": "Ett nytt laddförslag är klart.",
+  "status.proposalPendingAt": "En ny plan väntar och installeras när pågående laddfönster slutar kl. {time}.",
   "status.waitingForTomorrow": "Väntar på morgondagens priser.",
   "status.waitingForPublication": "Väntar på morgondagens priser (~{time}), planerar då.",
   "status.waitingForHistory": "Väntar: {weekday} har varit {percent} % billigare de senaste {weeks} veckorna.",
@@ -5527,7 +5528,6 @@ var sv = {
   "issue.priceStale": "Priserna är inaktuella: den senaste lyckade hämtningen används fortfarande.",
   "issue.unpriced": "En del av planen laddar utan publicerade priser.",
   "issue.chargingWithoutPrices": "Laddar utan publicerade priser för att hålla sluttiden.",
-  "issue.pendingProposal": "Ett nyare förslag är klart men är inte installerat ännu.",
   "issue.loadBalancing": "Lastbalansering är inte tillgänglig för den här laddaren.",
   "issue.heldByCharger": "Laddarens eget schema eller lastbalansering håller tillbaka laddningen, så den har inte startat.",
   "issue.chargerDisabled": "Laddarens egen aktiveringsbrytare är av, så den kan inte starta. Slå på den i laddarens inställningar.",
@@ -7384,7 +7384,7 @@ var STATUS_CODE_TABLE = {
   buying_before_publication: ["normal", { kwh: "number" }],
   auto_planned: ["normal", { start: "instant" }],
   auto_installed: ["normal", { start: "instant" }],
-  proposal_pending: ["normal", {}],
+  proposal_pending: ["normal", { installs_at: "instantOrNull", waits_for: "textOrNull" }],
   waiting_for_tomorrow: ["normal", {}],
   no_plan: ["normal", {}],
   nothing_to_charge: ["normal", {}],
@@ -7866,6 +7866,10 @@ function lineText(line, format, nowMs) {
       const start = ms(p["start"]);
       return start === null || !zoned ? say("status.scheduledNoTime") : say(STATUS_WORDING[line.code], { time: clock(format, start) });
     }
+    case "proposal_pending": {
+      const at = ms(p["installs_at"]);
+      return at === null || !zoned ? say("status.proposalPending") : say("status.proposalPendingAt", { time: moment(format, at, nowMs) });
+    }
     case "held_until_window": {
       const time = ms(p["time"]);
       return time === null || !zoned ? say("status.scheduledNoTime") : say("status.heldUntilWindow", { time: clock(format, time) });
@@ -8004,9 +8008,6 @@ function issuesOf(status, language) {
         });
       }
     }
-  }
-  if (status.tone === "notice" && issues.length === 0) {
-    issues.push({ code: "pending_proposal", severity: "notice", textKey: "issue.pendingProposal", params: {}, technical: null });
   }
   return issues;
 }
@@ -8314,7 +8315,7 @@ function buildModel(input) {
     status: statusText(status, format, input.nowMs),
     statusNote: statusNote(status, format, input.nowMs),
     issues,
-    severity: status === null || status.tone === "normal" ? null : status.tone,
+    severity: status === null || status.tone === "normal" || issues.length === 0 ? null : status.tone,
     chart,
     bands,
     summary: {

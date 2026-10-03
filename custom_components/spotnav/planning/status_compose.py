@@ -49,8 +49,8 @@ Precedence (first match wins the headline; "add" rows append a fact line)
    held_by_charger (the charger's own scheduler or load balancer holds the charge), charger_disabled
    (its own enable switch is off, so it cannot start), site_measurement_problem (the phases that
    make the site's measurement unusable and why), duplicate_charger (another entry is the same physical
-   charger), load_balancing_limited, load_balancing_unavailable. Tone `notice` if any is present or a
-   proposal waits for a boundary (the card's pending_proposal issue); otherwise `normal`.
+   charger), load_balancing_limited, load_balancing_unavailable. Tone `notice` if any is present;
+   otherwise `normal`. A proposal waiting for a window boundary is the normal line proposal_pending.
 
 Rules chosen where the card and the app differ
 ----------------------------------------------
@@ -121,7 +121,9 @@ STATUS_CODES: Final[dict[str, tuple[str, tuple[str, ...]]]] = {
     "buying_before_publication": (TONE_NORMAL, ("kwh",)),
     "auto_planned": (TONE_NORMAL, ("start",)),
     "auto_installed": (TONE_NORMAL, ("start",)),
-    "proposal_pending": (TONE_NORMAL, ()),
+    # `installs_at` is the end of the Auto window charging now, the boundary a newer proposal waits
+    # for, with `waits_for: "window_end"`; both are null when it waits for nothing of the kind.
+    "proposal_pending": (TONE_NORMAL, ("installs_at", "waits_for")),
     "waiting_for_tomorrow": (TONE_NORMAL, ()),
     "no_plan": (TONE_NORMAL, ()),
     "nothing_to_charge": (TONE_NORMAL, ()),
@@ -484,7 +486,7 @@ def _plan_headline(facts: StatusFacts) -> list[dict[str, Any]]:
         return [_line("auto_installed", start=aware_iso((upcoming or installed[0])[0]))]
     if facts.relation_applied is False and proposed:
         return [
-            _line("proposal_pending"),
+            _line("proposal_pending", installs_at=None, waits_for=None),
             *_plan_facts(proposal, energy=True, cost=True, distance=True),
         ]
     if facts.waiting_for_tomorrow is True:
@@ -572,7 +574,7 @@ def _target_lines(facts: StatusFacts) -> list[dict[str, Any]]:
 
 
 def _pending_proposal(facts: StatusFacts) -> bool:
-    """The card's `pending_proposal` issue: this very proposal is queued for a boundary."""
+    """This very proposal is queued for a window boundary (Auto never cuts a charging window short)."""
     proposal = facts.proposal
     return (
         facts.relation_applied is False
@@ -581,6 +583,17 @@ def _pending_proposal(facts: StatusFacts) -> bool:
         and facts.pending_identity == proposal.identity
         and bool(proposal.periods)
     )
+
+
+def _pending_line(facts: StatusFacts) -> dict[str, Any]:
+    """A normal line: the queued proposal and, when a window is open, the end it installs at.
+
+    The same fact Auto's `window_charging_now` uses: the installed plan's window that contains now.
+    """
+    active = next((span for span in facts.installed_periods if span[0] <= facts.now < span[1]), None)
+    if active is None:
+        return _line("proposal_pending", installs_at=None, waits_for=None)
+    return _line("proposal_pending", installs_at=aware_iso(active[1]), waits_for="window_end")
 
 
 def compose_status(facts: StatusFacts) -> dict[str, Any]:
@@ -612,6 +625,8 @@ def compose_status(facts: StatusFacts) -> dict[str, Any]:
         lines.append(_hybrid_line(facts.hybrid, facts.proposal))
     else:
         lines.extend(_plan_headline(facts))
+    if _pending_proposal(facts) and not any(line["code"] == "proposal_pending" for line in lines):
+        lines.append(_pending_line(facts))
     lines.extend(_target_lines(facts))
     lines.extend(_notices(facts))
     if facts.suggested:
@@ -621,6 +636,4 @@ def compose_status(facts: StatusFacts) -> dict[str, Any]:
     for line in lines:
         if _RANK[_tone_of(line)] > _RANK[tone]:
             tone = _tone_of(line)
-    if _pending_proposal(facts):
-        tone = TONE_NOTICE if _RANK[tone] < _RANK[TONE_NOTICE] else tone
     return {"tone": tone, "lines": lines}

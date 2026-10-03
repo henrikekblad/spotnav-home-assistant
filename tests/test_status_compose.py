@@ -96,14 +96,34 @@ CASES: list[tuple[str, StatusFacts, str, list[dict[str, Any]]]] = [
             proposal=proposal(),
             installed_periods=((at(-1), at(-0.5)),),
         ),
-        "notice",
-        [{"code": "auto_installed", "params": {"start": iso(-1)}}],
+        "normal",
+        [
+            {"code": "auto_installed", "params": {"start": iso(-1)}},
+            {"code": "proposal_pending", "params": {"installs_at": None, "waits_for": None}},
+        ],
+    ),
+    (
+        "pending proposal while a window is charging: it installs when that window ends",
+        base(
+            charging=True,
+            relation_applied=False,
+            pending_identity="p1",
+            proposal=proposal(),
+            installed_periods=((at(-1), at(1)), (at(1), at(2))),
+        ),
+        "normal",
+        [
+            {"code": "charging_now", "params": {"until": iso(1)}},
+            {"code": "plan_energy", "params": {"kwh": 20.0}},
+            {"code": "plan_cost", "params": {"amount_minor": 1250, "currency": "SEK"}},
+            {"code": "proposal_pending", "params": {"installs_at": iso(1), "waits_for": "window_end"}},
+        ],
     ),
     (
         "proposal pending, not queued",
         base(relation_applied=False, proposal=proposal()),
         "normal",
-        [{"code": "proposal_pending", "params": {}}, *PLANNED[1:]],
+        [{"code": "proposal_pending", "params": {"installs_at": None, "waits_for": None}}, *PLANNED[1:]],
     ),
     (
         "charging now inside a period",

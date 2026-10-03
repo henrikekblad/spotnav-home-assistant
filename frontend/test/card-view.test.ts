@@ -171,11 +171,12 @@ describe("the banner and the issue dialog", () => {
 
   it("shows a notice as a neutral banner, never as the red one, when the headline does not say it", () => {
     const notice = modelWith({
-      status: { tone: "notice", lines: [statusLine("auto_installed", { start: "2026-09-22T04:00:00+00:00" })] },
+      status: { tone: "notice", lines: [statusLine("held_by_charger")] },
     });
     expect(notice.severity).toBe("notice");
-    expect(notice.issues.map((issue) => [issue.code, issue.severity])).toEqual([["pending_proposal", "notice"]]);
-    const shown = view(notice, {}, "notice");
+    expect(notice.issues.map((issue) => [issue.code, issue.severity])).toEqual([["held_by_charger", "notice"]]);
+    // The headline does not word the notice, so the banner is not a repeat of it.
+    const shown = view({ ...notice, status: "Charging is scheduled from 06:00." }, {}, "notice");
     const banner = shown.root.querySelector<HTMLElement>(`.${VISUAL_CLASSES.banner}`);
     expect(banner?.classList.contains(VISUAL_CLASSES.bannerNotice)).toBe(true);
     expect(banner?.classList.contains(VISUAL_CLASSES.bannerBlocking)).toBe(false);
@@ -183,14 +184,36 @@ describe("the banner and the issue dialog", () => {
     shown.view.destroy();
   });
 
-  it("never lists an issue harsher than the block: a notice tone with no notice line is the waiting proposal", () => {
-    const waiting = modelWith({
-      status: { tone: "notice", lines: [statusLine("auto_installed", { start: "2026-09-22T04:00:00+00:00" })] },
-    });
-    expect(waiting.issues.map((issue) => [issue.code, issue.severity])).toEqual([["pending_proposal", "notice"]]);
+  it("never lists a normal line as an item to review, whatever the block's tone says", () => {
     const calm = modelWith({ status: { tone: "normal", lines: [statusLine("no_plan")] } });
     expect(calm.issues).toEqual([]);
     expect(calm.severity).toBeNull();
+    const stray = modelWith({ status: { tone: "notice", lines: [statusLine("no_plan")] } });
+    expect(stray.issues).toEqual([]);
+    expect(stray.severity).toBeNull();
+  });
+
+  it("words a waiting proposal as a status line, with the end of the open window, and no banner", () => {
+    const pending = (params: Record<string, string | null>) =>
+      modelWith({
+        status: {
+          tone: "normal",
+          lines: [statusLine("charging_now", { until: "2026-09-22T05:00:00+00:00" }), statusLine("proposal_pending", params)],
+        },
+      });
+    const withTime = pending({ installs_at: "2026-09-22T05:00:00+00:00", waits_for: "window_end" });
+    expect(withTime.status).toContain(
+      "A new plan is ready and is installed when the current charging window ends at 07:00.",
+    );
+    expect(withTime.issues).toEqual([]);
+    expect(withTime.severity).toBeNull();
+    const shown = view(withTime, {}, "pending-line");
+    expect(shown.root.querySelector(`.${VISUAL_CLASSES.banner}`)).toBeNull();
+    expect(shown.root.querySelector(`.${VISUAL_CLASSES.status}`)?.textContent).toContain("ends at 07:00.");
+    shown.view.destroy();
+    const without = pending({ installs_at: null, waits_for: null });
+    expect(without.status).toContain("A new charging proposal is ready.");
+    expect(without.status).not.toContain("ends at");
   });
 
   it("shows the worst severity with a localized count, and lists every issue in order", () => {
@@ -541,9 +564,9 @@ describe("figures, periods and context", () => {
     // The queued case: not applied *and* this proposal is the one `pending_identity` names.
     const model = modelWith({
       plan: { ...plan, relation: { ...relation, applied: false, pending_identity: "proposal-1" } },
-      status: { tone: "notice", lines: [statusLine("auto_installed", { start: "2026-09-22T04:00:00+00:00" })] },
+      status: { tone: "normal", lines: [statusLine("auto_installed", { start: "2026-09-22T04:00:00+00:00" })] },
     });
-    expect(model.issues.map((issue) => issue.code)).toContain("pending_proposal");
+    expect(model.issues).toEqual([]);
     const { view: card, root } = view(model, {}, "pending");
     const blocks = Array.from(root.querySelectorAll(".spotnav-periods"));
     expect(blocks).toHaveLength(2);
@@ -579,7 +602,7 @@ describe("figures, periods and context", () => {
       status: { tone: "normal", lines: [statusLine("auto_installed", { start: "2026-09-22T04:00:00+00:00" })] },
     });
     expect(model.planRelation).toBe("pending_beside_installed");
-    expect(model.issues.map((issue) => issue.code)).not.toContain("pending_proposal");
+    expect(model.issues).toEqual([]);
     expect(model.status).toBe("Charging is scheduled from 06:00.");
     const { view: card, root } = view(model, {}, "unqueued");
     const blocks = Array.from(root.querySelectorAll(".spotnav-periods"));

@@ -659,7 +659,7 @@ export function buildModel(input: BuildInput): CardModel {
     status: statusText(status, format, input.nowMs),
     statusNote: statusNote(status, format, input.nowMs),
     issues,
-    severity: status === null || status.tone === "normal" ? null : status.tone,
+    severity: status === null || status.tone === "normal" || issues.length === 0 ? null : status.tone,
     chart,
     bands,
     summary: {

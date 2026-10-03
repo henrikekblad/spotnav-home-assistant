@@ -140,6 +140,7 @@ export const STATUS_VARIANT_KEYS: readonly TranslationKey[] = [
   "status.targetStoppedEstimateAge",
   "status.targetAgeMinutes",
   "status.targetAgeHours",
+  "status.proposalPendingAt",
   "status.chargingNowOpen",
   "status.scheduledNoTime",
   "status.waitingForPublicationNoTime",
@@ -243,6 +244,12 @@ export function lineText(line: StatusLine, format: FormatContext, nowMs: number)
       return start === null || !zoned
         ? say("status.scheduledNoTime")
         : say(STATUS_WORDING[line.code], { time: clock(format, start) });
+    }
+    case "proposal_pending": {
+      const at = ms(p["installs_at"]);
+      return at === null || !zoned
+        ? say("status.proposalPending")
+        : say("status.proposalPendingAt", { time: moment(format, at, nowMs) });
     }
     case "held_until_window": {
       const time = ms(p["time"]);
@@ -358,8 +365,7 @@ function reasonOf(line: StatusLine): string | null {
 
 /**
  * The Info dialog's list: the block's own non-normal lines, worded. Severity is the line's tone.
- * A `notice` block with no notice line is a proposal waiting for a boundary; that one item is
- * added from the tone.
+ * A normal line is never an item to review, whatever the block's tone says.
  */
 export function issuesOf(status: Status | null, language: Language): Issue[] {
   if (status === null) {
@@ -418,9 +424,6 @@ export function issuesOf(status: Status | null, language: Language): Issue[] {
         });
       }
     }
-  }
-  if (status.tone === "notice" && issues.length === 0) {
-    issues.push({ code: "pending_proposal", severity: "notice", textKey: "issue.pendingProposal", params: {}, technical: null });
   }
   return issues;
 }
