@@ -547,6 +547,24 @@
       },
       "integrated_energy": {
         "name": "Energy from power"
+      },
+      "sessions_energy_this_month": {
+        "name": "Charged energy this month"
+      },
+      "sessions_cost_this_month": {
+        "name": "Charging cost this month"
+      },
+      "sessions_energy_last_month": {
+        "name": "Charged energy last month"
+      },
+      "sessions_cost_last_month": {
+        "name": "Charging cost last month"
+      },
+      "sessions_last_energy": {
+        "name": "Last charge energy"
+      },
+      "sessions_last_cost": {
+        "name": "Last charge cost"
       }
     },
     "select": {

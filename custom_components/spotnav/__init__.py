@@ -21,6 +21,7 @@ from .api.entity_config import async_setup_entity_config_api
 from .api.manual_action import async_setup_manual_action_api
 from .api.market import async_setup_market_api
 from .api.pairing import async_register_pairing
+from .api.sessions import async_setup_sessions_api
 from .api.settings import async_setup_settings_api
 from .api.site_settings import async_setup_site_settings_api
 from .api.webhook import async_register_charger_webhook
@@ -64,6 +65,9 @@ from .runtime import (
     SiteData,
 )
 from .services import async_register_services
+from .sessions.inputs import price_book_for, session_facts
+from .sessions.recorder import SessionRecorder
+from .sessions.store import SessionStore
 from .site.site_join import async_apply_site_join, async_leave_sites, prune_missing_members
 from .site.site_capacity_controller import SiteCapacityController
 from .vehicles.discovery_decisions import async_setup_decisions
@@ -97,8 +101,12 @@ async def async_setup(hass: HomeAssistant, config: dict[str, Any]) -> bool:
     await async_setup_price_refresh(hass, repository)
     hass.bus.async_listen_once(EVENT_HOMEASSISTANT_STOP, partial(_async_stop, hass))
     await async_setup_auto_settings(hass)
+    # The charge sessions' record, loaded before any charger entry starts recording into it.
+    data.session_store = SessionStore(hass)
+    await data.session_store.async_load()
     async_register_services(hass)
     async_setup_dashboard_api(hass)
+    async_setup_sessions_api(hass)
     async_setup_market_api(hass)
     async_setup_settings_api(hass)
     async_setup_manual_action_api(hass)
@@ -216,6 +224,8 @@ async def _async_setup_charger_entry(hass: HomeAssistant, entry: ChargerConfigEn
     async_register_charger_webhook(hass, entry)
     await controller.async_initialize()
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
+    # After the platforms, so a smart plug's integrated-energy sensor already stands in for the register.
+    _async_start_session_recorder(hass, entry, data, controller)
     # A charger the flow was asked to add to the site joins it now that its entry id exists.
     await async_apply_site_join(hass, entry)
     # After the join, so the site's wiring and fuse are known to the defaults.
@@ -242,6 +252,26 @@ async def _async_setup_charger_entry(hass: HomeAssistant, entry: ChargerConfigEn
         remove_listener.append(price_manager.add_catalogue_listener(_on_catalogue))
         entry.async_on_unload(lambda: [remove() for remove in remove_listener])
     return True
+
+
+def _async_start_session_recorder(
+    hass: HomeAssistant, entry: ChargerConfigEntry, data: ChargerData, controller: ChargingController
+) -> None:
+    """The charger's charge-session recorder: it watches the charge and keeps the record."""
+    session_store = domain_data(hass).session_store
+    if session_store is None:
+        return
+    recorder = data.sessions = SessionRecorder(
+        hass,
+        entry.entry_id,
+        session_store,
+        facts=lambda: session_facts(hass, controller),
+        prices=lambda now: price_book_for(hass, entry.entry_id, now),
+        consume_cause=controller.consume_start_cause,
+        subscribe=controller.add_charge_state_listener,
+    )
+    entry.async_on_unload(recorder.async_shutdown)
+    recorder.async_start()
 
 
 async def _async_setup_auto_preview(
@@ -335,3 +365,6 @@ async def async_remove_entry(hass: HomeAssistant, entry: ConfigEntry) -> None:
     async_leave_sites(hass, entry.entry_id)
     await async_remove_auto_state(hass, entry.entry_id)
     await SocReader.async_remove_stored(hass, entry.entry_id)
+    session_store = domain_data(hass).session_store
+    if session_store is not None:
+        await session_store.async_remove_charger(entry.entry_id)

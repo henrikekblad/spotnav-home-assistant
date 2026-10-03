@@ -101,7 +101,7 @@ describe("2. accepted states render read-only", () => {
 
     expect(text(element)).toContain(translate("en", "status.noPlan"));
     expect(shadow(element).querySelector("svg")).not.toBeNull();
-    // The controls: the help action, the settings popover and the Plan trigger. A charger with no
+    // The controls: the help action, the charge history, the settings popover and the Plan trigger. A charger with no
     // settings record has no action on either axis and no strategy to choose. None of them mutates
     // anything on press: the trigger opens a read-only dialog until a record has been read, and the
     // dialogs are overlays outside the card, so their controls are not card controls either.
@@ -109,6 +109,7 @@ describe("2. accepted states render read-only", () => {
     const buttons = Array.from(cardNode.querySelectorAll("button"));
     expect(buttons.map((button) => button.getAttribute("aria-label"))).toEqual([
       translate("en", "header.info"),
+      translate("en", "header.history"),
       translate("en", "header.settings"),
       `${translate("en", "bar.plan")}: Not set \u00b7 No deadline \u00b7 Not set. ${translate("en", "bar.change")}`,
     ]);
@@ -309,10 +310,10 @@ describe("7-8. disconnect and reconnect", () => {
     await settle();
     const cardNode = shadow(element).querySelector(".spotnav-card");
     expect(cardNode).not.toBeNull();
-    // Eight overlays are created with the view and stay out of the card's height: issues,
+    // Ten overlays are created with the view and stay out of the card's height: issues,
     // capabilities, pause, strategy, the planning editor, the area/fiscal editor, the entity editors
-    // and the general Settings popover.
-    expect(dialogs(element)).toBe(9);
+    // the general Settings popover and the charge history.
+    expect(dialogs(element)).toBe(10);
 
     // One refresh is in flight when the card leaves the document.
     vi.advanceTimersByTime(REFRESH_INTERVAL_MS);
@@ -358,7 +359,7 @@ describe("7-8. disconnect and reconnect", () => {
     hass.resolveNext(dashboard());
     await settle();
     expect(shadow(element).querySelectorAll(".spotnav-card").length).toBe(1);
-    expect(dialogs(element)).toBe(9);
+    expect(dialogs(element)).toBe(10);
 
     // And exactly one timer: one interval means one more request, not two.
     vi.advanceTimersByTime(REFRESH_INTERVAL_MS);

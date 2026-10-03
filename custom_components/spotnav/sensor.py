@@ -33,6 +33,7 @@ from .execution.controller import ChargingController
 from .setup_hints import ADD_CHARGER_HINT
 from .execution.power_energy import fresh_power_w, integrated_energy_unique_id, PowerIntegrator
 from .runtime import controller_for
+from .sessions.sensors import session_entities
 from .vehicles.choices import flow_language
 from .site.site_capacity_controller import SiteCapacityController
 from .vehicles.charger_inventory import (
@@ -71,6 +72,7 @@ async def async_setup_entry(
         PlanTimeEntity(entry, controller, "end"),
     ]
     entities.extend(integrated_energy_entities(hass, entry, controller))
+    entities.extend(session_entities(hass, entry, controller))
     entities.extend(auto_entities(entry, controller, AutoSurface.resolve(hass, entry.entry_id)))
     if entry.entry_id == instance_owner_entry_id(hass):
         entities.append(InstanceConnectionEntity(hass, entry))

@@ -9,6 +9,7 @@ import {
   DEBUG_API_VERSION,
   ENTITY_CONFIG_API_VERSION,
   MARKET_API_VERSION,
+  SESSIONS_API_VERSION,
   SETTINGS_API_VERSION,
   SITE_SETTINGS_API_VERSION,
   type ChargerList,
@@ -294,4 +295,42 @@ export async function updateVehicle(
     changes: request.changes,
     expected: request.expected,
   });
+}
+
+/**
+ * One charger's charge history as sent, `unknown` until `decodeSessions()` decodes it: this and last
+ * month, the months and days that have a charge, the open session and the latest sessions.
+ */
+export async function getSessions(
+  hass: HomeAssistantLike,
+  chargerId: string,
+  limit = 20,
+): Promise<unknown> {
+  return await call<unknown>(hass, {
+    type: "spotnav/get_sessions",
+    api_version: SESSIONS_API_VERSION,
+    charger_id: chargerId,
+    limit,
+  });
+}
+
+/** The CSV of the sessions that started in a date range (local dates, either end open). */
+export async function getSessionsCsv(
+  hass: HomeAssistantLike,
+  chargerId: string,
+  range: { from: string | null; to: string | null },
+): Promise<unknown> {
+  const message: Record<string, unknown> = {
+    type: "spotnav/get_sessions",
+    api_version: SESSIONS_API_VERSION,
+    charger_id: chargerId,
+    format: "csv",
+  };
+  if (range.from !== null) {
+    message.from = range.from;
+  }
+  if (range.to !== null) {
+    message.to = range.to;
+  }
+  return await call<unknown>(hass, message);
 }

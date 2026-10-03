@@ -1164,6 +1164,40 @@
     "unpriced_slots": 0,
     "waiting_for_tomorrow": true
   },
+  "sessions_summary": {
+    "last_month": {
+      "average_price_minor_per_kwh": null,
+      "cost": null,
+      "currency": null,
+      "energy_kwh": 0.0,
+      "estimated": false,
+      "major_unit": null,
+      "minor_unit": null,
+      "period": "2026-08",
+      "reference_cost": null,
+      "savings": null,
+      "savings_basis": "day_average_price",
+      "savings_estimate": true,
+      "sessions": 0,
+      "solar_share": null
+    },
+    "this_month": {
+      "average_price_minor_per_kwh": null,
+      "cost": null,
+      "currency": null,
+      "energy_kwh": 0.0,
+      "estimated": false,
+      "major_unit": null,
+      "minor_unit": null,
+      "period": "2026-09",
+      "reference_cost": null,
+      "savings": null,
+      "savings_basis": "day_average_price",
+      "savings_estimate": true,
+      "sessions": 0,
+      "solar_share": null
+    }
+  },
   "settings": {
     "amps": 10,
     "area_id": "SE4",

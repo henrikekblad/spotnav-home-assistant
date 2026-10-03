@@ -11,12 +11,13 @@ users see the values and a note that only administrators can change them.
 
 ## Header
 
-The header shows the charger's name and two icons.
+The header shows the charger's name and three icons.
 
 - **About this card** (the information icon) opens **What this charger can do**: automatic price
   planning, dynamic current limit, load balancing, and vehicle state of charge and target, each
   marked available or unavailable for this charger. An item that is unavailable here cannot be
   switched on from the card. The list is taken from what the integration reports for the charger.
+- **Charge history** (the clock icon) opens [the charge history](#charge-history).
 - **Card settings** (the gear icon) opens [the settings popover](#the-settings-popover).
 
 When something needs attention, a banner says so: a notice in a neutral colour, or a message in
@@ -88,6 +89,30 @@ serious each is. Examples:
 <!-- Screenshot to add when available: ![The card during a charge, with the state of charge estimate](images/card-charging.png) -->
 
 <!-- Screenshot to add when available: ![The card with the solar strategy on a sunny day](images/card-solar.png) -->
+
+## Charge history
+
+Every charge is recorded as a session, from the moment the charger starts charging, whatever
+started it, until it stops or the car is unplugged. A pause of a couple of minutes (load balancing,
+a window boundary) stays in the same session. The **Charge history** dialog shows this month and
+last month (energy, cost, average price, number of charges, solar share), every day and month with
+a charge, and the latest charges with how each started: a planned window, by hand, solar surplus,
+hybrid, or started elsewhere.
+
+- **Energy** comes from the charger's energy register, or from the power SpotNav integrates for a
+  charger behind a smart plug. A charger with neither is **estimated** from the current it was
+  asked for, and every figure built on it says so.
+- **Cost** is the energy of each stretch of the charge times the effective price in that interval:
+  the spot price plus your energy tax and grid fee, times VAT, as in the plan, with the settings in
+  force at the time. Energy in an hour with no published price is counted but not priced.
+- **Savings** compare with the same energy at the day's average price. It is an estimate, shown
+  as one, and is negative when a charge happened to be dearer than the average.
+- **Export CSV** saves the sessions of this month, last month, the last 12 months or everything,
+  one row per session, in local time.
+
+Sessions are kept for two years, per charger, and survive restarts. Each charger also has sensors
+for the energy and cost this month and last month and for the last charge, which can be used on
+Home Assistant's own dashboards and in automations.
 
 ## The settings popover
 

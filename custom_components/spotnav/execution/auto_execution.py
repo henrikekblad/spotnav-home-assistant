@@ -1207,7 +1207,7 @@ class AutoExecutor:
                 STRATEGY_SOLAR, STRATEGY_HYBRID
             ):
                 return
-            await self._controller.async_start(amps)
+            await self._controller.async_start(amps, cause="solar")
             await self._notify_change()
 
     async def async_solar_stop(self) -> None:

@@ -2210,5 +2210,39 @@
     },
     "site": null,
     "vehicles": {}
+  },
+  "sessions_summary": {
+    "this_month": {
+      "period": "2026-09",
+      "sessions": 0,
+      "energy_kwh": 0.0,
+      "cost": null,
+      "currency": null,
+      "major_unit": null,
+      "minor_unit": null,
+      "average_price_minor_per_kwh": null,
+      "solar_share": null,
+      "reference_cost": null,
+      "savings": null,
+      "savings_basis": "day_average_price",
+      "savings_estimate": true,
+      "estimated": false
+    },
+    "last_month": {
+      "period": "2026-08",
+      "sessions": 0,
+      "energy_kwh": 0.0,
+      "cost": null,
+      "currency": null,
+      "major_unit": null,
+      "minor_unit": null,
+      "average_price_minor_per_kwh": null,
+      "solar_share": null,
+      "reference_cost": null,
+      "savings": null,
+      "savings_basis": "day_average_price",
+      "savings_estimate": true,
+      "estimated": false
+    }
   }
 }
