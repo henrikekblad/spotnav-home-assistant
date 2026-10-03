@@ -208,6 +208,37 @@ async def test_an_unlisted_day_is_never_requested(
     assert transport.calls == ["/v1/index.json"]
 
 
+async def test_an_archive_day_is_asked_whatever_the_index_lists_and_is_not_kept_in_the_live_cache(
+    hass: HomeAssistant, transport: StubTransport, repository: PriceRepository
+) -> None:
+    transport.serve_area()
+    transport.serve("/v1/index.json", 200, fixture("index_missing_tomorrow.json"))
+    store = StoreDouble()
+    repository._store = store  # type: ignore[assignment]
+    past = TODAY - timedelta(days=6)
+    transport.serve(transport.day_path("SE4", past), 200, day_body("SE4", past))
+
+    document = await repository.async_get_archive_day("SE4", past)
+
+    assert document is not None and document.interval_count == 96
+    assert transport.call_count(transport.day_path("SE4", past)) == 1
+    assert repository.day_snapshot("SE4", past).document is None
+    assert (("SE4", past)) not in repository._days
+    assert all(f"|{past.isoformat()}" not in key for key in repository._payload()["days"])
+
+
+async def test_an_archive_day_the_relay_lacks_is_none_and_a_bad_body_is_none(
+    hass: HomeAssistant, transport: StubTransport, repository: PriceRepository
+) -> None:
+    missing = TODAY - timedelta(days=30)
+    broken = TODAY - timedelta(days=31)
+    transport.serve(transport.day_path("SE4", broken), 200, day_body("SE4", TODAY))
+
+    assert await repository.async_get_archive_day("SE4", missing) is None
+    assert await repository.async_get_archive_day("SE4", broken) is None
+    assert transport.call_count(transport.day_path("SE4", missing)) == 1
+
+
 async def test_an_unreadable_index_is_not_taken_as_proof_of_absence(
     hass: HomeAssistant, transport: StubTransport, repository: PriceRepository
 ) -> None:

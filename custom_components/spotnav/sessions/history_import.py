@@ -57,7 +57,7 @@ FETCH_GAP_S: Final = 2.0
 START_DELAY_S: Final = 120.0
 #: An hour is priced when at least this share of its energy fell in a published interval.
 PRICED_SHARE: Final = 0.999
-MARKER_VERSION: Final = 1
+MARKER_VERSION: Final = 2
 
 STATUS_PENDING: Final = "pending"
 STATUS_RUNNING: Final = "running"
@@ -251,10 +251,13 @@ class HistoryImporter:
     async def _run(self) -> None:
         await migrate_legacy(self._hass, self._store, self._charger_id)
         marker = self._store.import_marker(self._charger_id)
+        self._days = {}
         today = self._now().astimezone(local_zone(self._hass)).date().isoformat()
         if marker is not None:
             self.status = STATUS_DONE
-            if marker.get("unpriced_hours", 0) > 0 and marker.get("checked_day") != today:
+            # A version-1 marker was made before archive days were asked for: re-price it at once.
+            outdated = int(marker.get("version", 1)) < MARKER_VERSION
+            if marker.get("unpriced_hours", 0) > 0 and (outdated or marker.get("checked_day") != today):
                 await self._reprice(marker, today)
             return
         entity = self._register_entity()
@@ -299,6 +302,7 @@ class HistoryImporter:
         if built.priced_hours > int(marker.get("priced_hours", 0)):
             marker = {
                 **marker,
+                "version": MARKER_VERSION,
                 "sessions": len(built.sessions),
                 "priced_hours": built.priced_hours,
                 "unpriced_hours": built.unpriced_hours,
@@ -306,7 +310,9 @@ class HistoryImporter:
             }
             self._store.replace_imported(self._charger_id, built.sessions, marker, now)
         else:
-            self._store.set_import_marker(self._charger_id, {**marker, "checked_day": today})
+            self._store.set_import_marker(
+                self._charger_id, {**marker, "version": MARKER_VERSION, "checked_day": today}
+            )
 
     async def _build(self, entity: str, begin: datetime, cutoff: datetime) -> Built:
         hours = [hour for hour in await self._fetch_hours(entity, begin, cutoff) if hour.end <= cutoff]
@@ -333,16 +339,17 @@ class HistoryImporter:
         return build_sessions(self._charger_id, groups, spot, market=market, energy_source=source)
 
     async def _day(self, market: PriceMarket, day: date) -> Any:
-        """The day's document: what the repository holds, else asked of the relay one request at a time."""
+        """The day's document: what the repository holds, else asked of the relay (archive) one request at a time."""
         if day in self._days:
             return self._days[day]
         repository = market.repository
-        snapshot = repository.day_snapshot(market.area_id, day)
-        if snapshot.document is None and snapshot.index_authority != "not_listed":
-            snapshot = await repository.async_get_day(market.area_id, day)
+        document = repository.day_snapshot(market.area_id, day).document
+        if document is None:
+            # An archive read: the index lists only the recent days, the relay has the older ones.
+            document = await repository.async_get_archive_day(market.area_id, day)
             await self._sleep(self._gap)
-        self._days[day] = snapshot.document
-        return snapshot.document
+        self._days[day] = document
+        return document
 
 
 async def migrate_legacy(hass: HomeAssistant, store: SessionStore, charger_id: str) -> int:

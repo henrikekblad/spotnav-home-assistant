@@ -349,6 +349,24 @@ class PriceRepository:
 
         return await self._shared(key, load)
 
+    async def async_get_archive_day(self, area_id: str, day: date) -> PriceDocument | None:
+        """One past day's document, asked of the relay whatever the index lists (the index governs live days).
+
+        For the one-off history import. The day is validated like any other; the relay's 404 and every
+        failure answer `None` (the caller remembers the miss for its run, so nothing is asked twice). The
+        document is returned and not cached: archive days never enter the live-day cache or the persisted
+        store. A day the repository already holds is answered from it without a request.
+        """
+        await self.async_restore()
+        cached = self._days.get((area_id, day))
+        if cached is not None:
+            return cached.parsed
+
+        async def load() -> PriceDocument | None:
+            return await self._load_archive_day(area_id, day)
+
+        return await self._shared(("archive", area_id, day.isoformat()), load)
+
     def profile_for(self, area_id: str) -> PriceProfile | None:
         """The area's history profile when one is held and recent enough to use, else `None`. No I/O.
 
@@ -596,6 +614,17 @@ class PriceRepository:
         self._days[(area_id, day)] = _Cached(document=document, fetched_at=self._now(), parsed=parsed)
         await self._persist()
         return self._day_snapshot(area_id, day, authority=authority, source="network", settled=True)
+
+    async def _load_archive_day(self, area_id: str, day: date) -> PriceDocument | None:
+        key = ("archive", area_id, day.isoformat())
+        self._attempts[key] = (self._now(), None)
+        path = f"/v1/{quote(area_id, safe='')}/{day.year:04d}/{day.month:02d}-{day.day:02d}.json"
+        try:
+            document = await self._fetch_json(path)
+            return parse_day(document, area_id=area_id, day=day)
+        except (RelayParseError, _Failure) as err:
+            self._record_failure(key, err)
+            return None
 
     async def _load_profile(self, area_id: str, today: date) -> PriceProfile | None:
         key = ("profile", area_id)
