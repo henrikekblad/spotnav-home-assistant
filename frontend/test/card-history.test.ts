@@ -62,15 +62,15 @@ afterEach(() => {
 });
 
 describe("the History button", () => {
-  it("sits beside Info and Settings, named in the card's language", async () => {
+  it("sits beside Settings, in one group, named in the card's language", async () => {
     const { element } = await mounted({ language: "sv" });
     const button = historyButton(element);
     expect(button.getAttribute("aria-label")).toBe("Laddhistorik");
     expect(button.getAttribute("aria-haspopup")).toBe("dialog");
-    const labels = Array.from(shadow(element).querySelectorAll(".spotnav-header > button")).map((node) =>
+    const labels = Array.from(shadow(element).querySelectorAll(".spotnav-header > .spotnav-header-actions > button")).map((node) =>
       node.getAttribute("aria-label"),
     );
-    expect(labels).toEqual(["Om kortet", "Laddhistorik", "Kortinställningar"]);
+    expect(labels).toEqual(["Laddhistorik", "Kortinställningar"]);
   });
 
   it("opens the dialog at once, asks for the history once, and fills it from the answer", async () => {

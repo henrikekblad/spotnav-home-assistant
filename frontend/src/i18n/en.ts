@@ -87,7 +87,7 @@ export const en = {
   "issue.duplicateCharger": "{other} and this charger are the same physical charger. Two SpotNav chargers on one charger send it conflicting commands, so keep only one: remove the other in Settings → Devices & services → SpotNav. SpotNav never removes one for you.",
   "issue.siteMeasurement": "The site's measurement cannot be used right now.",
   "issue.unknown": "The backend reported something this card does not know yet.",
-  "header.info": "About this card",
+  "settings.about.open": "About this card",
   "header.settings": "Card settings",
   "header.history": "Charge history",
   "history.title": "Charge history",
@@ -570,6 +570,7 @@ export const en = {
     "Planned current",
   "settings.loading":
     "Reading the current settings…",
+  "settings.section.about": "About",
   "settings.section.support":
     "Support",
   "debug.intro":

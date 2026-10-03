@@ -108,7 +108,6 @@ describe("2. accepted states render read-only", () => {
     const cardNode = shadow(element).querySelector(".spotnav-card") as HTMLElement;
     const buttons = Array.from(cardNode.querySelectorAll("button"));
     expect(buttons.map((button) => button.getAttribute("aria-label"))).toEqual([
-      translate("en", "header.info"),
       translate("en", "header.history"),
       translate("en", "header.settings"),
       `${translate("en", "bar.plan")}: Not set \u00b7 No deadline \u00b7 Not set. ${translate("en", "bar.change")}`,

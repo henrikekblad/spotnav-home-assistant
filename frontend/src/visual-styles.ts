@@ -22,6 +22,7 @@ export const VISUAL_CLASSES = {
   visuallyHidden: "spotnav-visually-hidden",
   name: "spotnav-name",
   iconButton: "spotnav-icon-button",
+  headerActions: "spotnav-header-actions",
   actionRow: "spotnav-action-row",
   button: "spotnav-button",
   actionButton: "spotnav-action-button",
@@ -689,16 +690,23 @@ export const VISUAL_STYLES = `
     letter-spacing: 0.01em;
     color: var(--primary-color, #03a9f4);
   }
-  /* At least ~10 characters wide: in a narrow card the buttons move to a row of their own rather than
-     squeezing the name until a word breaks. */
+  /* A modest basis in rem (not em of the large title font): a phone-wide card keeps name, vehicle line and
+     both buttons on one row, and only a very narrow card moves the button group to a row of its own. */
   .${VISUAL_CLASSES.name} {
-    flex: 1 1 10em;
+    flex: 1 1 8rem;
     min-width: 0;
     font-weight: 500;
     overflow-wrap: break-word;
   }
+  /* The header's buttons wrap only as a unit, never one by one, aligned to the end. */
+  .${VISUAL_CLASSES.headerActions} {
+    display: flex;
+    flex: none;
+    gap: 8px;
+    margin-left: auto;
+  }
   /*
-   * The header's Info and cog buttons: a flex container centres the icon on both axes, and
+   * The header's history and cog buttons: a flex container centres the icon on both axes, and
    * line-height 0 stops the empty line box pushing it off centre. The retry button shares the class.
    */
   .${VISUAL_CLASSES.iconButton} {
@@ -762,7 +770,7 @@ export const VISUAL_STYLES = `
     font-size: 0.8rem;
   }
   .${VISUAL_CLASSES.nameBlock} {
-    flex: 1 1 auto;
+    flex: 1 1 8rem;
     min-width: 0;
     display: flex;
     flex-direction: column;
