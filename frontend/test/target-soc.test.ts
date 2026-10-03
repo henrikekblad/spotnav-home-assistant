@@ -401,27 +401,21 @@ describe("the phase count", () => {
     expect(dlg(element).querySelector("input[type='radio']")).toBeNull();
   });
 
-  it("is written by a plan replacement that changes only the phase count, and left alone when not chosen", () => {
+  it("is never written by a plan replacement: the record's phases are carried through as the server sent them", () => {
     const record = aRecord();
-    const values = { ...formFromRecord(record), phases: "3" };
-    const check = replacementFor("plan", record, values);
-    expect(check).toMatchObject({ ok: true, changed: true });
-    if (check.ok) {
-      expect(check.body.phases).toBe(3);
-      expect(check.body.amps).toBe(record.amps);
-      expect(check.body.target).toEqual(record.target);
-    }
-    expect(replacementFor("plan", record, { ...values, phases: "1" })).toMatchObject({ ok: true, changed: false });
-    expect(replacementFor("plan", aRecord({ phases: null }), { ...values, phases: "" })).toMatchObject({
+    const values = formFromRecord(record);
+    // Nothing moved, so nothing is written, whatever count the record carries.
+    expect(replacementFor("plan", record, values)).toMatchObject({ ok: true, changed: false });
+    expect(replacementFor("plan", aRecord({ phases: null }), formFromRecord(aRecord({ phases: null })))).toMatchObject({
       ok: true,
       changed: false,
     });
-    // Reapplied onto a newer record, a count the reader did not move is the newer record's.
-    const newer = aRecord({ revision: 9, phases: 3 });
-    const kept = replacementFor("plan", newer, { ...formFromRecord(record) }, null, record);
-    expect(kept).toMatchObject({ ok: true });
-    if (kept.ok) {
-      expect(kept.body.phases).toBe(3);
+    // A moved current carries the newer record's phases along, untouched.
+    const newer = aRecord({ revision: 9, phases: 1 });
+    const moved = replacementFor("plan", newer, { ...formFromRecord(newer), current: "16" });
+    expect(moved).toMatchObject({ ok: true, changed: true });
+    if (moved.ok) {
+      expect(moved.body.phases).toBe(1);
     }
   });
 });

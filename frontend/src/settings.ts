@@ -430,8 +430,6 @@ export interface SettingsFormValues {
   driver: string;
   targetPercent: string;
   vehicleId: string;
-  /** `"1"`, `"3"`, or `""` while the record has no phase count. Written by the Plan dialog only. */
-  phases: string;
 }
 
 export function formFromRecord(record: SettingsRecord): SettingsFormValues {
@@ -447,7 +445,6 @@ export function formFromRecord(record: SettingsRecord): SettingsFormValues {
     targetPercent:
       record.target.target_percent === null ? "" : String(record.target.target_percent),
     vehicleId: record.target.vehicle_id ?? "",
-    phases: record.phases === null ? "" : String(record.phases),
   };
 }
 
@@ -789,17 +786,6 @@ export function replacementFor(
   if (targetMoved) {
     next.target = target;
     changed = true;
-  }
-  // Phases belong to the Plan dialog: a chosen count replaces the stored one (reapplied onto a newer record,
-  // only when the reader moved it).
-  const chosenPhases = values.phases === "1" ? 1 : values.phases === "3" ? 3 : null;
-  if (
-    kind === "plan" &&
-    chosenPhases !== null &&
-    (opened === null || chosenPhases !== opened.phases)
-  ) {
-    next.phases = chosenPhases;
-    changed = changed || chosenPhases !== record.phases;
   }
   if (energy !== null && energy.ok && (opened === null || energy.value !== opened.requested_kwh)) {
     next.requested_kwh = energy.value;

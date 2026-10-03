@@ -690,6 +690,36 @@ describe("voltage between phases: 400 V or 230 V, chosen like a type", () => {
   });
 });
 
+describe("the phases the charger is wired for: 1 or 3, chosen like a type, for a charger in no site", () => {
+  it("is offered in the dialog of a charger that is in no site, opens on what is stored and saves only a change", () => {
+    const { sent } = open(config("get_no_site"), "charger");
+    expect(checked("charger-phases")).toBe("3");
+    expect(sent()).toEqual({ ok: true, changed: false });
+    pick("charger-phases", "1");
+    const result = sent();
+    expect(result.ok && result.changed && result.request.changes).toEqual({ charger_phases: "1" });
+    expect(result.ok && result.changed && result.request.expected).toEqual({ charger_phases: "3" });
+  });
+
+  it("is not offered to a charger in a site, whose site holds the wiring", () => {
+    open(config("get_direct"), "charger");
+    expect(choice("charger-phases", "1")).toBeNull();
+  });
+
+  it("is worded in every language", () => {
+    for (const language of LANGUAGES) {
+      open(config("get_no_site"), "charger", { language });
+      const text = document.body.textContent ?? "";
+      for (const key of ["entity.field.chargerPhases", "entity.help.chargerPhases", "settings.phases.one", "settings.phases.three"] as const) {
+        expect(text, `${language} ${key}`).toContain(translate(language, key));
+      }
+      if (language !== "en") {
+        expect(translate(language, "entity.help.chargerPhases")).not.toBe(translate("en", "entity.help.chargerPhases"));
+      }
+    }
+  });
+});
+
 describe("charger priority: first, normal or last in the site's order", () => {
   it("is offered to a charger in a site, opens on what is stored and saves only a change", () => {
     const { sent } = open(config("get_direct"), "charger");

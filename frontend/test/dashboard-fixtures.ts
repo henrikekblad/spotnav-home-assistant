@@ -175,6 +175,7 @@ export function rawDashboard(overrides: Record<string, unknown> = {}): Record<st
     soc: null,
     vehicles: [],
     target_vehicle_id: null,
+    charging_phases: null,
     detected_phases: null,
     phase_detection: { source: "unknown", confidence: "none" },
     chargers: [{ id: "entry_a", name: "Garage" }],

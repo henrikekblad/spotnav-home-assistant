@@ -64,6 +64,11 @@ export function vehicleSummary(doc: Document, language: Language, input: Vehicle
         ? notSet
         : `${formatFixed(language, row.consumption_kwh_per_10km, 1)} ${translate(language, "settings.consumption.unit")}`,
     );
+    valueRow(
+      "onboard",
+      translate(language, "settings.vehicle.onboardLegend"),
+      translate(language, row.onboard_phases === 1 ? "settings.vehicle.onboardOne" : "settings.vehicle.onboardThree"),
+    );
   }
   const button = element(doc, "button", `${C.button} ${C.settingsSectionConfigure}`, translate(language, "settings.vehicle.change"));
   (button as HTMLButtonElement).type = "button";

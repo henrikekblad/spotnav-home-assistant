@@ -46,7 +46,12 @@ describe("the card's computation against the backend's need_kwh in the committed
     });
 
   it("finds the fixtures that carry a need", () => {
-    expect(carrying).toEqual(["target_soc_estimated.json", "target_soc_stopped_on_estimate.json", "target_soc_two_vehicles.json"]);
+    expect(carrying).toEqual([
+      "target_soc_estimated.json",
+      "target_soc_phases_limited_by_vehicle.json",
+      "target_soc_stopped_on_estimate.json",
+      "target_soc_two_vehicles.json",
+    ]);
   });
 
   it.each(carrying)("gives the need %s states, from the facts the same block states", (name) => {

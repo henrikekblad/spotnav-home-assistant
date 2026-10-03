@@ -1085,6 +1085,7 @@ const FIELD_LABELS: Record<string, TranslationKey> = {
   safety_margin_a: "entity.field.safetyMargin",
   measurement_mode: "entity.field.measurementMode",
   voltage_between_phases_v: "entity.field.voltageBetweenPhases",
+  charger_phases: "entity.field.chargerPhases",
   charger_priority: "entity.field.chargerPriority",
   battery_aggregate_power_entity: "entity.field.batteryPower",
   battery_discharge_power_entity: "entity.field.batteryDischargePower",
@@ -1153,6 +1154,7 @@ const FIELD_ERROR_KEYS: Record<string, TranslationKey> = {
   unknown_vehicle: "entity.error.field.unknownVehicle",
   invalid_capacity: "settings.vehicle.error.capacity",
   invalid_consumption: "settings.vehicle.error.consumption",
+  invalid_onboard_phases: "settings.vehicle.error.onboardPhases",
 };
 
 export function fieldErrorKey(code: string): TranslationKey {
@@ -1189,6 +1191,7 @@ const FIELD_HELP: Record<string, TranslationKey> = {
   safety_margin_a: "entity.help.safetyMargin",
   measurement_mode: "entity.help.measurementMode",
   voltage_between_phases_v: "entity.help.voltageBetweenPhases",
+  charger_phases: "entity.help.chargerPhases",
   charger_priority: "entity.help.chargerPriority",
   battery_aggregate_power_entity: "entity.help.batteryPower",
   battery_discharge_power_entity: "entity.help.batteryDischargePower",

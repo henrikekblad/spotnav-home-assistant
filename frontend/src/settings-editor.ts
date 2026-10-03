@@ -34,10 +34,12 @@ export interface SettingsEditorForm {
   values: SettingsFormValues;
   energyReadOnly: boolean;
   /**
-   * The accepted record's phase count, used to name the draft current's nominal power. Never rendered
-   * as a value; `null` means unknown.
+   * The phases a charge uses (the record's `phases`, which the server fills in as the effective count): it
+   * names the nominal power the draft current gives. Read-only; `null` means unknown.
    */
   phases: number | null;
+  /** `"vehicle"` when the planned vehicle's onboard charger, not the charger's wiring, sets `phases`. */
+  limitedBy?: "vehicle" | null;
   currentRange: CurrentRange;
   conflict: number | null;
   /**
@@ -480,35 +482,10 @@ export function settingsEditorBody(
     body.append(periodsBlock);
   };
 
-  // The phase count the plan assumes, chosen beside the current it turns into power.
-  const phaseRadios: HTMLInputElement[] = [];
-  const draftPhases = (): number | null => {
-    const chosen = phaseRadios.find((radio) => radio.checked);
-    return chosen === undefined ? form.phases : Number(chosen.value);
-  };
-  const appendPhases = (): void => {
-    const group = element(doc, "fieldset", C.siteFieldset);
-    group.dataset["part"] = "phases";
-    group.append(element(doc, "legend", C.siteLegend, translate(language, "settings.phases.legend")));
-    for (const count of [1, 3] as const) {
-      const label = element(doc, "label", C.siteChoice);
-      const radio = doc.createElement("input") as HTMLInputElement;
-      radio.type = "radio";
-      radio.name = `${idPrefix}-phases`;
-      radio.value = String(count);
-      radio.checked = form.values.phases === String(count);
-      radio.disabled = form.readOnly;
-      radio.dataset["phases"] = String(count);
-      phaseRadios.push(radio);
-      label.append(radio, doc.createTextNode(translate(language, count === 1 ? "settings.phases.one" : "settings.phases.three")));
-      group.append(label);
-    }
-    body.append(group);
-    if (form.values.phases === "") {
-      body.append(element(doc, "p", C.settingsNote, translate(language, "settings.phases.unset")));
-    }
-    body.append(element(doc, "p", C.settingsNote, translate(language, "settings.phases.help")));
-  };
+  // The phases a charge uses are not chosen here: the charger's wiring and the vehicle's onboard charger decide
+  // them. The line beside the current says how many, with the power that gives, and why when the car limits it.
+  const phasesLabel = (count: number): string =>
+    translate(language, count === 1 ? "settings.phases.one" : "settings.phases.three");
 
   const appendCurrent = (): void => {
     currentInput.disabled = form.readOnly;
@@ -516,11 +493,19 @@ export function settingsEditorBody(
     power.setAttribute("aria-live", "polite");
     const paintPower = (): void => {
       const amps = Number(currentInput.value.trim().replace(",", "."));
-      const nominal = nominalPowerKw(amps, draftPhases());
+      const phases = form.phases;
+      const nominal = nominalPowerKw(amps, phases);
+      power.dataset["phases"] = phases === null ? "" : String(phases);
+      if (phases !== 1 && phases !== 3) {
+        // A count this release does not know: no phases and no power are named.
+        power.textContent = translate(language, "settings.current.powerUnknown");
+        return;
+      }
       power.textContent =
         nominal === null
-          ? translate(language, "settings.current.powerUnknown")
-          : translate(language, "settings.current.power", {
+          ? translate(language, "settings.phases.lineUnknown", { phases: phasesLabel(phases) })
+          : translate(language, "settings.phases.line", {
+              phases: phasesLabel(phases),
               power: formatNumber(language, nominal, 1),
             });
     };
@@ -540,12 +525,11 @@ export function settingsEditorBody(
       onChange: paintPower,
     });
     body.append(paired.field);
-    if (form.kind === "plan") {
-      appendPhases();
-    }
     body.append(power);
-    for (const radio of phaseRadios) {
-      radio.addEventListener("change", paintPower);
+    if (form.limitedBy === "vehicle") {
+      const reason = element(doc, "p", C.settingsNote, translate(language, "settings.phases.limitedByVehicle"));
+      reason.dataset["part"] = "phases-reason";
+      body.append(reason);
     }
     paintPower();
   };
@@ -814,8 +798,6 @@ export function settingsEditorBody(
     values.maxPeriods = periodsInput.value;
     values.current = currentInput.value;
     if (form.kind === "plan") {
-      const chosen = phaseRadios.find((radio) => radio.checked);
-      values.phases = chosen === undefined ? values.phases : chosen.value;
       values.driver = socRadio.checked ? "target_soc" : "manual_kwh";
       values.targetPercent = targetInput.value;
       // The picked vehicle, else the record's, else the resolved one: what a target-mode Save writes as

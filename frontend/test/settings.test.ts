@@ -111,7 +111,6 @@ function form(overrides: Partial<SettingsFormValues> = {}): SettingsFormValues {
     driver: "manual_kwh",
     targetPercent: "",
     vehicleId: "",
-    phases: "3",
     ...overrides,
   };
 }
@@ -488,9 +487,7 @@ describe("the pure replacement builders", () => {
       driver: "manual_kwh",
       targetPercent: "",
       vehicleId: "",
-      phases: "3",
     });
-    expect(formFromRecord(aRecord({ phases: null })).phases).toBe("");
     expect(formFromRecord(aRecord({ amps: null, requested_kwh: 20 })).current).toBe("");
     expect(formFromRecord(aRecord({ amps: null, requested_kwh: 20 })).energy).toBe("20");
   });

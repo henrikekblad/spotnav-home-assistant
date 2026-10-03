@@ -559,6 +559,7 @@ export class SpotnavCard extends HTMLElement {
         values: formFromRecord(record),
         energyReadOnly: manualEnergyReadOnly(record),
         phases: record.phases,
+        limitedBy: this.phasesLimitedBy(),
         currentRange: this.currentRange(),
         conflict: null,
         soc: this.socFacts(),
@@ -878,6 +879,11 @@ export class SpotnavCard extends HTMLElement {
     return this.cardState.kind === "ready" ? siteFactsFor(this.cardState.dashboard.site, this.languageOrFallback) : null;
   }
 
+  /** Whether the planned vehicle's onboard charger, not the charger's wiring, sets the phases (the dashboard's say). */
+  private phasesLimitedBy(): "vehicle" | null {
+    return this.cardState.kind === "ready" ? (this.cardState.dashboard.charging_phases?.limited_by ?? null) : null;
+  }
+
   private vehicleFacts(): readonly Vehicle[] {
     return this.cardState.kind === "ready" ? vehiclesFor(this.cardState.dashboard) : [];
   }
@@ -1026,6 +1032,7 @@ export class SpotnavCard extends HTMLElement {
         values: formFromRecord(record),
         energyReadOnly: manualEnergyReadOnly(record),
         phases: record.phases,
+        limitedBy: this.phasesLimitedBy(),
         currentRange: this.currentRange(),
         conflict: null,
         soc: this.socFacts(),
@@ -1487,8 +1494,8 @@ export class SpotnavCard extends HTMLElement {
     view.setEntityEditorNotice(null);
 
     const errors: EntityFieldError[] = [];
-    const changes: { capacity_kwh?: number; consumption_kwh_per_10km?: number } = {};
-    const expected: { capacity_kwh?: number | null; consumption_kwh_per_10km?: number | null } = {};
+    const changes: { capacity_kwh?: number; consumption_kwh_per_10km?: number; onboard_phases?: 1 | 3 } = {};
+    const expected: { capacity_kwh?: number | null; consumption_kwh_per_10km?: number | null; onboard_phases?: 1 | 3 } = {};
     const judge = (
       text: string | undefined,
       check: (text: string) => { ok: true; value: number } | { ok: false },
@@ -1518,6 +1525,15 @@ export class SpotnavCard extends HTMLElement {
       "invalid_consumption",
       row?.consumption_kwh_per_10km ?? null,
     );
+    const onboard = draft["onboard"];
+    if (onboard !== undefined && row !== undefined) {
+      if (onboard !== "1" && onboard !== "3") {
+        errors.push({ field: "onboard_phases", code: "invalid_onboard_phases" });
+      } else if (Number(onboard) !== row.onboard_phases) {
+        changes.onboard_phases = Number(onboard) as 1 | 3;
+        expected.onboard_phases = row.onboard_phases;
+      }
+    }
     if (errors.length > 0) {
       view.markEntityFieldErrors(errors);
       return;
