@@ -123,7 +123,7 @@ await shot("charger-adjust");
 await cancelDialog();
 
 // The charger itself, added for real so that the site and the card have something to work with.
-const garage = await api.flow("spotnav", [{ entry_type: "charger" }, { mode: "detected" }, { device: deviceId("Garage charger Connector 1") }, {}]);
+const garage = await api.flow("spotnav", [{ entry_type: "charger" }, { mode: "detected" }, { device: deviceId("Garage charger Connector 1") }, {}, { charger_phases: "3" }]);
 if (garage.type !== "create_entry") throw new Error("could not add the demo charger: " + JSON.stringify(garage).slice(0, 300));
 
 // ------------------------------------------------------------------------------------------------ site
@@ -151,6 +151,10 @@ await b.click("ha-select", "");
 await b.click("ha-dropdown-item", "Workshop charger");
 await sleep(500);
 await submit();
+await submit();
+// The demo charger's entities do not say how many phases it has, so the flow asks before the offer.
+await b.click("*", "^Three phases$");
+await sleep(400);
 await submit();
 await shot("join-site");
 await cancelDialog();
@@ -208,6 +212,17 @@ await saveAmps(15);
 await saveAmps(16);
 await sleep(1500);
 await cardShot("card-hero", CARD, 0);
+
+step("charge history");
+await cardButton("^Charge history$");
+await sleep(2500);
+// Early in a month the current month has only a few days to show: look at the month before then.
+if (new Date().getDate() < 12) {
+  await b.click("button", "^Previous month$");
+  await sleep(2000);
+}
+await cardShot("card-history", CARD_DIALOG);
+await closeCardDialog();
 
 step("card picker");
 await b.gotoReady(ha.BASE + "/spotnav-demo/charging?edit=1", `!!${b.finder("ha-button", "^Add card$")}`);
