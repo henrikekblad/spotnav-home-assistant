@@ -1715,13 +1715,13 @@ class SiteCapacityController:
                     phase=wiring.get("phase"),
                     min_current_a=float(wiring.get("min_current_a", DEFAULT_MIN_CURRENT_A)),
                     measured_current_a=self._read_charger_measured_current(wiring),
-                    priority=self._charger_priority(charger_entry_id),
+                    priority=self.charger_priority(charger_entry_id),
                     order=order,
                 )
             )
         return requests
 
-    def _charger_priority(self, charger_entry_id: str) -> str:
+    def charger_priority(self, charger_entry_id: str) -> str:
         """The charger's own `CONF_CHARGER_PRIORITY`, "normal" when none is stored or its entry is gone."""
         entry = self.hass.config_entries.async_get_entry(charger_entry_id)
         if entry is None:

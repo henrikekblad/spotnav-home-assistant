@@ -15,6 +15,10 @@
   comes from `SiteCapacityController.charger_measured_current`. The battery comes from
   `battery_aggregate_power`, usable only when fresh, with `battery_configured` set from whether an
   aggregate entity exists, never inferred from the reading itself.
+* Several chargers on one site share the surplus in the site's charger order (priority, then the order
+  they joined): each coordinator gathers the other members' facts (`SolarExecutionCoordinator.
+  share_member`) and hands its own controller the split (`site/solar_surplus.py`'s
+  `priority_adjust_w`) on top of its own reckoning.
 """
 
 from __future__ import annotations
@@ -22,7 +26,7 @@ from __future__ import annotations
 import logging
 import time
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import Any, Final
 
 from homeassistant.core import callback, HomeAssistant
@@ -47,8 +51,16 @@ from ..runtime import charger_data, preview_for, site_controller_for
 from ..site.site_capacity import PhaseName, PHASES
 from ..site.site_capacity_controller import SiteCapacityController
 from ..site.solar_capability import solar_capability
-from ..site.solar_surplus import SolarConfig, SolarController, SolarObservation, SolarVerdict
-from .auto_execution import AutoExecutor
+from ..site.solar_surplus import (
+    SolarConfig,
+    SolarController,
+    SolarObservation,
+    SolarShareMember,
+    SolarVerdict,
+    priority_adjust_w,
+    surplus_breakdown,
+)
+from .auto_execution import AutoExecutor, pause_blocks_execution
 from .controller import ChargingController
 
 
@@ -61,6 +73,13 @@ SOLAR_SURPLUS_LOG_TOKEN: Final = "SOLAR_SURPLUS"
 #: before its absence is warned about: on every restart it is unavailable for a moment, and a warning
 #: about a state that is gone seconds later is noise.
 MEASUREMENT_WARNING_GRACE_S: Final = 120.0
+
+#: A running charger whose car draws this much (amps) below what solar asked of it takes less than it
+#: is offered, and the surplus it leaves goes on to the chargers after it in the site's order.
+TAKES_LESS_MARGIN_A: Final = 2.0
+#: How long (seconds) after a start a charger's draw is left to settle before it counts as taking less:
+#: a car ramps up over several seconds.
+TAKES_LESS_GRACE_S: Final = 60.0
 
 #: Token for hybrid arbitration handoff logs.
 HYBRID_LOG_TOKEN: Final = "HYBRID"
@@ -465,6 +484,9 @@ class SolarExecutionCoordinator:
             now=self._now(),
             effective_phases=effective_phases(self._hass, self._charger_entry_id),
         )
+        share_adjust_w = self._share_adjust_w(site, observation)
+        if share_adjust_w:
+            observation = replace(observation, share_adjust_w=share_adjust_w)
         verdict = self._solar.observe(observation)
         held_by_plan = settings.strategy == STRATEGY_HYBRID and self._controller.plan_window_active_now
         if held_by_plan:
@@ -484,7 +506,89 @@ class SolarExecutionCoordinator:
         # `SiteCapacityController.notify_solar_surplus_changed`).
         site.notify_solar_surplus_changed()
 
-    def _build_controller(self, site: SiteCapacityController) -> SolarController:
+    def share_member(self, site: SiteCapacityController, *, order: int) -> SolarShareMember | None:
+        """This charger's place in its site's surplus split, or `None` when it takes no part: not on
+        this site's controller, not on `solar` or `hybrid`, paused, a `hybrid` charger inside a plan
+        window or short of nothing, a vehicle known to be unplugged, or no usable reading of its own
+        draw. A charger left out is house load to the others.
+        """
+        if self._site is not site:
+            return None
+        settings = self._store.settings(self._charger_entry_id)
+        if settings.strategy not in (STRATEGY_SOLAR, STRATEGY_HYBRID) or pause_blocks_execution(settings):
+            return None
+        if settings.strategy == STRATEGY_HYBRID and (
+            self._controller.plan_window_active_now or self._hybrid_satisfied()
+        ):
+            return None
+        if self._controller.adapter.vehicle_connected() is False:
+            return None
+        now = self._now()
+        observation = _build_observation(
+            site,
+            self._charger_entry_id,
+            now=now,
+            effective_phases=effective_phases(self._hass, self._charger_entry_id),
+        )
+        return self._member(site, observation, order=order, now=now)
+
+    def _member(
+        self, site: SiteCapacityController, observation: SolarObservation, *, order: int, now: float
+    ) -> SolarShareMember | None:
+        solar = self._solar
+        config = solar.config if solar is not None else self._solar_config(site)
+        breakdown = surplus_breakdown(observation, config.priority)
+        if breakdown is None:
+            return None
+        watts_per_a = len(observation.car_phases) * breakdown.mean_voltage_v
+        running = solar is not None and solar.running
+        takes_less = False
+        if (
+            running
+            and solar is not None
+            and solar.last_requested_a is not None
+            and solar.on_since is not None
+            and now - solar.on_since >= TAKES_LESS_GRACE_S
+        ):
+            takes_less = breakdown.car_w < (solar.last_requested_a - TAKES_LESS_MARGIN_A) * watts_per_a
+        assert config.start_a is not None and config.stop_a is not None
+        return SolarShareMember(
+            charger_entry_id=self._charger_entry_id,
+            priority=site.charger_priority(self._charger_entry_id),
+            order=order,
+            car_w=breakdown.car_w,
+            watts_per_a=watts_per_a,
+            running=running,
+            start_a=config.start_a,
+            stop_a=config.stop_a,
+            min_current_a=config.min_current_a,
+            max_current_a=config.max_current_a,
+            takes_less=takes_less,
+        )
+
+    def _share_adjust_w(self, site: SiteCapacityController, observation: SolarObservation) -> float:
+        """What the site's priority order moves to or from this charger this tick
+        (`SolarObservation.share_adjust_w`); 0.0 when no other charger on the site takes part."""
+        own: SolarShareMember | None = None
+        members: list[SolarShareMember] = []
+        for order, charger_entry_id in enumerate(site.config.get(CONF_CHARGER_ENTRY_IDS) or []):
+            if charger_entry_id == self._charger_entry_id:
+                own = self._member(site, observation, order=order, now=observation.now)
+                member = own
+            else:
+                data = charger_data(self._hass, charger_entry_id)
+                coordinator = None if data is None else data.solar
+                member = None if coordinator is None else coordinator.share_member(site, order=order)
+            if member is not None:
+                members.append(member)
+        if own is None or len(members) < 2 or self._solar is None:
+            return 0.0
+        breakdown = surplus_breakdown(observation, self._solar.config.priority)
+        if breakdown is None:
+            return 0.0
+        return priority_adjust_w(self._charger_entry_id, breakdown.available_w, members)
+
+    def _solar_config(self, site: SiteCapacityController) -> SolarConfig:
         priority = site.config.get(CONF_SOLAR_PRIORITY, DEFAULT_SOLAR_PRIORITY)
         wiring: dict[str, Any] = (site.config.get(CONF_PHASE_WIRING) or {}).get(
             self._charger_entry_id
@@ -501,7 +605,10 @@ class SolarExecutionCoordinator:
         max_current_a = wiring.get("max_current_a")
         if max_current_a is not None:
             config_kwargs["max_current_a"] = float(max_current_a)
-        solar = SolarController(SolarConfig(**config_kwargs))
+        return SolarConfig(**config_kwargs)
+
+    def _build_controller(self, site: SiteCapacityController) -> SolarController:
+        solar = SolarController(self._solar_config(site))
         if self._controller.charging:
             _adopt_running(solar, now=self._now())
         return solar
