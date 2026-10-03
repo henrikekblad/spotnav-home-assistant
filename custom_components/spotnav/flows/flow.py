@@ -77,6 +77,7 @@ from ..const import (
 )
 from ..execution.charger_profiles import (
     detectable_platforms,
+    PATH_EASEE,
     profile_for,
     ROLE_CHARGER,
     ROLE_EXCLUDED,
@@ -169,6 +170,8 @@ _DETECTED_TEXT: dict[str, dict[str, str]] = {
         "balanced": "Perific balances this charger's installation through Zaptec's cloud and sets the same "
         "available current SpotNav would. No current is suggested: SpotNav only starts and stops the charger.",
         "controller": "{name} also controls chargers; turn it off for this charger or SpotNav and {name} will fight.",
+        "cloud": "If the charger is linked to Tibber (or another app) for smart charging, turn that off: "
+        "Home Assistant cannot see it, and it will fight SpotNav.",
     },
     "sv": {
         "external": "En annan styrning (evcc eller openWB) är installerad och kan redan styra den här "
@@ -179,6 +182,8 @@ _DETECTED_TEXT: dict[str, dict[str, str]] = {
         "balanced": "Perific balanserar den här laddarens installation via Zaptecs moln och ställer in samma "
         "tillgängliga ström som SpotNav skulle göra. Ingen ström föreslås: SpotNav startar och stoppar bara laddaren.",
         "controller": "{name} styr också laddare; stäng av den för den här laddaren, annars motverkar {name} och SpotNav varandra.",
+        "cloud": "Om laddaren är kopplad till Tibber (eller en annan app) för smart laddning, stäng av det: "
+        "Home Assistant ser det inte, och det motverkar SpotNav.",
     },
 }
 
@@ -750,7 +755,13 @@ class SpotNavChargingConfigFlow(ChargerWiringSteps, config_entries.ConfigFlow, d
                     if detected.balanced_by
                     else ""
                 )
-                + "".join(f"{text['controller'].format(name=found.name)}\n\n" for found in detected.controllers),
+                + "".join(f"{text['controller'].format(name=found.name)}\n\n" for found in detected.controllers)
+                # Easee's own app and Tibber's smart charging act through Easee's cloud, outside Home Assistant.
+                + (
+                    f"{text['cloud']}\n\n"
+                    if (detected.control_path or {}).get("kind") == PATH_EASEE
+                    else ""
+                ),
                 "disabled": (
                     f"\n\n{text['disabled']} "
                     + ", ".join(self._entity_name(entity_id) for entity_id in detected.disabled_useful)

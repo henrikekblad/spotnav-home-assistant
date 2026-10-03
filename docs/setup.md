@@ -75,6 +75,11 @@ fight each other. Turn it off and continue. There is also a tick box to continue
 accept that they may fight. If the integration is evcc or openWB, SpotNav warns that they may own
 the charger and suggests nothing.
 
+Smart charging that runs in a cloud app is not visible to Home Assistant, so SpotNav cannot warn
+about it. If the charger is linked to Tibber (or another app) for smart charging, turn that off:
+the Easee setup step says so. Home Assistant's Tibber integration only reads a linked charger and
+exposes no control, so there is nothing to detect.
+
 ### Confirm what was found
 
 When SpotNav finds one unambiguous answer it shows it and asks you to confirm instead of asking
