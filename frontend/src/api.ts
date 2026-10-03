@@ -6,6 +6,7 @@ import {
   ACTION_API_VERSION,
   ACTION_STOP,
   API_VERSION,
+  DEBUG_API_VERSION,
   ENTITY_CONFIG_API_VERSION,
   MARKET_API_VERSION,
   SETTINGS_API_VERSION,
@@ -218,6 +219,14 @@ export async function updateSiteSettings(
     charger_id: chargerId,
     expected: request.expected,
     changes: request.changes,
+  });
+}
+
+/** The redacted installation-wide debug bundle (administrators only), `unknown` until decoded. */
+export async function getDebugBundle(hass: HomeAssistantLike): Promise<unknown> {
+  return await call<unknown>(hass, {
+    type: "spotnav/get_debug_bundle",
+    api_version: DEBUG_API_VERSION,
   });
 }
 

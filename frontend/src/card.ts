@@ -21,6 +21,7 @@ import {
   SpotnavApiError,
   UNSUPPORTED_API_VERSION,
   getDashboard,
+  getDebugBundle,
   getEntityConfig,
   getMarketOptions,
   getSettings,
@@ -53,6 +54,7 @@ import {
   type EntityFieldError,
   type EntityScope,
 } from "./entity-config";
+import { decodeDebugAnswer, saveDebugBundle } from "./debug-download";
 import { ensureHaSelector } from "./entity-editor";
 import {
   SETTINGS_EDITOR_KINDS,
@@ -1150,6 +1152,47 @@ export class SpotnavCard extends HTMLElement {
     }
   }
 
+  /** Fetch the redacted bundle and save it as a file; any failure is a sentence in the Settings popover. */
+  private async downloadDebug(): Promise<void> {
+    const hass = this.hassObject;
+    const view = this.view;
+    const doc = this.ownerDocument;
+    if (!this.connected || hass === null || view === null || !this.isAdmin) {
+      return;
+    }
+    const fail = (sentenceKey: TranslationKey, code: string | null): void => {
+      if (this.view === view) {
+        view.setDebugPending(false);
+        view.setOverviewNotice({ sentenceKey, code });
+      }
+    };
+    view.setOverviewNotice(null);
+    view.setDebugPending(true);
+    let raw: unknown;
+    try {
+      raw = await getDebugBundle(hass);
+    } catch (error) {
+      fail("debug.error.failed", error instanceof SpotnavApiError ? error.code : null);
+      return;
+    }
+    const answer = decodeDebugAnswer(raw);
+    if (answer === null) {
+      fail("settings.error.version", null);
+      return;
+    }
+    if (!answer.ok) {
+      fail(answer.code === "spotnav_not_admin" ? "debug.error.notAdmin" : "debug.error.failed", answer.code);
+      return;
+    }
+    if (!saveDebugBundle(doc, answer.bundle, new Date())) {
+      fail("debug.error.failed", null);
+      return;
+    }
+    if (this.view === view) {
+      view.setDebugPending(false);
+    }
+  }
+
   private async loadEntityConfig(): Promise<void> {
     const hass = this.hassObject;
     const config = this.config;
@@ -1850,6 +1893,9 @@ export class SpotnavCard extends HTMLElement {
         },
         onOpenEntityEditor: (scope) => {
           this.openEntityEditor(scope);
+        },
+        onDownloadDebug: () => {
+          void this.downloadDebug();
         },
         onSaveEntities: (scope, draft) => {
           void this.saveEntities(scope, draft);

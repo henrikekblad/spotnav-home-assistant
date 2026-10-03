@@ -500,6 +500,18 @@ export const nb: Record<keyof typeof en, string> = {
     "Planlagt strøm",
   "settings.loading":
     "Leser de gjeldende innstillingene…",
+  "settings.section.support":
+    "Støtte",
+  "debug.intro":
+    "Lagrer én fil med versjoner, status og de siste loggradene til en feilrapport. Hemmeligheter og din nøyaktige posisjon utelates.",
+  "debug.download":
+    "Last ned feilsøkingsinfo",
+  "debug.preparing":
+    "Forbereder…",
+  "debug.error.notAdmin":
+    "Bare administratorer kan laste ned feilsøkingsinfo.",
+  "debug.error.failed":
+    "Feilsøkingsinfoen kunne ikke hentes.",
   "settings.readOnly":
     "Bare administratorer kan endre innstillinger. Du kan lese dem her.",
   "settings.save":

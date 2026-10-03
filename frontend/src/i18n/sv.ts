@@ -501,6 +501,18 @@ export const sv: Record<keyof typeof en, string> = {
     "Planerad ström",
   "settings.loading":
     "Läser in de aktuella inställningarna…",
+  "settings.section.support":
+    "Support",
+  "debug.intro":
+    "Sparar en fil med versioner, status och de senaste loggraderna för en felanmälan. Hemligheter och din exakta plats lämnas utanför.",
+  "debug.download":
+    "Ladda ner felsökningsinfo",
+  "debug.preparing":
+    "Förbereder…",
+  "debug.error.notAdmin":
+    "Bara administratörer kan ladda ner felsökningsinfo.",
+  "debug.error.failed":
+    "Felsökningsinfon kunde inte hämtas.",
   "settings.readOnly":
     "Bara administratörer kan ändra inställningar. Du kan läsa dem här.",
   "settings.save":

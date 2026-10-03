@@ -72,6 +72,9 @@ export const SITE_SETTINGS_API_VERSION = 1;
 
 export const ENTITY_CONFIG_API_VERSION = 1;
 
+/** The debug-bundle command's own version. */
+export const DEBUG_API_VERSION = 1;
+
 export const SETTINGS_DRIVER_MANUAL = "manual_kwh";
 export const SETTINGS_DRIVER_TARGET_SOC = "target_soc";
 

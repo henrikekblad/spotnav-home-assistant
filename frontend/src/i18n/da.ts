@@ -500,6 +500,18 @@ export const da: Record<keyof typeof en, string> = {
     "Planlagt strøm",
   "settings.loading":
     "Læser de aktuelle indstillinger…",
+  "settings.section.support":
+    "Support",
+  "debug.intro":
+    "Gemmer én fil med versioner, status og de seneste logliner til en fejlrapport. Hemmeligheder og din præcise placering udelades.",
+  "debug.download":
+    "Download fejlsøgningsinfo",
+  "debug.preparing":
+    "Forbereder…",
+  "debug.error.notAdmin":
+    "Kun administratorer kan downloade fejlsøgningsinfo.",
+  "debug.error.failed":
+    "Fejlsøgningsinfoen kunne ikke hentes.",
   "settings.readOnly":
     "Kun administratorer kan ændre indstillinger. Du kan læse dem her.",
   "settings.save":

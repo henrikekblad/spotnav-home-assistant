@@ -500,6 +500,18 @@ export const fi: Record<keyof typeof en, string> = {
     "Suunniteltu virta",
   "settings.loading":
     "Luetaan nykyisiä asetuksia…",
+  "settings.section.support":
+    "Tuki",
+  "debug.intro":
+    "Tallentaa yhden tiedoston, jossa on versiot, tila ja viimeisimmät lokirivit vikailmoitusta varten. Salaisuudet ja tarkka sijaintisi jätetään pois.",
+  "debug.download":
+    "Lataa vianetsintätiedot",
+  "debug.preparing":
+    "Valmistellaan…",
+  "debug.error.notAdmin":
+    "Vain ylläpitäjät voivat ladata vianetsintätiedot.",
+  "debug.error.failed":
+    "Vianetsintätietoja ei voitu hakea.",
   "settings.readOnly":
     "Vain ylläpitäjät voivat muuttaa asetuksia. Voit lukea ne tässä.",
   "settings.save":

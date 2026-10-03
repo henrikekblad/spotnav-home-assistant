@@ -514,6 +514,18 @@ export const en = {
     "Planned current",
   "settings.loading":
     "Reading the current settings…",
+  "settings.section.support":
+    "Support",
+  "debug.intro":
+    "Saves one file with versions, status and the latest log lines for a bug report. Secrets and your exact location are left out.",
+  "debug.download":
+    "Download debug info",
+  "debug.preparing":
+    "Preparing…",
+  "debug.error.notAdmin":
+    "Only administrators can download debug info.",
+  "debug.error.failed":
+    "The debug info could not be fetched.",
   "settings.readOnly":
     "Only administrators can change settings. You can read them here.",
   "settings.save":

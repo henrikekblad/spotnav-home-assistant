@@ -149,6 +149,8 @@ export interface CardViewInput {
   hass?: () => unknown;
   onSettingsOverviewOpened?: () => void;
   onOpenEntityEditor?: (scope: EntityScope) => void;
+  /** The admin pressed "Download debug info" in the Settings popover. */
+  onDownloadDebug?: () => void;
   onSaveEntities?: (scope: EntityScope, draft: EntityDraft) => void;
   onCancelEntities?: () => boolean | void;
   /** A vehicle card's Change button, and that dialog's Save (sensor, capacity, consumption as typed). */
@@ -233,6 +235,8 @@ export interface CardView {
   setEntityHass(hass: unknown): void;
   closeEntityEditor(): void;
   setOverviewNotice(failure: FailureSentence | null): void;
+  /** The debug download is being prepared: the button says so and cannot be pressed again. */
+  setDebugPending(pending: boolean): void;
   /** Close the Settings popover without returning focus (the card is about to redraw it). */
   closeSettingsOverview(): void;
 }
@@ -1682,7 +1686,44 @@ export function createCardView(input: CardViewInput): CardView {
     }
     paintEntities();
 
+    if (input.isAdmin) {
+      body.append(supportSectionBody());
+    }
+
     return body;
+  }
+
+  /** Support: one button that saves the debug bundle. Administrators only; nothing is sent anywhere. */
+  function supportSectionBody(): HTMLElement {
+    const section = element(doc, "section", C.settingsSection);
+    section.dataset["section"] = "support";
+    section.append(
+      element(doc, "h4", C.settingsSectionHeading, translate(model.language, "settings.section.support")),
+      element(doc, "p", C.muted, translate(model.language, "debug.intro")),
+    );
+    const button = element(doc, "button", `${C.button} ${C.settingsSectionConfigure}`);
+    button.type = "button";
+    button.dataset["downloadDebug"] = "true";
+    button.addEventListener("click", () => {
+      if (!debugPending) {
+        input.onDownloadDebug?.();
+      }
+    });
+    debugButton = button;
+    paintDebugButton();
+    section.append(button);
+    return section;
+  }
+
+  let debugButton: HTMLButtonElement | null = null;
+  let debugPending = false;
+
+  function paintDebugButton(): void {
+    if (debugButton === null) {
+      return;
+    }
+    debugButton.disabled = debugPending;
+    debugButton.textContent = translate(model.language, debugPending ? "debug.preparing" : "debug.download");
   }
 
   function overviewRow(key: string, label: string, value: string): HTMLElement {
@@ -2701,6 +2742,10 @@ export function createCardView(input: CardViewInput): CardView {
       entityEditor?.built.setHass(hass);
     },
     closeEntityEditor,
+    setDebugPending(pending: boolean): void {
+      debugPending = pending;
+      paintDebugButton();
+    },
     setOverviewNotice(failure: FailureSentence | null): void {
       overviewNotice = failure;
       paintOverviewNotice();

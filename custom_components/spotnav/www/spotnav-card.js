@@ -20,6 +20,7 @@ var CHARGE_PROGRESS_STATES = [
 var SETTINGS_API_VERSION = 1;
 var SITE_SETTINGS_API_VERSION = 1;
 var ENTITY_CONFIG_API_VERSION = 1;
+var DEBUG_API_VERSION = 1;
 var SETTINGS_DRIVER_TARGET_SOC = "target_soc";
 var SETTINGS_STRATEGY_CHEAPEST = "cheapest";
 var SETTINGS_STRATEGY_SOLAR = "solar";
@@ -155,6 +156,12 @@ async function updateSiteSettings(hass, chargerId, request) {
     charger_id: chargerId,
     expected: request.expected,
     changes: request.changes
+  });
+}
+async function getDebugBundle(hass) {
+  return await call(hass, {
+    type: "spotnav/get_debug_bundle",
+    api_version: DEBUG_API_VERSION
   });
 }
 async function getEntityConfig(hass, chargerId) {
@@ -3314,6 +3321,12 @@ var da = {
   "settings.current.intro": "Strømmen planen må bede om. Det er en planværdi, ikke en kommando til laderen.",
   "settings.current.label": "Planlagt strøm",
   "settings.loading": "Læser de aktuelle indstillinger…",
+  "settings.section.support": "Support",
+  "debug.intro": "Gemmer én fil med versioner, status og de seneste logliner til en fejlrapport. Hemmeligheder og din præcise placering udelades.",
+  "debug.download": "Download fejlsøgningsinfo",
+  "debug.preparing": "Forbereder…",
+  "debug.error.notAdmin": "Kun administratorer kan downloade fejlsøgningsinfo.",
+  "debug.error.failed": "Fejlsøgningsinfoen kunne ikke hentes.",
   "settings.readOnly": "Kun administratorer kan ændre indstillinger. Du kan læse dem her.",
   "settings.save": "Gem",
   "settings.cancel": "Annuller",
@@ -3867,6 +3880,12 @@ var en = {
   "settings.current.intro": "The current the plan may ask for. It is a planning value, not a command to the charger.",
   "settings.current.label": "Planned current",
   "settings.loading": "Reading the current settings…",
+  "settings.section.support": "Support",
+  "debug.intro": "Saves one file with versions, status and the latest log lines for a bug report. Secrets and your exact location are left out.",
+  "debug.download": "Download debug info",
+  "debug.preparing": "Preparing…",
+  "debug.error.notAdmin": "Only administrators can download debug info.",
+  "debug.error.failed": "The debug info could not be fetched.",
   "settings.readOnly": "Only administrators can change settings. You can read them here.",
   "settings.save": "Save",
   "settings.cancel": "Cancel",
@@ -4420,6 +4439,12 @@ var fi = {
   "settings.current.intro": "Virta, jota suunnitelma saa pyytää. Se on suunnitteluarvo, ei komento laturille.",
   "settings.current.label": "Suunniteltu virta",
   "settings.loading": "Luetaan nykyisiä asetuksia…",
+  "settings.section.support": "Tuki",
+  "debug.intro": "Tallentaa yhden tiedoston, jossa on versiot, tila ja viimeisimmät lokirivit vikailmoitusta varten. Salaisuudet ja tarkka sijaintisi jätetään pois.",
+  "debug.download": "Lataa vianetsintätiedot",
+  "debug.preparing": "Valmistellaan…",
+  "debug.error.notAdmin": "Vain ylläpitäjät voivat ladata vianetsintätiedot.",
+  "debug.error.failed": "Vianetsintätietoja ei voitu hakea.",
   "settings.readOnly": "Vain ylläpitäjät voivat muuttaa asetuksia. Voit lukea ne tässä.",
   "settings.save": "Tallenna",
   "settings.cancel": "Peruuta",
@@ -4973,6 +4998,12 @@ var nb = {
   "settings.current.intro": "Strømmen planen kan be om. Det er en planverdi, ikke en kommando til laderen.",
   "settings.current.label": "Planlagt strøm",
   "settings.loading": "Leser de gjeldende innstillingene…",
+  "settings.section.support": "Støtte",
+  "debug.intro": "Lagrer én fil med versjoner, status og de siste loggradene til en feilrapport. Hemmeligheter og din nøyaktige posisjon utelates.",
+  "debug.download": "Last ned feilsøkingsinfo",
+  "debug.preparing": "Forbereder…",
+  "debug.error.notAdmin": "Bare administratorer kan laste ned feilsøkingsinfo.",
+  "debug.error.failed": "Feilsøkingsinfoen kunne ikke hentes.",
   "settings.readOnly": "Bare administratorer kan endre innstillinger. Du kan lese dem her.",
   "settings.save": "Lagre",
   "settings.cancel": "Avbryt",
@@ -5526,6 +5557,12 @@ var sv = {
   "settings.current.intro": "Strömmen planen får begära. Det är ett planeringsvärde, inte ett kommando till laddaren.",
   "settings.current.label": "Planerad ström",
   "settings.loading": "Läser in de aktuella inställningarna…",
+  "settings.section.support": "Support",
+  "debug.intro": "Sparar en fil med versioner, status och de senaste loggraderna för en felanmälan. Hemligheter och din exakta plats lämnas utanför.",
+  "debug.download": "Ladda ner felsökningsinfo",
+  "debug.preparing": "Förbereder…",
+  "debug.error.notAdmin": "Bara administratörer kan ladda ner felsökningsinfo.",
+  "debug.error.failed": "Felsökningsinfon kunde inte hämtas.",
   "settings.readOnly": "Bara administratörer kan ändra inställningar. Du kan läsa dem här.",
   "settings.save": "Spara",
   "settings.cancel": "Avbryt",
@@ -12595,7 +12632,39 @@ function createCardView(input) {
       body.append(solar);
     }
     paintEntities();
+    if (input.isAdmin) {
+      body.append(supportSectionBody());
+    }
     return body;
+  }
+  function supportSectionBody() {
+    const section = element6(doc, "section", VISUAL_CLASSES.settingsSection);
+    section.dataset["section"] = "support";
+    section.append(
+      element6(doc, "h4", VISUAL_CLASSES.settingsSectionHeading, translate(model.language, "settings.section.support")),
+      element6(doc, "p", VISUAL_CLASSES.muted, translate(model.language, "debug.intro"))
+    );
+    const button = element6(doc, "button", `${VISUAL_CLASSES.button} ${VISUAL_CLASSES.settingsSectionConfigure}`);
+    button.type = "button";
+    button.dataset["downloadDebug"] = "true";
+    button.addEventListener("click", () => {
+      if (!debugPending) {
+        input.onDownloadDebug?.();
+      }
+    });
+    debugButton = button;
+    paintDebugButton();
+    section.append(button);
+    return section;
+  }
+  let debugButton = null;
+  let debugPending = false;
+  function paintDebugButton() {
+    if (debugButton === null) {
+      return;
+    }
+    debugButton.disabled = debugPending;
+    debugButton.textContent = translate(model.language, debugPending ? "debug.preparing" : "debug.download");
   }
   function overviewRow(key, label, value) {
     const row = element6(doc, "div", VISUAL_CLASSES.capabilityItem);
@@ -13488,6 +13557,10 @@ function createCardView(input) {
       entityEditor?.built.setHass(hass);
     },
     closeEntityEditor,
+    setDebugPending(pending) {
+      debugPending = pending;
+      paintDebugButton();
+    },
     setOverviewNotice(failure) {
       overviewNotice = failure;
       paintOverviewNotice();
@@ -13529,6 +13602,46 @@ function createCardView(input) {
       card.remove();
     }
   };
+}
+
+// src/debug-download.ts
+function decodeDebugAnswer(raw) {
+  if (typeof raw !== "object" || raw === null || Array.isArray(raw)) {
+    return null;
+  }
+  const record6 = raw;
+  if (record6.api_version !== DEBUG_API_VERSION || typeof record6.ok !== "boolean") {
+    return null;
+  }
+  if (record6.ok) {
+    const bundle = record6.bundle;
+    if (typeof bundle !== "object" || bundle === null || Array.isArray(bundle)) {
+      return null;
+    }
+    return { ok: true, bundle };
+  }
+  return { ok: false, code: typeof record6.error === "string" ? record6.error : null };
+}
+function debugFileName(now) {
+  const pad = (value) => String(value).padStart(2, "0");
+  return `spotnav-debug-${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}.json`;
+}
+function saveDebugBundle(doc, bundle, now) {
+  const view = doc.defaultView;
+  if (view === null || typeof view.URL?.createObjectURL !== "function") {
+    return false;
+  }
+  const blob = new view.Blob([JSON.stringify(bundle, null, 2)], { type: "application/json" });
+  const url = view.URL.createObjectURL(blob);
+  const link = doc.createElement("a");
+  link.href = url;
+  link.download = debugFileName(now);
+  link.hidden = true;
+  doc.body.append(link);
+  link.click();
+  link.remove();
+  view.setTimeout(() => view.URL.revokeObjectURL(url), 0);
+  return true;
 }
 
 // src/site-settings.ts
@@ -14717,6 +14830,46 @@ var SpotnavCard = class extends HTMLElement {
       this.view?.setSettingsError({ sentenceKey: settingsErrorKey(code), code });
     }
   }
+  /** Fetch the redacted bundle and save it as a file; any failure is a sentence in the Settings popover. */
+  async downloadDebug() {
+    const hass = this.hassObject;
+    const view = this.view;
+    const doc = this.ownerDocument;
+    if (!this.connected || hass === null || view === null || !this.isAdmin) {
+      return;
+    }
+    const fail = (sentenceKey, code) => {
+      if (this.view === view) {
+        view.setDebugPending(false);
+        view.setOverviewNotice({ sentenceKey, code });
+      }
+    };
+    view.setOverviewNotice(null);
+    view.setDebugPending(true);
+    let raw;
+    try {
+      raw = await getDebugBundle(hass);
+    } catch (error) {
+      fail("debug.error.failed", error instanceof SpotnavApiError ? error.code : null);
+      return;
+    }
+    const answer = decodeDebugAnswer(raw);
+    if (answer === null) {
+      fail("settings.error.version", null);
+      return;
+    }
+    if (!answer.ok) {
+      fail(answer.code === "spotnav_not_admin" ? "debug.error.notAdmin" : "debug.error.failed", answer.code);
+      return;
+    }
+    if (!saveDebugBundle(doc, answer.bundle, /* @__PURE__ */ new Date())) {
+      fail("debug.error.failed", null);
+      return;
+    }
+    if (this.view === view) {
+      view.setDebugPending(false);
+    }
+  }
   async loadEntityConfig() {
     const hass = this.hassObject;
     const config = this.config;
@@ -15344,6 +15497,9 @@ var SpotnavCard = class extends HTMLElement {
         },
         onOpenEntityEditor: (scope) => {
           this.openEntityEditor(scope);
+        },
+        onDownloadDebug: () => {
+          void this.downloadDebug();
         },
         onSaveEntities: (scope, draft) => {
           void this.saveEntities(scope, draft);

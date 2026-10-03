@@ -116,7 +116,7 @@ describe("the general Settings popover", () => {
     const sections = Array.from(dialog?.querySelectorAll("[data-section]") ?? []).map((node) =>
       node.getAttribute("data-section"),
     );
-    expect(sections).toEqual(["market", "vehicle", "entities", "site"]);
+    expect(sections).toEqual(["market", "vehicle", "entities", "site", "support"]);
     // Every fact shown came from the dashboard already read; the one thing asked of the backend is the
     // entity configuration (administrators only, on its own line in the fake transport).
     expect(hass.messages.length).toBe(before);
@@ -232,5 +232,80 @@ describe("the general Settings popover", () => {
       expect(dialog?.textContent, language).toContain(translate(language, "settings.section.vehicle"));
       expect(dialog?.textContent, language).toContain(translate(language, "settings.section.market"));
     }
+  });
+});
+
+describe("Download debug info", () => {
+  const BUNDLE = { bundle_version: 1, chargers: [] };
+
+  beforeEach(() => {
+    vi.useFakeTimers();
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+    vi.restoreAllMocks();
+  });
+
+  function debugButton(element: Element): HTMLButtonElement | null {
+    return shadow(element).querySelector<HTMLButtonElement>("[data-download-debug]");
+  }
+
+  async function openSettings(element: ReturnType<typeof mountCard>): Promise<void> {
+    settingsGeneralButton(element).click();
+    await settle();
+  }
+
+  it("is offered to administrators only", async () => {
+    const admin = await mounted();
+    await openSettings(admin.element);
+    expect(debugButton(admin.element)?.textContent).toBe(translate("en", "debug.download"));
+
+    const reader = await mounted(fixture("start_idle"), false);
+    await openSettings(reader.element);
+    expect(debugButton(reader.element)).toBeNull();
+  });
+
+  it("asks for the bundle and saves it as spotnav-debug-<date>.json", async () => {
+    vi.setSystemTime(new Date(2026, 9, 3, 12, 0, 0));
+    const { hass, element } = await mounted();
+    await openSettings(element);
+    const created: Blob[] = [];
+    const win = element.ownerDocument.defaultView as Window & typeof globalThis;
+    win.URL.createObjectURL = vi.fn((blob: Blob) => {
+      created.push(blob);
+      return "blob:debug";
+    });
+    win.URL.revokeObjectURL = vi.fn();
+    const clicked: string[] = [];
+    vi.spyOn(win.HTMLAnchorElement.prototype, "click").mockImplementation(function (this: HTMLAnchorElement) {
+      clicked.push(this.download);
+    });
+
+    debugButton(element)?.click();
+    await settle();
+    expect(hass.messages.at(-1)).toMatchObject({ type: "spotnav/get_debug_bundle", api_version: 1 });
+    expect(debugButton(element)?.disabled).toBe(true);
+    expect(debugButton(element)?.textContent).toBe(translate("en", "debug.preparing"));
+
+    hass.resolveNext({ api_version: 1, ok: true, error: null, bundle: BUNDLE });
+    await settle();
+
+    expect(clicked).toEqual(["spotnav-debug-2026-10-03.json"]);
+    expect(created).toHaveLength(1);
+    expect(JSON.parse(await (created[0] as Blob).text())).toEqual(BUNDLE);
+    expect(debugButton(element)?.disabled).toBe(false);
+  });
+
+  it("says so when the backend refuses", async () => {
+    const { hass, element } = await mounted();
+    await openSettings(element);
+
+    debugButton(element)?.click();
+    await settle();
+    hass.resolveNext({ api_version: 1, ok: false, error: "spotnav_not_admin", bundle: null });
+    await settle();
+
+    expect(text(element)).toContain(translate("en", "debug.error.notAdmin"));
+    expect(debugButton(element)?.disabled).toBe(false);
   });
 });
