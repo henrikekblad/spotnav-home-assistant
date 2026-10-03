@@ -163,6 +163,8 @@ _DETECTED_TEXT: dict[str, dict[str, str]] = {
     "en": {
         "external": "Another controller (evcc or openWB) is installed and may already control this "
         "charger. Nothing is suggested: choose only what you are sure SpotNav should drive.",
+        "external_installed": "evcc or openWB is installed in Home Assistant and may already control this "
+        "charger. Turn it off for this charger, or SpotNav and it will fight.",
         "disabled": "Disabled by default, and useful (they are enabled if you leave the box below ticked):",
         "balanced": "Perific balances this charger's installation through Zaptec's cloud and sets the same "
         "available current SpotNav would. No current is suggested: SpotNav only starts and stops the charger.",
@@ -171,6 +173,8 @@ _DETECTED_TEXT: dict[str, dict[str, str]] = {
     "sv": {
         "external": "En annan styrning (evcc eller openWB) är installerad och kan redan styra den här "
         "laddaren. Inget föreslås: välj bara det du är säker på att SpotNav ska styra.",
+        "external_installed": "evcc eller openWB är installerad i Home Assistant och kan redan styra den här "
+        "laddaren. Stäng av den för den här laddaren, annars kommer SpotNav och den att motverka varandra.",
         "disabled": "Avstängda som standard men användbara (de aktiveras om rutan nedan är ikryssad):",
         "balanced": "Perific balanserar den här laddarens installation via Zaptecs moln och ställer in samma "
         "tillgängliga ström som SpotNav skulle göra. Ingen ström föreslås: SpotNav startar och stoppar bara laddaren.",
@@ -707,8 +711,9 @@ class SpotNavChargingConfigFlow(ChargerWiringSteps, config_entries.ConfigFlow, d
         """Confirm what detection found: the charge control, the current, the energy register and the
         charging-state sensor, each a suggestion that can be changed or cleared.
 
-        With evcc or openWB present nothing is suggested: they may own this charger, and a choice made
-        by a guess here would fight them.
+        With evcc or openWB installed the flow warns that they may already control this charger, and
+        still suggests what it found: an Easee charger has no entity to pick by hand. Nothing is
+        suggested only for a device that belongs to evcc or openWB itself.
         """
         detected = self._detected
         assert detected is not None
@@ -729,6 +734,8 @@ class SpotNavChargingConfigFlow(ChargerWiringSteps, config_entries.ConfigFlow, d
                 "warning": (
                     f"{text['external']}\n\n"
                     if detected.external_controller
+                    else f"{text['external_installed']}\n\n"
+                    if detected.external_installed
                     else f"{text['balanced']}\n\n"
                     if detected.balanced_by
                     else ""

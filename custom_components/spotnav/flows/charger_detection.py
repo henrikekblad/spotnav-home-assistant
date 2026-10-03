@@ -83,6 +83,10 @@ class DetectedCharger:
     notes: list[str] = field(default_factory=list)
     #: Another controller (evcc, openWB) owns or may own the charger: warn, suggest nothing.
     external_controller: bool = False
+    #: evcc or openWB is installed somewhere in Home Assistant (not this device's own integration): it
+    #: may control this charger, so the flow warns, but detection still suggests; an Easee charger has
+    #: no entity to choose by hand and could not be set up at all without the suggestion.
+    external_installed: bool = False
     #: The domain of an integration that balances this charger's installation-wide current limit through
     #: its own cloud (Perific for Zaptec): the current is not suggested, start and stop only.
     balanced_by: str | None = None
@@ -400,8 +404,8 @@ def detect_charger(hass: HomeAssistant, device_id: str) -> DetectedCharger | Non
     _detect_measured_current(hass, found, matcher)
     found.conflicts = own_mode_conflicts(hass, matcher.entries, profile)
     if external_controller_entries(hass):
-        # evcc or openWB is installed: it may own this charger. Suggest nothing, say so.
-        found.external_controller = True
+        # evcc or openWB is installed: it may own this charger. Say so, but still suggest.
+        found.external_installed = True
     found.disabled_useful = list(dict.fromkeys(found.disabled_useful))
     found.controllers = other_controllers(hass, charge_control=found.charge_control, device_id=device_id)
     return found

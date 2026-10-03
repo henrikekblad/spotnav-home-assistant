@@ -149,7 +149,7 @@ async def test_an_unreadable_own_mode_is_not_a_conflict(hass: HomeAssistant) -> 
     assert detect_charger(hass, ids["device_id"]).conflicts == []
 
 
-async def test_evcc_or_openwb_present_means_warn_and_suggest_nothing_to_preselect(
+async def test_evcc_or_openwb_installed_means_warn_but_still_detect(
     hass: HomeAssistant,
 ) -> None:
     ids = register_shape(hass, SHAPES["wallbox"])
@@ -157,7 +157,10 @@ async def test_evcc_or_openwb_present_means_warn_and_suggest_nothing_to_preselec
 
     found = detect_charger(hass, ids["device_id"])
 
-    assert found.external_controller is True
+    # Installed elsewhere is a warning, not a reason to suggest nothing: the device is not evcc's own.
+    assert found.external_installed is True
+    assert found.external_controller is False
+    assert found.charge_control is not None
 
 
 @pytest.mark.parametrize(

@@ -196,7 +196,7 @@ async def test_an_integration_nobody_described_is_sent_to_the_generic_type(hass:
     assert result["type"] == FlowResultType.ABORT and result["reason"] == "charger_not_recognised"
 
 
-async def test_with_evcc_installed_the_flow_warns_and_suggests_nothing(hass: HomeAssistant) -> None:
+async def test_with_evcc_installed_the_flow_warns_and_still_suggests(hass: HomeAssistant) -> None:
     ids = register_shape(hass, SHAPES["wallbox"])
     MockConfigEntry(domain="evcc_intg", entry_id="evcc").add_to_hass(hass)
 
@@ -204,11 +204,27 @@ async def test_with_evcc_installed_the_flow_warns_and_suggests_nothing(hass: Hom
 
     assert result["step_id"] == "detected_entities"
     assert "evcc or openWB" in result["description_placeholders"]["warning"]
-    assert set(_suggested(result).values()) <= {None}
+    assert "Nothing is suggested" not in result["description_placeholders"]["warning"]
+    assert _suggested(result)[CONF_CHARGE_CONTROL] == "switch.wallbox_pause_resume"
 
-    # Choosing by hand still works.
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"], {CONF_CHARGE_CONTROL: "switch.wallbox_pause_resume"}
+    )
+    assert result["type"] == FlowResultType.CREATE_ENTRY
+
+
+async def test_an_easee_charger_can_be_set_up_with_evcc_installed(hass: HomeAssistant) -> None:
+    """Field case 2026-10-03: the evcc integration was still installed and the Easee charger, whose
+    path has no entity to pick by hand, could not be set up at all."""
+    ids = register_shape(hass, SHAPES["easee"])
+    MockConfigEntry(domain="evcc_intg", entry_id="evcc").add_to_hass(hass)
+
+    result = await _to_detected_entities(hass, ids["device_id"])
+    suggested = _suggested(result)
+
+    assert "evcc or openWB" in result["description_placeholders"]["warning"]
+    result = await hass.config_entries.flow.async_configure(
+        result["flow_id"], {key: value for key, value in suggested.items() if value is not None}
     )
     assert result["type"] == FlowResultType.CREATE_ENTRY
 
