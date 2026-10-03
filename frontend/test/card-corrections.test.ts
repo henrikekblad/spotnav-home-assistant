@@ -41,6 +41,14 @@ afterEach(() => {
   vi.useRealTimers();
 });
 
+/** About this card lives in the Settings popover: open that, then press its About button. */
+function openAbout(element: Element): void {
+  shadow(element)
+    .querySelector<HTMLButtonElement>(`[aria-label="${translate("en", "header.settings")}"]`)
+    ?.click();
+  shadow(element).querySelector<HTMLButtonElement>("[data-about='open']")?.click();
+}
+
 describe("item 3: the four-cell action bar", () => {
   it("is one bar of four cells, each with an axis caption and an accessible name with axis and action", async () => {
     const { element } = await mounted();
@@ -169,11 +177,9 @@ describe("item 6: checkbox rows are flush left with their label", () => {
 });
 
 describe("item 7: explicit schedule execution is not listed", () => {
-  it("has no such row in Info", async () => {
+  it("has no such row in About this card", async () => {
     const { element } = await mounted();
-    shadow(element)
-      .querySelector<HTMLButtonElement>(`[aria-label="${translate("en", "header.info")}"]`)
-      ?.click();
+    openAbout(element);
     const keys = Array.from(shadow(element).querySelectorAll("[data-capability]")).map((node) =>
       node.getAttribute("data-capability"),
     );
@@ -183,10 +189,12 @@ describe("item 7: explicit schedule execution is not listed", () => {
 });
 
 describe("the header buttons centre their glyphs", () => {
-  it("draws Info, the history and the cog as the same kind of icon, and centres it by the box", async () => {
+  it("draws the history and the cog as the same kind of icon, and centres it by the box", async () => {
     const { element } = await mounted();
-    const buttons = Array.from(shadow(element).querySelectorAll<HTMLButtonElement>(".spotnav-header > button"));
-    expect(buttons).toHaveLength(3);
+    const buttons = Array.from(
+      shadow(element).querySelectorAll<HTMLButtonElement>(".spotnav-header-actions > button"),
+    );
+    expect(buttons).toHaveLength(2);
     for (const button of buttons) {
       // One symmetrical icon each, and no text glyph whose side bearings would push it off-centre.
       expect(Array.from(button.children).map((node) => node.tagName.toLowerCase())).toEqual(["svg"]);
@@ -198,5 +206,32 @@ describe("the header buttons centre their glyphs", () => {
     expect(rule).toContain("align-items: center");
     expect(rule).toContain("justify-content: center");
     expect(rule).toContain("padding: 0");
+  });
+});
+
+describe("the header structure", () => {
+  it("keeps History and Settings in one group that never wraps internally, and has no Info button", async () => {
+    const { element } = await mounted();
+    const header = shadow(element).querySelector<HTMLElement>(".spotnav-header");
+    const group = header?.querySelector<HTMLElement>(".spotnav-header-actions");
+    expect(group).not.toBeNull();
+    expect(
+      Array.from(group!.querySelectorAll("button")).map((button) => button.getAttribute("aria-label")),
+    ).toEqual([translate("en", "header.history"), translate("en", "header.settings")]);
+    // Nothing else in the header is a button.
+    expect(Array.from(header?.children ?? []).filter((node) => node.tagName === "BUTTON")).toHaveLength(0);
+    expect(shadow(element).querySelector(`[aria-label="${translate("en", "settings.about.open")}"]`)).toBeNull();
+    const rule = VISUAL_STYLES.match(/\.spotnav-header-actions \{([^}]*)\}/s)?.[1] ?? "";
+    expect(rule).toContain("display: flex");
+    expect(rule).toContain("flex: none");
+  });
+
+  it("reaches About this card from the Settings popover", async () => {
+    const { element } = await mounted();
+    openAbout(element);
+    const dialog = Array.from(shadow(element).querySelectorAll<HTMLElement>("[role='dialog']")).find(
+      (node) => node.closest("[hidden]") === null,
+    );
+    expect(dialog?.textContent).toContain(translate("en", "cap.title"));
   });
 });

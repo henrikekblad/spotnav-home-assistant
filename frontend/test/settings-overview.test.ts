@@ -106,6 +106,14 @@ afterEach(() => {
   vi.useRealTimers();
 });
 
+/** About this card lives in the Settings popover: open that, then press its About button. */
+function openAbout(element: Element): void {
+  shadow(element)
+    .querySelector<HTMLButtonElement>(`[aria-label="${translate("en", "header.settings")}"]`)
+    ?.click();
+  shadow(element).querySelector<HTMLButtonElement>("[data-about='open']")?.click();
+}
+
 describe("the general Settings popover", () => {
   it("opens with its sections, in order, and asks only for the entity configuration", async () => {
     const { hass, element } = await mounted();
@@ -117,7 +125,7 @@ describe("the general Settings popover", () => {
     const sections = Array.from(dialog?.querySelectorAll("[data-section]") ?? []).map((node) =>
       node.getAttribute("data-section"),
     );
-    expect(sections).toEqual(["market", "vehicle", "entities", "site", "support"]);
+    expect(sections).toEqual(["market", "vehicle", "entities", "site", "about", "support"]);
     // Every fact shown came from the dashboard already read; the one thing asked of the backend is the
     // entity configuration (administrators only, on its own line in the fake transport).
     expect(hass.messages.length).toBe(before);
@@ -135,7 +143,7 @@ describe("the general Settings popover", () => {
     expect(site?.querySelector("button")).toBeNull();
   });
 
-  it("does not repeat the capability list: that belongs to Info", async () => {
+  it("does not repeat the capability list: that belongs to About this card", async () => {
     const { element } = await mounted();
     settingsGeneralButton(element).click();
     const dialog = openDialog(element);
@@ -145,10 +153,8 @@ describe("the general Settings popover", () => {
     );
     expect(dialog?.querySelector("[data-capability]")).toBeNull();
     expect(dialog?.textContent).not.toContain(translate("en", "cap.available"));
-    // Info still has them.
-    shadow(element)
-      .querySelector<HTMLButtonElement>(`[aria-label="${translate("en", "header.info")}"]`)
-      ?.click();
+    // About this card still has them.
+    openAbout(element);
     expect(openDialog(element)?.querySelectorAll("[data-capability]").length).toBe(4);
   });
 
@@ -203,13 +209,11 @@ describe("the general Settings popover", () => {
     settingsGeneralButton(element).click();
     expect(openDialog(element)?.textContent).toContain(translate("en", "settings.overview.title"));
 
-    // Opening the capability (Info) dialog closes the popover.
-    shadow(element)
-      .querySelector<HTMLButtonElement>(`[aria-label="${translate("en", "header.info")}"]`)
-      ?.click();
+    // Opening the capability (About) dialog closes the popover.
+    shadow(element).querySelector<HTMLButtonElement>("[data-about='open']")?.click();
     expect(openDialog(element)?.textContent).toContain(translate("en", "cap.title"));
 
-    // And opening the popover again closes Info.
+    // And opening the popover again closes About.
     settingsGeneralButton(element).click();
     expect(openDialog(element)?.textContent).toContain(translate("en", "settings.overview.title"));
   });

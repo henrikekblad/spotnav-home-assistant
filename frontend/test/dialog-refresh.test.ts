@@ -68,6 +68,14 @@ afterEach(() => {
   vi.useRealTimers();
 });
 
+/** About this card lives in the Settings popover: open that, then press its About button. */
+function openAbout(element: Element): void {
+  shadow(element)
+    .querySelector<HTMLButtonElement>(`[aria-label="${translate("en", "header.settings")}"]`)
+    ?.click();
+  shadow(element).querySelector<HTMLButtonElement>("[data-about='open']")?.click();
+}
+
 describe("a refresh never closes an open dialog", () => {
   it("keeps the issues dialog open, across two refresh periods, with its content intact", async () => {
     const payload = fixture("start_idle");
@@ -99,10 +107,7 @@ describe("a refresh never closes an open dialog", () => {
     hass.resolveNext(payload);
     await settle();
 
-    const help = shadow(element).querySelector<HTMLButtonElement>(
-      `[aria-label="${translate("en", "header.info")}"]`,
-    );
-    help!.click();
+    openAbout(element);
     const before = openDialog(element);
     expect(before?.textContent).toContain(translate("en", "cap.title"));
 
@@ -327,10 +332,7 @@ describe("a refresh never closes an open dialog", () => {
     hass.resolveNext(idle);
     await settle();
 
-    const help = shadow(element).querySelector<HTMLButtonElement>(
-      `[aria-label="${translate("en", "header.info")}"]`,
-    );
-    help!.click();
+    openAbout(element);
     expect(openDialog(element)).not.toBeNull();
     expect(shadow(element).textContent).not.toContain("Renamed Charger");
 

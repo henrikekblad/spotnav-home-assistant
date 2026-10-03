@@ -56,14 +56,14 @@ function view(
 }
 
 describe("the header and the status line", () => {
-  it("shows the mark, the charger's own name and one help action, with no visible product name", () => {
+  it("shows the mark, the charger's own name and the header's two actions, with no visible product name", () => {
     const { view: card, root } = view();
     const header = root.querySelector(`.${VISUAL_CLASSES.header}`);
     const name = root.querySelector(`.${VISUAL_CLASSES.name}`);
-    const help = root.querySelector(`.${VISUAL_CLASSES.iconButton}`);
+    const actions = root.querySelector(".spotnav-header-actions");
     expect(name?.textContent).toBe("Garage");
-    expect(help?.getAttribute("aria-label")).toBe("About this card");
-    expect(help?.getAttribute("title")).toBe("About this card");
+    expect(actions?.querySelectorAll("button").length).toBe(2);
+    expect(root.querySelector('[aria-label="About this card"]')).toBeNull();
     // The product name is in the DOM for assistive technology and clipped out of sight: never in a
     // visible node, and never in an attribute (a charger name is text a user controls).
     const hidden = root.querySelector(`.${VISUAL_CLASSES.visuallyHidden}`);
@@ -72,7 +72,7 @@ describe("the header and the status line", () => {
     // Everything else visible in the heading is the charger's own name: no product name, no second
     // control, and no runtime charger selector.
     const visible = Array.from(header?.childNodes ?? [])
-      .filter((node) => node !== hidden && node !== help)
+      .filter((node) => node !== hidden && node !== actions)
       .map((node) => node.textContent ?? "")
       .join("");
     expect(visible).toBe("Garage");

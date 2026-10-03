@@ -7,7 +7,7 @@
 //
 // Top to bottom: banner (only when something is wrong), status sentence, the graph with its
 // max/min/current overlay (facts the model lacks are omitted, not shown as "unknown"), the action
-// bar, and the header's Info and Settings actions.
+// bar, and the header's History and Settings actions.
 
 import { chartNowAt, nextIntervalBoundary, type ChartMark, type ChartNow } from "./chart";
 import {
@@ -551,22 +551,6 @@ function fillPath(ns: string, doc: Document, d: string): SVGPathElement {
 }
 
 /**
- * The Info mark: a circled "i" as one symmetrical filled path in the same 24-unit box as the cog,
- * so both sit centred in their buttons. Material "info" glyph (Apache License 2.0).
- */
-function infoIcon(doc: Document): SVGElement {
-  return icon(doc, (svg, ns) => {
-    svg.append(
-      fillPath(
-        ns,
-        doc,
-        "M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-6h2v6zm0-8h-2V7h2v2z",
-      ),
-    );
-  });
-}
-
-/**
  * The settings cog: MDI `mdiCog` path data (`@mdi/js`, Apache License 2.0), one filled path unlike
  * this file's usual stroked primitives.
  */
@@ -865,13 +849,7 @@ export function createCardView(input: CardViewInput): CardView {
   header.append(
     element(doc, "span", C.visuallyHidden, translate(model.language, "card.title")),
   );
-  const help = element(doc, "button", C.iconButton);
-  help.type = "button";
-  help.setAttribute("aria-label", translate(model.language, "header.info"));
-  help.title = translate(model.language, "header.info");
-  help.append(infoIcon(doc));
-  header.append(help);
-  // The charge history: what each charge delivered and cost, beside Info and Settings.
+  // The charge history: what each charge delivered and cost, beside Settings.
   const historyButton = element(doc, "button", C.iconButton);
   historyButton.type = "button";
   historyButton.setAttribute("aria-label", translate(model.language, "header.history"));
@@ -879,14 +857,15 @@ export function createCardView(input: CardViewInput): CardView {
   historyButton.title = translate(model.language, "header.history");
   historyButton.dataset["history"] = "open";
   historyButton.append(historyIcon(doc));
-  header.append(historyButton);
-  // The Settings entry point: one popover gathering price/fiscal, consumption, capabilities and the site, beside Info.
+  const headerActions = element(doc, "div", C.headerActions);
+  // The Settings entry point: one popover gathering price/fiscal, consumption, capabilities and the site, beside the history.
   const settingsGeneral = element(doc, "button", C.iconButton);
   settingsGeneral.type = "button";
   settingsGeneral.setAttribute("aria-label", translate(model.language, "header.settings"));
   settingsGeneral.title = translate(model.language, "header.settings");
   settingsGeneral.append(settingsGearIcon(doc));
-  header.append(settingsGeneral);
+  headerActions.append(historyButton, settingsGeneral);
+  header.append(headerActions);
   card.append(header);
 
   // Dialogs are created once as overlays so nothing shifts the card's height.
@@ -1542,7 +1521,7 @@ export function createCardView(input: CardViewInput): CardView {
     capabilityDialog.show({
       title: translate(model.language, "cap.title"),
       body: capabilityBody(doc, model),
-      opener: help,
+      opener: settingsGeneral,
     });
   }
 
@@ -1786,11 +1765,30 @@ export function createCardView(input: CardViewInput): CardView {
     }
     paintEntities();
 
+    body.append(aboutSectionBody());
     if (input.isAdmin) {
       body.append(supportSectionBody());
     }
 
     return body;
+  }
+
+  /** About this card: one button opening the capability list the header's Info button used to open. */
+  function aboutSectionBody(): HTMLElement {
+    const section = element(doc, "section", C.settingsSection);
+    section.dataset["section"] = "about";
+    section.append(
+      element(doc, "h4", C.settingsSectionHeading, translate(model.language, "settings.section.about")),
+    );
+    const button = element(doc, "button", `${C.button} ${C.settingsSectionConfigure}`);
+    button.type = "button";
+    button.dataset["about"] = "open";
+    button.textContent = translate(model.language, "settings.about.open");
+    button.addEventListener("click", () => {
+      openCapabilities();
+    });
+    section.append(button);
+    return section;
   }
 
   /** Support: one button that saves the debug bundle. Administrators only; nothing is sent anywhere. */
@@ -2325,9 +2323,6 @@ export function createCardView(input: CardViewInput): CardView {
     input.onOpenHistory?.();
   }
 
-  help.addEventListener("click", () => {
-    openCapabilities();
-  });
   historyButton.addEventListener("click", () => {
     openHistory();
   });

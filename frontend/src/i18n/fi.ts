@@ -86,7 +86,7 @@ export const fi: Record<keyof typeof en, string> = {
   "issue.duplicateCharger": "{other} ja tämä latauslaite ovat sama fyysinen laite. Kaksi SpotNav-latauslaitetta yhdellä laitteella lähettää sille ristiriitaisia komentoja, joten säilytä vain yksi: poista toinen kohdasta Asetukset → Laitteet ja palvelut → SpotNav. SpotNav ei koskaan poista kumpaakaan puolestasi.",
   "issue.siteMeasurement": "Kohteen mittausta ei voi käyttää juuri nyt.",
   "issue.unknown": "Taustajärjestelmä raportoi jotain, mitä kortti ei vielä tunne.",
-  "header.info": "Tietoja kortista",
+  "settings.about.open": "Tietoja kortista",
   "header.settings": "Kortin asetukset",
   "header.history": "Lataushistoria",
   "history.title": "Lataushistoria",
@@ -556,6 +556,7 @@ export const fi: Record<keyof typeof en, string> = {
     "Suunniteltu virta",
   "settings.loading":
     "Luetaan nykyisiä asetuksia…",
+  "settings.section.about": "Tietoja",
   "settings.section.support":
     "Tuki",
   "debug.intro":

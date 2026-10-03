@@ -86,7 +86,7 @@ export const da: Record<keyof typeof en, string> = {
   "issue.duplicateCharger": "{other} og denne lader er den samme fysiske lader. To SpotNav-ladere på én lader sender modstridende kommandoer, så behold kun én: fjern den anden under Indstillinger → Enheder og tjenester → SpotNav. SpotNav fjerner aldrig en for dig.",
   "issue.siteMeasurement": "Anlæggets måling kan ikke bruges lige nu.",
   "issue.unknown": "Backend rapporterede noget, kortet endnu ikke kender.",
-  "header.info": "Om kortet",
+  "settings.about.open": "Om kortet",
   "header.settings": "Kortindstillinger",
   "header.history": "Ladehistorik",
   "history.title": "Ladehistorik",
@@ -556,6 +556,7 @@ export const da: Record<keyof typeof en, string> = {
     "Planlagt strøm",
   "settings.loading":
     "Læser de aktuelle indstillinger…",
+  "settings.section.about": "Om",
   "settings.section.support":
     "Support",
   "debug.intro":
