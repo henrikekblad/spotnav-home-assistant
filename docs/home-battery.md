@@ -19,7 +19,7 @@ Two binary sensors, both named "Charging from the grid":
 | Entity | Where | On when |
 | --- | --- | --- |
 | `binary_sensor.<charger>_charging_from_the_grid` | each charger | the charger is charging and the energy is meant to come from the grid |
-| `binary_sensor.<site>_charging_from_the_grid_site` | each site | any charger of the site has its own sensor on |
+| `binary_sensor.<site>_charging_from_the_grid` | each site | any charger of the site has its own sensor on |
 
 Use the site sensor in most cases. The exact entity ids follow your charger and site names.
 
@@ -48,7 +48,7 @@ In `apps.yaml`:
 
 ```yaml
 car_charging_now:
-  - binary_sensor.<site>_charging_from_the_grid_site
+  - binary_sensor.<site>_charging_from_the_grid
 ```
 
 Replace the entity id with your site sensor. If you want the battery to be allowed to supply the car,
@@ -69,7 +69,7 @@ automation:
   - alias: Hold the battery while the car charges from the grid
     triggers:
       - trigger: state
-        entity_id: binary_sensor.<site>_charging_from_the_grid_site
+        entity_id: binary_sensor.<site>_charging_from_the_grid
         to: "on"
     actions:
       - action: number.set_value
@@ -81,7 +81,7 @@ automation:
   - alias: Release the battery
     triggers:
       - trigger: state
-        entity_id: binary_sensor.<site>_charging_from_the_grid_site
+        entity_id: binary_sensor.<site>_charging_from_the_grid
         from: "on"
     actions:
       - action: number.set_value
