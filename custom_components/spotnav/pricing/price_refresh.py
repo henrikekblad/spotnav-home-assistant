@@ -8,7 +8,11 @@ price timer.
   request and one pair of timers, and unsubscribing one leaves the other's stream untouched.
 * "Today" and "tomorrow" are the area's local dates, computed from the injected clock and the
   area's IANA timezone (never the host's zone), so 23- and 25-hour days come out right; date keys
-  and the rollover timer are recomputed every time.
+  and the rollover timer are recomputed every time. They are **display** dates (`tz`); the files
+  behind them are **market** days (`market_tz`, contract v2), so for an area whose two calendars
+  differ a display day needs the files that cover it and its authority is its principal file's
+  (`market_day.principal_market_day`): "tomorrow published" means the file holding most of
+  tomorrow is in, and the hour the next file adds arrives with the next publication.
 * Everything scheduled is cancelled and rescheduled from the injected `now` on every run, so a
   clock jump still leaves one timer per area. Only the exact area-local midnight rollover is not
   jittered; every interval and backoff is (see [jittered]).
@@ -33,6 +37,7 @@ from homeassistant.helpers.event import async_track_point_in_utc_time
 from homeassistant.util import dt as dt_util
 
 from ..runtime import domain_data
+from .market_day import market_days_for, principal_market_day
 from .price_repository import (
     CatalogueSnapshot,
     DaySnapshot,
@@ -392,6 +397,8 @@ class _Area:
     tz: str
     generation: int = 0
     active: bool = False
+    #: The zone a day file's calendar is in; equal to `tz` unless the v2 list names another.
+    market_tz: str = ""
     owners: dict[str, _Subscription] = field(default_factory=dict)
     cancel_rollover: Callable[[], None] | None = None
     last_key: tuple[Any, ...] | None = None
@@ -399,6 +406,18 @@ class _Area:
     @property
     def subscriber_count(self) -> int:
         return len(self.owners)
+
+    @property
+    def split(self) -> bool:
+        return bool(self.market_tz) and self.market_tz != self.tz
+
+    def principal(self, day: date) -> date:
+        """The market day whose file decides a display date (the date itself when the calendars agree)."""
+        return principal_market_day(day, self.tz, self.market_tz) if self.split else day
+
+    def files(self, day: date) -> tuple[date, ...]:
+        """The market-day files covering a display date."""
+        return market_days_for(day, self.tz, self.market_tz) if self.split else (day,)
 
 
 class PriceRefreshManager:
@@ -499,7 +518,7 @@ class PriceRefreshManager:
         """
         if self._shutdown:
             raise RuntimeError("the price refresh manager has been shut down")
-        zone = tz or await self._zone_for(area_id)
+        zone, market_zone = (tz, self._market_zone_for(area_id, tz)) if tz else await self._zone_for(area_id)
 
         previous = self._owner_area(owner_id)
         if previous is not None and previous != area_id:
@@ -507,13 +526,12 @@ class PriceRefreshManager:
 
         record = self._areas.get(area_id)
         if record is None:
-            record = _Area(area_id=area_id, tz=zone)
+            record = _Area(area_id=area_id, tz=zone, market_tz=market_zone)
             self._areas[area_id] = record
-        elif record.tz != zone:
-            raise ValueError(
-                f"area {area_id!r} was subscribed as {record.tz!r} and is now {zone!r}; "
-                "one area has one timezone"
-            )
+        elif (record.tz, record.market_tz) != (zone, market_zone):
+            # The catalogue moved the area (a v1 list read as v2 names Portugal's display zone): one area
+            # still has one pair of zones, the current one, and its midnight timer follows it.
+            self._move_zones(record, zone, market_zone)
         subscription = self._new_subscription(listener)
         record.owners[owner_id] = subscription
         if not record.active:
@@ -545,14 +563,34 @@ class PriceRefreshManager:
     def owner_area(self, owner_id: str) -> str | None:
         return self._owner_area(owner_id)
 
-    async def _zone_for(self, area_id: str) -> str:
+    async def _zone_for(self, area_id: str) -> tuple[str, str]:
         entry = self._repository.catalogue_snapshot().area(area_id)
         if entry is None:
             await self._repository.async_get_catalogue()
             entry = self._repository.catalogue_snapshot().area(area_id)
         if entry is None:
             raise PriceAreaUnavailable(area_id)
-        return entry.tz
+        return entry.tz, entry.market_tz
+
+    def _market_zone_for(self, area_id: str, tz: str) -> str:
+        """The market calendar of an area subscribed with a known display zone: the catalogue's when it
+        lists the area in that zone, else the display zone itself."""
+        entry = self._repository.catalogue_snapshot().area(area_id)
+        return entry.market_tz if entry is not None and entry.tz == tz else tz
+
+    def _move_zones(self, record: _Area, tz: str, market_tz: str) -> None:
+        record.tz = tz
+        record.market_tz = market_tz
+        if record.active:
+            self._schedule_rollover(record)
+
+    def _sync_zones(self) -> None:
+        """Follow a refreshed catalogue's zones for every area it still lists (never drop an area here)."""
+        catalogue = self._repository.catalogue_snapshot()
+        for record in self._areas.values():
+            entry = catalogue.area(record.area_id)
+            if entry is not None and (record.tz, record.market_tz) != (entry.tz, entry.market_tz):
+                self._move_zones(record, entry.tz, entry.market_tz)
 
     def _owner_area(self, owner_id: str) -> str | None:
         for record in self._areas.values():
@@ -649,6 +687,7 @@ class PriceRefreshManager:
             self._catalogue_attempted_at = self._now()
         if revision is not None:
             self._last_areas_rev = revision
+        self._sync_zones()
 
         if index.index is None:
             # No index and no retained copy: fanning out would ask the index once per area through
@@ -673,10 +712,22 @@ class PriceRefreshManager:
         """
         today, tomorrow = local_dates(self._now(), record.tz)
         index = self._repository.index_snapshot()
-        if day_authority(index, record.area_id, today) != "not_listed":
-            await self._repository.async_get_day(record.area_id, today)
-        if retained_listing(index, record.area_id, tomorrow):
-            await self._repository.async_get_day(record.area_id, tomorrow)
+        if not record.split:
+            if day_authority(index, record.area_id, today) != "not_listed":
+                await self._repository.async_get_file(record.area_id, today)
+            if retained_listing(index, record.area_id, tomorrow):
+                await self._repository.async_get_file(record.area_id, tomorrow)
+            return
+        # Two calendars: today's principal file follows today's rule; every other file behind today or
+        # tomorrow is asked for only when the index we hold lists it (a file shared by the two days once).
+        principal = record.principal(today)
+        wanted = dict.fromkeys((*record.files(today), *record.files(tomorrow)))
+        for key in wanted:
+            if key == principal:
+                if day_authority(index, record.area_id, key) != "not_listed":
+                    await self._repository.async_get_file(record.area_id, key)
+            elif retained_listing(index, record.area_id, key):
+                await self._repository.async_get_file(record.area_id, key)
 
     def _catalogue_age(self) -> float:
         fetched_at = self._repository.catalogue_snapshot().fetched_at
@@ -789,8 +840,8 @@ class PriceRefreshManager:
             self._repository.index_snapshot().attempt_error,
         ]
         today, tomorrow = local_dates(self._now(), record.tz)
-        for day in (today, tomorrow):
-            attempts.append(self._repository.day_snapshot(record.area_id, day).attempt_error)
+        for key in dict.fromkeys((*record.files(today), *record.files(tomorrow))):
+            attempts.append(self._repository.file_snapshot(record.area_id, key).attempt_error)
         return any(is_transport(error) for error in attempts)
 
     def _cadence_input(self, record: _Area, *, failing: bool) -> CadenceInput:
@@ -812,7 +863,7 @@ class PriceRefreshManager:
             area_tomorrow=tomorrow,
             today_state=today_snapshot.state,
             tomorrow_state=tomorrow_snapshot.state,
-            tomorrow_listed=retained_listing(index_snapshot, record.area_id, tomorrow),
+            tomorrow_listed=retained_listing(index_snapshot, record.area_id, record.principal(tomorrow)),
             index_state=index_snapshot.state,
             tomorrow_ready=tomorrow_snapshot.is_complete,
             failing=failing,
@@ -942,8 +993,8 @@ class PriceRefreshManager:
         # Authority is three-valued and taken from the index's freshness, not the presence of a
         # retained document: only a current valid index says something about now, and "waiting for
         # tomorrow" is claimed only for `not_listed`.
-        today_authority = day_authority(index_snapshot, record.area_id, today)
-        tomorrow_authority = day_authority(index_snapshot, record.area_id, tomorrow)
+        today_authority = day_authority(index_snapshot, record.area_id, record.principal(today))
+        tomorrow_authority = day_authority(index_snapshot, record.area_id, record.principal(tomorrow))
         waiting_for_tomorrow = tomorrow_authority == "not_listed"
         state, reason = combined_state(
             today_state=today_snapshot.state,

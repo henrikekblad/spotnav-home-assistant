@@ -4,7 +4,7 @@
   "date": "2026-09-22",
   "tz": "Europe/Stockholm",
   "start": "2026-09-22T00:00:00+02:00",
-  "res": 30,
+  "res": 45,
   "unit": "EUR/kWh",
   "prices": [
     0.18511,

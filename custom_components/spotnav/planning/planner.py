@@ -269,7 +269,8 @@ def planning_slots(
         _refuse("no_documents", "the planner needs at least one price document")
 
     by_instant: dict[datetime, PlanningSlot] = {}
-    for document in documents:
+    # A display day cut from two market files is priced piece by piece, each with its own file's rate.
+    for document in (piece for whole in documents for piece in whole.pieces()):
         resolution = document.resolution_minutes
         if STEP_MINUTES > resolution or resolution % STEP_MINUTES != 0:
             # Unreachable from `parse_day`; a forged document is bad input, not a data state.
@@ -1138,7 +1139,7 @@ def chart_intervals(
     one row, the caller's order winning, as in `planning_slots`.
     """
     rows: dict[datetime, ChartInterval] = {}
-    for document in documents:
+    for document in (piece for whole in documents for piece in whole.pieces()):
         rate = document_rate(document, currency)
         for interval in document.intervals:
             if interval.utc_start in rows:

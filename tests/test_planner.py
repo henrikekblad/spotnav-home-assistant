@@ -452,7 +452,7 @@ def test_the_schema_gate_refuses_every_class_of_undocumented_fixture() -> None:
 
 
 def test_the_resolution_boundary_is_where_the_contract_puts_it() -> None:
-    """15/60 are the contract's, 30 is nobody's, and a forged document raises."""
+    """15/30/60 are the contract's (30 since contract v2), 45 is nobody's, and a forged document raises."""
     from dataclasses import replace as dataclass_replace
 
     from custom_components.spotnav.planning.planner import PlanningSlot, planning_slots
@@ -478,7 +478,7 @@ def test_the_resolution_boundary_is_where_the_contract_puts_it() -> None:
     # 2. The public path refuses anything else, as a relay-contract error, before the
     #    planner is ever involved.
     with pytest.raises(RelayParseError) as contract:
-        parse_documents([{**quarter, "res": 30}])
+        parse_documents([{**quarter, "res": 45}])
     assert contract.value.code == "invalid_resolution"
 
     # 3. A caller that forges a document anyway gets an input error, not a plan result:

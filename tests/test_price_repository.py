@@ -204,8 +204,9 @@ async def test_an_unlisted_day_is_never_requested(
     assert snapshot.index_authority == "not_listed"
     assert snapshot.document is None
     assert transport.call_count("/v1/SE4/2026/09-23.json") == 0
-    # One index, and no day request at all.
-    assert transport.calls == ["/v1/index.json"]
+    # One index (asked as v2 first: no area list is held to say which version, and this relay answers
+    # v2 with a 404), and no day request at all.
+    assert transport.calls == ["/v2/index.json", "/v1/index.json"]
 
 
 async def test_an_archive_day_is_asked_whatever_the_index_lists_and_is_not_kept_in_the_live_cache(
@@ -643,7 +644,7 @@ async def test_a_delayed_store_read_cannot_be_overtaken_or_overtake(
     snapshot = await loading
 
     assert store.loads == 1
-    assert transport.calls == ["/v1/index.json", transport.day_path("SE4", TODAY)]
+    assert transport.calls == ["/v2/index.json", "/v1/index.json", transport.day_path("SE4", TODAY)]
     assert snapshot.document is not None
     # Once the store read was allowed to finish, its document was adopted and then
     # the refresh fetched: the newer network document is what is held. The older

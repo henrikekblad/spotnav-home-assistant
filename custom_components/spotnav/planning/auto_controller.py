@@ -905,7 +905,8 @@ class AutoPlannerController:
         gap = price_gap(request)
         if gap is None:
             return None
-        zone = dt_util.get_time_zone(entry.tz)
+        # The publication that fills the gap is the market day's (a London evening hour is the next Paris file).
+        zone = dt_util.get_time_zone(entry.market_tz)
         missing_day = gap.missing_from.astimezone(zone).date()
         publication_at = price_wait.expected_publication_at(missing_day)
         max_kw = power_kw(request.amps, request.phases, request.voltage_between_phases_v)
@@ -983,7 +984,8 @@ class AutoPlannerController:
         if decision.outcome != "wait":
             return (known, facts, None)
 
-        zone = dt_util.get_time_zone(entry.tz)
+        # The publication that fills the gap is the market day's (a London evening hour is the next Paris file).
+        zone = dt_util.get_time_zone(entry.market_tz)
         missing_day = gap.missing_from.astimezone(zone).date()
         waited = price_wait.decide(
             now=calculated_at,

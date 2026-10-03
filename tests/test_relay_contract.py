@@ -183,7 +183,7 @@ def test_index_skips_a_damaged_area_and_keeps_the_rest():
     assert parse_index(document("index_no_res.json")).area("SE4").resolution_minutes is None
 
     broken = document("index.json")
-    broken["areas"]["SE4"]["res"] = 30
+    broken["areas"]["SE4"]["res"] = 45
     kept = parse_index(broken)
     assert kept.area("SE4") is None
     assert kept.area("NO1") is not None

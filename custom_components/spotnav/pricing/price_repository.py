@@ -27,6 +27,15 @@ store read never overwrites a newer fetch. A failed restore is logged and treate
 
 Only explicit `refresh` operations live here: no cadence, backoff or timers (see the manager). Prices
 are stored as published.
+
+Contract v2: the area list and the index are read from `/v2/…` first and from `/v1/…` when the relay
+answers v2 with a 404 or a body this client cannot read; the index is always read in the version the
+held area list came in. Day files keep their `/v1/<AREA>/<YYYY>/<MM-DD>.json` paths and are cached
+per **market** day. Everything a caller asks by date ([day_snapshot], [async_get_day],
+[async_get_archive_day]) is a **display** date in the area's `tz`: for an area whose two calendars
+agree that is exactly one file, and for one whose do not (Great Britain, v2 Portugal) the display day
+is cut from the files that cover it (`pricing/market_day.py`). The file-level calls ([file_snapshot],
+[async_get_file]) are for the refresh manager, which decides which files to ask for.
 """
 
 from __future__ import annotations
@@ -46,8 +55,10 @@ from homeassistant.util import dt as dt_util
 
 from ..const import DOMAIN
 from ..runtime import domain_data
+from .market_day import compose_display_day, market_days_for, principal_market_day
 from .relay_contract import (
     AreaCatalogue,
+    document_version,
     loads_document,
     parse_catalogue,
     parse_day,
@@ -82,6 +93,13 @@ PROFILE_MAX_AGE: Final = timedelta(days=2)
 
 #: After a failed profile request nobody asks again for this long (a calculation asks on every publication).
 PROFILE_RETRY_AFTER: Final = timedelta(minutes=30)
+
+#: The contract versions asked for, newest first: a relay that predates v2 answers it with a 404.
+CONTRACT_VERSIONS: Final = (2, 1)
+
+#: Archive files held in memory for one import run's neighbouring display days (a London day shares a
+#: Paris file with the next); never persisted, never the live cache.
+ARCHIVE_MEMO_SIZE: Final = 8
 
 STORAGE_VERSION: Final = 1
 STORAGE_KEY: Final = f"{DOMAIN}_relay_cache"
@@ -150,7 +168,13 @@ class IndexSnapshot:
 
 @dataclass(frozen=True, slots=True)
 class DaySnapshot:
-    """One `(area, local date)`: what we can show, and what we last tried.
+    """One `(area, date)`: what we can show, and what we last tried.
+
+    From [PriceRepository.file_snapshot] the date is a market day and the document one file; from
+    [PriceRepository.day_snapshot] it is a display date, and for a split-calendar area the document is
+    cut from the files covering it while state, authority and attempt are those of its principal file
+    (`market_day.principal_market_day`). `complete` then says whether that file is whole: a London day
+    ending at 23:00 because the next Paris file is not out yet is as complete as it can be.
 
     `document` is last good only, replaced only by a validated document; `fetched_at` is its
     acquisition time, so a failed refresh leaves both alone. `attempt_at`/`attempt_error` describe the
@@ -169,6 +193,8 @@ class DaySnapshot:
     index_authority: IndexAuthority
     index_revision: str | None
     refreshing: bool
+    #: Set for a composed display day; `None` means "the document covers its whole day" decides.
+    complete: bool | None = None
 
     @property
     def interval_count(self) -> int | None:
@@ -176,6 +202,8 @@ class DaySnapshot:
 
     @property
     def is_complete(self) -> bool:
+        if self.complete is not None:
+            return self.document is not None and self.complete
         return self.document is not None and self.document.covers_whole_day()
 
 
@@ -281,18 +309,62 @@ class PriceRepository:
         self._inflight: dict[tuple[str, ...], asyncio.Task[Any]] = {}
         # The single-flight restore task, created on the first ask and awaited by later ones.
         self._restore_task: asyncio.Task[None] | None = None
+        # The last few archive files fetched (see [ARCHIVE_MEMO_SIZE]), oldest first.
+        self._archive_memo: dict[tuple[str, date], PriceDocument] = {}
         # Guards the store write only (local disk, never a request).
         self._write_lock = asyncio.Lock()
 
+    def calendars(self, area_id: str) -> tuple[str, str] | None:
+        """`(tz, market_tz)` for an area whose display day is cut from market-day files, else `None`.
+
+        From the held catalogue: an area it does not list (or none held) is read one file per day.
+        """
+        catalogue = self._catalogue
+        entry = None if catalogue is None else catalogue.parsed.area(area_id)
+        if entry is None or not entry.split_calendar:
+            return None
+        return entry.tz, entry.market_tz
+
     def day_snapshot(self, area_id: str, day: date) -> DaySnapshot:
-        """What is on record for a day right now, without asking the network.
+        """What is on record for a display date right now, without asking the network.
 
         Never fetches. Answers exactly what [async_get_day] would without fetching, including a day the
         index no longer lists but we still hold: `stale` (valid, no longer published).
         """
+        calendars = self.calendars(area_id)
+        if calendars is None:
+            return self.file_snapshot(area_id, day)
+        return self._display_snapshot(area_id, day, *calendars)
+
+    def file_snapshot(self, area_id: str, day: date) -> DaySnapshot:
+        """What is on record for one market-day file right now, without asking the network."""
         authority = self._authority_now(area_id, day)
         return self._day_snapshot(
             area_id, day, authority=authority, stale_override=authority == "not_listed"
+        )
+
+    def _display_snapshot(self, area_id: str, day: date, tz: str, market_tz: str) -> DaySnapshot:
+        """A display date cut from the files covering it; its facts are its principal file's."""
+        principal = self.file_snapshot(area_id, principal_market_day(day, tz, market_tz))
+        files = [self.file_snapshot(area_id, key) for key in market_days_for(day, tz, market_tz)]
+        document = None
+        if principal.document is not None:
+            document = compose_display_day(
+                area_id, day, tz, (item.document for item in files if item.document is not None)
+            )
+        return DaySnapshot(
+            area_id=area_id,
+            day=day,
+            state=principal.state,
+            document=document,
+            source=principal.source,
+            fetched_at=principal.fetched_at,
+            attempt_at=principal.attempt_at,
+            attempt_error=principal.attempt_error,
+            index_authority=principal.index_authority,
+            index_revision=principal.index_revision,
+            refreshing=any(item.refreshing for item in files),
+            complete=principal.is_complete,
         )
 
     def catalogue_snapshot(self) -> CatalogueSnapshot:
@@ -326,7 +398,25 @@ class PriceRepository:
         return await self._shared(("index",), self._load_index)
 
     async def async_get_day(self, area_id: str, day: date, *, refresh: bool = False) -> DaySnapshot:
-        """One day's document, subject to the index's authority.
+        """One display date's document, subject to the index's authority over each file behind it.
+
+        For a split-calendar area every file covering the date is asked for under the file rules, then the
+        date is cut from them ([day_snapshot]); otherwise this is [async_get_file] for that one day.
+        """
+        await self.async_restore()
+        calendars = self.calendars(area_id)
+        if calendars is None:
+            return await self.async_get_file(area_id, day, refresh=refresh)
+        tz, market_tz = calendars
+        principal = principal_market_day(day, tz, market_tz)
+        for key in market_days_for(day, tz, market_tz):
+            # A later file nobody listed is not published yet: asking would only collect a 404.
+            if key == principal or self._authority_now(area_id, key) == "listed":
+                await self.async_get_file(area_id, key, refresh=refresh)
+        return self._display_snapshot(area_id, day, tz, market_tz)
+
+    async def async_get_file(self, area_id: str, day: date, *, refresh: bool = False) -> DaySnapshot:
+        """One market-day file's document, subject to the index's authority.
 
         A day the index does not list is not requested (that is what the index prevents); a day whose index
         could not be read is requested, since an unread index is not proof of absence.
@@ -350,22 +440,48 @@ class PriceRepository:
         return await self._shared(key, load)
 
     async def async_get_archive_day(self, area_id: str, day: date) -> PriceDocument | None:
-        """One past day's document, asked of the relay whatever the index lists (the index governs live days).
+        """One past display date's document, asked of the relay whatever the index lists (the index
+        governs live days).
 
-        For the one-off history import. The day is validated like any other; the relay's 404 and every
+        For the one-off history import. Each file is validated like any other; the relay's 404 and every
         failure answer `None` (the caller remembers the miss for its run, so nothing is asked twice). The
-        document is returned and not cached: archive days never enter the live-day cache or the persisted
-        store. A day the repository already holds is answered from it without a request.
+        documents are returned and not cached: archive days never enter the live-day cache or the persisted
+        store (a few are kept in memory so two neighbouring display days sharing a file ask for it once). A
+        file the repository already holds is answered from it without a request. A split-calendar date is
+        cut from its files, and is `None` when its principal file is missing.
         """
         await self.async_restore()
+        calendars = self.calendars(area_id)
+        if calendars is None:
+            return await self._archive_file(area_id, day)
+        tz, market_tz = calendars
+        principal = principal_market_day(day, tz, market_tz)
+        files: list[PriceDocument] = []
+        for key in market_days_for(day, tz, market_tz):
+            document = await self._archive_file(area_id, key)
+            if document is None and key == principal:
+                return None
+            if document is not None:
+                files.append(document)
+        return compose_display_day(area_id, day, tz, files)
+
+    async def _archive_file(self, area_id: str, day: date) -> PriceDocument | None:
         cached = self._days.get((area_id, day))
         if cached is not None:
             return cached.parsed
+        remembered = self._archive_memo.get((area_id, day))
+        if remembered is not None:
+            return remembered
 
         async def load() -> PriceDocument | None:
             return await self._load_archive_day(area_id, day)
 
-        return await self._shared(("archive", area_id, day.isoformat()), load)
+        document = await self._shared(("archive", area_id, day.isoformat()), load)
+        if document is not None:
+            self._archive_memo[(area_id, day)] = document
+            while len(self._archive_memo) > ARCHIVE_MEMO_SIZE:
+                self._archive_memo.pop(next(iter(self._archive_memo)))
+        return document
 
     def profile_for(self, area_id: str) -> PriceProfile | None:
         """The area's history profile when one is held and recent enough to use, else `None`. No I/O.
@@ -508,12 +624,21 @@ class PriceRepository:
             _LOGGER.warning("Ignoring stored relay cache: unknown schema version")
             return
 
-        catalogue = self._restore_one(raw.get("catalogue"), "catalogue", parse_catalogue)
+        # A stored list and index say which version they are; each is re-read by that version's rules,
+        # so a v1 cache from an older release restores as it was and is replaced by the next fetch.
+        catalogue = self._restore_one(raw.get("catalogue"), "catalogue", _parse_versioned(parse_catalogue))
         if catalogue is not None and _older_than(self._catalogue, catalogue):
             self._catalogue = catalogue
-        index = self._restore_one(raw.get("index"), "index", parse_index)
+        index = self._restore_one(raw.get("index"), "index", _parse_versioned(parse_index))
         if index is not None and _older_than(self._index, index):
             self._index = index
+        if (
+            self._catalogue is not None
+            and self._index is not None
+            and self._index.parsed.version != self._catalogue.parsed.version
+        ):
+            # The index is only ever read beside a list of its own version.
+            self._index = None
         profiles = raw.get("profiles")
         if isinstance(profiles, dict):
             for area_id, entry in profiles.items():
@@ -577,24 +702,48 @@ class PriceRepository:
             return None
         return (area_id, day), _Cached(document=document, fetched_at=fetched_at, parsed=parsed, source="store")
 
+    async def _fetch_versioned(self, name: str, parse, versions: tuple[int, ...]) -> tuple[Any, Any]:
+        """`/v<n>/<name>` parsed as version n, for the first of [versions] the relay answers readably.
+
+        A 404 or a body this client cannot read moves on to the next version; a transport failure does not
+        (an unreachable relay is not an old one). The last version's failure is the one raised.
+        """
+        for position, version in enumerate(versions):
+            last = position == len(versions) - 1
+            try:
+                document = await self._fetch_json(f"/v{version}/{name}")
+                return document, parse(document, version=version)
+            except _Failure as err:
+                if last or err.status != 404:
+                    raise
+            except RelayParseError:
+                if last:
+                    raise
+        raise AssertionError("unreachable")  # pragma: no cover
+
     async def _load_catalogue(self) -> CatalogueSnapshot:
         key = ("catalogue",)
         self._attempts[key] = (self._now(), None)
         try:
-            document = await self._fetch_json("/v1/areas.json")
-            parsed = parse_catalogue(document)
+            document, parsed = await self._fetch_versioned("areas.json", parse_catalogue, CONTRACT_VERSIONS)
         except (RelayParseError, _Failure) as err:
             return self._after_failure(key, err, self._catalogue_snapshot)
+        previous = None if self._catalogue is None else self._catalogue.parsed.version
         self._catalogue = _Cached(document=document, fetched_at=self._now(), parsed=parsed)
+        if previous is not None and previous != parsed.version and self._index is not None:
+            # A list of another version: the index beside it must be read again in that version.
+            self._index = None
         await self._persist()
         return self._catalogue_snapshot(state="ready", source="network", settled=True)
 
     async def _load_index(self) -> IndexSnapshot:
         key = ("index",)
         self._attempts[key] = (self._now(), None)
+        # Always the version of the list held; with none held yet, newest first like the list.
+        held = self._catalogue
+        versions = CONTRACT_VERSIONS if held is None else (held.parsed.version,)
         try:
-            document = await self._fetch_json("/v1/index.json")
-            parsed = parse_index(document)
+            document, parsed = await self._fetch_versioned("index.json", parse_index, versions)
         except (RelayParseError, _Failure) as err:
             return self._after_failure(key, err, self._index_snapshot)
         self._index = _Cached(document=document, fetched_at=self._now(), parsed=parsed)
@@ -832,6 +981,18 @@ def read_state(present: bool, error: FailureCode | None, refreshing: bool) -> Ca
     return "invalid"
 
 
+def _parse_versioned(parse):
+    """A restore parser for a stored area list or index: read by the version the document states."""
+
+    def parsed(document: Any) -> Any:
+        version = document_version(document)
+        if version is None:
+            raise RelayParseError("unsupported_version", "the stored document is not a version this client reads")
+        return parse(document, version=version)
+
+    return parsed
+
+
 def _older_than(existing: _Cached | None, candidate: _Cached) -> bool:
     """Whether [candidate] may replace [existing]: strictly newer, or nothing there (a tie keeps what is in hand)."""
     return existing is None or existing.fetched_at < candidate.fetched_at
@@ -885,6 +1046,7 @@ def index_summary(snapshot: IndexSnapshot) -> dict[str, Any]:
         "error": snapshot.attempt_error,
         "refreshing": snapshot.refreshing,
         "area_count": None if index is None else len(index.areas),
+        "version": None if index is None else index.version,
         "areas_rev": None if index is None else index.areas_rev,
         "res_default": None if index is None else index.res_default,
         "generated": None if index is None else _stamp(index.generated),
