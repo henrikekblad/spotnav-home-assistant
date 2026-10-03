@@ -11,6 +11,9 @@ import pytest
 
 from custom_components.spotnav.sessions.model import SOURCE_ESTIMATED
 from custom_components.spotnav.sessions.summary import (
+    available_months,
+    month_days,
+    month_sessions,
     month_summary,
     sessions_csv,
     sessions_summary,
@@ -205,3 +208,50 @@ def test_a_vehicle_name_a_spreadsheet_would_run_as_a_formula_is_defused() -> Non
     rows = parse(sessions_csv([risky], STOCKHOLM, first=None, last=None))
 
     assert rows[0]["vehicle"].startswith("'=")
+
+
+def test_a_month_has_one_row_for_every_day_zero_rows_included_and_sums_to_the_month() -> None:
+    sessions = [
+        session(local(2026, 9, 1, 0, 5), energy=4, cost_minor=100),
+        session(local(2026, 9, 30, 23, 55), energy=6, cost_minor=300),
+        session(local(2026, 8, 31, 23, 55), energy=50, cost_minor=900),
+        session(local(2026, 10, 1, 0, 5), energy=70, cost_minor=900),
+    ]
+
+    days = month_days(sessions, STOCKHOLM, "2026-09")
+
+    assert [d["period"] for d in days][:2] == ["2026-09-01", "2026-09-02"] and len(days) == 30
+    assert days[-1]["period"] == "2026-09-30"
+    assert [d["energy_kwh"] for d in days if d["sessions"]] == [4, 6], "the month's edges stay in their month"
+    assert days[1]["energy_kwh"] == 0 and days[1]["cost"] is None and days[1]["sessions"] == 0
+    assert sum(d["energy_kwh"] for d in days) == pytest.approx(month_summary(sessions, STOCKHOLM, "2026-09")["energy_kwh"])
+
+
+@pytest.mark.parametrize(("key", "length"), [("2026-02", 28), ("2028-02", 29), ("2026-12", 31)])
+def test_a_months_day_rows_follow_the_calendar(key: str, length: int) -> None:
+    days = month_days([], STOCKHOLM, key)
+
+    assert len(days) == length and days[0]["period"] == f"{key}-01"
+
+
+def test_the_dst_nights_land_on_their_local_day_in_the_month_rows() -> None:
+    sessions = [session(local(2026, 10, 25, 0, 30)), session(local(2026, 10, 25, 23, 30)), session(local(2026, 3, 29, 1, 30))]
+
+    october = {d["period"]: d["sessions"] for d in month_days(sessions, STOCKHOLM, "2026-10") if d["sessions"]}
+    march = {d["period"]: d["sessions"] for d in month_days(sessions, STOCKHOLM, "2026-03") if d["sessions"]}
+
+    assert october == {"2026-10-25": 2} and march == {"2026-03-29": 1}
+
+
+def test_a_session_across_the_month_end_belongs_to_the_month_it_started_in() -> None:
+    late = session(local(2026, 9, 30, 23, 0), hours=3, energy=9)
+
+    assert month_sessions([late], STOCKHOLM, "2026-09") == [late]
+    assert month_sessions([late], STOCKHOLM, "2026-10") == []
+
+
+def test_the_available_months_are_the_ones_with_data_newest_first() -> None:
+    sessions = [session(local(2026, 1, 3)), session(local(2025, 11, 3)), session(local(2026, 1, 20))]
+
+    assert available_months(sessions, STOCKHOLM) == ["2026-01", "2025-11"]
+    assert available_months([], STOCKHOLM) == []

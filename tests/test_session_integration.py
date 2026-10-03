@@ -197,7 +197,7 @@ async def test_the_websocket_command_answers_summaries_and_the_latest_sessions(
     result = reply["result"]
     assert list(result) == [
         "api_version", "charger_id", "retention_days", "this_month", "last_month", "months", "days",
-        "open", "sessions",
+        "open", "sessions", "month", "month_summary", "month_days", "month_sessions", "available_months",
     ]
     assert result["api_version"] == SESSIONS_API_VERSION == 1
     assert len(result["sessions"]) == 2
@@ -241,6 +241,103 @@ async def test_the_csv_is_a_date_range_of_closed_sessions_with_a_file_name_made_
     rows = list(csv.DictReader(io.StringIO(reply["result"]["csv"])))
     assert len(rows) == 1 and rows[0]["start"].startswith("2026-09-10")
     assert entry.entry_id not in reply["result"]["filename"]
+
+
+async def test_a_month_answers_its_summary_every_day_its_sessions_and_the_months_with_data(
+    hass: HomeAssistant, hass_ws_client
+) -> None:
+    entry = await charger(hass)
+    store = domain_data(hass).session_store
+    from .sessions_helpers import session
+
+    now = datetime.now(UTC)
+    store.close(session(datetime(2026, 9, 1, 10, tzinfo=UTC), charger_id=entry.entry_id, energy=10), now)
+    store.close(session(datetime(2026, 9, 10, 10, tzinfo=UTC), charger_id=entry.entry_id, energy=5), now)
+    store.close(session(datetime(2026, 7, 4, 10, tzinfo=UTC), charger_id=entry.entry_id, energy=7), now)
+    client = await hass_ws_client(hass)
+
+    with freeze_time(NOW):
+        default = (await ws_call(client, {"type": "spotnav/get_sessions", "api_version": 1, "charger_id": entry.entry_id}))["result"]
+        july = (await ws_call(client, {
+            "type": "spotnav/get_sessions", "api_version": 1, "charger_id": entry.entry_id, "month": "2026-07"}))["result"]
+        empty = (await ws_call(client, {
+            "type": "spotnav/get_sessions", "api_version": 1, "charger_id": entry.entry_id, "month": "2026-08"}))["result"]
+
+        assert default["month"] == "2026-09" and default["month_summary"]["sessions"] == 2
+        assert default["available_months"] == ["2026-09", "2026-07"]
+        assert len(default["month_days"]) == 30 and len(default["month_sessions"]) == 2
+        assert default["month_sessions"][0]["start"] > default["month_sessions"][1]["start"]
+        assert july["month"] == "2026-07" and july["month_summary"]["energy_kwh"] == 7
+        assert len(july["month_days"]) == 31 and july["available_months"] == default["available_months"]
+        assert empty["month_summary"]["sessions"] == 0 and empty["month_sessions"] == []
+        assert len(empty["month_days"]) == 31 and all(day["sessions"] == 0 for day in empty["month_days"])
+        assert empty["this_month"] == default["this_month"], "the existing fields are untouched by `month`"
+
+
+async def test_the_month_is_at_most_twenty_four_months_back_and_never_in_the_future(
+    hass: HomeAssistant, hass_ws_client
+) -> None:
+    entry = await charger(hass)
+    client = await hass_ws_client(hass)
+
+    with freeze_time(NOW):
+        async def ask(month):
+            return await ws_call(client, {"type": "spotnav/get_sessions", "api_version": 1,
+                                          "charger_id": entry.entry_id, "month": month})
+
+        assert (await ask("2024-09"))["success"] is True
+        assert (await ask("2026-09"))["success"] is True
+        for bad in ("2024-08", "2026-10", "2026-13", "2026-9", "20260", 202609, "2026-09-01"):
+            reply = await ask(bad)
+            assert reply["success"] is False and reply["error"]["code"] == "spotnav_invalid_range", bad
+
+
+async def test_a_months_csv_covers_the_whole_month_and_is_refused_beside_a_date_range(
+    hass: HomeAssistant, hass_ws_client
+) -> None:
+    entry = await charger(hass)
+    store = domain_data(hass).session_store
+    from .sessions_helpers import session
+
+    now = datetime.now(UTC)
+    for day in (datetime(2026, 8, 31, 12, tzinfo=UTC), datetime(2026, 9, 1, 12, tzinfo=UTC), datetime(2026, 9, 30, 12, tzinfo=UTC), datetime(2026, 10, 1, 12, tzinfo=UTC)):
+        store.close(session(day, charger_id=entry.entry_id), now)
+    client = await hass_ws_client(hass)
+    with freeze_time(NOW):
+        base = {"type": "spotnav/get_sessions", "api_version": 1, "charger_id": entry.entry_id, "format": "csv"}
+
+        reply = await ws_call(client, {**base, "month": "2026-09"})
+        both = await ws_call(client, {**base, "month": "2026-09", "from": "2026-09-02"})
+
+        assert reply["result"]["filename"] == "spotnav-sessions-2026-09-01-2026-09-30.csv"
+        assert [row["start"][:10] for row in csv.DictReader(io.StringIO(reply["result"]["csv"]))] == ["2026-09-01", "2026-09-30"]
+        assert both["success"] is False and both["error"]["code"] == "spotnav_invalid_range"
+
+
+async def test_the_webhook_sessions_action_answers_what_the_websocket_does(
+    hass: HomeAssistant, hass_ws_client, hass_client_no_auth
+) -> None:
+    entry = await charger(hass)
+    store = domain_data(hass).session_store
+    from .sessions_helpers import session
+
+    store.close(session(datetime(2026, 9, 10, 10, tzinfo=UTC), charger_id=entry.entry_id), datetime.now(UTC))
+    socket = await hass_ws_client(hass)
+    http = await hass_client_no_auth()
+    webhook_id = f"webhook-{entry.entry_id}"
+
+    with freeze_time(NOW):
+        for extra in ({}, {"month": "2026-09"}, {"month": "2026-08", "limit": 1}, {"month": "2026-09", "format": "csv"}):
+            expected = (await ws_call(socket, {
+                "type": "spotnav/get_sessions", "api_version": 1, "charger_id": entry.entry_id, **extra}))["result"]
+            response = await http.post(f"/api/webhook/{webhook_id}", json={"version": 1, "action": "sessions", "api_version": 1, **extra})
+            assert response.status == 200
+            assert await response.json() == {"ok": True, "action": "sessions", **expected}
+
+        refused = await http.post(f"/api/webhook/{webhook_id}", json={"version": 1, "action": "sessions", "month": "2020-01"})
+        wrong = await http.post(f"/api/webhook/{webhook_id}", json={"version": 1, "action": "sessions", "api_version": 2})
+        assert refused.status == 400 and await refused.json() == {"ok": False, "error": "spotnav_invalid_range", "action": "sessions"}
+        assert wrong.status == 400 and (await wrong.json())["error"] == "spotnav_unsupported_api_version"
 
 
 @pytest.mark.parametrize(

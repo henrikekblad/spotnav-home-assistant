@@ -31,6 +31,7 @@ from ..vehicles.vehicle_refresh import async_refresh_vehicle, VehicleRefreshLimi
 from .common import ERROR_UNSUPPORTED_VERSION
 from .dashboard import async_webhook_dashboard, DashboardFailure
 from .entity_config import async_webhook_update_vehicle
+from .sessions import SESSIONS_API_VERSION, sessions_answer, SessionsRefusal
 from .settings import (
     async_update_settings,
     settings_envelope,
@@ -172,6 +173,21 @@ async def _dashboard(hass: HomeAssistant, entry: ChargerConfigEntry, payload: di
     return web.json_response(_for_app({"ok": True, "action": "dashboard", **dashboard}, payload))
 
 
+async def _sessions(hass: HomeAssistant, entry: ChargerConfigEntry, payload: dict[str, Any]) -> Outcome:
+    """A read twinning `spotnav/get_sessions`: the same request fields (`month`, `format`, `limit`, `from`,
+    `to`) and the same answer, with the routing `action` beside it. Nothing is withheld."""
+    version = payload.get("api_version", SESSIONS_API_VERSION)
+    if type(version) is not int or version != SESSIONS_API_VERSION:
+        return web.json_response(
+            {"ok": False, "error": ERROR_UNSUPPORTED_VERSION, "action": "sessions"}, status=400
+        )
+    try:
+        answer = sessions_answer(hass, entry.entry_id, payload)
+    except SessionsRefusal as refusal:
+        return web.json_response({"ok": False, "error": refusal.code, "action": "sessions"}, status=400)
+    return web.json_response({"ok": True, "action": "sessions", **answer})
+
+
 async def _settings(hass: HomeAssistant, entry: ChargerConfigEntry, payload: dict[str, Any]) -> Outcome:
     """A full replacement at a revision the caller names, via the WebSocket command's function.
 
@@ -222,7 +238,7 @@ def _bounded_write(
     return handler
 
 
-#: Every action the webhook answers. `dashboard` is the only read.
+#: Every action the webhook answers. `dashboard` and `sessions` are the reads.
 ACTIONS: Final[dict[str, Handler]] = {
     "start": _start,
     "stop": _stop,
@@ -230,6 +246,7 @@ ACTIONS: Final[dict[str, Handler]] = {
     "refresh_vehicle": _refresh_vehicle,
     "set_charge_limit": _set_charge_limit,
     "dashboard": _dashboard,
+    "sessions": _sessions,
     "settings": _settings,
     "update_vehicle": _bounded_write(async_webhook_update_vehicle, "update_vehicle"),
     "update_site_settings": _bounded_write(async_webhook_update_site_settings, "update_site_settings"),

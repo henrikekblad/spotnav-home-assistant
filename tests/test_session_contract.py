@@ -66,6 +66,12 @@ def payload() -> dict[str, Any]:
     )
 
 
+def month_payload() -> dict[str, Any]:
+    return sessions_payload(
+        sessions(), open_session(), charger_id="entry_a", zone=STOCKHOLM, now=NOW, limit=20, month="2026-08"
+    )
+
+
 def csv_payload() -> dict[str, Any]:
     return {
         "api_version": 1,
@@ -90,6 +96,15 @@ def test_the_history_answer_is_the_committed_fixture() -> None:
     assert list(answer) == list(SESSIONS_RESPONSE_KEYS)
     assert answer["this_month"]["sessions"] == 4 and answer["last_month"]["sessions"] == 1
     check("get_sessions.json", answer)
+
+
+def test_the_answer_for_a_chosen_month_is_the_committed_fixture() -> None:
+    answer = month_payload()
+
+    assert list(answer) == list(SESSIONS_RESPONSE_KEYS)
+    assert answer["month"] == "2026-08" and len(answer["month_days"]) == 31
+    assert answer["month_summary"]["sessions"] == 1 and answer["available_months"] == ["2026-09", "2026-08"]
+    check("get_sessions_month.json", answer)
 
 
 def test_the_csv_answer_is_the_committed_fixture() -> None:

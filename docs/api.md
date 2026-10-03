@@ -34,7 +34,8 @@ limit, with `Retry-After`) or 502 (the charger command failed).
 
 | Action | Effect |
 | ------ | ------ |
-| `dashboard` | The one read: the dashboard document below, for this charger. Takes an optional `api_version`. |
+| `dashboard` | The dashboard document below, for this charger. Takes an optional `api_version`. |
+| `sessions` | The charge history, the same request and answer as `spotnav/get_sessions` below (`month`, `format`, `limit`, `from`, `to`), with `"ok": true` and the `action` beside it. A refusal is HTTP 400 with `{"ok": false, "error": "spotnav_invalid_range" \| "spotnav_unsupported_api_version", "action": "sessions"}`. Nothing is withheld. |
 | `settings` | Replace the charger's settings: `{"expected_revision": n, "settings": {...}}`. |
 | `start` | Start charging now; optional `amps`. |
 | `stop` | Stop now, or with a `choice` (`next_period`, `until_tomorrow`, `until_resumed`) pause automatic execution. |
@@ -75,7 +76,7 @@ config entry id. Reading is open to every authenticated user; writes require an 
 | `spotnav/choose_vehicle_soc` | Choose (or clear) a vehicle's state-of-charge sensor. |
 | `spotnav/update_vehicle` | A vehicle's battery capacity, consumption and onboard charger. |
 | `spotnav/update_site_settings` | Solar priority, forecast sources, active load balancing. |
-| `spotnav/get_sessions` | A charger's charge sessions: summaries per month and day and the latest sessions, or with `format: "csv"` and optional `from` and `to` dates the sessions of that range as CSV text. |
+| `spotnav/get_sessions` | A charger's charge sessions: summaries per month and day and the latest sessions, the same for one chosen `month`, or with `format: "csv"` and optional `from` and `to` dates (or a `month`) the sessions of that range as CSV text. |
 
 Rules that hold across them:
 
@@ -147,3 +148,21 @@ The additive `sessions_summary` block holds this month's and last month's charge
 `savings`). Cost is in the major unit, prices in the minor unit per kWh; `savings` compares with
 the day's average price and is an estimate (`savings_estimate: true`). A client ignores keys it does
 not know. Example answers of `spotnav/get_sessions` are in `tests/fixtures/sessions/`.
+
+### History by month
+
+`spotnav/get_sessions` (and the webhook action `sessions`, with the same fields) takes an optional
+`month`, `"YYYY-MM"`, default the current month, at most 24 months back and never in the future (anything
+else is `spotnav_invalid_range`). The answer keeps every earlier field and adds:
+
+| Field | Meaning |
+| --- | --- |
+| `month` | The month the figures below are for. |
+| `month_summary` | That month's totals: `sessions`, `energy_kwh`, `cost`, `average_price_minor_per_kwh`, `solar_share`, `savings` (an estimate), as `this_month`. All zero or `null` for a month with no charge. |
+| `month_days` | One row for every day of the month, oldest first (a day with no charge is a zero row, so a chart has every day), each with `period` (`YYYY-MM-DD`), `energy_kwh`, `cost`, `average_price_minor_per_kwh`, `solar_share`. |
+| `month_sessions` | The month's closed sessions, newest first, in the shape of `sessions` (not cut by `limit`). |
+| `available_months` | The months that have data, newest first, within the 24 months `month` accepts. |
+
+A session counts on the local day, and month, it started. With `format: "csv"` and a `month` the CSV is
+that whole month and the file is named by its first and last day; `month` together with `from` or `to` is
+refused.

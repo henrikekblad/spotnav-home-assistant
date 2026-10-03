@@ -14,7 +14,8 @@ from __future__ import annotations
 import csv
 import io
 from collections.abc import Iterable, Sequence
-from datetime import date, datetime, tzinfo
+import calendar
+from datetime import date, datetime, timedelta, tzinfo
 from typing import Any, Final
 
 from .model import ChargeSession
@@ -92,6 +93,40 @@ def month_summary(sessions: Iterable[ChargeSession], zone: tzinfo, key: str) -> 
         if session.end is not None and month_key(local_day(session, zone)) == key
     ]
     return summarize_bucket(key, members)
+
+
+def month_bounds(key: str) -> tuple[date, date]:
+    """The first and last local day of the month `key` (`YYYY-MM`, already validated)."""
+    year, month = int(key[:4]), int(key[5:7])
+    return date(year, month, 1), date(year, month, calendar.monthrange(year, month)[1])
+
+
+def month_sessions(sessions: Iterable[ChargeSession], zone: tzinfo, key: str) -> list[ChargeSession]:
+    """The closed sessions that started in the month `key`, newest first."""
+    members = [
+        session
+        for session in sessions
+        if session.end is not None and month_key(local_day(session, zone)) == key
+    ]
+    return sorted(members, key=lambda item: item.start, reverse=True)
+
+
+def month_days(sessions: Iterable[ChargeSession], zone: tzinfo, key: str) -> list[dict[str, Any]]:
+    """One bucket for every day of the month `key`, oldest first, a day with no session as a zero row,
+    so a chart has every day."""
+    by_day: dict[date, list[ChargeSession]] = {}
+    for session in month_sessions(sessions, zone, key):
+        by_day.setdefault(local_day(session, zone), []).append(session)
+    first, last = month_bounds(key)
+    return [
+        summarize_bucket(day.isoformat(), by_day.get(day, []))
+        for day in (first + timedelta(days=offset) for offset in range((last - first).days + 1))
+    ]
+
+
+def available_months(sessions: Iterable[ChargeSession], zone: tzinfo) -> list[str]:
+    """The months that have a closed session, newest first."""
+    return sorted({month_key(local_day(s, zone)) for s in sessions if s.end is not None}, reverse=True)
 
 
 def sessions_summary(sessions: Sequence[ChargeSession], zone: tzinfo, now: datetime) -> dict[str, Any]:

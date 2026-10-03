@@ -23,6 +23,7 @@ async def test_every_documented_action_has_a_handler() -> None:
         "refresh_vehicle",
         "set_charge_limit",
         "dashboard",
+        "sessions",
         "settings",
         "update_vehicle",
         "update_site_settings",
