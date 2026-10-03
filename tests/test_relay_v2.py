@@ -509,3 +509,24 @@ def test_the_dashboard_and_the_market_editor_show_included_parts_and_the_source(
     assert area["included"] == ["vat", "tax", "transfer"]
     assert area["market_timezone"] == PARIS and area["timezone"] == LONDON
     assert area["source"] == {"name": "Octopus Energy (Agile)", "url": "https://octopus.energy/smart/agile/"}
+
+
+async def test_the_fiscal_entities_of_an_included_part_are_unavailable(hass: HomeAssistant, offline_relay) -> None:
+    from homeassistant.const import STATE_UNAVAILABLE
+
+    from .world import entity_id, go_auto, setup_charger
+
+    serve_v2(offline_relay)
+    entry = await setup_charger(hass)
+    await go_auto(hass, entry.entry_id, area_id="GB-C")
+    for platform, key in (
+        ("select", "fiscal_vat_policy"),
+        ("select", "fiscal_tax_policy"),
+        ("select", "fiscal_transfer_policy"),
+        ("number", "vat_rate"),
+        ("number", "energy_tax"),
+        ("number", "transfer_fee"),
+    ):
+        assert hass.states.get(entity_id(hass, entry.entry_id, key, platform)).state == STATE_UNAVAILABLE
+    await go_auto(hass, entry.entry_id, area_id="SE4")
+    assert hass.states.get(entity_id(hass, entry.entry_id, "fiscal_vat_policy", "select")).state != STATE_UNAVAILABLE
