@@ -52,7 +52,7 @@ import {
   type EntityScope,
 } from "./entity-config";
 import { marketAreaLabel, type MarketFormValues } from "./market";
-import { sourceLine, type RegionLookup } from "./market-editor";
+import { type RegionLookup } from "./market-editor";
 import {
   marketEditorBody,
   marketTrigger,
