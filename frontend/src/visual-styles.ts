@@ -678,6 +678,7 @@ export const VISUAL_STYLES = `
   }
   .${VISUAL_CLASSES.header} {
     display: flex;
+    flex-wrap: wrap;
     align-items: center;
     gap: 8px;
     min-width: 0;
@@ -688,8 +689,10 @@ export const VISUAL_STYLES = `
     letter-spacing: 0.01em;
     color: var(--primary-color, #03a9f4);
   }
+  /* At least ~10 characters wide: in a narrow card the buttons move to a row of their own rather than
+     squeezing the name until a word breaks. */
   .${VISUAL_CLASSES.name} {
-    flex: 1 1 auto;
+    flex: 1 1 10em;
     min-width: 0;
     font-weight: 500;
     overflow-wrap: break-word;
@@ -775,6 +778,7 @@ export const VISUAL_STYLES = `
   /* The planned vehicle: a quiet text button under the name; the header's 44 px icon buttons keep the row tall enough to tap. */
   .${VISUAL_CLASSES.vehicleLine} {
     display: inline-flex;
+    flex-wrap: wrap;
     align-items: center;
     gap: 4px;
     max-width: 100%;
@@ -797,7 +801,11 @@ export const VISUAL_STYLES = `
     outline: 2px solid var(--primary-color, #03a9f4);
     outline-offset: 1px;
   }
+  /* Never squeezed to nothing: the charge and status wrap to the next line first; only a name wider
+     than the whole line is cut with an ellipsis. */
   .${VISUAL_CLASSES.vehicleLineName} {
+    flex: 0 0 auto;
+    max-width: 100%;
     min-width: 0;
     overflow: hidden;
     text-overflow: ellipsis;
