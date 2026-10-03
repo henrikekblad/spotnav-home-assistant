@@ -881,8 +881,16 @@ def allocation_order(requests: Sequence[ChargerRequest]) -> list[ChargerRequest]
     """
     return sorted(
         requests,
-        key=lambda request: (_PRIORITY_RANK.get(request.priority, 1), request.order, request.charger_entry_id),
+        key=lambda request: charger_order_key(request.priority, request.order, request.charger_entry_id),
     )
+
+
+def charger_order_key(priority: str, order: int, charger_entry_id: str) -> tuple[int, int, str]:
+    """Where a charger stands in its site's order: "first" before "normal" before "last" (an unknown
+    priority counts as "normal"), then the site's own charger order, then the entry id. Shared by the
+    capacity allocation and the solar surplus split, so both serve chargers in the same order.
+    """
+    return (_PRIORITY_RANK.get(priority, 1), order, charger_entry_id)
 
 
 def allocate_chargers(

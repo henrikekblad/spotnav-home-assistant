@@ -72,6 +72,9 @@ cannot, and for a direct site without the total it says the meter's total grid p
 - **Solar priority** (a site setting): *car first* uses surplus before the house battery;
   *battery first* leaves the surplus to the battery and charges the car from what it does not
   take. A house battery power sensor can be set on the site.
+- Several chargers on one site share the surplus by their
+  [charger priority](site-and-load-balancing.md#charger-priority): the first in the order is
+  offered it all, the next only what the first cannot use.
 
 ## Hybrid
 

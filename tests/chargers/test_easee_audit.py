@@ -261,9 +261,9 @@ async def test_solar_starts_at_the_chargers_start_minimum_and_runs_down_to_the_f
             _charger_entry_id="entry",
             _controller=SimpleNamespace(adapter=adapter, charging=False),
         )
-        return SolarExecutionCoordinator._build_controller(fake, site)  # noqa: SLF001
+        return SolarExecutionCoordinator._solar_config(fake, site)  # noqa: SLF001
 
-    easee = solar_for("easee")._config  # noqa: SLF001
+    easee = solar_for("easee")
     assert (easee.start_a, easee.stop_a, easee.min_current_a) == (7.0, 6.0, 6.0)
-    other = solar_for("nrgkick")._config  # noqa: SLF001
+    other = solar_for("nrgkick")
     assert (other.start_a, other.stop_a, other.min_current_a) == (6.0, 5.0, 6.0)

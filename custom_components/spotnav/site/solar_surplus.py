@@ -37,6 +37,12 @@ and round); the running charge is held at the minimum current only while the gri
 `min_on_s` stops it as a normal solar stop. Solar never charges from the grid on the strength of a
 fault.
 
+Several chargers on one site share the surplus in the site's charger order (priority First, Normal,
+Last; ties by the order they joined, as capacity allocation serves them): `share_surplus` offers the
+whole surplus to the first charger, and a later one gets only what the earlier ones cannot use (too
+little for their minimum, or more than they take). Each charger's controller still runs on its own;
+the split reaches it as `SolarObservation.share_adjust_w`, added to its own reckoning.
+
 Freshness: a `None` where a reading is needed means no basis this tick. From
 `off` or `arming` that means never start; a running charge is kept for
 `stale_grace_s`. Stale ticks neither advance nor reset the timers.
@@ -46,9 +52,9 @@ from __future__ import annotations
 
 import math
 from dataclasses import dataclass
-from typing import Literal, Mapping
+from typing import Literal, Mapping, Sequence
 
-from .site_capacity import PhaseName, PHASES
+from .site_capacity import PhaseName, PHASES, charger_order_key
 
 
 # Charger priority between car and battery; also the type of
@@ -139,6 +145,140 @@ class SolarObservation:
     # top of the car's own draw. Given, it covers every phase of `car_phases`, and a `None` entry there
     # is no basis.
     phase_cap_a: Mapping[PhaseName, float | None] | None = None
+    # What the site's priority order moves to or from this charger, in watts, on top of its own
+    # reckoning (`priority_adjust_w`); 0.0 for a charger alone on its site.
+    share_adjust_w: float = 0.0
+
+
+@dataclass(frozen=True, slots=True)
+class SurplusBreakdown:
+    """One observation's energy balance (module docstring), before the priority split and any fuse
+    cap. `available_w` already counts the charger's own draw `car_w`."""
+
+    net_grid_w: float
+    export_w: float
+    car_w: float
+    battery_w: float | None
+    available_w: float
+    mean_voltage_v: float
+    priority_effective: SolarPriority
+
+
+def surplus_breakdown(observation: SolarObservation, priority: SolarPriority) -> SurplusBreakdown | None:
+    """The surplus one observation shows this charger, or `None` if a needed reading is unusable."""
+    grid = observation.signed_grid_w
+    voltage = observation.voltage_v
+    delivered = observation.car_delivered_a
+    car_phases = observation.car_phases
+
+    if not car_phases:
+        return None
+    if any(grid.get(phase) is None for phase in PHASES):
+        return None
+    if any(voltage.get(phase) is None for phase in car_phases):
+        return None
+    if any(delivered.get(phase) is None for phase in car_phases):
+        return None
+    if observation.battery_configured and observation.battery_w is None:
+        # A configured but unreadable battery is no basis, never 0.0.
+        return None
+
+    net_grid_w = sum(grid[phase] for phase in PHASES)  # type: ignore[misc]
+    car_w = sum(delivered[phase] * voltage[phase] for phase in car_phases)  # type: ignore[misc]
+
+    battery_w = observation.battery_w
+    battery_w_for_formula = 0.0 if battery_w is None else battery_w
+    priority_effective: SolarPriority
+    if priority == "car_first" and battery_w is not None:
+        # The energy-balance identity (module docstring).
+        available_w = car_w + battery_w_for_formula - net_grid_w
+        priority_effective = "car_first"
+    else:
+        available_w = car_w + min(0.0, battery_w_for_formula) - net_grid_w
+        priority_effective = "battery_first"
+
+    mean_voltage = sum(voltage[phase] for phase in car_phases) / len(car_phases)  # type: ignore[misc]
+    if mean_voltage <= 0:
+        return None
+    return SurplusBreakdown(
+        net_grid_w=net_grid_w,
+        export_w=max(0.0, -net_grid_w),
+        car_w=car_w,
+        battery_w=battery_w,
+        available_w=available_w,
+        mean_voltage_v=mean_voltage,
+        priority_effective=priority_effective,
+    )
+
+
+@dataclass(frozen=True, slots=True, kw_only=True)
+class SolarShareMember:
+    """One charger taking part in its site's surplus split this tick: on `solar` (or `hybrid` outside
+    a plan window and short of its target), not paused, and not known to be unplugged. A charger the
+    split leaves out is house load to the others, as before the split existed.
+    """
+
+    charger_entry_id: str
+    # "first", "normal" or "last" (`const.CHARGER_PRIORITIES`) and the place in the site's charger list.
+    priority: str
+    order: int
+    # What the charger draws now, and the watts one amp is to it (its phases x their mean voltage).
+    car_w: float
+    watts_per_a: float
+    # Its solar controller has it charging (`on` or `disarming`).
+    running: bool
+    start_a: float
+    stop_a: float
+    min_current_a: float
+    max_current_a: float
+    # Running, but the car takes clearly less than it was asked for (full, held back by the car, or a
+    # charger whose current is not written): it uses what it draws, and the rest goes on down.
+    takes_less: bool = False
+
+    def uses_w(self, offered_w: float) -> float:
+        """How much of `offered_w` this charger uses, leaving the rest to the chargers after it."""
+        if self.takes_less:
+            return self.car_w
+        if self.running:
+            if offered_w < self.stop_a * self.watts_per_a:
+                # On its way to a stop, it keeps drawing what it draws until it gets there.
+                return self.car_w
+            return min(max(offered_w, self.min_current_a * self.watts_per_a), self.max_current_a * self.watts_per_a)
+        if offered_w < self.start_a * self.watts_per_a:
+            # Too little to start on: it cannot use it.
+            return 0.0
+        return min(offered_w, self.max_current_a * self.watts_per_a)
+
+
+def share_surplus(pool_w: float, members: Sequence[SolarShareMember]) -> dict[str, float]:
+    """The surplus each member is offered, in watts: the whole `pool_w` to the first in the site's
+    order (`charger_order_key`), and to each later one what is left after the earlier ones took what
+    they use (`SolarShareMember.uses_w`).
+    """
+    remaining = pool_w
+    offered: dict[str, float] = {}
+    for member in sorted(
+        members, key=lambda m: charger_order_key(m.priority, m.order, m.charger_entry_id)
+    ):
+        offered[member.charger_entry_id] = remaining
+        remaining -= member.uses_w(remaining)
+    return offered
+
+
+def priority_adjust_w(
+    charger_entry_id: str, available_w: float, members: Sequence[SolarShareMember]
+) -> float:
+    """`SolarObservation.share_adjust_w` for one member: what the split offers it minus what it
+    reckons alone (`available_w`, from `surplus_breakdown`, which already counts its own draw and sees
+    every other charger's draw as house load). The site's whole surplus is that plus what the other
+    members draw. Zero when it is the only member, or not a member at all.
+    """
+    if not any(member.charger_entry_id == charger_entry_id for member in members):
+        return 0.0
+    pool_w = available_w + sum(
+        member.car_w for member in members if member.charger_entry_id != charger_entry_id
+    )
+    return share_surplus(pool_w, members)[charger_entry_id] - available_w
 
 
 @dataclass(frozen=True, slots=True)
@@ -187,6 +327,23 @@ class SolarController:
         self._available_w: float | None = None
         self._available_a: float | None = None
         self._priority_effective: SolarPriority | None = None
+
+    @property
+    def config(self) -> SolarConfig:
+        return self._config
+
+    @property
+    def running(self) -> bool:
+        """Whether this controller has the charger charging (`on` or `disarming`)."""
+        return self._state in ("on", "disarming")
+
+    @property
+    def on_since(self) -> float | None:
+        return self._on_since
+
+    @property
+    def last_requested_a(self) -> float | None:
+        return self._last_requested_a
 
     def observe(self, observation: SolarObservation) -> SolarVerdict:
         """Update state from one observation and return its verdict."""
@@ -263,42 +420,12 @@ class SolarController:
         Returns `available_a`, or `None` if a needed reading is unusable; the
         stored breakdown is then left as it was.
         """
-        cfg = self._config
-        grid = observation.signed_grid_w
-        voltage = observation.voltage_v
-        delivered = observation.car_delivered_a
+        breakdown = surplus_breakdown(observation, self._config.priority)
+        if breakdown is None:
+            return None
         car_phases = observation.car_phases
-
-        if not car_phases:
-            return None
-        if any(grid.get(phase) is None for phase in PHASES):
-            return None
-        if any(voltage.get(phase) is None for phase in car_phases):
-            return None
-        if any(delivered.get(phase) is None for phase in car_phases):
-            return None
-        if observation.battery_configured and observation.battery_w is None:
-            # A configured but unreadable battery is no basis, never 0.0.
-            return None
-
-        net_grid_w = sum(grid[phase] for phase in PHASES)  # type: ignore[misc]
-        export_w = max(0.0, -net_grid_w)
-        car_w = sum(delivered[phase] * voltage[phase] for phase in car_phases)  # type: ignore[misc]
-
-        battery_w = observation.battery_w
-        battery_w_for_formula = 0.0 if battery_w is None else battery_w
-        priority_effective: SolarPriority
-        if cfg.priority == "car_first" and battery_w is not None:
-            # The energy-balance identity (module docstring).
-            available_w = car_w + battery_w_for_formula - net_grid_w
-            priority_effective = "car_first"
-        else:
-            available_w = car_w + min(0.0, battery_w_for_formula) - net_grid_w
-            priority_effective = "battery_first"
-
-        mean_voltage = sum(voltage[phase] for phase in car_phases) / len(car_phases)  # type: ignore[misc]
-        if mean_voltage <= 0:
-            return None
+        mean_voltage = breakdown.mean_voltage_v
+        available_w = breakdown.available_w + observation.share_adjust_w
         available_a = available_w / (len(car_phases) * mean_voltage)
         if observation.phase_cap_a is not None:
             caps = [observation.phase_cap_a.get(phase) for phase in car_phases]
@@ -309,13 +436,13 @@ class SolarController:
                 available_a = cap_a
                 available_w = cap_a * len(car_phases) * mean_voltage
 
-        self._net_grid_w = net_grid_w
-        self._export_w = export_w
-        self._car_w = car_w
-        self._battery_w = battery_w
+        self._net_grid_w = breakdown.net_grid_w
+        self._export_w = breakdown.export_w
+        self._car_w = breakdown.car_w
+        self._battery_w = breakdown.battery_w
         self._available_w = available_w
         self._available_a = available_a
-        self._priority_effective = priority_effective
+        self._priority_effective = breakdown.priority_effective
         return available_a
 
     def _handle_no_basis(self, now: float) -> SolarVerdict:
