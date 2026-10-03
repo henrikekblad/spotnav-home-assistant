@@ -115,6 +115,18 @@
       },
       {
         "choices": [
+          "1",
+          "3"
+        ],
+        "field": "charger_phases",
+        "kind": "enum",
+        "required": true,
+        "scope": "charger",
+        "value": "3",
+        "writable": false
+      },
+      {
+        "choices": [
           "first",
           "normal",
           "last"
@@ -378,6 +390,7 @@
           "entity_id": null,
           "integration": null,
           "interval_s": 120.0,
+          "limits_a": null,
           "option": null,
           "phases": [
             {
@@ -432,6 +445,7 @@
     "name": "Niro",
     "onboard_phases": 3,
     "soc_entity_id": "sensor.niro_battery",
-    "soc_percent": 55.0
+    "soc_percent": 55.0,
+    "suggested_onboard_phases": null
   }
 }

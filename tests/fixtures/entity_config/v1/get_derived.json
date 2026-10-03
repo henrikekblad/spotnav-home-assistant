@@ -115,6 +115,18 @@
       },
       {
         "choices": [
+          "1",
+          "3"
+        ],
+        "field": "charger_phases",
+        "kind": "enum",
+        "required": true,
+        "scope": "charger",
+        "value": "3",
+        "writable": false
+      },
+      {
+        "choices": [
           "first",
           "normal",
           "last"
@@ -622,6 +634,7 @@
           "entity_id": null,
           "integration": null,
           "interval_s": 120.0,
+          "limits_a": null,
           "option": null,
           "phases": [
             {

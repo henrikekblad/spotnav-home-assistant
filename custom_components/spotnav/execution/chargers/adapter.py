@@ -334,6 +334,20 @@ class ChargerAdapter:
             values.append(value / factor)
         return max(values) if values else None
 
+    def measured_phase_currents_a(self) -> tuple[float | None, ...] | None:
+        """The measured current of each phase, in A (`None` for one unreadable), when the charger has
+        exactly one current entity per phase; `None` when it does not, so the phases cannot be told apart.
+        """
+        if len(self.current_entity_ids) != 3:
+            return None
+        values: list[float | None] = []
+        for entity_id in self.current_entity_ids:
+            state = self.hass.states.get(entity_id)
+            value = _finite(state.state) if state is not None else None
+            factor = _amps_factor(state)
+            values.append(None if value is None or factor is None else value / factor)
+        return tuple(values)
+
     def energy_register_kwh(self) -> float | None:
         return read_energy_register_kwh(self.hass, self.energy_entity_id)
 

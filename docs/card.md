@@ -163,8 +163,15 @@ did not accept.
 The phases a charge uses are not chosen in the Plan dialog. They are the smaller of the charger's wiring
 and the vehicle's onboard charger. The Plan dialog says how many ("Charges on 1 phase · nominal power
 ≈ 3.7 kW") and, when the car limits it, why ("The car charges on one phase."). A charger in a site takes
-its wiring from the site; a charger in no site has **Phases the charger is wired for** (1 or 3) in its
-entities dialog.
+its wiring from the site, which the charger's entities dialog states ("The charger is wired for 3 phases
+(from the site)") with a link to the site's entities; a charger in no site has **Phases the charger is
+wired for** (1 or 3) in its entities dialog.
+
+SpotNav also learns the phases from your charges. A charge on three phases confirms the wiring and the car
+(a charger in no site whose wiring was never set is set to three phases by its first such charge). When a
+car charges on one phase twice running on three-phase wiring, the card asks "This car seems to charge on one
+phase. Set its onboard charger to 1-phase?" with **Set to 1-phase** and **Keep 3-phase**; nothing changes
+until you answer.
 
 ### Charger entities
 
@@ -195,7 +202,9 @@ several. A charger with no site says so.
   of the meter, the home battery power and the maximum measurement age. **Found in Home
   Assistant** lists the grid meters and home batteries SpotNav recognised, with **Use this** to
   apply one. The editor warns about a source that updates more slowly than the maximum measurement
-  age and about devices that balance load by themselves.
+  age and about devices that balance load by themselves. With a Sigenergy battery whose **Grid Import
+  Limitation** number is enabled, it also warns ("Two limits on one fuse") when that limit and SpotNav's
+  (the main fuse minus the safety margin) differ by more than 1 A per phase.
 
 ## Plan settings
 

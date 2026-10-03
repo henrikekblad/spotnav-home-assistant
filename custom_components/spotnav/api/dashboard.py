@@ -71,7 +71,7 @@ from ..planning.auto_settings import (
     STRATEGY_CHEAPEST,
 )
 from ..planning.hybrid_forecast import async_forecast_capable_domains
-from ..planning.phases import charging_phases, ChargingPhases
+from ..planning.phases import charging_phases, ChargingPhases, onboard_suggestion
 from ..planning.planner import chart_intervals, ChartInterval
 from ..sessions.inputs import sessions_block
 from ..planning.status_compose import (
@@ -333,6 +333,8 @@ class CapturedVehicle:
     soc_percent: float | None = None
     #: The onboard charger's phases (1 or 3): the stored answer, else three.
     onboard_phases: int = vehicle_properties.DEFAULT_ONBOARD_PHASES
+    #: `1` when charges suggest the onboard charger is single-phase and nobody has answered yet.
+    suggested_onboard_phases: int | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -597,6 +599,7 @@ def capture_vehicles(
                 max_percent=max_percent,
                 soc_percent=soc_percent,
                 onboard_phases=own.phases,
+                suggested_onboard_phases=onboard_suggestion(hass, choice.id),
             )
         )
     return tuple(rows), target_id
@@ -1675,6 +1678,7 @@ def serialize_vehicle(vehicle: CapturedVehicle) -> dict[str, Any]:
         "max_percent": finite_number(vehicle.max_percent),
         "soc_percent": finite_number(vehicle.soc_percent),
         "onboard_phases": vehicle.onboard_phases,
+        "suggested_onboard_phases": vehicle.suggested_onboard_phases,
     }
 
 

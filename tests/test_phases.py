@@ -373,7 +373,9 @@ async def test_a_charger_in_no_site_chooses_its_wiring_and_a_site_charger_cannot
 
     site_charger, _ = await setup_charger_and_site(hass, "entry_s")
     read = (await ws_call(client, get_message(site_charger.entry_id)))["result"]
-    assert all(item["field"] != "charger_phases" for item in read["config"]["fields"])
+    # A site holds the wiring: the field is stated, read-only, with the wiring the site says.
+    stated = [item for item in read["config"]["fields"] if item["field"] == "charger_phases"]
+    assert [(item["writable"], item["value"]) for item in stated] == [(False, "3")]
     refused = (
         await ws_call(
             client,

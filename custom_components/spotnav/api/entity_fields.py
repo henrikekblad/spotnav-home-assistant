@@ -73,8 +73,10 @@ from ..const import (
     MODE_DETECTED,
 )
 from ..planning.first_run import charger_phases_from_entry, site_for_charger
+from ..planning.phases import charger_wiring, DEFAULT_WIRING_PHASES
 from ..planning.grid_voltage import stored_voltage_between_phases_v
 from ..runtime import controller_for, site_controller_for
+from ..site.battery_limit import battery_import_limit, WARNING_CODE as BATTERY_LIMIT_WARNING
 from ..site.site_detection import (
     apply_meter_candidate,
     BatteryCandidate,
@@ -725,7 +727,18 @@ def charger_field_descriptors(hass: HomeAssistant, entry: ConfigEntry) -> list[d
                 },
             ]
             if site_for_charger(hass, entry.entry_id) is None
-            else []
+            else [
+                # The site holds the wiring of its chargers: stated here read-only, for the card to word.
+                {
+                    "field": FIELD_CHARGER_PHASES,
+                    "scope": "charger",
+                    "kind": "enum",
+                    "required": True,
+                    "writable": False,
+                    "value": str(charger_wiring(hass, entry.entry_id) or DEFAULT_WIRING_PHASES),
+                    "choices": list(CHARGER_PHASES_CHOICES),
+                }
+            ]
         ),
         *(
             [
@@ -1267,6 +1280,23 @@ def site_measurement_info(hass: HomeAssistant, entry: ConfigEntry) -> dict[str, 
         )
 
     warnings.extend(_external_balancer_warnings(hass))
+    battery_limit = battery_import_limit(hass, entry)
+    if battery_limit is not None and battery_limit.differs:
+        warnings.append(
+            {
+                "code": BATTERY_LIMIT_WARNING,
+                "integration": battery_limit.integration,
+                "entity_id": battery_limit.entity_id,
+                "interval_s": None,
+                "option": None,
+                "device_name": None,
+                "phases": [],
+                "limits_a": {
+                    "battery": round(battery_limit.battery_a, 1),
+                    "spotnav": round(battery_limit.spotnav_a, 1),
+                },
+            }
+        )
     problem = None if controller is None else controller.measurement_problem
     if problem is not None:
         warnings.insert(
@@ -1290,6 +1320,9 @@ def site_measurement_info(hass: HomeAssistant, entry: ConfigEntry) -> dict[str, 
                 ],
             },
         )
+    for warning in warnings:
+        # Only the battery limit warning states the two limits.
+        warning.setdefault("limits_a", None)
     detection = site_detection(hass, entry)
     return {
         "measurement": measurement,
