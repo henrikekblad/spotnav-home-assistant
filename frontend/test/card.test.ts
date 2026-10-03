@@ -238,7 +238,8 @@ describe("what the card hands to the dashboard", () => {
     expect(styles).toContain("var(--error-color, #db4437)");
     expect(styles).toContain("max-width: 100%");
     expect(styles).toContain("min-width: 0");
-    expect(styles).toContain("overflow-wrap: anywhere");
+    expect(styles).toContain("overflow-wrap: break-word");
+    expect(styles).not.toContain("overflow-wrap: anywhere");
     expect(styles).not.toMatch(/[^-]width:\s*\d+px/);
     // jsdom cannot measure layout, so the 320 px guarantee is asserted structurally: no fixed
     // widths anywhere, and every long value wraps instead of pushing the card wider.

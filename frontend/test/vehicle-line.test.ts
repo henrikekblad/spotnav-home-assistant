@@ -89,6 +89,28 @@ describe("the vehicle line", () => {
     expect(name.nextElementSibling).toBe(button);
   });
 
+  it("joins only the parts that exist, never with a leading or doubled separator", async () => {
+    const parts = async (changes: Record<string, unknown>, connection: boolean) => {
+      const payload = withSoc(changes, { driver: "manual_kwh" });
+      if (!connection) {
+        payload["connection"] = { state: "unknown" };
+      }
+      const { element } = await mounted(payload);
+      const spans = Array.from(line(element)!.querySelectorAll("span")).map((span) => span.textContent ?? "");
+      return spans.join(" ").replace(/\s+/g, " ").trim();
+    };
+    for (const name of [null, "", "  "]) {
+      const text = await parts({ value: 64, vehicle_name: name }, true);
+      expect(text.startsWith("\u00b7")).toBe(false);
+      expect(text).not.toContain("\u00b7 \u00b7");
+      expect(text.startsWith("64 %")).toBe(true);
+    }
+    const named = await parts({ value: 64, vehicle_name: "Kia" }, false);
+    expect(named).toBe("Kia \u00b7 64 %");
+    const old = await parts({ value: 64, vehicle_name: null, age_s: 7200, estimated: false }, false);
+    expect(old).toBe("64 % \u00b7 2 h ago");
+  });
+
   it("shows the target beside the charge while the target drives the plan", async () => {
     const { element } = await mounted(withSoc({ value: 62 }));
     expect(line(element)!.textContent).toContain("62 % → 80 %");

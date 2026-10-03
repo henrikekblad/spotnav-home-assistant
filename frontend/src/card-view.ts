@@ -822,23 +822,27 @@ export function createCardView(input: CardViewInput): CardView {
       vehicleButton.title = vehicleLine.estimateTitle;
       vehicleButton.dataset["estimated"] = "true";
     }
-    vehicleButton.append(
-      batteryIcon(doc),
-      element(doc, "span", C.vehicleLineName, vehicleLine.name),
-      element(doc, "span", C.vehicleLineCharge, `\u00b7 ${vehicleLine.estimatePrefix}${vehicleLine.charge}`),
-    );
+    vehicleButton.append(batteryIcon(doc));
+    // Only the parts that exist, each after the first behind a " · ": never a leading or doubled separator.
+    const parts: { cls: string; text: string; connection?: boolean }[] = [];
+    if (vehicleLine.name !== null) {
+      parts.push({ cls: C.vehicleLineName, text: vehicleLine.name });
+    }
+    parts.push({ cls: C.vehicleLineCharge, text: `${vehicleLine.estimatePrefix}${vehicleLine.charge}` });
     if (vehicleLine.age !== null) {
-      vehicleButton.append(element(doc, "span", C.vehicleLineAge, `\u00b7 ${vehicleLine.age}`));
+      parts.push({ cls: C.vehicleLineAge, text: vehicleLine.age });
     }
     if (connectionText !== null) {
-      const status = element(doc, "span", connectionClass(), `\u00b7 ${connectionText}`);
-      status.dataset["connection"] = model.connection?.state ?? "";
-      vehicleButton.append(status);
-      vehicleButton.setAttribute(
-        "aria-label",
-        `${vehicleLine.ariaLabel}, ${connectionText}`,
-      );
+      parts.push({ cls: connectionClass(), text: connectionText, connection: true });
     }
+    parts.forEach((part, index) => {
+      const span = element(doc, "span", part.cls, index === 0 ? part.text : `\u00b7 ${part.text}`);
+      if (part.connection === true) {
+        span.dataset["connection"] = model.connection?.state ?? "";
+        vehicleButton?.setAttribute("aria-label", `${vehicleLine.ariaLabel}, ${connectionText}`);
+      }
+      vehicleButton?.append(span);
+    });
     vehicleButton.addEventListener("click", () => {
       openVehicleChoice();
     });

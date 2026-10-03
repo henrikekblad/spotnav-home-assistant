@@ -23,7 +23,7 @@ export const CARD_STYLES = `
   .muted {
     color: var(--secondary-text-color, #727272);
     font-size: 0.85rem;
-    overflow-wrap: anywhere;
+    overflow-wrap: break-word;
   }
   dl {
     display: grid;
@@ -37,7 +37,7 @@ export const CARD_STYLES = `
   }
   dd {
     margin: 0;
-    overflow-wrap: anywhere;
+    overflow-wrap: break-word;
   }
   .error {
     color: var(--error-color, #db4437);
@@ -48,7 +48,7 @@ export const CARD_STYLES = `
     border-top: 1px solid var(--divider-color, #e0e0e0);
     color: var(--secondary-text-color, #727272);
     font-size: 0.75rem;
-    overflow-wrap: anywhere;
+    overflow-wrap: break-word;
   }
   button {
     margin-top: 10px;
