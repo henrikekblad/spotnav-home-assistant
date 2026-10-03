@@ -115,6 +115,37 @@ def test_catalogue_rejects_a_repeated_area_id_and_another_contract_version():
     assert versioned.value.code == "unsupported_version"
 
 
+def test_catalogue_skips_an_invalid_area_and_keeps_the_rest(caplog):
+    broken = json.loads(json.dumps(document("areas.json")))
+    broken["areas"].insert(1, {"id": "BAD", "countries": []})
+    broken["areas"].insert(0, "not an object")
+    broken["areas"][3]["tz"] = "Mars/Olympus"
+    skipped_id = broken["areas"][3]["id"]
+    with caplog.at_level("WARNING"):
+        catalogue = parse_catalogue(broken)
+    assert "BAD" not in catalogue.area_ids
+    assert skipped_id not in catalogue.area_ids
+    assert catalogue.area_ids == ("DE-LU", "NO1", "SE4")
+    assert "Skipping area" in caplog.text
+
+
+def test_catalogue_keeps_a_saved_area_when_another_entry_is_damaged():
+    broken = json.loads(json.dumps(document("areas.json")))
+    broken["areas"].append({"id": "TOOLONG-AREA-IDENTIFIER-1234567890", "name": 5})
+    catalogue = parse_catalogue(broken)
+    assert catalogue.area("SE4") is not None
+    assert len(catalogue.areas) == 4
+
+
+def test_catalogue_still_refuses_a_repeated_id_among_valid_entries():
+    twice = json.loads(json.dumps(document("areas.json")))
+    twice["areas"].insert(0, {"id": "X"})
+    twice["areas"].append(dict(twice["areas"][1]))
+    with pytest.raises(RelayParseError) as caught:
+        parse_catalogue(twice)
+    assert caught.value.code == "duplicate_area"
+
+
 def test_index_lists_today_and_tomorrow_and_omits_an_authoritative_absence():
     index = parse_index(document("index.json"))
 
@@ -135,14 +166,14 @@ def test_index_lists_today_and_tomorrow_and_omits_an_authoritative_absence():
     assert listed.lists(date(2026, 9, 21)) is True
 
 
-def test_index_refuses_a_damaged_day_list_and_an_unknown_resolution():
-    for name, code in (
-        ("index_days_unsorted.json", "unsorted_days"),
-        ("index_days_duplicate.json", "duplicate_day"),
-    ):
-        with pytest.raises(RelayParseError) as caught:
-            parse_index(document(name))
-        assert caught.value.code == code
+def test_index_skips_a_damaged_area_and_keeps_the_rest():
+    for name in ("index_days_unsorted.json", "index_days_duplicate.json"):
+        full = document(name)
+        damaged = [key for key in full["areas"]]
+        parsed = parse_index(full)
+        # The damaged entries are dropped one by one; nothing is read hopefully.
+        assert len(parsed.areas) < len(damaged)
+        assert all(entry.days == tuple(sorted(set(entry.days))) for entry in parsed.areas)
 
     with pytest.raises(RelayParseError) as versioned:
         parse_index(document("index_bad_version.json"))
@@ -153,9 +184,14 @@ def test_index_refuses_a_damaged_day_list_and_an_unknown_resolution():
 
     broken = document("index.json")
     broken["areas"]["SE4"]["res"] = 30
-    with pytest.raises(RelayParseError) as caught_res:
-        parse_index(broken)
-    assert caught_res.value.code == "invalid_resolution"
+    kept = parse_index(broken)
+    assert kept.area("SE4") is None
+    assert kept.area("NO1") is not None
+
+    # A damaged entry that is not even an object is skipped the same way.
+    odd = document("index.json")
+    odd["areas"]["XX1"] = "nope"
+    assert parse_index(odd).area("SE4") is not None
 
 
 def test_a_96_quarter_day_is_preserved_interval_by_interval():

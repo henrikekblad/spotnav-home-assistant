@@ -34,6 +34,7 @@ export const da: Record<keyof typeof en, string> = {
   "status.loadBalancingLimitedByBattery": "Hjemmebatteriet oplader fra nettet og deler hovedsikringen: bilen får {limit} A.",
   "status.loadBalancingLimitedByHouse": "Husets forbrug begrænser bilen til {limit} A.",
   "status.chargingNowOpen": "Lader nu.",
+  "status.startingUp": "Starter op…",
   "status.scheduledNoTime": "Opladning er planlagt.",
   "status.nothingToCharge": "Der er intet at lade lige nu.",
   "status.pausedShort": "Automatisk opladning er sat på pause.",

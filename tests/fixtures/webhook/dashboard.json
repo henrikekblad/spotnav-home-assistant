@@ -2205,6 +2205,11 @@
     "writable": true
   },
   "soc": null,
+  "starting_up": {
+    "active": false,
+    "until": null,
+    "waiting_for": []
+  },
   "status": {
     "lines": [
       {

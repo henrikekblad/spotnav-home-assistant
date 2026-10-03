@@ -342,6 +342,10 @@
       "params": [],
       "tone": "normal"
     },
+    "starting_up": {
+      "params": [],
+      "tone": "normal"
+    },
     "target_reached": {
       "params": [
         "basis",

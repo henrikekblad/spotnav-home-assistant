@@ -170,6 +170,16 @@ Wallbox's `status_description`, and the others with a status sensor); a value no
 a guess, and a charger that is only a switch is `charging` while the switch is on and `unknown` otherwise.
 A client shows nothing for `unknown` and ignores a state it does not know.
 
+The additive `starting_up` block, `{active, until, waiting_for}`, says the integration loaded a moment ago and
+a source is still awaited: a configured solar forecast that has not loaded (`forecast`, only for the hybrid
+strategy) or a charger whose status sensor and charge control still read unavailable or unknown (`charger`).
+It is on for at most three minutes after the integration loads and ends as soon as the sources report;
+`until` is that cap while it is on and `null` otherwise. While it is on, `status` is the single line
+`starting_up`, `live.charging` keeps its boolean (read it together with `starting_up`), and a
+hybrid `strategy_state` says `unknown` with reason `starting_up` instead of "no forecast". A client shows
+"Starting up…" and offers no Start or Stop meanwhile; an older backend has no block, and a client then
+behaves as before.
+
 The additive `sessions_summary` block holds this month's and last month's charge sessions
 (`sessions`, `energy_kwh`, `cost`, `currency`, `average_price_minor_per_kwh`, `solar_share`,
 `savings`). Cost is in the major unit, prices in the minor unit per kWh; `savings` compares with

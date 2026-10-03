@@ -2251,5 +2251,10 @@
   "connection": {
     "source": null,
     "state": "unknown"
+  },
+  "starting_up": {
+    "active": false,
+    "until": null,
+    "waiting_for": []
   }
 }

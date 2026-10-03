@@ -538,6 +538,7 @@ describe("the backend's dashboard strategy_state, site and status fixtures", () 
           "settings",
           "site",
           "soc",
+          "starting_up",
           "status",
           "strategy",
           "strategy_options",

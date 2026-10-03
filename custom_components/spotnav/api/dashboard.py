@@ -54,6 +54,7 @@ from ..execution.auto_execution import (
     pause_blocks_execution,
 )
 from ..execution.charger_entities import charge_control_problem
+from ..startup import NOT_STARTING, StartupState, startup_state
 from ..execution.charger_connection import CONNECTION_STATES, UNKNOWN as CONNECTION_UNKNOWN
 from ..execution.charge_progress import ChargeProgress, NOT_OBSERVED
 from ..execution.controller import (
@@ -404,6 +405,8 @@ class CapturedDashboard:
     sessions_summary: dict[str, Any] | None = None
     #: The charger's connection state and the entity it was read from (`execution/charger_connection.py`).
     connection: tuple[str, str | None] = (CONNECTION_UNKNOWN, None)
+    #: The start-up grace (`startup.py`): what is still awaited right after the integration loaded.
+    starting_up: StartupState = NOT_STARTING
 
 
 def capture_target(controller: ChargingController | None) -> CapturedTarget | None:
@@ -827,6 +830,15 @@ def _held_documents(
     return (tuple(documents), tuple(held))
 
 
+def _forecast_pending(settings: Any, site: CapturedSite | None) -> bool:
+    """Whether hybrid waits for a configured solar forecast that has not yet loaded: sources are
+    chosen and none has been read. Only the hybrid strategy depends on one.
+    """
+    if settings is None or strategy_of(settings) != STRATEGY_HYBRID or site is None:
+        return False
+    return bool(site.solar_forecast_selected) and not (site.hybrid_state or {}).get("forecast_sources")
+
+
 def capture_dashboard(
     hass: HomeAssistant,
     entry: ConfigEntry,
@@ -871,6 +883,13 @@ def capture_dashboard(
     )
 
     vehicles, target_vehicle_id = capture_vehicles(hass, entry_id, settings)
+    site = capture_site(hass, entry_id, forecast_domains=forecast_domains)
+    starting_up = startup_state(
+        now=now,
+        started_at=domain_data(hass).started_at,
+        forecast_pending=_forecast_pending(settings, site),
+        charger_pending=bool(controller is not None and controller.states_unreported),
+    )
     return CapturedDashboard(
         generated_at=now,
         charger=capture_charger(hass, entry),
@@ -882,6 +901,7 @@ def capture_dashboard(
         days=days,
         plan=None if controller is None else controller.plan,
         live=CapturedLive(
+            # Always a boolean (a paired app decodes it strictly); "not yet known" is `starting_up`.
             charging=bool(controller is not None and controller.charging),
             schedule_active=bool(controller is not None and controller.plan is not None),
             requested_current_a=None if controller is None else controller.requested_current_a,
@@ -907,7 +927,7 @@ def capture_dashboard(
         ),
         intervals=intervals,
         pause_choices=() if executor is None else executor.pause_choices(),
-        site=capture_site(hass, entry_id, forecast_domains=forecast_domains),
+        site=site,
         charge_progress=NOT_OBSERVED if controller is None else controller.charge_progress,
         current_range=(
             current_range_dict(CURRENT_RANGE_DEFAULT_MAX_A, CURRENT_RANGE_SOURCE_DEFAULT)
@@ -931,6 +951,7 @@ def capture_dashboard(
         duplicates=tuple(found.title for found in duplicates_of(hass, entry)),
         sessions_summary=sessions_block(hass, entry_id, now),
         connection=(CONNECTION_UNKNOWN, None) if controller is None else controller.connection(),
+        starting_up=starting_up,
     )
 
 
@@ -1451,6 +1472,19 @@ def serialize_dashboard(
         "summary": serialize_summary(capture.summary),
         "sessions_summary": capture.sessions_summary,
         "connection": serialize_connection(capture.connection),
+        "starting_up": serialize_starting_up(capture.starting_up),
+    }
+
+
+def serialize_starting_up(state: StartupState) -> dict[str, Any]:
+    """The additive `starting_up` block: `active`, `until` (the cap, `null` when not active) and
+    `waiting_for`, a list of `forecast` and `charger`. While active the card says "Starting up…" and
+    offers no Start or Stop; `live.charging` stays a boolean.
+    """
+    return {
+        "active": state.active,
+        "until": aware_iso(state.until),
+        "waiting_for": list(state.waiting_for),
     }
 
 
@@ -1589,6 +1623,9 @@ def serialize_strategy_state(capture: CapturedDashboard) -> dict[str, Any] | Non
         }
     if selected == STRATEGY_HYBRID:
         state = (site.hybrid_state if site is not None else None) or {}
+        if "forecast" in capture.starting_up.waiting_for:
+            # A configured forecast has not loaded yet: not "no forecast source".
+            state = {**state, "state": "unknown", "reason": "starting_up"}
         return {
             "state": _text(state.get("state")) or "unknown",
             "reason": _text(state.get("reason")),
@@ -1799,6 +1836,7 @@ def status_facts(capture: CapturedDashboard) -> StatusFacts:
         ),
         site_measurement=None if site is None else _measurement_facts(site.measurement_problem),
         duplicate_chargers=capture.duplicates,
+        starting_up=capture.starting_up.active,
         load_balancing_capable=bool(capture.charger.capability_map().get("load_balancing")),
         load_balancing=None
         if site is None

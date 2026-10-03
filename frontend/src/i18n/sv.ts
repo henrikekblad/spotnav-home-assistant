@@ -34,6 +34,7 @@ export const sv: Record<keyof typeof en, string> = {
   "status.loadBalancingLimitedByBattery": "Hemmabatteriet laddar från nätet och delar huvudsäkringen: bilen får {limit} A.",
   "status.loadBalancingLimitedByHouse": "Hushållets förbrukning begränsar bilen till {limit} A.",
   "status.chargingNowOpen": "Laddar nu.",
+  "status.startingUp": "Startar upp…",
   "status.scheduledNoTime": "Laddning är schemalagd.",
   "status.nothingToCharge": "Inget att ladda just nu.",
   "status.pausedShort": "Automatisk laddning är pausad.",

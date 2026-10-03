@@ -2212,5 +2212,10 @@
     "vehicles": {}
   },
   "target_vehicle_id": null,
-  "vehicles": []
+  "vehicles": [],
+  "starting_up": {
+    "active": false,
+    "until": null,
+    "waiting_for": []
+  }
 }

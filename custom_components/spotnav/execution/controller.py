@@ -678,6 +678,17 @@ class ChargingController:
         return self.adapter.connection()
 
     @property
+    def states_unreported(self) -> bool:
+        """Whether the charger has not yet reported anything usable: its status sensor (when one is
+        configured) is missing, unavailable or unknown, and so is its charge control. Right after a
+        restart this is every charger, and the card then says it is starting up rather than "off".
+        """
+        if self.adapter.status_readable():
+            return False
+        state = self.hass.states.get(self.charge_control)
+        return state is None or state.state in (STATE_UNAVAILABLE, STATE_UNKNOWN)
+
+    @property
     def charger_disabled(self) -> bool:
         """Whether the charger's own enable switch is off (Easee's `is_enabled`): it cannot start while
         it is, and SpotNav never writes that switch.
