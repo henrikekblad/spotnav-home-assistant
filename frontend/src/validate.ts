@@ -1279,6 +1279,7 @@ export const STATUS_CODE_TABLE = {
   charger_disabled: ["notice", {}],
   held_until_window: ["normal", { time: "instant" }],
   hold_overridden: ["notice", {}],
+  remaining_need_estimated: ["notice", { kwh: "number", basis: "text" }],
   site_measurement_problem: [
     "notice",
     { no_value_phases: "codes", no_value_entities: "codes", stale_phases: "codes", max_age_s: "numberOrNull" },

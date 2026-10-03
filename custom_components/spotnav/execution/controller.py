@@ -102,6 +102,10 @@ START_CAUSE_TTL_S = 300.0
 # Token for hybrid window-end handoff logs (see `_async_end_callback`).
 HYBRID_LOG_TOKEN = "HYBRID"
 
+#: What a connection handler is told (`set_connection_handler`): a vehicle was plugged in, or unplugged.
+CONNECTION_PLUGGED_IN = "plugged_in"
+CONNECTION_UNPLUGGED = "unplugged"
+
 # Stable codes an installation failure is reported with; the message beside each is for the log.
 EXECUTION_STORAGE_FAILED = "storage_failed"
 EXECUTION_RESCHEDULE_FAILED = "reschedule_failed"
@@ -430,6 +434,19 @@ class ChargingController:
         # What the site lets a start give the car (`set_start_cap`); `None` means no cap applies.
         self._start_cap: Callable[[], float | None] | None = None
         self._last_connected: bool | None = None
+        # The last connection the charger reported in so many words (`None` until it said one): only a
+        # change between two known states is a plug-in or an unplug, never a status that comes back after
+        # a restart or a blip through `unavailable`.
+        self._known_connected: bool | None = None
+        #: When a vehicle was last seen plugged in (known unplugged, then known plugged in). Persisted: a
+        #: charge counted per plug-in must not start counting again after a restart.
+        self._plugged_in_at: datetime | None = None
+        # Who is told about a plug-in or an unplug (`set_connection_handler`); it answers whether it
+        # takes care of starting an open window itself (Auto replans first).
+        self._connection_handler: Callable[[str], bool] | None = None
+        # The end of the window a person stopped the charge in: until then a plug-in or a new plan
+        # does not start that window again. In memory only, as a person's Stop has always been.
+        self._person_stop_until: datetime | None = None
         # Whether the charge that runs was started by a plan window of ours (not a person's Start, not
         # solar). Persisted: a restart outside every window must still know the charge is ours.
         self._plan_charge = False
@@ -576,6 +593,9 @@ class ChargingController:
             self._plan_charge = saved.get("plan_charge") is True
             origin = saved.get("charge_origin")
             self._charge_origin = origin if isinstance(origin, str) else None
+            plugged = saved.get("plugged_in_at")
+            parsed = dt_util.parse_datetime(plugged) if isinstance(plugged, str) else None
+            self._plugged_in_at = parsed if parsed is not None and parsed.tzinfo is not None else None
             raw_requested = saved.get("requested_current_a")
             validated_requested = _validate_stored_amps(raw_requested)
             if raw_requested is not None and validated_requested is None:
@@ -772,9 +792,134 @@ class ChargingController:
         """
         self._maybe_resend_current(event)
         self._maybe_write_after_start(event)
+        self._observe_connection()
         changed = self._observe_hold()
         if self._charge_progress.evaluate() or changed:
             self._notify()
+
+    def _observe_connection(self) -> None:
+        """Notice a plug-in or an unplug: a change between two connection states the charger reported.
+
+        A plug-in is remembered (`plugged_in_at`) and handed to the connection handler, which replans; a
+        plug-in inside an open window of the installed plan starts that window now unless the handler
+        takes care of it (`async_start_on_plug_in`).
+        """
+        connected = self.adapter.vehicle_connected()
+        if connected is None:
+            return
+        previous = self._known_connected
+        self._known_connected = connected
+        if previous is None or previous == connected:
+            return
+        event = CONNECTION_PLUGGED_IN if connected else CONNECTION_UNPLUGGED
+        if connected:
+            self._plugged_in_at = dt_util.utcnow()
+            self.hass.async_create_task(self._async_save_connection())
+        _LOGGER.debug("SpotNav charger %s: vehicle %s", self.entry_id, event)
+        handled = False
+        handler = self._connection_handler
+        if handler is not None:
+            try:
+                handled = bool(handler(event))
+            except Exception:  # noqa: BLE001 - a failing handler must not stop the observation
+                _LOGGER.debug("Connection handler failed", exc_info=True)
+        if connected and not handled:
+            self.hass.async_create_task(self.async_start_on_plug_in())
+
+    async def _async_save_connection(self) -> None:
+        async with self._lock:
+            await self._async_save_quietly()
+
+    def set_connection_handler(self, handler: Callable[[str], bool] | None) -> None:
+        """Set (or clear) who hears of a plug-in or an unplug (`CONNECTION_*`). It returns whether it
+        starts an open window itself after replanning; otherwise this controller does, at once.
+        """
+        self._connection_handler = handler
+
+    @property
+    def plugged_in_at(self) -> datetime | None:
+        """When a vehicle was last seen plugged in, or `None` when no plug-in has been seen."""
+        return self._plugged_in_at
+
+    def _person_stopped_now(self) -> bool:
+        until = self._person_stop_until
+        if until is None:
+            return False
+        if dt_util.utcnow() >= until:
+            self._person_stop_until = None
+            return False
+        return True
+
+    def _open_window_end(self) -> datetime | None:
+        """The end of the plan's window open now, or `None`."""
+        plan = self.plan
+        if plan is None:
+            return None
+        try:
+            windows = plan.windows
+        except ValueError:
+            return None
+        now = dt_util.utcnow()
+        return next((end for start, end in windows if start <= now < end), None)
+
+    async def async_start_on_plug_in(self) -> bool:
+        """A vehicle was plugged in: start the installed plan's window that is open now, as its start
+        would have. Returns whether a start was sent.
+
+        Nothing starts while something else owns the charger (Auto paused, solar), after a person
+        stopped the charge in this window, when the charge control already runs, or when the plan's
+        target is reached; a start is capped by load balancing as every start is (`_start_locked`).
+        """
+        async with self._lock:
+            return await self._plug_in_start_locked()
+
+    async def _plug_in_start_locked(self) -> bool:
+        if self._open_window_end() is None or self._target_stopping:
+            return False
+        if self._hold_blocked() or self._person_stopped_now():
+            return False
+        if self.adapter.vehicle_connected() is False or self._control_on:
+            return False
+        if await self._enforce_target_locked():
+            return False
+        _LOGGER.info("SpotNav charger %s: plugged in inside a planned window, starting", self.entry_id)
+        return await self._start_locked(cause="plan_window")
+
+    async def async_end_plan_need_met(self) -> bool:
+        """The need is met before the plan ran out: stop the charge the plan started (or one that
+        started by itself inside its window) and clear the windows still ahead. A person's Start and a
+        solar charge go on. Returns whether a plan was cleared.
+        """
+        async with self._lock:
+            if self.plan is None:
+                return False
+            if self.plan.target_soc_percent is not None:
+                if await self._enforce_target_locked():
+                    # The target's own stop, with its record: the reading says what the plan said.
+                    return True
+                if self._control_on and self.plan_window_active_now:
+                    # A charge running in its window stops on the target's own evidence (an estimate
+                    # needs its margin), never earlier on the planner's word.
+                    return False
+            stop = self._control_on and (
+                self._plan_charge
+                or (self.plan_window_active_now and self._charge_origin is None and not self._hold_blocked())
+            )
+            _LOGGER.info(
+                "SpotNav charger %s: the need is met, clearing the plan%s",
+                self.entry_id,
+                " and stopping the charge" if stop else "",
+            )
+            if stop:
+                await self._stop_locked(clear_schedule=True)
+                return True
+            self.plan = None
+            self._cancel_timers()
+            self._async_disarm_target_listener()
+            self._async_disarm_probe_listener()
+            await self._async_save()
+            self._notify()
+            return True
 
     def _hold_blocked(self) -> bool:
         """Whether something else owns the charger (a pause, solar execution): nothing is held then."""
@@ -990,6 +1135,7 @@ class ChargingController:
         # A charge that already runs is not "seen" later: only a start after this point is.
         self._hold.baseline(self._control_observation)
         self._last_connected = self.adapter.vehicle_connected()
+        self._known_connected = self._last_connected
 
     def charge_phase_currents(self) -> tuple[float | None, ...] | None:
         """The charger's measured current per phase: its own three current entities, else its site's
@@ -1152,6 +1298,8 @@ class ChargingController:
         """The follow itself. Runs with the operation lock held."""
         if self.plan is None:
             raise HomeAssistantError("No charging schedule is active")
+        # A person asking to follow the plan again ends their own Stop of the window open now.
+        self._person_stop_until = None
         await self._reschedule_locked()
 
     async def async_start(
@@ -1246,6 +1394,8 @@ class ChargingController:
           the load balancer computes against.
         """
         self._paused_by_balancing = False
+        if manual:
+            self._person_stop_until = None
         if manual and self._target_stop is not None:
             self._target_stop = None
             await self._async_save()
@@ -1297,13 +1447,12 @@ class ChargingController:
         if not self._control_on:
             # Recorded before the first await: an accepted Start the charger has not answered is not
             # a failure, and the observation must not blame the car (see `charge_progress.py`).
-            self._start_sent_at = dt_util.utcnow()
+            sent_at = self._start_sent_at = dt_util.utcnow()
             executed = await self.adapter.async_start(explicit_amps)
             if executed:
-                self._start_cause = (
-                    ("manual" if manual else cause or "other"),
-                    self._start_sent_at,
-                )
+                # The local, not the attribute: a charger that reports charging before the command
+                # returns has already cleared `_start_sent_at` (`start_pending`).
+                self._start_cause = (("manual" if manual else cause or "other"), sent_at)
             if not executed:
                 # The command never went out: nothing is awaiting an answer, and nothing may say so.
                 self._start_sent_at = None
@@ -1654,11 +1803,14 @@ class ChargingController:
             "session_limit_state": None if session_state is None else str(session_state.state),
         }
 
-    async def async_stop(self, *, clear_schedule: bool = False) -> None:
+    async def async_stop(self, *, clear_schedule: bool = False, person: bool = False) -> None:
         """Stop charging, optionally removing the saved schedule. Takes the operation lock and
-        delegates to `_stop_locked`.
+        delegates to `_stop_locked`. `person` marks a person's Stop: inside an open window it keeps a
+        plug-in or a new plan from starting that window again (`async_start_on_plug_in`).
         """
         async with self._lock:
+            if person:
+                self._person_stop_until = self._open_window_end()
             await self._stop_locked(clear_schedule=clear_schedule)
 
     async def _stop_locked(self, *, clear_schedule: bool = False) -> None:
@@ -1857,6 +2009,7 @@ class ChargingController:
                 "requested_current_a": self._requested_current_a,
                 "plan_charge": self._plan_charge,
                 "charge_origin": self._charge_origin,
+                "plugged_in_at": None if self._plugged_in_at is None else self._plugged_in_at.isoformat(),
                 # Written only by the target-stop path. A window ending normally and an explicit cancel
                 # record nothing here (`async_stop` does not touch this key).
                 "target_stop": self._target_stop,
@@ -1895,7 +2048,10 @@ class ChargingController:
                 await self._stop_locked(clear_schedule=False)
             return
         active = any(start <= now < end for start, end in windows)
-        if active:
+        if active and self._person_stopped_now():
+            # A person stopped the charge in the window open now: a new plan waits for its next window.
+            pass
+        elif active:
             # A window already open is a window start like any other and goes through the veto, so
             # a restart mid-window cannot switch a charger on for a car already at target.
             if await self._start_window_locked():

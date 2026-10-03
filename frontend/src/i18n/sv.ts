@@ -80,6 +80,8 @@ export const sv: Record<keyof typeof en, string> = {
   "issue.heldByCharger": "Laddarens eget schema eller lastbalansering håller tillbaka laddningen, så den har inte startat.",
   "issue.chargerDisabled": "Laddarens egen aktiveringsbrytare är av, så den kan inte starta. Slå på den i laddarens inställningar.",
   "issue.holdOverridden": "Laddningen startades utanför planen och får fortsätta.",
+  "issue.needKept": "Energimätaren kan inte läsas: {kwh} kWh återstår enligt dess senaste värde.",
+  "issue.needFromSessions": "Ingen energimätare: {kwh} kWh återstår, räknat från laddarens sparade laddningar.",
   "status.siteMeasurement.stale.other": "{phases} är äldre än {seconds} s.",
   "status.siteMeasurement.stale.one": "{phases} är äldre än {seconds} s.",
   "status.siteMeasurement.noValue.other": "{phases} saknar värde{where}.",

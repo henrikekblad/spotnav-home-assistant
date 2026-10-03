@@ -1415,9 +1415,25 @@ def serialize_plan(capture: CapturedDashboard) -> dict[str, Any]:
             "applied_identity": _text(capture.execution.applied_identity),
             "pending_identity": _text(capture.execution.pending_identity),
         },
-        # Null until something tracks delivered charge; a guess dressed as progress is worse.
-        "delivered_kwh": None,
-        "remaining_kwh": None,
+        # A manual need's count (`AutoSnapshot.remaining_kwh`): what remains and what was delivered
+        # toward it, null where nothing tracks it (a target, or nothing delivered is known).
+        **_need_progress(capture.snapshot),
+    }
+
+
+def _need_progress(snapshot: AutoSnapshot | None) -> dict[str, float | None]:
+    """`delivered_kwh` and `remaining_kwh` of a manual need, rounded to 0.01 kWh; null when unknown.
+
+    The whole request planned for want of any count (`requested`) says nothing delivered is known, so
+    it stays null rather than show a guess as progress.
+    """
+    if snapshot is None or snapshot.energy_basis in (None, "requested"):
+        return {"delivered_kwh": None, "remaining_kwh": None}
+    remaining = finite_number(snapshot.remaining_kwh)
+    delivered = finite_number(snapshot.delivered_kwh)
+    return {
+        "delivered_kwh": None if delivered is None else round(delivered, 2),
+        "remaining_kwh": None if remaining is None else round(remaining, 2),
     }
 
 
@@ -1824,6 +1840,8 @@ def status_facts(capture: CapturedDashboard) -> StatusFacts:
             history_weekday=None if snapshot.history is None else snapshot.history.weekday,
             history_percent=None if snapshot.history is None else snapshot.history.percent,
             history_weeks=None if snapshot.history is None else snapshot.history.weeks,
+            energy_basis=snapshot.energy_basis,
+            remaining_kwh=finite_number(snapshot.remaining_kwh),
         )
     proposal = None
     section = _proposal_section(capture)

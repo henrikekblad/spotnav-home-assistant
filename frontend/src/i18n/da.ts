@@ -80,6 +80,8 @@ export const da: Record<keyof typeof en, string> = {
   "issue.heldByCharger": "Laderens eget skema eller lastbalancering holder opladningen tilbage, så den er ikke startet.",
   "issue.chargerDisabled": "Laderens egen aktiveringskontakt er slået fra, så den kan ikke starte. Slå den til i laderens indstillinger.",
   "issue.holdOverridden": "Opladningen blev startet uden for planen og må fortsætte.",
+  "issue.needKept": "Energimåleren kan ikke aflæses: {kwh} kWh mangler ifølge seneste aflæsning.",
+  "issue.needFromSessions": "Ingen energimåler: {kwh} kWh mangler, regnet ud fra laderens gemte opladninger.",
   "status.siteMeasurement.stale.other": "{phases} er ældre end {seconds} s.",
   "status.siteMeasurement.stale.one": "{phases} er ældre end {seconds} s.",
   "status.siteMeasurement.noValue.other": "{phases} har ingen værdi{where}.",

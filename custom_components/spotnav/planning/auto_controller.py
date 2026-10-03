@@ -19,6 +19,7 @@ from typing import Any, Callable, Final, Literal
 
 from homeassistant.core import callback, HomeAssistant
 from homeassistant.exceptions import HomeAssistantError
+from homeassistant.helpers.event import async_track_state_change_event
 from homeassistant.util import dt as dt_util
 
 from . import history_wait, price_wait
@@ -41,7 +42,14 @@ from ..pricing.market_observation import MarketObservation
 from ..pricing.price_refresh import PriceRefreshManager
 from ..pricing.relay_contract import AreaEntry
 from ..runtime import domain_data
-from ..vehicles.soc_estimate import read_energy_register_kwh, SocReader, target_need_kwh
+from ..execution.controller import CONNECTION_PLUGGED_IN
+from ..sessions.recorder import RESET_TOLERANCE_KWH
+from ..vehicles.soc_estimate import (
+    read_energy_register_kwh,
+    REGISTER_TOLERANCE_KWH,
+    SocReader,
+    target_need_kwh,
+)
 from ..vehicles.vehicle_discovery import resolve_target_vehicle
 from .auto_settings import (
     AutoSettings,
@@ -78,6 +86,32 @@ _LOGGER = logging.getLogger(__name__)
 
 #: Owner id prefix for the refresh-manager subscription; never stored.
 OWNER_PREFIX: Final = "auto:"
+
+#: A plug-in or unplug is planned for once its status has settled this long (a connector passes
+#: through a few values on the way).
+CONNECTION_DEBOUNCE_S: Final = 5.0
+
+#: A register that falls to this or below starts again from zero (one that counts per plug-in): what it
+#: shows is what it counted since. The session recorder reads registers the same way.
+SESSION_REGISTER_ZERO_KWH: Final = RESET_TOLERANCE_KWH
+
+
+def _delivered_kwh(baseline: EnergyBaseline, reading: float) -> tuple[float, EnergyBaseline]:
+    """The energy delivered in a baseline's epoch at `reading`, and the baseline counted from after a
+    register that started again (unchanged otherwise).
+
+    A step back below the last reading (beyond noise) is a register that started again: what it counted
+    up to its last reading is carried, and it counts from zero when it fell to about zero, else from its
+    new reading.
+    """
+    reference = baseline.register_kwh if baseline.register_kwh is not None else reading
+    last = baseline.last_register_kwh if baseline.last_register_kwh is not None else reference
+    carried = baseline.carried_kwh
+    if reading < last - REGISTER_TOLERANCE_KWH:
+        carried += max(0.0, last - reference)
+        reference = 0.0 if reading <= SESSION_REGISTER_ZERO_KWH else reading
+        baseline = replace(baseline, register_kwh=reference, carried_kwh=round(carried, 6))
+    return carried + max(0.0, reading - reference), baseline
 
 AutoState = Literal[
     "incomplete_settings",
@@ -182,6 +216,13 @@ class _EnergyResolution:
 
     kwh: float
     delivered_energy_trustworthy: bool
+    #: How a manual need was counted: `register` (the energy register vouches for it), `kept` (the
+    #: register cannot be read, the last remainder it vouched for is kept), `sessions` (no register,
+    #: counted from the charger's recorded sessions) or `requested` (nothing delivered is known);
+    #: `None` for a target, whose live state of charge already says it.
+    basis: str | None = None
+    #: The energy counted as delivered toward this need, when the basis knows it.
+    delivered_kwh: float | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -236,6 +277,11 @@ class AutoSnapshot:
     #: Which rule decided a plan that needed unpublished prices: `history` (`history_wait`) or `implicit`
     #: (the daily wait for the publication, `price_wait`); `None` when nothing was unpublished.
     wait_rule: str | None = None
+    #: `manual_kwh` only: how the remaining need was counted (`_EnergyResolution.basis`), the need that
+    #: remains and the energy already delivered toward it; `None` where not counted.
+    energy_basis: str | None = None
+    remaining_kwh: float | None = None
+    delivered_kwh: float | None = None
 
     def meaningful_key(self) -> tuple[Any, ...]:
         """What a listener hears about, and is not told twice.
@@ -267,6 +313,8 @@ class AutoSnapshot:
             self.must_buy_kwh,
             None if self.history is None else (self.history.outcome, self.history.percent, self.history.weekday),
             self.wait_rule,
+            self.energy_basis,
+            None if self.remaining_kwh is None else round(self.remaining_kwh, 1),
             None if self.proposal is None else self._proposal_key(self.proposal),
         )
 
@@ -345,6 +393,14 @@ class AutoPlannerController:
         # The one appointment kept with the clock: the latest safe start of a plan waiting for prices,
         # made through the manager's scheduler so tests can drive time.
         self._wake_cancel: Callable[[], None] | None = None
+        # The departure's own appointment (`_arm_departure`), the settling plug-in or unplug
+        # (`note_connection`) and the energy register watched while a manual need counts on it.
+        self._departure_cancel: Callable[[], None] | None = None
+        self._connection_cancel: Callable[[], None] | None = None
+        self._plug_in_pending = False
+        self._energy_cancel: Callable[[], None] | None = None
+        self._energy_watched: str | None = None
+        self._energy_recalculating = False
 
         self._listeners: list[Callable[[AutoSnapshot], None]] = []
         self._unsubscribe: Callable[[], None] | None = None
@@ -374,6 +430,9 @@ class AutoPlannerController:
         self._generation += 1
         self._drop_subscription()
         self._cancel_wake()
+        self._cancel_departure()
+        self._cancel_connection()
+        self._drop_energy_watch()
         # Forced: shutdown takes a new attempt, so the gate would otherwise drop the stopped state.
         self._publish(await self._state_only("planning_unavailable", "shutdown"), force=True)
         self._listeners.clear()
@@ -707,6 +766,18 @@ class AutoPlannerController:
         return self._republish_execution(snapshot)
 
     async def _compute(self, settings: AutoSettings, attempt: int) -> AutoSnapshot:
+        """`_compute_plan`, with how a manual need was counted stamped on whatever it returns, and the
+        departure's own appointment armed (the instant it passes, the next occurrence is planned).
+        """
+        energy: dict[str, Any] = {}
+        snapshot = await self._compute_plan(settings, attempt, energy)
+        self._arm_departure(settings)
+        self._arm_energy_watch(settings)
+        return replace(snapshot, **energy) if energy else snapshot
+
+    async def _compute_plan(
+        self, settings: AutoSettings, attempt: int, energy: dict[str, Any]
+    ) -> AutoSnapshot:
         """Settings and prices in, one snapshot out.
 
         Order follows dependency: authority, inputs Auto cannot guess, prices, plan. Every failure
@@ -768,6 +839,12 @@ class AutoPlannerController:
             return resolved
         energy_kwh = resolved.kwh
         delivered_energy_trustworthy = resolved.delivered_energy_trustworthy
+        if resolved.basis is not None:
+            energy.update(
+                energy_basis=resolved.basis,
+                remaining_kwh=resolved.kwh,
+                delivered_kwh=resolved.delivered_kwh,
+            )
 
         if energy_kwh <= 0:
             # A manual need fully delivered: answered like `target_soc`'s `already_at_target`, since
@@ -1283,16 +1360,170 @@ class AutoPlannerController:
         The key changes when the departure changes or its occurrence passes. It reuses
         `planner.resolve_departure` anchored on `calculated_at`, independent of price data; a
         one-slot disagreement near a boundary is immaterial for an epoch marker. With no deadline the
-        key is a fixed epoch.
+        need is counted per plug-in (`plugin:` and the instant the charger saw the vehicle arrive); a
+        charger that has never reported one keeps the fixed epoch.
         """
         if not settings.departure_enabled:
-            return "no_deadline"
+            plugged_in_at = self._plugged_in_at()
+            if plugged_in_at is None:
+                return "no_deadline"
+            return f"plugin:{plugged_in_at.astimezone(timezone.utc).isoformat()}"
+        instant = self._departure_instant(settings, calculated_at, entry)
+        return "no_deadline" if instant is None else instant.isoformat()
+
+    def _departure_instant(
+        self, settings: AutoSettings, calculated_at: datetime, entry: AreaEntry
+    ) -> datetime | None:
+        """The departure the plan is for now (the chosen date's, else the next occurrence), or `None`
+        without a departure."""
+        if not settings.departure_enabled:
+            return None
         dated = self._effective_departure_date(settings, entry, calculated_at)
         if dated is not None:
             zone = dt_util.get_time_zone(entry.tz)
-            return local_instant(dated, settings.departure, zone).isoformat()
-        resolved = resolve_departure(calculated_at, entry.tz, settings.departure, calculated_at)
-        return resolved.isoformat()
+            if zone is None:
+                return None
+            return local_instant(dated, settings.departure, zone)
+        return resolve_departure(calculated_at, entry.tz, settings.departure, calculated_at)
+
+    def _plugged_in_at(self) -> datetime | None:
+        """When the charger last saw a vehicle plugged in, or `None` (no executor, or never seen)."""
+        if self._executor is None:
+            return None
+        return self._executor.controller.plugged_in_at
+
+    def _arm_departure(self, settings: AutoSettings) -> None:
+        """One appointment at the departure the plan is for: when it passes, the next occurrence is
+        planned (and its energy counted afresh) without waiting for the next price."""
+        self._cancel_departure()
+        if self._shutdown or not settings.departure_enabled or not settings.area_id:
+            return
+        entry = self._manager.catalogue_snapshot().area(settings.area_id)
+        if entry is None:
+            return
+        try:
+            instant = self._departure_instant(settings, self._now(), entry)
+        except Exception:  # noqa: BLE001 - an appointment is a convenience, never a failure
+            _LOGGER.debug("Resolving the departure appointment failed", exc_info=True)
+            return
+        if instant is None:
+            return
+        target = instant.astimezone(timezone.utc) + timedelta(seconds=1)
+        generation = self._generation
+
+        @callback
+        def departed(_now: datetime) -> None:
+            self._departure_cancel = None
+            if self._shutdown or generation != self._generation:
+                return
+            if self._now() < target:
+                # Early (a scheduler that fired ahead of time): wait for the instant itself.
+                self._departure_cancel = self._manager.schedule_at(target, departed)
+                return
+            self._hass.async_create_task(self._on_area_changed(generation))
+
+        self._departure_cancel = self._manager.schedule_at(target, departed)
+
+    def _cancel_departure(self) -> None:
+        if self._departure_cancel is not None:
+            self._departure_cancel()
+            self._departure_cancel = None
+
+    @callback
+    def note_connection(self, event: str) -> bool:
+        """The charger saw a vehicle plugged in or unplugged: plan again shortly (a status that settles
+        through a few values is one event), and after a plug-in start the plan's window open now.
+
+        Returns whether the start after a plug-in is taken care of here (an executor that can run it).
+        """
+        if self._shutdown:
+            return False
+        self._cancel_connection()
+        if event == CONNECTION_PLUGGED_IN:
+            self._plug_in_pending = True
+
+        @callback
+        def settled(_now: datetime) -> None:
+            self._connection_cancel = None
+            if self._shutdown:
+                return
+            plug_in = self._plug_in_pending
+            self._plug_in_pending = False
+            self._hass.async_create_task(self._async_replan_for_connection(plug_in))
+
+        self._connection_cancel = self._manager.schedule_at(
+            self._now() + timedelta(seconds=CONNECTION_DEBOUNCE_S), settled
+        )
+        return self._executor is not None
+
+    def _cancel_connection(self) -> None:
+        if self._connection_cancel is not None:
+            self._connection_cancel()
+            self._connection_cancel = None
+
+    async def _async_replan_for_connection(self, plug_in: bool) -> None:
+        """Plan again for the vehicle that arrived or left; after a plug-in, start an open window."""
+        if self._shutdown:
+            return
+        try:
+            if self._executor is not None:
+                await self._executor.async_settle_pause()
+            self._publish(await self._calculate(self._store.settings(self._entry_id)))
+        except Exception as err:  # noqa: BLE001 - a replan is retried by the next event
+            _LOGGER.warning("Replanning after a plug-in or unplug failed: %s", type(err).__name__)
+        if plug_in and self._executor is not None and not self._shutdown:
+            try:
+                await self._executor.async_start_on_plug_in()
+            except Exception as err:  # noqa: BLE001 - reported; the window's own timers still run
+                _LOGGER.warning("Starting a window after a plug-in failed: %s", type(err).__name__)
+
+    def _arm_energy_watch(self, settings: AutoSettings) -> None:
+        """Watch the energy register while a `manual_kwh` need is counted against it, so the charge
+        stops when the energy is delivered (`_on_energy_reading`), as a target stops at its state of
+        charge."""
+        entity_id = None if settings.driver == DRIVER_TARGET_SOC else self._energy_register_entity_id()
+        if entity_id == self._energy_watched:
+            return
+        self._drop_energy_watch()
+        if entity_id is None or self._shutdown:
+            return
+        self._energy_watched = entity_id
+        self._energy_cancel = async_track_state_change_event(
+            self._hass, [entity_id], self._on_energy_reading
+        )
+
+    def _drop_energy_watch(self) -> None:
+        if self._energy_cancel is not None:
+            self._energy_cancel()
+        self._energy_cancel = None
+        self._energy_watched = None
+
+    @callback
+    def _on_energy_reading(self, _event: Any = None) -> None:
+        """A new register reading: when it shows the manual need delivered while Auto's plan is still
+        installed, plan again now, which ends that plan (`AutoExecutor.async_reconcile`)."""
+        if self._shutdown or self._executor is None or self._energy_recalculating:
+            return
+        if self._executor.applied is None:
+            return
+        settings = self._store.settings(self._entry_id)
+        if settings.driver == DRIVER_TARGET_SOC:
+            return
+        stored = self._store.energy_baseline(self._entry_id)
+        reading = self._read_energy_register()
+        if stored is None or reading is None or stored.register_kwh is None:
+            return
+        delivered = _delivered_kwh(stored, reading)[0]
+        if delivered < settings.requested_kwh:
+            return
+        self._energy_recalculating = True
+        self._hass.async_create_task(self._async_energy_met())
+
+    async def _async_energy_met(self) -> None:
+        try:
+            await self.async_recalculate()
+        finally:
+            self._energy_recalculating = False
 
     def _energy_register_entity_id(self) -> str | None:
         """The entity this charger's cumulative energy register is read from, or `None`.
@@ -1314,44 +1545,115 @@ class AutoPlannerController:
         self, settings: AutoSettings, calculated_at: datetime, entry: AreaEntry
     ) -> _EnergyResolution:
         """`manual_kwh`'s remaining need: `requested_kwh` less energy delivered toward the current
-        departure occurrence since a baseline was recorded for it.
+        departure occurrence (or, with no departure, the current plug-in) since a baseline was recorded
+        for it.
 
         The baseline (`AutoSettingsStore.energy_baseline`) is a register reading captured once per
-        departure occurrence and persisted, so a restart does not re-buy delivered energy; `cheapest`
-        and `hybrid` share this accounting. When no real progress is visible (no register, unavailable,
-        or a reading below the baseline, i.e. a meter reset) the full request is returned with
-        `delivered_energy_trustworthy=False`. A new baseline is captured as soon as a reading exists,
-        but the capturing call subtracts nothing.
+        epoch and persisted, so a restart does not re-buy delivered energy; `cheapest` and `hybrid`
+        share this accounting. A capturing call subtracts nothing.
+
+        * A register that falls back to about zero counts again from zero (one that counts per plug-in,
+          or a reset): what it counted before is carried. One that falls elsewhere (a meter replaced)
+          carries what it counted and starts again from its new reading.
+        * Without a reading, a partial charge is never bought again in full: the last remainder the
+          register vouched for is kept (`kept`); with no register at all, the charger's recorded sessions
+          since the epoch began are counted (`sessions`); only with neither is the whole request planned.
+          None of these is trustworthy enough for `hybrid` to credit forecast sun.
         """
+        requested = settings.requested_kwh
         departure_key = self._departure_key(settings, calculated_at, entry)
         stored = self._store.energy_baseline(self._entry_id)
         current_reading = self._read_energy_register()
 
         if stored is None or stored.departure_key != departure_key:
             # A fresh epoch: the current reading (or None) is the new starting point.
-            await self._store.async_update(
-                self._entry_id,
-                energy_baseline=EnergyBaseline(register_kwh=current_reading, departure_key=departure_key),
+            await self._save_baseline(
+                EnergyBaseline(
+                    register_kwh=current_reading,
+                    departure_key=departure_key,
+                    started_at=calculated_at,
+                    last_register_kwh=current_reading,
+                    remaining_kwh=requested if current_reading is not None else None,
+                )
             )
             return _EnergyResolution(
-                kwh=settings.requested_kwh, delivered_energy_trustworthy=current_reading is not None
+                kwh=requested,
+                delivered_energy_trustworthy=current_reading is not None,
+                basis="register" if current_reading is not None else "requested",
+                delivered_kwh=0.0 if current_reading is not None else None,
             )
 
         if current_reading is None:
-            return _EnergyResolution(kwh=settings.requested_kwh, delivered_energy_trustworthy=False)
+            return self._unread_remainder(settings, stored, departure_key)
 
-        if stored.register_kwh is None or current_reading < stored.register_kwh:
-            # No baseline for this epoch, or the register went backwards (a meter reset): re-baseline
-            # so tracking resumes next call, without guessing what was delivered before now.
-            await self._store.async_update(
-                self._entry_id,
-                energy_baseline=EnergyBaseline(register_kwh=current_reading, departure_key=departure_key),
+        if stored.register_kwh is None:
+            # The register had no reading when this epoch began: count from now. What it vouched for
+            # before (a remainder) is kept; anything else delivered meanwhile cannot be told.
+            await self._save_baseline(
+                replace(stored, register_kwh=current_reading, last_register_kwh=current_reading)
             )
-            return _EnergyResolution(kwh=settings.requested_kwh, delivered_energy_trustworthy=False)
+            return self._unread_remainder(settings, stored, departure_key)
 
-        delivered = current_reading - stored.register_kwh
-        remaining = max(0.0, settings.requested_kwh - delivered)
-        return _EnergyResolution(kwh=remaining, delivered_energy_trustworthy=True)
+        delivered, rebased = _delivered_kwh(stored, current_reading)
+        remaining = max(0.0, requested - delivered)
+        updated = replace(
+            rebased,
+            last_register_kwh=current_reading,
+            remaining_kwh=round(remaining, 6),
+        )
+        if updated != stored:
+            await self._save_baseline(updated)
+        # A meter that fell to a new non-zero reading lost what it counted between its last two
+        # readings: still counted from, not vouched for.
+        replaced_meter = (
+            rebased.register_kwh != stored.register_kwh and current_reading > SESSION_REGISTER_ZERO_KWH
+        )
+        return _EnergyResolution(
+            kwh=remaining,
+            delivered_energy_trustworthy=not replaced_meter,
+            basis="register",
+            delivered_kwh=delivered,
+        )
+
+    async def _save_baseline(self, baseline: EnergyBaseline) -> None:
+        await self._store.async_update(self._entry_id, energy_baseline=baseline)
+
+    def _unread_remainder(
+        self, settings: AutoSettings, stored: EnergyBaseline, departure_key: str
+    ) -> _EnergyResolution:
+        """The need while the register cannot be read: the remainder it last vouched for, else what the
+        charger's recorded sessions delivered since the epoch began, else the whole request."""
+        requested = settings.requested_kwh
+        if stored.remaining_kwh is not None:
+            remaining = min(requested, stored.remaining_kwh)
+            return _EnergyResolution(
+                kwh=remaining, delivered_energy_trustworthy=False, basis="kept",
+                delivered_kwh=max(0.0, requested - remaining),
+            )
+        delivered = None
+        if departure_key != "no_deadline" and stored.started_at is not None:
+            # A bounded epoch only: counting sessions over a fixed epoch would end the need for good.
+            delivered = self._session_energy_since(stored.started_at)
+        if delivered is not None and delivered > 0:
+            return _EnergyResolution(
+                kwh=max(0.0, requested - delivered), delivered_energy_trustworthy=False,
+                basis="sessions", delivered_kwh=delivered,
+            )
+        return _EnergyResolution(kwh=requested, delivered_energy_trustworthy=False, basis="requested")
+
+    def _session_energy_since(self, since: datetime) -> float | None:
+        """The energy this charger's recorded sessions delivered since `since` (closed and open), or
+        `None` when nothing records sessions."""
+        store = domain_data(self._hass).session_store
+        if store is None:
+            return None
+        sessions = [*store.closed_raw(self._entry_id)]
+        open_session = store.open_raw(self._entry_id)
+        if open_session is not None:
+            sessions.append(open_session)
+        return sum(
+            session.energy_kwh for session in sessions if session.start >= since and session.energy_kwh > 0
+        )
 
     def _execution_facts(self) -> tuple[str, str | None, str | None, int]:
         """What the charger is doing, and which application is installed.

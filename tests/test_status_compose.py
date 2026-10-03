@@ -634,6 +634,20 @@ CASES: list[tuple[str, StatusFacts, str, list[dict[str, Any]]]] = [
         [{"code": "charging_now", "params": {"until": None}}, {"code": "hold_overridden", "params": {}}],
     ),
     (
+        "a manual need counted without the register says how, beside the plan",
+        base(
+            waiting_for_tomorrow=True,
+            planning=PlanningFacts(
+                state="waiting_for_prices", reason="no_prices_yet", energy_basis="kept", remaining_kwh=6.46
+            ),
+        ),
+        "notice",
+        [
+            {"code": "waiting_for_tomorrow", "params": {}},
+            {"code": "remaining_need_estimated", "params": {"kwh": 6.5, "basis": "kept"}},
+        ],
+    ),
+    (
         "a site measurement with phases that read nothing names them and their entities",
         base(
             waiting_for_tomorrow=True,

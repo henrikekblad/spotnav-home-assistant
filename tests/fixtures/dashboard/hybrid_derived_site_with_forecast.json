@@ -154,7 +154,7 @@
     "source": "unknown"
   },
   "plan": {
-    "delivered_kwh": null,
+    "delivered_kwh": 0.0,
     "installed": {
       "active_period_index": null,
       "amps": 10,
@@ -196,7 +196,7 @@
       "applied_identity": "a9e50792cf4a4de4146041478fcf25ca",
       "pending_identity": null
     },
-    "remaining_kwh": null
+    "remaining_kwh": 20.0
   },
   "planning": {
     "applied": true,

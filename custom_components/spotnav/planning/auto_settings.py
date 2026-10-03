@@ -765,7 +765,8 @@ class StoredProposal:
 @dataclass(frozen=True, slots=True)
 class EnergyBaseline:
     """`manual_kwh`'s delivered-energy baseline: the charger's cumulative energy register
-    reading when a plan began counting toward the current departure occurrence.
+    reading when a plan began counting toward the current departure occurrence (or, with no
+    departure, the current plug-in).
 
     It keeps `auto_controller._energy_for` from buying already-delivered energy twice.
     Stored beside `settings`/`proposal` (see `AutoSettingsStore._document`), not in
@@ -773,21 +774,44 @@ class EnergyBaseline:
 
     `register_kwh` is `None` when no baseline could be captured for the current
     `departure_key`; that reads as "cannot subtract" (and hybrid may not credit forecast
-    sun), not zero. `departure_key` is the resolved departure instant (ISO text) or the
-    sentinel `"no_deadline"`; a different key starts a fresh epoch.
+    sun), not zero. `departure_key` is the resolved departure instant (ISO text), the plug-in
+    it counts from (`plugin:` and its instant) or the sentinel `"no_deadline"`; a different key
+    starts a fresh epoch.
+
+    Added later, written only when known (an older record has none of them):
+
+    * `started_at`: when this epoch began, so a charger's recorded sessions can be counted from it;
+    * `last_register_kwh`: the register's last reading, so a register that starts again from zero
+      (one that counts per plug-in) is told from a meter that was replaced;
+    * `carried_kwh`: energy counted before the register started again, still part of this epoch;
+    * `remaining_kwh`: the last remainder the register vouched for, kept while it cannot be read.
     """
 
     register_kwh: float | None
     departure_key: str
+    started_at: datetime | None = None
+    last_register_kwh: float | None = None
+    carried_kwh: float = 0.0
+    remaining_kwh: float | None = None
 
     def as_dict(self) -> dict[str, Any]:
-        return {"register_kwh": self.register_kwh, "departure_key": self.departure_key}
+        record: dict[str, Any] = {"register_kwh": self.register_kwh, "departure_key": self.departure_key}
+        if self.started_at is not None:
+            record["started_at"] = self.started_at.isoformat()
+        if self.last_register_kwh is not None:
+            record["last_register_kwh"] = self.last_register_kwh
+        if self.carried_kwh:
+            record["carried_kwh"] = self.carried_kwh
+        if self.remaining_kwh is not None:
+            record["remaining_kwh"] = self.remaining_kwh
+        return record
 
     @classmethod
     def from_stored(cls, raw: Any) -> EnergyBaseline:
         stored = _exact_shape(
             raw, frozenset({"register_kwh", "departure_key"}), "invalid_energy_baseline",
             "a stored energy baseline",
+            optional=frozenset({"started_at", "last_register_kwh", "carried_kwh", "remaining_kwh"}),
         )
         register_kwh = stored["register_kwh"]
         if register_kwh is not None:
@@ -795,7 +819,28 @@ class EnergyBaseline:
         departure_key = stored["departure_key"]
         if not isinstance(departure_key, str) or not departure_key:
             _refuse("invalid_energy_baseline", "a stored energy baseline needs a departure key")
-        return cls(register_kwh=register_kwh, departure_key=departure_key)
+        started_at = None
+        if stored.get("started_at") is not None:
+            raw_started = stored["started_at"]
+            started_at = dt_util.parse_datetime(raw_started) if isinstance(raw_started, str) else None
+            if started_at is None or started_at.tzinfo is None:
+                _refuse("invalid_energy_baseline", "a stored energy baseline's start must be an instant")
+        optional: dict[str, float | None] = {}
+        for name in ("last_register_kwh", "carried_kwh", "remaining_kwh"):
+            value = stored.get(name)
+            optional[name] = None if value is None else _finite(value, "invalid_energy_baseline", name)
+        carried = optional["carried_kwh"]
+        remaining = optional["remaining_kwh"]
+        if (carried is not None and carried < 0) or (remaining is not None and remaining < 0):
+            _refuse("invalid_energy_baseline", "a stored energy baseline cannot count negative energy")
+        return cls(
+            register_kwh=register_kwh,
+            departure_key=departure_key,
+            started_at=started_at,
+            last_register_kwh=optional["last_register_kwh"],
+            carried_kwh=carried or 0.0,
+            remaining_kwh=remaining,
+        )
 
 
 #: Settings a first-run default may fill in (see `planning/first_run.py`).

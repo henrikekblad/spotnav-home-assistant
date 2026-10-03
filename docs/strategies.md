@@ -50,6 +50,23 @@ departure and the plan runs to the next chosen day, with the same rules as a dep
 day: it charges in published prices and may wait for cheaper unpublished hours. A date you pick
 yourself overrides the weekdays.
 
+**Plugging in and unplugging.** SpotNav plans again a few seconds after the car is plugged in or
+unplugged, and again the moment the departure passes, without waiting for the next price. A car
+plugged in while a planned period is running starts charging at once, unless you stopped the charge
+yourself during that period, Auto is paused, solar charging owns the charger or load balancing has no
+room for the minimum current. Plugged in between periods, it waits for the next one as before. When
+the need is met before the plan has run out (the target is reached, or the requested energy has been
+delivered, also by **Charge now** or by the sun) the periods still ahead are cleared and the charge a
+period started is stopped; a charge you started yourself goes on.
+
+**Counting the requested energy.** With a departure, energy delivered since that departure's
+previous occurrence counts toward the request, also across unplugging and plugging in again. With no
+departure, each plug-in starts a new count (a charger that cannot report a plug-in keeps one count
+until the settings change). The count comes from the charger's energy register; a register that
+starts again from zero at each plug-in is counted on. If the register cannot be read, the last
+remaining energy it showed is kept rather than buying the whole request again, and with no register
+at all the charger's recorded charges since the count began are used; the status says so either way.
+
 A daily departure whose morning lies beyond the last published price (before the afternoon
 publication) waits for the publication when that is safe. The history only explains that wait
 (*Waiting: Saturdays were 30 % cheaper the last 4 weeks*), or ends it when the hours still available
