@@ -45,6 +45,17 @@ def no_first_run_defaults(request, monkeypatch):
 
 
 @pytest.fixture(autouse=True)
+def no_history_import(request, monkeypatch):
+    """A charger's setup does not schedule the background import of earlier charges (a timer that
+    outlives the test); `tests/test_history_import.py` opts back in with the `history_import` marker."""
+    if request.node.get_closest_marker("history_import") is not None:
+        return
+    import custom_components.spotnav as integration
+
+    monkeypatch.setattr(integration, "_async_schedule_history_import", lambda *args, **kwargs: None)
+
+
+@pytest.fixture(autouse=True)
 def no_installation_questions(request, monkeypatch):
     """Let a new charger's flow create the entry at once, as the flow tests that are about something
     else expect. The step that asks the charger's phases and the voltage between phases
