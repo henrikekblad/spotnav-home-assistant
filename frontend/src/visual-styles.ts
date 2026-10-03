@@ -40,6 +40,8 @@ export const VISUAL_CLASSES = {
   vehicleLine: "spotnav-vehicle-line",
   vehicleLineName: "spotnav-vehicle-line-name",
   vehicleLineCharge: "spotnav-vehicle-line-charge",
+  connectionLine: "spotnav-connection-line",
+  connectionError: "spotnav-connection-error",
   vehicleLineAge: "spotnav-vehicle-line-age",
   vehicleChoices: "spotnav-vehicle-choices",
   vehicleChoice: "spotnav-vehicle-choice",
@@ -802,12 +804,23 @@ export const VISUAL_STYLES = `
     white-space: nowrap;
   }
   .${VISUAL_CLASSES.vehicleLineCharge},
-  .${VISUAL_CLASSES.vehicleLineAge} {
+  .${VISUAL_CLASSES.vehicleLineAge},
+  .${VISUAL_CLASSES.connectionLine} {
     flex: none;
     white-space: nowrap;
   }
   .${VISUAL_CLASSES.vehicleLineAge} {
     opacity: 0.8;
+  }
+  /* The charger's status, after the charge (or alone, with no vehicle); an error in the warning colour. */
+  .${VISUAL_CLASSES.connectionLine} {
+    margin: 0;
+    font-size: 0.85rem;
+    color: var(--secondary-text-color, #727272);
+    white-space: nowrap;
+  }
+  .${VISUAL_CLASSES.connectionError} {
+    color: var(--warning-color, #b26a00);
   }
   .${VISUAL_CLASSES.vehicleChoices} {
     display: flex;

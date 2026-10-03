@@ -17,6 +17,15 @@ var CHARGE_PROGRESS_STATES = [
   CHARGE_PROGRESS_VEHICLE_NOT_REQUESTING_CURRENT,
   CHARGE_PROGRESS_UNKNOWN
 ];
+var CONNECTION_STATES = [
+  "disconnected",
+  "connected",
+  "charging",
+  "paused",
+  "finished",
+  "error",
+  "unknown"
+];
 var SETTINGS_API_VERSION = 1;
 var SITE_SETTINGS_API_VERSION = 1;
 var ENTITY_CONFIG_API_VERSION = 1;
@@ -678,6 +687,8 @@ var VISUAL_CLASSES = {
   vehicleLine: "spotnav-vehicle-line",
   vehicleLineName: "spotnav-vehicle-line-name",
   vehicleLineCharge: "spotnav-vehicle-line-charge",
+  connectionLine: "spotnav-connection-line",
+  connectionError: "spotnav-connection-error",
   vehicleLineAge: "spotnav-vehicle-line-age",
   vehicleChoices: "spotnav-vehicle-choices",
   vehicleChoice: "spotnav-vehicle-choice",
@@ -1431,12 +1442,23 @@ var VISUAL_STYLES = `
     white-space: nowrap;
   }
   .${VISUAL_CLASSES.vehicleLineCharge},
-  .${VISUAL_CLASSES.vehicleLineAge} {
+  .${VISUAL_CLASSES.vehicleLineAge},
+  .${VISUAL_CLASSES.connectionLine} {
     flex: none;
     white-space: nowrap;
   }
   .${VISUAL_CLASSES.vehicleLineAge} {
     opacity: 0.8;
+  }
+  /* The charger's status, after the charge (or alone, with no vehicle); an error in the warning colour. */
+  .${VISUAL_CLASSES.connectionLine} {
+    margin: 0;
+    font-size: 0.85rem;
+    color: var(--secondary-text-color, #727272);
+    white-space: nowrap;
+  }
+  .${VISUAL_CLASSES.connectionError} {
+    color: var(--warning-color, #b26a00);
   }
   .${VISUAL_CLASSES.vehicleChoices} {
     display: flex;
@@ -3738,6 +3760,12 @@ var da = {
   "vehicleLine.estimateTitle": "Anslået mellem aflæsningerne, aflæst {age}",
   "vehicleLine.dialogTitle": "Hvilket køretøj skal oplades?",
   "vehicleLine.noReading": "Ingen aflæsning",
+  "connection.disconnected": "Ikke tilsluttet",
+  "connection.connected": "Tilsluttet",
+  "connection.charging": "Oplader",
+  "connection.paused": "På pause",
+  "connection.finished": "Færdig",
+  "connection.error": "Fejl",
   "settings.vehicle.unnamed": "Køretøj uden navn",
   "settings.vehicle.plannedHere": "Denne oplader planlægger for det",
   "settings.vehicle.capacityReported": "rapporteret af bilen",
@@ -4361,6 +4389,12 @@ var en = {
   "vehicleLine.estimateTitle": "Estimated between readings, read {age}",
   "vehicleLine.dialogTitle": "Which vehicle should be charged?",
   "vehicleLine.noReading": "No reading",
+  "connection.disconnected": "Not connected",
+  "connection.connected": "Connected",
+  "connection.charging": "Charging",
+  "connection.paused": "Paused",
+  "connection.finished": "Finished",
+  "connection.error": "Error",
   "settings.vehicle.unnamed": "Unnamed vehicle",
   "settings.vehicle.plannedHere": "This charger plans for it",
   "settings.vehicle.capacityReported": "reported by the vehicle",
@@ -4984,6 +5018,12 @@ var fi = {
   "vehicleLine.estimateTitle": "Arvio lukemien välillä, luettu {age}",
   "vehicleLine.dialogTitle": "Mikä ajoneuvo ladataan?",
   "vehicleLine.noReading": "Ei lukemaa",
+  "connection.disconnected": "Ei kytketty",
+  "connection.connected": "Kytketty",
+  "connection.charging": "Lataa",
+  "connection.paused": "Tauolla",
+  "connection.finished": "Valmis",
+  "connection.error": "Virhe",
   "settings.vehicle.unnamed": "Nimetön ajoneuvo",
   "settings.vehicle.plannedHere": "Tämä lataaja suunnittelee sille",
   "settings.vehicle.capacityReported": "auton ilmoittama",
@@ -5607,6 +5647,12 @@ var nb = {
   "vehicleLine.estimateTitle": "Anslått mellom avlesningene, avlest {age}",
   "vehicleLine.dialogTitle": "Hvilket kjøretøy skal lades?",
   "vehicleLine.noReading": "Ingen avlesning",
+  "connection.disconnected": "Ikke tilkoblet",
+  "connection.connected": "Tilkoblet",
+  "connection.charging": "Lader",
+  "connection.paused": "Pauset",
+  "connection.finished": "Ferdig",
+  "connection.error": "Feil",
   "settings.vehicle.unnamed": "Kjøretøy uten navn",
   "settings.vehicle.plannedHere": "Denne laderen planlegger for det",
   "settings.vehicle.capacityReported": "rapportert av bilen",
@@ -6230,6 +6276,12 @@ var sv = {
   "vehicleLine.estimateTitle": "Uppskattad mellan avläsningarna, avläst {age}",
   "vehicleLine.dialogTitle": "Vilket fordon ska laddas?",
   "vehicleLine.noReading": "Ingen avläsning",
+  "connection.disconnected": "Ej ansluten",
+  "connection.connected": "Ansluten",
+  "connection.charging": "Laddar",
+  "connection.paused": "Pausad",
+  "connection.finished": "Klar",
+  "connection.error": "Fel",
   "settings.vehicle.unnamed": "Fordon utan namn",
   "settings.vehicle.plannedHere": "Laddaren planerar för det här fordonet",
   "settings.vehicle.capacityReported": "rapporterad av bilen",
@@ -7738,7 +7790,8 @@ function decodeDashboard(raw) {
           exactKeys2(item, ["id", "name"]);
           return { id: text2(item, "id"), name: text2(item, "name") };
         }),
-        status: decodeStatus(record2(required(root, "status")))
+        status: decodeStatus(record2(required(root, "status"))),
+        connection: connectionOrNull(root)
       }
     };
   } catch {
@@ -7775,7 +7828,23 @@ var DASHBOARD_KEYS = [
   // entity configuration); accepted and not read.
   "summary"
 ];
-var OPTIONAL_DASHBOARD_KEYS = ["sessions_summary"];
+var OPTIONAL_DASHBOARD_KEYS = ["sessions_summary", "connection"];
+function connectionOrNull(root) {
+  const value = root.connection;
+  if (!isRecord2(value)) {
+    return null;
+  }
+  try {
+    exactKeys2(value, ["state", "source"]);
+    const state = text2(value, "state");
+    if (!CONNECTION_STATES.includes(state)) {
+      return null;
+    }
+    return { state, source: textOrNull2(value, "source") };
+  } catch {
+    return null;
+  }
+}
 function strategyOptions(root) {
   const options = arrayValue(root, "strategy_options").map(
     (entry) => typeof entry === "string" && STRATEGIES2.includes(entry) ? entry : bad2()
@@ -8572,6 +8641,7 @@ function buildModel(input) {
     site: siteFactsFor(dashboard.site, language),
     currentRange: currentRangeFor(dashboard),
     soc: socFor(dashboard),
+    connection: dashboard.connection,
     vehicles: vehiclesFor(dashboard),
     targetVehicleId: targetVehicleIdFor(dashboard),
     contextArea: market?.area_id ?? market?.area_name ?? null,
@@ -11662,6 +11732,12 @@ function vehicleLineFor(language, soc, settings) {
     ariaLabel: translate(language, "vehicleLine.aria", { name, summary: spoken })
   };
 }
+function connectionLabel(language, connection) {
+  if (connection === null || connection.state === "unknown") {
+    return null;
+  }
+  return translate(language, `connection.${connection.state}`);
+}
 function vehicleChoicesFor(language, vehicles, plannedId) {
   return vehicles.map((vehicle) => ({
     id: vehicle.id,
@@ -13251,6 +13327,8 @@ function createCardView(input) {
   header.append(brandMark(doc, idPrefix));
   const vehicleLine = vehicleLineFor(model.language, model.soc, model.dashboardSettings);
   let vehicleButton = null;
+  const connectionText = connectionLabel(model.language, model.connection);
+  const connectionClass = () => model.connection?.state === "error" ? `${VISUAL_CLASSES.connectionLine} ${VISUAL_CLASSES.connectionError}` : VISUAL_CLASSES.connectionLine;
   if (vehicleLine !== null) {
     const identity2 = element7(doc, "div", VISUAL_CLASSES.nameBlock);
     if (model.chargerName !== null) {
@@ -13273,10 +13351,28 @@ function createCardView(input) {
     if (vehicleLine.age !== null) {
       vehicleButton.append(element7(doc, "span", VISUAL_CLASSES.vehicleLineAge, `· ${vehicleLine.age}`));
     }
+    if (connectionText !== null) {
+      const status = element7(doc, "span", connectionClass(), `· ${connectionText}`);
+      status.dataset["connection"] = model.connection?.state ?? "";
+      vehicleButton.append(status);
+      vehicleButton.setAttribute(
+        "aria-label",
+        `${vehicleLine.ariaLabel}, ${connectionText}`
+      );
+    }
     vehicleButton.addEventListener("click", () => {
       openVehicleChoice();
     });
     identity2.append(vehicleButton);
+    header.append(identity2);
+  } else if (connectionText !== null) {
+    const identity2 = element7(doc, "div", VISUAL_CLASSES.nameBlock);
+    if (model.chargerName !== null) {
+      identity2.append(element7(doc, "h3", VISUAL_CLASSES.name, model.chargerName));
+    }
+    const status = element7(doc, "p", connectionClass(), connectionText);
+    status.dataset["connection"] = model.connection?.state ?? "";
+    identity2.append(status);
     header.append(identity2);
   } else if (model.chargerName !== null) {
     header.append(element7(doc, "h3", VISUAL_CLASSES.name, model.chargerName));

@@ -5,7 +5,7 @@
 
 import { percentAmount } from "./format";
 import { translate, type Language } from "./i18n";
-import { SETTINGS_DRIVER_TARGET_SOC, type SettingsRecord } from "./types";
+import { SETTINGS_DRIVER_TARGET_SOC, type ConnectionState, type SettingsRecord } from "./types";
 import type { Soc, Vehicle } from "./validate";
 
 /** A reading older than this (seconds), that is not an estimate, says how old it is on the line. */
@@ -82,6 +82,14 @@ export function vehicleLineFor(
     estimateTitle,
     ariaLabel: translate(language, "vehicleLine.aria", { name, summary: spoken }),
   };
+}
+
+/** The words for a connection state, or `null` for `unknown` or none: then the header says nothing. */
+export function connectionLabel(language: Language, connection: ConnectionState | null): string | null {
+  if (connection === null || connection.state === "unknown") {
+    return null;
+  }
+  return translate(language, `connection.${connection.state}`);
 }
 
 export function vehicleChoicesFor(
