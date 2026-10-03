@@ -66,7 +66,7 @@ from .runtime import (
     SiteData,
 )
 from .services import async_register_services
-from .sessions.inputs import price_book_for, session_facts
+from .sessions.inputs import current_fiscal, price_book_for, session_facts
 from .sessions.recorder import SessionRecorder
 from .sessions.store import SessionStore
 from .site.site_join import async_apply_site_join, async_leave_sites, prune_missing_members
@@ -104,6 +104,7 @@ async def async_setup(hass: HomeAssistant, config: dict[str, Any]) -> bool:
     await async_setup_auto_settings(hass)
     # The charge sessions' record, loaded before any charger entry starts recording into it.
     data.session_store = SessionStore(hass)
+    data.session_store.set_fiscal_resolver(lambda charger_id, area_id: current_fiscal(hass, charger_id, area_id))
     await data.session_store.async_load()
     async_register_services(hass)
     async_setup_dashboard_api(hass)

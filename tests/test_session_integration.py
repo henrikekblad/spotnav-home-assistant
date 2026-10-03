@@ -196,7 +196,7 @@ async def test_the_websocket_command_answers_summaries_and_the_latest_sessions(
     assert reply["success"] is True
     result = reply["result"]
     assert list(result) == [
-        "api_version", "charger_id", "retention_days", "this_month", "last_month", "months", "days",
+        "api_version", "charger_id", "retention_days", "cost_basis", "this_month", "last_month", "months", "days",
         "open", "sessions", "month", "month_summary", "month_days", "month_sessions", "available_months",
     ]
     assert result["api_version"] == SESSIONS_API_VERSION == 1

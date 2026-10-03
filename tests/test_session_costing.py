@@ -1,4 +1,4 @@
-"""The price maths of a charge session: energy per interval times the interval's effective price."""
+"""The price maths of a charge session: energy per interval, costed from the raw price when it is read."""
 
 from __future__ import annotations
 
@@ -6,13 +6,26 @@ from datetime import date, datetime, timedelta
 
 import pytest
 
-from custom_components.spotnav.planning.planner import FiscalChoice, chart_intervals, effective_minor_per_kwh
-from custom_components.spotnav.sessions.costing import cost_of, day_averages, NO_COST
+from custom_components.spotnav.planning.planner import FiscalChoice, effective_minor_per_kwh
+from custom_components.spotnav.sessions.costing import (
+    day_averages_eur,
+    merge_slices,
+    NO_COST,
+    price_slices,
+    Slice,
+    split_energy,
+    spot_intervals,
+)
 
 from .sessions_helpers import day_intervals, STOCKHOLM, UTC
 
 DAY = date(2026, 9, 22)
 MIDNIGHT = datetime(2026, 9, 22, tzinfo=STOCKHOLM).astimezone(UTC)
+
+
+def cost_of(rows, start, end, kwh, fiscal: FiscalChoice | None = None):
+    """Split the energy over the intervals, then make its cost (no tax, fee or VAT unless given)."""
+    return price_slices(split_energy(rows, start, end, kwh), FiscalChoice() if fiscal is None else fiscal)
 
 
 def at(hour: int, minute: int = 0) -> datetime:
@@ -62,14 +75,48 @@ def test_the_effective_price_is_the_planners_own_with_vat_tax_and_grid_fee() -> 
     import json  # noqa: PLC0415
 
     document = parse_day(json.loads(day_body(SE4, DAY)), area_id=SE4, day=DAY)
-    rows = chart_intervals((document,), currency="SEK", fiscal=fiscal)
+    rows = spot_intervals((document,), "SEK")
     first = rows[0]
-    expected = effective_minor_per_kwh(first.raw_minor_per_kwh / 100, fiscal)
+    raw_minor = first.eur_per_kwh * first.fx * 100
+    expected = effective_minor_per_kwh(raw_minor / 100, fiscal)
 
-    costing = cost_of(rows, first.utc_start, first.utc_end, 2.0)
+    costing = cost_of(rows, first.utc_start, first.utc_end, 2.0, fiscal)
 
+    assert first.fx != 1.0 and first.fx_date == document.fx_date
     assert costing.cost_minor == pytest.approx(2.0 * expected)
-    assert expected == pytest.approx((first.raw_minor_per_kwh + 36.0 + 25.0) * 1.25)
+    assert expected == pytest.approx((raw_minor + 36.0 + 25.0) * 1.25)
+
+
+def test_the_same_energy_costs_differently_when_the_settings_change() -> None:
+    """Nothing is priced until it is read: a corrected VAT corrects the same stored energy."""
+    rows = day_intervals(DAY, [100.0] * 24)
+    slices = split_energy(rows, at(3), at(5), 8.0)
+
+    plain = price_slices(slices, FiscalChoice())
+    with_vat = price_slices(slices, FiscalChoice(vat_enabled=True, vat_percent=25.0))
+
+    assert plain.cost_minor == pytest.approx(800.0)
+    assert with_vat.cost_minor == pytest.approx(1000.0)
+    assert price_slices(slices, None) == NO_COST
+
+
+def test_a_slice_survives_its_stored_row_and_a_bad_row_is_refused() -> None:
+    from datetime import date as _date  # noqa: PLC0415
+
+    item = Slice(at(3), at(4), 1.5, 0.0834, 11.2, _date(2026, 9, 21), 0.07)
+
+    assert Slice.from_row(item.as_row()) == item
+    assert Slice.from_row([1, 2, 3]) is None
+    assert Slice.from_row([1, 2, -1, 0.1, 1.0, 0.1, None]) is None
+    assert Slice.from_row([2, 1, 1, 0.1, 1.0, 0.1, None]) is None
+
+
+def test_energy_sampled_again_in_the_same_interval_is_one_slice() -> None:
+    rows = day_intervals(DAY, [50.0] * 24)
+
+    held = merge_slices(split_energy(rows, at(3, 0), at(3, 20), 1.0), split_energy(rows, at(3, 20), at(3, 40), 2.0))
+
+    assert len(held) == 1 and held[0].kwh == pytest.approx(3.0)
 
 
 def test_energy_outside_every_published_interval_is_unpriced_not_guessed() -> None:
@@ -109,17 +156,15 @@ def test_the_days_average_is_weighted_by_interval_length_across_mixed_resolution
     quarters = day_intervals(date(2026, 9, 22), [90.0] * 4, minutes=15)  # an hour at 90, same day
     shifted = [
         row.__class__(
-            start=row.start + timedelta(hours=1), end=row.end + timedelta(hours=1),
-            utc_start=row.utc_start + timedelta(hours=1), utc_end=row.utc_end + timedelta(hours=1),
-            day=row.day, raw_minor_per_kwh=row.raw_minor_per_kwh,
-            effective_minor_per_kwh=row.effective_minor_per_kwh,
+            row.utc_start + timedelta(hours=1), row.utc_end + timedelta(hours=1), row.day,
+            row.eur_per_kwh, row.fx, row.fx_date,
         )
         for row in quarters
     ]
 
-    averages = day_averages(hour + shifted)
+    averages = day_averages_eur(hour + shifted)
 
-    assert averages[DAY] == pytest.approx(60.0)
+    assert averages[DAY] * 100 == pytest.approx(60.0)
 
 
 def test_a_dst_day_is_priced_by_the_clock_not_the_wall_time() -> None:
@@ -132,4 +177,4 @@ def test_a_dst_day_is_priced_by_the_clock_not_the_wall_time() -> None:
     costing = cost_of(rows, start, start + timedelta(hours=1), 1.0)
 
     assert costing.cost_minor == pytest.approx(3.0)
-    assert day_averages(rows)[autumn] == pytest.approx(12.0)
+    assert day_averages_eur(rows)[autumn] * 100 == pytest.approx(12.0)

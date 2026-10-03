@@ -8,6 +8,7 @@ from datetime import date, datetime, timedelta
 import pytest
 from homeassistant.core import HomeAssistant
 
+from custom_components.spotnav.planning.planner import FiscalChoice
 from custom_components.spotnav.sessions.model import (
     SOURCE_ESTIMATED,
     SOURCE_INTEGRATED,
@@ -50,7 +51,7 @@ class World:
         self.cause: str | None = None
         self.clock = MIDNIGHT
         self.book: PriceBook | None = PriceBook(
-            tuple(day_intervals(DAY, prices if prices is not None else [100.0] * 24)), "SEK", "kr", "öre"
+            tuple(day_intervals(DAY, prices if prices is not None else [100.0] * 24)), "SE3", "SEK", "kr", "öre"
         )
         self.store = store
         self.recorder = self.build(hass)
@@ -95,6 +96,7 @@ def stop_recorders(monkeypatch: pytest.MonkeyPatch):
 @pytest.fixture
 async def store(hass: HomeAssistant) -> SessionStore:
     sessions = SessionStore(hass)
+    sessions.set_fiscal_resolver(lambda charger_id, area_id: FiscalChoice())
     await sessions.async_load()
     return sessions
 
@@ -142,7 +144,7 @@ async def test_a_price_change_inside_a_session_prices_each_part_where_it_was_del
 async def test_fifteen_minute_data_is_priced_the_same_way(hass: HomeAssistant, store: SessionStore) -> None:
     world = World(hass, store)
     world.book = PriceBook(
-        tuple(day_intervals(DAY, [10.0 * (i // 4) for i in range(96)], minutes=15)), "SEK", "kr", "öre"
+        tuple(day_intervals(DAY, [10.0 * (i // 4) for i in range(96)], minutes=15)), "SE3", "SEK", "kr", "öre"
     )
 
     world.at(at(1, 45), charging=True)
@@ -322,6 +324,7 @@ async def test_a_session_open_across_a_restart_is_resumed_when_the_charger_is_st
     await store.async_flush()
 
     reloaded = SessionStore(hass)
+    reloaded.set_fiscal_resolver(lambda charger_id, area_id: FiscalChoice())
     await reloaded.async_load()
     world.store = reloaded
     resumed = world.build(hass)

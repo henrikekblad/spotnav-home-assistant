@@ -1,14 +1,17 @@
 """What a session recorder reads from a live charger: its facts and the prices around now.
 
-The price book is built exactly as the dashboard's chart is: the repository's held day documents for the
-charger's market, priced by `planner.chart_intervals` with the fiscal choice the plan itself uses
-(`auto_controller.fiscal_choice_for`), so a session is costed with the same effective price per kWh as the
-plan's estimated cost. Yesterday is included so a session that runs past midnight keeps pricing.
+The price book is the repository's held day documents for the charger's market, as raw spot intervals
+(`costing.spot_intervals`): a session keeps the energy and those raw prices, and its cost is made when it is
+read, with the fiscal choice the plan itself uses (`auto_controller.fiscal_choice_for`) as the person has it
+then (`current_fiscal`). Yesterday is included so a session that runs past midnight keeps pricing.
 """
 
 from __future__ import annotations
 
+from collections.abc import Sequence
+from dataclasses import dataclass
 from datetime import datetime, timedelta
+from typing import Any
 
 from homeassistant.core import HomeAssistant
 from homeassistant.util import dt as dt_util
@@ -18,11 +21,13 @@ from ..execution.solar_execution import solar_execution_state
 from ..planning.auto_controller import fiscal_choice_for
 from ..planning.auto_settings import STRATEGY_HYBRID, STRATEGY_SOLAR
 from ..planning.grid_voltage import voltage_between_phases_v
-from ..planning.planner import chart_intervals, power_kw
+from ..planning.planner import FiscalChoice, power_kw
+from ..pricing.price_repository import PriceRepository
 from ..runtime import domain_data
 from ..planning.phases import charger_wiring, charging_phases
 from ..site.phase_detection import async_detect_phases
 from ..vehicles.vehicle_discovery import resolve_target_vehicle
+from .costing import spot_intervals
 from .recorder import PriceBook, SessionFacts
 from .summary import sessions_summary
 
@@ -84,32 +89,60 @@ def session_facts(hass: HomeAssistant, controller: ChargingController) -> Sessio
     )
 
 
-def price_book_for(hass: HomeAssistant, charger_id: str, now: datetime) -> PriceBook | None:
-    """The effective prices of the charger's market around `now`, or `None` with no market or settings."""
+@dataclass(frozen=True, slots=True)
+class PriceMarket:
+    """The charger's market as the effective price is made from it: the repository, the area and its
+    zone, and the person's fiscal choice as currently set (`None` when it cannot be read)."""
+
+    repository: PriceRepository
+    area_id: str
+    area: Any
+    zone: Any
+    fiscal: Any
+
+    def book(self, documents: Sequence[Any]) -> PriceBook:
+        """The raw spot prices of these day documents (a cost is made from them when it is read)."""
+        if self.zone is None:
+            return PriceBook((), self.area_id, self.area.currency, self.area.major_unit, self.area.minor_unit)
+        return PriceBook(
+            spot_intervals(documents, self.area.currency),
+            self.area_id,
+            self.area.currency,
+            self.area.major_unit,
+            self.area.minor_unit,
+        )
+
+
+def price_market(hass: HomeAssistant, charger_id: str) -> PriceMarket | None:
+    """The charger's market, or `None` with no market or settings."""
     data = domain_data(hass)
     store, repository = data.auto_store, data.price_repository
     if store is None or repository is None:
         return None
     settings = store.settings(charger_id)
     area_id = settings.area_id
-    catalogue = repository.catalogue_snapshot()
-    area = None if area_id is None else catalogue.area(area_id)
+    area = None if area_id is None else repository.catalogue_snapshot().area(area_id)
     if area is None:
         return None
-    zone = dt_util.get_time_zone(area.tz)
-    fiscal = fiscal_choice_for(settings, area)
-    if zone is None or fiscal is None:
-        return PriceBook((), area.currency, area.major_unit, area.minor_unit)
-    today = now.astimezone(zone).date()
+    return PriceMarket(
+        repository, area_id, area, dt_util.get_time_zone(area.tz), fiscal_choice_for(settings, area)
+    )
+
+
+def price_book_for(hass: HomeAssistant, charger_id: str, now: datetime) -> PriceBook | None:
+    """The effective prices of the charger's market around `now`, or `None` with no market or settings."""
+    market = price_market(hass, charger_id)
+    if market is None:
+        return None
+    if market.zone is None:
+        return market.book(())
+    today = now.astimezone(market.zone).date()
     documents = []
     for offset in range(-DAYS_BEFORE, DAYS_AFTER + 1):
-        document = repository.day_snapshot(area_id, today + timedelta(days=offset)).document
+        document = market.repository.day_snapshot(market.area_id, today + timedelta(days=offset)).document
         if document is not None:
             documents.append(document)
-    intervals = (
-        chart_intervals(tuple(documents), currency=area.currency, fiscal=fiscal) if documents else ()
-    )
-    return PriceBook(intervals, area.currency, area.major_unit, area.minor_unit)
+    return market.book(documents)
 
 
 def local_zone(hass: HomeAssistant):
@@ -123,3 +156,16 @@ def sessions_block(hass: HomeAssistant, charger_id: str, now: datetime) -> dict 
     if store is None:
         return None
     return sessions_summary(store.closed(charger_id), local_zone(hass), now)
+
+
+def current_fiscal(hass: HomeAssistant, charger_id: str, area_id: str | None = None) -> FiscalChoice | None:
+    """The person's fiscal settings as they are now, for a charger's market (or, with `area_id`, that
+    market's), resolved as the plan resolves them; `None` when they cannot be."""
+    data = domain_data(hass)
+    store, repository = data.auto_store, data.price_repository
+    if store is None or repository is None:
+        return None
+    settings = store.settings(charger_id)
+    chosen = area_id or settings.area_id
+    area = None if chosen is None else repository.catalogue_snapshot().area(chosen)
+    return None if area is None else fiscal_choice_for(settings, area)
