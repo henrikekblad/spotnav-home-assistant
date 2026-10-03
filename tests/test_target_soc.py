@@ -419,7 +419,7 @@ async def _run_window(
     hass: HomeAssistant, transport: Any, *, driver: str, hourly_poll: bool
 ) -> tuple[list[tuple[str, str]], Any, Any, list[float]]:
     """Charge through one planned window, recalculating every five minutes as the register moves."""
-    serve_prices(transport, flat=True)
+    serve_prices(transport, rising=True)
     extra: dict[str, Any] = {"amps": 16, "phases": 3}
     if driver == DRIVER_MANUAL_KWH:
         extra.update(driver=DRIVER_MANUAL_KWH, requested_kwh=34.0, target=TargetSocIntent())

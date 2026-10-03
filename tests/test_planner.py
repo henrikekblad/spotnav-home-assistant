@@ -678,8 +678,8 @@ def test_the_resolved_deadline_for_every_dst_departure_case() -> None:
     assert resolved_departure("2025-10-25T23:00:00+02:00", time(4, 0)) != datetime(2025, 10, 26, 2, 0, tzinfo=timezone.utc)
 
 
-def test_the_spring_plan_ends_by_the_real_deadline_and_takes_the_earliest_pair() -> None:
-    """03:30 local must never mean 04:30, and equal costs choose the earliest slots."""
+def test_the_spring_plan_ends_by_the_real_deadline_and_takes_the_latest_pair() -> None:
+    """03:30 local must never mean 04:30, and equal costs choose the latest slots."""
     scenario = next(s for s in fixture_payload()["scenarios"] if s["name"] == "spring_day_92_slots_skips_the_missing_hour")
     request = build_request(scenario["request"], parse_documents(scenario["documents"]))
     result = calculate_plan(request)
@@ -687,15 +687,15 @@ def test_the_spring_plan_ends_by_the_real_deadline_and_takes_the_earliest_pair()
 
     assert resolve_departure(request.now, request.timezone, request.departure, request.now).astimezone(timezone.utc) == deadline
     assert [slot.start.isoformat() for slot in result.slots] == [
-        "2026-03-29T00:30:00+00:00",
-        "2026-03-29T00:45:00+00:00",
+        "2026-03-29T01:00:00+00:00",
+        "2026-03-29T01:15:00+00:00",
     ]
     assert max(slot.end for slot in result.slots) <= deadline
-    assert [slot.start.astimezone(dt_util.get_time_zone(request.timezone)).hour for slot in result.slots] == [1, 1]
+    assert [slot.start.astimezone(dt_util.get_time_zone(request.timezone)).hour for slot in result.slots] == [3, 3]
 
 
-def test_equal_cost_chooses_the_chronologically_earliest_slots() -> None:
-    """Flat prices, one period: the ordering picks the earliest pair, not a later tie."""
+def test_equal_cost_chooses_the_chronologically_latest_slots() -> None:
+    """Flat prices, one period: the ordering picks the latest slots of the 24-hour horizon, not an earlier tie."""
     payload = fixture_payload()
     base = next(s for s in payload["scenarios"] if s["name"] == "power_single_phase_whole_slot_overdelivery")
     today, tomorrow = base["documents"][0], base["documents"][1]
@@ -708,13 +708,13 @@ def test_equal_cost_chooses_the_chronologically_earliest_slots() -> None:
         parse_documents(flat),
     )
     single = calculate_plan(request)
-    assert [slot.start.isoformat() for slot in single.slots] == ["2026-09-12T16:00:00+00:00"]
+    assert [slot.start.isoformat() for slot in single.slots] == ["2026-09-13T15:45:00+00:00"]
     assert single.unpriced_slots == 0
 
     pair = calculate_plan(replace_request(request, requested_kwh=1.0))
     assert [slot.start.isoformat() for slot in pair.slots] == [
-        "2026-09-12T16:00:00+00:00",
-        "2026-09-12T16:15:00+00:00",
+        "2026-09-13T15:30:00+00:00",
+        "2026-09-13T15:45:00+00:00",
     ]
     assert len(pair.periods) == 1
 

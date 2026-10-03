@@ -427,12 +427,16 @@ def test_no_dashboard_fixture_is_stale_or_missing() -> None:
 
 
 async def _price_wait_payload(
-    hass: HomeAssistant, transport: Any, **changes: Any
+    hass: HomeAssistant, transport: Any, *, rising: bool = False, **changes: Any
 ) -> dict[str, Any]:
-    """One charger, today published and tomorrow not, planned with a departure at 08:00."""
+    """One charger, today published and tomorrow not, planned with a departure at 08:00.
+
+    `rising`: the day's expensive hours get dearer by the quarter, so a plan that must buy now starts
+    at the clock rather than at the end of the day (equal prices go to the latest slots).
+    """
     charger = await _setup_charger(hass, entry_id="price_wait")
     serve(transport, days=(TODAY,), listed=(TODAY,))
-    transport.serve(transport.day_path(SE4, TODAY), 200, cheap_night_day(SE4, TODAY))
+    transport.serve(transport.day_path(SE4, TODAY), 200, cheap_night_day(SE4, TODAY, rising=rising))
     await go_auto(
         hass,
         charger.entry_id,
@@ -523,7 +527,7 @@ async def test_the_history_wait_fixture_is_the_serializers_own_output(
 async def test_the_price_wait_fixtures_buying_is_the_serializers_own_output(
     hass: HomeAssistant, transport: Any, offline_relay: None
 ) -> None:
-    buying = await _price_wait_payload(hass, transport, requested_kwh=40.0)
+    buying = await _price_wait_payload(hass, transport, requested_kwh=40.0, rising=True)
     planning = buying["planning"]
     assert planning["state"] == "proposal_ready" and planning["reason"] == "buying_before_publication"
     assert planning["price_wait"] == "buy_now" and planning["must_buy_now_kwh"] > 0

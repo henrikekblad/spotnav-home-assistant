@@ -659,11 +659,11 @@ async def test_a_waiting_change_is_visibly_not_the_installed_plan(
 ) -> None:
     """Pending, applied and historical are three different readings, not one.
 
-    Flat prices put the plan's window at the fixture clock, so the charge is under way and a
+    Prices that only rise put the plan's window at the fixture clock, so the charge is under way and a
     material change has to wait for the boundary rather than replacing it.
     """
     entry = await setup_charger(hass)
-    serve(transport, flat=True)
+    serve(transport, rising=True)
     await go_auto(hass)
     plan_state = entity_id(hass, entry.entry_id, "auto_plan_state")
     execution_state = entity_id(hass, entry.entry_id, "auto_execution_state")

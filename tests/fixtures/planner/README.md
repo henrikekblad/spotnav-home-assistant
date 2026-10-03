@@ -49,7 +49,7 @@ invented field cannot make a scenario pass vacuously — it fails loudly instead
 | negative prices | `negative_prices_pay_rather_than_cost` |
 | fiscal order | `fiscal_tax_transfer_then_vat` |
 | EUR and non-EUR identity | `eur_area_needs_no_rate_table`, `non_eur_area_uses_the_document_rate`, `non_eur_area_without_a_rate_is_refused` |
-| ties and period caps | `equal_prices_choose_the_earlier_slot`, `period_cap_of_one_forces_one_run`, `greedy_selection_would_be_wrong` |
+| ties and period caps | `equal_prices_choose_the_earlier_slot` (its two slots are the only cheapest pair, so it is no tie), `period_cap_of_one_forces_one_run`, `greedy_selection_would_be_wrong` |
 | horizon and departures | `no_departure_uses_the_24_hour_horizon`, `departure_crossing_midnight`, `deadline_too_short` |
 | hourly input, DST days, overlap | `hourly_document_expands_to_quarters`, `spring_day_92_slots_skips_the_missing_hour`, `autumn_day_100_slots_repeats_the_hour`, `overlapping_documents_deduplicate_by_instant` |
 | missing prices (the estimated fallback is retired) | `missing_tomorrow_is_a_named_gap`, `missing_tomorrow_at_the_last_published_slot`, `no_published_prices_at_all` |
@@ -88,14 +88,15 @@ reading would make it 04:30 local, an hour late. The policies, each with its own
 The first usable quarter-hour and the 24-hour candidate horizon stay ordinary elapsed-time
 instant arithmetic; only the user's departure needs calendar-zone resolution.
 
-## Equal cost is broken by time, explicitly
+## Equal cost is broken by time, toward the latest slots
 
-The dynamic program compares `(cost, selected_indices)` lexicographically — lower cost
-first, and on exactly equal cost the chronologically earliest set of slots — both when
-retaining a state and when choosing the winner. Insertion-ordered maps plus "replace only
-when strictly cheaper" do not by themselves guarantee the earliest plan, which the
-equal-price DST scenario demonstrated; no epsilon is used, so genuinely different costs
-are never tied.
+The dynamic program compares `(cost, latest-first indices)` lexicographically: lower cost
+first, and on exactly equal cost the chronologically latest set of slots (compared from the
+last chosen slot backwards), both when retaining a state and when choosing the winner. The
+car then charges as late as the prices allow and leaves with the freshest charge. Insertion-ordered
+maps plus "replace only when strictly cheaper" do not by themselves guarantee the latest plan;
+no epsilon is used, so genuinely different costs are never tied. (Earlier versions chose the earliest
+set; a reader that ports the planner must break ties the same way to match the scenarios.)
 
 ## Where the expected values come from
 

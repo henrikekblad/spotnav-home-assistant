@@ -809,7 +809,7 @@ async def test_the_golden_fixture_is_the_shape_this_contract_promises(
     """The checked-in v1 fixture: exact sections, exact keys, normalized volatile leaves."""
     entry = await setup_charger(hass, current_limit="number.charger_a_limit")
     hass.states.async_set("number.charger_a_limit", "16", {"min": 6, "max": 16})
-    serve(transport, flat=True)
+    serve(transport, rising=True)
     await go_auto(hass)
     response = normalized(response_for(hass, entry))
     # Set `SPOTNAV_WRITE_FIXTURES=1` to (re)write these two fixtures; the default run only compares. A geometry change is a reviewed, written change -- never a silent
@@ -949,7 +949,7 @@ async def test_an_older_installed_plan_and_a_newer_pending_proposal_are_never_mi
 ) -> None:
     """Two generations, two objects: the installed plan and the waiting proposal."""
     entry = await setup_charger(hass)
-    serve(transport, flat=True)
+    serve(transport, rising=True)
     await go_auto(hass)
     preview = preview_for(hass, entry.entry_id)
     assert preview is not None
@@ -988,7 +988,7 @@ async def test_a_re_described_plan_the_charger_already_runs_is_reported_as_appli
     beside the very schedule it describes.
     """
     entry = await setup_charger(hass)
-    serve(transport, flat=True)
+    serve(transport, rising=True)
     await go_auto(hass)
     preview = preview_for(hass, entry.entry_id)
     assert preview is not None
@@ -1189,7 +1189,7 @@ async def test_an_active_installed_interval_is_indexed_on_installed_only(
 ) -> None:
     """The active index describes what the charger is doing, not what was proposed."""
     entry = await setup_charger(hass)
-    serve(transport, flat=True)
+    serve(transport, rising=True)
     await go_auto(hass)
 
     plan = response_for(hass, entry)["plan"]

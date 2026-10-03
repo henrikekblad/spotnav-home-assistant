@@ -28,6 +28,12 @@ periods, and an optional departure time. The card marks what is missing.
 Buys the required energy in the cheapest quarter-hours before the departure time, within the
 maximum number of periods. With no departure time the plan covers the priced horizon.
 
+**Equal prices charge late.** When several quarter-hours cost exactly the same (a flat price, or a
+fixed price that does not change through the day), SpotNav picks the latest ones before the
+departure. The car stands plugged in, starts as late as the prices allow and leaves with the freshest
+charge. Earlier versions picked the earliest of equal quarter-hours, so a flat day started the charge
+at once.
+
 **A departure on a particular day.** In the card's Plan dialog, next to the departure time, you can
 choose a date up to seven days ahead ("Sun 4 Oct"); clearing it returns to a departure that repeats
 every day. With a date the plan reaches that far, but SpotNav still only charges in prices that are

@@ -337,7 +337,21 @@ def flat_day(
     return json.dumps(document)
 
 
-def cheap_night_day(area: str, when: Any, *, cheap_hours: int = 6) -> str:
+def rising_day(area: str, when: Any, *, price: float = 0.10, step: float = 0.000001) -> str:
+    """A day whose every quarter costs a little more than the one before (and a day more than the
+    day before), so the cheapest slots are always the earliest ones: the plan starts at the first
+    usable slot, whatever the departure.
+
+    Equal prices go to the latest slots, so a flat day no longer plans from the clock.
+    """
+    document = json.loads(day_body(area, when))
+    document["tz"] = AREA_TZ.get(area, document["tz"])
+    later = (when - TODAY).days
+    document["prices"] = [round(price + later * 0.001 + index * step, 7) for index in range(len(document["prices"]))]
+    return json.dumps(document)
+
+
+def cheap_night_day(area: str, when: Any, *, cheap_hours: int = 6, rising: bool = False) -> str:
     """A day whose night is cheap and whose day is expensive, by wall clock.
 
     This is what makes a *partly estimated* plan possible on purpose: the clock says 08:00,
@@ -348,7 +362,10 @@ def cheap_night_day(area: str, when: Any, *, cheap_hours: int = 6) -> str:
     document = json.loads(day_body(area, when))
     document["tz"] = AREA_TZ.get(area, document["tz"])
     cut = cheap_hours * 4
-    document["prices"] = [0.01] * cut + [0.50] * (len(document["prices"]) - cut)
+    rest = len(document["prices"]) - cut
+    # `rising`: the expensive hours get dearer by the quarter, so the earliest of them are the cheapest
+    # (equal prices would go to the latest slots).
+    document["prices"] = [0.01] * cut + [round(0.50 + (index * 0.000001 if rising else 0.0), 7) for index in range(rest)]
     return json.dumps(document)
 
 
@@ -386,6 +403,7 @@ def serve(
     days: tuple[Any, ...] = (TODAY, TOMORROW),
     listed: tuple[Any, ...] | None = None,
     flat: bool = False,
+    rising: bool = False,
     fx: dict[str, float] | None = None,
 ) -> None:
     """Serve the catalogue, an index listing [listed] and every day in [days].
@@ -396,7 +414,7 @@ def serve(
     """
     transport.serve_area(area)
     for day in days:
-        body = flat_day(area, day, fx=fx, flat=flat)
+        body = rising_day(area, day) if rising else flat_day(area, day, fx=fx, flat=flat)
         transport.serve(transport.day_path(area, day), 200, body)
     listing = days if listed is None else listed
     transport.serve("/v1/index.json", 200, index_listing(area, [day.isoformat() for day in listing]))
