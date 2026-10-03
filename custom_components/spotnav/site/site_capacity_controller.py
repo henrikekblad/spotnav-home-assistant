@@ -679,7 +679,10 @@ class SiteCapacityController:
                     urgent=yield_verdict.urgent,
                     # A step sized from a battery that was verified to give way is paced by the
                     # stepper's own settle time and gap, not by the dwell.
-                    verified_step=yield_verdict.battery_credit_a is not None,
+                    verified_step=(
+                        yield_verdict.battery_credit_a is not None
+                        or yield_verdict.reason == "down_step_absorbed_by_battery"
+                    ),
                 )
             else:
                 # Passthrough: the raw proposal, urgent only if the stepper says so.
@@ -902,6 +905,9 @@ class SiteCapacityController:
                         max_yield_ceiling_a(float(main_fuse_a)) if main_fuse_a is not None else 0.0,
                     ),
                     min_current_a=float(wiring.get("min_current_a", DEFAULT_MIN_CURRENT_A)),
+                    real_excess_a=float(
+                        self.config.get(CONF_REGULATOR_DEADBAND_A, DEFAULT_REGULATOR_DEADBAND_A)
+                    ),
                 )
             )
             self._yield_steppers[charger_entry_id] = stepper
@@ -939,12 +945,24 @@ class SiteCapacityController:
         site_current_a = {phase: fresh.measured_phase_current_a.get(phase) for phase in phases}
         # Every basis entry carries the same `requested_current_a`, so any one is this charger's.
         requested_a = next(iter(decision.basis.values())).requested_current_a
+        battery = self.battery_aggregate_power()
+        battery_power_w = (
+            battery.value if battery is not None and battery.problem is None else None
+        )
+        # The limit per phase: what is measured plus the uncredited margin (fuse less safety margin).
+        limit_a: dict[PhaseName, float | None] = {}
+        for phase in phases:
+            measured = fresh.measured_phase_current_a.get(phase)
+            margin = fresh.measured_margin_a.get(phase)
+            limit_a[phase] = None if measured is None or margin is None else measured + margin
         observation = YieldObservation(
             now=self._yield_now(),
             site_current_a=site_current_a,
             delivered_current_a=delivered_current_a,
             phases=phases,
             battery_charge_a=self._battery_charge_a(fresh, phases),
+            battery_power_w=battery_power_w,
+            limit_a=limit_a,
             credit_allowed=(
                 self.config.get(CONF_SOLAR_PRIORITY, DEFAULT_SOLAR_PRIORITY)
                 == SOLAR_PRIORITY_CAR_FIRST
