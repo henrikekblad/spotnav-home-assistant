@@ -358,6 +358,16 @@ async def _async_setup_auto_preview(
             entry.async_create_task(hass, preview.async_recalculate(), f"{entry_id} recalculate")
 
     data.soc_reader.set_on_reading(_soc_moved)
+
+    def _on_connection(event: str) -> bool:
+        # A plug-in or an unplug: plan again (the need counted afresh for a new plug-in), and let Auto
+        # start a window open now once it has, for a plan it owns.
+        handled = preview.note_connection(event)
+        plan = data.controller.plan
+        return handled and (plan is None or plan.auto_owned)
+
+    data.controller.set_connection_handler(_on_connection)
+    entry.async_on_unload(lambda: data.controller.set_connection_handler(None))
     # One shared market fetch per installation; awaited so entities exist when setup returns.
     await price_manager.async_ensure_catalogue()
     # The boundary reads the live price identity from the preview and publishes through it.
