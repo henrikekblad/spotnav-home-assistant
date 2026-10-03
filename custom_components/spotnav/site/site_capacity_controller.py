@@ -14,7 +14,7 @@ import logging
 import math
 import time
 from collections import deque
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass, replace
 from datetime import datetime, timedelta
 from typing import Any, Literal
@@ -184,6 +184,20 @@ class RestoreReport:
     chargers: tuple[ChargerRestoreReport, ...]
 
 
+@dataclass(frozen=True, slots=True)
+class SiteEvaluation:
+    """What the site's sensors read besides `result`, computed once per evaluation in `_recompute`.
+
+    Building these (the capability snapshot re-reads every measurement and charger; the measured
+    currents and the grid power read states) per entity and per state write made a sensor update
+    slow, so the entities read this and never recompute.
+    """
+
+    capability: SiteCapabilitySnapshot
+    charger_measured_current: Mapping[str, DirectPhaseMeasurement | None]
+    grid_power: dict[str, Any]
+
+
 class SiteCapacityController:
     """Computes and exposes the site capacity snapshot and, when opted in, applies active control.
 
@@ -251,6 +265,19 @@ class SiteCapacityController:
         # `_async_apply_active_control`'s job.
         self.regulator_decisions: dict[str, RegulatorDecision] = (
             self._compute_regulator_decisions()
+        )
+        self.evaluation: SiteEvaluation = self._build_evaluation()
+
+    def _build_evaluation(self) -> SiteEvaluation:
+        """The derived reads the site's entities show, taken once per evaluation (see `SiteEvaluation`)."""
+        charger_entry_ids: list[str] = list(self.config.get(CONF_CHARGER_ENTRY_IDS) or [])
+        return SiteEvaluation(
+            capability=self.capability_snapshot,
+            charger_measured_current={
+                charger_entry_id: self.charger_measured_current(charger_entry_id)
+                for charger_entry_id in charger_entry_ids
+            },
+            grid_power=self.grid_power_snapshot(),
         )
 
     @property
@@ -400,6 +427,7 @@ class SiteCapacityController:
             self.entry_id, previous_decisions, self.regulator_decisions
         )
         self._last_logged_conflicts = current_conflicts
+        self.evaluation = self._build_evaluation()
         # The only path from a regulator decision to a charger command: queued, never awaited
         # (`_recompute` is a sync callback), and only when both gates hold.
         if schedule_apply and self._active_control_allowed():
