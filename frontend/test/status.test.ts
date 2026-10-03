@@ -43,6 +43,25 @@ describe("the status line renders the block and nothing else", () => {
     );
   });
 
+  it("says how a manual need is counted without the energy meter, in every language", () => {
+    const kept = block(statusLine("auto_installed", { start: "2026-09-22T22:00:00+00:00" }), statusLine("remaining_need_estimated", { kwh: 6.4, basis: "kept" }));
+    expect(statusText(kept, format("en"), NOW)).toContain("The energy meter cannot be read: 6.4 kWh remains, from its last reading.");
+    expect(statusText(kept, format("sv"), NOW)).toContain("Energimätaren kan inte läsas: 6,4 kWh återstår enligt dess senaste värde.");
+    const sessions = block(statusLine("remaining_need_estimated", { kwh: 3, basis: "sessions" }));
+    expect(statusText(sessions, format("en"), NOW)).toBe(
+      "No energy meter: 3 kWh remains, counted from this charger's recorded charges.",
+    );
+    expect(statusText(sessions, format("sv"), NOW)).toContain("Ingen energimätare: 3 kWh återstår");
+    for (const language of ["da", "fi", "nb"] as const) {
+      expect(statusText(kept, format(language), NOW)).not.toContain("{kwh}");
+      expect(statusText(sessions, format(language), NOW)).not.toContain("{kwh}");
+    }
+    const issues = issuesOf({ tone: "notice", lines: [statusLine("remaining_need_estimated", { kwh: 3, basis: "sessions" })] } as unknown as Status, "en");
+    expect(issues.map((issue) => [issue.severity, issueText("en", issue)])).toEqual([
+      ["notice", "No energy meter: 3 kWh remains, counted from this charger's recorded charges."],
+    ]);
+  });
+
   it("names the phases that make the site measurement unusable, and where they are read from", () => {
     const empty = block(
       statusLine("waiting_for_tomorrow"),

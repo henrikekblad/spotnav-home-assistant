@@ -130,6 +130,7 @@ export const STATUS_WORDING: Readonly<Record<StatusCode, TranslationKey>> = {
   charger_disabled: "issue.chargerDisabled",
   held_until_window: "status.heldUntilWindow",
   hold_overridden: "issue.holdOverridden",
+  remaining_need_estimated: "issue.needKept",
   site_measurement_problem: "issue.siteMeasurement",
   duplicate_charger: "issue.duplicateCharger",
 };
@@ -158,6 +159,7 @@ export const STATUS_VARIANT_KEYS: readonly TranslationKey[] = [
   "status.loadBalancingLimited",
   "strategy.status.solar.chargingUnknown",
   "strategy.status.hybrid.creditSuffix",
+  "issue.needFromSessions",
 ];
 
 const MISSING_FIELD_KEYS: Readonly<Record<string, TranslationKey>> = {
@@ -167,6 +169,14 @@ const MISSING_FIELD_KEYS: Readonly<Record<string, TranslationKey>> = {
   vehicle: "status.missing.vehicle",
   target_percent: "status.missing.target_percent",
 };
+
+/** A manual need counted without the energy register: its kept remainder's wording, or the sessions'. */
+function needEstimated(language: Language, p: StatusLine["params"]): { key: TranslationKey; params: Record<string, string> } {
+  return {
+    key: p["basis"] === "sessions" ? "issue.needFromSessions" : "issue.needKept",
+    params: { kwh: formatNumber(language, num(p["kwh"]) ?? 0, 1) },
+  };
+}
 
 /** The wording for why a charger is unavailable when its charge control is gone or disabled. */
 function chargerProblemKey(problem: StatusParam | undefined): TranslationKey | null {
@@ -337,6 +347,10 @@ export function lineText(line: StatusLine, format: FormatContext, nowMs: number)
     }
     case "site_measurement_problem":
       return measurementLineText(language, p);
+    case "remaining_need_estimated": {
+      const need = needEstimated(language, p);
+      return say(need.key, need.params);
+    }
     case "duplicate_charger":
       return say("issue.duplicateCharger", { other: typeof p["other"] === "string" ? p["other"] : "" });
     case "charger_unavailable": {
@@ -399,6 +413,11 @@ export function issuesOf(status: Status | null, language: Language): Issue[] {
         technical: null,
         text: measurementLineText(language, line.params),
       });
+      continue;
+    }
+    if (line.code === "remaining_need_estimated") {
+      const need = needEstimated(language, line.params);
+      issues.push({ code: line.code, severity, textKey: need.key, params: need.params, technical: null });
       continue;
     }
     if (line.code === "duplicate_charger") {

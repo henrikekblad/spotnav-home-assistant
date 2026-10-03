@@ -286,6 +286,13 @@
       ],
       "tone": "normal"
     },
+    "remaining_need_estimated": {
+      "params": [
+        "basis",
+        "kwh"
+      ],
+      "tone": "notice"
+    },
     "settings_incomplete": {
       "params": [
         "missing",

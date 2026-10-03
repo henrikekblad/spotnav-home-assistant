@@ -46,6 +46,8 @@ Precedence (first match wins the headline; "add" rows append a fact line)
 6. Notices appended after the headline (and after the target fact): price_data_stale,
    price_data_degraded (usable rows exist, or degraded/incomplete), unpriced,
    hold_overridden (a person started the charge again after SpotNav held it, and it may go on),
+   remaining_need_estimated (a manual need counted without the energy register: its last remainder
+   kept, or the charger's recorded charges),
    held_by_charger (the charger's own scheduler or load balancer holds the charge), charger_disabled
    (its own enable switch is off, so it cannot start), site_measurement_problem (the phases that
    make the site's measurement unusable and why), duplicate_charger (another entry is the same physical
@@ -164,6 +166,10 @@ STATUS_CODES: Final[dict[str, tuple[str, tuple[str, ...]]]] = {
     "held_until_window": (TONE_NORMAL, ("time",)),
     # A person started the charge again after that stop: the plan is overridden and it may go on.
     "hold_overridden": (TONE_NOTICE, ()),
+    # A manual need counted without the energy register: `kwh` remains, `basis` says how it was told:
+    # `kept` (the register cannot be read; its last remainder is kept) or `sessions` (no register; the
+    # charger's recorded charges since the plug-in or the last departure).
+    "remaining_need_estimated": (TONE_NOTICE, ("kwh", "basis")),
     # The site's measurement is unusable: `no_value_phases` (L1/L2/L3) read nothing usable, from
     # `no_value_entities`; `stale_phases` are older than `max_age_s`.
     "site_measurement_problem": (
@@ -188,6 +194,10 @@ class PlanningFacts:
     history_weekday: int | None = None
     history_percent: int | None = None
     history_weeks: int | None = None
+    #: `manual_kwh` only: how the remaining need was counted (`kept`, `sessions`, `register`,
+    #: `requested`) and the need that remains, in kWh.
+    energy_basis: str | None = None
+    remaining_kwh: float | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -521,6 +531,15 @@ def _notices(facts: StatusFacts) -> list[dict[str, Any]]:
         lines.append(_line("unpriced"))
     if facts.hold_overridden and facts.charging:
         lines.append(_line("hold_overridden"))
+    if (
+        planning is not None
+        and planning.energy_basis in ("kept", "sessions")
+        and planning.remaining_kwh is not None
+        and not facts.paused
+    ):
+        lines.append(
+            _line("remaining_need_estimated", kwh=round(planning.remaining_kwh, 1), basis=planning.energy_basis)
+        )
     if facts.held_by_charger and not facts.charging:
         lines.append(_line("held_by_charger"))
     if facts.charger_disabled and not facts.charging:

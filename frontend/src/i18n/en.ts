@@ -81,6 +81,8 @@ export const en = {
   "issue.heldByCharger": "The charger's own schedule or load balancing is holding the charge, so it has not started.",
   "issue.chargerDisabled": "The charger's own enable switch is off, so it cannot start. Turn it on in the charger's settings.",
   "issue.holdOverridden": "Charging was started outside the plan and is allowed to continue.",
+  "issue.needKept": "The energy meter cannot be read: {kwh} kWh remains, from its last reading.",
+  "issue.needFromSessions": "No energy meter: {kwh} kWh remains, counted from this charger's recorded charges.",
   "status.siteMeasurement.stale.other": "{phases} are older than {seconds} s.",
   "status.siteMeasurement.stale.one": "{phases} is older than {seconds} s.",
   "status.siteMeasurement.noValue.other": "{phases} have no value{where}.",
