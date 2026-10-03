@@ -198,25 +198,49 @@ export function siteWarningRows(doc: Document, language: Language, site: EntityS
   });
 }
 
+/** The one note that makes the measurement unusable: it stays on top, as a warning. */
+const BLOCKING_NOTES: ReadonlySet<string> = new Set(["measurement_unhealthy"]);
+
 /**
- * What the site's measurement wants said, as one list with the most important note first and no
- * heading or banner of its own: phases that make the measurement unusable, devices that balance load
- * themselves, sources that update more slowly than the maximum age, and a current estimated from
- * power (with the power factor assumed). `null` when there is nothing to say.
+ * The site's blocking problems (phases that make the measurement unusable), as a list at the very top of
+ * the dialog. `null` when there are none. Everything else is `siteChecks`.
  */
 export function siteNotices(doc: Document, language: Language, site: EntitySite): HTMLElement | null {
-  const notes = siteNotes(language, site);
+  const notes = siteNotes(language, site).filter((note) => BLOCKING_NOTES.has(note.code));
   if (notes.length === 0) {
     return null;
   }
   const list = element(doc, "ul", C.entityNotices);
-  list.dataset["notices"] = "site";
+  list.dataset["notices"] = "blocking";
   for (const note of notes) {
     const item = element(doc, "li", C.entityWarning, note.text);
     item.dataset[note.kind] = note.code;
     list.append(item);
   }
   return list;
+}
+
+/**
+ * The rest of what the site's measurement wants said, grouped under one "To check" heading in a normal
+ * tone, one line each, most important first: devices that balance load themselves, sources that update
+ * more slowly than the maximum age, and a current estimated from power. `null` when there is nothing.
+ */
+export function siteChecks(doc: Document, language: Language, site: EntitySite): HTMLElement | null {
+  const notes = siteNotes(language, site).filter((note) => !BLOCKING_NOTES.has(note.code));
+  if (notes.length === 0) {
+    return null;
+  }
+  const section = element(doc, "fieldset", C.siteFieldset);
+  section.dataset["notices"] = "site";
+  section.append(element(doc, "legend", C.siteLegend, translate(language, "entity.checks.title")));
+  const list = element(doc, "ul", C.entityChecks);
+  for (const note of notes) {
+    const item = element(doc, "li", undefined, note.text);
+    item.dataset[note.kind] = note.code;
+    list.append(item);
+  }
+  section.append(list);
+  return section;
 }
 
 /**
@@ -1504,6 +1528,14 @@ export function entityEditorBody(
     errorNodes.set("charger_priority", { node: priorityError, input: priority.fieldset });
     priority.fieldset.append(priorityError);
     body.append(priority.fieldset);
+  }
+
+  // The site's other notes, after the measurement fields.
+  if (scope === "site" && config.site !== null) {
+    const checks = siteChecks(doc, language, config.site);
+    if (checks !== null) {
+      body.append(checks);
+    }
   }
 
   const actions = element(doc, "div", C.settingsActions);

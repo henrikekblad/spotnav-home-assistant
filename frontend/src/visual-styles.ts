@@ -72,6 +72,7 @@ export const VISUAL_CLASSES = {
   entityHelp: "spotnav-entity-help",
   entityWarning: "spotnav-entity-warning",
   entityNotices: "spotnav-entity-notices",
+  entityChecks: "spotnav-entity-checks",
   entityAutomatic: "spotnav-entity-automatic",
   entityDialog: "spotnav-entity-dialog",
   planDialog: "spotnav-plan-dialog",
@@ -1154,6 +1155,15 @@ export const VISUAL_STYLES = `
   .${VISUAL_CLASSES.entityNotices} {
     margin: 8px 0 0;
     padding: 0 0 0 18px;
+  }
+  .${VISUAL_CLASSES.entityChecks} {
+    margin: 4px 0 0;
+    padding: 0 0 0 18px;
+    font-size: 0.85rem;
+    overflow-wrap: break-word;
+  }
+  .${VISUAL_CLASSES.entityChecks} > li + li {
+    margin-top: 4px;
   }
   .${VISUAL_CLASSES.entityHelp},
   .${VISUAL_CLASSES.entityAutomatic} {

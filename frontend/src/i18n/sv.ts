@@ -258,6 +258,7 @@ export const sv: Record<keyof typeof en, string> = {
   "entity.warning.unknown": "Anläggningen har en avisering som den här versionen inte kan visa. Uppdatera SpotNav.",
   "entity.warning.batteryImportLimit": "Två gränser på en säkring: batteriets gräns för nätimport ({integration}) är {battery} A per fas, SpotNavs är {spotnav} A. Ställ in dem på samma värde.",
   "entity.detect.title": "Hittat i Home Assistant",
+  "entity.checks.title": "Att kontrollera",
   "entity.detect.intro": "De här känns igen i din installation. Inget ändras förrän du trycker på Använd.",
   "entity.site.intro": "Mätning för anläggningen. {applies}",
   "entity.detect.meters": "Elmätare",

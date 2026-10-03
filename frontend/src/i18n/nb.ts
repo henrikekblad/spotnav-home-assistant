@@ -258,6 +258,7 @@ export const nb: Record<keyof typeof en, string> = {
   "entity.warning.unknown": "Anlegget har en melding som denne versjonen ikke kan vise. Oppdater SpotNav.",
   "entity.warning.batteryImportLimit": "To grenser på én sikring: batteriets grense for nettimport ({integration}) er {battery} A per fase, SpotNavs er {spotnav} A. Sett dem til samme verdi.",
   "entity.detect.title": "Funnet i Home Assistant",
+  "entity.checks.title": "Å kontrollere",
   "entity.detect.intro": "Disse ble gjenkjent i oppsettet ditt. Ingenting endres før du trykker på Bruk.",
   "entity.site.intro": "Måling for anlegget. {applies}",
   "entity.detect.meters": "Strømmålere",

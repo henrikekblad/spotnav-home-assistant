@@ -258,6 +258,7 @@ export const fi: Record<keyof typeof en, string> = {
   "entity.warning.unknown": "Kohteella on ilmoitus, jota tämä versio ei osaa näyttää. Päivitä SpotNav.",
   "entity.warning.batteryImportLimit": "Kaksi rajaa yhdelle sulakkeelle: akun verkkoonoton raja ({integration}) on {battery} A vaihetta kohti, SpotNavin {spotnav} A. Aseta ne samaan arvoon.",
   "entity.detect.title": "Löytyi Home Assistantista",
+  "entity.checks.title": "Tarkistettavaa",
   "entity.detect.intro": "Nämä tunnistettiin asetuksistasi. Mikään ei muutu ennen kuin painat Käytä.",
   "entity.site.intro": "Kohteen mittaus. {applies}",
   "entity.detect.meters": "Sähkömittarit",
