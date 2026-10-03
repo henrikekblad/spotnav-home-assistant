@@ -351,7 +351,7 @@ class SiteStateEntity(SpotNavSiteEntity, SensorEntity):
     @property
     def extra_state_attributes(self) -> dict[str, Any]:
         result = self.controller.result
-        snapshot = self.controller.capability_snapshot
+        snapshot = self.controller.evaluation.capability
         attributes: dict[str, Any] = {}
         if not any(controller_for(self.hass, charger_id) for charger_id in self._site_members()):
             # A site with no charger says how to add one, where its own device page shows it.
@@ -437,7 +437,7 @@ class SiteStateEntity(SpotNavSiteEntity, SensorEntity):
             "solar_capable": snapshot.solar.capable,
             "solar_reason": snapshot.solar.reason,
             # The meter's total grid power, its age and the export derived from it.
-            "grid_power": self.controller.grid_power_snapshot(),
+            "grid_power": self.controller.evaluation.grid_power,
             # Yield-verified stepping (see `site_capacity_controller.yield_stepping_snapshot`): one
             # entry per associated charger, present even while the site option is off.
             "yield_stepping": self.controller.yield_stepping_snapshot,
@@ -502,8 +502,9 @@ class ChargerProposedCurrentEntity(SpotNavSiteEntity, SensorEntity):
         setpoint_current_a = (
             None if charger_controller is None else charger_controller.setpoint_current_a
         )
-        measured = self.controller.charger_measured_current(self._charger_entry_id)
-        capability = self.controller.capability_snapshot.charger_measurement.get(self._charger_entry_id)
+        evaluation = self.controller.evaluation
+        measured = evaluation.charger_measured_current.get(self._charger_entry_id)
+        capability = evaluation.capability.charger_measurement.get(self._charger_entry_id)
         regulator_decision = self.controller.regulator_decisions.get(self._charger_entry_id)
         return {
             "charger_entry_id": allocation.charger_entry_id,

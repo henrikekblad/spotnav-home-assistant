@@ -163,3 +163,15 @@ async def test_the_entity_configuration_lists_the_controller_as_a_conflict(hass:
         {"kind": "other_controller", "entity_id": CONTROL, "label": "EV Smart Charging", "state": "charger"},
         {"kind": "other_controller", "entity_id": CONTROL, "label": "PeaqEV", "state": "installation"},
     ]
+
+
+async def test_an_easee_charger_is_told_about_cloud_smart_charging_and_others_are_not(hass: HomeAssistant) -> None:
+    easee = register_shape(hass, SHAPES["easee"])
+    result = await _to_detected_entities(hass, easee["device_id"])
+    assert "linked to Tibber (or another app) for smart charging, turn that off" in result["description_placeholders"]["warning"]
+
+
+async def test_a_charger_without_the_easee_cloud_has_no_cloud_note(hass: HomeAssistant) -> None:
+    ids = register_shape(hass, SHAPES["wallbox"])
+    result = await _to_detected_entities(hass, ids["device_id"])
+    assert "Tibber" not in result["description_placeholders"]["warning"]

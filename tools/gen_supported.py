@@ -358,7 +358,18 @@ def chargers_section() -> list[str]:
         "",
     ]
     lines += [f"- {c.name} (`{c.domain}`)" for c in oc.CONTROLLERS]
-    lines.append("")
+    lines += [
+        "",
+        "Tibber's smart charging is not detected, because Home Assistant cannot see it. The core Tibber "
+        "integration only reads a linked charger or vehicle (sensors, no switch, number or service that "
+        "charges; its Data API scopes are read-only), so the smart charging that Tibber runs for a charger "
+        "linked in the Tibber app happens in Tibber's cloud. If the charger is linked to Tibber (or another "
+        "app) for smart charging, turn that off in the app, or SpotNav and the app will fight. The Easee "
+        "setup step says so. Sources: [Tibber in Home Assistant]"
+        "(https://www.home-assistant.io/integrations/tibber) and the integration's source, "
+        "`homeassistant/components/tibber` (Home Assistant 2026.9.2).",
+        "",
+    ]
     unsupported = by_role.get(cp.ROLE_UNSUPPORTED, [])
     lines += [
         "### Not supported",

@@ -103,7 +103,7 @@
       },
       "site_details": {
         "title": "Mätentiteter",
-        "description": "Välj elmätarens sensorer. Alla sensorer godtas; enheten kontrolleras när du fortsätter (ström i A eller mA, effekt i W eller kW, spänning i V, reaktiv effekt i var eller kvar, skenbar effekt i VA eller kVA). Endast fält som passar vald mätkälla visas. Därefter följer varje ansluten laddares fasinkoppling, en laddare i taget.",
+        "description": "Välj elmätarens sensorer. Alla sensorer godtas; enheten kontrolleras när du fortsätter (ström i A eller mA, effekt i W eller kW, spänning i V, reaktiv effekt i var eller kvar, skenbar effekt i VA eller kVA). Endast fält som passar vald mätkälla visas. Därefter följer varje ansluten laddares fasinkoppling, en laddare i taget.{charger_hint}",
         "data": {
           "direct_L1": "L1 nätström",
           "direct_L2": "L2 nätström",
@@ -190,7 +190,7 @@
       },
       "site_confirm": {
         "title": "Anläggning hittad",
-        "description": "Det här hittade SpotNav för anläggningen. Fortsätt för att skapa den, eller kryssa i rutan för att ändra valen.\n\n{summary}",
+        "description": "Det här hittade SpotNav för anläggningen. Fortsätt för att skapa den, eller kryssa i rutan för att ändra valen.\n\n{summary}{charger_hint}",
         "data": {
           "adjust": "Ändra valen"
         }

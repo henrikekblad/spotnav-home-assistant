@@ -259,6 +259,7 @@ export const en = {
   "entity.warning.unknown": "The site has a notice this version cannot show. Update SpotNav.",
   "entity.warning.batteryImportLimit": "Two limits on one fuse: the battery's grid import limit ({integration}) is {battery} A per phase, SpotNav's is {spotnav} A. Set them to the same value.",
   "entity.detect.title": "Found in Home Assistant",
+  "entity.checks.title": "To check",
   "entity.detect.intro": "These were recognised in your setup. Nothing changes until you press Use.",
   "entity.site.intro": "Measurement for the site. {applies}",
   "entity.detect.meters": "Grid meters",

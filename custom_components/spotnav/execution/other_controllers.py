@@ -14,6 +14,12 @@ at the commit named in its row:
   integration's services. Its `chargerid` is an integration-specific id, not an entity or device, so it
   cannot be matched to a SpotNav charger: it is a warning for the installation.
 
+Tibber's smart charging is not here: the core `tibber` integration (2026.9.2: `binary_sensor`, `notify` and
+`sensor` platforms only, and read-only `data-api-chargers-read` / `data-api-vehicles-read` scopes) only reads
+a Tibber-linked charger or vehicle and exposes no switch, number or service that charges, so Home Assistant
+cannot see the smart charging at all. It runs in Tibber's cloud, which commands the charger (for an Easee,
+through Easee's cloud). The Easee charger setup says so instead (`flows/flow.py`, "cloud").
+
 Left out because their source makes no service call on a charger: `nordpool_planner` (dala318,
 `e2651e3`) and `peaqnext` (elden1337, `cd99ba6`) only publish sensors a person wires into automations.
 

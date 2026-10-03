@@ -258,6 +258,7 @@ export const da: Record<keyof typeof en, string> = {
   "entity.warning.unknown": "Anlægget har en meddelelse, som denne version ikke kan vise. Opdater SpotNav.",
   "entity.warning.batteryImportLimit": "To grænser på én sikring: batteriets grænse for netimport ({integration}) er {battery} A pr. fase, SpotNavs er {spotnav} A. Sæt dem til samme værdi.",
   "entity.detect.title": "Fundet i Home Assistant",
+  "entity.checks.title": "Til kontrol",
   "entity.detect.intro": "Disse blev genkendt i din opsætning. Intet ændres, før du trykker på Brug.",
   "entity.site.intro": "Måling for anlægget. {applies}",
   "entity.detect.meters": "Elmålere",

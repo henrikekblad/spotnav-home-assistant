@@ -103,7 +103,7 @@
       },
       "site_details": {
         "title": "Measurement entities",
-        "description": "Pick the grid meter's sensors. Any sensor is accepted; its unit is checked when you continue (current in A or mA, power in W or kW, voltage in V, reactive power in var or kvar, apparent power in VA or kVA). Only fields matching the chosen measurement source are shown. Each associated charger's phase wiring follows, one charger at a time.",
+        "description": "Pick the grid meter's sensors. Any sensor is accepted; its unit is checked when you continue (current in A or mA, power in W or kW, voltage in V, reactive power in var or kvar, apparent power in VA or kVA). Only fields matching the chosen measurement source are shown. Each associated charger's phase wiring follows, one charger at a time.{charger_hint}",
         "data": {
           "direct_L1": "L1 grid current",
           "direct_L2": "L2 grid current",
@@ -190,7 +190,7 @@
       },
       "site_confirm": {
         "title": "Site found",
-        "description": "Here is what SpotNav found for this site. Continue to create it, or tick the box to change these choices.\n\n{summary}",
+        "description": "Here is what SpotNav found for this site. Continue to create it, or tick the box to change these choices.\n\n{summary}{charger_hint}",
         "data": {
           "adjust": "Change these choices"
         }

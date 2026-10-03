@@ -788,12 +788,24 @@ describe("the site's estimate, warnings, sign options and detected meters", () =
     openSettings(element);
     await settle();
     edit(element, "site");
-    const list = openDialog(element)?.querySelector("[data-notices='site']");
-    expect(list?.tagName).toBe("UL");
-    expect(list?.querySelectorAll("li").length).toBe(4);
+    const dialog = openDialog(element);
+    const blocking = dialog?.querySelector("[data-notices='blocking']");
+    expect(blocking?.tagName).toBe("UL");
+    expect(blocking?.querySelectorAll("li").length).toBe(1);
+    // The rest is one group under "To check", after the fields and before the buttons, in a normal tone.
+    const list = dialog?.querySelector("[data-notices='site']");
+    expect(list?.tagName).toBe("FIELDSET");
+    expect(list?.querySelector("legend")?.textContent).toBe("To check");
+    expect(list?.querySelectorAll("li").length).toBe(3);
+    expect(list?.querySelector("li")?.className).toBe("");
     const order = [...(list?.querySelectorAll("li") ?? [])].map((item) => item.dataset["warning"] ?? item.dataset["notice"]);
-    expect(order).toEqual(["measurement_unhealthy", "own_load_balancing", "update_interval_exceeds_max_age", "estimated"]);
-    expect(list?.querySelector("[data-warning='measurement_unhealthy']")?.textContent).toBe(
+    expect(order).toEqual(["own_load_balancing", "update_interval_exceeds_max_age", "estimated"]);
+    const body = dialog?.querySelector("[data-notices='site']")?.parentElement;
+    expect(body?.querySelector("[data-field-block='measurement_mode']")?.compareDocumentPosition(list as Node)).toBe(
+      Node.DOCUMENT_POSITION_FOLLOWING,
+    );
+    expect(blocking?.compareDocumentPosition(list as Node)).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
+    expect(blocking?.querySelector("[data-warning='measurement_unhealthy']")?.textContent).toBe(
       "L2 and L3 have no value (sensor.pulse_l2, sensor.pulse_l3). L1 is older than 120 s.",
     );
   });
@@ -808,7 +820,7 @@ describe("the site's estimate, warnings, sign options and detected meters", () =
     openSettings(element);
     await settle();
     edit(element, "site");
-    expect(openDialog(element)?.querySelector("[data-notices='site']")).toBeNull();
+    expect(openDialog(element)?.querySelector("[data-notices]")).toBeNull();
   });
 
   it("lists the detected meters in the site editor and applies one by id", async () => {
@@ -1275,7 +1287,7 @@ describe("the external balancer warning", () => {
     edit(element, "site");
     const row = openDialog(element)?.querySelector("[data-notices='site'] [data-warning='external_current_balancer']");
     expect(row?.textContent).toBe(expected);
-    expect(row?.className).toBe("spotnav-entity-warning");
+    expect(row?.tagName).toBe("LI");
   });
 
   it("lets no raw code reach the text, and words an unknown warning code", async () => {

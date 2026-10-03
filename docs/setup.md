@@ -75,6 +75,11 @@ fight each other. Turn it off and continue. There is also a tick box to continue
 accept that they may fight. If the integration is evcc or openWB, SpotNav warns that they may own
 the charger and suggests nothing.
 
+Smart charging that runs in a cloud app is not visible to Home Assistant, so SpotNav cannot warn
+about it. If the charger is linked to Tibber (or another app) for smart charging, turn that off:
+the Easee setup step says so. Home Assistant's Tibber integration only reads a linked charger and
+exposes no control, so there is nothing to detect.
+
 ### Confirm what was found
 
 When SpotNav finds one unambiguous answer it shows it and asks you to confirm instead of asking
@@ -176,8 +181,8 @@ Go to **Settings, Devices & services, Add integration, SpotNav** and choose **A 
 balancing)**.
 
 A site with no charger yet is fine, but nothing is shared until it has one, and the card needs a
-charger to show anything. The site's setup step, its Repairs entry and its own sensor all say the
-same thing: **Add a charger: Settings, Devices & services, SpotNav, Add entry, Charger; it will
+charger to show anything. The site's setup steps (including the confirmation), its Repairs entry,
+its own sensor and the card's editor all say the same thing: **Add a charger: Settings, Devices & services, SpotNav, Add entry, Charger; it will
 offer to join this site.**
 
 ### The basics

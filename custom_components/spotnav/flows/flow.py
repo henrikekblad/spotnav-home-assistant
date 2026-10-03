@@ -77,6 +77,7 @@ from ..const import (
 )
 from ..execution.charger_profiles import (
     detectable_platforms,
+    PATH_EASEE,
     profile_for,
     ROLE_CHARGER,
     ROLE_EXCLUDED,
@@ -169,6 +170,8 @@ _DETECTED_TEXT: dict[str, dict[str, str]] = {
         "balanced": "Perific balances this charger's installation through Zaptec's cloud and sets the same "
         "available current SpotNav would. No current is suggested: SpotNav only starts and stops the charger.",
         "controller": "{name} also controls chargers; turn it off for this charger or SpotNav and {name} will fight.",
+        "cloud": "If the charger is linked to Tibber (or another app) for smart charging, turn that off: "
+        "Home Assistant cannot see it, and it will fight SpotNav.",
     },
     "sv": {
         "external": "En annan styrning (evcc eller openWB) är installerad och kan redan styra den här "
@@ -179,6 +182,8 @@ _DETECTED_TEXT: dict[str, dict[str, str]] = {
         "balanced": "Perific balanserar den här laddarens installation via Zaptecs moln och ställer in samma "
         "tillgängliga ström som SpotNav skulle göra. Ingen ström föreslås: SpotNav startar och stoppar bara laddaren.",
         "controller": "{name} styr också laddare; stäng av den för den här laddaren, annars motverkar {name} och SpotNav varandra.",
+        "cloud": "Om laddaren är kopplad till Tibber (eller en annan app) för smart laddning, stäng av det: "
+        "Home Assistant ser det inte, och det motverkar SpotNav.",
     },
 }
 
@@ -750,7 +755,13 @@ class SpotNavChargingConfigFlow(ChargerWiringSteps, config_entries.ConfigFlow, d
                     if detected.balanced_by
                     else ""
                 )
-                + "".join(f"{text['controller'].format(name=found.name)}\n\n" for found in detected.controllers),
+                + "".join(f"{text['controller'].format(name=found.name)}\n\n" for found in detected.controllers)
+                # Easee's own app and Tibber's smart charging act through Easee's cloud, outside Home Assistant.
+                + (
+                    f"{text['cloud']}\n\n"
+                    if (detected.control_path or {}).get("kind") == PATH_EASEE
+                    else ""
+                ),
                 "disabled": (
                     f"\n\n{text['disabled']} "
                     + ", ".join(self._entity_name(entity_id) for entity_id in detected.disabled_useful)
@@ -1080,6 +1091,10 @@ class SpotNavChargingConfigFlow(ChargerWiringSteps, config_entries.ConfigFlow, d
             },
         )
 
+    def _charger_hint(self) -> str:
+        """How to add a charger, while there is none (the site's steps show it; it then offers to join)."""
+        return "" if charger_entries(self.hass) else f"\n\n{ADD_CHARGER_HINT[flow_language(self.hass)]}"
+
     async def async_step_site(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:
         """Main fuse, safety margin, measurement mode and associated chargers: the smallest useful base
         step. Per-charger wiring and measurement entities follow in `async_step_site_details`; the maximum
@@ -1106,11 +1121,10 @@ class SpotNavChargingConfigFlow(ChargerWiringSteps, config_entries.ConfigFlow, d
                 return await self.async_step_site_current_suggestions()
             return await self.async_step_site_details()
         # With no charger yet, the form says how to add one (it will then offer to join this site).
-        hint = "" if charger_entries(self.hass) else f"\n\n{ADD_CHARGER_HINT[flow_language(self.hass)]}"
         return self.async_show_form(
             step_id="site",
             data_schema=site_basic_schema(self.hass),
-            description_placeholders={"charger_hint": hint},
+            description_placeholders={"charger_hint": self._charger_hint()},
         )
 
     async def async_step_site_detected(
@@ -1236,7 +1250,7 @@ class SpotNavChargingConfigFlow(ChargerWiringSteps, config_entries.ConfigFlow, d
         return self.async_show_form(
             step_id="site_confirm",
             data_schema=vol.Schema({vol.Optional("adjust", default=False): bool}),
-            description_placeholders={"summary": summary},
+            description_placeholders={"summary": summary, "charger_hint": self._charger_hint()},
         )
 
     async def async_step_site_current_suggestions(
@@ -1351,7 +1365,11 @@ class SpotNavChargingConfigFlow(ChargerWiringSteps, config_entries.ConfigFlow, d
             if charger_entry_ids:
                 return await self._begin_charger_wiring(pending)
             return await self._create_site_entry(pending, {})
-        return self.async_show_form(step_id="site_details", data_schema=schema)
+        return self.async_show_form(
+            step_id="site_details",
+            data_schema=schema,
+            description_placeholders={"charger_hint": self._charger_hint()},
+        )
 
     async def _finish_pending_site(self) -> ConfigFlowResult:
         """Save the site whose `site_details` submission started this run of manual entries (the create

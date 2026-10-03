@@ -60,3 +60,16 @@ async def test_the_repair_and_the_hint_go_when_the_site_has_a_charger(hass: Home
     assert [key for key in _issues(hass) if key.startswith("site_without_chargers")] == []
     state_id = er.async_get(hass).async_get_entity_id("sensor", DOMAIN, f"{site.entry_id}_site_state")
     assert "next_step" not in hass.states.get(state_id).attributes
+
+
+async def test_the_confirm_step_says_how_to_add_a_charger_only_while_there_is_none(hass: HomeAssistant) -> None:
+    from .test_config_flow_site_confirm import _choice, _owner_world, _to_detected
+
+    _owner_world(hass, chargers=0)
+    detected = await _to_detected(hass, [])
+    confirm = await hass.config_entries.flow.async_configure(
+        detected["flow_id"], {"choice": _choice(detected), "enable_disabled": True}
+    )
+    assert confirm["step_id"] == "site_confirm"
+    assert HINT in confirm["description_placeholders"]["charger_hint"]
+    hass.config_entries.flow.async_abort(confirm["flow_id"])
