@@ -84,7 +84,8 @@ def test_every_field_survives_a_round_trip():
     assert {item.area_id: item for item in decoded.overrides} == {
         item.area_id: item for item in settings.overrides
     }
-    assert decoded.phases == settings.phases
+    # `phases` is accepted from an older client and ignored: it decodes to nothing stored.
+    assert decoded.phases is None
     assert decoded.amps == settings.amps
     assert decoded.requested_kwh == settings.requested_kwh
     assert decoded.max_periods == settings.max_periods

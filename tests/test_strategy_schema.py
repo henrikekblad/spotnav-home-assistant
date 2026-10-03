@@ -32,7 +32,7 @@ from custom_components.spotnav.api.settings import (
     SETTINGS_API_VERSION,
     SETTINGS_KEYS,
     decode_settings,
-    encode_settings,
+    encode_settings as _encode_settings,
     replacement_mutator,
     settings_envelope,
     strategy_of,
@@ -40,6 +40,12 @@ from custom_components.spotnav.api.settings import (
 from tests.world import setup_charger
 from tests.messages import read_settings_message, stored, update_settings_message
 from tests.world import admin, ws_call
+
+def encode_settings(settings, phases=3):
+    """The wire record as it reads for a charger wired for three phases (the phases a charge uses are
+    the server's to fill in, not a stored setting)."""
+    return _encode_settings(settings, phases)
+
 
 pytestmark = pytest.mark.usefixtures("offline_relay")
 
@@ -99,7 +105,7 @@ async def test_the_settings_command_round_trips_every_strategy(
 
     read = await ws_call(client, read_settings_message(entry.entry_id))
     assert read["success"] is True
-    assert read["result"] == settings_envelope(before)
+    assert read["result"] == settings_envelope(before, 3)
     assert read["result"]["settings"]["strategy"] == STRATEGY_CHEAPEST
     assert read["result"]["api_version"] == SETTINGS_API_VERSION == 1
 

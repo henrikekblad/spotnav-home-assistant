@@ -27,6 +27,12 @@
       "name": "entry_a"
     }
   ],
+  "charging_phases": {
+    "charger": 1,
+    "limited_by": null,
+    "phases": 1,
+    "vehicle": null
+  },
   "control": {
     "automatic_action": "none",
     "automatic_action_reason": "action_pending",

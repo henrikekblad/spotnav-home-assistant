@@ -9,44 +9,48 @@
     "available": true,
     "capabilities": {
       "auto_price": true,
-      "current_limit": true,
+      "current_limit": false,
       "load_balancing": false,
       "refresh_vehicle": true,
       "regulated_current": false,
       "set_charge_limit": true,
       "set_current": false,
-      "target_soc": false,
+      "target_soc": true,
       "target_stop": true
     },
-    "charger_id": "entry_a",
-    "charger_name": "entry_a"
+    "charger_id": "soc_charger",
+    "charger_name": "Wallbox"
   },
   "chargers": [
     {
-      "id": "entry_a",
-      "name": "entry_a"
+      "id": "soc_charger",
+      "name": "Wallbox"
     }
   ],
   "charging_phases": {
-    "charger": 1,
-    "limited_by": null,
+    "charger": 3,
+    "limited_by": "vehicle",
     "phases": 1,
-    "vehicle": null
+    "vehicle": 1
   },
   "control": {
-    "automatic_action": "resume",
+    "automatic_action": "pause",
     "automatic_action_reason": null,
     "can_act": true,
     "execution_error": null,
     "immediate_action": "start",
     "immediate_action_reason": null,
     "pause": {
-      "admitted_at": "2026-09-22T17:00:00+00:00",
-      "choice": "until_resumed",
+      "admitted_at": null,
+      "choice": null,
       "expires_at": null
     },
-    "pause_blocks_execution": true,
-    "pause_choices": []
+    "pause_blocks_execution": false,
+    "pause_choices": [
+      "next_period",
+      "until_tomorrow",
+      "until_resumed"
+    ]
   },
   "current_range": {
     "max_a": 32,
@@ -113,55 +117,55 @@
     "delivered_kwh": null,
     "installed": {
       "active_period_index": null,
-      "amps": 10,
-      "identity": "ff47b819cb2bc3234e2372748dafce4f",
+      "amps": 16,
+      "identity": "<id>",
       "periods": [
         {
-          "end": "2026-09-22T15:30:00+00:00",
-          "start": "2026-09-22T06:45:00+00:00"
+          "end": "2026-09-22T15:45:00+00:00",
+          "start": "2026-09-22T06:15:00+00:00"
         }
       ],
       "phases": 1,
       "power_kw": null
     },
     "proposal": {
-      "amps": null,
+      "amps": 16,
       "cost": {
         "currency": "SEK",
-        "value": 34.6026423875
+        "value": 62.75810222000001
       },
-      "distance_mil": 10.0625,
-      "identity": "7c32d550e03d1ee21fc4f374dcddd189",
+      "distance_mil": 17.48,
+      "identity": "<id>",
       "periods": [
         {
-          "end": "2026-09-22T15:30:00+00:00",
-          "start": "2026-09-22T06:45:00+00:00"
+          "end": "2026-09-22T15:45:00+00:00",
+          "start": "2026-09-22T06:15:00+00:00"
         }
       ],
-      "phases": null,
-      "planned_kwh": 20.125,
-      "power_kw": 2.3,
-      "priced_slots": 35,
-      "requested_kwh": 20.0,
-      "settings_revision": 6,
+      "phases": 1,
+      "planned_kwh": 34.96,
+      "power_kw": 3.68,
+      "priced_slots": 38,
+      "requested_kwh": 34.22222222222222,
+      "settings_revision": 2,
       "unpriced": false,
       "unpriced_slots": 0
     },
     "relation": {
       "applied": true,
-      "applied_identity": "ff47b819cb2bc3234e2372748dafce4f",
+      "applied_identity": "<id>",
       "pending_identity": null
     },
     "remaining_kwh": null
   },
   "planning": {
     "applied": true,
-    "applied_identity": "ff47b819cb2bc3234e2372748dafce4f",
+    "applied_identity": "<id>",
     "calculated_at": "2026-09-22T06:00:00+00:00",
-    "execution_paused": true,
+    "execution_paused": false,
     "execution_reason": null,
-    "execution_state": "paused",
-    "generation": 3,
+    "execution_state": "scheduled",
+    "generation": 2,
     "historical": false,
     "missing": [],
     "must_buy_now_kwh": null,
@@ -172,7 +176,7 @@
     "price_wait": null,
     "publication_at": null,
     "reason": "ready",
-    "settings_revision": 6,
+    "settings_revision": 2,
     "state": "proposal_ready",
     "today": "2026-09-22",
     "tomorrow": "2026-09-23"
@@ -518,8 +522,8 @@
         "duration_minutes": 15,
         "effective_price": 273.90357500000005,
         "end": "2026-09-22T08:30:00+02:00",
-        "installed_planned": false,
-        "proposal_planned": false,
+        "installed_planned": true,
+        "proposal_planned": true,
         "raw_price": 273.90357500000005,
         "start": "2026-09-22T08:15:00+02:00"
       },
@@ -528,8 +532,8 @@
         "duration_minutes": 15,
         "effective_price": 265.01887500000004,
         "end": "2026-09-22T08:45:00+02:00",
-        "installed_planned": false,
-        "proposal_planned": false,
+        "installed_planned": true,
+        "proposal_planned": true,
         "raw_price": 265.01887500000004,
         "start": "2026-09-22T08:30:00+02:00"
       },
@@ -888,8 +892,8 @@
         "duration_minutes": 15,
         "effective_price": 264.75955,
         "end": "2026-09-22T17:45:00+02:00",
-        "installed_planned": false,
-        "proposal_planned": false,
+        "installed_planned": true,
+        "proposal_planned": true,
         "raw_price": 264.75955,
         "start": "2026-09-22T17:30:00+02:00"
       },
@@ -2104,7 +2108,7 @@
         "start": "2026-09-23T23:45:00+02:00"
       }
     ],
-    "priced_slots": 35,
+    "priced_slots": 38,
     "reason": "ready",
     "resolution_minutes": 15,
     "resolutions_minutes": [
@@ -2162,7 +2166,7 @@
     }
   },
   "settings": {
-    "amps": 10,
+    "amps": 16,
     "area_id": "SE4",
     "departure_date": null,
     "departure_enabled": false,
@@ -2176,27 +2180,59 @@
       6,
       7
     ],
-    "driver": "manual_kwh",
+    "driver": "target_soc",
     "max_periods": 1,
     "overrides": [],
     "phases": 1,
-    "requested_kwh": 20.0,
-    "revision": 7,
+    "requested_kwh": 10.0,
+    "revision": 2,
     "strategy": "cheapest",
     "target": {
-      "target_percent": null,
-      "vehicle_id": null
+      "target_percent": 80.0,
+      "vehicle_id": "vehicle_ev6"
     }
   },
   "site": null,
-  "soc": null,
+  "soc": {
+    "age_s": 0,
+    "capacity_kwh": 77.0,
+    "efficiency": 0.9,
+    "estimated": false,
+    "missing": [],
+    "need_kwh": 34.22,
+    "source": "vehicle",
+    "target_percent": 80.0,
+    "value": 40.0,
+    "vehicle_id": "vehicle_ev6",
+    "vehicle_max_percent": null,
+    "vehicle_name": "EV6",
+    "vehicles": []
+  },
   "status": {
     "lines": [
       {
-        "code": "paused",
+        "code": "auto_planned",
         "params": {
-          "choice": "until_resumed",
-          "until": null
+          "start": "2026-09-22T06:15:00+00:00"
+        }
+      },
+      {
+        "code": "plan_energy",
+        "params": {
+          "kwh": 34.96
+        }
+      },
+      {
+        "code": "plan_cost",
+        "params": {
+          "amount_minor": 6276,
+          "currency": "SEK"
+        }
+      },
+      {
+        "code": "plan_distance",
+        "params": {
+          "mil": 17.48
         }
       }
     ],
@@ -2232,11 +2268,27 @@
       "current_path": "none",
       "energy_automatic": true,
       "energy_name": null,
-      "start_stop_name": "charger a"
+      "start_stop_name": "wallbox"
     },
     "site": null,
-    "vehicles": {}
+    "vehicles": {
+      "vehicle_ev6": {
+        "soc_sensor_name": "ev6 battery"
+      }
+    }
   },
-  "target_vehicle_id": null,
-  "vehicles": []
+  "target_vehicle_id": "vehicle_ev6",
+  "vehicles": [
+    {
+      "capacity_kwh": 77.0,
+      "capacity_source": "stored",
+      "consumption_kwh_per_10km": 2.0,
+      "id": "vehicle_ev6",
+      "max_percent": null,
+      "name": "EV6",
+      "onboard_phases": 1,
+      "soc_entity_id": "sensor.ev6_battery",
+      "soc_percent": 40.0
+    }
+  ]
 }

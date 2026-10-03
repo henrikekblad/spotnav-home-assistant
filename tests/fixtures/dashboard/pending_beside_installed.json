@@ -2168,6 +2168,12 @@
   "soc": null,
   "vehicles": [],
   "target_vehicle_id": null,
+  "charging_phases": {
+    "phases": 1,
+    "charger": 1,
+    "vehicle": null,
+    "limited_by": null
+  },
   "detected_phases": null,
   "phase_detection": {
     "source": "unknown",

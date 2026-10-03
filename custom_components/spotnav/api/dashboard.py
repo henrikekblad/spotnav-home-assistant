@@ -71,6 +71,7 @@ from ..planning.auto_settings import (
     STRATEGY_CHEAPEST,
 )
 from ..planning.hybrid_forecast import async_forecast_capable_domains
+from ..planning.phases import charging_phases, ChargingPhases
 from ..planning.planner import chart_intervals, ChartInterval
 from ..sessions.inputs import sessions_block
 from ..planning.status_compose import (
@@ -330,6 +331,8 @@ class CapturedVehicle:
     consumption_kwh_per_10km: float | None
     max_percent: float | None
     soc_percent: float | None = None
+    #: The onboard charger's phases (1 or 3): the stored answer, else three.
+    onboard_phases: int = vehicle_properties.DEFAULT_ONBOARD_PHASES
 
 
 @dataclass(frozen=True, slots=True)
@@ -381,6 +384,8 @@ class CapturedDashboard:
     soc: CapturedSoc | None = None
     vehicles: tuple[CapturedVehicle, ...] = ()
     target_vehicle_id: str | None = None
+    #: The phases a charge uses and what limits them (`planning/phases.py`).
+    charging_phases: ChargingPhases | None = None
     target: CapturedTarget | None = None
     phase_result: PhaseDetectionResult = UNKNOWN_PHASES
     #: Every charger config entry `(id, name)` in creation order, so a paired app learns about
@@ -591,6 +596,7 @@ def capture_vehicles(
                 ),
                 max_percent=max_percent,
                 soc_percent=soc_percent,
+                onboard_phases=own.phases,
             )
         )
     return tuple(rows), target_id
@@ -905,6 +911,7 @@ def capture_dashboard(
         soc=capture_soc(hass, entry_id, settings),
         vehicles=vehicles,
         target_vehicle_id=target_vehicle_id,
+        charging_phases=charging_phases(hass, entry_id, vehicle_id=target_vehicle_id),
         target=capture_target(controller),
         phase_result=(
             UNKNOWN_PHASES
@@ -985,7 +992,26 @@ def serialize_settings(capture: CapturedDashboard) -> dict[str, Any] | None:
     settings = capture.settings
     if settings is None:
         return None
-    return encode_settings(settings)
+    return encode_settings(settings, _effective_phases(capture))
+
+
+def _effective_phases(capture: CapturedDashboard) -> int | None:
+    return None if capture.charging_phases is None else capture.charging_phases.phases
+
+
+def serialize_charging_phases(phases: ChargingPhases | None) -> dict[str, Any] | None:
+    """The `charging_phases` block: `phases` (1 or 3) is the smaller of `charger` (the wiring, from the site
+    or the charger's own answer) and `vehicle` (the planned vehicle's onboard charger, `null` with no
+    vehicle); `limited_by` is `vehicle` when the car, not the wiring, sets it, else `null`.
+    """
+    if phases is None:
+        return None
+    return {
+        "phases": phases.phases,
+        "charger": phases.wiring,
+        "vehicle": phases.vehicle,
+        "limited_by": "vehicle" if phases.limited_by_vehicle else None,
+    }
 
 
 def serialize_planning(capture: CapturedDashboard) -> dict[str, Any] | None:
@@ -1328,7 +1354,7 @@ def _proposal_section(capture: CapturedDashboard) -> dict[str, Any] | None:
         "settings_revision": current,
         "periods": [{"start": aware_iso(start), "end": aware_iso(end)} for start, end in proposal.periods],
         "amps": _count(settings.amps) if same_generation else None,
-        "phases": _count(settings.phases) if same_generation else None,
+        "phases": _count(_effective_phases(capture)) if same_generation else None,
         "power_kw": finite_number(proposal.power_kw),
         "requested_kwh": finite_number(proposal.requested_kwh),
         "planned_kwh": finite_number(proposal.delivered_kwh),
@@ -1411,6 +1437,7 @@ def serialize_dashboard(
         "soc": serialize_soc(capture.soc),
         "vehicles": [serialize_vehicle(vehicle) for vehicle in capture.vehicles],
         "target_vehicle_id": _text(capture.target_vehicle_id),
+        "charging_phases": serialize_charging_phases(capture.charging_phases),
         **capture.phase_result.as_fields(),
         "chargers": [{"id": entry_id, "name": name} for entry_id, name in capture.chargers],
         "status": serialize_status(capture),
@@ -1647,6 +1674,7 @@ def serialize_vehicle(vehicle: CapturedVehicle) -> dict[str, Any]:
         "consumption_kwh_per_10km": finite_number(vehicle.consumption_kwh_per_10km),
         "max_percent": finite_number(vehicle.max_percent),
         "soc_percent": finite_number(vehicle.soc_percent),
+        "onboard_phases": vehicle.onboard_phases,
     }
 
 

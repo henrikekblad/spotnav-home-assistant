@@ -57,6 +57,7 @@ from .auto_settings import (
     STRATEGY_SOLAR,
 )
 from .grid_voltage import voltage_between_phases_v
+from .phases import effective_phases
 from .planner import (
     calculate_plan,
     FiscalChoice,
@@ -824,7 +825,7 @@ class AutoPlannerController:
             minor_unit=entry.minor_unit,
             documents=documents,
             now=calculated_at,
-            phases=settings.phases if settings.phases is not None else 3,
+            phases=effective_phases(self._hass, self._entry_id),
             amps=settings.amps if settings.amps is not None else 0,
             requested_kwh=energy_kwh,
             consumption_kwh_per_10km=self._consumption_for(settings),
@@ -1080,7 +1081,9 @@ class AutoPlannerController:
         recalculation is not reported as merely proposed. Published only when something changed.
         """
         execution, applied_identity, pending_identity, _latest = self._execution_facts()
-        application = application_for(self._store.settings(self._entry_id), snapshot)
+        application = application_for(
+            self._store.settings(self._entry_id), snapshot, effective_phases(self._hass, self._entry_id)
+        )
         proposal_identity = None if application is None else application.identity
         applied = (
             self._executor is not None

@@ -20,7 +20,7 @@ from custom_components.spotnav.planning.auto_controller import AutoPlannerContro
 from custom_components.spotnav.planning.auto_settings import PAUSE_UNTIL_RESUMED, AutoSettings
 from custom_components.spotnav.execution.auto_execution import decide_axes
 from custom_components.spotnav.api.common import ERROR_UNSUPPORTED_VERSION
-from custom_components.spotnav.api.settings import SETTINGS_API_VERSION, encode_settings
+from custom_components.spotnav.api.settings import SETTINGS_API_VERSION, encode_settings as _encode_settings
 from tests.helpers import as_app_sees, webhook_dashboard
 from tests.relay import SE4
 from tests.world import setup_charger
@@ -34,6 +34,12 @@ from tests.messages import (
 from .world import controller_of
 from custom_components.spotnav.runtime import domain_data
 from custom_components.spotnav.runtime import executor_for
+
+def encode_settings(settings, phases=3):
+    """The wire record as it reads for a charger wired for three phases (the phases a charge uses are
+    the server's to fill in, not a stored setting)."""
+    return _encode_settings(settings, phases)
+
 
 pytestmark = pytest.mark.usefixtures("offline_relay")
 
@@ -339,8 +345,8 @@ async def test_two_webhooks_mutate_only_their_own_records(
     assert (first_status, second_status) == (200, 200)
     assert first_answer["ok"] is True and second_answer["ok"] is True
     mine, theirs = stored(hass, first.entry_id), stored(hass, second.entry_id)
-    assert mine.revision == 1 and mine.amps == 16 and mine.phases == other.phases
-    assert theirs.revision == 1 and theirs.phases == 3 and theirs.amps == other.amps
+    assert mine.revision == 1 and mine.amps == 16 and mine.phases is None
+    assert theirs.revision == 1 and theirs.phases is None and theirs.amps == other.amps
     assert [_canonical(first_answer["settings"]), _canonical(second_answer["settings"])] == [
         _canonical(as_app_sees(encode_settings(mine))),
         _canonical(as_app_sees(encode_settings(theirs))),

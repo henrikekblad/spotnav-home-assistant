@@ -51,6 +51,12 @@
       "name": "hybrid_with_forecast"
     }
   ],
+  "charging_phases": {
+    "charger": 3,
+    "limited_by": null,
+    "phases": 3,
+    "vehicle": null
+  },
   "control": {
     "automatic_action": "pause",
     "automatic_action_reason": null,

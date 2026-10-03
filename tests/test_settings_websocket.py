@@ -22,7 +22,7 @@ from custom_components.spotnav.api.settings import (
     SETTINGS_API_VERSION,
     SETTINGS_KEYS,
     SETTINGS_RESPONSE_KEYS,
-    encode_settings,
+    encode_settings as _encode_settings,
 )
 from tests.helpers import make_site_entry
 from tests.world import setup_charger
@@ -36,6 +36,12 @@ from .messages import (
     update_settings_message,
 )
 from custom_components.spotnav.runtime import domain_data
+
+def encode_settings(settings, phases=3):
+    """The wire record as it reads for a charger wired for three phases (the phases a charge uses are
+    the server's to fill in, not a stored setting)."""
+    return _encode_settings(settings, phases)
+
 
 pytestmark = pytest.mark.usefixtures("offline_relay")
 

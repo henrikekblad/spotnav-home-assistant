@@ -40,6 +40,7 @@ from ..const import (
     ENTRY_TYPE_SITE,
     MEASUREMENT_MODE_DIRECT,
 )
+from ..planning.phases import effective_phases
 from ..planning.grid_voltage import stored_voltage_between_phases_v
 from ..planning.auto_settings import AutoSettingsStore, STRATEGY_HYBRID, STRATEGY_SOLAR
 from ..runtime import charger_data, preview_for, site_controller_for
@@ -204,8 +205,29 @@ def _fuse_caps(
     return caps
 
 
+def _limited_to(
+    car_phases: tuple[PhaseName, ...], limit: int | None, measured: Any
+) -> tuple[PhaseName, ...]:
+    """The phases a charge uses when the car takes fewer than the charger is wired for: the `limit`
+    phases the charger is delivering most on now (the first ones when it delivers nothing yet).
+    """
+    if limit is None or limit >= len(car_phases):
+        return car_phases
+
+    def delivered(phase: PhaseName) -> float:
+        value = None if measured is None else measured.get(phase).value
+        return value if isinstance(value, (int, float)) else 0.0
+
+    ranked = sorted(car_phases, key=lambda phase: (-delivered(phase), car_phases.index(phase)))
+    return tuple(phase for phase in car_phases if phase in ranked[:limit])
+
+
 def _build_observation(
-    site: SiteCapacityController, charger_entry_id: str, *, now: float
+    site: SiteCapacityController,
+    charger_entry_id: str,
+    *,
+    now: float,
+    effective_phases: int | None = None,
 ) -> SolarObservation:
     """One tick's `SolarObservation` from the site's computed result plus this charger's
     measured current.
@@ -213,11 +235,12 @@ def _build_observation(
     A derived site reads the signed power and voltage of every phase. A direct site reads the
     meter's total grid power (`SiteCapacityController.grid_total_reading`, unknown unless fresh),
     splits it over the charger's phases at the nominal voltage and caps the result by each phase's
-    fuse headroom.
+    fuse headroom. `effective_phases` is what the charge uses (`planning/phases.py`): a car on fewer phases
+    than the charger is wired for draws on that many of them.
     """
     result = site.result
-    car_phases = _car_phases(site, charger_entry_id)
     measured = site.charger_measured_current(charger_entry_id)
+    car_phases = _limited_to(_car_phases(site, charger_entry_id), effective_phases, measured)
     car_delivered_a: dict[PhaseName, float | None] = {
         phase: (None if measured is None else measured.get(phase).value) for phase in car_phases
     }
@@ -428,7 +451,12 @@ class SolarExecutionCoordinator:
 
         if self._solar is None:
             self._solar = self._build_controller(site)
-        observation = _build_observation(site, self._charger_entry_id, now=self._now())
+        observation = _build_observation(
+            site,
+            self._charger_entry_id,
+            now=self._now(),
+            effective_phases=effective_phases(self._hass, self._charger_entry_id),
+        )
         verdict = self._solar.observe(observation)
         held_by_plan = settings.strategy == STRATEGY_HYBRID and self._controller.plan_window_active_now
         if held_by_plan:

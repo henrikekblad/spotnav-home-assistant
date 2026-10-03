@@ -27,6 +27,12 @@
       "name": "cheapest_no_site"
     }
   ],
+  "charging_phases": {
+    "charger": 1,
+    "limited_by": null,
+    "phases": 1,
+    "vehicle": null
+  },
   "control": {
     "automatic_action": "pause",
     "automatic_action_reason": null,

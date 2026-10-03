@@ -55,6 +55,12 @@
       "name": "solar_direct"
     }
   ],
+  "charging_phases": {
+    "charger": 3,
+    "limited_by": null,
+    "phases": 3,
+    "vehicle": null
+  },
   "control": {
     "automatic_action": "pause",
     "automatic_action_reason": null,
@@ -128,7 +134,6 @@
     "historical": true,
     "missing": [
       "area",
-      "phases",
       "amps"
     ],
     "must_buy_now_kwh": null,
@@ -223,7 +228,7 @@
     "driver": "manual_kwh",
     "max_periods": 1,
     "overrides": [],
-    "phases": null,
+    "phases": 3,
     "requested_kwh": 20.0,
     "revision": 1,
     "strategy": "solar",
@@ -256,7 +261,6 @@
         "params": {
           "missing": [
             "area",
-            "phases",
             "amps"
           ],
           "reason": "settings_missing"

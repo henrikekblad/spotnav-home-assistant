@@ -18,6 +18,7 @@ from custom_components.spotnav.const import (
     CONF_BATTERY_PER_PHASE_SOURCE,
     CONF_CHARGE_CONTROL,
     CONF_CHARGER_ENTRY_IDS,
+    CONF_CHARGER_PHASES,
     CONF_CURRENT_LIMIT,
     CONF_DERIVED_ENTITIES,
     CONF_DIRECT_ENTITIES,
@@ -93,6 +94,17 @@ def make_entry(
     )
     entry.add_to_hass(hass)
     return entry
+
+
+def set_charger_phases(hass: HomeAssistant, entry_id: str, phases: int) -> None:
+    """Say how many phases a charger is wired for (its own answer, a charger in no site), adding a bare
+    entry for a test stack that has none. Auto settings no longer carry the phases a charge uses.
+    """
+    entry = hass.config_entries.async_get_entry(entry_id)
+    if entry is None:
+        MockConfigEntry(domain=DOMAIN, entry_id=entry_id, data={CONF_CHARGER_PHASES: phases}).add_to_hass(hass)
+        return
+    hass.config_entries.async_update_entry(entry, data={**entry.data, CONF_CHARGER_PHASES: phases})
 
 
 async def setup_two_chargers(hass: HomeAssistant):

@@ -20,6 +20,7 @@ from ..planning.auto_settings import STRATEGY_HYBRID, STRATEGY_SOLAR
 from ..planning.grid_voltage import voltage_between_phases_v
 from ..planning.planner import chart_intervals, power_kw
 from ..runtime import domain_data
+from ..planning.phases import charger_wiring, charging_phases
 from ..site.phase_detection import async_detect_phases
 from ..vehicles.vehicle_discovery import resolve_target_vehicle
 from .recorder import PriceBook, SessionFacts
@@ -53,9 +54,13 @@ def session_facts(hass: HomeAssistant, controller: ChargingController) -> Sessio
         amps = controller.plan.amps
     if amps is None and settings is not None:
         amps = settings.amps
-    phases = None if settings is None else settings.phases
+    # The charger's wiring, else what its entities suggest, held to the planned car's onboard charger.
+    phases = charger_wiring(hass, charger_id)
     if phases is None:
         phases = async_detect_phases(hass, controller.charge_control).detected_phases
+    car_phases = charging_phases(hass, charger_id).vehicle
+    if phases is not None and car_phases is not None:
+        phases = min(phases, car_phases)
     estimate_kw = (
         power_kw(amps, phases, voltage_between_phases_v(hass, charger_id))
         if amps and phases in (1, 3)

@@ -1,4 +1,4 @@
-"""Selectors for the Auto price path: market, phases and the fiscal policies.
+"""Selectors for the Auto price path: market, strategy and the fiscal policies.
 
 Every entity writes through the preview's `async_apply_settings` (compare-and-set against the
 revision it displayed), never the store or a charger directly. The state is the stored machine
@@ -15,6 +15,7 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import EntityCategory
 from homeassistant.core import callback, HomeAssistant
 from homeassistant.exceptions import ServiceValidationError
+from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 from .const import CONF_ENTRY_TYPE, DOMAIN, ENTRY_TYPE_SITE
@@ -41,9 +42,14 @@ async def async_setup_entry(
         return
     controller = entry.runtime_data.controller
     auto = AutoSurface.resolve(hass, entry.entry_id)
+    # The phases are no longer a setting (the charger's wiring and the vehicle's onboard charger decide them):
+    # the select an older release created is removed.
+    registry = er.async_get(hass)
+    leftover = registry.async_get_entity_id("select", DOMAIN, f"{entry.entry_id}_charging_phases")
+    if leftover is not None:
+        registry.async_remove(leftover)
     entities: list[Any] = [
         AutoAreaSelect(entry, controller, auto),
-        AutoPhasesSelect(entry, controller, auto),
         AutoStrategySelect(entry, controller, auto),
     ]
     entities.extend(
@@ -124,30 +130,6 @@ class AutoAreaSelect(SpotNavAutoEntity, SelectEntity):
     async def async_select_option(self, option: str) -> None:
         """Change market: this area's own stored overrides are what the fiscal entities show."""
         await self.async_write_settings(lambda settings: replace(settings, area_id=option))
-
-class AutoPhasesSelect(SpotNavAutoEntity, SelectEntity):
-    """How many phases this charger may use."""
-
-    _attr_entity_category = EntityCategory.CONFIG
-
-    _attr_translation_key = "charging_phases"
-    _attr_options = ["1", "3"]
-
-    def __init__(
-        self, entry: ConfigEntry, controller: ChargingController, auto: AutoSurface
-    ) -> None:
-        super().__init__(entry, controller, auto, key="charging_phases")
-
-    @property
-    def current_option(self) -> str | None:
-        settings = self.settings
-        if settings is None or settings.phases is None:
-            return None
-        return str(settings.phases)
-
-    async def async_select_option(self, option: str) -> None:
-        await self.async_write_settings(lambda settings: replace(settings, phases=int(option)))
-
 
 class AutoStrategySelect(SpotNavAutoEntity, SelectEntity):
     """Which strategy Auto runs: `cheapest` always, `solar`/`hybrid` when the site can measure the

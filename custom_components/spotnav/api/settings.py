@@ -45,6 +45,7 @@ from ..planning.auto_settings import (
     STORED_STRATEGIES,
     TargetSocIntent,
 )
+from ..planning.phases import effective_phases
 from ..runtime import controller_for, domain_data, preview_for
 from .common import ERROR_CHARGER_UNLOADED, lookup_charger, send_unsupported_version
 
@@ -74,8 +75,11 @@ SETTINGS_KEYS: Final = frozenset(
 
 #: Keys a replacement body may leave out (added after the first release of this contract). Absent means "keep
 #: what is stored": a client that does not know the field must not clear what another one set. `null` clears.
-OPTIONAL_SETTINGS_KEYS: Final = frozenset({"departure_date", "departure_weekdays"})
+OPTIONAL_SETTINGS_KEYS: Final = frozenset({"departure_date", "departure_weekdays", "phases"})
 
+#: `phases` joins them since the phases a charge uses stopped being a setting (the charger's wiring and the
+#: vehicle's onboard charger decide them): an older client still sends it, a newer one may leave it out,
+#: and either way it is ignored. A response carries the effective value in it, for the older clients.
 #: The keys a replacement body must carry; the rest of `SETTINGS_KEYS` may be left out.
 REQUIRED_SETTINGS_KEYS: Final = SETTINGS_KEYS - OPTIONAL_SETTINGS_KEYS
 
@@ -253,14 +257,18 @@ def strategy_of(settings: AutoSettings) -> str:
     return settings.strategy
 
 
-def encode_settings(settings: AutoSettings) -> dict[str, Any]:
-    """The public value: every user-owned planning input, and the record's revision."""
+def encode_settings(settings: AutoSettings, phases: int | None = None) -> dict[str, Any]:
+    """The public value: every user-owned planning input, and the record's revision.
+
+    `phases` is the effective phases a charge uses (`planning/phases.py`), which is what the key carries
+    for an older client; the stored field is only an older release's leftover and is never read.
+    """
     return {
         "revision": settings.revision,
         "strategy": strategy_of(settings),
         "area_id": settings.area_id,
         "overrides": [encoded_override(item) for item in settings.overrides],
-        "phases": settings.phases,
+        "phases": phases,
         "amps": settings.amps,
         "requested_kwh": settings.requested_kwh,
         "max_periods": settings.max_periods,
@@ -292,14 +300,15 @@ def decode_settings(raw: Any) -> AutoSettings:
     strategy = stored["strategy"]
     if not isinstance(strategy, str) or strategy not in STORED_STRATEGIES:
         _refuse("invalid_strategy", f"strategy must be one of {STORED_STRATEGIES}")
+    if stored.get("phases") is not None:
+        # Accepted and ignored (see `OPTIONAL_SETTINGS_KEYS`): checked for what it is, never stored.
+        if _whole(stored["phases"], "phases", "invalid_phases") not in (1, 3):
+            _refuse("invalid_phases", "phases must be 1 or 3 when it is set")
     return AutoSettings(
         revision=0,
         strategy=strategy,
         area_id=_text_or_none(stored["area_id"], "area_id", "invalid_area"),
         overrides=tuple(_override(item) for item in overrides),
-        phases=None
-        if stored["phases"] is None
-        else _whole(stored["phases"], "phases", "invalid_phases"),
         amps=None if stored["amps"] is None else _whole(stored["amps"], "amps", "invalid_amps"),
         requested_kwh=_finite(stored["requested_kwh"], "requested_kwh", "invalid_energy"),
         max_periods=_whole(stored["max_periods"], "max_periods", "invalid_periods"),
@@ -381,18 +390,20 @@ def expected_revision_from(raw: Any) -> int:
     return raw
 
 
-def settings_envelope(settings: AutoSettings) -> dict[str, Any]:
+def settings_envelope(settings: AutoSettings, phases: int | None = None) -> dict[str, Any]:
     """The transport-neutral success answer: the committed record and its pause, no exception text."""
     return {
         "api_version": SETTINGS_API_VERSION,
         "ok": True,
         "error": None,
-        "settings": encode_settings(settings),
+        "settings": encode_settings(settings, phases),
         "pause": encode_pause(settings.pause),
     }
 
 
-def settings_failure(code: str, settings: AutoSettings | None) -> dict[str, Any]:
+def settings_failure(
+    code: str, settings: AutoSettings | None, phases: int | None = None
+) -> dict[str, Any]:
     """The transport-neutral refusal: a stable code beside the settings that still stand.
 
     A conflict carries the current record so a caller can retry against it. `settings` is `None` only
@@ -403,7 +414,7 @@ def settings_failure(code: str, settings: AutoSettings | None) -> dict[str, Any]
         "api_version": SETTINGS_API_VERSION,
         "ok": False,
         "error": code,
-        "settings": None if settings is None else encode_settings(settings),
+        "settings": None if settings is None else encode_settings(settings, phases),
         "pause": None if settings is None else encode_pause(settings.pause),
     }
 
@@ -560,7 +571,7 @@ async def websocket_get_settings(
     except SettingsRefusal as refusal:
         connection.send_error(msg["id"], refusal.code, "That charger is not available")
         return
-    connection.send_result(msg["id"], settings_envelope(settings))
+    connection.send_result(msg["id"], settings_envelope(settings, effective_phases(hass, msg["charger_id"])))
 
 
 @websocket_api.websocket_command(
@@ -597,12 +608,16 @@ async def websocket_update_settings(
         connection.send_error(msg["id"], refusal.code, "That charger is not available")
         return
     except SettingsReconcileError as failure:
-        connection.send_result(msg["id"], settings_failure(failure.code, failure.settings))
+        connection.send_result(
+            msg["id"], settings_failure(failure.code, failure.settings, effective_phases(hass, entry_id))
+        )
         return
     except SettingsNotCommitted as failure:
         # Nothing written, old record stands: a contract envelope (successful frame) since the
         # request itself was valid.
-        connection.send_result(msg["id"], settings_failure(failure.code, failure.settings))
+        connection.send_result(
+            msg["id"], settings_failure(failure.code, failure.settings, effective_phases(hass, entry_id))
+        )
         return
     except AutoSettingsError as refusal:
         store = domain_data(hass).auto_store
@@ -610,9 +625,11 @@ async def websocket_update_settings(
         if current is None:
             connection.send_error(msg["id"], refusal.code, "Settings were refused")
             return
-        connection.send_result(msg["id"], settings_failure(refusal.code, current))
+        connection.send_result(
+            msg["id"], settings_failure(refusal.code, current, effective_phases(hass, entry_id))
+        )
         return
-    connection.send_result(msg["id"], settings_envelope(settings))
+    connection.send_result(msg["id"], settings_envelope(settings, effective_phases(hass, msg["charger_id"])))
 
 
 @callback

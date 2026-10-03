@@ -79,10 +79,11 @@ async def test_a_full_replacement_increments_once_and_survives_a_reload(hass: Ho
         expected_revision=expected_revision_from(0),
     )
     assert committed.revision == 1
+    # The phases in the body are accepted and ignored: nothing of it is stored.
     assert (committed.area_id, committed.amps, committed.phases) == (
         "SE4",
         16,
-        3,
+        None,
     )
 
     reopened = AutoSettingsStore(hass)

@@ -38,6 +38,7 @@ from .relay import DE_LU, SE4, serve, serve_index
 NO1 = "NO1"
 DK1 = "DK1"
 from .relay import StubTransport
+from .helpers import set_charger_phases
 from .world import call, entity_id, go_auto, settings_of, setup_charger, setup_site
 from .world import controller_of
 from custom_components.spotnav.runtime import domain_data
@@ -98,8 +99,10 @@ async def test_an_incomplete_charger_gets_the_whole_surface_and_does_nothing(
     unique_ids = registered(hass, "entry_a")
     for key in AUTO_SENSOR_KEYS:
         assert f"entry_a_{key}" in unique_ids
-    for key in ("price_area", "charging_phases", "fiscal_vat_policy"):
+    for key in ("price_area", "fiscal_vat_policy"):
         assert f"entry_a_{key}" in unique_ids
+    # The phases are not a setting any more: the charger no longer has a select for them.
+    assert "entry_a_charging_phases" not in unique_ids
     for key in ("recalculate_auto", "pause_auto", "resume_auto"):
         assert f"entry_a_{key}" in unique_ids
 
@@ -194,15 +197,7 @@ async def test_completing_settings_enables_auto_and_installs_once(
         "set_value",
         {"entity_id": entity_id(hass, entry.entry_id, "charging_current", "number"), "value": 10},
     )
-    await call(
-        hass,
-        "select",
-        "select_option",
-        {
-            "entity_id": entity_id(hass, entry.entry_id, "charging_phases", "select"),
-            "option": "1",
-        },
-    )
+    set_charger_phases(hass, entry.entry_id, 1)
     # No deadline: the whole point of a manual-kWh plan is that it may use the hours it likes.
     await call(
         hass,
@@ -238,7 +233,7 @@ async def test_choosing_auto_incompletely_is_safe_and_names_what_is_missing(
     state = hass.states.get(entity_id(hass, entry.entry_id, "auto_plan_state"))
     assert state is not None and state.state == "incomplete_settings"
     assert state.attributes["reason"] == "settings_missing"
-    assert list(state.attributes["missing"]) == ["area", "phases", "amps"]
+    assert list(state.attributes["missing"]) == ["area", "amps"]
 
 
 async def test_a_write_carries_the_revision_it_displayed_and_loses_no_edit(
@@ -712,7 +707,7 @@ async def test_no_auto_sensor_exposes_an_array_an_identifier_or_an_exception(
     checked = 0
     for entity in er.async_entries_for_config_entry(registry, entry.entry_id):
         if "auto_" not in entity.unique_id and not entity.unique_id.endswith(
-            ("_planning_mode", "_price_area", "_charging_phases", "_fiscal_vat_policy")
+            ("_planning_mode", "_price_area", "_fiscal_vat_policy")
         ):
             continue
         state = hass.states.get(entity.entity_id)
@@ -873,7 +868,7 @@ async def test_a_reload_creates_no_duplicate_entities_or_listeners(
     entries = er.async_entries_for_config_entry(er.async_get(hass), entry.entry_id)
     auto_ids = [item.unique_id for item in entries if "auto" in item.unique_id or "fiscal" in item.unique_id]
     assert auto_ids and len(auto_ids) == len(set(auto_ids)), "no Auto entity registered twice"
-    assert len(entries) == 43, "the surface this release creates, counted once"
+    assert len(entries) == 42, "the surface this release creates, counted once"
 
 
 

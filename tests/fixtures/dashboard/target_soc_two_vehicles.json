@@ -27,6 +27,12 @@
       "name": "Wallbox"
     }
   ],
+  "charging_phases": {
+    "charger": 1,
+    "limited_by": null,
+    "phases": 1,
+    "vehicle": 3
+  },
   "control": {
     "automatic_action": "pause",
     "automatic_action_reason": null,
@@ -2292,6 +2298,7 @@
       "id": "vehicle_ev6",
       "max_percent": 80.0,
       "name": "EV6",
+      "onboard_phases": 3,
       "soc_entity_id": "sensor.ev6_battery",
       "soc_percent": 40.0
     },
@@ -2302,6 +2309,7 @@
       "id": "vehicle_niro",
       "max_percent": null,
       "name": "Niro",
+      "onboard_phases": 3,
       "soc_entity_id": "sensor.niro_battery",
       "soc_percent": 55.0
     }

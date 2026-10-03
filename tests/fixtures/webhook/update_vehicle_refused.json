@@ -21,6 +21,7 @@
     "id": "vehicle_niro",
     "max_percent": null,
     "name": "Niro",
+    "onboard_phases": 3,
     "soc_entity_id": "sensor.niro_battery",
     "soc_percent": 55.0
   }

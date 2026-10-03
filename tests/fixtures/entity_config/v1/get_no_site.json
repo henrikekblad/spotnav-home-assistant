@@ -126,6 +126,18 @@
         "writable": true
       },
       {
+        "choices": [
+          "1",
+          "3"
+        ],
+        "field": "charger_phases",
+        "kind": "enum",
+        "required": true,
+        "scope": "charger",
+        "value": "3",
+        "writable": true
+      },
+      {
         "allowed_device_classes": [
           "battery"
         ],

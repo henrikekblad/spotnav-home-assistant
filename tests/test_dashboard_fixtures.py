@@ -404,6 +404,8 @@ EXPECTED_FIXTURES: Final = frozenset(
         "target_soc_stopped_on_estimate.json",
         # `tests/test_vehicle_properties.py`: `vehicles`, `target_vehicle_id`, `soc.efficiency`.
         "target_soc_two_vehicles.json",
+        # `tests/test_phases.py`: a one-phase car limiting a three-phase charger.
+        "target_soc_phases_limited_by_vehicle.json",
         # `tests/test_dashboard_api.py`: the two plan goldens.
         "proposal_ready.json",
         "pending_beside_installed.json",
