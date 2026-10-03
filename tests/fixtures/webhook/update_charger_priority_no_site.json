@@ -1,0 +1,8 @@
+{
+  "action": "update_charger_priority",
+  "api_version": 1,
+  "charger_priority": null,
+  "error": "spotnav_no_site",
+  "field_errors": [],
+  "ok": false
+}

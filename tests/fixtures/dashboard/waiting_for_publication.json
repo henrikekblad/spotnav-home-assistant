@@ -21,6 +21,7 @@
     "charger_id": "price_wait",
     "charger_name": "price_wait"
   },
+  "charger_priority": null,
   "chargers": [
     {
       "id": "price_wait",

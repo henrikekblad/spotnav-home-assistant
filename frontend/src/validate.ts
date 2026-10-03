@@ -1461,9 +1461,10 @@ const DASHBOARD_KEYS = [
 /**
  * Keys a client may find on the dashboard that a backend of the same version may also leave out:
  * `sessions_summary` (this and last month's charge sessions, for a client that wants them there)
- * is accepted and never read (the card's History view asks `spotnav/get_sessions`).
+ * is accepted and never read (the card's History view asks `spotnav/get_sessions`), and so is
+ * `charger_priority` (the paired app's; the card edits the priority in the entity configuration).
  */
-const OPTIONAL_DASHBOARD_KEYS = ["sessions_summary", "connection", "starting_up"] as const;
+const OPTIONAL_DASHBOARD_KEYS = ["sessions_summary", "connection", "starting_up", "charger_priority"] as const;
 
 /**
  * The `connection`, or `null` when the block is missing or unreadable. Independent like `charge_progress`:

@@ -42,6 +42,9 @@ from ..const import (
     CONF_SOLAR_FORECAST_ENTRIES,
     CONF_SOLAR_PRIORITY,
     DEFAULT_SOLAR_PRIORITY,
+    CHARGER_PRIORITIES,
+    CONF_CHARGER_PRIORITY,
+    DEFAULT_CHARGER_PRIORITY,
     DOMAIN,
     ENTRY_TYPE_SITE,
 )
@@ -407,6 +410,8 @@ class CapturedDashboard:
     connection: tuple[str, str | None] = (CONNECTION_UNKNOWN, None)
     #: The start-up grace (`startup.py`): what is still awaited right after the integration loaded.
     starting_up: StartupState = NOT_STARTING
+    #: This charger's place in its site's order (`const.CHARGER_PRIORITIES`), `None` with no site.
+    charger_priority: str | None = None
 
 
 def capture_target(controller: ChargingController | None) -> CapturedTarget | None:
@@ -966,7 +971,26 @@ def capture_dashboard(
         sessions_summary=sessions_block(hass, entry_id, now),
         connection=(CONNECTION_UNKNOWN, None) if controller is None else controller.connection(),
         starting_up=starting_up,
+        charger_priority=capture_charger_priority(hass, entry),
     )
+
+
+def capture_charger_priority(hass: HomeAssistant, entry: ConfigEntry) -> str | None:
+    """The charger's own priority on its site ("first", "normal" or "last"), `None` when it belongs to
+    no site (only a site has an order to take a place in)."""
+    if site_binding(hass, entry.entry_id) is None:
+        return None
+    return str(entry.data.get(CONF_CHARGER_PRIORITY) or DEFAULT_CHARGER_PRIORITY)
+
+
+def serialize_charger_priority(priority: str | None, *, can_act: bool) -> dict[str, Any] | None:
+    """The additive `charger_priority` block: `null` for a charger on no site, else its `value`, the
+    `choices` and whether this caller may write it (`update_charger_priority` over the webhook,
+    `spotnav/update_entity_config` over the socket).
+    """
+    if priority is None:
+        return None
+    return {"value": priority, "choices": list(CHARGER_PRIORITIES), "writable": bool(can_act)}
 
 
 def serialize_capabilities(charger: CapturedCharger) -> dict[str, bool]:
@@ -1508,6 +1532,7 @@ def serialize_dashboard(
         "sessions_summary": capture.sessions_summary,
         "connection": serialize_connection(capture.connection),
         "starting_up": serialize_starting_up(capture.starting_up),
+        "charger_priority": serialize_charger_priority(capture.charger_priority, can_act=can_act),
     }
 
 

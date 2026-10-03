@@ -44,6 +44,7 @@ limit, with `Retry-After`) or 502 (the charger command failed).
 | `set_charge_limit` | Write the vehicle's charge-limit entity (`vehicle_id`, `percent`). |
 | `update_vehicle` | Change a vehicle's capacity, consumption or onboard charger, with `expected` values. |
 | `update_site_settings` | Change solar priority or forecast sources of the charger's site. |
+| `update_charger_priority` | Change this charger's priority on its site: `{"priority", "expected"}` (see below). |
 
 **Withheld settings fields.** The settings record has a `departure_weekdays` (an optional list of
 weekday numbers, 1 Monday to 7 Sunday, at least one, default all seven: the days a daily departure
@@ -64,6 +65,18 @@ area's override says. It is withheld from the webhook like the two fields above 
 
 Turning **active load balancing** on or off is not available through the webhook, only through
 the WebSocket by an administrator.
+
+**Charger priority.** `update_charger_priority` takes `priority` and `expected`, each `"first"`,
+`"normal"` or `"last"`, and an optional `api_version` (`1`); `expected` is the value the caller last
+saw (the dashboard's `charger_priority.value`). It is validated and written by the same core as
+`spotnav/update_entity_config`'s `charger_priority` field, and the charger is not reloaded for it. The
+answer is `{"api_version": 1, "ok", "error", "field_errors", "charger_priority", "action"}`, where
+`charger_priority` is the dashboard's block re-read after the write. HTTP 200 on success; 409
+`spotnav_conflict` when `expected` is not the stored value (nothing is written); 400
+`spotnav_invalid_value` with `field_errors` `[{"field": "charger_priority" | "expected", "code":
+"invalid_value"}]` for a missing or unknown value; 400 `spotnav_no_site` (and `charger_priority: null`)
+for a charger on no site; 400 `spotnav_unsupported_api_version`. Examples are in
+`tests/fixtures/webhook/update_charger_priority_*.json`.
 
 ## WebSocket commands
 
@@ -136,6 +149,12 @@ intervals), `plan` and `planning` (proposal, installed plan, and why), `control`
 action and the automatic action, with pause choices), `live`, `status` (typed status lines), `strategy`
 and `strategy_state`, `vehicles` and `soc`, `site`, `charging_phases`, `phase_detection`, `charge_progress`.
 Example documents are in `tests/fixtures/dashboard/`.
+
+The additive `charger_priority` block is this charger's place in its site's order, which capacity
+allocation and solar surplus both follow: `null` for a charger on no site, else `{"value": "first" |
+"normal" | "last", "choices": ["first", "normal", "last"], "writable": bool}`. `writable` is true over
+the webhook (`update_charger_priority`) and for an administrator's socket (`spotnav/update_entity_config`),
+false for a reader. An older backend has no block; a client then shows no priority.
 
 **Price areas from relay contract v2.** `market` carries three additive fields: `market_timezone` (the
 zone whose calendar day one relay day file covers; equal to `timezone` except for Great Britain,

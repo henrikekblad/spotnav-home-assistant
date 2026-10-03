@@ -30,7 +30,7 @@ from ..vehicles.vehicle_charge_limit import async_set_charge_limit, VehicleCharg
 from ..vehicles.vehicle_refresh import async_refresh_vehicle, VehicleRefreshLimited
 from .common import ERROR_UNSUPPORTED_VERSION
 from .dashboard import async_webhook_dashboard, DashboardFailure
-from .entity_config import async_webhook_update_vehicle
+from .entity_config import async_webhook_update_charger_priority, async_webhook_update_vehicle
 from .sessions import SESSIONS_API_VERSION, sessions_answer, SessionsRefusal
 from .settings import (
     async_update_settings,
@@ -251,6 +251,9 @@ ACTIONS: Final[dict[str, Handler]] = {
     "settings": _settings,
     "update_vehicle": _bounded_write(async_webhook_update_vehicle, "update_vehicle"),
     "update_site_settings": _bounded_write(async_webhook_update_site_settings, "update_site_settings"),
+    "update_charger_priority": _bounded_write(
+        async_webhook_update_charger_priority, "update_charger_priority"
+    ),
 }
 
 

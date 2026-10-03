@@ -21,6 +21,7 @@
     "charger_id": "history_wait",
     "charger_name": "history_wait"
   },
+  "charger_priority": null,
   "chargers": [
     {
       "id": "history_wait",

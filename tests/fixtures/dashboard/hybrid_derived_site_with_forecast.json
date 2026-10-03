@@ -21,6 +21,15 @@
     "charger_id": "hybrid_with_forecast",
     "charger_name": "hybrid_with_forecast"
   },
+  "charger_priority": {
+    "choices": [
+      "first",
+      "normal",
+      "last"
+    ],
+    "value": "normal",
+    "writable": true
+  },
   "chargers": [
     {
       "id": "cheapest_no_site",

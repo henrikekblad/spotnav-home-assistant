@@ -520,6 +520,7 @@ describe("the backend's dashboard strategy_state, site and status fixtures", () 
           "api_version",
           "charge_progress",
           "charger",
+          "charger_priority",
           "chargers",
           "charging_phases",
           "connection",
