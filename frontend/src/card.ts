@@ -72,6 +72,8 @@ import {
   replacementFor,
   settingsErrorKey,
   strategyReplacement,
+  notificationsReplacement,
+  type NotificationsChoice,
   vehicleReplacement,
   type ReplacementCheck,
   type CurrentRange,
@@ -1100,6 +1102,21 @@ export class SpotnavCard extends HTMLElement {
     await this.writeFreshSettings((record) => vehicleReplacement(record, vehicleId));
   }
 
+  /**
+   * The Notifications dialog's Save: the same fresh-record write as the strategy, changing only
+   * `notifications`, then back to Settings (a refusal is said there).
+   */
+  private async saveNotifications(choice: NotificationsChoice): Promise<void> {
+    this.reopenOverview = true;
+    await this.writeFreshSettings((record) => notificationsReplacement(record, choice));
+    if (this.reopenOverview) {
+      this.reopenOverview = false;
+      if (this.connected && this.view !== null && !this.view.anyDialogOpen()) {
+        this.view.openSettingsOverview();
+      }
+    }
+  }
+
   private async writeFreshSettings(build: (record: SettingsRecord) => ReplacementCheck): Promise<void> {
     const hass = this.hassObject;
     const config = this.config;
@@ -2015,6 +2032,9 @@ export class SpotnavCard extends HTMLElement {
           void this.saveSolar(draft);
         },
         onCancelSolar: () => !this.entitySaving,
+        onSaveNotifications: (choice) => {
+          void this.saveNotifications(choice);
+        },
         onSetActiveControl: (confirmed, chosen) => {
           void this.setActiveControl(confirmed, chosen);
         },

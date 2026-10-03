@@ -309,10 +309,10 @@ describe("7-8. disconnect and reconnect", () => {
     await settle();
     const cardNode = shadow(element).querySelector(".spotnav-card");
     expect(cardNode).not.toBeNull();
-    // Ten overlays are created with the view and stay out of the card's height: issues,
+    // Eleven overlays are created with the view and stay out of the card's height: issues,
     // capabilities, pause, strategy, the planning editor, the area/fiscal editor, the entity editors
-    // the general Settings popover and the charge history.
-    expect(dialogs(element)).toBe(10);
+    // the general Settings popover, the charge history and the notifications editor.
+    expect(dialogs(element)).toBe(11);
 
     // One refresh is in flight when the card leaves the document.
     vi.advanceTimersByTime(REFRESH_INTERVAL_MS);
@@ -358,7 +358,7 @@ describe("7-8. disconnect and reconnect", () => {
     hass.resolveNext(dashboard());
     await settle();
     expect(shadow(element).querySelectorAll(".spotnav-card").length).toBe(1);
-    expect(dialogs(element)).toBe(10);
+    expect(dialogs(element)).toBe(11);
 
     // And exactly one timer: one interval means one more request, not two.
     vi.advanceTimersByTime(REFRESH_INTERVAL_MS);

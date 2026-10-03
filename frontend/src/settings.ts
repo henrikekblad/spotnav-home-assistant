@@ -20,6 +20,7 @@ import {
   SETTINGS_STRATEGY_HYBRID,
   SETTINGS_STRATEGY_SOLAR,
   type AreaOverride,
+  type NotificationsRecord,
   type PauseObservation,
   type SettingsAnswer,
   type SettingsBody,
@@ -169,7 +170,7 @@ const RECORD_KEYS = [...BODY_KEYS, "revision"] as const;
  * Keys a record may leave out: all were added after the first release of the contract. `fiscal_included` is
  * read-only (what the area's price already includes): it is read, and never sent back.
  */
-const OPTIONAL_RECORD_KEYS = ["departure_date", "departure_weekdays", "fiscal_included"] as const;
+const OPTIONAL_RECORD_KEYS = ["departure_date", "departure_weekdays", "fiscal_included", "notifications"] as const;
 /** Every weekday, Monday (1) to Sunday (7): what a record without `departure_weekdays` means. */
 export const ALL_WEEKDAYS: readonly number[] = [1, 2, 3, 4, 5, 6, 7];
 
@@ -190,6 +191,33 @@ function decodeFiscal(source: Record<string, unknown>): { enabled: boolean; valu
     return bad();
   }
   return { enabled, value: value as number | null };
+}
+
+/** Every event a notification can be sent for, in the backend's order (`NOTIFICATION_EVENTS`). */
+export const NOTIFICATION_EVENTS = [
+  "plan_stopped",
+  "plan_at_risk",
+  "charge_complete",
+  "charge_started",
+  "plugged_in",
+  "unplugged",
+  "plan_installed",
+] as const;
+const NOTIFICATION_KEYS = ["targets", "events", "url", "available"] as const;
+const NOTIFY_SERVICE_KEYS = ["service", "name"] as const;
+
+function decodeNotifications(source: Record<string, unknown>): NotificationsRecord {
+  exactKeys(source, NOTIFICATION_KEYS);
+  const targets = list(source, "targets").map((item) => (typeof item === "string" ? item : bad()));
+  const events = list(source, "events").map((item) =>
+    typeof item === "string" && (NOTIFICATION_EVENTS as readonly string[]).includes(item) ? item : bad(),
+  );
+  const available = list(source, "available").map((item) => {
+    const entry = record(item);
+    exactKeys(entry, NOTIFY_SERVICE_KEYS);
+    return { service: text(entry, "service"), name: text(entry, "name") };
+  });
+  return { targets, events, url: textOrNull(source, "url"), available };
 }
 
 function decodeOverride(source: Record<string, unknown>): AreaOverride {
@@ -270,6 +298,9 @@ export function decodeSettingsRecord(raw: unknown): SettingsRecord {
     strategy: oneOf(source, "strategy", STRATEGIES),
     driver: oneOf(source, "driver", DRIVERS),
     target: decodeTarget(record(source["target"])),
+    ...(present.includes("notifications")
+      ? { notifications: decodeNotifications(record(source["notifications"])) }
+      : {}),
   };
 }
 
@@ -410,6 +441,32 @@ export function strategyReplacement(record: SettingsRecord, strategy: string): R
     return { ok: false, errorKey: "settings.error.invalid" };
   }
   return { ok: true, body: { ...encodeBody(record), strategy }, changed: strategy !== record.strategy };
+}
+
+/** What a notifications Save chooses: the services and events (where a tap opens is the card's own page). */
+export interface NotificationsChoice {
+  targets: string[];
+  events: string[];
+  url: string | null;
+}
+
+/**
+ * What a notifications Save would send: the accepted record unchanged, plus `notifications`. Events keep the
+ * backend's order; a record from a backend without notifications cannot take one.
+ */
+export function notificationsReplacement(record: SettingsRecord, choice: NotificationsChoice): ReplacementCheck {
+  const current = record.notifications;
+  if (current === undefined) {
+    return { ok: false, errorKey: "settings.error.version" };
+  }
+  const events = NOTIFICATION_EVENTS.filter((event) => choice.events.includes(event));
+  const targets = [...new Set(choice.targets)];
+  const notifications = { targets, events, url: choice.url };
+  const changed =
+    targets.join(",") !== current.targets.join(",") ||
+    events.join(",") !== current.events.join(",") ||
+    choice.url !== current.url;
+  return { ok: true, body: { ...encodeBody(record), notifications }, changed };
 }
 
 /**
