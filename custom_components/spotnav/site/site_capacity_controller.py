@@ -44,18 +44,21 @@ from ..const import (
     CONF_SITE_CURRENT_SIGNED,
     CONF_SITE_CURRENT_SOURCE,
     CONF_SITE_ENABLED,
+    CONF_SOLAR_PRIORITY,
     CONF_YIELD_CEILING_A,
     CONF_YIELD_STEPPING_ENABLED,
     DEFAULT_MAX_AGE_S,
     DEFAULT_MIN_CURRENT_A,
     DEFAULT_REGULATOR_DEADBAND_A,
     DEFAULT_REGULATOR_DWELL_S,
+    DEFAULT_SOLAR_PRIORITY,
     default_yield_ceiling_a,
     DEFAULT_YIELD_STEPPING_ENABLED,
     max_yield_ceiling_a,
     MEASUREMENT_MODE_DERIVED,
     MEASUREMENT_MODE_DIRECT,
     SITE_RECOMPUTE_INTERVAL_S,
+    SOLAR_PRIORITY_CAR_FIRST,
 )
 from ..execution.controller import (
     CurrentRestore,
@@ -114,6 +117,18 @@ from .site_membership import find_site_membership_conflicts, SiteMembershipConfl
 # Rolling window per phase for consecutive-direction confirmation; longer than
 # DEFAULT_MIN_CONSECUTIVE_CONFIRMATIONS so one bad reading ages out.
 _DIRECTION_HISTORY_LENGTH = 10
+
+# Decisions kept per site for diagnostics and the debug bundle (oldest dropped first).
+DECISION_LOG_LENGTH = 200
+
+# Battery charge power (W) from which the battery counts as charging for the limit explanation, and
+# the remaining fuse margin (A) at or below which the site counts as sitting at its limit.
+LIMIT_BATTERY_CHARGING_W = 300.0
+LIMIT_AT_FUSE_MARGIN_A = 2.0
+
+#: Why load balancing holds a car below what it asked for, where known.
+LIMIT_CAUSE_BATTERY_SHARES_FUSE = "battery_shares_fuse"
+LIMIT_CAUSE_HOUSE_CONSUMPTION = "house_consumption"
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -190,6 +205,9 @@ class SiteCapacityController:
         # Last logged apply outcome per charger, so a line is emitted per change rather than per
         # recompute.
         self._logged_apply_outcomes: dict[str, tuple[Any, ...]] = {}
+        # Bounded in-memory log of what the regulator did, newest last; read through
+        # `regulator_decision_log` by the diagnostics and the debug bundle, never by a decision.
+        self._decision_log: deque[dict[str, Any]] = deque(maxlen=DECISION_LOG_LENGTH)
         # Logging-only memory of the last conflict list; `membership_conflicts` itself is always
         # live.
         self._last_logged_conflicts: list[SiteMembershipConflict] = self.membership_conflicts
@@ -379,6 +397,7 @@ class SiteCapacityController:
         detail_phase: PhaseName | None = None,
         setpoint: int | None = None,
         previous_setpoint: int | None = None,
+        yield_verdict: YieldVerdict | None = None,
     ) -> None:
         """Log one INFO line per charger per change, not per pass.
 
@@ -394,10 +413,21 @@ class SiteCapacityController:
             previous_setpoint,
             decision.proposed_current_a,
             decision.reason,
+            None if yield_verdict is None else yield_verdict.reason,
         )
         if self._logged_apply_outcomes.get(charger_entry_id) == signature:
             return
         self._logged_apply_outcomes[charger_entry_id] = signature
+        self._record_decision(
+            charger_entry_id,
+            decision,
+            outcome=outcome,
+            detail=detail,
+            detail_phase=detail_phase,
+            setpoint=setpoint,
+            previous_setpoint=previous_setpoint,
+            yield_verdict=yield_verdict,
+        )
         was = "none this session" if previous_setpoint is None else f"{previous_setpoint}A"
         if outcome == "wrote":
             _LOGGER.info(
@@ -422,6 +452,95 @@ class SiteCapacityController:
             detail,
             f" phase={detail_phase}" if detail_phase is not None else "",
             decision.reason,
+        )
+
+    def _record_decision(
+        self,
+        charger_entry_id: str,
+        decision: RegulatorDecision,
+        *,
+        outcome: str,
+        detail: str | None,
+        detail_phase: PhaseName | None,
+        setpoint: int | None,
+        previous_setpoint: int | None,
+        yield_verdict: YieldVerdict | None,
+    ) -> None:
+        """Append one entry to the decision log: when, from and to amps, why, which phase limited,
+        the battery's power and the measured currents. Plain values only, so it serialises as is.
+        """
+        damper = self._dampers.get(charger_entry_id)
+        last_written = None if damper is None else damper.last_written_a
+        from_a = previous_setpoint if previous_setpoint is not None else (
+            None if last_written is None else round(last_written)
+        )
+        battery = self.battery_aggregate_power()
+        wiring: dict[str, Any] = (self.config.get(CONF_PHASE_WIRING) or {}).get(
+            charger_entry_id
+        ) or {}
+        delivered = self._read_charger_measured_current(wiring)
+        requested = next(
+            (basis.requested_current_a for basis in decision.basis.values()), None
+        )
+        self._decision_log.append(
+            {
+                "time": dt_util.utcnow().isoformat(),
+                "charger_id": charger_entry_id,
+                "outcome": outcome,
+                "from_a": from_a,
+                "to_a": setpoint,
+                "proposed_a": decision.proposed_current_a,
+                "requested_a": requested,
+                "reason": decision.reason,
+                "detail": detail,
+                "yield_reason": None if yield_verdict is None else yield_verdict.reason,
+                "yield_state": None if yield_verdict is None else yield_verdict.state,
+                "limiting_phase": detail_phase or decision.limiting_phase,
+                "battery_power_w": None if battery is None else battery.value,
+                "site_current_a": dict(self.result.measured_phase_current_a),
+                "charger_current_a": (
+                    None
+                    if delivered is None
+                    else {phase: delivered.get(phase).value for phase in PHASES}
+                ),
+            }
+        )
+
+    @property
+    def regulator_decision_log(self) -> list[dict[str, Any]]:
+        """A copy of this site's bounded decision log, oldest first. Generic on purpose: a list of
+        plain dicts that any bundle or diagnostic can include as it is.
+        """
+        return [dict(entry) for entry in self._decision_log]
+
+    def load_balancing_limit(self, charger_entry_id: str) -> tuple[float | None, str | None]:
+        """`(limit_a, cause)` while active control holds this charger below what it asked for, else
+        `(None, None)`. `limit_a` is the current it was last given; `cause` is the battery sharing
+        the fuse, house consumption, or `None` when it is not known.
+        """
+        decision = self.regulator_decisions.get(charger_entry_id)
+        damper = self._dampers.get(charger_entry_id)
+        if decision is None or damper is None or not self._active_control_allowed():
+            return None, None
+        assigned = damper.last_written_a
+        requested = next((basis.requested_current_a for basis in decision.basis.values()), None)
+        if assigned is None or requested is None or assigned >= requested - 0.5:
+            return None, None
+        margins = [
+            self.result.measured_margin_a.get(phase) for phase in decision.basis
+        ]
+        usable = [margin for margin in margins if margin is not None]
+        if not usable or min(usable) > LIMIT_AT_FUSE_MARGIN_A:
+            return assigned, None
+        battery = self.battery_aggregate_power()
+        battery_charging = (
+            battery is not None
+            and battery.value is not None
+            and battery.problem is None
+            and battery.value >= LIMIT_BATTERY_CHARGING_W
+        )
+        return assigned, (
+            LIMIT_CAUSE_BATTERY_SHARES_FUSE if battery_charging else LIMIT_CAUSE_HOUSE_CONSUMPTION
         )
 
     def _active_control_allowed(self) -> bool:
@@ -545,6 +664,7 @@ class SiteCapacityController:
                     decision,
                     outcome="held",
                     detail=f"yield_stepping_{yield_verdict.reason}",
+                    yield_verdict=yield_verdict,
                 )
                 continue
 
@@ -555,6 +675,9 @@ class SiteCapacityController:
                     proposed_current_a=yield_verdict.current_a,
                     margin_a=margin_by_charger.get(charger_entry_id),
                     urgent=yield_verdict.urgent,
+                    # A step sized from a battery that was verified to give way is paced by the
+                    # stepper's own settle time and gap, not by the dwell.
+                    verified_step=yield_verdict.battery_credit_a is not None,
                 )
             else:
                 # Passthrough: the raw proposal, urgent only if the stepper says so.
@@ -569,6 +692,7 @@ class SiteCapacityController:
                     decision,
                     outcome="held",
                     detail=f"damping_{damping.reason}",
+                    yield_verdict=yield_verdict,
                 )
                 continue
             setpoint = round(damping.current_a)
@@ -603,6 +727,7 @@ class SiteCapacityController:
                     decision,
                     outcome="held",
                     detail=f"adapter_{write.code}" if write.outcome == "held" else write.code,
+                    yield_verdict=yield_verdict,
                 )
                 continue
             self._log_active_control_outcome(
@@ -614,6 +739,7 @@ class SiteCapacityController:
                 previous_setpoint=(
                     None if previous_setpoint is None else round(previous_setpoint)
                 ),
+                yield_verdict=yield_verdict,
             )
 
     @property
@@ -816,8 +942,30 @@ class SiteCapacityController:
             site_current_a=site_current_a,
             delivered_current_a=delivered_current_a,
             phases=phases,
+            battery_charge_a=self._battery_charge_a(fresh, phases),
+            credit_allowed=(
+                self.config.get(CONF_SOLAR_PRIORITY, DEFAULT_SOLAR_PRIORITY)
+                == SOLAR_PRIORITY_CAR_FIRST
+            ),
         )
         return stepper.observe(decision.proposed_current_a, requested_a, assigned_a, observation)
+
+    @staticmethod
+    def _battery_charge_a(
+        fresh: SiteCapacityResult, phases: tuple[PhaseName, ...]
+    ) -> float | None:
+        """The battery's charge current per phase, the smallest across the charger's phases: the
+        diagnostic estimate's headroom gain over the measured margin (`site/site_capacity.py`),
+        `None` when the battery is not charging or no phase has a usable estimate.
+        """
+        gains: list[float] = []
+        for phase in phases:
+            estimate = fresh.estimated_headroom_if_battery_yields_a.get(phase)
+            margin = fresh.measured_margin_a.get(phase)
+            if estimate is None or margin is None:
+                return None
+            gains.append(max(0.0, estimate - margin))
+        return min(gains) if gains else None
 
     def _record_yield_stepping_verdict(
         self, charger_entry_id: str, verdict: YieldVerdict
@@ -832,6 +980,8 @@ class SiteCapacityController:
             "reference_a": dict(verdict.reference_a),
             "action": verdict.action,
             "reason": verdict.reason,
+            "battery_verified": verdict.battery_verified,
+            "battery_credit_a": verdict.battery_credit_a,
         }
 
     def _log_yield_stepping_transition(
@@ -876,6 +1026,8 @@ class SiteCapacityController:
                 "reference_a": last["reference_a"] if last else {},
                 "action": last["action"] if last else None,
                 "reason": last["reason"] if last else None,
+                "battery_verified": bool(last["battery_verified"]) if last else False,
+                "battery_credit_a": last["battery_credit_a"] if last else None,
             }
         return snapshot
 

@@ -23,6 +23,7 @@ from custom_components.spotnav.const import (
     CONF_MAIN_FUSE_A,
     CONF_MAX_AGE_S,
     CONF_MEASUREMENT_MODE,
+    CONF_SAFETY_MARGIN_A,
     MEASUREMENT_MODE_DERIVED,
 )
 
@@ -49,7 +50,7 @@ async def test_get_reports_charger_and_direct_site_fields(hass: HomeAssistant, h
     names = [item["field"] for item in result["config"]["fields"]]
     assert names == [
         "charge_control", "current_limit", "energy_register_entity", "power_entity", "vehicle_soc",
-        "main_fuse_a", "measurement_mode", "voltage_between_phases_v", "direct_L1", "direct_L2", "direct_L3",
+        "main_fuse_a", "safety_margin_a", "measurement_mode", "voltage_between_phases_v", "direct_L1", "direct_L2", "direct_L3",
         "site_current_signed", "grid_power_source_power", "grid_power_source_power_export", "grid_power_inverted",
         "battery_aggregate_power_entity", "battery_discharge_power_entity",
         "battery_power_inverted", "max_age_s",
@@ -145,6 +146,56 @@ async def test_site_write_updates_data_and_reloads_only_the_site(hass: HomeAssis
     assert data[CONF_DIRECT_ENTITIES]["L1"] == l1 and data[CONF_DIRECT_ENTITIES]["L2"] == "sensor.site_entry_a_l2"
     assert controller_of(hass, charger.entry_id) is charger_controller, "a site write leaves the charger alone"
     assert field(result, "main_fuse_a")["value"] == 32.0
+
+
+async def test_the_safety_margin_is_a_site_field_next_to_the_fuse_and_stays_below_it(
+    hass: HomeAssistant, hass_ws_client
+) -> None:
+    charger, site = await setup_charger_and_site(hass)
+    client = await admin(hass, hass_ws_client)
+
+    got = (await ws_call(client, get_message(charger.entry_id)))["result"]
+    margin = field(got, "safety_margin_a")
+    assert (margin["scope"], margin["kind"], margin["writable"], margin["minimum"]) == ("site", "number", True, 0.0)
+    assert margin["value"] == 1.0  # make_site_entry's stored margin
+
+    written = (
+        await ws_call(
+            client,
+            update_entity_config_message(
+                charger.entry_id, scope="site", expected={"safety_margin_a": 1.0}, changes={"safety_margin_a": 2.5}
+            ),
+        )
+    )["result"]
+    assert written["ok"] is True
+    assert field(written, "safety_margin_a")["value"] == 2.5
+    assert hass.config_entries.async_get_entry(site.entry_id).data[CONF_SAFETY_MARGIN_A] == 2.5
+
+    # At or above the fuse, or negative, is refused and nothing is written; so is a fuse at or below the margin.
+    for changes, bad_field in (
+        ({"safety_margin_a": 25}, "safety_margin_a"),
+        ({"safety_margin_a": 40}, "safety_margin_a"),
+        ({"safety_margin_a": -1}, "safety_margin_a"),
+        ({"main_fuse_a": 2}, "main_fuse_a"),
+        ({"main_fuse_a": 10, "safety_margin_a": 12}, "safety_margin_a"),
+    ):
+        refused = (
+            await ws_call(client, update_entity_config_message(charger.entry_id, scope="site", changes=changes))
+        )["result"]
+        assert refused["error"] == "spotnav_invalid_value", changes
+        assert refused["field_errors"] == [{"field": bad_field, "code": "invalid_value"}], changes
+    assert hass.config_entries.async_get_entry(site.entry_id).data[CONF_SAFETY_MARGIN_A] == 2.5
+
+    # A fuse raised and the margin moved together is judged on the resulting pair.
+    both = (
+        await ws_call(
+            client,
+            update_entity_config_message(
+                charger.entry_id, scope="site", changes={"main_fuse_a": 10, "safety_margin_a": 3}
+            ),
+        )
+    )["result"]
+    assert both["ok"] is True
 
 
 async def test_switching_to_derived_needs_the_six_required_meters_and_keeps_direct(hass: HomeAssistant, hass_ws_client) -> None:

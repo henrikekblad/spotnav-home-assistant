@@ -251,9 +251,15 @@ def test_hard_ceiling_wins_over_confirmed_and_held_state() -> None:
     v = stepper.observe(10.0, 16.0, 10.0, _obs(now, site=20.0, delivered=10.0 * 0.89))
     assert v.state == "confirmed"
 
-    # The site reaches the ceiling: even confirmed, with a raw reduction proposed, the ceiling passes through urgently and the state becomes backoff.
+    # A first sample at the ceiling is a transient: one urgent step back, still confirmed.
     now += 1.0
     v = stepper.observe(8.0, 16.0, 10.0, _obs(now, site=22.0, delivered=10.0 * 0.89))
+    assert (v.action, v.current_a, v.reason, v.urgent) == ("write", 8.0, "transient_step_back", True)
+    assert v.state == "confirmed"
+
+    # The site stays at the ceiling on the next sample: even confirmed, with a raw reduction proposed, the ceiling passes through urgently and the state becomes backoff.
+    now += 1.0
+    v = stepper.observe(6.0, 16.0, 8.0, _obs(now, site=22.0, delivered=8.0 * 0.89))
     assert v.action == "passthrough"
     assert v.urgent is True
     assert v.reason == "passthrough_ceiling"

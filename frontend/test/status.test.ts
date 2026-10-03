@@ -200,6 +200,25 @@ describe("the status line renders the block and nothing else", () => {
     );
   });
 
+  it("names why load balancing holds the car below its plan, where the server knows", () => {
+    const battery = block(statusLine("load_balancing_limited", { limit_a: 11, cause: "battery_shares_fuse" }));
+    const house = block(statusLine("load_balancing_limited", { limit_a: 11, cause: "house_consumption" }));
+    expect(statusText(battery, format("en"), NOW)).toBe(
+      "The home battery charges from the grid and shares the main fuse: the car gets 11 A.",
+    );
+    expect(statusText(battery, format("sv"), NOW)).toBe(
+      "Hemmabatteriet laddar från nätet och delar huvudsäkringen: bilen får 11 A.",
+    );
+    expect(statusText(house, format("en"), NOW)).toBe("House consumption limits the car to 11 A.");
+    expect(statusText(house, format("sv"), NOW)).toBe("Hushållets förbrukning begränsar bilen till 11 A.");
+    // An unknown cause keeps the plain wording, and the issue list words the cause too.
+    const unknown = block(statusLine("load_balancing_limited", { limit_a: 11, cause: "something_new" }));
+    expect(statusText(unknown, format("en"), NOW)).toBe("Charging is limited to 11 A by the site's load balancing.");
+    expect(issueText("en", issuesOf(battery, "en")[0]!)).toBe(
+      "The home battery charges from the grid and shares the main fuse: the car gets 11 A.",
+    );
+  });
+
   it("words solar and hybrid, with the window in the market's clock", () => {
     expect(statusText(block(statusLine("solar_charging", { requested_a: 8 })), format("en"), NOW)).toBe(
       "Solar · charging 8 A from surplus",

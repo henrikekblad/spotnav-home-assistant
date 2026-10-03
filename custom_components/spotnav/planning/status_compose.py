@@ -146,7 +146,9 @@ STATUS_CODES: Final[dict[str, tuple[str, tuple[str, ...]]]] = {
     "price_data_stale": (TONE_NOTICE, ("reason",)),
     "price_data_degraded": (TONE_NOTICE, ("reason",)),
     "unpriced": (TONE_NOTICE, ()),
-    "load_balancing_limited": (TONE_NOTICE, ("limit_a", "phase")),
+    # `cause` names why where it is known: `battery_shares_fuse` (a home battery charging from the grid
+    # shares the main fuse with the car) or `house_consumption`; `None` when it is not known.
+    "load_balancing_limited": (TONE_NOTICE, ("limit_a", "phase", "cause")),
     "load_balancing_unavailable": (TONE_NOTICE, ()),
     # The charger's own scheduler, smart start or load balancer holds the charge (Easee): nothing is
     # wrong, and nothing SpotNav sends releases it.
@@ -234,6 +236,8 @@ class LoadBalancingFacts:
     active_control_enabled: bool
     proposed_current_a: float | None = None
     limiting_phase: str | None = None
+    #: Why load balancing holds the car below its plan, where known (see `load_balancing_limited`).
+    cause: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -531,7 +535,7 @@ def _notices(facts: StatusFacts) -> list[dict[str, Any]]:
     site = facts.load_balancing
     if site is not None:
         if (
-            site.state == "capacity_limited"
+            (site.state == "capacity_limited" or site.cause is not None)
             and site.active_control_enabled
             and facts.charging
         ):
@@ -540,6 +544,7 @@ def _notices(facts: StatusFacts) -> list[dict[str, Any]]:
                     "load_balancing_limited",
                     limit_a=site.proposed_current_a,
                     phase=site.limiting_phase,
+                    cause=site.cause,
                 )
             )
     elif facts.load_balancing_capable:

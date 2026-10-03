@@ -61,6 +61,7 @@ from ..const import (
     CONF_MAX_AGE_S,
     CONF_MEASUREMENT_MODE,
     CONF_MODE,
+    CONF_SAFETY_MARGIN_A,
     CONF_VOLTAGE_BETWEEN_PHASES_V,
     MODE_DETECTED,
     MODE_OCPP,
@@ -107,6 +108,7 @@ from .entity_fields import (
     FIELD_MAIN_FUSE_A,
     FIELD_MAX_AGE_S,
     FIELD_MEASUREMENT_MODE,
+    FIELD_SAFETY_MARGIN_A,
     FIELD_VEHICLE_SOC,
     FIELD_VOLTAGE_BETWEEN_PHASES,
     FieldError,
@@ -186,7 +188,7 @@ def read_entity_config(hass: HomeAssistant, charger: ConfigEntry) -> dict[str, A
 
 
 def _same(field: str, current: Any, expected: Any) -> bool:
-    if field in (FIELD_MAIN_FUSE_A, FIELD_MAX_AGE_S):
+    if field in (FIELD_MAIN_FUSE_A, FIELD_SAFETY_MARGIN_A, FIELD_MAX_AGE_S):
         try:
             return float(current) == float(expected)
         except (TypeError, ValueError):
@@ -255,6 +257,8 @@ def _write_site(hass: HomeAssistant, entry: ConfigEntry, changes: dict[str, Any]
         updated = _apply_detection(hass, entry, updated, changes[FIELD_APPLY_DETECTION])
     if FIELD_MAIN_FUSE_A in changes:
         updated[CONF_MAIN_FUSE_A] = float(changes[FIELD_MAIN_FUSE_A])
+    if FIELD_SAFETY_MARGIN_A in changes:
+        updated[CONF_SAFETY_MARGIN_A] = float(changes[FIELD_SAFETY_MARGIN_A])
     if FIELD_MAX_AGE_S in changes:
         updated[CONF_MAX_AGE_S] = float(changes[FIELD_MAX_AGE_S])
     if FIELD_MEASUREMENT_MODE in changes:

@@ -53,6 +53,8 @@ async def _yield_setup(
     yield_stepping_enabled: bool = True,
     yield_ceiling_a: float | None = None,
     min_current_a: float = 6.0,
+    battery_entity: str | None = None,
+    solar_priority: str | None = None,
 ) -> tuple[object, object, list]:
     """A site opted into active control with one 3-phase charger wired for charge control and a measured (delivered) current source.
 
@@ -104,6 +106,8 @@ async def _yield_setup(
         active_control_enabled=True,
         yield_stepping_enabled=yield_stepping_enabled,
         yield_ceiling_a=yield_ceiling_a,
+        battery_aggregate_power_entity=battery_entity,
+        solar_priority=solar_priority,
     )
     assert await hass.config_entries.async_setup(site_entry.entry_id)
     await hass.async_block_till_done()
@@ -258,6 +262,8 @@ async def test_enabled_on_the_real_condition_a_probe_write_reaches_the_charger(
         "reference_a": {},
         "action": "write",
         "reason": "probe_step",
+        "battery_verified": False,
+        "battery_credit_a": None,
     }
     # An ordinary (non-urgent) increase is damped like any proposal, so it does not reach the charger on this pass.
     assert configure_calls == []
@@ -648,6 +654,8 @@ async def test_yield_stepping_attribute_present_when_disabled(hass: HomeAssistan
         "reference_a": {},
         "action": None,
         "reason": None,
+        "battery_verified": False,
+        "battery_credit_a": None,
     }
     assert controller.yield_stepping_snapshot == snapshot
 

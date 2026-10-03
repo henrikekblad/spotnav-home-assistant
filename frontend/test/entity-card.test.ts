@@ -419,6 +419,55 @@ describe("the site's editor", () => {
     expect(direct?.checked).toBe(true);
   });
 
+  it("shows the safety margin right after the main fuse, with its help line and unit", async () => {
+    const { element } = await mounted();
+    openSettings(element);
+    await settle();
+    edit(element, "site");
+    const dialog = openDialog(element);
+    expect(field(element, "safety_margin_a").value).toBe("1");
+    const order = Array.from(dialog?.querySelectorAll<HTMLElement>("[data-field-block]") ?? []).map(
+      (block) => block.dataset["fieldBlock"],
+    );
+    expect(order.indexOf("safety_margin_a")).toBe(order.indexOf("main_fuse_a") + 1);
+    const block = dialog?.querySelector<HTMLElement>("[data-field-block='safety_margin_a']");
+    expect(block?.textContent).toContain(translate("en", "entity.field.safetyMargin"));
+    expect(block?.textContent).toContain(translate("en", "entity.help.safetyMargin"));
+    expect(block?.textContent).toContain("A");
+  });
+
+  it("sends a changed safety margin as a number, expecting the number it read", async () => {
+    const { hass, element } = await mounted({ update: "success_site" });
+    openSettings(element);
+    await settle();
+    edit(element, "site");
+    type(element, "safety_margin_a", "2.5");
+    save(element);
+    await settle();
+    expect(updates(hass)).toEqual([
+      {
+        type: "spotnav/update_entity_config",
+        api_version: 1,
+        charger_id: "entry_a",
+        scope: "site",
+        expected: { safety_margin_a: 1 },
+        changes: { safety_margin_a: 2.5 },
+      },
+    ]);
+  });
+
+  it("refuses a negative safety margin before any request", async () => {
+    const { hass, element } = await mounted();
+    openSettings(element);
+    await settle();
+    edit(element, "site");
+    type(element, "safety_margin_a", "-1");
+    save(element);
+    await settle();
+    expect(updates(hass)).toHaveLength(0);
+    expect(fieldError(element, "safety_margin_a")?.textContent).toBe(translate("en", "entity.error.field.invalid"));
+  });
+
   it("sends a changed fuse as a number, expecting the number it read", async () => {
     const { hass, element } = await mounted({ update: "success_site" });
     openSettings(element);

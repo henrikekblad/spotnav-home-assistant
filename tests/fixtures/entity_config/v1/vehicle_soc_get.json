@@ -138,6 +138,15 @@
         "writable": true
       },
       {
+        "field": "safety_margin_a",
+        "kind": "number",
+        "minimum": 0.0,
+        "required": false,
+        "scope": "site",
+        "value": 1.0,
+        "writable": true
+      },
+      {
         "choices": [
           "direct_phase_current",
           "derived_phase_current"

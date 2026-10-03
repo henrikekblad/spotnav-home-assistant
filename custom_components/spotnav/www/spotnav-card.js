@@ -3052,6 +3052,8 @@ var da = {
   "status.noPlan": "Der kunne ikke beregnes en ladeplan lige nu.",
   "status.loadBalancingLimited": "Opladningen begrænses af anlæggets lastbalancering lige nu.",
   "status.loadBalancingLimitedTo": "Opladningen begrænses til {limit} A af anlæggets lastbalancering.",
+  "status.loadBalancingLimitedByBattery": "Hjemmebatteriet oplader fra nettet og deler hovedsikringen: bilen får {limit} A.",
+  "status.loadBalancingLimitedByHouse": "Husets forbrug begrænser bilen til {limit} A.",
   "status.chargingNowOpen": "Lader nu.",
   "status.scheduledNoTime": "Opladning er planlagt.",
   "status.nothingToCharge": "Der er intet at lade lige nu.",
@@ -3170,6 +3172,7 @@ var da = {
   "entity.field.powerEntity": "Effektsensor (smart stik)",
   "entity.field.vehicleSoc": "Køretøjets opladningsniveau",
   "entity.field.mainFuse": "Hovedsikring",
+  "entity.field.safetyMargin": "Sikkerhedsmargin",
   "entity.field.measurementMode": "Målemetode",
   "entity.field.voltageBetweenPhases": "Spænding mellem faser",
   "entity.field.batteryPower": "Batteriets effekt",
@@ -3203,6 +3206,7 @@ var da = {
   "entity.help.powerEntity": "Til en lader bag et smart stik: stikkets effektsensor, i W eller kW. SpotNav tæller energien fra den og kan se, når bilen er holdt op med at trække strøm. Stikket skal være dimensioneret til laderens kontinuerlige strøm.",
   "entity.help.vehicleSoc": "Køretøjets opladningsniveau, læst fra den sensor der er valgt til køretøjet, eller fundet automatisk når det kun har én.",
   "entity.help.mainFuse": "Anlæggets hovedsikring i ampere. Alle ladere på anlægget holder sig samlet under den.",
+  "entity.help.safetyMargin": "Strømmen i ampere, som SpotNav holder fri under hovedsikringen. Opladningen holdes under sikringen minus marginen, som derfor skal være lavere end sikringen.",
   "entity.help.measurementMode": "Om din måler angiver hver fases strøm direkte, eller SpotNav regner den ud fra effekt og spænding.",
   "entity.help.voltageBetweenPhases": "Spændingen mellem to faser i din elinstallation. Trefaset ladeeffekt regnes ud fra den.",
   "entity.voltage.tn": "400 V (TN-net, det sædvanlige)",
@@ -3646,6 +3650,8 @@ var en = {
   "status.noPlan": "No charging plan could be calculated right now.",
   "status.loadBalancingLimited": "Charging is limited by the site's load balancing right now.",
   "status.loadBalancingLimitedTo": "Charging is limited to {limit} A by the site's load balancing.",
+  "status.loadBalancingLimitedByBattery": "The home battery charges from the grid and shares the main fuse: the car gets {limit} A.",
+  "status.loadBalancingLimitedByHouse": "House consumption limits the car to {limit} A.",
   "status.chargingNowOpen": "Charging now.",
   "status.scheduledNoTime": "Charging is scheduled.",
   "status.nothingToCharge": "Nothing to charge right now.",
@@ -3764,6 +3770,7 @@ var en = {
   "entity.field.powerEntity": "Power sensor (smart plug)",
   "entity.field.vehicleSoc": "Vehicle charge level",
   "entity.field.mainFuse": "Main fuse",
+  "entity.field.safetyMargin": "Safety margin",
   "entity.field.measurementMode": "Measurement mode",
   "entity.field.voltageBetweenPhases": "Voltage between phases",
   "entity.field.batteryPower": "Battery power",
@@ -3797,6 +3804,7 @@ var en = {
   "entity.help.powerEntity": "For a charger behind a smart plug: the plug's power sensor, in W or kW. SpotNav counts the energy from it and sees when the car has stopped drawing. The plug must be rated for the charger's continuous current.",
   "entity.help.vehicleSoc": "The vehicle's charge level, read from the sensor chosen for the vehicle, or found automatically when it has only one.",
   "entity.help.mainFuse": "The site's main fuse in amperes. All chargers on the site together stay below it.",
+  "entity.help.safetyMargin": "The current in amperes that SpotNav keeps free below the main fuse. Charging stays under the fuse minus this margin, so it must be below the fuse.",
   "entity.help.measurementMode": "Whether your meter reports each phase's current directly, or SpotNav works it out from power and voltage.",
   "entity.help.voltageBetweenPhases": "The voltage between two phases of your electrical installation. Three-phase charging power is figured from it.",
   "entity.voltage.tn": "400 V (TN network, the usual one)",
@@ -4240,6 +4248,8 @@ var fi = {
   "status.noPlan": "Lataussuunnitelmaa ei voitu laskea juuri nyt.",
   "status.loadBalancingLimited": "Aseman kuormanhallinta rajoittaa latausta juuri nyt.",
   "status.loadBalancingLimitedTo": "Aseman kuormanhallinta rajoittaa latauksen {limit} A:iin.",
+  "status.loadBalancingLimitedByBattery": "Kotiakku lataa verkosta ja jakaa pääsulakkeen: auto saa {limit} A.",
+  "status.loadBalancingLimitedByHouse": "Talon kulutus rajoittaa auton {limit} A:iin.",
   "status.chargingNowOpen": "Ladataan nyt.",
   "status.scheduledNoTime": "Lataus on aikataulutettu.",
   "status.nothingToCharge": "Ei mitään ladattavaa juuri nyt.",
@@ -4358,6 +4368,7 @@ var fi = {
   "entity.field.powerEntity": "Tehoanturi (älypistoke)",
   "entity.field.vehicleSoc": "Ajoneuvon lataustaso",
   "entity.field.mainFuse": "Pääsulake",
+  "entity.field.safetyMargin": "Turvamarginaali",
   "entity.field.measurementMode": "Mittaustapa",
   "entity.field.voltageBetweenPhases": "Vaiheiden välinen jännite",
   "entity.field.batteryPower": "Akun teho",
@@ -4391,6 +4402,7 @@ var fi = {
   "entity.help.powerEntity": "Älypistokkeen takana olevalle latauslaitteelle: pistokkeen tehoanturi, W tai kW. SpotNav laskee energian siitä ja huomaa, kun auto ei enää ota virtaa. Pistokkeen on kestettävä latauslaitteen jatkuva virta.",
   "entity.help.vehicleSoc": "Ajoneuvon varaustaso, luettuna ajoneuvolle valitusta anturista tai löydettynä automaattisesti, kun sillä on vain yksi.",
   "entity.help.mainFuse": "Kohteen pääsulake ampeereina. Kaikki kohteen laturit pysyvät yhdessä sen alapuolella.",
+  "entity.help.safetyMargin": "Ampeereina se virta, jonka SpotNav pitää vapaana pääsulakkeen alapuolella. Lataus pysyy sulakkeen ja marginaalin erotuksen alla, joten marginaalin on oltava sulaketta pienempi.",
   "entity.help.measurementMode": "Ilmoittaako mittarisi kunkin vaiheen virran suoraan vai laskeeko SpotNav sen tehosta ja jännitteestä.",
   "entity.help.voltageBetweenPhases": "Sähköasennuksesi kahden vaiheen välinen jännite. Kolmivaiheinen latausteho lasketaan siitä.",
   "entity.voltage.tn": "400 V (TN-verkko, tavallinen)",
@@ -4834,6 +4846,8 @@ var nb = {
   "status.noPlan": "Ingen ladeplan kunne beregnes akkurat nå.",
   "status.loadBalancingLimited": "Ladingen begrenses av anleggets lastbalansering akkurat nå.",
   "status.loadBalancingLimitedTo": "Ladingen begrenses til {limit} A av anleggets lastbalansering.",
+  "status.loadBalancingLimitedByBattery": "Hjemmebatteriet lader fra nettet og deler hovedsikringen: bilen får {limit} A.",
+  "status.loadBalancingLimitedByHouse": "Husets forbruk begrenser bilen til {limit} A.",
   "status.chargingNowOpen": "Lader nå.",
   "status.scheduledNoTime": "Lading er planlagt.",
   "status.nothingToCharge": "Ingenting å lade akkurat nå.",
@@ -4952,6 +4966,7 @@ var nb = {
   "entity.field.powerEntity": "Effektsensor (smartplugg)",
   "entity.field.vehicleSoc": "Kjøretøyets ladenivå",
   "entity.field.mainFuse": "Hovedsikring",
+  "entity.field.safetyMargin": "Sikkerhetsmargin",
   "entity.field.measurementMode": "Målemetode",
   "entity.field.voltageBetweenPhases": "Spenning mellom faser",
   "entity.field.batteryPower": "Batteriets effekt",
@@ -4985,6 +5000,7 @@ var nb = {
   "entity.help.powerEntity": "For en lader bak en smartplugg: pluggens effektsensor, i W eller kW. SpotNav teller energien fra den og ser når bilen har sluttet å trekke strøm. Pluggen må være dimensjonert for laderens kontinuerlige strøm.",
   "entity.help.vehicleSoc": "Kjøretøyets ladenivå, lest fra sensoren som er valgt for kjøretøyet, eller funnet automatisk når det bare har én.",
   "entity.help.mainFuse": "Anleggets hovedsikring i ampere. Alle laderne på anlegget holder seg samlet under den.",
+  "entity.help.safetyMargin": "Strømmen i ampere som SpotNav holder fri under hovedsikringen. Ladingen holdes under sikringen minus marginen, som derfor må være lavere enn sikringen.",
   "entity.help.measurementMode": "Om måleren oppgir strømmen for hver fase direkte, eller SpotNav regner den ut fra effekt og spenning.",
   "entity.help.voltageBetweenPhases": "Spenningen mellom to faser i det elektriske anlegget ditt. Trefaset ladeeffekt regnes ut fra den.",
   "entity.voltage.tn": "400 V (TN-nett, det vanlige)",
@@ -5428,6 +5444,8 @@ var sv = {
   "status.noPlan": "Ingen laddplan kunde beräknas just nu.",
   "status.loadBalancingLimited": "Laddningen begränsas av anläggningens lastbalansering just nu.",
   "status.loadBalancingLimitedTo": "Laddningen begränsas till {limit} A av anläggningens lastbalansering.",
+  "status.loadBalancingLimitedByBattery": "Hemmabatteriet laddar från nätet och delar huvudsäkringen: bilen får {limit} A.",
+  "status.loadBalancingLimitedByHouse": "Hushållets förbrukning begränsar bilen till {limit} A.",
   "status.chargingNowOpen": "Laddar nu.",
   "status.scheduledNoTime": "Laddning är schemalagd.",
   "status.nothingToCharge": "Inget att ladda just nu.",
@@ -5546,6 +5564,7 @@ var sv = {
   "entity.field.powerEntity": "Effektsensor (smart plugg)",
   "entity.field.vehicleSoc": "Fordonets laddnivå",
   "entity.field.mainFuse": "Huvudsäkring",
+  "entity.field.safetyMargin": "Säkerhetsmarginal",
   "entity.field.measurementMode": "Mätsätt",
   "entity.field.voltageBetweenPhases": "Spänning mellan faser",
   "entity.field.batteryPower": "Batteriets effekt",
@@ -5579,6 +5598,7 @@ var sv = {
   "entity.help.powerEntity": "För en laddare bakom en smart plugg: pluggens effektsensor, i W eller kW. SpotNav räknar energin från den och ser när bilen slutat ta ström. Pluggen måste vara dimensionerad för laddarens kontinuerliga ström.",
   "entity.help.vehicleSoc": "Fordonets laddnivå, läst från sensorn som valts för fordonet, eller hittad automatiskt när det bara har en.",
   "entity.help.mainFuse": "Anläggningens huvudsäkring i ampere. Alla laddare på anläggningen håller sig tillsammans under den.",
+  "entity.help.safetyMargin": "Strömmen i ampere som SpotNav håller fri under huvudsäkringen. Laddningen hålls under säkringen minus marginalen, som därför måste vara lägre än säkringen.",
   "entity.help.measurementMode": "Om din mätare anger varje fas ström direkt, eller om SpotNav räknar ut den från effekt och spänning.",
   "entity.help.voltageBetweenPhases": "Spänningen mellan två faser i din elanläggning. Trefasig laddeffekt räknas ut från den.",
   "entity.voltage.tn": "400 V (TN-nät, det vanliga)",
@@ -7319,7 +7339,7 @@ var STATUS_CODE_TABLE = {
   price_data_stale: ["notice", { reason: "textOrNull" }],
   price_data_degraded: ["notice", { reason: "textOrNull" }],
   unpriced: ["notice", {}],
-  load_balancing_limited: ["notice", { limit_a: "numberOrNull", phase: "textOrNull" }],
+  load_balancing_limited: ["notice", { limit_a: "numberOrNull", phase: "textOrNull", cause: "textOrNull" }],
   load_balancing_unavailable: ["notice", {}],
   held_by_charger: ["notice", {}],
   charger_disabled: ["notice", {}],
@@ -7709,6 +7729,15 @@ function chargerProblemKey(problem) {
   }
   return problem === "control_disabled" ? "issue.chargeControlDisabled" : null;
 }
+function loadBalancingLimitKey(cause) {
+  if (cause === "battery_shares_fuse") {
+    return "status.loadBalancingLimitedByBattery";
+  }
+  if (cause === "house_consumption") {
+    return "status.loadBalancingLimitedByHouse";
+  }
+  return "status.loadBalancingLimitedTo";
+}
 function ms(value) {
   if (typeof value !== "string") {
     return null;
@@ -7795,7 +7824,7 @@ function lineText(line, format, nowMs) {
     }
     case "load_balancing_limited": {
       const limit = num(p["limit_a"]);
-      return limit === null ? say("status.loadBalancingLimited") : say("status.loadBalancingLimitedTo", { limit: formatNumber(language, limit, 0) });
+      return limit === null ? say("status.loadBalancingLimited") : say(loadBalancingLimitKey(p["cause"]), { limit: formatNumber(language, limit, 0) });
     }
     case "settings_incomplete": {
       const missing = Array.isArray(p["missing"]) ? p["missing"] : [];
@@ -7886,7 +7915,7 @@ function issuesOf(status, language) {
     issues.push({
       code: line.code,
       severity,
-      textKey: line.code === "load_balancing_limited" && limit === null ? "status.loadBalancingLimited" : STATUS_WORDING[line.code],
+      textKey: line.code === "load_balancing_limited" ? limit === null ? "status.loadBalancingLimited" : loadBalancingLimitKey(line.params["cause"]) : STATUS_WORDING[line.code],
       params: limit === null ? {} : { limit: formatNumber(language, limit, 0) },
       technical: reasonOf(line)
     });
@@ -8962,6 +8991,7 @@ var FIELD_LABELS = {
   power_entity: "entity.field.powerEntity",
   vehicle_soc: "entity.field.vehicleSoc",
   main_fuse_a: "entity.field.mainFuse",
+  safety_margin_a: "entity.field.safetyMargin",
   measurement_mode: "entity.field.measurementMode",
   voltage_between_phases_v: "entity.field.voltageBetweenPhases",
   battery_aggregate_power_entity: "entity.field.batteryPower",
@@ -9044,6 +9074,7 @@ var FIELD_HELP = {
   power_entity: "entity.help.powerEntity",
   vehicle_soc: "entity.help.vehicleSoc",
   main_fuse_a: "entity.help.mainFuse",
+  safety_margin_a: "entity.help.safetyMargin",
   measurement_mode: "entity.help.measurementMode",
   voltage_between_phases_v: "entity.help.voltageBetweenPhases",
   battery_aggregate_power_entity: "entity.help.batteryPower",
@@ -9634,7 +9665,7 @@ function entityEditorBody(doc, language, input, handlers, idPrefix) {
       if (control !== null) {
         const line = element(doc, "div", VISUAL_CLASSES.settingsRow);
         control.replaceWith(line);
-        line.append(control, element(doc, "span", VISUAL_CLASSES.settingsUnit, field2.field === "main_fuse_a" ? "A" : "s"));
+        line.append(control, element(doc, "span", VISUAL_CLASSES.settingsUnit, field2.field === "main_fuse_a" || field2.field === "safety_margin_a" ? "A" : "s"));
       }
       block = row;
     }

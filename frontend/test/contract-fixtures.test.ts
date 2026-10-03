@@ -898,7 +898,7 @@ const SITE_TAIL = [
   "max_age_s",
 ];
 const CHARGER = ["charge_control", "current_limit", "energy_register_entity", "power_entity", "vehicle_soc"];
-const SITE_FIXED = ["main_fuse_a", "measurement_mode", "voltage_between_phases_v"];
+const SITE_FIXED = ["main_fuse_a", "safety_margin_a", "measurement_mode", "voltage_between_phases_v"];
 /** A charger in no site holds the voltage between phases itself, listed before the vehicle sensor. */
 const CHARGER_NO_SITE = ["charge_control", "current_limit", "energy_register_entity", "power_entity", "voltage_between_phases_v", "vehicle_soc"];
 
@@ -1252,6 +1252,11 @@ describe("the backend's entity_config v1 contract fixtures", () => {
     });
     const fuse = byName.get("main_fuse_a");
     expect(fuse === undefined ? null : fuse.kind === "number" ? fuse.value : "wrong kind", name).toBe(expected.config.fuse);
+    // The safety margin sits next to the fuse and is read as a number (the fixtures' site keeps 1 A).
+    const margin = byName.get("safety_margin_a");
+    expect(margin === undefined ? null : margin.kind === "number" ? margin.value : "wrong kind", name).toBe(
+      expected.config.fuse === null ? null : 1,
+    );
     const age = byName.get("max_age_s");
     expect(age === undefined ? null : age.kind === "number" ? age.value : "wrong kind", name).toBe(expected.config.maxAge);
     expect(config.site?.chargerCount ?? null, name).toBe(expected.config.siteChargers);

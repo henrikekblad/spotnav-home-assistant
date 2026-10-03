@@ -57,6 +57,7 @@ from ..const import (
     CONF_MAIN_FUSE_A,
     CONF_MAX_AGE_S,
     CONF_MEASUREMENT_MODE,
+    CONF_SAFETY_MARGIN_A,
     CONF_SITE_CURRENT_SIGNED,
     CONF_SITE_CURRENT_SOURCE,
     CONF_MODE,
@@ -135,6 +136,7 @@ CHARGER_FIELDS: Final = (
     FIELD_VEHICLE_SOC,
 )
 FIELD_MAIN_FUSE_A: Final = "main_fuse_a"
+FIELD_SAFETY_MARGIN_A: Final = "safety_margin_a"
 FIELD_MEASUREMENT_MODE: Final = "measurement_mode"
 FIELD_MAX_AGE_S: Final = "max_age_s"
 FIELD_BATTERY_AGGREGATE_POWER: Final = "battery_aggregate_power_entity"
@@ -172,6 +174,7 @@ def site_fixed_fields() -> tuple[str, ...]:
     """Every site field name that is not phase-shaped -- always present, whatever the mode."""
     return (
         FIELD_MAIN_FUSE_A,
+        FIELD_SAFETY_MARGIN_A,
         FIELD_MEASUREMENT_MODE,
         FIELD_VOLTAGE_BETWEEN_PHASES,
         FIELD_MAX_AGE_S,
@@ -203,6 +206,8 @@ _OPTIONAL_PHASE_FIELDS: Final = frozenset(
 
 # Shared with the flow's `vol.Range` on these two fields so the numbers cannot drift.
 MAIN_FUSE_MIN_A: Final = 0.1
+#: The flow allows a margin of zero; it must stay below the main fuse (`flows/site_form.site_margin_errors`).
+SAFETY_MARGIN_MIN_A: Final = 0.0
 MAX_AGE_MIN_S: Final = 1.0
 
 # Stable per-field codes, looked up by the card, never shown as prose.
@@ -805,6 +810,8 @@ def current_site_values(entry: ConfigEntry) -> dict[str, Any]:
         FIELD_GRID_POWER_SOURCE_POWER: "" if grid_total is None else grid_total.power,
         FIELD_GRID_POWER_SOURCE_EXPORT: "" if grid_total is None else (grid_total.power_export or ""),
         FIELD_MAIN_FUSE_A: entry.data.get(CONF_MAIN_FUSE_A),
+        # Absent is zero, as the calculation reads it.
+        FIELD_SAFETY_MARGIN_A: entry.data.get(CONF_SAFETY_MARGIN_A, 0.0),
         FIELD_MEASUREMENT_MODE: entry.data.get(CONF_MEASUREMENT_MODE, MEASUREMENT_MODE_DIRECT),
         FIELD_VOLTAGE_BETWEEN_PHASES: _voltage_text(entry),
         FIELD_MAX_AGE_S: entry.data.get(CONF_MAX_AGE_S, DEFAULT_MAX_AGE_S),
@@ -858,10 +865,34 @@ def site_field_errors(
     on the missing field, so a mode switch or first save cannot leave per-phase fields half-filled.
     """
     errors: list[FieldError] = []
-    for field, minimum in ((FIELD_MAIN_FUSE_A, MAIN_FUSE_MIN_A), (FIELD_MAX_AGE_S, MAX_AGE_MIN_S)):
-        _, error = _validate_bounded_number(changes, field, minimum=minimum)
+    numbers: dict[str, float] = {}
+    for field, minimum in (
+        (FIELD_MAIN_FUSE_A, MAIN_FUSE_MIN_A),
+        (FIELD_SAFETY_MARGIN_A, SAFETY_MARGIN_MIN_A),
+        (FIELD_MAX_AGE_S, MAX_AGE_MIN_S),
+    ):
+        number, error = _validate_bounded_number(changes, field, minimum=minimum)
         if error is not None:
             errors.append(error)
+        elif number is not None:
+            numbers[field] = number
+    if FIELD_MAIN_FUSE_A in numbers or FIELD_SAFETY_MARGIN_A in numbers:
+        # A margin at or above the main fuse leaves no current for any charger, whichever of the two
+        # this write changes (the same rule as the options flow).
+        stored = current_site_values(entry)
+        fuse = numbers.get(FIELD_MAIN_FUSE_A, stored[FIELD_MAIN_FUSE_A])
+        margin = numbers.get(FIELD_SAFETY_MARGIN_A, stored[FIELD_SAFETY_MARGIN_A])
+        if (
+            isinstance(fuse, (int, float))
+            and isinstance(margin, (int, float))
+            and margin >= fuse
+        ):
+            errors.append(
+                FieldError(
+                    FIELD_SAFETY_MARGIN_A if FIELD_SAFETY_MARGIN_A in numbers else FIELD_MAIN_FUSE_A,
+                    ERR_INVALID_VALUE,
+                )
+            )
 
     mode, mode_error = _resulting_measurement_mode(entry, changes)
     if mode_error is not None:
@@ -980,6 +1011,16 @@ def site_field_descriptors(hass: HomeAssistant, entry: ConfigEntry) -> list[dict
             "writable": True,
             "value": values[FIELD_MAIN_FUSE_A],
             "minimum": MAIN_FUSE_MIN_A,
+        },
+        {
+            # Next to the fuse it protects: what load balancing keeps free below the main fuse.
+            "field": FIELD_SAFETY_MARGIN_A,
+            "scope": "site",
+            "kind": "number",
+            "required": False,
+            "writable": True,
+            "value": values[FIELD_SAFETY_MARGIN_A],
+            "minimum": SAFETY_MARGIN_MIN_A,
         },
         {
             "field": FIELD_MEASUREMENT_MODE,
