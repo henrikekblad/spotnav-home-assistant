@@ -183,7 +183,7 @@
       },
       "ocpp_confirm": {
         "title": "Laddare hittad",
-        "description": "Laddarens styrning hittades. Laddstyrning: {charge_control}. Ström ställs in via: {current}. Energimätare (hittas automatiskt): {energy_meter}. Fortsätt för att lägga till den, eller kryssa i rutan för att ändra valen.",
+        "description": "Laddarens styrning hittades. Fortsätt för att lägga till den, eller kryssa i rutan för att ändra valen.\n\n{summary}",
         "data": {
           "adjust": "Ändra valen"
         }

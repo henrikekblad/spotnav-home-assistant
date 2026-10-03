@@ -222,6 +222,9 @@ async def test_automatic_flow_with_a_number_only_confirms_the_number_path(hass: 
     result = await _automatic(hass, device_id)
     assert result["step_id"] == "ocpp_confirm"
     assert "current number" in result["description_placeholders"]["current"]
+    summary = result["description_placeholders"]["summary"]
+    assert [line[:3] for line in summary.splitlines()] == ["- *"] * 3
+    assert "**Current set via:** the charger's current number (" in summary
 
 
 async def test_automatic_flow_asks_when_the_current_default_is_not_determined(hass: HomeAssistant) -> None:

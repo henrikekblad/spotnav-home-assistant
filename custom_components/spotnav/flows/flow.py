@@ -130,7 +130,7 @@ from .measured_source import (
 )
 from .options import SiteCapacityOptionsFlow, SpotNavChargingOptionsFlow
 from ..setup_hints import ADD_CHARGER_HINT
-from .site_confirm import site_confirm_summary, site_join_summary
+from .site_confirm import charger_found_summary, site_confirm_summary, site_join_summary
 from .site_form import (
     default_site_name,
     detected_defaults,
@@ -470,6 +470,16 @@ class SpotNavChargingConfigFlow(ChargerWiringSteps, config_entries.ConfigFlow, d
                 "charge_control": name,
                 "current": current,
                 "energy_meter": (register_state.name if register_state else register) or "none found",
+                "summary": charger_found_summary(
+                    self.hass,
+                    charge_control=name,
+                    current_number=(
+                        self._options([current_limit])[current_limit]
+                        if control == CURRENT_CONTROL_NUMBER and current_limit
+                        else None
+                    ),
+                    energy_meter=(register_state.name if register_state else register) or None,
+                ),
             },
         )
 

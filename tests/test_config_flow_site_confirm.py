@@ -8,7 +8,10 @@ from homeassistant.core import HomeAssistant
 from homeassistant.data_entry_flow import FlowResultType
 from homeassistant.helpers import entity_registry as er
 
-from custom_components.spotnav.const import DOMAIN
+from custom_components.spotnav.const import DOMAIN, MEASUREMENT_MODE_DERIVED
+from custom_components.spotnav.flows.labels import PHASES
+from custom_components.spotnav.flows.site_confirm import charger_found_summary, md_escape, site_confirm_summary
+from custom_components.spotnav.site.site_detection import BatteryCandidate, MeterCandidate
 
 from .helpers import create_ocpp_charger_device, make_entry, make_ocpp_config_entry
 from .site_registry import materialize
@@ -79,11 +82,12 @@ async def test_an_unambiguous_detection_is_confirmed_and_equals_the_form_path(ha
     )
     assert confirm["step_id"] == "site_confirm"
     summary = confirm["description_placeholders"]["summary"]
-    assert "power per phase, current calculated" in summary
-    assert "Reactive power: found" in summary
-    assert "House battery:" in summary and "charging positive" in summary
-    assert "Charger Halo 1: 3 phases, measured current from" in summary
-    assert "L1: Grid power A" in summary and "sensor." not in summary
+    blocks = summary.split("\n\n")
+    assert blocks[0].startswith("**Grid meter** – power per phase, current calculated")
+    assert "**Reactive power:** found" in blocks
+    assert any(b.startswith("**House battery:**") and "(charging positive)" in b for b in blocks)
+    assert any(b.startswith("**Charger:** Halo 1 – 3 phases, measured current from") for b in blocks)
+    assert "- **L1:** Grid power A" in summary and "sensor." not in summary
     created = await hass.config_entries.flow.async_configure(confirm["flow_id"], {})
     assert created["type"] is FlowResultType.CREATE_ENTRY
     data = dict(created["data"])
@@ -202,7 +206,10 @@ async def test_the_summary_has_a_voltage_line(hass: HomeAssistant) -> None:
         result["flow_id"], {"choice": _choice(result), "enable_disabled": True}
     )
 
-    assert "Voltage: L1 " in confirm["description_placeholders"]["summary"]
+    summary = confirm["description_placeholders"]["summary"]
+    rows = [line for line in summary.splitlines() if line.startswith("- **L")]
+    assert [row.split(":**")[0] for row in rows] == ["- **L1", "- **L2", "- **L3"]
+    assert all(" · " in row for row in rows)
 
 
 async def test_the_detected_total_grid_power_is_stored_with_the_meter(hass: HomeAssistant) -> None:
@@ -241,3 +248,34 @@ async def test_a_meter_without_a_total_stores_none(hass: HomeAssistant) -> None:
     created = await hass.config_entries.flow.async_configure(confirm["flow_id"], {})
 
     assert "grid_power_source" not in dict(created["data"])
+
+
+def _meter() -> MeterCandidate:
+    return MeterCandidate(
+        candidate_id="m",
+        integration="x",
+        title="Meter",
+        mode=MEASUREMENT_MODE_DERIVED,
+        confidence=None,
+        derived_entities={
+            phase: {"power": f"sensor.p{n}", "voltage": f"sensor.v{n}"} for n, phase in enumerate(PHASES, 1)
+        },
+    )
+
+
+async def test_names_are_markdown_escaped_in_both_summaries(hass: HomeAssistant) -> None:
+    hass.states.async_set("sensor.p1", "1", {"friendly_name": "A*B_C [x] <i>"})
+    hass.states.async_set("sensor.bat", "1", {"friendly_name": "Bat_tery *1*"})
+    battery = BatteryCandidate(candidate_id="b", integration="x", title="B", entity_id="sensor.bat")
+
+    summary = site_confirm_summary(hass, candidate=_meter(), battery=battery, chargers=[])
+
+    assert "- **L1:** A\\*B\\_C \\[x\\] \\<i\\> · " in summary
+    assert "**House battery:** Bat\\_tery \\*1\\* (charging positive)" in summary
+    found = charger_found_summary(hass, charge_control="Switch *1*", current_number=None, energy_meter="E_1")
+    assert found.splitlines() == [
+        "- **Charge control:** Switch \\*1\\*",
+        "- **Current set via:** OCPP ChangeConfiguration",
+        "- **Energy meter:** E\\_1 (found automatically)",
+    ]
+    assert md_escape("plain name 1.5") == "plain name 1.5"
