@@ -183,7 +183,7 @@
       },
       "ocpp_confirm": {
         "title": "Charger found",
-        "description": "Found this charger's controls. Charge control: {charge_control}. Current set via: {current}. Energy meter (found automatically): {energy_meter}. Continue to add it, or tick the box to change these choices.",
+        "description": "Found this charger's controls. Continue to add it, or tick the box to change these choices.\n\n{summary}",
         "data": {
           "adjust": "Change these choices"
         }
