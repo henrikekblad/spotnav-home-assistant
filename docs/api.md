@@ -175,7 +175,7 @@ a source is still awaited: a configured solar forecast that has not loaded (`for
 strategy) or a charger whose status sensor and charge control still read unavailable or unknown (`charger`).
 It is on for at most three minutes after the integration loads and ends as soon as the sources report;
 `until` is that cap while it is on and `null` otherwise. While it is on, `status` is the single line
-`starting_up`, `live.charging` is `null` (unknown, not off) when the charger is what is awaited, and a
+`starting_up`, `live.charging` keeps its boolean (read it together with `starting_up`), and a
 hybrid `strategy_state` says `unknown` with reason `starting_up` instead of "no forecast". A client shows
 "Starting up…" and offers no Start or Stop meanwhile; an older backend has no block, and a client then
 behaves as before.

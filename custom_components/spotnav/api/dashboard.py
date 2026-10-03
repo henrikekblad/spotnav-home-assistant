@@ -214,7 +214,7 @@ class CapturedLive:
     `measured_current_a` is `None`: there is no charger-level measurement, and a setpoint is not one.
     """
 
-    charging: bool | None
+    charging: bool
     schedule_active: bool
     requested_current_a: int | None
     setpoint_current_a: int | None
@@ -901,12 +901,8 @@ def capture_dashboard(
         days=days,
         plan=None if controller is None else controller.plan,
         live=CapturedLive(
-            # Unknown, not off, while the charger has not yet reported anything.
-            charging=(
-                None
-                if starting_up.active and "charger" in starting_up.waiting_for
-                else bool(controller is not None and controller.charging)
-            ),
+            # Always a boolean (a paired app decodes it strictly); "not yet known" is `starting_up`.
+            charging=bool(controller is not None and controller.charging),
             schedule_active=bool(controller is not None and controller.plan is not None),
             requested_current_a=None if controller is None else controller.requested_current_a,
             setpoint_current_a=None if controller is None else controller.setpoint_current_a,
@@ -1483,7 +1479,7 @@ def serialize_dashboard(
 def serialize_starting_up(state: StartupState) -> dict[str, Any]:
     """The additive `starting_up` block: `active`, `until` (the cap, `null` when not active) and
     `waiting_for`, a list of `forecast` and `charger`. While active the card says "Starting up…" and
-    offers no Start or Stop; `live.charging` is `null` when the charger is what is awaited.
+    offers no Start or Stop; `live.charging` stays a boolean.
     """
     return {
         "active": state.active,

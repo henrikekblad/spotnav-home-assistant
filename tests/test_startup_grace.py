@@ -60,7 +60,12 @@ async def test_a_silent_charger_is_unknown_not_off_and_the_status_says_starting_
     block = response["starting_up"]
     assert block["active"] is True and block["waiting_for"] == ["charger"]
     assert block["until"] is not None
-    assert response["live"]["charging"] is None, "unknown, not off"
+    # A paired app decodes these strictly: booleans stay booleans, the tone stays one it knows, and
+    # `starting_up` alone carries "not yet known".
+    assert isinstance(response["live"]["charging"], bool)
+    assert isinstance(response["live"]["schedule_active"], bool)
+    assert response["status"]["tone"] in ("normal", "notice", "blocking")
+    assert response["strategy_state"] is None
     assert [line["code"] for line in response["status"]["lines"]] == ["starting_up"]
     assert response["status"]["tone"] == "normal"
 

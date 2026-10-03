@@ -32,7 +32,6 @@ function starting(name: string, waiting: string[] = ["charger"]): Record<string,
   const payload = fixture(name);
   payload["starting_up"] = { active: true, until: "2026-10-03T12:03:00Z", waiting_for: waiting };
   payload["status"] = { tone: "normal", lines: [{ code: "starting_up", params: {} }] };
-  payload["live"]["charging"] = null;
   return payload;
 }
 
@@ -74,6 +73,9 @@ describe("the start-up grace in the card", () => {
     expect(button).not.toBeNull();
     expect(button!.disabled).toBe(true);
     expect(button!.dataset["renderedDisabled"]).toBe("true");
+    const planner = shadow(element).querySelector<HTMLButtonElement>("button[data-action='pause'], button[data-action='resume']");
+    expect(planner).not.toBeNull();
+    expect(planner!.disabled).toBe(true);
   });
 
   it("disables Stop too while a running charge is not yet confirmed", async () => {
@@ -89,5 +91,7 @@ describe("the start-up grace in the card", () => {
     const { element } = await mounted(payload);
     expect(shadow(element).textContent).not.toContain("Starting up…");
     expect(action(element)!.disabled).toBe(false);
+    const planner = shadow(element).querySelector<HTMLButtonElement>("button[data-action='pause'], button[data-action='resume']");
+    expect(planner!.disabled).toBe(false);
   });
 });

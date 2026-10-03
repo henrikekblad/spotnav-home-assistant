@@ -1457,8 +1457,9 @@ export function createCardView(input: CardViewInput): CardView {
       `${axisName("bar.schedule")}: ${axisName(paused ? "bar.state.schedulePaused" : "bar.state.scheduleActive")}. ${axisName(automaticLabelKey)}`,
     );
     plannerButton.dataset["action"] = action;
-    plannerButton.disabled = !model.control.canAct;
-    plannerButton.dataset["renderedDisabled"] = String(!model.control.canAct);
+    const plannerDisabled = !model.control.canAct || model.startingUp;
+    plannerButton.disabled = plannerDisabled;
+    plannerButton.dataset["renderedDisabled"] = String(plannerDisabled);
     plannerButton.addEventListener("click", () => {
       if (action === "pause") {
         // The pause always names the choice it is taken with, so the sheet is not optional -- and a
