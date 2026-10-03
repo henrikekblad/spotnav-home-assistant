@@ -8,6 +8,10 @@ Redaction is one pass over the finished bundle (`redact_bundle`), so no section 
 webhook ids, tokens, secrets and the OCPP charge point id by key, coordinates rounded to one decimal,
 and every string scrubbed of the known webhook ids, webhook paths, bearer tokens, the home location
 and the names of Home Assistant's users. Entity ids are kept; they are what a support answer needs.
+
+Every fact is in the bundle once (version 2): the price data at the top; a site's `result` and
+`capability` and a charger's command log (`controller.adapter.commands`) inside the entry's
+`diagnostics`; a charger's plan, strategy and progress inside its `dashboard`.
 """
 
 from __future__ import annotations
@@ -40,7 +44,7 @@ from .runtime import domain_data
 
 _LOGGER = logging.getLogger(__name__)
 
-BUNDLE_VERSION: Final = 1
+BUNDLE_VERSION: Final = 2
 REDACTED: Final = "**REDACTED**"
 
 #: Keys whose value is never shown, wherever they sit in the bundle.
@@ -234,25 +238,18 @@ def _trim_dashboard(dashboard: dict[str, Any]) -> dict[str, Any]:
     return trimmed
 
 
-def _plan_and_auto(dashboard: dict[str, Any], diagnostics: dict[str, Any]) -> dict[str, Any]:
-    return {
-        "plan": dashboard.get("plan"),
-        "strategy": dashboard.get("strategy"),
-        "strategy_state": dashboard.get("strategy_state"),
-        "auto": diagnostics.get("auto_price"),
-        "charge_progress": dashboard.get("charge_progress"),
-    }
+def _entry_diagnostics(hass: HomeAssistant, entry: ConfigEntry) -> dict[str, Any]:
+    """An entry's diagnostics without the price data, which the bundle states once at its top."""
+    diagnostics = entry_diagnostics(hass, entry)
+    diagnostics.pop("price_data", None)
+    return diagnostics
 
 
 async def _charger_section(
     hass: HomeAssistant, entry: ConfigEntry, forecast: frozenset[str]
 ) -> dict[str, Any]:
     section: dict[str, Any] = {"entry_id": entry.entry_id, "title": entry.title}
-    diagnostics = entry_diagnostics(hass, entry)
-    section["diagnostics"] = diagnostics
-    controller = (diagnostics.get("controller") or {}) if isinstance(diagnostics, dict) else {}
-    adapter = controller.get("adapter") or {}
-    section["command_log"] = adapter.get("commands")
+    section["diagnostics"] = _entry_diagnostics(hass, entry)
     try:
         dashboard = serialize_dashboard(
             capture_dashboard(hass, entry, forecast_domains=forecast), can_act=False
@@ -261,11 +258,9 @@ async def _charger_section(
         _LOGGER.warning("The debug bundle could not capture a charger's dashboard: %s", type(err).__name__)
         section["dashboard"] = {"available": False, "reason": "capture_failed"}
         section["status"] = None
-        section["plan_and_auto"] = {"auto": diagnostics.get("auto_price")}
         return section
     section["dashboard"] = _trim_dashboard(dashboard)
     section["status"] = dashboard.get("status")
-    section["plan_and_auto"] = _plan_and_auto(dashboard, diagnostics)
     return section
 
 
@@ -278,15 +273,8 @@ async def async_build_debug_bundle(hass: HomeAssistant) -> dict[str, Any]:
     charger_sections = [await _charger_section(hass, entry, forecast) for entry in chargers]
     site_sections = []
     for entry in sites:
-        diagnostics = entry_diagnostics(hass, entry)
         site_sections.append(
-            {
-                "entry_id": entry.entry_id,
-                "title": entry.title,
-                "diagnostics": diagnostics,
-                "result": diagnostics.get("result"),
-                "capability": diagnostics.get("capability"),
-            }
+            {"entry_id": entry.entry_id, "title": entry.title, "diagnostics": _entry_diagnostics(hass, entry)}
         )
     vehicle_entities = [
         vehicle.get("soc_entity_id")

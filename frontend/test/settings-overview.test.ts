@@ -237,7 +237,7 @@ describe("the general Settings popover", () => {
 });
 
 describe("Download debug info", () => {
-  const BUNDLE = { bundle_version: 1, chargers: [] };
+  const BUNDLE = { bundle_version: 2, chargers: [] };
 
   beforeEach(() => {
     vi.useFakeTimers();
