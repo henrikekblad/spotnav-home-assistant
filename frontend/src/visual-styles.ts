@@ -119,6 +119,10 @@ export const VISUAL_CLASSES = {
   marketReset: "spotnav-market-reset",
   marketSuggestion: "spotnav-market-suggestion",
   marketValue: "spotnav-market-value",
+  marketIncluded: "spotnav-market-included",
+  marketSource: "spotnav-market-source",
+  marketPostcode: "spotnav-market-postcode",
+  marketPostcodeRow: "spotnav-market-postcode-row",
   banner: "spotnav-banner",
   bannerBlocking: "spotnav-banner-blocking",
   bannerNotice: "spotnav-banner-notice",
@@ -423,6 +427,28 @@ export const VISUAL_STYLES = `
     flex: none;
     font-size: 0.85em;
     padding: 2px 8px;
+  }
+  /* A component the price already includes: the checked, locked box, then the words, across the row. */
+  .spotnav-market-included {
+    grid-column: 3 / -1;
+    color: var(--secondary-text-color, #727272);
+  }
+  .spotnav-market-source {
+    margin: 4px 0 0;
+    font-size: 0.85em;
+  }
+  .spotnav-market-source a {
+    color: var(--primary-color, #03a9f4);
+  }
+  .spotnav-market-postcode-row {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px;
+  }
+  .spotnav-market-postcode-row > .spotnav-settings-input {
+    flex: 0 1 12rem;
+    min-width: 0;
   }
   .spotnav-market-suggestion {
     display: flex;

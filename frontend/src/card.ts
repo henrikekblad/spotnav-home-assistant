@@ -25,6 +25,7 @@ import {
   getEntityConfig,
   getSessions,
   getSessionsCsv,
+  findRegion,
   getMarketOptions,
   getSettings,
   listChargers,
@@ -1992,6 +1993,13 @@ export class SpotnavCard extends HTMLElement {
         },
         onMarketAreaChange: (areaId, live) => {
           this.switchMarketArea(areaId, live);
+        },
+        onFindRegion: async (postcode) => {
+          const hass = this.hassObject;
+          if (hass === null) {
+            return { region: null, reason: "unavailable" };
+          }
+          return await findRegion(hass, postcode);
         },
         isAdmin: this.isAdmin,
         onSelectVehicle: (vehicleId) => {

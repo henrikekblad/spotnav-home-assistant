@@ -12,10 +12,12 @@ import { translate, type Language, type TranslationKey } from "./i18n";
 import {
   FISCAL_COMPONENTS,
   countryLabel,
+  coversGreatBritain,
   figureEdited,
   fiscalUnit,
   groupAreasForPicker,
   marketAreaLabel,
+  marketIncluded,
   marketStateKey,
   marketSuggestion,
   resetToSuggestion,
@@ -44,6 +46,18 @@ export interface MarketEditorHandlers {
    * keep it as that area's draft and rebuild the body for the new area.
    */
   onAreaChange: (areaId: string | null, live: MarketFormValues) => void;
+  /**
+   * Ask Home Assistant which Great Britain region a postcode is in (`spotnav/find_region`). Absent, no
+   * postcode field is offered. The postcode goes to Home Assistant, which asks Octopus Energy; it is never
+   * kept here.
+   */
+  onFindRegion?: (postcode: string) => Promise<RegionLookup>;
+}
+
+/** What a postcode lookup answered: the region to select, or why there is none. */
+export interface RegionLookup {
+  region: string | null;
+  reason: string | null;
 }
 
 export interface MarketEditorBody {
@@ -212,7 +226,30 @@ export function marketEditorBody(
   }
   select.setAttribute("aria-describedby", areaDescriptionId);
   areaField.append(areaLabel, select, areaDescription);
+  const selectedArea = form.options.areas.find((area) => area.area_id === form.values.areaId) ?? null;
+  const attribution = selectedArea?.source ?? null;
+  if (attribution !== null) {
+    // The attribution, small and linked, beside the area it belongs to (never under the chart).
+    areaField.append(sourceLine(doc, language, attribution));
+  }
   body.append(areaField);
+
+  // The builder for the area this body was built for, so a found region switches through the same path.
+  const builtFor = form.values.areaId;
+  const offerPostcode =
+    handlers.onFindRegion !== undefined &&
+    !form.readOnly &&
+    form.options.areas.some((area) => coversGreatBritain(area.countries)) &&
+    (coversGreatBritain(selectedArea?.countries) || (region ?? "").trim().toUpperCase() === "GB");
+  if (offerPostcode && handlers.onFindRegion !== undefined) {
+    body.append(
+      postcodeField(doc, language, idPrefix, handlers.onFindRegion, (found) => {
+        if (found !== builtFor) {
+          handlers.onAreaChange(found, read());
+        }
+      }),
+    );
+  }
 
   // Each row's intent (own figure or still the catalogue's) is tracked here, not read from the DOM,
   // and numeric equality never stands in for it.
@@ -225,7 +262,12 @@ export function marketEditorBody(
   const shown = (value: FiscalFormValue, suggestion: number | null): string =>
     value.intent === "suggested" ? suggestionText(language, suggestion) : value.value;
 
+  const included = marketIncluded(form.options, form.values.areaId);
   for (const component of FISCAL_COMPONENTS) {
+    if (included.includes(component)) {
+      body.append(includedRow(doc, language, idPrefix, component));
+      continue;
+    }
     const current = states[component];
     const unit = fiscalUnit(form.options, form.values.areaId, component);
     const suggestion = marketSuggestion(form.options, form.values.areaId, component);
@@ -320,6 +362,12 @@ export function marketEditorBody(
     body.append(block);
   }
 
+  if (included.length > 0) {
+    const note = element(doc, "p", `${C.muted} ${C.settingsNote}`, translate(language, "market.includedNote"));
+    note.id = `${idPrefix}-included-note`;
+    body.append(note);
+  }
+
   // The area this body was built for, not `select.value`: by the time a change event fires the
   // selector already reads the new choice.
   const builtAreaId = form.values.areaId;
@@ -374,4 +422,115 @@ export function marketEditorBody(
   }
 
   return { body, values: read };
+}
+
+/** "Price source: <a>Octopus Energy (Agile)</a>", in small text, opening in a new tab. */
+export function sourceLine(doc: Document, language: Language, source: { name: string; url: string }): HTMLElement {
+  const line = element(doc, "p", `${C.muted} ${C.settingsNote} ${C.marketSource}`);
+  line.append(`${translate(language, "market.source")} `);
+  const link = doc.createElement("a") as HTMLAnchorElement;
+  link.href = source.url;
+  link.target = "_blank";
+  link.rel = "noopener noreferrer";
+  link.textContent = source.name;
+  line.append(link);
+  return line;
+}
+
+/** A component the published price already holds: checked, locked, and saying so. No figure is asked for. */
+function includedRow(doc: Document, language: Language, idPrefix: string, component: FiscalComponent): HTMLElement {
+  const label = translate(language, componentKey(component, "label"));
+  const block = element(doc, "div", C.marketComponent);
+  block.dataset["included"] = component;
+  const row = element(doc, "div", C.marketValue);
+  const checkbox = doc.createElement("input") as HTMLInputElement;
+  checkbox.type = "checkbox";
+  checkbox.className = C.marketCheckbox;
+  checkbox.id = `${idPrefix}-${component}-enabled`;
+  checkbox.checked = true;
+  checkbox.disabled = true;
+  checkbox.setAttribute("aria-describedby", `${idPrefix}-included-note`);
+  const name = element(doc, "label", C.settingsLabel, label);
+  name.setAttribute("for", checkbox.id);
+  row.append(checkbox, name, element(doc, "span", C.marketIncluded, translate(language, "market.included")));
+  block.append(row);
+  return block;
+}
+
+/**
+ * The optional "Find my region" field: a postcode, one button, and one line saying what happened. The
+ * postcode is handed to `find` and forgotten; a found region is selected through `select`.
+ */
+function postcodeField(
+  doc: Document,
+  language: Language,
+  idPrefix: string,
+  find: (postcode: string) => Promise<RegionLookup>,
+  select: (region: string) => void,
+): HTMLElement {
+  const field = element(doc, "div", `${C.settingsField} ${C.marketPostcode}`);
+  const inputId = `${idPrefix}-postcode`;
+  const label = element(doc, "label", C.settingsLabel, translate(language, "market.findRegion.label"));
+  label.setAttribute("for", inputId);
+  const row = element(doc, "div", C.marketPostcodeRow);
+  const input = doc.createElement("input") as HTMLInputElement;
+  input.type = "text";
+  input.id = inputId;
+  input.className = C.settingsInput;
+  input.autocomplete = "postal-code";
+  input.maxLength = 10;
+  input.spellcheck = false;
+  const button = doc.createElement("button") as HTMLButtonElement;
+  button.type = "button";
+  button.className = C.button;
+  button.textContent = translate(language, "market.findRegion.button");
+  row.append(input, button);
+  const description = element(doc, "p", `${C.muted} ${C.settingsNote}`, translate(language, "market.findRegion.description"));
+  description.id = `${inputId}-description`;
+  input.setAttribute("aria-describedby", description.id);
+  const outcome = element(doc, "p", C.settingsNote);
+  outcome.setAttribute("role", "status");
+  outcome.hidden = true;
+  const say = (key: TranslationKey, region?: string): void => {
+    outcome.textContent = translate(language, key, region === undefined ? {} : { region });
+    outcome.hidden = false;
+  };
+  const run = async (): Promise<void> => {
+    const postcode = input.value.trim();
+    if (postcode === "") {
+      say("market.findRegion.invalid");
+      return;
+    }
+    button.disabled = true;
+    try {
+      const answer = await find(postcode);
+      if (answer.region !== null) {
+        say("market.findRegion.found", answer.region);
+        select(answer.region);
+        return;
+      }
+      say(
+        answer.reason === "invalid_postcode"
+          ? "market.findRegion.invalid"
+          : answer.reason === "not_found"
+            ? "market.findRegion.notFound"
+            : "market.findRegion.unavailable",
+      );
+    } catch {
+      say("market.findRegion.unavailable");
+    } finally {
+      button.disabled = false;
+    }
+  };
+  button.addEventListener("click", () => {
+    void run();
+  });
+  input.addEventListener("keydown", (event) => {
+    if ((event as KeyboardEvent).key === "Enter") {
+      event.preventDefault();
+      void run();
+    }
+  });
+  field.append(label, row, description, outcome);
+  return field;
 }

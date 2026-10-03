@@ -52,6 +52,7 @@ import {
   type EntityScope,
 } from "./entity-config";
 import { marketAreaLabel, type MarketFormValues } from "./market";
+import { sourceLine, type RegionLookup } from "./market-editor";
 import {
   marketEditorBody,
   marketTrigger,
@@ -109,6 +110,8 @@ export interface CardViewInput {
    * hands back a new form.
    */
   onMarketAreaChange: (areaId: string | null, live: MarketFormValues) => void;
+  /** A postcode's Great Britain region, for the market editor's optional "Find my region" field. */
+  onFindRegion?: (postcode: string) => Promise<RegionLookup>;
   /**
    * Whether this connection is an administrator. A courtesy only: the backend's admin check on the
    * write is the security boundary; this decides whether a row looks pressable.
@@ -1736,6 +1739,9 @@ export function createCardView(input: CardViewInput): CardView {
         ),
       );
     }
+    if (model.priceSource !== null) {
+      marketSection.append(sourceLine(doc, model.language, model.priceSource));
+    }
     for (const fiscal of fiscalRows(model.language, model.dashboardFiscal)) {
       marketSection.append(overviewRow(fiscal.key, fiscal.label, fiscal.value));
     }
@@ -2580,6 +2586,7 @@ export function createCardView(input: CardViewInput): CardView {
         onReapply: (values) => input.onReapplyMarket(values),
         onCancel: () => leaveSettingsChild(marketDialog, input.onCancelMarket),
         onAreaChange: (areaId, live) => input.onMarketAreaChange(areaId, live),
+        ...(input.onFindRegion === undefined ? {} : { onFindRegion: input.onFindRegion }),
       },
       idPrefix,
       homeAssistantCountry(input.hass?.()),

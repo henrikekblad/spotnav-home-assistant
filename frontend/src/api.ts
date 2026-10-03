@@ -11,6 +11,7 @@ import {
   MARKET_API_VERSION,
   SESSIONS_API_VERSION,
   SETTINGS_API_VERSION,
+  REGION_API_VERSION,
   SITE_SETTINGS_API_VERSION,
   type ChargerList,
   type HomeAssistantLike,
@@ -182,6 +183,29 @@ export async function getMarketOptions(
     api_version: MARKET_API_VERSION,
     charger_id: chargerId,
   });
+}
+
+/**
+ * The Great Britain region of a postcode (`spotnav/find_region`): Home Assistant asks Octopus Energy, the
+ * relay never sees it, and nothing keeps it. Anything but a well-formed answer is "unavailable".
+ */
+export async function findRegion(
+  hass: HomeAssistantLike,
+  postcode: string,
+): Promise<{ region: string | null; reason: string | null }> {
+  const answer = await call<unknown>(hass, {
+    type: "spotnav/find_region",
+    api_version: REGION_API_VERSION,
+    postcode,
+  });
+  if (typeof answer !== "object" || answer === null) {
+    return { region: null, reason: "unavailable" };
+  }
+  const { region, reason } = answer as { region?: unknown; reason?: unknown };
+  return {
+    region: typeof region === "string" && /^[A-Z0-9-]{1,32}$/.test(region) ? region : null,
+    reason: typeof reason === "string" ? reason : null,
+  };
 }
 
 /**

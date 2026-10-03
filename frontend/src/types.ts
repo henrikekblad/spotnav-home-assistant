@@ -90,6 +90,8 @@ export interface ManualActionResult {
 export const SETTINGS_API_VERSION = 1;
 
 export const SITE_SETTINGS_API_VERSION = 1;
+/** `spotnav/find_region`'s own version. */
+export const REGION_API_VERSION = 1;
 
 export const ENTITY_CONFIG_API_VERSION = 1;
 
@@ -213,6 +215,12 @@ export interface MarketSuggestionsV1 {
  * One area the relay publishes: name, place, time zone and how its money is named. The EIC is
  * not part of the shape, since the editor does not need it.
  */
+/** Where an area's prices come from (relay contract v2), shown beside them as attribution. */
+export interface PriceSource {
+  name: string;
+  url: string;
+}
+
 export interface MarketAreaV1 {
   area_id: string;
   name: string;
@@ -222,6 +230,14 @@ export interface MarketAreaV1 {
   major_unit: string;
   minor_unit: string;
   suggestions: MarketSuggestionsV1;
+  /**
+   * Relay contract v2 (the decoder always states them; absent only in a value built by hand). The zone a
+   * relay day file's calendar is in, `timezone` unless the relay names another.
+   */
+  market_timezone?: string;
+  /** The fiscal components the published price already includes: locked, nothing added. */
+  included?: ("vat" | "tax" | "transfer")[];
+  source?: PriceSource | null;
 }
 
 export interface MarketOptionsV1 {

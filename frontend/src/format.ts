@@ -12,6 +12,8 @@ export interface FormatContext {
   unit: string;
   currency: string | null;
   majorUnit: string | null;
+  /** The market's countries: an area covering Great Britain reads distance in miles. */
+  countries?: readonly string[];
 }
 
 export function hasZone(context: FormatContext): boolean {
@@ -68,8 +70,23 @@ export function money(context: FormatContext, value: number | null): string {
   if (value === null || !Number.isFinite(value)) {
     return "";
   }
+  if (context.currency === "GBP") {
+    // Pounds as the language writes them ("£1.33" in English, "1,33 £" in Swedish), as the relay's page
+    // does. Every other currency keeps the card's own "amount unit" form.
+    return localeMoney(context.language, value, context.currency, context.majorUnit);
+  }
   const amount = formatNumber(context.language, value, 2);
   return context.majorUnit === null ? amount : `${amount} ${context.majorUnit}`;
+}
+
+/** An amount in a currency the way the language writes money, or the plain form if the code is unknown. */
+export function localeMoney(language: Language, value: number, currency: string, label: string | null): string {
+  try {
+    return numberFormat(language, { style: "currency", currency, currencyDisplay: "narrowSymbol" }).format(value);
+  } catch {
+    const amount = formatFixed(language, value, 2);
+    return label === null ? amount : `${amount} ${label}`;
+  }
 }
 
 /**
@@ -180,11 +197,18 @@ export function periodLabel(context: FormatContext, startMs: number, endMs: numb
   return `${day} ${from}${startSuffix}-${end}${endSuffix}`;
 }
 
+/** Kilometres in one statute mile. */
+export const KM_PER_MILE = 1.609344;
+
 /**
- * A distance given in Scandinavian miles (1 mil = 10 km), written in the unit the language uses:
- * mil for Swedish and Norwegian, km otherwise (as the Android app does).
+ * A distance given in Scandinavian miles (1 mil = 10 km), written in the unit the reader uses: miles for
+ * an area in Great Britain whatever the language, mil for Swedish and Norwegian, km otherwise (as the
+ * Android app does). Consumption stays kWh per 10 km everywhere; only this display converts.
  */
-export function distanceText(language: Language, mil: number): string {
+export function distanceText(language: Language, mil: number, countries: readonly string[] = []): string {
+  if (countries.some((country) => country.toUpperCase() === "GB")) {
+    return `${formatNumber(language, (mil * 10) / KM_PER_MILE, 0)} mi`;
+  }
   if (language === "sv" || language === "nb") {
     return `${formatNumber(language, mil, 1)} mil`;
   }

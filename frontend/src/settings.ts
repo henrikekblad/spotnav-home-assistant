@@ -165,8 +165,11 @@ const BODY_KEYS = [
 ] as const;
 
 const RECORD_KEYS = [...BODY_KEYS, "revision"] as const;
-/** Keys a record may leave out: both were added after the first release of the contract. */
-const OPTIONAL_RECORD_KEYS = ["departure_date", "departure_weekdays"] as const;
+/**
+ * Keys a record may leave out: all were added after the first release of the contract. `fiscal_included` is
+ * read-only (what the area's price already includes): it is read, and never sent back.
+ */
+const OPTIONAL_RECORD_KEYS = ["departure_date", "departure_weekdays", "fiscal_included"] as const;
 /** Every weekday, Monday (1) to Sunday (7): what a record without `departure_weekdays` means. */
 export const ALL_WEEKDAYS: readonly number[] = [1, 2, 3, 4, 5, 6, 7];
 
@@ -240,6 +243,14 @@ export function decodeSettingsRecord(raw: unknown): SettingsRecord {
   const hasDate = present.includes("departure_date");
   const hasWeekdays = present.includes("departure_weekdays");
   exactKeys(source, [...RECORD_KEYS, ...present]);
+  if (present.includes("fiscal_included")) {
+    // Read-only and display-only (the market editor locks from the market options): judged, not kept.
+    for (const item of list(source, "fiscal_included")) {
+      if (item !== "vat" && item !== "tax" && item !== "transfer") {
+        return bad();
+      }
+    }
+  }
   const revision = whole(source, "revision");
   if (revision < 0) {
     return bad();
@@ -986,7 +997,9 @@ export function fiscalRows(language: Language, fiscal: Fiscal | null): ValueRow[
   return (["vat", "tax", "transfer"] as const).map((key) => {
     const component = fiscal[key];
     let value: string;
-    if (component.policy === "off") {
+    if (component.policy === "included") {
+      value = translate(language, "market.included");
+    } else if (component.policy === "off") {
       value = translate(language, "settings.value.off");
     } else if (component.effective === null) {
       value = translate(language, "settings.value.unset");
