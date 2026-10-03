@@ -627,6 +627,23 @@
       "departure_time": {
         "name": "Departure time"
       }
+    },
+    "event": {
+      "charger_events": {
+        "name": "Charger events",
+        "state_attributes": {
+          "event_type": {
+            "state": {
+              "charge_started": "Charge started",
+              "charge_finished": "Charge finished",
+              "plugged_in": "Plugged in",
+              "unplugged": "Unplugged",
+              "plan_installed": "Plan installed",
+              "plan_at_risk": "Plan at risk"
+            }
+          }
+        }
+      }
     }
   },
   "issues": {

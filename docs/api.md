@@ -88,6 +88,36 @@ Rules that hold across them:
 - **The answer is a re-read**, captured after the write settles, never assembled from what the
   caller sent.
 
+## Home Assistant events
+
+Each charger has one **Charger events** entity (an `event` entity). It fires:
+
+| `event_type` | When | Attributes |
+|---|---|---|
+| `charge_started` | the charger starts charging | `energy_register_kwh` |
+| `charge_finished` | the charger stops charging | `unplugged`, and `energy_kwh` the charger's energy register counted since the start, when it has one |
+| `plugged_in` / `unplugged` | the vehicle is connected / disconnected, for a charger that can say | none |
+| `plan_installed` | a charging plan different from the one before is installed, by Auto or by hand | `start`, `end`, `periods`, `amps`, `energy_kwh`, `automatic` |
+| `plan_at_risk` | the departure cannot be met with the energy that remains; once each time it becomes so | `departure_time`, `requested_kwh` |
+
+Starting Home Assistant is not an event. Example, a notification when a charge ends:
+
+```yaml
+automation:
+  - alias: Car charged
+    triggers:
+      - trigger: state
+        entity_id: event.my_charger_charger_events
+        attribute: event_type
+        to: charge_finished
+    actions:
+      - action: notify.mobile_app_phone
+        data:
+          message: >
+            Charging finished
+            {{ trigger.to_state.attributes.energy_kwh | default('?') }} kWh.
+```
+
 ## The dashboard document
 
 `dashboard` returns one JSON document, enough for a client to render a charger without further

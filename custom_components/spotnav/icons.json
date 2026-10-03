@@ -123,6 +123,11 @@
       "departure_time": {
         "default": "mdi:clock-outline"
       }
+    },
+    "event": {
+      "charger_events": {
+        "default": "mdi:ev-station"
+      }
     }
   }
 }

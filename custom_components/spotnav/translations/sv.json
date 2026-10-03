@@ -627,6 +627,23 @@
       "departure_time": {
         "name": "Avresetid"
       }
+    },
+    "event": {
+      "charger_events": {
+        "name": "Laddarhändelser",
+        "state_attributes": {
+          "event_type": {
+            "state": {
+              "charge_started": "Laddningen startade",
+              "charge_finished": "Laddningen slutade",
+              "plugged_in": "Inkopplad",
+              "unplugged": "Urkopplad",
+              "plan_installed": "Plan installerad",
+              "plan_at_risk": "Planen hotad"
+            }
+          }
+        }
+      }
     }
   },
   "issues": {
