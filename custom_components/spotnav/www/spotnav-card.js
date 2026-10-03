@@ -3747,6 +3747,8 @@ var da = {
   "settings.vehicle.error.onboardPhases": "Den indbyggede oplader skal være 1-fase eller 3-fase.",
   "entity.phases.fromSite": "Laderen er tilsluttet {phases} (fra anlægget).",
   "entity.phases.openSite": "Anlæggets tilslutning",
+  "entity.measuredSource.none": "Anlægget læser ingen målt strøm for denne lader. Sol og reguleringen har brug for den; angiv den i anlæggets tilslutning.",
+  "entity.measuredSource.from": "Anlægget læser laderens målte strøm fra {source}.",
   "suggestion.onboardOne.text": "Bilen ser ud til at lade på én fase. Skal den indbyggede oplader sættes til 1-fase?",
   "suggestion.onboardOne.accept": "Sæt til 1-fase",
   "suggestion.onboardOne.dismiss": "Behold 3-fase",
@@ -4362,6 +4364,8 @@ var en = {
   "settings.vehicle.error.onboardPhases": "The onboard charger must be 1-phase or 3-phase.",
   "entity.phases.fromSite": "The charger is wired for {phases} (from the site).",
   "entity.phases.openSite": "Site wiring",
+  "entity.measuredSource.none": "The site reads no measured current for this charger. Solar and the regulator need it; set it in the site wiring.",
+  "entity.measuredSource.from": "The site reads this charger's measured current from {source}.",
   "suggestion.onboardOne.text": "This car seems to charge on one phase. Set its onboard charger to 1-phase?",
   "suggestion.onboardOne.accept": "Set to 1-phase",
   "suggestion.onboardOne.dismiss": "Keep 3-phase",
@@ -4977,6 +4981,8 @@ var fi = {
   "settings.vehicle.error.onboardPhases": "Sisäisen laturin on oltava 1- tai 3-vaiheinen.",
   "entity.phases.fromSite": "Laturi on kytketty: {phases} (kohteesta).",
   "entity.phases.openSite": "Kohteen kytkentä",
+  "entity.measuredSource.none": "Kohde ei lue tämän laturin mitattua virtaa. Aurinko ja säätö tarvitsevat sen; aseta se kohteen kytkennässä.",
+  "entity.measuredSource.from": "Kohde lukee laturin mitatun virran lähteestä {source}.",
   "suggestion.onboardOne.text": "Auto näyttää lataavan yhdellä vaiheella. Asetetaanko sen sisäinen laturi 1-vaiheiseksi?",
   "suggestion.onboardOne.accept": "Aseta 1-vaiheiseksi",
   "suggestion.onboardOne.dismiss": "Pidä 3-vaiheisena",
@@ -5592,6 +5598,8 @@ var nb = {
   "settings.vehicle.error.onboardPhases": "Den innebygde laderen må være 1-fase eller 3-fase.",
   "entity.phases.fromSite": "Laderen er koblet til {phases} (fra anlegget).",
   "entity.phases.openSite": "Anleggets kobling",
+  "entity.measuredSource.none": "Anlegget leser ingen målt strøm for denne laderen. Sol og reguleringen trenger den; angi den i anleggets kobling.",
+  "entity.measuredSource.from": "Anlegget leser laderens målte strøm fra {source}.",
   "suggestion.onboardOne.text": "Bilen ser ut til å lade på én fase. Sette den innebygde laderen til 1-fase?",
   "suggestion.onboardOne.accept": "Sett til 1-fase",
   "suggestion.onboardOne.dismiss": "Behold 3-fase",
@@ -6207,6 +6215,8 @@ var sv = {
   "settings.vehicle.error.onboardPhases": "Den inbyggda laddaren måste vara 1-fas eller 3-fas.",
   "entity.phases.fromSite": "Laddaren är kopplad till {phases} (från anläggningen).",
   "entity.phases.openSite": "Anläggningens koppling",
+  "entity.measuredSource.none": "Anläggningen läser ingen uppmätt ström för den här laddaren. Sol och regleringen behöver den; ange den i anläggningens koppling.",
+  "entity.measuredSource.from": "Anläggningen läser laddarens uppmätta ström från {source}.",
   "suggestion.onboardOne.text": "Bilen verkar ladda på en fas. Ställ in dess inbyggda laddare på 1-fas?",
   "suggestion.onboardOne.accept": "Ställ in på 1-fas",
   "suggestion.onboardOne.dismiss": "Behåll 3-fas",
@@ -10452,6 +10462,15 @@ function entityEditorBody(doc, language, input, handlers, idPrefix) {
       disabledWhenPending.push(link);
     }
     body.append(wiredLine);
+  }
+  const sourceField = fieldsOf(config, scope).find((entry) => entry.field === "measured_current_source");
+  if (sourceField !== void 0 && sourceField.kind === "enum") {
+    const sourceLine = element(doc, "p", VISUAL_CLASSES.siteApplies);
+    sourceLine.dataset["measuredSource"] = sourceField.value ?? "";
+    sourceLine.append(
+      sourceField.value === null || sourceField.value === "" ? translate(language, "entity.measuredSource.none") : translate(language, "entity.measuredSource.from", { source: sourceField.value })
+    );
+    body.append(sourceLine);
   }
   const priorityField = fieldsOf(config, scope).find((entry) => entry.field === "charger_priority");
   if (priorityField !== void 0 && priorityField.kind === "enum" && priorityField.writable) {

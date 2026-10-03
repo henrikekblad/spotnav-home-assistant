@@ -681,6 +681,8 @@ export const fi: Record<keyof typeof en, string> = {
   "settings.vehicle.error.onboardPhases": "Sisäisen laturin on oltava 1- tai 3-vaiheinen.",
   "entity.phases.fromSite": "Laturi on kytketty: {phases} (kohteesta).",
   "entity.phases.openSite": "Kohteen kytkentä",
+  "entity.measuredSource.none": "Kohde ei lue tämän laturin mitattua virtaa. Aurinko ja säätö tarvitsevat sen; aseta se kohteen kytkennässä.",
+  "entity.measuredSource.from": "Kohde lukee laturin mitatun virran lähteestä {source}.",
   "suggestion.onboardOne.text": "Auto näyttää lataavan yhdellä vaiheella. Asetetaanko sen sisäinen laturi 1-vaiheiseksi?",
   "suggestion.onboardOne.accept": "Aseta 1-vaiheiseksi",
   "suggestion.onboardOne.dismiss": "Pidä 3-vaiheisena",

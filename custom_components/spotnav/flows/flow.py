@@ -84,7 +84,7 @@ from ..execution.charger_profiles import (
 from ..repairs import async_sync_resolution_repairs
 from ..runtime import domain_data
 from ..planning.first_run import charger_phases_from_entry
-from ..planning.grid_voltage import default_voltage_between_phases_v
+from ..planning.grid_voltage import default_voltage_between_phases_v, stored_voltage_between_phases_v
 from ..site.measurement_source import grid_power_source_to_dict, source_to_dict
 from ..site.site_join import queue_site_join
 from ..site.site_detection import (
@@ -1044,7 +1044,9 @@ class SpotNavChargingConfigFlow(ChargerWiringSteps, config_entries.ConfigFlow, d
         site = self._join_site_entry
         entity = er.async_get(self.hass).async_get(data[CONF_CHARGE_CONTROL])
         candidates = await async_discover_charger_current_sources(
-            self.hass, charger_device_id=entity.device_id if entity is not None else None
+            self.hass,
+            charger_device_id=entity.device_id if entity is not None else None,
+            voltage_between_phases_v=stored_voltage_between_phases_v(site.data),
         )
         wiring: dict[str, Any] | None = None
         if len(candidates) == 1:
@@ -1156,7 +1158,9 @@ class SpotNavChargingConfigFlow(ChargerWiringSteps, config_entries.ConfigFlow, d
             MANUAL_ATTRIBUTES_CHOICE,
             SKIP_CHOICE,
         )
-        charger_candidates = await async_charger_measured_candidates(self.hass, charger_entry_ids)
+        charger_candidates = await async_charger_measured_candidates(
+            self.hass, charger_entry_ids, voltage_between_phases_from_form(self._site_basic)
+        )
         direct_defaults, derived_defaults, flag_defaults = detected_defaults(chosen)
         schema = site_details_schema(
             self.hass,
@@ -1331,7 +1335,7 @@ class SpotNavChargingConfigFlow(ChargerWiringSteps, config_entries.ConfigFlow, d
                 mode=mode,
                 skip_direct_fields=skip_direct_fields,
                 charger_candidates=await async_charger_measured_candidates(
-                    self.hass, charger_entry_ids
+                    self.hass, charger_entry_ids, voltage_between_phases_from_form(self._site_basic)
                 ),
             )
             if charger_entry_ids:

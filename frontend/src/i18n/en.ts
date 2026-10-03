@@ -695,6 +695,8 @@ export const en = {
   "settings.vehicle.error.onboardPhases": "The onboard charger must be 1-phase or 3-phase.",
   "entity.phases.fromSite": "The charger is wired for {phases} (from the site).",
   "entity.phases.openSite": "Site wiring",
+  "entity.measuredSource.none": "The site reads no measured current for this charger. Solar and the regulator need it; set it in the site wiring.",
+  "entity.measuredSource.from": "The site reads this charger's measured current from {source}.",
   "suggestion.onboardOne.text": "This car seems to charge on one phase. Set its onboard charger to 1-phase?",
   "suggestion.onboardOne.accept": "Set to 1-phase",
   "suggestion.onboardOne.dismiss": "Keep 3-phase",

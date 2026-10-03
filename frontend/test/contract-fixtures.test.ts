@@ -940,7 +940,7 @@ const SITE_TAIL = [
   "battery_power_inverted",
   "max_age_s",
 ];
-const CHARGER = ["charge_control", "current_limit", "energy_register_entity", "power_entity", "charger_phases", "charger_priority", "vehicle_soc"];
+const CHARGER = ["charge_control", "current_limit", "energy_register_entity", "power_entity", "charger_phases", "charger_priority", "measured_current_source", "vehicle_soc"];
 const SITE_FIXED = ["main_fuse_a", "safety_margin_a", "measurement_mode", "voltage_between_phases_v"];
 /** A charger in no site holds the voltage between phases itself, listed before the vehicle sensor. */
 const CHARGER_NO_SITE = ["charge_control", "current_limit", "energy_register_entity", "power_entity", "voltage_between_phases_v", "charger_phases", "vehicle_soc"];

@@ -139,6 +139,15 @@
         "writable": true
       },
       {
+        "choices": [],
+        "field": "measured_current_source",
+        "kind": "enum",
+        "required": false,
+        "scope": "charger",
+        "value": null,
+        "writable": false
+      },
+      {
         "allowed_device_classes": [
           "battery"
         ],

@@ -1382,6 +1382,20 @@ export function entityEditorBody(
     body.append(wiredLine);
   }
 
+  // Where the site reads this charger's own measured current from, or that it reads none (then a regulator
+  // and solar have nothing to size the charge against). Read-only: it is set in the site's wiring.
+  const sourceField = fieldsOf(config, scope).find((entry) => entry.field === "measured_current_source");
+  if (sourceField !== undefined && sourceField.kind === "enum") {
+    const sourceLine = element(doc, "p", C.siteApplies);
+    sourceLine.dataset["measuredSource"] = sourceField.value ?? "";
+    sourceLine.append(
+      sourceField.value === null || sourceField.value === ""
+        ? translate(language, "entity.measuredSource.none")
+        : translate(language, "entity.measuredSource.from", { source: sourceField.value }),
+    );
+    body.append(sourceLine);
+  }
+
   // The charger's place in its site's allocation order: first, normal (the default) or last.
   const priorityField = fieldsOf(config, scope).find((entry) => entry.field === "charger_priority");
   if (priorityField !== undefined && priorityField.kind === "enum" && priorityField.writable) {

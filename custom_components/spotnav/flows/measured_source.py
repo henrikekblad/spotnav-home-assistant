@@ -18,6 +18,7 @@ from ..vehicles.discovery import (
     async_discover_charger_current_sources,
     DiscoveryCandidate,
 )
+from ..planning.grid_voltage import voltage_between_phases_v as stored_voltage
 from .unit_check import unit_error
 from .labels import (
     DEFAULT_MANUAL_UNIT,
@@ -131,7 +132,7 @@ def _scoped_sensor_entities(hass, scope: _DeviceScope) -> list[str]:
 
 
 async def async_charger_measured_candidates(
-    hass, charger_entry_ids: list[str]
+    hass, charger_entry_ids: list[str], voltage_between_phases_v: float | None = None
 ) -> dict[str, list[DiscoveryCandidate]]:
     """Measured-current candidates for every charger in `charger_entry_ids`, keyed by entry id.
 
@@ -144,7 +145,15 @@ async def async_charger_measured_candidates(
         device_id = charger_device_id(hass, charger_entry_id)
         if not device_id:
             continue
-        found = await async_discover_charger_current_sources(hass, charger_device_id=device_id)
+        found = await async_discover_charger_current_sources(
+            hass,
+            charger_device_id=device_id,
+            voltage_between_phases_v=(
+                voltage_between_phases_v
+                if voltage_between_phases_v is not None
+                else stored_voltage(hass, charger_entry_id)
+            ),
+        )
         if found:
             candidates[charger_entry_id] = found
     return candidates

@@ -25,6 +25,18 @@ shown in [Set up SpotNav](setup.md#2-add-a-site-optional). You provide:
 - Optionally, each charger's own **measured current** (its per-phase sensors). Never use a
   commanded current here: a car can draw less than its setpoint, and crediting a setpoint would
   overstate how much of the site's load is the charger's.
+  - **Easee** reports the charger's input terminals, not phases, as the attributes
+    `state_inCurrentT2` to `state_inCurrentT5` of its **Current** sensor (disabled by default in
+    the Easee integration: enable it). On a TN network (400 V between phases) T3, T4 and T5 are
+    L1, L2 and L3 and T2 is the neutral; on an IT network (230 V between phases) there is no
+    neutral and T2, T3 and T4 are L1, L2 and L3. SpotNav fills this in when a charger joins a
+    site, and for a charger already in a site the next time the site starts (once, logged),
+    when the wiring has no source; a source you chose, or removed on purpose, is never changed.
+    A one-phase charger is read from T3 only (TN). The charger's dialog shows the source the
+    site reads, read-only.
+  - Without any measured current for a charger, the regulator holds (`charger_measurement_unusable`)
+    and solar neither starts nor stops that charger: a running charge is held at the minimum
+    current and the reason is `charger_measurement_missing`.
 
 After the basics, SpotNav looks for your grid meter in the entity registry (see
 [Meter detection](#meter-detection-signs-and-estimated-current)). When it finds the meter and

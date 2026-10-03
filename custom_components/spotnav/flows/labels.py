@@ -18,6 +18,7 @@ from ..vehicles.discovery import (
     DiscoveryCandidate,
     REASON_ATTRIBUTES_DEVICE_CLASS_AND_UNIT_MATCH,
     REASON_ATTRIBUTES_HISTORICAL_MATCH,
+    REASON_ATTRIBUTES_PROFILE_MATCH,
     REASON_ATTRIBUTES_UNIT_MATCH_ONLY,
     REASON_POSSIBLE_INVERTER_OUTPUT,
     REASON_SEPARATE_ENTITIES_DEVICE_CLASS_AND_UNIT_MATCH,
@@ -101,6 +102,7 @@ _REASON_TEXT: dict[str, dict[str, str]] = {
         REASON_ATTRIBUTES_HISTORICAL_MATCH: (
             "per-phase data seen in history, not measured right now"
         ),
+        REASON_ATTRIBUTES_PROFILE_MATCH: "the charger integration's own per-phase current attributes",
         REASON_SEPARATE_ENTITIES_DEVICE_CLASS_AND_UNIT_MATCH: "current device class and a supported unit",
         REASON_SEPARATE_ENTITIES_DEVICE_CLASS_MATCH_ONLY: "current device class only",
         REASON_SEPARATE_ENTITIES_UNIT_MATCH_ONLY: "a supported current unit only",
@@ -114,6 +116,7 @@ _REASON_TEXT: dict[str, dict[str, str]] = {
         REASON_ATTRIBUTES_HISTORICAL_MATCH: (
             "fasdata endast sedd i historiken, inte mätt just nu"
         ),
+        REASON_ATTRIBUTES_PROFILE_MATCH: "laddarintegrationens egna fasströmsattribut",
         REASON_SEPARATE_ENTITIES_DEVICE_CLASS_AND_UNIT_MATCH: "strömtyp och en stödd enhet",
         REASON_SEPARATE_ENTITIES_DEVICE_CLASS_MATCH_ONLY: "endast strömtyp",
         REASON_SEPARATE_ENTITIES_UNIT_MATCH_ONLY: "endast en stödd strömenhet",

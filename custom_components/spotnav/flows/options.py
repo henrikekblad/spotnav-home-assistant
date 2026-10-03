@@ -640,7 +640,12 @@ class SiteCapacityOptionsFlow(ChargerWiringSteps, config_entries.OptionsFlow):
                 mode=mode,
                 skip_direct_fields=skip_direct_fields,
                 charger_candidates=await async_charger_measured_candidates(
-                    self.hass, charger_entry_ids
+                    self.hass,
+                    charger_entry_ids,
+                    voltage_between_phases_from_form(
+                        self._pending_basic,
+                        default=self._entry.data.get(CONF_VOLTAGE_BETWEEN_PHASES_V),
+                    ),
                 ),
             )
             if charger_entry_ids:

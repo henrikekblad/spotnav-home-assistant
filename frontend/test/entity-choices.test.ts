@@ -726,6 +726,31 @@ describe("the phases the charger is wired for: 1 or 3, chosen like a type, for a
     expect(opened).toBe(1);
   });
 
+  it("states where the site reads the charger's measured current from, and when it reads none", () => {
+    const cfg = config("get_direct");
+    const field = cfg.fields.find((entry) => entry.field === "measured_current_source")!;
+    expect(field.kind).toBe("enum");
+    const render = (value: string | null) => {
+      const edited = { ...cfg, fields: cfg.fields.map((entry) => (entry.field === "measured_current_source" ? { ...entry, value } : entry)) } as typeof cfg;
+      const built = entityEditorBody(
+        document,
+        "en",
+        { scope: "charger", config: edited, hass: () => undefined, appliesText: null },
+        { onSave: () => undefined, onCancel: () => undefined },
+        "t",
+      );
+      document.body.replaceChildren(built.body);
+      expect(entityChange(edited, "charger", built.draft())).toEqual({ ok: true, changed: false });
+      return document.querySelector("[data-measured-source]")?.textContent ?? "";
+    };
+    expect(render("sensor.easee_driveway_current")).toContain("measured current from sensor.easee_driveway_current");
+    expect(render(null)).toContain("reads no measured current");
+    for (const language of LANGUAGES) {
+      expect(translate(language, "entity.measuredSource.from", { source: "x" }), language).toContain("x");
+      expect(translate(language, "entity.measuredSource.none"), language).not.toBe("entity.measuredSource.none");
+    }
+  });
+
   it("is not stated for a charger in no site, which chooses it", () => {
     open(config("get_no_site"), "charger");
     expect(document.querySelector("[data-wired-phases]")).toBeNull();

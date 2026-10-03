@@ -682,6 +682,8 @@ export const sv: Record<keyof typeof en, string> = {
   "settings.vehicle.error.onboardPhases": "Den inbyggda laddaren måste vara 1-fas eller 3-fas.",
   "entity.phases.fromSite": "Laddaren är kopplad till {phases} (från anläggningen).",
   "entity.phases.openSite": "Anläggningens koppling",
+  "entity.measuredSource.none": "Anläggningen läser ingen uppmätt ström för den här laddaren. Sol och regleringen behöver den; ange den i anläggningens koppling.",
+  "entity.measuredSource.from": "Anläggningen läser laddarens uppmätta ström från {source}.",
   "suggestion.onboardOne.text": "Bilen verkar ladda på en fas. Ställ in dess inbyggda laddare på 1-fas?",
   "suggestion.onboardOne.accept": "Ställ in på 1-fas",
   "suggestion.onboardOne.dismiss": "Behåll 3-fas",

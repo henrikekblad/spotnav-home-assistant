@@ -8,7 +8,10 @@ from typing import Any
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 
-from ..const import CONF_CHARGER_ENTRY_IDS, CONF_PHASE_WIRING, DOMAIN
+from ..const import CONF_CHARGER_ENTRY_IDS, CONF_MEASURED_CURRENT_SOURCE, CONF_PHASE_WIRING, DOMAIN
+from ..planning.grid_voltage import stored_voltage_between_phases_v
+from ..vehicles.discovery import profile_attribute_source
+from .measurement_source import source_to_dict
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -93,3 +96,49 @@ def prune_missing_members(hass: HomeAssistant, site: ConfigEntry) -> bool:
     _LOGGER.info("Site %s: removing chargers that no longer exist: %s", site.entry_id, sorted(missing))
     hass.config_entries.async_update_entry(site, data=data)
     return True
+
+
+#: Set on a charger's wiring when a person removed its measured-current source, so it is not filled in again.
+MEASURED_SOURCE_DECLINED = "measured_source_declined"
+
+
+def backfill_profile_measured_sources(hass: HomeAssistant, site: ConfigEntry) -> dict[str, Any] | None:
+    """The site's data with a measured-current source filled in for every member charger whose wiring
+    has none and whose platform profile can name one (Easee: the `current` sensor's terminal
+    attributes), or `None` when nothing changes. A source a person set, or removed on purpose, is left
+    as it is. Logs once per charger it fills in (a later start finds the source and does nothing).
+    """
+    # Imported here: the flows import this module's neighbours, and they import the controller.
+    from ..flows.measured_source import charger_device_id
+
+    wiring_by_charger = site.data.get(CONF_PHASE_WIRING) or {}
+    voltage = stored_voltage_between_phases_v(site.data)
+    updated: dict[str, Any] = {}
+    for charger_entry_id in site.data.get(CONF_CHARGER_ENTRY_IDS) or []:
+        wiring = wiring_by_charger.get(charger_entry_id)
+        if not isinstance(wiring, dict) or wiring.get(CONF_MEASURED_CURRENT_SOURCE) or wiring.get(MEASURED_SOURCE_DECLINED):
+            continue
+        device_id = charger_device_id(hass, charger_entry_id)
+        if device_id is None:
+            continue
+        phases = wiring.get("phases")
+        source = profile_attribute_source(
+            hass,
+            device_id,
+            voltage_between_phases_v=voltage,
+            phases=1 if phases == 1 else 3,
+            phase=wiring.get("phase"),
+            require_state=False,
+        )
+        if source is None:
+            continue
+        updated[charger_entry_id] = {**wiring, CONF_MEASURED_CURRENT_SOURCE: source_to_dict(source)}
+        _LOGGER.info(
+            "Site %s: charger %s now reads its measured current from the attributes of %s",
+            site.entry_id,
+            charger_entry_id,
+            source.entity_id,
+        )
+    if not updated:
+        return None
+    return {**site.data, CONF_PHASE_WIRING: {**wiring_by_charger, **updated}}

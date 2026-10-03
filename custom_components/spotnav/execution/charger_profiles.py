@@ -192,6 +192,12 @@ class PlatformProfile:
     disconnected_values: tuple[str, ...] = ()
     #: Sensors measuring the current, per phase (A or mA).
     current_sensor_keys: tuple[str, ...] = ()
+    #: One sensor that carries the three phase currents as attributes (Easee's `current`): its entity
+    #: key, the attribute names of L1, L2 and L3 on a TN network, and on an IT network (230 V between
+    #: phases) when the terminals map differently. The unit of those attributes is amperes.
+    current_attribute_sensor_key: str = ""
+    current_attributes: tuple[str, ...] = ()
+    current_attributes_it: tuple[str, ...] = ()
     own_modes: tuple[OwnModeRule, ...] = ()
     #: The charger's own "enabled" switch when SpotNav does not use it as its start/stop control (Easee's
     #: `is_enabled`: a stored setting that is never written). While it reads one of
@@ -251,6 +257,12 @@ _PROFILES: Final[tuple[PlatformProfile, ...]] = (
         vehicle_idle_values=("ready_to_charge", "completed"),
         disconnected_values=("disconnected",),
         current_sensor_keys=("current",),
+        # Easee reports the input terminals, not phases: T2 is the neutral on a TN network and T3, T4,
+        # T5 are L1, L2, L3 (evcc reads them so); on an IT network there is no neutral and T2, T3, T4
+        # are L1, L2, L3 (Easee's output phase configurations, e.g. P2_T2_T3_T4_IT = L1+L2, L2+L3).
+        current_attribute_sensor_key="current",
+        current_attributes=("state_inCurrentT3", "state_inCurrentT4", "state_inCurrentT5"),
+        current_attributes_it=("state_inCurrentT2", "state_inCurrentT3", "state_inCurrentT4"),
         own_modes=(
             _rule("switch", ("smart_charging",), ("off",), "smart charging"),
         ),
@@ -265,7 +277,9 @@ _PROFILES: Final[tuple[PlatformProfile, ...]] = (
         note="Start and stop (resume and pause) and the dynamic limit go through Easee's own services; "
         "the max-limit services are never used (flash). A charge starts at 7 A or more, since the "
         "firmware delays a 6 A start by about five minutes. Enable the disabled \"Dynamic charger limit\" "
-        "sensor for confirmed writes.",
+        "sensor for confirmed writes, and the disabled \"Current\" sensor: its terminal attributes are the "
+        "charger's measured current per phase, which the site reads for the regulator and solar (T3, T4, T5 "
+        "are L1, L2, L3 on a TN network; T2, T3, T4 on an IT network).",
     ),
     PlatformProfile(
         platform="wallbox",

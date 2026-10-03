@@ -681,6 +681,8 @@ export const da: Record<keyof typeof en, string> = {
   "settings.vehicle.error.onboardPhases": "Den indbyggede oplader skal være 1-fase eller 3-fase.",
   "entity.phases.fromSite": "Laderen er tilsluttet {phases} (fra anlægget).",
   "entity.phases.openSite": "Anlæggets tilslutning",
+  "entity.measuredSource.none": "Anlægget læser ingen målt strøm for denne lader. Sol og reguleringen har brug for den; angiv den i anlæggets tilslutning.",
+  "entity.measuredSource.from": "Anlægget læser laderens målte strøm fra {source}.",
   "suggestion.onboardOne.text": "Bilen ser ud til at lade på én fase. Skal den indbyggede oplader sættes til 1-fase?",
   "suggestion.onboardOne.accept": "Sæt til 1-fase",
   "suggestion.onboardOne.dismiss": "Behold 3-fase",

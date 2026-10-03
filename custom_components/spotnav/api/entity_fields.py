@@ -38,6 +38,8 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers import entity_registry as er
 
 from ..const import (
+    CONF_MEASURED_CURRENT_SOURCE,
+    CONF_PHASE_WIRING,
     CONF_BATTERY_AGGREGATE_POWER_ENTITY,
     CONF_BATTERY_DISCHARGE_POWER_ENTITY,
     CONF_BATTERY_POWER_INVERTED,
@@ -139,6 +141,9 @@ VOLTAGE_CHOICES: Final = tuple(str(volts) for volts in VOLTAGE_BETWEEN_PHASES_CH
 #: The charger's place in its site's allocation order: "first", "normal" (default) or "last". Only a
 #: charger in a site has one.
 FIELD_CHARGER_PRIORITY: Final = "charger_priority"
+#: Where the site reads the charger's own measured current from (the entity, or the three entities,
+#: as text; `None` when it reads none). A site's per-charger wiring holds it: stated read-only.
+FIELD_CHARGER_MEASURED_SOURCE: Final = "measured_current_source"
 CHARGER_FIELDS: Final = (
     FIELD_CHARGE_CONTROL,
     FIELD_CURRENT_LIMIT,
@@ -147,6 +152,7 @@ CHARGER_FIELDS: Final = (
     FIELD_VOLTAGE_BETWEEN_PHASES,
     FIELD_CHARGER_PHASES,
     FIELD_CHARGER_PRIORITY,
+    FIELD_CHARGER_MEASURED_SOURCE,
     FIELD_VEHICLE_SOC,
 )
 FIELD_MAIN_FUSE_A: Final = "main_fuse_a"
@@ -616,6 +622,10 @@ def charger_field_errors(
     if FIELD_VEHICLE_SOC in changes:
         errors.append(FieldError(FIELD_VEHICLE_SOC, ERR_NOT_WRITABLE))
 
+    if FIELD_CHARGER_MEASURED_SOURCE in changes:
+        # Held by the site's wiring, set in the site's own settings.
+        errors.append(FieldError(FIELD_CHARGER_MEASURED_SOURCE, ERR_NOT_WRITABLE))
+
     if FIELD_VOLTAGE_BETWEEN_PHASES in changes:
         if site_for_charger(hass, entry.entry_id) is not None:
             # The site holds it for its chargers.
@@ -755,8 +765,36 @@ def charger_field_descriptors(hass: HomeAssistant, entry: ConfigEntry) -> list[d
             if site_for_charger(hass, entry.entry_id) is not None
             else []
         ),
+        *(
+            [
+                {
+                    "field": FIELD_CHARGER_MEASURED_SOURCE,
+                    "scope": "charger",
+                    "kind": "enum",
+                    "required": False,
+                    "writable": False,
+                    "value": _measured_source_text(hass, entry.entry_id),
+                    "choices": [],
+                }
+            ]
+            if site_for_charger(hass, entry.entry_id) is not None
+            else []
+        ),
         vehicle_soc_descriptor(hass),
     ]
+
+
+def _measured_source_text(hass: HomeAssistant, charger_entry_id: str) -> str | None:
+    """The entity the site reads this charger's measured current from: its id, or the three ids of a
+    per-phase source joined by commas; `None` when the site's wiring has none."""
+    site = site_for_charger(hass, charger_entry_id)
+    wiring = ((site.data.get(CONF_PHASE_WIRING) or {}).get(charger_entry_id) or {}) if site is not None else {}
+    source = source_from_dict(wiring.get(CONF_MEASURED_CURRENT_SOURCE))
+    if source is None:
+        return None
+    if source.kind == "attributes":
+        return source.entity_id
+    return ", ".join((source.entity_ids or {})[phase] for phase in PHASES if phase in (source.entity_ids or {}))
 
 
 def detected_control_path(hass: HomeAssistant, entry: ConfigEntry, charge_control: str) -> dict[str, Any] | None:

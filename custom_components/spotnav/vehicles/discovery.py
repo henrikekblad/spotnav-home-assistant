@@ -54,6 +54,7 @@ REASON_SEPARATE_ENTITIES_DEVICE_CLASS_MATCH_ONLY = "separate_entities_device_cla
 REASON_SEPARATE_ENTITIES_UNIT_MATCH_ONLY = "separate_entities_unit_match_only"
 REASON_SEPARATE_ENTITIES_NAME_MATCH_ONLY = "separate_entities_name_match_only"
 REASON_SEPARATE_ENTITIES_PROFILE_MATCH = "separate_entities_profile_match"
+REASON_ATTRIBUTES_PROFILE_MATCH = "attributes_profile_match"
 REASON_POSSIBLE_INVERTER_OUTPUT = "possible_inverter_output_not_confirmed_as_grid_input"
 
 # How far back Recorder history is searched. An upper bound only; a shorter
@@ -180,7 +181,7 @@ async def async_discover_site_current_sources(
 
 
 def discover_charger_current_sources(
-    hass: HomeAssistant, *, charger_device_id: str | None
+    hass: HomeAssistant, *, charger_device_id: str | None, voltage_between_phases_v: float | None = None
 ) -> list[DiscoveryCandidate]:
     """Rank candidates for one charger's own measured current, from live state only.
 
@@ -194,11 +195,14 @@ def discover_charger_current_sources(
         hass, "charger_current", only_device_id=charger_device_id
     )
     candidates += _profile_phase_entity_candidates(hass, charger_device_id, candidates)
+    candidates += _profile_attribute_candidates(
+        hass, charger_device_id, candidates, voltage_between_phases_v=voltage_between_phases_v
+    )
     return _ranked(candidates)
 
 
 async def async_discover_charger_current_sources(
-    hass: HomeAssistant, *, charger_device_id: str | None
+    hass: HomeAssistant, *, charger_device_id: str | None, voltage_between_phases_v: float | None = None
 ) -> list[DiscoveryCandidate]:
     """`discover_charger_current_sources` plus the Recorder-history fallback.
 
@@ -214,6 +218,9 @@ async def async_discover_charger_current_sources(
         hass, "charger_current", only_device_id=charger_device_id
     )
     candidates += _profile_phase_entity_candidates(hass, charger_device_id, candidates)
+    candidates += _profile_attribute_candidates(
+        hass, charger_device_id, candidates, voltage_between_phases_v=voltage_between_phases_v
+    )
     return _ranked(candidates)
 
 
@@ -262,6 +269,80 @@ def _profile_phase_entity_candidates(
             )
         )
     return results
+
+
+#: The voltage between phases that means an IT network, where a platform may map its terminals differently.
+_IT_VOLTAGE_BETWEEN_PHASES_V = 230.0
+
+
+def profile_attribute_source(
+    hass: HomeAssistant,
+    device_id: str,
+    *,
+    voltage_between_phases_v: float | None = None,
+    phases: int = 3,
+    phase: PhaseName | None = None,
+    require_state: bool = True,
+) -> PhaseMeasurementSource | None:
+    """The measured-current source the charger platform's profile names: one enabled sensor whose
+    attributes carry the phase currents (Easee's input terminals), or `None`.
+
+    `voltage_between_phases_v` of 230 selects the profile's IT attribute names. A one-phase charger
+    on grid phase `phase` is read from its first terminal only. `require_state` is off at start-up,
+    when the registry is known but the sensor may not have reported yet.
+    """
+    registry = er.async_get(hass)
+    entries = er.async_entries_for_device(registry, device_id)
+    for platform in dict.fromkeys(entry.platform for entry in entries):
+        profile = profile_for(platform)
+        if profile is None or not profile.current_attribute_sensor_key:
+            continue
+        is_it = voltage_between_phases_v == _IT_VOLTAGE_BETWEEN_PHASES_V
+        names = (profile.current_attributes_it if is_it else profile.current_attributes) or profile.current_attributes
+        if len(names) != len(PHASES):
+            continue
+        matcher = EntityMatcher(hass, [e for e in entries if e.platform == platform], profile)
+        entry = matcher.first("sensor", (profile.current_attribute_sensor_key,))
+        if entry is None or entry.disabled_by is not None:
+            continue
+        if require_state and hass.states.get(entry.entity_id) is None:
+            continue
+        if phases == 1:
+            if phase not in PHASES or is_it:
+                # A one-phase charger on an IT network uses two terminals: not mapped here.
+                continue
+            mapping: dict[PhaseName, str] = {phase: names[0]}
+        else:
+            mapping = dict(zip(PHASES, names))
+        return PhaseMeasurementSource(
+            kind="attributes", entity_id=entry.entity_id, attributes=mapping, attribute_unit_override="A"
+        )
+    return None
+
+
+def _profile_attribute_candidates(
+    hass: HomeAssistant,
+    device_id: str,
+    found: list[DiscoveryCandidate],
+    *,
+    voltage_between_phases_v: float | None,
+) -> list[DiscoveryCandidate]:
+    """An attributes candidate from `profile_attribute_source`, unless `found` already offers that entity."""
+    source = profile_attribute_source(hass, device_id, voltage_between_phases_v=voltage_between_phases_v)
+    if source is None or any(
+        candidate.mapping.kind == "attributes" and candidate.mapping.entity_id == source.entity_id
+        for candidate in found
+    ):
+        return []
+    return [
+        DiscoveryCandidate(
+            candidate_id=str(source.entity_id),
+            source_type="charger_current",
+            mapping=source,
+            confidence="high",
+            reason_code=REASON_ATTRIBUTES_PROFILE_MATCH,
+        )
+    ]
 
 
 _CONFIDENCE_RANK: dict[Confidence, int] = {"high": 0, "medium": 1, "low": 2}

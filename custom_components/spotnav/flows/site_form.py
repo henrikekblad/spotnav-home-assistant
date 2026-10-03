@@ -488,8 +488,11 @@ def parse_charger_wiring(
     choice = inputs.get("measured_source")
     if choice is None:
         return wiring
+    wiring.pop("measured_source_declined", None)
     if choice == SKIP_CHOICE:
         wiring.pop(CONF_MEASURED_CURRENT_SOURCE, None)
+        # Said on purpose: a start-up fill-in from the charger's profile must not undo it.
+        wiring["measured_source_declined"] = True
     elif choice in MANUAL_CHOICES:
         if manual_source is not None:
             wiring[CONF_MEASURED_CURRENT_SOURCE] = manual_source

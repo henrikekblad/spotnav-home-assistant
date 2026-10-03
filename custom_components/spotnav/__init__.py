@@ -69,7 +69,12 @@ from .services import async_register_services
 from .sessions.inputs import price_book_for, session_facts
 from .sessions.recorder import SessionRecorder
 from .sessions.store import SessionStore
-from .site.site_join import async_apply_site_join, async_leave_sites, prune_missing_members
+from .site.site_join import (
+    async_apply_site_join,
+    async_leave_sites,
+    backfill_profile_measured_sources,
+    prune_missing_members,
+)
 from .site.site_capacity_controller import SiteCapacityController
 from .vehicles.discovery_decisions import async_setup_decisions
 from .vehicles.soc_estimate import SocReader
@@ -334,6 +339,11 @@ async def _async_setup_site_entry(hass: HomeAssistant, entry: SiteConfigEntry) -
                 await hass.config_entries.async_reload(entry.entry_id)
 
         hass.bus.async_listen_once(EVENT_HOMEASSISTANT_STARTED, _prune)
+    # A member charger whose platform names its own measured current (Easee) gets that source without
+    # redoing the site; what a person set stays.
+    filled = backfill_profile_measured_sources(hass, entry)
+    if filled is not None:
+        hass.config_entries.async_update_entry(entry, data=filled)
     controller = SiteCapacityController(hass, entry.entry_id, dict(entry.data))
     entry.runtime_data = SiteData(controller)
     entry.async_on_unload(controller.async_shutdown)

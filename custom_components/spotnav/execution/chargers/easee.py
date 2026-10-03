@@ -278,15 +278,30 @@ class EaseeDynamicLimit(CurrentPath):
     def wait_s(self) -> float:
         return self._limiter.wait_s()
 
-    def _note_confirmation(self) -> None:
-        """Mark the cache suspect when an old write is still not what the charger reports."""
+    def _disagrees_after_wait(self) -> bool | None:
+        """Whether an old write is still not what the charger reports: `None` when there is nothing to
+        compare (no write yet, or no readable limit sensor), `False` within `EASEE_CONFIRM_AFTER_S` of
+        the write, which the cloud needs to report the new limit back.
+        """
         if self.last_written_a is None or self._written_at is None:
-            return
+            return None
         read = self.read_back_a()
         if read is None:
-            return
+            return None
         old = (self._now() - self._written_at).total_seconds() >= EASEE_CONFIRM_AFTER_S
-        self._suspect = old and read != self.last_written_a
+        return old and read != self.last_written_a
+
+    def _note_confirmation(self) -> None:
+        """Mark the cache suspect when an old write is still not what the charger reports."""
+        disagrees = self._disagrees_after_wait()
+        if disagrees is not None:
+            self._suspect = disagrees
+
+    def cache_suspect(self) -> bool:
+        """The suspect flag as of now: the disagreement is judged when asked, not only at the next
+        write, so a diagnostics snapshot taken after the wait shows it."""
+        disagrees = self._disagrees_after_wait()
+        return self._suspect if disagrees is None else disagrees
 
     async def _send(self, amps: int) -> bool:
         self._limiter.record()
@@ -390,7 +405,7 @@ class EaseeDynamicLimit(CurrentPath):
             "last_written_a": self.last_written_a,
             "read_back_a": self.read_back_a(),
             "limit_sensor_enabled": self.limit_entity_id() is not None,
-            "cache_suspect": self._suspect,
+            "cache_suspect": self.cache_suspect(),
             "holding_start_floor": self._holding_start_floor(),
         }
 
