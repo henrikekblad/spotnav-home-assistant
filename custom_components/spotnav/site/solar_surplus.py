@@ -29,6 +29,11 @@ the battery is unreadable, which is no basis (0.0 would hide a discharge).
 With the meter's total power instead of per-phase power (`SolarObservation.phase_cap_a`), the total is
 split evenly over the phases the car uses and each phase's figure is capped by its fuse headroom.
 
+A charger whose own measured current is missing (not configured, or unreadable) while the grid and the
+battery read fine is a standing fault, not a passing gap: it never starts a charge, and never stops a
+running one on the strength of it (a stop would be followed by whatever resumes the charger, round
+and round); the running charge is held at the minimum current and the reason says why.
+
 Freshness: a `None` where a reading is needed means no basis this tick. From
 `off` or `arming` that means never start; a running charge is kept for
 `stale_grace_s`. Stale ticks neither advance nor reset the timers.
@@ -60,6 +65,10 @@ SolarReason = Literal[
     "no_basis_off",
     "no_basis_grace",
     "no_basis_stopped",
+    # The charger's own measured current is unusable while the grid and battery readings are fine:
+    # nothing to size the surplus against, so a charge neither starts nor stops (a running one is held
+    # at the minimum current) instead of cycling.
+    "charger_measurement_missing",
     "off_no_surplus",
     "arming_delay",
     "arming_min_off_wait",
@@ -176,6 +185,9 @@ class SolarController:
         """Update state from one observation and return its verdict."""
         now = observation.now
 
+        if self._charger_measurement_missing(observation):
+            return self._handle_charger_measurement_missing()
+
         available_a = self._refresh_breakdown(observation)
         if available_a is None:
             return self._handle_no_basis(now)
@@ -184,6 +196,38 @@ class SolarController:
         if self._state in ("off", "arming"):
             return self._handle_off_or_arming(now, available_a)
         return self._handle_on_or_disarming(now, available_a)
+
+    @staticmethod
+    def _charger_measurement_missing(observation: SolarObservation) -> bool:
+        """Only the charger's own current is unusable: the grid, the voltage and a configured battery
+        all read. Anything else missing is an ordinary gap (`_handle_no_basis`)."""
+        car_phases = observation.car_phases
+        if not car_phases:
+            return False
+        if all(observation.car_delivered_a.get(phase) is not None for phase in car_phases):
+            return False
+        if any(observation.signed_grid_w.get(phase) is None for phase in PHASES):
+            return False
+        if any(observation.voltage_v.get(phase) is None for phase in car_phases):
+            return False
+        return not (observation.battery_configured and observation.battery_w is None)
+
+    def _handle_charger_measurement_missing(self) -> SolarVerdict:
+        """Hold: never start, never stop. A running charge is brought down to the minimum current once
+        and kept there, since nothing says how much the sun covers."""
+        self._stale_since = None
+        if self._state in ("off", "arming"):
+            self._state = "off"
+            self._arming_since = None
+            return self._verdict("hold", None, "charger_measurement_missing")
+        # `disarming` is a countdown to a stop that this fault must not complete.
+        self._state = "on"
+        self._disarming_since = None
+        minimum = self._config.min_current_a
+        if self._last_requested_a != minimum:
+            self._last_requested_a = minimum
+            return self._verdict("set_current", minimum, "charger_measurement_missing")
+        return self._verdict("hold", None, "charger_measurement_missing")
 
     def _refresh_breakdown(self, observation: SolarObservation) -> float | None:
         """Compute this tick's surplus breakdown and store it for `_verdict`.

@@ -725,3 +725,69 @@ def test_a_noisy_day_with_the_car_in_the_loop_never_charges_it_from_the_grid() -
     assert discharge_kwh < 0.05 * car_kwh
     # Two clouds and a sunset: at most one start and one stop around each.
     assert starts <= 4 and stops <= 4
+
+
+# ------------------------------------------------------- the charger's own measurement is missing
+
+
+def _no_car_reading(now: float, **kwargs) -> SolarObservation:
+    """Plenty of export, the grid and voltage read, the charger's own current does not."""
+    return _obs(now, grid_w=-6000.0, car_delivered_a={"L1": None, "L2": None, "L3": None}, **kwargs)
+
+
+def _running(ctrl: SolarController) -> None:
+    ctrl.observe(_obs(0.0, grid_w=-6000.0))
+    assert ctrl.observe(_obs(130.0, grid_w=-6000.0)).action == "start"
+
+
+def test_a_stopped_charger_without_its_own_measurement_is_never_started():
+    ctrl = SolarController(_config())
+    verdicts = [ctrl.observe(_no_car_reading(float(t))) for t in range(0, 1200, 30)]
+
+    assert {v.action for v in verdicts} == {"hold"}
+    assert {v.reason for v in verdicts} == {"charger_measurement_missing"}
+    assert {v.state for v in verdicts} == {"off"}
+
+
+def test_a_running_charge_without_its_own_measurement_is_held_at_the_minimum_not_cycled():
+    ctrl = SolarController(_config(min_current_a=6.0, max_current_a=16.0))
+    _running(ctrl)
+
+    actions = []
+    for t in range(160, 1800, 30):
+        verdict = ctrl.observe(_no_car_reading(float(t)))
+        actions.append((verdict.action, verdict.requested_a, verdict.state, verdict.reason))
+
+    # One step down to the minimum, then nothing: no stop (so nothing to resume), no start.
+    assert actions[0] == ("set_current", 6.0, "on", "charger_measurement_missing")
+    assert set(actions[1:]) == {("hold", None, "on", "charger_measurement_missing")}
+
+
+def test_the_stop_countdown_is_not_completed_by_a_missing_charger_measurement():
+    ctrl = SolarController(_config(stop_delay_s=60.0, min_on_s=0.0))
+    _running(ctrl)
+    assert ctrl.observe(_obs(140.0, grid_w=6000.0)).state == "disarming"
+
+    verdict = ctrl.observe(_no_car_reading(160.0))
+
+    assert (verdict.action, verdict.state) == ("set_current", "on")
+
+
+def test_the_measurement_returning_resumes_the_normal_rules():
+    ctrl = SolarController(_config())
+    _running(ctrl)
+    ctrl.observe(_no_car_reading(160.0))
+
+    verdict = ctrl.observe(_obs(190.0, grid_w=-6000.0, car_delivered_a=6.0))
+
+    assert verdict.state == "on" and verdict.reason != "charger_measurement_missing"
+
+
+def test_a_missing_grid_reading_is_still_an_ordinary_gap_that_stops_after_the_grace():
+    ctrl = SolarController(_config())
+    _running(ctrl)
+
+    ctrl.observe(_obs(160.0, grid_w={"L1": None, "L2": -3000.0, "L3": -3000.0}, car_delivered_a={"L1": None, "L2": None, "L3": None}))
+    verdict = ctrl.observe(_obs(400.0, grid_w={"L1": None, "L2": -3000.0, "L3": -3000.0}, car_delivered_a={"L1": None, "L2": None, "L3": None}))
+
+    assert verdict.action == "stop" and verdict.reason == "no_basis_stopped"

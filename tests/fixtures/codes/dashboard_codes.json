@@ -95,6 +95,7 @@
     "arming_delay",
     "arming_dip",
     "arming_min_off_wait",
+    "charger_measurement_missing",
     "disarming_delay",
     "disarming_min_on_wait",
     "disarming_recover",

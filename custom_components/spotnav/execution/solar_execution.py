@@ -585,6 +585,13 @@ class SolarExecutionCoordinator:
         if signature == self._logged:
             return
         self._logged = signature
+        if verdict.reason == "charger_measurement_missing":
+            _LOGGER.warning(
+                "Solar on charger %s holds: the charger's own measured current is missing, so a charge "
+                "is neither started nor stopped (a running one stays at the minimum current). Set the "
+                "charger's measured current source in the site wiring.",
+                self._charger_entry_id,
+            )
         _LOGGER.debug(
             "%s charger %s: state=%s action=%s reason=%s requested_a=%s available_a=%s "
             "available_w=%s net_grid_w=%s car_w=%s battery_w=%s priority=%s",
