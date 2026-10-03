@@ -24,6 +24,7 @@ from custom_components.spotnav.sessions.history_import import (
     hours_from_rows,
     HistoryImporter,
     migrate_legacy,
+    next_reprice,
 )
 from custom_components.spotnav.sessions.inputs import PriceMarket
 from custom_components.spotnav.sessions.model import (
@@ -489,3 +490,58 @@ async def test_the_recorders_hourly_energy_is_asked_in_kwh_as_a_change(
 
     assert [(item.start, item.kwh) for item in hours] == [(at(D1, 5), 2.0)]
     assert seen == [({REGISTER}, "hour", {"energy": "kWh"}, {"change"})]
+
+
+# ---- the daily timer
+
+class FakeTrack:
+    """Stands in for `async_track_point_in_time`: records each arming, lets a test fire it."""
+
+    def __init__(self) -> None:
+        self.armed: list[tuple] = []
+        self.cancelled = 0
+
+    def __call__(self, hass, action, when):
+        self.armed.append((action, when))
+
+        def cancel() -> None:
+            self.cancelled += 1
+
+        return cancel
+
+
+def test_the_next_reprice_is_half_past_four_local_plus_the_jitter() -> None:
+    before = datetime(2026, 9, 22, 1, 0, tzinfo=UTC)  # 03:00 in Stockholm
+    after = datetime(2026, 9, 22, 12, 0, tzinfo=UTC)
+
+    assert next_reprice(before, STOCKHOLM, 0) == datetime(2026, 9, 22, 2, 30, tzinfo=UTC)
+    assert next_reprice(before, STOCKHOLM, 600) == datetime(2026, 9, 22, 2, 40, tzinfo=UTC)
+    assert next_reprice(after, STOCKHOLM, 0) == datetime(2026, 9, 23, 2, 30, tzinfo=UTC)
+
+
+async def test_the_daily_timer_reprices_each_night_and_unload_cancels_it(
+    hass: HomeAssistant, store: SessionStore
+) -> None:
+    clock = [datetime(2026, 9, 22, 12, 0, tzinfo=UTC)]
+    runs: list[int] = []
+    importer = importer_for(hass, store, Statistics([]), Repository({}), clock=clock)
+
+    async def run() -> None:
+        runs.append(1)
+
+    importer.async_run = run  # type: ignore[method-assign]
+    track = FakeTrack()
+    await hass.config.async_set_time_zone("Europe/Stockholm")
+
+    cancel = importer.schedule_daily(track=track, jitter=lambda: 60.0)
+
+    assert [when for _, when in track.armed] == [datetime(2026, 9, 23, 2, 31, tzinfo=UTC)]
+    clock[0] = track.armed[0][1]
+    await track.armed[0][0](clock[0])
+    assert runs == [1]
+    assert [when for _, when in track.armed][1] == datetime(2026, 9, 24, 2, 31, tzinfo=UTC)
+
+    cancel()
+    assert track.cancelled == 1
+    await track.armed[1][0](clock[0])
+    assert len(track.armed) == 2

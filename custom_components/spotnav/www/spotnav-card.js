@@ -3375,6 +3375,10 @@ var da = {
   "entity.help.batteryPowerInverted": "Slå til, hvis batteriets effekt er positiv ved afladning (Tesla, Fronius, Enphase, GoodWe og lignende). SpotNav læser så opladning som positiv.",
   "entity.help.batteryDischargePower": "Kun for et batteri, der angiver opladning og afladning som to sensorer: dette er afladningen, og batterisensoren ovenfor er opladningen.",
   "entity.help.derivedPowerExport": "Kun når måleren angiver import og eksport som to sensorer: effektsensoren ovenfor er så import, og denne er eksport.",
+  "entity.help.derivedTwoSensors": "Én eksportsensor pr. fase. Har din måler ikke eksport pr. fase, så behold én sensor med retning.",
+  "entity.signNotice.on": '{title} angiver eksport som positiv; slå "Sensoren viser eksport som positiv" til.',
+  "entity.signNotice.off": '{title} angiver import som positiv; slå "Sensoren viser eksport som positiv" fra.',
+  "entity.signNotice.dismiss": "Afvis",
   "entity.help.derivedApparentPower": "Tilsyneladende effekt på denne fase, i VA. Med den bliver strømmen nøjagtig.",
   "entity.help.derivedCurrent": "Målerens egen strøm på denne fase. Med den bliver strømmen nøjagtig.",
   "entity.choice.mixed": "Mere end én af disse er angivet. Kun den valgte beholdes; de andre ryddes, når du gemmer.",
@@ -3994,6 +3998,10 @@ var en = {
   "entity.help.batteryPowerInverted": "Turn on if the battery's power is positive while discharging (Tesla, Fronius, Enphase, GoodWe and similar). SpotNav then reads charging as positive.",
   "entity.help.batteryDischargePower": "Only for a battery that reports charging and discharging as two sensors: this is the discharge one, and the battery power sensor above is the charge one.",
   "entity.help.derivedPowerExport": "Only when the meter reports import and export as two sensors: the power sensor above is then import and this one is export.",
+  "entity.help.derivedTwoSensors": "One export sensor per phase. If your meter has no export per phase, keep one sensor with direction.",
+  "entity.signNotice.on": '{title} reports export as positive; turn on "The sensor shows export as positive".',
+  "entity.signNotice.off": '{title} reports import as positive; turn off "The sensor shows export as positive".',
+  "entity.signNotice.dismiss": "Dismiss",
   "entity.help.derivedApparentPower": "Apparent power on this phase, in VA. With it the current is exact.",
   "entity.help.derivedCurrent": "The meter's own current on this phase. With it the current is exact.",
   "entity.choice.mixed": "More than one of these is set. Only the chosen one is kept; the others are cleared when you save.",
@@ -4613,6 +4621,10 @@ var fi = {
   "entity.help.batteryPowerInverted": "Kytke päälle, jos akun teho on positiivinen purun aikana (Tesla, Fronius, Enphase, GoodWe ja vastaavat). SpotNav lukee silloin latauksen positiivisena.",
   "entity.help.batteryDischargePower": "Vain akulle, joka ilmoittaa latauksen ja purun kahtena anturina: tämä on purku, ja yllä oleva akkuanturi on lataus.",
   "entity.help.derivedPowerExport": "Vain kun mittari ilmoittaa oton ja viennin kahtena anturina: yllä oleva tehoanturi on silloin otto ja tämä on vienti.",
+  "entity.help.derivedTwoSensors": "Yksi vientianturi per vaihe. Jos mittarissasi ei ole vientiä vaiheittain, pidä yksi suunnallinen anturi.",
+  "entity.signNotice.on": '{title} ilmoittaa viennin positiivisena; ota käyttöön "Anturi näyttää viennin positiivisena".',
+  "entity.signNotice.off": '{title} ilmoittaa oton positiivisena; poista käytöstä "Anturi näyttää viennin positiivisena".',
+  "entity.signNotice.dismiss": "Sulje",
   "entity.help.derivedApparentPower": "Näennäisteho tällä vaiheella, VA. Sen kanssa virta on tarkka.",
   "entity.help.derivedCurrent": "Mittarin oma virta tällä vaiheella. Sen kanssa virta on tarkka.",
   "entity.choice.mixed": "Useampi näistä on asetettu. Vain valittu säilytetään; muut tyhjennetään tallennettaessa.",
@@ -5232,6 +5244,10 @@ var nb = {
   "entity.help.batteryPowerInverted": "Slå på hvis batteriets effekt er positiv ved utlading (Tesla, Fronius, Enphase, GoodWe og lignende). SpotNav leser da lading som positiv.",
   "entity.help.batteryDischargePower": "Bare for et batteri som oppgir lading og utlading som to sensorer: dette er utladingen, og batterisensoren over er ladingen.",
   "entity.help.derivedPowerExport": "Bare når måleren oppgir import og eksport som to sensorer: effektsensoren over er da import og denne er eksport.",
+  "entity.help.derivedTwoSensors": "Én eksportsensor per fase. Har ikke måleren eksport per fase, behold én sensor med retning.",
+  "entity.signNotice.on": '{title} oppgir eksport som positiv; slå på "Sensoren viser eksport som positiv".',
+  "entity.signNotice.off": '{title} oppgir import som positiv; slå av "Sensoren viser eksport som positiv".',
+  "entity.signNotice.dismiss": "Avvis",
   "entity.help.derivedApparentPower": "Tilsynelatende effekt på denne fasen, i VA. Med den blir strømmen nøyaktig.",
   "entity.help.derivedCurrent": "Målerens egen strøm på denne fasen. Med den blir strømmen nøyaktig.",
   "entity.choice.mixed": "Mer enn ett av disse er satt. Bare det valgte beholdes; de andre tømmes når du lagrer.",
@@ -5851,6 +5867,10 @@ var sv = {
   "entity.help.batteryPowerInverted": "Slå på om batteriets effekt är positiv vid urladdning (Tesla, Fronius, Enphase, GoodWe och liknande). SpotNav läser då laddning som positiv.",
   "entity.help.batteryDischargePower": "Bara för ett batteri som anger laddning och urladdning som två sensorer: det här är urladdningen, och batterisensorn ovan är laddningen.",
   "entity.help.derivedPowerExport": "Bara när mätaren anger import och export som två sensorer: effektsensorn ovan är då import och den här är export.",
+  "entity.help.derivedTwoSensors": "En exportsensor per fas. Saknar din mätare export per fas, behåll en sensor med riktning.",
+  "entity.signNotice.on": '{title} anger export som positivt; slå på "Sensorn visar export som positiv".',
+  "entity.signNotice.off": '{title} anger import som positivt; slå av "Sensorn visar export som positiv".',
+  "entity.signNotice.dismiss": "Avfärda",
   "entity.help.derivedApparentPower": "Skenbar effekt på den här fasen, i VA. Med den blir strömmen exakt.",
   "entity.help.derivedCurrent": "Mätarens egen ström på den här fasen. Med den blir strömmen exakt.",
   "entity.choice.mixed": "Fler än ett av dessa är angivet. Bara det valda behålls; de andra rensas när du sparar.",
@@ -9681,11 +9701,64 @@ function entityEditorBody(doc, language, input, handlers, idPrefix) {
       body.append(notes);
     }
   }
+  const signNotice = element(doc, "div", VISUAL_CLASSES.entityWarning);
+  signNotice.dataset["signNotice"] = "grid";
+  signNotice.hidden = true;
+  let signDismissed = false;
+  function refreshSignNotice() {
+    const site = config.site;
+    const mismatch = scope === "site" && site !== null && !signDismissed ? signMismatch(site) : null;
+    signNotice.hidden = mismatch === null;
+    if (mismatch === null) {
+      signNotice.replaceChildren();
+      return;
+    }
+    const dismiss = element(doc, "button", VISUAL_CLASSES.button, translate(language, "entity.signNotice.dismiss"));
+    dismiss.type = "button";
+    dismiss.addEventListener("click", () => {
+      signDismissed = true;
+      refreshSignNotice();
+    });
+    signNotice.dataset["want"] = mismatch.inverted ? "on" : "off";
+    signNotice.replaceChildren(
+      element(
+        doc,
+        "span",
+        void 0,
+        translate(language, mismatch.inverted ? "entity.signNotice.on" : "entity.signNotice.off", {
+          title: mismatch.title
+        })
+      ),
+      dismiss
+    );
+  }
+  function signMismatch(site) {
+    const chosen = (name) => {
+      const typed = values[name];
+      if (typed !== void 0) {
+        return typed.trim();
+      }
+      const field2 = config.fields.find((entry) => entry.field === name);
+      return field2 !== void 0 && field2.kind === "entity" && field2.current !== null ? field2.current.entityId : "";
+    };
+    const used = new Set(
+      [...PHASES.map((phase) => derivedFieldName(phase, "power")), GRID_TOTAL_FIELDS[0]].map(chosen).filter((entityId) => entityId !== "")
+    );
+    const stored = values["grid_power_inverted"] === void 0 ? config.fields.some((entry) => entry.field === "grid_power_inverted" && entry.kind === "flag" && entry.value) : isOn("grid_power_inverted");
+    for (const meter of site.meters) {
+      const powers = meter.entities.filter((entity) => entity.role === "power" || entity.role === "grid_power");
+      if (powers.length > 0 && powers.every((entity) => used.has(entity.entityId)) && meter.powerInverted !== stored) {
+        return { title: meter.title, inverted: meter.powerInverted };
+      }
+    }
+    return null;
+  }
   if (scope === "site" && config.site !== null) {
     const notices = siteNotices(doc, language, config.site);
     if (notices !== null) {
       body.append(notices);
     }
+    body.append(signNotice);
     const detection = detectionSection(config, config.site);
     if (detection !== null) {
       body.append(detection);
@@ -9818,6 +9891,7 @@ function entityEditorBody(doc, language, input, handlers, idPrefix) {
     box.dataset["field"] = field2.field;
     box.addEventListener("change", () => {
       values[field2.field] = box.checked ? "true" : "false";
+      refreshSignNotice();
     });
     disabledWhenPending.push(box);
     row.append(box, doc.createTextNode(label));
@@ -10057,6 +10131,7 @@ function entityEditorBody(doc, language, input, handlers, idPrefix) {
     return help;
   };
   const clearers = [];
+  const requirers = [];
   const isSet = (name) => (values[name] ?? "").trim() !== "";
   const isOn = (name) => values[name] === "true";
   if (scope === "charger") {
@@ -10279,7 +10354,7 @@ function entityEditorBody(doc, language, input, handlers, idPrefix) {
           [
             translate(language, "entity.help.derivedPower"),
             translate(language, "entity.help.derivedVoltage"),
-            ...gridKind === "two" ? [translate(language, "entity.help.derivedPowerExport")] : []
+            ...gridKind === "two" ? [translate(language, "entity.help.derivedPowerExport"), translate(language, "entity.help.derivedTwoSensors")] : []
           ].join(" ")
         );
         help.dataset["help"] = "grid-phases";
@@ -10288,6 +10363,7 @@ function entityEditorBody(doc, language, input, handlers, idPrefix) {
           ...gridKind === "one" ? blocksOf("grid_power_inverted") : []
         );
         grid.showNote(gridKind === "two" && isOn("grid_power_inverted"));
+        refreshSignNotice();
         applyPending();
       };
       const current = choiceGroup(
@@ -10351,6 +10427,14 @@ function entityEditorBody(doc, language, input, handlers, idPrefix) {
         );
         paintPhases();
       };
+      const missingExports = (draft) => {
+        if (gridKind !== "two") {
+          return [];
+        }
+        const names = currentMode() === MEASUREMENT_DERIVED ? PHASES.map((phase) => derivedFieldName(phase, "power_export")) : [GRID_TOTAL_FIELDS[1]];
+        return names.filter((name) => (draft[name] ?? "").trim() === "");
+      };
+      requirers.push(missingExports);
       clearers.push((draft) => {
         const derived = currentMode() === MEASUREMENT_DERIVED;
         if (derived) {
@@ -10368,7 +10452,7 @@ function entityEditorBody(doc, language, input, handlers, idPrefix) {
         } else if (gridKind === "one") {
           draft[GRID_TOTAL_FIELDS[1]] = "";
         }
-        if (gridKind === "two") {
+        if (gridKind === "two" && missingExports(draft).length === 0) {
           draft["grid_power_inverted"] = "false";
         }
         if (!signedShown()) {
@@ -10412,6 +10496,7 @@ function entityEditorBody(doc, language, input, handlers, idPrefix) {
       paintBattery();
       layoutMode();
     }
+    refreshSignNotice();
   }
   const voltageField = fieldsOf(config, scope).find((entry) => entry.field === "voltage_between_phases_v");
   if (voltageField !== void 0 && voltageField.kind === "enum" && voltageField.writable) {
@@ -10524,12 +10609,39 @@ function entityEditorBody(doc, language, input, handlers, idPrefix) {
   body.addEventListener("submit", (event) => {
     event.preventDefault();
     if (!pending && !locked) {
+      const missing = requirers.flatMap((require2) => require2({ ...values }));
+      if (missing.length > 0) {
+        markErrors(missing.map((field2) => ({ field: field2, code: "required" })));
+        return;
+      }
       handlers.onSave(resolvedDraft());
     }
   });
   cancel.addEventListener("click", () => {
     handlers.onCancel();
   });
+  function markErrors(errors) {
+    for (const [, entry] of errorNodes) {
+      entry.node.hidden = true;
+      entry.node.textContent = "";
+      entry.input.removeAttribute("aria-invalid");
+      entry.input.removeAttribute("aria-describedby");
+    }
+    for (const error of errors) {
+      const entry = errorNodes.get(error.field);
+      if (entry === void 0) {
+        continue;
+      }
+      const key = fieldErrorKey(error.code);
+      entry.node.hidden = false;
+      entry.node.textContent = translate(language, key);
+      entry.node.dataset["code"] = error.code;
+      entry.input.setAttribute("aria-invalid", "true");
+      if (entry.node.id !== "") {
+        entry.input.setAttribute("aria-describedby", entry.node.id);
+      }
+    }
+  }
   function resolvedDraft() {
     const draft = { ...values };
     for (const clear of clearers) {
@@ -10549,28 +10661,7 @@ function entityEditorBody(doc, language, input, handlers, idPrefix) {
   return {
     body,
     draft: resolvedDraft,
-    markErrors(errors) {
-      for (const [, entry] of errorNodes) {
-        entry.node.hidden = true;
-        entry.node.textContent = "";
-        entry.input.removeAttribute("aria-invalid");
-        entry.input.removeAttribute("aria-describedby");
-      }
-      for (const error of errors) {
-        const entry = errorNodes.get(error.field);
-        if (entry === void 0) {
-          continue;
-        }
-        const key = fieldErrorKey(error.code);
-        entry.node.hidden = false;
-        entry.node.textContent = translate(language, key);
-        entry.node.dataset["code"] = error.code;
-        entry.input.setAttribute("aria-invalid", "true");
-        if (entry.node.id !== "") {
-          entry.input.setAttribute("aria-describedby", entry.node.id);
-        }
-      }
-    },
+    markErrors,
     setNotice(text5, code) {
       notice.hidden = text5 === null;
       notice.textContent = text5 ?? "";

@@ -1056,6 +1056,17 @@ def site_field_errors(
         resulting = changes.get(field, current[field])
         if not resulting:
             errors.append(FieldError(field, ERR_REQUIRED))
+    if mode != MEASUREMENT_MODE_DIRECT:
+        # An export half on some phases only is no pair: all three or none (a half-filled set reads the
+        # others as import and silently drops the sign of the meter).
+        export_fields = [derived_field(phase, "power_export") for phase in PHASES]
+        filled = [bool(changes.get(field, current[field])) for field in export_fields]
+        if any(filled) and not all(filled):
+            errors.extend(
+                FieldError(field, ERR_REQUIRED)
+                for field, has_value in zip(export_fields, filled, strict=True)
+                if not has_value and field not in failed_fields
+            )
     return errors
 
 

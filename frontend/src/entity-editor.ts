@@ -446,11 +446,69 @@ export function entityEditorBody(
       body.append(notes);
     }
   }
+  // Dismissible: the site's power entities match a detected meter whose sign the stored flag contradicts.
+  const signNotice = element(doc, "div", C.entityWarning);
+  signNotice.dataset["signNotice"] = "grid";
+  signNotice.hidden = true;
+  let signDismissed = false;
+  function refreshSignNotice(): void {
+    const site = config.site;
+    const mismatch = scope === "site" && site !== null && !signDismissed ? signMismatch(site) : null;
+    signNotice.hidden = mismatch === null;
+    if (mismatch === null) {
+      signNotice.replaceChildren();
+      return;
+    }
+    const dismiss = element(doc, "button", C.button, translate(language, "entity.signNotice.dismiss"));
+    dismiss.type = "button";
+    dismiss.addEventListener("click", () => {
+      signDismissed = true;
+      refreshSignNotice();
+    });
+    signNotice.dataset["want"] = mismatch.inverted ? "on" : "off";
+    signNotice.replaceChildren(
+      element(
+        doc,
+        "span",
+        undefined,
+        translate(language, mismatch.inverted ? "entity.signNotice.on" : "entity.signNotice.off", {
+          title: mismatch.title,
+        }),
+      ),
+      dismiss,
+    );
+  }
+  function signMismatch(site: EntitySite): { title: string; inverted: boolean } | null {
+    const chosen = (name: string): string => {
+      const typed = values[name];
+      if (typed !== undefined) {
+        return typed.trim();
+      }
+      const field = config.fields.find((entry) => entry.field === name);
+      return field !== undefined && field.kind === "entity" && field.current !== null ? field.current.entityId : "";
+    };
+    const used = new Set(
+      [...PHASES.map((phase) => derivedFieldName(phase, "power")), GRID_TOTAL_FIELDS[0]]
+        .map(chosen)
+        .filter((entityId) => entityId !== ""),
+    );
+    const stored = values["grid_power_inverted"] === undefined
+      ? config.fields.some((entry) => entry.field === "grid_power_inverted" && entry.kind === "flag" && entry.value)
+      : isOn("grid_power_inverted");
+    for (const meter of site.meters) {
+      const powers = meter.entities.filter((entity) => entity.role === "power" || entity.role === "grid_power");
+      if (powers.length > 0 && powers.every((entity) => used.has(entity.entityId)) && meter.powerInverted !== stored) {
+        return { title: meter.title, inverted: meter.powerInverted };
+      }
+    }
+    return null;
+  }
   if (scope === "site" && config.site !== null) {
     const notices = siteNotices(doc, language, config.site);
     if (notices !== null) {
       body.append(notices);
     }
+    body.append(signNotice);
     const detection = detectionSection(config, config.site);
     if (detection !== null) {
       body.append(detection);
@@ -607,6 +665,7 @@ export function entityEditorBody(
     box.dataset["field"] = field.field;
     box.addEventListener("change", () => {
       values[field.field] = box.checked ? "true" : "false";
+      refreshSignNotice();
     });
     disabledWhenPending.push(box);
     row.append(box, doc.createTextNode(label));
@@ -898,6 +957,8 @@ export function entityEditorBody(
 
   // What a save clears: the fields of every variant that is not chosen, so nothing lingers.
   const clearers: Array<(draft: EntityDraft) => void> = [];
+  // What a save refuses: fields the resulting draft must fill, each shown with its own error.
+  const requirers: Array<(draft: EntityDraft) => string[]> = [];
 
   const isSet = (name: string): boolean => (values[name] ?? "").trim() !== "";
   const isOn = (name: string): boolean => values[name] === "true";
@@ -1166,7 +1227,9 @@ export function entityEditorBody(
           [
             translate(language, "entity.help.derivedPower"),
             translate(language, "entity.help.derivedVoltage"),
-            ...(gridKind === "two" ? [translate(language, "entity.help.derivedPowerExport")] : []),
+            ...(gridKind === "two"
+              ? [translate(language, "entity.help.derivedPowerExport"), translate(language, "entity.help.derivedTwoSensors")]
+              : []),
           ].join(" "),
         );
         help.dataset["help"] = "grid-phases";
@@ -1175,6 +1238,7 @@ export function entityEditorBody(
           ...(gridKind === "one" ? blocksOf("grid_power_inverted") : []),
         );
         grid.showNote(gridKind === "two" && isOn("grid_power_inverted"));
+        refreshSignNotice();
         applyPending();
       };
 
@@ -1243,6 +1307,20 @@ export function entityEditorBody(
         paintPhases();
       };
 
+      // With "two sensors" chosen, every shown export field must be filled: an empty one would drop the
+      // sign of a single sensor and store a pair that is not one.
+      const missingExports = (draft: EntityDraft): string[] => {
+        if (gridKind !== "two") {
+          return [];
+        }
+        const names =
+          currentMode() === MEASUREMENT_DERIVED
+            ? PHASES.map((phase) => derivedFieldName(phase, "power_export"))
+            : [GRID_TOTAL_FIELDS[1]];
+        return names.filter((name) => (draft[name] ?? "").trim() === "");
+      };
+      requirers.push(missingExports);
+
       clearers.push((draft) => {
         const derived = currentMode() === MEASUREMENT_DERIVED;
         if (derived) {
@@ -1260,7 +1338,8 @@ export function entityEditorBody(
         } else if (gridKind === "one") {
           draft[GRID_TOTAL_FIELDS[1]] = "";
         }
-        if (gridKind === "two") {
+        if (gridKind === "two" && missingExports(draft).length === 0) {
+          // Only a complete pair has no sign to keep: an incomplete one is refused before this runs.
           draft["grid_power_inverted"] = "false";
         }
         if (!signedShown()) {
@@ -1305,6 +1384,7 @@ export function entityEditorBody(
       paintBattery();
       layoutMode();
     }
+    refreshSignNotice();
   }
 
   // The voltage between two phases: 400 V (the usual TN network) or 230 V (an IT network, as in much of
@@ -1438,12 +1518,40 @@ export function entityEditorBody(
   body.addEventListener("submit", (event) => {
     event.preventDefault();
     if (!pending && !locked) {
+      const missing = requirers.flatMap((require) => require({ ...values }));
+      if (missing.length > 0) {
+        markErrors(missing.map((field) => ({ field, code: "required" })));
+        return;
+      }
       handlers.onSave(resolvedDraft());
     }
   });
   cancel.addEventListener("click", () => {
     handlers.onCancel();
   });
+
+  function markErrors(errors: readonly EntityFieldError[]): void {
+    for (const [, entry] of errorNodes) {
+      entry.node.hidden = true;
+      entry.node.textContent = "";
+      entry.input.removeAttribute("aria-invalid");
+      entry.input.removeAttribute("aria-describedby");
+    }
+    for (const error of errors) {
+      const entry = errorNodes.get(error.field);
+      if (entry === undefined) {
+        continue;
+      }
+      const key: TranslationKey = fieldErrorKey(error.code);
+      entry.node.hidden = false;
+      entry.node.textContent = translate(language, key);
+      entry.node.dataset["code"] = error.code;
+      entry.input.setAttribute("aria-invalid", "true");
+      if (entry.node.id !== "") {
+        entry.input.setAttribute("aria-describedby", entry.node.id);
+      }
+    }
+  }
 
   /** The draft as a save sends it: every field of an unchosen variant cleared. */
   function resolvedDraft(): EntityDraft {
@@ -1467,28 +1575,7 @@ export function entityEditorBody(
   return {
     body,
     draft: resolvedDraft,
-    markErrors(errors) {
-      for (const [, entry] of errorNodes) {
-        entry.node.hidden = true;
-        entry.node.textContent = "";
-        entry.input.removeAttribute("aria-invalid");
-        entry.input.removeAttribute("aria-describedby");
-      }
-      for (const error of errors) {
-        const entry = errorNodes.get(error.field);
-        if (entry === undefined) {
-          continue;
-        }
-        const key: TranslationKey = fieldErrorKey(error.code);
-        entry.node.hidden = false;
-        entry.node.textContent = translate(language, key);
-        entry.node.dataset["code"] = error.code;
-        entry.input.setAttribute("aria-invalid", "true");
-        if (entry.node.id !== "") {
-          entry.input.setAttribute("aria-describedby", entry.node.id);
-        }
-      }
-    },
+    markErrors,
     setNotice(text, code) {
       notice.hidden = text === null;
       notice.textContent = text ?? "";

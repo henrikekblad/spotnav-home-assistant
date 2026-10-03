@@ -26,12 +26,14 @@ from __future__ import annotations
 import asyncio
 import logging
 import math
+import random
 from collections.abc import Awaitable, Callable, Iterable, Sequence
 from dataclasses import dataclass, replace
-from datetime import date, datetime, timedelta
+from datetime import date, datetime, time, timedelta
 from typing import Any, Final
 
 from homeassistant.core import HomeAssistant
+from homeassistant.helpers.event import async_track_point_in_time
 from homeassistant.util import dt as dt_util
 
 from .costing import merge_slices, Slice, spot_intervals, split_energy
@@ -55,6 +57,9 @@ MIN_HOUR_KWH: Final = 0.1
 FETCH_GAP_S: Final = 2.0
 #: How long after start-up the import begins.
 START_DELAY_S: Final = 120.0
+#: The local time of day the daily re-price runs, and how far past it the run may be spread.
+REPRICE_AT: Final = time(4, 30)
+REPRICE_JITTER_S: Final = 1800.0
 #: An hour is priced when at least this share of its energy fell in a published interval.
 PRICED_SHARE: Final = 0.999
 MARKER_VERSION: Final = 2
@@ -185,6 +190,17 @@ def build_sessions(
     return Built(sessions, priced_hours, unpriced_hours)
 
 
+def next_reprice(now: datetime, zone: Any, jitter_s: float) -> datetime:
+    """The next daily re-price after `now`: 04:30 local, plus `jitter_s`, as a UTC moment."""
+    local = now.astimezone(zone)
+    when = datetime.combine(local.date(), REPRICE_AT, tzinfo=zone) + timedelta(seconds=jitter_s)
+    if when <= local:
+        when = datetime.combine(local.date() + timedelta(days=1), REPRICE_AT, tzinfo=zone) + timedelta(
+            seconds=jitter_s
+        )
+    return when.astimezone(dt_util.UTC)
+
+
 def _floor_hour(moment: datetime) -> datetime:
     return moment.replace(minute=0, second=0, microsecond=0)
 
@@ -221,6 +237,39 @@ class HistoryImporter:
         self._recorder_ready = recorder_ready or (lambda: "recorder" in hass.config.components)
         self.status = STATUS_PENDING
         self._days: dict[date, Any] = {}
+
+    # ---- the daily timer
+
+    def schedule_daily(
+        self,
+        *,
+        track: Callable[..., Callable[[], None]] = async_track_point_in_time,
+        jitter: Callable[[], float] = lambda: random.uniform(0.0, REPRICE_JITTER_S),
+    ) -> Callable[[], None]:
+        """Run `async_run` (its once-a-day re-price) every night at 04:30 local while HA runs.
+
+        Returns the cancel that unload calls. Each run arms the next, with a fresh jitter."""
+        cancelled = False
+        cancel_point: Callable[[], None] | None = None
+
+        def arm() -> None:
+            nonlocal cancel_point
+            when = next_reprice(self._now(), local_zone(self._hass), jitter())
+            cancel_point = track(self._hass, fire, when)
+
+        async def fire(_now: datetime) -> None:
+            await self.async_run()
+            if not cancelled:
+                arm()
+
+        def cancel() -> None:
+            nonlocal cancelled
+            cancelled = True
+            if cancel_point is not None:
+                cancel_point()
+
+        arm()
+        return cancel
 
     # ---- diagnostics
 
