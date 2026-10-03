@@ -23,6 +23,8 @@ from homeassistant.helpers.event import async_track_state_change_event, async_tr
 from homeassistant.util import dt as dt_util
 
 from ..const import (
+    CONF_CHARGER_PRIORITY,
+    DEFAULT_CHARGER_PRIORITY,
     CONF_ACTIVE_CONTROL_ENABLED,
     CONF_BATTERY_AGGREGATE_POWER_ENTITY,
     CONF_BATTERY_DISCHARGE_POWER_ENTITY,
@@ -1006,7 +1008,7 @@ class SiteCapacityController:
         charger_entry_ids: list[str] = list(self.config.get(CONF_CHARGER_ENTRY_IDS) or [])
         phase_wiring: dict[str, dict[str, Any]] = self.config.get(CONF_PHASE_WIRING) or {}
         requests: list[ChargerRequest] = []
-        for charger_entry_id in charger_entry_ids:
+        for order, charger_entry_id in enumerate(charger_entry_ids):
             wiring = phase_wiring.get(charger_entry_id) or {}
             requests.append(
                 ChargerRequest(
@@ -1016,9 +1018,18 @@ class SiteCapacityController:
                     phase=wiring.get("phase"),
                     min_current_a=float(wiring.get("min_current_a", DEFAULT_MIN_CURRENT_A)),
                     measured_current_a=self._read_charger_measured_current(wiring),
+                    priority=self._charger_priority(charger_entry_id),
+                    order=order,
                 )
             )
         return requests
+
+    def _charger_priority(self, charger_entry_id: str) -> str:
+        """The charger's own `CONF_CHARGER_PRIORITY`, "normal" when none is stored or its entry is gone."""
+        entry = self.hass.config_entries.async_get_entry(charger_entry_id)
+        if entry is None:
+            return DEFAULT_CHARGER_PRIORITY
+        return str(entry.data.get(CONF_CHARGER_PRIORITY) or DEFAULT_CHARGER_PRIORITY)
 
     def _active_power_last_reported(self, phase: PhaseName) -> datetime | None:
         """The `last_reported` timestamp of this phase's active-power entity, read directly off

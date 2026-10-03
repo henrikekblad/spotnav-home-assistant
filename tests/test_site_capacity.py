@@ -69,6 +69,8 @@ def _charger(
     phase: str | None = None,
     min_current_a: float = 6.0,
     measured_current_a: DirectPhaseMeasurement | None = None,
+    priority: str = "normal",
+    order: int = 0,
 ) -> ChargerRequest:
     return ChargerRequest(
         charger_entry_id=charger_entry_id,
@@ -77,6 +79,8 @@ def _charger(
         phase=phase,  # type: ignore[arg-type]
         min_current_a=min_current_a,
         measured_current_a=measured_current_a,
+        priority=priority,
+        order=order,
     )
 
 
@@ -1695,3 +1699,30 @@ def test_a_magnitude_source_has_no_signed_margin() -> None:
     result = calculate_site_capacity(config, [_charger()])
 
     assert result.phase_signed_margin_a == {"L1": None, "L2": None, "L3": None}
+
+
+def test_a_first_priority_charger_is_served_before_a_normal_one_and_a_last_one_after() -> None:
+    # 24 A of headroom on every phase, three-phase chargers asking for 16 A each: the first served gets it all.
+    config = _config(direct=_direct(0.0, 0.0, 0.0))
+    chargers = [
+        _charger("a_last", priority="last"),
+        _charger("b_normal"),
+        _charger("c_first", priority="first"),
+    ]
+
+    by_id = {a.charger_entry_id: a for a in calculate_site_capacity(config, chargers).allocations}
+
+    assert by_id["c_first"].proposed_current_a == 16.0
+    assert by_id["b_normal"].proposed_current_a == 6.0 or by_id["b_normal"].proposed_current_a == 8.0
+    assert by_id["a_last"].proposed_current_a == 0.0
+
+
+def test_chargers_of_one_priority_are_served_in_the_sites_charger_order_not_by_id() -> None:
+    config = _config(direct=_direct(0.0, 0.0, 0.0))
+    # "z" joined first, so it is served first although its id sorts last, whichever way they are listed.
+    chargers = [_charger("a_entry", order=1), _charger("z_entry", order=0)]
+
+    by_id = {a.charger_entry_id: a for a in calculate_site_capacity(config, chargers).allocations}
+
+    assert by_id["z_entry"].proposed_current_a == 16.0
+    assert by_id["a_entry"].proposed_current_a < 16.0
