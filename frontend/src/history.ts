@@ -52,6 +52,14 @@ export interface SessionsAnswer {
   days: SessionBucket[];
   open: SessionRecord | null;
   sessions: SessionRecord[];
+  /** The month the `month_*` parts are for (`YYYY-MM`). */
+  month: string;
+  month_summary: SessionBucket;
+  /** One bucket for every day of the month, oldest first, a day with no charge as a zero row. */
+  month_days: SessionBucket[];
+  month_sessions: SessionRecord[];
+  /** The months that have data, newest first. */
+  available_months: string[];
 }
 
 export type SessionsDecodeResult =
@@ -98,6 +106,11 @@ function flag(source: Record<string, unknown>, key: string): boolean {
 function shareOrNull(source: Record<string, unknown>, key: string): number | null {
   const value = numberOrNull(source, key);
   return value !== null && (value < 0 || value > 1) ? bad() : value;
+}
+
+function month(source: Record<string, unknown>, key: string): string {
+  const value = text(source, key);
+  return monthParts(value) === null ? bad() : value;
 }
 
 function decodeBucket(raw: unknown): SessionBucket {
@@ -166,6 +179,11 @@ export function decodeSessions(raw: unknown): SessionsDecodeResult {
         days: list(source, "days", decodeBucket),
         open: source.open === null ? null : decodeRecord(source.open),
         sessions: list(source, "sessions", decodeRecord),
+        month: month(source, "month"),
+        month_summary: decodeBucket(source.month_summary),
+        month_days: list(source, "month_days", decodeBucket),
+        month_sessions: list(source, "month_sessions", decodeRecord),
+        available_months: list(source, "available_months", (raw) => (typeof raw === "string" && monthParts(raw) !== null ? raw : bad())),
       },
     };
   } catch {
@@ -186,13 +204,13 @@ export function decodeCsv(raw: unknown): { filename: string; csv: string } | nul
   }
 }
 
-// ---------------------------------------------------------------------------------------- export range
+// ------------------------------------------------------------------------------------------- months
 
-export const HISTORY_RANGES = ["thisMonth", "lastMonth", "last12", "all"] as const;
-export type HistoryRange = (typeof HISTORY_RANGES)[number];
+/** How many months back the backend answers for. */
+export const MONTHS_BACK = 24;
 
 function monthParts(period: string): [number, number] | null {
-  const match = /^(\d{4})-(\d{2})$/.exec(period);
+  const match = /^(\d{4})-(0[1-9]|1[0-2])$/.exec(period);
   return match === null ? null : [Number(match[1]), Number(match[2])];
 }
 
@@ -200,55 +218,68 @@ function pad(value: number): string {
   return String(value).padStart(2, "0");
 }
 
-function monthStart(year: number, month: number): string {
-  return `${year}-${pad(month)}-01`;
-}
-
-function monthEnd(year: number, month: number): string {
-  return `${year}-${pad(month)}-${pad(new Date(Date.UTC(year, month, 0)).getUTCDate())}`;
+/** The month `offset` months from `period` (negative is earlier), `YYYY-MM`. */
+export function shiftMonth(period: string, offset: number): string {
+  const parts = monthParts(period);
+  if (parts === null) {
+    return period;
+  }
+  const index = parts[0] * 12 + parts[1] - 1 + offset;
+  return `${Math.floor(index / 12)}-${pad((index % 12) + 1)}`;
 }
 
 /**
- * The local dates an export range covers, from the months the answer itself names (so the card needs
- * no clock of its own and the dates are the backend's own local days). `null` ends are open.
+ * The months the picker offers, newest first: those with data, the current month (so the picker
+ * always has "now") and the one shown.
  */
-export function exportDates(
-  range: HistoryRange,
-  answer: SessionsAnswer,
-): { from: string | null; to: string | null } {
-  const current = monthParts(answer.this_month.period);
-  const previous = monthParts(answer.last_month.period);
-  if (range === "all" || current === null || previous === null) {
-    return { from: null, to: null };
-  }
-  if (range === "thisMonth") {
-    return { from: monthStart(...current), to: monthEnd(...current) };
-  }
-  if (range === "lastMonth") {
-    return { from: monthStart(...previous), to: monthEnd(...previous) };
-  }
-  const first = new Date(Date.UTC(current[0], current[1] - 1 - 11, 1));
-  return { from: monthStart(first.getUTCFullYear(), first.getUTCMonth() + 1), to: null };
+export function pickerMonths(answer: SessionsAnswer, shown: string): string[] {
+  return Array.from(new Set([...answer.available_months, answer.this_month.period, shown]))
+    .filter((period) => period >= shiftMonth(answer.this_month.period, -MONTHS_BACK) && period <= answer.this_month.period)
+    .sort()
+    .reverse();
+}
+
+/**
+ * Each day's position between the month's cheapest (0) and dearest (1) average price, `null` for a day
+ * with no price. A month whose days all cost the same is all cheap.
+ */
+export function dayPricePositions(days: SessionBucket[]): Array<number | null> {
+  const priced = days
+    .filter((day) => day.energy_kwh > 0 && day.average_price_minor_per_kwh !== null)
+    .map((day) => day.average_price_minor_per_kwh as number);
+  const low = Math.min(...priced);
+  const high = Math.max(...priced);
+  return days.map((day) =>
+    day.energy_kwh > 0 && day.average_price_minor_per_kwh !== null
+      ? high > low
+        ? (day.average_price_minor_per_kwh - low) / (high - low)
+        : 0
+      : null,
+  );
 }
 
 // ----------------------------------------------------------------------------------------------- state
 
 export type HistoryState =
   | { kind: "loading" }
-  | { kind: "failed"; sentenceKey: TranslationKey; code: string | null }
+  /** `answer` is the last good one, so the month picker stays usable after a failed month. */
+  | { kind: "failed"; sentenceKey: TranslationKey; code: string | null; answer?: SessionsAnswer | null }
   | { kind: "ready"; answer: SessionsAnswer };
 
 export interface HistoryUi {
-  list: "days" | "months";
-  range: HistoryRange;
+  /** The month the reader asked for (`YYYY-MM`), or `null` for the current one. */
+  month: string | null;
+  /** A month is being read: the old figures stay, dimmed. */
+  pending: boolean;
+  /** The day whose figures the chart's readout shows, or `null`. */
+  day: string | null;
   exporting: boolean;
   /** One sentence about the last export, or `null`. */
   notice: TranslationKey | null;
 }
 
 export interface HistoryHandlers {
-  onList: (list: "days" | "months") => void;
-  onRange: (range: HistoryRange) => void;
+  onMonth: (month: string) => void;
   onExport: () => void;
 }
 
@@ -354,10 +385,9 @@ function figures(language: Language, bucket: SessionBucket | SessionRecord): str
   return parts.join(" · ");
 }
 
-function bucketCard(doc: Document, language: Language, titleKey: TranslationKey, bucket: SessionBucket): HTMLElement {
+function monthSummary(doc: Document, language: Language, bucket: SessionBucket): HTMLElement {
   const card = element(doc, "section", C.historyTile);
-  card.dataset["tile"] = titleKey === "history.thisMonth" ? "thisMonth" : "lastMonth";
-  card.append(element(doc, "h4", C.historyTileHeading, translate(language, titleKey)));
+  card.dataset["tile"] = "month";
   if (bucket.sessions === 0) {
     card.append(element(doc, "p", C.muted, translate(language, "history.noneInMonth")));
     return card;
@@ -378,28 +408,80 @@ function bucketCard(doc: Document, language: Language, titleKey: TranslationKey,
   return card;
 }
 
-function periodRow(doc: Document, language: Language, kind: "days" | "months", bucket: SessionBucket): HTMLElement {
-  const row = element(doc, "li", C.historyRow);
-  row.dataset["period"] = bucket.period;
-  row.append(
-    element(
-      doc,
-      "span",
-      C.historyRowTitle,
-      kind === "days" ? dateLabel(language, bucket.period) : monthLabel(language, bucket.period),
-    ),
-    element(doc, "span", C.historyRowFigures, figures(language, bucket)),
-  );
-  const notes = [sessionsCount(language, bucket.sessions)];
-  if (bucket.solar_share !== null) {
-    notes.push(translate(language, "history.solar", { percent: percent(language, bucket.solar_share) }));
+/** The figures one day's bar stands for, as one line. */
+export function dayFigures(language: Language, day: SessionBucket): string {
+  const date = dateLabel(language, day.period);
+  if (day.sessions === 0) {
+    return translate(language, "history.chart.noCharge", { date });
   }
-  const savings = savingsLine(language, bucket);
-  if (savings !== null) {
-    notes.push(savings);
+  const parts = [figures(language, day)];
+  if (day.solar_share !== null) {
+    parts.push(translate(language, "history.solar", { percent: percent(language, day.solar_share) }));
   }
-  row.append(element(doc, "span", `${C.muted} ${C.historyRowNote}`, notes.join(" · ")));
-  return row;
+  return `${date}: ${parts.join(" · ")}`;
+}
+
+/**
+ * One bar per day of the month: height is the day's energy, colour its average price against the
+ * month (the card's cheap green to expensive red). Hover, focus or a tap shows that day's figures in
+ * the readout under the chart; nothing is repainted, so a hover never loses its place.
+ */
+function dayChart(doc: Document, language: Language, days: SessionBucket[], ui: HistoryUi): HTMLElement {
+  const wrap = element(doc, "div", C.historyChart);
+  const top = Math.max(0, ...days.map((day) => day.energy_kwh));
+  const positions = dayPricePositions(days);
+  const readout = element(doc, "p", `${C.muted} ${C.historyReadout}`);
+  readout.setAttribute("aria-live", "polite");
+  const hint = translate(language, "history.chart.hint");
+  const bars: HTMLButtonElement[] = [];
+  const show = (day: SessionBucket | null): void => {
+    readout.textContent = day === null ? hint : dayFigures(language, day);
+    bars.forEach((bar) => bar.setAttribute("aria-pressed", String(day !== null && bar.dataset["day"] === day.period)));
+  };
+  const plot = element(doc, "div", C.historyBars);
+  plot.setAttribute("role", "group");
+  plot.setAttribute("aria-label", translate(language, "history.chart.label"));
+  days.forEach((day, index) => {
+    const bar = element(doc, "button", C.historyBar);
+    bar.type = "button";
+    bar.dataset["day"] = day.period;
+    bar.setAttribute("aria-label", dayFigures(language, day));
+    const fill = element(doc, "span", C.historyBarFill);
+    const position = positions[index] ?? null;
+    if (day.energy_kwh > 0 && top > 0) {
+      fill.style.height = `${Math.max(4, (day.energy_kwh / top) * 100)}%`;
+      if (position === null) {
+        fill.dataset["price"] = "none";
+      } else {
+        fill.style.setProperty("--spotnav-day-dear", `${Math.round(position * 100)}%`);
+      }
+    } else {
+      fill.dataset["empty"] = "true";
+    }
+    bar.append(fill);
+    const choose = (): void => {
+      ui.day = day.period;
+      show(day);
+    };
+    bar.addEventListener("mouseenter", () => show(day));
+    bar.addEventListener("focus", () => show(day));
+    bar.addEventListener("click", choose);
+    bars.push(bar);
+    plot.append(bar);
+  });
+  plot.addEventListener("mouseleave", () => show(days.find((day) => day.period === ui.day) ?? null));
+  const axis = element(doc, "div", C.historyAxis);
+  axis.setAttribute("aria-hidden", "true");
+  days.forEach((day, index) => {
+    const number = index + 1;
+    const labelled = number === 1 || number === days.length || (number % 5 === 0 && days.length - number >= 3);
+    axis.append(element(doc, "span", undefined, labelled ? String(number) : ""));
+  });
+  const scale = element(doc, "span", `${C.muted} ${C.historyScale}`, energyAmount(language, top));
+  scale.setAttribute("aria-hidden", "true");
+  wrap.append(scale, plot, axis, readout);
+  show(days.find((day) => day.period === ui.day) ?? null);
+  return wrap;
 }
 
 function sessionRow(doc: Document, language: Language, session: SessionRecord): HTMLElement {
@@ -426,49 +508,54 @@ function sessionRow(doc: Document, language: Language, session: SessionRecord): 
   return row;
 }
 
-function toggle(
+function monthPicker(
   doc: Document,
   language: Language,
-  ui: HistoryUi,
+  answer: SessionsAnswer,
+  shown: string,
   handlers: HistoryHandlers,
 ): HTMLElement {
-  const group = element(doc, "div", C.historyToggle);
-  group.setAttribute("role", "group");
-  group.setAttribute("aria-label", translate(language, "history.listLabel"));
-  for (const choice of ["days", "months"] as const) {
-    const button = element(doc, "button", C.historyToggleButton, translate(language, choice === "days" ? "history.days" : "history.months"));
+  const row = element(doc, "div", C.historyMonthPicker);
+  const current = answer.this_month.period;
+  const step = (label: TranslationKey, glyph: string, target: string, allowed: boolean): HTMLButtonElement => {
+    const button = element(doc, "button", C.historyToggleButton, glyph);
     button.type = "button";
-    button.dataset["list"] = choice;
-    button.setAttribute("aria-pressed", String(ui.list === choice));
-    button.addEventListener("click", () => handlers.onList(choice));
-    group.append(button);
+    button.dataset["month"] = target;
+    button.setAttribute("aria-label", translate(language, label));
+    button.disabled = !allowed;
+    button.addEventListener("click", () => handlers.onMonth(target));
+    return button;
+  };
+  const earliest = shiftMonth(current, -MONTHS_BACK);
+  const select = element(doc, "select");
+  select.dataset["monthSelect"] = "true";
+  select.setAttribute("aria-label", translate(language, "history.month.label"));
+  for (const period of pickerMonths(answer, shown)) {
+    const option = new Option(monthLabel(language, period), period);
+    option.selected = period === shown;
+    select.append(option);
   }
-  return group;
+  select.addEventListener("change", () => {
+    if (monthParts(select.value) !== null) {
+      handlers.onMonth(select.value);
+    }
+  });
+  row.append(
+    step("history.month.previous", "‹", shiftMonth(shown, -1), shown > earliest),
+    select,
+    step("history.month.next", "›", shiftMonth(shown, 1), shown < current),
+  );
+  return row;
 }
 
 function exportRow(doc: Document, language: Language, ui: HistoryUi, handlers: HistoryHandlers): HTMLElement {
   const row = element(doc, "div", C.historyExport);
-  const label = element(doc, "label", C.historyExportLabel, translate(language, "history.export.period"));
-  const select = element(doc, "select");
-  select.dataset["exportRange"] = "true";
-  for (const range of HISTORY_RANGES) {
-    const option = new Option(translate(language, `history.range.${range}` as TranslationKey), range);
-    option.selected = range === ui.range;
-    select.append(option);
-  }
-  select.addEventListener("change", () => {
-    const chosen = HISTORY_RANGES.find((range) => range === select.value);
-    if (chosen !== undefined) {
-      handlers.onRange(chosen);
-    }
-  });
-  label.append(select);
   const button = element(doc, "button", C.button, translate(language, "history.export"));
   button.type = "button";
   button.dataset["action"] = "export";
-  button.disabled = ui.exporting;
+  button.disabled = ui.exporting || ui.pending;
   button.addEventListener("click", () => handlers.onExport());
-  row.append(label, button);
+  row.append(button);
   return row;
 }
 
@@ -488,6 +575,9 @@ export function historyBody(
     return body;
   }
   if (state.kind === "failed") {
+    if (state.answer !== undefined && state.answer !== null) {
+      body.append(monthPicker(doc, language, state.answer, ui.month ?? state.answer.month, handlers));
+    }
     const failed = element(doc, "p", C.settingsNotice, translate(language, state.sentenceKey));
     failed.setAttribute("role", "status");
     if (state.code !== null) {
@@ -497,6 +587,7 @@ export function historyBody(
     return body;
   }
   const answer = state.answer;
+  const shown = ui.month ?? answer.month;
   body.append(element(doc, "p", `${C.muted} ${C.dialogIntro}`, translate(language, "history.intro")));
   if (answer.open !== null) {
     const open = element(
@@ -511,31 +602,27 @@ export function historyBody(
     open.setAttribute("role", "status");
     body.append(open);
   }
-  const tiles = element(doc, "div", C.historyTiles);
-  tiles.append(
-    bucketCard(doc, language, "history.thisMonth", answer.this_month),
-    bucketCard(doc, language, "history.lastMonth", answer.last_month),
-  );
-  body.append(tiles);
-  if (answer.sessions.length === 0 && answer.open === null) {
-    body.append(element(doc, "p", C.muted, translate(language, "history.empty")));
-  } else {
-    body.append(toggle(doc, language, ui, handlers));
-    const buckets = ui.list === "days" ? answer.days : answer.months;
-    const periods = element(doc, "ul", C.historyList);
-    periods.dataset["list"] = ui.list;
-    for (const bucket of buckets) {
-      periods.append(periodRow(doc, language, ui.list, bucket));
-    }
-    body.append(periods);
-    body.append(element(doc, "h4", C.historyHeading, translate(language, "history.latest")));
+  body.append(monthPicker(doc, language, answer, shown, handlers));
+  const month = element(doc, "div", C.historyMonth);
+  month.dataset["month"] = answer.month;
+  if (ui.pending) {
+    month.setAttribute("aria-busy", "true");
+    month.dataset["pending"] = "true";
+  }
+  month.append(monthSummary(doc, language, answer.month_summary));
+  if (answer.month_summary.sessions > 0) {
+    month.append(dayChart(doc, language, answer.month_days, ui));
+  }
+  if (answer.month_sessions.length > 0) {
+    month.append(element(doc, "h4", C.historyHeading, translate(language, "history.sessionsHeading")));
     const latest = element(doc, "ul", C.historyList);
     latest.dataset["list"] = "sessions";
-    for (const session of answer.sessions) {
+    for (const session of answer.month_sessions) {
       latest.append(sessionRow(doc, language, session));
     }
-    body.append(latest);
+    month.append(latest);
   }
+  body.append(month);
   body.append(element(doc, "p", `${C.muted} ${C.historyFootnote}`, translate(language, "history.savings.note")));
   body.append(exportRow(doc, language, ui, handlers));
   if (ui.notice !== null) {

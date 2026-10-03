@@ -59,7 +59,7 @@ import {
 import { decodeDebugAnswer, saveDebugBundle } from "./debug-download";
 import { saveTextFile } from "./download";
 import { ensureHaSelector } from "./entity-editor";
-import { decodeCsv, decodeSessions, exportDates, type HistoryRange, type SessionsAnswer } from "./history";
+import { decodeCsv, decodeSessions, type SessionsAnswer } from "./history";
 import {
   SETTINGS_EDITOR_KINDS,
   decodeSettingsAnswer,
@@ -1213,7 +1213,7 @@ export class SpotnavCard extends HTMLElement {
    * The History dialog was opened: read the charge history (any signed-in user may), and answer the open
    * view. A newer open, a reconfiguration or a disconnect makes an older answer inert.
    */
-  private async loadHistory(): Promise<void> {
+  private async loadHistory(month: string | null = null): Promise<void> {
     const hass = this.hassObject;
     const config = this.config;
     const view = this.view;
@@ -1225,7 +1225,7 @@ export class SpotnavCard extends HTMLElement {
     const current = (): boolean =>
       this.connected && generation === this.generation && operation === this.historyOperation && this.view === view;
     try {
-      const decoded = decodeSessions(await getSessions(hass, config.charger));
+      const decoded = decodeSessions(await getSessions(hass, config.charger, 20, month));
       if (!current()) {
         return;
       }
@@ -1234,6 +1234,7 @@ export class SpotnavCard extends HTMLElement {
           kind: "failed",
           sentenceKey: decoded.failure === "unsupported" ? "settings.error.version" : "history.failed",
           code: null,
+          answer: this.history,
         });
         return;
       }
@@ -1244,12 +1245,12 @@ export class SpotnavCard extends HTMLElement {
         return;
       }
       const code = error instanceof SpotnavApiError ? error.code : null;
-      view.setHistoryState({ kind: "failed", sentenceKey: "history.failed", code });
+      view.setHistoryState({ kind: "failed", sentenceKey: "history.failed", code, answer: this.history });
     }
   }
 
-  /** Export CSV: one request for the chosen period, then the file is saved; failure is one sentence. */
-  private async exportHistory(range: HistoryRange): Promise<void> {
+  /** Export CSV: one request for the shown month, then the file is saved; failure is one sentence. */
+  private async exportHistory(): Promise<void> {
     const hass = this.hassObject;
     const config = this.config;
     const view = this.view;
@@ -1263,7 +1264,7 @@ export class SpotnavCard extends HTMLElement {
       this.connected && generation === this.generation && operation === this.historyOperation && this.view === view;
     view.setHistoryExport(null, true);
     try {
-      const file = decodeCsv(await getSessionsCsv(hass, config.charger, exportDates(range, answer)));
+      const file = decodeCsv(await getSessionsCsv(hass, config.charger, answer.month));
       if (!current()) {
         return;
       }
@@ -1987,8 +1988,11 @@ export class SpotnavCard extends HTMLElement {
         onOpenHistory: () => {
           void this.loadHistory();
         },
-        onExportHistory: (range) => {
-          void this.exportHistory(range);
+        onHistoryMonth: (month) => {
+          void this.loadHistory(month);
+        },
+        onExportHistory: () => {
+          void this.exportHistory();
         },
         onSettingsOverviewOpened: () => {
           void this.loadEntityConfig();

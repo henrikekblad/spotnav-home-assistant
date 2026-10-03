@@ -95,10 +95,13 @@ serious each is. Examples:
 
 Every charge is recorded as a session, from the moment the charger starts charging, whatever
 started it, until it stops or the car is unplugged. A pause of a couple of minutes (load balancing,
-a window boundary) stays in the same session. The **Charge history** dialog shows this month and
-last month (energy, cost, average price, number of charges, solar share), every day and month with
-a charge, and the latest charges with how each started: a planned window, by hand, solar surplus,
-hybrid, or started elsewhere.
+a window boundary) stays in the same session. The **Charge history** dialog shows one month at a
+time, this month first: pick another with the arrows or the list of months that have charges (up to
+24 months back). It shows the month's energy, cost, average price, number of charges and solar share,
+a bar for every day (the height is the day's energy; the colour is the day's average price against
+the month, green for the cheapest to red for the dearest; hover or tap a bar for that day's energy,
+cost, price and solar share), and the month's charges with how each started: a planned window, by
+hand, solar surplus, hybrid, or started elsewhere.
 
 - **Energy** comes from the charger's energy register, or from the power SpotNav integrates for a
   charger behind a smart plug. A charger with neither is **estimated** from the current it was
@@ -108,8 +111,7 @@ hybrid, or started elsewhere.
   force at the time. Energy in an hour with no published price is counted but not priced.
 - **Savings** compare with the same energy at the day's average price. It is an estimate, shown
   as one, and is negative when a charge happened to be dearer than the average.
-- **Export CSV** saves the sessions of this month, last month, the last 12 months or everything,
-  one row per session, in local time.
+- **Export CSV** saves the sessions of the month shown, one row per session, in local time.
 
 Sessions are kept for two years, per charger, and survive restarts. Each charger also has sensors
 for the energy and cost this month and last month and for the last charge, which can be used on

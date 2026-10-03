@@ -184,7 +184,15 @@ export const VISUAL_CLASSES = {
   historyHeading: "spotnav-history-heading",
   historyFootnote: "spotnav-history-footnote",
   historyExport: "spotnav-history-export",
-  historyExportLabel: "spotnav-history-export-label",
+  historyMonthPicker: "spotnav-history-month-picker",
+  historyMonth: "spotnav-history-month",
+  historyChart: "spotnav-history-chart",
+  historyBars: "spotnav-history-bars",
+  historyBar: "spotnav-history-bar",
+  historyBarFill: "spotnav-history-bar-fill",
+  historyAxis: "spotnav-history-axis",
+  historyScale: "spotnav-history-scale",
+  historyReadout: "spotnav-history-readout",
   muted: "spotnav-muted",
   unavailable: "spotnav-unavailable",
 } as const;
@@ -1357,14 +1365,12 @@ export const VISUAL_STYLES = `
     align-items: center;
     gap: 8px;
   }
-  .${VISUAL_CLASSES.historyExportLabel} {
+  .${VISUAL_CLASSES.historyMonthPicker} {
     display: flex;
     align-items: center;
     gap: 6px;
-    flex: 1 1 auto;
-    min-width: 0;
   }
-  .${VISUAL_CLASSES.historyExportLabel} > select {
+  .${VISUAL_CLASSES.historyMonthPicker} > select {
     flex: 1 1 auto;
     min-width: 0;
     min-height: 36px;
@@ -1373,6 +1379,103 @@ export const VISUAL_STYLES = `
     background: var(--secondary-background-color, transparent);
     border: 1px solid var(--divider-color, #e0e0e0);
     border-radius: 8px;
+  }
+  .${VISUAL_CLASSES.historyMonthPicker} > button {
+    flex: none;
+    min-width: 36px;
+    padding: 4px 10px;
+    font-size: 1.1rem;
+    line-height: 1;
+  }
+  .${VISUAL_CLASSES.historyMonthPicker} > button:disabled {
+    opacity: 0.4;
+    cursor: default;
+  }
+  .${VISUAL_CLASSES.historyMonth} {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    min-width: 0;
+  }
+  .${VISUAL_CLASSES.historyMonth} > .${VISUAL_CLASSES.historyTile} {
+    flex: none;
+  }
+  .${VISUAL_CLASSES.historyMonth}[aria-busy="true"] {
+    opacity: 0.5;
+  }
+  .${VISUAL_CLASSES.historyChart} {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    min-width: 0;
+  }
+  .${VISUAL_CLASSES.historyScale} {
+    font-size: 0.75rem;
+    font-variant-numeric: tabular-nums;
+  }
+  .${VISUAL_CLASSES.historyBars} {
+    display: flex;
+    align-items: stretch;
+    gap: 2px;
+    height: 7.5rem;
+    border-bottom: 1px solid var(--divider-color, #e0e0e0);
+  }
+  .${VISUAL_CLASSES.historyBar} {
+    flex: 1 1 0;
+    min-width: 0;
+    padding: 0;
+    display: flex;
+    align-items: flex-end;
+    background: transparent;
+    border: 0;
+    border-radius: 3px;
+    cursor: pointer;
+  }
+  .${VISUAL_CLASSES.historyBar}:hover,
+  .${VISUAL_CLASSES.historyBar}[aria-pressed="true"] {
+    background: var(--secondary-background-color, #e5e5e5);
+  }
+  .${VISUAL_CLASSES.historyBar}:focus-visible {
+    outline: 2px solid var(--primary-color, #03a9f4);
+    outline-offset: 1px;
+  }
+  .${VISUAL_CLASSES.historyBarFill} {
+    display: block;
+    width: 100%;
+    min-height: 0;
+    border-radius: 3px 3px 0 0;
+    background: color-mix(
+      in srgb,
+      var(--spotnav-expensive, #c62828) var(--spotnav-day-dear, 0%),
+      var(--spotnav-cheap, #2e7d32)
+    );
+  }
+  .${VISUAL_CLASSES.historyBarFill}[data-price="none"] {
+    background: var(--secondary-text-color, #727272);
+  }
+  .${VISUAL_CLASSES.historyBarFill}[data-empty="true"] {
+    height: 0.125rem;
+    background: var(--divider-color, #e0e0e0);
+  }
+  .${VISUAL_CLASSES.historyAxis} {
+    display: flex;
+    gap: 2px;
+    font-size: 0.72rem;
+    color: var(--secondary-text-color, #727272);
+    font-variant-numeric: tabular-nums;
+  }
+  .${VISUAL_CLASSES.historyAxis} > span {
+    flex: 1 1 0;
+    min-width: 0;
+    display: flex;
+    justify-content: center;
+    white-space: nowrap;
+  }
+  .${VISUAL_CLASSES.historyReadout} {
+    margin: 4px 0 0;
+    min-height: 2.6em;
+    font-size: 0.85rem;
+    overflow-wrap: anywhere;
   }
   .${VISUAL_CLASSES.issueItem} {
     display: flex;

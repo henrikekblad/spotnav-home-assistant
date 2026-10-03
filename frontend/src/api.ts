@@ -305,32 +305,31 @@ export async function getSessions(
   hass: HomeAssistantLike,
   chargerId: string,
   limit = 20,
-): Promise<unknown> {
-  return await call<unknown>(hass, {
-    type: "spotnav/get_sessions",
-    api_version: SESSIONS_API_VERSION,
-    charger_id: chargerId,
-    limit,
-  });
-}
-
-/** The CSV of the sessions that started in a date range (local dates, either end open). */
-export async function getSessionsCsv(
-  hass: HomeAssistantLike,
-  chargerId: string,
-  range: { from: string | null; to: string | null },
+  month: string | null = null,
 ): Promise<unknown> {
   const message: Record<string, unknown> = {
     type: "spotnav/get_sessions",
     api_version: SESSIONS_API_VERSION,
     charger_id: chargerId,
-    format: "csv",
+    limit,
   };
-  if (range.from !== null) {
-    message.from = range.from;
-  }
-  if (range.to !== null) {
-    message.to = range.to;
+  if (month !== null) {
+    message.month = month;
   }
   return await call<unknown>(hass, message);
+}
+
+/** The CSV of the sessions that started in one month (`YYYY-MM`). */
+export async function getSessionsCsv(
+  hass: HomeAssistantLike,
+  chargerId: string,
+  month: string,
+): Promise<unknown> {
+  return await call<unknown>(hass, {
+    type: "spotnav/get_sessions",
+    api_version: SESSIONS_API_VERSION,
+    charger_id: chargerId,
+    format: "csv",
+    month,
+  });
 }

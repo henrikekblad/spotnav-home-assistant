@@ -61,7 +61,7 @@ import { settingsEditorBody, settingsTrigger, type SettingsEditorForm } from "./
 import type { Vehicle } from "./validate";
 import { vehicleSummary } from "./vehicle-settings";
 import { issueText } from "./status";
-import { historyBody, type HistoryRange, type HistoryState, type HistoryUi } from "./history";
+import { historyBody, type HistoryState, type HistoryUi } from "./history";
 import { vehicleChoicesFor, vehicleLineFor } from "./vehicle-line";
 import {
   fiscalRows,
@@ -154,8 +154,10 @@ export interface CardViewInput {
    * `setHistoryState`. The view only shows the dialog (loading) and reports the press.
    */
   onOpenHistory?: () => void;
-  /** Export CSV was pressed with this range: the card fetches the file and saves it. */
-  onExportHistory?: (range: HistoryRange) => void;
+  /** A month was picked in the History dialog (`YYYY-MM`): the card reads it and answers through `setHistoryState`. */
+  onHistoryMonth?: (month: string) => void;
+  /** Export CSV was pressed: the card fetches the shown month's file and saves it. */
+  onExportHistory?: () => void;
   onOpenEntityEditor?: (scope: EntityScope) => void;
   /** The admin pressed "Download debug info" in the Settings popover. */
   onDownloadDebug?: () => void;
@@ -2193,9 +2195,9 @@ export function createCardView(input: CardViewInput): CardView {
   }
 
   // ---- the charge history dialog. The card owns the request; this holds what was last said and
-  // what the reader chose in it (days or months, the export period), and repaints on any change.
+  // what the reader chose in it (the month, the day under the readout), and repaints on any change.
   let historyState: HistoryState = { kind: "loading" };
-  const historyUi: HistoryUi = { list: "days", range: "thisMonth", exporting: false, notice: null };
+  const historyUi: HistoryUi = { month: null, pending: false, day: null, exporting: false, notice: null };
 
   function paintHistory(): void {
     if (destroyed || !historyDialog.isOpen()) {
@@ -2206,12 +2208,12 @@ export function createCardView(input: CardViewInput): CardView {
       | null;
     const refocus =
       focused !== null && historyDialog.element.contains(focused)
-        ? focused.dataset["list"] !== undefined
-          ? `[data-list="${focused.dataset["list"]}"]`
+        ? focused.dataset["month"] !== undefined
+          ? `button[data-month="${focused.dataset["month"]}"]`
           : focused.dataset["action"] === "export"
             ? "[data-action='export']"
-            : focused.dataset["exportRange"] !== undefined
-              ? "[data-export-range]"
+            : focused.dataset["monthSelect"] !== undefined
+              ? "[data-month-select]"
               : null
         : null;
     historyDialog.show({
@@ -2220,16 +2222,16 @@ export function createCardView(input: CardViewInput): CardView {
           ? translate(model.language, "history.title")
           : translate(model.language, "history.titleNamed", { name: model.chargerName }),
       body: historyBody(doc, model.language, historyState, historyUi, {
-        onList: (list) => {
-          historyUi.list = list;
+        onMonth: (month) => {
+          historyUi.month = month;
+          historyUi.pending = true;
+          historyUi.day = null;
+          historyUi.notice = null;
           paintHistory();
-        },
-        onRange: (range) => {
-          historyUi.range = range;
-          paintHistory();
+          input.onHistoryMonth?.(month);
         },
         onExport: () => {
-          input.onExportHistory?.(historyUi.range);
+          input.onExportHistory?.();
         },
       }),
     });
@@ -2250,12 +2252,14 @@ export function createCardView(input: CardViewInput): CardView {
     settingsOverviewDialog.hide({ restoreFocus: false });
     historyUi.notice = null;
     historyUi.exporting = false;
+    historyUi.month = null;
+    historyUi.pending = false;
+    historyUi.day = null;
     historyState = { kind: "loading" };
     historyDialog.show({
       title: translate(model.language, "history.title"),
       body: historyBody(doc, model.language, historyState, historyUi, {
-        onList: () => undefined,
-        onRange: () => undefined,
+        onMonth: () => undefined,
         onExport: () => undefined,
       }),
       opener: historyButton,
@@ -2769,6 +2773,10 @@ export function createCardView(input: CardViewInput): CardView {
     openHistory,
     setHistoryState(state: HistoryState): void {
       historyState = state;
+      historyUi.pending = false;
+      if (state.kind === "ready") {
+        historyUi.month = state.answer.month;
+      }
       paintHistory();
     },
     setHistoryExport(notice: TranslationKey | null, exporting: boolean): void {

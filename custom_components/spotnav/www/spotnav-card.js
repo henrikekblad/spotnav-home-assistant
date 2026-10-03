@@ -201,28 +201,26 @@ async function updateVehicle(hass, chargerId, request) {
     expected: request.expected
   });
 }
-async function getSessions(hass, chargerId, limit = 20) {
-  return await call(hass, {
-    type: "spotnav/get_sessions",
-    api_version: SESSIONS_API_VERSION,
-    charger_id: chargerId,
-    limit
-  });
-}
-async function getSessionsCsv(hass, chargerId, range) {
+async function getSessions(hass, chargerId, limit = 20, month2 = null) {
   const message = {
     type: "spotnav/get_sessions",
     api_version: SESSIONS_API_VERSION,
     charger_id: chargerId,
-    format: "csv"
+    limit
   };
-  if (range.from !== null) {
-    message.from = range.from;
-  }
-  if (range.to !== null) {
-    message.to = range.to;
+  if (month2 !== null) {
+    message.month = month2;
   }
   return await call(hass, message);
+}
+async function getSessionsCsv(hass, chargerId, month2) {
+  return await call(hass, {
+    type: "spotnav/get_sessions",
+    api_version: SESSIONS_API_VERSION,
+    charger_id: chargerId,
+    format: "csv",
+    month: month2
+  });
 }
 
 // src/chart.ts
@@ -824,7 +822,15 @@ var VISUAL_CLASSES = {
   historyHeading: "spotnav-history-heading",
   historyFootnote: "spotnav-history-footnote",
   historyExport: "spotnav-history-export",
-  historyExportLabel: "spotnav-history-export-label",
+  historyMonthPicker: "spotnav-history-month-picker",
+  historyMonth: "spotnav-history-month",
+  historyChart: "spotnav-history-chart",
+  historyBars: "spotnav-history-bars",
+  historyBar: "spotnav-history-bar",
+  historyBarFill: "spotnav-history-bar-fill",
+  historyAxis: "spotnav-history-axis",
+  historyScale: "spotnav-history-scale",
+  historyReadout: "spotnav-history-readout",
   muted: "spotnav-muted",
   unavailable: "spotnav-unavailable"
 };
@@ -1988,14 +1994,12 @@ var VISUAL_STYLES = `
     align-items: center;
     gap: 8px;
   }
-  .${VISUAL_CLASSES.historyExportLabel} {
+  .${VISUAL_CLASSES.historyMonthPicker} {
     display: flex;
     align-items: center;
     gap: 6px;
-    flex: 1 1 auto;
-    min-width: 0;
   }
-  .${VISUAL_CLASSES.historyExportLabel} > select {
+  .${VISUAL_CLASSES.historyMonthPicker} > select {
     flex: 1 1 auto;
     min-width: 0;
     min-height: 36px;
@@ -2004,6 +2008,103 @@ var VISUAL_STYLES = `
     background: var(--secondary-background-color, transparent);
     border: 1px solid var(--divider-color, #e0e0e0);
     border-radius: 8px;
+  }
+  .${VISUAL_CLASSES.historyMonthPicker} > button {
+    flex: none;
+    min-width: 36px;
+    padding: 4px 10px;
+    font-size: 1.1rem;
+    line-height: 1;
+  }
+  .${VISUAL_CLASSES.historyMonthPicker} > button:disabled {
+    opacity: 0.4;
+    cursor: default;
+  }
+  .${VISUAL_CLASSES.historyMonth} {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    min-width: 0;
+  }
+  .${VISUAL_CLASSES.historyMonth} > .${VISUAL_CLASSES.historyTile} {
+    flex: none;
+  }
+  .${VISUAL_CLASSES.historyMonth}[aria-busy="true"] {
+    opacity: 0.5;
+  }
+  .${VISUAL_CLASSES.historyChart} {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    min-width: 0;
+  }
+  .${VISUAL_CLASSES.historyScale} {
+    font-size: 0.75rem;
+    font-variant-numeric: tabular-nums;
+  }
+  .${VISUAL_CLASSES.historyBars} {
+    display: flex;
+    align-items: stretch;
+    gap: 2px;
+    height: 7.5rem;
+    border-bottom: 1px solid var(--divider-color, #e0e0e0);
+  }
+  .${VISUAL_CLASSES.historyBar} {
+    flex: 1 1 0;
+    min-width: 0;
+    padding: 0;
+    display: flex;
+    align-items: flex-end;
+    background: transparent;
+    border: 0;
+    border-radius: 3px;
+    cursor: pointer;
+  }
+  .${VISUAL_CLASSES.historyBar}:hover,
+  .${VISUAL_CLASSES.historyBar}[aria-pressed="true"] {
+    background: var(--secondary-background-color, #e5e5e5);
+  }
+  .${VISUAL_CLASSES.historyBar}:focus-visible {
+    outline: 2px solid var(--primary-color, #03a9f4);
+    outline-offset: 1px;
+  }
+  .${VISUAL_CLASSES.historyBarFill} {
+    display: block;
+    width: 100%;
+    min-height: 0;
+    border-radius: 3px 3px 0 0;
+    background: color-mix(
+      in srgb,
+      var(--spotnav-expensive, #c62828) var(--spotnav-day-dear, 0%),
+      var(--spotnav-cheap, #2e7d32)
+    );
+  }
+  .${VISUAL_CLASSES.historyBarFill}[data-price="none"] {
+    background: var(--secondary-text-color, #727272);
+  }
+  .${VISUAL_CLASSES.historyBarFill}[data-empty="true"] {
+    height: 0.125rem;
+    background: var(--divider-color, #e0e0e0);
+  }
+  .${VISUAL_CLASSES.historyAxis} {
+    display: flex;
+    gap: 2px;
+    font-size: 0.72rem;
+    color: var(--secondary-text-color, #727272);
+    font-variant-numeric: tabular-nums;
+  }
+  .${VISUAL_CLASSES.historyAxis} > span {
+    flex: 1 1 0;
+    min-width: 0;
+    display: flex;
+    justify-content: center;
+    white-space: nowrap;
+  }
+  .${VISUAL_CLASSES.historyReadout} {
+    margin: 4px 0 0;
+    min-height: 2.6em;
+    font-size: 0.85rem;
+    overflow-wrap: anywhere;
   }
   .${VISUAL_CLASSES.issueItem} {
     display: flex;
@@ -3123,12 +3224,14 @@ var da = {
   "history.loading": "Henter ladehistorikken…",
   "history.failed": "Ladehistorikken kunne ikke læses.",
   "history.intro": "Hvad hver opladning kostede: spotprisen plus energiafgift, nettarif og moms, da energien blev leveret.",
-  "history.thisMonth": "Denne måned",
-  "history.lastMonth": "Sidste måned",
-  "history.noneInMonth": "Ingen opladninger.",
-  "history.days": "Dage",
-  "history.months": "Måneder",
-  "history.listLabel": "Vis pr.",
+  "history.noneInMonth": "Ingen opladninger i denne måned.",
+  "history.month.label": "Måned",
+  "history.month.previous": "Forrige måned",
+  "history.month.next": "Næste måned",
+  "history.chart.label": "Energi pr. dag",
+  "history.chart.hint": "Tryk på eller peg på en søjle for dagens tal. Farven er dagens gennemsnitspris i forhold til måneden: grøn billig, rød dyr.",
+  "history.chart.noCharge": "{date}: ingen opladning",
+  "history.sessionsHeading": "Opladninger",
   "history.sessions.one": "{count} opladning",
   "history.sessions.other": "{count} opladninger",
   "history.solar": "{percent} sol",
@@ -3137,7 +3240,6 @@ var da = {
   "history.savings.saved": "Anslået besparelse: {amount} mod dagens gennemsnitspris",
   "history.savings.extra": "Anslået {amount} mere end dagens gennemsnitspris",
   "history.savings.note": "Besparelsen er et skøn: samme energi til hver dags gennemsnitspris.",
-  "history.latest": "Seneste opladninger",
   "history.empty": "Ingen opladninger er gemt endnu. De vises her efter næste opladning.",
   "history.open": "Lader nu siden {time}: {energy}",
   "history.by.plan_window": "planlagt vindue",
@@ -3145,11 +3247,6 @@ var da = {
   "history.by.solar": "solenergioverskud",
   "history.by.hybrid": "hybrid",
   "history.by.other": "startet andetsteds",
-  "history.export.period": "Periode",
-  "history.range.thisMonth": "Denne måned",
-  "history.range.lastMonth": "Sidste måned",
-  "history.range.last12": "Seneste 12 måneder",
-  "history.range.all": "Alt",
   "history.export": "Eksportér CSV",
   "history.exportFailed": "Eksporten mislykkedes.",
   "settings.overview.title": "Kortindstillinger",
@@ -3736,12 +3833,14 @@ var en = {
   "history.loading": "Loading the charge history…",
   "history.failed": "The charge history could not be read.",
   "history.intro": "What each charge cost: the spot price plus your energy tax, grid fee and VAT, at the time the energy was delivered.",
-  "history.thisMonth": "This month",
-  "history.lastMonth": "Last month",
-  "history.noneInMonth": "No charges.",
-  "history.days": "Days",
-  "history.months": "Months",
-  "history.listLabel": "Show by",
+  "history.noneInMonth": "No charges in this month.",
+  "history.month.label": "Month",
+  "history.month.previous": "Previous month",
+  "history.month.next": "Next month",
+  "history.chart.label": "Energy per day",
+  "history.chart.hint": "Tap or hover a bar for the day's figures. The colour is the day's average price against the month: green cheap, red dear.",
+  "history.chart.noCharge": "{date}: no charge",
+  "history.sessionsHeading": "Charges",
   "history.sessions.one": "{count} charge",
   "history.sessions.other": "{count} charges",
   "history.solar": "{percent} solar",
@@ -3750,7 +3849,6 @@ var en = {
   "history.savings.saved": "Estimated saving: {amount} against the day's average price",
   "history.savings.extra": "Estimated {amount} more than the day's average price",
   "history.savings.note": "Savings are an estimate: the same energy at each day's average price.",
-  "history.latest": "Latest charges",
   "history.empty": "No charges recorded yet. They appear here after the next charge.",
   "history.open": "Charging now since {time}: {energy}",
   "history.by.plan_window": "planned window",
@@ -3758,11 +3856,6 @@ var en = {
   "history.by.solar": "solar surplus",
   "history.by.hybrid": "hybrid",
   "history.by.other": "started elsewhere",
-  "history.export.period": "Period",
-  "history.range.thisMonth": "This month",
-  "history.range.lastMonth": "Last month",
-  "history.range.last12": "Last 12 months",
-  "history.range.all": "Everything",
   "history.export": "Export CSV",
   "history.exportFailed": "The export failed.",
   "settings.overview.title": "Card settings",
@@ -4349,12 +4442,14 @@ var fi = {
   "history.loading": "Haetaan latausten historiaa…",
   "history.failed": "Latausten historiaa ei voitu lukea.",
   "history.intro": "Mitä kukin lataus maksoi: pörssisähkön hinta sekä sähkövero, siirtomaksu ja arvonlisävero energian toimitushetkellä.",
-  "history.thisMonth": "Tässä kuussa",
-  "history.lastMonth": "Viime kuussa",
-  "history.noneInMonth": "Ei latauksia.",
-  "history.days": "Päivät",
-  "history.months": "Kuukaudet",
-  "history.listLabel": "Näytä",
+  "history.noneInMonth": "Ei latauksia tässä kuussa.",
+  "history.month.label": "Kuukausi",
+  "history.month.previous": "Edellinen kuukausi",
+  "history.month.next": "Seuraava kuukausi",
+  "history.chart.label": "Energia päivittäin",
+  "history.chart.hint": "Napauta tai osoita palkkia nähdäksesi päivän luvut. Väri on päivän keskihinta kuukauteen verrattuna: vihreä halpa, punainen kallis.",
+  "history.chart.noCharge": "{date}: ei latausta",
+  "history.sessionsHeading": "Lataukset",
   "history.sessions.one": "{count} lataus",
   "history.sessions.other": "{count} latausta",
   "history.solar": "{percent} aurinkoa",
@@ -4363,7 +4458,6 @@ var fi = {
   "history.savings.saved": "Arvioitu säästö: {amount} päivän keskihintaan verrattuna",
   "history.savings.extra": "Arviolta {amount} enemmän kuin päivän keskihinta",
   "history.savings.note": "Säästö on arvio: sama energia kunkin päivän keskihintaan.",
-  "history.latest": "Viimeisimmät lataukset",
   "history.empty": "Latauksia ei ole vielä tallennettu. Ne näkyvät tässä seuraavan latauksen jälkeen.",
   "history.open": "Latautuu nyt kello {time} alkaen: {energy}",
   "history.by.plan_window": "suunniteltu ikkuna",
@@ -4371,11 +4465,6 @@ var fi = {
   "history.by.solar": "aurinkoylijäämä",
   "history.by.hybrid": "hybridi",
   "history.by.other": "käynnistetty muualla",
-  "history.export.period": "Ajanjakso",
-  "history.range.thisMonth": "Tässä kuussa",
-  "history.range.lastMonth": "Viime kuussa",
-  "history.range.last12": "Viimeiset 12 kuukautta",
-  "history.range.all": "Kaikki",
   "history.export": "Vie CSV",
   "history.exportFailed": "Vienti epäonnistui.",
   "settings.overview.title": "Kortin asetukset",
@@ -4962,12 +5051,14 @@ var nb = {
   "history.loading": "Henter ladehistorikken…",
   "history.failed": "Ladehistorikken kunne ikke leses.",
   "history.intro": "Hva hver lading kostet: spotprisen pluss energiavgift, nettleie og mva., da energien ble levert.",
-  "history.thisMonth": "Denne måneden",
-  "history.lastMonth": "Forrige måned",
-  "history.noneInMonth": "Ingen ladinger.",
-  "history.days": "Dager",
-  "history.months": "Måneder",
-  "history.listLabel": "Vis per",
+  "history.noneInMonth": "Ingen ladinger denne måneden.",
+  "history.month.label": "Måned",
+  "history.month.previous": "Forrige måned",
+  "history.month.next": "Neste måned",
+  "history.chart.label": "Energi per dag",
+  "history.chart.hint": "Trykk på eller pek på en søyle for dagens tall. Fargen er dagens snittpris mot måneden: grønn billig, rød dyr.",
+  "history.chart.noCharge": "{date}: ingen lading",
+  "history.sessionsHeading": "Ladinger",
   "history.sessions.one": "{count} lading",
   "history.sessions.other": "{count} ladinger",
   "history.solar": "{percent} sol",
@@ -4976,7 +5067,6 @@ var nb = {
   "history.savings.saved": "Estimert besparelse: {amount} mot dagens snittpris",
   "history.savings.extra": "Estimert {amount} mer enn dagens snittpris",
   "history.savings.note": "Besparelsen er et estimat: samme energi til hver dags snittpris.",
-  "history.latest": "Siste ladinger",
   "history.empty": "Ingen ladinger er lagret ennå. De vises her etter neste lading.",
   "history.open": "Lader nå siden {time}: {energy}",
   "history.by.plan_window": "planlagt vindu",
@@ -4984,11 +5074,6 @@ var nb = {
   "history.by.solar": "solcelleoverskudd",
   "history.by.hybrid": "hybrid",
   "history.by.other": "startet andre steder",
-  "history.export.period": "Periode",
-  "history.range.thisMonth": "Denne måneden",
-  "history.range.lastMonth": "Forrige måned",
-  "history.range.last12": "Siste 12 måneder",
-  "history.range.all": "Alt",
   "history.export": "Eksporter CSV",
   "history.exportFailed": "Eksporten mislyktes.",
   "settings.overview.title": "Kortinnstillinger",
@@ -5575,12 +5660,14 @@ var sv = {
   "history.loading": "Hämtar laddhistoriken…",
   "history.failed": "Laddhistoriken kunde inte läsas.",
   "history.intro": "Vad varje laddning kostade: spotpriset plus din energiskatt, nätavgift och moms, när energin levererades.",
-  "history.thisMonth": "Denna månad",
-  "history.lastMonth": "Förra månaden",
-  "history.noneInMonth": "Inga laddningar.",
-  "history.days": "Dagar",
-  "history.months": "Månader",
-  "history.listLabel": "Visa per",
+  "history.noneInMonth": "Inga laddningar den här månaden.",
+  "history.month.label": "Månad",
+  "history.month.previous": "Föregående månad",
+  "history.month.next": "Nästa månad",
+  "history.chart.label": "Energi per dag",
+  "history.chart.hint": "Tryck på eller peka på en stapel för dagens siffror. Färgen är dagens snittpris jämfört med månaden: grönt billigt, rött dyrt.",
+  "history.chart.noCharge": "{date}: ingen laddning",
+  "history.sessionsHeading": "Laddningar",
   "history.sessions.one": "{count} laddning",
   "history.sessions.other": "{count} laddningar",
   "history.solar": "{percent} sol",
@@ -5589,7 +5676,6 @@ var sv = {
   "history.savings.saved": "Uppskattad besparing: {amount} mot dagens snittpris",
   "history.savings.extra": "Uppskattat {amount} mer än dagens snittpris",
   "history.savings.note": "Besparingen är en uppskattning: samma energi till varje dags snittpris.",
-  "history.latest": "Senaste laddningarna",
   "history.empty": "Inga laddningar har sparats än. De visas här efter nästa laddning.",
   "history.open": "Laddar nu sedan {time}: {energy}",
   "history.by.plan_window": "planerat fönster",
@@ -5597,11 +5683,6 @@ var sv = {
   "history.by.solar": "solöverskott",
   "history.by.hybrid": "hybrid",
   "history.by.other": "startad på annat håll",
-  "history.export.period": "Period",
-  "history.range.thisMonth": "Denna månad",
-  "history.range.lastMonth": "Förra månaden",
-  "history.range.last12": "Senaste 12 månaderna",
-  "history.range.all": "Allt",
   "history.export": "Exportera CSV",
   "history.exportFailed": "Exporten misslyckades.",
   "settings.overview.title": "Kortinställningar",
@@ -12119,6 +12200,10 @@ function shareOrNull(source, key) {
   const value = numberOrNull3(source, key);
   return value !== null && (value < 0 || value > 1) ? bad5() : value;
 }
+function month(source, key) {
+  const value = text4(source, key);
+  return monthParts(value) === null ? bad5() : value;
+}
 function decodeBucket(raw) {
   const source = record5(raw);
   const sessions = number(source, "sessions");
@@ -12180,7 +12265,12 @@ function decodeSessions(raw) {
         months: list3(source, "months", decodeBucket),
         days: list3(source, "days", decodeBucket),
         open: source.open === null ? null : decodeRecord(source.open),
-        sessions: list3(source, "sessions", decodeRecord)
+        sessions: list3(source, "sessions", decodeRecord),
+        month: month(source, "month"),
+        month_summary: decodeBucket(source.month_summary),
+        month_days: list3(source, "month_days", decodeBucket),
+        month_sessions: list3(source, "month_sessions", decodeRecord),
+        available_months: list3(source, "available_months", (raw2) => typeof raw2 === "string" && monthParts(raw2) !== null ? raw2 : bad5())
       }
     };
   } catch {
@@ -12198,34 +12288,32 @@ function decodeCsv(raw) {
     return null;
   }
 }
-var HISTORY_RANGES = ["thisMonth", "lastMonth", "last12", "all"];
+var MONTHS_BACK = 24;
 function monthParts(period) {
-  const match = /^(\d{4})-(\d{2})$/.exec(period);
+  const match = /^(\d{4})-(0[1-9]|1[0-2])$/.exec(period);
   return match === null ? null : [Number(match[1]), Number(match[2])];
 }
 function pad(value) {
   return String(value).padStart(2, "0");
 }
-function monthStart(year, month) {
-  return `${year}-${pad(month)}-01`;
+function shiftMonth(period, offset) {
+  const parts = monthParts(period);
+  if (parts === null) {
+    return period;
+  }
+  const index = parts[0] * 12 + parts[1] - 1 + offset;
+  return `${Math.floor(index / 12)}-${pad(index % 12 + 1)}`;
 }
-function monthEnd(year, month) {
-  return `${year}-${pad(month)}-${pad(new Date(Date.UTC(year, month, 0)).getUTCDate())}`;
+function pickerMonths(answer, shown) {
+  return Array.from(/* @__PURE__ */ new Set([...answer.available_months, answer.this_month.period, shown])).filter((period) => period >= shiftMonth(answer.this_month.period, -MONTHS_BACK) && period <= answer.this_month.period).sort().reverse();
 }
-function exportDates(range, answer) {
-  const current = monthParts(answer.this_month.period);
-  const previous = monthParts(answer.last_month.period);
-  if (range === "all" || current === null || previous === null) {
-    return { from: null, to: null };
-  }
-  if (range === "thisMonth") {
-    return { from: monthStart(...current), to: monthEnd(...current) };
-  }
-  if (range === "lastMonth") {
-    return { from: monthStart(...previous), to: monthEnd(...previous) };
-  }
-  const first = new Date(Date.UTC(current[0], current[1] - 1 - 11, 1));
-  return { from: monthStart(first.getUTCFullYear(), first.getUTCMonth() + 1), to: null };
+function dayPricePositions(days) {
+  const priced = days.filter((day) => day.energy_kwh > 0 && day.average_price_minor_per_kwh !== null).map((day) => day.average_price_minor_per_kwh);
+  const low = Math.min(...priced);
+  const high = Math.max(...priced);
+  return days.map(
+    (day) => day.energy_kwh > 0 && day.average_price_minor_per_kwh !== null ? high > low ? (day.average_price_minor_per_kwh - low) / (high - low) : 0 : null
+  );
 }
 var monthFormats = /* @__PURE__ */ new Map();
 function monthLabel(language, period) {
@@ -12302,10 +12390,9 @@ function figures(language, bucket) {
   }
   return parts.join(" · ");
 }
-function bucketCard(doc, language, titleKey, bucket) {
+function monthSummary(doc, language, bucket) {
   const card = element6(doc, "section", VISUAL_CLASSES.historyTile);
-  card.dataset["tile"] = titleKey === "history.thisMonth" ? "thisMonth" : "lastMonth";
-  card.append(element6(doc, "h4", VISUAL_CLASSES.historyTileHeading, translate(language, titleKey)));
+  card.dataset["tile"] = "month";
   if (bucket.sessions === 0) {
     card.append(element6(doc, "p", VISUAL_CLASSES.muted, translate(language, "history.noneInMonth")));
     return card;
@@ -12325,28 +12412,73 @@ function bucketCard(doc, language, titleKey, bucket) {
   }
   return card;
 }
-function periodRow(doc, language, kind, bucket) {
-  const row = element6(doc, "li", VISUAL_CLASSES.historyRow);
-  row.dataset["period"] = bucket.period;
-  row.append(
-    element6(
-      doc,
-      "span",
-      VISUAL_CLASSES.historyRowTitle,
-      kind === "days" ? dateLabel(language, bucket.period) : monthLabel(language, bucket.period)
-    ),
-    element6(doc, "span", VISUAL_CLASSES.historyRowFigures, figures(language, bucket))
-  );
-  const notes = [sessionsCount(language, bucket.sessions)];
-  if (bucket.solar_share !== null) {
-    notes.push(translate(language, "history.solar", { percent: percent(language, bucket.solar_share) }));
+function dayFigures(language, day) {
+  const date = dateLabel(language, day.period);
+  if (day.sessions === 0) {
+    return translate(language, "history.chart.noCharge", { date });
   }
-  const savings = savingsLine(language, bucket);
-  if (savings !== null) {
-    notes.push(savings);
+  const parts = [figures(language, day)];
+  if (day.solar_share !== null) {
+    parts.push(translate(language, "history.solar", { percent: percent(language, day.solar_share) }));
   }
-  row.append(element6(doc, "span", `${VISUAL_CLASSES.muted} ${VISUAL_CLASSES.historyRowNote}`, notes.join(" · ")));
-  return row;
+  return `${date}: ${parts.join(" · ")}`;
+}
+function dayChart(doc, language, days, ui) {
+  const wrap = element6(doc, "div", VISUAL_CLASSES.historyChart);
+  const top = Math.max(0, ...days.map((day) => day.energy_kwh));
+  const positions = dayPricePositions(days);
+  const readout = element6(doc, "p", `${VISUAL_CLASSES.muted} ${VISUAL_CLASSES.historyReadout}`);
+  readout.setAttribute("aria-live", "polite");
+  const hint = translate(language, "history.chart.hint");
+  const bars = [];
+  const show = (day) => {
+    readout.textContent = day === null ? hint : dayFigures(language, day);
+    bars.forEach((bar) => bar.setAttribute("aria-pressed", String(day !== null && bar.dataset["day"] === day.period)));
+  };
+  const plot = element6(doc, "div", VISUAL_CLASSES.historyBars);
+  plot.setAttribute("role", "group");
+  plot.setAttribute("aria-label", translate(language, "history.chart.label"));
+  days.forEach((day, index) => {
+    const bar = element6(doc, "button", VISUAL_CLASSES.historyBar);
+    bar.type = "button";
+    bar.dataset["day"] = day.period;
+    bar.setAttribute("aria-label", dayFigures(language, day));
+    const fill = element6(doc, "span", VISUAL_CLASSES.historyBarFill);
+    const position = positions[index] ?? null;
+    if (day.energy_kwh > 0 && top > 0) {
+      fill.style.height = `${Math.max(4, day.energy_kwh / top * 100)}%`;
+      if (position === null) {
+        fill.dataset["price"] = "none";
+      } else {
+        fill.style.setProperty("--spotnav-day-dear", `${Math.round(position * 100)}%`);
+      }
+    } else {
+      fill.dataset["empty"] = "true";
+    }
+    bar.append(fill);
+    const choose = () => {
+      ui.day = day.period;
+      show(day);
+    };
+    bar.addEventListener("mouseenter", () => show(day));
+    bar.addEventListener("focus", () => show(day));
+    bar.addEventListener("click", choose);
+    bars.push(bar);
+    plot.append(bar);
+  });
+  plot.addEventListener("mouseleave", () => show(days.find((day) => day.period === ui.day) ?? null));
+  const axis = element6(doc, "div", VISUAL_CLASSES.historyAxis);
+  axis.setAttribute("aria-hidden", "true");
+  days.forEach((day, index) => {
+    const number2 = index + 1;
+    const labelled = number2 === 1 || number2 === days.length || number2 % 5 === 0 && days.length - number2 >= 3;
+    axis.append(element6(doc, "span", void 0, labelled ? String(number2) : ""));
+  });
+  const scale = element6(doc, "span", `${VISUAL_CLASSES.muted} ${VISUAL_CLASSES.historyScale}`, energyAmount(language, top));
+  scale.setAttribute("aria-hidden", "true");
+  wrap.append(scale, plot, axis, readout);
+  show(days.find((day) => day.period === ui.day) ?? null);
+  return wrap;
 }
 function sessionRow(doc, language, session) {
   const row = element6(doc, "li", VISUAL_CLASSES.historyRow);
@@ -12371,43 +12503,47 @@ function sessionRow(doc, language, session) {
   row.append(element6(doc, "span", `${VISUAL_CLASSES.muted} ${VISUAL_CLASSES.historyRowNote}`, notes.join(" · ")));
   return row;
 }
-function toggle(doc, language, ui, handlers) {
-  const group = element6(doc, "div", VISUAL_CLASSES.historyToggle);
-  group.setAttribute("role", "group");
-  group.setAttribute("aria-label", translate(language, "history.listLabel"));
-  for (const choice of ["days", "months"]) {
-    const button = element6(doc, "button", VISUAL_CLASSES.historyToggleButton, translate(language, choice === "days" ? "history.days" : "history.months"));
+function monthPicker(doc, language, answer, shown, handlers) {
+  const row = element6(doc, "div", VISUAL_CLASSES.historyMonthPicker);
+  const current = answer.this_month.period;
+  const step = (label, glyph, target, allowed) => {
+    const button = element6(doc, "button", VISUAL_CLASSES.historyToggleButton, glyph);
     button.type = "button";
-    button.dataset["list"] = choice;
-    button.setAttribute("aria-pressed", String(ui.list === choice));
-    button.addEventListener("click", () => handlers.onList(choice));
-    group.append(button);
-  }
-  return group;
-}
-function exportRow(doc, language, ui, handlers) {
-  const row = element6(doc, "div", VISUAL_CLASSES.historyExport);
-  const label = element6(doc, "label", VISUAL_CLASSES.historyExportLabel, translate(language, "history.export.period"));
+    button.dataset["month"] = target;
+    button.setAttribute("aria-label", translate(language, label));
+    button.disabled = !allowed;
+    button.addEventListener("click", () => handlers.onMonth(target));
+    return button;
+  };
+  const earliest = shiftMonth(current, -MONTHS_BACK);
   const select = element6(doc, "select");
-  select.dataset["exportRange"] = "true";
-  for (const range of HISTORY_RANGES) {
-    const option = new Option(translate(language, `history.range.${range}`), range);
-    option.selected = range === ui.range;
+  select.dataset["monthSelect"] = "true";
+  select.setAttribute("aria-label", translate(language, "history.month.label"));
+  for (const period of pickerMonths(answer, shown)) {
+    const option = new Option(monthLabel(language, period), period);
+    option.selected = period === shown;
     select.append(option);
   }
   select.addEventListener("change", () => {
-    const chosen = HISTORY_RANGES.find((range) => range === select.value);
-    if (chosen !== void 0) {
-      handlers.onRange(chosen);
+    if (monthParts(select.value) !== null) {
+      handlers.onMonth(select.value);
     }
   });
-  label.append(select);
+  row.append(
+    step("history.month.previous", "‹", shiftMonth(shown, -1), shown > earliest),
+    select,
+    step("history.month.next", "›", shiftMonth(shown, 1), shown < current)
+  );
+  return row;
+}
+function exportRow(doc, language, ui, handlers) {
+  const row = element6(doc, "div", VISUAL_CLASSES.historyExport);
   const button = element6(doc, "button", VISUAL_CLASSES.button, translate(language, "history.export"));
   button.type = "button";
   button.dataset["action"] = "export";
-  button.disabled = ui.exporting;
+  button.disabled = ui.exporting || ui.pending;
   button.addEventListener("click", () => handlers.onExport());
-  row.append(label, button);
+  row.append(button);
   return row;
 }
 function historyBody(doc, language, state, ui, handlers) {
@@ -12419,6 +12555,9 @@ function historyBody(doc, language, state, ui, handlers) {
     return body;
   }
   if (state.kind === "failed") {
+    if (state.answer !== void 0 && state.answer !== null) {
+      body.append(monthPicker(doc, language, state.answer, ui.month ?? state.answer.month, handlers));
+    }
     const failed = element6(doc, "p", VISUAL_CLASSES.settingsNotice, translate(language, state.sentenceKey));
     failed.setAttribute("role", "status");
     if (state.code !== null) {
@@ -12428,6 +12567,7 @@ function historyBody(doc, language, state, ui, handlers) {
     return body;
   }
   const answer = state.answer;
+  const shown = ui.month ?? answer.month;
   body.append(element6(doc, "p", `${VISUAL_CLASSES.muted} ${VISUAL_CLASSES.dialogIntro}`, translate(language, "history.intro")));
   if (answer.open !== null) {
     const open = element6(
@@ -12442,31 +12582,27 @@ function historyBody(doc, language, state, ui, handlers) {
     open.setAttribute("role", "status");
     body.append(open);
   }
-  const tiles = element6(doc, "div", VISUAL_CLASSES.historyTiles);
-  tiles.append(
-    bucketCard(doc, language, "history.thisMonth", answer.this_month),
-    bucketCard(doc, language, "history.lastMonth", answer.last_month)
-  );
-  body.append(tiles);
-  if (answer.sessions.length === 0 && answer.open === null) {
-    body.append(element6(doc, "p", VISUAL_CLASSES.muted, translate(language, "history.empty")));
-  } else {
-    body.append(toggle(doc, language, ui, handlers));
-    const buckets = ui.list === "days" ? answer.days : answer.months;
-    const periods = element6(doc, "ul", VISUAL_CLASSES.historyList);
-    periods.dataset["list"] = ui.list;
-    for (const bucket of buckets) {
-      periods.append(periodRow(doc, language, ui.list, bucket));
-    }
-    body.append(periods);
-    body.append(element6(doc, "h4", VISUAL_CLASSES.historyHeading, translate(language, "history.latest")));
+  body.append(monthPicker(doc, language, answer, shown, handlers));
+  const month2 = element6(doc, "div", VISUAL_CLASSES.historyMonth);
+  month2.dataset["month"] = answer.month;
+  if (ui.pending) {
+    month2.setAttribute("aria-busy", "true");
+    month2.dataset["pending"] = "true";
+  }
+  month2.append(monthSummary(doc, language, answer.month_summary));
+  if (answer.month_summary.sessions > 0) {
+    month2.append(dayChart(doc, language, answer.month_days, ui));
+  }
+  if (answer.month_sessions.length > 0) {
+    month2.append(element6(doc, "h4", VISUAL_CLASSES.historyHeading, translate(language, "history.sessionsHeading")));
     const latest = element6(doc, "ul", VISUAL_CLASSES.historyList);
     latest.dataset["list"] = "sessions";
-    for (const session of answer.sessions) {
+    for (const session of answer.month_sessions) {
       latest.append(sessionRow(doc, language, session));
     }
-    body.append(latest);
+    month2.append(latest);
   }
+  body.append(month2);
   body.append(element6(doc, "p", `${VISUAL_CLASSES.muted} ${VISUAL_CLASSES.historyFootnote}`, translate(language, "history.savings.note")));
   body.append(exportRow(doc, language, ui, handlers));
   if (ui.notice !== null) {
@@ -14051,26 +14187,26 @@ function createCardView(input) {
     input.onSettingsOverviewOpened?.();
   }
   let historyState = { kind: "loading" };
-  const historyUi = { list: "days", range: "thisMonth", exporting: false, notice: null };
+  const historyUi = { month: null, pending: false, day: null, exporting: false, notice: null };
   function paintHistory() {
     if (destroyed || !historyDialog.isOpen()) {
       return;
     }
     const focused = input.mount instanceof ShadowRoot ? input.mount.activeElement : doc.activeElement;
-    const refocus = focused !== null && historyDialog.element.contains(focused) ? focused.dataset["list"] !== void 0 ? `[data-list="${focused.dataset["list"]}"]` : focused.dataset["action"] === "export" ? "[data-action='export']" : focused.dataset["exportRange"] !== void 0 ? "[data-export-range]" : null : null;
+    const refocus = focused !== null && historyDialog.element.contains(focused) ? focused.dataset["month"] !== void 0 ? `button[data-month="${focused.dataset["month"]}"]` : focused.dataset["action"] === "export" ? "[data-action='export']" : focused.dataset["monthSelect"] !== void 0 ? "[data-month-select]" : null : null;
     historyDialog.show({
       title: model.chargerName === null ? translate(model.language, "history.title") : translate(model.language, "history.titleNamed", { name: model.chargerName }),
       body: historyBody(doc, model.language, historyState, historyUi, {
-        onList: (list4) => {
-          historyUi.list = list4;
+        onMonth: (month2) => {
+          historyUi.month = month2;
+          historyUi.pending = true;
+          historyUi.day = null;
+          historyUi.notice = null;
           paintHistory();
-        },
-        onRange: (range) => {
-          historyUi.range = range;
-          paintHistory();
+          input.onHistoryMonth?.(month2);
         },
         onExport: () => {
-          input.onExportHistory?.(historyUi.range);
+          input.onExportHistory?.();
         }
       })
     });
@@ -14090,12 +14226,14 @@ function createCardView(input) {
     settingsOverviewDialog.hide({ restoreFocus: false });
     historyUi.notice = null;
     historyUi.exporting = false;
+    historyUi.month = null;
+    historyUi.pending = false;
+    historyUi.day = null;
     historyState = { kind: "loading" };
     historyDialog.show({
       title: translate(model.language, "history.title"),
       body: historyBody(doc, model.language, historyState, historyUi, {
-        onList: () => void 0,
-        onRange: () => void 0,
+        onMonth: () => void 0,
         onExport: () => void 0
       }),
       opener: historyButton
@@ -14541,6 +14679,10 @@ function createCardView(input) {
     openHistory,
     setHistoryState(state) {
       historyState = state;
+      historyUi.pending = false;
+      if (state.kind === "ready") {
+        historyUi.month = state.answer.month;
+      }
       paintHistory();
     },
     setHistoryExport(notice, exporting) {
@@ -15986,7 +16128,7 @@ var SpotnavCard = class extends HTMLElement {
    * The History dialog was opened: read the charge history (any signed-in user may), and answer the open
    * view. A newer open, a reconfiguration or a disconnect makes an older answer inert.
    */
-  async loadHistory() {
+  async loadHistory(month2 = null) {
     const hass = this.hassObject;
     const config = this.config;
     const view = this.view;
@@ -15997,7 +16139,7 @@ var SpotnavCard = class extends HTMLElement {
     const operation = ++this.historyOperation;
     const current = () => this.connected && generation === this.generation && operation === this.historyOperation && this.view === view;
     try {
-      const decoded = decodeSessions(await getSessions(hass, config.charger));
+      const decoded = decodeSessions(await getSessions(hass, config.charger, 20, month2));
       if (!current()) {
         return;
       }
@@ -16005,7 +16147,8 @@ var SpotnavCard = class extends HTMLElement {
         view.setHistoryState({
           kind: "failed",
           sentenceKey: decoded.failure === "unsupported" ? "settings.error.version" : "history.failed",
-          code: null
+          code: null,
+          answer: this.history
         });
         return;
       }
@@ -16016,11 +16159,11 @@ var SpotnavCard = class extends HTMLElement {
         return;
       }
       const code = error instanceof SpotnavApiError ? error.code : null;
-      view.setHistoryState({ kind: "failed", sentenceKey: "history.failed", code });
+      view.setHistoryState({ kind: "failed", sentenceKey: "history.failed", code, answer: this.history });
     }
   }
-  /** Export CSV: one request for the chosen period, then the file is saved; failure is one sentence. */
-  async exportHistory(range) {
+  /** Export CSV: one request for the shown month, then the file is saved; failure is one sentence. */
+  async exportHistory() {
     const hass = this.hassObject;
     const config = this.config;
     const view = this.view;
@@ -16033,7 +16176,7 @@ var SpotnavCard = class extends HTMLElement {
     const current = () => this.connected && generation === this.generation && operation === this.historyOperation && this.view === view;
     view.setHistoryExport(null, true);
     try {
-      const file = decodeCsv(await getSessionsCsv(hass, config.charger, exportDates(range, answer)));
+      const file = decodeCsv(await getSessionsCsv(hass, config.charger, answer.month));
       if (!current()) {
         return;
       }
@@ -16683,8 +16826,11 @@ var SpotnavCard = class extends HTMLElement {
         onOpenHistory: () => {
           void this.loadHistory();
         },
-        onExportHistory: (range) => {
-          void this.exportHistory(range);
+        onHistoryMonth: (month2) => {
+          void this.loadHistory(month2);
+        },
+        onExportHistory: () => {
+          void this.exportHistory();
         },
         onSettingsOverviewOpened: () => {
           void this.loadEntityConfig();

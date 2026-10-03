@@ -93,7 +93,8 @@ describe("the History button", () => {
     expect(text).toContain("Charge history");
     expect(text).toContain("65.7 kWh");
     expect(text).toContain("Estimated saving");
-    expect(dialog(element).querySelectorAll("[data-list='sessions'] > li")).toHaveLength(5);
+    expect(dialog(element).querySelectorAll("[data-list='sessions'] > li")).toHaveLength(4);
+    expect(dialog(element).querySelectorAll("button[data-day]")).toHaveLength(30);
   });
 
   it("is open to every signed-in user, not only administrators", async () => {
@@ -132,19 +133,49 @@ describe("the History button", () => {
     expect(dialog(element).textContent).not.toContain("could not be read");
   });
 
-  it("switches between days and months without asking again", async () => {
+  it("asks for another month from the picker, dims the old one meanwhile, and shows the answer", async () => {
     const { hass, element } = await mounted();
     historyButton(element).click();
     await settle();
     hass.resolveNext(fixture("sessions/get_sessions.json"));
     await settle();
-    const requests = hass.messages.length;
 
-    (dialog(element).querySelector("button[data-list='months']") as HTMLButtonElement).click();
+    (dialog(element).querySelector("button[data-month='2026-08']") as HTMLButtonElement).click();
     await settle();
 
-    expect(dialog(element).querySelectorAll("[data-list='months'] > li")).toHaveLength(2);
-    expect(hass.messages).toHaveLength(requests);
+    expect(hass.messages.at(-1)).toEqual({
+      type: "spotnav/get_sessions",
+      api_version: 1,
+      charger_id: "entry_a",
+      limit: 20,
+      month: "2026-08",
+    });
+    expect(dialog(element).querySelector("[data-pending]")).not.toBeNull();
+    expect((dialog(element).querySelector("select") as HTMLSelectElement).value).toBe("2026-08");
+
+    hass.resolveNext(fixture("sessions/get_sessions_month.json"));
+    await settle();
+
+    expect(dialog(element).querySelector("[data-pending]")).toBeNull();
+    expect(dialog(element).querySelectorAll("button[data-day]")).toHaveLength(31);
+    expect(dialog(element).textContent).toContain("18.4 kWh");
+    expect((dialog(element).querySelector("button[data-month='2026-09']") as HTMLButtonElement).disabled).toBe(false);
+  });
+
+  it("keeps the picker when a month cannot be read, and an older answer never overwrites a newer", async () => {
+    const { hass, element } = await mounted();
+    historyButton(element).click();
+    await settle();
+    hass.resolveNext(fixture("sessions/get_sessions.json"));
+    await settle();
+
+    (dialog(element).querySelector("button[data-month='2026-08']") as HTMLButtonElement).click();
+    await settle();
+    hass.rejectNext(apiFailure("spotnav_invalid_range"));
+    await settle();
+
+    expect(dialog(element).querySelector("[data-code]")?.getAttribute("data-code")).toBe("spotnav_invalid_range");
+    expect(dialog(element).querySelector("select")).not.toBeNull();
   });
 
   it("ignores an answer that arrives after the card has gone", async () => {
@@ -170,14 +201,8 @@ describe("Export CSV", () => {
     return context;
   }
 
-  it("asks for the chosen period's local dates and saves the file the backend names", async () => {
+  it("asks for the shown month and saves the file the backend names", async () => {
     const { hass, element } = await opened();
-    const select = dialog(element).querySelector("select[data-export-range]") as HTMLSelectElement;
-    select.value = "lastMonth";
-    select.dispatchEvent(new Event("change"));
-    await settle();
-    expect((dialog(element).querySelector("select[data-export-range]") as HTMLSelectElement).value).toBe("lastMonth");
-
     (dialog(element).querySelector("[data-action='export']") as HTMLButtonElement).click();
     await settle();
 
@@ -186,8 +211,7 @@ describe("Export CSV", () => {
       api_version: 1,
       charger_id: "entry_a",
       format: "csv",
-      from: "2026-08-01",
-      to: "2026-08-31",
+      month: "2026-09",
     });
     expect((dialog(element).querySelector("[data-action='export']") as HTMLButtonElement).disabled).toBe(true);
 
@@ -200,19 +224,16 @@ describe("Export CSV", () => {
     expect((dialog(element).querySelector("[data-action='export']") as HTMLButtonElement).disabled).toBe(false);
   });
 
-  it("leaves both dates out for everything", async () => {
+  it("exports the month that was picked", async () => {
     const { hass, element } = await opened();
-    const select = dialog(element).querySelector("select[data-export-range]") as HTMLSelectElement;
-    select.value = "all";
-    select.dispatchEvent(new Event("change"));
+    (dialog(element).querySelector("button[data-month='2026-08']") as HTMLButtonElement).click();
+    await settle();
+    hass.resolveNext(fixture("sessions/get_sessions_month.json"));
     await settle();
     (dialog(element).querySelector("[data-action='export']") as HTMLButtonElement).click();
     await settle();
 
-    const message = hass.messages.at(-1) as Record<string, unknown>;
-    expect(message["format"]).toBe("csv");
-    expect("from" in message).toBe(false);
-    expect("to" in message).toBe(false);
+    expect(hass.messages.at(-1)?.["month"]).toBe("2026-08");
   });
 
   it("says the export failed, with nothing saved, and offers it again", async () => {
