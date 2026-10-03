@@ -454,6 +454,12 @@
     "binary_sensor": {
       "schedule_active": {
         "name": "Schedule active"
+      },
+      "grid_charging": {
+        "name": "Charging from the grid"
+      },
+      "grid_charging_site": {
+        "name": "Charging from the grid (site)"
       }
     },
     "button": {
