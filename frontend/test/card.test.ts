@@ -339,6 +339,28 @@ describe("the vehicle-side advisory", () => {
     expect(shadow(element).querySelector(`.${VISUAL_CLASSES.advisory}`)).toBeNull();
   });
 
+  it.each([
+    ["at its target", { value: 80, target_percent: 80, vehicle_max_percent: null, need_kwh: null }, true],
+    ["at its own maximum", { value: 90, target_percent: 100, vehicle_max_percent: 90, need_kwh: null }, true],
+    ["with no energy left to need", { value: 70, target_percent: 80, vehicle_max_percent: null, need_kwh: 0 }, true],
+    ["below its target", { value: 60, target_percent: 80, vehicle_max_percent: null, need_kwh: 5 }, false],
+    ["with no reading", { value: null, target_percent: 80, vehicle_max_percent: null, need_kwh: null }, false],
+  ])("words a full car calmly when the car is %s: %s", async (_label, facts, full) => {
+    const hass = new FakeHass();
+    const element = card();
+    element.hass = hass;
+    await settle();
+    const soc = {
+      age_s: 30, capacity_kwh: 77, efficiency: 0.9, estimated: false, missing: [], source: "vehicle",
+      vehicle_id: "ev6", vehicle_name: "EV6", vehicles: [],
+    };
+    hass.resolveNext(dashboard({ charge_progress: ADVISORY, soc: { ...soc, ...facts } }));
+    await settle();
+
+    const node = shadow(element).querySelector(`.${VISUAL_CLASSES.advisory}`);
+    expect(node?.textContent).toBe(translate("en", full ? "advisory.carFull" : "advisory.vehicleNotRequestingCurrent"));
+  });
+
   it("says nothing when the block is unreadable, and still renders the rest", async () => {
     const element = await rendered({ state: "SuspendedEV", reason: "x", since: null });
     expect(shadow(element).querySelector(`.${VISUAL_CLASSES.advisory}`)).toBeNull();

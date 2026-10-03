@@ -3581,6 +3581,7 @@ var da = {
   "strategy.status.hybrid.satisfied": "Hybrid · ladebehovet er allerede opfyldt",
   "strategy.status.hybrid.unknown": "Hybrid · planlægger",
   "advisory.vehicleNotRequestingCurrent": "Opladningen blev startet, men køretøjet anmoder ikke om strøm. Kontrollér køretøjets opladningsindstillinger, eller tilslut kablet igen.",
+  "advisory.carFull": "Bilen er fuld: den har ikke brug for opladning.",
   "advisory.powerBelowThreshold": "Opladningen blev startet, men laderen trækker næsten ingen effekt. Bilen kan være færdig eller lader ikke: kontrollér køretøjets opladningsindstillinger, eller tilslut kablet igen.",
   "control.noSettings": "Denne lader har endnu ingen indstillinger, så der er intet at starte eller stoppe.",
   "control.pauseUnsettled": "En pause er gemt, men er ikke trådt i kraft endnu. Intet anvendes.",
@@ -4204,6 +4205,7 @@ var en = {
   "strategy.reason.hybrid": "Requires solar and price control",
   "strategy.reason.totalPower": "Solar needs the meter's total grid power",
   "advisory.vehicleNotRequestingCurrent": "Charging was started, but the vehicle is not requesting current. Check the vehicle's charging settings or reconnect the cable.",
+  "advisory.carFull": "The car is full: it needs no charge.",
   "advisory.powerBelowThreshold": "Charging was started, but the charger draws almost no power. The car may be finished or not charging: check the vehicle's charging settings or reconnect the cable.",
   "control.noSettings": "This charger has no settings yet, so there is nothing to start or stop.",
   "control.pauseUnsettled": "A pause is stored but has not taken effect yet. Nothing is being applied.",
@@ -4827,6 +4829,7 @@ var fi = {
   "strategy.status.hybrid.satisfied": "Hybridi · lataustarve on jo täytetty",
   "strategy.status.hybrid.unknown": "Hybridi · suunnittelee",
   "advisory.vehicleNotRequestingCurrent": "Lataus aloitettiin, mutta ajoneuvo ei pyydä virtaa. Tarkista ajoneuvon latausasetukset tai kytke kaapeli uudelleen.",
+  "advisory.carFull": "Auto on täynnä: se ei tarvitse latausta.",
   "advisory.powerBelowThreshold": "Lataus käynnistettiin, mutta latauslaite ei ota juuri lainkaan tehoa. Auto voi olla valmis tai ei lataa: tarkista ajoneuvon latausasetukset tai kytke kaapeli uudelleen.",
   "control.noSettings": "Tällä laturilla ei ole vielä asetuksia, joten aloitettavaa tai pysäytettävää ei ole.",
   "control.pauseUnsettled": "Tauko on tallennettu, mutta se ei ole vielä voimassa. Mitään ei sovelleta.",
@@ -5450,6 +5453,7 @@ var nb = {
   "strategy.status.hybrid.satisfied": "Hybrid · ladebehovet er allerede dekket",
   "strategy.status.hybrid.unknown": "Hybrid · planlegger",
   "advisory.vehicleNotRequestingCurrent": "Ladingen ble startet, men kjøretøyet ber ikke om strøm. Kontroller kjøretøyets ladeinnstillinger, eller koble til kabelen på nytt.",
+  "advisory.carFull": "Bilen er full: den trenger ingen lading.",
   "advisory.powerBelowThreshold": "Ladingen ble startet, men laderen trekker nesten ingen effekt. Bilen kan være ferdig eller lader ikke: kontroller kjøretøyets ladeinnstillinger, eller koble til kabelen på nytt.",
   "control.noSettings": "Denne laderen har ingen innstillinger ennå, så det er ingenting å starte eller stoppe.",
   "control.pauseUnsettled": "En pause er lagret, men har ikke trådt i kraft ennå. Ingenting brukes.",
@@ -6073,6 +6077,7 @@ var sv = {
   "strategy.status.hybrid.satisfied": "Hybrid · laddbehovet är redan uppfyllt",
   "strategy.status.hybrid.unknown": "Hybrid · planerar",
   "advisory.vehicleNotRequestingCurrent": "Laddningen startades, men fordonet begär ingen ström. Kontrollera fordonets laddningsinställningar eller anslut kabeln igen.",
+  "advisory.carFull": "Bilen är full: den behöver ingen laddning.",
   "advisory.powerBelowThreshold": "Laddningen startades, men laddaren drar nästan ingen effekt. Bilen kan vara klar eller inte ladda: kontrollera fordonets laddningsinställningar eller anslut kabeln igen.",
   "control.noSettings": "Den här laddaren har inga inställningar ännu, så det finns inget att starta eller stoppa.",
   "control.pauseUnsettled": "En paus är sparad men har inte börjat gälla ännu. Inget tillämpas.",
@@ -8244,6 +8249,39 @@ function issuesOf(status, language) {
   return issues;
 }
 
+// src/target-need.ts
+function pythonRound(value) {
+  const floor = Math.floor(value);
+  const diff = value - floor;
+  if (diff < 0.5) {
+    return floor;
+  }
+  if (diff > 0.5) {
+    return floor + 1;
+  }
+  return floor % 2 === 0 ? floor : floor + 1;
+}
+function chargeCeiling(maxPercent) {
+  if (maxPercent === null || !Number.isFinite(maxPercent)) {
+    return 100;
+  }
+  return Math.min(100, Math.max(0, Math.floor(maxPercent)));
+}
+function effectiveTarget(targetPercent, maxPercent) {
+  return Math.min(pythonRound(targetPercent), chargeCeiling(maxPercent));
+}
+function targetNeedKwh(facts) {
+  const { soc, capacityKwh } = facts;
+  if (soc === null || capacityKwh === null || !(capacityKwh > 0) || !Number.isFinite(facts.targetPercent)) {
+    return null;
+  }
+  const needed = Math.max(0, (effectiveTarget(facts.targetPercent, facts.maxPercent) - soc) / 100 * capacityKwh);
+  return needed === 0 ? 0 : needed / facts.efficiency;
+}
+function pythonRoundedAbove(targetPercent, maxPercent) {
+  return maxPercent !== null && pythonRound(targetPercent) > chargeCeiling(maxPercent);
+}
+
 // src/model.ts
 function planRelationOf(dashboard) {
   const proposal = dashboard.plan.proposal;
@@ -8400,14 +8438,23 @@ function advisoryFor(dashboard, language) {
   if (progress.state !== CHARGE_PROGRESS_VEHICLE_NOT_REQUESTING_CURRENT) {
     return null;
   }
-  return {
+  const key = carNeedsNoCharge(dashboard.soc) ? "advisory.carFull" : progress.reason === "power_below_threshold" ? (
     // A charger behind a smart plug is judged by its power; a connector status says it differently.
-    text: translate(
-      language,
-      progress.reason === "power_below_threshold" ? "advisory.powerBelowThreshold" : "advisory.vehicleNotRequestingCurrent"
-    ),
-    code: progress.reason
-  };
+    "advisory.powerBelowThreshold"
+  ) : "advisory.vehicleNotRequestingCurrent";
+  return { text: translate(language, key), code: progress.reason };
+}
+function carNeedsNoCharge(soc) {
+  if (soc === null || soc.value === null) {
+    return false;
+  }
+  if (soc.need_kwh !== null && soc.need_kwh <= 0) {
+    return true;
+  }
+  const ceiling = soc.vehicle_max_percent !== null ? chargeCeiling(soc.vehicle_max_percent) : null;
+  const target = soc.target_percent !== null ? effectiveTarget(soc.target_percent, soc.vehicle_max_percent) : null;
+  const stop = target ?? ceiling;
+  return stop !== null && soc.value >= Math.min(stop, ceiling ?? stop);
 }
 function strategyFactsFor(dashboard, language) {
   const strategy = dashboard.strategy;
@@ -11669,39 +11716,6 @@ function vehicleChoicesFor(language, vehicles, plannedId) {
     charge: vehicle.soc_percent === null ? null : percentAmount(language, vehicle.soc_percent),
     selected: vehicle.id === plannedId
   }));
-}
-
-// src/target-need.ts
-function pythonRound(value) {
-  const floor = Math.floor(value);
-  const diff = value - floor;
-  if (diff < 0.5) {
-    return floor;
-  }
-  if (diff > 0.5) {
-    return floor + 1;
-  }
-  return floor % 2 === 0 ? floor : floor + 1;
-}
-function chargeCeiling(maxPercent) {
-  if (maxPercent === null || !Number.isFinite(maxPercent)) {
-    return 100;
-  }
-  return Math.min(100, Math.max(0, Math.floor(maxPercent)));
-}
-function effectiveTarget(targetPercent, maxPercent) {
-  return Math.min(pythonRound(targetPercent), chargeCeiling(maxPercent));
-}
-function targetNeedKwh(facts) {
-  const { soc, capacityKwh } = facts;
-  if (soc === null || capacityKwh === null || !(capacityKwh > 0) || !Number.isFinite(facts.targetPercent)) {
-    return null;
-  }
-  const needed = Math.max(0, (effectiveTarget(facts.targetPercent, facts.maxPercent) - soc) / 100 * capacityKwh);
-  return needed === 0 ? 0 : needed / facts.efficiency;
-}
-function pythonRoundedAbove(targetPercent, maxPercent) {
-  return maxPercent !== null && pythonRound(targetPercent) > chargeCeiling(maxPercent);
 }
 
 // src/settings-editor.ts

@@ -439,6 +439,7 @@ export const en = {
   "strategy.reason.totalPower": "Solar needs the meter's total grid power",
   "advisory.vehicleNotRequestingCurrent":
     "Charging was started, but the vehicle is not requesting current. Check the vehicle's charging settings or reconnect the cable.",
+  "advisory.carFull": "The car is full: it needs no charge.",
   "advisory.powerBelowThreshold":
     "Charging was started, but the charger draws almost no power. The car may be finished or not charging: check the vehicle's charging settings or reconnect the cable.",
   "control.noSettings": "This charger has no settings yet, so there is nothing to start or stop.",
