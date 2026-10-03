@@ -27,6 +27,22 @@ SpotNav fills in only what Home Assistant already knows:
 - **Price area**: the area for Home Assistant's country. A country with several areas (Sweden,
   Norway and Denmark) gets the area nearest to Home Assistant's configured location. With no
   country, an unlisted country or a location far from every area, the area is left empty.
+  Great Britain is left empty too: choose your region in the card, where **Find my region** looks it
+  up from your postcode (see below).
+
+### Great Britain: Octopus Agile
+
+In Great Britain SpotNav plans on Octopus Energy's **Agile** prices, one region per GSP group (`GB-A`
+to `GB-P`), and is meant for Agile customers. In the card's **Settings, Area and taxes**, pick your
+region under Great Britain ("GB C – London"), or type your postcode under **Find my region**: Home
+Assistant asks Octopus Energy's public lookup directly, and the postcode is not sent to the SpotNav
+relay, stored or logged. The Agile price is all-in, so VAT, energy tax and grid transfer show as
+*Included in the price* and nothing is added. The price source, Octopus Energy (Agile), is linked
+there. SpotNav is not affiliated with Octopus Energy.
+
+**Not on Intelligent Octopus Go.** Octopus does not allow a third party to control the charging of a
+car on Intelligent Octopus Go; its customers must opt out of other apps' smart charging. Do not use
+SpotNav to control charging on that tariff. More in [supported price areas](supported.md#supported-price-areas).
 - **Amps**: the charger's own maximum when it states one, otherwise 16, and never above the site's
   main fuse minus its safety margin.
 
