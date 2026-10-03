@@ -142,6 +142,119 @@ describe("grid power: one sensor with direction, or import and export as two", (
   });
 });
 
+describe("two sensors are never saved incomplete", () => {
+  const submit = (): void => {
+    document.querySelector("form")!.dispatchEvent(new Event("submit", { cancelable: true, bubbles: true }));
+  };
+  const errorOf = (field: string): HTMLElement | null => document.querySelector<HTMLElement>(`[data-field-error='${field}']`);
+
+  it("refuses a derived save with empty exports, shows the error on each and keeps the sign flag", () => {
+    const { saved } = open(config("get_derived", { grid_power_inverted: true }), "site");
+    pick("grid", "two");
+    submit();
+    expect(saved).toEqual([]);
+    for (const phase of ["L1", "L2", "L3"]) {
+      expect(errorOf(`derived_${phase}_power_export`)!.hidden).toBe(false);
+      expect(errorOf(`derived_${phase}_power_export`)!.dataset["code"]).toBe("required");
+    }
+  });
+
+  it("refuses an export on some phases only, and names the phases without one", () => {
+    const { saved } = open(config("get_derived", { derived_L2_power_export: "sensor.l2_export" }), "site");
+    pick("grid", "two");
+    submit();
+    expect(saved).toEqual([]);
+    expect(errorOf("derived_L1_power_export")!.hidden).toBe(false);
+    expect(errorOf("derived_L2_power_export")!.hidden).toBe(true);
+    expect(errorOf("derived_L3_power_export")!.hidden).toBe(false);
+  });
+
+  it("refuses a direct save with no export total", () => {
+    const { saved } = open(config("get_direct", { grid_power_inverted: true }), "site");
+    pick("grid", "two");
+    submit();
+    expect(saved).toEqual([]);
+    expect(errorOf("grid_power_source_power_export")!.hidden).toBe(false);
+  });
+
+  it("saves a complete pair and clears the sign", () => {
+    const exports = { derived_L1_power_export: "sensor.e1", derived_L2_power_export: "sensor.e2", derived_L3_power_export: "sensor.e3" };
+    const { saved } = open(config("get_derived", { ...exports, grid_power_inverted: true }), "site");
+    expect(checked("grid")).toBe("two");
+    submit();
+    expect(saved).toHaveLength(1);
+    expect(saved[0]!["grid_power_inverted"]).toBe("false");
+  });
+
+  it("says in derived mode that a meter without export per phase keeps one sensor", () => {
+    open(config("get_derived"), "site");
+    pick("grid", "two");
+    expect(document.querySelector("[data-help='grid-phases']")!.textContent).toContain(translate("en", "entity.help.derivedTwoSensors"));
+  });
+});
+
+describe("a detected sign that disagrees with the stored one", () => {
+  const solax = (powerInverted: boolean) => ({
+    id: "m1",
+    integration: "solax_modbus",
+    title: "SolaX",
+    mode: "derived_phase_current",
+    confidence: "high" as const,
+    currentSigned: false,
+    powerInverted,
+    estimated: false,
+    disabledEntities: [],
+    entities: ["L1", "L2", "L3"].map((phase) => ({
+      role: "power",
+      phase,
+      entityId: `sensor.p_${phase.toLowerCase()}`,
+      friendlyName: phase,
+      disabled: false,
+    })),
+    warnings: [],
+    applied: true,
+  });
+  const powers = { derived_L1_power: "sensor.p_l1", derived_L2_power: "sensor.p_l2", derived_L3_power: "sensor.p_l3" };
+  const notice = (): HTMLElement | null => document.querySelector<HTMLElement>("[data-sign-notice='grid']");
+
+  it("warns, dismissibly, when the meter reports export as positive and the flag is off", () => {
+    const cfg = config("get_derived", { ...powers, grid_power_inverted: false });
+    cfg.site!.meters = [solax(true)];
+    open(cfg, "site");
+    expect(notice()!.hidden).toBe(false);
+    expect(notice()!.textContent).toContain("SolaX reports export as positive");
+    notice()!.querySelector("button")!.click();
+    expect(notice()!.hidden).toBe(true);
+  });
+
+  it("goes away when the flag is turned on, and warns the other way round", () => {
+    const cfg = config("get_derived", { ...powers, grid_power_inverted: false });
+    cfg.site!.meters = [solax(true)];
+    open(cfg, "site");
+    const box = document.querySelector<HTMLInputElement>("input[data-field='grid_power_inverted']")!;
+    box.checked = true;
+    box.dispatchEvent(new Event("change", { bubbles: true }));
+    expect(notice()!.hidden).toBe(true);
+
+    const reverse = config("get_derived", { ...powers, grid_power_inverted: true });
+    reverse.site!.meters = [solax(false)];
+    open(reverse, "site");
+    expect(notice()!.hidden).toBe(false);
+    expect(notice()!.dataset["want"]).toBe("off");
+  });
+
+  it("stays silent when the entities are not the detected meter's or the sign agrees", () => {
+    const other = config("get_derived", { grid_power_inverted: false });
+    other.site!.meters = [solax(true)];
+    open(other, "site");
+    expect(notice()!.hidden).toBe(true);
+    const agree = config("get_derived", { ...powers, grid_power_inverted: true });
+    agree.site!.meters = [solax(true)];
+    open(agree, "site");
+    expect(notice()!.hidden).toBe(true);
+  });
+});
+
 describe("current is taken from: one kind for every phase", () => {
   it("is estimated when nothing is stored, says it is marked in the card, and shows no current fields", () => {
     open(config("get_derived"), "site");
