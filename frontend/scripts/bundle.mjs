@@ -34,8 +34,9 @@ export async function bundle(outfile) {
     format: "esm",
     target: "es2021",
     platform: "browser",
-    // Unminified on purpose, so the shipped file can be read and reviewed as it runs.
-    minify: false,
+    // Minified: the dashboard waits only two seconds for the element to be defined, so load time
+    // matters. The readable source is in frontend/src; the banner below keeps the version.
+    minify: true,
     sourcemap: false,
     legalComments: "none",
     charset: "utf8",
