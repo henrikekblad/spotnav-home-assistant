@@ -8,8 +8,21 @@ export interface CardConfig {
 }
 
 /**
- * Strict validation: only `type` (`custom:spotnav-card`) and `charger` are accepted; unknown
- * options are refused rather than ignored. A missing or empty charger is the "pick one" state.
+ * The keys Home Assistant itself puts on any card's config (sizing in the sections view, the
+ * visibility conditions, the masonry column). They are not card options: refusing them would make
+ * `setConfig` throw for a valid card, and Home Assistant shows that as its bare "Configuration error".
+ */
+const HOME_ASSISTANT_CARD_KEYS: ReadonlySet<string> = new Set([
+  "grid_options",
+  "layout_options",
+  "view_layout",
+  "visibility",
+  "card_mod",
+]);
+
+/**
+ * Strict validation: only `type` (`custom:spotnav-card`) and `charger` are accepted, besides the keys
+ * Home Assistant adds itself; other unknown options are refused rather than ignored. A missing or empty charger is the "pick one" state.
  * A supplied charger is a config-entry id and must be a non-empty string without surrounding
  * whitespace (trimming would point at a different charger). Error text is static.
  */
@@ -21,7 +34,11 @@ export function parseCardConfig(config: unknown): CardConfig {
   if (candidate.type !== `custom:${CARD_TYPE}`) {
     throw new Error(`SpotNav card: type must be "custom:${CARD_TYPE}"`);
   }
-  if (Object.keys(candidate).some((key) => key !== "type" && key !== "charger")) {
+  if (
+    Object.keys(candidate).some(
+      (key) => key !== "type" && key !== "charger" && !HOME_ASSISTANT_CARD_KEYS.has(key),
+    )
+  ) {
     throw new Error("SpotNav card: only the type and charger options are supported");
   }
   const charger = candidate.charger;
