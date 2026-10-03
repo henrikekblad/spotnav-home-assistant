@@ -435,7 +435,6 @@ export const fi: Record<keyof typeof en, string> = {
   "strategy.status.hybrid.unknown": "Hybridi · suunnittelee",
   "advisory.vehicleNotRequestingCurrent":
     "Lataus aloitettiin, mutta ajoneuvo ei pyydä virtaa. Tarkista ajoneuvon latausasetukset tai kytke kaapeli uudelleen.",
-  "advisory.carFull": "Auto on täynnä: se ei tarvitse latausta.",
   "advisory.powerBelowThreshold":
     "Lataus käynnistettiin, mutta latauslaite ei ota juuri lainkaan tehoa. Auto voi olla valmis tai ei lataa: tarkista ajoneuvon latausasetukset tai kytke kaapeli uudelleen.",
   "control.noSettings": "Tällä laturilla ei ole vielä asetuksia, joten aloitettavaa tai pysäytettävää ei ole.",

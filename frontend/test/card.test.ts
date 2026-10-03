@@ -346,7 +346,7 @@ describe("the vehicle-side advisory", () => {
     ["with no energy left to need", { value: 70, target_percent: 80, vehicle_max_percent: null, need_kwh: 0 }, true],
     ["below its target", { value: 60, target_percent: 80, vehicle_max_percent: null, need_kwh: 5 }, false],
     ["with no reading", { value: null, target_percent: 80, vehicle_max_percent: null, need_kwh: null }, false],
-  ])("words a full car calmly when the car is %s: %s", async (_label, facts, full) => {
+  ])("says nothing about a full car when the car is %s: %s", async (_label, facts, full) => {
     const hass = new FakeHass();
     const element = card();
     element.hass = hass;
@@ -359,10 +359,14 @@ describe("the vehicle-side advisory", () => {
     await settle();
 
     const node = shadow(element).querySelector(`.${VISUAL_CLASSES.advisory}`);
-    expect(node?.textContent).toBe(translate("en", full ? "advisory.carFull" : "advisory.vehicleNotRequestingCurrent"));
+    if (full) {
+      expect(node).toBeNull();
+    } else {
+      expect(node?.textContent).toBe(translate("en", "advisory.vehicleNotRequestingCurrent"));
+    }
   });
 
-  it("words a full car calmly when the backend says the need is already met, with no target known", async () => {
+  it("says nothing about a full car when the backend says the need is already met, with no target known", async () => {
     const hass = new FakeHass();
     const element = card();
     element.hass = hass;
@@ -375,8 +379,7 @@ describe("the vehicle-side advisory", () => {
     );
     await settle();
 
-    const node = shadow(element).querySelector(`.${VISUAL_CLASSES.advisory}`);
-    expect(node?.textContent).toBe(translate("en", "advisory.carFull"));
+    expect(shadow(element).querySelector(`.${VISUAL_CLASSES.advisory}`)).toBeNull();
   });
 
   it("says nothing when the block is unreadable, and still renders the rest", async () => {

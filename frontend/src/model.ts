@@ -434,11 +434,13 @@ function advisoryFor(dashboard: Dashboard, language: Language): AdvisoryFacts | 
   if (progress.state !== CHARGE_PROGRESS_VEHICLE_NOT_REQUESTING_CURRENT) {
     return null;
   }
-  // A car that is full asks for no current, which is no fault: the calm line, not a request to check
-  // the vehicle's settings.
-  const key: TranslationKey = carNeedsNoCharge(dashboard.soc) || needAlreadyMet(dashboard.status)
-    ? "advisory.carFull"
-    : progress.reason === "power_below_threshold"
+  // A car that is full asks for no current, which is no fault: nothing to say beyond the normal status
+  // line (which already says the need is met), so no advisory at all.
+  if (carNeedsNoCharge(dashboard.soc) || needAlreadyMet(dashboard.status)) {
+    return null;
+  }
+  const key: TranslationKey =
+    progress.reason === "power_below_threshold"
       ? // A charger behind a smart plug is judged by its power; a connector status says it differently.
         "advisory.powerBelowThreshold"
       : "advisory.vehicleNotRequestingCurrent";

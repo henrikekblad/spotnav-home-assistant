@@ -436,7 +436,6 @@ export const sv: Record<keyof typeof en, string> = {
   "strategy.status.hybrid.unknown": "Hybrid · planerar",
   "advisory.vehicleNotRequestingCurrent":
     "Laddningen startades, men fordonet begär ingen ström. Kontrollera fordonets laddningsinställningar eller anslut kabeln igen.",
-  "advisory.carFull": "Bilen är full: den behöver ingen laddning.",
   "advisory.powerBelowThreshold":
     "Laddningen startades, men laddaren drar nästan ingen effekt. Bilen kan vara klar eller inte ladda: kontrollera fordonets laddningsinställningar eller anslut kabeln igen.",
   "control.noSettings": "Den här laddaren har inga inställningar ännu, så det finns inget att starta eller stoppa.",

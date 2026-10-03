@@ -435,7 +435,6 @@ export const da: Record<keyof typeof en, string> = {
   "strategy.status.hybrid.unknown": "Hybrid · planlægger",
   "advisory.vehicleNotRequestingCurrent":
     "Opladningen blev startet, men køretøjet anmoder ikke om strøm. Kontrollér køretøjets opladningsindstillinger, eller tilslut kablet igen.",
-  "advisory.carFull": "Bilen er fuld: den har ikke brug for opladning.",
   "advisory.powerBelowThreshold":
     "Opladningen blev startet, men laderen trækker næsten ingen effekt. Bilen kan være færdig eller lader ikke: kontrollér køretøjets opladningsindstillinger, eller tilslut kablet igen.",
   "control.noSettings": "Denne lader har endnu ingen indstillinger, så der er intet at starte eller stoppe.",
