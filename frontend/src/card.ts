@@ -1650,6 +1650,33 @@ export class SpotnavCard extends HTMLElement {
     }
   }
 
+  /**
+   * The one-tap answer to the card's "set its onboard charger to 1-phase?": `update_vehicle` under
+   * compare-and-set. Keeping three phases is stored as an answer too, which ends the question. Whatever
+   * the answer, the dashboard is read again, so a conflict or a refusal shows the real state.
+   */
+  private async answerOnboardPhases(vehicleId: string, phases: 1 | 3): Promise<void> {
+    const hass = this.hassObject;
+    const config = this.config;
+    const row = this.vehicleFacts().find((entry) => entry.id === vehicleId);
+    if (!this.connected || hass === null || config === null || config.charger === "" || !this.isAdmin || row === undefined) {
+      return;
+    }
+    const generation = this.generation;
+    try {
+      await updateVehicle(hass, config.charger, {
+        vehicleId,
+        changes: { onboard_phases: phases },
+        expected: { onboard_phases: row.onboard_phases },
+      });
+    } catch {
+      // Not answered: the question stays until the next read says otherwise.
+    }
+    if (generation === this.generation && this.connected) {
+      await this.refresh({ purpose: "confirm" });
+    }
+  }
+
   private async confirmVehicleWrite(): Promise<void> {
     this.confirmReadFailed = false;
     await this.refresh({ purpose: "confirm", confirm: SETTINGS_CONFIRM_NOTICE });
@@ -2012,6 +2039,9 @@ export class SpotnavCard extends HTMLElement {
         },
         onSaveVehicle: (vehicleId, draft) => {
           void this.saveVehicle(vehicleId, draft);
+        },
+        onAnswerOnboardPhases: (vehicleId, phases) => {
+          void this.answerOnboardPhases(vehicleId, phases);
         },
         onDialogsClosed: () => {
           if (this.renderPending) {

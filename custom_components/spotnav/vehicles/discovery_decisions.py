@@ -38,6 +38,9 @@ DECISION_DOMAIN_VEHICLE_CHARGE_LIMIT = "vehicle_charge_limit"
 # A vehicle's own properties (`capacity_kwh`, `consumption_kwh_per_10km`), in a
 # domain of its own for the same reason. Written only by `vehicles/vehicle_properties.py`.
 DECISION_DOMAIN_VEHICLE_PROPERTIES = "vehicle_properties"
+# What charges showed about the phases they used, per vehicle and per charger. Written only by
+# `planning/phases.py`.
+DECISION_DOMAIN_PHASE_OBSERVATIONS = "phase_observations"
 
 _DISMISSED_KEY = "dismissed"
 _CONFIRMED_KEY = "confirmed"

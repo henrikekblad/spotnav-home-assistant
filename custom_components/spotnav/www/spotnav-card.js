@@ -669,6 +669,9 @@ var VISUAL_CLASSES = {
   actionError: "spotnav-action-error",
   controlNotice: "spotnav-control-notice",
   advisory: "spotnav-advisory",
+  suggestion: "spotnav-suggestion",
+  suggestionText: "spotnav-suggestion-text",
+  suggestionAnswers: "spotnav-suggestion-answers",
   pauseChoices: "spotnav-pause-choices",
   choiceButton: "spotnav-choice-button",
   nameBlock: "spotnav-name-block",
@@ -706,6 +709,7 @@ var VISUAL_CLASSES = {
   entityNotices: "spotnav-entity-notices",
   entityAutomatic: "spotnav-entity-automatic",
   entityDialog: "spotnav-entity-dialog",
+  planDialog: "spotnav-plan-dialog",
   actionIcon: "spotnav-action-icon",
   summaryExtremes: "spotnav-summary-extremes",
   summaryMax: "spotnav-summary-max",
@@ -1226,6 +1230,20 @@ var VISUAL_STYLES = `
     overflow-wrap: anywhere;
     color: var(--warning-color, #ffa600);
   }
+  /** A question the card puts to the administrator: the sentence and its one-tap answers. */
+  .spotnav-suggestion {
+    margin: 8px 0 0;
+  }
+  .spotnav-suggestion-text {
+    margin: 0;
+    overflow-wrap: anywhere;
+  }
+  .spotnav-suggestion-answers {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin-top: 6px;
+  }
   .spotnav-pause-choices,
   .spotnav-strategy-row {
     display: flex;
@@ -1653,6 +1671,9 @@ var VISUAL_STYLES = `
     color: var(--secondary-text-color, #727272);
     font-size: 0.82rem;
   }
+  .${VISUAL_CLASSES.siteApplies}[data-wired-phases] {
+    margin: 12px 0 8px;
+  }
   .${VISUAL_CLASSES.siteFieldset} {
     margin: 0 0 8px;
     padding: 0;
@@ -1759,13 +1780,15 @@ var VISUAL_STYLES = `
     font-size: 1rem;
     color: var(--primary-text-color, inherit);
   }
-  .${VISUAL_CLASSES.entityDialog} .${VISUAL_CLASSES.siteFieldset} > .${VISUAL_CLASSES.siteLegend} {
+  .${VISUAL_CLASSES.entityDialog} .${VISUAL_CLASSES.siteFieldset} > .${VISUAL_CLASSES.siteLegend},
+  .${VISUAL_CLASSES.planDialog} .${VISUAL_CLASSES.siteFieldset} > .${VISUAL_CLASSES.siteLegend} {
     font-weight: 600;
     font-size: 0.95rem;
     color: var(--primary-text-color, inherit);
   }
   /* A number field (main fuse, safety margin, measurement age) is headed like the groups around it. */
-  .${VISUAL_CLASSES.entityDialog} .${VISUAL_CLASSES.settingsField} > .${VISUAL_CLASSES.entityNumberLabel} {
+  .${VISUAL_CLASSES.entityDialog} .${VISUAL_CLASSES.settingsField} > .${VISUAL_CLASSES.entityNumberLabel},
+  .${VISUAL_CLASSES.planDialog} .${VISUAL_CLASSES.settingsField} > .${VISUAL_CLASSES.settingsLabel} {
     font-weight: 600;
     font-size: 0.95rem;
     color: var(--primary-text-color, inherit);
@@ -3374,6 +3397,7 @@ var da = {
   "entity.warning.ownBalancing": "{name} ({integration}) balancerer last selv og kan modvirke SpotNavs aktive styring. Brug en af dem.",
   "entity.warning.externalBalancer": "{integration} balancerer strømmen for {name} selv, så SpotNav starter og stopper laderen, men skriver ikke dens strøm.",
   "entity.warning.unknown": "Anlægget har en meddelelse, som denne version ikke kan vise. Opdater SpotNav.",
+  "entity.warning.batteryImportLimit": "To grænser på én sikring: batteriets grænse for netimport ({integration}) er {battery} A pr. fase, SpotNavs er {spotnav} A. Sæt dem til samme værdi.",
   "entity.detect.title": "Fundet i Home Assistant",
   "entity.detect.intro": "Disse blev genkendt i din opsætning. Intet ændres, før du trykker på Brug.",
   "entity.site.intro": "Måling for anlægget. {applies}",
@@ -3721,6 +3745,11 @@ var da = {
   "settings.vehicle.onboardThree": "3-fase",
   "settings.vehicle.onboardHelp": "Hvor mange faser bilens egen oplader kan tage imod. En opladning bruger det laveste af dette og opladerens tilslutning.",
   "settings.vehicle.error.onboardPhases": "Den indbyggede oplader skal være 1-fase eller 3-fase.",
+  "entity.phases.fromSite": "Laderen er tilsluttet {phases} (fra anlægget).",
+  "entity.phases.openSite": "Anlæggets tilslutning",
+  "suggestion.onboardOne.text": "Bilen ser ud til at lade på én fase. Skal den indbyggede oplader sættes til 1-fase?",
+  "suggestion.onboardOne.accept": "Sæt til 1-fase",
+  "suggestion.onboardOne.dismiss": "Behold 3-fase",
   "cap.targetSocNote": "Kræver en sensor for bilens ladetilstand og batteriets kapacitet. Angiv dem i Plan og Indstillinger.",
   "control.startStop": "Start og stop",
   "control.startStop.easeeFixed": "SpotNav starter og stopper laderen via Easee-integrationens tjeneste (pause og genoptag), så der er ingen start- eller stopenhed at vælge.",
@@ -3983,6 +4012,7 @@ var en = {
   "entity.warning.ownBalancing": "{name} ({integration}) balances load by itself and may fight SpotNav's active control. Use one of them.",
   "entity.warning.externalBalancer": "{integration} balances the current of {name} itself, so SpotNav starts and stops the charger but does not write its current.",
   "entity.warning.unknown": "The site has a notice this version cannot show. Update SpotNav.",
+  "entity.warning.batteryImportLimit": "Two limits on one fuse: the battery's grid import limit ({integration}) is {battery} A per phase, SpotNav's is {spotnav} A. Set them to the same value.",
   "entity.detect.title": "Found in Home Assistant",
   "entity.detect.intro": "These were recognised in your setup. Nothing changes until you press Use.",
   "entity.site.intro": "Measurement for the site. {applies}",
@@ -4330,6 +4360,11 @@ var en = {
   "settings.vehicle.onboardThree": "3-phase",
   "settings.vehicle.onboardHelp": "How many phases the car's own charger can take. A charge uses the smaller of this and the charger's wiring.",
   "settings.vehicle.error.onboardPhases": "The onboard charger must be 1-phase or 3-phase.",
+  "entity.phases.fromSite": "The charger is wired for {phases} (from the site).",
+  "entity.phases.openSite": "Site wiring",
+  "suggestion.onboardOne.text": "This car seems to charge on one phase. Set its onboard charger to 1-phase?",
+  "suggestion.onboardOne.accept": "Set to 1-phase",
+  "suggestion.onboardOne.dismiss": "Keep 3-phase",
   "cap.targetSocNote": "Needs a charge-level sensor for the vehicle and its battery capacity. Set them in Plan and Settings.",
   "control.startStop": "Start and stop",
   "control.startStop.easeeFixed": "SpotNav starts and stops the charger through the Easee integration's service (pause and resume), so there is no start or stop entity to choose.",
@@ -4592,6 +4627,7 @@ var fi = {
   "entity.warning.ownBalancing": "{name} ({integration}) tasapainottaa kuorman itse ja voi häiritä SpotNavin aktiivista ohjausta. Käytä toista.",
   "entity.warning.externalBalancer": "{integration} tasapainottaa laitteen {name} virran itse, joten SpotNav käynnistää ja pysäyttää laturin mutta ei kirjoita sen virtaa.",
   "entity.warning.unknown": "Kohteella on ilmoitus, jota tämä versio ei osaa näyttää. Päivitä SpotNav.",
+  "entity.warning.batteryImportLimit": "Kaksi rajaa yhdelle sulakkeelle: akun verkkoonoton raja ({integration}) on {battery} A vaihetta kohti, SpotNavin {spotnav} A. Aseta ne samaan arvoon.",
   "entity.detect.title": "Löytyi Home Assistantista",
   "entity.detect.intro": "Nämä tunnistettiin asetuksistasi. Mikään ei muutu ennen kuin painat Käytä.",
   "entity.site.intro": "Kohteen mittaus. {applies}",
@@ -4939,6 +4975,11 @@ var fi = {
   "settings.vehicle.onboardThree": "3-vaiheinen",
   "settings.vehicle.onboardHelp": "Kuinka monta vaihetta auton oma laturi voi vastaanottaa. Lataus käyttää pienempää tästä ja laturin kytkennästä.",
   "settings.vehicle.error.onboardPhases": "Sisäisen laturin on oltava 1- tai 3-vaiheinen.",
+  "entity.phases.fromSite": "Laturi on kytketty: {phases} (kohteesta).",
+  "entity.phases.openSite": "Kohteen kytkentä",
+  "suggestion.onboardOne.text": "Auto näyttää lataavan yhdellä vaiheella. Asetetaanko sen sisäinen laturi 1-vaiheiseksi?",
+  "suggestion.onboardOne.accept": "Aseta 1-vaiheiseksi",
+  "suggestion.onboardOne.dismiss": "Pidä 3-vaiheisena",
   "cap.targetSocNote": "Vaatii ajoneuvon lataustasoanturin ja akun kapasiteetin. Aseta ne Suunnitelmassa ja Asetuksissa.",
   "control.startStop": "Käynnistys ja pysäytys",
   "control.startStop.easeeFixed": "SpotNav käynnistää ja pysäyttää laturin Easee-integraation palvelulla (tauko ja jatko), joten käynnistys- tai pysäytysentiteettiä ei valita.",
@@ -5201,6 +5242,7 @@ var nb = {
   "entity.warning.ownBalancing": "{name} ({integration}) balanserer last selv og kan motvirke SpotNavs aktive styring. Bruk én av dem.",
   "entity.warning.externalBalancer": "{integration} balanserer strømmen for {name} selv, så SpotNav starter og stopper laderen, men skriver ikke strømmen.",
   "entity.warning.unknown": "Anlegget har en melding som denne versjonen ikke kan vise. Oppdater SpotNav.",
+  "entity.warning.batteryImportLimit": "To grenser på én sikring: batteriets grense for nettimport ({integration}) er {battery} A per fase, SpotNavs er {spotnav} A. Sett dem til samme verdi.",
   "entity.detect.title": "Funnet i Home Assistant",
   "entity.detect.intro": "Disse ble gjenkjent i oppsettet ditt. Ingenting endres før du trykker på Bruk.",
   "entity.site.intro": "Måling for anlegget. {applies}",
@@ -5548,6 +5590,11 @@ var nb = {
   "settings.vehicle.onboardThree": "3-fase",
   "settings.vehicle.onboardHelp": "Hvor mange faser bilens egen lader kan ta imot. En lading bruker det laveste av dette og laderens tilkobling.",
   "settings.vehicle.error.onboardPhases": "Den innebygde laderen må være 1-fase eller 3-fase.",
+  "entity.phases.fromSite": "Laderen er koblet til {phases} (fra anlegget).",
+  "entity.phases.openSite": "Anleggets kobling",
+  "suggestion.onboardOne.text": "Bilen ser ut til å lade på én fase. Sette den innebygde laderen til 1-fase?",
+  "suggestion.onboardOne.accept": "Sett til 1-fase",
+  "suggestion.onboardOne.dismiss": "Behold 3-fase",
   "cap.targetSocNote": "Krever en sensor for bilens ladenivå og batteriets kapasitet. Angi dem i Plan og Innstillinger.",
   "control.startStop": "Start og stopp",
   "control.startStop.easeeFixed": "SpotNav starter og stopper laderen via Easee-integrasjonens tjeneste (pause og gjenoppta), så det finnes ingen start- eller stoppenhet å velge.",
@@ -5810,6 +5857,7 @@ var sv = {
   "entity.warning.ownBalancing": "{name} ({integration}) balanserar last själv och kan motverka SpotNavs aktiva styrning. Använd en av dem.",
   "entity.warning.externalBalancer": "{integration} balanserar strömmen för {name} själv, så SpotNav startar och stoppar laddaren men skriver inte dess ström.",
   "entity.warning.unknown": "Anläggningen har en avisering som den här versionen inte kan visa. Uppdatera SpotNav.",
+  "entity.warning.batteryImportLimit": "Två gränser på en säkring: batteriets gräns för nätimport ({integration}) är {battery} A per fas, SpotNavs är {spotnav} A. Ställ in dem på samma värde.",
   "entity.detect.title": "Hittat i Home Assistant",
   "entity.detect.intro": "De här känns igen i din installation. Inget ändras förrän du trycker på Använd.",
   "entity.site.intro": "Mätning för anläggningen. {applies}",
@@ -6157,6 +6205,11 @@ var sv = {
   "settings.vehicle.onboardThree": "3-fas",
   "settings.vehicle.onboardHelp": "Hur många faser bilens egen laddare kan ta emot. En laddning använder det lägsta av detta och laddarens koppling.",
   "settings.vehicle.error.onboardPhases": "Den inbyggda laddaren måste vara 1-fas eller 3-fas.",
+  "entity.phases.fromSite": "Laddaren är kopplad till {phases} (från anläggningen).",
+  "entity.phases.openSite": "Anläggningens koppling",
+  "suggestion.onboardOne.text": "Bilen verkar ladda på en fas. Ställ in dess inbyggda laddare på 1-fas?",
+  "suggestion.onboardOne.accept": "Ställ in på 1-fas",
+  "suggestion.onboardOne.dismiss": "Behåll 3-fas",
   "cap.targetSocNote": "Kräver en sensor för fordonets laddnivå och batteriets kapacitet. Ange dem i Plan och Inställningar.",
   "control.startStop": "Start och stopp",
   "control.startStop.easeeFixed": "SpotNav startar och stoppar laddaren via Easee-integrationens tjänst (pausa och återuppta), så det finns ingen start- eller stoppentitet att välja.",
@@ -7775,7 +7828,8 @@ function decodeVehicle(raw) {
     "consumption_kwh_per_10km",
     "max_percent",
     "soc_percent",
-    "onboard_phases"
+    "onboard_phases",
+    "suggested_onboard_phases"
   ]);
   const capacity = boundedOrNull(source, "capacity_kwh", 0, Number.POSITIVE_INFINITY, true);
   const origin = enumOrNull(source, "capacity_source", CAPACITY_SOURCES);
@@ -7791,12 +7845,16 @@ function decodeVehicle(raw) {
     consumption_kwh_per_10km: boundedOrNull(source, "consumption_kwh_per_10km", 0, Number.POSITIVE_INFINITY, true),
     max_percent: boundedOrNull(source, "max_percent", 0, 100),
     soc_percent: boundedOrNull(source, "soc_percent", 0, 100),
-    onboard_phases: phaseCount(source, "onboard_phases")
+    onboard_phases: phaseCount(source, "onboard_phases"),
+    suggested_onboard_phases: required(source, "suggested_onboard_phases") === null ? null : suggestedPhase(source)
   };
 }
 function phaseCount(source, key) {
   const value = source[key];
   return value === 1 || value === 3 ? value : bad2();
+}
+function suggestedPhase(source) {
+  return source["suggested_onboard_phases"] === 1 ? 1 : bad2();
 }
 function decodeChargingPhases(source) {
   exactKeys2(source, ["phases", "charger", "vehicle", "limited_by"]);
@@ -8684,7 +8742,7 @@ function decodeWarningPhase(raw) {
 }
 function decodeWarning(raw) {
   const source = record3(raw);
-  exactKeys3(source, ["code", "integration", "entity_id", "interval_s", "option", "device_name", "phases"]);
+  exactKeys3(source, ["code", "integration", "entity_id", "interval_s", "option", "device_name", "phases", "limits_a"]);
   const phases = source["phases"];
   if (!Array.isArray(phases)) {
     return bad3();
@@ -8696,8 +8754,19 @@ function decodeWarning(raw) {
     intervalS: intervalOrNull(source, "interval_s"),
     option: textOrNull3(source, "option"),
     deviceName: textOrNull3(source, "device_name"),
-    phases: phases.map(decodeWarningPhase)
+    phases: phases.map(decodeWarningPhase),
+    limitsA: decodeLimits(source["limits_a"])
   };
+}
+function decodeLimits(raw) {
+  if (raw === null) {
+    return null;
+  }
+  const source = record3(raw);
+  exactKeys3(source, ["battery", "spotnav"]);
+  const battery = source["battery"];
+  const spotnav = source["spotnav"];
+  return typeof battery === "number" && Number.isFinite(battery) && typeof spotnav === "number" && Number.isFinite(spotnav) ? { battery, spotnav } : bad3();
 }
 function decodeDetectedEntity(raw) {
   const source = record3(raw);
@@ -9385,6 +9454,13 @@ function warningText(language, warning) {
   }
   if (warning.code === "external_current_balancer") {
     return translate(language, "entity.warning.externalBalancer", { name: warning.deviceName ?? "", integration });
+  }
+  if (warning.code === "battery_import_limit_differs" && warning.limitsA !== null) {
+    return translate(language, "entity.warning.batteryImportLimit", {
+      battery: formatNumber(language, warning.limitsA.battery, 1),
+      spotnav: formatNumber(language, warning.limitsA.spotnav, 1),
+      integration
+    });
   }
   return translate(language, "entity.warning.unknown");
 }
@@ -10358,6 +10434,24 @@ function entityEditorBody(doc, language, input, handlers, idPrefix) {
     errorNodes.set("charger_phases", { node: phasesError, input: wired.fieldset });
     wired.fieldset.append(phasesError);
     body.append(wired.fieldset);
+  }
+  if (phasesField !== void 0 && phasesField.kind === "enum" && !phasesField.writable) {
+    const wiredLine = element(doc, "p", VISUAL_CLASSES.siteApplies);
+    wiredLine.dataset["wiredPhases"] = phasesField.value ?? "3";
+    wiredLine.append(
+      translate(language, "entity.phases.fromSite", {
+        phases: translate(language, phasesField.value === "1" ? "settings.phases.one" : "settings.phases.three")
+      })
+    );
+    if (handlers.onOpenSite !== void 0 && !locked) {
+      const link = element(doc, "button", VISUAL_CLASSES.strategyLink, translate(language, "entity.phases.openSite"));
+      link.type = "button";
+      link.dataset["action"] = "open-site";
+      link.addEventListener("click", () => handlers.onOpenSite?.());
+      wiredLine.append(" ", link);
+      disabledWhenPending.push(link);
+    }
+    body.append(wiredLine);
   }
   const priorityField = fieldsOf(config, scope).find((entry) => entry.field === "charger_priority");
   if (priorityField !== void 0 && priorityField.kind === "enum" && priorityField.writable) {
@@ -13123,6 +13217,7 @@ function createCardView(input) {
     background: () => card,
     onClose: notifyDialogsChanged
   });
+  settingsDialog.element.classList.add(VISUAL_CLASSES.planDialog);
   const marketDialog = createDialog({
     owner: input.mount,
     idPrefix: `${idPrefix}-market`,
@@ -13208,6 +13303,29 @@ function createCardView(input) {
     const advisory = element7(doc, "p", VISUAL_CLASSES.advisory, model.advisory.text);
     advisory.setAttribute("role", "status");
     card.append(advisory);
+  }
+  const suggestedVehicle = model.vehicles.find((row) => row.id === model.targetVehicleId);
+  if (input.isAdmin && suggestedVehicle !== void 0 && suggestedVehicle.suggested_onboard_phases === 1) {
+    const suggestion = element7(doc, "div", VISUAL_CLASSES.suggestion);
+    suggestion.dataset["suggestion"] = "onboard-phases";
+    suggestion.setAttribute("role", "status");
+    suggestion.append(element7(doc, "p", VISUAL_CLASSES.suggestionText, translate(model.language, "suggestion.onboardOne.text")));
+    const answers = element7(doc, "div", VISUAL_CLASSES.suggestionAnswers);
+    for (const [phases, label, action] of [
+      [1, "suggestion.onboardOne.accept", "accept"],
+      [3, "suggestion.onboardOne.dismiss", "dismiss"]
+    ]) {
+      const answer = element7(doc, "button", VISUAL_CLASSES.choiceButton, translate(model.language, label));
+      answer.type = "button";
+      answer.dataset["action"] = action;
+      answer.addEventListener("click", () => {
+        answer.disabled = true;
+        input.onAnswerOnboardPhases?.(suggestedVehicle.id, phases);
+      });
+      answers.append(answer);
+    }
+    suggestion.append(answers);
+    card.append(suggestion);
   }
   if (model.status !== null) {
     card.append(element7(doc, "p", VISUAL_CLASSES.status, model.status));
@@ -13969,7 +14087,8 @@ function createCardView(input) {
         consumption_kwh_per_10km: null,
         max_percent: null,
         soc_percent: null,
-        onboard_phases: 3
+        onboard_phases: 3,
+        suggested_onboard_phases: null
       })) : [];
       for (const row of [...vehicleRows, ...extra]) {
         vehicleListSlot.append(
@@ -14570,7 +14689,11 @@ function createCardView(input) {
       },
       {
         onSave: (draft) => input.onSaveEntities?.(scope, draft),
-        onCancel: () => leaveSettingsChild(entityDialog, input.onCancelEntities)
+        onCancel: () => leaveSettingsChild(entityDialog, input.onCancelEntities),
+        onOpenSite: () => {
+          entityDialog.hide({ restoreFocus: false });
+          input.onOpenEntityEditor?.("site");
+        }
       },
       idPrefix
     );
@@ -16533,6 +16656,31 @@ var SpotnavCard = class extends HTMLElement {
       }
     }
   }
+  /**
+   * The one-tap answer to the card's "set its onboard charger to 1-phase?": `update_vehicle` under
+   * compare-and-set. Keeping three phases is stored as an answer too, which ends the question. Whatever
+   * the answer, the dashboard is read again, so a conflict or a refusal shows the real state.
+   */
+  async answerOnboardPhases(vehicleId, phases) {
+    const hass = this.hassObject;
+    const config = this.config;
+    const row = this.vehicleFacts().find((entry) => entry.id === vehicleId);
+    if (!this.connected || hass === null || config === null || config.charger === "" || !this.isAdmin || row === void 0) {
+      return;
+    }
+    const generation = this.generation;
+    try {
+      await updateVehicle(hass, config.charger, {
+        vehicleId,
+        changes: { onboard_phases: phases },
+        expected: { onboard_phases: row.onboard_phases }
+      });
+    } catch {
+    }
+    if (generation === this.generation && this.connected) {
+      await this.refresh({ purpose: "confirm" });
+    }
+  }
   async confirmVehicleWrite() {
     this.confirmReadFailed = false;
     await this.refresh({ purpose: "confirm", confirm: SETTINGS_CONFIRM_NOTICE });
@@ -16850,6 +16998,9 @@ var SpotnavCard = class extends HTMLElement {
         },
         onSaveVehicle: (vehicleId, draft) => {
           void this.saveVehicle(vehicleId, draft);
+        },
+        onAnswerOnboardPhases: (vehicleId, phases) => {
+          void this.answerOnboardPhases(vehicleId, phases);
         },
         onDialogsClosed: () => {
           if (this.renderPending) {

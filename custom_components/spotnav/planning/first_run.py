@@ -243,7 +243,7 @@ def charger_phases_from_entry(data: Any) -> int | None:
     return 3 if isinstance(entities, (list, tuple)) and len(entities) == 3 else None
 
 
-def _site_limit_a(site: ConfigEntry | None) -> int | None:
+def site_limit_a(site: ConfigEntry | None) -> int | None:
     """The main fuse minus the safety margin, whole amps, or `None` when there is no site fuse."""
     if site is None:
         return None
@@ -306,7 +306,7 @@ async def async_seed_first_run(
         latitude=hass.config.latitude,
         longitude=hass.config.longitude,
         charger_max_a=charger_max,
-        site_limit_a=_site_limit_a(site),
+        site_limit_a=site_limit_a(site),
     )
     if not suggested:
         return False

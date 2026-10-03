@@ -143,6 +143,23 @@ replacement may still send it, or leave it out, and either is accepted and ignor
 1, 3 or `null` is still `invalid_phases`). `proposal.phases` and `installed.phases` are the effective
 count too.
 
+For a charger in a site, `get_entity_config` also lists `charger_phases` with `"writable": false` and the
+site's wiring as its `value`; a write to it is `not_writable`. SpotNav learns from charges: while a charge
+draws more than 1 A, the phases carrying at least 2 A are counted on the charger's measured current per
+phase (its own three current entities, else its site's measurement of it). Three phases confirm the
+wiring and the car; a charger in no site whose wiring nothing says gets three by itself (logged); a
+one-phase charge on three-phase wiring, twice running for the same planned vehicle that has no onboard
+answer yet, sets the additive `suggested_onboard_phases` (`1` or `null`) on that vehicle's row in
+`vehicles` and in the `update_vehicle` answer. Nothing is changed by the suggestion: the client asks and
+answers with `update_vehicle`, `1` to accept and `3` to keep three phases (either answer ends the
+question; a three-phase charge starts the count over).
+
+A site's `warnings` in `get_entity_config` carry the additive `limits_a` (`null`, or for
+`battery_import_limit_differs` `{"battery": A, "spotnav": A}` per phase). That warning says a home battery
+integration's own grid import limit and SpotNav's (the main fuse minus the safety margin) differ by more
+than 1 A per phase; it is raised for the Sigenergy integration's `Grid Import Limitation` number when it is
+enabled and holds a real value (4294967.295 kW means no limit).
+
 The additive `sessions_summary` block holds this month's and last month's charge sessions
 (`sessions`, `energy_kwh`, `cost`, `currency`, `average_price_minor_per_kwh`, `solar_share`,
 `savings`). Cost is in the major unit, prices in the minor unit per kWh; `savings` compares with

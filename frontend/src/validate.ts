@@ -282,6 +282,8 @@ export interface Vehicle {
   soc_percent: number | null;
   /** The onboard charger's phases: 1 or 3 (three until told). */
   onboard_phases: 1 | 3;
+  /** `1` when charges suggest the onboard charger is single-phase and nobody has answered yet. */
+  suggested_onboard_phases: 1 | null;
 }
 
 export interface Soc {
@@ -1551,6 +1553,7 @@ export function decodeVehicle(raw: unknown): Vehicle {
     "max_percent",
     "soc_percent",
     "onboard_phases",
+    "suggested_onboard_phases",
   ]);
   const capacity = boundedOrNull(source, "capacity_kwh", 0, Number.POSITIVE_INFINITY, true);
   const origin = enumOrNull(source, "capacity_source", CAPACITY_SOURCES);
@@ -1567,12 +1570,17 @@ export function decodeVehicle(raw: unknown): Vehicle {
     max_percent: boundedOrNull(source, "max_percent", 0, 100),
     soc_percent: boundedOrNull(source, "soc_percent", 0, 100),
     onboard_phases: phaseCount(source, "onboard_phases"),
+    suggested_onboard_phases: required(source, "suggested_onboard_phases") === null ? null : suggestedPhase(source),
   };
 }
 
 function phaseCount(source: Record<string, unknown>, key: string): 1 | 3 {
   const value = source[key];
   return value === 1 || value === 3 ? value : bad();
+}
+
+function suggestedPhase(source: Record<string, unknown>): 1 {
+  return source["suggested_onboard_phases"] === 1 ? 1 : bad();
 }
 
 function decodeChargingPhases(source: Record<string, unknown>): ChargingPhases {

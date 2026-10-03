@@ -31,6 +31,9 @@ export const VISUAL_CLASSES = {
   actionError: "spotnav-action-error",
   controlNotice: "spotnav-control-notice",
   advisory: "spotnav-advisory",
+  suggestion: "spotnav-suggestion",
+  suggestionText: "spotnav-suggestion-text",
+  suggestionAnswers: "spotnav-suggestion-answers",
   pauseChoices: "spotnav-pause-choices",
   choiceButton: "spotnav-choice-button",
   nameBlock: "spotnav-name-block",
@@ -68,6 +71,7 @@ export const VISUAL_CLASSES = {
   entityNotices: "spotnav-entity-notices",
   entityAutomatic: "spotnav-entity-automatic",
   entityDialog: "spotnav-entity-dialog",
+  planDialog: "spotnav-plan-dialog",
   actionIcon: "spotnav-action-icon",
   summaryExtremes: "spotnav-summary-extremes",
   summaryMax: "spotnav-summary-max",
@@ -597,6 +601,20 @@ export const VISUAL_STYLES = `
     overflow-wrap: anywhere;
     color: var(--warning-color, #ffa600);
   }
+  /** A question the card puts to the administrator: the sentence and its one-tap answers. */
+  .spotnav-suggestion {
+    margin: 8px 0 0;
+  }
+  .spotnav-suggestion-text {
+    margin: 0;
+    overflow-wrap: anywhere;
+  }
+  .spotnav-suggestion-answers {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin-top: 6px;
+  }
   .spotnav-pause-choices,
   .spotnav-strategy-row {
     display: flex;
@@ -1024,6 +1042,9 @@ export const VISUAL_STYLES = `
     color: var(--secondary-text-color, #727272);
     font-size: 0.82rem;
   }
+  .${VISUAL_CLASSES.siteApplies}[data-wired-phases] {
+    margin: 12px 0 8px;
+  }
   .${VISUAL_CLASSES.siteFieldset} {
     margin: 0 0 8px;
     padding: 0;
@@ -1130,13 +1151,15 @@ export const VISUAL_STYLES = `
     font-size: 1rem;
     color: var(--primary-text-color, inherit);
   }
-  .${VISUAL_CLASSES.entityDialog} .${VISUAL_CLASSES.siteFieldset} > .${VISUAL_CLASSES.siteLegend} {
+  .${VISUAL_CLASSES.entityDialog} .${VISUAL_CLASSES.siteFieldset} > .${VISUAL_CLASSES.siteLegend},
+  .${VISUAL_CLASSES.planDialog} .${VISUAL_CLASSES.siteFieldset} > .${VISUAL_CLASSES.siteLegend} {
     font-weight: 600;
     font-size: 0.95rem;
     color: var(--primary-text-color, inherit);
   }
   /* A number field (main fuse, safety margin, measurement age) is headed like the groups around it. */
-  .${VISUAL_CLASSES.entityDialog} .${VISUAL_CLASSES.settingsField} > .${VISUAL_CLASSES.entityNumberLabel} {
+  .${VISUAL_CLASSES.entityDialog} .${VISUAL_CLASSES.settingsField} > .${VISUAL_CLASSES.entityNumberLabel},
+  .${VISUAL_CLASSES.planDialog} .${VISUAL_CLASSES.settingsField} > .${VISUAL_CLASSES.settingsLabel} {
     font-weight: 600;
     font-size: 0.95rem;
     color: var(--primary-text-color, inherit);

@@ -115,6 +115,18 @@
       },
       {
         "choices": [
+          "1",
+          "3"
+        ],
+        "field": "charger_phases",
+        "kind": "enum",
+        "required": true,
+        "scope": "charger",
+        "value": "3",
+        "writable": false
+      },
+      {
+        "choices": [
           "first",
           "normal",
           "last"
@@ -1014,6 +1026,7 @@
           "entity_id": "sensor.se_m1_power_a",
           "integration": "solaredge_modbus_multi",
           "interval_s": 300.0,
+          "limits_a": null,
           "option": "Polling frequency (Modbus poll interval, 1-10 s)",
           "phases": []
         },
@@ -1023,6 +1036,7 @@
           "entity_id": null,
           "integration": "easee",
           "interval_s": null,
+          "limits_a": null,
           "option": null,
           "phases": []
         }

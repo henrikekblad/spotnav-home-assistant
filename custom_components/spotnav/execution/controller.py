@@ -25,6 +25,7 @@ from homeassistant.const import STATE_UNAVAILABLE, STATE_UNKNOWN
 from homeassistant.core import callback, Event, EventStateChangedData, HomeAssistant, State
 from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers.event import (
+    async_track_time_interval,
     async_track_point_in_utc_time,
     async_track_state_change_event,
 )
@@ -90,6 +91,9 @@ from .window_hold import HOLD, OVERRIDE, WindowHold
 
 
 _LOGGER = logging.getLogger(__name__)
+
+#: How often a charge is looked at for the phases it uses.
+PHASE_SAMPLE_INTERVAL = timedelta(seconds=30)
 STORE_VERSION = 1
 
 #: How long an accepted Start counts as the cause of the charge that follows it (the charge session record).
@@ -507,6 +511,12 @@ class ChargingController:
         # The one state-change subscription the observation needs, armed for this controller's
         # life (see `_async_arm_progress_listener`).
         self._progress_listener_cancel: Callable[[], None] | None = None
+        # What a running charge shows about the phases it uses (`planning/phases.py`), sampled on a timer.
+        # (imported here: `planning/phases.py` reaches this module through `planning/first_run.py`)
+        from ..planning.phases import PhaseObserver
+
+        self._phase_observer = PhaseObserver()
+        self._phase_timer_cancel: Callable[[], None] | None = None
         self._store: Store[dict[str, Any]] = Store(
             hass, STORE_VERSION, f"{DOMAIN}.{entry_id}"
         )
@@ -897,6 +907,9 @@ class ChargingController:
         self._progress_listener_cancel = async_track_state_change_event(
             self.hass, entity_ids, self._async_progress_state_changed
         )
+        self._phase_timer_cancel = async_track_time_interval(
+            self.hass, self._async_sample_phases, PHASE_SAMPLE_INTERVAL, cancel_on_shutdown=True
+        )
         # One evaluation now, so the value is honest before anything reads it. A predicate that
         # already holds begins a new grace period, the only honest thing a restart can do.
         self._charge_progress.evaluate()
@@ -904,11 +917,42 @@ class ChargingController:
         self._hold.baseline(self._control_observation)
         self._last_connected = self.adapter.vehicle_connected()
 
+    def charge_phase_currents(self) -> tuple[float | None, ...] | None:
+        """The charger's measured current per phase: its own three current entities, else its site's
+        measurement of it; `None` when neither tells the phases apart.
+        """
+        own = self.adapter.measured_phase_currents_a()
+        if own is not None:
+            return own
+        from ..planning.first_run import site_for_charger
+        from ..runtime import site_controller_for
+
+        site = site_for_charger(self.hass, self.entry_id)
+        controller = None if site is None else site_controller_for(self.hass, site.entry_id)
+        measured = None if controller is None else controller.charger_measured_current(self.entry_id)
+        if measured is None:
+            return None
+        return tuple(
+            value.value if value.problem is None else None for value in (measured.l1, measured.l2, measured.l3)
+        )
+
+    @callback
+    def _async_sample_phases(self, _now: datetime | None = None) -> None:
+        """One look at which phases carry the charge; a finished charge is taken into what is learned."""
+        from ..planning.phases import async_record_charge_phases
+
+        observed = self._phase_observer.sample(self.charging, self.charge_phase_currents())
+        if observed is not None:
+            self.hass.async_create_task(async_record_charge_phases(self.hass, self.entry_id, observed))
+
     def _async_disarm_progress_listener(self) -> None:
         """Drop the observation's subscription, if one is held."""
         if self._progress_listener_cancel is not None:
             self._progress_listener_cancel()
             self._progress_listener_cancel = None
+        if self._phase_timer_cancel is not None:
+            self._phase_timer_cancel()
+            self._phase_timer_cancel = None
 
     def resolve_current(self) -> ResolvedCurrent:
         """The best available answer to "what current will this charger use": the last amps

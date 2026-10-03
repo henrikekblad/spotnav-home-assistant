@@ -2288,7 +2288,8 @@
       "name": "EV6",
       "onboard_phases": 3,
       "soc_entity_id": "sensor.ev6_battery",
-      "soc_percent": 75.06493506493507
+      "soc_percent": 75.06493506493507,
+      "suggested_onboard_phases": null
     }
   ]
 }

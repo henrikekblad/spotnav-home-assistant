@@ -762,6 +762,7 @@ describe("the site's estimate, warnings, sign options and detected meters", () =
       option: null,
       device_name: "Easee Equalizer",
       phases: [],
+      limits_a: null,
       ...extra,
     });
     const warnings = [
@@ -1255,6 +1256,7 @@ describe("the external balancer warning", () => {
     option: null,
     device_name: "Zaptec",
     phases: [],
+    limits_a: null,
   };
   const withSiteWarnings = (warnings: Array<Record<string, unknown>>) => (answer: Record<string, unknown>) => {
     const config = answer["config"] as { site: Record<string, unknown> };
@@ -1286,6 +1288,43 @@ describe("the external balancer warning", () => {
     expect(dialog?.querySelector("[data-warning='brand_new_code']")?.textContent).toBe(translate("en", "entity.warning.unknown"));
     for (const raw of ["external_current_balancer", "brand_new_code", "number_pause", "external_balancer"]) {
       expect(dialog?.textContent).not.toContain(raw);
+    }
+  });
+});
+
+describe("the battery's grid import limit warning: two limits on one fuse", () => {
+  const limitWarning = {
+    code: "battery_import_limit_differs",
+    integration: "sigen",
+    entity_id: "number.sigen_plant_grid_import_limitation",
+    interval_s: null,
+    option: null,
+    device_name: null,
+    phases: [],
+    limits_a: { battery: 15.9, spotnav: 24 },
+  };
+  const withSiteWarnings = (warnings: Array<Record<string, unknown>>) => (answer: Record<string, unknown>) => {
+    const config = answer["config"] as { site: Record<string, unknown> };
+    return { ...answer, config: { ...config, site: { ...config.site, warnings } } };
+  };
+
+  it("is worded with both limits in the Site dialog", async () => {
+    const { element } = await mounted({ patch: withSiteWarnings([limitWarning]) });
+    openSettings(element);
+    await settle();
+    edit(element, "site");
+    const row = openDialog(element)?.querySelector("[data-notices='site'] [data-warning='battery_import_limit_differs']");
+    expect(row?.textContent).toBe(
+      "Two limits on one fuse: the battery's grid import limit (sigen) is 15.9 A per phase, SpotNav's is 24 A. Set them to the same value.",
+    );
+  });
+
+  it("is worded in every language, with the two figures", () => {
+    for (const language of ["sv", "nb", "da", "fi"] as const) {
+      const text = translate(language, "entity.warning.batteryImportLimit", { integration: "sigen", battery: "15.9", spotnav: "24.0" });
+      expect(text, language).toContain("15.9");
+      expect(text, language).toContain("24.0");
+      expect(text, language).not.toBe(translate("en", "entity.warning.batteryImportLimit", { integration: "sigen", battery: "15.9", spotnav: "24.0" }));
     }
   });
 });
