@@ -21,6 +21,7 @@
     "charger_id": "cheapest_no_site",
     "charger_name": "cheapest_no_site"
   },
+  "charger_priority": null,
   "chargers": [
     {
       "id": "cheapest_no_site",

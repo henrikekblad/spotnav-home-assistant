@@ -21,6 +21,7 @@
     "charger_id": "soc_charger",
     "charger_name": "Wallbox"
   },
+  "charger_priority": null,
   "chargers": [
     {
       "id": "soc_charger",

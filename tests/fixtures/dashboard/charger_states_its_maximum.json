@@ -21,6 +21,7 @@
     "charger_id": "limited_charger",
     "charger_name": "limited_charger"
   },
+  "charger_priority": null,
   "chargers": [
     {
       "id": "cheapest_no_site",

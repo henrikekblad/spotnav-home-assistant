@@ -32,6 +32,9 @@ per-phase meters, battery power sensor and maximum measurement age), validated b
   touches `active_control_enabled` (any unknown key is `unknown_field`). An unload never stops a
   charge or clears a stored plan or setting.
 * Every outcome is one envelope, `not_admin` included, with the config re-read after any write.
+* A charger's priority alone is written without a reload: the site reads it from the entry on every
+  recompute. The webhook writes it through the same core as `update_charger_priority`
+  (`async_webhook_update_charger_priority`), answering the dashboard's `charger_priority` block.
 """
 
 from __future__ import annotations
@@ -49,6 +52,7 @@ from ..const import (
     CONF_BATTERY_DISCHARGE_POWER_ENTITY,
     CONF_CHARGE_CONTROL,
     CONF_CHARGER_ENTRY_IDS,
+    CHARGER_PRIORITIES,
     CONF_CHARGER_PRIORITY,
     DEFAULT_CHARGER_PRIORITY,
     CONF_CONTROL_PATH,
@@ -82,7 +86,13 @@ from .common import (
     lookup_charger,
     send_unsupported_version,
 )
-from .dashboard import capture_vehicles, serialize_vehicle, site_binding
+from .dashboard import (
+    capture_charger_priority,
+    capture_vehicles,
+    serialize_charger_priority,
+    serialize_vehicle,
+    site_binding,
+)
 from .entity_fields import (
     charger_control_descriptor,
     charger_field_descriptors,
@@ -97,6 +107,7 @@ from .entity_fields import (
     direct_field,
     direct_fields,
     ERR_ENTITY_NOT_FOUND,
+    ERR_INVALID_VALUE,
     ERR_UNKNOWN_FIELD,
     ERR_UNKNOWN_VEHICLE,
     FIELD_APPLY_DETECTION,
@@ -370,7 +381,7 @@ async def async_update_entity_config(
         raise _refuse(ERROR_INVALID_VALUE, errors)
 
     written = _write_site(hass, target, changes) if scope == "site" else _write_charger(hass, target, changes)
-    if written:
+    if written and not (scope == "charger" and set(changes) == {FIELD_CHARGER_PRIORITY}):
         # Same reload the options flows perform: neither entry kind has an update listener.
         await hass.config_entries.async_reload(target.entry_id)
     return read_entity_config(hass, charger)
@@ -694,6 +705,61 @@ async def async_webhook_update_vehicle(
         )
 
     return await _async_webhook_write(hass, entry, payload, with_vehicle=True, write=write)
+
+
+def _priority_answer(
+    hass: HomeAssistant,
+    entry: ConfigEntry,
+    code: str | None,
+    field_errors: list[FieldError] | None = None,
+) -> tuple[int, dict[str, Any]]:
+    """`update_charger_priority`'s envelope: the shared one without `config`, with the charger's
+    `charger_priority` block re-read now (`null` for a charger on no site)."""
+    block = serialize_charger_priority(capture_charger_priority(hass, entry), can_act=True)
+    body = {
+        "api_version": ENTITY_CONFIG_API_VERSION,
+        "ok": code is None,
+        "error": code,
+        "field_errors": [error.as_dict() for error in field_errors or []],
+        "charger_priority": block,
+    }
+    return _webhook_status(code), body
+
+
+async def async_webhook_update_charger_priority(
+    hass: HomeAssistant, entry: ConfigEntry, payload: dict[str, Any]
+) -> tuple[int, dict[str, Any]]:
+    """`update_charger_priority` over the webhook: `{"priority", "expected"}`, both one of "first",
+    "normal" or "last", where `expected` is the value the caller last saw (a mismatch is
+    `spotnav_conflict` and nothing is written). Validated and written by `async_update_entity_config`'s
+    own core for the one field `charger_priority`; refused with `spotnav_no_site` for a charger on no
+    site. Returns `(http_status, body)`.
+    """
+    version = payload.get("api_version")
+    if version is not None and (isinstance(version, bool) or version != ENTITY_CONFIG_API_VERSION):
+        return _priority_answer(hass, entry, ERROR_UNSUPPORTED_VERSION)
+    if site_binding(hass, entry.entry_id) is None:
+        return _priority_answer(hass, entry, ERROR_NO_SITE)
+    expected = payload.get("expected")
+    if not isinstance(expected, str) or expected not in CHARGER_PRIORITIES:
+        return _priority_answer(
+            hass, entry, ERROR_INVALID_VALUE, [FieldError("expected", ERR_INVALID_VALUE)]
+        )
+    if "priority" not in payload:
+        return _priority_answer(
+            hass, entry, ERROR_INVALID_VALUE, [FieldError(FIELD_CHARGER_PRIORITY, ERR_INVALID_VALUE)]
+        )
+    try:
+        await async_update_entity_config(
+            hass,
+            entry.entry_id,
+            scope="charger",
+            expected={FIELD_CHARGER_PRIORITY: expected},
+            changes={FIELD_CHARGER_PRIORITY: payload["priority"]},
+        )
+    except EntityConfigRefusal as refusal:
+        return _priority_answer(hass, entry, refusal.code, refusal.field_errors)
+    return _priority_answer(hass, entry, None)
 
 
 @callback

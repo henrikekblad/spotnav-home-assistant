@@ -21,6 +21,15 @@
     "charger_id": "solar_derived",
     "charger_name": "solar_derived"
   },
+  "charger_priority": {
+    "choices": [
+      "first",
+      "normal",
+      "last"
+    ],
+    "value": "normal",
+    "writable": true
+  },
   "chargers": [
     {
       "id": "cheapest_no_site",

@@ -26,6 +26,7 @@ from custom_components.spotnav.api import site_settings as site_settings_module
 from custom_components.spotnav.planning.auto_settings import STRATEGY_CHEAPEST
 from custom_components.spotnav.const import (
     CONF_ACTIVE_CONTROL_ENABLED,
+    CONF_CHARGER_PRIORITY,
     CONF_SOLAR_FORECAST_ENTRIES,
     CONF_SOLAR_PRIORITY,
     SOLAR_PRIORITY_BATTERY_FIRST,
@@ -35,7 +36,7 @@ from custom_components.spotnav.vehicles.discovery_decisions import DECISION_DOMA
 from tests.test_dashboard_api import NOW
 from tests.world import go_auto
 from tests.world import admin, non_admin, ws_call
-from tests.world import forecast_entry, setup_site_with_charger
+from tests.world import forecast_entry, setup_charger, setup_site_with_charger
 from tests.world import add_car
 from custom_components.spotnav.runtime import domain_data
 
@@ -337,6 +338,97 @@ async def test_site_settings_over_the_webhook_write_solar_only(
     _pinned("update_site_settings_not_permitted.json", _pin(forbidden[0]))
 
 
+# --------------------------------------------------------- update_charger_priority
+
+
+async def test_charger_priority_over_the_webhook_shares_the_sockets_core(
+    hass: HomeAssistant, hass_client_no_auth, hass_ws_client
+) -> None:
+    """The webhook writes its own charger's priority with the value it last saw, through the entity
+    config core: a stale `expected` is a conflict, an unknown value is refused field by field, a
+    charger on no site is refused, and the answer is the dashboard's `charger_priority` block."""
+    charger, _site = await setup_site_with_charger(hass, charger_entry_id="entry_prio", site_entry_id="site_prio")
+    lone = await setup_charger(hass, entry_id="entry_lone", webhook_id="webhook-entry_lone", charge_control="switch.lone")
+    client = await hass_client_no_auth()
+    socket = await admin(hass, hass_ws_client)
+    controller_before = charger.runtime_data.controller
+
+    status, success = await post(
+        client,
+        "webhook-entry_prio",
+        {"action": "update_charger_priority", "api_version": 1, "expected": "normal", "priority": "first"},
+    )
+    assert status == 200 and success["ok"] is True and success["error"] is None
+    assert success["charger_priority"] == {"value": "first", "choices": ["first", "normal", "last"], "writable": True}
+    assert charger.data[CONF_CHARGER_PRIORITY] == "first"
+    # A priority alone is read live by the site: the charger is not reloaded for it.
+    assert charger.runtime_data.controller is controller_before
+
+    status, dashboard = await post(client, "webhook-entry_prio", {"action": "dashboard", "api_version": 1})
+    assert status == 200 and dashboard["charger_priority"]["value"] == "first"
+
+    status, conflict = await post(
+        client, "webhook-entry_prio", {"action": "update_charger_priority", "expected": "normal", "priority": "last"}
+    )
+    assert status == 409 and conflict["error"] == "spotnav_conflict"
+    assert conflict["charger_priority"]["value"] == "first" and charger.data[CONF_CHARGER_PRIORITY] == "first"
+
+    status, invalid = await post(
+        client, "webhook-entry_prio", {"action": "update_charger_priority", "expected": "first", "priority": "top"}
+    )
+    assert status == 400 and invalid["error"] == "spotnav_invalid_value"
+    assert invalid["field_errors"] == [{"field": "charger_priority", "code": "invalid_value"}]
+
+    for body in ({"priority": "last"}, {"expected": "middle", "priority": "last"}, {"expected": None, "priority": "last"}):
+        status, refused = await post(client, "webhook-entry_prio", {"action": "update_charger_priority", **body})
+        assert status == 400 and refused["error"] == "spotnav_invalid_value"
+        assert refused["field_errors"] == [{"field": "expected", "code": "invalid_value"}]
+    status, missing = await post(
+        client, "webhook-entry_prio", {"action": "update_charger_priority", "expected": "first"}
+    )
+    assert status == 400 and missing["field_errors"] == [{"field": "charger_priority", "code": "invalid_value"}]
+
+    status, other_version = await post(
+        client, "webhook-entry_prio",
+        {"action": "update_charger_priority", "api_version": 2, "expected": "first", "priority": "last"},
+    )
+    assert status == 400 and other_version["error"] == "spotnav_unsupported_api_version"
+
+    status, no_site = await post(
+        client, "webhook-entry_lone", {"action": "update_charger_priority", "expected": "normal", "priority": "first"}
+    )
+    assert status == 400 and no_site["error"] == "spotnav_no_site" and no_site["charger_priority"] is None
+    assert CONF_CHARGER_PRIORITY not in lone.data
+
+    # Back to the default: stored as nothing, as the socket stores it.
+    status, back = await post(
+        client, "webhook-entry_prio", {"action": "update_charger_priority", "expected": "first", "priority": "normal"}
+    )
+    assert status == 200 and back["charger_priority"]["value"] == "normal"
+    assert CONF_CHARGER_PRIORITY not in charger.data
+
+    # The socket refuses the same stale write with the same code.
+    frame = (
+        await ws_call(
+            socket,
+            {
+                "type": "spotnav/update_entity_config",
+                "api_version": 1,
+                "charger_id": charger.entry_id,
+                "scope": "charger",
+                "expected": {"charger_priority": "first"},
+                "changes": {"charger_priority": "last"},
+            },
+        )
+    )["result"]
+    assert frame["error"] == "spotnav_conflict"
+
+    _pinned("update_charger_priority_success.json", _pin(success))
+    _pinned("update_charger_priority_conflict.json", _pin(conflict))
+    _pinned("update_charger_priority_invalid_value.json", _pin(invalid))
+    _pinned("update_charger_priority_no_site.json", _pin(no_site))
+
+
 async def test_no_fixture_is_left_unwritten() -> None:
     if WRITE:
         return
@@ -344,6 +436,10 @@ async def test_no_fixture_is_left_unwritten() -> None:
         [
             "dashboard.json",
             "dashboard_unsupported_version.json",
+            "update_charger_priority_conflict.json",
+            "update_charger_priority_invalid_value.json",
+            "update_charger_priority_no_site.json",
+            "update_charger_priority_success.json",
             "update_site_settings_conflict.json",
             "update_site_settings_invalid_value.json",
             "update_site_settings_not_permitted.json",

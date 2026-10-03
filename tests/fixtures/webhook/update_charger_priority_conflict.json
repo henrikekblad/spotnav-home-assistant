@@ -1,0 +1,16 @@
+{
+  "action": "update_charger_priority",
+  "api_version": 1,
+  "charger_priority": {
+    "choices": [
+      "first",
+      "normal",
+      "last"
+    ],
+    "value": "first",
+    "writable": true
+  },
+  "error": "spotnav_conflict",
+  "field_errors": [],
+  "ok": false
+}

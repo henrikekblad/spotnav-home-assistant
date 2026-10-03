@@ -21,6 +21,15 @@
     "charger_id": "solar_direct",
     "charger_name": "solar_direct"
   },
+  "charger_priority": {
+    "choices": [
+      "first",
+      "normal",
+      "last"
+    ],
+    "value": "normal",
+    "writable": true
+  },
   "chargers": [
     {
       "id": "cheapest_no_site",

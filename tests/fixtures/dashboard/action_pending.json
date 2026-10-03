@@ -21,6 +21,7 @@
     "charger_id": "entry_a",
     "charger_name": "entry_a"
   },
+  "charger_priority": null,
   "chargers": [
     {
       "id": "entry_a",

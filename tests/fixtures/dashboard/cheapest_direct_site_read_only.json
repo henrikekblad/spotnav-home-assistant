@@ -21,6 +21,15 @@
     "charger_id": "cheapest_direct_reader",
     "charger_name": "cheapest_direct_reader"
   },
+  "charger_priority": {
+    "choices": [
+      "first",
+      "normal",
+      "last"
+    ],
+    "value": "normal",
+    "writable": false
+  },
   "chargers": [
     {
       "id": "cheapest_no_site",
