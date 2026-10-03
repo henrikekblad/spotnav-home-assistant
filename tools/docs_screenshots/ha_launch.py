@@ -29,5 +29,11 @@ aiohttp.ClientSession._request = _redirected
 
 from homeassistant.__main__ import main  # noqa: E402
 
+if os.environ.get("DOCS_SEED_SESSIONS"):
+    sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+    import seed_sessions  # noqa: E402
+
+    seed_sessions.install()
+
 if __name__ == "__main__":
     sys.exit(main())

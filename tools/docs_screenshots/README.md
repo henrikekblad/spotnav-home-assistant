@@ -36,11 +36,18 @@ the detection reads (device tree, entity ids, unique ids, translation keys):
   every few seconds.
 - `kia_uvo`: "Family car" with charge level 64 %, capacity, range and charge limits.
 
+## Charge history
+
+`seed_sessions.py` (loaded by `ha_launch.py` when `DOCS_SEED_SESSIONS` is set, which `run.sh` does) gives
+a charger that has no recorded sessions about 75 days of synthetic night charges, with hourly prices, in
+the integration's session store in memory only. Early in a month (before the 12th) the driver shows the
+previous month so that the bar chart has days to show.
+
 ## Shots
 
 Written: add-type, charger-type, charger-device, charger-found, charger-adjust, join-site, site-basic,
 site-meter, site-found, site-options, card-picker, card-hero, card-settings-price, card-settings-plan,
-card-settings-vehicle, card-settings-site, diagnostics.
+card-settings-vehicle, card-settings-site, card-history, diagnostics.
 
 Not produced (they need real-world state): card-waiting (only before about 13:45 local with no tomorrow
 prices; `STUB_TOMORROW=0` removes tomorrow from the stub, but the integration decides by the real clock),
