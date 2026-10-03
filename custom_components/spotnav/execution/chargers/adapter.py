@@ -36,7 +36,15 @@ from ...const import DEFAULT_MIN_CURRENT_A
 from ...vehicles.ocpp_identity import OcppConnectorTarget
 from ...vehicles.soc_estimate import read_energy_register_kwh
 from ..charge_progress import connector_status
-from ..charger_connection import CHARGING, normalise_ocpp, normalise_status, UNKNOWN
+from ..charger_connection import (
+    CHARGING,
+    CONNECTED,
+    FINISHED,
+    normalise_ocpp,
+    normalise_status,
+    PAUSED,
+    UNKNOWN,
+)
 from ..charger_profiles import OCPP_NUMBER_POLICY, OCPP_POLICY, WritePolicy
 from ..pilot_floor_probe import connector_entity_id
 from .base import (
@@ -81,6 +89,13 @@ PROGRESS_SUSPENDED_EV: Final = "SuspendedEV"
 #: OCPP's connector status with no vehicle at the connector (`Available`); every other status, a
 #: faulted or unavailable one included, still says nothing about a cable, except that it is not this.
 OCPP_NO_VEHICLE: Final = "available"
+
+#: The connection states that say a vehicle is there (`charger_connection`).
+_VEHICLE_STATES: Final = frozenset({CONNECTED, CHARGING, PAUSED, FINISHED})
+
+#: Status values the connection table words as connected that do not prove a vehicle is there: a
+#: Wallbox says `Ready` with or without a car.
+_CONNECTION_UNSURE: Final = frozenset({("wallbox", "ready")})
 
 
 class ChargerAdapter:
@@ -298,7 +313,9 @@ class ChargerAdapter:
 
         An OCPP connector says it through its status (`Available` is no vehicle); another charger
         through its status sensor, when its profile names the values that mean no vehicle. A plain
-        switch says nothing. An unreadable status is unknown, never "unplugged".
+        switch says nothing. Only a status that says a vehicle is there counts as connected: an
+        unreadable one, a fault, an offline or updating charger, `Unavailable` or `Reserved` say nothing
+        about the vehicle, so a plug-in or an unplug is never read from them.
         """
         if self._connector_status_entity is not None:
             entity_id = self._connector_status_entity()
@@ -306,13 +323,23 @@ class ChargerAdapter:
                 status = connector_status(self.hass.states.get(entity_id))
                 if status is None:
                     return None
-                return status.lower() != OCPP_NO_VEHICLE
+                if status.lower() == OCPP_NO_VEHICLE:
+                    return False
+                return True if normalise_ocpp(status) in _VEHICLE_STATES else None
         if not self._disconnected_values:
             return None
         status = self._status()
         if status is None:
             return None
-        return status not in self._disconnected_values
+        if status in self._disconnected_values:
+            return False
+        if (self.platform, status) in _CONNECTION_UNSURE:
+            return None
+        if normalise_status(self.platform, status) in _VEHICLE_STATES:
+            return True
+        if status in self._charging_values or status in self._idle_values or status in self._held_values:
+            return True
+        return None
 
     def connection(self) -> tuple[str, str | None]:
         """The charger's connection state (`charger_connection.CONNECTION_STATES`) and the entity it
