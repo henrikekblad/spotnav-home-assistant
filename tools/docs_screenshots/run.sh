@@ -89,7 +89,7 @@ trap cleanup EXIT INT TERM
 # 4. The relay stub, then Home Assistant pointed at it.
 "$VENV/bin/python" "$HERE/relay_stub.py" "$STUB_PORT" >"$LOGS/relay_stub.log" 2>&1 &
 PIDS+=($!)
-RELAY_STUB_URL="http://127.0.0.1:$STUB_PORT" "$VENV/bin/python" "$HERE/ha_launch.py" -c "$CONFIG" >"$LOGS/home-assistant.log" 2>&1 &
+DOCS_SEED_SESSIONS=1 RELAY_STUB_URL="http://127.0.0.1:$STUB_PORT" "$VENV/bin/python" "$HERE/ha_launch.py" -c "$CONFIG" >"$LOGS/home-assistant.log" 2>&1 &
 PIDS+=($!)
 
 # 5. The driver.
