@@ -258,6 +258,8 @@ async def test_enabled_on_the_real_condition_a_probe_write_reaches_the_charger(
         "reference_a": {},
         "action": "write",
         "reason": "probe_step",
+        "battery_verified": False,
+        "battery_credit_a": None,
     }
     # An ordinary (non-urgent) increase is damped like any proposal, so it does not reach the charger on this pass.
     assert configure_calls == []
@@ -648,6 +650,8 @@ async def test_yield_stepping_attribute_present_when_disabled(hass: HomeAssistan
         "reference_a": {},
         "action": None,
         "reason": None,
+        "battery_verified": False,
+        "battery_credit_a": None,
     }
     assert controller.yield_stepping_snapshot == snapshot
 

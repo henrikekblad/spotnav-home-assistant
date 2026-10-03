@@ -44,6 +44,7 @@ DampingReason = Literal[
     "no_proposal",
     "margin_unusable",
     "urgent",
+    "verified_step",
 ]
 
 # Remaining uncredited margin (A) at or below which a reduction is protection;
@@ -100,11 +101,15 @@ class RegulatorDamper:
         proposed_current_a: float | None,
         margin_a: float | None,
         urgent: bool = False,
+        verified_step: bool = False,
     ) -> DampingDecision:
         """Whether this proposal may be written now, and under which rule.
 
         `urgent` (from the yield-stepping layer) skips deadband and dwell, for a
-        reduction only.
+        reduction only. `verified_step` is the one exception for an increase: a step the
+        yield-stepping layer licensed on a battery it verified gives way, which has its own
+        settle time and spacing, so a 1 A step near the target is not swallowed by the deadband
+        and the climb is not held for the dwell.
         """
         if proposed_current_a is None:
             return DampingDecision(False, self._written, "no_proposal")
@@ -133,6 +138,10 @@ class RegulatorDamper:
         if urgent and proposed_current_a < self._written:
             self._write(proposed_current_a)
             return DampingDecision(True, proposed_current_a, "urgent")
+
+        if verified_step and proposed_current_a > self._written:
+            self._write(proposed_current_a)
+            return DampingDecision(True, proposed_current_a, "verified_step")
 
         if change_a < self._deadband_a:
             self._pending = None
