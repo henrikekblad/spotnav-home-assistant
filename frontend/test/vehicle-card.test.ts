@@ -404,6 +404,46 @@ describe("the Settings page's vehicles", () => {
     expect(dlg(element).querySelector("[data-entity-editor]")).toBeNull();
   });
 
+  it("shows the onboard charger as a 1-phase or 3-phase choice, on what is stored, and writes only a change", async () => {
+    const { hass, element } = await openSettings(twoVehicles());
+    await openVehicle(element, "vehicle_niro");
+    const radios = Array.from(dlg(element).querySelectorAll<HTMLInputElement>("[data-part='onboard'] input[data-onboard]"));
+    expect(radios.map((radio) => radio.dataset["onboard"])).toEqual(["1", "3"]);
+    expect(radios.map((radio) => radio.checked)).toEqual([false, true]);
+    expect(dlg(element).querySelector("[data-part='onboard']")?.textContent).toContain(translate("en", "settings.vehicle.onboardLegend"));
+    expect(dlg(element).querySelector("[data-part='onboard']")?.textContent).toContain("1-phase");
+    expect(dlg(element).querySelector("[data-part='onboard']")?.textContent).toContain("3-phase");
+    // Nothing moved: nothing is sent.
+    saveButton(element).click();
+    await settle();
+    expect(vehicleUpdates(hass)).toHaveLength(0);
+
+    await openVehicle(element, "vehicle_niro");
+    hass.entityHandler = async () => answerFrom("success", { onboard_phases: 1 });
+    const one = dlg(element).querySelector<HTMLInputElement>("input[data-onboard='1']")!;
+    one.checked = true;
+    one.dispatchEvent(new Event("change", { bubbles: true }));
+    saveButton(element).click();
+    await settle();
+    expect(vehicleUpdates(hass)[0]).toMatchObject({
+      vehicle_id: "vehicle_niro",
+      changes: { onboard_phases: 1 },
+      expected: { onboard_phases: 3 },
+    });
+    expect(Object.keys((vehicleUpdates(hass)[0] as Record<string, any>)["changes"])).toEqual(["onboard_phases"]);
+  });
+
+  it("names the onboard charger on the vehicle's card and in every language", async () => {
+    const { element } = await openSettings(twoVehicles());
+    expect(block(element, "vehicle_niro").querySelector("[data-row='onboard']")?.textContent).toContain("3-phase");
+    for (const language of ["sv", "nb", "da", "fi"] as const) {
+      for (const key of ["settings.vehicle.onboardLegend", "settings.vehicle.onboardOne", "settings.vehicle.onboardHelp", "settings.vehicle.error.onboardPhases", "settings.phases.limitedByVehicle", "settings.phases.line"] as const) {
+        expect(translate(language, key), `${language} ${key}`).not.toBe(translate("en", key));
+      }
+    }
+    expect(translate("sv", "settings.phases.limitedByVehicle")).toBe("Bilen laddar på en fas.");
+  });
+
   it("writes only the field that changed", async () => {
     const { hass, element } = await openSettings(twoVehicles());
     await openVehicle(element, "vehicle_ev6");

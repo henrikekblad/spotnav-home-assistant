@@ -36,7 +36,7 @@ from custom_components.spotnav.api.dashboard import STRATEGY_SOLAR_REASON
 from custom_components.spotnav.api.settings import (
     SETTINGS_API_VERSION,
     SETTINGS_KEYS,
-    encode_settings,
+    encode_settings as _encode_settings,
 )
 
 from .helpers import as_app_sees, make_site_entry, webhook_dashboard
@@ -46,6 +46,12 @@ from .world import ws_call
 from .world import controller_of
 from custom_components.spotnav.runtime import domain_data
 from custom_components.spotnav.runtime import executor_for, preview_for
+
+def encode_settings(settings, phases=3):
+    """The wire record as it reads for a charger wired for three phases (the phases a charge uses are
+    the server's to fill in, not a stored setting)."""
+    return _encode_settings(settings, phases)
+
 
 pytestmark = pytest.mark.usefixtures("offline_relay")
 

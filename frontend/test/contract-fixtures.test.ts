@@ -240,6 +240,7 @@ const V7_EXPECTED: Record<string, ExpectedV7> = {
   "charging_without_prices.json": { selected: "cheapest", strategyState: null, site: null },
   "target_soc_estimated.json": { selected: "cheapest", strategyState: null, site: null },
   "target_soc_two_vehicles.json": { selected: "cheapest", strategyState: null, site: null },
+  "target_soc_phases_limited_by_vehicle.json": { selected: "cheapest", strategyState: null, site: null },
   "target_soc_stopped_on_estimate.json": { selected: "cheapest", strategyState: null, site: null },
   "hybrid_derived_site_no_forecast.json": {
     selected: "hybrid",
@@ -389,13 +390,13 @@ const V7_STATUS_EXPECTED: Record<string, { tone: string; codes: string[]; englis
     tone: "notice",
     codes: [...PLANNED, "site_measurement_problem"],
     english:
-      "Planned from 08:45 · 20.1 kWh · 34.6 kr · 101 km · L1, L2, and L3 have no value (sensor.cheapest_direct_admin_site_l1, sensor.cheapest_direct_admin_site_l2, sensor.cheapest_direct_admin_site_l3).",
+      "Planned from 12:15 · 20.8 kWh · 28.74 kr · 104 km · L1, L2, and L3 have no value (sensor.cheapest_direct_admin_site_l1, sensor.cheapest_direct_admin_site_l2, sensor.cheapest_direct_admin_site_l3).",
   },
   "cheapest_direct_site_read_only.json": {
     tone: "notice",
     codes: [...PLANNED, "site_measurement_problem"],
     english:
-      "Planned from 08:45 · 20.1 kWh · 34.6 kr · 101 km · L1, L2, and L3 have no value (sensor.cheapest_direct_reader_site_l1, sensor.cheapest_direct_reader_site_l2, sensor.cheapest_direct_reader_site_l3).",
+      "Planned from 12:15 · 20.8 kWh · 28.74 kr · 104 km · L1, L2, and L3 have no value (sensor.cheapest_direct_reader_site_l1, sensor.cheapest_direct_reader_site_l2, sensor.cheapest_direct_reader_site_l3).",
   },
   "cheapest_no_site.json": { tone: "normal", codes: PLANNED, english: "Planned from 08:45 · 20.1 kWh · 34.6 kr · 101 km" },
   "hybrid_derived_site_no_forecast.json": {
@@ -411,12 +412,12 @@ const V7_STATUS_EXPECTED: Record<string, { tone: string; codes: string[]; englis
   "solar_direct_site_with_total.json": {
     tone: "notice",
     codes: ["settings_incomplete"],
-    english: "Finish setting up in Settings: price area, phases, charging current.",
+    english: "Finish setting up in Settings: price area, charging current.",
   },
   "solar_derived_site.json": {
     tone: "notice",
     codes: ["settings_incomplete"],
-    english: "Finish setting up in Settings: price area, phases, charging current.",
+    english: "Finish setting up in Settings: price area, charging current.",
   },
   "target_soc_estimated.json": { tone: "normal", codes: PLANNED, english: "Planned from 10:15 · 34.5 kWh · 82.92 kr · 173 km" },
   "target_soc_stopped_on_estimate.json": {
@@ -520,6 +521,7 @@ describe("the backend's dashboard strategy_state, site and status fixtures", () 
           "charge_progress",
           "charger",
           "chargers",
+          "charging_phases",
           "control",
           "current_range",
           "detected_phases",
@@ -545,6 +547,43 @@ describe("the backend's dashboard strategy_state, site and status fixtures", () 
         ].sort(),
       );
     }
+  });
+});
+
+describe("the phases a charge uses", () => {
+  it("decodes the car limiting a three-phase charger to one phase", () => {
+    const result = decodeFixture("target_soc_phases_limited_by_vehicle.json");
+    expect(result.ok).toBe(true);
+    if (!result.ok) {
+      throw new Error("no phases");
+    }
+    expect(result.value.charging_phases).toEqual({ phases: 1, charger: 3, vehicle: 1, limited_by: "vehicle" });
+    expect(result.value.vehicles.map((vehicle) => vehicle.onboard_phases)).toEqual([1]);
+    // The settings record carries the effective count for older clients.
+    expect(result.value.settings?.phases).toBe(1);
+  });
+
+  it("states the block in every fixture, never limited unless the car limits", () => {
+    for (const name of names()) {
+      const result = decodeFixture(name);
+      expect(result.ok, name).toBe(true);
+      if (result.ok && result.value.charging_phases !== null) {
+        const phases = result.value.charging_phases;
+        expect(phases.phases, name).toBe(phases.vehicle === null ? phases.charger : Math.min(phases.charger, phases.vehicle));
+        expect(phases.limited_by === "vehicle", name).toBe(phases.phases < phases.charger);
+      }
+    }
+  });
+
+  it("refuses a malformed block, and a vehicle row that leaves its onboard charger out", () => {
+    const raw = JSON.parse(readFileSync(join(DASHBOARD_DIR, "target_soc_phases_limited_by_vehicle.json"), "utf8"));
+    expect(decodeDashboard({ ...raw, charging_phases: { phases: 2, charger: 3, vehicle: 1, limited_by: null } }).ok).toBe(false);
+    expect(decodeDashboard({ ...raw, charging_phases: { phases: 1, charger: 3, vehicle: 1 } }).ok).toBe(false);
+    const rows = raw.vehicles.map((row: Record<string, unknown>) => {
+      const { onboard_phases: _dropped, ...rest } = row;
+      return rest;
+    });
+    expect(decodeDashboard({ ...raw, vehicles: rows }).ok).toBe(false);
   });
 });
 
@@ -635,6 +674,7 @@ describe("the backend's v7 vehicles", () => {
         consumption_kwh_per_10km: 2,
         max_percent: 80,
         soc_percent: 40,
+        onboard_phases: 3,
       },
       {
         id: "vehicle_niro",
@@ -645,6 +685,7 @@ describe("the backend's v7 vehicles", () => {
         consumption_kwh_per_10km: 1.7,
         max_percent: null,
         soc_percent: 55,
+        onboard_phases: 3,
       },
     ]);
   });
@@ -900,7 +941,7 @@ const SITE_TAIL = [
 const CHARGER = ["charge_control", "current_limit", "energy_register_entity", "power_entity", "charger_priority", "vehicle_soc"];
 const SITE_FIXED = ["main_fuse_a", "safety_margin_a", "measurement_mode", "voltage_between_phases_v"];
 /** A charger in no site holds the voltage between phases itself, listed before the vehicle sensor. */
-const CHARGER_NO_SITE = ["charge_control", "current_limit", "energy_register_entity", "power_entity", "voltage_between_phases_v", "vehicle_soc"];
+const CHARGER_NO_SITE = ["charge_control", "current_limit", "energy_register_entity", "power_entity", "voltage_between_phases_v", "charger_phases", "vehicle_soc"];
 
 /**
  * One row per fixture: the outcome, the field errors in the order the backend wrote them, and -- when

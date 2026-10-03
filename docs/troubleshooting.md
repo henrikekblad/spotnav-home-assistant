@@ -64,7 +64,7 @@ charging start*, *Planned cost* and *Auto settings revision*. On a site: *Capaci
   use under the integration's **Configure** action.
 - **A remote start or stop is rejected.** There may be no active transaction, or the connected
   vehicle is not requesting energy.
-- **Nothing is planned.** The card lists what is missing, for example the price area or phases.
+- **Nothing is planned.** The card lists what is missing, for example the price area or the charging current.
   While tomorrow's prices are not published, SpotNav buys what the deadline requires now and plans the rest
   later.
 - **The plan is proposed but not applied.** The card shows a newer proposal until it has been

@@ -1,12 +1,12 @@
 """The authenticated, admin-only entity-configuration commands: `spotnav/get_entity_config`,
 `spotnav/update_entity_config`, `spotnav/choose_vehicle_soc` (a vehicle's state-of-charge sensor,
 recorded as the same discovery decision the `confirm_vehicle_soc` service records; `null` returns
-it to automatic detection) and `spotnav/update_vehicle` (a vehicle's battery size and consumption,
+it to automatic detection) and `spotnav/update_vehicle` (a vehicle's battery size, consumption and onboard charger,
 written by `vehicles/vehicle_properties.py`):
 
     {type: "spotnav/update_vehicle", api_version: 1, charger_id, vehicle_id,
-     changes: {capacity_kwh?: 1..500 | null, consumption_kwh_per_10km?: > 0 | null},
-     expected: {capacity_kwh?, consumption_kwh_per_10km?}}
+     changes: {capacity_kwh?: 1..500 | null, consumption_kwh_per_10km?: > 0 | null, onboard_phases?: 1 | 3 | null},
+     expected: {capacity_kwh?, consumption_kwh_per_10km?, onboard_phases?}}
 
 `null` clears a property. `expected` holds what the caller last saw for the keys it names; a
 mismatch is `spotnav_conflict` and nothing is written. The answer is the shared envelope plus
@@ -14,6 +14,7 @@ mismatch is `spotnav_conflict` and nothing is written. The answer is the shared 
 (an error frame), `spotnav_not_admin`, `spotnav_unknown_charger`, `spotnav_conflict`, and
 `spotnav_invalid_value` with `field_errors` (`vehicle_id`/`unknown_vehicle`, `changes`/`invalid_changes`,
 `capacity_kwh`/`invalid_capacity`, `consumption_kwh_per_10km`/`invalid_consumption`,
+`onboard_phases`/`invalid_onboard_phases`,
 `<key>`/`unknown_field`, `expected`/`invalid_expected`).
 
 They let the card choose every entity this integration uses (a charger's charge control, current
@@ -64,6 +65,7 @@ from ..const import (
     CONF_MEASUREMENT_MODE,
     CONF_MODE,
     CONF_SAFETY_MARGIN_A,
+    CONF_CHARGER_PHASES,
     CONF_VOLTAGE_BETWEEN_PHASES_V,
     MODE_DETECTED,
     MODE_OCPP,
@@ -113,6 +115,7 @@ from .entity_fields import (
     FIELD_MEASUREMENT_MODE,
     FIELD_SAFETY_MARGIN_A,
     FIELD_VEHICLE_SOC,
+    FIELD_CHARGER_PHASES,
     FIELD_VOLTAGE_BETWEEN_PHASES,
     FieldError,
     FLAG_FIELDS,
@@ -223,6 +226,8 @@ def _write_charger(hass: HomeAssistant, entry: ConfigEntry, changes: dict[str, A
             updated.pop(CONF_POWER_ENTITY, None)
     if FIELD_VOLTAGE_BETWEEN_PHASES in changes:
         updated[CONF_VOLTAGE_BETWEEN_PHASES_V] = int(changes[FIELD_VOLTAGE_BETWEEN_PHASES])
+    if FIELD_CHARGER_PHASES in changes:
+        updated[CONF_CHARGER_PHASES] = int(changes[FIELD_CHARGER_PHASES])
     if FIELD_CHARGER_PRIORITY in changes:
         # Stored only while it differs from the default, so a charger left alone keeps exactly its old data.
         if changes[FIELD_CHARGER_PRIORITY] == DEFAULT_CHARGER_PRIORITY:
@@ -446,6 +451,7 @@ async def async_update_vehicle(
     seen = {
         vehicle_properties.KEY_CAPACITY: row.get("capacity_kwh"),
         vehicle_properties.KEY_CONSUMPTION: row.get("consumption_kwh_per_10km"),
+        vehicle_properties.KEY_ONBOARD_PHASES: row.get("onboard_phases"),
     }
     if any(seen[key] != value for key, value in (expected or {}).items()):
         raise _refuse(ERROR_CONFLICT, [])

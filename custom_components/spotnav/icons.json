@@ -81,9 +81,6 @@
       "price_area": {
         "default": "mdi:map-marker-radius"
       },
-      "charging_phases": {
-        "default": "mdi:sine-wave"
-      },
       "fiscal_vat_policy": {
         "default": "mdi:percent-outline"
       },

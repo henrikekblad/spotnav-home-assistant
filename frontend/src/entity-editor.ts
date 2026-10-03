@@ -1325,6 +1325,33 @@ export function entityEditorBody(
     body.append(voltage.fieldset);
   }
 
+  // The phases the charger is wired for, for a charger in no site (a site holds the wiring of its chargers).
+  // A charge uses the smaller of this and the car's onboard charger. Chosen like a type.
+  const phasesField = fieldsOf(config, scope).find((entry) => entry.field === "charger_phases");
+  if (phasesField !== undefined && phasesField.kind === "enum" && phasesField.writable) {
+    const phasesOptions = phasesField.choices.map((choice) => ({
+      value: choice,
+      label: (choice === "1" ? "settings.phases.one" : "settings.phases.three") as TranslationKey,
+    }));
+    const wired = choiceGroup(
+      "charger-phases",
+      "entity.field.chargerPhases",
+      phasesOptions,
+      () => values["charger_phases"] ?? phasesField.value ?? "3",
+      (value) => {
+        values["charger_phases"] = value;
+      },
+      { intro: fieldHelp("charger_phases", "entity.help.chargerPhases") },
+    );
+    const phasesError = element(doc, "p", C.settingsError);
+    phasesError.hidden = true;
+    phasesError.dataset["fieldError"] = "charger_phases";
+    phasesError.setAttribute("role", "alert");
+    errorNodes.set("charger_phases", { node: phasesError, input: wired.fieldset });
+    wired.fieldset.append(phasesError);
+    body.append(wired.fieldset);
+  }
+
   // The charger's place in its site's allocation order: first, normal (the default) or last.
   const priorityField = fieldsOf(config, scope).find((entry) => entry.field === "charger_priority");
   if (priorityField !== undefined && priorityField.kind === "enum" && priorityField.writable) {
@@ -1449,9 +1476,9 @@ export interface VehicleEditorInput {
 
 /**
  * One vehicle's dialog: the charge-level sensor (one radio per sensor it has plus one for automatic
- * detection, which is all the backend accepts), battery capacity and consumption. Reports the draft as
+ * detection, which is all the backend accepts), battery capacity, consumption and onboard charger. Reports the draft as
  * text: `soc` (entity id, `""` for automatic; absent without a sensor block), `capacity` (absent when the
- * vehicle reports it itself) and `consumption`. The card judges it and sends the changes.
+ * vehicle reports it itself), `consumption` and `onboard` (`"1"` or `"3"`). The card judges it and sends the changes.
  */
 export function vehicleEditorBody(
   doc: Document,
@@ -1582,6 +1609,39 @@ export function vehicleEditorBody(
       row.consumption_kwh_per_10km,
       { min: CONSUMPTION_MIN_KWH_PER_10KM, max: CONSUMPTION_MAX_KWH_PER_10KM },
     );
+  }
+
+  if (row !== null) {
+    // The car's own charger: 1 or 3 phases. A charge uses the smaller of this and the charger's wiring.
+    values["onboard"] = String(row.onboard_phases);
+    const group = element(doc, "fieldset", C.siteFieldset);
+    group.dataset["part"] = "onboard";
+    group.append(
+      element(doc, "legend", C.siteLegend, translate(language, "settings.vehicle.onboardLegend")),
+      element(doc, "p", C.entityHelp, translate(language, "settings.vehicle.onboardHelp")),
+    );
+    for (const count of ["1", "3"] as const) {
+      const line = element(doc, "label", C.siteChoice);
+      const radio = doc.createElement("input");
+      radio.type = "radio";
+      radio.name = `${idPrefix}-vehicle-onboard`;
+      radio.value = count;
+      radio.checked = values["onboard"] === count;
+      radio.dataset["onboard"] = count;
+      radio.addEventListener("change", () => {
+        if (radio.checked) {
+          values["onboard"] = count;
+        }
+      });
+      controls.push(radio);
+      line.append(
+        radio,
+        doc.createTextNode(translate(language, count === "1" ? "settings.vehicle.onboardOne" : "settings.vehicle.onboardThree")),
+      );
+      group.append(line);
+    }
+    group.append(errorFor("onboard_phases", group));
+    body.append(group);
   }
 
   const actions = element(doc, "div", C.settingsActions);

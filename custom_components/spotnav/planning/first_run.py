@@ -9,9 +9,8 @@ person. Nothing here overwrites a saved value or runs again after a value is cle
   Assistant's configured coordinates; see `AREA_REFERENCE_POINTS`. No country, a country the
   catalogue does not list, a multi-area country without a table, or coordinates far from every
   reference point (Home Assistant's unset default is in California) leaves the area empty.
-* phases: the site's wiring for this charger when it has one, else the phases the charger flow
-  recorded (read from the charger's current entities, or answered by the person), else three when the
-  charger's own current entities are three; otherwise left empty (the card asks), never guessed.
+* phases are not a setting any more: the charger's wiring (the site's, else the charger flow's answer) and
+  the vehicle's onboard charger decide them (`planning/phases.py`).
 * amps: the charger's own maximum when an entity states one, else 16; never above the site's main
   fuse minus its safety margin, and left empty if that leaves less than the charger's minimum.
 * fiscal figures are not defaulted here: the catalogue's suggestions resolve during calculation.
@@ -225,7 +224,7 @@ def site_for_charger(hass: HomeAssistant, charger_entry_id: str) -> ConfigEntry 
     return None
 
 
-def _wired_phases(site: ConfigEntry | None, charger_entry_id: str) -> int | None:
+def wired_phases(site: ConfigEntry | None, charger_entry_id: str) -> int | None:
     if site is None:
         return None
     wiring = (site.data.get(CONF_PHASE_WIRING) or {}).get(charger_entry_id)
@@ -263,13 +262,11 @@ def first_run_defaults(
     country: str | None,
     latitude: float | None,
     longitude: float | None,
-    wired_phases: int | None,
     charger_max_a: int | None,
     site_limit_a: int | None,
 ) -> tuple[AutoSettings, tuple[str, ...]]:
-    """The defaults as a settings record, and which of area, phases and amps they filled in."""
+    """The defaults as a settings record, and which of area and amps they filled in."""
     area = suggest_area(catalogue, country, latitude, longitude)
-    phases = wired_phases if wired_phases in (1, 3) else None
     amps: int | None = charger_max_a if charger_max_a is not None else UNKNOWN_CHARGER_AMPS
     if site_limit_a is not None:
         amps = min(amps, site_limit_a)
@@ -277,10 +274,10 @@ def first_run_defaults(
         amps = None
     suggested = tuple(
         name
-        for name, value in (("area", area), ("phases", phases), ("amps", amps))
+        for name, value in (("area", area), ("amps", amps))
         if value is not None
     )
-    return AutoSettings(area_id=area, phases=phases, amps=amps), suggested
+    return AutoSettings(area_id=area, amps=amps), suggested
 
 
 async def async_seed_first_run(
@@ -308,7 +305,6 @@ async def async_seed_first_run(
         country=hass.config.country,
         latitude=hass.config.latitude,
         longitude=hass.config.longitude,
-        wired_phases=_wired_phases(site, entry.entry_id) or charger_phases_from_entry(getattr(entry, "data", None) or {}),
         charger_max_a=charger_max,
         site_limit_a=_site_limit_a(site),
     )

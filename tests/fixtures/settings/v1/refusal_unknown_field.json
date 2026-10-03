@@ -25,7 +25,7 @@
     "driver": "manual_kwh",
     "max_periods": 1,
     "overrides": [],
-    "phases": null,
+    "phases": 3,
     "requested_kwh": 20.0,
     "revision": 5,
     "strategy": "cheapest",

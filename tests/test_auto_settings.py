@@ -48,7 +48,7 @@ def test_a_missing_record_has_the_visible_defaults(store: AutoSettingsStore) -> 
     assert settings.driver == "manual_kwh" and settings.strategy == "cheapest"
     assert settings.revision == 0
     # Nothing guessed about what could steer a charge.
-    assert settings.missing_for_auto() == ("area", "phases", "amps")
+    assert settings.missing_for_auto() == ("area", "amps")
 
 
 async def test_round_trip_and_revision_bump(hass: HomeAssistant) -> None:

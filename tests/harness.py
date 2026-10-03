@@ -24,6 +24,7 @@ from custom_components.spotnav.pricing.price_repository import PriceRepository
 
 from custom_components.spotnav.runtime import ChargerData
 
+from .helpers import set_charger_phases
 from .relay import BASE_URL, Clock, FakeScheduler, SE4, StoreDouble, StubTransport
 from .world import ENTRY
 
@@ -137,7 +138,7 @@ class Session:
         assert self.preview is not None
         changes.setdefault("area_id", SE4)
         changes.setdefault("amps", 10)
-        changes.setdefault("phases", 1)
+        set_charger_phases(self.hass, self.entry_id, changes.pop("phases", 1))
         # Asking for a departure is asking for the departure switch: the two are one
         # setting in every practical sense, and a test that passed one without the other
         # would silently be testing the no-departure horizon instead.
@@ -208,7 +209,7 @@ class Harness:
         """
         changes.setdefault("area_id", SE4)
         changes.setdefault("amps", 10)
-        changes.setdefault("phases", 1)
+        set_charger_phases(self.hass, entry_id, changes.pop("phases", 1))
         changes.setdefault("departure_enabled", "departure" in changes)
         changes.setdefault("departure", DEFAULT_DEPARTURE)
         await self.write(entry_id, **changes)

@@ -35,6 +35,7 @@ from .helpers import (
     future_window,
     make_entry,
     make_site_entry,
+    set_charger_phases,
     set_current_sensor,
 )
 from .messages import register
@@ -96,7 +97,7 @@ async def go_auto(hass: HomeAssistant, entry_id: str = "entry_a", **changes: Any
     assert preview is not None
     changes.setdefault("area_id", SE4)
     changes.setdefault("amps", 10)
-    changes.setdefault("phases", 1)
+    set_charger_phases(hass, entry_id, changes.pop("phases", 1))
     changes.setdefault("departure_enabled", False)
     await preview.async_apply_settings(mutate=lambda settings: replace(settings, **changes))
     await hass.async_block_till_done()

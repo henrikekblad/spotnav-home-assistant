@@ -160,6 +160,9 @@ const updates = (hass: FakeHass) => hass.messages.filter((message) => message.ty
 const dashboards = (hass: FakeHass) => hass.messages.filter((message) => message.type === "spotnav/get_dashboard");
 
 /** Open one editor and answer its read, so the form is on screen. */
+const linePower = (phases: string, power: string): string =>
+  translate("en", "settings.phases.line", { phases, power });
+
 async function openEditor(
   kind: Kind,
   options: {
@@ -348,13 +351,13 @@ describe("the request lifecycle", () => {
     expect(body).toEqual(expected);
   });
 
-  it("preserves phases for 1, 3 and null when only another field moves", async () => {
+  it("echoes the record's phases back untouched when another field moves, and offers no phases choice", async () => {
     for (const phases of [1, 3, null]) {
       document.body.innerHTML = "";
       const { hass, element } = await openEditor("current", { record: aRecord({ phases }) });
-      // The count is a control of the Plan dialog, next to the planned current, on the stored choice.
-      const radios = Array.from(editorDialog(element)?.querySelectorAll<HTMLInputElement>("input[data-phases]") ?? []);
-      expect(radios.map((radio) => radio.checked), String(phases)).toEqual([phases === 1, phases === 3]);
+      // The count is not chosen here any more: the charger's wiring and the car decide it.
+      expect(editorDialog(element)?.querySelectorAll("input[data-phases]")).toHaveLength(0);
+      expect(editorDialog(element)?.querySelector("[data-part='phases']")).toBeNull();
       inputs(element)[0]!.value = "16";
       button(element, "spotnav-settings-save")!.click();
       await settle();
@@ -365,30 +368,23 @@ describe("the request lifecycle", () => {
     }
   });
 
-  it("writes a chosen phase count in the same Save as the other plan fields, and names the power it gives", async () => {
-    const { hass, element } = await openEditor("current", { record: aRecord({ phases: 1, amps: 16 }) });
-    const radios = Array.from(editorDialog(element)?.querySelectorAll<HTMLInputElement>("input[data-phases]") ?? []);
-    expect(editorDialog(element)?.textContent).toContain("3.7");
-    radios[1]!.checked = true;
-    radios[1]!.dispatchEvent(new Event("change", { bubbles: true }));
-    // The nominal power follows the draft count, before anything is saved.
-    expect(editorDialog(element)?.textContent).toContain("11.1");
-    button(element, "spotnav-settings-save")!.click();
-    await settle();
-    const body = updates(hass)[0]!["settings"] as Record<string, unknown>;
-    expect(body["phases"]).toBe(3);
-    expect(body["amps"]).toBe(16);
+  it("names the phases a charge uses and the power they give as one read-only line", async () => {
+    const { element } = await openEditor("current", { record: aRecord({ phases: 1, amps: 16 }) });
+    expect(powerLine(element)).toBe(
+      translate("en", "settings.phases.line", { phases: translate("en", "settings.phases.one"), power: "3.7" }),
+    );
+    expect(powerLine(element)).toBe("Charges on 1 phase · nominal power ≈ 3.7 kW");
+    expect(editorDialog(element)?.querySelector("[data-part='phases-reason']")).toBeNull();
   });
 
-  it("says the phase count is not set, and leaves it unset unless one is chosen", async () => {
-    const { hass, element } = await openEditor("current", { record: aRecord({ phases: null }) });
-    expect(editorDialog(element)?.textContent).toContain(translate("en", "settings.phases.unset"));
-    const radios = Array.from(editorDialog(element)?.querySelectorAll<HTMLInputElement>("input[data-phases]") ?? []);
-    expect(radios.some((radio) => radio.checked)).toBe(false);
-    radios[0]!.checked = true;
-    button(element, "spotnav-settings-save")!.click();
-    await settle();
-    expect((updates(hass)[0]!["settings"] as Record<string, unknown>)["phases"]).toBe(1);
+  it("says why when the car limits the phases", async () => {
+    const payload = fixture("start_idle");
+    payload["charging_phases"] = { phases: 1, charger: 3, vehicle: 1, limited_by: "vehicle" };
+    const { element } = await openEditor("current", { record: aRecord({ phases: 1, amps: 16 }), payload });
+    expect(editorDialog(element)?.querySelector("[data-part='phases-reason']")?.textContent).toBe(
+      translate("en", "settings.phases.limitedByVehicle"),
+    );
+    expect(translate("en", "settings.phases.limitedByVehicle")).toBe("The car charges on one phase.");
   });
 
   it("closes without a request on Cancel and offers it beside Save", async () => {
@@ -1080,7 +1076,12 @@ describe("the current slider and the nominal power beside it", () => {
     [3, "11.1"],
   ])("names the nominal power at 16 A with %s phase(s)", async (phases, power) => {
     const { element } = await openEditor("current", { record: aRecord({ amps: 16, phases }) });
-    expect(powerLine(element)).toBe(translate("en", "settings.current.power", { power }));
+    expect(powerLine(element)).toBe(
+      translate("en", "settings.phases.line", {
+        phases: translate("en", phases === 1 ? "settings.phases.one" : "settings.phases.three"),
+        power,
+      }),
+    );
   });
 
   it("says the power is unknown rather than assuming a phase count", async () => {
@@ -1099,14 +1100,14 @@ describe("the current slider and the nominal power beside it", () => {
 
   it("updates the nominal power as the draft moves, sending nothing", async () => {
     const { hass, element } = await openEditor("current", { record: aRecord({ amps: 6, phases: 1 }) });
-    expect(powerLine(element)).toBe(translate("en", "settings.current.power", { power: "1.4" }));
+    expect(powerLine(element)).toBe(linePower("1 phase", "1.4"));
 
     const range = sliderNode(element)!;
     range.value = "16";
     range.dispatchEvent(new Event("input", { bubbles: true }));
     await settle();
 
-    expect(powerLine(element)).toBe(translate("en", "settings.current.power", { power: "3.7" }));
+    expect(powerLine(element)).toBe(linePower("1 phase", "3.7"));
     expect(updates(hass)).toHaveLength(0);
     expect(rowValues(element)).toEqual(["20 kWh", "No deadline", "10 A"]);
   });
@@ -1197,7 +1198,7 @@ describe("the slider draft's lifecycle", () => {
     const range = sliderNode(element)!;
     range.value = "24";
     range.dispatchEvent(new Event("input", { bubbles: true }));
-    expect(powerLine(element)).toBe(translate("en", "settings.current.power", { power: "5.5" }));
+    expect(powerLine(element)).toBe(linePower("1 phase", "5.5"));
 
     button(element, "spotnav-settings-save")!.click();
     await settle();
@@ -1214,7 +1215,7 @@ describe("the slider draft's lifecycle", () => {
       translate("en", "settings.reload"),
     ]);
     // The nominal power now names what the *server's* record would draw.
-    expect(powerLine(element)).toBe(translate("en", "settings.current.power", { power: "5.5" }));
+    expect(powerLine(element)).toBe(linePower("1 phase", "5.5"));
 
     button(element, "spotnav-settings-reapply")!.click();
     await settle();
@@ -1247,7 +1248,7 @@ describe("the slider draft's lifecycle", () => {
 
     expect(inputs(element)[0]!.value).toBe("6");
     expect(sliderNode(element)!.value).toBe("6");
-    expect(powerLine(element)).toBe(translate("en", "settings.current.power", { power: "4.2" }));
+    expect(powerLine(element)).toBe(linePower("3 phases", "4.2"));
     expect(updates(hass)).toHaveLength(1);
     expect(text(element)).not.toContain(translate("en", "settings.conflict.intro"));
   });

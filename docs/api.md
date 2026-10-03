@@ -41,7 +41,7 @@ limit, with `Retry-After`) or 502 (the charger command failed).
 | `resume` | Clear a pause. |
 | `refresh_vehicle` | Re-read the vehicle's Home Assistant entities (`vehicle_id`); never wakes the car. |
 | `set_charge_limit` | Write the vehicle's charge-limit entity (`vehicle_id`, `percent`). |
-| `update_vehicle` | Change a vehicle's capacity or consumption, with `expected` values. |
+| `update_vehicle` | Change a vehicle's capacity, consumption or onboard charger, with `expected` values. |
 | `update_site_settings` | Change solar priority or forecast sources of the charger's site. |
 
 **Withheld settings fields.** The settings record has a `departure_weekdays` (an optional list of
@@ -73,7 +73,7 @@ config entry id. Reading is open to every authenticated user; writes require an 
 | `spotnav/get_market_options` | Price areas from the relay and their suggested fiscal values. |
 | `spotnav/get_entity_config`, `spotnav/update_entity_config` | The entities a charger and its site use. |
 | `spotnav/choose_vehicle_soc` | Choose (or clear) a vehicle's state-of-charge sensor. |
-| `spotnav/update_vehicle` | A vehicle's battery capacity and consumption. |
+| `spotnav/update_vehicle` | A vehicle's battery capacity, consumption and onboard charger. |
 | `spotnav/update_site_settings` | Solar priority, forecast sources, active load balancing. |
 | `spotnav/get_sessions` | A charger's charge sessions: summaries per month and day and the latest sessions, or with `format: "csv"` and optional `from` and `to` dates the sessions of that range as CSV text. |
 
@@ -126,8 +126,21 @@ reads. Its main blocks: `charger` (identity, availability and `capabilities`), `
 `settings` (the canonical record with `revision`), `fiscal`, `market`, `prices` (the price
 intervals), `plan` and `planning` (proposal, installed plan, and why), `control` (the immediate
 action and the automatic action, with pause choices), `live`, `status` (typed status lines), `strategy`
-and `strategy_state`, `vehicles` and `soc`, `site`, `phase_detection`, `charge_progress`. Example
-documents are in `tests/fixtures/dashboard/`.
+and `strategy_state`, `vehicles` and `soc`, `site`, `charging_phases`, `phase_detection`, `charge_progress`.
+Example documents are in `tests/fixtures/dashboard/`.
+
+**Phases.** A charge uses the smaller of the charger's wiring (1 or 3: the site's phase wiring for the
+charger, or, for a charger in no site, its own `charger_phases` field in `spotnav/get_entity_config`
+and `spotnav/update_entity_config`, `"1"` or `"3"`) and the planned vehicle's onboard charger. A
+vehicle row in `vehicles` carries `onboard_phases` (1 or 3, three until told), written with
+`update_vehicle` as `changes: {"onboard_phases": 1}` (`null` returns it to three; any other value is
+`invalid_onboard_phases`). The additive root block `charging_phases` states the result:
+`{"phases": 1|3, "charger": 1|3, "vehicle": 1|3|null, "limited_by": "vehicle"|null}`; `limited_by` is
+`"vehicle"` when the car, not the wiring, sets it. The settings record's `phases` is no longer a
+setting: it is read-only in practice and carries the effective count for older clients. A
+replacement may still send it, or leave it out, and either is accepted and ignored (a value other than
+1, 3 or `null` is still `invalid_phases`). `proposal.phases` and `installed.phases` are the effective
+count too.
 
 The additive `sessions_summary` block holds this month's and last month's charge sessions
 (`sessions`, `energy_kwh`, `cost`, `currency`, `average_price_minor_per_kwh`, `solar_share`,

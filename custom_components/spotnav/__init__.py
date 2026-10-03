@@ -52,6 +52,7 @@ from .planning.auto_controller import (
 )
 from .planning.auto_settings import async_setup_auto_settings, DRIVER_TARGET_SOC
 from .planning.first_run import async_seed_first_run
+from .planning.phases import async_migrate_settings_phases
 from .pricing.market_observation import MarketObservation
 from .pricing.price_refresh import async_setup_price_refresh
 from .pricing.price_repository import async_setup_price_repository
@@ -190,6 +191,8 @@ async def _async_setup_charger_entry(hass: HomeAssistant, entry: ChargerConfigEn
     settings_store = domain_data(hass).auto_store
     price_manager = domain_data(hass).price_refresh
     if settings_store is not None:
+        # An older release's settings `phases` moves to the vehicle or the charger before anything plans.
+        await async_migrate_settings_phases(hass, entry.entry_id)
         # The boundary comes first so the preview can apply on the first calculation of a reload.
         executor = data.executor = AutoExecutor(hass, controller, settings_store)
         entry.async_on_unload(executor.async_shutdown)

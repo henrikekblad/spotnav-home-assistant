@@ -416,7 +416,9 @@ class AutoSettings:
     """One charger's Auto settings, as stored. Frozen, so a revision is a new value.
 
     Fields that could steer a charge have no default unless it cannot be unsafe: energy,
-    period cap and departure do; phases, current, area, vehicle and fiscal figures do not.
+    period cap and departure do; current, area, vehicle and fiscal figures do not. `phases` is what an
+    older release stored: it is migrated away (`planning/phases.py`) and never read, only carried so
+    that an older client's full replacement is still accepted.
     """
 
     revision: int = 0
@@ -476,8 +478,6 @@ class AutoSettings:
         missing: list[str] = []
         if not self.area_id:
             missing.append("area")
-        if self.phases not in (1, 3):
-            missing.append("phases")
         if not isinstance(self.amps, int) or isinstance(self.amps, bool) or self.amps <= 0:
             missing.append("amps")
         if self.driver == DRIVER_TARGET_SOC:
@@ -891,7 +891,8 @@ class AutoSettingsStore:
                 if isinstance(stored_suggested, list) and all(
                     item in SUGGESTIBLE_FIELDS for item in stored_suggested
                 ):
-                    suggested = tuple(stored_suggested)
+                    # `phases` is no longer a first-run suggestion (the charger's wiring says it).
+                    suggested = tuple(item for item in stored_suggested if item != "phases")
                 self._entries[entry_id] = _Entry(
                     settings=settings,
                     proposal=proposal,
@@ -1002,6 +1003,25 @@ class AutoSettingsStore:
                 proposal=None if existing is None else existing.proposal,
                 energy_baseline=None if existing is None else existing.energy_baseline,
                 suggested=tuple(suggested),
+            )
+            await self._async_commit(entry_id, entry)
+            return True
+
+    async def async_clear_legacy_phases(self, entry_id: str) -> bool:
+        """Forget the `phases` an older release stored (its meaning moved to the vehicle and the charger).
+
+        Not a settings edit: the revision stays, so an installed plan and its identity stand. Returns
+        whether there was a value to clear.
+        """
+        async with self._lock:
+            existing = self._entries.get(entry_id)
+            if existing is None or existing.settings.phases is None:
+                return False
+            entry = _Entry(
+                settings=replace(existing.settings, phases=None),
+                proposal=existing.proposal,
+                energy_baseline=existing.energy_baseline,
+                suggested=tuple(item for item in existing.suggested if item != "phases"),
             )
             await self._async_commit(entry_id, entry)
             return True

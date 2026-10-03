@@ -5,7 +5,7 @@ work on this installation is listed as unavailable with the reason.
 
 ## What every strategy shares
 
-The plan is calculated from the charger's settings: price area, phases, current in amps, the
+The plan is calculated from the charger's settings: price area, current in amps, the
 energy to charge (or a [target state of charge](target-soc.md)), the maximum number of charging
 periods, and an optional departure time. The card marks what is missing.
 

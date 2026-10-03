@@ -54,7 +54,7 @@ charging. Enter the fuse rating, choose the chargers on it, and SpotNav looks fo
 
 Open a dashboard, choose **Add card** and search for **SpotNav**. The card is served by the
 integration itself, so there is no dashboard resource to add. Pick the charger in the card's
-editor. Price area, phases, energy to charge, departure time and the strategy are set in the card;
+editor. Price area, energy to charge, departure time and the strategy are set in the card;
 see [The card](docs/card.md).
 
 ![The Add card picker with the SpotNav preview](docs/images/card-picker.png)

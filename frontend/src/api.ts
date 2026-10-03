@@ -274,12 +274,12 @@ export async function setVehicleSoc(
 
 export interface VehicleChanges {
   vehicleId: string;
-  changes: { capacity_kwh?: number | null; consumption_kwh_per_10km?: number | null };
-  expected: { capacity_kwh?: number | null; consumption_kwh_per_10km?: number | null };
+  changes: { capacity_kwh?: number | null; consumption_kwh_per_10km?: number | null; onboard_phases?: 1 | 3 | null };
+  expected: { capacity_kwh?: number | null; consumption_kwh_per_10km?: number | null; onboard_phases?: 1 | 3 | null };
 }
 
 /**
- * Change a vehicle's battery size and/or consumption under compare-and-set. Administrators only;
+ * Change a vehicle's battery size, consumption and/or onboard charger under compare-and-set. Administrators only;
  * the answer is the entity envelope plus the vehicle's row.
  */
 export async function updateVehicle(

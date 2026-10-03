@@ -122,7 +122,7 @@ have their own cells on the card; everything else is here, in sections.
 
 ### Price area and fiscal
 
-On a new charger the area, the phases and the current are already filled in from your Home Assistant
+On a new charger the area and the current are already filled in from your Home Assistant
 country and location and from the charger, and the card says "Suggested from your location
 and charger – check Settings."
 Nothing you saved is overwritten. See [first-run defaults](setup.md#first-run-defaults).
@@ -151,14 +151,20 @@ One block per vehicle Home Assistant detected, with the one this charger plans f
 - **Battery capacity** in kWh (1 to 500), unless the vehicle reports it, in which case it is shown
   as reported by the vehicle.
 - **Consumption** in kWh per 10 km (0.1 to 50), used to show the distance a plan adds.
+- **Onboard charger**: 1-phase or 3-phase (3-phase until you say otherwise). A charge uses the smaller of
+  this and the charger's wiring, so a car with a single-phase onboard charger charges on one phase even
+  on a three-phase wallbox.
 
 Saving each value asks Home Assistant to confirm it; the card never shows a value the integration
 did not accept.
 
 ### Phases
 
-**Phases the charger uses**: 1 or 3. It sets the power the plan assumes for a given current. A
-three-phase charger can still charge a car on one phase.
+The phases a charge uses are not chosen in the Plan dialog. They are the smaller of the charger's wiring
+and the vehicle's onboard charger. The Plan dialog says how many ("Charges on 1 phase · nominal power
+≈ 3.7 kW") and, when the car limits it, why ("The car charges on one phase."). A charger in a site takes
+its wiring from the site; a charger in no site has **Phases the charger is wired for** (1 or 3) in its
+entities dialog.
 
 ### Charger entities
 
@@ -205,7 +211,8 @@ The **Plan** cell opens **Charging plan**.
   horizon.
 - **Maximum charging periods**: 1 to 8.
 - **Planned current**: the current the plan may ask for, in whole amperes, with the nominal power
-  it means for the chosen phases. It is a planning value, not a command to the charger.
+  it means for the phases the charge uses (read-only, see below). It is a planning value, not a command
+  to the charger.
 - With a target SoC: the **Target charge level** slider, the vehicle (when there are several), the
   level now and how old it is or that it is estimated, the vehicle's charge limit when known, and
   the **Energy needed**.

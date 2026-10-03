@@ -247,10 +247,23 @@ export interface Dashboard {
   soc: Soc | null;
   vehicles: Vehicle[];
   target_vehicle_id: string | null;
+  /** The phases a charge uses and what limits them; `null` when the backend leaves it out. */
+  charging_phases: ChargingPhases | null;
   detected_phases: number | null;
   phase_detection: PhaseDetection;
   chargers: Array<{ id: string; name: string }>;
   status: Status;
+}
+
+/**
+ * `phases` is the smaller of `charger` (the wiring) and `vehicle` (the planned vehicle's onboard charger,
+ * `null` with no vehicle); `limited_by` is `"vehicle"` when the car, not the wiring, sets it.
+ */
+export interface ChargingPhases {
+  phases: 1 | 3;
+  charger: 1 | 3;
+  vehicle: 1 | 3 | null;
+  limited_by: "vehicle" | null;
 }
 
 export interface PhaseDetection {
@@ -267,6 +280,8 @@ export interface Vehicle {
   consumption_kwh_per_10km: number | null;
   max_percent: number | null;
   soc_percent: number | null;
+  /** The onboard charger's phases: 1 or 3 (three until told). */
+  onboard_phases: 1 | 3;
 }
 
 export interface Soc {
@@ -1353,6 +1368,7 @@ export function decodeDashboard(raw: unknown): DecodeResult {
         soc: socOrNull(root),
         vehicles: arrayValue(root, "vehicles").map(decodeVehicle),
         target_vehicle_id: textOrNull(root, "target_vehicle_id"),
+        charging_phases: sectionOrNull(root, "charging_phases", decodeChargingPhases),
         detected_phases: detectedPhases(root),
         phase_detection: decodePhaseDetection(record(required(root, "phase_detection"))),
         chargers: arrayValue(root, "chargers").map((entry) => {
@@ -1389,6 +1405,7 @@ const DASHBOARD_KEYS = [
   "soc",
   "vehicles",
   "target_vehicle_id",
+  "charging_phases",
   "detected_phases",
   "phase_detection",
   "chargers",
@@ -1533,6 +1550,7 @@ export function decodeVehicle(raw: unknown): Vehicle {
     "consumption_kwh_per_10km",
     "max_percent",
     "soc_percent",
+    "onboard_phases",
   ]);
   const capacity = boundedOrNull(source, "capacity_kwh", 0, Number.POSITIVE_INFINITY, true);
   const origin = enumOrNull(source, "capacity_source", CAPACITY_SOURCES);
@@ -1548,6 +1566,23 @@ export function decodeVehicle(raw: unknown): Vehicle {
     consumption_kwh_per_10km: boundedOrNull(source, "consumption_kwh_per_10km", 0, Number.POSITIVE_INFINITY, true),
     max_percent: boundedOrNull(source, "max_percent", 0, 100),
     soc_percent: boundedOrNull(source, "soc_percent", 0, 100),
+    onboard_phases: phaseCount(source, "onboard_phases"),
+  };
+}
+
+function phaseCount(source: Record<string, unknown>, key: string): 1 | 3 {
+  const value = source[key];
+  return value === 1 || value === 3 ? value : bad();
+}
+
+function decodeChargingPhases(source: Record<string, unknown>): ChargingPhases {
+  exactKeys(source, ["phases", "charger", "vehicle", "limited_by"]);
+  const vehicle = required(source, "vehicle");
+  return {
+    phases: phaseCount(source, "phases"),
+    charger: phaseCount(source, "charger"),
+    vehicle: vehicle === null ? null : phaseCount(source, "vehicle"),
+    limited_by: enumOrNull(source, "limited_by", ["vehicle"] as const),
   };
 }
 

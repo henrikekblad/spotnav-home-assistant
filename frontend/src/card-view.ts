@@ -1946,6 +1946,7 @@ export function createCardView(input: CardViewInput): CardView {
                 consumption_kwh_per_10km: null,
                 max_percent: null,
                 soc_percent: null,
+                onboard_phases: 3,
               }))
           : [];
       for (const row of [...vehicleRows, ...extra]) {

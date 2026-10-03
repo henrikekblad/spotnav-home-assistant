@@ -116,6 +116,7 @@ DASHBOARD_SECTIONS = [
     "soc",
     "vehicles",
     "target_vehicle_id",
+    "charging_phases",
     "detected_phases",
     "phase_detection",
     "chargers",
@@ -902,7 +903,7 @@ def test_serializers_cannot_consult_live_state() -> None:
     for name in serializers:
         function = getattr(dashboard_api, name)
         parameters = inspect.signature(function).parameters
-        assert set(parameters) <= {"capture", "charger", "chargers", "settings", "area_entry", "site", "component", "suggestion", "unit", "intervals", "can_act", "active_control_writable", "soc", "vehicle", "summary"}, (name, list(parameters))
+        assert set(parameters) <= {"capture", "charger", "chargers", "settings", "area_entry", "site", "component", "suggestion", "unit", "intervals", "can_act", "active_control_writable", "soc", "vehicle", "summary", "phases"}, (name, list(parameters))
         assert "hass" not in parameters, name
 
 # ------------------------------------------------- the states the contract must distinguish
@@ -1113,7 +1114,9 @@ async def test_a_fresh_unconfigured_charger_serializes_the_contract_shape(
     assert set(settings) == SETTINGS_RESPONSE_KEYS, "the canonical settings record, and its revision"
     assert settings["strategy"] == "cheapest" and settings["driver"] == "manual_kwh"
     assert settings["revision"] == 0
-    assert settings["area_id"] is None and settings["amps"] is None and settings["phases"] is None
+    assert settings["area_id"] is None and settings["amps"] is None
+    # The phases a charge uses (the effective count, three until the charger or a car says otherwise).
+    assert settings["phases"] == 3
     assert settings["overrides"] == [] and settings["target"] == {"vehicle_id": None, "target_percent": None}
     assert settings["departure_time"] == "08:00"
     assert response["fiscal"] is None, "no market, no fiscal block"
@@ -1522,7 +1525,7 @@ async def test_a_charger_with_no_settings_record_is_reported_honestly(
     assert settings["revision"] == 0
     assert settings["strategy"] == "cheapest"
     assert settings["area_id"] is None and settings["amps"] is None
-    assert settings["phases"] is None
+    assert settings["phases"] == 3
     assert response["fiscal"] is None, "no market, no fiscal figures"
     assert response["plan"]["proposal"] is None and response["plan"]["installed"] is None
     assert response["prices"]["intervals"] == [], "nothing held, nothing drawn"
@@ -1759,7 +1762,7 @@ async def test_a_charger_with_only_an_area_charts_its_market_with_no_bands_at_al
 async def test_a_settings_change_that_keeps_the_area_neither_refetches_nor_resubscribes(
     hass: HomeAssistant, transport: StubTransport
 ) -> None:
-    """Same area, new amps: the chart is retained, not rebuilt and not emptied.
+    """Same area, new energy: the chart is retained, not rebuilt and not emptied.
 
     A settings write that does not move the market may not disturb the subscription -- the observation
     is already watching exactly that area -- so the rows the response holds are the same rows, and the
@@ -1775,7 +1778,7 @@ async def test_a_settings_change_that_keeps_the_area_neither_refetches_nor_resub
     assert revision is not None
 
     fetches = transport.call_count(transport.day_path(SE4, TODAY))
-    await go_area_only(hass, entry, amps=16)
+    await go_area_only(hass, entry, requested_kwh=30.0)
 
     after = response_for(hass, entry)["prices"]
     assert after["intervals"] == before["intervals"], "the same market, the same rows"

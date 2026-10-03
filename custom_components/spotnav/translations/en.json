@@ -571,13 +571,6 @@
       "price_area": {
         "name": "Price area"
       },
-      "charging_phases": {
-        "name": "Charging phases",
-        "state": {
-          "1": "Single phase",
-          "3": "Three phases"
-        }
-      },
       "fiscal_vat_policy": {
         "name": "VAT policy",
         "state": {

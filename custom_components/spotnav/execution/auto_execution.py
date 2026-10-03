@@ -45,6 +45,7 @@ from ..planning.auto_settings import (
     STRATEGY_HYBRID,
     STRATEGY_SOLAR,
 )
+from ..planning.phases import effective_phases
 from .controller import ChargingController, ChargingExecutionError, ChargingPlan
 
 
@@ -349,7 +350,9 @@ class AutoApplication:
         )
 
 
-def auto_plan_for(settings: AutoSettings, snapshot: Any, application_identity: str) -> ChargingPlan:
+def auto_plan_for(
+    settings: AutoSettings, snapshot: Any, application_identity: str, phases: int = 3
+) -> ChargingPlan:
     """The typed, Auto-owned plan for one usable proposal. Exact mapping, nothing invented.
 
     A target is carried only on the target-SoC path with both a vehicle and a percentage: an invented
@@ -366,7 +369,7 @@ def auto_plan_for(settings: AutoSettings, snapshot: Any, application_identity: s
         start=periods[0]["start"],
         end=periods[-1]["end"],
         amps=settings.amps if settings.amps is not None else 0,
-        phases=settings.phases if settings.phases is not None else 3,
+        phases=phases,
         energy_kwh=proposal.requested_kwh,
         price_area=snapshot.area_id,
         unpriced=bool(proposal.unpriced),
@@ -393,10 +396,10 @@ def application_from_plan(plan: ChargingPlan) -> AutoApplication | None:
     )
 
 
-def application_for(settings: AutoSettings, snapshot: Any) -> AutoApplication | None:
+def application_for(settings: AutoSettings, snapshot: Any, phases: int = 3) -> AutoApplication | None:
     """The application one snapshot describes, or `None` if not usable to execute: a proposal
     must be ready (or unpriced) and exist, and the settings must carry the current and phases
-    a plan needs.
+    a plan needs. `phases` is the charge's effective phases (`planning/phases.py`).
     """
     if snapshot is None or snapshot.proposal is None:
         return None
@@ -406,7 +409,7 @@ def application_for(settings: AutoSettings, snapshot: Any) -> AutoApplication | 
         # A snapshot carrying a stable error is not executable: a proposal whose durable summary
         # could not be written is shown but never installed.
         return None
-    if settings.amps is None or settings.phases not in (1, 3) or not settings.area_id:
+    if settings.amps is None or phases not in (1, 3) or not settings.area_id:
         return None
     proposal = snapshot.proposal
     periods = tuple((start.isoformat(), end.isoformat()) for start, end in proposal.periods)
@@ -417,7 +420,7 @@ def application_for(settings: AutoSettings, snapshot: Any) -> AutoApplication | 
     identity = auto_application_identity(
         periods=periods,
         amps=settings.amps,
-        phases=settings.phases,
+        phases=phases,
         area_id=snapshot.area_id,
         requested_kwh=proposal.requested_kwh,
         delivered_kwh=proposal.delivered_kwh,
@@ -430,7 +433,7 @@ def application_for(settings: AutoSettings, snapshot: Any) -> AutoApplication | 
     )
     return AutoApplication(
         identity=identity,
-        plan=auto_plan_for(settings, snapshot, identity),
+        plan=auto_plan_for(settings, snapshot, identity, phases),
         settings_revision=settings.revision,
         price_identity=snapshot.price_identity,
     )
@@ -685,7 +688,7 @@ class AutoExecutor:
         installed is charging now, in which case it waits for that window's boundary. A strategy with no
         plan of its own (solar) clears a plan Auto still owns, the same call `_pause_locked` uses.
         """
-        application = application_for(settings, snapshot)
+        application = application_for(settings, snapshot, effective_phases(self._hass, self._entry_id))
         async with self._lock:
             applied = self.applied
             if application is None:
@@ -787,7 +790,7 @@ class AutoExecutor:
         snapshot = None if self._live_snapshot is None else self._live_snapshot()
         if snapshot is None:
             return False
-        application = application_for(settings, snapshot)
+        application = application_for(settings, snapshot, effective_phases(self._hass, self._entry_id))
         if application is None:
             return False
         return (

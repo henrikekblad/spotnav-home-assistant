@@ -571,13 +571,6 @@
       "price_area": {
         "name": "Elområde"
       },
-      "charging_phases": {
-        "name": "Faser vid laddning",
-        "state": {
-          "1": "Enfas",
-          "3": "Trefas"
-        }
-      },
       "fiscal_vat_policy": {
         "name": "Momsregel",
         "state": {

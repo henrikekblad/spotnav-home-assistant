@@ -80,7 +80,7 @@ async def test_absent_settings_are_incomplete_and_subscribe_to_nothing(
     assert snapshot.state == "incomplete_settings" and snapshot.reason == "settings_missing"
     assert snapshot.proposal is None
     assert snapshot.applied is False and snapshot.in_process is False
-    assert snapshot.settings_revision == 0 and snapshot.missing == ("area", "phases", "amps")
+    assert snapshot.settings_revision == 0 and snapshot.missing == ("area", "amps")
     # A public observation rather than an internal flag: the manager knows no such area.
     assert harness.area is None
     assert harness.transport.calls == []
@@ -91,8 +91,7 @@ async def test_absent_settings_are_incomplete_and_subscribe_to_nothing(
     ("changes", "missing"),
     [
         ({"area_id": None}, ("area",)),
-        ({"area_id": None, "phases": None}, ("area", "phases")),
-        ({"area_id": None, "phases": None, "amps": None}, ("area", "phases", "amps")),
+        ({"area_id": None, "amps": None}, ("area", "amps")),
         ({"driver": DRIVER_TARGET_SOC}, ("vehicle", "target_percent")),
         (
             {"driver": DRIVER_TARGET_SOC, "target": TargetSocIntent(vehicle_id="veh-1")},
@@ -1095,7 +1094,7 @@ async def test_diagnostics_describe_every_auto_state(
     incomplete = await auto_section(hass, entry)
     assert incomplete["live"] is True
     assert incomplete["state"] == "incomplete_settings"
-    assert incomplete["missing"] == ["area", "phases", "amps"]
+    assert incomplete["missing"] == ["area", "amps"]
 
     # 3. A ready proposal.
     await controller.async_apply_settings(

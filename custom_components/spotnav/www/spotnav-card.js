@@ -3612,11 +3612,18 @@ var da = {
   "settings.vehicle.charge": "Ladeniveau",
   "settings.vehicle.error.capacity": "Batterikapaciteten skal være mellem 1 og 500 kWh.",
   "settings.vehicle.error.consumption": "Forbruget skal være mellem 0,1 og 50 kWh/10 km.",
-  "settings.phases.legend": "Faser laderen bruger",
   "settings.phases.one": "1 fase",
   "settings.phases.three": "3 faser",
-  "settings.phases.unset": "Antallet af faser er ikke angivet.",
-  "settings.phases.help": "Styrer den effekt, planen regner med for en given strøm. En trefaselader kan stadig lade en bil på én fase.",
+  "settings.phases.line": "Lader på {phases} · nominel effekt ≈ {power} kW",
+  "settings.phases.lineUnknown": "Lader på {phases} · nominel effekt ukendt",
+  "settings.phases.limitedByVehicle": "Bilen lader på én fase.",
+  "entity.field.chargerPhases": "Faser laderen er tilsluttet",
+  "entity.help.chargerPhases": "Hvor mange faser laderen er tilsluttet. En opladning bruger det laveste af dette og bilens indbyggede oplader.",
+  "settings.vehicle.onboardLegend": "Indbygget oplader",
+  "settings.vehicle.onboardOne": "1-fase",
+  "settings.vehicle.onboardThree": "3-fase",
+  "settings.vehicle.onboardHelp": "Hvor mange faser bilens egen oplader kan tage imod. En opladning bruger det laveste af dette og opladerens tilslutning.",
+  "settings.vehicle.error.onboardPhases": "Den indbyggede oplader skal være 1-fase eller 3-fase.",
   "cap.targetSocNote": "Kræver en sensor for bilens ladetilstand og batteriets kapacitet. Angiv dem i Plan og Indstillinger.",
   "control.startStop": "Start og stop",
   "control.startStop.easeeFixed": "SpotNav starter og stopper laderen via Easee-integrationens tjeneste (pause og genoptag), så der er ingen start- eller stopenhed at vælge.",
@@ -4218,11 +4225,18 @@ var en = {
   "settings.vehicle.charge": "Charge level",
   "settings.vehicle.error.capacity": "Battery capacity must be between 1 and 500 kWh.",
   "settings.vehicle.error.consumption": "Consumption must be between 0.1 and 50 kWh/10 km.",
-  "settings.phases.legend": "Phases the charger uses",
   "settings.phases.one": "1 phase",
   "settings.phases.three": "3 phases",
-  "settings.phases.unset": "The phase count is not set.",
-  "settings.phases.help": "Sets the power the plan assumes for a given current. A three-phase charger can still charge a vehicle on one phase.",
+  "settings.phases.line": "Charges on {phases} · nominal power ≈ {power} kW",
+  "settings.phases.lineUnknown": "Charges on {phases} · nominal power unknown",
+  "settings.phases.limitedByVehicle": "The car charges on one phase.",
+  "entity.field.chargerPhases": "Phases the charger is wired for",
+  "entity.help.chargerPhases": "How many phases the charger is connected to. A charge uses the smaller of this and the car's onboard charger.",
+  "settings.vehicle.onboardLegend": "Onboard charger",
+  "settings.vehicle.onboardOne": "1-phase",
+  "settings.vehicle.onboardThree": "3-phase",
+  "settings.vehicle.onboardHelp": "How many phases the car's own charger can take. A charge uses the smaller of this and the charger's wiring.",
+  "settings.vehicle.error.onboardPhases": "The onboard charger must be 1-phase or 3-phase.",
   "cap.targetSocNote": "Needs a charge-level sensor for the vehicle and its battery capacity. Set them in Plan and Settings.",
   "control.startStop": "Start and stop",
   "control.startStop.easeeFixed": "SpotNav starts and stops the charger through the Easee integration's service (pause and resume), so there is no start or stop entity to choose.",
@@ -4824,11 +4838,18 @@ var fi = {
   "settings.vehicle.charge": "Varaustaso",
   "settings.vehicle.error.capacity": "Akun kapasiteetin on oltava 1–500 kWh.",
   "settings.vehicle.error.consumption": "Kulutuksen on oltava 0,1–50 kWh/10 km.",
-  "settings.phases.legend": "Laturin käyttämät vaiheet",
   "settings.phases.one": "1 vaihe",
   "settings.phases.three": "3 vaihetta",
-  "settings.phases.unset": "Vaiheiden määrää ei ole asetettu.",
-  "settings.phases.help": "Määrää tehon, jota suunnitelma olettaa tietyllä virralla. Kolmivaiheinen laturi voi silti ladata ajoneuvoa yhdellä vaiheella.",
+  "settings.phases.line": "Latausvaiheet: {phases} · nimellisteho ≈ {power} kW",
+  "settings.phases.lineUnknown": "Latausvaiheet: {phases} · nimellisteho tuntematon",
+  "settings.phases.limitedByVehicle": "Auto lataa yhdellä vaiheella.",
+  "entity.field.chargerPhases": "Laturin vaiheet",
+  "entity.help.chargerPhases": "Kuinka moneen vaiheeseen laturi on kytketty. Lataus käyttää pienempää tästä ja auton sisäisestä laturista.",
+  "settings.vehicle.onboardLegend": "Auton sisäinen laturi",
+  "settings.vehicle.onboardOne": "1-vaiheinen",
+  "settings.vehicle.onboardThree": "3-vaiheinen",
+  "settings.vehicle.onboardHelp": "Kuinka monta vaihetta auton oma laturi voi vastaanottaa. Lataus käyttää pienempää tästä ja laturin kytkennästä.",
+  "settings.vehicle.error.onboardPhases": "Sisäisen laturin on oltava 1- tai 3-vaiheinen.",
   "cap.targetSocNote": "Vaatii ajoneuvon lataustasoanturin ja akun kapasiteetin. Aseta ne Suunnitelmassa ja Asetuksissa.",
   "control.startStop": "Käynnistys ja pysäytys",
   "control.startStop.easeeFixed": "SpotNav käynnistää ja pysäyttää laturin Easee-integraation palvelulla (tauko ja jatko), joten käynnistys- tai pysäytysentiteettiä ei valita.",
@@ -5430,11 +5451,18 @@ var nb = {
   "settings.vehicle.charge": "Ladenivå",
   "settings.vehicle.error.capacity": "Batterikapasiteten må være mellom 1 og 500 kWh.",
   "settings.vehicle.error.consumption": "Forbruket må være mellom 0,1 og 50 kWh/10 km.",
-  "settings.phases.legend": "Faser laderen bruker",
   "settings.phases.one": "1 fase",
   "settings.phases.three": "3 faser",
-  "settings.phases.unset": "Antall faser er ikke satt.",
-  "settings.phases.help": "Styrer effekten planen regner med for en gitt strøm. En trefaselader kan likevel lade en bil på én fase.",
+  "settings.phases.line": "Lader på {phases} · nominell effekt ≈ {power} kW",
+  "settings.phases.lineUnknown": "Lader på {phases} · nominell effekt ukjent",
+  "settings.phases.limitedByVehicle": "Bilen lader på én fase.",
+  "entity.field.chargerPhases": "Faser laderen er koblet til",
+  "entity.help.chargerPhases": "Hvor mange faser laderen er koblet til. En lading bruker det laveste av dette og bilens innebygde lader.",
+  "settings.vehicle.onboardLegend": "Innebygd lader",
+  "settings.vehicle.onboardOne": "1-fase",
+  "settings.vehicle.onboardThree": "3-fase",
+  "settings.vehicle.onboardHelp": "Hvor mange faser bilens egen lader kan ta imot. En lading bruker det laveste av dette og laderens tilkobling.",
+  "settings.vehicle.error.onboardPhases": "Den innebygde laderen må være 1-fase eller 3-fase.",
   "cap.targetSocNote": "Krever en sensor for bilens ladenivå og batteriets kapasitet. Angi dem i Plan og Innstillinger.",
   "control.startStop": "Start og stopp",
   "control.startStop.easeeFixed": "SpotNav starter og stopper laderen via Easee-integrasjonens tjeneste (pause og gjenoppta), så det finnes ingen start- eller stoppenhet å velge.",
@@ -6036,11 +6064,18 @@ var sv = {
   "settings.vehicle.charge": "Laddnivå",
   "settings.vehicle.error.capacity": "Batterikapaciteten måste vara mellan 1 och 500 kWh.",
   "settings.vehicle.error.consumption": "Förbrukningen måste vara mellan 0,1 och 50 kWh/10 km.",
-  "settings.phases.legend": "Faser som laddaren använder",
   "settings.phases.one": "1 fas",
   "settings.phases.three": "3 faser",
-  "settings.phases.unset": "Antalet faser är inte angivet.",
-  "settings.phases.help": "Styr vilken effekt planen räknar med för en viss ström. En trefasladdare kan ändå ladda ett fordon på en fas.",
+  "settings.phases.line": "Laddar på {phases} · nominell effekt ≈ {power} kW",
+  "settings.phases.lineUnknown": "Laddar på {phases} · nominell effekt okänd",
+  "settings.phases.limitedByVehicle": "Bilen laddar på en fas.",
+  "entity.field.chargerPhases": "Faser laddaren är kopplad till",
+  "entity.help.chargerPhases": "Hur många faser laddaren är ansluten till. En laddning använder det lägsta av detta och bilens inbyggda laddare.",
+  "settings.vehicle.onboardLegend": "Inbyggd laddare",
+  "settings.vehicle.onboardOne": "1-fas",
+  "settings.vehicle.onboardThree": "3-fas",
+  "settings.vehicle.onboardHelp": "Hur många faser bilens egen laddare kan ta emot. En laddning använder det lägsta av detta och laddarens koppling.",
+  "settings.vehicle.error.onboardPhases": "Den inbyggda laddaren måste vara 1-fas eller 3-fas.",
   "cap.targetSocNote": "Kräver en sensor för fordonets laddnivå och batteriets kapacitet. Ange dem i Plan och Inställningar.",
   "control.startStop": "Start och stopp",
   "control.startStop.easeeFixed": "SpotNav startar och stoppar laddaren via Easee-integrationens tjänst (pausa och återuppta), så det finns ingen start- eller stoppentitet att välja.",
@@ -6380,8 +6415,7 @@ function formFromRecord(record7) {
     current: record7.amps === null ? "" : String(record7.amps),
     driver: record7.driver,
     targetPercent: record7.target.target_percent === null ? "" : String(record7.target.target_percent),
-    vehicleId: record7.target.vehicle_id ?? "",
-    phases: record7.phases === null ? "" : String(record7.phases)
+    vehicleId: record7.target.vehicle_id ?? ""
   };
 }
 function decimal(text5, minimum, maximum) {
@@ -6576,11 +6610,6 @@ function replacementFor(kind, record7, values, range = null, opened = null, days
   if (targetMoved) {
     next.target = target;
     changed = true;
-  }
-  const chosenPhases = values.phases === "1" ? 1 : values.phases === "3" ? 3 : null;
-  if (kind === "plan" && chosenPhases !== null && (opened === null || chosenPhases !== opened.phases)) {
-    next.phases = chosenPhases;
-    changed = changed || chosenPhases !== record7.phases;
   }
   if (energy !== null && energy.ok && (opened === null || energy.value !== opened.requested_kwh)) {
     next.requested_kwh = energy.value;
@@ -7521,6 +7550,7 @@ function decodeDashboard(raw) {
         soc: socOrNull(root),
         vehicles: arrayValue(root, "vehicles").map(decodeVehicle),
         target_vehicle_id: textOrNull2(root, "target_vehicle_id"),
+        charging_phases: sectionOrNull(root, "charging_phases", decodeChargingPhases),
         detected_phases: detectedPhases(root),
         phase_detection: decodePhaseDetection(record2(required(root, "phase_detection"))),
         chargers: arrayValue(root, "chargers").map((entry) => {
@@ -7556,6 +7586,7 @@ var DASHBOARD_KEYS = [
   "soc",
   "vehicles",
   "target_vehicle_id",
+  "charging_phases",
   "detected_phases",
   "phase_detection",
   "chargers",
@@ -7662,7 +7693,8 @@ function decodeVehicle(raw) {
     "capacity_source",
     "consumption_kwh_per_10km",
     "max_percent",
-    "soc_percent"
+    "soc_percent",
+    "onboard_phases"
   ]);
   const capacity = boundedOrNull(source, "capacity_kwh", 0, Number.POSITIVE_INFINITY, true);
   const origin = enumOrNull(source, "capacity_source", CAPACITY_SOURCES);
@@ -7677,7 +7709,22 @@ function decodeVehicle(raw) {
     capacity_source: origin,
     consumption_kwh_per_10km: boundedOrNull(source, "consumption_kwh_per_10km", 0, Number.POSITIVE_INFINITY, true),
     max_percent: boundedOrNull(source, "max_percent", 0, 100),
-    soc_percent: boundedOrNull(source, "soc_percent", 0, 100)
+    soc_percent: boundedOrNull(source, "soc_percent", 0, 100),
+    onboard_phases: phaseCount(source, "onboard_phases")
+  };
+}
+function phaseCount(source, key) {
+  const value = source[key];
+  return value === 1 || value === 3 ? value : bad2();
+}
+function decodeChargingPhases(source) {
+  exactKeys2(source, ["phases", "charger", "vehicle", "limited_by"]);
+  const vehicle = required(source, "vehicle");
+  return {
+    phases: phaseCount(source, "phases"),
+    charger: phaseCount(source, "charger"),
+    vehicle: vehicle === null ? null : phaseCount(source, "vehicle"),
+    limited_by: enumOrNull(source, "limited_by", ["vehicle"])
   };
 }
 function progressOrNull(root) {
@@ -9068,6 +9115,7 @@ var FIELD_LABELS = {
   safety_margin_a: "entity.field.safetyMargin",
   measurement_mode: "entity.field.measurementMode",
   voltage_between_phases_v: "entity.field.voltageBetweenPhases",
+  charger_phases: "entity.field.chargerPhases",
   charger_priority: "entity.field.chargerPriority",
   battery_aggregate_power_entity: "entity.field.batteryPower",
   battery_discharge_power_entity: "entity.field.batteryDischargePower",
@@ -9122,7 +9170,8 @@ var FIELD_ERROR_KEYS = {
   duplicate_charger: "entity.error.field.duplicateCharger",
   unknown_vehicle: "entity.error.field.unknownVehicle",
   invalid_capacity: "settings.vehicle.error.capacity",
-  invalid_consumption: "settings.vehicle.error.consumption"
+  invalid_consumption: "settings.vehicle.error.consumption",
+  invalid_onboard_phases: "settings.vehicle.error.onboardPhases"
 };
 function fieldErrorKey(code) {
   return FIELD_ERROR_KEYS[code] ?? "entity.error.field.unknown";
@@ -9152,6 +9201,7 @@ var FIELD_HELP = {
   safety_margin_a: "entity.help.safetyMargin",
   measurement_mode: "entity.help.measurementMode",
   voltage_between_phases_v: "entity.help.voltageBetweenPhases",
+  charger_phases: "entity.help.chargerPhases",
   charger_priority: "entity.help.chargerPriority",
   battery_aggregate_power_entity: "entity.help.batteryPower",
   battery_discharge_power_entity: "entity.help.batteryDischargePower",
@@ -10204,6 +10254,30 @@ function entityEditorBody(doc, language, input, handlers, idPrefix) {
     voltage.fieldset.append(voltageError);
     body.append(voltage.fieldset);
   }
+  const phasesField = fieldsOf(config, scope).find((entry) => entry.field === "charger_phases");
+  if (phasesField !== void 0 && phasesField.kind === "enum" && phasesField.writable) {
+    const phasesOptions = phasesField.choices.map((choice) => ({
+      value: choice,
+      label: choice === "1" ? "settings.phases.one" : "settings.phases.three"
+    }));
+    const wired = choiceGroup(
+      "charger-phases",
+      "entity.field.chargerPhases",
+      phasesOptions,
+      () => values["charger_phases"] ?? phasesField.value ?? "3",
+      (value) => {
+        values["charger_phases"] = value;
+      },
+      { intro: fieldHelp("charger_phases", "entity.help.chargerPhases") }
+    );
+    const phasesError = element(doc, "p", VISUAL_CLASSES.settingsError);
+    phasesError.hidden = true;
+    phasesError.dataset["fieldError"] = "charger_phases";
+    phasesError.setAttribute("role", "alert");
+    errorNodes.set("charger_phases", { node: phasesError, input: wired.fieldset });
+    wired.fieldset.append(phasesError);
+    body.append(wired.fieldset);
+  }
   const priorityField = fieldsOf(config, scope).find((entry) => entry.field === "charger_priority");
   if (priorityField !== void 0 && priorityField.kind === "enum" && priorityField.writable) {
     const priorityOptions = priorityField.choices.map((choice) => ({
@@ -10415,6 +10489,37 @@ function vehicleEditorBody(doc, language, input, handlers, idPrefix) {
       row.consumption_kwh_per_10km,
       { min: CONSUMPTION_MIN_KWH_PER_10KM, max: CONSUMPTION_MAX_KWH_PER_10KM }
     );
+  }
+  if (row !== null) {
+    values["onboard"] = String(row.onboard_phases);
+    const group = element(doc, "fieldset", VISUAL_CLASSES.siteFieldset);
+    group.dataset["part"] = "onboard";
+    group.append(
+      element(doc, "legend", VISUAL_CLASSES.siteLegend, translate(language, "settings.vehicle.onboardLegend")),
+      element(doc, "p", VISUAL_CLASSES.entityHelp, translate(language, "settings.vehicle.onboardHelp"))
+    );
+    for (const count of ["1", "3"]) {
+      const line = element(doc, "label", VISUAL_CLASSES.siteChoice);
+      const radio = doc.createElement("input");
+      radio.type = "radio";
+      radio.name = `${idPrefix}-vehicle-onboard`;
+      radio.value = count;
+      radio.checked = values["onboard"] === count;
+      radio.dataset["onboard"] = count;
+      radio.addEventListener("change", () => {
+        if (radio.checked) {
+          values["onboard"] = count;
+        }
+      });
+      controls.push(radio);
+      line.append(
+        radio,
+        doc.createTextNode(translate(language, count === "1" ? "settings.vehicle.onboardOne" : "settings.vehicle.onboardThree"))
+      );
+      group.append(line);
+    }
+    group.append(errorFor("onboard_phases", group));
+    body.append(group);
   }
   const actions = element(doc, "div", VISUAL_CLASSES.settingsActions);
   const save = element(doc, "button", `${VISUAL_CLASSES.button} ${VISUAL_CLASSES.settingsSave}`, translate(language, "settings.save"));
@@ -11594,42 +11699,22 @@ function settingsEditorBody(doc, language, form, handlers, idPrefix) {
     periodsBlock.append(periodsLabel, periodsPair);
     body.append(periodsBlock);
   };
-  const phaseRadios = [];
-  const draftPhases = () => {
-    const chosen = phaseRadios.find((radio) => radio.checked);
-    return chosen === void 0 ? form.phases : Number(chosen.value);
-  };
-  const appendPhases = () => {
-    const group = element4(doc, "fieldset", VISUAL_CLASSES.siteFieldset);
-    group.dataset["part"] = "phases";
-    group.append(element4(doc, "legend", VISUAL_CLASSES.siteLegend, translate(language, "settings.phases.legend")));
-    for (const count of [1, 3]) {
-      const label = element4(doc, "label", VISUAL_CLASSES.siteChoice);
-      const radio = doc.createElement("input");
-      radio.type = "radio";
-      radio.name = `${idPrefix}-phases`;
-      radio.value = String(count);
-      radio.checked = form.values.phases === String(count);
-      radio.disabled = form.readOnly;
-      radio.dataset["phases"] = String(count);
-      phaseRadios.push(radio);
-      label.append(radio, doc.createTextNode(translate(language, count === 1 ? "settings.phases.one" : "settings.phases.three")));
-      group.append(label);
-    }
-    body.append(group);
-    if (form.values.phases === "") {
-      body.append(element4(doc, "p", VISUAL_CLASSES.settingsNote, translate(language, "settings.phases.unset")));
-    }
-    body.append(element4(doc, "p", VISUAL_CLASSES.settingsNote, translate(language, "settings.phases.help")));
-  };
+  const phasesLabel = (count) => translate(language, count === 1 ? "settings.phases.one" : "settings.phases.three");
   const appendCurrent = () => {
     currentInput.disabled = form.readOnly;
     const power = element4(doc, "p", VISUAL_CLASSES.settingsPower);
     power.setAttribute("aria-live", "polite");
     const paintPower = () => {
       const amps = Number(currentInput.value.trim().replace(",", "."));
-      const nominal = nominalPowerKw(amps, draftPhases());
-      power.textContent = nominal === null ? translate(language, "settings.current.powerUnknown") : translate(language, "settings.current.power", {
+      const phases = form.phases;
+      const nominal = nominalPowerKw(amps, phases);
+      power.dataset["phases"] = phases === null ? "" : String(phases);
+      if (phases !== 1 && phases !== 3) {
+        power.textContent = translate(language, "settings.current.powerUnknown");
+        return;
+      }
+      power.textContent = nominal === null ? translate(language, "settings.phases.lineUnknown", { phases: phasesLabel(phases) }) : translate(language, "settings.phases.line", {
+        phases: phasesLabel(phases),
         power: formatNumber(language, nominal, 1)
       });
     };
@@ -11649,12 +11734,11 @@ function settingsEditorBody(doc, language, form, handlers, idPrefix) {
       onChange: paintPower
     });
     body.append(paired.field);
-    if (form.kind === "plan") {
-      appendPhases();
-    }
     body.append(power);
-    for (const radio of phaseRadios) {
-      radio.addEventListener("change", paintPower);
+    if (form.limitedBy === "vehicle") {
+      const reason = element4(doc, "p", VISUAL_CLASSES.settingsNote, translate(language, "settings.phases.limitedByVehicle"));
+      reason.dataset["part"] = "phases-reason";
+      body.append(reason);
     }
     paintPower();
   };
@@ -11890,8 +11974,6 @@ function settingsEditorBody(doc, language, form, handlers, idPrefix) {
     values.maxPeriods = periodsInput.value;
     values.current = currentInput.value;
     if (form.kind === "plan") {
-      const chosen = phaseRadios.find((radio) => radio.checked);
-      values.phases = chosen === void 0 ? values.phases : chosen.value;
       values.driver = socRadio.checked ? "target_soc" : "manual_kwh";
       values.targetPercent = targetInput.value;
       const picked = vehicleSelect === null ? "" : vehicleSelect.value;
@@ -11988,6 +12070,11 @@ function vehicleSummary(doc, language, input) {
       "consumption",
       translate(language, "settings.consumption.label"),
       row.consumption_kwh_per_10km === null ? notSet : `${formatFixed(language, row.consumption_kwh_per_10km, 1)} ${translate(language, "settings.consumption.unit")}`
+    );
+    valueRow(
+      "onboard",
+      translate(language, "settings.vehicle.onboardLegend"),
+      translate(language, row.onboard_phases === 1 ? "settings.vehicle.onboardOne" : "settings.vehicle.onboardThree")
     );
   }
   const button = element5(doc, "button", `${VISUAL_CLASSES.button} ${VISUAL_CLASSES.settingsSectionConfigure}`, translate(language, "settings.vehicle.change"));
@@ -13745,7 +13832,8 @@ function createCardView(input) {
         capacity_source: null,
         consumption_kwh_per_10km: null,
         max_percent: null,
-        soc_percent: null
+        soc_percent: null,
+        onboard_phases: 3
       })) : [];
       for (const row of [...vehicleRows, ...extra]) {
         vehicleListSlot.append(
@@ -15290,6 +15378,7 @@ var SpotnavCard = class extends HTMLElement {
         values: formFromRecord(record7),
         energyReadOnly: manualEnergyReadOnly(record7),
         phases: record7.phases,
+        limitedBy: this.phasesLimitedBy(),
         currentRange: this.currentRange(),
         conflict: null,
         soc: this.socFacts(),
@@ -15584,6 +15673,10 @@ var SpotnavCard = class extends HTMLElement {
   siteFacts() {
     return this.cardState.kind === "ready" ? siteFactsFor(this.cardState.dashboard.site, this.languageOrFallback) : null;
   }
+  /** Whether the planned vehicle's onboard charger, not the charger's wiring, sets the phases (the dashboard's say). */
+  phasesLimitedBy() {
+    return this.cardState.kind === "ready" ? this.cardState.dashboard.charging_phases?.limited_by ?? null : null;
+  }
   vehicleFacts() {
     return this.cardState.kind === "ready" ? vehiclesFor(this.cardState.dashboard) : [];
   }
@@ -15726,6 +15819,7 @@ var SpotnavCard = class extends HTMLElement {
         values: formFromRecord(record7),
         energyReadOnly: manualEnergyReadOnly(record7),
         phases: record7.phases,
+        limitedBy: this.phasesLimitedBy(),
         currentRange: this.currentRange(),
         conflict: null,
         soc: this.socFacts(),
@@ -16183,6 +16277,15 @@ var SpotnavCard = class extends HTMLElement {
       "invalid_consumption",
       row?.consumption_kwh_per_10km ?? null
     );
+    const onboard = draft["onboard"];
+    if (onboard !== void 0 && row !== void 0) {
+      if (onboard !== "1" && onboard !== "3") {
+        errors.push({ field: "onboard_phases", code: "invalid_onboard_phases" });
+      } else if (Number(onboard) !== row.onboard_phases) {
+        changes.onboard_phases = Number(onboard);
+        expected.onboard_phases = row.onboard_phases;
+      }
+    }
     if (errors.length > 0) {
       view.markEntityFieldErrors(errors);
       return;
