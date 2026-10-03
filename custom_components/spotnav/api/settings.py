@@ -8,6 +8,9 @@ public face, so nothing here serializes `as_dict()` or accepts `from_stored()` p
 * Two additive exceptions, `departure_date` and `departure_weekdays`: a replacement body may leave either out (an
   older client), and then the stored value is kept; `departure_date: null` clears the date. Every other key is
   still required.
+* A third, `notifications` (which phones hear about which events, `notifications/settings.py`): left
+  out, the stored choice is kept. Its `available` list (the notify services that exist now, with the
+  phones' names) is read-only: a body may echo it and it is ignored.
 * One read-only fact, `fiscal_included`: the fiscal components (`vat`, `tax`, `transfer`) the selected area's
   published price already contains (contract v2's `included`). They are locked as "included in the price" and
   nothing is added for them, whatever the overrides say. A body may echo it; it is never stored.
@@ -48,6 +51,8 @@ from ..planning.auto_settings import (
     STORED_STRATEGIES,
     TargetSocIntent,
 )
+from ..notifications.settings import NotificationSettings, NotificationSettingsError
+from ..notifications.targets import available_targets, encoded_available
 from ..planning.phases import effective_phases
 from ..runtime import controller_for, domain_data, preview_for
 from .common import ERROR_CHARGER_UNLOADED, lookup_charger, send_unsupported_version
@@ -73,12 +78,13 @@ SETTINGS_KEYS: Final = frozenset(
         "departure_weekdays",
         "driver",
         "target",
+        "notifications",
     }
 )
 
 #: Keys a replacement body may leave out (added after the first release of this contract). Absent means "keep
 #: what is stored": a client that does not know the field must not clear what another one set. `null` clears.
-OPTIONAL_SETTINGS_KEYS: Final = frozenset({"departure_date", "departure_weekdays", "phases"})
+OPTIONAL_SETTINGS_KEYS: Final = frozenset({"departure_date", "departure_weekdays", "phases", "notifications"})
 
 #: `phases` joins them since the phases a charge uses stopped being a setting (the charger's wiring and the
 #: vehicle's onboard charger decide them): an older client still sends it, a newer one may leave it out,
@@ -283,14 +289,33 @@ def included_components(entry: Any) -> tuple[str, ...]:
     return tuple(component for component, name in FISCAL_COMPONENT_NAMES if name in entry.included)
 
 
+def encode_notifications(
+    notifications: NotificationSettings, available: tuple[tuple[str, str], ...] = ()
+) -> dict[str, Any]:
+    """The `notifications` field: the stored choice and the read-only `available` services."""
+    return {**notifications.as_dict(), "available": encoded_available(available)}
+
+
+def decode_notifications(raw: Any) -> NotificationSettings:
+    try:
+        return NotificationSettings.from_dict(raw)
+    except NotificationSettingsError as err:
+        _refuse("invalid_notifications", str(err))
+    raise AssertionError("unreachable")  # pragma: no cover
+
+
 def encode_settings(
-    settings: AutoSettings, phases: int | None = None, included: tuple[str, ...] = ()
+    settings: AutoSettings,
+    phases: int | None = None,
+    included: tuple[str, ...] = (),
+    available: tuple[tuple[str, str], ...] = (),
 ) -> dict[str, Any]:
     """The public value: every user-owned planning input, and the record's revision.
 
     `phases` is the effective phases a charge uses (`planning/phases.py`), which is what the key carries
     for an older client; the stored field is only an older release's leftover and is never read.
-    `included` is the read-only `fiscal_included` (see the module docstring).
+    `included` is the read-only `fiscal_included` (see the module docstring), `available` the notify
+    services `notifications.available` lists.
     """
     return {
         "revision": settings.revision,
@@ -308,6 +333,7 @@ def encode_settings(
         "driver": settings.driver,
         "target": encoded_target(settings.target),
         "fiscal_included": list(included),
+        "notifications": encode_notifications(settings.notifications, available),
     }
 
 
@@ -356,6 +382,9 @@ def decode_settings(raw: Any) -> AutoSettings:
         ),
         driver=_enum(stored["driver"], ("manual_kwh", "target_soc"), "invalid_driver"),
         target=_target(stored["target"]),
+        notifications=(
+            decode_notifications(stored["notifications"]) if "notifications" in stored else NotificationSettings()
+        ),
     ).validated()
 
 
@@ -364,6 +393,7 @@ def replacement_mutator(
     *,
     keep_departure_date: bool = False,
     keep_departure_weekdays: bool = False,
+    keep_notifications: bool = False,
 ) -> Callable[[AutoSettings], AutoSettings]:
     """A full replacement expressed as the store's own mutation hook.
 
@@ -379,6 +409,8 @@ def replacement_mutator(
             kept["departure_date"] = current.departure_date
         if keep_departure_weekdays:
             kept["departure_weekdays"] = current.departure_weekdays
+        if keep_notifications:
+            kept["notifications"] = current.notifications
         return replace(replacement, pause=current.pause, **kept)
 
     return mutate
@@ -423,20 +455,27 @@ def expected_revision_from(raw: Any) -> int:
 
 
 def settings_envelope(
-    settings: AutoSettings, phases: int | None = None, included: tuple[str, ...] = ()
+    settings: AutoSettings,
+    phases: int | None = None,
+    included: tuple[str, ...] = (),
+    available: tuple[tuple[str, str], ...] = (),
 ) -> dict[str, Any]:
     """The transport-neutral success answer: the committed record and its pause, no exception text."""
     return {
         "api_version": SETTINGS_API_VERSION,
         "ok": True,
         "error": None,
-        "settings": encode_settings(settings, phases, included),
+        "settings": encode_settings(settings, phases, included, available),
         "pause": encode_pause(settings.pause),
     }
 
 
 def settings_failure(
-    code: str, settings: AutoSettings | None, phases: int | None = None, included: tuple[str, ...] = ()
+    code: str,
+    settings: AutoSettings | None,
+    phases: int | None = None,
+    included: tuple[str, ...] = (),
+    available: tuple[tuple[str, str], ...] = (),
 ) -> dict[str, Any]:
     """The transport-neutral refusal: a stable code beside the settings that still stand.
 
@@ -448,7 +487,7 @@ def settings_failure(
         "api_version": SETTINGS_API_VERSION,
         "ok": False,
         "error": code,
-        "settings": None if settings is None else encode_settings(settings, phases, included),
+        "settings": None if settings is None else encode_settings(settings, phases, included, available),
         "pause": None if settings is None else encode_pause(settings.pause),
     }
 
@@ -564,6 +603,7 @@ async def async_update_settings(
         decoded,
         keep_departure_date=isinstance(replacement, Mapping) and "departure_date" not in replacement,
         keep_departure_weekdays=isinstance(replacement, Mapping) and "departure_weekdays" not in replacement,
+        keep_notifications=isinstance(replacement, Mapping) and "notifications" not in replacement,
     )
     _refuse_amps_above_charger_range(hass, entry_id, decoded)
     controller = preview_for(hass, entry_id)
@@ -605,7 +645,7 @@ async def websocket_get_settings(
     except SettingsRefusal as refusal:
         connection.send_error(msg["id"], refusal.code, "That charger is not available")
         return
-    connection.send_result(msg["id"], settings_envelope(settings, effective_phases(hass, msg["charger_id"]), fiscal_included_for(hass, settings)))
+    connection.send_result(msg["id"], settings_envelope(settings, effective_phases(hass, msg["charger_id"]), fiscal_included_for(hass, settings), available_targets(hass)))
 
 
 @websocket_api.websocket_command(
@@ -645,7 +685,7 @@ async def websocket_update_settings(
         connection.send_result(
             msg["id"], settings_failure(
                 failure.code, failure.settings, effective_phases(hass, entry_id),
-                fiscal_included_for(hass, failure.settings),
+                fiscal_included_for(hass, failure.settings), available_targets(hass),
             )
         )
         return
@@ -655,7 +695,7 @@ async def websocket_update_settings(
         connection.send_result(
             msg["id"], settings_failure(
                 failure.code, failure.settings, effective_phases(hass, entry_id),
-                fiscal_included_for(hass, failure.settings),
+                fiscal_included_for(hass, failure.settings), available_targets(hass),
             )
         )
         return
@@ -667,11 +707,12 @@ async def websocket_update_settings(
             return
         connection.send_result(
             msg["id"], settings_failure(
-                refusal.code, current, effective_phases(hass, entry_id), fiscal_included_for(hass, current)
+                refusal.code, current, effective_phases(hass, entry_id), fiscal_included_for(hass, current),
+                available_targets(hass),
             )
         )
         return
-    connection.send_result(msg["id"], settings_envelope(settings, effective_phases(hass, msg["charger_id"]), fiscal_included_for(hass, settings)))
+    connection.send_result(msg["id"], settings_envelope(settings, effective_phases(hass, msg["charger_id"]), fiscal_included_for(hass, settings), available_targets(hass)))
 
 
 @callback

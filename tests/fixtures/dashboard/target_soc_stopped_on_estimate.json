@@ -2178,6 +2178,16 @@
     "driver": "target_soc",
     "fiscal_included": [],
     "max_periods": 1,
+    "notifications": {
+      "available": [],
+      "events": [
+        "plan_stopped",
+        "plan_at_risk",
+        "charge_complete"
+      ],
+      "targets": [],
+      "url": null
+    },
     "overrides": [],
     "phases": 1,
     "requested_kwh": 20.0,

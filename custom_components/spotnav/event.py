@@ -13,6 +13,7 @@ from .entity import AutoSurface, SpotNavChargingEntity
 from .execution.charger_events import CHARGER_EVENT_TYPES, ChargerEventTracker, ChargerFacts
 from .execution.controller import ChargingController
 from .planning.auto_controller import AutoSnapshot
+from .planning.auto_settings import AutoSettings
 from .runtime import ChargerConfigEntry
 from .vehicles.soc_estimate import read_energy_register_kwh
 
@@ -63,36 +64,47 @@ class ChargerEventsEntity(SpotNavChargingEntity, EventEntity):
         self.async_write_ha_state()
 
     def _facts(self) -> ChargerFacts:
-        controller = self.controller
-        plan = controller.plan
-        plan_key = None
-        plan_attributes: dict[str, Any] = {}
-        if plan is not None:
-            plan_key = plan.auto_identity or f"{plan.start}|{plan.end}|{plan.amps}|{plan.periods}"
-            plan_attributes = {
-                "start": plan.start,
-                "end": plan.end,
-                "periods": plan.periods,
-                "amps": plan.amps,
-                "energy_kwh": plan.energy_kwh,
-                "automatic": plan.auto_owned,
-            }
-        snapshot = self._snapshot
-        at_risk = snapshot is not None and snapshot.reason == "deadline_too_short"
-        at_risk_info: dict[str, Any] = {}
-        if at_risk:
-            settings = self._auto.settings(self._entry.entry_id)
-            if settings is not None:
-                at_risk_info = {
-                    "departure_time": settings.departure.strftime("%H:%M"),
-                    "requested_kwh": settings.requested_kwh,
-                }
-        return ChargerFacts(
-            charging=bool(controller.charging),
-            connected=controller.adapter.vehicle_connected(),
-            plan_key=plan_key,
-            plan=plan_attributes,
-            at_risk=at_risk,
-            at_risk_info=at_risk_info,
-            register_kwh=read_energy_register_kwh(self.hass, controller.energy_register_entity_id),
-        )
+        return charger_facts(self.hass, self.controller, self._snapshot, self._auto.settings(self._entry.entry_id))
+
+
+def plan_key_of(plan: Any) -> str | None:
+    """What identifies an installed plan: a change of it is a new plan."""
+    if plan is None:
+        return None
+    return plan.auto_identity or f"{plan.start}|{plan.end}|{plan.amps}|{plan.periods}"
+
+
+def charger_facts(
+    hass: HomeAssistant,
+    controller: ChargingController,
+    snapshot: AutoSnapshot | None,
+    settings: AutoSettings | None,
+) -> ChargerFacts:
+    """One observation of a charger for `ChargerEventTracker`; the notifier reads the same."""
+    plan = controller.plan
+    plan_attributes: dict[str, Any] = {}
+    if plan is not None:
+        plan_attributes = {
+            "start": plan.start,
+            "end": plan.end,
+            "periods": plan.periods,
+            "amps": plan.amps,
+            "energy_kwh": plan.energy_kwh,
+            "automatic": plan.auto_owned,
+        }
+    at_risk = snapshot is not None and snapshot.reason == "deadline_too_short"
+    at_risk_info: dict[str, Any] = {}
+    if at_risk and settings is not None:
+        at_risk_info = {
+            "departure_time": settings.departure.strftime("%H:%M"),
+            "requested_kwh": settings.requested_kwh,
+        }
+    return ChargerFacts(
+        charging=bool(controller.charging),
+        connected=controller.adapter.vehicle_connected(),
+        plan_key=plan_key_of(plan),
+        plan=plan_attributes,
+        at_risk=at_risk,
+        at_risk_info=at_risk_info,
+        register_kwh=read_energy_register_kwh(hass, controller.energy_register_entity_id),
+    )

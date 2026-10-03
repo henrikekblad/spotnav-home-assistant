@@ -43,7 +43,17 @@
       "vehicle_id": null,
       "target_percent": null
     },
-    "fiscal_included": []
+    "fiscal_included": [],
+    "notifications": {
+      "targets": [],
+      "events": [
+        "plan_stopped",
+        "plan_at_risk",
+        "charge_complete"
+      ],
+      "url": null,
+      "available": []
+    }
   },
   "fiscal": {
     "vat": {

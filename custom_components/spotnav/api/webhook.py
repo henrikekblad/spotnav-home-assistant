@@ -22,6 +22,7 @@ from homeassistant.components import webhook
 from homeassistant.core import HomeAssistant
 
 from ..const import CONF_WEBHOOK_ID, DOMAIN
+from ..notifications.targets import available_targets
 from ..execution.auto_execution import ACTION_RESUME, ACTION_STOP, AutoControlError
 from ..planning.auto_settings import AutoSettingsError
 from ..planning.phases import effective_phases
@@ -60,7 +61,7 @@ _last_rejected_warning: float | None = None
 #: with an unknown field, and with it the whole dashboard, so the webhook leaves them out until an
 #: app that reads them is out. A request opts in per field with a top-level `reads` list. A
 #: replacement without one keeps the stored value (`fiscal_included` is read-only and never stored).
-APP_UNREAD_SETTINGS: Final = ("departure_date", "departure_weekdays", "fiscal_included")
+APP_UNREAD_SETTINGS: Final = ("departure_date", "departure_weekdays", "fiscal_included", "notifications")
 
 
 def _for_app(body: dict[str, Any], payload: dict[str, Any]) -> dict[str, Any]:
@@ -214,16 +215,16 @@ async def _settings(hass: HomeAssistant, entry: ChargerConfigEntry, payload: dic
         # Valid request, resolvable charger: our follow-up or persistence failed (502 here means
         # the charger's own command failed).
         return web.json_response(
-            _for_app({**settings_failure(failure.code, failure.settings, effective_phases(hass, entry.entry_id), fiscal_included_for(hass, failure.settings)), "action": action}, payload), status=500
+            _for_app({**settings_failure(failure.code, failure.settings, effective_phases(hass, entry.entry_id), fiscal_included_for(hass, failure.settings), available_targets(hass)), "action": action}, payload), status=500
         )
     except AutoSettingsError as refusal:
         store = domain_data(hass).auto_store
         current = None if store is None else store.settings(entry.entry_id)
         return web.json_response(
-            _for_app({**settings_failure(refusal.code, current, effective_phases(hass, entry.entry_id), fiscal_included_for(hass, current)), "action": action}, payload),
+            _for_app({**settings_failure(refusal.code, current, effective_phases(hass, entry.entry_id), fiscal_included_for(hass, current), available_targets(hass)), "action": action}, payload),
             status=409 if refusal.code == "revision_conflict" else 400,
         )
-    return web.json_response(_for_app({**settings_envelope(committed, effective_phases(hass, entry.entry_id), fiscal_included_for(hass, committed)), "action": action}, payload))
+    return web.json_response(_for_app({**settings_envelope(committed, effective_phases(hass, entry.entry_id), fiscal_included_for(hass, committed), available_targets(hass)), "action": action}, payload))
 
 
 def _bounded_write(
