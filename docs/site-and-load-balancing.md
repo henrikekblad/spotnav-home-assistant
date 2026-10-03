@@ -76,6 +76,14 @@ It is best effort and is not a protective device. Turning it off gives back any 
 - Reading a measurement that has not changed is told apart from a dead link before the reading
   is treated as stale.
 
+## Charger priority
+
+When several chargers share a site, each phase's headroom is handed out to them one after the
+other. Every charger has a **Charger priority** in the card's charger entities editor (only a
+charger that belongs to a site has one): **First**, **Normal** (the default) or **Last**. A charger
+set to First is served before the others and keeps what it asks for; one set to Last gets what is
+left. Chargers with the same priority are served in the order they joined the site.
+
 ## Solar and forecast settings
 
 Set on the site, used by the [solar and hybrid strategies](strategies.md): **solar priority**
