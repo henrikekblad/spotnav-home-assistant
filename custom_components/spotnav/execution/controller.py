@@ -428,6 +428,9 @@ class ChargingController:
         self._hold = WindowHold()
         self._hold_guard: Callable[[], bool] | None = None
         self._last_connected: bool | None = None
+        # Whether the charge that runs was started by a plan window of ours (not a person's Start, not
+        # solar). Persisted: a restart outside every window must still know the charge is ours.
+        self._plan_charge = False
         self.charge_control: str = config[CONF_CHARGE_CONTROL]
         # "None" in the card: no current entity, no current control and no automatic session-limit lookup.
         self.current_limit_none: bool = bool(config.get(CONF_CURRENT_LIMIT_NONE))
@@ -561,6 +564,7 @@ class ChargingController:
                     _LOGGER.warning("Discarding invalid saved SpotNav charging plan")
                 else:
                     self.plan = stored
+            self._plan_charge = saved.get("plan_charge") is True
             raw_requested = saved.get("requested_current_a")
             validated_requested = _validate_stored_amps(raw_requested)
             if raw_requested is not None and validated_requested is None:
@@ -785,6 +789,11 @@ class ChargingController:
         )
         if decision == HOLD:
             self.hass.async_create_task(self._async_hold_stop())
+        elif self._plan_charge:
+            if self._control_observation is False:
+                self.hass.async_create_task(self._async_forget_plan_charge())
+            elif self._plan_charge_strays():
+                self.hass.async_create_task(self._async_stray_stop())
         return decision in (HOLD, OVERRIDE) or before != (hold.held, hold.overridden, connected)
 
     async def _async_hold_stop(self) -> None:
@@ -800,6 +809,45 @@ class ChargingController:
             ):
                 return
             await self._stop_locked(clear_schedule=False)
+
+    def _plan_charge_strays(self) -> bool:
+        """Whether a charge a plan window of ours started runs while the time is outside every window
+        of the installed plan (replaced, restarted, or handed off and not taken back): it is ours, so it
+        is ours to stop. Never while something else owns the charger (a pause, solar) or the hybrid
+        hand-off carries it, and never for a charge a person started.
+        """
+        plan = self.plan
+        if plan is None or not self._plan_charge or self._control_observation is not True:
+            return False
+        if self._hold_blocked() or (self._end_window_guard is not None and self._end_window_guard()):
+            return False
+        try:
+            windows = plan.windows
+        except ValueError:
+            return False
+        now = dt_util.utcnow()
+        return not any(start <= now < end for start, end in windows)
+
+    async def _async_stray_stop(self) -> None:
+        """The ordinary stop of a plan charge that runs outside every window, decided again under the
+        lock: a plan may have been installed, or the charge ended, meanwhile.
+        """
+        async with self._lock:
+            if self._plan_charge_strays():
+                await self._stop_locked(clear_schedule=False)
+
+    async def _async_forget_plan_charge(self) -> None:
+        """The charger was seen off: nothing of ours runs, so a later start is not ours."""
+        async with self._lock:
+            if self._plan_charge and self._control_observation is False:
+                self._plan_charge = False
+                await self._async_save_quietly()
+
+    async def _async_save_quietly(self) -> None:
+        try:
+            await self._async_save()
+        except Exception as err:  # noqa: BLE001 - the flag is a safeguard, never a reason to fail
+            _LOGGER.warning("Saving the SpotNav plan-charge flag failed: %s", type(err).__name__)
 
     def set_hold_guard(self, guard: Callable[[], bool] | None) -> None:
         """Set (or clear with `None`) the guard that says something else owns the charger (Auto
@@ -1142,7 +1190,11 @@ class ChargingController:
         # From here the charge is SpotNav's, whoever asked (a window, a manual Start, a webhook,
         # solar or hybrid execution): the hold of a charge that starts by itself leaves it alone.
         was_owned = self._hold.owned
+        was_plan_charge = self._plan_charge
         self._hold.spotnav_started()
+        # A plan window's start is a plan charge; a person's, solar's or a webhook's is not, and
+        # stays outside the stop of a charge that strays from a replaced plan.
+        self._plan_charge = cause == "plan_window" and not manual
         if not self._control_on:
             # Recorded before the first await: an accepted Start the charger has not answered is not
             # a failure, and the observation must not blame the car (see `charge_progress.py`).
@@ -1158,6 +1210,7 @@ class ChargingController:
                 self._start_sent_at = None
                 self._start_write_pending = False
                 self._hold.owned = was_owned
+                self._plan_charge = was_plan_charge
             elif (
                 explicit_amps is not None
                 and self._writes_current_at_start
@@ -1165,6 +1218,8 @@ class ChargingController:
             ):
                 # A charger that only stores a value while paused takes it once it is running.
                 await self._async_assign_current_outcome(explicit_amps, reason=WRITE_SESSION_START)
+        if executed and self._plan_charge != was_plan_charge:
+            await self._async_save_quietly()
         self._notify()
         return executed
 
@@ -1510,9 +1565,18 @@ class ChargingController:
         subscription, since a gone plan enforces nothing.
         """
         self._hold.spotnav_stopped()
+        # What cannot be read (a restart before the charger's entities exist) says nothing about
+        # whether the charge is still running, so the flag survives until it can be seen.
+        plan_charge = self._plan_charge
         if self._stop_needed:
             await self.adapter.async_stop()
+            self._plan_charge = False
+        elif self._control_observation is not None:
+            self._plan_charge = False
+        if plan_charge and not self._plan_charge and not clear_schedule:
+            await self._async_save_quietly()
         if clear_schedule:
+            self._plan_charge = False
             self.plan = None
             self._cancel_timers()
             self._async_disarm_target_listener()
@@ -1671,6 +1735,7 @@ class ChargingController:
             {
                 "plan": asdict(self.plan) if self.plan else None,
                 "requested_current_a": self._requested_current_a,
+                "plan_charge": self._plan_charge,
                 # Written only by the target-stop path. A window ending normally and an explicit cancel
                 # record nothing here (`async_stop` does not touch this key).
                 "target_stop": self._target_stop,
@@ -1704,6 +1769,9 @@ class ChargingController:
             # as `complete` (a reload must not claim Auto never ran); nothing is armed for it.
             self._async_disarm_target_listener()
             self._async_disarm_probe_listener()
+            # A plan charge of ours still running past the last window is stopped (never a person's).
+            if self._plan_charge_strays():
+                await self._stop_locked(clear_schedule=False)
             return
         active = any(start <= now < end for start, end in windows)
         if active:

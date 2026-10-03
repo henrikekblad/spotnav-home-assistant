@@ -23,6 +23,7 @@ import {
   type FormatContext,
 } from "./format";
 import { issuesOf, statusNote, statusText, type Issue } from "./status";
+import { chargeCeiling, effectiveTarget } from "./target-need";
 import { pluralForm, translate, type Language, type TranslationKey } from "./i18n";
 import {
   ACTION_PAUSE,
@@ -433,14 +434,29 @@ function advisoryFor(dashboard: Dashboard, language: Language): AdvisoryFacts | 
   if (progress.state !== CHARGE_PROGRESS_VEHICLE_NOT_REQUESTING_CURRENT) {
     return null;
   }
-  return {
-    // A charger behind a smart plug is judged by its power; a connector status says it differently.
-    text: translate(
-      language,
-      progress.reason === "power_below_threshold" ? "advisory.powerBelowThreshold" : "advisory.vehicleNotRequestingCurrent",
-    ),
-    code: progress.reason,
-  };
+  // A car that is full asks for no current, which is no fault: the calm line, not a request to check
+  // the vehicle's settings.
+  const key: TranslationKey = carNeedsNoCharge(dashboard.soc)
+    ? "advisory.carFull"
+    : progress.reason === "power_below_threshold"
+      ? // A charger behind a smart plug is judged by its power; a connector status says it differently.
+        "advisory.powerBelowThreshold"
+      : "advisory.vehicleNotRequestingCurrent";
+  return { text: translate(language, key), code: progress.reason };
+}
+
+/** Whether the planned car's state of charge is at its target or its own maximum (or the need is 0 kWh). */
+function carNeedsNoCharge(soc: Dashboard["soc"]): boolean {
+  if (soc === null || soc.value === null) {
+    return false;
+  }
+  if (soc.need_kwh !== null && soc.need_kwh <= 0) {
+    return true;
+  }
+  const ceiling = soc.vehicle_max_percent !== null ? chargeCeiling(soc.vehicle_max_percent) : null;
+  const target = soc.target_percent !== null ? effectiveTarget(soc.target_percent, soc.vehicle_max_percent) : null;
+  const stop = target ?? ceiling;
+  return stop !== null && soc.value >= Math.min(stop, ceiling ?? stop);
 }
 
 function strategyFactsFor(dashboard: Dashboard, language: Language): StrategyFacts {
