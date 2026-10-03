@@ -150,6 +150,10 @@ describe("included parts are locked", () => {
     }
     expect(document.body.textContent).toContain("Included in the price");
     expect(document.body.textContent).toContain(translate("en", "market.includedNote"));
+    // The source sits right under the area choice, before the area's hint.
+    const select = document.querySelector("select");
+    expect(select?.nextElementSibling?.querySelector("a")?.textContent).toBe("Octopus Energy (Agile)");
+    expect(select?.nextElementSibling?.nextElementSibling?.textContent).toBe(translate("en", "market.area.description"));
     const link = document.querySelector<HTMLAnchorElement>("a");
     expect(link?.textContent).toBe("Octopus Energy (Agile)");
     expect(link?.href).toBe("https://octopus.energy/smart/agile/");

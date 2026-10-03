@@ -225,13 +225,14 @@ export function marketEditorBody(
     areaDescription.textContent = translate(language, "market.area.missing");
   }
   select.setAttribute("aria-describedby", areaDescriptionId);
-  areaField.append(areaLabel, select, areaDescription);
+  areaField.append(areaLabel, select);
   const selectedArea = form.options.areas.find((area) => area.area_id === form.values.areaId) ?? null;
   const attribution = selectedArea?.source ?? null;
   if (attribution !== null) {
-    // The attribution, small and linked, beside the area it belongs to (never under the chart).
+    // The attribution, small and linked, right under the area choice it belongs to (never under the chart).
     areaField.append(sourceLine(doc, language, attribution));
   }
+  areaField.append(areaDescription);
   body.append(areaField);
 
   // The builder for the area this body was built for, so a found region switches through the same path.
