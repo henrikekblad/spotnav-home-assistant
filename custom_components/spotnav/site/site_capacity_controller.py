@@ -966,6 +966,17 @@ class SiteCapacityController:
             setpoint,
         )
 
+    def _charge_still_wanted(self, charger_entry_id: str, charger_controller: Any) -> bool:
+        """Whether a charge balancing paused is still wanted: Auto is not paused by a person (a
+        stop, window end, solar off or new plan outside every window has already cleared the
+        controller's own mark). When it is not wanted the mark is dropped."""
+        store = domain_data(self.hass).auto_store
+        settings = None if store is None else store.settings(charger_entry_id)
+        if settings is not None and settings.pause.admitted:
+            charger_controller.forget_balancing_pause()
+            return False
+        return True
+
     async def _async_maybe_resume_paused_charge(
         self,
         charger_entry_id: str,
@@ -995,6 +1006,7 @@ class SiteCapacityController:
             or requested < min_current_a
             or fresh.state != "observing"
             or not charger_controller.paused_by_balancing
+            or not self._charge_still_wanted(charger_entry_id, charger_controller)
             or charger_controller.held_by_charger
             or charger_controller.adapter.vehicle_connected() is not True
             or (previous_setpoint is not None and previous_setpoint >= min_current_a)
@@ -1071,6 +1083,7 @@ class SiteCapacityController:
             or (previous_setpoint is not None and previous_setpoint >= min_current_a)
             or fresh.state != "observing"
             or not charger_controller.paused_by_balancing
+            or not self._charge_still_wanted(charger_entry_id, charger_controller)
             or charger_controller.held_by_charger
             or charger_controller.adapter.vehicle_connected() is not True
         ):

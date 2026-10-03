@@ -1074,6 +1074,9 @@ class ChargingController:
         self.plan = plan
         # The plan this record described is being replaced.
         self._target_stop = None
+        if not self.plan_window_active_now:
+            # A new plan with no window open now ends the wish a balancing pause interrupted.
+            self._paused_by_balancing = False
         try:
             await self._async_save()
         except Exception as err:
@@ -1177,6 +1180,11 @@ class ChargingController:
         """Whether the charger is stopped because load balancing paused it, and nothing has stopped
         or started it since (a person's Stop, a window's end, a target stop all clear it)."""
         return self._paused_by_balancing and not self.charging
+
+    def forget_balancing_pause(self) -> None:
+        """The wish to charge is gone (Auto paused by a person, say): balancing's pause is not a charge
+        to resume any more."""
+        self._paused_by_balancing = False
 
     async def async_battery_probe_start(self, amps: int, *, capped: bool = False) -> bool:
         """Resume a charge that load balancing paused, at `amps`, as a battery probe.
@@ -1394,13 +1402,17 @@ class ChargingController:
             code,
             "" if cause is None else f": {cause}",
         )
+        # Only a charge that was running can be one balancing interrupted; a pause written to a
+        # charger somebody already stopped must not make it look wanted.
+        was_on = self._control_on
         try:
             await self.async_stop()
         except Exception:  # noqa: BLE001 - reported, and the next pass tries again
             _LOGGER.exception("SpotNav charger %s: the safety stop failed", self.entry_id)
             return RegulatedWrite(REGULATED_HELD, "stop_failed", False)
         # Set after the stop (which clears it): this stop is the balancing pause itself.
-        self._paused_by_balancing = code == "pause"
+        if code == "pause" and was_on:
+            self._paused_by_balancing = True
         return RegulatedWrite(REGULATED_STOPPED, code, False)
 
     async def async_restore_current(self, *, lowered_by_balancing: bool) -> CurrentRestore:

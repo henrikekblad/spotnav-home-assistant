@@ -98,6 +98,8 @@ async def _paused_site(hass: HomeAssistant, monkeypatch, entry_id: str, **setup)
     turn_off = async_mock_service(hass, "switch", "turn_off")
     hass.states.async_set(f"switch.{prefix}", "off")
     charger_controller._paused_by_balancing = True
+    # The pause was written and recorded when it happened.
+    controller._dampers[charger.entry_id].record_write(0.0)
     _held_at_zero(controller, charger)
     return controller, charger, calls, yield_clock, damper_clock, site, prefix, charger_controller, turn_off
 
@@ -768,3 +770,63 @@ async def test_a_session_start_never_gives_the_car_more_than_the_site_allows(has
     set_site_current_a(hass, site, 14.5)
     assert await cc.async_start(16) is True
     assert _values(calls) == ["1.16,2.10"]
+
+
+# -- a paused charge that is no longer wanted is never resumed or probed
+
+_ENDINGS = ["window_end", "final_window_end", "person_stop", "person_pause", "solar_off", "new_plan_later"]
+
+
+async def _end_the_wish(hass: HomeAssistant, cc, charger, ending: str) -> None:
+    from homeassistant.util import dt as dt_util
+
+    from custom_components.spotnav.runtime import executor_for
+
+    from .helpers import future_window, install_schedule
+
+    if ending == "window_end":
+        cc._async_end_callback(dt_util.utcnow())
+    elif ending == "final_window_end":
+        cc._async_final_end_callback(dt_util.utcnow())
+    elif ending == "person_stop":
+        await executor_for(hass, charger.entry_id).async_manual_stop()
+    elif ending == "person_pause":
+        await executor_for(hass, charger.entry_id).async_pause()
+    elif ending == "solar_off":
+        await executor_for(hass, charger.entry_id).async_solar_stop()
+    elif ending == "new_plan_later":
+        start, end = future_window()
+        await install_schedule(cc, {"start": start, "end": end, "amps": 16})
+    await hass.async_block_till_done()
+
+
+@pytest.mark.parametrize("ending", _ENDINGS)
+@pytest.mark.parametrize("what", ["resume", "probe"])
+async def test_a_paused_charge_is_not_restarted_once_it_is_no_longer_wanted(
+    hass: HomeAssistant, monkeypatch, ending: str, what: str
+) -> None:
+    # resume: headroom returns; probe: no headroom, the battery charges from the grid.
+    (controller, charger, calls, yield_clock, damper_clock, site, prefix, cc, turn_off) = (
+        await _paused_site(
+            hass,
+            monkeypatch,
+            f"bfwish{what}{ending.replace('_', '')}",
+            battery_w=0.0 if what == "resume" else 15000.0,
+        )
+    )
+    turn_on = async_mock_service(hass, "switch", "turn_on")
+    cc._paused_by_balancing = True
+    await _end_the_wish(hass, cc, charger, ending)
+    hass.states.async_set(f"switch.{prefix}", "off")
+    set_site_current_a(hass, site, 11.0 if what == "resume" else 20.0)
+    controller.regulator_decisions = {
+        charger.entry_id: _decision(proposed_a=0.0, requested_a=0.0, reason=_NO_HEADROOM)
+    }
+
+    for _ in range(4):
+        yield_clock.advance(61.0)
+        await controller._async_apply_active_control()
+
+    assert cc._paused_by_balancing is False
+    assert calls == [] and turn_on == [], (what, ending)
+    assert [e for e in controller.regulator_decision_log if e["outcome"] in ("resumed", "probe_started")] == []
