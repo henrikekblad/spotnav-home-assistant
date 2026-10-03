@@ -75,6 +75,7 @@ from ..execution.charger_entities import control_path_for_entity
 from .charger_wiring import ChargerWiringSteps
 from .labels import (
     current_control_selector,
+    display_number,
     MANUAL_ATTRIBUTES_CHOICE,
     power_sensor_entity_options,
     SKIP_CHOICE,
@@ -364,7 +365,7 @@ class SiteCapacityOptionsFlow(ChargerWiringSteps, config_entries.OptionsFlow):
                 CONF_YIELD_STEPPING_ENABLED, DEFAULT_YIELD_STEPPING_ENABLED
             ),
             CONF_YIELD_CEILING_A: self._entry.data.get(
-                CONF_YIELD_CEILING_A, default_yield_ceiling_a(main_fuse_a)
+                CONF_YIELD_CEILING_A, display_number(default_yield_ceiling_a(main_fuse_a))
             ),
             # Solar surplus: which claim on the sun wins, car or house battery; `car_first` unless stored.
             CONF_SOLAR_PRIORITY: self._entry.data.get(
@@ -514,6 +515,8 @@ class SiteCapacityOptionsFlow(ChargerWiringSteps, config_entries.OptionsFlow):
             # it to decide whether to persist an explicit value at all.
             self._pending_yield_ceiling_customized = (
                 abs(submitted_ceiling_a - old_generic_default_ceiling_a) >= 1e-9
+                # The form shows the default rounded (`display_number`), so that is untouched too.
+                and abs(submitted_ceiling_a - display_number(old_generic_default_ceiling_a)) >= 1e-9
             )
             if not self._pending_yield_ceiling_customized:
                 user_input[CONF_YIELD_CEILING_A] = default_yield_ceiling_a(new_main_fuse_a)

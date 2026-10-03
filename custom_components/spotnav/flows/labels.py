@@ -176,6 +176,15 @@ _CURRENT_CONTROL_TEXT: dict[str, dict[str, str]] = {
 }
 
 
+def display_number(value: float) -> float | int:
+    """A number as the form shows it: one decimal at most, a whole number without ".0".
+
+    `25 * 1.15` is `28.749999999999996`; a field must not show that.
+    """
+    rounded = round(float(value), 1)
+    return int(rounded) if rounded == int(rounded) else rounded
+
+
 def current_control_selector(
     hass, kinds: tuple[str, ...] = (CURRENT_CONTROL_CHANGE_CONFIGURATION,)
 ) -> selector.SelectSelector:
