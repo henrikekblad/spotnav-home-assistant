@@ -779,7 +779,7 @@ export function entityEditorBody(
       if (control !== null) {
         const line = element(doc, "div", C.settingsRow);
         control.replaceWith(line);
-        line.append(control, element(doc, "span", C.settingsUnit, field.field === "main_fuse_a" ? "A" : "s"));
+        line.append(control, element(doc, "span", C.settingsUnit, field.field === "main_fuse_a" || field.field === "safety_margin_a" ? "A" : "s"));
       }
       block = row;
     }
