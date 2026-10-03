@@ -710,6 +710,24 @@ class AutoExecutor:
                     self._last_error = None
                     await self._notify_change()
                     return None
+                if (
+                    applied is not None
+                    and self.current(attempt)
+                    and getattr(snapshot, "state", None) == "nothing_to_charge"
+                    and not pause_blocks_execution(self._store.settings(self._entry_id))
+                ):
+                    # The need is met (the target reached, or the energy delivered) before the plan ran
+                    # out: its windows still ahead would buy what nobody needs.
+                    try:
+                        await self._controller.async_end_plan_need_met()
+                    except Exception as err:  # noqa: BLE001 - reported, the next calculation retries
+                        _LOGGER.warning(
+                            "Clearing a plan whose need is met failed: %s", type(err).__name__
+                        )
+                        return applied
+                    self._applied = applied
+                    await self._notify_change()
+                    return None
                 return applied
             if not self._may_apply(application, attempt):
                 # Nothing installs and a waiting change is superseded by this attempt's answer, but a
@@ -1192,8 +1210,23 @@ class AutoExecutor:
         """
         self.begin_attempt()
         self._pending = None
-        await self._controller.async_stop()
+        await self._controller.async_stop(person=True)
         await self._notify_change()
+
+    async def async_start_on_plug_in(self) -> bool:
+        """A vehicle was plugged in and Auto has replanned: start the installed plan's window that is
+        open now, through the controller's own checks (a person's Stop, the target, load balancing).
+        Nothing while a pause holds execution. Returns whether a start was sent.
+        """
+        async with self._lock:
+            if self._shutdown or pause_blocks_execution(self._store.settings(self._entry_id)):
+                return False
+            if self._controller.plan is None or not self._controller.plan_window_active_now:
+                return False
+            started = await self._controller.async_start_on_plug_in()
+            if started:
+                await self._notify_change()
+            return started
 
     async def async_solar_start(self, amps: int) -> None:
         """One solar start, from `SolarController`'s verdict, through the same boundary, lock and

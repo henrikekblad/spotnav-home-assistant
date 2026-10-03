@@ -461,7 +461,9 @@ async def _run_window(
             if controller.plan is None:
                 assert dt_util.utcnow() <= planned_end
                 if driver == DRIVER_MANUAL_KWH:
-                    assert dt_util.utcnow() == planned_end, "only the planned end ended it"
+                    # The energy stop: the requested energy delivered ends the plan, not before.
+                    assert register - 1000.0 >= 34.0 - 1e-6, "only the delivered energy ended it"
+                    assert register - 1000.0 - delivered < 34.0, "and the step before had not"
                 break
             assert [c for c in calls[turned_on_at:] if c[0] == "turn_off"] == [], f"step {step}: charge cut short"
             assert controller.plan.windows[0][0] == first_start, "the running window was reinstalled"
