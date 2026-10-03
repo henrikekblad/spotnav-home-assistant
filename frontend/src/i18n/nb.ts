@@ -474,6 +474,17 @@ export const nb: Record<keyof typeof en, string> = {
   "market.area.label": "Område",
   "market.area.description":
     "Området avgjør hvilke priser som brukes, og hvilke avgifter som foreslås.",
+  "market.included": "Inkludert i prisen",
+  "market.includedNote": "Den publiserte prisen inkluderer allerede dette, så ingenting legges til.",
+  "market.source": "Priskilde:",
+  "market.findRegion.label": "Finn min region",
+  "market.findRegion.description": "Postnummeret ditt. Det sendes bare til Octopus Energy for å slå opp regionen, og lagres ikke.",
+  "market.findRegion.button": "Søk",
+  "market.findRegion.invalid": "Det er ikke et britisk postnummer.",
+  "market.findRegion.notFound": "Fant ingen region for det postnummeret.",
+  "market.findRegion.unavailable": "Regionen kunne ikke slås opp nå. Velg den i listen.",
+  "market.findRegion.found": "Fant: {region}. Lagre for å beholde den.",
+  "country.GB": "Storbritannia",
   "market.area.unlisted": "publiseres ikke lenger",
   "market.area.missing": "Ingen områder publiseres akkurat nå.",
   "market.vat.label": "Merverdiavgift",
@@ -558,7 +569,6 @@ export const nb: Record<keyof typeof en, string> = {
     "Planlagt strøm",
   "settings.loading":
     "Leser de gjeldende innstillingene…",
-  "settings.section.about": "Om",
   "settings.section.support":
     "Støtte",
   "debug.intro":

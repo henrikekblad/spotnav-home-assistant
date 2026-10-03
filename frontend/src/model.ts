@@ -232,6 +232,8 @@ export interface CardModel {
    */
   contextAreaName: string | null;
   contextAreaId: string | null;
+  /** Where the area's prices come from (relay contract v2), shown small and linked in the settings. */
+  priceSource: { name: string; url: string } | null;
   technicalCodes: string[];
 }
 
@@ -285,7 +287,7 @@ function figuresFor(dashboard: Dashboard, format: FormatContext): PlanFigures {
     distance:
       proposal.distance_mil === null
         ? null
-        : distanceText(format.language, proposal.distance_mil),
+        : distanceText(format.language, proposal.distance_mil, format.countries),
     power: proposal.power_kw === null ? null : `${formatNumber(format.language, proposal.power_kw, 1)} kW`,
   };
 }
@@ -655,6 +657,7 @@ export function buildModel(input: BuildInput): CardModel {
     unit: market?.minor_unit ?? "",
     currency: market?.currency ?? null,
     majorUnit: market?.major_unit ?? null,
+    countries: market?.countries ?? [],
   };
   const rows = dashboard.prices.intervals;
   const chart = chartSeries(rows, format.timeZone, input.nowMs);
@@ -720,6 +723,7 @@ export function buildModel(input: BuildInput): CardModel {
     contextCurrency: market?.currency ?? null,
     contextAreaName: market?.area_name ?? null,
     contextAreaId: market?.area_id ?? null,
+    priceSource: market?.source ?? null,
     technicalCodes,
   };
 }

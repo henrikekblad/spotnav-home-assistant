@@ -96,6 +96,10 @@ describe("the market options decoder", () => {
         major_unit: "kr",
         minor_unit: "öre",
         suggestions: { vat_percent: 25, tax_minor: 36, transfer_minor: 30 },
+        // A backend without the contract-v2 facts: one calendar, nothing included, no attribution.
+        market_timezone: "Europe/Stockholm",
+        included: [],
+        source: null,
       },
     ]);
   });

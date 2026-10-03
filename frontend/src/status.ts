@@ -3,7 +3,16 @@
 // formats its typed facts. `tone` alone decides banner colour (`blocking` red, `notice` neutral).
 
 import { localDayKey } from "./chart";
-import { clock, distanceText, formatNumber, hasZone, weekdayDate, weekdayPlural, type FormatContext } from "./format";
+import {
+  clock,
+  distanceText,
+  formatNumber,
+  hasZone,
+  localeMoney,
+  weekdayDate,
+  weekdayPlural,
+  type FormatContext,
+} from "./format";
 import { pluralForm, translate, type Language, type TranslationKey } from "./i18n";
 import { STATUS_CODE_TABLE, type StatusCode, type StatusLine, type StatusParam, type StatusTone, type Status } from "./validate";
 
@@ -263,11 +272,14 @@ export function lineText(line: StatusLine, format: FormatContext, nowMs: number)
     case "plan_cost": {
       const major = (num(p["amount_minor"]) ?? 0) / 100;
       const currency = typeof p["currency"] === "string" ? p["currency"] : "";
+      if (currency === "GBP") {
+        return say("status.planCost", { cost: localeMoney(language, major, currency, format.majorUnit) });
+      }
       const unit = currency === format.currency && format.majorUnit !== null ? format.majorUnit : currency;
       return say("status.planCost", { cost: `${formatNumber(language, major, 2)} ${unit}`.trim() });
     }
     case "plan_distance":
-      return say("status.planDistance", { distance: distanceText(language, num(p["mil"]) ?? 0) });
+      return say("status.planDistance", { distance: distanceText(language, num(p["mil"]) ?? 0, format.countries) });
     case "solar_charging": {
       const amps = num(p["requested_a"]);
       return amps === null

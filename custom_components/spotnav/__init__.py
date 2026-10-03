@@ -23,6 +23,7 @@ from .api.debug import async_setup_debug_api
 from .api.entity_config import async_setup_entity_config_api
 from .api.manual_action import async_setup_manual_action_api
 from .api.market import async_setup_market_api
+from .api.region import async_setup_region_api
 from .api.pairing import async_register_pairing
 from .api.sessions import async_setup_sessions_api
 from .api.settings import async_setup_settings_api
@@ -119,6 +120,7 @@ async def async_setup(hass: HomeAssistant, config: dict[str, Any]) -> bool:
     async_setup_dashboard_api(hass)
     async_setup_sessions_api(hass)
     async_setup_market_api(hass)
+    async_setup_region_api(hass)
     async_setup_settings_api(hass)
     async_setup_manual_action_api(hass)
     async_setup_site_settings_api(hass)

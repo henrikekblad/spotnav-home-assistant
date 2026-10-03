@@ -12,6 +12,7 @@
 
 import { translate, type Language, type TranslationKey } from "./i18n";
 import { encodeBody } from "./settings";
+import { priceSource } from "./validate";
 import {
   MARKET_API_VERSION,
   MARKET_REASONS,
@@ -106,6 +107,8 @@ const AREA_KEYS = [
   "suggestions",
 ] as const;
 const SUGGESTION_KEYS = ["vat_percent", "tax_minor", "transfer_minor"] as const;
+/** Relay contract v2's additions: all three or none (a backend that predates them). */
+const AREA_V2_KEYS = ["market_timezone", "included", "source"] as const;
 
 function decodeSuggestions(source: Record<string, unknown>): MarketSuggestionsV1 {
   exactKeys(source, SUGGESTION_KEYS);
@@ -117,10 +120,30 @@ function decodeSuggestions(source: Record<string, unknown>): MarketSuggestionsV1
   };
 }
 
+function decodeIncluded(raw: unknown): MarketAreaV1["included"] {
+  if (!Array.isArray(raw)) {
+    return bad();
+  }
+  const seen = new Set<string>();
+  return raw.map((item) => {
+    if (typeof item !== "string" || !(FISCAL_COMPONENTS as readonly string[]).includes(item) || seen.has(item)) {
+      return bad();
+    }
+    seen.add(item);
+    return item as FiscalComponent;
+  });
+}
+
 function decodeArea(source: Record<string, unknown>): MarketAreaV1 {
-  exactKeys(source, AREA_KEYS);
+  const v2 = Object.prototype.hasOwnProperty.call(source, "market_timezone");
+  exactKeys(source, v2 ? [...AREA_KEYS, ...AREA_V2_KEYS] : AREA_KEYS);
   const countries = source["countries"];
   if (!Array.isArray(countries)) {
+    return bad();
+  }
+  const rawSource = v2 ? source["source"] : null;
+  const attribution = rawSource === null ? null : priceSource(rawSource);
+  if (rawSource !== null && attribution === null) {
     return bad();
   }
   return {
@@ -135,6 +158,9 @@ function decodeArea(source: Record<string, unknown>): MarketAreaV1 {
     major_unit: identity(source, "major_unit"),
     minor_unit: identity(source, "minor_unit"),
     suggestions: decodeSuggestions(record(source["suggestions"])),
+    market_timezone: v2 ? identity(source, "market_timezone") : identity(source, "timezone"),
+    included: v2 ? decodeIncluded(source["included"]) : [],
+    source: attribution,
   };
 }
 
@@ -337,6 +363,17 @@ export function switchArea(
   };
 }
 
+/** The fiscal components the area's published price already includes (relay contract v2). */
+export function marketIncluded(options: MarketOptionsV1, areaId: string | null): FiscalComponent[] {
+  const area = areaId === null ? null : (options.areas.find((item) => item.area_id === areaId) ?? null);
+  return area === null ? [] : (area.included ?? []);
+}
+
+/** Whether an area covers Great Britain: its distances are read in miles and its money the British way. */
+export function coversGreatBritain(countries: readonly string[] | null | undefined): boolean {
+  return (countries ?? []).some((country) => country.toUpperCase() === "GB");
+}
+
 export function marketSuggestion(
   options: MarketOptionsV1,
   areaId: string | null,
@@ -491,7 +528,15 @@ export function marketReplacement(
     tax: { enabled: false, value: null },
     transfer: { enabled: false, value: null },
   };
+  const stored = base.overrides.find((item) => item.area_id === areaId) ?? null;
+  const included = marketIncluded(options, areaId);
   for (const component of FISCAL_COMPONENTS) {
+    if (included.includes(component)) {
+      // Locked as included in the price: nothing is stated, so whatever is stored stands untouched (the
+      // backend adds nothing for it either way).
+      components[component] = stored === null ? { enabled: false, value: null } : { ...stored[component] };
+      continue;
+    }
     const stated = fiscalStated(options, areaId, component, values[component]);
     if (!stated.ok) {
       return stated;
@@ -561,10 +606,16 @@ export function marketAreaLabel(
   if (!hasName) {
     return id as string;
   }
-  if (!hasId || (name as string).includes(id as string)) {
+  if (!hasId || (name as string).includes(id as string) || namesItsId(name as string, id as string)) {
     return name as string;
   }
   return `${name} \u00b7 ${id}`;
+}
+
+/** A name that opens with its id spelled with a space (`GB C – London` for `GB-C`) already names it. */
+function namesItsId(name: string, id: string): boolean {
+  const spelled = id.replace(/-/g, " ");
+  return spelled !== id && (name === spelled || name.startsWith(`${spelled} `));
 }
 
 /**
@@ -627,9 +678,16 @@ export function groupAreasForPicker<T extends { countries: readonly string[] }>(
   return { groups, ungrouped };
 }
 
-/** A country's name in the card language, or its upper-case code when the runtime knows no name. */
+/**
+ * A country's name in the card language, or its upper-case code when the runtime knows no name. `GB` is
+ * named here: the relay's GB regions are GSP groups of Great Britain, and `Intl` calls `GB` the United
+ * Kingdom, which includes Northern Ireland, which they do not.
+ */
 export function countryLabel(language: Language, country: string): string {
   const code = country.trim().toUpperCase();
+  if (code === "GB") {
+    return translate(language, "country.GB");
+  }
   try {
     const name = new Intl.DisplayNames([language], { type: "region" }).of(code);
     return name === undefined || name.trim() === "" || name.toUpperCase() === code ? code : name;

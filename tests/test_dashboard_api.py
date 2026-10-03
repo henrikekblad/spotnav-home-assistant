@@ -1107,8 +1107,12 @@ async def test_a_fresh_unconfigured_charger_serializes_the_contract_shape(
         "suggested_vat_percent",
         "suggested_tax",
         "suggested_grid_fee",
+        "market_timezone",
+        "included",
+        "source",
     }
     assert market["area_id"] is None and market["timezone"] is None
+    assert market["market_timezone"] is None and market["included"] is None and market["source"] is None
     assert market["currency"] is None and market["countries"] is None
 
     settings = response["settings"]

@@ -484,6 +484,17 @@ export const en = {
   "market.area.label": "Area",
   "market.area.description":
     "The area decides which prices are used, and which taxes are suggested.",
+  "market.included": "Included in the price",
+  "market.includedNote": "The published price already includes these, so nothing is added.",
+  "market.source": "Price source:",
+  "market.findRegion.label": "Find my region",
+  "market.findRegion.description": "Your postcode. It is sent only to Octopus Energy to look up the region, and is not saved.",
+  "market.findRegion.button": "Find",
+  "market.findRegion.invalid": "That is not a UK postcode.",
+  "market.findRegion.notFound": "No region was found for that postcode.",
+  "market.findRegion.unavailable": "The region could not be looked up right now. Choose it from the list.",
+  "market.findRegion.found": "Found: {region}. Save to keep it.",
+  "country.GB": "Great Britain",
   "market.area.unlisted": "no longer published",
   "market.area.missing": "No areas are published right now.",
   "market.vat.label": "VAT",
@@ -572,7 +583,6 @@ export const en = {
     "Planned current",
   "settings.loading":
     "Reading the current settings…",
-  "settings.section.about": "About",
   "settings.section.support":
     "Support",
   "debug.intro":

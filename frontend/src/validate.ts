@@ -83,6 +83,8 @@ export interface DashboardMarket {
   major_unit: string | null;
   minor_unit: string | null;
   suggested_vat_percent: number | null;
+  /** Relay contract v2, additive: where the prices come from, `null` when the relay states none. */
+  source: { name: string; url: string } | null;
 }
 
 export interface PriceInterval {
@@ -636,7 +638,29 @@ function decodeMarket(source: Record<string, unknown>): DashboardMarket {
     major_unit: textOrNull(source, "major_unit"),
     minor_unit: textOrNull(source, "minor_unit"),
     suggested_vat_percent: numberOrNull(source, "suggested_vat_percent"),
+    source: priceSource(source["source"]),
   };
+}
+
+/**
+ * An attribution, or `null`: display-only, so anything that is not a name and an http(s) address is
+ * dropped rather than refusing the dashboard. A link the card renders must not be able to run anything.
+ */
+export function priceSource(raw: unknown): { name: string; url: string } | null {
+  if (!isRecord(raw)) {
+    return null;
+  }
+  const name = raw["name"];
+  const url = raw["url"];
+  if (typeof name !== "string" || name.trim() === "" || typeof url !== "string") {
+    return null;
+  }
+  try {
+    const parsed = new URL(url);
+    return parsed.protocol === "https:" || parsed.protocol === "http:" ? { name, url } : null;
+  } catch {
+    return null;
+  }
 }
 
 function decodeInterval(

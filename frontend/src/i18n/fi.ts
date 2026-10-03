@@ -474,6 +474,17 @@ export const fi: Record<keyof typeof en, string> = {
   "market.area.label": "Alue",
   "market.area.description":
     "Alue määrää, mitä hintoja käytetään ja mitä veroja ehdotetaan.",
+  "market.included": "Sisältyy hintaan",
+  "market.includedNote": "Julkaistu hinta sisältää jo nämä, joten mitään ei lisätä.",
+  "market.source": "Hintojen lähde:",
+  "market.findRegion.label": "Etsi alueeni",
+  "market.findRegion.description": "Postinumerosi. Se lähetetään vain Octopus Energylle alueen hakemista varten, eikä sitä tallenneta.",
+  "market.findRegion.button": "Hae",
+  "market.findRegion.invalid": "Tämä ei ole brittiläinen postinumero.",
+  "market.findRegion.notFound": "Postinumerolle ei löytynyt aluetta.",
+  "market.findRegion.unavailable": "Aluetta ei voitu hakea juuri nyt. Valitse se luettelosta.",
+  "market.findRegion.found": "Löytyi: {region}. Tallenna, niin se säilyy.",
+  "country.GB": "Iso-Britannia",
   "market.area.unlisted": "ei enää julkaistu",
   "market.area.missing": "Alueita ei julkaista juuri nyt.",
   "market.vat.label": "Arvonlisävero",
@@ -558,7 +569,6 @@ export const fi: Record<keyof typeof en, string> = {
     "Suunniteltu virta",
   "settings.loading":
     "Luetaan nykyisiä asetuksia…",
-  "settings.section.about": "Tietoja",
   "settings.section.support":
     "Tuki",
   "debug.intro":

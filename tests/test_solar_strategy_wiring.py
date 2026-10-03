@@ -59,7 +59,8 @@ pytestmark = pytest.mark.usefixtures("offline_relay")
 def _body(settings: AutoSettings, **changes: Any) -> dict[str, Any]:
     """A replacement body: the canonical value without its revision, changes applied."""
     encoded = encode_settings(settings)
-    body = {key: value for key, value in encoded.items() if key != "revision"}
+    # `revision` is named apart and `fiscal_included` is read-only: neither is a body key.
+    body = {key: value for key, value in encoded.items() if key not in ("revision", "fiscal_included")}
     body.update(changes)
     assert set(body) == SETTINGS_KEYS
     return body

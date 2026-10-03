@@ -28,6 +28,7 @@ from .entity import (
     with_fiscal_policy,
 )
 from .execution.controller import ChargingController
+from .planning.auto_controller import component_included
 from .planning.auto_settings import AutoSettingsError
 from .planning.strategy_options import strategy_options_for
 from .pricing.price_repository import CatalogueSnapshot
@@ -188,8 +189,13 @@ class AutoFiscalPolicySelect(SpotNavAutoEntity, SelectEntity):
 
     @property
     def available(self) -> bool:
-        """Unavailable without a market: a fiscal policy belongs to one."""
-        return super().available and self.override is not None
+        """Unavailable without a market (a fiscal policy belongs to one), and for a component the market's
+        published price already includes: there is nothing to choose, it is locked as included."""
+        return (
+            super().available
+            and self.override is not None
+            and not component_included(self.area, self._component)
+        )
 
     @property
     def current_option(self) -> str | None:

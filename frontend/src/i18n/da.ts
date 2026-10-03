@@ -474,6 +474,17 @@ export const da: Record<keyof typeof en, string> = {
   "market.area.label": "Område",
   "market.area.description":
     "Området bestemmer hvilke priser der bruges, og hvilke afgifter der foreslås.",
+  "market.included": "Indgår i prisen",
+  "market.includedNote": "Den offentliggjorte pris indeholder allerede dette, så intet lægges til.",
+  "market.source": "Priskilde:",
+  "market.findRegion.label": "Find min region",
+  "market.findRegion.description": "Dit postnummer. Det sendes kun til Octopus Energy for at slå regionen op og gemmes ikke.",
+  "market.findRegion.button": "Søg",
+  "market.findRegion.invalid": "Det er ikke et britisk postnummer.",
+  "market.findRegion.notFound": "Der blev ikke fundet nogen region for det postnummer.",
+  "market.findRegion.unavailable": "Regionen kunne ikke slås op lige nu. Vælg den på listen.",
+  "market.findRegion.found": "Fundet: {region}. Gem for at beholde den.",
+  "country.GB": "Storbritannien",
   "market.area.unlisted": "udgives ikke længere",
   "market.area.missing": "Der udgives ingen områder lige nu.",
   "market.vat.label": "Moms",
@@ -558,7 +569,6 @@ export const da: Record<keyof typeof en, string> = {
     "Planlagt strøm",
   "settings.loading":
     "Læser de aktuelle indstillinger…",
-  "settings.section.about": "Om",
   "settings.section.support":
     "Support",
   "debug.intro":

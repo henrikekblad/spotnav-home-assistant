@@ -105,8 +105,11 @@
     "catalogue_state": "ready",
     "countries": null,
     "currency": null,
+    "included": null,
     "major_unit": null,
+    "market_timezone": null,
     "minor_unit": null,
+    "source": null,
     "suggested_grid_fee": null,
     "suggested_tax": null,
     "suggested_vat_percent": null,
@@ -230,6 +233,7 @@
       7
     ],
     "driver": "manual_kwh",
+    "fiscal_included": [],
     "max_periods": 1,
     "overrides": [],
     "phases": 3,
@@ -258,6 +262,11 @@
     "writable": true
   },
   "soc": null,
+  "starting_up": {
+    "active": false,
+    "until": null,
+    "waiting_for": []
+  },
   "status": {
     "lines": [
       {
@@ -321,10 +330,5 @@
     "vehicles": {}
   },
   "target_vehicle_id": null,
-  "vehicles": [],
-  "starting_up": {
-    "active": false,
-    "until": null,
-    "waiting_for": []
-  }
+  "vehicles": []
 }

@@ -12,7 +12,7 @@ Each row says how it is known to work:
 
 Using one of these? Tell us whether it works: [Works with my hardware or does not](../../../issues/new?template=hardware_report.yml).
 
-Jump to: [chargers](#supported-ev-chargers), [grid meters](#supported-grid-meters), [house batteries](#supported-house-batteries), [vehicles](#supported-vehicles), [solar forecast](#supported-solar-forecast).
+Jump to: [chargers](#supported-ev-chargers), [grid meters](#supported-grid-meters), [house batteries](#supported-house-batteries), [vehicles](#supported-vehicles), [solar forecast](#supported-solar-forecast), [price areas](#supported-price-areas).
 
 ## Supported EV chargers
 
@@ -240,3 +240,17 @@ The Hybrid strategy holds back grid energy when a solar forecast promises sun. I
 | Forecast.Solar (`forecast_solar`) | Detected from the integration's source |
 | Solcast Solar (`solcast_solar`) | Detected from the integration's source |
 | Open-Meteo Solar Forecast (`open_meteo_solar_forecast`) | Detected from the integration's source |
+
+## Supported price areas
+
+Prices come from the SpotNav relay, which publishes the European day-ahead bidding zones from the ENTSO-E Transparency Platform and the fourteen Great Britain regions from Octopus Energy's Agile tariff. The card's area picker lists every area the relay publishes and names its price source, linked, in the price settings.
+
+### Great Britain (Octopus Agile)
+
+- **For Agile customers.** The prices are Octopus Energy's Agile import unit rates, one per region (`GB-A` to `GB-P`, the GSP groups), in half-hours that SpotNav plans on quarter-hours. On any other tariff they are not your prices.
+- **All-in.** The Agile unit rate already contains VAT, levies and network charges, so VAT, energy tax and grid transfer are locked as *Included in the price* and nothing is added. The daily standing charge is not part of a plan or a session's cost.
+- **Your region.** The picker groups the regions under Great Britain ("GB C – London"). *Find my region* takes a postcode: Home Assistant asks Octopus Energy's public lookup directly, the postcode never reaches the relay, and it is neither stored nor logged. A new charger in Great Britain starts with no area until you choose one.
+- **When.** Agile is published around 16:00 UK time for 23:00 to 23:00, so tomorrow's last hour (23:00 to midnight) arrives with the next day's publication. Amounts are in pounds and pence and distances in miles.
+- **Not with Intelligent Octopus Go.** Octopus does not allow a third party to control the charging of a car on Intelligent Octopus Go: its customers must opt out of other apps' smart charging. Do not use SpotNav to control charging on that tariff. Source: [Octopus Energy](https://octopus.energy/help-and-faqs/articles/why-can-t-i-have-both-intelligent-octopus-go-and-a-third-party-controlling-my-charging-/).
+
+Prices: Octopus Energy (Agile). SpotNav is not affiliated with Octopus Energy.

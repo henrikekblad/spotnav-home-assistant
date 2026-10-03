@@ -27,6 +27,7 @@ from ..pricing.relay_contract import AreaEntry
 from ..runtime import domain_data
 from .common import send_unsupported_version
 from .dashboard import DashboardFailure, resolve_charger_request
+from .settings import included_components
 
 
 _LOGGER = logging.getLogger(__name__)
@@ -82,6 +83,11 @@ def _area(entry: AreaEntry) -> dict[str, Any]:
         "major_unit": entry.major_unit,
         "minor_unit": entry.minor_unit,
         "suggestions": _suggestions(entry),
+        # Contract v2: the market calendar, the fiscal components the price already includes (in the
+        # settings' own names, locked in the editor), and the attribution (`null` from a v1 list).
+        "market_timezone": entry.market_tz,
+        "included": list(included_components(entry)),
+        "source": None if entry.source is None else {"name": entry.source.name, "url": entry.source.url},
     }
 
 

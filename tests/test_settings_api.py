@@ -54,7 +54,8 @@ def store(hass: HomeAssistant) -> AutoSettingsStore:
 def replacement_for(settings: AutoSettings, **changes) -> AutoSettings:
     """A decoded full replacement, exactly as a transport would hand it over."""
     encoded = encode_settings(settings)
-    body = {key: value for key, value in encoded.items() if key != "revision"}
+    # `revision` is named apart and `fiscal_included` is read-only: neither is a body key.
+    body = {key: value for key, value in encoded.items() if key not in ("revision", "fiscal_included")}
     body.update(changes)
     assert set(body) == SETTINGS_KEYS
     return decode_settings(body)
@@ -65,7 +66,7 @@ async def test_a_first_read_is_defaults_at_revision_zero(store: AutoSettingsStor
     settings = store.settings("entry_a")
     assert settings.revision == 0
     assert settings.area_id is None and settings.phases is None and settings.amps is None
-    assert set(encode_settings(settings)) == SETTINGS_KEYS | {"revision"}
+    assert set(encode_settings(settings)) == SETTINGS_KEYS | {"revision", "fiscal_included"}
 
 
 async def test_a_full_replacement_increments_once_and_survives_a_reload(hass: HomeAssistant):

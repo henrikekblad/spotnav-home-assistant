@@ -120,7 +120,8 @@ def spot_intervals(documents: Iterable[Any], currency: str) -> tuple[SpotInterva
     rate for the currency prices nothing (its energy stays unpriced).
     """
     rows: dict[datetime, SpotInterval] = {}
-    for document in documents:
+    # A display day cut from two market files carries each file's own rate in its pieces.
+    for document in (piece for whole in documents for piece in whole.pieces()):
         try:
             fx = document_rate(document, currency)
         except PlannerInputError:

@@ -42,7 +42,8 @@
     "target": {
       "vehicle_id": null,
       "target_percent": null
-    }
+    },
+    "fiscal_included": []
   },
   "fiscal": {
     "vat": {
@@ -108,7 +109,10 @@
     "minor_unit": "\u00f6re",
     "suggested_vat_percent": 25.0,
     "suggested_tax": 36.0,
-    "suggested_grid_fee": 30.0
+    "suggested_grid_fee": 30.0,
+    "market_timezone": "Europe/Stockholm",
+    "included": [],
+    "source": null
   },
   "prices": {
     "area_id": "SE4",
@@ -2261,8 +2265,8 @@
     }
   },
   "connection": {
-    "source": null,
-    "state": "unknown"
+    "state": "unknown",
+    "source": null
   },
   "starting_up": {
     "active": false,

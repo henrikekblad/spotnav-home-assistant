@@ -1,7 +1,9 @@
-"""The SpotNav Relay `/v1` contract: typed models and the parsers that build them.
+"""The SpotNav Relay contract (v1 and v2): typed models and the parsers that build them.
 
 Home Assistant consumes three published documents (`areas.json`, `index.json` and one dated price
-document) and this module is the one place that knows their shape. It is pure (no `hass`,
+document) and this module is the one place that knows their shape. The area list and the index come
+in two versions (`/v2/…` first, `/v1/…` from a relay that predates contract v2); a day file is the
+same `"v": 1` document under both, read on its own calendar (`market_tz`, else `tz`). It is pure (no `hass`,
 session or clock), so every rule is a plain unit test. Field names follow `spotnav-relay`'s
 `docs/format.md`. A field the relay documents as optional is held as `None`, never substituted:
 zero and absent are different facts.
@@ -19,10 +21,12 @@ from __future__ import annotations
 import json
 import logging
 import math
+import re
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta
 from types import MappingProxyType
 from typing import Any, Final, Literal, Mapping
+from urllib.parse import urlsplit
 
 from homeassistant.util import dt as dt_util
 
@@ -40,11 +44,23 @@ def _log_skipped(kind: str, label: str, err: Exception) -> None:
     _LOGGER.warning("Skipping %s %s in the relay document: %s", kind, label, err)
 
 
-#: The only contract version understood; another is refused rather than read hopefully.
+#: The day file and profile version; another is refused rather than read hopefully.
 SUPPORTED_VERSION: Final = 1
 
-#: The published resolutions in minutes; anything else is refused, not coerced.
-SUPPORTED_RESOLUTIONS: Final = (15, 60)
+#: The area list and index versions this client reads: v2 (`market_tz`, `included`, `source`, optional
+#: `eic`) and v1. A document is parsed as the version it was asked for and must say so.
+CATALOGUE_VERSIONS: Final = (1, 2)
+
+#: The resolutions this client can plan with, in minutes: whole divisors of an hour on the planner's
+#: quarter-hour grid (contract v2 adds 30, Great Britain's half-hours). Anything else is refused, not coerced.
+SUPPORTED_RESOLUTIONS: Final = (15, 30, 60)
+
+#: The parts of a bill a v2 price may already contain (`included`). An unknown name skips the area: a
+#: client that does not know what the price holds would add it a second time.
+INCLUDED_FIELDS: Final = ("vat", "tax", "grid_fee")
+
+#: An area id: upper-case letters, digits and hyphens, at most 32 of them (`[A-Z0-9-]{1,32}`).
+AREA_ID_PATTERN: Final = re.compile(r"^[A-Z0-9-]{1,32}$")
 
 #: The only unit a day document may be priced in (the relay is EUR-native); anything else is a
 #: contract violation, not a conversion.
@@ -121,12 +137,22 @@ def _require(document: Mapping[str, Any], key: str, what: str) -> Any:
     return document[key]
 
 
-def _version(document: Mapping[str, Any], what: str) -> int:
+def _version(document: Mapping[str, Any], what: str, expected: int = SUPPORTED_VERSION) -> int:
     raw = _require(document, "v", what)
     if isinstance(raw, bool) or not isinstance(raw, int):
         _fail("invalid_field", f"{what}: 'v' must be a whole number, not {raw!r}")
-    if raw != SUPPORTED_VERSION:
-        _fail("unsupported_version", f"{what}: contract version {raw} is not {SUPPORTED_VERSION}")
+    if raw != expected:
+        _fail("unsupported_version", f"{what}: contract version {raw} is not {expected}")
+    return raw
+
+
+def document_version(document: Any) -> int | None:
+    """The `v` a stored area list or index says it is, when it is one this client reads, else `None`."""
+    if not isinstance(document, dict):
+        return None
+    raw = document.get("v")
+    if isinstance(raw, bool) or not isinstance(raw, int) or raw not in CATALOGUE_VERSIONS:
+        return None
     return raw
 
 
@@ -203,10 +229,17 @@ class AreaEntry:
     and `minor_unit` the hundredth-unit label. None is derived from another or from the area id or
     timezone. The fiscal fields are the relay's suggestions for a person to override; `None` means
     nothing published and is never rendered as `0.0`.
+
+    Two calendars (contract v2): `tz` is the zone a person reads the area's times in ("today", the
+    chart, the plan); `market_tz` is the zone whose calendar day one day file covers. They are one
+    zone unless the v2 list says otherwise (Great Britain is shown in London and published on the
+    Paris calendar). `included` names what the published price already holds (`vat`, `tax`,
+    `grid_fee`): those settings are locked and nothing is added for them. `source` is the v2 list's
+    attribution, `None` from a v1 list. `eic` is `None` for an area that has none (a GSP group).
     """
 
     id: str
-    eic: str
+    eic: str | None
     countries: tuple[str, ...]
     name: str
     tz: str
@@ -216,6 +249,31 @@ class AreaEntry:
     vat_percent: float | None
     suggested_tax: float | None
     suggested_grid_fee: float | None
+    market_tz: str = ""
+    included: tuple[str, ...] = ()
+    source: AreaSource | None = None
+
+    def __post_init__(self) -> None:
+        if not self.market_tz:
+            # One zone for both calendars unless the list names a second one.
+            object.__setattr__(self, "market_tz", self.tz)
+
+    @property
+    def split_calendar(self) -> bool:
+        """Whether a display day is cut from market-day files (`market_tz` differs from `tz`)."""
+        return self.market_tz != self.tz
+
+    def includes(self, component: str) -> bool:
+        """Whether the published price already contains `vat`, `tax` or `grid_fee`."""
+        return component in self.included
+
+
+@dataclass(frozen=True, slots=True)
+class AreaSource:
+    """Where an area's prices come from, shown beside them as attribution (contract v2)."""
+
+    name: str
+    url: str
 
 
 @dataclass(frozen=True, slots=True)
@@ -333,6 +391,11 @@ class PriceDocument:
     either may be `None`. `fx` is the rate table the relay attached, empty when it had none close in
     time, never another date's rate. `start` is the day's first instant in the document's timezone and
     `start_instant` the same instant in UTC (see [PriceInterval]).
+
+    A parsed day file's `tz` is its own calendar (`market_tz` when the file states one, else `tz`).
+    A display day cut from two market-day files (`pricing/market_day.py`) is one document in the
+    display zone whose `parts` are the cut files, each with its own rate: a reader that converts
+    money iterates [pieces], so an hour from the next file is priced with that file's rate.
     """
 
     version: int
@@ -351,6 +414,11 @@ class PriceDocument:
     src: str | None
     published: datetime | None
     retrieved: datetime | None
+    parts: tuple[PriceDocument, ...] = ()
+
+    def pieces(self) -> tuple[PriceDocument, ...]:
+        """The documents that carry this day's rates: its `parts` when it was cut from several, else itself."""
+        return self.parts or (self,)
 
     @property
     def interval_count(self) -> int:
@@ -426,38 +494,96 @@ def validate_intervals(intervals: tuple[PriceInterval, ...], what: str) -> None:
             )
 
 
-def _parse_area(raw: Any) -> AreaEntry:
+def _parse_area(raw: Any, version: int = SUPPORTED_VERSION) -> AreaEntry:
+    """One catalogue entry as the list of [version] states it; any fault refuses this entry only."""
     area = _object(raw, "an area")
     area_id = _text(area, "id", "an area")
-    countries = _require(area, "countries", f"area {area_id!r}")
+    what = f"area {area_id!r}"
+    if not AREA_ID_PATTERN.match(area_id):
+        _fail("invalid_field", f"{what}: an id is [A-Z0-9-]{{1,32}}")
+    countries = _require(area, "countries", what)
     if not isinstance(countries, list) or not countries or not all(
         isinstance(code, str) and code.strip() for code in countries
     ):
-        _fail("invalid_field", f"area {area_id!r}: 'countries' must be a non-empty list of strings")
-    timezone = _text(area, "tz", f"area {area_id!r}")
+        _fail("invalid_field", f"{what}: 'countries' must be a non-empty list of strings")
+    timezone = _text(area, "tz", what)
     if dt_util.get_time_zone(timezone) is None:
-        _fail("invalid_field", f"area {area_id!r}: {timezone!r} is not a known timezone")
-    return (
-        AreaEntry(
-            id=area_id,
-            eic=_text(area, "eic", f"area {area_id!r}"),
-            countries=tuple(countries),
-            name=_text(area, "name", f"area {area_id!r}"),
-            tz=timezone,
-            currency=_text(area, "currency", f"area {area_id!r}"),
-            major_unit=_text(area, "major_unit", f"area {area_id!r}"),
-            minor_unit=_text(area, "minor_unit", f"area {area_id!r}"),
-            vat_percent=_optional_number(area, "vat_percent", f"area {area_id!r}"),
-            suggested_tax=_optional_number(area, "suggested_tax", f"area {area_id!r}"),
-            suggested_grid_fee=_optional_number(area, "suggested_grid_fee", f"area {area_id!r}"),
-        )
+        _fail("invalid_field", f"{what}: {timezone!r} is not a known timezone")
+
+    # The v2 properties. A v1 list states none of them, and its zone is both calendars.
+    market_tz = timezone
+    included: tuple[str, ...] = ()
+    source: AreaSource | None = None
+    if version == 1:
+        eic: str | None = _text(area, "eic", what)
+    else:
+        # Optional in v2 (a Great Britain region is a GSP group, not a bidding zone); present means a code.
+        eic = _text(area, "eic", what) if "eic" in area else None
+        if "market_tz" in area:
+            market_tz = _text(area, "market_tz", what)
+            if dt_util.get_time_zone(market_tz) is None:
+                _fail("invalid_field", f"{what}: {market_tz!r} is not a known timezone")
+        included = _included(area, what)
+        source = _source(area, what)
+
+    return AreaEntry(
+        id=area_id,
+        eic=eic,
+        countries=tuple(countries),
+        name=_text(area, "name", what),
+        tz=timezone,
+        currency=_text(area, "currency", what),
+        major_unit=_text(area, "major_unit", what),
+        minor_unit=_text(area, "minor_unit", what),
+        vat_percent=_optional_number(area, "vat_percent", what),
+        suggested_tax=_optional_number(area, "suggested_tax", what),
+        suggested_grid_fee=_optional_number(area, "suggested_grid_fee", what),
+        market_tz=market_tz,
+        included=included,
+        source=source,
     )
 
 
-def parse_catalogue(document: Any) -> AreaCatalogue:
-    """The published area list. A catalogue listing an id twice is refused: one identity, two entries."""
+def _included(area: Mapping[str, Any], what: str) -> tuple[str, ...]:
+    """`included`: absent is none; present is a list of known names, each once, in the list's order."""
+    if "included" not in area:
+        return ()
+    raw = area["included"]
+    if not isinstance(raw, list):
+        _fail("invalid_field", f"{what}: 'included' must be a list")
+    names: list[str] = []
+    for name in raw:
+        if not isinstance(name, str) or name not in INCLUDED_FIELDS:
+            _fail("invalid_field", f"{what}: 'included' names something this client does not know")
+        if name in names:
+            _fail("invalid_field", f"{what}: 'included' names {name!r} twice")
+        names.append(name)
+    return tuple(names)
+
+
+def _source(area: Mapping[str, Any], what: str) -> AreaSource:
+    """`source` (required in v2): a name to show and an http(s) address to link it to."""
+    raw = _object(_require(area, "source", what), f"{what}: 'source'")
+    name = _text(raw, "name", f"{what}: 'source'")
+    url = _text(raw, "url", f"{what}: 'source'")
+    parsed = urlsplit(url.strip())
+    # A link a card renders must not be able to run anything.
+    if parsed.scheme not in ("http", "https") or not parsed.netloc:
+        _fail("invalid_field", f"{what}: 'source.url' must be an http or https address")
+    return AreaSource(name=name.strip(), url=url.strip())
+
+
+def parse_catalogue(document: Any, *, version: int = SUPPORTED_VERSION) -> AreaCatalogue:
+    """The published area list of the [version] asked for (`/v1/` or `/v2/areas.json`).
+
+    A list of another version is refused: the two are read by different rules. An entry this client cannot
+    use (an unknown `included` name, a bad id, zone or source) is skipped and logged once, so it does not
+    take the other areas away; a catalogue listing an id twice is refused: one identity, two entries.
+    """
     document = _object(document, "the area catalogue")
-    version = _version(document, "the area catalogue")
+    if version not in CATALOGUE_VERSIONS:
+        _fail("unsupported_version", f"the area catalogue: version {version} is not read here")
+    version = _version(document, "the area catalogue", version)
     generated = _timestamp(document, "generated", "the area catalogue")
     raw_areas = _require(document, "areas", "the area catalogue")
     if not isinstance(raw_areas, list):
@@ -467,7 +593,7 @@ def parse_catalogue(document: Any) -> AreaCatalogue:
     seen: set[str] = set()
     for position, raw in enumerate(raw_areas):
         try:
-            entry = _parse_area(raw)
+            entry = _parse_area(raw, version)
         except RelayParseError as err:
             # One damaged entry must not hide every other area.
             _log_skipped("area", f"#{position}", err)
@@ -481,8 +607,8 @@ def parse_catalogue(document: Any) -> AreaCatalogue:
 
 def _parse_index_area(area_id: Any, raw: Any) -> IndexArea:
     what = f"index area {area_id!r}"
-    if not isinstance(area_id, str) or not area_id.strip():
-        _fail("invalid_field", "the index has an area key that is not a name")
+    if not isinstance(area_id, str) or not AREA_ID_PATTERN.match(area_id):
+        _fail("invalid_field", "the index has an area key that is not an area id")
     area = _object(raw, what)
     raw_days = _require(area, "days", what)
     if not isinstance(raw_days, list):
@@ -503,12 +629,17 @@ def _parse_index_area(area_id: Any, raw: Any) -> IndexArea:
     return IndexArea(area_id=area_id, days=tuple(days), resolution_minutes=resolution)
 
 
-def parse_index(document: Any) -> RelayIndex:
-    """The published index, whose `days` lists are this client's authority. An unsorted or repeating
-    list is refused so a damaged one is not read as authoritative.
+def parse_index(document: Any, *, version: int = SUPPORTED_VERSION) -> RelayIndex:
+    """The published index of the [version] asked for, whose `days` lists are this client's authority.
+
+    The two versions have one shape (v2 lists every advertised area, its days on each area's market
+    calendar). An unsorted or repeating list, or a resolution this client cannot plan with, skips that
+    area so a damaged one is not read as authoritative.
     """
     document = _object(document, "the index")
-    version = _version(document, "the index")
+    if version not in CATALOGUE_VERSIONS:
+        _fail("unsupported_version", f"the index: version {version} is not read here")
+    version = _version(document, "the index", version)
     generated = _timestamp(document, "generated", "the index")
     areas_rev = _text(document, "areas_rev", "the index")
     res_default = None if document.get("res_default") is None else _resolution(document["res_default"], "the index: 'res_default'")
@@ -553,7 +684,9 @@ def parse_day(document: Any, *, area_id: str, day: date) -> PriceDocument:
     if document_day != day:
         _fail("date_mismatch", f"the document is for {document_day.isoformat()}, not {day.isoformat()}")
 
-    timezone = _text(document, "tz", "the day document")
+    # A file's calendar is its `market_tz` when it states one (a Great Britain file: shown in London,
+    # dated in Paris) and its `tz` otherwise (every v1 zone, Portugal's Madrid included).
+    timezone = _text(document, "market_tz" if "market_tz" in document else "tz", "the day document")
     if dt_util.get_time_zone(timezone) is None:
         _fail("invalid_field", f"the day document: {timezone!r} is not a known timezone")
     resolution = _resolution(_require(document, "res", "the day document"), "the day document: 'res'")
