@@ -16,7 +16,7 @@ include it straight away. If the site came first, add the charger later: the las
 charger flow offers to join the site (see [Add the charger to an existing
 site](#add-the-charger-to-an-existing-site)).
 
-Everything else, such as price area, phases, the energy to charge and the departure time, is set
+Everything else, such as price area, the energy to charge and the departure time, is set
 in the [card](card.md).
 
 ### First-run defaults
@@ -27,7 +27,6 @@ SpotNav fills in only what Home Assistant already knows:
 - **Price area**: the area for Home Assistant's country. A country with several areas (Sweden,
   Norway and Denmark) gets the area nearest to Home Assistant's configured location. With no
   country, an unlisted country or a location far from every area, the area is left empty.
-- **Phases**: the site's wiring for this charger when it has one, otherwise 3.
 - **Amps**: the charger's own maximum when it states one, otherwise 16, and never above the site's
   main fuse minus its safety margin.
 
