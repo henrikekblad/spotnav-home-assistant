@@ -3263,6 +3263,7 @@ var da = {
   "history.savings.saved": "Anslået besparelse: {amount} mod dagens gennemsnitspris",
   "history.savings.extra": "Anslået {amount} mere end dagens gennemsnitspris",
   "history.savings.note": "Besparelsen er et skøn: samme energi til hver dags gennemsnitspris.",
+  "history.costBasis": "Prisen beregnes med dine nuværende afgifter og gebyrer.",
   "history.empty": "Ingen opladninger er gemt endnu. De vises her efter næste opladning.",
   "history.open": "Lader nu siden {time}: {energy}",
   "history.by.plan_window": "planlagt vindue",
@@ -3270,6 +3271,7 @@ var da = {
   "history.by.solar": "solenergioverskud",
   "history.by.hybrid": "hybrid",
   "history.by.other": "startet andetsteds",
+  "history.by.imported": "importeret (pr. time)",
   "history.export": "Eksportér CSV",
   "history.exportFailed": "Eksporten mislykkedes.",
   "settings.overview.title": "Kortindstillinger",
@@ -3880,6 +3882,7 @@ var en = {
   "history.savings.saved": "Estimated saving: {amount} against the day's average price",
   "history.savings.extra": "Estimated {amount} more than the day's average price",
   "history.savings.note": "Savings are an estimate: the same energy at each day's average price.",
+  "history.costBasis": "Costs are calculated with your current taxes and fees.",
   "history.empty": "No charges recorded yet. They appear here after the next charge.",
   "history.open": "Charging now since {time}: {energy}",
   "history.by.plan_window": "planned window",
@@ -3887,6 +3890,7 @@ var en = {
   "history.by.solar": "solar surplus",
   "history.by.hybrid": "hybrid",
   "history.by.other": "started elsewhere",
+  "history.by.imported": "imported (hourly)",
   "history.export": "Export CSV",
   "history.exportFailed": "The export failed.",
   "settings.overview.title": "Card settings",
@@ -4497,6 +4501,7 @@ var fi = {
   "history.savings.saved": "Arvioitu säästö: {amount} päivän keskihintaan verrattuna",
   "history.savings.extra": "Arviolta {amount} enemmän kuin päivän keskihinta",
   "history.savings.note": "Säästö on arvio: sama energia kunkin päivän keskihintaan.",
+  "history.costBasis": "Kustannus lasketaan nykyisillä veroillasi ja maksuillasi.",
   "history.empty": "Latauksia ei ole vielä tallennettu. Ne näkyvät tässä seuraavan latauksen jälkeen.",
   "history.open": "Latautuu nyt kello {time} alkaen: {energy}",
   "history.by.plan_window": "suunniteltu ikkuna",
@@ -4504,6 +4509,7 @@ var fi = {
   "history.by.solar": "aurinkoylijäämä",
   "history.by.hybrid": "hybridi",
   "history.by.other": "käynnistetty muualla",
+  "history.by.imported": "tuotu (tunneittain)",
   "history.export": "Vie CSV",
   "history.exportFailed": "Vienti epäonnistui.",
   "settings.overview.title": "Kortin asetukset",
@@ -5114,6 +5120,7 @@ var nb = {
   "history.savings.saved": "Estimert besparelse: {amount} mot dagens snittpris",
   "history.savings.extra": "Estimert {amount} mer enn dagens snittpris",
   "history.savings.note": "Besparelsen er et estimat: samme energi til hver dags snittpris.",
+  "history.costBasis": "Kostnaden beregnes med dine gjeldende avgifter og gebyrer.",
   "history.empty": "Ingen ladinger er lagret ennå. De vises her etter neste lading.",
   "history.open": "Lader nå siden {time}: {energy}",
   "history.by.plan_window": "planlagt vindu",
@@ -5121,6 +5128,7 @@ var nb = {
   "history.by.solar": "solcelleoverskudd",
   "history.by.hybrid": "hybrid",
   "history.by.other": "startet andre steder",
+  "history.by.imported": "importert (per time)",
   "history.export": "Eksporter CSV",
   "history.exportFailed": "Eksporten mislyktes.",
   "settings.overview.title": "Kortinnstillinger",
@@ -5731,6 +5739,7 @@ var sv = {
   "history.savings.saved": "Uppskattad besparing: {amount} mot dagens snittpris",
   "history.savings.extra": "Uppskattat {amount} mer än dagens snittpris",
   "history.savings.note": "Besparingen är en uppskattning: samma energi till varje dags snittpris.",
+  "history.costBasis": "Kostnaden beräknas med nuvarande skatter och avgifter.",
   "history.empty": "Inga laddningar har sparats än. De visas här efter nästa laddning.",
   "history.open": "Laddar nu sedan {time}: {energy}",
   "history.by.plan_window": "planerat fönster",
@@ -5738,6 +5747,7 @@ var sv = {
   "history.by.solar": "solöverskott",
   "history.by.hybrid": "hybrid",
   "history.by.other": "startad på annat håll",
+  "history.by.imported": "importerad (per timme)",
   "history.export": "Exportera CSV",
   "history.exportFailed": "Exporten misslyckades.",
   "settings.overview.title": "Kortinställningar",
@@ -12353,6 +12363,7 @@ function decodeRecord(raw) {
     minor_unit: textOrNull4(source, "minor_unit"),
     average_price_minor_per_kwh: numberOrNull3(source, "average_price_minor_per_kwh"),
     started_by: text4(source, "started_by"),
+    source: typeof source.source === "string" ? source.source : null,
     strategy: textOrNull4(source, "strategy"),
     vehicle: textOrNull4(source, "vehicle"),
     solar_share: shareOrNull(source, "solar_share"),
@@ -12373,6 +12384,7 @@ function decodeSessions(raw) {
     return {
       ok: true,
       value: {
+        cost_basis: typeof source.cost_basis === "string" ? source.cost_basis : null,
         this_month: decodeBucket(source.this_month),
         last_month: decodeBucket(source.last_month),
         months: list3(source, "months", decodeBucket),
@@ -12603,7 +12615,7 @@ function sessionRow(doc, language, session) {
     element6(doc, "span", VISUAL_CLASSES.historyRowTitle, when),
     element6(doc, "span", VISUAL_CLASSES.historyRowFigures, figures(language, session))
   );
-  const notes = [translate(language, startedByKey(session.started_by))];
+  const notes = [translate(language, session.source === "imported_hourly" ? "history.by.imported" : startedByKey(session.started_by))];
   if (session.vehicle !== null) {
     notes.push(session.vehicle);
   }
@@ -12717,6 +12729,9 @@ function historyBody(doc, language, state, ui, handlers) {
   }
   body.append(month2);
   body.append(element6(doc, "p", `${VISUAL_CLASSES.muted} ${VISUAL_CLASSES.historyFootnote}`, translate(language, "history.savings.note")));
+  if (answer.cost_basis === "current_settings") {
+    body.append(element6(doc, "p", `${VISUAL_CLASSES.muted} ${VISUAL_CLASSES.historyFootnote}`, translate(language, "history.costBasis")));
+  }
   body.append(exportRow(doc, language, ui, handlers));
   if (ui.notice !== null) {
     const notice = element6(doc, "p", VISUAL_CLASSES.settingsNotice, translate(language, ui.notice));

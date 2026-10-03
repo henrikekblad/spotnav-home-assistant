@@ -23,7 +23,7 @@ from .const import (
     ENTRY_TYPE_SITE,
 )
 from .pricing.price_repository import catalogue_summary, day_summary, index_summary
-from .runtime import controller_for, domain_data, executor_for, preview_for, site_controller_for
+from .runtime import charger_data, controller_for, domain_data, executor_for, preview_for, site_controller_for
 from .site.regulator import RegulatorDecision
 from .site.site_capacity import ChargerAllocation, SiteCapacityResult
 from .vehicles.capability import SiteCapabilitySnapshot
@@ -66,6 +66,12 @@ def _bundle_carrier_id(hass: HomeAssistant) -> str | None:
     return chosen[0].entry_id if chosen else None
 
 
+def _history_import(hass: HomeAssistant, entry_id: str) -> dict[str, Any] | None:
+    data = charger_data(hass, entry_id)
+    importer = None if data is None else data.history_import
+    return None if importer is None else importer.diagnostics()
+
+
 def _charger_diagnostics(hass: HomeAssistant, entry: ConfigEntry) -> dict[str, Any]:
     controller = controller_for(hass, entry.entry_id)
     resolved = controller.resolve_current() if controller else None
@@ -74,6 +80,9 @@ def _charger_diagnostics(hass: HomeAssistant, entry: ConfigEntry) -> dict[str, A
         "config": async_redact_data(dict(entry.data), TO_REDACT),
         "price_data": _price_data(hass),
         "auto_price": _auto_price(hass, entry),
+        # The one-off import of charges from before the sessions feature: status, range, sessions and
+        # how many hours were priced.
+        "history_import": _history_import(hass, entry.entry_id),
         "controller": None
         if controller is None
         else {

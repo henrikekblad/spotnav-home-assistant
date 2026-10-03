@@ -5,6 +5,7 @@
     "2026-08"
   ],
   "charger_id": "entry_a",
+  "cost_basis": "current_settings",
   "days": [
     {
       "average_price_minor_per_kwh": 41.364,
@@ -590,6 +591,7 @@
     {
       "average_price_minor_per_kwh": 41.364,
       "cost": 4.55,
+      "cost_basis": "stored",
       "currency": "SEK",
       "end": "2026-09-21T08:30:00+02:00",
       "energy_kwh": 11.0,
@@ -602,6 +604,7 @@
       "savings": 1.55,
       "savings_estimate": true,
       "solar_share": null,
+      "source": null,
       "start": "2026-09-21T07:00:00+02:00",
       "started_by": "other",
       "strategy": "cheapest",
@@ -610,6 +613,7 @@
     {
       "average_price_minor_per_kwh": null,
       "cost": null,
+      "cost_basis": "current_settings",
       "currency": null,
       "end": "2026-09-21T01:00:00+02:00",
       "energy_kwh": 9.5,
@@ -622,6 +626,7 @@
       "savings": null,
       "savings_estimate": true,
       "solar_share": null,
+      "source": null,
       "start": "2026-09-20T23:00:00+02:00",
       "started_by": "manual",
       "strategy": "cheapest",
@@ -630,6 +635,7 @@
     {
       "average_price_minor_per_kwh": 67.355,
       "cost": 16.3,
+      "cost_basis": "stored",
       "currency": "SEK",
       "end": "2026-09-14T10:00:00+02:00",
       "energy_kwh": 24.2,
@@ -642,6 +648,7 @@
       "savings": -1.3,
       "savings_estimate": true,
       "solar_share": 0.124,
+      "source": null,
       "start": "2026-09-14T06:00:00+02:00",
       "started_by": "hybrid",
       "strategy": "cheapest",
@@ -650,6 +657,7 @@
     {
       "average_price_minor_per_kwh": 19.524,
       "cost": 4.1,
+      "cost_basis": "stored",
       "currency": "SEK",
       "end": "2026-09-02T15:00:00+02:00",
       "energy_kwh": 21.0,
@@ -662,6 +670,7 @@
       "savings": 6.1,
       "savings_estimate": true,
       "solar_share": 0.905,
+      "source": null,
       "start": "2026-09-02T12:00:00+02:00",
       "started_by": "solar",
       "strategy": "solar",
@@ -721,6 +730,7 @@
   "open": {
     "average_price_minor_per_kwh": 37.5,
     "cost": 1.2,
+    "cost_basis": "stored",
     "currency": "SEK",
     "end": null,
     "energy_kwh": 3.2,
@@ -733,6 +743,7 @@
     "savings": 0.0,
     "savings_estimate": true,
     "solar_share": null,
+    "source": null,
     "start": "2026-09-22T11:30:00+02:00",
     "started_by": "manual",
     "strategy": "cheapest",
@@ -743,6 +754,7 @@
     {
       "average_price_minor_per_kwh": 41.364,
       "cost": 4.55,
+      "cost_basis": "stored",
       "currency": "SEK",
       "end": "2026-09-21T08:30:00+02:00",
       "energy_kwh": 11.0,
@@ -755,6 +767,7 @@
       "savings": 1.55,
       "savings_estimate": true,
       "solar_share": null,
+      "source": null,
       "start": "2026-09-21T07:00:00+02:00",
       "started_by": "other",
       "strategy": "cheapest",
@@ -763,6 +776,7 @@
     {
       "average_price_minor_per_kwh": null,
       "cost": null,
+      "cost_basis": "current_settings",
       "currency": null,
       "end": "2026-09-21T01:00:00+02:00",
       "energy_kwh": 9.5,
@@ -775,6 +789,7 @@
       "savings": null,
       "savings_estimate": true,
       "solar_share": null,
+      "source": null,
       "start": "2026-09-20T23:00:00+02:00",
       "started_by": "manual",
       "strategy": "cheapest",
@@ -783,6 +798,7 @@
     {
       "average_price_minor_per_kwh": 67.355,
       "cost": 16.3,
+      "cost_basis": "stored",
       "currency": "SEK",
       "end": "2026-09-14T10:00:00+02:00",
       "energy_kwh": 24.2,
@@ -795,6 +811,7 @@
       "savings": -1.3,
       "savings_estimate": true,
       "solar_share": 0.124,
+      "source": null,
       "start": "2026-09-14T06:00:00+02:00",
       "started_by": "hybrid",
       "strategy": "cheapest",
@@ -803,6 +820,7 @@
     {
       "average_price_minor_per_kwh": 19.524,
       "cost": 4.1,
+      "cost_basis": "stored",
       "currency": "SEK",
       "end": "2026-09-02T15:00:00+02:00",
       "energy_kwh": 21.0,
@@ -815,6 +833,7 @@
       "savings": 6.1,
       "savings_estimate": true,
       "solar_share": 0.905,
+      "source": null,
       "start": "2026-09-02T12:00:00+02:00",
       "started_by": "solar",
       "strategy": "solar",
@@ -823,6 +842,7 @@
     {
       "average_price_minor_per_kwh": 65.761,
       "cost": 12.1,
+      "cost_basis": "stored",
       "currency": "SEK",
       "end": "2026-09-01T01:00:00+02:00",
       "energy_kwh": 18.4,
@@ -835,6 +855,7 @@
       "savings": 2.4,
       "savings_estimate": true,
       "solar_share": null,
+      "source": null,
       "start": "2026-08-31T22:30:00+02:00",
       "started_by": "plan_window",
       "strategy": "cheapest",

@@ -40,6 +40,7 @@ if TYPE_CHECKING:
     from .execution.solar_execution import SolarExecutionCoordinator
     from .vehicles.vehicle_charge_limit import VehicleChargeLimitLimiter
     from .vehicles.vehicle_refresh import VehicleRefreshLimiter
+    from .sessions.history_import import HistoryImporter
     from .sessions.recorder import SessionRecorder
     from .sessions.store import SessionStore
 
@@ -57,6 +58,7 @@ class ChargerData:
     hybrid_state: HybridChargerState | None = None
     hybrid_memory: ReplanMemory | None = None
     sessions: SessionRecorder | None = None
+    history_import: HistoryImporter | None = None
 
 
 @dataclass

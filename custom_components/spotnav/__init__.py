@@ -8,12 +8,15 @@ entry starts is stopped by `entry.async_on_unload` where it is started; live obj
 from __future__ import annotations
 
 import logging
+from datetime import datetime
 from functools import partial
 from typing import Any
 
 from homeassistant.config_entries import ConfigEntry, ConfigEntryState
 from homeassistant.const import EVENT_HOMEASSISTANT_STARTED, EVENT_HOMEASSISTANT_STOP
 from homeassistant.core import CoreState, Event, HomeAssistant, callback
+from homeassistant.helpers.event import async_call_later
+from homeassistant.helpers.start import async_at_started
 
 from .api.dashboard import async_setup_dashboard_api
 from .api.debug import async_setup_debug_api
@@ -66,7 +69,8 @@ from .runtime import (
     SiteData,
 )
 from .services import async_register_services
-from .sessions.inputs import price_book_for, session_facts
+from .sessions.inputs import current_fiscal, price_book_for, session_facts
+from .sessions.history_import import HistoryImporter, START_DELAY_S as HISTORY_IMPORT_DELAY_S
 from .sessions.recorder import SessionRecorder
 from .sessions.store import SessionStore
 from .site.site_join import (
@@ -109,6 +113,7 @@ async def async_setup(hass: HomeAssistant, config: dict[str, Any]) -> bool:
     await async_setup_auto_settings(hass)
     # The charge sessions' record, loaded before any charger entry starts recording into it.
     data.session_store = SessionStore(hass)
+    data.session_store.set_fiscal_resolver(lambda charger_id, area_id: current_fiscal(hass, charger_id, area_id))
     await data.session_store.async_load()
     async_register_services(hass)
     async_setup_dashboard_api(hass)
@@ -280,6 +285,33 @@ def _async_start_session_recorder(
     )
     entry.async_on_unload(recorder.async_shutdown)
     recorder.async_start()
+    _async_schedule_history_import(hass, entry, data, controller, session_store)
+
+
+def _async_schedule_history_import(
+    hass: HomeAssistant,
+    entry: ChargerConfigEntry,
+    data: ChargerData,
+    controller: ChargingController,
+    session_store: SessionStore,
+) -> None:
+    """Import the charges from before the sessions feature, once, in the background after start-up."""
+    importer = data.history_import = HistoryImporter(
+        hass,
+        entry.entry_id,
+        session_store,
+        register_entity=lambda: controller.energy_register_entity_id,
+        energy_from_power=lambda: controller.energy_from_power,
+    )
+
+    async def _import(_now: datetime) -> None:
+        await importer.async_run()
+
+    @callback
+    def _begin(_hass: HomeAssistant) -> None:
+        entry.async_on_unload(async_call_later(hass, HISTORY_IMPORT_DELAY_S, _import))
+
+    entry.async_on_unload(async_at_started(hass, _begin))
 
 
 async def _async_setup_auto_preview(

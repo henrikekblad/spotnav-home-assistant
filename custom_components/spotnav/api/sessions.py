@@ -7,6 +7,9 @@ view and for any other client:
   `DAY_LIMIT` days), this and last month, the open session if any, and the last `limit` sessions;
 * `format: "csv"`: the closed sessions that started between `from` and `to` (local dates, either
   optional), as one CSV text with the file name to save it under;
+* `cost_basis` (`"current_settings"`): costs are calculated with the person's current taxes and fees;
+  each session's `cost_basis` is that, or `"stored"` for an old record that kept only its cost, and
+  `source` is `"imported_hourly"` for a charge rebuilt from Home Assistant's hourly statistics;
 * `month` (`"YYYY-MM"`, default the current month, at most `MONTH_LIMIT` months back): the additive
   `month`, `month_summary`, `month_days` (one row for every day of the month, zero rows included),
   `month_sessions` (that month's sessions, newest first) and `available_months` (the months with data,
@@ -60,6 +63,11 @@ MONTH_LIMIT: Final = 24
 
 FORMATS: Final = ("json", "csv")
 
+#: How every cost in the answer is made: from the stored energy and raw spot prices with the person's
+#: settings as they are now. A session carries its own `cost_basis` (`stored` for an old record that
+#: only has the cost it was written with).
+COST_BASIS: Final = "current_settings"
+
 ERROR_INVALID_RANGE: Final = "spotnav_invalid_range"
 
 #: Every key of the JSON answer, in order.
@@ -67,6 +75,7 @@ SESSIONS_RESPONSE_KEYS: Final = (
     "api_version",
     "charger_id",
     "retention_days",
+    "cost_basis",
     "this_month",
     "last_month",
     "months",
@@ -99,6 +108,7 @@ def sessions_payload(
         "api_version": SESSIONS_API_VERSION,
         "charger_id": charger_id,
         "retention_days": RETENTION_DAYS,
+        "cost_basis": COST_BASIS,
         "this_month": month_summary(sessions, zone, month_key(today)),
         "last_month": month_summary(sessions, zone, previous_month(today)),
         "months": summarize(sessions, zone, by="month"),

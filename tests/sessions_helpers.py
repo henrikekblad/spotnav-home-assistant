@@ -5,7 +5,8 @@ from __future__ import annotations
 from datetime import date, datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
 
-from custom_components.spotnav.planning.planner import ChartInterval
+from custom_components.spotnav.planning.planner import FiscalChoice
+from custom_components.spotnav.sessions.costing import SpotInterval
 from custom_components.spotnav.sessions.model import ChargeSession, SOURCE_REGISTER, STARTED_OTHER
 
 UTC = timezone.utc
@@ -14,25 +15,20 @@ STOCKHOLM = ZoneInfo("Europe/Stockholm")
 
 def day_intervals(
     day: date, prices: list[float], *, minutes: int = 60, zone: ZoneInfo = STOCKHOLM
-) -> list[ChartInterval]:
-    """One day's effective prices (minor unit per kWh), `minutes` apart from local midnight."""
+) -> list[SpotInterval]:
+    """One day's raw prices as spot intervals, `minutes` apart from local midnight. `prices` are minor
+    units per kWh at an exchange rate of 1, so with no tax, fee or VAT a cost is energy times the price."""
     start = datetime(day.year, day.month, day.day, tzinfo=zone).astimezone(UTC)
     rows = []
     for index, price in enumerate(prices):
         utc_start = start + timedelta(minutes=minutes * index)
-        utc_end = utc_start + timedelta(minutes=minutes)
-        rows.append(
-            ChartInterval(
-                start=utc_start.astimezone(zone),
-                end=utc_end.astimezone(zone),
-                utc_start=utc_start,
-                utc_end=utc_end,
-                day=day,
-                raw_minor_per_kwh=price,
-                effective_minor_per_kwh=price,
-            )
-        )
+        rows.append(SpotInterval(utc_start, utc_start + timedelta(minutes=minutes), day, price / 100, 1.0, None))
     return rows
+
+
+def priced(sessions, fiscal: FiscalChoice | None = None):
+    """The sessions with their costs made from `fiscal` (default: no tax, fee or VAT)."""
+    return tuple(item.priced(FiscalChoice() if fiscal is None else fiscal) for item in sessions)
 
 
 def session(

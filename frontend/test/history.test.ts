@@ -206,6 +206,33 @@ describe("the dialog body", () => {
     expect(all).toContain("hybrid");
   });
 
+  it("says costs are calculated with the current taxes and fees, in every language, and marks an imported charge", () => {
+    const plain = answer();
+    expect(plain.cost_basis).toBe("current_settings");
+    for (const language of LANGUAGES) {
+      expect(body({ kind: "ready", answer: plain }, language).textContent, language).toContain(
+        translate(language, "history.costBasis"),
+      );
+    }
+    expect(translate("sv", "history.costBasis")).toBe("Kostnaden beräknas med nuvarande skatter och avgifter.");
+    expect(translate("en", "history.costBasis")).toBe("Costs are calculated with your current taxes and fees.");
+
+    const older = { ...plain, cost_basis: null };
+    expect(body({ kind: "ready", answer: older }).textContent).not.toContain("current taxes and fees");
+
+    const imported = {
+      ...plain,
+      month_sessions: plain.month_sessions.map((session, index) =>
+        index === 0 ? { ...session, source: "imported_hourly", started_by: "unknown" } : session,
+      ),
+    };
+    const rows = body({ kind: "ready", answer: imported }).querySelectorAll("[data-list='sessions'] > li");
+    expect(rows[0]?.textContent).toContain("imported (hourly)");
+    for (const language of LANGUAGES) {
+      expect(translate(language, "history.by.imported").length, language).toBeGreaterThan(3);
+    }
+  });
+
   it("writes a charge across midnight with both days, and local times as the backend wrote them", () => {
     const rows = Array.from(body({ kind: "ready", answer: answer() }).querySelectorAll("[data-list='sessions'] > li"));
     const across = rows.find((row) => row.textContent?.includes("23:00"));

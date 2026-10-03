@@ -13,7 +13,8 @@ from custom_components.spotnav.api import dashboard as dashboard_api
 from custom_components.spotnav.execution.solar_execution import SolarExecutionState
 from custom_components.spotnav.runtime import charger_data
 from custom_components.spotnav.sessions import inputs
-from custom_components.spotnav.sessions.inputs import price_book_for, session_facts, solar_share_of
+from custom_components.spotnav.planning.planner import effective_minor_per_kwh
+from custom_components.spotnav.sessions.inputs import current_fiscal, price_book_for, session_facts, solar_share_of
 
 from .world import go_auto, setup_charger
 
@@ -68,7 +69,7 @@ async def test_the_estimate_follows_the_asked_for_current_phases_and_voltage(has
         assert facts.charging is False and facts.register_integrated is False
 
 
-async def test_the_price_book_is_the_dashboards_own_effective_prices(hass: HomeAssistant) -> None:
+async def test_the_price_book_costed_with_the_current_settings_is_the_dashboards_own_effective_prices(hass: HomeAssistant) -> None:
     with freeze_time(NOW):
         entry = await setup_charger(hass)
         await go_auto(hass)
@@ -78,7 +79,9 @@ async def test_the_price_book_is_the_dashboards_own_effective_prices(hass: HomeA
 
         assert book is not None and book.currency == captured.area_entry.currency
         assert book.minor_unit == captured.area_entry.minor_unit
-        by_start = {row.utc_start: row.effective_minor_per_kwh for row in book.intervals}
+        fiscal = current_fiscal(hass, entry.entry_id)
+        assert fiscal is not None and book.area_id == captured.area_entry.id
+        by_start = {row.utc_start: effective_minor_per_kwh(row.eur_per_kwh * row.fx, fiscal) for row in book.spot}
         for row in captured.intervals:
             assert by_start[row.utc_start] == row.effective_minor_per_kwh
 

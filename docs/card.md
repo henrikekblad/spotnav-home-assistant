@@ -107,8 +107,17 @@ hand, solar surplus, hybrid, or started elsewhere.
   charger behind a smart plug. A charger with neither is **estimated** from the current it was
   asked for, and every figure built on it says so.
 - **Cost** is the energy of each stretch of the charge times the effective price in that interval:
-  the spot price plus your energy tax and grid fee, times VAT, as in the plan, with the settings in
-  force at the time. Energy in an hour with no published price is counted but not priced.
+  the spot price plus your energy tax and grid fee, times VAT, as in the plan. A charge keeps its
+  energy and the spot prices, not a finished cost, so the cost is calculated with your **current**
+  taxes and fees every time it is shown: correct a VAT or fee and the whole history follows. Energy in
+  an hour with no published price is counted but not priced. A charge recorded by an earlier version
+  that only has its cost keeps that cost until its prices can be rebuilt.
+- **Earlier charges** are imported once per charger, in the background after start-up, from Home
+  Assistant's hourly long-term statistics of the charger's energy register (up to 24 months back, and
+  only before the first charge SpotNav recorded itself). Consecutive hours with at least 0.1 kWh form
+  a charge. They are priced from the market's day prices (hours with no price yet are counted but not
+  priced, and priced on a later start once the prices exist) and marked **imported (hourly)**: the start
+  cause and solar share are unknown. They count in every total.
 - **Savings** compare with the same energy at the day's average price. It is an estimate, shown
   as one, and is negative when a charge happened to be dearer than the average.
 - **Export CSV** saves the sessions of the month shown, one row per session, in local time.

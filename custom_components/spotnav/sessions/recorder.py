@@ -7,9 +7,10 @@ not when the debounce ran out.
 
 Energy is read as the difference between samples, from the charger's energy register (or SpotNav's own
 integration of a smart plug's power, which stands in for one), or, with neither, estimated from the
-current the charger was asked for and marked `estimated`. Each stretch of energy is priced where it was
-delivered (`costing.cost_of`), so a price change inside the session is honoured, and the settings in
-force at that time are the ones used.
+current the charger was asked for and marked `estimated`. Each stretch of energy is split over the price
+intervals it was delivered in (`costing.split_energy`) and kept as kWh with the raw spot price of each, so
+a price change inside the session is honoured. No cost is stored: it is made when it is read, with the
+person's settings then.
 
 A session open across a restart is resumed when the charger is charging again, and otherwise closed at
 the last time it was seen charging (or now, if the register shows energy was delivered meanwhile).
@@ -29,8 +30,7 @@ from homeassistant.core import callback, HomeAssistant
 from homeassistant.helpers.event import async_track_time_interval
 from homeassistant.util import dt as dt_util
 
-from ..planning.planner import ChartInterval
-from .costing import cost_of
+from .costing import merge_slices, split_energy, SpotInterval
 from .model import (
     ChargeSession,
     SOURCE_ESTIMATED,
@@ -60,9 +60,10 @@ MIN_ESTIMATED_S: Final = 120.0
 
 @dataclass(frozen=True, slots=True)
 class PriceBook:
-    """The effective prices around now and the market's units."""
+    """The raw spot prices around now and the market's units."""
 
-    intervals: tuple[ChartInterval, ...]
+    spot: tuple[SpotInterval, ...]
+    area_id: str | None
     currency: str | None
     major_unit: str | None
     minor_unit: str | None
@@ -133,7 +134,7 @@ class SessionRecorder:
     @callback
     def async_start(self) -> None:
         """Resume what the store holds, begin watching, and decide once now."""
-        stored = self._store.open_session(self._charger_id)
+        stored = self._store.open_raw(self._charger_id)
         if stored is not None:
             self._session = stored
             self._resumed_at = stored.last_sample_at or stored.start
@@ -211,6 +212,7 @@ class SessionRecorder:
             priced_kwh=0.0,
             cost_minor=None,
             reference_cost_minor=None,
+            area_id=None if book is None else book.area_id,
             currency=None if book is None else book.currency,
             major_unit=None if book is None else book.major_unit,
             minor_unit=None if book is None else book.minor_unit,
@@ -257,11 +259,9 @@ class SessionRecorder:
                 session.currency, session.major_unit, session.minor_unit = (
                     book.currency, book.major_unit, book.minor_unit,
                 )
-            costing = cost_of(book.intervals, since, now, delivered)
-            if costing.priced_kwh > 0:
-                session.priced_kwh += costing.priced_kwh
-                session.cost_minor = (session.cost_minor or 0.0) + costing.cost_minor
-                session.reference_cost_minor = (session.reference_cost_minor or 0.0) + costing.reference_cost_minor
+            if session.area_id is None:
+                session.area_id = book.area_id
+            session.intervals = merge_slices(session.intervals, split_energy(book.spot, since, now, delivered))
         if facts.solar_share is not None:
             session.solar_known_kwh += delivered
             session.solar_kwh += delivered * facts.solar_share

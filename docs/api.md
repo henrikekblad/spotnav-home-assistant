@@ -180,6 +180,12 @@ else is `spotnav_invalid_range`). The answer keeps every earlier field and adds:
 | `month_sessions` | The month's closed sessions, newest first, in the shape of `sessions` (not cut by `limit`). |
 | `available_months` | The months that have data, newest first, within the 24 months `month` accepts. |
 
-A session counts on the local day, and month, it started. With `format: "csv"` and a `month` the CSV is
+A session counts on the local day, and month, it started. Additive fields: `cost_basis` on the answer
+(`"current_settings"`: every cost is calculated at read time from the stored energy and raw spot prices
+with the person's taxes and fees as they are now, so correcting a setting corrects the history) and on
+each session (`"stored"` for an old record that kept only the cost it was written with), and on each
+session `source`: `null` for a charge recorded live, `"imported_hourly"` for one rebuilt from Home
+Assistant's hourly statistics (its `started_by` is then `"unknown"` and its `solar_share` `null`). A client
+ignores values it does not know. With `format: "csv"` and a `month` the CSV is
 that whole month and the file is named by its first and last day; `month` together with `from` or `to` is
 refused.
