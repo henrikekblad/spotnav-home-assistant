@@ -1,0 +1,61 @@
+# Notifications
+
+SpotNav can tell a phone when something about a charge needs attention, through the Home Assistant
+Companion app (the iOS and Android app). It uses the app's own notify service, `notify.mobile_app_<phone>`,
+which exists for every phone signed in to Home Assistant with the app. Nothing else has to be set up.
+
+## Choosing phones and events
+
+In the card: **Settings → Notifications → Change notifications**. Tick the phones that should be told
+and the events they should hear about, then **Save**. Only an administrator can change it. Each charger
+has its own choice, so the driver of each car can follow their own charger.
+
+| Event | On by default | When |
+|---|---|---|
+| Charging stopped or did not start as planned | yes | see below |
+| The charge will not be ready by the departure | yes | the departure cannot be met with the time left; once each time it becomes so |
+| Charging complete | yes | the target state of charge was reached, the requested energy was delivered, or the plan's last window ended while the car was charging |
+| Charging started | no | the charger starts charging, for whatever reason |
+| Car plugged in / Car unplugged | no | for a charger that can say whether a car is connected |
+| New plan | no | a plan different from the one before is installed, with its start, energy and estimated cost |
+
+With no phone ticked nothing is sent. A phone that is later removed from Home Assistant stays in the
+list, marked as not found, and is skipped.
+
+## "Charging stopped or did not start as planned"
+
+This is told only for a charge SpotNav expected: a window of the installed plan is open now. It is told
+when, for three minutes, the charger:
+
+- did not start the window's charge (the start failed, or the charger did not take it);
+- stopped it, by something other than SpotNav (the charger's own app, a button on the charger, a fault);
+- is unavailable in Home Assistant;
+- is held by its own schedule or load balancer, or has its own enable switch off;
+- charges, but the car takes no current (for example a car whose own charge limit was reached).
+
+It is **not** told for a window's planned end, a target or energy that was reached, a person's Stop in
+the card, the app or a button, a paused Auto, solar or hybrid running the charger, load balancing
+pausing the charge for want of headroom (the card's status says that), or a car that was unplugged.
+It is told once while it lasts; if the charge recovers and stops again, it is told again.
+
+## What a notification says
+
+A short line in Home Assistant's language (English, Swedish, Danish, Norwegian or Finnish), titled
+with the charger's name, for example:
+
+> **SpotNav · Garage**
+> Laddningen är klar: målet 80 % är nått. 12,4 kWh laddat, 18,30 kr.
+
+Charging complete gives the energy and the cost of that charge from its session, a new plan its start
+time, planned energy and estimated cost. Tapping the notification opens Home Assistant on the dashboard
+the settings were saved from.
+
+The same event for the same charger is not sent again within 15 minutes, and a charger sends at most
+twelve notifications an hour. Each kind has its own tag, so a phone replaces an older notification of
+the same kind instead of stacking them. On Android they arrive in a notification channel named
+**SpotNav**, which can be given its own sound or importance in the phone's settings.
+
+## For the paired app and automations
+
+The choice is the settings record's `notifications` field (see [Apps and API](api.md)). The
+[Charger events](api.md#home-assistant-events) entity fires for automations whatever is chosen here.

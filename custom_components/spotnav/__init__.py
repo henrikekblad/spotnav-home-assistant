@@ -70,6 +70,7 @@ from .runtime import (
     SiteData,
 )
 from .services import async_register_services
+from .notifications.notifier import ChargerNotifier
 from .sessions.inputs import current_fiscal, price_book_for, session_facts
 from .sessions.history_import import HistoryImporter, START_DELAY_S as HISTORY_IMPORT_DELAY_S
 from .sessions.recorder import SessionRecorder
@@ -241,6 +242,7 @@ async def _async_setup_charger_entry(hass: HomeAssistant, entry: ChargerConfigEn
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
     # After the platforms, so a smart plug's integrated-energy sensor already stands in for the register.
     _async_start_session_recorder(hass, entry, data, controller)
+    _async_start_notifier(hass, entry, data, controller)
     # A charger the flow was asked to add to the site joins it now that its entry id exists.
     await async_apply_site_join(hass, entry)
     # After the join, so the site's wiring and fuse are known to the defaults.
@@ -288,6 +290,33 @@ def _async_start_session_recorder(
     entry.async_on_unload(recorder.async_shutdown)
     recorder.async_start()
     _async_schedule_history_import(hass, entry, data, controller, session_store)
+
+
+def _async_start_notifier(
+    hass: HomeAssistant, entry: ChargerConfigEntry, data: ChargerData, controller: ChargingController
+) -> None:
+    """The charger's notifier: the chosen events to the chosen phones (`notifications/notifier.py`)."""
+    store = domain_data(hass).auto_store
+    if store is None:
+        return
+
+    def _currency() -> str | None:
+        area_id = store.settings(entry.entry_id).area_id
+        manager = domain_data(hass).price_refresh
+        area = None if manager is None or area_id is None else manager.catalogue_snapshot().area(area_id)
+        return None if area is None else area.currency
+
+    notifier = data.notifier = ChargerNotifier(
+        hass,
+        entry.entry_id,
+        name=lambda: entry.title,
+        controller=controller,
+        store=store,
+        sessions=domain_data(hass).session_store,
+        currency=_currency,
+    )
+    entry.async_on_unload(notifier.async_shutdown)
+    notifier.async_start(data.preview)
 
 
 def _async_schedule_history_import(

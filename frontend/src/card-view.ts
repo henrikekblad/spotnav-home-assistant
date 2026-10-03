@@ -19,6 +19,7 @@ import {
 } from "./chart-interaction";
 import { applyFocus, chartHeightForWidth, renderChart, type ChartLabels } from "./chart-render";
 import { createDialog, type DialogHandle } from "./dialog";
+import { notificationsEditorBody, notificationsSummary } from "./notifications";
 import { clock, formatFixed, formatNumber, hasZone, percentAmount, pricePerKwh, wallTimeRepeats, weekdayDate } from "./format";
 import { pluralForm, translate, type Language, type TranslationKey } from "./i18n";
 import {
@@ -67,6 +68,7 @@ import { connectionLabel, vehicleChoicesFor, vehicleLineFor } from "./vehicle-li
 import {
   fiscalRows,
   planSummaryParts,
+  type NotificationsChoice,
   type SettingsEditorKind,
   type SettingsFormValues,
 } from "./settings";
@@ -131,6 +133,11 @@ export interface CardViewInput {
   onOpenSolarEditor?: () => void;
   onSaveSolar?: (draft: EntityDraft) => void;
   onCancelSolar?: () => boolean | void;
+  /**
+   * The Notifications dialog's Save. The view has already closed the dialog; the card owns the write,
+   * every outcome and the return to Settings.
+   */
+  onSaveNotifications?: (choice: NotificationsChoice) => void;
   /**
    * Active load-balancing switch (admin only): `confirmed` is the last shown opt-in, the other the
    * one just asked for. The control is already back on `confirmed`; the answer arrives through
@@ -261,6 +268,8 @@ export interface CardView {
   setDebugPending(pending: boolean): void;
   /** Close the Settings popover without returning focus (the card is about to redraw it). */
   closeSettingsOverview(): void;
+  /** Whether the Notifications dialog is open. */
+  notificationsEditorOpen(): boolean;
 }
 
 /**
@@ -950,6 +959,14 @@ export function createCardView(input: CardViewInput): CardView {
     background: () => card,
     onClose: notifyDialogsChanged,
   });
+  const notificationsDialog: DialogHandle = createDialog({
+    owner: input.mount,
+    idPrefix: `${idPrefix}-notifications`,
+    labels,
+    background: () => card,
+    onClose: notifyDialogsChanged,
+    onDismiss: () => leaveSettingsChild(notificationsDialog),
+  });
 
   /**
    * The one way out of a dialog opened from the Settings page (Cancel, close, Escape, backdrop).
@@ -976,7 +993,8 @@ export function createCardView(input: CardViewInput): CardView {
       marketDialog.isOpen() ||
       entityDialog.isOpen() ||
       settingsOverviewDialog.isOpen() ||
-      historyDialog.isOpen()
+      historyDialog.isOpen() ||
+      notificationsDialog.isOpen()
     );
   }
 
@@ -1772,6 +1790,11 @@ export function createCardView(input: CardViewInput): CardView {
     }
     paintEntities();
 
+    const notifications = notificationsSectionBody();
+    if (notifications !== null) {
+      body.append(notifications);
+    }
+
     body.append(supportSectionBody());
 
     return body;
@@ -2130,6 +2153,56 @@ export function createCardView(input: CardViewInput): CardView {
     });
     section.append(button);
     return section;
+  }
+
+  /**
+   * Notifications: the chosen phones and how many events are on, from the dashboard's settings record, and
+   * the Change button (administrators) that opens the dialog. Absent on a backend without notifications.
+   */
+  function notificationsSectionBody(): HTMLElement | null {
+    const record = model.dashboardSettings?.notifications;
+    if (record === undefined) {
+      return null;
+    }
+    const section = element(doc, "section", C.settingsSection);
+    section.dataset["section"] = "notifications";
+    section.append(
+      element(doc, "h4", C.settingsSectionHeading, translate(model.language, "settings.section.notifications")),
+    );
+    for (const row of notificationsSummary(model.language, record)) {
+      section.append(overviewRow(row.key, row.label, row.value));
+    }
+    const button = element(doc, "button", `${C.button} ${C.settingsSectionConfigure}`, translate(model.language, "notifications.change"));
+    button.type = "button";
+    button.dataset["editNotifications"] = "true";
+    button.disabled = !input.isAdmin;
+    button.addEventListener("click", () => {
+      openNotificationsEditor();
+    });
+    section.append(button);
+    return section;
+  }
+
+  function openNotificationsEditor(): void {
+    const record = model.dashboardSettings?.notifications;
+    if (destroyed || record === undefined || !input.isAdmin) {
+      return;
+    }
+    hideForChildDialog();
+    // A tap on a notification opens the page this card is on.
+    const page = doc.defaultView?.location?.pathname ?? null;
+    const built = notificationsEditorBody(doc, model.language, record, page !== null && page.startsWith("/") ? page : null, {
+      onSave: (choice) => {
+        notificationsDialog.hide({ restoreFocus: false });
+        input.onSaveNotifications?.(choice);
+      },
+      onCancel: () => leaveSettingsChild(notificationsDialog),
+    });
+    notificationsDialog.show({
+      title: translate(model.language, "notifications.dialogTitle"),
+      body: built.body,
+      opener: settingsGeneral,
+    });
   }
 
   // The load-balancing switch's state lives outside `model`: an answer repaints this block in place,
@@ -2923,6 +2996,7 @@ export function createCardView(input: CardViewInput): CardView {
     openVehicleEditor,
     vehicleEditorOpen,
     openSolarEditor,
+    notificationsEditorOpen: () => notificationsDialog.isOpen(),
     solarEditorOpen,
     entityEditorOpen,
     setEntityEditorNotice(failure: FailureSentence | null): void {
@@ -2986,6 +3060,7 @@ export function createCardView(input: CardViewInput): CardView {
       entityDialog.destroy();
       settingsOverviewDialog.destroy();
       historyDialog.destroy();
+      notificationsDialog.destroy();
       card.remove();
     },
   };

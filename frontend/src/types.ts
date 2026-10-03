@@ -159,10 +159,34 @@ export interface SettingsBody {
   strategy: string;
   driver: string;
   target: SettingsTarget;
+  /** Sent only by a notifications Save; left out, the stored choice is kept. */
+  notifications?: NotificationsBody;
 }
 
-export interface SettingsRecord extends SettingsBody {
+export interface SettingsRecord extends Omit<SettingsBody, "notifications"> {
   revision: number;
+  /**
+   * Which phones hear about which events, and the phones that can (read-only `available`). Added after the
+   * first release of the contract: absent on an older backend, and then left out.
+   */
+  notifications?: NotificationsRecord;
+}
+
+/** One notify service a person can choose: `notify.<service>`, named after its phone. */
+export interface NotifyService {
+  service: string;
+  name: string;
+}
+
+/** The writable part of `notifications`: the chosen services and events, and where a tap opens. */
+export interface NotificationsBody {
+  targets: string[];
+  events: string[];
+  url: string | null;
+}
+
+export interface NotificationsRecord extends NotificationsBody {
+  available: NotifyService[];
 }
 
 /**

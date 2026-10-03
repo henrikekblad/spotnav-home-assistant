@@ -66,6 +66,7 @@ from ..execution.controller import (
     current_range_dict,
     CURRENT_RANGE_SOURCE_DEFAULT,
 )
+from ..notifications.targets import available_targets
 from ..planning.auto_controller import AutoSnapshot, fiscal_choice_for
 from ..planning.auto_settings import (
     AutoSettings,
@@ -412,6 +413,8 @@ class CapturedDashboard:
     starting_up: StartupState = NOT_STARTING
     #: This charger's place in its site's order (`const.CHARGER_PRIORITIES`), `None` with no site.
     charger_priority: str | None = None
+    #: The notify services the settings' `notifications.available` lists (`notifications/targets.py`).
+    notify_available: tuple[tuple[str, str], ...] = ()
 
 
 def capture_target(controller: ChargingController | None) -> CapturedTarget | None:
@@ -972,6 +975,7 @@ def capture_dashboard(
         connection=(CONNECTION_UNKNOWN, None) if controller is None else controller.connection(),
         starting_up=starting_up,
         charger_priority=capture_charger_priority(hass, entry),
+        notify_available=available_targets(hass),
     )
 
 
@@ -1071,7 +1075,9 @@ def serialize_settings(capture: CapturedDashboard) -> dict[str, Any] | None:
     settings = capture.settings
     if settings is None:
         return None
-    return encode_settings(settings, _effective_phases(capture), included_components(capture.area_entry))
+    return encode_settings(
+        settings, _effective_phases(capture), included_components(capture.area_entry), capture.notify_available
+    )
 
 
 def _effective_phases(capture: CapturedDashboard) -> int | None:

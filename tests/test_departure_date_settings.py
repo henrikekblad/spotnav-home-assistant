@@ -89,8 +89,10 @@ def body(**changes: Any) -> dict[str, Any]:
 def test_the_wire_names_the_date_and_marks_it_optional() -> None:
     assert "departure_date" in SETTINGS_KEYS
     # `phases` is optional too: it is no longer a setting, and a replacement may send it or leave it out.
-    assert OPTIONAL_SETTINGS_KEYS == {"departure_date", "departure_weekdays", "phases"}
-    assert REQUIRED_SETTINGS_KEYS == SETTINGS_KEYS - {"departure_date", "departure_weekdays", "phases"}
+    # `notifications` came later still.
+    optional = {"departure_date", "departure_weekdays", "phases", "notifications"}
+    assert OPTIONAL_SETTINGS_KEYS == optional
+    assert REQUIRED_SETTINGS_KEYS == SETTINGS_KEYS - optional
     assert encode_settings(AutoSettings())["departure_date"] is None
     assert encode_settings(replace(AutoSettings(), departure_date=date(2026, 9, 27)))["departure_date"] == "2026-09-27"
 

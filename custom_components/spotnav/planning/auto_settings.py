@@ -27,6 +27,7 @@ from homeassistant.helpers.storage import Store
 from homeassistant.util import dt as dt_util
 
 from ..const import DOMAIN
+from ..notifications.settings import NotificationSettings, NotificationSettingsError
 from ..runtime import domain_data
 
 
@@ -82,6 +83,7 @@ SettingsCode = Literal[
     "invalid_strategy",
     "revision_conflict",
     "invalid_energy_baseline",
+    "invalid_notifications",
 ]
 
 
@@ -445,6 +447,9 @@ class AutoSettings:
     target: TargetSocIntent = field(default_factory=TargetSocIntent)
     #: What the system optimizes for (`STORED_STRATEGIES`).
     strategy: str = STRATEGY_CHEAPEST
+    #: Which phones hear about which events (`notifications/settings.py`). Not a planning input: a
+    #: change of it plans nothing differently.
+    notifications: NotificationSettings = field(default_factory=NotificationSettings)
 
     @property
     def execution_paused(self) -> bool:
@@ -533,6 +538,10 @@ class AutoSettings:
             _refuse("invalid_target", "the target record must be present, even when empty")
         if self.pause is None:
             _refuse("invalid_pause", "the pause record must be present, even when absent")
+        try:
+            notifications = self.notifications.validated()
+        except (NotificationSettingsError, AttributeError) as err:
+            _refuse("invalid_notifications", str(err))
         return replace(
             self,
             requested_kwh=float(self.requested_kwh),
@@ -540,6 +549,7 @@ class AutoSettings:
             departure_weekdays=tuple(sorted(self.departure_weekdays)),
             target=self.target.validated(),
             pause=self.pause.validated(),
+            notifications=notifications,
         )
 
     def as_dict(self) -> dict[str, Any]:
@@ -565,6 +575,9 @@ class AutoSettings:
         if self.departure_weekdays != ALL_WEEKDAYS:
             # Additive too: written only when some weekday is left out.
             stored["departure_weekdays"] = list(self.departure_weekdays)
+        if not self.notifications.is_default:
+            # Additive as well: written only once a person chose something.
+            stored["notifications"] = self.notifications.as_dict()
         return stored
 
     @classmethod
@@ -578,7 +591,7 @@ class AutoSettings:
             frozenset(cls().as_dict()),
             "unknown_field",
             "a stored settings record",
-            optional=frozenset({"departure_date", "departure_weekdays"}),
+            optional=frozenset({"departure_date", "departure_weekdays", "notifications"}),
         )
         revision = stored["revision"]
         if isinstance(revision, bool) or not isinstance(revision, int) or revision < 0:
@@ -607,6 +620,12 @@ class AutoSettings:
         weekdays = stored.get("departure_weekdays", list(ALL_WEEKDAYS))
         if not isinstance(weekdays, list):
             _refuse("invalid_departure", "stored departure weekdays must be a list")
+        notifications = NotificationSettings()
+        if "notifications" in stored:
+            try:
+                notifications = NotificationSettings.from_dict(stored["notifications"])
+            except NotificationSettingsError:
+                _refuse("invalid_notifications", "stored notification settings are not readable")
         return cls(
             revision=revision,
             area_id=stored["area_id"],
@@ -623,6 +642,7 @@ class AutoSettings:
             driver=stored["driver"],
             target=TargetSocIntent.from_stored(stored["target"]),
             strategy=stored["strategy"],
+            notifications=notifications,
         ).validated()
 
 

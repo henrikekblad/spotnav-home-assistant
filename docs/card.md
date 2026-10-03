@@ -227,6 +227,11 @@ several. A charger with no site says so.
   Limitation** number is enabled, it also warns ("Two limits on one fuse") when that limit and SpotNav's
   (the main fuse minus the safety margin) differ by more than 1 A per phase.
 
+### Notifications
+
+**Phones** and **Events** say who is told about what; **Change notifications** opens the choice. See
+[Notifications](notifications.md).
+
 ## Plan settings
 
 The **Plan** cell opens **Charging plan**.

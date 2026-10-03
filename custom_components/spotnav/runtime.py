@@ -45,6 +45,7 @@ if TYPE_CHECKING:
     from .sessions.history_import import HistoryImporter
     from .sessions.recorder import SessionRecorder
     from .sessions.store import SessionStore
+    from .notifications.notifier import ChargerNotifier
 
 
 @dataclass
@@ -61,6 +62,7 @@ class ChargerData:
     hybrid_memory: ReplanMemory | None = None
     sessions: SessionRecorder | None = None
     history_import: HistoryImporter | None = None
+    notifier: ChargerNotifier | None = None
 
 
 @dataclass

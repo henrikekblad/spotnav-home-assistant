@@ -80,6 +80,7 @@ match and choose **Approve**. No Home Assistant password or token is stored on t
 - [Home batteries](docs/home-battery.md): the "charging from the grid" signal for Predbat,
   EMHASS and automations.
 - [OCPP chargers](docs/ocpp.md): entity model, current control, connectors.
+- [Notifications](docs/notifications.md): what SpotNav tells a phone through the Home Assistant app.
 - [Apps and API](docs/api.md): pairing, webhook and WebSocket contracts.
 - [Diagnostics and troubleshooting](docs/troubleshooting.md).
 

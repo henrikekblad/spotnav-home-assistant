@@ -515,6 +515,9 @@ class ChargingController:
         self._target_stop: dict[str, Any] | None = None
         # True from when a reached target is about to stop the charge until the stop completes.
         self._target_stopping = False
+        # The last time a charge ended because its plan was done (`completion_record`). In memory only:
+        # a restart is not a completion.
+        self._completion: dict[str, Any] | None = None
         # The one state-change subscription, alive while a plan with a target is (see
         # `_async_reschedule`).
         self._state_listener_cancel: Callable[[], None] | None = None
@@ -681,6 +684,33 @@ class ChargingController:
             return False
         now = dt_util.utcnow()
         return any(start <= now < end for start, end in windows)
+
+    @property
+    def plan_expects_charge(self) -> bool:
+        """Whether the installed plan expects this charger to be charging now, so a charge that is not
+        running is a surprise: a window of the plan is open, nothing else owns the charger (a pause,
+        solar), a person has not stopped this window, load balancing has not paused the charge, the
+        target is not being stopped for, and the vehicle is not known to be unplugged.
+        """
+        return (
+            self.plan_window_active_now
+            and not self._target_stopping
+            and not self._paused_by_balancing
+            and not self._hold_blocked()
+            and not self._person_stopped_now()
+            and self.adapter.vehicle_connected() is not False
+        )
+
+    @property
+    def completion_record(self) -> dict[str, Any] | None:
+        """The last charge that ended because its plan was done, or `None`: `at` (ISO instant),
+        `reason` (`target` reached, requested `energy` delivered, or `plan_done`: the plan's last window
+        ended while it charged) and, for a target, `target_soc_percent` and `soc_percent`.
+        """
+        return self._completion
+
+    def _record_completion(self, reason: str, **facts: Any) -> None:
+        self._completion = {"at": dt_util.utcnow().isoformat(), "reason": reason, **facts}
 
     @property
     def start_pending(self) -> bool:
@@ -912,6 +942,10 @@ class ChargingController:
                 " and stopping the charge" if stop else "",
             )
             if stop:
+                self._record_completion(
+                    "target" if self.plan.target_soc_percent is not None else "energy",
+                    target_soc_percent=self.plan.target_soc_percent,
+                )
                 await self._stop_locked(clear_schedule=True)
                 return True
             self.plan = None
@@ -2168,6 +2202,11 @@ class ChargingController:
             reading.soc_percent if reading else None,
             reading.source if reading else None,
         )
+        self._record_completion(
+            "target",
+            target_soc_percent=self._target_stop["target_soc_percent"],
+            soc_percent=self._target_stop["soc_percent"],
+        )
         await self._stop_locked(clear_schedule=True)
 
     def target_reading(self) -> SocReading | None:
@@ -2329,6 +2368,9 @@ class ChargingController:
                 self.entry_id,
             )
             return
+        if self.plan is not None and self._control_on:
+            # A charge still running at the last window's end: the plan is done.
+            self._record_completion("plan_done", target_soc_percent=self.plan.target_soc_percent)
         self.hass.async_create_task(self.async_stop(clear_schedule=True))
 
     def _cancel_timers(self) -> None:
