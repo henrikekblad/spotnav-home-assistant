@@ -484,7 +484,7 @@ export const sv: Record<keyof typeof en, string> = {
   "market.findRegion.invalid": "Det är inget brittiskt postnummer.",
   "market.findRegion.notFound": "Ingen region hittades för det postnumret.",
   "market.findRegion.unavailable": "Regionen kunde inte slås upp just nu. Välj den i listan.",
-  "market.findRegion.found": "Region {region} vald. Spara för att behålla den.",
+  "market.findRegion.found": "Hittade: {region}. Spara för att behålla den.",
   "country.GB": "Storbritannien",
   "market.area.unlisted": "publiceras inte längre",
   "market.area.missing": "Inga områden publiceras just nu.",

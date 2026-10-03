@@ -483,7 +483,7 @@ export const fi: Record<keyof typeof en, string> = {
   "market.findRegion.invalid": "Tämä ei ole brittiläinen postinumero.",
   "market.findRegion.notFound": "Postinumerolle ei löytynyt aluetta.",
   "market.findRegion.unavailable": "Aluetta ei voitu hakea juuri nyt. Valitse se luettelosta.",
-  "market.findRegion.found": "Alue {region} valittu. Tallenna, niin se säilyy.",
+  "market.findRegion.found": "Löytyi: {region}. Tallenna, niin se säilyy.",
   "country.GB": "Iso-Britannia",
   "market.area.unlisted": "ei enää julkaistu",
   "market.area.missing": "Alueita ei julkaista juuri nyt.",

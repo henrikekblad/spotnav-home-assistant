@@ -431,7 +431,8 @@ export const VISUAL_STYLES = `
   /* A component the price already includes: the checked, locked box, then the words, across the row. */
   .spotnav-market-included {
     grid-column: 3 / -1;
-    color: var(--secondary-text-color, #727272);
+    font-size: 0.85em;
+    color: var(--primary-text-color, #212121);
   }
   .spotnav-market-source {
     margin: 4px 0 0;

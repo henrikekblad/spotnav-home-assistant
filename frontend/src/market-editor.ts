@@ -243,11 +243,21 @@ export function marketEditorBody(
     (coversGreatBritain(selectedArea?.countries) || (region ?? "").trim().toUpperCase() === "GB");
   if (offerPostcode && handlers.onFindRegion !== undefined) {
     body.append(
-      postcodeField(doc, language, idPrefix, handlers.onFindRegion, (found) => {
-        if (found !== builtFor) {
-          handlers.onAreaChange(found, read());
-        }
-      }),
+      postcodeField(
+        doc,
+        language,
+        idPrefix,
+        handlers.onFindRegion,
+        (found) => {
+          if (found !== builtFor) {
+            handlers.onAreaChange(found, read());
+          }
+        },
+        (found) => {
+          const named = form.options.areas.find((area) => area.area_id === found);
+          return named === undefined ? found : marketAreaLabel(language, named.name, named.area_id);
+        },
+      ),
     );
   }
 
@@ -467,6 +477,7 @@ function postcodeField(
   idPrefix: string,
   find: (postcode: string) => Promise<RegionLookup>,
   select: (region: string) => void,
+  nameOf: (region: string) => string,
 ): HTMLElement {
   const field = element(doc, "div", `${C.settingsField} ${C.marketPostcode}`);
   const inputId = `${idPrefix}-postcode`;
@@ -488,7 +499,7 @@ function postcodeField(
   const description = element(doc, "p", `${C.muted} ${C.settingsNote}`, translate(language, "market.findRegion.description"));
   description.id = `${inputId}-description`;
   input.setAttribute("aria-describedby", description.id);
-  const outcome = element(doc, "p", C.settingsNote);
+  const outcome = element(doc, "p", `${C.muted} ${C.settingsNote}`);
   outcome.setAttribute("role", "status");
   outcome.hidden = true;
   const say = (key: TranslationKey, region?: string): void => {
@@ -505,7 +516,7 @@ function postcodeField(
     try {
       const answer = await find(postcode);
       if (answer.region !== null) {
-        say("market.findRegion.found", answer.region);
+        say("market.findRegion.found", nameOf(answer.region));
         select(answer.region);
         return;
       }

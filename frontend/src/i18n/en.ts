@@ -493,7 +493,7 @@ export const en = {
   "market.findRegion.invalid": "That is not a UK postcode.",
   "market.findRegion.notFound": "No region was found for that postcode.",
   "market.findRegion.unavailable": "The region could not be looked up right now. Choose it from the list.",
-  "market.findRegion.found": "Region {region} chosen. Save to keep it.",
+  "market.findRegion.found": "Found: {region}. Save to keep it.",
   "country.GB": "Great Britain",
   "market.area.unlisted": "no longer published",
   "market.area.missing": "No areas are published right now.",

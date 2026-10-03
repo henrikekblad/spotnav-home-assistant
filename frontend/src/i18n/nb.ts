@@ -483,7 +483,7 @@ export const nb: Record<keyof typeof en, string> = {
   "market.findRegion.invalid": "Det er ikke et britisk postnummer.",
   "market.findRegion.notFound": "Fant ingen region for det postnummeret.",
   "market.findRegion.unavailable": "Regionen kunne ikke slås opp nå. Velg den i listen.",
-  "market.findRegion.found": "Region {region} er valgt. Lagre for å beholde den.",
+  "market.findRegion.found": "Fant: {region}. Lagre for å beholde den.",
   "country.GB": "Storbritannia",
   "market.area.unlisted": "publiseres ikke lenger",
   "market.area.missing": "Ingen områder publiseres akkurat nå.",
