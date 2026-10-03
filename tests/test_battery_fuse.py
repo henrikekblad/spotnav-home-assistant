@@ -85,8 +85,8 @@ def _held_at_zero(controller, charger, *, reason: str = _NO_HEADROOM, requested_
 
 
 async def _paused_site(hass: HomeAssistant, monkeypatch, entry_id: str, **setup):
-    """The owner's site with the car stopped by load balancing's pause (a charger that is not OCPP:
-    below the floor it is stopped, where OCPP can only send nothing), a vehicle plugged in, 16 A on
+    """The owner's site with the car stopped by load balancing's pause (an OCPP charger like the owner's:
+    below the floor it is stopped through its charge control, as any charger is), a vehicle plugged in, 16 A on
     record. Returns the apply-test tuple plus the charger's controller and its `turn_off` calls."""
     from custom_components.spotnav.execution.chargers.adapter import ChargerAdapter
 
@@ -94,7 +94,6 @@ async def _paused_site(hass: HomeAssistant, monkeypatch, entry_id: str, **setup)
         hass, entry_id, **setup
     )
     charger_controller = controller_of(hass, charger.entry_id)
-    monkeypatch.setattr(ChargerAdapter, "is_ocpp", property(lambda self: False))
     monkeypatch.setattr(ChargerAdapter, "vehicle_connected", lambda self: True)
     turn_off = async_mock_service(hass, "switch", "turn_off")
     hass.states.async_set(f"switch.{prefix}", "off")
@@ -673,3 +672,99 @@ def test_a_measurement_that_arrives_within_the_grace_is_never_warned_about(caplo
     now[0] += 600.0
     coordinator._log_transition(_missing_verdict("arming"))
     assert [r for r in caplog.records if "own measured current" in r.message] == []
+
+
+# -- below the floor an OCPP charger is paused, never "written"; starts are capped; resume
+
+
+async def test_an_ocpp_charger_below_the_floor_is_paused_and_nothing_claims_it_was_written(
+    hass: HomeAssistant,
+) -> None:
+    from custom_components.spotnav.execution.controller import REGULATED_STOPPED, REGULATED_WROTE
+
+    controller, charger, calls, yield_clock, damper_clock, site, prefix = await _owner_site(hass, "bfocpp")
+    cc = controller_of(hass, charger.entry_id)
+    assert cc.adapter.is_ocpp
+    turn_off = async_mock_service(hass, "switch", "turn_off")
+
+    result = await cc.async_apply_regulated_current(5, must_lower=True)
+
+    assert (result.outcome, result.code, result.written) == (REGULATED_STOPPED, "pause", False)
+    assert result.outcome != REGULATED_WROTE
+    assert len(turn_off) == 1 and calls == []  # stopped through the switch, no AssignedCurrent
+    hass.states.async_set(f"switch.{prefix}", "off")
+    assert cc.paused_by_balancing is True
+
+
+async def test_an_ocpp_write_the_charger_could_not_take_is_not_reported_as_written(
+    hass: HomeAssistant,
+) -> None:
+    from custom_components.spotnav.execution.controller import REGULATED_WROTE
+
+    controller, charger, calls, yield_clock, damper_clock, site, prefix = await _owner_site(hass, "bfocpp2")
+    cc = controller_of(hass, charger.entry_id)
+    async_mock_service(hass, "switch", "turn_off")
+
+    async def refuse(*args, **kwargs):
+        return "read_failed"
+
+    cc.adapter.async_set_current = refuse  # the charger's current could not be read or written
+    result = await cc.async_apply_regulated_current(10, must_lower=False)
+
+    assert result.outcome != REGULATED_WROTE and result.written is False
+
+
+async def test_a_paused_ocpp_charge_resumes_when_headroom_returns(hass: HomeAssistant, monkeypatch) -> None:
+    (controller, charger, calls, yield_clock, damper_clock, site, prefix, cc, turn_off) = (
+        await _paused_site(hass, monkeypatch, "bfresume", battery_w=0.0)
+    )
+    # Headroom for the minimum and a little more, for the dwell: nothing at first, then a restart.
+    set_site_current_a(hass, site, 11.0)  # 9 A of headroom on a 20 A fuse
+    await controller._async_apply_active_control()
+    assert calls == []
+    yield_clock.advance(61.0)
+    await controller._async_apply_active_control()
+    assert _values(calls) == ["1.9,2.10"]  # min(16 requested, 9 allowed)
+    assert cc.requested_current_a == 16
+    assert [e["outcome"] for e in controller.regulator_decision_log][-1] == "resumed"
+
+
+async def test_a_paused_charge_is_not_resumed_without_the_minimum_plus_a_margin(
+    hass: HomeAssistant, monkeypatch
+) -> None:
+    (controller, charger, calls, yield_clock, damper_clock, site, prefix, cc, turn_off) = (
+        await _paused_site(hass, monkeypatch, "bfnoresume", battery_w=0.0)
+    )
+    set_site_current_a(hass, site, 13.5)  # 6.5 A: under the floor plus the 1 A margin
+    for _ in range(3):
+        yield_clock.advance(61.0)
+        await controller._async_apply_active_control()
+    assert calls == []
+
+
+async def test_a_session_start_never_gives_the_car_more_than_the_site_allows(hass: HomeAssistant) -> None:
+    controller, charger, calls, yield_clock, damper_clock, site, prefix = await _owner_site(hass, "bfstart")
+    cc = controller_of(hass, charger.entry_id)
+    cc.set_start_cap(lambda: controller.start_allowance_a(charger.entry_id))
+    turn_on = async_mock_service(hass, "switch", "turn_on")
+    hass.states.async_set(f"switch.{prefix}", "off")
+
+    # 5.5 A of headroom: below the floor, the car is not started at all.
+    set_site_current_a(hass, site, 14.5)
+    assert await cc.async_start(16) is False
+    assert turn_on == [] and calls == []
+    assert cc.requested_current_a == 16 and cc._paused_by_balancing is True
+
+    # 8 A of headroom: started at min(16, 8).
+    set_site_current_a(hass, site, 12.0)
+    assert await cc.async_start(16) is True
+    assert _values(calls) == ["1.8,2.10"]
+    assert len(turn_on) == 1 and cc.requested_current_a == 16
+
+    # Active control off: no cap, exactly as before.
+    controller.config[CONF_ACTIVE_CONTROL_ENABLED] = False
+    calls.clear()
+    hass.states.async_set(f"switch.{prefix}", "off")
+    set_site_current_a(hass, site, 14.5)
+    assert await cc.async_start(16) is True
+    assert _values(calls) == ["1.16,2.10"]

@@ -427,6 +427,8 @@ class ChargingController:
         # (`window_hold.py`), and the one hook that tells it something else owns the charger.
         self._hold = WindowHold()
         self._hold_guard: Callable[[], bool] | None = None
+        # What the site lets a start give the car (`set_start_cap`); `None` means no cap applies.
+        self._start_cap: Callable[[], float | None] | None = None
         self._last_connected: bool | None = None
         # Whether the charge that runs was started by a plan window of ours (not a person's Start, not
         # solar). Persisted: a restart outside every window must still know the charge is ours.
@@ -1155,13 +1157,28 @@ class ChargingController:
             return None
         return hint[0]
 
+    def set_start_cap(self, cap: Callable[[], float | None] | None) -> None:
+        """Set (or clear) what a start may give the car: the site's allowance in amps while active
+        control is on and the measurements are usable, else `None` (no cap)."""
+        self._start_cap = cap
+
+    def _start_allowance_a(self) -> float | None:
+        cap = self._start_cap
+        if cap is None:
+            return None
+        try:
+            return cap()
+        except Exception:  # noqa: BLE001 - a failing cap must not block a start; the regulator still follows
+            _LOGGER.debug("Start cap failed", exc_info=True)
+            return None
+
     @property
     def paused_by_balancing(self) -> bool:
         """Whether the charger is stopped because load balancing paused it, and nothing has stopped
         or started it since (a person's Stop, a window's end, a target stop all clear it)."""
         return self._paused_by_balancing and not self.charging
 
-    async def async_battery_probe_start(self, amps: int) -> bool:
+    async def async_battery_probe_start(self, amps: int, *, capped: bool = False) -> bool:
         """Resume a charge that load balancing paused, at `amps`, as a battery probe.
 
         Only while `paused_by_balancing`. The charge restarts at `amps` (the car's minimum), but the
@@ -1172,7 +1189,7 @@ class ChargingController:
             if not self._paused_by_balancing or self.charging:
                 return False
             kept = self._requested_current_a
-            executed = await self._start_locked(amps)
+            executed = await self._start_locked(amps, capped=capped)
             if not executed:
                 self._paused_by_balancing = True
                 return False
@@ -1183,7 +1200,12 @@ class ChargingController:
             return True
 
     async def _start_locked(
-        self, amps: int | None = None, *, manual: bool = False, cause: str | None = None
+        self,
+        amps: int | None = None,
+        *,
+        manual: bool = False,
+        cause: str | None = None,
+        capped: bool = True,
     ) -> bool:
         """The start itself, with the operation lock held: record the requested current (if known) and
         start charging.
@@ -1207,6 +1229,23 @@ class ChargingController:
         if explicit_amps is not None:
             self._validate_amps(explicit_amps)
             self._requested_current_a = explicit_amps
+            # With active control on, a start never gives the car more than the site allows now:
+            # `min(request, allowance)`, and no start at all below the floor (the request stays on
+            # record, so the regulator resumes the charge when headroom returns).
+            allowance = self._start_allowance_a() if capped else None
+            if allowance is not None:
+                if allowance < DEFAULT_MIN_CURRENT_A:
+                    self._paused_by_balancing = True
+                    _LOGGER.info(
+                        "SpotNav charger %s: not started, the site allows %.1fA (below the %sA floor)",
+                        self.entry_id,
+                        allowance,
+                        DEFAULT_MIN_CURRENT_A,
+                    )
+                    await self._async_save()
+                    self._notify()
+                    return False
+                explicit_amps = min(explicit_amps, int(allowance))
             if self.current_control == CURRENT_CONTROL_CHANGE_CONFIGURATION:
                 await self._async_assign_current(explicit_amps)
             elif self._writes_current_at_start and not self.adapter.policy.ignored_while_paused:
@@ -1331,10 +1370,9 @@ class ChargingController:
         A stop is never refused by a write policy. It takes the operation lock, so it cannot land
         inside a plan replacement.
         """
-        if self.adapter.is_ocpp:
-            await self._async_assign_current(amps)
-            return RegulatedWrite(REGULATED_WROTE, ASSIGN_ASSIGNED, True)
         if amps < DEFAULT_MIN_CURRENT_A:
+            # Below the floor no valid pilot current exists, for OCPP as for any charger: the only
+            # way to give the car less is to stop it (OCPP sends nothing for such a value).
             return await self._regulated_stop("pause")
         outcome = await self._async_assign_current_outcome(amps, reason=WRITE_REGULATOR)
         if outcome in IN_EFFECT_OUTCOMES:

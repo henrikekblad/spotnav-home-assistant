@@ -218,6 +218,8 @@ class SiteCapacityController:
         # Per-charger battery probes (`site/battery_probe.py`), created lazily, and the one timer
         # that re-evaluates a running probe when its window ends.
         self._battery_probes: dict[str, BatteryProbe] = {}
+        # When a paused charge first had headroom for its minimum again (for the resume's dwell).
+        self._resume_ready_since: dict[str, float] = {}
         self._probe_timer_cancel: Callable[[], None] | None = None
         # Last logged yield-stepping signature per charger (logged once per change).
         self._logged_yield_stepping: dict[str, tuple[Any, ...]] = {}
@@ -301,6 +303,12 @@ class SiteCapacityController:
             if charger_controller is not None:
                 self._controller_listener_cancels.append(
                     charger_controller.add_listener(self._on_charger_controller_changed)
+                )
+                charger_controller.set_start_cap(
+                    lambda charger_entry_id=charger_entry_id: self.start_allowance_a(charger_entry_id)
+                )
+                self._controller_listener_cancels.append(
+                    lambda controller=charger_controller: controller.set_start_cap(None)
                 )
 
     @callback
@@ -566,6 +574,31 @@ class SiteCapacityController:
             LIMIT_CAUSE_BATTERY_SHARES_FUSE if battery_charging else LIMIT_CAUSE_HOUSE_CONSUMPTION
         )
 
+    def start_allowance_a(self, charger_entry_id: str) -> float | None:
+        """What a start may give this charger now, in amps: the tightest phase's uncredited margin
+        plus what the charger already delivers there. `None` (no cap) unless active control is on,
+        nothing blocks writing, and the measurement is usable on every phase the charger uses."""
+        if not self._active_control_allowed() or self.membership_conflicts:
+            return None
+        fresh = self._calculate()
+        if fresh.state != "observing":
+            return None
+        request = next(
+            (r for r in self._build_requests() if r.charger_entry_id == charger_entry_id), None
+        )
+        phases = None if request is None else request.phases_used()
+        if not phases:
+            return None
+        delivered = request.measured_current_a
+        allowances: list[float] = []
+        for phase in phases:
+            margin = fresh.measured_margin_a.get(phase)
+            if margin is None:
+                return None
+            own = 0.0 if delivered is None else (delivered.get(phase).value or 0.0)
+            allowances.append(margin + own)
+        return max(0.0, min(allowances))
+
     def _active_control_allowed(self) -> bool:
         """Both gates: the compile-time `ACTIVE_CONTROL_READY` and this site's
         `CONF_ACTIVE_CONTROL_ENABLED` option (off by default). They are independent so neither alone
@@ -674,6 +707,10 @@ class SiteCapacityController:
 
             # A grid-charging battery that may give way to the car: start the car at its minimum as
             # a probe (only where nothing else would start it; see `site/battery_probe.py`).
+            if await self._async_maybe_resume_paused_charge(
+                charger_entry_id, charger_controller, decision, fresh, damper, previous_setpoint
+            ):
+                continue
             if await self._async_maybe_start_battery_probe(
                 charger_entry_id, charger_controller, decision, fresh, damper, previous_setpoint
             ):
@@ -929,6 +966,71 @@ class SiteCapacityController:
             setpoint,
         )
 
+    async def _async_maybe_resume_paused_charge(
+        self,
+        charger_entry_id: str,
+        charger_controller: Any,
+        decision: RegulatorDecision,
+        fresh: SiteCapacityResult,
+        damper: RegulatorDamper,
+        previous_setpoint: float | None,
+    ) -> bool:
+        """Restart a charge load balancing paused once the site has headroom for the minimum again.
+
+        Only for a charge the regulator's own pause stopped and nothing has touched since, with a
+        vehicle plugged in, the request on record at least the minimum, the car not drawing, every
+        phase measured, and a margin of one amp above the minimum (so it does not flap) that has
+        lasted for the dwell. It restarts at `min(request, allowance)`. `True` when it started.
+        """
+        wiring: dict[str, Any] = (self.config.get(CONF_PHASE_WIRING) or {}).get(
+            charger_entry_id
+        ) or {}
+        min_current_a = float(wiring.get("min_current_a", DEFAULT_MIN_CURRENT_A))
+        phases = tuple(decision.basis.keys())
+        requested = charger_controller.requested_current_a
+        now = self._yield_now()
+        if (
+            not phases
+            or requested is None
+            or requested < min_current_a
+            or fresh.state != "observing"
+            or not charger_controller.paused_by_balancing
+            or charger_controller.held_by_charger
+            or charger_controller.adapter.vehicle_connected() is not True
+            or (previous_setpoint is not None and previous_setpoint >= min_current_a)
+        ):
+            self._resume_ready_since.pop(charger_entry_id, None)
+            return False
+        delivered = self._read_charger_measured_current(wiring)
+        if delivered is None or any(
+            delivered.get(phase).value is None or delivered.get(phase).value >= PROBE_IDLE_BELOW_A
+            for phase in phases
+        ):
+            return False
+        margins = [fresh.measured_margin_a.get(phase) for phase in phases]
+        if any(margin is None for margin in margins) or min(margins) < min_current_a + 1.0:
+            self._resume_ready_since.pop(charger_entry_id, None)
+            return False
+        since = self._resume_ready_since.setdefault(charger_entry_id, now)
+        dwell_s = float(self.config.get(CONF_REGULATOR_DWELL_S, DEFAULT_REGULATOR_DWELL_S))
+        if now - since < dwell_s:
+            return False
+        amps = int(min(float(requested), min(margins)))
+        started = await charger_controller.async_battery_probe_start(amps, capped=True)
+        if not started:
+            return False
+        self._resume_ready_since.pop(charger_entry_id, None)
+        damper.record_write(float(amps))
+        self._record_probe_event(
+            charger_entry_id,
+            decision,
+            outcome="resumed",
+            detail="headroom_returned",
+            setpoint=amps,
+            previous_setpoint=previous_setpoint,
+        )
+        return True
+
     async def _async_maybe_start_battery_probe(
         self,
         charger_entry_id: str,
@@ -1140,6 +1242,7 @@ class SiteCapacityController:
         self._dampers.clear()
         self._yield_steppers.clear()
         self._battery_probes.clear()
+        self._resume_ready_since.clear()
         self._cancel_probe_timer()
         self._yield_stepping_last.clear()
         self._logged_yield_stepping.clear()
