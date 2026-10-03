@@ -436,7 +436,7 @@ function advisoryFor(dashboard: Dashboard, language: Language): AdvisoryFacts | 
   }
   // A car that is full asks for no current, which is no fault: the calm line, not a request to check
   // the vehicle's settings.
-  const key: TranslationKey = carNeedsNoCharge(dashboard.soc)
+  const key: TranslationKey = carNeedsNoCharge(dashboard.soc) || needAlreadyMet(dashboard.status)
     ? "advisory.carFull"
     : progress.reason === "power_below_threshold"
       ? // A charger behind a smart plug is judged by its power; a connector status says it differently.
@@ -457,6 +457,11 @@ function carNeedsNoCharge(soc: Dashboard["soc"]): boolean {
   const target = soc.target_percent !== null ? effectiveTarget(soc.target_percent, soc.vehicle_max_percent) : null;
   const stop = target ?? ceiling;
   return stop !== null && soc.value >= Math.min(stop, ceiling ?? stop);
+}
+
+/** Whether the backend's own status says the charging need is already met (e.g. a manual kWh plan with a full car). */
+function needAlreadyMet(status: Dashboard["status"]): boolean {
+  return status.lines.some((line) => line.code === "hybrid_satisfied");
 }
 
 function strategyFactsFor(dashboard: Dashboard, language: Language): StrategyFacts {

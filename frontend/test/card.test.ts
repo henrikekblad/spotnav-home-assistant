@@ -361,6 +361,23 @@ describe("the vehicle-side advisory", () => {
     expect(node?.textContent).toBe(translate("en", full ? "advisory.carFull" : "advisory.vehicleNotRequestingCurrent"));
   });
 
+  it("words a full car calmly when the backend says the need is already met, with no target known", async () => {
+    const hass = new FakeHass();
+    const element = card();
+    element.hass = hass;
+    await settle();
+    hass.resolveNext(
+      dashboard({
+        charge_progress: ADVISORY,
+        status: { tone: "normal", lines: [{ code: "hybrid_satisfied", params: {} }] },
+      }),
+    );
+    await settle();
+
+    const node = shadow(element).querySelector(`.${VISUAL_CLASSES.advisory}`);
+    expect(node?.textContent).toBe(translate("en", "advisory.carFull"));
+  });
+
   it("says nothing when the block is unreadable, and still renders the rest", async () => {
     const element = await rendered({ state: "SuspendedEV", reason: "x", since: null });
     expect(shadow(element).querySelector(`.${VISUAL_CLASSES.advisory}`)).toBeNull();
