@@ -6,7 +6,7 @@
 // (a vehicle's name) is written with `textContent`, never parsed as markup.
 
 import { SESSIONS_API_VERSION } from "./types";
-import { dateLabel, energyAmount, formatNumber, money, pricePerKwh, type FormatContext } from "./format";
+import { dateLabel, energyTenths, formatNumber, money, pricePerKwh, type FormatContext } from "./format";
 import { pluralForm, translate, type Language, type TranslationKey } from "./i18n";
 import { VISUAL_CLASSES as C } from "./visual-styles";
 
@@ -384,7 +384,7 @@ export function savingsLine(
 function figures(language: Language, bucket: SessionBucket | SessionRecord): string {
   const context = formatContext(language, bucket);
   const cost = bucket.cost === null ? translate(language, "history.noCost") : money(context, bucket.cost);
-  const parts = [energyAmount(language, bucket.energy_kwh), cost];
+  const parts = [energyTenths(language, bucket.energy_kwh), cost];
   if (bucket.average_price_minor_per_kwh !== null && bucket.minor_unit !== null) {
     parts.push(pricePerKwh(context, bucket.average_price_minor_per_kwh));
   }
@@ -424,7 +424,7 @@ export function dayFigures(language: Language, day: SessionBucket): string {
   if (day.solar_share !== null) {
     parts.push(translate(language, "history.solar", { percent: percent(language, day.solar_share) }));
   }
-  return `${date}: ${parts.join(" · ")}`;
+  return `${date} · ${parts.join(" · ")}`;
 }
 
 /**
@@ -483,7 +483,7 @@ function dayChart(doc: Document, language: Language, days: SessionBucket[], ui: 
     const labelled = number === 1 || number === days.length || (number % 5 === 0 && days.length - number >= 3);
     axis.append(element(doc, "span", undefined, labelled ? String(number) : ""));
   });
-  const scale = element(doc, "span", `${C.muted} ${C.historyScale}`, energyAmount(language, top));
+  const scale = element(doc, "span", `${C.muted} ${C.historyScale}`, energyTenths(language, top));
   scale.setAttribute("aria-hidden", "true");
   wrap.append(scale, plot, axis, readout);
   show(days.find((day) => day.period === ui.day) ?? null);
@@ -602,7 +602,7 @@ export function historyBody(
       C.historyOpen,
       translate(language, "history.open", {
         time: clockOf(answer.open.start),
-        energy: energyAmount(language, answer.open.energy_kwh),
+        energy: energyTenths(language, answer.open.energy_kwh),
       }),
     );
     open.setAttribute("role", "status");

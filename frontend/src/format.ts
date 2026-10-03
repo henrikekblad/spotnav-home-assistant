@@ -84,6 +84,14 @@ export function energyAmount(language: Language, value: number | null): string {
   return `${formatNumber(language, value, 3)} kWh`;
 }
 
+/** An energy amount in kWh to a tenth, for readouts and summaries (`energyAmount` is the exact record value). */
+export function energyTenths(language: Language, value: number | null): string {
+  if (value === null || !Number.isFinite(value)) {
+    return "";
+  }
+  return `${formatNumber(language, value, 1)} kWh`;
+}
+
 export function percentAmount(language: Language, value: number): string {
   return `${formatNumber(language, value, 1)} %`;
 }
