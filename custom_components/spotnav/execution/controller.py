@@ -433,6 +433,9 @@ class ChargingController:
         # Whether the charge that runs was started by a plan window of ours (not a person's Start, not
         # solar). Persisted: a restart outside every window must still know the charge is ours.
         self._plan_charge = False
+        #: Who started the charge that is running (`manual`, `solar`, `plan_window`, `other`), for the
+        #: grid-charging signal; `None` while unknown (a charger that started by itself).
+        self._charge_origin: str | None = None
         self.charge_control: str = config[CONF_CHARGE_CONTROL]
         # "None" in the card: no current entity, no current control and no automatic session-limit lookup.
         self.current_limit_none: bool = bool(config.get(CONF_CURRENT_LIMIT_NONE))
@@ -571,6 +574,8 @@ class ChargingController:
                 else:
                     self.plan = stored
             self._plan_charge = saved.get("plan_charge") is True
+            origin = saved.get("charge_origin")
+            self._charge_origin = origin if isinstance(origin, str) else None
             raw_requested = saved.get("requested_current_a")
             validated_requested = _validate_stored_amps(raw_requested)
             if raw_requested is not None and validated_requested is None:
@@ -1285,6 +1290,10 @@ class ChargingController:
         # A plan window's start is a plan charge; a person's, solar's or a webhook's is not, and
         # stays outside the stop of a charge that strays from a replaced plan.
         self._plan_charge = cause == "plan_window" and not manual
+        origin = "manual" if manual else cause or "other"
+        origin_changed = origin != self._charge_origin
+        was_origin = self._charge_origin
+        self._charge_origin = origin
         if not self._control_on:
             # Recorded before the first await: an accepted Start the charger has not answered is not
             # a failure, and the observation must not blame the car (see `charge_progress.py`).
@@ -1301,6 +1310,7 @@ class ChargingController:
                 self._start_write_pending = False
                 self._hold.owned = was_owned
                 self._plan_charge = was_plan_charge
+                self._charge_origin = was_origin
             elif (
                 explicit_amps is not None
                 and self._writes_current_at_start
@@ -1308,7 +1318,7 @@ class ChargingController:
             ):
                 # A charger that only stores a value while paused takes it once it is running.
                 await self._async_assign_current_outcome(explicit_amps, reason=WRITE_SESSION_START)
-        if executed and self._plan_charge != was_plan_charge:
+        if executed and (self._plan_charge != was_plan_charge or origin_changed):
             await self._async_save_quietly()
         self._notify()
         return executed
@@ -1664,15 +1674,21 @@ class ChargingController:
         # What cannot be read (a restart before the charger's entities exist) says nothing about
         # whether the charge is still running, so the flag survives until it can be seen.
         plan_charge = self._plan_charge
+        origin = self._charge_origin
         if self._stop_needed:
             await self.adapter.async_stop()
             self._plan_charge = False
+            self._charge_origin = None
         elif self._control_observation is not None:
             self._plan_charge = False
-        if plan_charge and not self._plan_charge and not clear_schedule:
+            self._charge_origin = None
+        if (
+            (plan_charge and not self._plan_charge) or origin != self._charge_origin
+        ) and not clear_schedule:
             await self._async_save_quietly()
         if clear_schedule:
             self._plan_charge = False
+            self._charge_origin = None
             self.plan = None
             self._cancel_timers()
             self._async_disarm_target_listener()
@@ -1699,6 +1715,11 @@ class ChargingController:
         # Terminal and silent: an unexpired grace period must not produce an advisory about a
         # charger nobody is observing.
         self._charge_progress.shutdown()
+
+    @property
+    def charge_origin(self) -> str | None:
+        """Who started the running charge (`manual`, `solar`, `plan_window`, `other`), or `None`."""
+        return self._charge_origin
 
     @property
     def charging(self) -> bool:
@@ -1807,6 +1828,9 @@ class ChargingController:
         observation point instead of by a polling loop.
         """
         self._charge_progress.evaluate()
+        if self._charge_origin is not None and not self.charging and self._control_observation is False:
+            # The charge ended by itself: its origin must not label the next one.
+            self._charge_origin = None
         for listener in self._listeners:
             listener()
 
@@ -1832,6 +1856,7 @@ class ChargingController:
                 "plan": asdict(self.plan) if self.plan else None,
                 "requested_current_a": self._requested_current_a,
                 "plan_charge": self._plan_charge,
+                "charge_origin": self._charge_origin,
                 # Written only by the target-stop path. A window ending normally and an explicit cancel
                 # record nothing here (`async_stop` does not touch this key).
                 "target_stop": self._target_stop,

@@ -3,6 +3,12 @@
     "binary_sensor": {
       "schedule_active": {
         "default": "mdi:calendar-clock"
+      },
+      "grid_charging": {
+        "default": "mdi:transmission-tower-import"
+      },
+      "grid_charging_site": {
+        "default": "mdi:transmission-tower-import"
       }
     },
     "button": {

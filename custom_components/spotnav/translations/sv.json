@@ -454,6 +454,12 @@
     "binary_sensor": {
       "schedule_active": {
         "name": "Laddschema aktivt"
+      },
+      "grid_charging": {
+        "name": "Laddar från nätet"
+      },
+      "grid_charging_site": {
+        "name": "Laddar från nätet"
       }
     },
     "button": {

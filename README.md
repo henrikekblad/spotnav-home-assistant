@@ -77,6 +77,8 @@ match and choose **Approve**. No Home Assistant password or token is stored on t
 - [Target state of charge](docs/target-soc.md): vehicles, estimates and stopping at a target.
 - [Site and load balancing](docs/site-and-load-balancing.md): main fuse, measurement sources,
   active control.
+- [Home batteries](docs/home-battery.md): the "charging from the grid" signal for Predbat,
+  EMHASS and automations.
 - [OCPP chargers](docs/ocpp.md): entity model, current control, connectors.
 - [Apps and API](docs/api.md): pairing, webhook and WebSocket contracts.
 - [Diagnostics and troubleshooting](docs/troubleshooting.md).
