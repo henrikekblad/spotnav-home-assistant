@@ -46,6 +46,9 @@ def test_a_forecast_is_awaited_only_by_hybrid_with_sources_chosen_and_none_read(
     assert pending(hybrid, site) is True
     site.hybrid_state = {"forecast_sources": ["entry"]}
     assert pending(hybrid, site) is False, "ends as soon as a source reports"
+    site.hybrid_state = {"forecast_sources": []}
+    assert pending(hybrid, site, lambda _entry_id: True) is False, "ends once the forecast entry has loaded"
+    assert pending(hybrid, site, lambda _entry_id: False) is True
     assert pending(SimpleNamespace(strategy="cheapest"), SimpleNamespace(
         solar_forecast_selected=("entry",), hybrid_state=None)) is False
 

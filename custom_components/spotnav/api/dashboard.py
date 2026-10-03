@@ -20,7 +20,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field, replace
 from datetime import date, datetime, timedelta
-from typing import Any, Final, Iterable, Sequence
+from typing import Any, Callable, Final, Iterable, Sequence
 
 import voluptuous as vol
 from homeassistant.components import websocket_api
@@ -830,13 +830,27 @@ def _held_documents(
     return (tuple(documents), tuple(held))
 
 
-def _forecast_pending(settings: Any, site: CapturedSite | None) -> bool:
+def _forecast_pending(
+    settings: Any, site: CapturedSite | None, loaded: Callable[[str], bool] = lambda _entry_id: False
+) -> bool:
     """Whether hybrid waits for a configured solar forecast that has not yet loaded: sources are
-    chosen and none has been read. Only the hybrid strategy depends on one.
+    chosen, none has been read, and not every chosen forecast integration has finished loading.
+    Only the hybrid strategy depends on one. A loaded integration ends the wait at once; hybrid's
+    own next reading (which may come minutes later) is not awaited.
     """
     if settings is None or strategy_of(settings) != STRATEGY_HYBRID or site is None:
         return False
-    return bool(site.solar_forecast_selected) and not (site.hybrid_state or {}).get("forecast_sources")
+    if not site.solar_forecast_selected or (site.hybrid_state or {}).get("forecast_sources"):
+        return False
+    return not all(loaded(entry_id) for entry_id in site.solar_forecast_selected)
+
+
+def _entry_loaded(hass: HomeAssistant) -> Callable[[str], bool]:
+    def loaded(entry_id: str) -> bool:
+        entry = hass.config_entries.async_get_entry(entry_id)
+        return entry is not None and entry.state is ConfigEntryState.LOADED
+
+    return loaded
 
 
 def capture_dashboard(
@@ -887,7 +901,7 @@ def capture_dashboard(
     starting_up = startup_state(
         now=now,
         started_at=domain_data(hass).started_at,
-        forecast_pending=_forecast_pending(settings, site),
+        forecast_pending=_forecast_pending(settings, site, _entry_loaded(hass)),
         charger_pending=bool(controller is not None and controller.states_unreported),
     )
     return CapturedDashboard(
