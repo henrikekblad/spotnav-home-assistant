@@ -2259,5 +2259,9 @@
       "savings_estimate": true,
       "estimated": false
     }
+  },
+  "connection": {
+    "source": null,
+    "state": "unknown"
   }
 }

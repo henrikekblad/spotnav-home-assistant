@@ -17,6 +17,9 @@ import {
   ACTION_STOP,
   API_VERSION,
   CHARGE_PROGRESS_STATES,
+  CONNECTION_STATES,
+  type ConnectionState,
+  type ConnectionStateName,
   type ChargeProgressState,
   type ChargeProgress,
   type SettingsRecord,
@@ -253,6 +256,8 @@ export interface Dashboard {
   phase_detection: PhaseDetection;
   chargers: Array<{ id: string; name: string }>;
   status: Status;
+  /** The charger's connection state; `null` when the backend leaves it out or the block is unreadable. */
+  connection: ConnectionState | null;
 }
 
 /**
@@ -1379,6 +1384,7 @@ export function decodeDashboard(raw: unknown): DecodeResult {
           return { id: text(item, "id"), name: text(item, "name") };
         }),
         status: decodeStatus(record(required(root, "status"))),
+        connection: connectionOrNull(root),
       },
     };
   } catch {
@@ -1422,7 +1428,28 @@ const DASHBOARD_KEYS = [
  * `sessions_summary` (this and last month's charge sessions, for a client that wants them there)
  * is accepted and never read (the card's History view asks `spotnav/get_sessions`).
  */
-const OPTIONAL_DASHBOARD_KEYS = ["sessions_summary"] as const;
+const OPTIONAL_DASHBOARD_KEYS = ["sessions_summary", "connection"] as const;
+
+/**
+ * The `connection`, or `null` when the block is missing or unreadable. Independent like `charge_progress`:
+ * it only hides the status in the header.
+ */
+function connectionOrNull(root: Record<string, unknown>): ConnectionState | null {
+  const value = root.connection;
+  if (!isRecord(value)) {
+    return null;
+  }
+  try {
+    exactKeys(value, ["state", "source"]);
+    const state = text(value, "state");
+    if (!(CONNECTION_STATES as readonly string[]).includes(state)) {
+      return null;
+    }
+    return { state: state as ConnectionStateName, source: textOrNull(value, "source") };
+  } catch {
+    return null;
+  }
+}
 
 function strategyOptions(root: Record<string, unknown>): string[] {
   const options = arrayValue(root, "strategy_options").map((entry) =>

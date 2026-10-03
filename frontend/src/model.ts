@@ -30,6 +30,7 @@ import {
   ACTION_START,
   ACTION_STOP,
   CHARGE_PROGRESS_VEHICLE_NOT_REQUESTING_CURRENT,
+  type ConnectionState,
   type ManualAction,
   type SettingsRecord,
 } from "./types";
@@ -214,6 +215,8 @@ export interface CardModel {
   site: SiteFacts | null;
   currentRange: CurrentRangeFacts;
   soc: Soc | null;
+  /** The charger's connection state for the header line; `null` when the backend says nothing. */
+  connection: ConnectionState | null;
   vehicles: Vehicle[];
   targetVehicleId: string | null;
   planRelation: PlanRelationKind;
@@ -684,6 +687,7 @@ export function buildModel(input: BuildInput): CardModel {
     site: siteFactsFor(dashboard.site, language),
     currentRange: currentRangeFor(dashboard),
     soc: socFor(dashboard),
+    connection: dashboard.connection,
     vehicles: vehiclesFor(dashboard),
     targetVehicleId: targetVehicleIdFor(dashboard),
     contextArea: market?.area_id ?? market?.area_name ?? null,

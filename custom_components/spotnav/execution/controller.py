@@ -669,6 +669,10 @@ class ChargingController:
         """Whether the charger's own scheduler or load balancer holds the charge."""
         return self.adapter.held_by_charger()
 
+    def connection(self) -> tuple[str, str | None]:
+        """The charger's connection state and the entity it came from (`charger_connection.py`)."""
+        return self.adapter.connection()
+
     @property
     def charger_disabled(self) -> bool:
         """Whether the charger's own enable switch is off (Easee's `is_enabled`): it cannot start while

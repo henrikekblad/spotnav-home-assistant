@@ -62,7 +62,7 @@ import type { Vehicle } from "./validate";
 import { vehicleSummary } from "./vehicle-settings";
 import { issueText } from "./status";
 import { historyBody, type HistoryState, type HistoryUi } from "./history";
-import { vehicleChoicesFor, vehicleLineFor } from "./vehicle-line";
+import { connectionLabel, vehicleChoicesFor, vehicleLineFor } from "./vehicle-line";
 import {
   fiscalRows,
   planSummaryParts,
@@ -804,6 +804,9 @@ export function createCardView(input: CardViewInput): CardView {
   header.append(brandMark(doc, idPrefix));
   const vehicleLine = vehicleLineFor(model.language, model.soc, model.dashboardSettings);
   let vehicleButton: HTMLButtonElement | null = null;
+  const connectionText = connectionLabel(model.language, model.connection);
+  const connectionClass = (): string =>
+    model.connection?.state === "error" ? `${C.connectionLine} ${C.connectionError}` : C.connectionLine;
   if (vehicleLine !== null) {
     // The name and the planned vehicle stack in one block, so the line sits under the name.
     const identity = element(doc, "div", C.nameBlock);
@@ -827,10 +830,29 @@ export function createCardView(input: CardViewInput): CardView {
     if (vehicleLine.age !== null) {
       vehicleButton.append(element(doc, "span", C.vehicleLineAge, `\u00b7 ${vehicleLine.age}`));
     }
+    if (connectionText !== null) {
+      const status = element(doc, "span", connectionClass(), `\u00b7 ${connectionText}`);
+      status.dataset["connection"] = model.connection?.state ?? "";
+      vehicleButton.append(status);
+      vehicleButton.setAttribute(
+        "aria-label",
+        `${vehicleLine.ariaLabel}, ${connectionText}`,
+      );
+    }
     vehicleButton.addEventListener("click", () => {
       openVehicleChoice();
     });
     identity.append(vehicleButton);
+    header.append(identity);
+  } else if (connectionText !== null) {
+    // No vehicle: the status alone under the name.
+    const identity = element(doc, "div", C.nameBlock);
+    if (model.chargerName !== null) {
+      identity.append(element(doc, "h3", C.name, model.chargerName));
+    }
+    const status = element(doc, "p", connectionClass(), connectionText);
+    status.dataset["connection"] = model.connection?.state ?? "";
+    identity.append(status);
     header.append(identity);
   } else if (model.chargerName !== null) {
     header.append(element(doc, "h3", C.name, model.chargerName));

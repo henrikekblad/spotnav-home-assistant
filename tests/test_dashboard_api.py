@@ -123,6 +123,7 @@ DASHBOARD_SECTIONS = [
     "status",
     "summary",
     "sessions_summary",
+    "connection",
 ]
 
 #: One chart row, exactly.
@@ -903,7 +904,7 @@ def test_serializers_cannot_consult_live_state() -> None:
     for name in serializers:
         function = getattr(dashboard_api, name)
         parameters = inspect.signature(function).parameters
-        assert set(parameters) <= {"capture", "charger", "chargers", "settings", "area_entry", "site", "component", "suggestion", "unit", "intervals", "can_act", "active_control_writable", "soc", "vehicle", "summary", "phases"}, (name, list(parameters))
+        assert set(parameters) <= {"capture", "charger", "chargers", "settings", "area_entry", "site", "component", "suggestion", "unit", "intervals", "can_act", "active_control_writable", "soc", "vehicle", "summary", "phases", "connection"}, (name, list(parameters))
         assert "hass" not in parameters, name
 
 # ------------------------------------------------- the states the contract must distinguish

@@ -133,6 +133,65 @@ describe("the vehicle line", () => {
   });
 });
 
+describe("the charger status in the header line", () => {
+  const withConnection = (state: string, soc: Record<string, unknown> = {}): Record<string, any> => {
+    const payload = withSoc({ value: 96, vehicle_name: "EV6", ...soc }, { driver: "manual_kwh" });
+    payload["connection"] = { state, source: "sensor.charger_status" };
+    return payload;
+  };
+  const status = (element: Element): Element | null => shadow(element).querySelector("[data-connection]");
+
+  it.each<[string, string, string]>([
+    ["disconnected", "en", "Not connected"],
+    ["connected", "en", "Connected"],
+    ["charging", "en", "Charging"],
+    ["paused", "en", "Paused"],
+    ["finished", "en", "Finished"],
+    ["error", "en", "Error"],
+    ["disconnected", "sv", "Ej ansluten"],
+    ["connected", "sv", "Ansluten"],
+    ["charging", "sv", "Laddar"],
+    ["paused", "sv", "Pausad"],
+    ["finished", "sv", "Klar"],
+    ["error", "sv", "Fel"],
+    ["connected", "da", "Tilsluttet"],
+    ["connected", "nb", "Tilkoblet"],
+    ["connected", "fi", "Kytketty"],
+  ])("appends the %s status after the charge in %s", async (state, language, words) => {
+    const { element } = await mounted(withConnection(state), language as "en");
+    expect(line(element)!.textContent).toBe(`EV6· 96 %· ${words}`);
+    expect(status(element)!.textContent).toBe(`· ${words}`);
+  });
+
+  it("marks an error in the warning colour only", async () => {
+    const error = await mounted(withConnection("error"));
+    expect(status(error.element)!.classList.contains("spotnav-connection-error")).toBe(true);
+    const fine = await mounted(withConnection("charging"));
+    expect(status(fine.element)!.classList.contains("spotnav-connection-error")).toBe(false);
+  });
+
+  it("shows nothing for an unknown state, a missing block or an unreadable one", async () => {
+    const unknown = await mounted(withConnection("unknown"));
+    expect(status(unknown.element)).toBeNull();
+    expect(line(unknown.element)!.textContent).toBe("EV6· 96 %");
+    const missing = withConnection("charging");
+    delete missing["connection"];
+    expect(status((await mounted(missing)).element)).toBeNull();
+    const bad = withConnection("charging");
+    bad["connection"] = { state: "levitating", source: null };
+    expect(status((await mounted(bad)).element)).toBeNull();
+  });
+
+  it("shows only the status, under the name, when there is no vehicle", async () => {
+    const { element } = await mounted(withConnection("disconnected", { vehicle_id: null, vehicle_name: null, value: null }));
+    expect(line(element)).toBeNull();
+    const block = shadow(element).querySelector(".spotnav-name-block")!;
+    expect(block.querySelector(".spotnav-name")?.textContent).toBe("Wallbox");
+    expect(status(element)!.textContent).toBe("Not connected");
+    expect(block.lastElementChild).toBe(status(element));
+  });
+});
+
 describe("the vehicle dialog", () => {
   it("lists every vehicle with its charge, the planned one selected", async () => {
     const { element } = await mounted(twoVehicles());

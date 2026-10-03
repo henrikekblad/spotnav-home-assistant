@@ -54,6 +54,27 @@ export interface ChargeProgress {
 }
 
 /**
+ * The charger's connection state as the backend publishes it (`charger_connection.py`): wire strings.
+ * `unknown` says nothing is shown.
+ */
+export const CONNECTION_STATES = [
+  "disconnected",
+  "connected",
+  "charging",
+  "paused",
+  "finished",
+  "error",
+  "unknown",
+] as const;
+export type ConnectionStateName = (typeof CONNECTION_STATES)[number];
+
+/** The `connection` block: the state and the entity it was read from (`null` when none). */
+export interface ConnectionState {
+  state: ConnectionStateName;
+  source: string | null;
+}
+
+/**
  * One action answer: the stable envelope. `ok: false` carries a stable code, never prose; a committed
  * failure (`spotnav_action_reconcile_failed`) and a pre-effect one (`spotnav_action_failed`) differ.
  */

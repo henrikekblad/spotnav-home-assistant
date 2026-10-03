@@ -33,6 +33,10 @@
     "phases": 1,
     "vehicle": 1
   },
+  "connection": {
+    "source": null,
+    "state": "unknown"
+  },
   "control": {
     "automatic_action": "pause",
     "automatic_action_reason": null,

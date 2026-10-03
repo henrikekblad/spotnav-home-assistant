@@ -522,6 +522,7 @@ describe("the backend's dashboard strategy_state, site and status fixtures", () 
           "charger",
           "chargers",
           "charging_phases",
+          "connection",
           "control",
           "current_range",
           "detected_phases",
