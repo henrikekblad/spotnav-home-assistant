@@ -151,6 +151,8 @@ def _site_diagnostics(hass: HomeAssistant, entry: ConfigEntry) -> dict[str, Any]
         # What the regulator did, newest last, bounded: when, from and to amps, why, the limiting
         # phase, the battery's power and the measured currents. A plain list a bundle can read.
         "regulator_decision_log": [] if controller is None else controller.regulator_decision_log,
+        # The battery-on-the-fuse probe per charger: state, last outcome and why, back-off left.
+        "battery_probe": {} if controller is None else controller.battery_probe_snapshot,
     }
 
 
