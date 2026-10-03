@@ -177,3 +177,48 @@ async def test_a_site_without_reactive_power_gets_an_estimated_state_in_the_conf
     assert measurement["current_estimated"] is True
     assert measurement["assumed_power_factor"] == 0.9
     assert measurement["basis"] == {phase: "estimated" for phase in PHASES}
+
+
+async def test_an_export_half_on_some_phases_only_is_refused_and_a_full_set_is_saved(
+    hass: HomeAssistant, hass_ws_client
+) -> None:
+    charger, site = await setup_charger_and_site(
+        hass, measurement_mode=MEASUREMENT_MODE_DERIVED, derived_entities=derived(hass, "d")
+    )
+    client = await admin(hass, hass_ws_client)
+    exports = {
+        phase: register(hass, "sensor", f"d_e_{phase.lower()}", device_class="power") for phase in PHASES
+    }
+
+    partial = await ws_call(
+        client,
+        update_entity_config_message(
+            charger.entry_id,
+            scope="site",
+            changes={"derived_L1_power_export": exports["L1"], "grid_power_inverted": False},
+        ),
+    )
+
+    assert partial["result"]["ok"] is False
+    assert partial["result"]["field_errors"] == [
+        {"field": "derived_L2_power_export", "code": "required"},
+        {"field": "derived_L3_power_export", "code": "required"},
+    ]
+    stored = hass.config_entries.async_get_entry(site.entry_id).data
+    assert "power_export" not in stored[CONF_DERIVED_ENTITIES]["L1"]
+    assert CONF_GRID_POWER_INVERTED not in stored or stored[CONF_GRID_POWER_INVERTED] is False
+
+    complete = await ws_call(
+        client,
+        update_entity_config_message(
+            charger.entry_id,
+            scope="site",
+            changes={f"derived_{phase}_power_export": entity for phase, entity in exports.items()}
+            | {"grid_power_inverted": False},
+        ),
+    )
+
+    assert complete["result"]["ok"] is True
+    stored = hass.config_entries.async_get_entry(site.entry_id).data
+    assert all(stored[CONF_DERIVED_ENTITIES][phase]["power_export"] == exports[phase] for phase in PHASES)
+    assert stored[CONF_GRID_POWER_INVERTED] is False
