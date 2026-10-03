@@ -1739,9 +1739,7 @@ export function createCardView(input: CardViewInput): CardView {
         ),
       );
     }
-    if (model.priceSource !== null) {
-      marketSection.append(sourceLine(doc, model.language, model.priceSource));
-    }
+    // The price source is named in the area dialog only, beside the area choice (not in this overview).
     for (const fiscal of fiscalRows(model.language, model.dashboardFiscal)) {
       marketSection.append(overviewRow(fiscal.key, fiscal.label, fiscal.value));
     }
