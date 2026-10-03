@@ -63,6 +63,16 @@ is all three: they are locked as included in the price and nothing is added for 
 area's override says. It is withheld from the webhook like the two fields above (ask with
 `"reads": ["fiscal_included"]`); a replacement that echoes it is accepted and it is never stored.
 
+The record also carries `notifications` (see [Notifications](notifications.md)): `targets` (notify
+service names such as `mobile_app_pixel_8`, at most ten), `events` (any of `plan_stopped`,
+`plan_at_risk`, `charge_complete`, `charge_started`, `plugged_in`, `unplugged`, `plan_installed`;
+default the first three), `url` (a Home Assistant path a tap opens, or `null` for the default
+dashboard) and a read-only `available` (`[{"service", "name"}]`, the Companion app's notify services
+that exist now, named after their phones). A replacement may leave the field out, and then the stored
+choice is kept; `available` may be echoed and is ignored; a bad value is refused with
+`invalid_notifications`. It is withheld from the webhook like the fields above (ask with
+`"reads": ["notifications"]`).
+
 Turning **active load balancing** on or off is not available through the webhook, only through
 the WebSocket by an administrator.
 
