@@ -57,6 +57,11 @@ _LOGGER = logging.getLogger(__name__)
 #: Greppable token carried by every solar start/stop/state-transition log line.
 SOLAR_SURPLUS_LOG_TOKEN: Final = "SOLAR_SURPLUS"
 
+#: After the integration loads, the charger's own measured current gets this long (seconds) to report
+#: before its absence is warned about: on every restart it is unavailable for a moment, and a warning
+#: about a state that is gone seconds later is noise.
+MEASUREMENT_WARNING_GRACE_S: Final = 120.0
+
 #: Token for hybrid arbitration handoff logs.
 HYBRID_LOG_TOKEN: Final = "HYBRID"
 
@@ -356,6 +361,9 @@ class SolarExecutionCoordinator:
         self._executor = executor
         self._store = store
         self._now = now
+        # When this coordinator first evaluated, for the start-up grace of the missing-measurement
+        # warning (set on that first evaluation so an injected clock is the one it reads).
+        self._born_at: float | None = None
         self._solar: SolarController | None = None
         self._site: SiteCapacityController | None = None
         self._site_unsub: Callable[[], None] | None = None
@@ -581,11 +589,18 @@ class SolarExecutionCoordinator:
         """INFO, once per actual change, under the `SOLAR_SURPLUS` token (this runs on every site
         recompute, far more often than the state changes).
         """
+        if self._born_at is None:
+            self._born_at = self._now()
         signature: tuple[Any, ...] = (verdict.state, verdict.action, verdict.reason)
         if signature == self._logged:
             return
+        warn_missing = verdict.reason == "charger_measurement_missing"
+        if warn_missing and self._now() - self._born_at < MEASUREMENT_WARNING_GRACE_S:
+            # Still starting up: say nothing and remember nothing, so the next tick after the grace
+            # warns if the measurement is still missing.
+            return
         self._logged = signature
-        if verdict.reason == "charger_measurement_missing":
+        if warn_missing:
             _LOGGER.warning(
                 "Solar on charger %s holds: the charger's own measured current is missing, so a charge "
                 "is never started, and a running one stays at the minimum current only while the grid shows "
