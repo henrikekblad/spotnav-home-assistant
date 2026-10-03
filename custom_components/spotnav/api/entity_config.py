@@ -48,6 +48,8 @@ from ..const import (
     CONF_BATTERY_DISCHARGE_POWER_ENTITY,
     CONF_CHARGE_CONTROL,
     CONF_CHARGER_ENTRY_IDS,
+    CONF_CHARGER_PRIORITY,
+    DEFAULT_CHARGER_PRIORITY,
     CONF_CONTROL_PATH,
     CONF_CURRENT_CONTROL,
     CONF_CURRENT_LIMIT,
@@ -99,6 +101,7 @@ from .entity_fields import (
     FIELD_BATTERY_AGGREGATE_POWER,
     FIELD_BATTERY_DISCHARGE_POWER,
     FIELD_CHARGE_CONTROL,
+    FIELD_CHARGER_PRIORITY,
     CURRENT_LIMIT_NONE,
     FIELD_CURRENT_LIMIT,
     FIELD_ENERGY_REGISTER,
@@ -220,6 +223,12 @@ def _write_charger(hass: HomeAssistant, entry: ConfigEntry, changes: dict[str, A
             updated.pop(CONF_POWER_ENTITY, None)
     if FIELD_VOLTAGE_BETWEEN_PHASES in changes:
         updated[CONF_VOLTAGE_BETWEEN_PHASES_V] = int(changes[FIELD_VOLTAGE_BETWEEN_PHASES])
+    if FIELD_CHARGER_PRIORITY in changes:
+        # Stored only while it differs from the default, so a charger left alone keeps exactly its old data.
+        if changes[FIELD_CHARGER_PRIORITY] == DEFAULT_CHARGER_PRIORITY:
+            updated.pop(CONF_CHARGER_PRIORITY, None)
+        else:
+            updated[CONF_CHARGER_PRIORITY] = changes[FIELD_CHARGER_PRIORITY]
     if entry.data.get(CONF_MODE) == MODE_OCPP:
         apply_target(
             updated,

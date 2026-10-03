@@ -349,7 +349,9 @@ export function settingsEditorBody(
    */
   const appendDate = (into: HTMLElement): void => {
     const days = form.days ?? null;
+    const weekdays = weekdayGroup();
     if (days === null && dateInput.value === "") {
+      into.append(weekdays);
       return;
     }
     const group = element(doc, "fieldset", C.siteFieldset);
@@ -410,8 +412,40 @@ export function settingsEditorBody(
     });
     dateInput.addEventListener("input", paint);
     dateInput.addEventListener("change", paint);
-    into.append(group, dated);
+    into.append(group, dated, weekdays);
+    // The weekdays belong to the daily departure: a chosen date overrides them.
+    const paintWeekdays = (): void => {
+      weekdays.hidden = dateRadio.checked;
+    };
+    dateRadio.addEventListener("change", paintWeekdays);
+    dailyRadio.addEventListener("change", paintWeekdays);
+    paintWeekdays();
     paint();
+  };
+
+  /** The weekdays a daily departure applies on: one toggle per day, Monday first, named in the card's language. */
+  const weekdayChecks: HTMLInputElement[] = [];
+  const weekdayGroup = (): HTMLElement => {
+    const group = element(doc, "fieldset", C.siteFieldset);
+    group.dataset["part"] = "departure-weekdays";
+    group.append(element(doc, "legend", C.siteLegend, translate(language, "settings.deadline.weekdays")));
+    const chosen = new Set([...form.values.departureWeekdays].map(Number));
+    const row = element(doc, "div");
+    row.style.cssText = "display:flex;flex-wrap:wrap;gap:4px 12px";
+    for (let day = 1; day <= 7; day += 1) {
+      const check = doc.createElement("input") as HTMLInputElement;
+      check.type = "checkbox";
+      check.value = String(day);
+      check.checked = chosen.has(day);
+      check.disabled = form.readOnly;
+      check.dataset["weekday"] = String(day);
+      weekdayChecks.push(check);
+      const label = element(doc, "label", C.siteChoice);
+      label.append(check, doc.createTextNode(weekdayName(language, day)));
+      row.append(label);
+    }
+    group.append(row, element(doc, "p", C.settingsNote, translate(language, "settings.deadline.weekdaysHelp")));
+    return group;
   };
 
   const appendDeadline = (): void => {
@@ -771,6 +805,12 @@ export function settingsEditorBody(
     values.deadlineEnabled = enabledInput.checked;
     values.deadlineTime = timeInput.value;
     values.departureDate = dateInput.value;
+    if (weekdayChecks.length > 0) {
+      values.departureWeekdays = weekdayChecks
+        .filter((check) => check.checked)
+        .map((check) => check.value)
+        .join("");
+    }
     values.maxPeriods = periodsInput.value;
     values.current = currentInput.value;
     if (form.kind === "plan") {
@@ -827,4 +867,16 @@ export function settingsEditorBody(
   }
 
   return { body, values: read };
+}
+
+/** A weekday's short name, Monday (1) to Sunday (7), in the card's language. */
+function weekdayName(language: Language, day: number): string {
+  try {
+    // 2024-01-01 was a Monday.
+    return new Intl.DateTimeFormat(language, { weekday: "short", timeZone: "UTC" }).format(
+      new Date(Date.UTC(2024, 0, day)),
+    );
+  } catch {
+    return String(day);
+  }
 }

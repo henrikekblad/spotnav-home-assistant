@@ -54,6 +54,13 @@ from collections.abc import Collection, Mapping, Sequence
 from dataclasses import dataclass, field
 from typing import cast, Literal
 
+from ..const import (
+    CHARGER_PRIORITY_FIRST,
+    CHARGER_PRIORITY_LAST,
+    CHARGER_PRIORITY_NORMAL,
+    DEFAULT_CHARGER_PRIORITY,
+)
+
 
 PhaseName = Literal["L1", "L2", "L3"]
 PHASES: tuple[PhaseName, ...] = ("L1", "L2", "L3")
@@ -105,6 +112,8 @@ PhaseUnusableReason = Literal["missing", "invalid", "stale"]
 
 # Commonly the AC EVSE floor; overridable per charger (see `ChargerRequest`).
 DEFAULT_MIN_CURRENT_A = 6.0
+
+_PRIORITY_RANK = {CHARGER_PRIORITY_FIRST: 0, CHARGER_PRIORITY_NORMAL: 1, CHARGER_PRIORITY_LAST: 2}
 
 # Allowance for rounding/sensor noise when validating summed charger credits.
 MEASUREMENT_TOLERANCE_A = 0.5
@@ -227,6 +236,12 @@ class ChargerRequest:
     phase: PhaseName | None = None
     min_current_a: float = DEFAULT_MIN_CURRENT_A
     measured_current_a: DirectPhaseMeasurement | None = None
+    #: "first", "normal" or "last": where this charger stands in the allocation order.
+    priority: str = DEFAULT_CHARGER_PRIORITY
+    #: The charger's place in the site's own charger list (the order they joined), which settles
+    #: chargers of one priority; equal places fall back to the entry id, so the order never depends
+    #: on how the requests are listed.
+    order: int = 0
 
     def phases_used(self) -> tuple[PhaseName, ...] | None:
         """The phases this request draws from, or `None` if that's unknown."""
@@ -858,13 +873,25 @@ def _limiting_phase(
     return min(phases, key=lambda phase: headroom_a[phase])
 
 
+def allocation_order(requests: Sequence[ChargerRequest]) -> list[ChargerRequest]:
+    """The order a site serves its chargers in: "first" before "normal" before "last".
+
+    Chargers of one priority are taken in the site's own charger order (`order`, the order they
+    joined), not by their random entry ids; only equal places fall back to the id.
+    """
+    return sorted(
+        requests,
+        key=lambda request: (_PRIORITY_RANK.get(request.priority, 1), request.order, request.charger_entry_id),
+    )
+
+
 def allocate_chargers(
     phase_headroom_a: Mapping[PhaseName, float],
     requests: Sequence[ChargerRequest],
 ) -> dict[str, ChargerAllocation]:
     """Split each phase's headroom across every charger that uses it.
 
-    Chargers are taken in ascending `charger_entry_id` order, each reserving its
+    Chargers are taken in `allocation_order` (priority, then the site's charger order), each reserving its
     proposal. An unknown `requested_current_a` blocks every charger sharing one of
     its phases, since it draws an unquantified amount.
     """
@@ -877,7 +904,7 @@ def allocate_chargers(
 
     remaining = dict(phase_headroom_a)
     results: dict[str, ChargerAllocation] = {}
-    for request in sorted(requests, key=lambda r: r.charger_entry_id):
+    for request in allocation_order(requests):
         phases_used = request.phases_used()
         if phases_used is None:
             results[request.charger_entry_id] = ChargerAllocation(

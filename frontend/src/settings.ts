@@ -165,6 +165,17 @@ const BODY_KEYS = [
 ] as const;
 
 const RECORD_KEYS = [...BODY_KEYS, "revision"] as const;
+/** Keys a record may leave out: both were added after the first release of the contract. */
+const OPTIONAL_RECORD_KEYS = ["departure_date", "departure_weekdays"] as const;
+/** Every weekday, Monday (1) to Sunday (7): what a record without `departure_weekdays` means. */
+export const ALL_WEEKDAYS: readonly number[] = [1, 2, 3, 4, 5, 6, 7];
+
+function weekdays(source: Record<string, unknown>, key: string): number[] {
+  const days = list(source, key).map((day) =>
+    typeof day === "number" && Number.isInteger(day) && day >= 1 && day <= 7 ? day : bad(),
+  );
+  return days.length === 0 || new Set(days).size !== days.length ? bad() : [...days].sort((a, b) => a - b);
+}
 const ENVELOPE_KEYS = ["api_version", "ok", "error", "settings", "pause"] as const;
 const PAUSE_KEYS = ["choice", "admitted_at", "expires_at"] as const;
 
@@ -223,9 +234,12 @@ function decodeTarget(source: Record<string, unknown>): SettingsRecord["target"]
  */
 export function decodeSettingsRecord(raw: unknown): SettingsRecord {
   const source = record(raw);
-  // `departure_date` is the one optional key; every other key is required and nothing else is allowed.
-  const hasDate = Object.prototype.hasOwnProperty.call(source, "departure_date");
-  exactKeys(source, hasDate ? [...RECORD_KEYS, "departure_date"] : RECORD_KEYS);
+  // `departure_date` and `departure_weekdays` are the optional keys; every other key is required and nothing
+  // else is allowed.
+  const present = OPTIONAL_RECORD_KEYS.filter((key) => Object.prototype.hasOwnProperty.call(source, key));
+  const hasDate = present.includes("departure_date");
+  const hasWeekdays = present.includes("departure_weekdays");
+  exactKeys(source, [...RECORD_KEYS, ...present]);
   const revision = whole(source, "revision");
   if (revision < 0) {
     return bad();
@@ -241,6 +255,7 @@ export function decodeSettingsRecord(raw: unknown): SettingsRecord {
     departure_enabled: booleanValue(source, "departure_enabled"),
     departure_time: wallTime(source, "departure_time"),
     departure_date: hasDate ? dateOrNull(source, "departure_date") : null,
+    departure_weekdays: hasWeekdays ? weekdays(source, "departure_weekdays") : [...ALL_WEEKDAYS],
     strategy: oneOf(source, "strategy", STRATEGIES),
     driver: oneOf(source, "driver", DRIVERS),
     target: decodeTarget(record(source["target"])),
@@ -367,6 +382,7 @@ export function encodeBody(record: SettingsRecord): SettingsBody {
     departure_enabled: record.departure_enabled,
     departure_time: record.departure_time,
     departure_date: record.departure_date,
+    departure_weekdays: [...record.departure_weekdays],
     strategy: record.strategy,
     driver: record.driver,
     target: { ...record.target },
@@ -407,6 +423,8 @@ export interface SettingsFormValues {
   deadlineTime: string;
   /** `YYYY-MM-DD`, or `""` for a daily departure. */
   departureDate: string;
+  /** The weekdays a daily departure applies on, as the digits 1 (Monday) to 7 (Sunday) in ascending order. */
+  departureWeekdays: string;
   maxPeriods: string;
   current: string;
   driver: string;
@@ -422,6 +440,7 @@ export function formFromRecord(record: SettingsRecord): SettingsFormValues {
     deadlineEnabled: record.departure_enabled,
     deadlineTime: record.departure_time,
     departureDate: record.departure_date ?? "",
+    departureWeekdays: record.departure_weekdays.join(""),
     maxPeriods: String(record.max_periods),
     current: record.amps === null ? "" : String(record.amps),
     driver: record.driver,
@@ -723,6 +742,12 @@ export function replacementFor(
   if (date !== null && !date.ok) {
     return date;
   }
+  // The weekdays of a daily departure: at least one, in order, each once.
+  const dayList =
+    kind === "deadline" || kind === "plan" ? weekdaysFromText(values.departureWeekdays) : null;
+  if (dayList !== null && dayList === "invalid") {
+    return { ok: false, errorKey: "settings.error.weekdays" };
+  }
   // Mode switch: the driver, and on the target its percentage and vehicle. A field the form did not
   // move is not judged, so a stored out-of-bounds figure never blocks a Save of something else.
   const driverOk = values.driver === "manual_kwh" || values.driver === SETTINGS_DRIVER_TARGET_SOC;
@@ -794,6 +819,15 @@ export function replacementFor(
         time.value !== opened.departure_time ||
         periods.value !== opened.max_periods ||
         (date !== null && date.ok && date.value !== opened.departure_date)));
+  const weekdaysMoved =
+    dayList !== null &&
+    (opened === null
+      ? dayList.join("") !== record.departure_weekdays.join("")
+      : dayList.join("") !== opened.departure_weekdays.join(""));
+  if (weekdaysMoved && dayList !== null) {
+    next.departure_weekdays = dayList;
+    changed = changed || dayList.join("") !== record.departure_weekdays.join("");
+  }
   if (time !== null && time.ok && periods !== null && periods.ok && deadlineMoved) {
     next.departure_enabled = values.deadlineEnabled;
     next.departure_time = time.value;
@@ -810,6 +844,12 @@ export function replacementFor(
       (date !== null && date.ok && date.value !== record.departure_date);
   }
   return { ok: true, body: next, changed };
+}
+
+/** The weekday digits of a form as a sorted list, or `"invalid"` when none is chosen. */
+function weekdaysFromText(text: string): number[] | "invalid" {
+  const days = [...new Set([...text].map(Number))].filter((day) => day >= 1 && day <= 7).sort((a, b) => a - b);
+  return days.length === 0 ? "invalid" : days;
 }
 
 /** The current field, judged against the charger's range only when the reader moved it. */

@@ -44,12 +44,14 @@ limit, with `Retry-After`) or 502 (the charger command failed).
 | `update_vehicle` | Change a vehicle's capacity or consumption, with `expected` values. |
 | `update_site_settings` | Change solar priority or forecast sources of the charger's site. |
 
-**Withheld settings field.** The settings record has a `departure_date` (an optional `YYYY-MM-DD`,
+**Withheld settings fields.** The settings record has a `departure_weekdays` (an optional list of
+weekday numbers, 1 Monday to 7 Sunday, at least one, default all seven: the days a daily departure
+applies on) and a `departure_date` (an optional `YYYY-MM-DD`,
 or `null`, for a departure on a particular day). The webhook leaves it out of every `settings`
 record it answers: the dashboard's, and the `settings` action's success and failure alike. The
 released Android app refuses a settings record with a field it does not know, and with it the
 whole dashboard, so the field stays withheld until an app that reads it is out. The WebSocket
-carries it. A `settings` replacement over the webhook may leave it out, and then the stored date
+carries it. A `settings` replacement over the webhook may leave either out, and then the stored value
 is kept; one that names it is accepted and applied, but the answer still does not show it. The
 withheld fields are listed in `APP_UNREAD_SETTINGS` in `custom_components/spotnav/api/webhook.py`.
 
@@ -86,6 +88,36 @@ Rules that hold across them:
 - **Absence is not zero.** A missing value is `null`; nothing is coerced.
 - **The answer is a re-read**, captured after the write settles, never assembled from what the
   caller sent.
+
+## Home Assistant events
+
+Each charger has one **Charger events** entity (an `event` entity). It fires:
+
+| `event_type` | When | Attributes |
+|---|---|---|
+| `charge_started` | the charger starts charging | `energy_register_kwh` |
+| `charge_finished` | the charger stops charging | `unplugged`, and `energy_kwh` the charger's energy register counted since the start, when it has one |
+| `plugged_in` / `unplugged` | the vehicle is connected / disconnected, for a charger that can say | none |
+| `plan_installed` | a charging plan different from the one before is installed, by Auto or by hand | `start`, `end`, `periods`, `amps`, `energy_kwh`, `automatic` |
+| `plan_at_risk` | the departure cannot be met with the energy that remains; once each time it becomes so | `departure_time`, `requested_kwh` |
+
+Starting Home Assistant is not an event. Example, a notification when a charge ends:
+
+```yaml
+automation:
+  - alias: Car charged
+    triggers:
+      - trigger: state
+        entity_id: event.my_charger_charger_events
+        attribute: event_type
+        to: charge_finished
+    actions:
+      - action: notify.mobile_app_phone
+        data:
+          message: >
+            Charging finished
+            {{ trigger.to_state.attributes.energy_kwh | default('?') }} kWh.
+```
 
 ## The dashboard document
 

@@ -659,11 +659,11 @@ async def test_a_waiting_change_is_visibly_not_the_installed_plan(
 ) -> None:
     """Pending, applied and historical are three different readings, not one.
 
-    Flat prices put the plan's window at the fixture clock, so the charge is under way and a
+    Prices that only rise put the plan's window at the fixture clock, so the charge is under way and a
     material change has to wait for the boundary rather than replacing it.
     """
     entry = await setup_charger(hass)
-    serve(transport, flat=True)
+    serve(transport, rising=True)
     await go_auto(hass)
     plan_state = entity_id(hass, entry.entry_id, "auto_plan_state")
     execution_state = entity_id(hass, entry.entry_id, "auto_execution_state")
@@ -873,7 +873,7 @@ async def test_a_reload_creates_no_duplicate_entities_or_listeners(
     entries = er.async_entries_for_config_entry(er.async_get(hass), entry.entry_id)
     auto_ids = [item.unique_id for item in entries if "auto" in item.unique_id or "fiscal" in item.unique_id]
     assert auto_ids and len(auto_ids) == len(set(auto_ids)), "no Auto entity registered twice"
-    assert len(entries) == 42, "the surface this release creates, counted once"
+    assert len(entries) == 43, "the surface this release creates, counted once"
 
 
 

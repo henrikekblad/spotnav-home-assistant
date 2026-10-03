@@ -65,7 +65,7 @@ CURRENT_CONTROL_CHANGE_CONFIGURATION = "change_configuration"
 CURRENT_CONTROL_NUMBER = "number"
 # Set the current through Easee's own services (`easee.set_charger_dynamic_limit`).
 CURRENT_CONTROL_EASEE = "easee_dynamic_limit"
-PLATFORMS = ["binary_sensor", "button", "date", "number", "select", "sensor", "switch", "time"]
+PLATFORMS = ["binary_sensor", "button", "date", "event", "number", "select", "sensor", "switch", "time"]
 
 MAX_SCHEDULE_PERIODS = 8
 
@@ -94,6 +94,14 @@ DEFAULT_VOLTAGE_BETWEEN_PHASES_V = VOLTAGE_BETWEEN_PHASES_TN_V
 CONF_SAFETY_MARGIN_A = "safety_margin_a"
 CONF_MEASUREMENT_MODE = "measurement_mode"
 CONF_CHARGER_ENTRY_IDS = "charger_entry_ids"
+# A charger's place in its site's allocation order, on the charger entry: "first" is served before
+# "normal" (the default), "last" after it. Chargers of one rank keep the site's own charger order.
+CONF_CHARGER_PRIORITY = "charger_priority"
+CHARGER_PRIORITY_FIRST = "first"
+CHARGER_PRIORITY_NORMAL = "normal"
+CHARGER_PRIORITY_LAST = "last"
+CHARGER_PRIORITIES = (CHARGER_PRIORITY_FIRST, CHARGER_PRIORITY_NORMAL, CHARGER_PRIORITY_LAST)
+DEFAULT_CHARGER_PRIORITY = CHARGER_PRIORITY_NORMAL
 CONF_PHASE_WIRING = "phase_wiring"  # {charger_entry_id: {"phases": 1|3, "phase": "L1"|"L2"|"L3"|None}}
 CONF_DIRECT_ENTITIES = "direct_entities"  # {"L1": entity_id, "L2": ..., "L3": ...}
 # {"L1": {"power": id, "voltage": id, optional "power_export": id (P = power - power_export, for a

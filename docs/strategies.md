@@ -28,6 +28,12 @@ periods, and an optional departure time. The card marks what is missing.
 Buys the required energy in the cheapest quarter-hours before the departure time, within the
 maximum number of periods. With no departure time the plan covers the priced horizon.
 
+**Equal prices charge late.** When several quarter-hours cost exactly the same (a flat price, or a
+fixed price that does not change through the day), SpotNav picks the latest ones before the
+departure. The car stands plugged in, starts as late as the prices allow and leaves with the freshest
+charge. Earlier versions picked the earliest of equal quarter-hours, so a flat day started the charge
+at once.
+
 **A departure on a particular day.** In the card's Plan dialog, next to the departure time, you can
 choose a date up to seven days ahead ("Sun 4 Oct"); clearing it returns to a departure that repeats
 every day. With a date the plan reaches that far, but SpotNav still only charges in prices that are
@@ -37,6 +43,12 @@ it waits and says so: *Waiting: Sundays were 30 % cheaper the last 4 weeks*. It 
 charge can still be finished in time, buys what cannot wait, and plans again each time prices are
 published. Without a usable history, or without a clear saving, it plans on the published prices.
 A date that has gone by is ignored and forgotten the next time the settings are saved.
+
+**Only some weekdays.** In the card's Plan dialog, under **Every day**, the weekday buttons choose
+the days a daily departure applies on (all seven by default). On a day that is not chosen there is no
+departure and the plan runs to the next chosen day, with the same rules as a departure on a particular
+day: it charges in published prices and may wait for cheaper unpublished hours. A date you pick
+yourself overrides the weekdays.
 
 A daily departure whose morning lies beyond the last published price (before the afternoon
 publication) waits for the publication when that is safe. The history only explains that wait

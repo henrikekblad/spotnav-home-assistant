@@ -41,8 +41,10 @@ from ..const import (
     CONF_BATTERY_AGGREGATE_POWER_ENTITY,
     CONF_BATTERY_DISCHARGE_POWER_ENTITY,
     CONF_BATTERY_POWER_INVERTED,
+    CHARGER_PRIORITIES,
     CONF_CHARGE_CONTROL,
     CONF_CHARGER_ENTRY_IDS,
+    CONF_CHARGER_PRIORITY,
     CONF_CHARGER_PLATFORM,
     CONF_CONTROL_PATH,
     CONF_CURRENT_CONTROL,
@@ -62,6 +64,7 @@ from ..const import (
     CONF_SITE_CURRENT_SOURCE,
     CONF_MODE,
     CURRENT_CONTROL_NUMBER,
+    DEFAULT_CHARGER_PRIORITY,
     DEFAULT_MAX_AGE_S,
     DOMAIN,
     MEASUREMENT_MODE_DERIVED,
@@ -127,12 +130,16 @@ FIELD_VEHICLE_SOC: Final = "vehicle_soc"
 #: the field of a charger that is in no site (a charger in a site takes its site's).
 FIELD_VOLTAGE_BETWEEN_PHASES: Final = "voltage_between_phases_v"
 VOLTAGE_CHOICES: Final = tuple(str(volts) for volts in VOLTAGE_BETWEEN_PHASES_CHOICES)
+#: The charger's place in its site's allocation order: "first", "normal" (default) or "last". Only a
+#: charger in a site has one.
+FIELD_CHARGER_PRIORITY: Final = "charger_priority"
 CHARGER_FIELDS: Final = (
     FIELD_CHARGE_CONTROL,
     FIELD_CURRENT_LIMIT,
     FIELD_ENERGY_REGISTER,
     FIELD_POWER_ENTITY,
     FIELD_VOLTAGE_BETWEEN_PHASES,
+    FIELD_CHARGER_PRIORITY,
     FIELD_VEHICLE_SOC,
 )
 FIELD_MAIN_FUSE_A: Final = "main_fuse_a"
@@ -545,6 +552,7 @@ def current_charger_values(entry: ConfigEntry) -> dict[str, str]:
         FIELD_ENERGY_REGISTER: entry.data.get(CONF_ENERGY_REGISTER_ENTITY) or "",
         FIELD_POWER_ENTITY: entry.data.get(CONF_POWER_ENTITY) or "",
         FIELD_VOLTAGE_BETWEEN_PHASES: _voltage_text(entry),
+        FIELD_CHARGER_PRIORITY: entry.data.get(CONF_CHARGER_PRIORITY) or DEFAULT_CHARGER_PRIORITY,
     }
 
 
@@ -606,6 +614,13 @@ def charger_field_errors(
             errors.append(FieldError(FIELD_VOLTAGE_BETWEEN_PHASES, ERR_NOT_WRITABLE))
         elif (error := _voltage_error(changes)) is not None:
             errors.append(error)
+
+    if FIELD_CHARGER_PRIORITY in changes:
+        if site_for_charger(hass, entry.entry_id) is None:
+            # Only a site has an order to take a place in.
+            errors.append(FieldError(FIELD_CHARGER_PRIORITY, ERR_NOT_WRITABLE))
+        elif changes[FIELD_CHARGER_PRIORITY] not in CHARGER_PRIORITIES:
+            errors.append(FieldError(FIELD_CHARGER_PRIORITY, ERR_INVALID_VALUE))
 
     if (
         FIELD_CHARGE_CONTROL in resolved
@@ -686,6 +701,21 @@ def charger_field_descriptors(hass: HomeAssistant, entry: ConfigEntry) -> list[d
         *(
             [_voltage_descriptor("charger", values[FIELD_VOLTAGE_BETWEEN_PHASES])]
             if site_for_charger(hass, entry.entry_id) is None
+            else []
+        ),
+        *(
+            [
+                {
+                    "field": FIELD_CHARGER_PRIORITY,
+                    "scope": "charger",
+                    "kind": "enum",
+                    "required": True,
+                    "writable": True,
+                    "value": values[FIELD_CHARGER_PRIORITY],
+                    "choices": list(CHARGER_PRIORITIES),
+                }
+            ]
+            if site_for_charger(hass, entry.entry_id) is not None
             else []
         ),
         vehicle_soc_descriptor(hass),

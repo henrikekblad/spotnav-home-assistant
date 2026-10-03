@@ -313,9 +313,9 @@ async def test_different_hours_at_the_same_slot_count_are_a_material_change(
     """A plan that moved hours is a material change, even at equal cost and slot count.
 
     Two facts, in the two places they live. The live one: a period-cap change inside the 24-hour window
-    does not move this day's plan at all, so nothing is installed a second time. And the deciding one:
-    the key the executor compares holds the *hours*, so a proposal moved by an hour -- same energy,
-    same current, same phases -- is a different application.
+    moves this day's plan to other hours at the same money (equal costs go to the latest slots), so the
+    new plan is installed. And the deciding one: the key the executor compares holds the *hours*, so a
+    proposal moved by an hour -- same energy, same current, same phases -- is a different application.
     """
     serve(session.transport)
     for day in (TODAY, TOMORROW):
@@ -325,8 +325,8 @@ async def test_different_hours_at_the_same_slot_count_are_a_material_change(
     first = await session.set_auto(max_periods=1)
     second = await session.set_auto(max_periods=2)
 
-    assert len(install_spy) == 1, "the cap moved nothing, so nothing was installed twice"
-    assert second.proposal.periods == first.proposal.periods
+    assert len(install_spy) == 2, "the cap moved the hours, so the new plan was installed"
+    assert second.proposal.periods != first.proposal.periods
     assert second.proposal.estimated_cost == first.proposal.estimated_cost
     assert second.proposal.slots_needed == first.proposal.slots_needed
 
@@ -474,7 +474,7 @@ async def test_a_charging_window_is_not_shortened_and_the_change_waits_for_its_b
     session: Session, install_spy: list[ChargingPlan], plan_saves: list[Any]
 ) -> None:
     """The window charging now runs to its end; the newer plan takes over afterwards."""
-    serve(session.transport, flat=True)
+    serve(session.transport, rising=True)
     first = await session.set_auto(departure=time(20, 0))
     installed = session.executor.applied
     assert installed is not None and len(install_spy) == 1
@@ -909,11 +909,11 @@ async def test_diagnostics_report_an_execution_error_and_never_raise(
 async def prepare_pending(session: Session) -> str:
     """Give this charger Auto's plan charging now, and a material change waiting.
 
-    Real paths only: a flat day so the plan starts at the fixture clock, the clock advanced
+    Real paths only: a day that only gets dearer, so the plan starts at the fixture clock, the clock advanced
     into that window, then a different price document whose cheapest window moved. Returns the
     identity of the waiting change.
     """
-    serve(session.transport, flat=True)
+    serve(session.transport, rising=True)
     await session.set_auto(departure=time(20, 0))
     assert session.executor.applied is not None
     session.clock.advance(hours=2)
@@ -1018,7 +1018,7 @@ async def test_a_late_older_calculation_cannot_recreate_pending(
     session: Session, install_spy: list[ChargingPlan]
 ) -> None:
     """An old attempt's snapshot may not re-queue anything a newer result has dropped."""
-    serve(session.transport, flat=True)
+    serve(session.transport, rising=True)
     snapshot = await session.set_auto(departure=time(20, 0))
     assert len(install_spy) == 1
     settings = session.settings()

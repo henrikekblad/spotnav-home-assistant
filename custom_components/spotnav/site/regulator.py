@@ -29,6 +29,7 @@ from dataclasses import dataclass, field
 from typing import Literal, Mapping, Sequence
 
 from .site_capacity import (
+    allocation_order,
     ChargerRequest,
     PhaseName,
     PhaseUnusableReason,
@@ -463,7 +464,7 @@ def allocate_regulator_decisions(
     """One decision per charger, computed sequentially so chargers sharing a phase
     are never offered the same headroom.
 
-    Chargers are processed in `charger_entry_id` order. A per-phase `remaining`
+    Chargers are processed in `allocation_order` (priority, then the site's charger order). A per-phase `remaining`
     headroom starts at `site_result.measured_margin_a` and shrinks by
     `proposed - measured` after each decision. A `None` decision blocks its
     phases for the rest of the cycle; later chargers sharing one are refused.
@@ -473,7 +474,7 @@ def allocate_regulator_decisions(
     blocked_phases: set[PhaseName] = set()
     decisions: dict[str, RegulatorDecision] = {}
 
-    for request in sorted(requests, key=lambda r: r.charger_entry_id):
+    for request in allocation_order(requests):
         phases_used = request.phases_used()
         if phases_used is not None and blocked_phases.intersection(phases_used):
             decisions[request.charger_entry_id] = RegulatorDecision(

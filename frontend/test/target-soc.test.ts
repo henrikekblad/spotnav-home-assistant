@@ -40,6 +40,7 @@ function aRecord(overrides: Partial<SettingsRecord> = {}): SettingsRecord {
     departure_enabled: false,
     departure_time: "08:00",
     departure_date: null,
+    departure_weekdays: [1, 2, 3, 4, 5, 6, 7],
     strategy: "cheapest",
     driver: "target_soc",
     target: { vehicle_id: "car-1", target_percent: 80 },

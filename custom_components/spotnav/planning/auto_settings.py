@@ -407,6 +407,10 @@ def _stored_instant(value: Any, what: str) -> datetime | None:
     return parsed
 
 
+#: Every day of the week, as ISO weekday numbers (Monday is 1, Sunday is 7): the daily departure's default.
+ALL_WEEKDAYS: tuple[int, ...] = (1, 2, 3, 4, 5, 6, 7)
+
+
 @dataclass(frozen=True, slots=True)
 class AutoSettings:
     """One charger's Auto settings, as stored. Frozen, so a revision is a new value.
@@ -428,6 +432,10 @@ class AutoSettings:
     #: (the next occurrence of `departure`). Ranges against today are the controller's to judge, at the
     #: write; a date that has gone by is ignored by planning and cleared by the next write.
     departure_date: date | None = None
+    #: The weekdays (ISO numbers, Monday is 1, in ascending order) a daily departure applies on. On any other
+    #: day there is no departure and the plan runs to the next day in the set. A `departure_date` the person
+    #: chose overrides it. Everything is the default, every day.
+    departure_weekdays: tuple[int, ...] = ALL_WEEKDAYS
     #: Suspends automatic execution; a paused charger keeps calculating. Whether it is
     #: still in force is answered by `pause.is_active_at(now)`.
     pause: PauseIntent = field(default_factory=PauseIntent)
@@ -506,6 +514,13 @@ class AutoSettings:
             not isinstance(self.departure_date, date) or isinstance(self.departure_date, datetime)
         ):
             _refuse("invalid_departure", "departure_date must be a calendar date or absent")
+        if (
+            not isinstance(self.departure_weekdays, tuple)
+            or not self.departure_weekdays
+            or any(isinstance(day, bool) or not isinstance(day, int) or not 1 <= day <= 7 for day in self.departure_weekdays)
+            or len(set(self.departure_weekdays)) != len(self.departure_weekdays)
+        ):
+            _refuse("invalid_departure", "departure_weekdays must be one or more different weekdays, 1 (Monday) to 7 (Sunday)")
         if not isinstance(self.execution_paused, bool):
             _refuse("invalid_pause", "execution_paused must be a boolean")
         seen: set[str] = set()
@@ -522,6 +537,7 @@ class AutoSettings:
             self,
             requested_kwh=float(self.requested_kwh),
             overrides=tuple(sorted(self.overrides, key=lambda item: item.area_id)),
+            departure_weekdays=tuple(sorted(self.departure_weekdays)),
             target=self.target.validated(),
             pause=self.pause.validated(),
         )
@@ -546,6 +562,9 @@ class AutoSettings:
             # Additive: written only when set, so a record without a date stays what an older release
             # reads, and a stored record without the key is simply a daily departure.
             stored["departure_date"] = self.departure_date.isoformat()
+        if self.departure_weekdays != ALL_WEEKDAYS:
+            # Additive too: written only when some weekday is left out.
+            stored["departure_weekdays"] = list(self.departure_weekdays)
         return stored
 
     @classmethod
@@ -559,7 +578,7 @@ class AutoSettings:
             frozenset(cls().as_dict()),
             "unknown_field",
             "a stored settings record",
-            optional=frozenset({"departure_date"}),
+            optional=frozenset({"departure_date", "departure_weekdays"}),
         )
         revision = stored["revision"]
         if isinstance(revision, bool) or not isinstance(revision, int) or revision < 0:
@@ -585,6 +604,9 @@ class AutoSettings:
                 departure_date = date.fromisoformat(stored_date)
             except ValueError:
                 _refuse("invalid_departure", "a stored departure date must be an ISO date")
+        weekdays = stored.get("departure_weekdays", list(ALL_WEEKDAYS))
+        if not isinstance(weekdays, list):
+            _refuse("invalid_departure", "stored departure weekdays must be a list")
         return cls(
             revision=revision,
             area_id=stored["area_id"],
@@ -596,6 +618,7 @@ class AutoSettings:
             departure_enabled=stored["departure_enabled"],
             departure=departure,
             departure_date=departure_date,
+            departure_weekdays=tuple(weekdays),
             pause=PauseIntent.from_stored(stored["pause"]),
             driver=stored["driver"],
             target=TargetSocIntent.from_stored(stored["target"]),

@@ -114,6 +114,19 @@
         "writable": true
       },
       {
+        "choices": [
+          "first",
+          "normal",
+          "last"
+        ],
+        "field": "charger_priority",
+        "kind": "enum",
+        "required": true,
+        "scope": "charger",
+        "value": "normal",
+        "writable": true
+      },
+      {
         "allowed_device_classes": [
           "battery"
         ],

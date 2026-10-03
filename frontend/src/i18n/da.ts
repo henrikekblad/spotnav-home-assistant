@@ -153,6 +153,8 @@ export const da: Record<keyof typeof en, string> = {
   "entity.field.safetyMargin": "Sikkerhedsmargin",
   "entity.field.measurementMode": "Målemetode",
   "entity.field.voltageBetweenPhases": "Spænding mellem faser",
+  "entity.field.chargerPriority":
+    "Ladererens prioritet",
   "entity.field.batteryPower": "Batteriets effekt",
   "entity.field.maxAge": "Højeste måleralder",
   "entity.mode.direct": "Fasestrømme måles direkte",
@@ -187,8 +189,16 @@ export const da: Record<keyof typeof en, string> = {
   "entity.help.safetyMargin": "Strømmen i ampere, som SpotNav holder fri under hovedsikringen. Opladningen holdes under sikringen minus marginen, som derfor skal være lavere end sikringen.",
   "entity.help.measurementMode": "Om din måler angiver hver fases strøm direkte, eller SpotNav regner den ud fra effekt og spænding.",
   "entity.help.voltageBetweenPhases": "Spændingen mellem to faser i din elinstallation. Trefaset ladeeffekt regnes ud fra den.",
+  "entity.help.chargerPriority":
+    "Når flere ladere deler anlæggets sikring, får en lader sat til Først strøm før de andre, og en sat til Sidst får det, der er tilbage.",
   "entity.voltage.tn": "400 V (TN-net, det sædvanlige)",
   "entity.voltage.it": "230 V (IT-net, almindeligt i Norge)",
+  "entity.priority.first":
+    "Først",
+  "entity.priority.normal":
+    "Normal",
+  "entity.priority.last":
+    "Sidst",
   "entity.help.batteryPower": "En sensor for hjemmebatteriets effekt, så SpotNav kan tage højde for batteriet.",
   "entity.help.maxAge": "Hvor gammel en måling må være, i sekunder, før SpotNav holder op med at stole på den.",
   "entity.help.phaseDirect": "Sensoren der måler strømmen på denne fase, i ampere.",
@@ -525,6 +535,10 @@ export const da: Record<keyof typeof en, string> = {
     "Planen kan vente på timer, der plejer at være billigere. Afgangen holdes altid.",
   "settings.deadline.datePast":
     "Datoen er passeret, så planen kører hver dag, indtil du vælger en ny dato. Gemmer du, ryddes den.",
+  "settings.deadline.weekdays":
+    "Ugedage",
+  "settings.deadline.weekdaysHelp":
+    "På en dag, du udelader, er der ingen afgang: planen løber til næste dag, du har valgt.",
   "settings.deadline.today":
     "i dag",
   "settings.deadline.tomorrow":
@@ -575,6 +589,8 @@ export const da: Record<keyof typeof en, string> = {
     "Vælg en gyldig dato.",
   "settings.error.dateRange":
     "Vælg en dato fra i dag og op til 7 dage frem.",
+  "settings.error.weekdays":
+    "Vælg mindst én ugedag.",
   "settings.error.invalidTime":
     "Brug et klokkeslæt som 06:30.",
   "settings.error.read":

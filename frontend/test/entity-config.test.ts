@@ -125,7 +125,7 @@ describe("what a Save sends", () => {
 
   it("never offers the vehicle level for change", () => {
     const read = config("get_direct");
-    expect(Object.keys(draftFrom(read, "charger"))).toEqual(["charge_control", "current_limit", "energy_register_entity", "power_entity"]);
+    expect(Object.keys(draftFrom(read, "charger"))).toEqual(["charge_control", "current_limit", "energy_register_entity", "power_entity", "charger_priority"]);
   });
 
   it("clears an optional entity with an empty value, expecting the one it read", () => {

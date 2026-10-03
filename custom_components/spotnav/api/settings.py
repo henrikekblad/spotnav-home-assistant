@@ -5,8 +5,9 @@ public face, so nothing here serializes `as_dict()` or accepts `from_stored()` p
 
 * Full replacement, never a patch: "absent" has exactly one meaning, and the client states every
   value it wants.
-* One additive exception, `departure_date`: a replacement body may leave it out (an older client), and then the
-  stored date is kept; `null` clears it. Every other key is still required.
+* Two additive exceptions, `departure_date` and `departure_weekdays`: a replacement body may leave either out (an
+  older client), and then the stored value is kept; `departure_date: null` clears the date. Every other key is
+  still required.
 * `revision` is not part of the body: the client names it in `expected_revision`, and a body
   carrying `revision` is refused as an unknown field rather than overriding the compare-and-set.
 * Absence is not zero: a fiscal component is off, on with a value, or on with none; `null` never
@@ -34,6 +35,7 @@ from homeassistant.util import dt as dt_util
 
 from ..planning.auto_controller import SettingsReconcileError
 from ..planning.auto_settings import (
+    ALL_WEEKDAYS,
     AreaAutoSettings,
     AutoSettings,
     AutoSettingsError,
@@ -64,6 +66,7 @@ SETTINGS_KEYS: Final = frozenset(
         "departure_enabled",
         "departure_time",
         "departure_date",
+        "departure_weekdays",
         "driver",
         "target",
     }
@@ -71,7 +74,7 @@ SETTINGS_KEYS: Final = frozenset(
 
 #: Keys a replacement body may leave out (added after the first release of this contract). Absent means "keep
 #: what is stored": a client that does not know the field must not clear what another one set. `null` clears.
-OPTIONAL_SETTINGS_KEYS: Final = frozenset({"departure_date"})
+OPTIONAL_SETTINGS_KEYS: Final = frozenset({"departure_date", "departure_weekdays"})
 
 #: The keys a replacement body must carry; the rest of `SETTINGS_KEYS` may be left out.
 REQUIRED_SETTINGS_KEYS: Final = SETTINGS_KEYS - OPTIONAL_SETTINGS_KEYS
@@ -207,6 +210,23 @@ def departure_date_to_wire(value: date | None) -> str | None:
     return None if value is None else value.isoformat()
 
 
+def departure_weekdays_from_wire(value: Any) -> tuple[int, ...]:
+    """A list of ISO weekday numbers, 1 (Monday) to 7 (Sunday), as a sorted tuple, or a refusal.
+
+    At least one, no repeats, whole numbers only (a boolean is not one), nothing coerced.
+    """
+    if not isinstance(value, list) or not value:
+        _refuse("invalid_departure", "departure_weekdays must be a non-empty list of weekdays")
+    days = []
+    for day in value:
+        if isinstance(day, bool) or not isinstance(day, int) or not 1 <= day <= 7:
+            _refuse("invalid_departure", "departure_weekdays holds whole numbers from 1 (Monday) to 7 (Sunday)")
+        days.append(day)
+    if len(set(days)) != len(days):
+        _refuse("invalid_departure", "departure_weekdays must not repeat a weekday")
+    return tuple(sorted(days))
+
+
 def departure_to_wire(departure: time) -> str:
     """A wall time as the dashboard already spells it."""
     return f"{departure.hour:02d}:{departure.minute:02d}"
@@ -247,6 +267,7 @@ def encode_settings(settings: AutoSettings) -> dict[str, Any]:
         "departure_enabled": settings.departure_enabled,
         "departure_time": departure_to_wire(settings.departure),
         "departure_date": departure_date_to_wire(settings.departure_date),
+        "departure_weekdays": list(settings.departure_weekdays),
         "driver": settings.driver,
         "target": encoded_target(settings.target),
     }
@@ -287,13 +308,21 @@ def decode_settings(raw: Any) -> AutoSettings:
         ),
         departure=departure_from_wire(stored["departure_time"]),
         departure_date=departure_date_from_wire(stored.get("departure_date")),
+        departure_weekdays=(
+            departure_weekdays_from_wire(stored["departure_weekdays"])
+            if "departure_weekdays" in stored
+            else ALL_WEEKDAYS
+        ),
         driver=_enum(stored["driver"], ("manual_kwh", "target_soc"), "invalid_driver"),
         target=_target(stored["target"]),
     ).validated()
 
 
 def replacement_mutator(
-    replacement: AutoSettings, *, keep_departure_date: bool = False
+    replacement: AutoSettings,
+    *,
+    keep_departure_date: bool = False,
+    keep_departure_weekdays: bool = False,
 ) -> Callable[[AutoSettings], AutoSettings]:
     """A full replacement expressed as the store's own mutation hook.
 
@@ -303,10 +332,13 @@ def replacement_mutator(
     """
 
     def mutate(current: AutoSettings) -> AutoSettings:
+        kept: dict[str, Any] = {}
         if keep_departure_date:
             # The body did not mention `departure_date`: an older client, which leaves it as it is.
-            return replace(replacement, pause=current.pause, departure_date=current.departure_date)
-        return replace(replacement, pause=current.pause)
+            kept["departure_date"] = current.departure_date
+        if keep_departure_weekdays:
+            kept["departure_weekdays"] = current.departure_weekdays
+        return replace(replacement, pause=current.pause, **kept)
 
     return mutate
 
@@ -486,6 +518,7 @@ async def async_update_settings(
     mutate = replacement_mutator(
         decoded,
         keep_departure_date=isinstance(replacement, Mapping) and "departure_date" not in replacement,
+        keep_departure_weekdays=isinstance(replacement, Mapping) and "departure_weekdays" not in replacement,
     )
     _refuse_amps_above_charger_range(hass, entry_id, decoded)
     controller = preview_for(hass, entry_id)

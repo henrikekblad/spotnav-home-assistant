@@ -49,7 +49,7 @@ async def test_get_reports_charger_and_direct_site_fields(hass: HomeAssistant, h
     assert set(site_block) == {"name", "charger_count", "measurement", "warnings", "detection"}
     names = [item["field"] for item in result["config"]["fields"]]
     assert names == [
-        "charge_control", "current_limit", "energy_register_entity", "power_entity", "vehicle_soc",
+        "charge_control", "current_limit", "energy_register_entity", "power_entity", "charger_priority", "vehicle_soc",
         "main_fuse_a", "safety_margin_a", "measurement_mode", "voltage_between_phases_v", "direct_L1", "direct_L2", "direct_L3",
         "site_current_signed", "grid_power_source_power", "grid_power_source_power_export", "grid_power_inverted",
         "battery_aggregate_power_entity", "battery_discharge_power_entity",
@@ -453,3 +453,33 @@ async def test_effective_is_null_when_nothing_is_read_and_configured_when_it_exi
     assert field(result, "current_limit")["effective"]["source"] == "configured"
     assert field(result, "energy_register_entity")["effective"] is None
     assert field(result, "vehicle_soc")["effective"] is None
+
+
+async def test_a_site_charger_takes_a_priority_and_a_lone_charger_has_none(hass: HomeAssistant, hass_ws_client) -> None:
+    from custom_components.spotnav.const import CONF_CHARGER_PRIORITY
+
+    charger, _ = await setup_charger_and_site(hass)
+    lone, _ = await setup_charger_and_site(hass, "lone", site=False)
+    client = await admin(hass, hass_ws_client)
+
+    assert field((await ws_call(client, get_message(charger.entry_id)))["result"], "charger_priority")["value"] == "normal"
+    lone_names = [i["field"] for i in (await ws_call(client, get_message(lone.entry_id)))["result"]["config"]["fields"]]
+    assert "charger_priority" not in lone_names
+
+    set_first = update_entity_config_message(
+        charger.entry_id, scope="charger", expected={"charger_priority": "normal"}, changes={"charger_priority": "first"}
+    )
+    result = (await ws_call(client, set_first))["result"]
+    assert result["ok"] is True and field(result, "charger_priority")["value"] == "first"
+    assert hass.config_entries.async_get_entry(charger.entry_id).data[CONF_CHARGER_PRIORITY] == "first"
+
+    back = update_entity_config_message(charger.entry_id, scope="charger", changes={"charger_priority": "normal"})
+    assert (await ws_call(client, back))["result"]["ok"] is True
+    assert CONF_CHARGER_PRIORITY not in hass.config_entries.async_get_entry(charger.entry_id).data
+
+    for entry_id, value, code in ((charger.entry_id, "urgent", "invalid_value"), (lone.entry_id, "first", "not_writable")):
+        refused = (
+            await ws_call(client, update_entity_config_message(entry_id, scope="charger", changes={"charger_priority": value}))
+        )["result"]
+        assert refused["error"] == "spotnav_invalid_value"
+        assert refused["field_errors"] == [{"field": "charger_priority", "code": code}]

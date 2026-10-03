@@ -91,7 +91,7 @@ async def test_delivered_energy_reduces_the_remaining_need_not_bought_twice(
     """
     _wire_energy_register(session)
     _set_register(session.hass, 0.0)
-    serve(session.transport, flat=True)
+    serve(session.transport, rising=True)
 
     requested_kwh = 10.0
     await session.set_auto(requested_kwh=requested_kwh, amps=10, phases=3, departure=time(20, 0))

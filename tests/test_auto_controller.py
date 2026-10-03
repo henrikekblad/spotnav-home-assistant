@@ -673,9 +673,9 @@ async def test_the_same_cost_at_different_hours_is_news(harness: Harness) -> Non
     """Equal money and equal slot count are not equal plans: the hours changed.
 
     Two facts, in the two places they live. The live one: a period-cap change inside the 24-hour window
-    does not move this day's plan at all, so a listener hears one proposal, not two. And the deciding
-    one: the key a listener is notified by is built from the proposal's own *hours*, so a plan moved by
-    an hour -- same money, same slot count -- is news.
+    moves this day's plan to other hours at the same money (equal costs go to the latest slots), and
+    the key a listener is notified by is built from the proposal's own *hours*, so it is news. And the
+    deciding one: a plan moved by an hour -- same money, same slot count -- is news too.
     """
     serve(harness.transport)
     for day in _BOTH:
@@ -694,9 +694,8 @@ async def test_the_same_cost_at_different_hours_is_news(harness: Harness) -> Non
     assert first.proposal is not None and second.proposal is not None
     assert second.proposal.slots_needed == first.proposal.slots_needed
     assert second.proposal.estimated_cost == first.proposal.estimated_cost
-    assert second.proposal.periods == first.proposal.periods, "the cap moved nothing here"
-    assert second.proposal.estimated_cost == first.proposal.estimated_cost
-    # The settings revision moved, so a listener is told once more; the *plan* is the same value.
+    assert second.proposal.periods != first.proposal.periods, "the same money, spent at other hours"
+    assert second.meaningful_key() != first.meaningful_key()
     assert recording.states == ["proposal_ready", "proposal_ready"]
 
     # The rule itself, on the values the key is made of: same count, same cost, one hour later.

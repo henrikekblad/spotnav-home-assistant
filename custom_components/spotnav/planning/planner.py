@@ -900,6 +900,14 @@ class _State:
     slots: tuple[int, ...]
 
 
+def _rank(state: _State) -> tuple[float, tuple[int, ...]]:
+    """What a state is compared by: lowest cost, then, among equal costs, the latest slots.
+
+    The indices run from the last chosen slot backwards and negated, so a later slot sorts first.
+    """
+    return state.cost, tuple(-index for index in reversed(state.slots))
+
+
 def _choose(
     candidates: list[PlanningSlot],
     needed: int,
@@ -913,8 +921,9 @@ def _choose(
     A dynamic program with state (chosen count, runs, previous slot chosen) and transitions
     skip / start a run / continue a run, so plans may be non-contiguous and the period cap
     binds properly (a greedy merge is not equivalent). [latest_end_inclusive] bounds the end
-    of any chosen slot; `None` means unbounded. Ties: states compare by `(cost, indices)` over
-    chronological candidates, so equal costs pick the earliest slots; no epsilon.
+    of any chosen slot; `None` means unbounded. Ties: states compare by `(cost, latest-first)` over
+    chronological candidates, so equal costs pick the latest slots (the car sits plugged in, charges
+    last and leaves with the freshest charge); no epsilon.
     """
     initial = _State(selected=0, runs=0, active=False, cost=0.0, slots=())
     states: dict[tuple[int, int, bool], _State] = {(0, 0, False): initial}
@@ -926,7 +935,7 @@ def _choose(
         def keep(state: _State) -> None:
             key = (state.selected, state.runs, state.active)
             existing = next_states.get(key)  # noqa: B023 - only called within this iteration
-            if existing is None or (state.cost, state.slots) < (existing.cost, existing.slots):
+            if existing is None or _rank(state) < _rank(existing):
                 next_states[key] = state  # noqa: B023
 
         for state in states.values():
@@ -950,7 +959,7 @@ def _choose(
     for state in states.values():
         if state.selected != needed:
             continue
-        if best is None or (state.cost, state.slots) < (best.cost, best.slots):
+        if best is None or _rank(state) < _rank(best):
             best = state
     return None if best is None else best.slots
 
