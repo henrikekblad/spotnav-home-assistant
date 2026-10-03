@@ -1324,6 +1324,36 @@ export function entityEditorBody(
     body.append(voltage.fieldset);
   }
 
+  // The charger's place in its site's allocation order: first, normal (the default) or last.
+  const priorityField = fieldsOf(config, scope).find((entry) => entry.field === "charger_priority");
+  if (priorityField !== undefined && priorityField.kind === "enum" && priorityField.writable) {
+    const priorityOptions = priorityField.choices.map((choice) => ({
+      value: choice,
+      label: (choice === "first"
+        ? "entity.priority.first"
+        : choice === "last"
+          ? "entity.priority.last"
+          : "entity.priority.normal") as TranslationKey,
+    }));
+    const priority = choiceGroup(
+      "priority",
+      "entity.field.chargerPriority",
+      priorityOptions,
+      () => values["charger_priority"] ?? priorityField.value ?? "normal",
+      (value) => {
+        values["charger_priority"] = value;
+      },
+      { intro: fieldHelp("charger_priority", "entity.help.chargerPriority") },
+    );
+    const priorityError = element(doc, "p", C.settingsError);
+    priorityError.hidden = true;
+    priorityError.dataset["fieldError"] = "charger_priority";
+    priorityError.setAttribute("role", "alert");
+    errorNodes.set("charger_priority", { node: priorityError, input: priority.fieldset });
+    priority.fieldset.append(priorityError);
+    body.append(priority.fieldset);
+  }
+
   const actions = element(doc, "div", C.settingsActions);
   const save = element(doc, "button", `${C.button} ${C.settingsSave}`, translate(language, "settings.save"));
   save.type = "submit";

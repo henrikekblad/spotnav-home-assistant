@@ -115,6 +115,8 @@ export const sv: Record<keyof typeof en, string> = {
   "entity.field.mainFuse": "Huvudsäkring",
   "entity.field.measurementMode": "Mätsätt",
   "entity.field.voltageBetweenPhases": "Spänning mellan faser",
+  "entity.field.chargerPriority":
+    "Laddarens prioritet",
   "entity.field.batteryPower": "Batteriets effekt",
   "entity.field.maxAge": "Högsta mätvärdesålder",
   "entity.mode.direct": "Fasströmmar mäts direkt",
@@ -148,8 +150,16 @@ export const sv: Record<keyof typeof en, string> = {
   "entity.help.mainFuse": "Anläggningens huvudsäkring i ampere. Alla laddare på anläggningen håller sig tillsammans under den.",
   "entity.help.measurementMode": "Om din mätare anger varje fas ström direkt, eller om SpotNav räknar ut den från effekt och spänning.",
   "entity.help.voltageBetweenPhases": "Spänningen mellan två faser i din elanläggning. Trefasig laddeffekt räknas ut från den.",
+  "entity.help.chargerPriority":
+    "När flera laddare delar anläggningens säkring får en laddare med Först tilldelad ström före de andra, och en med Sist får det som blir över.",
   "entity.voltage.tn": "400 V (TN-nät, det vanliga)",
   "entity.voltage.it": "230 V (IT-nät, vanligt i Norge)",
+  "entity.priority.first":
+    "Först",
+  "entity.priority.normal":
+    "Normal",
+  "entity.priority.last":
+    "Sist",
   "entity.help.batteryPower": "En sensor för hemmabatteriets effekt, så att SpotNav kan ta hänsyn till batteriet.",
   "entity.help.maxAge": "Hur gammal en mätning får vara, i sekunder, innan SpotNav slutar lita på den.",
   "entity.help.phaseDirect": "Sensorn som mäter strömmen på den här fasen, i ampere.",
@@ -487,6 +497,10 @@ export const sv: Record<keyof typeof en, string> = {
     "Planen kan vänta på timmar som brukar vara billigare. Avresan hålls alltid.",
   "settings.deadline.datePast":
     "Datumet har passerat, så planen körs varje dag tills du väljer ett nytt datum. Sparar du rensas det.",
+  "settings.deadline.weekdays":
+    "Veckodagar",
+  "settings.deadline.weekdaysHelp":
+    "En dag du utelämnar har ingen avresa: planen löper till nästa dag du valt.",
   "settings.deadline.today":
     "idag",
   "settings.deadline.tomorrow":
@@ -525,6 +539,8 @@ export const sv: Record<keyof typeof en, string> = {
     "Välj ett giltigt datum.",
   "settings.error.dateRange":
     "Välj ett datum från idag och upp till 7 dagar fram.",
+  "settings.error.weekdays":
+    "Välj minst en veckodag.",
   "settings.error.invalidTime":
     "Använd en tid som 06:30.",
   "settings.error.read":

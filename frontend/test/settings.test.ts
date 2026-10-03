@@ -65,6 +65,7 @@ function aRecord(overrides: Partial<SettingsRecord> = {}): SettingsRecord {
     departure_enabled: true,
     departure_time: "06:30",
     departure_date: null,
+    departure_weekdays: [1, 2, 3, 4, 5, 6, 7],
     strategy: "cheapest",
     driver: "manual_kwh",
     target: { vehicle_id: null, target_percent: null },
@@ -104,6 +105,7 @@ function form(overrides: Partial<SettingsFormValues> = {}): SettingsFormValues {
     deadlineEnabled: true,
     deadlineTime: "06:30",
     departureDate: "",
+    departureWeekdays: "1234567",
     maxPeriods: "4",
     current: "10",
     driver: "manual_kwh",
@@ -304,6 +306,7 @@ describe("the pure replacement builders", () => {
         "departure_date",
         "departure_enabled",
         "departure_time",
+        "departure_weekdays",
         "driver",
         "max_periods",
         "overrides",
@@ -479,6 +482,7 @@ describe("the pure replacement builders", () => {
       deadlineEnabled: true,
       deadlineTime: "06:30",
       departureDate: "",
+      departureWeekdays: "1234567",
       maxPeriods: "4",
       current: "10",
       driver: "manual_kwh",
@@ -806,5 +810,42 @@ describe("the departure in the Plan cell", () => {
         expect(translate(language, key).length, `${language} ${key}`).toBeGreaterThan(0);
       }
     }
+  });
+});
+
+describe("departure_weekdays", () => {
+  it("reads a record that never had it as every day, and a list as sorted days", () => {
+    const legacy = success() as { settings: Json };
+    delete legacy.settings["departure_weekdays"];
+    const read = decode(legacy);
+    expect(read.ok && read.value.ok && read.value.settings?.departure_weekdays).toEqual([1, 2, 3, 4, 5, 6, 7]);
+    const some = decode(success(aRecord({ departure_weekdays: [5, 1] })));
+    expect(some.ok && some.value.ok && some.value.settings?.departure_weekdays).toEqual([1, 5]);
+  });
+
+  it("refuses an empty list, a repeat, a day out of range and a non-number", () => {
+    for (const value of [[], [1, 1], [0], [8], ["1"], "12", null]) {
+      const raw = success() as { settings: Json };
+      raw.settings["departure_weekdays"] = value;
+      const read = decode(raw);
+      expect(read.ok && read.value.ok, JSON.stringify(value)).toBe(false);
+    }
+  });
+
+  it("is copied by encodeBody into a fresh list", () => {
+    const record = aRecord({ departure_weekdays: [2, 3] });
+    const body = encodeBody(record);
+    expect(body.departure_weekdays).toEqual([2, 3]);
+    expect(body.departure_weekdays).not.toBe(record.departure_weekdays);
+  });
+
+  it("is written by a deadline replacement only when moved, and never empty", () => {
+    const record = aRecord();
+    const same = replacementFor("deadline", record, form());
+    expect(same.ok && same.changed).toBe(false);
+    const moved = replacementFor("deadline", record, form({ departureWeekdays: "135" }));
+    expect(moved.ok && moved.changed && moved.body.departure_weekdays).toEqual([1, 3, 5]);
+    const none = replacementFor("deadline", record, form({ departureWeekdays: "" }));
+    expect(none).toEqual({ ok: false, errorKey: "settings.error.weekdays" });
   });
 });

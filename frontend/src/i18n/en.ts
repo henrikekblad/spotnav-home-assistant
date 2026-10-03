@@ -116,6 +116,8 @@ export const en = {
   "entity.field.mainFuse": "Main fuse",
   "entity.field.measurementMode": "Measurement mode",
   "entity.field.voltageBetweenPhases": "Voltage between phases",
+  "entity.field.chargerPriority":
+    "Charger priority",
   "entity.field.batteryPower": "Battery power",
   "entity.field.maxAge": "Maximum measurement age",
   "entity.mode.direct": "Phase currents measured directly",
@@ -149,8 +151,16 @@ export const en = {
   "entity.help.mainFuse": "The site's main fuse in amperes. All chargers on the site together stay below it.",
   "entity.help.measurementMode": "Whether your meter reports each phase's current directly, or SpotNav works it out from power and voltage.",
   "entity.help.voltageBetweenPhases": "The voltage between two phases of your electrical installation. Three-phase charging power is figured from it.",
+  "entity.help.chargerPriority":
+    "When several chargers share the site's fuse, a charger set to First is served before the others and one set to Last gets what is left.",
   "entity.voltage.tn": "400 V (TN network, the usual one)",
   "entity.voltage.it": "230 V (IT network, common in Norway)",
+  "entity.priority.first":
+    "First",
+  "entity.priority.normal":
+    "Normal",
+  "entity.priority.last":
+    "Last",
   "entity.help.batteryPower": "A sensor for the home battery's power, so SpotNav can take the battery into account.",
   "entity.help.maxAge": "How old a measurement may be, in seconds, before SpotNav stops trusting it.",
   "entity.help.phaseDirect": "The sensor that measures the current on this phase, in amperes.",
@@ -500,6 +510,10 @@ export const en = {
     "The plan may wait for hours that are usually cheaper. The departure is always kept.",
   "settings.deadline.datePast":
     "This date has gone by, so the plan runs every day until you choose a new date. Saving clears it.",
+  "settings.deadline.weekdays":
+    "Weekdays",
+  "settings.deadline.weekdaysHelp":
+    "On a day you leave out there is no departure: the plan runs to the next day you choose.",
   "settings.deadline.today":
     "today",
   "settings.deadline.tomorrow":
@@ -538,6 +552,8 @@ export const en = {
     "Choose a valid date.",
   "settings.error.dateRange":
     "Choose a date from today up to 7 days ahead.",
+  "settings.error.weekdays":
+    "Choose at least one weekday.",
   "settings.error.invalidTime":
     "Use a time like 06:30.",
   "settings.error.read":

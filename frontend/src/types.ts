@@ -125,6 +125,11 @@ export interface SettingsBody {
    * Added after the first release of the contract: a record without it reads as `null`.
    */
   departure_date: string | null;
+  /**
+   * The weekdays a daily departure applies on, 1 (Monday) to 7 (Sunday), ascending; every day by default.
+   * Added after the first release of the contract: a record without it reads as all seven.
+   */
+  departure_weekdays: number[];
   strategy: string;
   driver: string;
   target: SettingsTarget;

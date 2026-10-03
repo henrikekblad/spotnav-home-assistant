@@ -115,6 +115,8 @@ export const fi: Record<keyof typeof en, string> = {
   "entity.field.mainFuse": "Pääsulake",
   "entity.field.measurementMode": "Mittaustapa",
   "entity.field.voltageBetweenPhases": "Vaiheiden välinen jännite",
+  "entity.field.chargerPriority":
+    "Laturin prioriteetti",
   "entity.field.batteryPower": "Akun teho",
   "entity.field.maxAge": "Mittauksen enimmäisikä",
   "entity.mode.direct": "Vaihevirrat mitataan suoraan",
@@ -148,8 +150,16 @@ export const fi: Record<keyof typeof en, string> = {
   "entity.help.mainFuse": "Kohteen pääsulake ampeereina. Kaikki kohteen laturit pysyvät yhdessä sen alapuolella.",
   "entity.help.measurementMode": "Ilmoittaako mittarisi kunkin vaiheen virran suoraan vai laskeeko SpotNav sen tehosta ja jännitteestä.",
   "entity.help.voltageBetweenPhases": "Sähköasennuksesi kahden vaiheen välinen jännite. Kolmivaiheinen latausteho lasketaan siitä.",
+  "entity.help.chargerPriority":
+    "Kun useampi latauspiste jakaa kohteen sulakkeen, Ensin-asetuksen laturi saa virtaa ennen muita ja Viimeksi-asetuksen laturi sen, mikä jää jäljelle.",
   "entity.voltage.tn": "400 V (TN-verkko, tavallinen)",
   "entity.voltage.it": "230 V (IT-verkko, yleinen Norjassa)",
+  "entity.priority.first":
+    "Ensin",
+  "entity.priority.normal":
+    "Normaali",
+  "entity.priority.last":
+    "Viimeksi",
   "entity.help.batteryPower": "Kotiakun tehon anturi, jotta SpotNav voi ottaa akun huomioon.",
   "entity.help.maxAge": "Kuinka vanha mittaus saa olla sekunteina, ennen kuin SpotNav lakkaa luottamasta siihen.",
   "entity.help.phaseDirect": "Anturi, joka mittaa tämän vaiheen virran ampeereina.",
@@ -486,6 +496,10 @@ export const fi: Record<keyof typeof en, string> = {
     "Suunnitelma voi odottaa tunteja, jotka ovat yleensä halvempia. Lähtö pidetään aina.",
   "settings.deadline.datePast":
     "Päivämäärä on mennyt ohi, joten suunnitelma toimii joka päivä, kunnes valitset uuden päivämäärän. Tallennus tyhjentää sen.",
+  "settings.deadline.weekdays":
+    "Viikonpäivät",
+  "settings.deadline.weekdaysHelp":
+    "Pois jätettynä päivänä ei ole lähtöä: suunnitelma ulottuu seuraavaan valitsemaasi päivään.",
   "settings.deadline.today":
     "tänään",
   "settings.deadline.tomorrow":
@@ -524,6 +538,8 @@ export const fi: Record<keyof typeof en, string> = {
     "Valitse kelvollinen päivämäärä.",
   "settings.error.dateRange":
     "Valitse päivämäärä tästä päivästä enintään 7 päivän päähän.",
+  "settings.error.weekdays":
+    "Valitse vähintään yksi viikonpäivä.",
   "settings.error.invalidTime":
     "Käytä aikaa kuten 06:30.",
   "settings.error.read":

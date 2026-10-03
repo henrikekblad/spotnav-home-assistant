@@ -50,6 +50,7 @@ function aRecord(overrides: Partial<SettingsRecord> = {}): SettingsRecord {
     departure_enabled: true,
     departure_time: "06:30",
     departure_date: null,
+    departure_weekdays: [1, 2, 3, 4, 5, 6, 7],
     strategy: "cheapest",
     driver: "manual_kwh",
     target: { vehicle_id: null, target_percent: null },
@@ -1546,5 +1547,65 @@ describe("the departure date picker", () => {
       const { element } = await mounted(dated(date));
       expect(rowValues(element)[1], String(date)).toBe(expected);
     }
+  });
+});
+
+describe("the weekdays of a daily departure", () => {
+  const weekday = (element: HTMLElement, day: number): HTMLInputElement | null =>
+    editorDialog(element)?.querySelector<HTMLInputElement>(`input[data-weekday='${day}']`) ?? null;
+  const group = (element: HTMLElement): HTMLElement | null =>
+    editorDialog(element)?.querySelector<HTMLElement>("[data-part='departure-weekdays']") ?? null;
+
+  it("shows seven toggles, all on, named in the card's language", async () => {
+    const { element } = await openEditor("deadline", { language: "sv" });
+    for (let day = 1; day <= 7; day += 1) {
+      expect(weekday(element, day)!.checked).toBe(true);
+    }
+    expect(group(element)!.textContent).toContain(translate("sv", "settings.deadline.weekdays"));
+    expect(group(element)!.textContent?.toLowerCase()).toContain("mån");
+    expect(group(element)!.hidden).toBe(false);
+  });
+
+  it("sends the chosen days with the rest of the record, in one replacement", async () => {
+    const { hass, element, record } = await openEditor("deadline");
+    for (const day of [6, 7]) {
+      const toggle = weekday(element, day)!;
+      toggle.checked = false;
+      toggle.dispatchEvent(new Event("change", { bubbles: true }));
+    }
+    button(element, "spotnav-settings-save")!.click();
+    await settle();
+
+    expect(updates(hass)).toHaveLength(1);
+    const body = updates(hass)[0]!["settings"] as Record<string, unknown>;
+    expect(body["departure_weekdays"]).toEqual([1, 2, 3, 4, 5]);
+    const expected: Record<string, unknown> = { ...record };
+    delete expected["revision"];
+    expected["departure_weekdays"] = [1, 2, 3, 4, 5];
+    expect(body).toEqual(expected);
+  });
+
+  it("refuses an empty choice with its own sentence and sends nothing", async () => {
+    const { hass, element } = await openEditor("deadline");
+    for (let day = 1; day <= 7; day += 1) {
+      weekday(element, day)!.checked = false;
+    }
+    button(element, "spotnav-settings-save")!.click();
+    await settle();
+    expect(updates(hass)).toHaveLength(0);
+    expect(editorDialog(element)!.textContent).toContain(translate("en", "settings.error.weekdays"));
+  });
+
+  it("hides the toggles while a date is chosen, which overrides them", async () => {
+    const { element } = await openEditor("deadline");
+    const choose = (which: "daily" | "date"): void => {
+      const input = editorDialog(element)!.querySelector<HTMLInputElement>(`input[data-departure-day='${which}']`)!;
+      input.checked = true;
+      input.dispatchEvent(new Event("change", { bubbles: true }));
+    };
+    choose("date");
+    expect(group(element)!.hidden).toBe(true);
+    choose("daily");
+    expect(group(element)!.hidden).toBe(false);
   });
 });

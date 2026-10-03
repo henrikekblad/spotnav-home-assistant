@@ -2973,6 +2973,7 @@ var da = {
   "entity.field.mainFuse": "Hovedsikring",
   "entity.field.measurementMode": "Målemetode",
   "entity.field.voltageBetweenPhases": "Spænding mellem faser",
+  "entity.field.chargerPriority": "Ladererens prioritet",
   "entity.field.batteryPower": "Batteriets effekt",
   "entity.field.maxAge": "Højeste måleralder",
   "entity.mode.direct": "Fasestrømme måles direkte",
@@ -3006,8 +3007,12 @@ var da = {
   "entity.help.mainFuse": "Anlæggets hovedsikring i ampere. Alle ladere på anlægget holder sig samlet under den.",
   "entity.help.measurementMode": "Om din måler angiver hver fases strøm direkte, eller SpotNav regner den ud fra effekt og spænding.",
   "entity.help.voltageBetweenPhases": "Spændingen mellem to faser i din elinstallation. Trefaset ladeeffekt regnes ud fra den.",
+  "entity.help.chargerPriority": "Når flere ladere deler anlæggets sikring, får en lader sat til Først strøm før de andre, og en sat til Sidst får det, der er tilbage.",
   "entity.voltage.tn": "400 V (TN-net, det sædvanlige)",
   "entity.voltage.it": "230 V (IT-net, almindeligt i Norge)",
+  "entity.priority.first": "Først",
+  "entity.priority.normal": "Normal",
+  "entity.priority.last": "Sidst",
   "entity.help.batteryPower": "En sensor for hjemmebatteriets effekt, så SpotNav kan tage højde for batteriet.",
   "entity.help.maxAge": "Hvor gammel en måling må være, i sekunder, før SpotNav holder op med at stole på den.",
   "entity.help.phaseDirect": "Sensoren der måler strømmen på denne fase, i ampere.",
@@ -3307,6 +3312,8 @@ var da = {
   "settings.deadline.dateOn": "En bestemt dato",
   "settings.deadline.dateHelp": "Planen kan vente på timer, der plejer at være billigere. Afgangen holdes altid.",
   "settings.deadline.datePast": "Datoen er passeret, så planen kører hver dag, indtil du vælger en ny dato. Gemmer du, ryddes den.",
+  "settings.deadline.weekdays": "Ugedage",
+  "settings.deadline.weekdaysHelp": "På en dag, du udelader, er der ingen afgang: planen løber til næste dag, du har valgt.",
   "settings.deadline.today": "i dag",
   "settings.deadline.tomorrow": "i morgen",
   "settings.deadline.periods": "Højeste antal ladeperioder",
@@ -3326,6 +3333,7 @@ var da = {
   "settings.error.outOfRange": "Værdien ligger uden for det tilladte interval.",
   "settings.error.invalidDate": "Vælg en gyldig dato.",
   "settings.error.dateRange": "Vælg en dato fra i dag og op til 7 dage frem.",
+  "settings.error.weekdays": "Vælg mindst én ugedag.",
   "settings.error.invalidTime": "Brug et klokkeslæt som 06:30.",
   "settings.error.read": "Indstillingerne kunne ikke læses.",
   "settings.error.refused": "Indstillingerne blev afvist. Intet blev ændret.",
@@ -3526,6 +3534,7 @@ var en = {
   "entity.field.mainFuse": "Main fuse",
   "entity.field.measurementMode": "Measurement mode",
   "entity.field.voltageBetweenPhases": "Voltage between phases",
+  "entity.field.chargerPriority": "Charger priority",
   "entity.field.batteryPower": "Battery power",
   "entity.field.maxAge": "Maximum measurement age",
   "entity.mode.direct": "Phase currents measured directly",
@@ -3559,8 +3568,12 @@ var en = {
   "entity.help.mainFuse": "The site's main fuse in amperes. All chargers on the site together stay below it.",
   "entity.help.measurementMode": "Whether your meter reports each phase's current directly, or SpotNav works it out from power and voltage.",
   "entity.help.voltageBetweenPhases": "The voltage between two phases of your electrical installation. Three-phase charging power is figured from it.",
+  "entity.help.chargerPriority": "When several chargers share the site's fuse, a charger set to First is served before the others and one set to Last gets what is left.",
   "entity.voltage.tn": "400 V (TN network, the usual one)",
   "entity.voltage.it": "230 V (IT network, common in Norway)",
+  "entity.priority.first": "First",
+  "entity.priority.normal": "Normal",
+  "entity.priority.last": "Last",
   "entity.help.batteryPower": "A sensor for the home battery's power, so SpotNav can take the battery into account.",
   "entity.help.maxAge": "How old a measurement may be, in seconds, before SpotNav stops trusting it.",
   "entity.help.phaseDirect": "The sensor that measures the current on this phase, in amperes.",
@@ -3860,6 +3873,8 @@ var en = {
   "settings.deadline.dateOn": "On a date",
   "settings.deadline.dateHelp": "The plan may wait for hours that are usually cheaper. The departure is always kept.",
   "settings.deadline.datePast": "This date has gone by, so the plan runs every day until you choose a new date. Saving clears it.",
+  "settings.deadline.weekdays": "Weekdays",
+  "settings.deadline.weekdaysHelp": "On a day you leave out there is no departure: the plan runs to the next day you choose.",
   "settings.deadline.today": "today",
   "settings.deadline.tomorrow": "tomorrow",
   "settings.deadline.periods": "Maximum charging periods",
@@ -3879,6 +3894,7 @@ var en = {
   "settings.error.outOfRange": "That value is outside the allowed range.",
   "settings.error.invalidDate": "Choose a valid date.",
   "settings.error.dateRange": "Choose a date from today up to 7 days ahead.",
+  "settings.error.weekdays": "Choose at least one weekday.",
   "settings.error.invalidTime": "Use a time like 06:30.",
   "settings.error.read": "The settings could not be read.",
   "settings.error.refused": "Those settings were refused. Nothing changed.",
@@ -4079,6 +4095,7 @@ var fi = {
   "entity.field.mainFuse": "Pääsulake",
   "entity.field.measurementMode": "Mittaustapa",
   "entity.field.voltageBetweenPhases": "Vaiheiden välinen jännite",
+  "entity.field.chargerPriority": "Laturin prioriteetti",
   "entity.field.batteryPower": "Akun teho",
   "entity.field.maxAge": "Mittauksen enimmäisikä",
   "entity.mode.direct": "Vaihevirrat mitataan suoraan",
@@ -4112,8 +4129,12 @@ var fi = {
   "entity.help.mainFuse": "Kohteen pääsulake ampeereina. Kaikki kohteen laturit pysyvät yhdessä sen alapuolella.",
   "entity.help.measurementMode": "Ilmoittaako mittarisi kunkin vaiheen virran suoraan vai laskeeko SpotNav sen tehosta ja jännitteestä.",
   "entity.help.voltageBetweenPhases": "Sähköasennuksesi kahden vaiheen välinen jännite. Kolmivaiheinen latausteho lasketaan siitä.",
+  "entity.help.chargerPriority": "Kun useampi latauspiste jakaa kohteen sulakkeen, Ensin-asetuksen laturi saa virtaa ennen muita ja Viimeksi-asetuksen laturi sen, mikä jää jäljelle.",
   "entity.voltage.tn": "400 V (TN-verkko, tavallinen)",
   "entity.voltage.it": "230 V (IT-verkko, yleinen Norjassa)",
+  "entity.priority.first": "Ensin",
+  "entity.priority.normal": "Normaali",
+  "entity.priority.last": "Viimeksi",
   "entity.help.batteryPower": "Kotiakun tehon anturi, jotta SpotNav voi ottaa akun huomioon.",
   "entity.help.maxAge": "Kuinka vanha mittaus saa olla sekunteina, ennen kuin SpotNav lakkaa luottamasta siihen.",
   "entity.help.phaseDirect": "Anturi, joka mittaa tämän vaiheen virran ampeereina.",
@@ -4413,6 +4434,8 @@ var fi = {
   "settings.deadline.dateOn": "Tietty päivämäärä",
   "settings.deadline.dateHelp": "Suunnitelma voi odottaa tunteja, jotka ovat yleensä halvempia. Lähtö pidetään aina.",
   "settings.deadline.datePast": "Päivämäärä on mennyt ohi, joten suunnitelma toimii joka päivä, kunnes valitset uuden päivämäärän. Tallennus tyhjentää sen.",
+  "settings.deadline.weekdays": "Viikonpäivät",
+  "settings.deadline.weekdaysHelp": "Pois jätettynä päivänä ei ole lähtöä: suunnitelma ulottuu seuraavaan valitsemaasi päivään.",
   "settings.deadline.today": "tänään",
   "settings.deadline.tomorrow": "huomenna",
   "settings.deadline.periods": "Latausjaksojen enimmäismäärä",
@@ -4432,6 +4455,7 @@ var fi = {
   "settings.error.outOfRange": "Arvo on sallitun alueen ulkopuolella.",
   "settings.error.invalidDate": "Valitse kelvollinen päivämäärä.",
   "settings.error.dateRange": "Valitse päivämäärä tästä päivästä enintään 7 päivän päähän.",
+  "settings.error.weekdays": "Valitse vähintään yksi viikonpäivä.",
   "settings.error.invalidTime": "Käytä aikaa kuten 06:30.",
   "settings.error.read": "Asetuksia ei voitu lukea.",
   "settings.error.refused": "Asetukset hylättiin. Mikään ei muuttunut.",
@@ -4632,6 +4656,7 @@ var nb = {
   "entity.field.mainFuse": "Hovedsikring",
   "entity.field.measurementMode": "Målemetode",
   "entity.field.voltageBetweenPhases": "Spenning mellom faser",
+  "entity.field.chargerPriority": "Laderens prioritet",
   "entity.field.batteryPower": "Batteriets effekt",
   "entity.field.maxAge": "Høyeste målealder",
   "entity.mode.direct": "Fasestrømmer måles direkte",
@@ -4665,8 +4690,12 @@ var nb = {
   "entity.help.mainFuse": "Anleggets hovedsikring i ampere. Alle laderne på anlegget holder seg samlet under den.",
   "entity.help.measurementMode": "Om måleren oppgir strømmen for hver fase direkte, eller SpotNav regner den ut fra effekt og spenning.",
   "entity.help.voltageBetweenPhases": "Spenningen mellom to faser i det elektriske anlegget ditt. Trefaset ladeeffekt regnes ut fra den.",
+  "entity.help.chargerPriority": "Når flere ladere deler anleggets sikring, får en lader satt til Først strøm før de andre, og en satt til Sist får det som er igjen.",
   "entity.voltage.tn": "400 V (TN-nett, det vanlige)",
   "entity.voltage.it": "230 V (IT-nett, vanlig i Norge)",
+  "entity.priority.first": "Først",
+  "entity.priority.normal": "Normal",
+  "entity.priority.last": "Sist",
   "entity.help.batteryPower": "En sensor for hjemmebatteriets effekt, slik at SpotNav kan ta hensyn til batteriet.",
   "entity.help.maxAge": "Hvor gammel en måling kan være, i sekunder, før SpotNav slutter å stole på den.",
   "entity.help.phaseDirect": "Sensoren som måler strømmen på denne fasen, i ampere.",
@@ -4966,6 +4995,8 @@ var nb = {
   "settings.deadline.dateOn": "En bestemt dato",
   "settings.deadline.dateHelp": "Planen kan vente på timer som pleier å være billigere. Avreisen holdes alltid.",
   "settings.deadline.datePast": "Datoen er passert, så planen kjører hver dag til du velger en ny dato. Lagring fjerner den.",
+  "settings.deadline.weekdays": "Ukedager",
+  "settings.deadline.weekdaysHelp": "På en dag du utelater er det ingen avreise: planen går til neste dag du har valgt.",
   "settings.deadline.today": "i dag",
   "settings.deadline.tomorrow": "i morgen",
   "settings.deadline.periods": "Høyeste antall ladeperioder",
@@ -4985,6 +5016,7 @@ var nb = {
   "settings.error.outOfRange": "Verdien er utenfor det tillatte området.",
   "settings.error.invalidDate": "Velg en gyldig dato.",
   "settings.error.dateRange": "Velg en dato fra i dag og opptil 7 dager frem.",
+  "settings.error.weekdays": "Velg minst én ukedag.",
   "settings.error.invalidTime": "Bruk et klokkeslett som 06:30.",
   "settings.error.read": "Innstillingene kunne ikke leses.",
   "settings.error.refused": "Innstillingene ble avvist. Ingenting ble endret.",
@@ -5185,6 +5217,7 @@ var sv = {
   "entity.field.mainFuse": "Huvudsäkring",
   "entity.field.measurementMode": "Mätsätt",
   "entity.field.voltageBetweenPhases": "Spänning mellan faser",
+  "entity.field.chargerPriority": "Laddarens prioritet",
   "entity.field.batteryPower": "Batteriets effekt",
   "entity.field.maxAge": "Högsta mätvärdesålder",
   "entity.mode.direct": "Fasströmmar mäts direkt",
@@ -5218,8 +5251,12 @@ var sv = {
   "entity.help.mainFuse": "Anläggningens huvudsäkring i ampere. Alla laddare på anläggningen håller sig tillsammans under den.",
   "entity.help.measurementMode": "Om din mätare anger varje fas ström direkt, eller om SpotNav räknar ut den från effekt och spänning.",
   "entity.help.voltageBetweenPhases": "Spänningen mellan två faser i din elanläggning. Trefasig laddeffekt räknas ut från den.",
+  "entity.help.chargerPriority": "När flera laddare delar anläggningens säkring får en laddare med Först tilldelad ström före de andra, och en med Sist får det som blir över.",
   "entity.voltage.tn": "400 V (TN-nät, det vanliga)",
   "entity.voltage.it": "230 V (IT-nät, vanligt i Norge)",
+  "entity.priority.first": "Först",
+  "entity.priority.normal": "Normal",
+  "entity.priority.last": "Sist",
   "entity.help.batteryPower": "En sensor för hemmabatteriets effekt, så att SpotNav kan ta hänsyn till batteriet.",
   "entity.help.maxAge": "Hur gammal en mätning får vara, i sekunder, innan SpotNav slutar lita på den.",
   "entity.help.phaseDirect": "Sensorn som mäter strömmen på den här fasen, i ampere.",
@@ -5519,6 +5556,8 @@ var sv = {
   "settings.deadline.dateOn": "Ett visst datum",
   "settings.deadline.dateHelp": "Planen kan vänta på timmar som brukar vara billigare. Avresan hålls alltid.",
   "settings.deadline.datePast": "Datumet har passerat, så planen körs varje dag tills du väljer ett nytt datum. Sparar du rensas det.",
+  "settings.deadline.weekdays": "Veckodagar",
+  "settings.deadline.weekdaysHelp": "En dag du utelämnar har ingen avresa: planen löper till nästa dag du valt.",
   "settings.deadline.today": "idag",
   "settings.deadline.tomorrow": "imorgon",
   "settings.deadline.periods": "Högsta antal laddperioder",
@@ -5538,6 +5577,7 @@ var sv = {
   "settings.error.outOfRange": "Värdet ligger utanför tillåtet intervall.",
   "settings.error.invalidDate": "Välj ett giltigt datum.",
   "settings.error.dateRange": "Välj ett datum från idag och upp till 7 dagar fram.",
+  "settings.error.weekdays": "Välj minst en veckodag.",
   "settings.error.invalidTime": "Använd en tid som 06:30.",
   "settings.error.read": "Inställningarna kunde inte läsas.",
   "settings.error.refused": "Inställningarna avvisades. Inget ändrades.",
@@ -5765,6 +5805,14 @@ var BODY_KEYS = [
   "target"
 ];
 var RECORD_KEYS = [...BODY_KEYS, "revision"];
+var OPTIONAL_RECORD_KEYS = ["departure_date", "departure_weekdays"];
+var ALL_WEEKDAYS = [1, 2, 3, 4, 5, 6, 7];
+function weekdays(source, key) {
+  const days = list(source, key).map(
+    (day) => typeof day === "number" && Number.isInteger(day) && day >= 1 && day <= 7 ? day : bad()
+  );
+  return days.length === 0 || new Set(days).size !== days.length ? bad() : [...days].sort((a, b) => a - b);
+}
 var ENVELOPE_KEYS = ["api_version", "ok", "error", "settings", "pause"];
 var PAUSE_KEYS = ["choice", "admitted_at", "expires_at"];
 function decodeFiscal(source) {
@@ -5802,8 +5850,10 @@ function decodeTarget(source) {
 }
 function decodeSettingsRecord(raw) {
   const source = record(raw);
-  const hasDate = Object.prototype.hasOwnProperty.call(source, "departure_date");
-  exactKeys(source, hasDate ? [...RECORD_KEYS, "departure_date"] : RECORD_KEYS);
+  const present = OPTIONAL_RECORD_KEYS.filter((key) => Object.prototype.hasOwnProperty.call(source, key));
+  const hasDate = present.includes("departure_date");
+  const hasWeekdays = present.includes("departure_weekdays");
+  exactKeys(source, [...RECORD_KEYS, ...present]);
   const revision = whole(source, "revision");
   if (revision < 0) {
     return bad();
@@ -5819,6 +5869,7 @@ function decodeSettingsRecord(raw) {
     departure_enabled: booleanValue(source, "departure_enabled"),
     departure_time: wallTime(source, "departure_time"),
     departure_date: hasDate ? dateOrNull(source, "departure_date") : null,
+    departure_weekdays: hasWeekdays ? weekdays(source, "departure_weekdays") : [...ALL_WEEKDAYS],
     strategy: oneOf(source, "strategy", STRATEGIES),
     driver: oneOf(source, "driver", DRIVERS),
     target: decodeTarget(record(source["target"]))
@@ -5899,6 +5950,7 @@ function encodeBody(record6) {
     departure_enabled: record6.departure_enabled,
     departure_time: record6.departure_time,
     departure_date: record6.departure_date,
+    departure_weekdays: [...record6.departure_weekdays],
     strategy: record6.strategy,
     driver: record6.driver,
     target: { ...record6.target }
@@ -5927,6 +5979,7 @@ function formFromRecord(record6) {
     deadlineEnabled: record6.departure_enabled,
     deadlineTime: record6.departure_time,
     departureDate: record6.departure_date ?? "",
+    departureWeekdays: record6.departure_weekdays.join(""),
     maxPeriods: String(record6.max_periods),
     current: record6.amps === null ? "" : String(record6.amps),
     driver: record6.driver,
@@ -6094,6 +6147,10 @@ function replacementFor(kind, record6, values, range = null, opened = null, days
   if (date !== null && !date.ok) {
     return date;
   }
+  const dayList = kind === "deadline" || kind === "plan" ? weekdaysFromText(values.departureWeekdays) : null;
+  if (dayList !== null && dayList === "invalid") {
+    return { ok: false, errorKey: "settings.error.weekdays" };
+  }
   const driverOk = values.driver === "manual_kwh" || values.driver === SETTINGS_DRIVER_TARGET_SOC;
   if (kind === "plan" && !driverOk) {
     return { ok: false, errorKey: "settings.error.invalid" };
@@ -6138,6 +6195,11 @@ function replacementFor(kind, record6, values, range = null, opened = null, days
     changed = changed || amps.value !== record6.amps;
   }
   const deadlineMoved = opened === null || time !== null && time.ok && periods !== null && periods.ok && (values.deadlineEnabled !== opened.departure_enabled || time.value !== opened.departure_time || periods.value !== opened.max_periods || date !== null && date.ok && date.value !== opened.departure_date);
+  const weekdaysMoved = dayList !== null && (opened === null ? dayList.join("") !== record6.departure_weekdays.join("") : dayList.join("") !== opened.departure_weekdays.join(""));
+  if (weekdaysMoved && dayList !== null) {
+    next.departure_weekdays = dayList;
+    changed = changed || dayList.join("") !== record6.departure_weekdays.join("");
+  }
   if (time !== null && time.ok && periods !== null && periods.ok && deadlineMoved) {
     next.departure_enabled = values.deadlineEnabled;
     next.departure_time = time.value;
@@ -6148,6 +6210,10 @@ function replacementFor(kind, record6, values, range = null, opened = null, days
     changed = changed || values.deadlineEnabled !== record6.departure_enabled || time.value !== record6.departure_time || periods.value !== record6.max_periods || date !== null && date.ok && date.value !== record6.departure_date;
   }
   return { ok: true, body: next, changed };
+}
+function weekdaysFromText(text4) {
+  const days = [...new Set([...text4].map(Number))].filter((day) => day >= 1 && day <= 7).sort((a, b) => a - b);
+  return days.length === 0 ? "invalid" : days;
 }
 function currentCheck(values, record6, range) {
   const amps = checkCurrent(values.current);
@@ -8591,6 +8657,7 @@ var FIELD_LABELS = {
   main_fuse_a: "entity.field.mainFuse",
   measurement_mode: "entity.field.measurementMode",
   voltage_between_phases_v: "entity.field.voltageBetweenPhases",
+  charger_priority: "entity.field.chargerPriority",
   battery_aggregate_power_entity: "entity.field.batteryPower",
   battery_discharge_power_entity: "entity.field.batteryDischargePower",
   battery_power_inverted: "entity.field.batteryPowerInverted",
@@ -8673,6 +8740,7 @@ var FIELD_HELP = {
   main_fuse_a: "entity.help.mainFuse",
   measurement_mode: "entity.help.measurementMode",
   voltage_between_phases_v: "entity.help.voltageBetweenPhases",
+  charger_priority: "entity.help.chargerPriority",
   battery_aggregate_power_entity: "entity.help.batteryPower",
   battery_discharge_power_entity: "entity.help.batteryDischargePower",
   battery_power_inverted: "entity.help.batteryPowerInverted",
@@ -9722,6 +9790,30 @@ function entityEditorBody(doc, language, input, handlers, idPrefix) {
     errorNodes.set("voltage_between_phases_v", { node: voltageError, input: voltage.fieldset });
     voltage.fieldset.append(voltageError);
     body.append(voltage.fieldset);
+  }
+  const priorityField = fieldsOf(config, scope).find((entry) => entry.field === "charger_priority");
+  if (priorityField !== void 0 && priorityField.kind === "enum" && priorityField.writable) {
+    const priorityOptions = priorityField.choices.map((choice) => ({
+      value: choice,
+      label: choice === "first" ? "entity.priority.first" : choice === "last" ? "entity.priority.last" : "entity.priority.normal"
+    }));
+    const priority = choiceGroup(
+      "priority",
+      "entity.field.chargerPriority",
+      priorityOptions,
+      () => values["charger_priority"] ?? priorityField.value ?? "normal",
+      (value) => {
+        values["charger_priority"] = value;
+      },
+      { intro: fieldHelp("charger_priority", "entity.help.chargerPriority") }
+    );
+    const priorityError = element(doc, "p", VISUAL_CLASSES.settingsError);
+    priorityError.hidden = true;
+    priorityError.dataset["fieldError"] = "charger_priority";
+    priorityError.setAttribute("role", "alert");
+    errorNodes.set("charger_priority", { node: priorityError, input: priority.fieldset });
+    priority.fieldset.append(priorityError);
+    body.append(priority.fieldset);
   }
   const actions = element(doc, "div", VISUAL_CLASSES.settingsActions);
   const save = element(doc, "button", `${VISUAL_CLASSES.button} ${VISUAL_CLASSES.settingsSave}`, translate(language, "settings.save"));
@@ -10966,7 +11058,9 @@ function settingsEditorBody(doc, language, form, handlers, idPrefix) {
   };
   const appendDate = (into) => {
     const days = form.days ?? null;
+    const weekdays2 = weekdayGroup();
     if (days === null && dateInput.value === "") {
+      into.append(weekdays2);
       return;
     }
     const group = element4(doc, "fieldset", VISUAL_CLASSES.siteFieldset);
@@ -11025,8 +11119,37 @@ function settingsEditorBody(doc, language, form, handlers, idPrefix) {
     });
     dateInput.addEventListener("input", paint);
     dateInput.addEventListener("change", paint);
-    into.append(group, dated);
+    into.append(group, dated, weekdays2);
+    const paintWeekdays = () => {
+      weekdays2.hidden = dateRadio.checked;
+    };
+    dateRadio.addEventListener("change", paintWeekdays);
+    dailyRadio.addEventListener("change", paintWeekdays);
+    paintWeekdays();
     paint();
+  };
+  const weekdayChecks = [];
+  const weekdayGroup = () => {
+    const group = element4(doc, "fieldset", VISUAL_CLASSES.siteFieldset);
+    group.dataset["part"] = "departure-weekdays";
+    group.append(element4(doc, "legend", VISUAL_CLASSES.siteLegend, translate(language, "settings.deadline.weekdays")));
+    const chosen = new Set([...form.values.departureWeekdays].map(Number));
+    const row = element4(doc, "div");
+    row.style.cssText = "display:flex;flex-wrap:wrap;gap:4px 12px";
+    for (let day = 1; day <= 7; day += 1) {
+      const check = doc.createElement("input");
+      check.type = "checkbox";
+      check.value = String(day);
+      check.checked = chosen.has(day);
+      check.disabled = form.readOnly;
+      check.dataset["weekday"] = String(day);
+      weekdayChecks.push(check);
+      const label = element4(doc, "label", VISUAL_CLASSES.siteChoice);
+      label.append(check, doc.createTextNode(weekdayName(language, day)));
+      row.append(label);
+    }
+    group.append(row, element4(doc, "p", VISUAL_CLASSES.settingsNote, translate(language, "settings.deadline.weekdaysHelp")));
+    return group;
   };
   const appendDeadline = () => {
     enabledInput.disabled = form.readOnly;
@@ -11348,6 +11471,9 @@ function settingsEditorBody(doc, language, form, handlers, idPrefix) {
     values.deadlineEnabled = enabledInput.checked;
     values.deadlineTime = timeInput.value;
     values.departureDate = dateInput.value;
+    if (weekdayChecks.length > 0) {
+      values.departureWeekdays = weekdayChecks.filter((check) => check.checked).map((check) => check.value).join("");
+    }
     values.maxPeriods = periodsInput.value;
     values.current = currentInput.value;
     if (form.kind === "plan") {
@@ -11395,6 +11521,15 @@ function settingsEditorBody(doc, language, form, handlers, idPrefix) {
     body.append(actions);
   }
   return { body, values: read };
+}
+function weekdayName(language, day) {
+  try {
+    return new Intl.DateTimeFormat(language, { weekday: "short", timeZone: "UTC" }).format(
+      new Date(Date.UTC(2024, 0, day))
+    );
+  } catch {
+    return String(day);
+  }
 }
 
 // src/vehicle-settings.ts

@@ -115,6 +115,8 @@ export const nb: Record<keyof typeof en, string> = {
   "entity.field.mainFuse": "Hovedsikring",
   "entity.field.measurementMode": "Målemetode",
   "entity.field.voltageBetweenPhases": "Spenning mellom faser",
+  "entity.field.chargerPriority":
+    "Laderens prioritet",
   "entity.field.batteryPower": "Batteriets effekt",
   "entity.field.maxAge": "Høyeste målealder",
   "entity.mode.direct": "Fasestrømmer måles direkte",
@@ -148,8 +150,16 @@ export const nb: Record<keyof typeof en, string> = {
   "entity.help.mainFuse": "Anleggets hovedsikring i ampere. Alle laderne på anlegget holder seg samlet under den.",
   "entity.help.measurementMode": "Om måleren oppgir strømmen for hver fase direkte, eller SpotNav regner den ut fra effekt og spenning.",
   "entity.help.voltageBetweenPhases": "Spenningen mellom to faser i det elektriske anlegget ditt. Trefaset ladeeffekt regnes ut fra den.",
+  "entity.help.chargerPriority":
+    "Når flere ladere deler anleggets sikring, får en lader satt til Først strøm før de andre, og en satt til Sist får det som er igjen.",
   "entity.voltage.tn": "400 V (TN-nett, det vanlige)",
   "entity.voltage.it": "230 V (IT-nett, vanlig i Norge)",
+  "entity.priority.first":
+    "Først",
+  "entity.priority.normal":
+    "Normal",
+  "entity.priority.last":
+    "Sist",
   "entity.help.batteryPower": "En sensor for hjemmebatteriets effekt, slik at SpotNav kan ta hensyn til batteriet.",
   "entity.help.maxAge": "Hvor gammel en måling kan være, i sekunder, før SpotNav slutter å stole på den.",
   "entity.help.phaseDirect": "Sensoren som måler strømmen på denne fasen, i ampere.",
@@ -486,6 +496,10 @@ export const nb: Record<keyof typeof en, string> = {
     "Planen kan vente på timer som pleier å være billigere. Avreisen holdes alltid.",
   "settings.deadline.datePast":
     "Datoen er passert, så planen kjører hver dag til du velger en ny dato. Lagring fjerner den.",
+  "settings.deadline.weekdays":
+    "Ukedager",
+  "settings.deadline.weekdaysHelp":
+    "På en dag du utelater er det ingen avreise: planen går til neste dag du har valgt.",
   "settings.deadline.today":
     "i dag",
   "settings.deadline.tomorrow":
@@ -524,6 +538,8 @@ export const nb: Record<keyof typeof en, string> = {
     "Velg en gyldig dato.",
   "settings.error.dateRange":
     "Velg en dato fra i dag og opptil 7 dager frem.",
+  "settings.error.weekdays":
+    "Velg minst én ukedag.",
   "settings.error.invalidTime":
     "Bruk et klokkeslett som 06:30.",
   "settings.error.read":
