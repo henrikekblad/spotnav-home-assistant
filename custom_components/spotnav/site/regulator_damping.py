@@ -173,6 +173,11 @@ class RegulatorDamper:
         self._pending = None
         self._pending_since = None
 
+    def record_write(self, value: float) -> None:
+        """Remember a value written outside `consider` (the battery probe's start and stop), so the
+        next decision is measured against what is really on the charger."""
+        self._write(value)
+
     def _write(self, value: float) -> None:
         self._written = value
         self._pending = None

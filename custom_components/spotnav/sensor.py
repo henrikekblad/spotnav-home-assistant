@@ -441,6 +441,9 @@ class SiteStateEntity(SpotNavSiteEntity, SensorEntity):
             # Yield-verified stepping (see `site_capacity_controller.yield_stepping_snapshot`): one
             # entry per associated charger, present even while the site option is off.
             "yield_stepping": self.controller.yield_stepping_snapshot,
+            # The battery-on-the-fuse probe (`site/battery_probe.py`): one entry per associated
+            # charger with its state and last outcome.
+            "battery_probe": self.controller.battery_probe_snapshot,
             # Solar surplus priority: `car_first` or `battery_first`, present even when never stored.
             "solar_priority": self.controller.config.get(
                 CONF_SOLAR_PRIORITY, DEFAULT_SOLAR_PRIORITY

@@ -500,6 +500,10 @@ class ChargingController:
         # with no schedule sets it too) and from `setpoint_current_a` (the entity's live value,
         # which can drift).
         self._requested_current_a: int | None = None
+        # Whether the last thing done to the charge control was the regulator's pause (a stop for
+        # want of headroom for the minimum current): any other stop or start clears it. Only the
+        # battery probe reads it (`site/battery_probe.py`), to resume a charge balancing interrupted.
+        self._paused_by_balancing = False
         # When a Start this controller accepted was sent to the charge control while the charger
         # has not reported it on yet, else `None`.
         self._start_sent_at: datetime | None = None
@@ -1151,6 +1155,33 @@ class ChargingController:
             return None
         return hint[0]
 
+    @property
+    def paused_by_balancing(self) -> bool:
+        """Whether the charger is stopped because load balancing paused it, and nothing has stopped
+        or started it since (a person's Stop, a window's end, a target stop all clear it)."""
+        return self._paused_by_balancing and not self.charging
+
+    async def async_battery_probe_start(self, amps: int) -> bool:
+        """Resume a charge that load balancing paused, at `amps`, as a battery probe.
+
+        Only while `paused_by_balancing`. The charge restarts at `amps` (the car's minimum), but the
+        request on record is kept: the plan's current stays what the car is climbing to. Takes the
+        operation lock. `False` when nothing was started.
+        """
+        async with self._lock:
+            if not self._paused_by_balancing or self.charging:
+                return False
+            kept = self._requested_current_a
+            executed = await self._start_locked(amps)
+            if not executed:
+                self._paused_by_balancing = True
+                return False
+            if kept is not None and self._requested_current_a != kept:
+                self._requested_current_a = kept
+                await self._async_save()
+                self._notify()
+            return True
+
     async def _start_locked(
         self, amps: int | None = None, *, manual: bool = False, cause: str | None = None
     ) -> bool:
@@ -1168,6 +1199,7 @@ class ChargingController:
           send a persistent charging profile. The recorded request is what the dashboard reports and what
           the load balancer computes against.
         """
+        self._paused_by_balancing = False
         if manual and self._target_stop is not None:
             self._target_stop = None
             await self._async_save()
@@ -1329,6 +1361,8 @@ class ChargingController:
         except Exception:  # noqa: BLE001 - reported, and the next pass tries again
             _LOGGER.exception("SpotNav charger %s: the safety stop failed", self.entry_id)
             return RegulatedWrite(REGULATED_HELD, "stop_failed", False)
+        # Set after the stop (which clears it): this stop is the balancing pause itself.
+        self._paused_by_balancing = code == "pause"
         return RegulatedWrite(REGULATED_STOPPED, code, False)
 
     async def async_restore_current(self, *, lowered_by_balancing: bool) -> CurrentRestore:
@@ -1565,6 +1599,7 @@ class ChargingController:
         subscription, since a gone plan enforces nothing.
         """
         self._hold.spotnav_stopped()
+        self._paused_by_balancing = False
         # What cannot be read (a restart before the charger's entities exist) says nothing about
         # whether the charge is still running, so the flag survives until it can be seen.
         plan_charge = self._plan_charge

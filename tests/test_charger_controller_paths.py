@@ -441,3 +441,84 @@ async def test_a_manual_start_on_easee_authorizes_first_when_authorization_is_ow
 
     assert commands == ["start", "resume"]
     await controller.async_shutdown()
+
+
+# --------------------------------------------------------------- the battery probe's two doors
+
+
+def _reads_stopped(hass: HomeAssistant) -> None:
+    """The wallbox says it is not charging (the mocked services change no state)."""
+    hass.states.async_set("switch.wallbox_pause_resume", "off")
+    hass.states.async_set("sensor.wallbox_status_description", "Paused")
+
+
+async def test_only_the_regulators_pause_marks_a_charge_as_paused_by_balancing(
+    hass: HomeAssistant,
+) -> None:
+    controller = await _controller(hass, "wallbox", clock=Clock())
+    async_mock_service(hass, "number", "set_value")
+    async_mock_service(hass, "switch", "turn_off")
+    assert controller.paused_by_balancing is False
+
+    await controller.async_apply_regulated_current(0, must_lower=False)
+    _reads_stopped(hass)
+    assert controller.paused_by_balancing is True
+
+    # A person's Stop, or any other stop, is not the regulator's pause.
+    await controller.async_stop()
+    assert controller.paused_by_balancing is False
+    await controller.async_shutdown()
+
+
+async def test_a_safety_stop_is_not_a_pause_to_resume(hass: HomeAssistant) -> None:
+    clock = Clock()
+    controller = await _controller(hass, "wallbox", clock=clock)
+    async_mock_service(hass, "number", "set_value")
+    async_mock_service(hass, "switch", "turn_off")
+    await controller.async_apply_regulated_current(14, must_lower=False)
+    hass.states.async_set("number.wallbox_maximum_charging_current", "14", {"unit_of_measurement": "A", "min": 6, "max": 32, "step": 1})
+    clock.advance(20)
+
+    result = await controller.async_apply_regulated_current(10, must_lower=True)
+
+    assert result.code == "safety_stop"
+    assert controller.paused_by_balancing is False
+    await controller.async_shutdown()
+
+
+async def test_the_probe_start_resumes_a_paused_charge_at_the_minimum_and_keeps_the_request(
+    hass: HomeAssistant,
+) -> None:
+    controller = await _controller(hass, "wallbox", clock=Clock())
+    number = async_mock_service(hass, "number", "set_value")
+    async_mock_service(hass, "switch", "turn_off")
+    turn_on = async_mock_service(hass, "switch", "turn_on")
+    await controller.async_set_requested_current(16)
+    await controller.async_apply_regulated_current(0, must_lower=False)
+    _reads_stopped(hass)
+    assert controller.paused_by_balancing is True
+    number.clear()
+
+    assert await controller.async_battery_probe_start(6) is True
+
+    assert len(turn_on) == 1
+    assert [call.data["value"] for call in number] == [6]
+    assert controller.requested_current_a == 16  # the plan's current is still what the car climbs to
+    assert controller.paused_by_balancing is False
+    await controller.async_shutdown()
+
+
+async def test_the_probe_start_never_restarts_a_charge_that_was_not_paused_by_balancing(
+    hass: HomeAssistant,
+) -> None:
+    controller = await _controller(hass, "wallbox", clock=Clock())
+    async_mock_service(hass, "number", "set_value")
+    async_mock_service(hass, "switch", "turn_off")
+    turn_on = async_mock_service(hass, "switch", "turn_on")
+    await controller.async_set_requested_current(16)
+    await controller.async_apply_regulated_current(0, must_lower=False)
+    await controller.async_stop()  # a person stopped it after the pause
+
+    assert await controller.async_battery_probe_start(6) is False
+    assert turn_on == []
+    await controller.async_shutdown()

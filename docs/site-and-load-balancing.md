@@ -95,6 +95,20 @@ It is best effort and is not a protective device. Turning it off gives back any 
     its plan: "The home battery charges from the grid and shares the main fuse: the car gets 11 A."
     With *battery first*, or a battery that does not give way, nothing is credited and the steps
     stay at 2 A.
+  - **A battery that holds the grid at the fuse.** Only with *car first* and yield stepping on. While
+    the battery charges at least as hard as the car's minimum current would draw and every phase
+    reads no more than 0.5 A above the limit (the fuse less the safety margin), the grid sitting at
+    the limit is the battery's own regulation, not an overload, and the car is not stepped down for
+    it (`held_battery_at_limit` in the decision log). A reading above that band, a stale
+    measurement or a sustained excess is handled exactly as before. When load balancing has paused
+    the car for want of headroom and the battery is charging from the grid, SpotNav starts the car
+    at its minimum current as a probe and watches the grid for up to 30 seconds (the damper's dwell
+    if shorter): if every phase is back within the band the battery gave way and the car goes on
+    from there; if not, the car is stopped again and no new probe is tried for 10 minutes, doubling
+    to an hour. A probe is never started against a real overload, and it ends at once on a stale or
+    missing measurement or a phase far above what the car's minimum can explain. A charge a person
+    stopped is never restarted this way. The outcome is in the site's diagnostics under
+    `battery_probe` and in the decision log (`probe_started`, `probe_succeeded`, `probe_failed`).
   - **A short overload is not a reset.** While yield stepping is verified, one sample above the
     ceiling (and at most 4 A above it) steps the car back once instead of to the minimum. A second
     sample in a row, a larger excess, or two such samples within two minutes still stops at the
