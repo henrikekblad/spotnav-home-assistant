@@ -1213,6 +1213,19 @@ class AutoExecutor:
         await self._controller.async_stop(person=True)
         await self._notify_change()
 
+    async def async_end_plan_need_met(self) -> bool:
+        """The manual need is delivered (the register watcher saw it): end Auto's own plan now, without
+        waiting for a calculation that may not get that far (prices missing, say). Returns whether a
+        plan was cleared."""
+        async with self._lock:
+            if self._shutdown or self.applied is None:
+                return False
+            self.begin_attempt()
+            self._pending = None
+            cleared = await self._controller.async_end_plan_need_met()
+            await self._notify_change()
+            return cleared
+
     async def async_start_on_plug_in(self) -> bool:
         """A vehicle was plugged in and Auto has replanned: start the installed plan's window that is
         open now, through the controller's own checks (a person's Stop, the target, load balancing).

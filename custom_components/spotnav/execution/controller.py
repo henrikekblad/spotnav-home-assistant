@@ -878,7 +878,11 @@ class ChargingController:
             return False
         if self._hold_blocked() or self._person_stopped_now():
             return False
-        if self.adapter.vehicle_connected() is False or self._control_on:
+        if self.adapter.vehicle_connected() is False or self._control_on or self.start_pending:
+            # Already on, or a Start (the replanned plan's own window start) is on its way.
+            return False
+        if self._paused_by_balancing:
+            # Load balancing stopped this charge: its regulator resumes it, with its own margin and dwell.
             return False
         if await self._enforce_target_locked():
             return False
@@ -886,25 +890,22 @@ class ChargingController:
         return await self._start_locked(cause="plan_window")
 
     async def async_end_plan_need_met(self) -> bool:
-        """The need is met before the plan ran out: stop the charge the plan started (or one that
-        started by itself inside its window) and clear the windows still ahead. A person's Start and a
-        solar charge go on. Returns whether a plan was cleared.
+        """The need is met before the plan ran out: stop the charge the plan started and clear the
+        windows still ahead. A person's Start, a solar charge, a charge something else owns (a pause,
+        solar, the hybrid hand-off) and one that started by itself go on. Returns whether a plan was
+        cleared.
+
+        A plan with a target ends only on the target stop's own evidence (`decide_target_stop`: a reading
+        at the target, or an estimate past it by its margin), never on the planner's estimate alone.
         """
         async with self._lock:
             if self.plan is None:
                 return False
             if self.plan.target_soc_percent is not None:
-                if await self._enforce_target_locked():
-                    # The target's own stop, with its record: the reading says what the plan said.
-                    return True
-                if self._control_on and self.plan_window_active_now:
-                    # A charge running in its window stops on the target's own evidence (an estimate
-                    # needs its margin), never earlier on the planner's word.
-                    return False
-            stop = self._control_on and (
-                self._plan_charge
-                or (self.plan_window_active_now and self._charge_origin is None and not self._hold_blocked())
-            )
+                # The target's own stop, with its record, or nothing.
+                return await self._enforce_target_locked()
+            handed_off = self._end_window_guard is not None and self._end_window_guard()
+            stop = self._control_on and self._plan_charge and not self._hold_blocked() and not handed_off
             _LOGGER.info(
                 "SpotNav charger %s: the need is met, clearing the plan%s",
                 self.entry_id,

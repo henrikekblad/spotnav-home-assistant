@@ -211,10 +211,16 @@ async def test_a_meter_reset_gives_no_subtraction_then_resumes(session: Session)
     reset_snapshot = await session.preview.async_recalculate()
     assert reset_snapshot.proposal is not None
     assert reset_snapshot.proposal.delivered_kwh >= 10.0 - 0.5, "no subtraction across a reset"
+    baseline = session.store.energy_baseline(session.entry_id)
+    assert baseline is not None and baseline.register_kwh == 50.0, "one low reading may be a glitch"
 
+    session.clock.advance(minutes=3)  # the drop holds: a second reading, minutes later
+    held_snapshot = await session.preview.async_recalculate()
+    assert held_snapshot.proposal is not None and held_snapshot.proposal.delivered_kwh >= 10.0 - 0.5
     baseline = session.store.energy_baseline(session.entry_id)
     assert baseline is not None and baseline.register_kwh == 2.0, "re-baselined at the new low"
 
+    session.clock.advance(minutes=5)
     _set_register(session.hass, 3.0)  # a further 1 kWh delivered since the reset
     resumed_snapshot = await session.preview.async_recalculate()
     assert resumed_snapshot.proposal is not None
