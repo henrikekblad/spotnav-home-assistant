@@ -61,9 +61,10 @@ period started is stopped; a charge you started yourself goes on.
 
 **Counting the requested energy.** With a departure, energy delivered since that departure's
 previous occurrence counts toward the request, also across unplugging and plugging in again. With no
-departure, each plug-in starts a new count (a charger that cannot report a plug-in keeps one count
-until the settings change). The count comes from the charger's energy register; a register that
-starts again from zero at each plug-in is counted on. If the register cannot be read, the last
+departure, each plug-in starts a new count; a charger that cannot report a plug-in starts one with the
+first charge after the request was met. The count comes from the charger's energy register; a register
+that starts again from zero at each plug-in is counted on. A reading that drops for a moment (a charger
+that restarts) or climbs faster than the charger can deliver is not believed, so it never ends a plan. If the register cannot be read, the last
 remaining energy it showed is kept rather than buying the whole request again, and with no register
 at all the charger's recorded charges since the count began are used; the status says so either way.
 

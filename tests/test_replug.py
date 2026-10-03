@@ -26,7 +26,7 @@ from custom_components.spotnav.execution.controller import (
     ChargingController,
 )
 from custom_components.spotnav.flows.charger_detection import detect_charger
-from custom_components.spotnav.planning.auto_controller import _delivered_kwh
+from custom_components.spotnav.planning.auto_controller import advance_register
 from custom_components.spotnav.planning.auto_settings import (
     DRIVER_MANUAL_KWH,
     EnergyBaseline,
@@ -318,32 +318,75 @@ async def test_a_met_need_leaves_a_persons_charge_running(hass: HomeAssistant) -
 # ------------------------------------------------------------------ counting a manual need
 
 
-def test_a_register_that_counts_per_plug_in_is_carried_not_taken_for_a_reset() -> None:
-    baseline = EnergyBaseline(register_kwh=7.0, departure_key="k", last_register_kwh=10.0)
-    delivered, rebased = _delivered_kwh(baseline, 0.2)
-    assert delivered == pytest.approx(3.2), "3 kWh before it started again, 0.2 since"
-    assert rebased.register_kwh == 0.0 and rebased.carried_kwh == pytest.approx(3.0)
-    delivered, _ = _delivered_kwh(replace_last(rebased, 0.2), 1.0)
-    assert delivered == pytest.approx(4.0)
+_T0 = datetime(2026, 9, 22, 6, tzinfo=dt_util.UTC)
 
 
-def test_a_replaced_meter_carries_what_it_counted_and_counts_on_from_its_new_reading() -> None:
-    baseline = EnergyBaseline(register_kwh=50.0, departure_key="k", last_register_kwh=53.0)
-    delivered, rebased = _delivered_kwh(baseline, 20.0)
-    assert delivered == pytest.approx(3.0) and rebased.register_kwh == 20.0
-    assert _delivered_kwh(replace_last(rebased, 20.0), 21.5)[0] == pytest.approx(4.5)
+def _step(baseline: EnergyBaseline, reading: float, seconds: float, *, plugged_in_at: datetime | None = None):
+    return advance_register(
+        baseline, reading, _T0 + timedelta(seconds=seconds), max_kw=22.0, plugged_in_at=plugged_in_at
+    )
+
+
+def test_a_register_that_counts_per_plug_in_is_carried_right_after_a_plug_in() -> None:
+    baseline = EnergyBaseline(register_kwh=7.0, departure_key="k", last_register_kwh=10.0, last_register_at=_T0)
+    step = _step(baseline, 0.2, 60, plugged_in_at=_T0)
+    assert step.accepted and step.delivered_kwh == pytest.approx(3.2), "3 kWh before it started again, 0.2 since"
+    assert step.baseline.register_kwh == 0.0 and step.baseline.carried_kwh == pytest.approx(3.0)
+    assert _step(step.baseline, 1.0, 300).delivered_kwh == pytest.approx(4.0)
+
+
+def test_a_lifetime_register_that_reads_zero_for_a_moment_is_a_glitch() -> None:
+    """A charger that reboots: its lifetime register reads 0, then its true value again."""
+    baseline = EnergyBaseline(register_kwh=1000.0, departure_key="k", last_register_kwh=1000.2, last_register_at=_T0)
+    dip = _step(baseline, 0.0, 30)
+    assert not dip.accepted and dip.delivered_kwh == pytest.approx(0.2), "nothing moves on one low reading"
+    back = _step(dip.baseline, 1000.3, 60)
+    assert back.accepted and back.delivered_kwh == pytest.approx(0.3)
+    assert back.baseline.register_kwh == 1000.0 and back.baseline.carried_kwh == 0.0
+    assert back.baseline.pending_drop_at is None
+
+
+def test_a_per_plug_in_register_that_reads_zero_mid_charge_is_not_counted_twice() -> None:
+    baseline = EnergyBaseline(register_kwh=0.0, departure_key="k", last_register_kwh=7.0, last_register_at=_T0)
+    dip = _step(baseline, 0.0, 30, plugged_in_at=_T0 - timedelta(hours=2))
+    assert not dip.accepted and dip.delivered_kwh == pytest.approx(7.0)
+    back = _step(dip.baseline, 7.1, 60)
+    assert back.accepted and back.delivered_kwh == pytest.approx(7.1)
+
+
+def test_a_drop_that_holds_is_a_register_that_started_again() -> None:
+    baseline = EnergyBaseline(register_kwh=50.0, departure_key="k", last_register_kwh=53.0, last_register_at=_T0)
+    first = _step(baseline, 20.0, 10)
+    assert not first.accepted
+    too_soon = _step(first.baseline, 20.0, 60)
+    assert not too_soon.accepted, "two readings, but not yet two minutes"
+    held = _step(too_soon.baseline, 20.1, 200)
+    assert held.accepted and held.delivered_kwh == pytest.approx(3.0)
+    assert held.baseline.register_kwh == 20.1 and held.baseline.carried_kwh == pytest.approx(3.0)
+    assert _step(held.baseline, 21.6, 400).delivered_kwh == pytest.approx(4.5)
+
+
+def test_a_reading_that_climbs_faster_than_the_charger_can_deliver_is_not_believed() -> None:
+    baseline = EnergyBaseline(register_kwh=1000.0, departure_key="k", last_register_kwh=1000.2, last_register_at=_T0)
+    spike = _step(baseline, 1100.0, 60)  # 100 kWh in a minute
+    assert not spike.accepted and spike.delivered_kwh == pytest.approx(0.2)
+    assert spike.baseline == baseline, "a reading that did not hold is never carried"
+    real = _step(baseline, 1000.5, 120)
+    assert real.accepted and real.delivered_kwh == pytest.approx(0.5)
+    # An hour at 22 kW is believable.
+    assert _step(baseline, 1021.0, 3600).accepted
+
+
+def test_a_high_reading_that_falls_back_is_dropped_not_carried() -> None:
+    baseline = EnergyBaseline(register_kwh=1000.0, departure_key="k", last_register_kwh=1004.0, last_register_at=_T0)
+    back = _step(baseline, 1001.0, 30)
+    assert back.accepted and back.delivered_kwh == pytest.approx(1.0) and back.baseline.carried_kwh == 0.0
 
 
 def test_noise_below_the_last_reading_is_not_a_restart() -> None:
-    baseline = EnergyBaseline(register_kwh=100.0, departure_key="k", last_register_kwh=104.0)
-    delivered, rebased = _delivered_kwh(baseline, 103.98)
-    assert delivered == pytest.approx(3.98) and rebased == baseline
-
-
-def replace_last(baseline: EnergyBaseline, reading: float) -> EnergyBaseline:
-    from dataclasses import replace
-
-    return replace(baseline, last_register_kwh=reading)
+    baseline = EnergyBaseline(register_kwh=100.0, departure_key="k", last_register_kwh=104.0, last_register_at=_T0)
+    step = _step(baseline, 103.98, 30)
+    assert step.delivered_kwh == pytest.approx(3.98) and step.baseline.register_kwh == 100.0
 
 
 def test_a_stored_baseline_reads_back_with_and_without_the_later_fields() -> None:
@@ -356,6 +399,12 @@ def test_a_stored_baseline_reads_back_with_and_without_the_later_fields() -> Non
         last_register_kwh=3.0,
         carried_kwh=1.5,
         remaining_kwh=4.0,
+        last_register_at=datetime(2026, 9, 22, 7, tzinfo=dt_util.UTC),
+        pending_drop_kwh=0.0,
+        pending_drop_at=datetime(2026, 9, 22, 7, 1, tzinfo=dt_util.UTC),
+        pending_drop_count=1,
+        delivered_kwh=6.0,
+        met_at=datetime(2026, 9, 22, 8, tzinfo=dt_util.UTC),
     )
     assert EnergyBaseline.from_stored(full.as_dict()) == full
 
@@ -464,6 +513,13 @@ async def _car(hass: HomeAssistant, frozen: Any, *, kwh: float = 10.0, **setting
     return car
 
 
+async def _delivered(hass: HomeAssistant, frozen: Any, kwh: float, *, minutes: float = 10.0) -> None:
+    """The register reads `kwh` after `minutes` of charging: time passes as the energy is delivered."""
+    frozen.tick(timedelta(minutes=minutes))
+    _meter(hass, kwh)
+    await hass.async_block_till_done()
+
+
 def _turn_ons(calls: list[tuple[str, str]]) -> int:
     return len([call for call in calls if call[0] == "turn_on"])
 
@@ -524,15 +580,18 @@ async def test_a_register_that_starts_again_at_plug_in_is_counted_on(hass: HomeA
     _record_charger_commands(hass)
     with freeze_time(NOW) as frozen:
         car = await _car(hass, frozen, departure=time(20, 0), departure_enabled=True)
-        _meter(hass, 0.0)  # a register that counts per plug-in: this one began at zero
+        await car.unplug()
+        await car.replug()
+        _meter(hass, 0.0)  # a register that counts per plug-in: zero at the plug-in
         await car.preview.async_recalculate()
-        _meter(hass, 4.0)
+        await _delivered(hass, frozen, 4.0, minutes=20)
         await car.preview.async_recalculate()
         await car.unplug()
 
-        _meter(hass, 0.0)  # a session register: zero at the next plug-in
         await car.replug()
-        _meter(hass, 1.0)
+        _meter(hass, 0.0)  # zero again at the next plug-in
+        await hass.async_block_till_done()
+        await _delivered(hass, frozen, 1.0, minutes=5)
         await car.preview.async_recalculate()
 
         assert car.preview.snapshot().remaining_kwh == pytest.approx(5.0), "4 before, 1 since"
@@ -544,7 +603,7 @@ async def test_an_unreadable_register_keeps_the_last_remainder_and_says_so(hass:
     _record_charger_commands(hass)
     with freeze_time(NOW) as frozen:
         car = await _car(hass, frozen, departure=time(20, 0), departure_enabled=True)
-        _meter(hass, 1003.5)
+        await _delivered(hass, frozen, 1003.5, minutes=20)
         await car.preview.async_recalculate()
         _meter(hass, None)
         await car.unplug()
@@ -621,7 +680,7 @@ async def test_the_departure_passing_plans_the_next_one_with_the_need_counted_af
     with freeze_time(NOW) as frozen:  # 08:00 in Stockholm
         car = await _car(hass, frozen, departure=time(12, 0), departure_enabled=True)
         key = car.baseline().departure_key
-        _meter(hass, 1004.0)
+        await _delivered(hass, frozen, 1004.0, minutes=20)
         await car.preview.async_recalculate()
         assert car.preview.snapshot().remaining_kwh == pytest.approx(6.0)
 
@@ -684,12 +743,12 @@ async def test_the_energy_stop_ends_the_plan_when_the_need_is_delivered(hass: Ho
     with freeze_time(NOW) as frozen:
         car = await _car(hass, frozen, kwh=3.0)
         assert car.controller.plan is not None and _turn_ons(calls) == 1
-        _meter(hass, 1002.0)
-        await hass.async_block_till_done()
+        await _delivered(hass, frozen, 1002.0)
         assert car.controller.plan is not None, "two of three kWh: the plan goes on"
 
-        _meter(hass, 1003.0)  # the register alone: no price, no recalculation asked for
-        await hass.async_block_till_done()
+        await _delivered(hass, frozen, 1003.0, minutes=5)  # the register alone: no price, no recalculation
+        assert car.controller.plan is not None, "one reading saying so is not yet enough"
+        await _delivered(hass, frozen, 1003.1, minutes=1)
 
         assert car.controller.plan is None and _turn_offs(calls) == 1
         assert car.preview.snapshot().state == "nothing_to_charge"
@@ -706,8 +765,8 @@ async def test_a_need_met_by_charge_now_clears_the_plan_and_lets_the_charge_go_o
         await car.executor.async_manual_start()
         await hass.async_block_till_done()
 
-        _meter(hass, 1003.2)
-        await hass.async_block_till_done()
+        await _delivered(hass, frozen, 1003.2)
+        await _delivered(hass, frozen, 1003.3, minutes=1)
 
         assert car.controller.plan is None, "the windows ahead would buy what nobody needs"
         assert _turn_offs(calls) == 0, "Charge now is the person's; it is not stopped"
@@ -723,8 +782,8 @@ async def test_a_need_met_by_solar_clears_the_plan_and_leaves_solar_its_charge(
         await car.controller.async_start(10, cause="solar")  # what a solar start sends
         await hass.async_block_till_done()
 
-        _meter(hass, 1003.0)
-        await hass.async_block_till_done()
+        await _delivered(hass, frozen, 1003.0)
+        await _delivered(hass, frozen, 1003.1, minutes=1)
 
         assert car.controller.plan is None and _turn_offs(calls) == 0
 
