@@ -107,8 +107,11 @@
       "SE"
     ],
     "currency": "SEK",
+    "included": [],
     "major_unit": "kr",
+    "market_timezone": "Europe/Stockholm",
     "minor_unit": "\u00f6re",
+    "source": null,
     "suggested_grid_fee": 30.0,
     "suggested_tax": 36.0,
     "suggested_vat_percent": 25.0,

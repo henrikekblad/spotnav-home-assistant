@@ -56,6 +56,12 @@ carries it. A `settings` replacement over the webhook may leave either out, and 
 is kept; one that names it is accepted and applied, but the answer still does not show it. The
 withheld fields are listed in `APP_UNREAD_SETTINGS` in `custom_components/spotnav/api/webhook.py`.
 
+The record also carries a read-only `fiscal_included`: the fiscal components (`vat`, `tax`, `transfer`)
+the selected area's published price already contains. For a Great Britain region (Octopus Agile) that
+is all three: they are locked as included in the price and nothing is added for them, whatever the
+area's override says. It is withheld from the webhook like the two fields above (ask with
+`"reads": ["fiscal_included"]`); a replacement that echoes it is accepted and it is never stored.
+
 Turning **active load balancing** on or off is not available through the webhook, only through
 the WebSocket by an administrator.
 
@@ -129,6 +135,15 @@ intervals), `plan` and `planning` (proposal, installed plan, and why), `control`
 action and the automatic action, with pause choices), `live`, `status` (typed status lines), `strategy`
 and `strategy_state`, `vehicles` and `soc`, `site`, `charging_phases`, `phase_detection`, `charge_progress`.
 Example documents are in `tests/fixtures/dashboard/`.
+
+**Price areas from relay contract v2.** `market` carries three additive fields: `market_timezone` (the
+zone whose calendar day one relay day file covers; equal to `timezone` except for Great Britain,
+`Europe/Paris` beside `Europe/London`, and Portugal, `Europe/Madrid` beside `Europe/Lisbon`), `included`
+(the relay's names, `vat`, `tax`, `grid_fee`, of what the published price already contains) and `source`
+(`{"name", "url"}`, where the prices come from, or `null`). Each `fiscal` component of an included part has
+the policy `included`, with no effective value. `spotnav/get_market_options` gives every area the same
+`market_timezone` and `source`, and `included` in the settings' own component names. Days in `prices` are
+always days in `timezone`; a Great Britain day is cut from the two relay files that cover it.
 
 **Phases.** A charge uses the smaller of the charger's wiring (1 or 3: the site's phase wiring for the
 charger, or, for a charger in no site, its own `charger_phases` field in `spotnav/get_entity_config`

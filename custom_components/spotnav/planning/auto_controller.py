@@ -1197,29 +1197,32 @@ class AutoPlannerController:
         """What the fiscal figures resolve to, or `None` when one cannot be resolved.
 
         Per component: an explicit override wins, else the area's catalogue suggestion, else the
-        setting is incomplete. A catalogue value of zero is a value; an absent one is not.
+        setting is incomplete. A catalogue value of zero is a value; an absent one is not. A component
+        the published price already includes (contract v2's `included`) is off whatever is stored:
+        the price holds it, so nothing is added for it a second time.
         """
         overrides = settings.override_for(entry.id)
         sentinel = object()
 
-        def resolve(override: Any, suggestion: float | None) -> Any:
-            if not override.enabled:
+        def resolve(override: Any, suggestion: float | None, included: bool) -> Any:
+            if included or not override.enabled:
                 return None
             if override.value is not None:
                 return override.value
             return suggestion if suggestion is not None else sentinel
 
-        vat = resolve(overrides.vat, entry.vat_percent)
-        tax = resolve(overrides.tax, entry.suggested_tax)
-        transfer = resolve(overrides.transfer, entry.suggested_grid_fee)
+        locked = {component: component_included(entry, component) for component in ("vat", "tax", "transfer")}
+        vat = resolve(overrides.vat, entry.vat_percent, locked["vat"])
+        tax = resolve(overrides.tax, entry.suggested_tax, locked["tax"])
+        transfer = resolve(overrides.transfer, entry.suggested_grid_fee, locked["transfer"])
         if sentinel in (vat, tax, transfer):
             return None
         return FiscalChoice(
-            tax_enabled=overrides.tax.enabled,
+            tax_enabled=overrides.tax.enabled and not locked["tax"],
             tax_minor_per_kwh=tax,
-            transfer_enabled=overrides.transfer.enabled,
+            transfer_enabled=overrides.transfer.enabled and not locked["transfer"],
             transfer_minor_per_kwh=transfer,
-            vat_enabled=overrides.vat.enabled,
+            vat_enabled=overrides.vat.enabled and not locked["vat"],
             vat_percent=vat,
         ).validated()
 
@@ -1514,6 +1517,15 @@ class AutoPlannerController:
             _LOGGER.warning("Storing an Auto proposal summary failed: %s", type(err).__name__)
             return False
         return True
+
+
+#: The settings' fiscal components and the names contract v2's `included` uses for them.
+INCLUDED_NAME: Final = {"vat": "vat", "tax": "tax", "transfer": "grid_fee"}
+
+
+def component_included(entry: AreaEntry | None, component: str) -> bool:
+    """Whether the area's published price already contains a fiscal component (`vat`, `tax`, `transfer`)."""
+    return entry is not None and entry.includes(INCLUDED_NAME[component])
 
 
 def fiscal_choice_for(settings: AutoSettings, entry: AreaEntry) -> FiscalChoice | None:

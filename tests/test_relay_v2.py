@@ -15,7 +15,9 @@ from typing import Any
 import pytest
 from homeassistant.core import HomeAssistant
 
-from custom_components.spotnav.planning.planner import planning_slots
+from custom_components.spotnav.planning.auto_controller import fiscal_choice_for
+from custom_components.spotnav.planning.auto_settings import AreaAutoSettings, AutoSettings, FiscalOverride
+from custom_components.spotnav.planning.planner import effective_minor_per_kwh, planning_slots
 from custom_components.spotnav.pricing.market_day import (
     compose_display_day,
     market_days_for,
@@ -29,6 +31,7 @@ from custom_components.spotnav.pricing.relay_contract import (
     parse_day,
     parse_index,
 )
+from custom_components.spotnav.sessions.costing import price_slices, split_energy, spot_intervals
 
 from .relay import BASE_URL, Clock, FakeScheduler, StoreDouble, StubTransport
 
@@ -426,3 +429,83 @@ async def test_a_v1_relay_keeps_portugal_on_one_madrid_calendar(
     assert today is not None and today.tz == MADRID and today.parts == ()
     assert transport.call_count("/v1/PT/2026/10-05.json") == 1
     await manager.async_shutdown()
+
+
+# --- included fiscal parts -----------------------------------------------------------------------
+
+
+def _all_on(area_id: str) -> AutoSettings:
+    stated = FiscalOverride(enabled=True, value=25.0)
+    return AutoSettings(
+        overrides=(AreaAutoSettings(area_id=area_id, vat=stated, tax=stated, transfer=stated),),
+        area_id=area_id,
+    )
+
+
+def test_included_parts_are_locked_off_whatever_is_stored() -> None:
+    catalogue = parse_catalogue(doc("areas-v2.json"), version=2)
+    gb = catalogue.area("GB-C")
+    fiscal = fiscal_choice_for(_all_on("GB-C"), gb)
+    assert fiscal is not None
+    assert not (fiscal.vat_enabled or fiscal.tax_enabled or fiscal.transfer_enabled)
+    # The planner adds nothing: the effective price is the published one.
+    assert effective_minor_per_kwh(0.2135, fiscal) == pytest.approx(21.35)
+    # An area that includes nothing keeps every stated figure.
+    sweden = fiscal_choice_for(_all_on("SE4"), catalogue.area("SE4"))
+    assert sweden is not None and sweden.vat_enabled and sweden.tax_enabled and sweden.transfer_enabled
+
+
+def test_a_session_on_an_all_in_area_costs_the_published_price() -> None:
+    catalogue = parse_catalogue(doc("areas-v2.json"), version=2)
+    fiscal = fiscal_choice_for(_all_on("GB-C"), catalogue.area("GB-C"))
+    day = compose_display_day("GB-C", OCT4, LONDON, (gb_file(OCT4), gb_file(OCT5)))
+    assert day is not None
+    spot = spot_intervals((day,), "GBP")
+    start = datetime(2026, 10, 4, 1, 0, tzinfo=timezone.utc)
+    slices = split_energy(spot, start, start + timedelta(hours=1), 7.0)
+    costing = price_slices(slices, fiscal)
+    expected = sum(item.kwh * item.eur_per_kwh * 0.8712 * 100 for item in slices)
+    assert costing.priced_kwh == pytest.approx(7.0)
+    assert costing.cost_minor == pytest.approx(expected)
+
+
+def test_the_settings_record_states_what_is_included_and_the_app_is_not_shown_it_unasked() -> None:
+    from custom_components.spotnav.api.settings import decode_settings, encode_settings, included_components
+    from custom_components.spotnav.api.webhook import _for_app
+
+    catalogue = parse_catalogue(doc("areas-v2.json"), version=2)
+    included = included_components(catalogue.area("GB-C"))
+    assert included == ("vat", "tax", "transfer")
+    assert included_components(catalogue.area("SE4")) == ()
+    record = encode_settings(_all_on("GB-C"), None, included)
+    assert record["fiscal_included"] == ["vat", "tax", "transfer"]
+    # A client echoing the record back is not refused, and nothing of it is stored.
+    body = {key: value for key, value in record.items() if key != "revision"}
+    assert decode_settings(body).override_for("GB-C").vat.enabled
+    # The app 1.0.x decoder refuses an unknown settings key: the webhook withholds it unless asked.
+    answer = {"ok": True, "settings": record}
+    assert "fiscal_included" not in _for_app(answer, {})["settings"]
+    assert _for_app(answer, {"reads": ["fiscal_included"]})["settings"]["fiscal_included"] == [
+        "vat",
+        "tax",
+        "transfer",
+    ]
+
+
+def test_the_dashboard_and_the_market_editor_show_included_parts_and_the_source() -> None:
+    from custom_components.spotnav.api.dashboard import serialize_fiscal
+    from custom_components.spotnav.api.market import _area
+
+    catalogue = parse_catalogue(doc("areas-v2.json"), version=2)
+    gb = catalogue.area("GB-C")
+    fiscal = serialize_fiscal(_all_on("GB-C"), gb)
+    assert fiscal is not None
+    for component in ("vat", "tax", "transfer"):
+        assert fiscal[component]["policy"] == "included"
+        assert fiscal[component]["effective_value"] is None
+    portugal = serialize_fiscal(_all_on("PT"), catalogue.area("PT"))
+    assert portugal is not None and portugal["vat"]["policy"] == "manual"
+    area = _area(gb)
+    assert area["included"] == ["vat", "tax", "transfer"]
+    assert area["market_timezone"] == PARIS and area["timezone"] == LONDON
+    assert area["source"] == {"name": "Octopus Energy (Agile)", "url": "https://octopus.energy/smart/agile/"}

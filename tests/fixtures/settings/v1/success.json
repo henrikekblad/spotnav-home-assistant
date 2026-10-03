@@ -23,6 +23,7 @@
       7
     ],
     "driver": "manual_kwh",
+    "fiscal_included": [],
     "max_periods": 1,
     "overrides": [],
     "phases": 3,

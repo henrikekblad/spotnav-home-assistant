@@ -28,6 +28,7 @@ from .entity import (
     SpotNavAutoEntity,
 )
 from .execution.controller import ABSOLUTE_MAX_AMPS, ABSOLUTE_MIN_AMPS, ChargingController
+from .planning.auto_controller import component_included
 from .planning.auto_settings import AutoSettingsError
 from .runtime import ChargerConfigEntry
 
@@ -217,8 +218,13 @@ class AutoFiscalValueNumber(SpotNavAutoEntity, NumberEntity):
 
     @property
     def available(self) -> bool:
-        """Unavailable without a market: a fiscal figure is denominated in one."""
-        return super().available and self.override is not None
+        """Unavailable without a market (a fiscal figure is denominated in one), and for a component the
+        market's published price already includes: no figure is added for it."""
+        return (
+            super().available
+            and self.override is not None
+            and not component_included(self.area, self._component)
+        )
 
     @property
     def native_unit_of_measurement(self) -> str | None:

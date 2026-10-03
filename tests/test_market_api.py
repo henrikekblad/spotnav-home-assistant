@@ -111,7 +111,13 @@ async def test_every_area_carries_the_relays_own_metadata_and_nothing_else(
             "major_unit",
             "minor_unit",
             "suggestions",
+            "market_timezone",
+            "included",
+            "source",
         }
+        # A v1 list: one calendar, nothing included, no attribution.
+        assert area["market_timezone"] == model.tz
+        assert area["included"] == [] and area["source"] is None
         assert area["name"] == model.name
         assert area["countries"] == list(model.countries)
         assert area["timezone"] == model.tz

@@ -8,6 +8,9 @@ public face, so nothing here serializes `as_dict()` or accepts `from_stored()` p
 * Two additive exceptions, `departure_date` and `departure_weekdays`: a replacement body may leave either out (an
   older client), and then the stored value is kept; `departure_date: null` clears the date. Every other key is
   still required.
+* One read-only fact, `fiscal_included`: the fiscal components (`vat`, `tax`, `transfer`) the selected area's
+  published price already contains (contract v2's `included`). They are locked as "included in the price" and
+  nothing is added for them, whatever the overrides say. A body may echo it; it is never stored.
 * `revision` is not part of the body: the client names it in `expected_revision`, and a body
   carrying `revision` is refused as an unknown field rather than overriding the compare-and-set.
 * Absence is not zero: a fiscal component is off, on with a value, or on with none; `null` never
@@ -83,7 +86,13 @@ OPTIONAL_SETTINGS_KEYS: Final = frozenset({"departure_date", "departure_weekdays
 #: The keys a replacement body must carry; the rest of `SETTINGS_KEYS` may be left out.
 REQUIRED_SETTINGS_KEYS: Final = SETTINGS_KEYS - OPTIONAL_SETTINGS_KEYS
 
-SETTINGS_RESPONSE_KEYS: Final = SETTINGS_KEYS | {"revision"}
+#: Facts a record carries that no body states: echoed back by a client, they are accepted and ignored.
+READ_ONLY_SETTINGS_KEYS: Final = frozenset({"fiscal_included"})
+
+SETTINGS_RESPONSE_KEYS: Final = SETTINGS_KEYS | {"revision"} | READ_ONLY_SETTINGS_KEYS
+
+#: The settings' fiscal components, in record order, and the names contract v2's `included` gives them.
+FISCAL_COMPONENT_NAMES: Final = (("vat", "vat"), ("tax", "tax"), ("transfer", "grid_fee"))
 
 OVERRIDE_KEYS: Final = frozenset({"area_id", "vat", "tax", "transfer"})
 FISCAL_KEYS: Final = frozenset({"enabled", "value"})
@@ -257,11 +266,31 @@ def strategy_of(settings: AutoSettings) -> str:
     return settings.strategy
 
 
-def encode_settings(settings: AutoSettings, phases: int | None = None) -> dict[str, Any]:
+def fiscal_included_for(hass: HomeAssistant, settings: AutoSettings | None) -> tuple[str, ...]:
+    """The fiscal components the record's selected area already includes in its price, from the held
+    catalogue; none without an area, a catalogue, or a v2 `included` list."""
+    repository = domain_data(hass).price_repository
+    if settings is None or settings.area_id is None or repository is None:
+        return ()
+    entry = repository.catalogue_snapshot().area(settings.area_id)
+    return included_components(entry)
+
+
+def included_components(entry: Any) -> tuple[str, ...]:
+    """`vat`, `tax` and `transfer`, in record order, for each part an area's published price includes."""
+    if entry is None:
+        return ()
+    return tuple(component for component, name in FISCAL_COMPONENT_NAMES if name in entry.included)
+
+
+def encode_settings(
+    settings: AutoSettings, phases: int | None = None, included: tuple[str, ...] = ()
+) -> dict[str, Any]:
     """The public value: every user-owned planning input, and the record's revision.
 
     `phases` is the effective phases a charge uses (`planning/phases.py`), which is what the key carries
     for an older client; the stored field is only an older release's leftover and is never read.
+    `included` is the read-only `fiscal_included` (see the module docstring).
     """
     return {
         "revision": settings.revision,
@@ -278,6 +307,7 @@ def encode_settings(settings: AutoSettings, phases: int | None = None) -> dict[s
         "departure_weekdays": list(settings.departure_weekdays),
         "driver": settings.driver,
         "target": encoded_target(settings.target),
+        "fiscal_included": list(included),
     }
 
 
@@ -293,7 +323,9 @@ def decode_settings(raw: Any) -> AutoSettings:
     Every key is required and every type exact; the result passes the same `AutoSettings.validated()`
     the store uses. The pause is never part of a body (see `replacement_mutator`).
     """
-    stored = _object(raw, REQUIRED_SETTINGS_KEYS, "settings", OPTIONAL_SETTINGS_KEYS)
+    stored = _object(raw, REQUIRED_SETTINGS_KEYS, "settings", OPTIONAL_SETTINGS_KEYS | READ_ONLY_SETTINGS_KEYS)
+    if "fiscal_included" in stored and not isinstance(stored["fiscal_included"], list):
+        _refuse("invalid_fiscal", "fiscal_included is read-only, and a list when it is echoed")
     overrides = stored["overrides"]
     if not isinstance(overrides, list):
         _refuse("invalid_area", "overrides must be a list")
@@ -390,19 +422,21 @@ def expected_revision_from(raw: Any) -> int:
     return raw
 
 
-def settings_envelope(settings: AutoSettings, phases: int | None = None) -> dict[str, Any]:
+def settings_envelope(
+    settings: AutoSettings, phases: int | None = None, included: tuple[str, ...] = ()
+) -> dict[str, Any]:
     """The transport-neutral success answer: the committed record and its pause, no exception text."""
     return {
         "api_version": SETTINGS_API_VERSION,
         "ok": True,
         "error": None,
-        "settings": encode_settings(settings, phases),
+        "settings": encode_settings(settings, phases, included),
         "pause": encode_pause(settings.pause),
     }
 
 
 def settings_failure(
-    code: str, settings: AutoSettings | None, phases: int | None = None
+    code: str, settings: AutoSettings | None, phases: int | None = None, included: tuple[str, ...] = ()
 ) -> dict[str, Any]:
     """The transport-neutral refusal: a stable code beside the settings that still stand.
 
@@ -414,7 +448,7 @@ def settings_failure(
         "api_version": SETTINGS_API_VERSION,
         "ok": False,
         "error": code,
-        "settings": None if settings is None else encode_settings(settings, phases),
+        "settings": None if settings is None else encode_settings(settings, phases, included),
         "pause": None if settings is None else encode_pause(settings.pause),
     }
 
@@ -571,7 +605,7 @@ async def websocket_get_settings(
     except SettingsRefusal as refusal:
         connection.send_error(msg["id"], refusal.code, "That charger is not available")
         return
-    connection.send_result(msg["id"], settings_envelope(settings, effective_phases(hass, msg["charger_id"])))
+    connection.send_result(msg["id"], settings_envelope(settings, effective_phases(hass, msg["charger_id"]), fiscal_included_for(hass, settings)))
 
 
 @websocket_api.websocket_command(
@@ -609,14 +643,20 @@ async def websocket_update_settings(
         return
     except SettingsReconcileError as failure:
         connection.send_result(
-            msg["id"], settings_failure(failure.code, failure.settings, effective_phases(hass, entry_id))
+            msg["id"], settings_failure(
+                failure.code, failure.settings, effective_phases(hass, entry_id),
+                fiscal_included_for(hass, failure.settings),
+            )
         )
         return
     except SettingsNotCommitted as failure:
         # Nothing written, old record stands: a contract envelope (successful frame) since the
         # request itself was valid.
         connection.send_result(
-            msg["id"], settings_failure(failure.code, failure.settings, effective_phases(hass, entry_id))
+            msg["id"], settings_failure(
+                failure.code, failure.settings, effective_phases(hass, entry_id),
+                fiscal_included_for(hass, failure.settings),
+            )
         )
         return
     except AutoSettingsError as refusal:
@@ -626,10 +666,12 @@ async def websocket_update_settings(
             connection.send_error(msg["id"], refusal.code, "Settings were refused")
             return
         connection.send_result(
-            msg["id"], settings_failure(refusal.code, current, effective_phases(hass, entry_id))
+            msg["id"], settings_failure(
+                refusal.code, current, effective_phases(hass, entry_id), fiscal_included_for(hass, current)
+            )
         )
         return
-    connection.send_result(msg["id"], settings_envelope(settings, effective_phases(hass, msg["charger_id"])))
+    connection.send_result(msg["id"], settings_envelope(settings, effective_phases(hass, msg["charger_id"]), fiscal_included_for(hass, settings)))
 
 
 @callback

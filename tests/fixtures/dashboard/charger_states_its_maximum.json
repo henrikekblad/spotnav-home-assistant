@@ -114,8 +114,11 @@
       "SE"
     ],
     "currency": "SEK",
+    "included": [],
     "major_unit": "kr",
+    "market_timezone": "Europe/Stockholm",
     "minor_unit": "\u00f6re",
+    "source": null,
     "suggested_grid_fee": 30.0,
     "suggested_tax": 36.0,
     "suggested_vat_percent": 25.0,
@@ -2193,6 +2196,7 @@
       7
     ],
     "driver": "manual_kwh",
+    "fiscal_included": [],
     "max_periods": 1,
     "overrides": [],
     "phases": 1,
@@ -2206,6 +2210,11 @@
   },
   "site": null,
   "soc": null,
+  "starting_up": {
+    "active": false,
+    "until": null,
+    "waiting_for": []
+  },
   "status": {
     "lines": [
       {
@@ -2272,10 +2281,5 @@
     "vehicles": {}
   },
   "target_vehicle_id": null,
-  "vehicles": [],
-  "starting_up": {
-    "active": false,
-    "until": null,
-    "waiting_for": []
-  }
+  "vehicles": []
 }

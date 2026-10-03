@@ -123,7 +123,7 @@ from .common import (
     lookup_charger,
     unsupported_version_text,
 )
-from .settings import encode_pause, encode_settings, strategy_of
+from .settings import encode_pause, encode_settings, included_components, strategy_of
 
 
 DASHBOARD_API_VERSION: Final = 1
@@ -992,8 +992,19 @@ def serialize_charger_list(chargers: Sequence[CapturedCharger]) -> dict[str, Any
 
 
 def _fiscal_component(
-    component: FiscalOverride, suggestion: float | None, unit: str | None
+    component: FiscalOverride, suggestion: float | None, unit: str | None, included: bool = False
 ) -> dict[str, Any]:
+    if included:
+        # The published price already holds it (contract v2's `included`): locked, nothing added,
+        # whatever is stored. `explicit_value` still says what is stored, for the record.
+        return {
+            "policy": "included",
+            "explicit_value": finite_number(component.value),
+            "suggested_value": None,
+            "effective_value": None,
+            "value_source": "included",
+            "unit": unit,
+        }
     policy, effective, source = fiscal_view(component, suggestion)
     return {
         "policy": policy,
@@ -1009,18 +1020,20 @@ def serialize_fiscal(settings: AutoSettings, area_entry: Any | None) -> dict[str
     """The three fiscal components for the selected market, or `None` without a market.
 
     The three states are preserved as stored: an explicit value is never invented, a literal zero is
-    a value, and a market with no suggestion is its own state, not a zero.
+    a value, and a market with no suggestion is its own state, not a zero. A component the area's
+    published price already includes has the fourth policy, `included`.
     """
     if area_entry is None:
         return None
     overrides = settings.override_for(area_entry.id)
     minor = _text(area_entry.minor_unit)
     money_unit = None if minor is None else f"{minor}/kWh"
+    included = included_components(area_entry)
     return {
-        "vat": _fiscal_component(overrides.vat, area_entry.vat_percent, "%"),
-        "tax": _fiscal_component(overrides.tax, area_entry.suggested_tax, money_unit),
+        "vat": _fiscal_component(overrides.vat, area_entry.vat_percent, "%", "vat" in included),
+        "tax": _fiscal_component(overrides.tax, area_entry.suggested_tax, money_unit, "tax" in included),
         "transfer": _fiscal_component(
-            overrides.transfer, area_entry.suggested_grid_fee, money_unit
+            overrides.transfer, area_entry.suggested_grid_fee, money_unit, "transfer" in included
         ),
     }
 
@@ -1034,7 +1047,7 @@ def serialize_settings(capture: CapturedDashboard) -> dict[str, Any] | None:
     settings = capture.settings
     if settings is None:
         return None
-    return encode_settings(settings, _effective_phases(capture))
+    return encode_settings(settings, _effective_phases(capture), included_components(capture.area_entry))
 
 
 def _effective_phases(capture: CapturedDashboard) -> int | None:
@@ -1112,6 +1125,14 @@ def serialize_market(capture: CapturedDashboard) -> dict[str, Any] | None:
         "suggested_vat_percent": None if entry is None else finite_number(entry.vat_percent),
         "suggested_tax": None if entry is None else finite_number(entry.suggested_tax),
         "suggested_grid_fee": None if entry is None else finite_number(entry.suggested_grid_fee),
+        # Contract v2, additive: the market calendar behind the display zone, what the price already
+        # includes (as the relay names it), and where the prices come from (`null` from a v1 list).
+        "market_timezone": None if entry is None else _text(entry.market_tz),
+        "included": None if entry is None else list(entry.included),
+        "source": None if entry is None or entry.source is None else {
+            "name": entry.source.name,
+            "url": entry.source.url,
+        },
     }
 
 
