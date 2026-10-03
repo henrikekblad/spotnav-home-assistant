@@ -44,6 +44,12 @@ charge can still be finished in time, buys what cannot wait, and plans again eac
 published. Without a usable history, or without a clear saving, it plans on the published prices.
 A date that has gone by is ignored and forgotten the next time the settings are saved.
 
+**Only some weekdays.** In the card's Plan dialog, under **Every day**, the weekday buttons choose
+the days a daily departure applies on (all seven by default). On a day that is not chosen there is no
+departure and the plan runs to the next chosen day, with the same rules as a departure on a particular
+day: it charges in published prices and may wait for cheaper unpublished hours. A date you pick
+yourself overrides the weekdays.
+
 A daily departure whose morning lies beyond the last published price (before the afternoon
 publication) waits for the publication when that is safe. The history only explains that wait
 (*Waiting: Saturdays were 30 % cheaper the last 4 weeks*), or ends it when the hours still available

@@ -501,17 +501,39 @@ class AutoPlannerController:
 
         A date that has gone by (or whose deadline is not after `calculated_at`) is ignored, so the
         departure reads as the daily one, until a write clears it. Also none without a departure.
+
+        Without a chosen date, a daily departure that leaves some weekdays out takes the date of its next
+        occurrence on a weekday that is in the set, when that is not simply the next occurrence: the plan
+        then runs to that day, exactly as it does to a date the person chose.
         """
-        chosen = settings.departure_date
-        if chosen is None or not settings.departure_enabled:
+        if not settings.departure_enabled:
             return None
         zone = dt_util.get_time_zone(entry.tz)
         if zone is None:
             return None
+        chosen = settings.departure_date
+        if chosen is None:
+            return self._next_departure_weekday(settings, entry.tz, calculated_at)
         deadline = local_instant(chosen, settings.departure, zone)
         if deadline.astimezone(timezone.utc) <= calculated_at.astimezone(timezone.utc):
-            return None
+            return self._next_departure_weekday(settings, entry.tz, calculated_at)
         return chosen
+
+    @staticmethod
+    def _next_departure_weekday(settings: AutoSettings, tz: str, calculated_at: datetime) -> date | None:
+        """The date of the next departure on an allowed weekday, or `None` when the next occurrence is
+        already on one (the ordinary daily departure) or every weekday is allowed."""
+        if len(settings.departure_weekdays) >= 7:
+            return None
+        zone = dt_util.get_time_zone(tz)
+        if zone is None:
+            return None
+        day = resolve_departure(calculated_at, tz, settings.departure, calculated_at).astimezone(zone).date()
+        if day.isoweekday() in settings.departure_weekdays:
+            return None
+        while day.isoweekday() not in settings.departure_weekdays:
+            day += timedelta(days=1)
+        return day
 
     async def async_pause(self, choice: PauseChoice = PAUSE_UNTIL_RESUMED) -> AutoSnapshot:
         """Pause automatic execution for this charger, and keep calculating.

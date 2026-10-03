@@ -296,6 +296,7 @@ def _auto_price_section(hass: HomeAssistant, entry: ConfigEntry) -> dict[str, An
         stored = store.proposal(entry.entry_id)
         departure_date = store.settings(entry.entry_id).departure_date
         data["departure_date"] = None if departure_date is None else departure_date.isoformat()
+        data["departure_weekdays"] = ",".join(str(day) for day in store.settings(entry.entry_id).departure_weekdays)
         if controller is None or data.get("proposal") is None:
             data["settings_revision"] = store.settings(entry.entry_id).revision
             data["proposal"] = (

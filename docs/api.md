@@ -44,12 +44,14 @@ limit, with `Retry-After`) or 502 (the charger command failed).
 | `update_vehicle` | Change a vehicle's capacity or consumption, with `expected` values. |
 | `update_site_settings` | Change solar priority or forecast sources of the charger's site. |
 
-**Withheld settings field.** The settings record has a `departure_date` (an optional `YYYY-MM-DD`,
+**Withheld settings fields.** The settings record has a `departure_weekdays` (an optional list of
+weekday numbers, 1 Monday to 7 Sunday, at least one, default all seven: the days a daily departure
+applies on) and a `departure_date` (an optional `YYYY-MM-DD`,
 or `null`, for a departure on a particular day). The webhook leaves it out of every `settings`
 record it answers: the dashboard's, and the `settings` action's success and failure alike. The
 released Android app refuses a settings record with a field it does not know, and with it the
 whole dashboard, so the field stays withheld until an app that reads it is out. The WebSocket
-carries it. A `settings` replacement over the webhook may leave it out, and then the stored date
+carries it. A `settings` replacement over the webhook may leave either out, and then the stored value
 is kept; one that names it is accepted and applied, but the answer still does not show it. The
 withheld fields are listed in `APP_UNREAD_SETTINGS` in `custom_components/spotnav/api/webhook.py`.
 
