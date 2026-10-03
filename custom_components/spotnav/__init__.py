@@ -16,6 +16,7 @@ from homeassistant.const import EVENT_HOMEASSISTANT_STARTED, EVENT_HOMEASSISTANT
 from homeassistant.core import CoreState, Event, HomeAssistant, callback
 
 from .api.dashboard import async_setup_dashboard_api
+from .api.debug import async_setup_debug_api
 from .api.entity_config import async_setup_entity_config_api
 from .api.manual_action import async_setup_manual_action_api
 from .api.market import async_setup_market_api
@@ -33,6 +34,7 @@ from .const import (
     SITE_PLATFORMS,
 )
 from .entity_renames import async_setup_entity_renames
+from .log_buffer import attach_log_buffer
 from .execution.auto_execution import AutoExecutor, pause_blocks_execution
 from .execution.controller import ChargingController
 from .execution.solar_execution import (
@@ -80,6 +82,8 @@ async def async_setup(hass: HomeAssistant, config: dict[str, Any]) -> bool:
     repeatedly.
     """
     data = domain_data(hass)
+    # Keep SpotNav's own recent log records for the debug bundle; changes no log level.
+    data.log_buffer = attach_log_buffer()
     await async_setup_decisions(hass)
     # Every outstanding decision becomes one fixable Repairs issue (see repairs.py), re-synced on
     # every mutation. Domain setup is never unloaded, so the cancel callable is kept, not called.
@@ -100,6 +104,7 @@ async def async_setup(hass: HomeAssistant, config: dict[str, Any]) -> bool:
     async_setup_manual_action_api(hass)
     async_setup_site_settings_api(hass)
     async_setup_entity_config_api(hass)
+    async_setup_debug_api(hass)
     # Static route for the bundled card asset, versioned by the manifest.
     await async_setup_card_asset(hass)
     async_register_pairing(hass)

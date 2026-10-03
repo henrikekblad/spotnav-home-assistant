@@ -15,7 +15,13 @@ from homeassistant.components.diagnostics import async_redact_data
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 
-from .const import CONF_ENTRY_TYPE, CONF_OCPP_CHARGE_POINT_ID, CONF_WEBHOOK_ID, ENTRY_TYPE_SITE
+from .const import (
+    CONF_ENTRY_TYPE,
+    CONF_OCPP_CHARGE_POINT_ID,
+    CONF_WEBHOOK_ID,
+    DOMAIN,
+    ENTRY_TYPE_SITE,
+)
 from .pricing.price_repository import catalogue_summary, day_summary, index_summary
 from .runtime import controller_for, domain_data, executor_for, preview_for, site_controller_for
 from .site.regulator import RegulatorDecision
@@ -31,10 +37,33 @@ TO_REDACT = {CONF_WEBHOOK_ID, CONF_OCPP_CHARGE_POINT_ID, "charge_point_id"}
 async def async_get_config_entry_diagnostics(
     hass: HomeAssistant, entry: ConfigEntry
 ) -> dict[str, Any]:
-    """Return diagnostics for one SpotNav config entry."""
+    """Return diagnostics for one SpotNav config entry.
+
+    The site entry (or, with no site, the first charger entry) also carries the integration-wide
+    debug bundle under `debug_bundle`, so Home Assistant's own "Download diagnostics" answers most
+    support questions in one file.
+    """
+    diagnostics = entry_diagnostics(hass, entry)
+    if entry.entry_id == _bundle_carrier_id(hass):
+        from .debug_bundle import async_build_debug_bundle
+
+        diagnostics["debug_bundle"] = await async_build_debug_bundle(hass)
+    return diagnostics
+
+
+def entry_diagnostics(hass: HomeAssistant, entry: ConfigEntry) -> dict[str, Any]:
+    """One entry's own diagnostics, without the installation-wide bundle."""
     if entry.data.get(CONF_ENTRY_TYPE) == ENTRY_TYPE_SITE:
         return _site_diagnostics(hass, entry)
     return _charger_diagnostics(hass, entry)
+
+
+def _bundle_carrier_id(hass: HomeAssistant) -> str | None:
+    """The entry whose diagnostics carry the debug bundle: the first site, else the first charger."""
+    entries = sorted(hass.config_entries.async_entries(DOMAIN), key=lambda entry: entry.entry_id)
+    sites = [entry for entry in entries if entry.data.get(CONF_ENTRY_TYPE) == ENTRY_TYPE_SITE]
+    chosen = sites or entries
+    return chosen[0].entry_id if chosen else None
 
 
 def _charger_diagnostics(hass: HomeAssistant, entry: ConfigEntry) -> dict[str, Any]:

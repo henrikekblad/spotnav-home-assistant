@@ -24,6 +24,7 @@ from .const import CONF_ENTRY_TYPE, DOMAIN, ENTRY_TYPE_SITE
 
 
 if TYPE_CHECKING:
+    from .log_buffer import SpotNavLogBuffer
     from .planning.auto_controller import AutoPlannerController
     from .execution.auto_execution import AutoExecutor
     from .planning.auto_settings import AutoSettingsStore
@@ -76,6 +77,7 @@ class SpotNavData:
     forecast_platforms: dict[str, Callable] | None = None
     resync_cancel: Callable[[], None] | None = None
     card_served: bool = False
+    log_buffer: SpotNavLogBuffer | None = None
 
 
 DATA_KEY: HassKey[SpotNavData] = HassKey(DOMAIN)
