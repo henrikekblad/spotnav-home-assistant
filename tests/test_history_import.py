@@ -79,11 +79,10 @@ class Repository:
     def day_snapshot(self, area_id: str, day: date):
         return SimpleNamespace(document=self.held.get(day), index_authority="listed")
 
-    async def async_get_day(self, area_id: str, day: date):
+    async def async_get_archive_day(self, area_id: str, day: date):
+        """The relay's archive: asked whatever the index lists; a day it lacks is `None` and is not kept."""
         self.asked.append(day)
-        if day in self.later:
-            self.held[day] = self.later[day]
-        return self.day_snapshot(area_id, day)
+        return self.later.get(day)
 
 
 def market_of(repository: Repository) -> PriceMarket:
@@ -300,6 +299,54 @@ async def test_unpriced_hours_are_priced_on_a_later_day_and_not_asked_twice_in_o
     marker = store.import_marker(CHARGER)
     assert marker["priced_hours"] == 1 and marker["unpriced_hours"] == 1  # type: ignore[index]
     assert len([i for i in store.closed(CHARGER) if i.imported]) == 2, "re-pricing replaces, never duplicates"
+
+
+async def test_an_unlisted_past_day_is_fetched_from_the_archive_and_priced_hourly_or_quarterly(
+    hass: HomeAssistant, store: SessionStore
+) -> None:
+    repository = Repository(later={D1: document(D1, [0.2] * 24), D2: document(D2, [0.3] * 96)})
+    statistics = Statistics([hour(D1, 5, 5.0), hour(D2, 5, 5.0)])
+
+    await importer_for(hass, store, statistics, repository).async_run()
+
+    by_start = {item.start: item for item in store.closed(CHARGER)}
+    assert by_start[at(D1, 5)].cost_minor == pytest.approx(5.0 * 200.0)
+    assert by_start[at(D2, 5)].cost_minor == pytest.approx(5.0 * 300.0)
+    assert sorted(repository.asked) == [D1, D2]
+    marker = store.import_marker(CHARGER)
+    assert marker["unpriced_hours"] == 0 and marker["version"] == 2  # type: ignore[index]
+
+
+async def test_a_day_the_relay_lacks_stays_unpriced_and_is_asked_once_per_run(
+    hass: HomeAssistant, store: SessionStore
+) -> None:
+    repository = Repository()
+    statistics = Statistics([hour(D1, 5, 1.0), hour(D1, 6, 1.0), hour(D1, 20, 1.0)])
+
+    await importer_for(hass, store, statistics, repository).async_run()
+
+    assert repository.asked == [D1]
+    assert all(item.cost_minor is None for item in store.closed(CHARGER))
+    assert store.import_marker(CHARGER)["unpriced_hours"] == 3  # type: ignore[index]
+
+
+async def test_a_version_one_marker_with_unpriced_hours_is_priced_at_once(
+    hass: HomeAssistant, store: SessionStore
+) -> None:
+    statistics = Statistics([hour(D1, 5, 5.0)])
+    repository = Repository()
+    await importer_for(hass, store, statistics, repository).async_run()
+    marker = store.import_marker(CHARGER)
+    assert marker is not None
+    store.set_import_marker(CHARGER, {**marker, "version": 1})
+    repository.later[D1] = document(D1, [0.2] * 24)
+
+    # The same day: a current marker would wait until tomorrow, a version-1 one does not.
+    await importer_for(hass, store, statistics, repository).async_run()
+
+    ((item),) = store.closed(CHARGER)
+    assert item.cost_minor == pytest.approx(5.0 * 200.0)
+    assert store.import_marker(CHARGER)["version"] == 2  # type: ignore[index]
 
 
 async def test_a_charger_without_a_register_imports_nothing_and_tries_again_later(

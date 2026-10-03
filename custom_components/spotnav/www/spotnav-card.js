@@ -3023,6 +3023,12 @@ function energyAmount(language, value) {
   }
   return `${formatNumber(language, value, 3)} kWh`;
 }
+function energyTenths(language, value) {
+  if (value === null || !Number.isFinite(value)) {
+    return "";
+  }
+  return `${formatNumber(language, value, 1)} kWh`;
+}
 function percentAmount(language, value) {
   return `${formatNumber(language, value, 1)} %`;
 }
@@ -12509,7 +12515,7 @@ function savingsLine(language, source) {
 function figures(language, bucket) {
   const context = formatContext(language, bucket);
   const cost = bucket.cost === null ? translate(language, "history.noCost") : money(context, bucket.cost);
-  const parts = [energyAmount(language, bucket.energy_kwh), cost];
+  const parts = [energyTenths(language, bucket.energy_kwh), cost];
   if (bucket.average_price_minor_per_kwh !== null && bucket.minor_unit !== null) {
     parts.push(pricePerKwh(context, bucket.average_price_minor_per_kwh));
   }
@@ -12546,7 +12552,7 @@ function dayFigures(language, day) {
   if (day.solar_share !== null) {
     parts.push(translate(language, "history.solar", { percent: percent(language, day.solar_share) }));
   }
-  return `${date}: ${parts.join(" · ")}`;
+  return `${date} · ${parts.join(" · ")}`;
 }
 function dayChart(doc, language, days, ui) {
   const wrap = element6(doc, "div", VISUAL_CLASSES.historyChart);
@@ -12599,7 +12605,7 @@ function dayChart(doc, language, days, ui) {
     const labelled = number2 === 1 || number2 === days.length || number2 % 5 === 0 && days.length - number2 >= 3;
     axis.append(element6(doc, "span", void 0, labelled ? String(number2) : ""));
   });
-  const scale = element6(doc, "span", `${VISUAL_CLASSES.muted} ${VISUAL_CLASSES.historyScale}`, energyAmount(language, top));
+  const scale = element6(doc, "span", `${VISUAL_CLASSES.muted} ${VISUAL_CLASSES.historyScale}`, energyTenths(language, top));
   scale.setAttribute("aria-hidden", "true");
   wrap.append(scale, plot, axis, readout);
   show(days.find((day) => day.period === ui.day) ?? null);
@@ -12701,7 +12707,7 @@ function historyBody(doc, language, state, ui, handlers) {
       VISUAL_CLASSES.historyOpen,
       translate(language, "history.open", {
         time: clockOf(answer.open.start),
-        energy: energyAmount(language, answer.open.energy_kwh)
+        energy: energyTenths(language, answer.open.energy_kwh)
       })
     );
     open.setAttribute("role", "status");

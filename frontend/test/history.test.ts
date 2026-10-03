@@ -119,6 +119,12 @@ describe("the months", () => {
     expect(dayPricePositions(same)).toEqual([0]);
   });
 
+  it("words a day's energy to a tenth and sets the date apart from the figures", () => {
+    const day = { ...(answer().month_days[13] as SessionsAnswer["month_days"][0]), energy_kwh: 18.1234 };
+    expect(dayFigures("en", day)).toMatch(/^\w{3} 14 Sep\w* · 18\.1 kWh · /);
+    expect(dayFigures("sv", day)).toContain(" · 18,1 kWh · ");
+  });
+
   it("words a day's figures, and a day without a charge", () => {
     const days = answer().month_days;
     expect(dayFigures("en", days[13] as SessionsAnswer["month_days"][0])).toContain("24.2 kWh");

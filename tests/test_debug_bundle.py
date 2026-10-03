@@ -29,20 +29,27 @@ async def test_bundle_has_every_section(hass: HomeAssistant) -> None:
     charger, site = await setup_charger_and_site(hass)
     bundle = await async_build_debug_bundle(hass)
 
-    assert bundle["bundle_version"] == 1
+    assert bundle["bundle_version"] == 2
     for key in ("versions", "related_integrations", "price_data", "sites", "chargers", "log"):
         assert key in bundle
     versions = bundle["versions"]
     assert {"spotnav", "card_bundle_hash", "home_assistant", "python", "installation_type"} <= set(versions)
     assert versions["spotnav"]
     assert [s["entry_id"] for s in bundle["sites"]] == [site.entry_id]
-    assert bundle["sites"][0]["result"] is not None
-    assert "capability" in bundle["sites"][0]
+    assert bundle["sites"][0]["diagnostics"]["result"] is not None
+    assert "capability" in bundle["sites"][0]["diagnostics"]
     section = bundle["chargers"][0]
     assert section["entry_id"] == charger.entry_id
     assert section["diagnostics"]["entry_type"] == "charger"
-    assert "dashboard" in section and "status" in section and "plan_and_auto" in section
-    assert "command_log" in section
+    assert "dashboard" in section and "status" in section
+    assert "plan" in section["dashboard"] and "strategy" in section["dashboard"]
+    assert "commands" in section["diagnostics"]["controller"]["adapter"]
+    # Each fact once: the price data at the top only, the rest inside the entry's diagnostics or dashboard.
+    for gone in ("plan_and_auto", "command_log"):
+        assert gone not in section
+    for gone in ("result", "capability", "price_data"):
+        assert gone not in bundle["sites"][0]
+    assert "price_data" not in section["diagnostics"] and "price_data" not in bundle["sites"][0]["diagnostics"]
     assert "intervals" not in section["dashboard"]["prices"]
     json.dumps(bundle)
 
