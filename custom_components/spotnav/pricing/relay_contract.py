@@ -17,6 +17,7 @@ unit labels beside them.
 from __future__ import annotations
 
 import json
+import logging
 import math
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta
@@ -24,6 +25,19 @@ from types import MappingProxyType
 from typing import Any, Final, Literal, Mapping
 
 from homeassistant.util import dt as dt_util
+
+_LOGGER = logging.getLogger(__name__)
+
+#: Entries already reported as skipped, so a catalogue re-read every hour logs each damaged entry once.
+_SKIPPED_LOGGED: set[str] = set()
+
+
+def _log_skipped(kind: str, label: str, err: Exception) -> None:
+    key = f"{kind}:{label}:{err}"
+    if key in _SKIPPED_LOGGED:
+        return
+    _SKIPPED_LOGGED.add(key)
+    _LOGGER.warning("Skipping %s %s in the relay document: %s", kind, label, err)
 
 
 #: The only contract version understood; another is refused rather than read hopefully.
@@ -412,6 +426,34 @@ def validate_intervals(intervals: tuple[PriceInterval, ...], what: str) -> None:
             )
 
 
+def _parse_area(raw: Any) -> AreaEntry:
+    area = _object(raw, "an area")
+    area_id = _text(area, "id", "an area")
+    countries = _require(area, "countries", f"area {area_id!r}")
+    if not isinstance(countries, list) or not countries or not all(
+        isinstance(code, str) and code.strip() for code in countries
+    ):
+        _fail("invalid_field", f"area {area_id!r}: 'countries' must be a non-empty list of strings")
+    timezone = _text(area, "tz", f"area {area_id!r}")
+    if dt_util.get_time_zone(timezone) is None:
+        _fail("invalid_field", f"area {area_id!r}: {timezone!r} is not a known timezone")
+    return (
+        AreaEntry(
+            id=area_id,
+            eic=_text(area, "eic", f"area {area_id!r}"),
+            countries=tuple(countries),
+            name=_text(area, "name", f"area {area_id!r}"),
+            tz=timezone,
+            currency=_text(area, "currency", f"area {area_id!r}"),
+            major_unit=_text(area, "major_unit", f"area {area_id!r}"),
+            minor_unit=_text(area, "minor_unit", f"area {area_id!r}"),
+            vat_percent=_optional_number(area, "vat_percent", f"area {area_id!r}"),
+            suggested_tax=_optional_number(area, "suggested_tax", f"area {area_id!r}"),
+            suggested_grid_fee=_optional_number(area, "suggested_grid_fee", f"area {area_id!r}"),
+        )
+    )
+
+
 def parse_catalogue(document: Any) -> AreaCatalogue:
     """The published area list. A catalogue listing an id twice is refused: one identity, two entries."""
     document = _object(document, "the area catalogue")
@@ -423,36 +465,42 @@ def parse_catalogue(document: Any) -> AreaCatalogue:
 
     entries: list[AreaEntry] = []
     seen: set[str] = set()
-    for raw in raw_areas:
-        area = _object(raw, "an area")
-        area_id = _text(area, "id", "an area")
-        if area_id in seen:
-            _fail("duplicate_area", f"the area catalogue lists {area_id!r} twice")
-        seen.add(area_id)
-        countries = _require(area, "countries", f"area {area_id!r}")
-        if not isinstance(countries, list) or not countries or not all(
-            isinstance(code, str) and code.strip() for code in countries
-        ):
-            _fail("invalid_field", f"area {area_id!r}: 'countries' must be a non-empty list of strings")
-        timezone = _text(area, "tz", f"area {area_id!r}")
-        if dt_util.get_time_zone(timezone) is None:
-            _fail("invalid_field", f"area {area_id!r}: {timezone!r} is not a known timezone")
-        entries.append(
-            AreaEntry(
-                id=area_id,
-                eic=_text(area, "eic", f"area {area_id!r}"),
-                countries=tuple(countries),
-                name=_text(area, "name", f"area {area_id!r}"),
-                tz=timezone,
-                currency=_text(area, "currency", f"area {area_id!r}"),
-                major_unit=_text(area, "major_unit", f"area {area_id!r}"),
-                minor_unit=_text(area, "minor_unit", f"area {area_id!r}"),
-                vat_percent=_optional_number(area, "vat_percent", f"area {area_id!r}"),
-                suggested_tax=_optional_number(area, "suggested_tax", f"area {area_id!r}"),
-                suggested_grid_fee=_optional_number(area, "suggested_grid_fee", f"area {area_id!r}"),
-            )
-        )
+    for position, raw in enumerate(raw_areas):
+        try:
+            entry = _parse_area(raw)
+        except RelayParseError as err:
+            # One damaged entry must not hide every other area.
+            _log_skipped("area", f"#{position}", err)
+            continue
+        if entry.id in seen:
+            _fail("duplicate_area", f"the area catalogue lists {entry.id!r} twice")
+        seen.add(entry.id)
+        entries.append(entry)
     return AreaCatalogue(version=version, generated=generated, areas=tuple(entries))
+
+
+def _parse_index_area(area_id: Any, raw: Any) -> IndexArea:
+    what = f"index area {area_id!r}"
+    if not isinstance(area_id, str) or not area_id.strip():
+        _fail("invalid_field", "the index has an area key that is not a name")
+    area = _object(raw, what)
+    raw_days = _require(area, "days", what)
+    if not isinstance(raw_days, list):
+        _fail("invalid_field", f"{what}: 'days' must be a list")
+    days: list[date] = []
+    for item in raw_days:
+        if not isinstance(item, str):
+            _fail("invalid_field", f"{what}: 'days' must hold ISO dates")
+        try:
+            days.append(date.fromisoformat(item))
+        except ValueError as err:
+            raise RelayParseError("invalid_field", f"{what}: {item!r} is not an ISO date") from err
+    if len(set(days)) != len(days):
+        _fail("duplicate_day", f"{what}: 'days' repeats a date")
+    if days != sorted(days):
+        _fail("unsorted_days", f"{what}: 'days' is not in ascending order")
+    resolution = None if area.get("res") is None else _resolution(area["res"], f"{what}: 'res'")
+    return IndexArea(area_id=area_id, days=tuple(days), resolution_minutes=resolution)
 
 
 def parse_index(document: Any) -> RelayIndex:
@@ -470,27 +518,11 @@ def parse_index(document: Any) -> RelayIndex:
 
     entries: list[IndexArea] = []
     for area_id, raw in raw_areas.items():
-        what = f"index area {area_id!r}"
-        if not isinstance(area_id, str) or not area_id.strip():
-            _fail("invalid_field", "the index has an area key that is not a name")
-        area = _object(raw, what)
-        raw_days = _require(area, "days", what)
-        if not isinstance(raw_days, list):
-            _fail("invalid_field", f"{what}: 'days' must be a list")
-        days: list[date] = []
-        for item in raw_days:
-            if not isinstance(item, str):
-                _fail("invalid_field", f"{what}: 'days' must hold ISO dates")
-            try:
-                days.append(date.fromisoformat(item))
-            except ValueError as err:
-                raise RelayParseError("invalid_field", f"{what}: {item!r} is not an ISO date") from err
-        if len(set(days)) != len(days):
-            _fail("duplicate_day", f"{what}: 'days' repeats a date")
-        if days != sorted(days):
-            _fail("unsorted_days", f"{what}: 'days' is not in ascending order")
-        resolution = None if area.get("res") is None else _resolution(area["res"], f"{what}: 'res'")
-        entries.append(IndexArea(area_id=area_id, days=tuple(days), resolution_minutes=resolution))
+        try:
+            entries.append(_parse_index_area(area_id, raw))
+        except RelayParseError as err:
+            # One damaged entry must not hide every other area's days.
+            _log_skipped("index area", repr(area_id), err)
     return RelayIndex(
         version=version,
         generated=generated,
