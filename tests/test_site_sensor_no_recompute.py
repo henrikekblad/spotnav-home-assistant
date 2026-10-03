@@ -40,8 +40,11 @@ async def test_writing_the_site_sensors_does_no_recomputation(hass: HomeAssistan
     for name in HEAVY:
         original = getattr(controller, name)
         if isinstance(getattr(type(controller), name, None), property):
+            original_property = getattr(type(controller), name)
             monkeypatch.setattr(
-                type(controller), name, property(lambda self, n=name, o=getattr(type(controller), name): _count(calls, n, o.fget(self)))
+                type(controller),
+                name,
+                property(lambda self, n=name, o=original_property: _count(calls, n, o.fget(self))),
             )
         else:
             monkeypatch.setattr(
