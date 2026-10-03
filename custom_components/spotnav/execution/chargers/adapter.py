@@ -36,6 +36,7 @@ from ...const import DEFAULT_MIN_CURRENT_A
 from ...vehicles.ocpp_identity import OcppConnectorTarget
 from ...vehicles.soc_estimate import read_energy_register_kwh
 from ..charge_progress import connector_status
+from ..charger_connection import CHARGING, normalise_ocpp, normalise_status, UNKNOWN
 from ..charger_profiles import OCPP_NUMBER_POLICY, OCPP_POLICY, WritePolicy
 from ..pilot_floor_probe import connector_entity_id
 from .base import (
@@ -308,6 +309,32 @@ class ChargerAdapter:
         if status is None:
             return None
         return status not in self._disconnected_values
+
+    def connection(self) -> tuple[str, str | None]:
+        """The charger's connection state (`charger_connection.CONNECTION_STATES`) and the entity it
+        was read from, or `None` for the source.
+
+        An OCPP connector says it through its status; another charger through its status sensor mapped
+        by its platform's table, or by the charging values chosen for it. A charger with no readable
+        status gives `charging` when its control says so, else `unknown`. An unmapped value is `unknown`.
+        """
+        if self._connector_status_entity is not None:
+            entity_id = self._connector_status_entity()
+            if entity_id is not None:
+                status = connector_status(self.hass.states.get(entity_id))
+                if status is not None:
+                    return normalise_ocpp(status), entity_id
+        if self.status_entity_id:
+            status = self._status()
+            if status is None:
+                return UNKNOWN, self.status_entity_id
+            state = normalise_status(self.platform, status)
+            if state == UNKNOWN and status in self._charging_values:
+                state = CHARGING
+            return state, self.status_entity_id
+        if self.path.enabled_state() is True:
+            return CHARGING, None
+        return UNKNOWN, None
 
     def progress_status(self) -> str | None:
         """The status in the progress check's vocabulary: `Charging`, `SuspendedEV` (connected, the

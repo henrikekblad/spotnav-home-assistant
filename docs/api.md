@@ -160,6 +160,16 @@ integration's own grid import limit and SpotNav's (the main fuse minus the safet
 than 1 A per phase; it is raised for the Sigenergy integration's `Grid Import Limitation` number when it is
 enabled and holds a real value (4294967.295 kW means no limit).
 
+The additive `connection` block, `{state, source}`, says what the charger itself reports about the vehicle
+and the charge, in one vocabulary: `disconnected` (no vehicle), `connected` (a vehicle, nothing charging yet),
+`charging`, `paused` (a vehicle is connected and the charge is suspended by the charger, the vehicle or
+SpotNav), `finished` (the vehicle stopped, full or at its target, and is still plugged in), `error` and
+`unknown`. `source` is the entity the state was read from, or `null`. Every raw value is mapped explicitly
+per charger integration (an OCPP connector's status, Easee's `status`, Zaptec's `charger_operation_mode`,
+Wallbox's `status_description`, and the others with a status sensor); a value not listed is `unknown`, never
+a guess, and a charger that is only a switch is `charging` while the switch is on and `unknown` otherwise.
+A client shows nothing for `unknown` and ignores a state it does not know.
+
 The additive `sessions_summary` block holds this month's and last month's charge sessions
 (`sessions`, `energy_kwh`, `cost`, `currency`, `average_price_minor_per_kwh`, `solar_share`,
 `savings`). Cost is in the major unit, prices in the minor unit per kWh; `savings` compares with

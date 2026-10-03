@@ -54,6 +54,7 @@ from ..execution.auto_execution import (
     pause_blocks_execution,
 )
 from ..execution.charger_entities import charge_control_problem
+from ..execution.charger_connection import CONNECTION_STATES, UNKNOWN as CONNECTION_UNKNOWN
 from ..execution.charge_progress import ChargeProgress, NOT_OBSERVED
 from ..execution.controller import (
     ChargingController,
@@ -401,6 +402,8 @@ class CapturedDashboard:
     duplicates: tuple[str, ...] = ()
     #: This month's and last month's charge sessions (`sessions/summary.py`), or `None` with no record.
     sessions_summary: dict[str, Any] | None = None
+    #: The charger's connection state and the entity it was read from (`execution/charger_connection.py`).
+    connection: tuple[str, str | None] = (CONNECTION_UNKNOWN, None)
 
 
 def capture_target(controller: ChargingController | None) -> CapturedTarget | None:
@@ -927,6 +930,7 @@ def capture_dashboard(
         summary=capture_summary(hass, entry, vehicles),
         duplicates=tuple(found.title for found in duplicates_of(hass, entry)),
         sessions_summary=sessions_block(hass, entry_id, now),
+        connection=(CONNECTION_UNKNOWN, None) if controller is None else controller.connection(),
     )
 
 
@@ -1446,6 +1450,18 @@ def serialize_dashboard(
         "status": serialize_status(capture),
         "summary": serialize_summary(capture.summary),
         "sessions_summary": capture.sessions_summary,
+        "connection": serialize_connection(capture.connection),
+    }
+
+
+def serialize_connection(connection: tuple[str, str | None]) -> dict[str, Any]:
+    """The `connection` block: `state` (`disconnected`, `connected`, `charging`, `paused`, `finished`,
+    `error` or `unknown`) and `source`, the entity the state was read from (`null` when none was).
+    """
+    state, source = connection
+    return {
+        "state": state if state in CONNECTION_STATES else CONNECTION_UNKNOWN,
+        "source": _text(source),
     }
 
 
