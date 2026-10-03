@@ -1023,3 +1023,31 @@ def test_the_nominal_power_a_card_shows_is_this_functions_own_arithmetic() -> No
     assert power_kw(80, 3) == 55.42562584220407
     # The reviewed three-phase form is not the shortcut a card may invent for itself.
     assert power_kw(16, 3) != 230.0 * 3 * 16 / 1000
+
+
+def test_the_search_agrees_with_a_brute_force_that_prefers_the_latest_slots_on_equal_cost() -> None:
+    """Lowest cost, then the latest slots (compared from the last one backwards), for every cap."""
+    import itertools
+    import random
+
+    from custom_components.spotnav.planning.planner import PlanningSlot, cheapest_slots
+
+    rng = random.Random(7)
+    start = datetime(2026, 9, 12, 0, 0, tzinfo=timezone.utc)
+    for _ in range(200):
+        count = rng.randint(3, 9)
+        prices = [rng.choice([1.0, 1.0, 2.0, 3.0]) for _ in range(count)]
+        slots = [PlanningSlot(start + timedelta(minutes=15 * i), price, "d") for i, price in enumerate(prices)]
+        needed = rng.randint(1, count)
+        cap = rng.randint(1, 3)
+
+        def runs(chosen: tuple[int, ...]) -> int:
+            return 1 + sum(1 for a, b in zip(chosen, chosen[1:]) if b != a + 1)
+
+        best = min(
+            (c for c in itertools.combinations(range(count), needed) if runs(c) <= cap),
+            key=lambda c: (sum(prices[i] for i in c), tuple(-i for i in reversed(c))),
+            default=None,
+        )
+        found = cheapest_slots(slots, needed, 1.0, cap, FiscalChoice(), None)
+        assert (None if found is None else tuple(slots.index(s) for s in found)) == best, (prices, needed, cap)
