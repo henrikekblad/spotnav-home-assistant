@@ -92,6 +92,9 @@ from .window_hold import HOLD, OVERRIDE, WindowHold
 _LOGGER = logging.getLogger(__name__)
 STORE_VERSION = 1
 
+#: How long an accepted Start counts as the cause of the charge that follows it (the charge session record).
+START_CAUSE_TTL_S = 300.0
+
 # Token for hybrid window-end handoff logs (see `_async_end_callback`).
 HYBRID_LOG_TOKEN = "HYBRID"
 
@@ -493,6 +496,8 @@ class ChargingController:
         # When a Start this controller accepted was sent to the charge control while the charger
         # has not reported it on yet, else `None`.
         self._start_sent_at: datetime | None = None
+        # Who asked for the Start that was last accepted and when, for the charge session record.
+        self._start_cause: tuple[str, datetime] | None = None
         #: A session start found its current's target unavailable (a number that exists only while
         #: a session runs): written once that target reports.
         self._start_write_pending = False
@@ -1028,15 +1033,31 @@ class ChargingController:
             raise HomeAssistantError("No charging schedule is active")
         await self._reschedule_locked()
 
-    async def async_start(self, amps: int | None = None, *, manual: bool = False) -> bool:
+    async def async_start(
+        self, amps: int | None = None, *, manual: bool = False, cause: str | None = None
+    ) -> bool:
         """Start charging: a window opening, a manual button, or a webhook `start` action.
         Takes the operation lock and delegates to `_start_locked`. `False` when the start command
         was not executed (the charge control is unavailable), so no caller may claim a start.
+        `cause` is who asked, for the charge session record (`START_CAUSE_*`); a manual start says so.
         """
         async with self._lock:
-            return await self._start_locked(amps, manual=manual)
+            return await self._start_locked(amps, manual=manual, cause=cause)
 
-    async def _start_locked(self, amps: int | None = None, *, manual: bool = False) -> bool:
+    def consume_start_cause(self) -> str | None:
+        """Who started the charge that is now running, once: the last accepted Start's cause if it was
+        sent within `START_CAUSE_TTL_S`, else `None` (the charger started by itself or something else
+        started it). Read by the session recorder (`sessions/recorder.py`).
+        """
+        hint = self._start_cause
+        self._start_cause = None
+        if hint is None or (dt_util.utcnow() - hint[1]).total_seconds() > START_CAUSE_TTL_S:
+            return None
+        return hint[0]
+
+    async def _start_locked(
+        self, amps: int | None = None, *, manual: bool = False, cause: str | None = None
+    ) -> bool:
         """The start itself, with the operation lock held: record the requested current (if known) and
         start charging.
 
@@ -1079,6 +1100,11 @@ class ChargingController:
             # a failure, and the observation must not blame the car (see `charge_progress.py`).
             self._start_sent_at = dt_util.utcnow()
             executed = await self.adapter.async_start(explicit_amps)
+            if executed:
+                self._start_cause = (
+                    ("manual" if manual else cause or "other"),
+                    self._start_sent_at,
+                )
             if not executed:
                 # The command never went out: nothing is awaiting an answer, and nothing may say so.
                 self._start_sent_at = None
@@ -1685,7 +1711,7 @@ class ChargingController:
             return True
         if await self._enforce_target_locked():
             return True
-        await self._start_locked()
+        await self._start_locked(cause="plan_window")
         return False
 
     async def _async_enforce_target(self) -> bool:

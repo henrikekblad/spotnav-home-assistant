@@ -873,7 +873,7 @@ async def test_a_reload_creates_no_duplicate_entities_or_listeners(
     entries = er.async_entries_for_config_entry(er.async_get(hass), entry.entry_id)
     auto_ids = [item.unique_id for item in entries if "auto" in item.unique_id or "fiscal" in item.unique_id]
     assert auto_ids and len(auto_ids) == len(set(auto_ids)), "no Auto entity registered twice"
-    assert len(entries) == 36, "the surface this release creates, counted once"
+    assert len(entries) == 42, "the surface this release creates, counted once"
 
 
 

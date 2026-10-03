@@ -39,6 +39,8 @@ if TYPE_CHECKING:
     from .execution.solar_execution import SolarExecutionCoordinator
     from .vehicles.vehicle_charge_limit import VehicleChargeLimitLimiter
     from .vehicles.vehicle_refresh import VehicleRefreshLimiter
+    from .sessions.recorder import SessionRecorder
+    from .sessions.store import SessionStore
 
 
 @dataclass
@@ -53,6 +55,7 @@ class ChargerData:
     solar: SolarExecutionCoordinator | None = None
     hybrid_state: HybridChargerState | None = None
     hybrid_memory: ReplanMemory | None = None
+    sessions: SessionRecorder | None = None
 
 
 @dataclass
@@ -74,6 +77,7 @@ class SpotNavData:
     refresh_limiter: VehicleRefreshLimiter | None = None
     charge_limit_limiter: VehicleChargeLimitLimiter | None = None
     forecast_platforms: dict[str, Callable] | None = None
+    session_store: SessionStore | None = None
     resync_cancel: Callable[[], None] | None = None
     card_served: bool = False
 

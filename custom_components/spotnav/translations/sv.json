@@ -547,6 +547,24 @@
       },
       "integrated_energy": {
         "name": "Energi från effekt"
+      },
+      "sessions_energy_this_month": {
+        "name": "Laddad energi denna månad"
+      },
+      "sessions_cost_this_month": {
+        "name": "Laddkostnad denna månad"
+      },
+      "sessions_energy_last_month": {
+        "name": "Laddad energi förra månaden"
+      },
+      "sessions_cost_last_month": {
+        "name": "Laddkostnad förra månaden"
+      },
+      "sessions_last_energy": {
+        "name": "Senaste laddningens energi"
+      },
+      "sessions_last_cost": {
+        "name": "Senaste laddningens kostnad"
       }
     },
     "select": {

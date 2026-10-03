@@ -72,6 +72,7 @@ from ..planning.auto_settings import (
 )
 from ..planning.hybrid_forecast import async_forecast_capable_domains
 from ..planning.planner import chart_intervals, ChartInterval
+from ..sessions.inputs import sessions_block
 from ..planning.status_compose import (
     compose_status,
     HybridFacts,
@@ -387,6 +388,8 @@ class CapturedDashboard:
     summary: CapturedSummary | None = None
     #: The titles of the other charger entries that are this same physical charger.
     duplicates: tuple[str, ...] = ()
+    #: This month's and last month's charge sessions (`sessions/summary.py`), or `None` with no record.
+    sessions_summary: dict[str, Any] | None = None
 
 
 def capture_target(controller: ChargingController | None) -> CapturedTarget | None:
@@ -906,6 +909,7 @@ def capture_dashboard(
         suggested=() if store is None else store.suggested(entry_id),
         summary=capture_summary(hass, entry, vehicles),
         duplicates=tuple(found.title for found in duplicates_of(hass, entry)),
+        sessions_summary=sessions_block(hass, entry_id, now),
     )
 
 
@@ -1404,6 +1408,7 @@ def serialize_dashboard(
         "chargers": [{"id": entry_id, "name": name} for entry_id, name in capture.chargers],
         "status": serialize_status(capture),
         "summary": serialize_summary(capture.summary),
+        "sessions_summary": capture.sessions_summary,
     }
 
 

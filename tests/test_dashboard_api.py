@@ -121,6 +121,7 @@ DASHBOARD_SECTIONS = [
     "chargers",
     "status",
     "summary",
+    "sessions_summary",
 ]
 
 #: One chart row, exactly.
