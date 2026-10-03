@@ -22,6 +22,8 @@ import {
   UNSUPPORTED_API_VERSION,
   getDashboard,
   getEntityConfig,
+  getSessions,
+  getSessionsCsv,
   getMarketOptions,
   getSettings,
   listChargers,
@@ -53,7 +55,9 @@ import {
   type EntityFieldError,
   type EntityScope,
 } from "./entity-config";
+import { saveTextFile } from "./download";
 import { ensureHaSelector } from "./entity-editor";
+import { decodeCsv, decodeSessions, exportDates, type HistoryRange, type SessionsAnswer } from "./history";
 import {
   SETTINGS_EDITOR_KINDS,
   decodeSettingsAnswer,
@@ -218,6 +222,8 @@ export class SpotnavCard extends HTMLElement {
   private activeControlBusy = false;
   private entityConfig: EntityConfig | null = null;
   private entityOperation = 0;
+  private historyOperation = 0;
+  private history: SessionsAnswer | null = null;
   private entitySaving = false;
   private reopenOverview = false;
   private confirmReadFailed = false;
@@ -241,6 +247,8 @@ export class SpotnavCard extends HTMLElement {
     this.marketEditor = null;
     this.entityConfig = null;
     this.entityOperation += 1;
+    this.historyOperation += 1;
+    this.history = null;
     this.entitySaving = false;
     this.closeEditor();
     this.cardState = this.config.charger === "" ? { kind: "unconfigured" } : { kind: "loading" };
@@ -284,6 +292,7 @@ export class SpotnavCard extends HTMLElement {
     this.editor = null;
     this.marketEditor = null;
     this.entityOperation += 1;
+    this.historyOperation += 1;
     this.entitySaving = false;
     this.editorOperation += 1;
     this.releaseView();
@@ -1150,6 +1159,77 @@ export class SpotnavCard extends HTMLElement {
     }
   }
 
+  /**
+   * The History dialog was opened: read the charge history (any signed-in user may), and answer the open
+   * view. A newer open, a reconfiguration or a disconnect makes an older answer inert.
+   */
+  private async loadHistory(): Promise<void> {
+    const hass = this.hassObject;
+    const config = this.config;
+    const view = this.view;
+    if (!this.connected || hass === null || config === null || config.charger === "" || view === null) {
+      return;
+    }
+    const generation = this.generation;
+    const operation = ++this.historyOperation;
+    const current = (): boolean =>
+      this.connected && generation === this.generation && operation === this.historyOperation && this.view === view;
+    try {
+      const decoded = decodeSessions(await getSessions(hass, config.charger));
+      if (!current()) {
+        return;
+      }
+      if (!decoded.ok) {
+        view.setHistoryState({
+          kind: "failed",
+          sentenceKey: decoded.failure === "unsupported" ? "settings.error.version" : "history.failed",
+          code: null,
+        });
+        return;
+      }
+      this.history = decoded.value;
+      view.setHistoryState({ kind: "ready", answer: decoded.value });
+    } catch (error) {
+      if (!current()) {
+        return;
+      }
+      const code = error instanceof SpotnavApiError ? error.code : null;
+      view.setHistoryState({ kind: "failed", sentenceKey: "history.failed", code });
+    }
+  }
+
+  /** Export CSV: one request for the chosen period, then the file is saved; failure is one sentence. */
+  private async exportHistory(range: HistoryRange): Promise<void> {
+    const hass = this.hassObject;
+    const config = this.config;
+    const view = this.view;
+    const answer = this.history;
+    if (!this.connected || hass === null || config === null || config.charger === "" || view === null || answer === null) {
+      return;
+    }
+    const generation = this.generation;
+    const operation = this.historyOperation;
+    const current = (): boolean =>
+      this.connected && generation === this.generation && operation === this.historyOperation && this.view === view;
+    view.setHistoryExport(null, true);
+    try {
+      const file = decodeCsv(await getSessionsCsv(hass, config.charger, exportDates(range, answer)));
+      if (!current()) {
+        return;
+      }
+      if (file === null) {
+        view.setHistoryExport("history.exportFailed", false);
+        return;
+      }
+      saveTextFile(this.ownerDocument, file.filename, file.csv);
+      view.setHistoryExport(null, false);
+    } catch {
+      if (current()) {
+        view.setHistoryExport("history.exportFailed", false);
+      }
+    }
+  }
+
   private async loadEntityConfig(): Promise<void> {
     const hass = this.hassObject;
     const config = this.config;
@@ -1845,6 +1925,12 @@ export class SpotnavCard extends HTMLElement {
         },
         onCancelMarket: () => this.cancelMarket(),
         hass: () => this.hassObject,
+        onOpenHistory: () => {
+          void this.loadHistory();
+        },
+        onExportHistory: (range) => {
+          void this.exportHistory(range);
+        },
         onSettingsOverviewOpened: () => {
           void this.loadEntityConfig();
         },

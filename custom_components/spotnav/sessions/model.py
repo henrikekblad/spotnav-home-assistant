@@ -12,7 +12,7 @@ from __future__ import annotations
 
 import math
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, tzinfo
 from typing import Any, Final
 
 from homeassistant.util import dt as dt_util
@@ -205,16 +205,19 @@ class ChargeSession:
             last_sample_at=sample,
         )
 
-    def public(self) -> dict[str, Any]:
-        """The wire shape: major-unit cost, minor-unit prices, instants as offset-bearing ISO strings."""
+    def public(self, zone: tzinfo | None = None) -> dict[str, Any]:
+        """The wire shape: major-unit cost, minor-unit prices, instants as offset-bearing ISO strings in
+        `zone` (Home Assistant's own, so a client can read the local wall time off the string)."""
         cost = self.cost_minor
+        start = self.start if zone is None else self.start.astimezone(zone)
+        end = self.end if zone is None or self.end is None else self.end.astimezone(zone)
         savings = self.savings_minor
         reference = self.reference_cost_minor
         average = self.average_price_minor_per_kwh
         return {
             "id": self.id,
-            "start": self.start.isoformat(),
-            "end": None if self.end is None else self.end.isoformat(),
+            "start": start.isoformat(),
+            "end": None if end is None else end.isoformat(),
             "energy_kwh": round(self.energy_kwh, 3),
             "energy_source": self.energy_source,
             "estimated": self.estimated,

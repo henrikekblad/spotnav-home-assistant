@@ -1322,7 +1322,10 @@ export function decodeDashboard(raw: unknown): DecodeResult {
     if (version !== API_VERSION) {
       return { ok: false, failure: "unsupported" };
     }
-    exactKeys(root, DASHBOARD_KEYS);
+    exactKeys(
+      Object.fromEntries(Object.entries(root).filter(([key]) => !(OPTIONAL_DASHBOARD_KEYS as readonly string[]).includes(key))),
+      DASHBOARD_KEYS,
+    );
     const market = sectionOrNull(root, "market", decodeMarket);
     const timeZone = market?.timezone ?? null;
     const strategy = decodeStrategy(record(required(root, "strategy")));
@@ -1394,6 +1397,13 @@ const DASHBOARD_KEYS = [
   // entity configuration); accepted and not read.
   "summary",
 ] as const;
+
+/**
+ * Keys a client may find on the dashboard that a backend of the same version may also leave out:
+ * `sessions_summary` (this and last month's charge sessions, for a client that wants them there)
+ * is accepted and never read (the card's History view asks `spotnav/get_sessions`).
+ */
+const OPTIONAL_DASHBOARD_KEYS = ["sessions_summary"] as const;
 
 function strategyOptions(root: Record<string, unknown>): string[] {
   const options = arrayValue(root, "strategy_options").map((entry) =>

@@ -96,7 +96,7 @@ class SessionSensor(SpotNavChargingEntity, SensorEntity):
             if not closed:
                 return None, None, {}
             last = max(closed, key=lambda item: item.start)
-            record = last.public()
+            record = last.public(zone)
             attributes = {
                 "start": record["start"],
                 "end": record["end"],

@@ -156,6 +156,9 @@ export type SettingsAnswer =
 /** The market contract's own version, distinct from the other three contracts. */
 export const MARKET_API_VERSION = 1;
 
+/** The charge-session history contract (`spotnav/get_sessions`), independent of the others. */
+export const SESSIONS_API_VERSION = 1;
+
 /**
  * The five catalogue states in the backend's vocabulary: `loading` (attempt running, nothing held),
  * `ready`, `stale` (held but the last attempt failed), `unavailable` (nothing held, relay unreachable),

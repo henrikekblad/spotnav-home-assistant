@@ -28,6 +28,7 @@ var SETTINGS_REVISION_CONFLICT = "revision_conflict";
 var SETTINGS_RECONCILE_FAILED = "spotnav_settings_reconcile_failed";
 var SETTINGS_NOT_COMMITTED = "spotnav_settings_not_committed";
 var MARKET_API_VERSION = 1;
+var SESSIONS_API_VERSION = 1;
 var MARKET_STATES = ["loading", "ready", "stale", "unavailable", "invalid"];
 var MARKET_REASONS = ["offline", "invalid"];
 var CARD_TYPE = "spotnav-card";
@@ -94,21 +95,21 @@ function decodeActionResult(raw) {
   if (source === null) {
     throw new SpotnavApiError(null);
   }
-  const record6 = source;
+  const record7 = source;
   const keys = ["api_version", "ok", "error", "action", "choice"];
   for (const key of keys) {
-    if (!(key in record6)) {
+    if (!(key in record7)) {
       throw new SpotnavApiError(null);
     }
   }
-  if (Object.keys(record6).length !== keys.length) {
+  if (Object.keys(record7).length !== keys.length) {
     throw new SpotnavApiError(null);
   }
-  const version = record6.api_version;
-  const ok = record6.ok;
-  const error = record6.error;
-  const answered = record6.action;
-  const answeredChoice = record6.choice;
+  const version = record7.api_version;
+  const ok = record7.ok;
+  const error = record7.error;
+  const answered = record7.action;
+  const answeredChoice = record7.choice;
   if (typeof version !== "number" || typeof ok !== "boolean") {
     throw new SpotnavApiError(null);
   }
@@ -192,6 +193,29 @@ async function updateVehicle(hass, chargerId, request) {
     changes: request.changes,
     expected: request.expected
   });
+}
+async function getSessions(hass, chargerId, limit = 20) {
+  return await call(hass, {
+    type: "spotnav/get_sessions",
+    api_version: SESSIONS_API_VERSION,
+    charger_id: chargerId,
+    limit
+  });
+}
+async function getSessionsCsv(hass, chargerId, range) {
+  const message = {
+    type: "spotnav/get_sessions",
+    api_version: SESSIONS_API_VERSION,
+    charger_id: chargerId,
+    format: "csv"
+  };
+  if (range.from !== null) {
+    message.from = range.from;
+  }
+  if (range.to !== null) {
+    message.to = range.to;
+  }
+  return await call(hass, message);
 }
 
 // src/chart.ts
@@ -277,20 +301,20 @@ function chartMetrics(width, height) {
   const w = Math.max(180, width);
   const h = Math.max(100, height);
   const scale = Math.min(Math.max(Math.min(w / 420, h / 220), MIN_SCALE), MAX_SCALE);
-  const pad = 14 * scale;
+  const pad2 = 14 * scale;
   const headerTextSize = Math.min(HEADER_TEXT, h * HEADER_CAP);
   const axisTextSize = Math.min(AXIS_TEXT, h * AXIS_CAP);
   return {
     width: w,
     height: h,
     scale,
-    pad,
+    pad: pad2,
     headerTextSize,
     axisTextSize,
-    top: pad * 0.9,
-    bottom: h - pad - axisTextSize * 1.35,
-    left: pad + Math.max(axisTextSize * 2.5, w * 0.07),
-    right: w - pad
+    top: pad2 * 0.9,
+    bottom: h - pad2 - axisTextSize * 1.35,
+    left: pad2 + Math.max(axisTextSize * 2.5, w * 0.07),
+    right: w - pad2
   };
 }
 function chartScale(width, height, values) {
@@ -582,13 +606,13 @@ function bandPosition(instantMs2, day, clock2) {
   const position = wallClockPosition(clock2, instantMs2);
   return instantMs2 > day.startMs && position === 0 ? 1 : position;
 }
-function runsOf(rows, days, clock2, flag2) {
+function runsOf(rows, days, clock2, flag3) {
   const indexOfDay = new Map(days.map((day, index) => [day.key, index]));
   const bands = [];
   let open = null;
   for (const row of rows.slice().sort((left, right) => left.startMs - right.startMs)) {
     const dayIndex = indexOfDay.get(row.day);
-    if (!flag2(row) || dayIndex === void 0) {
+    if (!flag3(row) || dayIndex === void 0) {
       open = null;
       continue;
     }
@@ -775,6 +799,24 @@ var VISUAL_CLASSES = {
   switchControl: "spotnav-switch",
   activeNotice: "spotnav-active-notice",
   activeNoticeWarning: "spotnav-active-notice-warning",
+  historyBody: "spotnav-history-body",
+  historyTiles: "spotnav-history-tiles",
+  historyTile: "spotnav-history-tile",
+  historyTileHeading: "spotnav-history-tile-heading",
+  historyFigures: "spotnav-history-figures",
+  historySavings: "spotnav-history-savings",
+  historyOpen: "spotnav-history-open",
+  historyToggle: "spotnav-history-toggle",
+  historyToggleButton: "spotnav-history-toggle-button",
+  historyList: "spotnav-history-list",
+  historyRow: "spotnav-history-row",
+  historyRowTitle: "spotnav-history-row-title",
+  historyRowFigures: "spotnav-history-row-figures",
+  historyRowNote: "spotnav-history-row-note",
+  historyHeading: "spotnav-history-heading",
+  historyFootnote: "spotnav-history-footnote",
+  historyExport: "spotnav-history-export",
+  historyExportLabel: "spotnav-history-export-label",
   muted: "spotnav-muted",
   unavailable: "spotnav-unavailable"
 };
@@ -1834,6 +1876,121 @@ var VISUAL_STYLES = `
     gap: 8px;
     min-width: 0;
   }
+  .${VISUAL_CLASSES.historyBody} {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    min-width: 0;
+  }
+  .${VISUAL_CLASSES.historyTiles} {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+  .${VISUAL_CLASSES.historyTile} {
+    flex: 1 1 12rem;
+    padding: 8px 10px;
+    border: 1px solid var(--divider-color, #e0e0e0);
+    border-radius: 8px;
+    min-width: 0;
+  }
+  .${VISUAL_CLASSES.historyTile} > p,
+  .${VISUAL_CLASSES.historyRow} > span {
+    margin: 0;
+  }
+  .${VISUAL_CLASSES.historyTileHeading},
+  .${VISUAL_CLASSES.historyHeading} {
+    margin: 0 0 4px;
+    font-size: 0.9rem;
+    font-weight: 500;
+  }
+  .${VISUAL_CLASSES.historyFigures},
+  .${VISUAL_CLASSES.historyRowFigures} {
+    font-variant-numeric: tabular-nums;
+    overflow-wrap: anywhere;
+  }
+  .${VISUAL_CLASSES.historyFigures} {
+    font-size: 1rem;
+    font-weight: 500;
+  }
+  .${VISUAL_CLASSES.historySavings},
+  .${VISUAL_CLASSES.historyRowNote},
+  .${VISUAL_CLASSES.historyFootnote} {
+    font-size: 0.82rem;
+    overflow-wrap: anywhere;
+  }
+  .${VISUAL_CLASSES.historyOpen} {
+    margin: 0;
+    padding: 6px 8px;
+    border-inline-start: 3px solid var(--success-color, #43a047);
+    font-size: 0.9rem;
+  }
+  .${VISUAL_CLASSES.historyToggle} {
+    display: flex;
+    gap: 6px;
+  }
+  .${VISUAL_CLASSES.historyToggleButton} {
+    min-height: 36px;
+    padding: 4px 12px;
+    font: inherit;
+    color: var(--primary-text-color, #212121);
+    background: transparent;
+    border: 1px solid var(--divider-color, #e0e0e0);
+    border-radius: 18px;
+    cursor: pointer;
+  }
+  .${VISUAL_CLASSES.historyToggleButton}[aria-pressed="true"] {
+    background: var(--secondary-background-color, #e5e5e5);
+    border-color: var(--primary-color, #03a9f4);
+  }
+  .${VISUAL_CLASSES.historyToggleButton}:focus-visible {
+    outline: 2px solid var(--primary-color, #03a9f4);
+    outline-offset: 2px;
+  }
+  .${VISUAL_CLASSES.historyList} {
+    margin: 0;
+    padding: 0;
+    list-style: none;
+    display: flex;
+    flex-direction: column;
+    max-height: 16rem;
+    overflow-y: auto;
+  }
+  .${VISUAL_CLASSES.historyRow} {
+    display: flex;
+    flex-direction: column;
+    gap: 1px;
+    padding: 6px 0;
+    border-bottom: 1px solid var(--divider-color, #e0e0e0);
+    min-width: 0;
+  }
+  .${VISUAL_CLASSES.historyRowTitle} {
+    font-weight: 500;
+    overflow-wrap: anywhere;
+  }
+  .${VISUAL_CLASSES.historyExport} {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px;
+  }
+  .${VISUAL_CLASSES.historyExportLabel} {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex: 1 1 auto;
+    min-width: 0;
+  }
+  .${VISUAL_CLASSES.historyExportLabel} > select {
+    flex: 1 1 auto;
+    min-width: 0;
+    min-height: 36px;
+    font: inherit;
+    color: var(--primary-text-color, #212121);
+    background: var(--secondary-background-color, transparent);
+    border: 1px solid var(--divider-color, #e0e0e0);
+    border-radius: 8px;
+  }
   .${VISUAL_CLASSES.issueItem} {
     display: flex;
     flex-direction: column;
@@ -1979,11 +2136,11 @@ var VISUAL_STYLES = `
 // src/chart-render.ts
 var SVG_NS = "http://www.w3.org/2000/svg";
 function svg(name, attributes = {}) {
-  const element7 = document.createElementNS(SVG_NS, name);
+  const element8 = document.createElementNS(SVG_NS, name);
   for (const [key, value] of Object.entries(attributes)) {
-    element7.setAttribute(key, String(value));
+    element8.setAttribute(key, String(value));
   }
-  return element7;
+  return element8;
 }
 function chartHeightForWidth(width) {
   const bounded = Number.isFinite(width) && width > 0 ? width : 320;
@@ -2053,14 +2210,14 @@ function renderChart(input) {
         y2: label.y
       })
     );
-    const text4 = svg("text", {
+    const text5 = svg("text", {
       class: VISUAL_CLASSES.axisLabel,
       x: scale.pad,
       y: label.y + scale.axisTextSize * 0.35,
       "text-anchor": "start"
     });
-    text4.textContent = label.label;
-    axis.append(text4);
+    text5.textContent = label.label;
+    axis.append(text5);
   }
   for (const tick of series.axis) {
     const x = xForWallClock(scale, tick.position);
@@ -2073,14 +2230,14 @@ function renderChart(input) {
         y2: scale.bottom
       })
     );
-    const text4 = svg("text", {
+    const text5 = svg("text", {
       class: VISUAL_CLASSES.tickLabel,
       x,
       y: scale.bottom + scale.axisTextSize,
       "text-anchor": tick.position === 0 ? "start" : tick.position === 1 ? "end" : "middle"
     });
-    text4.textContent = labels.time(tick.instantMs);
-    axis.append(text4);
+    text5.textContent = labels.time(tick.instantMs);
+    axis.append(text5);
   }
   root.append(axis);
   const nowLine = svg("line", {
@@ -2167,8 +2324,8 @@ function applyFocus(drawn, selectedMs) {
   nowLine.setAttribute("x2", String(current.x));
   nowLine.removeAttribute("display");
 }
-function chartLocalPoint(element7, scale, clientX, clientY) {
-  const rect = element7.getBoundingClientRect();
+function chartLocalPoint(element8, scale, clientX, clientY) {
+  const rect = element8.getBoundingClientRect();
   const width = rect.width === 0 ? scale.width : rect.width;
   const height = rect.height === 0 ? scale.height : rect.height;
   return {
@@ -2467,8 +2624,8 @@ var FOCUSABLE = "button, [href], input, select, textarea, [tabindex]:not([tabind
 function ownerDocumentOf(owner) {
   return owner.ownerDocument;
 }
-function hasInert(element7) {
-  return "inert" in element7;
+function hasInert(element8) {
+  return "inert" in element8;
 }
 function createDialog(options) {
   const { owner, idPrefix, labels, onClose, onDismiss } = options;
@@ -2516,7 +2673,7 @@ function createDialog(options) {
   }
   function focusables() {
     return Array.from(dialog.querySelectorAll(FOCUSABLE)).filter(
-      (element7) => !element7.hasAttribute("disabled") && element7.tabIndex >= 0
+      (element8) => !element8.hasAttribute("disabled") && element8.tabIndex >= 0
     );
   }
   function setBackgroundHidden(hidden) {
@@ -2536,21 +2693,21 @@ function createDialog(options) {
       }
       return;
     }
-    const element7 = options.background?.() ?? null;
-    if (element7 === null || hiddenBackground !== null) {
+    const element8 = options.background?.() ?? null;
+    if (element8 === null || hiddenBackground !== null) {
       return;
     }
-    const supported = hasInert(element7);
+    const supported = hasInert(element8);
     const previous = {
-      element: element7,
+      element: element8,
       supported,
-      inert: supported ? element7.inert : false,
-      ariaHidden: element7.getAttribute("aria-hidden")
+      inert: supported ? element8.inert : false,
+      ariaHidden: element8.getAttribute("aria-hidden")
     };
     if (supported) {
-      element7.inert = true;
+      element8.inert = true;
     } else {
-      element7.setAttribute("aria-hidden", "true");
+      element8.setAttribute("aria-hidden", "true");
     }
     hiddenBackground = previous;
   }
@@ -2944,6 +3101,41 @@ var da = {
   "issue.unknown": "Backend rapporterede noget, kortet endnu ikke kender.",
   "header.info": "Om kortet",
   "header.settings": "Kortindstillinger",
+  "header.history": "Ladehistorik",
+  "history.title": "Ladehistorik",
+  "history.titleNamed": "Ladehistorik · {name}",
+  "history.loading": "Henter ladehistorikken…",
+  "history.failed": "Ladehistorikken kunne ikke læses.",
+  "history.intro": "Hvad hver opladning kostede: spotprisen plus energiafgift, nettarif og moms, da energien blev leveret.",
+  "history.thisMonth": "Denne måned",
+  "history.lastMonth": "Sidste måned",
+  "history.noneInMonth": "Ingen opladninger.",
+  "history.days": "Dage",
+  "history.months": "Måneder",
+  "history.listLabel": "Vis pr.",
+  "history.sessions.one": "{count} opladning",
+  "history.sessions.other": "{count} opladninger",
+  "history.solar": "{percent} sol",
+  "history.estimated": "anslået energi",
+  "history.noCost": "ingen pris",
+  "history.savings.saved": "Anslået besparelse: {amount} mod dagens gennemsnitspris",
+  "history.savings.extra": "Anslået {amount} mere end dagens gennemsnitspris",
+  "history.savings.note": "Besparelsen er et skøn: samme energi til hver dags gennemsnitspris.",
+  "history.latest": "Seneste opladninger",
+  "history.empty": "Ingen opladninger er gemt endnu. De vises her efter næste opladning.",
+  "history.open": "Lader nu siden {time}: {energy}",
+  "history.by.plan_window": "planlagt vindue",
+  "history.by.manual": "startet manuelt",
+  "history.by.solar": "solenergioverskud",
+  "history.by.hybrid": "hybrid",
+  "history.by.other": "startet andetsteds",
+  "history.export.period": "Periode",
+  "history.range.thisMonth": "Denne måned",
+  "history.range.lastMonth": "Sidste måned",
+  "history.range.last12": "Seneste 12 måneder",
+  "history.range.all": "Alt",
+  "history.export": "Eksportér CSV",
+  "history.exportFailed": "Eksporten mislykkedes.",
   "settings.overview.title": "Kortindstillinger",
   "settings.section.market": "Elområde og afgifter",
   "settings.section.vehicle": "Køretøj",
@@ -3497,6 +3689,41 @@ var en = {
   "issue.unknown": "The backend reported something this card does not know yet.",
   "header.info": "About this card",
   "header.settings": "Card settings",
+  "header.history": "Charge history",
+  "history.title": "Charge history",
+  "history.titleNamed": "Charge history · {name}",
+  "history.loading": "Loading the charge history…",
+  "history.failed": "The charge history could not be read.",
+  "history.intro": "What each charge cost: the spot price plus your energy tax, grid fee and VAT, at the time the energy was delivered.",
+  "history.thisMonth": "This month",
+  "history.lastMonth": "Last month",
+  "history.noneInMonth": "No charges.",
+  "history.days": "Days",
+  "history.months": "Months",
+  "history.listLabel": "Show by",
+  "history.sessions.one": "{count} charge",
+  "history.sessions.other": "{count} charges",
+  "history.solar": "{percent} solar",
+  "history.estimated": "estimated energy",
+  "history.noCost": "no price",
+  "history.savings.saved": "Estimated saving: {amount} against the day's average price",
+  "history.savings.extra": "Estimated {amount} more than the day's average price",
+  "history.savings.note": "Savings are an estimate: the same energy at each day's average price.",
+  "history.latest": "Latest charges",
+  "history.empty": "No charges recorded yet. They appear here after the next charge.",
+  "history.open": "Charging now since {time}: {energy}",
+  "history.by.plan_window": "planned window",
+  "history.by.manual": "started by hand",
+  "history.by.solar": "solar surplus",
+  "history.by.hybrid": "hybrid",
+  "history.by.other": "started elsewhere",
+  "history.export.period": "Period",
+  "history.range.thisMonth": "This month",
+  "history.range.lastMonth": "Last month",
+  "history.range.last12": "Last 12 months",
+  "history.range.all": "Everything",
+  "history.export": "Export CSV",
+  "history.exportFailed": "The export failed.",
   "settings.overview.title": "Card settings",
   "settings.section.market": "Price area and taxes",
   "settings.section.vehicle": "Vehicle",
@@ -4050,6 +4277,41 @@ var fi = {
   "issue.unknown": "Taustajärjestelmä raportoi jotain, mitä kortti ei vielä tunne.",
   "header.info": "Tietoja kortista",
   "header.settings": "Kortin asetukset",
+  "header.history": "Lataushistoria",
+  "history.title": "Lataushistoria",
+  "history.titleNamed": "Lataushistoria · {name}",
+  "history.loading": "Haetaan latausten historiaa…",
+  "history.failed": "Latausten historiaa ei voitu lukea.",
+  "history.intro": "Mitä kukin lataus maksoi: pörssisähkön hinta sekä sähkövero, siirtomaksu ja arvonlisävero energian toimitushetkellä.",
+  "history.thisMonth": "Tässä kuussa",
+  "history.lastMonth": "Viime kuussa",
+  "history.noneInMonth": "Ei latauksia.",
+  "history.days": "Päivät",
+  "history.months": "Kuukaudet",
+  "history.listLabel": "Näytä",
+  "history.sessions.one": "{count} lataus",
+  "history.sessions.other": "{count} latausta",
+  "history.solar": "{percent} aurinkoa",
+  "history.estimated": "arvioitu energia",
+  "history.noCost": "ei hintaa",
+  "history.savings.saved": "Arvioitu säästö: {amount} päivän keskihintaan verrattuna",
+  "history.savings.extra": "Arviolta {amount} enemmän kuin päivän keskihinta",
+  "history.savings.note": "Säästö on arvio: sama energia kunkin päivän keskihintaan.",
+  "history.latest": "Viimeisimmät lataukset",
+  "history.empty": "Latauksia ei ole vielä tallennettu. Ne näkyvät tässä seuraavan latauksen jälkeen.",
+  "history.open": "Latautuu nyt kello {time} alkaen: {energy}",
+  "history.by.plan_window": "suunniteltu ikkuna",
+  "history.by.manual": "käynnistetty käsin",
+  "history.by.solar": "aurinkoylijäämä",
+  "history.by.hybrid": "hybridi",
+  "history.by.other": "käynnistetty muualla",
+  "history.export.period": "Ajanjakso",
+  "history.range.thisMonth": "Tässä kuussa",
+  "history.range.lastMonth": "Viime kuussa",
+  "history.range.last12": "Viimeiset 12 kuukautta",
+  "history.range.all": "Kaikki",
+  "history.export": "Vie CSV",
+  "history.exportFailed": "Vienti epäonnistui.",
   "settings.overview.title": "Kortin asetukset",
   "settings.section.market": "Hinta-alue ja verot",
   "settings.section.vehicle": "Ajoneuvo",
@@ -4603,6 +4865,41 @@ var nb = {
   "issue.unknown": "Backend rapporterte noe kortet ikke kjenner igjen ennå.",
   "header.info": "Om kortet",
   "header.settings": "Kortinnstillinger",
+  "header.history": "Ladehistorikk",
+  "history.title": "Ladehistorikk",
+  "history.titleNamed": "Ladehistorikk · {name}",
+  "history.loading": "Henter ladehistorikken…",
+  "history.failed": "Ladehistorikken kunne ikke leses.",
+  "history.intro": "Hva hver lading kostet: spotprisen pluss energiavgift, nettleie og mva., da energien ble levert.",
+  "history.thisMonth": "Denne måneden",
+  "history.lastMonth": "Forrige måned",
+  "history.noneInMonth": "Ingen ladinger.",
+  "history.days": "Dager",
+  "history.months": "Måneder",
+  "history.listLabel": "Vis per",
+  "history.sessions.one": "{count} lading",
+  "history.sessions.other": "{count} ladinger",
+  "history.solar": "{percent} sol",
+  "history.estimated": "estimert energi",
+  "history.noCost": "ingen pris",
+  "history.savings.saved": "Estimert besparelse: {amount} mot dagens snittpris",
+  "history.savings.extra": "Estimert {amount} mer enn dagens snittpris",
+  "history.savings.note": "Besparelsen er et estimat: samme energi til hver dags snittpris.",
+  "history.latest": "Siste ladinger",
+  "history.empty": "Ingen ladinger er lagret ennå. De vises her etter neste lading.",
+  "history.open": "Lader nå siden {time}: {energy}",
+  "history.by.plan_window": "planlagt vindu",
+  "history.by.manual": "startet for hånd",
+  "history.by.solar": "solcelleoverskudd",
+  "history.by.hybrid": "hybrid",
+  "history.by.other": "startet andre steder",
+  "history.export.period": "Periode",
+  "history.range.thisMonth": "Denne måneden",
+  "history.range.lastMonth": "Forrige måned",
+  "history.range.last12": "Siste 12 måneder",
+  "history.range.all": "Alt",
+  "history.export": "Eksporter CSV",
+  "history.exportFailed": "Eksporten mislyktes.",
   "settings.overview.title": "Kortinnstillinger",
   "settings.section.market": "Elområde og avgifter",
   "settings.section.vehicle": "Kjøretøy",
@@ -5156,6 +5453,41 @@ var sv = {
   "issue.unknown": "Backend rapporterade något som kortet inte känner igen ännu.",
   "header.info": "Om kortet",
   "header.settings": "Kortinställningar",
+  "header.history": "Laddhistorik",
+  "history.title": "Laddhistorik",
+  "history.titleNamed": "Laddhistorik · {name}",
+  "history.loading": "Hämtar laddhistoriken…",
+  "history.failed": "Laddhistoriken kunde inte läsas.",
+  "history.intro": "Vad varje laddning kostade: spotpriset plus din energiskatt, nätavgift och moms, när energin levererades.",
+  "history.thisMonth": "Denna månad",
+  "history.lastMonth": "Förra månaden",
+  "history.noneInMonth": "Inga laddningar.",
+  "history.days": "Dagar",
+  "history.months": "Månader",
+  "history.listLabel": "Visa per",
+  "history.sessions.one": "{count} laddning",
+  "history.sessions.other": "{count} laddningar",
+  "history.solar": "{percent} sol",
+  "history.estimated": "uppskattad energi",
+  "history.noCost": "inget pris",
+  "history.savings.saved": "Uppskattad besparing: {amount} mot dagens snittpris",
+  "history.savings.extra": "Uppskattat {amount} mer än dagens snittpris",
+  "history.savings.note": "Besparingen är en uppskattning: samma energi till varje dags snittpris.",
+  "history.latest": "Senaste laddningarna",
+  "history.empty": "Inga laddningar har sparats än. De visas här efter nästa laddning.",
+  "history.open": "Laddar nu sedan {time}: {energy}",
+  "history.by.plan_window": "planerat fönster",
+  "history.by.manual": "startad för hand",
+  "history.by.solar": "solöverskott",
+  "history.by.hybrid": "hybrid",
+  "history.by.other": "startad på annat håll",
+  "history.export.period": "Period",
+  "history.range.thisMonth": "Denna månad",
+  "history.range.lastMonth": "Förra månaden",
+  "history.range.last12": "Senaste 12 månaderna",
+  "history.range.all": "Allt",
+  "history.export": "Exportera CSV",
+  "history.exportFailed": "Exporten misslyckades.",
   "settings.overview.title": "Kortinställningar",
   "settings.section.market": "Elområde och skatter",
   "settings.section.vehicle": "Fordon",
@@ -5789,11 +6121,11 @@ function decodeTarget(source) {
   exactKeys(source, TARGET_KEYS);
   let targetPercent = null;
   if (source["target_percent"] !== null) {
-    const percent = finite(source, "target_percent");
-    if (percent < 0 || percent > 100) {
+    const percent2 = finite(source, "target_percent");
+    if (percent2 < 0 || percent2 > 100) {
       return bad();
     }
-    targetPercent = percent;
+    targetPercent = percent2;
   }
   return {
     vehicle_id: textOrNull(source, "vehicle_id"),
@@ -5883,60 +6215,60 @@ function decodeSettingsAnswer(raw) {
     throw error;
   }
 }
-function encodeBody(record6) {
+function encodeBody(record7) {
   return {
-    area_id: record6.area_id,
-    overrides: record6.overrides.map((item) => ({
+    area_id: record7.area_id,
+    overrides: record7.overrides.map((item) => ({
       area_id: item.area_id,
       vat: { ...item.vat },
       tax: { ...item.tax },
       transfer: { ...item.transfer }
     })),
-    phases: record6.phases,
-    amps: record6.amps,
-    requested_kwh: record6.requested_kwh,
-    max_periods: record6.max_periods,
-    departure_enabled: record6.departure_enabled,
-    departure_time: record6.departure_time,
-    departure_date: record6.departure_date,
-    strategy: record6.strategy,
-    driver: record6.driver,
-    target: { ...record6.target }
+    phases: record7.phases,
+    amps: record7.amps,
+    requested_kwh: record7.requested_kwh,
+    max_periods: record7.max_periods,
+    departure_enabled: record7.departure_enabled,
+    departure_time: record7.departure_time,
+    departure_date: record7.departure_date,
+    strategy: record7.strategy,
+    driver: record7.driver,
+    target: { ...record7.target }
   };
 }
-function strategyReplacement(record6, strategy) {
+function strategyReplacement(record7, strategy) {
   if (!STRATEGIES.includes(strategy)) {
     return { ok: false, errorKey: "settings.error.invalid" };
   }
-  return { ok: true, body: { ...encodeBody(record6), strategy }, changed: strategy !== record6.strategy };
+  return { ok: true, body: { ...encodeBody(record7), strategy }, changed: strategy !== record7.strategy };
 }
-function vehicleReplacement(record6, vehicleId) {
+function vehicleReplacement(record7, vehicleId) {
   if (vehicleId.trim() === "") {
     return { ok: false, errorKey: "settings.error.invalid" };
   }
-  const body = encodeBody(record6);
+  const body = encodeBody(record7);
   return {
     ok: true,
-    body: { ...body, target: { ...record6.target, vehicle_id: vehicleId } },
-    changed: vehicleId !== record6.target.vehicle_id
+    body: { ...body, target: { ...record7.target, vehicle_id: vehicleId } },
+    changed: vehicleId !== record7.target.vehicle_id
   };
 }
-function formFromRecord(record6) {
+function formFromRecord(record7) {
   return {
-    energy: String(record6.requested_kwh),
-    deadlineEnabled: record6.departure_enabled,
-    deadlineTime: record6.departure_time,
-    departureDate: record6.departure_date ?? "",
-    maxPeriods: String(record6.max_periods),
-    current: record6.amps === null ? "" : String(record6.amps),
-    driver: record6.driver,
-    targetPercent: record6.target.target_percent === null ? "" : String(record6.target.target_percent),
-    vehicleId: record6.target.vehicle_id ?? "",
-    phases: record6.phases === null ? "" : String(record6.phases)
+    energy: String(record7.requested_kwh),
+    deadlineEnabled: record7.departure_enabled,
+    deadlineTime: record7.departure_time,
+    departureDate: record7.departure_date ?? "",
+    maxPeriods: String(record7.max_periods),
+    current: record7.amps === null ? "" : String(record7.amps),
+    driver: record7.driver,
+    targetPercent: record7.target.target_percent === null ? "" : String(record7.target.target_percent),
+    vehicleId: record7.target.vehicle_id ?? "",
+    phases: record7.phases === null ? "" : String(record7.phases)
   };
 }
-function decimal(text4, minimum, maximum) {
-  const trimmed = text4.trim().replace(",", ".");
+function decimal(text5, minimum, maximum) {
+  const trimmed = text5.trim().replace(",", ".");
   if (trimmed === "") {
     return { ok: false, errorKey: "settings.error.required" };
   }
@@ -5949,8 +6281,8 @@ function decimal(text4, minimum, maximum) {
   }
   return { ok: true, value };
 }
-function integer(text4, minimum, maximum) {
-  const trimmed = text4.trim();
+function integer(text5, minimum, maximum) {
+  const trimmed = text5.trim();
   if (trimmed === "") {
     return { ok: false, errorKey: "settings.error.required" };
   }
@@ -5967,18 +6299,18 @@ var TARGET_PERCENT_MIN = 0;
 var TARGET_PERCENT_MAX = 100;
 var CAPACITY_MIN_KWH = 1;
 var CAPACITY_MAX_KWH = 500;
-function checkTargetPercent(text4) {
-  return decimal(text4, TARGET_PERCENT_MIN, TARGET_PERCENT_MAX);
+function checkTargetPercent(text5) {
+  return decimal(text5, TARGET_PERCENT_MIN, TARGET_PERCENT_MAX);
 }
-function checkCapacity(text4) {
-  const check = decimal(text4, CAPACITY_MIN_KWH, CAPACITY_MAX_KWH);
+function checkCapacity(text5) {
+  const check = decimal(text5, CAPACITY_MIN_KWH, CAPACITY_MAX_KWH);
   return check.ok ? { ok: true, value: Math.round(check.value * 10) / 10 } : check;
 }
-function checkEnergy(text4) {
-  return decimal(text4, ENERGY_MIN_KWH, ENERGY_MAX_KWH);
+function checkEnergy(text5) {
+  return decimal(text5, ENERGY_MIN_KWH, ENERGY_MAX_KWH);
 }
-function checkDeadlineTime(text4) {
-  const trimmed = text4.trim();
+function checkDeadlineTime(text5) {
+  const trimmed = text5.trim();
   if (trimmed === "") {
     return { ok: false, errorKey: "settings.error.required" };
   }
@@ -6004,8 +6336,8 @@ function departureDays(timeZone, nowMs) {
     }
   };
 }
-function checkDepartureDate(text4, days, moved) {
-  const trimmed = text4.trim();
+function checkDepartureDate(text5, days, moved) {
+  const trimmed = text5.trim();
   if (trimmed === "") {
     return { ok: true, value: null };
   }
@@ -6017,14 +6349,14 @@ function checkDepartureDate(text4, days, moved) {
   }
   return { ok: true, value: trimmed };
 }
-function checkMaxPeriods(text4) {
-  return integer(text4, PERIODS_MIN, PERIODS_MAX);
+function checkMaxPeriods(text5) {
+  return integer(text5, PERIODS_MIN, PERIODS_MAX);
 }
-function checkCurrent(text4) {
-  return integer(text4, AMPS_MIN, AMPS_MAX);
+function checkCurrent(text5) {
+  return integer(text5, AMPS_MIN, AMPS_MAX);
 }
-function checkCurrentInRange(text4, range) {
-  const amps = checkCurrent(text4);
+function checkCurrentInRange(text5, range) {
+  const amps = checkCurrent(text5);
   if (!amps.ok) {
     return amps;
   }
@@ -6067,16 +6399,16 @@ var AMPS_MIN = 1;
 var AMPS_MAX = 80;
 var CONSUMPTION_MIN_KWH_PER_10KM = 0.1;
 var CONSUMPTION_MAX_KWH_PER_10KM = 50;
-function checkConsumption(text4) {
-  return decimal(text4, CONSUMPTION_MIN_KWH_PER_10KM, CONSUMPTION_MAX_KWH_PER_10KM);
+function checkConsumption(text5) {
+  return decimal(text5, CONSUMPTION_MIN_KWH_PER_10KM, CONSUMPTION_MAX_KWH_PER_10KM);
 }
-function replacementFor(kind, record6, values, range = null, opened = null, days = null) {
-  const body = encodeBody(record6);
+function replacementFor(kind, record7, values, range = null, opened = null, days = null) {
+  const body = encodeBody(record7);
   const energy = kind === "energy" || kind === "plan" ? checkEnergy(values.energy) : null;
   if (energy !== null && !energy.ok) {
     return energy;
   }
-  const amps = kind === "current" || kind === "plan" ? currentCheck(values, record6, range) : null;
+  const amps = kind === "current" || kind === "plan" ? currentCheck(values, record7, range) : null;
   if (amps !== null && !amps.ok) {
     return amps;
   }
@@ -6088,7 +6420,7 @@ function replacementFor(kind, record6, values, range = null, opened = null, days
   if (periods !== null && !periods.ok) {
     return periods;
   }
-  const dateBase = opened === null ? record6 : opened;
+  const dateBase = opened === null ? record7 : opened;
   const dateMoved = values.departureDate !== (dateBase.departure_date ?? "");
   const date = kind === "deadline" || kind === "plan" ? checkDepartureDate(values.deadlineEnabled ? values.departureDate : "", days, dateMoved) : null;
   if (date !== null && !date.ok) {
@@ -6107,18 +6439,18 @@ function replacementFor(kind, record6, values, range = null, opened = null, days
   const next = { ...body };
   if (kind === "plan" && driverOk && (opened === null || values.driver !== opened.driver)) {
     next.driver = values.driver;
-    changed = changed || values.driver !== record6.driver;
+    changed = changed || values.driver !== record7.driver;
   }
-  const target = { ...record6.target };
+  const target = { ...record7.target };
   let targetMoved = false;
   if (targetPercent !== null && targetPercent.ok && (opened === null || targetPercent.value !== opened.target.target_percent)) {
     target.target_percent = targetPercent.value;
-    targetMoved = targetMoved || targetPercent.value !== record6.target.target_percent;
+    targetMoved = targetMoved || targetPercent.value !== record7.target.target_percent;
   }
   const vehicleId = values.vehicleId.trim();
   if (soc && vehicleId !== "" && (opened === null || vehicleId !== (opened.target.vehicle_id ?? ""))) {
     target.vehicle_id = vehicleId;
-    targetMoved = targetMoved || vehicleId !== record6.target.vehicle_id;
+    targetMoved = targetMoved || vehicleId !== record7.target.vehicle_id;
   }
   if (targetMoved) {
     next.target = target;
@@ -6127,15 +6459,15 @@ function replacementFor(kind, record6, values, range = null, opened = null, days
   const chosenPhases = values.phases === "1" ? 1 : values.phases === "3" ? 3 : null;
   if (kind === "plan" && chosenPhases !== null && (opened === null || chosenPhases !== opened.phases)) {
     next.phases = chosenPhases;
-    changed = changed || chosenPhases !== record6.phases;
+    changed = changed || chosenPhases !== record7.phases;
   }
   if (energy !== null && energy.ok && (opened === null || energy.value !== opened.requested_kwh)) {
     next.requested_kwh = energy.value;
-    changed = changed || energy.value !== record6.requested_kwh;
+    changed = changed || energy.value !== record7.requested_kwh;
   }
   if (amps !== null && amps.ok && (opened === null || amps.value !== opened.amps)) {
     next.amps = amps.value;
-    changed = changed || amps.value !== record6.amps;
+    changed = changed || amps.value !== record7.amps;
   }
   const deadlineMoved = opened === null || time !== null && time.ok && periods !== null && periods.ok && (values.deadlineEnabled !== opened.departure_enabled || time.value !== opened.departure_time || periods.value !== opened.max_periods || date !== null && date.ok && date.value !== opened.departure_date);
   if (time !== null && time.ok && periods !== null && periods.ok && deadlineMoved) {
@@ -6145,13 +6477,13 @@ function replacementFor(kind, record6, values, range = null, opened = null, days
     if (date !== null && date.ok) {
       next.departure_date = date.value;
     }
-    changed = changed || values.deadlineEnabled !== record6.departure_enabled || time.value !== record6.departure_time || periods.value !== record6.max_periods || date !== null && date.ok && date.value !== record6.departure_date;
+    changed = changed || values.deadlineEnabled !== record7.departure_enabled || time.value !== record7.departure_time || periods.value !== record7.max_periods || date !== null && date.ok && date.value !== record7.departure_date;
   }
   return { ok: true, body: next, changed };
 }
-function currentCheck(values, record6, range) {
+function currentCheck(values, record7, range) {
   const amps = checkCurrent(values.current);
-  if (!amps.ok || range === null || amps.value === record6.amps) {
+  if (!amps.ok || range === null || amps.value === record7.amps) {
     return amps;
   }
   return checkCurrentInRange(values.current, range);
@@ -6178,8 +6510,8 @@ function planSummaryParts(language, settings, today = null) {
   const first = settings?.driver === SETTINGS_DRIVER_TARGET_SOC ? settings.target.target_percent === null || !Number.isFinite(settings.target.target_percent) ? translate(language, "settings.energy.unset") : percentAmount(language, settings.target.target_percent) : summaries.energy;
   return [first, summaries.deadline, summaries.current];
 }
-function manualEnergyReadOnly(record6) {
-  return record6.driver === SETTINGS_DRIVER_TARGET_SOC;
+function manualEnergyReadOnly(record7) {
+  return record7.driver === SETTINGS_DRIVER_TARGET_SOC;
 }
 function settingsErrorKey(code) {
   if (code === null) {
@@ -7028,7 +7360,10 @@ function decodeDashboard(raw) {
     if (version !== API_VERSION) {
       return { ok: false, failure: "unsupported" };
     }
-    exactKeys2(root, DASHBOARD_KEYS);
+    exactKeys2(
+      Object.fromEntries(Object.entries(root).filter(([key]) => !OPTIONAL_DASHBOARD_KEYS.includes(key))),
+      DASHBOARD_KEYS
+    );
     const market = sectionOrNull(root, "market", decodeMarket);
     const timeZone = market?.timezone ?? null;
     const strategy = decodeStrategy(record2(required(root, "strategy")));
@@ -7099,6 +7434,7 @@ var DASHBOARD_KEYS = [
   // entity configuration); accepted and not read.
   "summary"
 ];
+var OPTIONAL_DASHBOARD_KEYS = ["sessions_summary"];
 function strategyOptions(root) {
   const options = arrayValue(root, "strategy_options").map(
     (entry) => typeof entry === "string" && STRATEGIES2.includes(entry) ? entry : bad2()
@@ -7376,11 +7712,11 @@ function lineText(line, format, nowMs) {
     }
     case "waiting_for_history": {
       const weekday = weekdayPlural(language, num(p["weekday"]) ?? Number.NaN);
-      const percent = num(p["percent"]);
+      const percent2 = num(p["percent"]);
       const weeks = num(p["weeks"]);
-      return weekday === null || percent === null || weeks === null ? say("status.waitingForHistoryNoDetail") : say("status.waitingForHistory", {
+      return weekday === null || percent2 === null || weeks === null ? say("status.waitingForHistoryNoDetail") : say("status.waitingForHistory", {
         weekday,
-        percent: formatNumber(language, percent, 0),
+        percent: formatNumber(language, percent2, 0),
         weeks: formatNumber(language, weeks, 0)
       });
     }
@@ -8824,14 +9160,14 @@ function siteNotices(doc, language, site) {
   if (notes.length === 0) {
     return null;
   }
-  const list3 = element(doc, "ul", VISUAL_CLASSES.entityNotices);
-  list3.dataset["notices"] = "site";
+  const list4 = element(doc, "ul", VISUAL_CLASSES.entityNotices);
+  list4.dataset["notices"] = "site";
   for (const note of notes) {
     const item = element(doc, "li", VISUAL_CLASSES.entityWarning, note.text);
     item.dataset[note.kind] = note.code;
-    list3.append(item);
+    list4.append(item);
   }
-  return list3;
+  return list4;
 }
 async function ensureHaSelector(win, timeoutMs = 3e3) {
   const registry = win?.customElements;
@@ -8999,21 +9335,21 @@ function entityEditorBody(doc, language, input, handlers, idPrefix) {
       pickers.add(picker);
       return { node: picker, input: picker, picker };
     }
-    const text4 = doc.createElement("input");
-    text4.type = "text";
-    text4.id = id;
-    text4.className = VISUAL_CLASSES.settingsInput;
-    text4.value = values[field2.field] ?? "";
-    text4.dataset["field"] = field2.field;
-    text4.autocomplete = "off";
-    text4.spellcheck = false;
-    text4.setAttribute("autocapitalize", "off");
-    text4.setAttribute("aria-label", label);
-    text4.addEventListener("input", () => {
-      values[field2.field] = text4.value;
+    const text5 = doc.createElement("input");
+    text5.type = "text";
+    text5.id = id;
+    text5.className = VISUAL_CLASSES.settingsInput;
+    text5.value = values[field2.field] ?? "";
+    text5.dataset["field"] = field2.field;
+    text5.autocomplete = "off";
+    text5.spellcheck = false;
+    text5.setAttribute("autocapitalize", "off");
+    text5.setAttribute("aria-label", label);
+    text5.addEventListener("input", () => {
+      values[field2.field] = text5.value;
     });
-    disabledWhenPending.push(text4);
-    return { node: text4, input: text4, picker: null };
+    disabledWhenPending.push(text5);
+    return { node: text5, input: text5, picker: null };
   }
   function isChoiceGrouped(field2) {
     return scope === "charger" && field2.writable && (field2.field === "current_limit" || field2.field === "energy_register_entity" && automaticEntity(field2) !== null);
@@ -9069,23 +9405,23 @@ function entityEditorBody(doc, language, input, handlers, idPrefix) {
   }
   function numberControl(field2, label) {
     const id = `${idPrefix}-entity-${field2.field}`;
-    const number = doc.createElement("input");
-    number.type = "number";
-    number.id = id;
-    number.className = VISUAL_CLASSES.settingsInput;
-    number.inputMode = "decimal";
-    number.step = "any";
+    const number2 = doc.createElement("input");
+    number2.type = "number";
+    number2.id = id;
+    number2.className = VISUAL_CLASSES.settingsInput;
+    number2.inputMode = "decimal";
+    number2.step = "any";
     if (field2.kind === "number") {
-      number.min = String(field2.minimum);
+      number2.min = String(field2.minimum);
     }
-    number.value = values[field2.field] ?? "";
-    number.dataset["field"] = field2.field;
-    number.setAttribute("aria-label", label);
-    number.addEventListener("input", () => {
-      values[field2.field] = number.value;
+    number2.value = values[field2.field] ?? "";
+    number2.dataset["field"] = field2.field;
+    number2.setAttribute("aria-label", label);
+    number2.addEventListener("input", () => {
+      values[field2.field] = number2.value;
     });
-    disabledWhenPending.push(number);
-    return { node: number, input: number, picker: null };
+    disabledWhenPending.push(number2);
+    return { node: number2, input: number2, picker: null };
   }
   function entityField(field2, label, showLabel = true) {
     const control = entityControl(field2, label);
@@ -9142,8 +9478,8 @@ function entityEditorBody(doc, language, input, handlers, idPrefix) {
       disabledWhenPending.push(button);
       return button;
     };
-    const line = (text4, code) => {
-      const node = element(doc, "p", VISUAL_CLASSES.entityHelp, text4);
+    const line = (text5, code) => {
+      const node = element(doc, "p", VISUAL_CLASSES.entityHelp, text5);
       node.dataset["detect"] = code;
       return node;
     };
@@ -9782,9 +10118,9 @@ function entityEditorBody(doc, language, input, handlers, idPrefix) {
         }
       }
     },
-    setNotice(text4, code) {
-      notice.hidden = text4 === null;
-      notice.textContent = text4 ?? "";
+    setNotice(text5, code) {
+      notice.hidden = text5 === null;
+      notice.textContent = text5 ?? "";
       if (code === null) {
         notice.removeAttribute("data-code");
       } else {
@@ -9949,9 +10285,9 @@ function vehicleEditorBody(doc, language, input, handlers, idPrefix) {
         entry.input.setAttribute("aria-invalid", "true");
       }
     },
-    setNotice(text4, code) {
-      notice.hidden = text4 === null;
-      notice.textContent = text4 ?? "";
+    setNotice(text5, code) {
+      notice.hidden = text5 === null;
+      notice.textContent = text5 ?? "";
       if (code === null) {
         notice.removeAttribute("data-code");
       } else {
@@ -9979,13 +10315,13 @@ function solarDraftFrom(site) {
   }
   return draft;
 }
-function element2(doc, tag, className, text4) {
+function element2(doc, tag, className, text5) {
   const node = doc.createElement(tag);
   if (className !== void 0) {
     node.className = className;
   }
-  if (text4 !== void 0) {
-    node.textContent = text4;
+  if (text5 !== void 0) {
+    node.textContent = text5;
   }
   return node;
 }
@@ -10070,9 +10406,9 @@ function solarEditorBody(doc, language, site, handlers, idPrefix) {
     draft: () => ({ ...values }),
     markErrors(_errors) {
     },
-    setNotice(text4, code) {
-      notice.hidden = text4 === null;
-      notice.textContent = text4 ?? "";
+    setNotice(text5, code) {
+      notice.hidden = text5 === null;
+      notice.textContent = text5 ?? "";
       if (code === null) {
         notice.removeAttribute("data-code");
       } else {
@@ -10233,8 +10569,8 @@ var FISCAL_COMPONENTS = ["vat", "tax", "transfer"];
 function setEnabled(value, enabled) {
   return { ...value, enabled };
 }
-function figureEdited(value, text4) {
-  return { enabled: value.enabled, value: text4, intent: "custom" };
+function figureEdited(value, text5) {
+  return { enabled: value.enabled, value: text5, intent: "custom" };
 }
 function resetToSuggestion(value) {
   return { enabled: value.enabled, value: "", intent: "suggested" };
@@ -10248,8 +10584,8 @@ function fiscalFormFrom(row, component) {
     intent: stored === null ? "suggested" : "custom"
   };
 }
-function marketFormFor(record6, areaId) {
-  const row = areaId === null ? null : record6.overrides.find((item) => item.area_id === areaId) ?? null;
+function marketFormFor(record7, areaId) {
+  const row = areaId === null ? null : record7.overrides.find((item) => item.area_id === areaId) ?? null;
   return {
     areaId,
     vat: fiscalFormFrom(row, "vat"),
@@ -10257,7 +10593,7 @@ function marketFormFor(record6, areaId) {
     transfer: fiscalFormFrom(row, "transfer")
   };
 }
-function switchArea(record6, drafts, current, areaId) {
+function switchArea(record7, drafts, current, areaId) {
   const next = { ...drafts };
   if (current !== null && current.areaId !== null) {
     next[current.areaId] = {
@@ -10268,7 +10604,7 @@ function switchArea(record6, drafts, current, areaId) {
   }
   const remembered = areaId === null ? void 0 : next[areaId];
   if (remembered === void 0) {
-    return { drafts: next, values: marketFormFor(record6, areaId) };
+    return { drafts: next, values: marketFormFor(record7, areaId) };
   }
   return {
     drafts: next,
@@ -10300,8 +10636,8 @@ function fiscalUnit(options, areaId, component) {
 function marketAreaIsKnown(options, base, areaId) {
   return areaId === base.area_id || options.areas.some((area) => area.area_id === areaId);
 }
-function checkCustomFigure(text4) {
-  const trimmed = text4.trim().replace(",", ".");
+function checkCustomFigure(text5) {
+  const trimmed = text5.trim().replace(",", ".");
   if (trimmed === "") {
     return { ok: false, errorKey: "settings.error.required" };
   }
@@ -10314,8 +10650,8 @@ function checkCustomFigure(text4) {
   }
   return { ok: true, value: stated };
 }
-function retainedFigure(text4) {
-  const trimmed = text4.trim().replace(",", ".");
+function retainedFigure(text5) {
+  const trimmed = text5.trim().replace(",", ".");
   if (trimmed === "") {
     return null;
   }
@@ -10456,13 +10792,13 @@ function countryLabel(language, country) {
 }
 
 // src/market-editor.ts
-function element3(doc, tag, className, text4) {
+function element3(doc, tag, className, text5) {
   const node = doc.createElement(tag);
   if (className !== void 0) {
     node.className = className;
   }
-  if (text4 !== void 0) {
-    node.textContent = text4;
+  if (text5 !== void 0) {
+    node.textContent = text5;
   }
   return node;
 }
@@ -10794,13 +11130,13 @@ function pythonRoundedAbove(targetPercent, maxPercent) {
 }
 
 // src/settings-editor.ts
-function element4(doc, tag, className, text4) {
+function element4(doc, tag, className, text5) {
   const node = doc.createElement(tag);
   if (className !== void 0) {
     node.className = className;
   }
-  if (text4 !== void 0) {
-    node.textContent = text4;
+  if (text5 !== void 0) {
+    node.textContent = text5;
   }
   return node;
 }
@@ -10843,13 +11179,13 @@ function rangeInput(doc, options) {
   return input;
 }
 function pairedControls(doc, language, options) {
-  const number = options.input;
-  number.step = "any";
-  number.min = String(options.minimum);
+  const number2 = options.input;
+  number2.step = "any";
+  number2.min = String(options.minimum);
   const markId = `${options.id}-slider-mark`;
   const mark = element4(doc, "p", VISUAL_CLASSES.settingsNote, translate(language, "settings.sliderOutOfRange"));
   mark.id = markId;
-  const readNumber = () => Number(number.value.trim().replace(",", "."));
+  const readNumber = () => Number(number2.value.trim().replace(",", "."));
   const slider = rangeInput(doc, {
     min: options.minimum,
     max: options.maximumOf(readNumber()),
@@ -10869,22 +11205,22 @@ function pairedControls(doc, language, options) {
     options.onChange();
   };
   slider.addEventListener("input", () => {
-    number.value = slider.value;
+    number2.value = slider.value;
     options.onChange();
   });
-  number.addEventListener("input", paint);
+  number2.addEventListener("input", paint);
   const pair = element4(doc, "div", VISUAL_CLASSES.settingsPair);
-  pair.append(slider, number, element4(doc, "span", VISUAL_CLASSES.settingsUnit, options.unit));
+  pair.append(slider, number2, element4(doc, "span", VISUAL_CLASSES.settingsUnit, options.unit));
   pair.append(mark);
   if (options.readOnly) {
-    number.disabled = true;
+    number2.disabled = true;
   }
   const fieldNode = element4(doc, "div", VISUAL_CLASSES.settingsField);
   fieldNode.setAttribute("role", "group");
   fieldNode.setAttribute("aria-labelledby", `${options.id}-label`);
   const label = element4(doc, "label", VISUAL_CLASSES.settingsLabel, options.labelText);
   label.id = `${options.id}-label`;
-  label.setAttribute("for", number.id);
+  label.setAttribute("for", number2.id);
   fieldNode.append(label, pair);
   paint();
   return { field: fieldNode, slider, mark };
@@ -11154,7 +11490,7 @@ function settingsEditorBody(doc, language, form, handlers, idPrefix) {
       const picked = vehicleSelect === null ? "" : vehicleSelect.value;
       return picked !== "" ? picked : values.vehicleId !== "" ? values.vehicleId : soc?.vehicle_id ?? "";
     };
-    const percent = (value) => percentAmount(language, value);
+    const percent2 = (value) => percentAmount(language, value);
     const paint = () => {
       facts.replaceChildren();
       verdict.replaceChildren();
@@ -11174,10 +11510,10 @@ function settingsEditorBody(doc, language, form, handlers, idPrefix) {
       const draftKnown = targetInput.value.trim() !== "" && Number.isFinite(draft);
       const parts = [];
       if (now !== null) {
-        parts.push(translate(language, "settings.soc.factNow", { value: percent(now) }));
+        parts.push(translate(language, "settings.soc.factNow", { value: percent2(now) }));
       }
       if (limit !== null) {
-        parts.push(translate(language, "settings.soc.factLimit", { value: percent(chargeCeiling(limit)) }));
+        parts.push(translate(language, "settings.soc.factLimit", { value: percent2(chargeCeiling(limit)) }));
       }
       if (parts.length > 0) {
         facts.textContent = parts.join(" · ");
@@ -11198,7 +11534,7 @@ function settingsEditorBody(doc, language, form, handlers, idPrefix) {
           verdict.dataset["verdict"] = "none";
           verdict.hidden = false;
         } else if (limit !== null && pythonRoundedAbove(draft, limit)) {
-          verdict.textContent = translate(language, "settings.soc.toLimit", { value: percent(chargeCeiling(limit)) });
+          verdict.textContent = translate(language, "settings.soc.toLimit", { value: percent2(chargeCeiling(limit)) });
           verdict.dataset["verdict"] = "limit";
           verdict.hidden = false;
         }
@@ -11398,13 +11734,13 @@ function settingsEditorBody(doc, language, form, handlers, idPrefix) {
 }
 
 // src/vehicle-settings.ts
-function element5(doc, tag, className, text4) {
+function element5(doc, tag, className, text5) {
   const node = doc.createElement(tag);
   if (className !== void 0) {
     node.className = className;
   }
-  if (text4 !== void 0) {
-    node.textContent = text4;
+  if (text5 !== void 0) {
+    node.textContent = text5;
   }
   return node;
 }
@@ -11451,15 +11787,406 @@ function vehicleSummary(doc, language, input) {
   return card;
 }
 
-// src/card-view.ts
-var BOUNDARY_HORIZON_MS = 24 * 36e5;
-function element6(doc, tag, className, text4) {
+// src/history.ts
+var Malformed2 = class extends Error {
+};
+function bad5() {
+  throw new Malformed2();
+}
+function record5(value) {
+  return typeof value === "object" && value !== null && !Array.isArray(value) ? value : bad5();
+}
+function text4(source, key) {
+  const value = source[key];
+  return typeof value === "string" ? value : bad5();
+}
+function textOrNull4(source, key) {
+  const value = source[key];
+  return value === null ? null : typeof value === "string" ? value : bad5();
+}
+function number(source, key) {
+  const value = source[key];
+  return typeof value === "number" && Number.isFinite(value) ? value : bad5();
+}
+function numberOrNull3(source, key) {
+  const value = source[key];
+  return value === null ? null : typeof value === "number" && Number.isFinite(value) ? value : bad5();
+}
+function flag2(source, key) {
+  const value = source[key];
+  return typeof value === "boolean" ? value : bad5();
+}
+function shareOrNull(source, key) {
+  const value = numberOrNull3(source, key);
+  return value !== null && (value < 0 || value > 1) ? bad5() : value;
+}
+function decodeBucket(raw) {
+  const source = record5(raw);
+  const sessions = number(source, "sessions");
+  if (!Number.isInteger(sessions) || sessions < 0) {
+    bad5();
+  }
+  return {
+    period: text4(source, "period"),
+    sessions,
+    energy_kwh: number(source, "energy_kwh"),
+    cost: numberOrNull3(source, "cost"),
+    currency: textOrNull4(source, "currency"),
+    major_unit: textOrNull4(source, "major_unit"),
+    minor_unit: textOrNull4(source, "minor_unit"),
+    average_price_minor_per_kwh: numberOrNull3(source, "average_price_minor_per_kwh"),
+    solar_share: shareOrNull(source, "solar_share"),
+    reference_cost: numberOrNull3(source, "reference_cost"),
+    savings: numberOrNull3(source, "savings"),
+    estimated: flag2(source, "estimated")
+  };
+}
+function decodeRecord(raw) {
+  const source = record5(raw);
+  return {
+    id: text4(source, "id"),
+    start: text4(source, "start"),
+    end: textOrNull4(source, "end"),
+    energy_kwh: number(source, "energy_kwh"),
+    energy_source: text4(source, "energy_source"),
+    estimated: flag2(source, "estimated"),
+    cost: numberOrNull3(source, "cost"),
+    currency: textOrNull4(source, "currency"),
+    major_unit: textOrNull4(source, "major_unit"),
+    minor_unit: textOrNull4(source, "minor_unit"),
+    average_price_minor_per_kwh: numberOrNull3(source, "average_price_minor_per_kwh"),
+    started_by: text4(source, "started_by"),
+    strategy: textOrNull4(source, "strategy"),
+    vehicle: textOrNull4(source, "vehicle"),
+    solar_share: shareOrNull(source, "solar_share"),
+    reference_cost: numberOrNull3(source, "reference_cost"),
+    savings: numberOrNull3(source, "savings")
+  };
+}
+function list3(source, key, decode) {
+  const value = source[key];
+  return Array.isArray(value) ? value.map(decode) : bad5();
+}
+function decodeSessions(raw) {
+  try {
+    const source = record5(raw);
+    if (source.api_version !== SESSIONS_API_VERSION) {
+      return { ok: false, failure: typeof source.api_version === "number" ? "unsupported" : "malformed" };
+    }
+    return {
+      ok: true,
+      value: {
+        this_month: decodeBucket(source.this_month),
+        last_month: decodeBucket(source.last_month),
+        months: list3(source, "months", decodeBucket),
+        days: list3(source, "days", decodeBucket),
+        open: source.open === null ? null : decodeRecord(source.open),
+        sessions: list3(source, "sessions", decodeRecord)
+      }
+    };
+  } catch {
+    return { ok: false, failure: "malformed" };
+  }
+}
+function decodeCsv(raw) {
+  try {
+    const source = record5(raw);
+    if (source.api_version !== SESSIONS_API_VERSION || source.format !== "csv") {
+      return null;
+    }
+    return { filename: text4(source, "filename"), csv: text4(source, "csv") };
+  } catch {
+    return null;
+  }
+}
+var HISTORY_RANGES = ["thisMonth", "lastMonth", "last12", "all"];
+function monthParts(period) {
+  const match = /^(\d{4})-(\d{2})$/.exec(period);
+  return match === null ? null : [Number(match[1]), Number(match[2])];
+}
+function pad(value) {
+  return String(value).padStart(2, "0");
+}
+function monthStart(year, month) {
+  return `${year}-${pad(month)}-01`;
+}
+function monthEnd(year, month) {
+  return `${year}-${pad(month)}-${pad(new Date(Date.UTC(year, month, 0)).getUTCDate())}`;
+}
+function exportDates(range, answer) {
+  const current = monthParts(answer.this_month.period);
+  const previous = monthParts(answer.last_month.period);
+  if (range === "all" || current === null || previous === null) {
+    return { from: null, to: null };
+  }
+  if (range === "thisMonth") {
+    return { from: monthStart(...current), to: monthEnd(...current) };
+  }
+  if (range === "lastMonth") {
+    return { from: monthStart(...previous), to: monthEnd(...previous) };
+  }
+  const first = new Date(Date.UTC(current[0], current[1] - 1 - 11, 1));
+  return { from: monthStart(first.getUTCFullYear(), first.getUTCMonth() + 1), to: null };
+}
+var monthFormats = /* @__PURE__ */ new Map();
+function monthLabel(language, period) {
+  const parts = monthParts(period);
+  if (parts === null) {
+    return period;
+  }
+  let format = monthFormats.get(language);
+  if (format === void 0) {
+    format = new Intl.DateTimeFormat(language, { month: "long", year: "numeric", timeZone: "UTC" });
+    monthFormats.set(language, format);
+  }
+  return format.format(new Date(Date.UTC(parts[0], parts[1] - 1, 1, 12)));
+}
+function formatContext(language, source) {
+  return {
+    language,
+    timeZone: "",
+    unit: source.minor_unit ?? "",
+    currency: source.currency,
+    majorUnit: source.major_unit
+  };
+}
+function element6(doc, tag, className, content) {
   const created = doc.createElement(tag);
   if (className !== void 0) {
     created.className = className;
   }
-  if (text4 !== void 0) {
-    created.textContent = text4;
+  if (content !== void 0) {
+    created.textContent = content;
+  }
+  return created;
+}
+function clockOf(iso) {
+  return /^\d{4}-\d{2}-\d{2}T(\d{2}:\d{2})/.exec(iso)?.[1] ?? "";
+}
+function dayOf(iso) {
+  return iso.slice(0, 10);
+}
+function percent(language, share) {
+  return `${formatNumber(language, share * 100, 0)} %`;
+}
+function sessionsCount(language, count) {
+  const key = `history.sessions.${pluralForm(language, count)}`;
+  return translate(language, key, { count: formatNumber(language, count, 0) });
+}
+function startedByKey(startedBy) {
+  switch (startedBy) {
+    case "plan_window":
+      return "history.by.plan_window";
+    case "manual":
+      return "history.by.manual";
+    case "solar":
+      return "history.by.solar";
+    case "hybrid":
+      return "history.by.hybrid";
+    default:
+      return "history.by.other";
+  }
+}
+function savingsLine(language, source) {
+  if (source.savings === null || Math.abs(source.savings) < 5e-3) {
+    return null;
+  }
+  const amount = money(formatContext(language, source), Math.abs(source.savings));
+  return translate(language, source.savings > 0 ? "history.savings.saved" : "history.savings.extra", { amount });
+}
+function figures(language, bucket) {
+  const context = formatContext(language, bucket);
+  const cost = bucket.cost === null ? translate(language, "history.noCost") : money(context, bucket.cost);
+  const parts = [energyAmount(language, bucket.energy_kwh), cost];
+  if (bucket.average_price_minor_per_kwh !== null && bucket.minor_unit !== null) {
+    parts.push(pricePerKwh(context, bucket.average_price_minor_per_kwh));
+  }
+  return parts.join(" · ");
+}
+function bucketCard(doc, language, titleKey, bucket) {
+  const card = element6(doc, "section", VISUAL_CLASSES.historyTile);
+  card.dataset["tile"] = titleKey === "history.thisMonth" ? "thisMonth" : "lastMonth";
+  card.append(element6(doc, "h4", VISUAL_CLASSES.historyTileHeading, translate(language, titleKey)));
+  if (bucket.sessions === 0) {
+    card.append(element6(doc, "p", VISUAL_CLASSES.muted, translate(language, "history.noneInMonth")));
+    return card;
+  }
+  card.append(element6(doc, "p", VISUAL_CLASSES.historyFigures, figures(language, bucket)));
+  const notes = [sessionsCount(language, bucket.sessions)];
+  if (bucket.solar_share !== null) {
+    notes.push(translate(language, "history.solar", { percent: percent(language, bucket.solar_share) }));
+  }
+  if (bucket.estimated) {
+    notes.push(translate(language, "history.estimated"));
+  }
+  card.append(element6(doc, "p", VISUAL_CLASSES.muted, notes.join(" · ")));
+  const savings = savingsLine(language, bucket);
+  if (savings !== null) {
+    card.append(element6(doc, "p", `${VISUAL_CLASSES.muted} ${VISUAL_CLASSES.historySavings}`, savings));
+  }
+  return card;
+}
+function periodRow(doc, language, kind, bucket) {
+  const row = element6(doc, "li", VISUAL_CLASSES.historyRow);
+  row.dataset["period"] = bucket.period;
+  row.append(
+    element6(
+      doc,
+      "span",
+      VISUAL_CLASSES.historyRowTitle,
+      kind === "days" ? dateLabel(language, bucket.period) : monthLabel(language, bucket.period)
+    ),
+    element6(doc, "span", VISUAL_CLASSES.historyRowFigures, figures(language, bucket))
+  );
+  const notes = [sessionsCount(language, bucket.sessions)];
+  if (bucket.solar_share !== null) {
+    notes.push(translate(language, "history.solar", { percent: percent(language, bucket.solar_share) }));
+  }
+  const savings = savingsLine(language, bucket);
+  if (savings !== null) {
+    notes.push(savings);
+  }
+  row.append(element6(doc, "span", `${VISUAL_CLASSES.muted} ${VISUAL_CLASSES.historyRowNote}`, notes.join(" · ")));
+  return row;
+}
+function sessionRow(doc, language, session) {
+  const row = element6(doc, "li", VISUAL_CLASSES.historyRow);
+  row.dataset["session"] = session.id;
+  const end = session.end === null ? "" : clockOf(session.end);
+  const crosses = session.end !== null && dayOf(session.end) !== dayOf(session.start);
+  const when = `${dateLabel(language, dayOf(session.start))} ${clockOf(session.start)}–${crosses ? `${dateLabel(language, dayOf(session.end))} ` : ""}${end}`;
+  row.append(
+    element6(doc, "span", VISUAL_CLASSES.historyRowTitle, when),
+    element6(doc, "span", VISUAL_CLASSES.historyRowFigures, figures(language, session))
+  );
+  const notes = [translate(language, startedByKey(session.started_by))];
+  if (session.vehicle !== null) {
+    notes.push(session.vehicle);
+  }
+  if (session.solar_share !== null) {
+    notes.push(translate(language, "history.solar", { percent: percent(language, session.solar_share) }));
+  }
+  if (session.estimated) {
+    notes.push(translate(language, "history.estimated"));
+  }
+  row.append(element6(doc, "span", `${VISUAL_CLASSES.muted} ${VISUAL_CLASSES.historyRowNote}`, notes.join(" · ")));
+  return row;
+}
+function toggle(doc, language, ui, handlers) {
+  const group = element6(doc, "div", VISUAL_CLASSES.historyToggle);
+  group.setAttribute("role", "group");
+  group.setAttribute("aria-label", translate(language, "history.listLabel"));
+  for (const choice of ["days", "months"]) {
+    const button = element6(doc, "button", VISUAL_CLASSES.historyToggleButton, translate(language, choice === "days" ? "history.days" : "history.months"));
+    button.type = "button";
+    button.dataset["list"] = choice;
+    button.setAttribute("aria-pressed", String(ui.list === choice));
+    button.addEventListener("click", () => handlers.onList(choice));
+    group.append(button);
+  }
+  return group;
+}
+function exportRow(doc, language, ui, handlers) {
+  const row = element6(doc, "div", VISUAL_CLASSES.historyExport);
+  const label = element6(doc, "label", VISUAL_CLASSES.historyExportLabel, translate(language, "history.export.period"));
+  const select = element6(doc, "select");
+  select.dataset["exportRange"] = "true";
+  for (const range of HISTORY_RANGES) {
+    const option = new Option(translate(language, `history.range.${range}`), range);
+    option.selected = range === ui.range;
+    select.append(option);
+  }
+  select.addEventListener("change", () => {
+    const chosen = HISTORY_RANGES.find((range) => range === select.value);
+    if (chosen !== void 0) {
+      handlers.onRange(chosen);
+    }
+  });
+  label.append(select);
+  const button = element6(doc, "button", VISUAL_CLASSES.button, translate(language, "history.export"));
+  button.type = "button";
+  button.dataset["action"] = "export";
+  button.disabled = ui.exporting;
+  button.addEventListener("click", () => handlers.onExport());
+  row.append(label, button);
+  return row;
+}
+function historyBody(doc, language, state, ui, handlers) {
+  const body = element6(doc, "div", VISUAL_CLASSES.historyBody);
+  if (state.kind === "loading") {
+    const loading = element6(doc, "p", VISUAL_CLASSES.muted, translate(language, "history.loading"));
+    loading.setAttribute("role", "status");
+    body.append(loading);
+    return body;
+  }
+  if (state.kind === "failed") {
+    const failed = element6(doc, "p", VISUAL_CLASSES.settingsNotice, translate(language, state.sentenceKey));
+    failed.setAttribute("role", "status");
+    if (state.code !== null) {
+      failed.dataset["code"] = state.code;
+    }
+    body.append(failed);
+    return body;
+  }
+  const answer = state.answer;
+  body.append(element6(doc, "p", `${VISUAL_CLASSES.muted} ${VISUAL_CLASSES.dialogIntro}`, translate(language, "history.intro")));
+  if (answer.open !== null) {
+    const open = element6(
+      doc,
+      "p",
+      VISUAL_CLASSES.historyOpen,
+      translate(language, "history.open", {
+        time: clockOf(answer.open.start),
+        energy: energyAmount(language, answer.open.energy_kwh)
+      })
+    );
+    open.setAttribute("role", "status");
+    body.append(open);
+  }
+  const tiles = element6(doc, "div", VISUAL_CLASSES.historyTiles);
+  tiles.append(
+    bucketCard(doc, language, "history.thisMonth", answer.this_month),
+    bucketCard(doc, language, "history.lastMonth", answer.last_month)
+  );
+  body.append(tiles);
+  if (answer.sessions.length === 0 && answer.open === null) {
+    body.append(element6(doc, "p", VISUAL_CLASSES.muted, translate(language, "history.empty")));
+  } else {
+    body.append(toggle(doc, language, ui, handlers));
+    const buckets = ui.list === "days" ? answer.days : answer.months;
+    const periods = element6(doc, "ul", VISUAL_CLASSES.historyList);
+    periods.dataset["list"] = ui.list;
+    for (const bucket of buckets) {
+      periods.append(periodRow(doc, language, ui.list, bucket));
+    }
+    body.append(periods);
+    body.append(element6(doc, "h4", VISUAL_CLASSES.historyHeading, translate(language, "history.latest")));
+    const latest = element6(doc, "ul", VISUAL_CLASSES.historyList);
+    latest.dataset["list"] = "sessions";
+    for (const session of answer.sessions) {
+      latest.append(sessionRow(doc, language, session));
+    }
+    body.append(latest);
+  }
+  body.append(element6(doc, "p", `${VISUAL_CLASSES.muted} ${VISUAL_CLASSES.historyFootnote}`, translate(language, "history.savings.note")));
+  body.append(exportRow(doc, language, ui, handlers));
+  if (ui.notice !== null) {
+    const notice = element6(doc, "p", VISUAL_CLASSES.settingsNotice, translate(language, ui.notice));
+    notice.setAttribute("role", "status");
+    body.append(notice);
+  }
+  return body;
+}
+
+// src/card-view.ts
+var BOUNDARY_HORIZON_MS = 24 * 36e5;
+function element7(doc, tag, className, text5) {
+  const created = doc.createElement(tag);
+  if (className !== void 0) {
+    created.className = className;
+  }
+  if (text5 !== void 0) {
+    created.textContent = text5;
   }
   return created;
 }
@@ -11508,7 +12235,7 @@ function bannerRepeatsStatus(model, severity) {
   if (severity !== "notice" || model.status === null || model.issues.length === 0) {
     return false;
   }
-  const strip = (text4) => text4.trim().replace(/[.。]$/u, "");
+  const strip = (text5) => text5.trim().replace(/[.。]$/u, "");
   const shown = model.status.split(" · ").map(strip);
   return model.issues.every((issue) => shown.includes(strip(issueText(model.language, issue))));
 }
@@ -11535,17 +12262,17 @@ function periodHeading(model, base, count) {
   return translate(model.language, `${base}.${form}`, { count: String(count) });
 }
 function periodLine(doc, model, period) {
-  const line = element6(doc, "div", VISUAL_CLASSES.period);
+  const line = element7(doc, "div", VISUAL_CLASSES.period);
   line.textContent = period.label === "" ? translate(model.language, "plan.missing") : period.label;
   return line;
 }
 function periodBlock(doc, model, kind, periods) {
-  const block = element6(
+  const block = element7(
     doc,
     "section",
     `${VISUAL_CLASSES.periods} ${kind === "installed" ? VISUAL_CLASSES.periodsInstalled : VISUAL_CLASSES.periodsProposal}`
   );
-  const heading = element6(
+  const heading = element7(
     doc,
     "h4",
     VISUAL_CLASSES.periodsHeading,
@@ -11675,6 +12402,15 @@ function infoIcon(doc) {
     );
   });
 }
+function historyIcon(doc) {
+  return icon(doc, (svg2, ns) => {
+    svg2.append(
+      strokePath(ns, doc, "M3.5 12a8.5 8.5 0 1 0 2.6-6.1"),
+      strokePath(ns, doc, "M3.5 4.5v4.5H8"),
+      strokePath(ns, doc, "M12 7.5V12l3 2")
+    );
+  });
+}
 function settingsGearIcon(doc) {
   return icon(doc, (svg2, ns) => {
     svg2.append(
@@ -11783,34 +12519,34 @@ function capabilityStateText(language, state) {
   return translate(language, state === "available" ? "cap.available" : "cap.unavailable");
 }
 function issueListBody(doc, model) {
-  const body = element6(doc, "div");
-  body.append(element6(doc, "p", `${VISUAL_CLASSES.muted} ${VISUAL_CLASSES.dialogIntro}`, translate(model.language, "dialog.issuesIntro")));
+  const body = element7(doc, "div");
+  body.append(element7(doc, "p", `${VISUAL_CLASSES.muted} ${VISUAL_CLASSES.dialogIntro}`, translate(model.language, "dialog.issuesIntro")));
   for (const issue of model.issues) {
     body.append(issueRow(doc, model, issue));
   }
   return body;
 }
 function issueRow(doc, model, issue) {
-  const row = element6(doc, "div", VISUAL_CLASSES.issueItem);
+  const row = element7(doc, "div", VISUAL_CLASSES.issueItem);
   row.dataset["code"] = issue.code;
   row.dataset["severity"] = issue.severity;
   row.append(
-    element6(doc, "span", VISUAL_CLASSES.issueText, issueText(model.language, issue))
+    element7(doc, "span", VISUAL_CLASSES.issueText, issueText(model.language, issue))
   );
   return row;
 }
 function capabilityBody(doc, model) {
-  const body = element6(doc, "div");
-  body.append(element6(doc, "p", `${VISUAL_CLASSES.muted} ${VISUAL_CLASSES.dialogIntro}`, translate(model.language, "cap.intro")));
+  const body = element7(doc, "div");
+  body.append(element7(doc, "p", `${VISUAL_CLASSES.muted} ${VISUAL_CLASSES.dialogIntro}`, translate(model.language, "cap.intro")));
   for (const item of model.capabilities) {
-    const row = element6(doc, "div", VISUAL_CLASSES.capabilityItem);
+    const row = element7(doc, "div", VISUAL_CLASSES.capabilityItem);
     row.dataset["capability"] = item.key;
     row.dataset["state"] = item.state;
-    row.append(element6(doc, "span", VISUAL_CLASSES.capabilityLabel, translate(model.language, item.labelKey)));
-    row.append(element6(doc, "span", VISUAL_CLASSES.capabilityState, capabilityStateText(model.language, item.state)));
+    row.append(element7(doc, "span", VISUAL_CLASSES.capabilityLabel, translate(model.language, item.labelKey)));
+    row.append(element7(doc, "span", VISUAL_CLASSES.capabilityState, capabilityStateText(model.language, item.state)));
     body.append(row);
     if (item.key === "target_soc" && item.state === "unavailable") {
-      body.append(element6(doc, "span", VISUAL_CLASSES.capabilityNote, translate(model.language, "cap.targetSocNote")));
+      body.append(element7(doc, "span", VISUAL_CLASSES.capabilityNote, translate(model.language, "cap.targetSocNote")));
     }
   }
   return body;
@@ -11849,18 +12585,18 @@ function createCardView(input) {
   const doc = input.mount.ownerDocument;
   const now = input.now ?? (() => Date.now());
   let destroyed = false;
-  const card = element6(doc, "div", VISUAL_CLASSES.card);
+  const card = element7(doc, "div", VISUAL_CLASSES.card);
   card.style.boxSizing = "border-box";
-  const header = element6(doc, "div", VISUAL_CLASSES.header);
+  const header = element7(doc, "div", VISUAL_CLASSES.header);
   header.append(brandMark(doc, idPrefix));
   const vehicleLine = vehicleLineFor(model.language, model.soc, model.dashboardSettings);
   let vehicleButton = null;
   if (vehicleLine !== null) {
-    const identity2 = element6(doc, "div", VISUAL_CLASSES.nameBlock);
+    const identity2 = element7(doc, "div", VISUAL_CLASSES.nameBlock);
     if (model.chargerName !== null) {
-      identity2.append(element6(doc, "h3", VISUAL_CLASSES.name, model.chargerName));
+      identity2.append(element7(doc, "h3", VISUAL_CLASSES.name, model.chargerName));
     }
-    vehicleButton = element6(doc, "button", VISUAL_CLASSES.vehicleLine);
+    vehicleButton = element7(doc, "button", VISUAL_CLASSES.vehicleLine);
     vehicleButton.type = "button";
     vehicleButton.dataset["vehicleLine"] = vehicleLine.vehicleId;
     vehicleButton.setAttribute("aria-label", vehicleLine.ariaLabel);
@@ -11871,11 +12607,11 @@ function createCardView(input) {
     }
     vehicleButton.append(
       batteryIcon(doc),
-      element6(doc, "span", VISUAL_CLASSES.vehicleLineName, vehicleLine.name),
-      element6(doc, "span", VISUAL_CLASSES.vehicleLineCharge, `· ${vehicleLine.estimatePrefix}${vehicleLine.charge}`)
+      element7(doc, "span", VISUAL_CLASSES.vehicleLineName, vehicleLine.name),
+      element7(doc, "span", VISUAL_CLASSES.vehicleLineCharge, `· ${vehicleLine.estimatePrefix}${vehicleLine.charge}`)
     );
     if (vehicleLine.age !== null) {
-      vehicleButton.append(element6(doc, "span", VISUAL_CLASSES.vehicleLineAge, `· ${vehicleLine.age}`));
+      vehicleButton.append(element7(doc, "span", VISUAL_CLASSES.vehicleLineAge, `· ${vehicleLine.age}`));
     }
     vehicleButton.addEventListener("click", () => {
       openVehicleChoice();
@@ -11883,18 +12619,26 @@ function createCardView(input) {
     identity2.append(vehicleButton);
     header.append(identity2);
   } else if (model.chargerName !== null) {
-    header.append(element6(doc, "h3", VISUAL_CLASSES.name, model.chargerName));
+    header.append(element7(doc, "h3", VISUAL_CLASSES.name, model.chargerName));
   }
   header.append(
-    element6(doc, "span", VISUAL_CLASSES.visuallyHidden, translate(model.language, "card.title"))
+    element7(doc, "span", VISUAL_CLASSES.visuallyHidden, translate(model.language, "card.title"))
   );
-  const help = element6(doc, "button", VISUAL_CLASSES.iconButton);
+  const help = element7(doc, "button", VISUAL_CLASSES.iconButton);
   help.type = "button";
   help.setAttribute("aria-label", translate(model.language, "header.info"));
   help.title = translate(model.language, "header.info");
   help.append(infoIcon(doc));
   header.append(help);
-  const settingsGeneral = element6(doc, "button", VISUAL_CLASSES.iconButton);
+  const historyButton = element7(doc, "button", VISUAL_CLASSES.iconButton);
+  historyButton.type = "button";
+  historyButton.setAttribute("aria-label", translate(model.language, "header.history"));
+  historyButton.setAttribute("aria-haspopup", "dialog");
+  historyButton.title = translate(model.language, "header.history");
+  historyButton.dataset["history"] = "open";
+  historyButton.append(historyIcon(doc));
+  header.append(historyButton);
+  const settingsGeneral = element7(doc, "button", VISUAL_CLASSES.iconButton);
   settingsGeneral.type = "button";
   settingsGeneral.setAttribute("aria-label", translate(model.language, "header.settings"));
   settingsGeneral.title = translate(model.language, "header.settings");
@@ -11970,6 +12714,13 @@ function createCardView(input) {
     background: () => card,
     onClose: notifyDialogsChanged
   });
+  const historyDialog = createDialog({
+    owner: input.mount,
+    idPrefix: `${idPrefix}-history`,
+    labels,
+    background: () => card,
+    onClose: notifyDialogsChanged
+  });
   function leaveSettingsChild(dialog, cancel) {
     const returns = cancel?.() !== false;
     dialog.hide({ restoreFocus: false });
@@ -11978,7 +12729,7 @@ function createCardView(input) {
     }
   }
   function anyDialogOpenNow() {
-    return issuesDialog.isOpen() || capabilityDialog.isOpen() || pauseDialog.isOpen() || strategyDialog.isOpen() || vehicleDialog.isOpen() || settingsDialog.isOpen() || marketDialog.isOpen() || entityDialog.isOpen() || settingsOverviewDialog.isOpen();
+    return issuesDialog.isOpen() || capabilityDialog.isOpen() || pauseDialog.isOpen() || strategyDialog.isOpen() || vehicleDialog.isOpen() || settingsDialog.isOpen() || marketDialog.isOpen() || entityDialog.isOpen() || settingsOverviewDialog.isOpen() || historyDialog.isOpen();
   }
   function notifyDialogsChanged() {
     queueMicrotask(() => {
@@ -11990,56 +12741,56 @@ function createCardView(input) {
   }
   const severity = bannerSeverity(model);
   if (severity !== null && !bannerRepeatsStatus(model, severity)) {
-    const banner = element6(doc, "button", `${VISUAL_CLASSES.banner} ${severity === "blocking" ? VISUAL_CLASSES.bannerBlocking : VISUAL_CLASSES.bannerNotice}`);
+    const banner = element7(doc, "button", `${VISUAL_CLASSES.banner} ${severity === "blocking" ? VISUAL_CLASSES.bannerBlocking : VISUAL_CLASSES.bannerNotice}`);
     banner.type = "button";
     banner.append(
-      element6(
+      element7(
         doc,
         "span",
         void 0,
         translate(model.language, severity === "blocking" ? "issue.banner.blocking" : "issue.banner.notice")
       )
     );
-    banner.append(element6(doc, "span", VISUAL_CLASSES.bannerCount, issueCountText(model.language, model.issues.length)));
+    banner.append(element7(doc, "span", VISUAL_CLASSES.bannerCount, issueCountText(model.language, model.issues.length)));
     banner.addEventListener("click", () => {
       openIssues(banner);
     });
     card.append(banner);
   }
-  const actionError = element6(doc, "p", VISUAL_CLASSES.actionError);
+  const actionError = element7(doc, "p", VISUAL_CLASSES.actionError);
   actionError.setAttribute("role", "status");
   actionError.hidden = true;
   card.append(actionError);
-  const settingsError = element6(doc, "p", VISUAL_CLASSES.settingsError);
+  const settingsError = element7(doc, "p", VISUAL_CLASSES.settingsError);
   settingsError.setAttribute("role", "status");
   settingsError.hidden = true;
   card.append(settingsError);
   if (model.control.notice !== null) {
-    const notice = element6(doc, "p", VISUAL_CLASSES.controlNotice, model.control.notice);
+    const notice = element7(doc, "p", VISUAL_CLASSES.controlNotice, model.control.notice);
     card.append(notice);
   }
   if (model.advisory !== null) {
-    const advisory = element6(doc, "p", VISUAL_CLASSES.advisory, model.advisory.text);
+    const advisory = element7(doc, "p", VISUAL_CLASSES.advisory, model.advisory.text);
     advisory.setAttribute("role", "status");
     card.append(advisory);
   }
   if (model.status !== null) {
-    card.append(element6(doc, "p", VISUAL_CLASSES.status, model.status));
+    card.append(element7(doc, "p", VISUAL_CLASSES.status, model.status));
   }
   if (model.statusNote !== null) {
-    card.append(element6(doc, "p", `${VISUAL_CLASSES.status} ${VISUAL_CLASSES.muted}`, model.statusNote));
+    card.append(element7(doc, "p", `${VISUAL_CLASSES.status} ${VISUAL_CLASSES.muted}`, model.statusNote));
   }
-  const graph = element6(doc, "section", VISUAL_CLASSES.graphSurface);
-  const viewport = element6(doc, "div", VISUAL_CLASSES.viewport);
+  const graph = element7(doc, "section", VISUAL_CLASSES.graphSurface);
+  const viewport = element7(doc, "div", VISUAL_CLASSES.viewport);
   viewport.tabIndex = 0;
   viewport.setAttribute("role", "img");
   viewport.setAttribute("aria-labelledby", `${idPrefix}-chart-title`);
   viewport.setAttribute("aria-describedby", `${idPrefix}-chart-description`);
-  const readout = element6(doc, "p", VISUAL_CLASSES.readout, readoutDisplayText(model, null));
+  const readout = element7(doc, "p", VISUAL_CLASSES.readout, readoutDisplayText(model, null));
   readout.textContent = "";
   readout.setAttribute("aria-live", "polite");
-  const hint = element6(doc, "p", `${VISUAL_CLASSES.readoutHint} ${VISUAL_CLASSES.visuallyHidden}`, translate(model.language, "graph.hint"));
-  const legend = element6(doc, "p", `${VISUAL_CLASSES.legend} ${VISUAL_CLASSES.visuallyHidden}`);
+  const hint = element7(doc, "p", `${VISUAL_CLASSES.readoutHint} ${VISUAL_CLASSES.visuallyHidden}`, translate(model.language, "graph.hint"));
+  const legend = element7(doc, "p", `${VISUAL_CLASSES.legend} ${VISUAL_CLASSES.visuallyHidden}`);
   function legendKeys(current, selected) {
     const keys = [];
     if (current.chart.days.some((day) => day.role === "today")) {
@@ -12072,7 +12823,7 @@ function createCardView(input) {
   function paintLegend(selected) {
     legend.replaceChildren(
       ...legendKeys(model, selected).map(
-        (key) => element6(doc, "span", void 0, translate(model.language, key))
+        (key) => element7(doc, "span", void 0, translate(model.language, key))
       )
     );
   }
@@ -12089,9 +12840,9 @@ function createCardView(input) {
     size = next;
     nowState = chartNowAt(model.chart.marks, now());
     if (nowValue !== null) {
-      const text4 = nowSummaryText(model, currentPriceText(model, nowState.mark));
-      nowValue.hidden = text4 === null;
-      nowValue.textContent = text4 ?? "";
+      const text5 = nowSummaryText(model, currentPriceText(model, nowState.mark));
+      nowValue.hidden = text5 === null;
+      nowValue.textContent = text5 ?? "";
     }
     const labels2 = {
       time: (instantMs2) => clock(model.format, instantMs2)
@@ -12162,21 +12913,21 @@ function createCardView(input) {
     }
     scheduleBoundary();
   }
-  const summary = element6(doc, "div", VISUAL_CLASSES.summary);
-  const summaryExtremes = element6(doc, "span", VISUAL_CLASSES.summaryExtremes);
-  const maxLine = element6(doc, "span", VISUAL_CLASSES.summaryMax);
-  maxLine.append(element6(doc, "span", VISUAL_CLASSES.summaryArrow, "▲"), doc.createTextNode(` ${model.summary.maxFigure ?? ""}`));
+  const summary = element7(doc, "div", VISUAL_CLASSES.summary);
+  const summaryExtremes = element7(doc, "span", VISUAL_CLASSES.summaryExtremes);
+  const maxLine = element7(doc, "span", VISUAL_CLASSES.summaryMax);
+  maxLine.append(element7(doc, "span", VISUAL_CLASSES.summaryArrow, "▲"), doc.createTextNode(` ${model.summary.maxFigure ?? ""}`));
   maxLine.querySelector(`.${VISUAL_CLASSES.summaryArrow}`)?.setAttribute("aria-hidden", "true");
   maxLine.setAttribute("aria-label", `${translate(model.language, "graph.summary.max")} ${model.summary.max ?? ""}`);
   maxLine.hidden = model.summary.max === null;
-  const minLine = element6(doc, "span", VISUAL_CLASSES.summaryMin);
-  minLine.append(element6(doc, "span", VISUAL_CLASSES.summaryArrow, "▼"), doc.createTextNode(` ${model.summary.minFigure ?? ""}`));
+  const minLine = element7(doc, "span", VISUAL_CLASSES.summaryMin);
+  minLine.append(element7(doc, "span", VISUAL_CLASSES.summaryArrow, "▼"), doc.createTextNode(` ${model.summary.minFigure ?? ""}`));
   minLine.querySelector(`.${VISUAL_CLASSES.summaryArrow}`)?.setAttribute("aria-hidden", "true");
   minLine.setAttribute("aria-label", `${translate(model.language, "graph.summary.min")} ${model.summary.min ?? ""}`);
   minLine.hidden = model.summary.min === null;
   summaryExtremes.append(maxLine, minLine);
   const currentText = nowSummaryText(model, model.summary.current);
-  const currentValue = element6(doc, "span", VISUAL_CLASSES.summaryCurrent, currentText ?? "");
+  const currentValue = element7(doc, "span", VISUAL_CLASSES.summaryCurrent, currentText ?? "");
   currentValue.hidden = currentText === null;
   nowValue = currentValue;
   summary.append(summaryExtremes, currentValue);
@@ -12221,8 +12972,8 @@ function createCardView(input) {
     block.classList.add(VISUAL_CLASSES.visuallyHidden);
     card.append(block);
   }
-  const bar = element6(doc, "div", VISUAL_CLASSES.actionBar);
-  const barWrap = element6(doc, "div", VISUAL_CLASSES.actionBarWrap);
+  const bar = element7(doc, "div", VISUAL_CLASSES.actionBar);
+  const barWrap = element7(doc, "div", VISUAL_CLASSES.actionBarWrap);
   barWrap.append(bar);
   const immediateLabelKey = model.control.immediate.labelKey;
   const automaticLabelKey = model.control.automatic.labelKey;
@@ -12232,20 +12983,20 @@ function createCardView(input) {
   const axisName = (key) => translate(model.language, key);
   const changeWord = translate(model.language, "bar.change");
   function cell(cellClass, id, caption, glyph, value, ariaLabel, wide = false) {
-    const button = element6(doc, "button", `${VISUAL_CLASSES.button} ${VISUAL_CLASSES.barCell} ${cellClass}`);
+    const button = element7(doc, "button", `${VISUAL_CLASSES.button} ${VISUAL_CLASSES.barCell} ${cellClass}`);
     button.type = "button";
     button.dataset["cell"] = id;
     button.setAttribute("aria-label", ariaLabel);
-    const captionNode = element6(doc, "span", VISUAL_CLASSES.barCaption, caption);
+    const captionNode = element7(doc, "span", VISUAL_CLASSES.barCaption, caption);
     captionNode.setAttribute("aria-hidden", "true");
-    const line = element6(doc, "span", VISUAL_CLASSES.barValue);
+    const line = element7(doc, "span", VISUAL_CLASSES.barValue);
     if (wide) {
       button.classList.add(VISUAL_CLASSES.barWide);
     }
     if (glyph !== null) {
       line.append(glyph);
     }
-    const valueNode = element6(doc, "span", VISUAL_CLASSES.settingsValue);
+    const valueNode = element7(doc, "span", VISUAL_CLASSES.settingsValue);
     if (typeof value === "string") {
       valueNode.textContent = value;
     } else {
@@ -12253,7 +13004,7 @@ function createCardView(input) {
         if (index > 0) {
           valueNode.append(doc.createTextNode(" · "));
         }
-        valueNode.append(element6(doc, "span", VISUAL_CLASSES.barPart, part));
+        valueNode.append(element7(doc, "span", VISUAL_CLASSES.barPart, part));
       });
     }
     line.append(valueNode);
@@ -12261,7 +13012,7 @@ function createCardView(input) {
     return button;
   }
   const startHelpId = `${idPrefix}-start-help`;
-  const startHelp = element6(doc, "p", `${VISUAL_CLASSES.actionHelp} ${VISUAL_CLASSES.visuallyHidden}`, translate(model.language, "action.startHelp"));
+  const startHelp = element7(doc, "p", `${VISUAL_CLASSES.actionHelp} ${VISUAL_CLASSES.visuallyHidden}`, translate(model.language, "action.startHelp"));
   startHelp.id = startHelpId;
   if (immediateLabelKey !== null) {
     const action = model.control.immediate.action;
@@ -12403,11 +13154,11 @@ function createCardView(input) {
     strategyDialog.hide({ restoreFocus: false });
     vehicleDialog.hide({ restoreFocus: false });
     settingsOverviewDialog.hide({ restoreFocus: false });
-    const body = element6(doc, "div");
-    body.append(element6(doc, "p", `${VISUAL_CLASSES.muted} ${VISUAL_CLASSES.dialogIntro}`, translate(model.language, "pause.intro")));
-    const list3 = element6(doc, "div", VISUAL_CLASSES.pauseChoices);
+    const body = element7(doc, "div");
+    body.append(element7(doc, "p", `${VISUAL_CLASSES.muted} ${VISUAL_CLASSES.dialogIntro}`, translate(model.language, "pause.intro")));
+    const list4 = element7(doc, "div", VISUAL_CLASSES.pauseChoices);
     for (const choice of model.control.choices) {
-      const button = element6(doc, "button", VISUAL_CLASSES.choiceButton, translate(model.language, choice.labelKey));
+      const button = element7(doc, "button", VISUAL_CLASSES.choiceButton, translate(model.language, choice.labelKey));
       button.type = "button";
       button.dataset["choice"] = choice.id;
       button.disabled = !model.control.canAct;
@@ -12415,9 +13166,9 @@ function createCardView(input) {
         pauseDialog.hide({ restoreFocus: false });
         input.onAction("stop", choice.id);
       });
-      list3.append(button);
+      list4.append(button);
     }
-    body.append(list3);
+    body.append(list4);
     pauseDialog.show({
       title: translate(model.language, "pause.sheetTitle"),
       body,
@@ -12434,18 +13185,18 @@ function createCardView(input) {
     pauseDialog.hide({ restoreFocus: false });
     strategyDialog.hide({ restoreFocus: false });
     settingsOverviewDialog.hide({ restoreFocus: false });
-    const body = element6(doc, "div");
+    const body = element7(doc, "div");
     if (!input.isAdmin) {
-      body.append(element6(doc, "p", VISUAL_CLASSES.settingsReadOnly, translate(model.language, "settings.readOnly")));
+      body.append(element7(doc, "p", VISUAL_CLASSES.settingsReadOnly, translate(model.language, "settings.readOnly")));
     }
-    const group = element6(doc, "div", VISUAL_CLASSES.vehicleChoices);
+    const group = element7(doc, "div", VISUAL_CLASSES.vehicleChoices);
     group.setAttribute("role", "radiogroup");
     group.setAttribute("aria-label", translate(model.language, "vehicleLine.dialogTitle"));
     const plannedId = model.soc?.vehicle_id ?? model.targetVehicleId;
     const name = `${idPrefix}-vehicle-choice`;
     for (const choice of vehicleChoicesFor(model.language, model.vehicles, plannedId)) {
-      const label = element6(doc, "label", VISUAL_CLASSES.vehicleChoice);
-      const radio = element6(doc, "input");
+      const label = element7(doc, "label", VISUAL_CLASSES.vehicleChoice);
+      const radio = element7(doc, "input");
       radio.type = "radio";
       radio.name = name;
       radio.value = choice.id;
@@ -12461,8 +13212,8 @@ function createCardView(input) {
       });
       label.append(
         radio,
-        element6(doc, "span", VISUAL_CLASSES.vehicleChoiceName, choice.name),
-        element6(
+        element7(doc, "span", VISUAL_CLASSES.vehicleChoiceName, choice.name),
+        element7(
           doc,
           "span",
           VISUAL_CLASSES.vehicleChoiceCharge,
@@ -12486,16 +13237,16 @@ function createCardView(input) {
     capabilityDialog.hide({ restoreFocus: false });
     pauseDialog.hide({ restoreFocus: false });
     settingsOverviewDialog.hide({ restoreFocus: false });
-    const body = element6(doc, "div");
-    body.append(element6(doc, "p", `${VISUAL_CLASSES.muted} ${VISUAL_CLASSES.dialogIntro}`, translate(model.language, "strategy.intro")));
+    const body = element7(doc, "div");
+    body.append(element7(doc, "p", `${VISUAL_CLASSES.muted} ${VISUAL_CLASSES.dialogIntro}`, translate(model.language, "strategy.intro")));
     if (!input.isAdmin) {
-      body.append(element6(doc, "p", VISUAL_CLASSES.settingsReadOnly, translate(model.language, "settings.readOnly")));
+      body.append(element7(doc, "p", VISUAL_CLASSES.settingsReadOnly, translate(model.language, "settings.readOnly")));
     }
     for (const row of model.strategy.rows) {
-      const item = element6(doc, "div", VISUAL_CLASSES.strategyRow);
+      const item = element7(doc, "div", VISUAL_CLASSES.strategyRow);
       const selected = row.id === model.strategy.selectedId;
       const writable = row.available && !selected && input.isAdmin;
-      const button = element6(doc, "button", VISUAL_CLASSES.choiceButton, translate(model.language, row.labelKey));
+      const button = element7(doc, "button", VISUAL_CLASSES.choiceButton, translate(model.language, row.labelKey));
       button.type = "button";
       button.dataset["strategy"] = row.id;
       button.disabled = !writable;
@@ -12509,9 +13260,9 @@ function createCardView(input) {
       }
       item.append(button);
       if (row.reason !== null) {
-        item.append(element6(doc, "span", VISUAL_CLASSES.strategyReason, row.reason));
+        item.append(element7(doc, "span", VISUAL_CLASSES.strategyReason, row.reason));
         if (!row.available && model.site !== null && SOLAR_SETUP_ROWS.has(row.id) && row.reasonCode !== STRATEGY_NEEDS_TOTAL_POWER) {
-          const link = element6(doc, "button", VISUAL_CLASSES.strategyLink, translate(model.language, "strategy.setupSolar"));
+          const link = element7(doc, "button", VISUAL_CLASSES.strategyLink, translate(model.language, "strategy.setupSolar"));
           link.type = "button";
           link.dataset["action"] = "setup-solar";
           link.addEventListener("click", () => {
@@ -12524,7 +13275,7 @@ function createCardView(input) {
           item.append(link);
         }
         if (!row.available && row.reasonCode === STRATEGY_NEEDS_TOTAL_POWER && input.isAdmin) {
-          const link = element6(doc, "button", VISUAL_CLASSES.strategyLink, translate(model.language, "strategy.setupSite"));
+          const link = element7(doc, "button", VISUAL_CLASSES.strategyLink, translate(model.language, "strategy.setupSite"));
           link.type = "button";
           link.dataset["action"] = "setup-site";
           link.addEventListener("click", () => {
@@ -12544,20 +13295,20 @@ function createCardView(input) {
     });
   }
   function settingsOverviewBody() {
-    const body = element6(doc, "div");
+    const body = element7(doc, "div");
     overviewBodyNode = body;
-    overviewNoticeNode = element6(doc, "p", VISUAL_CLASSES.settingsNotice);
+    overviewNoticeNode = element7(doc, "p", VISUAL_CLASSES.settingsNotice);
     overviewNoticeNode.hidden = true;
     overviewNoticeNode.setAttribute("role", "status");
     body.append(overviewNoticeNode);
     paintOverviewNotice();
     if (!input.isAdmin) {
-      body.append(element6(doc, "p", VISUAL_CLASSES.settingsReadOnly, translate(model.language, "settings.readOnly")));
+      body.append(element7(doc, "p", VISUAL_CLASSES.settingsReadOnly, translate(model.language, "settings.readOnly")));
     }
-    const marketSection = element6(doc, "section", VISUAL_CLASSES.settingsSection);
+    const marketSection = element7(doc, "section", VISUAL_CLASSES.settingsSection);
     marketSection.dataset["section"] = "market";
     marketSection.append(
-      element6(doc, "h4", VISUAL_CLASSES.settingsSectionHeading, translate(model.language, "settings.section.market"))
+      element7(doc, "h4", VISUAL_CLASSES.settingsSectionHeading, translate(model.language, "settings.section.market"))
     );
     if (model.contextArea !== null || model.contextAreaName !== null) {
       marketSection.append(
@@ -12583,10 +13334,10 @@ function createCardView(input) {
     marketSection.append(marketButton);
     body.append(marketSection);
     vehicleRows = model.vehicles.map((entry) => ({ ...entry }));
-    vehicleListSlot = element6(doc, "div");
+    vehicleListSlot = element7(doc, "div");
     vehicleListSlot.dataset["slot"] = "vehicles";
     body.append(vehicleListSlot);
-    entitySlot = element6(doc, "section", VISUAL_CLASSES.settingsSection);
+    entitySlot = element7(doc, "section", VISUAL_CLASSES.settingsSection);
     entitySlot.dataset["section"] = "entities";
     body.append(entitySlot);
     body.append(siteSectionBody());
@@ -12598,9 +13349,9 @@ function createCardView(input) {
     return body;
   }
   function overviewRow(key, label, value) {
-    const row = element6(doc, "div", VISUAL_CLASSES.capabilityItem);
+    const row = element7(doc, "div", VISUAL_CLASSES.capabilityItem);
     row.dataset["row"] = key;
-    row.append(element6(doc, "span", VISUAL_CLASSES.capabilityLabel, label), element6(doc, "span", summaryValueClass(value), value));
+    row.append(element7(doc, "span", VISUAL_CLASSES.capabilityLabel, label), element7(doc, "span", summaryValueClass(value), value));
     return row;
   }
   let overviewBodyNode = null;
@@ -12619,13 +13370,13 @@ function createCardView(input) {
   }
   function unreadableLine(state) {
     if (state.kind === "loading") {
-      return element6(doc, "p", VISUAL_CLASSES.muted, translate(model.language, "entity.loading"));
+      return element7(doc, "p", VISUAL_CLASSES.muted, translate(model.language, "entity.loading"));
     }
     if (state.kind === "adminOnly") {
-      return element6(doc, "p", VISUAL_CLASSES.muted, translate(model.language, "entity.adminOnly"));
+      return element7(doc, "p", VISUAL_CLASSES.muted, translate(model.language, "entity.adminOnly"));
     }
     if (state.kind === "failed") {
-      const sentence = element6(doc, "p", VISUAL_CLASSES.settingsNotice, translate(model.language, state.failure.sentenceKey));
+      const sentence = element7(doc, "p", VISUAL_CLASSES.settingsNotice, translate(model.language, state.failure.sentenceKey));
       if (state.failure.code !== null) {
         sentence.dataset["code"] = state.failure.code;
       }
@@ -12634,7 +13385,7 @@ function createCardView(input) {
     return null;
   }
   function changeButton(label, scope, enabled) {
-    const button = element6(doc, "button", `${VISUAL_CLASSES.button} ${VISUAL_CLASSES.settingsSectionConfigure}`, translate(model.language, label));
+    const button = element7(doc, "button", `${VISUAL_CLASSES.button} ${VISUAL_CLASSES.settingsSectionConfigure}`, translate(model.language, label));
     button.type = "button";
     button.dataset["editEntities"] = scope;
     button.disabled = !enabled;
@@ -12661,7 +13412,7 @@ function createCardView(input) {
     nodes.push(overviewRow("start_stop", translate(model.language, "control.startStop"), startStopName ?? notSet));
     const chargeControl = fieldsOf(config, "charger").find((entry) => entry.field === "charge_control");
     if (chargeControl !== void 0 && chargeControl.kind === "entity" && isMissingEntity(chargeControl)) {
-      const warning = element6(doc, "p", VISUAL_CLASSES.entityWarning, translate(model.language, "entity.missing.required"));
+      const warning = element7(doc, "p", VISUAL_CLASSES.entityWarning, translate(model.language, "entity.missing.required"));
       warning.dataset["missing"] = "charge_control";
       nodes.push(warning);
     }
@@ -12691,7 +13442,7 @@ function createCardView(input) {
       nodes.push(overviewRow("power_entity", translate(model.language, "entity.field.powerEntity"), powerField.current.friendlyName));
     }
     for (const conflict of control?.conflicts ?? []) {
-      const warning = element6(
+      const warning = element7(
         doc,
         "p",
         VISUAL_CLASSES.entityWarning,
@@ -12734,11 +13485,11 @@ function createCardView(input) {
       const focusId = active !== null && vehicleListSlot.contains(active) ? active.dataset["editVehicle"] : void 0;
       vehicleListSlot.replaceChildren();
       if (vehicleRows.length === 0 && !(state.kind === "ready" && state.config.vehicles.length > 0)) {
-        const none = element6(doc, "section", VISUAL_CLASSES.settingsSection);
+        const none = element7(doc, "section", VISUAL_CLASSES.settingsSection);
         none.dataset["section"] = "vehicle";
         none.append(
-          element6(doc, "h4", VISUAL_CLASSES.settingsSectionHeading, translate(model.language, "settings.section.vehicle")),
-          element6(doc, "p", VISUAL_CLASSES.muted, translate(model.language, "settings.vehicle.none"))
+          element7(doc, "h4", VISUAL_CLASSES.settingsSectionHeading, translate(model.language, "settings.section.vehicle")),
+          element7(doc, "p", VISUAL_CLASSES.muted, translate(model.language, "settings.vehicle.none"))
         );
         vehicleListSlot.append(none);
       }
@@ -12772,7 +13523,7 @@ function createCardView(input) {
     }
     if (entitySlot !== null) {
       entitySlot.replaceChildren(
-        element6(doc, "h4", VISUAL_CLASSES.settingsSectionHeading, translate(model.language, "settings.section.entities"))
+        element7(doc, "h4", VISUAL_CLASSES.settingsSectionHeading, translate(model.language, "settings.section.entities"))
       );
       const line = unreadableLine(state);
       if (line !== null) {
@@ -12801,30 +13552,30 @@ function createCardView(input) {
   }
   function siteSectionBody() {
     const site = model.site;
-    const siteSection = element6(doc, "section", VISUAL_CLASSES.settingsSection);
+    const siteSection = element7(doc, "section", VISUAL_CLASSES.settingsSection);
     siteSection.dataset["section"] = "site";
     siteEntitySlot = null;
     siteButtonSlot = null;
     if (site === null) {
       siteSection.append(
-        element6(doc, "h4", VISUAL_CLASSES.settingsSectionHeading, translate(model.language, "settings.section.site"))
+        element7(doc, "h4", VISUAL_CLASSES.settingsSectionHeading, translate(model.language, "settings.section.site"))
       );
-      siteSection.append(element6(doc, "p", VISUAL_CLASSES.muted, translate(model.language, "site.none")));
+      siteSection.append(element7(doc, "p", VISUAL_CLASSES.muted, translate(model.language, "site.none")));
       return siteSection;
     }
     const name = site.name.trim();
     siteSection.append(
-      element6(doc, "h4", VISUAL_CLASSES.settingsSectionHeading, name === "" ? translate(model.language, "settings.section.site") : name)
+      element7(doc, "h4", VISUAL_CLASSES.settingsSectionHeading, name === "" ? translate(model.language, "settings.section.site") : name)
     );
-    siteSection.append(element6(doc, "p", VISUAL_CLASSES.siteApplies, site.appliesToText));
-    siteEntitySlot = element6(doc, "div");
+    siteSection.append(element7(doc, "p", VISUAL_CLASSES.siteApplies, site.appliesToText));
+    siteEntitySlot = element7(doc, "div");
     siteEntitySlot.dataset["slot"] = "site-entities";
     siteSection.append(siteEntitySlot);
-    activeSlot = element6(doc, "div");
+    activeSlot = element7(doc, "div");
     activeSlot.dataset["slot"] = "active-control";
     siteSection.append(activeSlot);
     paintActiveControl();
-    siteButtonSlot = element6(doc, "div");
+    siteButtonSlot = element7(doc, "div");
     siteSection.append(siteButtonSlot);
     return siteSection;
   }
@@ -12833,10 +13584,10 @@ function createCardView(input) {
     if (site === null) {
       return null;
     }
-    const section = element6(doc, "section", VISUAL_CLASSES.settingsSection);
+    const section = element7(doc, "section", VISUAL_CLASSES.settingsSection);
     section.dataset["section"] = "solar";
-    section.append(element6(doc, "h4", VISUAL_CLASSES.settingsSectionHeading, translate(model.language, "settings.section.solar")));
-    section.append(element6(doc, "p", VISUAL_CLASSES.siteApplies, site.appliesToText));
+    section.append(element7(doc, "h4", VISUAL_CLASSES.settingsSectionHeading, translate(model.language, "settings.section.solar")));
+    section.append(element7(doc, "p", VISUAL_CLASSES.siteApplies, site.appliesToText));
     section.append(
       overviewRow(
         "solar_priority",
@@ -12852,7 +13603,7 @@ function createCardView(input) {
         sources.length === 0 ? translate(model.language, "settings.value.none") : sources.join(", ")
       )
     );
-    const button = element6(doc, "button", `${VISUAL_CLASSES.button} ${VISUAL_CLASSES.settingsSectionConfigure}`, translate(model.language, "site.solar.change"));
+    const button = element7(doc, "button", `${VISUAL_CLASSES.button} ${VISUAL_CLASSES.settingsSectionConfigure}`, translate(model.language, "site.solar.change"));
     button.type = "button";
     button.dataset["editSolar"] = "true";
     button.disabled = !(input.isAdmin && site.writable);
@@ -12878,11 +13629,11 @@ function createCardView(input) {
     };
     const stateText = activePending ? translate(model.language, "site.activeControl.pending") : translate(model.language, state.enabled ? "site.activeControl.on" : "site.activeControl.off");
     const nodes = [];
-    const row = element6(doc, "div", VISUAL_CLASSES.capabilityItem);
+    const row = element7(doc, "div", VISUAL_CLASSES.capabilityItem);
     row.dataset["row"] = "active-control";
-    const title = element6(doc, "label", VISUAL_CLASSES.capabilityLabel, translate(model.language, "site.activeControl.title"));
-    const group = element6(doc, "span", VISUAL_CLASSES.switchGroup);
-    const status = element6(doc, "span", VISUAL_CLASSES.capabilityState, stateText);
+    const title = element7(doc, "label", VISUAL_CLASSES.capabilityLabel, translate(model.language, "site.activeControl.title"));
+    const group = element7(doc, "span", VISUAL_CLASSES.switchGroup);
+    const status = element7(doc, "span", VISUAL_CLASSES.capabilityState, stateText);
     status.dataset["role"] = "active-control-state";
     group.append(status);
     if (site.writable && site.activeControlWritable) {
@@ -12907,20 +13658,20 @@ function createCardView(input) {
     row.append(title, group);
     nodes.push(row);
     if (state.reason !== null) {
-      nodes.push(element6(doc, "p", VISUAL_CLASSES.capabilityNote, state.reason.text));
+      nodes.push(element7(doc, "p", VISUAL_CLASSES.capabilityNote, state.reason.text));
     } else if (!site.writable) {
-      nodes.push(element6(doc, "p", VISUAL_CLASSES.capabilityNote, translate(model.language, "site.activeControl.available")));
+      nodes.push(element7(doc, "p", VISUAL_CLASSES.capabilityNote, translate(model.language, "site.activeControl.available")));
     }
-    nodes.push(element6(doc, "p", VISUAL_CLASSES.capabilityNote, translate(model.language, "site.activeControl.note")));
+    nodes.push(element7(doc, "p", VISUAL_CLASSES.capabilityNote, translate(model.language, "site.activeControl.note")));
     if (activeNotice !== null) {
-      const notice = element6(
+      const notice = element7(
         doc,
         "p",
         activeNotice.tone === "warning" ? `${VISUAL_CLASSES.activeNotice} ${VISUAL_CLASSES.activeNoticeWarning}` : VISUAL_CLASSES.activeNotice
       );
       notice.setAttribute("role", "status");
       for (const line of activeNotice.lines) {
-        notice.append(element6(doc, "span", "", line));
+        notice.append(element7(doc, "span", "", line));
       }
       if (activeNotice.code !== null) {
         notice.dataset["code"] = activeNotice.code;
@@ -12967,8 +13718,64 @@ function createCardView(input) {
     });
     input.onSettingsOverviewOpened?.();
   }
+  let historyState = { kind: "loading" };
+  const historyUi = { list: "days", range: "thisMonth", exporting: false, notice: null };
+  function paintHistory() {
+    if (destroyed || !historyDialog.isOpen()) {
+      return;
+    }
+    const focused = input.mount instanceof ShadowRoot ? input.mount.activeElement : doc.activeElement;
+    const refocus = focused !== null && historyDialog.element.contains(focused) ? focused.dataset["list"] !== void 0 ? `[data-list="${focused.dataset["list"]}"]` : focused.dataset["action"] === "export" ? "[data-action='export']" : focused.dataset["exportRange"] !== void 0 ? "[data-export-range]" : null : null;
+    historyDialog.show({
+      title: model.chargerName === null ? translate(model.language, "history.title") : translate(model.language, "history.titleNamed", { name: model.chargerName }),
+      body: historyBody(doc, model.language, historyState, historyUi, {
+        onList: (list4) => {
+          historyUi.list = list4;
+          paintHistory();
+        },
+        onRange: (range) => {
+          historyUi.range = range;
+          paintHistory();
+        },
+        onExport: () => {
+          input.onExportHistory?.(historyUi.range);
+        }
+      })
+    });
+    if (refocus !== null) {
+      historyDialog.element.querySelector(refocus)?.focus();
+    }
+  }
+  function openHistory() {
+    if (destroyed) {
+      return;
+    }
+    issuesDialog.hide({ restoreFocus: false });
+    capabilityDialog.hide({ restoreFocus: false });
+    pauseDialog.hide({ restoreFocus: false });
+    strategyDialog.hide({ restoreFocus: false });
+    vehicleDialog.hide({ restoreFocus: false });
+    settingsOverviewDialog.hide({ restoreFocus: false });
+    historyUi.notice = null;
+    historyUi.exporting = false;
+    historyState = { kind: "loading" };
+    historyDialog.show({
+      title: translate(model.language, "history.title"),
+      body: historyBody(doc, model.language, historyState, historyUi, {
+        onList: () => void 0,
+        onRange: () => void 0,
+        onExport: () => void 0
+      }),
+      opener: historyButton
+    });
+    paintHistory();
+    input.onOpenHistory?.();
+  }
   help.addEventListener("click", () => {
     openCapabilities();
+  });
+  historyButton.addEventListener("click", () => {
+    openHistory();
   });
   settingsGeneral.addEventListener("click", () => {
     openSettingsOverview();
@@ -13007,7 +13814,7 @@ function createCardView(input) {
       if (settingsForm === null) {
         settingsBody.replaceChildren();
       }
-      const paragraph = element6(doc, "p", VISUAL_CLASSES.settingsNotice, translate(model.language, settingsNotice.sentenceKey));
+      const paragraph = element7(doc, "p", VISUAL_CLASSES.settingsNotice, translate(model.language, settingsNotice.sentenceKey));
       if (settingsNotice.code !== null) {
         paragraph.dataset["code"] = settingsNotice.code;
       }
@@ -13064,7 +13871,7 @@ function createCardView(input) {
     vehicleDialog.hide({ restoreFocus: false });
     marketDialog.hide({ restoreFocus: false });
     settingsOverviewDialog.hide({ restoreFocus: false });
-    const loading = element6(
+    const loading = element7(
       doc,
       "p",
       `${VISUAL_CLASSES.muted} ${VISUAL_CLASSES.dialogIntro}`,
@@ -13161,7 +13968,7 @@ function createCardView(input) {
       if (marketForm === null) {
         marketBody.replaceChildren();
       }
-      const paragraph = element6(doc, "p", VISUAL_CLASSES.settingsNotice, translate(model.language, marketNotice.sentenceKey));
+      const paragraph = element7(doc, "p", VISUAL_CLASSES.settingsNotice, translate(model.language, marketNotice.sentenceKey));
       if (marketNotice.code !== null) {
         paragraph.dataset["code"] = marketNotice.code;
       }
@@ -13219,7 +14026,7 @@ function createCardView(input) {
     vehicleDialog.hide({ restoreFocus: false });
     settingsDialog.hide({ restoreFocus: false });
     settingsOverviewDialog.hide({ restoreFocus: false });
-    const loading = element6(doc, "p", `${VISUAL_CLASSES.muted} ${VISUAL_CLASSES.dialogIntro}`, translate(model.language, "market.loading"));
+    const loading = element7(doc, "p", `${VISUAL_CLASSES.muted} ${VISUAL_CLASSES.dialogIntro}`, translate(model.language, "market.loading"));
     marketBody = loading;
     marketDialog.show({
       title: translate(model.language, "market.title"),
@@ -13399,6 +14206,16 @@ function createCardView(input) {
     openPause,
     openStrategy,
     openSettingsOverview,
+    openHistory,
+    setHistoryState(state) {
+      historyState = state;
+      paintHistory();
+    },
+    setHistoryExport(notice, exporting) {
+      historyUi.notice = notice;
+      historyUi.exporting = exporting;
+      paintHistory();
+    },
     dialogOpen: (kind) => {
       if (kind === "issues") {
         return issuesDialog.isOpen();
@@ -13411,6 +14228,9 @@ function createCardView(input) {
       }
       if (kind === "strategy") {
         return strategyDialog.isOpen();
+      }
+      if (kind === "history") {
+        return historyDialog.isOpen();
       }
       return settingsOverviewDialog.isOpen();
     },
@@ -13526,43 +14346,61 @@ function createCardView(input) {
       marketDialog.destroy();
       entityDialog.destroy();
       settingsOverviewDialog.destroy();
+      historyDialog.destroy();
       card.remove();
     }
   };
 }
 
+// src/download.ts
+function saveTextFile(doc, filename, text5, type = "text/csv;charset=utf-8") {
+  const view = doc.defaultView;
+  if (view === null) {
+    throw new Error("no window to save from");
+  }
+  const url = view.URL.createObjectURL(new view.Blob([text5], { type }));
+  const link = doc.createElement("a");
+  link.href = url;
+  link.download = filename;
+  link.hidden = true;
+  doc.body.append(link);
+  link.click();
+  link.remove();
+  view.setTimeout(() => view.URL.revokeObjectURL(url), 0);
+}
+
 // src/site-settings.ts
 var MalformedPayload4 = class extends Error {
 };
-function bad5() {
+function bad6() {
   throw new MalformedPayload4("malformed");
 }
 function isRecord5(value) {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
-function record5(value) {
-  return isRecord5(value) ? value : bad5();
+function record6(value) {
+  return isRecord5(value) ? value : bad6();
 }
 function exactKeys5(source, keys) {
   if (Object.keys(source).length !== keys.length) {
-    bad5();
+    bad6();
   }
   for (const key of keys) {
     if (!Object.prototype.hasOwnProperty.call(source, key)) {
-      bad5();
+      bad6();
     }
   }
 }
-function textOrNull4(source, key) {
+function textOrNull5(source, key) {
   const value = source[key];
   if (value === null) {
     return null;
   }
-  return typeof value === "string" ? value : bad5();
+  return typeof value === "string" ? value : bad6();
 }
 function booleanValue3(source, key) {
   const value = source[key];
-  return typeof value === "boolean" ? value : bad5();
+  return typeof value === "boolean" ? value : bad6();
 }
 var SITE_SETTINGS_NOT_ADMIN = "spotnav_not_admin";
 var SITE_SETTINGS_NO_SITE = "spotnav_no_site";
@@ -13588,9 +14426,9 @@ function decodeSiteSettingsAnswer(raw) {
       return { ok: false, failure: "malformed" };
     }
     const ok = booleanValue3(raw, "ok");
-    const error = textOrNull4(raw, "error");
+    const error = textOrNull5(raw, "error");
     const rawSite = raw["site"];
-    const site = rawSite === null ? null : decodeSite(record5(rawSite));
+    const site = rawSite === null ? null : decodeSite(record6(rawSite));
     const restore = decodeRestore(raw["restore"]);
     if (ok) {
       if (error !== null || site === null) {
@@ -13611,54 +14449,54 @@ function decodeSiteSettingsAnswer(raw) {
 }
 function restoreOutcome(source, key) {
   const value = source[key];
-  return value === "not_needed" || value === "restored" || value === "failed" ? value : bad5();
+  return value === "not_needed" || value === "restored" || value === "failed" ? value : bad6();
 }
-function numberOrNull3(source, key) {
+function numberOrNull4(source, key) {
   const value = source[key];
   if (value === null) {
     return null;
   }
-  return typeof value === "number" && Number.isFinite(value) ? value : bad5();
+  return typeof value === "number" && Number.isFinite(value) ? value : bad6();
 }
 function decodeRestore(raw) {
   if (raw === null) {
     return null;
   }
-  const source = record5(raw);
+  const source = record6(raw);
   exactKeys5(source, RESTORE_KEYS);
   const outcome = restoreOutcome(source, "outcome");
-  const list3 = source["chargers"];
-  if (!Array.isArray(list3)) {
-    return bad5();
+  const list4 = source["chargers"];
+  if (!Array.isArray(list4)) {
+    return bad6();
   }
-  const chargers = list3.map((item) => {
-    const entry = record5(item);
+  const chargers = list4.map((item) => {
+    const entry = record6(item);
     exactKeys5(entry, RESTORE_CHARGER_KEYS);
     const chargerId = entry["charger_id"];
     if (typeof chargerId !== "string" || chargerId === "") {
-      return bad5();
+      return bad6();
     }
     const chargerOutcome = restoreOutcome(entry, "outcome");
-    const code = textOrNull4(entry, "code");
+    const code = textOrNull5(entry, "code");
     if (code !== null && chargerOutcome !== "failed") {
-      return bad5();
+      return bad6();
     }
-    const toA = numberOrNull3(entry, "to_a");
+    const toA = numberOrNull4(entry, "to_a");
     if (chargerOutcome === "restored" && toA === null) {
-      return bad5();
+      return bad6();
     }
     return {
       chargerId,
-      chargerName: textOrNull4(entry, "charger_name"),
+      chargerName: textOrNull5(entry, "charger_name"),
       outcome: chargerOutcome,
       code,
-      fromA: numberOrNull3(entry, "from_a"),
+      fromA: numberOrNull4(entry, "from_a"),
       toA
     };
   });
   const derived = chargers.some((c) => c.outcome === "failed") ? "failed" : chargers.some((c) => c.outcome === "restored") ? "restored" : "not_needed";
   if (derived !== outcome) {
-    return bad5();
+    return bad6();
   }
   return { outcome, chargers };
 }
@@ -13797,8 +14635,8 @@ function parseCardConfig(config) {
 function editorConfig(chargerId) {
   return { type: `custom:${CARD_TYPE}`, charger: chargerId };
 }
-function chargerOptions(list3, current) {
-  const options = (list3?.chargers ?? []).map((charger) => ({
+function chargerOptions(list4, current) {
+  const options = (list4?.chargers ?? []).map((charger) => ({
     charger_id: charger.charger_id,
     label: charger.charger_name || charger.charger_id,
     available: charger.available
@@ -13808,8 +14646,8 @@ function chargerOptions(list3, current) {
   }
   return options;
 }
-function stubChargerId(list3) {
-  const available = (list3?.chargers ?? []).filter((charger) => charger.available);
+function stubChargerId(list4) {
+  const available = (list4?.chargers ?? []).filter((charger) => charger.available);
   return available.length === 1 ? available[0].charger_id : null;
 }
 
@@ -13865,6 +14703,8 @@ var SpotnavCard = class extends HTMLElement {
     this.activeControlBusy = false;
     this.entityConfig = null;
     this.entityOperation = 0;
+    this.historyOperation = 0;
+    this.history = null;
     this.entitySaving = false;
     this.reopenOverview = false;
     this.confirmReadFailed = false;
@@ -13885,6 +14725,8 @@ var SpotnavCard = class extends HTMLElement {
     this.marketEditor = null;
     this.entityConfig = null;
     this.entityOperation += 1;
+    this.historyOperation += 1;
+    this.history = null;
     this.entitySaving = false;
     this.closeEditor();
     this.cardState = this.config.charger === "" ? { kind: "unconfigured" } : { kind: "loading" };
@@ -13924,6 +14766,7 @@ var SpotnavCard = class extends HTMLElement {
     this.editor = null;
     this.marketEditor = null;
     this.entityOperation += 1;
+    this.historyOperation += 1;
     this.entitySaving = false;
     this.editorOperation += 1;
     this.releaseView();
@@ -13948,14 +14791,14 @@ var SpotnavCard = class extends HTMLElement {
     }
     let timer;
     try {
-      const list3 = await Promise.race([
+      const list4 = await Promise.race([
         listChargers(hass),
         new Promise((resolve) => {
           timer = setTimeout(() => resolve(null), STUB_TIMEOUT_MS);
         })
       ]);
-      if (list3 !== null && list3.chargers.length === 1) {
-        return { ...stub, charger: list3.chargers[0].charger_id };
+      if (list4 !== null && list4.chargers.length === 1) {
+        return { ...stub, charger: list4.chargers[0].charger_id };
       }
     } catch {
     } finally {
@@ -14151,14 +14994,14 @@ var SpotnavCard = class extends HTMLElement {
         );
         return;
       }
-      const record6 = answer.settings;
-      this.editor = { kind, record: record6, conflict: null, operation, generation, saving: false };
+      const record7 = answer.settings;
+      this.editor = { kind, record: record7, conflict: null, operation, generation, saving: false };
       this.view?.showSettingsEditorForm({
         kind,
         readOnly: !this.isAdmin,
-        values: formFromRecord(record6),
-        energyReadOnly: manualEnergyReadOnly(record6),
-        phases: record6.phases,
+        values: formFromRecord(record7),
+        energyReadOnly: manualEnergyReadOnly(record7),
+        phases: record7.phases,
         currentRange: this.currentRange(),
         conflict: null,
         soc: this.socFacts(),
@@ -14418,9 +15261,9 @@ var SpotnavCard = class extends HTMLElement {
       }
     }
   }
-  async adoptThenOverview(record6, notice) {
+  async adoptThenOverview(record7, notice) {
     this.reopenOverview = true;
-    await this.adoptSettings(record6, notice, "market");
+    await this.adoptSettings(record7, notice, "market");
     if (this.reopenOverview) {
       this.reopenOverview = false;
       if (this.connected && this.view !== null && !this.view.anyDialogOpen()) {
@@ -14586,15 +15429,15 @@ var SpotnavCard = class extends HTMLElement {
         );
         return;
       }
-      const record6 = answer.settings;
-      editor.record = record6;
+      const record7 = answer.settings;
+      editor.record = record7;
       editor.conflict = null;
       this.view?.showSettingsEditorForm({
         kind,
         readOnly: !this.isAdmin,
-        values: formFromRecord(record6),
-        energyReadOnly: manualEnergyReadOnly(record6),
-        phases: record6.phases,
+        values: formFromRecord(record7),
+        energyReadOnly: manualEnergyReadOnly(record7),
+        phases: record7.phases,
         currentRange: this.currentRange(),
         conflict: null,
         soc: this.socFacts(),
@@ -14619,7 +15462,7 @@ var SpotnavCard = class extends HTMLElement {
    * proposed is rendered before that read is accepted; if it fails the reader is told the state could not
    * be confirmed.
    */
-  async adoptSettings(record6, notice, editor = "settings") {
+  async adoptSettings(record7, notice, editor = "settings") {
     this.editorOperation += 1;
     this.editor = null;
     this.marketEditor = null;
@@ -14644,14 +15487,14 @@ var SpotnavCard = class extends HTMLElement {
    * strategy as shown and is reported through the row-level sentence.
    */
   async selectStrategy(strategyId) {
-    await this.writeFreshSettings((record6) => strategyReplacement(record6, strategyId));
+    await this.writeFreshSettings((record7) => strategyReplacement(record7, strategyId));
   }
   /**
    * Choose the vehicle the charger plans for: the same dialog-free write as the strategy, changing only
    * `target.vehicle_id` of a freshly read record under its revision.
    */
   async selectVehicle(vehicleId) {
-    await this.writeFreshSettings((record6) => vehicleReplacement(record6, vehicleId));
+    await this.writeFreshSettings((record7) => vehicleReplacement(record7, vehicleId));
   }
   async writeFreshSettings(build) {
     const hass = this.hassObject;
@@ -14675,8 +15518,8 @@ var SpotnavCard = class extends HTMLElement {
         });
         return;
       }
-      const record6 = decodedRecord.value.settings;
-      const check = build(record6);
+      const record7 = decodedRecord.value.settings;
+      const check = build(record7);
       if (!check.ok) {
         this.view?.setSettingsError({ sentenceKey: check.errorKey, code: null });
         return;
@@ -14684,7 +15527,7 @@ var SpotnavCard = class extends HTMLElement {
       if (!check.changed) {
         return;
       }
-      const raw = await updateSettings(hass, config.charger, record6.revision, check.body);
+      const raw = await updateSettings(hass, config.charger, record7.revision, check.body);
       if (stale()) {
         return;
       }
@@ -14715,6 +15558,73 @@ var SpotnavCard = class extends HTMLElement {
       }
       const code = error instanceof SpotnavApiError ? error.code : null;
       this.view?.setSettingsError({ sentenceKey: settingsErrorKey(code), code });
+    }
+  }
+  /**
+   * The History dialog was opened: read the charge history (any signed-in user may), and answer the open
+   * view. A newer open, a reconfiguration or a disconnect makes an older answer inert.
+   */
+  async loadHistory() {
+    const hass = this.hassObject;
+    const config = this.config;
+    const view = this.view;
+    if (!this.connected || hass === null || config === null || config.charger === "" || view === null) {
+      return;
+    }
+    const generation = this.generation;
+    const operation = ++this.historyOperation;
+    const current = () => this.connected && generation === this.generation && operation === this.historyOperation && this.view === view;
+    try {
+      const decoded = decodeSessions(await getSessions(hass, config.charger));
+      if (!current()) {
+        return;
+      }
+      if (!decoded.ok) {
+        view.setHistoryState({
+          kind: "failed",
+          sentenceKey: decoded.failure === "unsupported" ? "settings.error.version" : "history.failed",
+          code: null
+        });
+        return;
+      }
+      this.history = decoded.value;
+      view.setHistoryState({ kind: "ready", answer: decoded.value });
+    } catch (error) {
+      if (!current()) {
+        return;
+      }
+      const code = error instanceof SpotnavApiError ? error.code : null;
+      view.setHistoryState({ kind: "failed", sentenceKey: "history.failed", code });
+    }
+  }
+  /** Export CSV: one request for the chosen period, then the file is saved; failure is one sentence. */
+  async exportHistory(range) {
+    const hass = this.hassObject;
+    const config = this.config;
+    const view = this.view;
+    const answer = this.history;
+    if (!this.connected || hass === null || config === null || config.charger === "" || view === null || answer === null) {
+      return;
+    }
+    const generation = this.generation;
+    const operation = this.historyOperation;
+    const current = () => this.connected && generation === this.generation && operation === this.historyOperation && this.view === view;
+    view.setHistoryExport(null, true);
+    try {
+      const file = decodeCsv(await getSessionsCsv(hass, config.charger, exportDates(range, answer)));
+      if (!current()) {
+        return;
+      }
+      if (file === null) {
+        view.setHistoryExport("history.exportFailed", false);
+        return;
+      }
+      saveTextFile(this.ownerDocument, file.filename, file.csv);
+      view.setHistoryExport(null, false);
+    } catch {
+      if (current()) {
+        view.setHistoryExport("history.exportFailed", false);
+      }
     }
   }
   async loadEntityConfig() {
@@ -14922,11 +15832,11 @@ var SpotnavCard = class extends HTMLElement {
     const errors = [];
     const changes = {};
     const expected = {};
-    const judge = (text4, check, field2, code, current) => {
-      if (text4 === void 0) {
+    const judge = (text5, check, field2, code, current) => {
+      if (text5 === void 0) {
         return;
       }
-      const checked = check(text4);
+      const checked = check(text5);
       if (!checked.ok) {
         errors.push({ field: field2, code });
         return;
@@ -15339,6 +16249,12 @@ var SpotnavCard = class extends HTMLElement {
         },
         onCancelMarket: () => this.cancelMarket(),
         hass: () => this.hassObject,
+        onOpenHistory: () => {
+          void this.loadHistory();
+        },
+        onExportHistory: (range) => {
+          void this.exportHistory(range);
+        },
         onSettingsOverviewOpened: () => {
           void this.loadEntityConfig();
         },
@@ -15397,13 +16313,13 @@ var SpotnavCard = class extends HTMLElement {
 };
 
 // src/dom.ts
-function textParagraph(text4, className) {
-  const element7 = document.createElement("p");
+function textParagraph(text5, className) {
+  const element8 = document.createElement("p");
   if (className !== void 0) {
-    element7.className = className;
+    element8.className = className;
   }
-  element7.textContent = text4;
-  return element7;
+  element8.textContent = text5;
+  return element8;
 }
 function labelledButton(label, accessibleName) {
   const button = document.createElement("button");
@@ -15561,10 +16477,10 @@ var SpotnavCardEditor = class extends HTMLElement {
     this.root.replaceChildren(style, card);
   }
   statusElement() {
-    const status = (text4, className) => {
-      const element7 = textParagraph(text4, className);
-      element7.setAttribute("role", "status");
-      return element7;
+    const status = (text5, className) => {
+      const element8 = textParagraph(text5, className);
+      element8.setAttribute("role", "status");
+      return element8;
     };
     if (this.loadFailed) {
       return status(EDITOR_LOAD_FAILED_MESSAGE, "error");

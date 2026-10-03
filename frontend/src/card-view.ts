@@ -61,6 +61,7 @@ import { settingsEditorBody, settingsTrigger, type SettingsEditorForm } from "./
 import type { Vehicle } from "./validate";
 import { vehicleSummary } from "./vehicle-settings";
 import { issueText } from "./status";
+import { historyBody, type HistoryRange, type HistoryState, type HistoryUi } from "./history";
 import { vehicleChoicesFor, vehicleLineFor } from "./vehicle-line";
 import {
   fiscalRows,
@@ -148,6 +149,13 @@ export interface CardViewInput {
   /** The Home Assistant object the entity pickers need, read when an editor opens. */
   hass?: () => unknown;
   onSettingsOverviewOpened?: () => void;
+  /**
+   * The History button was pressed: the card reads the charge history and answers through
+   * `setHistoryState`. The view only shows the dialog (loading) and reports the press.
+   */
+  onOpenHistory?: () => void;
+  /** Export CSV was pressed with this range: the card fetches the file and saves it. */
+  onExportHistory?: (range: HistoryRange) => void;
   onOpenEntityEditor?: (scope: EntityScope) => void;
   onSaveEntities?: (scope: EntityScope, draft: EntityDraft) => void;
   onCancelEntities?: () => boolean | void;
@@ -188,7 +196,14 @@ export interface CardView {
    */
   openStrategy(): void;
   openSettingsOverview(): void;
-  dialogOpen(kind: "issues" | "capabilities" | "pause" | "strategy" | "settingsOverview"): boolean;
+  /** The charge history dialog, showing what `setHistoryState` last said (loading until it says more). */
+  openHistory(): void;
+  setHistoryState(state: HistoryState): void;
+  /** One sentence about the last export, or `null`; `exporting` disables the button while it runs. */
+  setHistoryExport(notice: TranslationKey | null, exporting: boolean): void;
+  dialogOpen(
+    kind: "issues" | "capabilities" | "pause" | "strategy" | "settingsOverview" | "history",
+  ): boolean;
   /** While a request is in flight its trigger is disabled, so a second click cannot send a second. */
   /** Disable both action cells; the one for `action`, when given, shows its busy state. */
   setActionPending(pending: boolean, action?: ActionId, choice?: string | null): void;
@@ -547,6 +562,16 @@ function infoIcon(doc: Document): SVGElement {
  * The settings cog: MDI `mdiCog` path data (`@mdi/js`, Apache License 2.0), one filled path unlike
  * this file's usual stroked primitives.
  */
+function historyIcon(doc: Document): SVGElement {
+  return icon(doc, (svg, ns) => {
+    svg.append(
+      strokePath(ns, doc, "M3.5 12a8.5 8.5 0 1 0 2.6-6.1"),
+      strokePath(ns, doc, "M3.5 4.5v4.5H8"),
+      strokePath(ns, doc, "M12 7.5V12l3 2"),
+    );
+  });
+}
+
 function settingsGearIcon(doc: Document): SVGElement {
   return icon(doc, (svg, ns) => {
     svg.append(
@@ -812,6 +837,15 @@ export function createCardView(input: CardViewInput): CardView {
   help.title = translate(model.language, "header.info");
   help.append(infoIcon(doc));
   header.append(help);
+  // The charge history: what each charge delivered and cost, beside Info and Settings.
+  const historyButton = element(doc, "button", C.iconButton);
+  historyButton.type = "button";
+  historyButton.setAttribute("aria-label", translate(model.language, "header.history"));
+  historyButton.setAttribute("aria-haspopup", "dialog");
+  historyButton.title = translate(model.language, "header.history");
+  historyButton.dataset["history"] = "open";
+  historyButton.append(historyIcon(doc));
+  header.append(historyButton);
   // The Settings entry point: one popover gathering price/fiscal, consumption, capabilities and the site, beside Info.
   const settingsGeneral = element(doc, "button", C.iconButton);
   settingsGeneral.type = "button";
@@ -891,6 +925,13 @@ export function createCardView(input: CardViewInput): CardView {
     background: () => card,
     onClose: notifyDialogsChanged,
   });
+  const historyDialog: DialogHandle = createDialog({
+    owner: input.mount,
+    idPrefix: `${idPrefix}-history`,
+    labels,
+    background: () => card,
+    onClose: notifyDialogsChanged,
+  });
 
   /**
    * The one way out of a dialog opened from the Settings page (Cancel, close, Escape, backdrop).
@@ -916,7 +957,8 @@ export function createCardView(input: CardViewInput): CardView {
       settingsDialog.isOpen() ||
       marketDialog.isOpen() ||
       entityDialog.isOpen() ||
-      settingsOverviewDialog.isOpen()
+      settingsOverviewDialog.isOpen() ||
+      historyDialog.isOpen()
     );
   }
 
@@ -2108,8 +2150,83 @@ export function createCardView(input: CardViewInput): CardView {
     input.onSettingsOverviewOpened?.();
   }
 
+  // ---- the charge history dialog. The card owns the request; this holds what was last said and
+  // what the reader chose in it (days or months, the export period), and repaints on any change.
+  let historyState: HistoryState = { kind: "loading" };
+  const historyUi: HistoryUi = { list: "days", range: "thisMonth", exporting: false, notice: null };
+
+  function paintHistory(): void {
+    if (destroyed || !historyDialog.isOpen()) {
+      return;
+    }
+    const focused = (input.mount instanceof ShadowRoot ? input.mount.activeElement : doc.activeElement) as
+      | HTMLElement
+      | null;
+    const refocus =
+      focused !== null && historyDialog.element.contains(focused)
+        ? focused.dataset["list"] !== undefined
+          ? `[data-list="${focused.dataset["list"]}"]`
+          : focused.dataset["action"] === "export"
+            ? "[data-action='export']"
+            : focused.dataset["exportRange"] !== undefined
+              ? "[data-export-range]"
+              : null
+        : null;
+    historyDialog.show({
+      title:
+        model.chargerName === null
+          ? translate(model.language, "history.title")
+          : translate(model.language, "history.titleNamed", { name: model.chargerName }),
+      body: historyBody(doc, model.language, historyState, historyUi, {
+        onList: (list) => {
+          historyUi.list = list;
+          paintHistory();
+        },
+        onRange: (range) => {
+          historyUi.range = range;
+          paintHistory();
+        },
+        onExport: () => {
+          input.onExportHistory?.(historyUi.range);
+        },
+      }),
+    });
+    if (refocus !== null) {
+      historyDialog.element.querySelector<HTMLElement>(refocus)?.focus();
+    }
+  }
+
+  function openHistory(): void {
+    if (destroyed) {
+      return;
+    }
+    issuesDialog.hide({ restoreFocus: false });
+    capabilityDialog.hide({ restoreFocus: false });
+    pauseDialog.hide({ restoreFocus: false });
+    strategyDialog.hide({ restoreFocus: false });
+    vehicleDialog.hide({ restoreFocus: false });
+    settingsOverviewDialog.hide({ restoreFocus: false });
+    historyUi.notice = null;
+    historyUi.exporting = false;
+    historyState = { kind: "loading" };
+    historyDialog.show({
+      title: translate(model.language, "history.title"),
+      body: historyBody(doc, model.language, historyState, historyUi, {
+        onList: () => undefined,
+        onRange: () => undefined,
+        onExport: () => undefined,
+      }),
+      opener: historyButton,
+    });
+    paintHistory();
+    input.onOpenHistory?.();
+  }
+
   help.addEventListener("click", () => {
     openCapabilities();
+  });
+  historyButton.addEventListener("click", () => {
+    openHistory();
   });
   settingsGeneral.addEventListener("click", () => {
     openSettingsOverview();
@@ -2607,6 +2724,16 @@ export function createCardView(input: CardViewInput): CardView {
     openPause,
     openStrategy,
     openSettingsOverview,
+    openHistory,
+    setHistoryState(state: HistoryState): void {
+      historyState = state;
+      paintHistory();
+    },
+    setHistoryExport(notice: TranslationKey | null, exporting: boolean): void {
+      historyUi.notice = notice;
+      historyUi.exporting = exporting;
+      paintHistory();
+    },
     dialogOpen: (kind) => {
       if (kind === "issues") {
         return issuesDialog.isOpen();
@@ -2619,6 +2746,9 @@ export function createCardView(input: CardViewInput): CardView {
       }
       if (kind === "strategy") {
         return strategyDialog.isOpen();
+      }
+      if (kind === "history") {
+        return historyDialog.isOpen();
       }
       return settingsOverviewDialog.isOpen();
     },
@@ -2741,6 +2871,7 @@ export function createCardView(input: CardViewInput): CardView {
       marketDialog.destroy();
       entityDialog.destroy();
       settingsOverviewDialog.destroy();
+      historyDialog.destroy();
       card.remove();
     },
   };

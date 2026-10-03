@@ -73,6 +73,7 @@ config entry id. Reading is open to every authenticated user; writes require an 
 | `spotnav/choose_vehicle_soc` | Choose (or clear) a vehicle's state-of-charge sensor. |
 | `spotnav/update_vehicle` | A vehicle's battery capacity and consumption. |
 | `spotnav/update_site_settings` | Solar priority, forecast sources, active load balancing. |
+| `spotnav/get_sessions` | A charger's charge sessions: summaries per month and day and the latest sessions, or with `format: "csv"` and optional `from` and `to` dates the sessions of that range as CSV text. |
 
 Rules that hold across them:
 
@@ -95,3 +96,9 @@ intervals), `plan` and `planning` (proposal, installed plan, and why), `control`
 action and the automatic action, with pause choices), `live`, `status` (typed status lines), `strategy`
 and `strategy_state`, `vehicles` and `soc`, `site`, `phase_detection`, `charge_progress`. Example
 documents are in `tests/fixtures/dashboard/`.
+
+The additive `sessions_summary` block holds this month's and last month's charge sessions
+(`sessions`, `energy_kwh`, `cost`, `currency`, `average_price_minor_per_kwh`, `solar_share`,
+`savings`). Cost is in the major unit, prices in the minor unit per kWh; `savings` compares with
+the day's average price and is an estimate (`savings_estimate: true`). A client ignores keys it does
+not know. Example answers of `spotnav/get_sessions` are in `tests/fixtures/sessions/`.

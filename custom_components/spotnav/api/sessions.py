@@ -75,8 +75,8 @@ def sessions_payload(
         "last_month": month_summary(sessions, zone, previous_month(today)),
         "months": summarize(sessions, zone, by="month"),
         "days": summarize(sessions, zone, by="day")[:DAY_LIMIT],
-        "open": None if open_session is None else open_session.public(),
-        "sessions": [item.public() for item in sorted(sessions, key=lambda s: s.start, reverse=True)[:limit]],
+        "open": None if open_session is None else open_session.public(zone),
+        "sessions": [item.public(zone) for item in sorted(sessions, key=lambda s: s.start, reverse=True)[:limit]],
     }
 
 

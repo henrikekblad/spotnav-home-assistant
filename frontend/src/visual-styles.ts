@@ -166,6 +166,24 @@ export const VISUAL_CLASSES = {
   switchControl: "spotnav-switch",
   activeNotice: "spotnav-active-notice",
   activeNoticeWarning: "spotnav-active-notice-warning",
+  historyBody: "spotnav-history-body",
+  historyTiles: "spotnav-history-tiles",
+  historyTile: "spotnav-history-tile",
+  historyTileHeading: "spotnav-history-tile-heading",
+  historyFigures: "spotnav-history-figures",
+  historySavings: "spotnav-history-savings",
+  historyOpen: "spotnav-history-open",
+  historyToggle: "spotnav-history-toggle",
+  historyToggleButton: "spotnav-history-toggle-button",
+  historyList: "spotnav-history-list",
+  historyRow: "spotnav-history-row",
+  historyRowTitle: "spotnav-history-row-title",
+  historyRowFigures: "spotnav-history-row-figures",
+  historyRowNote: "spotnav-history-row-note",
+  historyHeading: "spotnav-history-heading",
+  historyFootnote: "spotnav-history-footnote",
+  historyExport: "spotnav-history-export",
+  historyExportLabel: "spotnav-history-export-label",
   muted: "spotnav-muted",
   unavailable: "spotnav-unavailable",
 } as const;
@@ -1233,6 +1251,121 @@ export const VISUAL_STYLES = `
     flex-direction: column;
     gap: 8px;
     min-width: 0;
+  }
+  .${VISUAL_CLASSES.historyBody} {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    min-width: 0;
+  }
+  .${VISUAL_CLASSES.historyTiles} {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+  .${VISUAL_CLASSES.historyTile} {
+    flex: 1 1 12rem;
+    padding: 8px 10px;
+    border: 1px solid var(--divider-color, #e0e0e0);
+    border-radius: 8px;
+    min-width: 0;
+  }
+  .${VISUAL_CLASSES.historyTile} > p,
+  .${VISUAL_CLASSES.historyRow} > span {
+    margin: 0;
+  }
+  .${VISUAL_CLASSES.historyTileHeading},
+  .${VISUAL_CLASSES.historyHeading} {
+    margin: 0 0 4px;
+    font-size: 0.9rem;
+    font-weight: 500;
+  }
+  .${VISUAL_CLASSES.historyFigures},
+  .${VISUAL_CLASSES.historyRowFigures} {
+    font-variant-numeric: tabular-nums;
+    overflow-wrap: anywhere;
+  }
+  .${VISUAL_CLASSES.historyFigures} {
+    font-size: 1rem;
+    font-weight: 500;
+  }
+  .${VISUAL_CLASSES.historySavings},
+  .${VISUAL_CLASSES.historyRowNote},
+  .${VISUAL_CLASSES.historyFootnote} {
+    font-size: 0.82rem;
+    overflow-wrap: anywhere;
+  }
+  .${VISUAL_CLASSES.historyOpen} {
+    margin: 0;
+    padding: 6px 8px;
+    border-inline-start: 3px solid var(--success-color, #43a047);
+    font-size: 0.9rem;
+  }
+  .${VISUAL_CLASSES.historyToggle} {
+    display: flex;
+    gap: 6px;
+  }
+  .${VISUAL_CLASSES.historyToggleButton} {
+    min-height: 36px;
+    padding: 4px 12px;
+    font: inherit;
+    color: var(--primary-text-color, #212121);
+    background: transparent;
+    border: 1px solid var(--divider-color, #e0e0e0);
+    border-radius: 18px;
+    cursor: pointer;
+  }
+  .${VISUAL_CLASSES.historyToggleButton}[aria-pressed="true"] {
+    background: var(--secondary-background-color, #e5e5e5);
+    border-color: var(--primary-color, #03a9f4);
+  }
+  .${VISUAL_CLASSES.historyToggleButton}:focus-visible {
+    outline: 2px solid var(--primary-color, #03a9f4);
+    outline-offset: 2px;
+  }
+  .${VISUAL_CLASSES.historyList} {
+    margin: 0;
+    padding: 0;
+    list-style: none;
+    display: flex;
+    flex-direction: column;
+    max-height: 16rem;
+    overflow-y: auto;
+  }
+  .${VISUAL_CLASSES.historyRow} {
+    display: flex;
+    flex-direction: column;
+    gap: 1px;
+    padding: 6px 0;
+    border-bottom: 1px solid var(--divider-color, #e0e0e0);
+    min-width: 0;
+  }
+  .${VISUAL_CLASSES.historyRowTitle} {
+    font-weight: 500;
+    overflow-wrap: anywhere;
+  }
+  .${VISUAL_CLASSES.historyExport} {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px;
+  }
+  .${VISUAL_CLASSES.historyExportLabel} {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex: 1 1 auto;
+    min-width: 0;
+  }
+  .${VISUAL_CLASSES.historyExportLabel} > select {
+    flex: 1 1 auto;
+    min-width: 0;
+    min-height: 36px;
+    font: inherit;
+    color: var(--primary-text-color, #212121);
+    background: var(--secondary-background-color, transparent);
+    border: 1px solid var(--divider-color, #e0e0e0);
+    border-radius: 8px;
   }
   .${VISUAL_CLASSES.issueItem} {
     display: flex;

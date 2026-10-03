@@ -183,10 +183,10 @@ describe("item 7: explicit schedule execution is not listed", () => {
 });
 
 describe("the header buttons centre their glyphs", () => {
-  it("draws Info and the cog as the same kind of icon, and centres it by the box", async () => {
+  it("draws Info, the history and the cog as the same kind of icon, and centres it by the box", async () => {
     const { element } = await mounted();
     const buttons = Array.from(shadow(element).querySelectorAll<HTMLButtonElement>(".spotnav-header > button"));
-    expect(buttons).toHaveLength(2);
+    expect(buttons).toHaveLength(3);
     for (const button of buttons) {
       // One symmetrical icon each, and no text glyph whose side bearings would push it off-centre.
       expect(Array.from(button.children).map((node) => node.tagName.toLowerCase())).toEqual(["svg"]);
