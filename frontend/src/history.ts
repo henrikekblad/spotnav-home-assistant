@@ -1,8 +1,8 @@
 // The charge history: the decoded `spotnav/get_sessions` answer and the dialog body that shows it.
 //
 // What each charge cost is the backend's figure (the plan's own effective price with the person's tax,
-// grid fee and VAT, at the time the energy was delivered); nothing is recomputed here. The savings line
-// compares with the day's average price and is always worded as an estimate. Every text from the answer
+// grid fee and VAT as they are set now, calculated from the stored energy and spot prices); nothing is
+// recomputed here. The savings line compares with the day's average price and is always worded as an estimate. Every text from the answer
 // (a vehicle's name) is written with `textContent`, never parsed as markup.
 
 import { SESSIONS_API_VERSION } from "./types";
@@ -23,6 +23,8 @@ export interface SessionRecord {
   minor_unit: string | null;
   average_price_minor_per_kwh: number | null;
   started_by: string;
+  /** `imported_hourly` for a charge rebuilt from the hourly statistics, else `null` (recorded live). */
+  source: string | null;
   strategy: string | null;
   vehicle: string | null;
   solar_share: number | null;
@@ -46,6 +48,8 @@ export interface SessionBucket {
 }
 
 export interface SessionsAnswer {
+  /** How costs are made: with the person's current taxes and fees (older answers say nothing). */
+  cost_basis: string | null;
   this_month: SessionBucket;
   last_month: SessionBucket;
   months: SessionBucket[];
@@ -150,6 +154,7 @@ function decodeRecord(raw: unknown): SessionRecord {
     minor_unit: textOrNull(source, "minor_unit"),
     average_price_minor_per_kwh: numberOrNull(source, "average_price_minor_per_kwh"),
     started_by: text(source, "started_by"),
+    source: typeof source.source === "string" ? source.source : null,
     strategy: textOrNull(source, "strategy"),
     vehicle: textOrNull(source, "vehicle"),
     solar_share: shareOrNull(source, "solar_share"),
@@ -173,6 +178,7 @@ export function decodeSessions(raw: unknown): SessionsDecodeResult {
     return {
       ok: true,
       value: {
+        cost_basis: typeof source.cost_basis === "string" ? source.cost_basis : null,
         this_month: decodeBucket(source.this_month),
         last_month: decodeBucket(source.last_month),
         months: list(source, "months", decodeBucket),
@@ -494,7 +500,7 @@ function sessionRow(doc: Document, language: Language, session: SessionRecord): 
     element(doc, "span", C.historyRowTitle, when),
     element(doc, "span", C.historyRowFigures, figures(language, session)),
   );
-  const notes = [translate(language, startedByKey(session.started_by))];
+  const notes = [translate(language, session.source === "imported_hourly" ? "history.by.imported" : startedByKey(session.started_by))];
   if (session.vehicle !== null) {
     notes.push(session.vehicle);
   }
@@ -624,6 +630,9 @@ export function historyBody(
   }
   body.append(month);
   body.append(element(doc, "p", `${C.muted} ${C.historyFootnote}`, translate(language, "history.savings.note")));
+  if (answer.cost_basis === "current_settings") {
+    body.append(element(doc, "p", `${C.muted} ${C.historyFootnote}`, translate(language, "history.costBasis")));
+  }
   body.append(exportRow(doc, language, ui, handlers));
   if (ui.notice !== null) {
     const notice = element(doc, "p", C.settingsNotice, translate(language, ui.notice));
