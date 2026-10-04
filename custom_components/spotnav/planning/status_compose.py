@@ -23,7 +23,10 @@ Precedence (first match wins the headline; "add" rows append a fact line)
    is unchanged).
 2. paused (headline), then charging_now(until=None) when the charger is drawing anyway (manual
    Start under a pause).
-3. Strategy headline when `strategy_state` exists (solar / hybrid), in place of 4.
+3. Strategy headline when `strategy_state` exists (solar / hybrid), in place of 4. When planning
+   is waiting on prices (waiting_for_history, waiting_for_publication, buying_before_publication)
+   that plan line follows the strategy headline (normal tone, params as in 4), so the wait is
+   never hidden by the strategy.
 4. Plan headline, the card's `statusSentence` chain:
      charging_without_prices (+plan_energy) > charging_now (+plan_energy +plan_cost) >
      held_until_window{time} (a charge that started by itself outside the plan was stopped, or a car
@@ -450,6 +453,30 @@ def _hybrid_line(hybrid: HybridFacts, proposal: ProposalFacts | None) -> dict[st
     )
 
 
+def _price_wait_line(facts: StatusFacts) -> dict[str, Any] | None:
+    """The line for a plan that is waiting on prices, in the plan chain's order, else None."""
+    planning = facts.planning
+    if planning is None:
+        return None
+    if planning.reason == "waiting_for_history":
+        return _line(
+            "waiting_for_history",
+            weekday=planning.history_weekday,
+            percent=planning.history_percent,
+            weeks=planning.history_weeks,
+        )
+    if planning.state == "waiting_for_publication":
+        return _line("waiting_for_publication", publication_at=aware_iso(planning.publication_at))
+    if planning.reason == "buying_before_publication" and planning.must_buy_now_kwh is not None:
+        return _line("buying_before_publication", kwh=round(planning.must_buy_now_kwh, 3))
+    return None
+
+
+def _price_wait_lines(facts: StatusFacts) -> list[dict[str, Any]]:
+    wait = _price_wait_line(facts)
+    return [] if wait is None else [wait]
+
+
 def _plan_headline(facts: StatusFacts) -> list[dict[str, Any]]:
     """The card's `statusSentence` chain, with the compound facts as their own lines."""
     now = facts.now
@@ -471,23 +498,9 @@ def _plan_headline(facts: StatusFacts) -> list[dict[str, Any]]:
         return [_line("charging_now", until=None)]
     if facts.hold_until is not None:
         return [_line("held_until_window", time=aware_iso(facts.hold_until))]
-    if planning is not None and planning.reason == "waiting_for_history":
-        return [
-            _line(
-                "waiting_for_history",
-                weekday=planning.history_weekday,
-                percent=planning.history_percent,
-                weeks=planning.history_weeks,
-            )
-        ]
-    if planning is not None and planning.state == "waiting_for_publication":
-        return [_line("waiting_for_publication", publication_at=aware_iso(planning.publication_at))]
-    if (
-        planning is not None
-        and planning.reason == "buying_before_publication"
-        and planning.must_buy_now_kwh is not None
-    ):
-        return [_line("buying_before_publication", kwh=round(planning.must_buy_now_kwh, 3))]
+    wait = _price_wait_line(facts)
+    if wait is not None:
+        return [wait]
     planned = None
     if proposal is not None:
         planned = proposal.planned_kwh if proposal.planned_kwh is not None else proposal.requested_kwh
@@ -646,8 +659,10 @@ def compose_status(facts: StatusFacts) -> dict[str, Any]:
             lines.append(_line("charging_now", until=None))
     elif facts.solar is not None:
         lines.append(_solar_line(facts.solar))
+        lines.extend(_price_wait_lines(facts))
     elif facts.hybrid is not None:
         lines.append(_hybrid_line(facts.hybrid, facts.proposal))
+        lines.extend(_price_wait_lines(facts))
     else:
         lines.extend(_plan_headline(facts))
     if _pending_proposal(facts) and not any(line["code"] == "proposal_pending" for line in lines):

@@ -254,6 +254,17 @@ describe("the status line renders the block and nothing else", () => {
     expect(statusText(hybrid, format("en"), NOW)).toBe("Hybrid · 20 kWh from grid 12:15–15:15, 4 kWh expected from sun");
   });
 
+  it("shows the price wait after a strategy headline", () => {
+    const waiting = block(
+      statusLine("hybrid_grid", { grid_kwh: 20, credit_kwh: 4, window_start: null, window_end: null }),
+      statusLine("waiting_for_publication", { publication_at: "2026-09-22T11:00:00+00:00" }),
+    );
+    const text = statusText(waiting, format("en"), NOW) ?? "";
+    expect(text.startsWith("Hybrid · 20 kWh from grid")).toBe(true);
+    expect(text).toContain(" · ");
+    expect(text.toLowerCase()).toContain("13:00");
+  });
+
   it("holds no precedence of its own: the card's old judgement code is gone", () => {
     const model = readFileSync(join(__dirname, "..", "src", "model.ts"), "utf8");
     for (const gone of ["statusSentence", "strategyStatusSentence", "issuesFor", "isNormalHorizonGap", "PLANNING_REASON_CLASS"]) {
