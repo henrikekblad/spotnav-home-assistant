@@ -89,6 +89,26 @@ def _read_one_phase(
     return PhaseValue(value, age_s, problem, report_age_s=report_age_s)
 
 
+def negative_phases(hass: HomeAssistant, source: PhaseMeasurementSource | None) -> tuple[PhaseName, ...]:
+    """The phases of a source not read as signed whose raw reading is a finite negative number: a meter
+    that reports export as a negative current, read by a site that rejects it. Empty for a signed source
+    (its magnitude is used) and for a source that is not configured."""
+    if source is None or source.signed_current:
+        return ()
+    found: list[PhaseName] = []
+    for phase in PHASES:
+        raw = _raw_phase_value(hass, source, phase)[0]
+        if isinstance(raw, bool):
+            continue
+        try:
+            number = float(raw)
+        except (TypeError, ValueError):
+            continue
+        if math.isfinite(number) and number < 0:
+            found.append(phase)
+    return tuple(found)
+
+
 def _magnitude(raw: Any) -> Any:
     """`raw` as |value| when it reads as a finite number, else unchanged (so a missing or
     non-numeric value is still classified as such)."""

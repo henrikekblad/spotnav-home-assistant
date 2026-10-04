@@ -108,6 +108,7 @@ _GUARDED_HELPERS = (
     "async_track_point_in_utc_time",
     "async_track_time_interval",
     "async_track_state_change_event",
+    "async_track_state_report_event",
     "async_track_time_change",
     "async_track_utc_time_change",
     "async_track_template",

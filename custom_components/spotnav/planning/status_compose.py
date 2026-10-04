@@ -68,7 +68,8 @@ Precedence (first match wins the headline; "add" rows append a fact line)
    held_by_charger (the charger's own scheduler or load balancer holds the charge), charger_disabled
    (its own enable switch is off, so it cannot start), site_measurement_problem (the phases that
    make the site's measurement unusable and why; site_meter_unavailable in its place when the meter's
-   sensors are unavailable together, as an inverter in standby leaves them), duplicate_charger (another entry is the same physical
+   sensors are unavailable together, as an inverter in standby leaves them, and site_current_negative
+   when the meter reports export as a negative current on a site not set to read it signed), duplicate_charger (another entry is the same physical
    charger), load_balancing_limited, load_balancing_unavailable. Tone `notice` if any is present;
    otherwise `normal`. A proposal waiting for a window boundary is the normal line proposal_pending.
 
@@ -231,6 +232,10 @@ STATUS_CODES: Final[dict[str, tuple[str, tuple[str, ...]]]] = {
     # night), else `meter_unavailable` (every phase at once).
     # `entity_names` is the friendly names parallel to `entities` (an id when it has no name).
     "site_meter_unavailable": (TONE_NOTICE, ("entities", "cause", "entity_names")),
+    # In place of site_measurement_problem when the meter reports a negative current on `phases` while the
+    # site is not set to read a signed current: it reports export as negative, and "Grid current is
+    # signed" is the fix.
+    "site_current_negative": (TONE_NOTICE, ("phases",)),
     # Another SpotNav charger entry, titled `other`, is the same physical charger as this one.
     "duplicate_charger": (TONE_NOTICE, ("other",)),
 }
@@ -340,6 +345,8 @@ class SiteMeasurementFacts:
     #: Friendly names parallel to `unavailable_entities` (`None`: unnamed, the id shows).
     unavailable_entity_names: tuple[str | None, ...] = ()
     inverter: bool = False
+    #: The phases that read a negative current on a site not set to read a signed one.
+    negative_phases: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True, slots=True)
@@ -697,7 +704,9 @@ def _notices(facts: StatusFacts) -> list[dict[str, Any]]:
     if facts.charger_disabled and not facts.charging:
         lines.append(_line("charger_disabled"))
     measurement = facts.site_measurement
-    if measurement is not None and measurement.unavailable_entities:
+    if measurement is not None and measurement.negative_phases:
+        lines.append(_line("site_current_negative", phases=list(measurement.negative_phases)))
+    elif measurement is not None and measurement.unavailable_entities:
         lines.append(
             _line(
                 "site_meter_unavailable",

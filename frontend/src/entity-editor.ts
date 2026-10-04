@@ -48,7 +48,7 @@ import {
   vehicleChoice,
 } from "./entity-config";
 import { formatFixed, formatNumber } from "./format";
-import { measurementProblemText, meterUnavailableText } from "./status";
+import { measurementProblemText, meterUnavailableText, negativeCurrentText } from "./status";
 import {
   CAPACITY_MAX_KWH,
   CAPACITY_MIN_KWH,
@@ -99,6 +99,9 @@ function labelOf(language: Language, field: string): string {
 
 function warningText(language: Language, warning: SiteWarning): string {
   const integration = warning.integration ?? "";
+  if (warning.code === "measurement_unhealthy" && warning.negativePhases.length > 0) {
+    return negativeCurrentText(language, warning.negativePhases);
+  }
   if (warning.code === "measurement_unhealthy" && warning.unavailableEntities.length > 0) {
     return meterUnavailableText(language, warning.unavailableEntities, warning.inverter);
   }
@@ -122,6 +125,12 @@ function warningText(language: Language, warning: SiteWarning): string {
       lines.push(translate(language, "entity.warning.updateIntervalOption", { option: warning.option }));
     }
     return lines.join(" ");
+  }
+  if (warning.code === "meter_updates_slowly") {
+    return translate(language, "entity.warning.slowMeter", {
+      name: warning.deviceName ?? warning.entityId ?? integration,
+      minutes: formatNumber(language, Math.max(1, Math.round((warning.intervalS ?? 0) / 60)), 0),
+    });
   }
   if (warning.code === "reports_on_change_only") {
     return translate(language, "entity.warning.onChange", { integration });
@@ -147,11 +156,12 @@ const NOTE_RANK: Readonly<Record<string, number>> = {
   measurement_unhealthy: 0,
   own_load_balancing: 1,
   external_current_balancer: 2,
-  update_interval_exceeds_max_age: 3,
-  reports_on_change_only: 4,
-  estimated: 5,
+  meter_updates_slowly: 3,
+  update_interval_exceeds_max_age: 4,
+  reports_on_change_only: 5,
+  estimated: 6,
 };
-const UNKNOWN_NOTE_RANK = 6;
+const UNKNOWN_NOTE_RANK = 7;
 
 interface SiteNote {
   code: string;
@@ -225,8 +235,9 @@ export function siteNotices(doc: Document, language: Language, site: EntitySite)
 
 /**
  * The rest of what the site's measurement wants said, grouped under one "To check" heading in a normal
- * tone, one line each, most important first: devices that balance load themselves, sources that update
- * more slowly than the maximum age, and a current estimated from power. `null` when there is nothing.
+ * tone, one line each, most important first: devices that balance load themselves, meters seen to update
+ * too seldom for load balancing, sources that update more slowly than the maximum age, and a current
+ * estimated from power. `null` when there is nothing.
  */
 export function siteChecks(doc: Document, language: Language, site: EntitySite): HTMLElement | null {
   const notes = siteNotes(language, site).filter((note) => !BLOCKING_NOTES.has(note.code));

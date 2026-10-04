@@ -803,6 +803,7 @@ describe("the site's estimate, warnings, sign options and detected meters", () =
       limits_a: null,
       unavailable_entities: ["sensor.solax_grid_current_l1"],
       inverter: true,
+      negative_phases: [],
     };
     const { element } = await mounted({
       get: "get_detected",
@@ -820,6 +821,66 @@ describe("the site's estimate, warnings, sign options and detected meters", () =
     );
   });
 
+  const withWarnings = (warnings: Array<Record<string, unknown>>) => (answer: Record<string, unknown>) => {
+    const config = answer["config"] as { site: Record<string, unknown> };
+    return { ...answer, config: { ...config, site: { ...config.site, warnings } } };
+  };
+
+  it("says on top that a meter reporting negative current needs Grid current is signed", async () => {
+    const warning = {
+      code: "measurement_unhealthy",
+      integration: null,
+      entity_id: null,
+      interval_s: 120,
+      option: null,
+      device_name: null,
+      phases: [
+        { phase: "L2", cause: "no_value", entity_id: "sensor.pulse_l2", age_s: null },
+        { phase: "L3", cause: "no_value", entity_id: "sensor.pulse_l3", age_s: null },
+      ],
+      limits_a: null,
+      unavailable_entities: [],
+      inverter: false,
+      negative_phases: ["L2", "L3"],
+    };
+    const { element } = await mounted({ get: "get_detected", patch: withWarnings([warning]) });
+    openSettings(element);
+    await settle();
+    edit(element, "site");
+    const blocking = openDialog(element)?.querySelector("[data-notices='blocking']");
+    expect(blocking?.querySelector("[data-warning='measurement_unhealthy']")?.textContent).toBe(
+      "The meter reports a negative current (export) on L2 and L3 — turn on “Grid current is signed”.",
+    );
+    expect(translate("sv", "status.siteCurrentNegative", { phases: "L2 och L3" })).toBe(
+      "Mätaren rapporterar negativ ström (export) på L2 och L3 — slå på ”Nätströmmen är teckenmärkt”.",
+    );
+  });
+
+  it("lists a meter that updates too seldom for load balancing under To check, in whole minutes", async () => {
+    const warning = {
+      code: "meter_updates_slowly",
+      integration: "easee",
+      entity_id: "sensor.easee_equalizer_import_power",
+      interval_s: 420,
+      option: null,
+      device_name: "Easee Equalizer",
+      phases: [],
+      limits_a: null,
+      unavailable_entities: [],
+      inverter: false,
+      negative_phases: [],
+    };
+    const { element } = await mounted({ get: "get_detected", patch: withWarnings([warning]) });
+    openSettings(element);
+    await settle();
+    edit(element, "site");
+    const dialog = openDialog(element);
+    expect(dialog?.querySelector("[data-notices='blocking']")).toBeNull();
+    expect(dialog?.querySelector("[data-notices='site'] [data-warning='meter_updates_slowly']")?.textContent).toBe(
+      "Easee Equalizer updates about every 7 min — too seldom for load balancing; solar and planning still work.",
+    );
+  });
+
   it("lists the site's notes once each, as one list, the measurement problem first", async () => {
     const note = (code: string, extra: Record<string, unknown> = {}) => ({
       code,
@@ -832,6 +893,7 @@ describe("the site's estimate, warnings, sign options and detected meters", () =
       limits_a: null,
       unavailable_entities: [],
       inverter: false,
+      negative_phases: [],
       ...extra,
     });
     const warnings = [
@@ -1340,6 +1402,7 @@ describe("the external balancer warning", () => {
     limits_a: null,
       unavailable_entities: [],
       inverter: false,
+      negative_phases: [],
   };
   const withSiteWarnings = (warnings: Array<Record<string, unknown>>) => (answer: Record<string, unknown>) => {
     const config = answer["config"] as { site: Record<string, unknown> };
@@ -1387,6 +1450,7 @@ describe("the battery's grid import limit warning: two limits on one fuse", () =
     limits_a: { battery: 15.9, spotnav: 24 },
     unavailable_entities: [],
     inverter: false,
+    negative_phases: [],
   };
   const withSiteWarnings = (warnings: Array<Record<string, unknown>>) => (answer: Record<string, unknown>) => {
     const config = answer["config"] as { site: Record<string, unknown> };

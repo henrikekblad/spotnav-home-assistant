@@ -1306,6 +1306,7 @@ export const STATUS_CODE_TABLE = {
     { no_value_phases: "codes", no_value_entities: "codes", stale_phases: "codes", max_age_s: "numberOrNull" },
   ],
   site_meter_unavailable: ["notice", { entities: "codes", cause: "text", entity_names: "codes" }],
+  site_current_negative: ["notice", { phases: "codes" }],
   duplicate_charger: ["notice", { other: "text" }],
 } as const satisfies Record<string, readonly [StatusTone, Record<string, StatusParamKind>]>;
 

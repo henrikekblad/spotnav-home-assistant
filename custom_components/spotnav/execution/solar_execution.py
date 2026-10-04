@@ -13,7 +13,8 @@
   phase only) instead reads the meter's total grid power from the site controller (unknown unless fresh),
   splits it over the charger's phases at the nominal voltage and caps it by each phase's fuse headroom. The car's delivered current
   comes from `SiteCapacityController.charger_measured_current`. The battery comes from
-  `battery_aggregate_power`, usable only when fresh, with `battery_configured` set from whether an
+  `battery_aggregate_power`, usable only when live by solar's age limit (`site/meter_cadence.py`: a meter
+  that reports seldom or only on change counts for longer than the maximum age), with `battery_configured` set from whether an
   aggregate entity exists, never inferred from the reading itself.
 * A direct site whose phase measurement is incomplete (a phase with no value, e.g. an inverter in
   standby) still runs on the total grid power: a phase that reads keeps its own fuse headroom, and a phase
@@ -446,13 +447,7 @@ def _build_observation(
     battery_reading = site.battery_aggregate_power()
     battery_configured = battery_reading is not None
     battery_w: float | None = None
-    if (
-        battery_reading is not None
-        and battery_reading.value is not None
-        and battery_reading.problem is None
-        and battery_reading.age_s is not None
-        and battery_reading.age_s <= result.max_age_s
-    ):
+    if battery_reading is not None and site.solar_accepts(battery_reading, site.battery_entity_ids()):
         battery_w = battery_reading.value
 
     return SolarObservation(

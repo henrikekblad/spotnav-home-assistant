@@ -253,6 +253,9 @@ METER_ROWS: Final[tuple[MeterRow, ...]] = (
             _p("grid_power", r"_rt_power$"),
             _p("grid_power_export", r"_rt_powerproduction$"),
         ),
+        # The Pulse's `currentL1..3` carry the meter's sign: a phase that exports reads negative (seen on
+        # a household with solar export on two phases).
+        signed_current=True,
     ),
     MeterRow(
         platforms=("dsmr",),
@@ -1006,6 +1009,9 @@ def _easee_candidates(
                     attributes=dict(_EASEE_ATTRIBUTES),
                     attribute_unit_override="A",
                 ),
+                # The Equalizer reads the meter's HAN port, whose phase currents are negative while the
+                # phase exports.
+                signed_current=True,
                 entities=(
                     DetectedEntity(
                         "current",
@@ -1401,6 +1407,9 @@ UPDATE_BEHAVIOUR: Final[dict[str, UpdateBehaviour]] = {
     "foxess": UpdateBehaviour(300.0, None),
     "edl21": UpdateBehaviour(0.0, None, on_change_only=True),
     "zha": UpdateBehaviour(900.0, None, on_change_only=True),
+    # Easee's cloud integration writes a state only when a value changes (its Equalizer's values come
+    # every 5-10 minutes).
+    "easee": UpdateBehaviour(0.0, None, on_change_only=True),
 }
 
 

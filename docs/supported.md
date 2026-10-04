@@ -116,7 +116,7 @@ Solar and hybrid need the grid's signed power. A derived site has it per phase; 
 | --- | --- | --- | --- | --- |
 | Shelly EM / 3EM (`shelly`) | Derived from power and voltage, current exact | None needed | Check that the meter measures the whole main feed, not a sub-circuit. Total grid power for solar and hybrid: one signed entity. | Detected from the integration's source |
 | HomeWizard (`homewizard`) | Derived from power and voltage, current exact | Negative current while exporting, read as its size | Total grid power for solar and hybrid: one signed entity. | Detected from the integration's source |
-| Tibber Pulse (`tibber`) | Direct phase current | None needed | Total grid power for solar and hybrid: an import and an export entity. | Detected from the integration's source |
+| Tibber Pulse (`tibber`) | Direct phase current | Negative current while exporting, read as its size | Total grid power for solar and hybrid: an import and an export entity. | Detected from the integration's source |
 | DSMR smart meter (`dsmr`) | Derived from power and voltage, current exact | Import and export are two entities | Total grid power for solar and hybrid: an import and an export entity. Updates about every 30 s. | Set up by users: detected and configured, charging not yet confirmed (ESPHome P1 reader) |
 | DSMR Reader (`dsmr_reader`) | Derived from power and voltage, current exact | Import and export are two entities | Total grid power for solar and hybrid: an import and an export entity. | Detected from the integration's source |
 | P1 Monitor (`p1_monitor`) | Derived from power and voltage, current exact | Import and export are two entities | Total grid power for solar and hybrid: an import and an export entity. | Detected from the integration's source |
@@ -142,7 +142,7 @@ Solar and hybrid need the grid's signed power. A derived site has it per phase; 
 | Sungrow (`sungrow`) | Derived from power and voltage, current exact | None needed |  | Detected from the integration's source |
 | Sungrow Modbus package (`modbus`) | Derived from power and voltage, current exact | None needed |  | Detected from the integration's source |
 | SolaX Modbus (`solax_modbus`) | Derived from power and voltage, current estimated | Export-positive power, negated | Only devices from solax. Which way the power counts is read from the source, not confirmed on a device. Updates about every 15 s. | Detected from the integration's source |
-| Easee Equalizer (`easee`) | Direct phase current, all phases on one entity | None needed | The Equalizer balances load by itself and may fight active control. | Set up by users: detected and configured, charging not yet confirmed (Easee Equalizer) |
+| Easee Equalizer (`easee`) | Direct phase current, all phases on one entity | Negative current while exporting, read as its size | The Equalizer balances load by itself and may fight active control. Its values come every 5-10 minutes and are written only on a change: too seldom for load balancing, enough for solar. | Set up by users: detected and configured, charging not yet confirmed (Easee Equalizer) |
 
 Devices known to balance load by themselves, which SpotNav warns about: Easee Equalizer; Zaptec Sense; Zaptec APM; Ferroamp; ONEp1; Perific.
 
