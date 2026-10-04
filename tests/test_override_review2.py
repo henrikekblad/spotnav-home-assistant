@@ -323,3 +323,33 @@ async def test_r6_a_start_whose_pause_cannot_be_saved_owns_the_charge_and_the_sa
     stored = saved[-1]["chargers"]["entry_a"]["settings"]["pause"]
     assert stored["action"] == "start"
     await world.shutdown()
+
+
+async def test_a_target_stop_not_executed_still_arms_the_plans_window_timers(
+    hass: HomeAssistant, timers: FakeScheduler
+) -> None:
+    """A plan whose target is already reached arrives while its window is open, on a button charger whose
+    stop button is unavailable (its state cannot say it is off, and it is not seen charging): the target's
+    stop is not executed and the plan stays. Its window timers are armed all the same, so its windows'
+    ends and starts still decide."""
+    from types import SimpleNamespace
+
+    from custom_components.spotnav.execution.controller import ChargingController
+
+    from .helpers import install_schedule
+    from .pause_world import two_windows
+    from .test_spot_fix_review import BUTTONS
+
+    hass.states.async_set("button.start", "unavailable")
+    hass.states.async_set("button.stop", "unavailable")
+    controller = ChargingController(hass, "entry_a", BUTTONS)
+    await controller.async_initialize()
+    controller._soc_reader = lambda _vehicle: SimpleNamespace(  # noqa: SLF001
+        soc_percent=85.0, estimated=False, source="entity", vehicle_id=None, age_s=1.0, entity_id=None
+    )
+    await install_schedule(controller, {**two_windows(), "target_soc_percent": 80})
+    await hass.async_block_till_done()
+    assert controller.plan is not None, "the stop did not go out: the plan stays"
+    armed = {getattr(timer.action, "__name__", "") for timer in timers.pending}
+    assert "_async_start_callback" in armed and armed & {"_async_end_callback", "_async_final_end_callback"}, armed
+    await controller.async_shutdown()

@@ -3023,8 +3023,10 @@ class ChargingController:
             pass
         elif active:
             # A window already open is a window start like any other and goes through the veto, so
-            # a restart mid-window cannot switch a charger on for a car already at target.
-            if await self._start_window_locked():
+            # a restart mid-window cannot switch a charger on for a car already at target. Only a plan the
+            # target's stop ended arms nothing: one whose stop was not executed stays, and its windows'
+            # timers are armed as ever.
+            if await self._start_window_locked() and self.plan is None:
                 return
         else:
             # Re-arming outside a window stops a charge that runs; a person who starts it again
