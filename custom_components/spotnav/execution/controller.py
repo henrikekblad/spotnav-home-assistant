@@ -2205,20 +2205,26 @@ class ChargingController:
             # way to give the car less is to stop it (OCPP sends nothing for such a value).
             return await self._regulated_stop("pause")
         if self._stop_in_flight:
-            # A stop is on its way: it gives the car less than any current would, and a current written
-            # while it lands would lift it on a charger that pauses by its limit.
+            # A stop is on its way (holding the lock): held at once rather than written after it lands.
             return RegulatedWrite(REGULATED_HELD, REGULATED_STOPPING, False)
-        outcome = await self._async_assign_current_outcome(amps, reason=WRITE_REGULATOR)
-        if outcome in IN_EFFECT_OUTCOMES:
-            return RegulatedWrite(REGULATED_WROTE, outcome, True)
-        if not must_lower:
-            return RegulatedWrite(REGULATED_HELD, outcome, False)
-        applied = self.adapter.current.setpoint_a()
-        if applied is None:
-            applied = self._requested_current_a
-        if applied is not None and amps >= applied:
-            # Already at or below what the fuse needs: nothing to lower.
-            return RegulatedWrite(REGULATED_HELD, outcome, False)
+        # Under the operation lock, as every stop and start: a stop cannot land between the sends of one
+        # write (Easee's two-step write), where the second send would lift it again.
+        async with self._lock:
+            if self._stop_in_flight:
+                # A stop is on its way: it gives the car less than any current would, and a current written
+                # while it lands would lift it on a charger that pauses by its limit.
+                return RegulatedWrite(REGULATED_HELD, REGULATED_STOPPING, False)
+            outcome = await self._async_assign_current_outcome(amps, reason=WRITE_REGULATOR)
+            if outcome in IN_EFFECT_OUTCOMES:
+                return RegulatedWrite(REGULATED_WROTE, outcome, True)
+            if not must_lower:
+                return RegulatedWrite(REGULATED_HELD, outcome, False)
+            applied = self.adapter.current.setpoint_a()
+            if applied is None:
+                applied = self._requested_current_a
+            if applied is not None and amps >= applied:
+                # Already at or below what the fuse needs: nothing to lower.
+                return RegulatedWrite(REGULATED_HELD, outcome, False)
         return await self._regulated_stop("safety_stop", cause=outcome)
 
     async def _regulated_stop(self, code: str, *, cause: str | None = None) -> RegulatedWrite:
