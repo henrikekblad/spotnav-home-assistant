@@ -1936,6 +1936,11 @@ class ChargingController:
         or started it since (a person's Stop, a window's end, a target stop all clear it)."""
         return self._paused_by_balancing and not self.charging
 
+    @property
+    def paused_charge_origin(self) -> str | None:
+        """What the charge load balancing holds back was (`manual` for a person's), or `None`."""
+        return None if self._paused_charge is None else self._paused_charge[0]
+
     def forget_balancing_pause(self) -> None:
         """The wish to charge is gone (Auto paused by a person, say): balancing's pause is not a charge
         to resume any more."""
@@ -2235,21 +2240,24 @@ class ChargingController:
             code,
             "" if cause is None else f": {cause}",
         )
-        # Only a charge that was running can be one balancing interrupted; a pause written to a
-        # charger somebody already stopped must not make it look wanted.
-        was_on = self._control_on
-        paused_charge = (self._charge_origin, self._plan_charge)
         try:
-            # A balancing stop: a top-off running past the last window goes on, paused like any charge.
-            await self.async_stop(balancing=True)
+            async with self._lock:
+                # Only a charge that was running can be one balancing interrupted; a pause written to a
+                # charger somebody already stopped must not make it look wanted. Read under the operation
+                # lock: a person's Stop that lands first is never remembered as a charge to resume.
+                was_on = self._control_on
+                paused_charge = (self._charge_origin, self._plan_charge)
+                # A balancing stop: a top-off running past the last window goes on, paused like any charge.
+                await self._stop_request_locked(balancing=True)
+                # Set after the stop (which clears it): this stop is the balancing pause itself. A safety stop
+                # of a person's charge is remembered the same way, so the regulator gives it back when there
+                # is room.
+                if was_on and (code == "pause" or paused_charge[0] == "manual"):
+                    self._remember_paused_charge(*paused_charge)
+                    self._save_memory_soon()
         except Exception:  # noqa: BLE001 - reported, and the next pass tries again
             _LOGGER.exception("SpotNav charger %s: the safety stop failed", self.entry_id)
             return RegulatedWrite(REGULATED_HELD, "stop_failed", False)
-        # Set after the stop (which clears it): this stop is the balancing pause itself. A safety stop of a
-        # person's charge is remembered the same way, so the regulator gives it back when there is room.
-        if was_on and (code == "pause" or paused_charge[0] == "manual"):
-            self._remember_paused_charge(*paused_charge)
-            self._save_memory_soon()
         return RegulatedWrite(REGULATED_STOPPED, code, False)
 
     async def async_restore_current(self, *, lowered_by_balancing: bool) -> CurrentRestore:
