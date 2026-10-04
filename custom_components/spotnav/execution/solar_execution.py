@@ -17,9 +17,9 @@
   aggregate entity exists, never inferred from the reading itself.
 * A direct site whose phase measurement is incomplete (a phase with no value, e.g. an inverter in
   standby) still runs on the total grid power: a phase that reads keeps its own fuse headroom, and a phase
-  that does not caps the charger at the fuse limit only while the total shows export (surplus can only
-  exist below the fuse) and otherwise at what it draws now, or the minimum current if that is more: no
-  current is raised beyond the minimum on an unreadable phase unless the grid exports.
+  that does not caps the charger at what it draws there now, or the minimum current if that is more,
+  whatever the total says: a netted total can export while the unread phase imports heavily (a
+  three-phase inverter against a one-phase load), so current never rises on a phase that cannot be read.
 * A single-phase charger whose phase is not known is reckoned on a stand-in phase (`L1`): the total does not
   depend on the phase, the fuse cap is the lowest of all three phases' caps, and its draw the largest
   phase its own measured current reads.
@@ -289,15 +289,14 @@ def _fuse_caps(
     delivered_a: dict[PhaseName, float | None],
     *,
     fuse_limit_a: float | None,
-    exporting: bool,
     min_current_a: float,
     measurement_unusable: bool,
 ) -> dict[PhaseName, float | None]:
     """The most current the charger may draw on each phase of `delivered_a`: what it draws there now
-    (nothing when unknown) plus the phase's fuse headroom. A phase with no reading caps it at the fuse
-    limit while the total grid power shows export (surplus can only exist below the fuse), and otherwise
-    at what it draws now, or the minimum current if that is more: no current is raised beyond the minimum
-    on a phase that cannot be read unless the grid exports. `None` with no fuse to reckon by, and `None` for a phase with no headroom
+    (nothing when unknown) plus the phase's fuse headroom. A phase with no reading caps it at what it draws
+    now, or the minimum current if that is more, even while the total exports: the total is netted over the
+    phases, and a three-phase inverter's export says nothing about one phase's import, so current never rises
+    on a phase that cannot be read. `None` with no fuse to reckon by, and `None` for a phase with no headroom
     while the site's measurement is not unusable (a site that is off or not configured gets no cap).
     """
     caps: dict[PhaseName, float | None] = {}
@@ -308,8 +307,6 @@ def _fuse_caps(
             caps[phase] = draw + headroom
         elif fuse_limit_a is None or not measurement_unusable:
             caps[phase] = None
-        elif exporting:
-            caps[phase] = fuse_limit_a
         else:
             caps[phase] = max(min_current_a, draw)
     return caps
@@ -387,7 +384,6 @@ def _build_observation(
             result,
             cap_delivered,
             fuse_limit_a=_fuse_limit_a(site),
-            exporting=total_w is not None and total_w < 0,
             min_current_a=float(_wiring(site, charger_entry_id).get("min_current_a", DEFAULT_MIN_CURRENT_A)),
             measurement_unusable=result.state in UNHEALTHY_STATES,
         )

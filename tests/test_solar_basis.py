@@ -28,6 +28,7 @@ from custom_components.spotnav.execution.solar_execution import (
 )
 from custom_components.spotnav.const import CONF_CHARGER_ENTRY_IDS
 from custom_components.spotnav.planning.status_compose import compose_status
+from custom_components.spotnav.site.solar_surplus import SolarConfig, SolarController
 
 from .helpers import make_site_entry, set_current_sensor
 from .test_solar_total_power import _set_total, direct_solar_setup, TOTAL
@@ -52,7 +53,7 @@ def _codes(hass: HomeAssistant, charger) -> list[dict]:
 # ---- a) an incomplete phase measurement ---------------------------------------------------------------
 
 
-async def test_an_incomplete_measurement_keeps_each_reading_phase_s_headroom_and_caps_the_lost_one_by_export(
+async def test_an_incomplete_measurement_keeps_each_reading_phase_s_headroom_and_never_raises_the_lost_one(
     hass: HomeAssistant,
 ) -> None:
     charger, _s, site, *_ = await direct_solar_setup(hass, source={"power": TOTAL}, site_amps=10.0)
@@ -65,8 +66,8 @@ async def test_an_incomplete_measurement_keeps_each_reading_phase_s_headroom_and
     observation = _build_observation(site, charger.entry_id, now=0.0)
 
     # 25 A fuse less 1 A margin: L2/L3 keep 14 A of headroom on top of the car's 4 A; L1 cannot be read,
-    # and while the total exports the charger may go up to the fuse limit there.
-    assert observation.phase_cap_a == {"L1": 24.0, "L2": 18.0, "L3": 18.0}
+    # so even with the total exporting the car goes no higher there than the minimum.
+    assert observation.phase_cap_a == {"L1": 6.0, "L2": 18.0, "L3": 18.0}
 
 
 async def test_without_export_a_phase_that_cannot_be_read_never_lets_the_current_rise(hass: HomeAssistant) -> None:
@@ -104,6 +105,68 @@ async def test_solar_starts_on_the_total_with_an_incomplete_measurement_and_says
     codes = [line["code"] for line in _codes(hass, charger)]
     assert codes[0] == "solar_charging"
     assert "solar_site_incomplete" in codes and "site_measurement_problem" in codes
+
+
+def _netted_export_over_an_importing_l1(hass: HomeAssistant) -> None:
+    """25 A fuse; a three-phase inverter gives 20 A per phase; the house draws 25 A on L1 and 2 A on L2/L3.
+    L1 nets 5 A of import but cannot be read; L2/L3 export 18 A each; the total exports 7130 W."""
+    hass.states.async_set("sensor.direct_site_l1", "unavailable", {"unit_of_measurement": "A"})
+    set_current_sensor(hass, "sensor.direct_site_l2", 18.0)
+    set_current_sensor(hass, "sensor.direct_site_l3", 18.0)
+    _set_total(hass, TOTAL, (5 - 18 - 18) * 230.0)
+
+
+def _asked_a(observation) -> float:
+    solar = SolarController(SolarConfig(priority="battery_first", max_current_a=32.0))
+    verdicts = [solar.observe(replace(observation, now=t)) for t in (0.0, 130.0, 260.0)]
+    return max(verdict.requested_a or 0.0 for verdict in verdicts)
+
+
+async def test_a_single_phase_car_on_the_unreadable_phase_is_never_raised_on_a_netted_export(
+    hass: HomeAssistant,
+) -> None:
+    charger, _s, site, *_ = await direct_solar_setup(
+        hass, source={"power": TOTAL}, site_amps=10.0, phases=1, phase="L1"
+    )
+    _netted_export_over_an_importing_l1(hass)
+    set_charger_delivered_a(hass, charger.entry_id, 0.0)
+    site._recompute()
+
+    observation = _build_observation(site, charger.entry_id, now=0.0)
+
+    assert observation.phase_cap_a == {"L1": 6.0}
+    asked = _asked_a(observation)
+    # At most the minimum: L1 carries 25 (house) - 20 (PV) + 6 = 11 A, under the 25 A fuse.
+    assert asked == 6.0 and 25 - 20 + asked <= 25
+
+
+async def test_a_three_phase_car_is_held_to_the_minimum_by_the_unreadable_phase_on_a_netted_export(
+    hass: HomeAssistant,
+) -> None:
+    charger, _s, site, *_ = await direct_solar_setup(hass, source={"power": TOTAL}, site_amps=10.0)
+    _netted_export_over_an_importing_l1(hass)
+    set_charger_delivered_a(hass, charger.entry_id, 0.0)
+    site._recompute()
+
+    observation = _build_observation(site, charger.entry_id, now=0.0)
+
+    # L2/L3 read 18 A and keep 24 - 18 = 6 A of headroom; L1 cannot be read and is held to the minimum.
+    assert observation.phase_cap_a == {"L1": 6.0, "L2": 6.0, "L3": 6.0}
+    assert _asked_a(observation) == 6.0
+
+
+async def test_a_single_phase_car_of_unknown_phase_is_held_by_the_unreadable_phase(hass: HomeAssistant) -> None:
+    charger, _s, site, *_ = await direct_solar_setup(
+        hass, source={"power": TOTAL}, site_amps=10.0, phases=1, phase=None
+    )
+    _netted_export_over_an_importing_l1(hass)
+    set_charger_delivered_a(hass, charger.entry_id, 0.0)
+    site._recompute()
+
+    observation = _build_observation(site, charger.entry_id, now=0.0)
+
+    assert observation.phase_cap_a == {STAND_IN_PHASE: 6.0}
+    assert _asked_a(observation) == 6.0
 
 
 # ---- the field case: no charger current, unknown phase, L1 unavailable -----------------------------------
@@ -294,7 +357,8 @@ def test_a_phase_without_headroom_on_a_site_whose_measurement_is_not_unusable_ge
     """A site that is off or not configured has no headroom and is no fault in the measurement: no basis,
     as before, rather than the export rule."""
     result = SimpleNamespace(phase_headroom_a={}, phase_liveness={}, measured_phase_current_a={})
-    kwargs = {"fuse_limit_a": 24.0, "exporting": True, "min_current_a": 6.0}
+    kwargs = {"fuse_limit_a": 24.0, "min_current_a": 6.0}
 
     assert solar_execution._fuse_caps(result, {"L1": 0.0}, measurement_unusable=False, **kwargs) == {"L1": None}
-    assert solar_execution._fuse_caps(result, {"L1": 0.0}, measurement_unusable=True, **kwargs) == {"L1": 24.0}
+    assert solar_execution._fuse_caps(result, {"L1": 0.0}, measurement_unusable=True, **kwargs) == {"L1": 6.0}
+    assert solar_execution._fuse_caps(result, {"L1": 9.0}, measurement_unusable=True, **kwargs) == {"L1": 9.0}
