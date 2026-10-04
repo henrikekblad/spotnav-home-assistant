@@ -82,7 +82,7 @@ async def test_a_persons_start_the_charger_has_not_answered_yet_stays_the_person
     controller, plug, starts, stops = await _switch_controller(hass, None)
     await install_schedule(controller, {**_later_window(), "start": (dt_util.utcnow() - timedelta(minutes=5)).isoformat()})
     await plug.set(True, control="off")
-    await controller.async_stop(person=True)
+    await controller.async_stop()
     stops.clear()
     controller.adapter.enabled_state = lambda: False  # type: ignore[method-assign] - a slow charger
     await controller.async_start(manual=True)

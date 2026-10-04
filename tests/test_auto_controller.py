@@ -28,6 +28,7 @@ from custom_components.spotnav.planning.auto_settings import (
     AreaAutoSettings,
     AutoSettingsError,
     FiscalOverride,
+    PauseIntent,
     TargetSocIntent,
 )
 from custom_components.spotnav.execution.controller import ChargingController
@@ -1266,7 +1267,8 @@ async def test_manual_actions_never_change_the_settings(
     hass_client_no_auth: Any,
     install_spy: list[Any],
 ) -> None:
-    """Starting or stopping a charge by hand says nothing about what should happen next."""
+    """Starting or stopping a charge by hand pauses Auto for the plug-in session and changes no planning
+    setting: what Auto plans once it resumes is what it planned before."""
     hass.states.async_set("switch.charger_a", "off")
     async_mock_service(hass, "switch", "turn_on")
     async_mock_service(hass, "switch", "turn_off")
@@ -1275,7 +1277,7 @@ async def test_manual_actions_never_change_the_settings(
     controller = preview_for(hass, entry.entry_id)
     store = domain_data(hass).auto_store
     assert controller is not None and store is not None
-    revision = store.settings(entry.entry_id).revision
+    planning = replace(store.settings(entry.entry_id), revision=0, pause=PauseIntent())
     installed = controller.snapshot().applied_identity
     installs_before = len(install_spy)
     assert installed is not None, "Auto installed its proposal when it calculated"
@@ -1288,8 +1290,10 @@ async def test_manual_actions_never_change_the_settings(
     await hass.async_block_till_done()
 
     assert all(response.status == 200 for response in responses)
-    # Manual buttons are immediate: the settings are exactly what they were, and they caused no installation of their own.
-    assert store.settings(entry.entry_id).revision == revision
+    # The planning settings are exactly what they were, and the actions caused no installation of their own.
+    after = store.settings(entry.entry_id)
+    assert replace(after, revision=0, pause=PauseIntent()) == planning
+    assert (after.pause.choice, after.pause.action) == ("manual", "stop")
     assert len(install_spy) == installs_before
     still_auto = await controller.async_recalculate()
     assert still_auto.state in ("proposal_ready", "proposal_unpriced", "waiting_for_prices")

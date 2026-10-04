@@ -58,10 +58,12 @@ class World:
         await self.controller.async_shutdown()
         controller = ChargingController(self.hass, ENTRY, {CONF_CHARGE_CONTROL: SWITCH})
         executor = AutoExecutor(self.hass, controller, self.store)
+        plug = Plug.__new__(Plug)
+        plug.hass, plug.control, plug.connected = self.hass, SWITCH, self.plug.connected
+        controller.adapter.vehicle_connected = lambda: plug.connected  # type: ignore[method-assign]
         await executor.async_start()
         await controller.async_initialize()
-        plug = Plug(self.hass, controller, SWITCH)
-        plug.connected = self.plug.connected
+        await executor.async_after_restore()
         await self.hass.async_block_till_done()
         return World(self.hass, controller, executor, self.store, plug, self.timers, self.starts, self.stops)
 
@@ -111,6 +113,7 @@ async def pause_world(
     executor = AutoExecutor(hass, controller, store)
     await executor.async_start()
     await controller.async_initialize()
+    await executor.async_after_restore()
     plug = Plug(hass, controller, SWITCH)
     await plug.set(False)
     if connected is not False:

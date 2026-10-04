@@ -1179,7 +1179,7 @@ async def test_a_manual_cancel_queues_behind_an_auto_install_and_is_final(
     assert len(install_spy) == installs, "the installation that entered first completed"
     assert session.controller.plan is None, "and the queued cancel removed it"
     assert session.executor.applied is None and session.executor.pending is None
-    assert session.settings().execution_paused is False
+    assert session.settings().pause.choice == "manual", "a cancel is a person's Stop: Auto paused for the plug-in"
 
 
 async def test_a_window_boundary_races_a_plan_replacement_without_corrupting_anything(
@@ -1685,7 +1685,7 @@ async def test_one_admitted_request_reads_the_boundary_exactly_once(
     assert decision.choices == first.pause_choices, "the choices are the admitted snapshot's own"
     assert first.pause_choices, "the prerequisite: that snapshot had choices to carry"
     assert later.pause_choices == ()
-    assert session.settings().pause.admitted is False, "a bare stop stores no pause"
+    assert session.settings().pause.choice == "manual", "a bare stop is the person's own pause, never a choice"
 
 
 async def test_a_typed_pause_is_admitted_against_the_snapshot_it_read(

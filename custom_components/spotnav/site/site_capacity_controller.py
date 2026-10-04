@@ -80,7 +80,7 @@ from ..execution.controller import (
     RESTORE_RESTORED,
 )
 from ..execution.yield_stepping import YieldConfig, YieldObservation, YieldStepper, YieldVerdict
-from ..planning.auto_settings import STRATEGY_HYBRID, STRATEGY_SOLAR
+from ..planning.auto_settings import MANUAL_START, STRATEGY_HYBRID, STRATEGY_SOLAR
 from ..runtime import charger_data, controller_for, domain_data
 from ..vehicles.capability import build_capability_snapshot, SiteCapabilitySnapshot
 from .measurement_problem import measurement_problem, MeasurementProblem, UNHEALTHY_STATES
@@ -1219,12 +1219,14 @@ class SiteCapacityController:
         )
 
     def _charge_still_wanted(self, charger_entry_id: str, charger_controller: Any) -> bool:
-        """Whether a charge balancing paused is still wanted: Auto is not paused by a person (a
-        stop, window end, solar off or new plan outside every window has already cleared the
-        controller's own mark). When it is not wanted the mark is dropped."""
+        """Whether a charge balancing paused is still wanted: Auto is not paused, or a person's Start paused
+        it and the charge is theirs (a stop, window end, solar off or new plan outside every window has
+        already cleared the controller's own mark). When it is not wanted the mark is dropped."""
         store = domain_data(self.hass).auto_store
         settings = None if store is None else store.settings(charger_entry_id)
-        if settings is not None and settings.pause.admitted:
+        if settings is not None and settings.pause.admitted and not (
+            settings.pause.manual and settings.pause.action == MANUAL_START
+        ):
             charger_controller.forget_balancing_pause()
             return False
         return True

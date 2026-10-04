@@ -202,43 +202,6 @@ async def test_a_plug_in_outside_every_window_starts_nothing_and_a_self_start_is
     await controller.async_shutdown()
 
 
-async def test_a_persons_stop_in_the_window_is_kept_across_a_replug(hass: HomeAssistant) -> None:
-    controller, plug, starts, stops = await _switch_controller(hass, _open_window())
-    await plug.set(True, control="on")
-    await controller.async_stop(person=True)
-    await plug.set(True, control="off")
-    starts.clear()
-
-    await plug.set(False)
-    await plug.set(True)
-
-    assert starts == [], "the person stopped this window; a replug does not undo that"
-    # Nor does a new plan with the same window open.
-    await install_schedule(controller, _open_window(minutes_in=5, minutes_left=40))
-    assert starts == []
-    # A person's own Start is theirs to make, and so is following the plan again, which also ends their
-    # Stop of the sun's charging (the replug above ended that one: it is set again as a Stop would).
-    controller._person_stopped = True  # noqa: SLF001 - the fact the follow must clear
-    await controller.async_follow_schedule()
-    assert len(starts) == 1 and len(stops) == 1
-    assert controller.person_stopped is False
-    await controller.async_shutdown()
-
-
-async def test_a_person_stop_ends_with_its_window(hass: HomeAssistant) -> None:
-    controller, plug, starts, _ = await _switch_controller(hass, _open_window(minutes_left=10))
-    await controller.async_stop(person=True)
-    await plug.set(True, control="off")
-    starts.clear()
-    await install_schedule(controller, _later_window())
-
-    with freeze_time(dt_util.parse_datetime(controller.plan.start) + timedelta(seconds=1)):
-        await controller._async_start_window()  # noqa: SLF001 - the next window's own timer
-
-    assert len(starts) == 1, "the next window starts as usual"
-    await controller.async_shutdown()
-
-
 async def test_a_pause_or_solar_owning_the_charger_starts_nothing_at_plug_in(hass: HomeAssistant) -> None:
     controller, plug, starts, _ = await _switch_controller(hass, _open_window())
     await plug.set(False, control="off")
@@ -706,7 +669,11 @@ async def test_the_departure_passing_plans_the_next_one_with_the_need_counted_af
         assert car.preview.snapshot().remaining_kwh == pytest.approx(10.0)
 
 
-async def test_a_persons_stop_survives_a_replug_in_the_same_window(hass: HomeAssistant, transport: Any) -> None:
+async def test_a_persons_stop_ends_with_the_unplug_and_the_replug_plans_again(
+    hass: HomeAssistant, transport: Any
+) -> None:
+    """A person's Stop pauses Auto for the plug-in session it was given in: the unplug ends it, and the
+    car plugged in again is Auto's, whose window open now starts."""
     serve_prices(transport, rising=True)
     calls = _record_charger_commands(hass)
     with freeze_time(NOW) as frozen:
@@ -714,11 +681,13 @@ async def test_a_persons_stop_survives_a_replug_in_the_same_window(hass: HomeAss
         await car.executor.async_manual_stop()
         await hass.async_block_till_done()
         starts = _turn_ons(calls)
+        assert car.executor.pause_intent.choice == "manual"
 
         await car.unplug()
+        assert not car.executor.pause_intent.admitted
         await car.replug()
 
-        assert _turn_ons(calls) == starts
+        assert _turn_ons(calls) == starts + 1
 
 
 async def test_a_pause_keeps_a_replug_from_starting_anything(hass: HomeAssistant, transport: Any) -> None:

@@ -540,12 +540,13 @@ def _adopt_running(solar: SolarController, *, now: float) -> None:
     solar.adopt(now)
 
 
-def _person_stopped_state(site: SiteCapacityController) -> SolarExecutionState:
-    """The `SolarExecutionState` while a person's Stop holds the sun back: no verdict was computed."""
+def _paused_state(site: SiteCapacityController) -> SolarExecutionState:
+    """The `SolarExecutionState` while Auto is paused (a person's Start or Stop pauses it for the plug-in):
+    no verdict was computed."""
     return SolarExecutionState(
         state="off",
         action="hold",
-        reason="person_stopped",
+        reason="paused",
         requested_a=None,
         net_grid_w=None,
         export_w=None,
@@ -738,14 +739,14 @@ class SolarExecutionCoordinator:
         if settings.strategy == STRATEGY_HYBRID:
             self._log_hybrid_satisfied(False)
         held_by_plan = settings.strategy == STRATEGY_HYBRID and self._controller.plan_window_active_now
-        if not held_by_plan and self._controller.person_stopped:
-            # A person's Stop holds the sun back until the car is plugged in again, a person starts the
-            # charge, or a plan window begins; a charge started again some other way is theirs. Fresh
-            # afterwards: the start delay runs from then.
+        if pause_blocks_execution(settings):
+            # Auto is paused (a person's Start or Stop pauses it for the plug-in): the sun neither starts,
+            # stops nor modulates the charger, and takes over nothing. Fresh afterwards: the start delay runs
+            # from then, and a charge the car ended is seeded from the charger's record.
             self._solar = None
             self._took_over = False
-            self._state = _person_stopped_state(site)
-            self._record_decision(state="off", action="hold", reason="person_stopped")
+            self._state = _paused_state(site)
+            self._record_decision(state="off", action="hold", reason="paused")
             if settings.strategy == STRATEGY_HYBRID:
                 await self._async_recalculate_hybrid_preview()
             site.notify_solar_surplus_changed()
@@ -753,7 +754,7 @@ class SolarExecutionCoordinator:
 
         if self._solar is None:
             self._solar = self._build_controller(site)
-        if not held_by_plan and not pause_blocks_execution(settings):
+        if not held_by_plan:
             self._maybe_clear_ended(self._solar)
             if await self._take_over(site):
                 # A charge the charger began by itself was decided this tick (kept, stopped, or waiting

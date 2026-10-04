@@ -514,6 +514,19 @@ async def _state_action_pending(hass: HomeAssistant, entry: Any) -> dict[str, An
     return await _payload(hass, entry)
 
 
+async def _state_manual_stop(hass: HomeAssistant, entry: Any) -> dict[str, Any]:
+    """A person's Stop of a charge: Auto paused for the plug-in session (`manual`), Resume on offer."""
+    await go_auto(hass, entry.entry_id)
+    async_mock_service(hass, "switch", "turn_off")
+    hass.states.async_set(CHARGE_CONTROL, "on")
+    preview = preview_for(hass, entry.entry_id)
+    assert preview is not None
+    executor_for(hass, entry.entry_id).controller.adapter.vehicle_connected = lambda: True
+    await preview.async_manual_action("stop")
+    hass.states.async_set(CHARGE_CONTROL, "off")
+    return await _payload(hass, entry)
+
+
 async def _state_no_settings(hass: HomeAssistant, entry: Any) -> dict[str, Any]:
     """No settings record at all: `no_settings`, and a `pause` that is honestly null.
 
@@ -531,6 +544,7 @@ CONTROL_FIXTURES: Final = {
     "resume_active.json": _state_resume_active,
     "pause_clear_failed.json": _state_pause_clear_failed,
     "action_pending.json": _state_action_pending,
+    "manual_stop.json": _state_manual_stop,
     "no_settings.json": _state_no_settings,
 }
 
@@ -573,3 +587,11 @@ async def test_the_committed_control_fixtures_are_the_serializers_own_output(
     assert produced["pause_clear_failed.json"]["control"]["automatic_action"] == ACTION_NONE
     assert produced["action_pending.json"]["control"]["immediate_action_reason"] == CONTROL_ACTION_PENDING
     assert produced["no_settings.json"]["control"]["immediate_action_reason"] == CONTROL_NO_SETTINGS
+    manual = produced["manual_stop.json"]
+    assert manual["control"]["automatic_action"] == ACTION_RESUME and manual["control"]["pause_choices"] == []
+    assert manual["control"]["pause"]["choice"] == "manual"
+    # This charger (a plain switch) cannot say when a car is plugged in: resuming Auto ends the pause.
+    assert manual["status"]["lines"][0] == {
+        "code": "paused",
+        "params": {"until": None, "choice": "manual", "action": "stop", "ends": "resume"},
+    }

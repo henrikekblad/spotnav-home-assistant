@@ -249,6 +249,10 @@ async def _async_setup_charger_entry(hass: HomeAssistant, entry: ChargerConfigEn
     await push.async_load()
     async_register_charger_webhook(hass, entry)
     await controller.async_initialize()
+    if data.executor is not None:
+        # The restored record may carry an older release's person's Stop, and a manual Start's charge is
+        # watched again.
+        await data.executor.async_after_restore()
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
     # After the platforms, so a smart plug's integrated-energy sensor already stands in for the register.
     _async_start_session_recorder(hass, entry, data, controller)

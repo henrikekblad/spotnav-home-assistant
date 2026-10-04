@@ -607,7 +607,7 @@ async def test_a_stop_with_a_typed_choice_is_a_pause_and_the_dashboard_offers_th
     }
 
 
-async def test_an_immediate_stop_stores_no_pause_at_all(hass: HomeAssistant, hass_client_no_auth) -> None:
+async def test_an_immediate_stop_stores_the_persons_own_pause(hass: HomeAssistant, hass_client_no_auth) -> None:
     entry = await setup_charger(hass)
     await _auto_charging(hass)
     client = await hass_client_no_auth()
@@ -616,14 +616,13 @@ async def test_an_immediate_stop_stores_no_pause_at_all(hass: HomeAssistant, has
 
     _, answer = await post(client, "webhook-a", {"version": 1, "action": "stop"})
 
-    # The immediate Stop is what it always was: the charger is stopped once and nothing is suspended,
-    # so Auto may take the charge over again at its next authoritative event. Nothing is stored either:
-    # a stop is not a statement about who plans, so the record is untouched.
+    # The immediate Stop stops the charger once and pauses Auto for the plug-in session: the person's own
+    # pause, never a pause choice, and no planning field moves.
     assert answer == {"ok": True, "action": "stop"}
     assert len(stopped) == 1
     record = stored(hass, entry.entry_id)
-    assert record.pause.admitted is False
-    assert record.revision == before.revision
+    assert (record.pause.choice, record.pause.action) == ("manual", "stop")
+    assert replace(record, revision=before.revision, pause=before.pause) == before
 
 
 async def test_resume_clears_the_pause_once(
@@ -655,7 +654,7 @@ async def test_resume_clears_the_pause_once(
     assert after["control"]["automatic_action"] == "pause"
 
 
-async def test_a_start_and_an_immediate_stop_change_neither_settings_nor_pause(
+async def test_a_start_and_an_immediate_stop_change_no_setting_and_pause_auto_for_the_plug_in(
     hass: HomeAssistant, hass_client_no_auth
 ) -> None:
     entry = await setup_charger(hass)
@@ -664,9 +663,8 @@ async def test_a_start_and_an_immediate_stop_change_neither_settings_nor_pause(
     client = await hass_client_no_auth()
     before = stored(hass, entry.entry_id)
 
-    # The two immediate actions change the charger and nothing else: not the pause, not a single field
-    # of the record. An immediate action can therefore never be the thing that pauses a charger
-    # without saying so.
+    # The two immediate actions change the charger and pause Auto for the plug-in session, saying so in
+    # the record's pause (`manual`, the action that set it); no planning field moves.
     started = await post(client, "webhook-a", {"version": 1, "action": "start", "amps": 16})
     stopped = await post(client, "webhook-a", {"version": 1, "action": "stop"})
     await hass.async_block_till_done()
@@ -674,10 +672,8 @@ async def test_a_start_and_an_immediate_stop_change_neither_settings_nor_pause(
     assert started == (200, {"ok": True, "action": "start"})
     assert stopped == (200, {"ok": True, "action": "stop"})
     after = stored(hass, entry.entry_id)
-    assert after == before
-    assert after.pause.admitted is False
-    # And the record's own revision never moved: neither action wrote anything at all.
-    assert after.revision == before.revision
+    assert replace(after, revision=before.revision, pause=before.pause) == before
+    assert (after.pause.choice, after.pause.action) == ("manual", "stop")
 
 
 async def test_a_pause_the_boundary_refuses_changes_nothing(

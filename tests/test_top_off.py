@@ -221,7 +221,7 @@ async def test_a_persons_stop_ends_the_top_off(hass: HomeAssistant, freezer: Any
     controller, charger, _ = await _charging_at_the_window_end(hass, freezer, to_vehicle_limit=True)
     assert controller.top_off_until is not None
 
-    await controller.async_stop(person=True)
+    await controller.async_stop()
     await hass.async_block_till_done()
 
     assert controller.plan is None and controller.top_off_until is None and charger.stops == 1

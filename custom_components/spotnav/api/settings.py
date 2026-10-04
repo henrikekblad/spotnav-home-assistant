@@ -426,13 +426,11 @@ def settings_version_of(value: Any) -> int | None:
 def encode_pause(intent: PauseIntent) -> dict[str, Any]:
     """The typed pause observation: what the persisted record contains, or three nulls.
 
-    Deliberately the stored intent, not the clock's view: this is what the execution gate obeys.
+    Deliberately the stored intent, not the clock's view: this is what the execution gate obeys. A manual
+    pause (a person's Start or Stop) adds `action` (`start`/`stop`) and `scope` (`plug_in`/`next_plug_in`);
+    every other pause is the three keys it always was.
     """
-    return {
-        "choice": intent.choice,
-        "admitted_at": None if intent.admitted_at is None else intent.admitted_at.isoformat(),
-        "expires_at": None if intent.expires_at is None else intent.expires_at.isoformat(),
-    }
+    return intent.as_dict()
 
 
 def _pause_instant(value: Any, what: str) -> datetime | None:

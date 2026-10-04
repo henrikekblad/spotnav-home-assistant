@@ -16,6 +16,8 @@ on the boundary's own effect steps.
 
 from __future__ import annotations
 
+from dataclasses import replace
+
 import asyncio
 from typing import Any
 
@@ -129,7 +131,8 @@ def preview_of(hass: HomeAssistant, entry_id: str = "entry_a") -> AutoPlannerCon
 async def test_start_is_admitted_once_through_the_execution_boundary(
     hass: HomeAssistant, hass_ws_client, offline_relay: None, effects: dict[str, Counted]
 ) -> None:
-    """One Start now is one manual start, and it changes neither authority nor the stored pause."""
+    """One Start now is one manual start, and it pauses Auto for the plug-in session: the person's own
+    pause (`manual`, action `start`), never a pause choice."""
     entry = await setup_charger(hass)
     client = await hass_ws_client(hass)
     await go_auto(hass, entry.entry_id)
@@ -149,7 +152,8 @@ async def test_start_is_admitted_once_through_the_execution_boundary(
     assert effects["start"].calls == 1
     assert effects["stop"].calls == 0 and effects["resume"].calls == 0
     after = stored(hass, entry.entry_id)
-    assert after.pause == before.pause, "and never a pause transition"
+    assert not before.pause.admitted
+    assert (after.pause.choice, after.pause.action, after.pause.expires_at) == ("manual", "start", None)
 
 
 @pytest.mark.parametrize("choice", [PAUSE_UNTIL_RESUMED, PAUSE_UNTIL_TOMORROW])
@@ -264,15 +268,14 @@ async def test_start_is_admitted_while_a_pause_is_persisted_and_the_pause_stands
     )
 
 
-async def test_a_stop_with_no_choice_is_immediate_and_writes_no_pause(
+async def test_a_stop_with_no_choice_is_immediate_and_pauses_auto_for_the_plug_in(
     hass: HomeAssistant, hass_ws_client, offline_relay: None, effects: dict[str, Counted]
 ) -> None:
-    """The other half of the split: a plain Stop stops the charge and leaves the planning record alone.
+    """The other half of the split: a plain Stop stops the charge and pauses Auto for the plug-in session.
 
-    Deliberately *not* resolved into `until_resumed` any more. A caller that wants a pause names the
-    choice it wants; a caller that says only "stop" gets only a stop, with the mode, the revision and
-    the pause exactly as they were -- so a person can end a charge Auto installed without telling Auto
-    to stop planning.
+    Deliberately *not* resolved into `until_resumed`: a caller that wants a pause for a span names the
+    choice it wants. A plain "stop" is the person's own pause (`manual`, action `stop`), which ends when
+    the car is unplugged, and changes no planning setting.
     """
     entry = await setup_charger(hass)
     client = await hass_ws_client(hass)
@@ -289,8 +292,8 @@ async def test_a_stop_with_no_choice_is_immediate_and_writes_no_pause(
     assert effects["stop"].calls == 0, "no pause was taken, because none was asked for"
     assert effects["start"].calls == 0 and effects["resume"].calls == 0
     after = stored(hass, entry.entry_id)
-    assert after.pause.admitted is False, "nothing was persisted"
-    assert after.revision == before.revision, "no write at all, so no revision moved either"
+    assert (after.pause.choice, after.pause.action, after.pause.expires_at) == ("manual", "stop", None)
+    assert replace(after, revision=before.revision, pause=before.pause) == before, "no planning setting moved"
 
 
 async def test_resume_is_admitted_once_and_a_repeat_is_refused(
