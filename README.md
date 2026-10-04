@@ -10,8 +10,9 @@ public SpotNav Relay (no account or API key) and follows them.
 - **Uses your sun and respects your fuse.** It can charge from solar surplus, hold back grid energy
   when a solar forecast promises sun, and keep several chargers under one main fuse.
 - **Runs locally.** The plan lives in Home Assistant and keeps running if your phone is away. A
-  Lovelace card is included, and the [SpotNav Android app](https://github.com/henrikekblad/spotnav)
-  pairs with it.
+  Lovelace card is included, and the SpotNav Android app
+  ([Google Play](https://play.google.com/store/apps/details?id=se.sensnology.spotnav),
+  [GitHub](https://github.com/henrikekblad/spotnav)) pairs with it.
 
 ## Requirements
 
