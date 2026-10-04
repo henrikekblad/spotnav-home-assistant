@@ -134,6 +134,14 @@ describe("every status code the backend composes is decoded and worded", () => {
     expect(decoded.ok, code).toBe(true);
   });
 
+  it("says what ends a person's Stop: a plug-in where the charger reports one, else only a Start or a window", () => {
+    const say = (ends: string) =>
+      lineText({ code: "stopped_by_person", params: { ends } } as StatusLine, FORMAT, NOW);
+    expect(say("replug")).toContain("plugged in again");
+    expect(say("start")).not.toContain("plugged in");
+    expect(say("start")).toContain("Start now");
+  });
+
   it.each(STATUS_CODES)("%s has a wording in every language", (code) => {
     const key = STATUS_WORDING[code as StatusCode];
     expect(key, `no wording for status code ${code}`).toBeDefined();

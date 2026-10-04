@@ -216,9 +216,12 @@ async def test_a_persons_stop_in_the_window_is_kept_across_a_replug(hass: HomeAs
     # Nor does a new plan with the same window open.
     await install_schedule(controller, _open_window(minutes_in=5, minutes_left=40))
     assert starts == []
-    # A person's own Start is theirs to make, and so is following the plan again.
+    # A person's own Start is theirs to make, and so is following the plan again, which also ends their
+    # Stop of the sun's charging (the replug above ended that one: it is set again as a Stop would).
+    controller._person_stopped = True  # noqa: SLF001 - the fact the follow must clear
     await controller.async_follow_schedule()
     assert len(starts) == 1 and len(stops) == 1
+    assert controller.person_stopped is False
     await controller.async_shutdown()
 
 

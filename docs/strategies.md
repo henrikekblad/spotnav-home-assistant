@@ -122,7 +122,9 @@ cannot, and for a direct site without the total it says the meter's total grid p
   surplus, down to the minimum at once when there is too little, and it stops when the surplus does
   not come back. A charge you start with **Start** is yours and is left alone.
 - After you press **Stop**, the sun does not start the charge again until the car is plugged in
-  again, you press **Start** or a planned period begins; the status says so.
+  again, you press **Start** (or follow the plan again) or a planned period begins, also after a
+  restart; the status says so, and for a charger that cannot tell when a car is plugged in it names
+  only Start and the next planned period. A false battery credit's wait also outlasts a restart.
 - **Solar priority** (a site setting): *car first* uses surplus before the house battery;
   *battery first* leaves the surplus to the battery and charges the car from what it does not
   take. A house battery power sensor can be set on the site.

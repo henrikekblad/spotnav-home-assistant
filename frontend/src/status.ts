@@ -112,6 +112,9 @@ function basisWording(line: StatusLine): { key: TranslationKey; params: Record<s
         : { key: "strategy.status.solar.chargerCurrentUnreadable", params: { entity } };
     case "solar_site_incomplete":
       return { key: "strategy.status.solar.siteIncomplete", params: { phases: strings(p["phases"]).join(", ") } };
+    case "stopped_by_person":
+      // A charger that cannot say when a car is plugged in: only a Start or a plan window ends the Stop.
+      return { key: p["ends"] === "start" ? "status.stoppedByPersonUntilStart" : "status.stoppedByPerson", params: {} };
     case "site_meter_unavailable":
       return {
         key: p["cause"] === "inverter_standby" ? "status.meterUnavailable.inverter" : "status.meterUnavailable.meter",
@@ -214,6 +217,7 @@ export const STATUS_VARIANT_KEYS: readonly TranslationKey[] = [
   "strategy.status.solar.noGridPowerEntity",
   "strategy.status.solar.chargerCurrentUnreadable",
   "status.meterUnavailable.inverter",
+  "status.stoppedByPersonUntilStart",
 ];
 
 const MISSING_FIELD_KEYS: Readonly<Record<string, TranslationKey>> = {
