@@ -139,3 +139,29 @@ async def test_turning_active_control_off_retires_every_chargers_operation_befor
     assert events.index(f"{a.entry_id} cancelled") < events.index(f"{a.entry_id} restore")
     assert not site._charger_ops  # noqa: SLF001
     assert not site._apply_passes  # noqa: SLF001
+
+
+async def test_a_charger_that_has_shut_down_takes_no_regulator_write_stop_or_resume(hass: HomeAssistant) -> None:
+    """Cancellation: a regulator step that still holds a charger whose entry has shut down (unloaded while the
+    step waited) sends it nothing: no current, no safety stop for a refused must-lower write, no resume."""
+    from .charger_helpers import Clock
+    from .test_charger_controller_paths import _controller
+
+    controller = await _controller(hass, "easee", clock=Clock())
+    hass.states.async_set("sensor.easee_status", "charging", {"config_authorizationRequired": False})
+    calls: list[str] = []
+
+    async def record(call: Any) -> None:
+        calls.append(call.service)
+
+    hass.services.async_register("easee", "set_charger_dynamic_limit", record)
+    hass.services.async_register("easee", "action_command", record)
+    await controller.async_shutdown()
+
+    write = await controller.async_apply_regulated_current(10, must_lower=True)
+    paused = await controller.async_apply_regulated_current(0, must_lower=True)
+    resumed = await controller.async_battery_probe_start(8)
+    await hass.async_block_till_done()
+    assert calls == []
+    assert not write.written and not paused.written
+    assert resumed is False

@@ -448,6 +448,8 @@ REGULATED_HELD = "held"
 REGULATED_STOPPED = "stopped"
 #: Why a write was held: a stop of the charge was on its way.
 REGULATED_STOPPING = "stop_in_flight"
+#: The controller has shut down: nothing more is sent to its charger.
+REGULATED_SHUT_DOWN = "shut_down"
 
 
 @dataclass(frozen=True, slots=True)
@@ -585,6 +587,9 @@ class ChargingController:
         # A stop command on its way to the charger: the regulator writes no current meanwhile, since on
         # some chargers (Easee) a current written while the stop lands lifts it again.
         self._stop_in_flight = False
+        # Shut down (`async_shutdown`): a regulator step that still holds this controller (the entry unloaded
+        # while the step waited) sends the charger nothing more.
+        self._shut_down = False
         # Whether the charge that runs was started by a plan window of ours (not a person's Start, not
         # solar). Persisted: a restart outside every window must still know the charge is ours.
         self._plan_charge = False
@@ -2088,7 +2093,7 @@ class ChargingController:
             allowed = self._automatic_permitted(
                 AUTOMATIC_PERSON_RESUME if origin == "manual" else AUTOMATIC_BALANCING_RESUME
             )
-            if not allowed or not self._paused_by_balancing or self.charging:
+            if not allowed or self._shut_down or not self._paused_by_balancing or self.charging:
                 return False
             safety = self._held_for_safety
             if safety and self._safety_resumed_at is not None:
@@ -2329,6 +2334,8 @@ class ChargingController:
                 "Not assigning %sA: the pilot-floor probe is stepping the current down", amps
             )
             return ASSIGN_PROBE_IN_FLIGHT
+        if reason == WRITE_REGULATOR and self._shut_down:
+            return REGULATED_SHUT_DOWN
         if reason == WRITE_REGULATOR and self._stop_in_flight:
             # The regulator writes without the operation lock: a stop on its way (or one that began while this
             # write waited for `_assign_lock`) is not lifted by a current sent under it.
@@ -2356,6 +2363,8 @@ class ChargingController:
         A stop is never refused by a write policy. It takes the operation lock, so it cannot land
         inside a plan replacement; the write itself does not (see below).
         """
+        if self._shut_down:
+            return RegulatedWrite(REGULATED_HELD, REGULATED_SHUT_DOWN, False)
         if amps < DEFAULT_MIN_CURRENT_A:
             # Below the floor no valid pilot current exists, for OCPP as for any charger: the only
             # way to give the car less is to stop it (OCPP sends nothing for such a value).
@@ -2368,6 +2377,8 @@ class ChargingController:
             # A stop is on its way: it gives the car less than any current would, and a current written
             # while it lands would lift it on a charger that pauses by its limit.
             return RegulatedWrite(REGULATED_HELD, REGULATED_STOPPING, False)
+        if outcome == REGULATED_SHUT_DOWN:
+            return RegulatedWrite(REGULATED_HELD, REGULATED_SHUT_DOWN, False)
         if outcome in IN_EFFECT_OUTCOMES:
             return RegulatedWrite(REGULATED_WROTE, outcome, True)
         if not must_lower:
@@ -2381,6 +2392,8 @@ class ChargingController:
         return await self._regulated_stop("safety_stop", cause=outcome)
 
     async def _regulated_stop(self, code: str, *, cause: str | None = None) -> RegulatedWrite:
+        if self._shut_down:
+            return RegulatedWrite(REGULATED_HELD, REGULATED_SHUT_DOWN, False)
         _LOGGER.warning(
             "SpotNav charger %s: stopping the charge (%s%s); the current cannot be lowered in time",
             self.entry_id,
@@ -2389,6 +2402,9 @@ class ChargingController:
         )
         try:
             async with self._lock:
+                if self._shut_down:
+                    # Shut down while this stop waited for the lock: nothing more goes to the charger.
+                    return RegulatedWrite(REGULATED_HELD, REGULATED_SHUT_DOWN, False)
                 # Only a charge that was running can be one balancing interrupted; a pause written to a
                 # charger somebody already stopped must not make it look wanted. Read under the operation
                 # lock: a person's Stop that lands first is never remembered as a charge to resume.
@@ -2795,6 +2811,8 @@ class ChargingController:
 
     async def async_shutdown(self) -> None:
         """Cancel local callbacks without changing the charger."""
+        # Before the lock: a regulator write or resume waiting behind it sends nothing once it gets it.
+        self._shut_down = True
         async with self._lock:
             await self._shutdown_locked()
 
