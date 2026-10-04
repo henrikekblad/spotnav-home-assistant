@@ -12,6 +12,7 @@ from custom_components.spotnav.site.solar_surplus import (
     SolarConfig,
     SolarController,
     SolarObservation,
+    SolarVerdict,
 )
 
 THREE_PHASES = ("L1", "L2", "L3")
@@ -59,7 +60,8 @@ def _obs(
 
 
 def _config(**overrides) -> SolarConfig:
-    return SolarConfig(**overrides)
+    """No start verification unless a test asks for it: the rules under test here are the others."""
+    return SolarConfig(**{"verify_s": 0.0, **overrides})
 
 
 def test_start_a_defaults_to_min_current_a():
@@ -444,27 +446,32 @@ def test_requested_current_is_floored_and_clamped():
     cfg = _config(start_delay_s=0.0, min_off_s=0.0, min_current_a=6.0, max_current_a=16.0)
     ctrl = SolarController(cfg)
 
-    # 20 A worth of available power clamps down to max_current_a=16.
+    # A start is at the start minimum; then 20 A worth of available power clamps down to max_current_a=16.
     verdict = ctrl.observe(_obs(0.0, grid_w=-20.5 * 3 * VOLTAGE_V))
     assert verdict.action == "start"
-    assert verdict.requested_a == 16.0
+    assert verdict.requested_a == 6.0
+    verdict = ctrl.observe(_obs(1.0, grid_w=-20.5 * 3 * VOLTAGE_V))
+    assert (verdict.action, verdict.requested_a) == ("set_current", 16.0)
 
 
 def test_requested_current_floors_before_clamping_up_to_minimum():
     cfg = _config(start_delay_s=0.0, min_off_s=0.0, min_current_a=6.0, stop_a=4.0, start_a=4.0)
     ctrl = SolarController(cfg)
-    # 5.9 A worth of power floors to 5, then clamps up to min_current_a=6.
+    # A start at 4 A clamps up to min_current_a=6, and so does 5.9 A worth of power (floored to 5).
     verdict = ctrl.observe(_obs(0.0, grid_w=-5.9 * 3 * VOLTAGE_V))
     assert verdict.action == "start"
     assert verdict.requested_a == 6.0
+    verdict = ctrl.observe(_obs(1.0, grid_w=-5.9 * 3 * VOLTAGE_V))
+    assert (verdict.action, verdict.reason) == ("hold", "on_steady")
 
 
 def test_set_current_only_on_whole_amp_change():
     cfg = _config(start_delay_s=0.0, min_off_s=0.0)
     ctrl = SolarController(cfg)
 
-    v1 = ctrl.observe(_obs(0.0, grid_w=-8.4 * 3 * VOLTAGE_V))  # floors to 8
-    assert v1.action == "start"
+    assert ctrl.observe(_obs(0.0, grid_w=-8.4 * 3 * VOLTAGE_V)).requested_a == 6.0  # the start minimum
+    v1 = ctrl.observe(_obs(0.5, grid_w=-8.4 * 3 * VOLTAGE_V))  # floors to 8
+    assert v1.action == "set_current"
     assert v1.requested_a == 8.0
 
     # A tiny change that still floors to 8 must not re-request.
@@ -506,8 +513,8 @@ def test_scene_2026_09_28_battery_charging_no_start():
     assert verdict.action == "hold"
 
 
-def test_scene_sunny_afternoon_battery_6kw_starts_after_delay_at_about_8a():
-    cfg = _config(start_delay_s=120.0, min_off_s=0.0)
+def test_scene_sunny_afternoon_battery_6kw_starts_after_delay_at_the_minimum_then_8a():
+    cfg = _config(start_delay_s=120.0, min_off_s=0.0, verify_s=120.0)
     ctrl = SolarController(cfg)
 
     ctrl.observe(_obs(0.0, grid_w=0.0, battery_w=6000.0, car_delivered_a=0.0))
@@ -515,8 +522,14 @@ def test_scene_sunny_afternoon_battery_6kw_starts_after_delay_at_about_8a():
 
     assert verdict.action == "start"
     assert verdict.state == "on"
+    # At the start minimum, never at the 8.69 A the surplus seems to allow.
+    assert verdict.requested_a == 6.0
+    # The battery gives way to the car (6 A drawn, the battery charges that much less): the credit holds.
+    verdict = ctrl.observe(_obs(150.0, grid_w=0.0, battery_w=6000.0 - 6 * 3 * VOLTAGE_V, car_delivered_a=6.0))
+    assert (verdict.action, verdict.reason) == ("hold", "start_verifying")
+    verdict = ctrl.observe(_obs(241.0, grid_w=0.0, battery_w=6000.0 - 6 * 3 * VOLTAGE_V, car_delivered_a=6.0))
     # 6000 / (3 * 230) = 8.69 A, floors to 8.
-    assert verdict.requested_a == 8.0
+    assert (verdict.action, verdict.requested_a) == ("set_current", 8.0)
 
 
 # Closed-loop regression: a plant is simulated by the energy-balance identity in reverse (from a true PV surplus and the car's
@@ -737,8 +750,10 @@ def _no_car_reading(now: float, **kwargs) -> SolarObservation:
 
 
 def _running(ctrl: SolarController) -> None:
+    """Started at the start minimum, then stepped up to what the export allows (8 A)."""
     ctrl.observe(_obs(0.0, grid_w=-6000.0))
     assert ctrl.observe(_obs(130.0, grid_w=-6000.0)).action == "start"
+    assert ctrl.observe(_obs(131.0, grid_w=-6000.0)).action == "set_current"
 
 
 def test_a_stopped_charger_without_its_own_measurement_is_never_started():
@@ -921,3 +936,66 @@ def test_a_blind_verdict_states_no_surplus_it_cannot_know():
 
     assert verdict.car_w is None and verdict.available_w is None and verdict.available_a is None
     assert verdict.net_grid_w == -1500.0 and verdict.export_w == 1500.0
+
+
+# A start credited by a charging battery (car_first) is checked once the car draws (module docstring).
+
+SIX_A_W = 6 * 3 * VOLTAGE_V
+
+
+def _credited_start(ctrl: SolarController, now: float) -> SolarVerdict:
+    """Arm and start on a battery charging 8 kW with the grid at zero."""
+    ctrl.observe(_obs(now, grid_w=0.0, battery_w=8000.0, car_delivered_a=0.0))
+    return ctrl.observe(_obs(now + 120.0, grid_w=0.0, battery_w=8000.0, car_delivered_a=0.0))
+
+
+def _backoff_config() -> SolarConfig:
+    return _config(verify_s=120.0, min_off_s=0.0, credit_backoff_s=600.0, credit_backoff_max_s=2400.0)
+
+
+def test_a_start_is_at_the_minimum_and_held_there_while_it_is_verified():
+    ctrl = SolarController(_config(verify_s=120.0))
+    ctrl.observe(_obs(0.0, grid_w=-20.0 * 3 * VOLTAGE_V))
+    start = ctrl.observe(_obs(120.0, grid_w=-20.0 * 3 * VOLTAGE_V))
+    assert (start.action, start.requested_a) == ("start", 6.0)
+    held = ctrl.observe(_obs(200.0, grid_w=-14.0 * 3 * VOLTAGE_V, car_delivered_a=6.0))
+    assert (held.action, held.reason, held.state) == ("hold", "start_verifying", "on")
+    stepped = ctrl.observe(_obs(241.0, grid_w=-14.0 * 3 * VOLTAGE_V, car_delivered_a=6.0))
+    assert (stepped.action, stepped.requested_a) == ("set_current", 16.0)
+
+
+def test_a_battery_that_turns_to_feed_the_car_is_a_false_credit_stopped_at_once():
+    ctrl = SolarController(_backoff_config())
+    assert _credited_start(ctrl, 0.0).action == "start"
+    # The car draws 6 A and the battery discharges as much into it; the grid stays at zero.
+    verdict = ctrl.observe(_obs(150.0, grid_w=0.0, battery_w=-SIX_A_W, car_delivered_a=6.0))
+    assert (verdict.action, verdict.reason, verdict.state) == ("stop", "battery_credit_false", "off")
+
+
+def test_a_false_credit_backs_off_the_battery_doubling_and_a_held_credit_resets_it():
+    ctrl = SolarController(_backoff_config())
+    _credited_start(ctrl, 0.0)
+    ctrl.observe(_obs(150.0, grid_w=0.0, battery_w=-SIX_A_W, car_delivered_a=6.0))  # back-off to 750
+
+    # Inside the back-off a charging battery is not counted: nothing arms.
+    inside = ctrl.observe(_obs(700.0, grid_w=0.0, battery_w=8000.0, car_delivered_a=0.0))
+    assert (inside.state, inside.priority_effective) == ("off", "battery_first")
+
+    # After it, a second false credit backs off twice as long (1200 s).
+    assert _credited_start(ctrl, 760.0).action == "start"
+    ctrl.observe(_obs(900.0, grid_w=0.0, battery_w=-SIX_A_W, car_delivered_a=6.0))  # back-off to 2100
+    assert ctrl.observe(_obs(2000.0, grid_w=0.0, battery_w=8000.0, car_delivered_a=0.0)).state == "off"
+
+    # A credit that holds (the battery gives way to the car) resets the next back-off to 600 s.
+    assert _credited_start(ctrl, 2100.0).action == "start"
+    yielded = 8000.0 - SIX_A_W
+    assert ctrl.observe(_obs(2250.0, grid_w=0.0, battery_w=yielded, car_delivered_a=6.0)).reason == "start_verifying"
+    assert ctrl.observe(_obs(2400.0, grid_w=0.0, battery_w=yielded, car_delivered_a=6.0)).state == "on"
+    assert ctrl._next_backoff_s == 600.0  # noqa: SLF001 - the back-off length is the fact under test
+
+
+def test_a_discharging_battery_is_never_surplus():
+    for priority in ("car_first", "battery_first"):
+        ctrl = SolarController(_config(priority=priority))
+        verdict = ctrl.observe(_obs(0.0, grid_w=0.0, battery_w=-8000.0, car_delivered_a=15.7))
+        assert verdict.available_w == pytest.approx(15.7 * 3 * VOLTAGE_V - 8000.0)

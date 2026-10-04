@@ -82,6 +82,7 @@ export const fi: Record<keyof typeof en, string> = {
   "issue.heldByCharger": "Laturin oma aikataulu tai kuormanhallinta pidättää latausta, joten se ei ole alkanut.",
   "issue.chargerDisabled": "Laturin oma käyttöönottokytkin on pois päältä, joten lataus ei voi alkaa. Kytke se päälle laturin asetuksista.",
   "issue.holdOverridden": "Lataus käynnistettiin suunnitelman ulkopuolella ja sen annetaan jatkua.",
+  "status.stoppedByPerson": "Pysäytit latauksen. Aurinko ei käynnistä sitä uudelleen ennen kuin auto kytketään uudelleen, painat Aloita nyt tai suunniteltu jakso alkaa.",
   "status.needLimitedByRoom": "Enintään {kwh} kWh: auto on lähes täynnä.",
   "status.chargingToVehicleLimit": "Ladataan, kunnes auto lopettaa itse omaan latausrajaansa ({percent} %).",
   "issue.needKept": "Energiamittaria ei voi lukea: {kwh} kWh jäljellä sen viimeisimmän lukeman mukaan.",

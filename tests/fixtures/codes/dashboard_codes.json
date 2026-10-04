@@ -96,6 +96,7 @@
     "arming_delay",
     "arming_dip",
     "arming_min_off_wait",
+    "battery_credit_false",
     "charger_measurement_missing",
     "disarming_delay",
     "disarming_min_on_wait",
@@ -107,6 +108,7 @@
     "on_modulate",
     "on_steady",
     "start_after_delay",
+    "start_verifying",
     "stop_after_delay",
     "unmeasured_arming",
     "unmeasured_start"
@@ -396,6 +398,10 @@
       "tone": "normal"
     },
     "starting_up": {
+      "params": [],
+      "tone": "normal"
+    },
+    "stopped_by_person": {
       "params": [],
       "tone": "normal"
     },

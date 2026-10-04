@@ -124,6 +124,16 @@ describe("every status code the backend composes is decoded and worded", () => {
     }
   });
 
+  it.each(STATUS_CODES)("%s decodes in a whole dashboard, with the backend's tone and param names", (code) => {
+    // Built from the backend's own fixture (its tone and its param names), not from the card's table: a
+    // code, a param or a tone the card does not read fails here by name rather than as "cannot read".
+    const entry = STATUS_FIXTURE[code]!;
+    const kinds = (STATUS_CODE_TABLE as Record<string, readonly [string, Record<string, string>]>)[code]?.[1] ?? {};
+    const params = Object.fromEntries(entry.params.map((name) => [name, sampleFor(name, kinds[name] ?? "text")]));
+    const decoded = decodeDashboard(rawDashboard({ status: { tone: entry.tone, lines: [{ code, params }] } }));
+    expect(decoded.ok, code).toBe(true);
+  });
+
   it.each(STATUS_CODES)("%s has a wording in every language", (code) => {
     const key = STATUS_WORDING[code as StatusCode];
     expect(key, `no wording for status code ${code}`).toBeDefined();
