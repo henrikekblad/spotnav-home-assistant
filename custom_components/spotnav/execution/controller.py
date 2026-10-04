@@ -135,6 +135,11 @@ AUTOMATIC_PERSON_RESUME: Final = "person_resume"
 #: How long (seconds) after an automatic stop the charger's control did not execute, while the charger is
 #: seen charging, the decision is taken again (besides the next report of the charger's state).
 STOP_RETRY_S: Final = 30.0
+#: Under a person's Stop, a charge the charger begins by itself is stopped at most once per this many
+#: seconds, and after this many stops it did not take in one plug-in SpotNav gives up and says so
+#: (`ChargingController.ignores_person_stop`) rather than send a stop per report.
+PERSON_HOLD_STOP_GAP_S: Final = 30.0
+PERSON_HOLD_MAX_STOPS: Final = 3
 
 
 class AutomaticGate(Protocol):
@@ -533,6 +538,14 @@ class ChargingController:
         # A stop of a charge the charger began by itself under a person's Stop is on its way
         # (`_observe_person_hold`): one at a time.
         self._person_hold_stop_pending = False
+        # The stops of such charges that went out and the charger did not take (it still says it charges),
+        # when the last was tried, and whether they were given up (`PERSON_HOLD_MAX_STOPS`): at most one per
+        # `PERSON_HOLD_STOP_GAP_S`, never a stop per report. A report of the charger off, a plug-in, an
+        # unplug or the end of the person's Stop starts afresh.
+        self._person_hold_stops = 0
+        self._person_hold_tried_at: datetime | None = None
+        self._person_hold_gave_up = False
+        self._person_hold_retry_cancel: Callable[[], None] | None = None
         # The appointment at which an automatic stop the charger's control did not execute is decided again
         # (`_automatic_stop_locked`), or `None`.
         self._stop_retry_cancel: Callable[[], None] | None = None
@@ -1071,6 +1084,8 @@ class ChargingController:
         self._tell_connection_observer(previous, connected)
         if previous is None:
             return
+        # The stops under a person's Stop belong to the plug-in they were sent in.
+        self._reset_person_hold()
         event = CONNECTION_PLUGGED_IN if connected else CONNECTION_UNPLUGGED
         # What the car ended belongs to the plug-in it ended in.
         had_car_ended = self._car_ended_at is not None
@@ -1395,25 +1410,93 @@ class ChargingController:
         """While a person's Stop pauses Auto, a charge the charger begins by itself (a free-charging OCPP
         charger, an Easee without authorization, at plug-in or at any time) is stopped at once, whatever the
         plan's windows say. Never a Start on its way: the person's own Start replaces their Stop, decided
-        again under the boundary's lock."""
+        again under the boundary's lock.
+
+        At most one stop per `PERSON_HOLD_STOP_GAP_S` (a charger whose status lags says `on` at every report
+        after a stop it took), and after `PERSON_HOLD_MAX_STOPS` that went out while the charger still says it
+        charges, no more: the status says the charger does not take SpotNav's stop."""
+        if not self._held_off_by_person():
+            self._reset_person_hold()
+            return
+        if self._control_observation is False:
+            # The charger took the stop (or never charged): a charge it begins later starts afresh, no sooner
+            # than the gap after the last stop.
+            tried_at = self._person_hold_tried_at
+            self._reset_person_hold()
+            self._person_hold_tried_at = tried_at
+            return
         if self._person_hold_stop_pending or self._control_observation is not True or self.start_pending:
             return
-        if not self._held_off_by_person():
+        if self._person_hold_gave_up:
+            return
+        tried_at = self._person_hold_tried_at
+        if tried_at is not None:
+            wait_s = PERSON_HOLD_STOP_GAP_S - (dt_util.utcnow() - tried_at).total_seconds()
+            if wait_s > 0:
+                # Looked at again when the gap is over, even if the charger reports nothing new by then.
+                if self._person_hold_retry_cancel is None:
+                    self._person_hold_retry_cancel = async_call_later(
+                        self.hass, wait_s, self._person_hold_retry_callback
+                    )
+                return
+        if self._person_hold_stops >= PERSON_HOLD_MAX_STOPS:
+            self._person_hold_gave_up = True
+            _LOGGER.warning(
+                "SpotNav charger %s: the charger kept charging after %s stops under a person's Stop; no more "
+                "are sent until it stops, the car is unplugged or the Stop ends",
+                self.entry_id,
+                self._person_hold_stops,
+            )
+            self._notify()
             return
         self._person_hold_stop_pending = True
         self._async_spawn(self._async_person_hold_stop(), "the stop under a person's Stop")
+
+    @callback
+    def _person_hold_retry_callback(self, _now: datetime) -> None:
+        self._person_hold_retry_cancel = None
+        self._observe_person_hold()
+
+    def _cancel_person_hold_retry(self) -> None:
+        cancel = self._person_hold_retry_cancel
+        self._person_hold_retry_cancel = None
+        if cancel is not None:
+            cancel()
+
+    def _reset_person_hold(self) -> None:
+        """A new plug-in session, or no person's Stop any more: the stops under it start afresh."""
+        gave_up = self._person_hold_gave_up
+        self._person_hold_stops = 0
+        self._person_hold_tried_at = None
+        self._person_hold_gave_up = False
+        self._cancel_person_hold_retry()
+        if gave_up:
+            self._notify()
+
+    @property
+    def ignores_person_stop(self) -> bool:
+        """Under a person's Stop the charger kept charging after `PERSON_HOLD_MAX_STOPS` stops it was sent:
+        SpotNav sends no more, and the status says so."""
+        return self._person_hold_gave_up and self._held_off_by_person()
 
     async def _async_person_hold_stop(self) -> None:
         try:
             async with self._automatic(AUTOMATIC_STOP) as allowed:
                 if not allowed or not self._held_off_by_person() or self.start_pending or not self._control_on:
                     return
-                _LOGGER.info(
-                    "SpotNav charger %s: a charge began while a person's Stop pauses Auto; stopping it", self.entry_id
-                )
-                await self._automatic_stop_locked("the stop under a person's Stop")
+                await self._person_hold_stop_locked()
         finally:
             self._person_hold_stop_pending = False
+
+    async def _person_hold_stop_locked(self) -> None:
+        """One stop of a charge a person's Stop holds off, counted (`_observe_person_hold`). Runs with the
+        operation lock held."""
+        _LOGGER.info(
+            "SpotNav charger %s: a charge began while a person's Stop pauses Auto; stopping it", self.entry_id
+        )
+        self._person_hold_tried_at = dt_util.utcnow()
+        if await self._automatic_stop_locked("the stop under a person's Stop"):
+            self._person_hold_stops += 1
 
     @asynccontextmanager
     async def _automatic(self, kind: str) -> AsyncIterator[bool]:
@@ -2658,8 +2741,8 @@ class ChargingController:
             if not allowed:
                 return
             if self._held_off_by_person():
-                if self._control_on and not self.start_pending:
-                    await self._automatic_stop_locked("the stop under a person's Stop")
+                if self._control_on and not self.start_pending and not self._person_hold_gave_up:
+                    await self._person_hold_stop_locked()
                 return
             if self.plan is not None:
                 await self._reschedule_locked()
@@ -2673,6 +2756,7 @@ class ChargingController:
         """The shutdown itself. Runs with the operation lock held."""
         self._cancel_timers()
         self._cancel_stop_retry()
+        self._cancel_person_hold_retry()
         # A top-off's deadline stays stored: the next start resumes it or ends it.
         self._cancel_top_off_timers()
         # State-change subscriptions are local callbacks too: nothing may be decided or called

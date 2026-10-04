@@ -15,7 +15,8 @@ Precedence (first match wins the headline; "add" rows append a fact line)
 ---------------------------------------------------------------------------
 1. BLOCKING. Any blocking condition replaces the whole block: every blocking line, in this order,
    nothing else; the block's tone is that of its strongest line. charger_unavailable,
-   price_data_invalid, price_data_unavailable (no usable interval at all), settings_incomplete
+   charger_ignores_stop (under a person's Stop the charger kept charging after the stops SpotNav sent,
+   and no more are sent), price_data_invalid, price_data_unavailable (no usable interval at all), settings_incomplete
    (tone `notice`: a charger still being set up is not a fault, so on its own it is not red),
    solar_unavailable, target_soc_unknown, price_horizon_missing, planning_unavailable,
    planning_error.
@@ -127,6 +128,8 @@ STATUS_CODES: Final[dict[str, tuple[str, tuple[str, ...]]]] = {
     # The first minutes after start: what is not yet known is not answered with a fallback. Alone.
     "starting_up": (TONE_NORMAL, ()),
     "charger_unavailable": (TONE_BLOCKING, ("problem", "entity")),
+    # Under a person's Stop the charger kept charging after the stops SpotNav sent; no more are sent.
+    "charger_ignores_stop": (TONE_BLOCKING, ()),
     "price_data_invalid": (TONE_BLOCKING, ("reason",)),
     "price_data_unavailable": (TONE_BLOCKING, ("reason",)),
     # Informational, not red: a new charger that still needs a price area is being set up, not broken.
@@ -372,6 +375,8 @@ class StatusFacts:
     held_by_charger: bool = False
     #: The charger's own enable switch is off, so it cannot start.
     charger_disabled: bool = False
+    #: Under a person's Stop the charger kept charging after the stops SpotNav sent; no more are sent.
+    ignores_person_stop: bool = False
     #: The next window's start while a charge is held back for it (`ChargingController.hold_until`).
     hold_until: datetime | None = None
     #: A person started the charge again after the hold and it is allowed to continue.
@@ -431,6 +436,8 @@ def _blocking_lines(facts: StatusFacts) -> list[dict[str, Any]]:
                 entity=facts.charger_problem_entity,
             )
         )
+    if facts.ignores_person_stop:
+        lines.append(_line("charger_ignores_stop"))
     if facts.has_settings:
         if facts.price_state == "invalid":
             lines.append(_line("price_data_invalid", reason=facts.price_reason))

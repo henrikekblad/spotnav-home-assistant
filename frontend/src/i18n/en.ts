@@ -82,6 +82,7 @@ export const en = {
   "issue.loadBalancing": "Load balancing is not available for this charger.",
   "issue.heldByCharger": "The charger's own schedule or load balancing is holding the charge, so it has not started.",
   "issue.chargerDisabled": "The charger's own enable switch is off, so it cannot start. Turn it on in the charger's settings.",
+  "issue.chargerIgnoresStop": "The charger keeps charging although it was stopped, so SpotNav sends no more stops. Stop it at the charger or unplug the car.",
   "issue.holdOverridden": "Charging was started outside the plan and is allowed to continue.",
   "status.needLimitedByRoom": "Limited to {kwh} kWh: the car is almost full.",
   "status.chargingToVehicleLimit": "Charging until the car stops at its own limit ({percent} %).",

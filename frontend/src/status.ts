@@ -139,6 +139,7 @@ function basisWording(line: StatusLine): { key: TranslationKey; params: Record<s
 export const STATUS_WORDING: Readonly<Record<StatusCode, TranslationKey>> = {
   starting_up: "status.startingUp",
   charger_unavailable: "issue.chargerMissing",
+  charger_ignores_stop: "issue.chargerIgnoresStop",
   price_data_invalid: "issue.priceInvalid",
   price_data_unavailable: "issue.priceUnavailable",
   settings_incomplete: "issue.incompleteSettings",

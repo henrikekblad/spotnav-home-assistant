@@ -235,6 +235,8 @@ class CapturedLive:
     held_by_charger: bool = False
     #: The charger's own enable switch is off, so it cannot start.
     charger_disabled: bool = False
+    #: Under a person's Stop the charger kept charging after the stops SpotNav sent; no more are sent.
+    ignores_person_stop: bool = False
     #: The next window's start while a charge is held back for it, and whether a person overrode it.
     hold_until: datetime | None = None
     hold_overridden: bool = False
@@ -951,6 +953,7 @@ def capture_dashboard(
             measured_current_a=None,
             held_by_charger=bool(controller is not None and controller.held_by_charger),
             charger_disabled=bool(controller is not None and controller.charger_disabled),
+            ignores_person_stop=bool(controller is not None and controller.ignores_person_stop),
             hold_until=None if controller is None else controller.hold_until,
             hold_overridden=bool(controller is not None and controller.hold_overridden),
             reports_plug_in=bool(controller is not None and controller.reports_plug_in),
@@ -1964,6 +1967,7 @@ def status_facts(capture: CapturedDashboard) -> StatusFacts:
         charging=capture.live.charging,
         held_by_charger=capture.live.held_by_charger,
         charger_disabled=capture.live.charger_disabled,
+        ignores_person_stop=capture.live.ignores_person_stop,
         hold_until=None if capture.live.hold_until is None else _utc(capture.live.hold_until),
         hold_overridden=capture.live.hold_overridden,
         reports_plug_in=capture.live.reports_plug_in,
