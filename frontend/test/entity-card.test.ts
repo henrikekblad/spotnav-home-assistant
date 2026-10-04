@@ -1085,6 +1085,21 @@ describe("the site's estimate, warnings, sign options and detected meters", () =
     expect(children[0]?.querySelector("legend")?.textContent).toBe("L1");
   });
 
+  it("names each direct phase once, in its field's label, with no heading of its own", async () => {
+    const { element } = await mounted();
+    openSettings(element);
+    await settle();
+    edit(element, "site");
+    const phases = openDialog(element)?.querySelector<HTMLElement>("[data-part='phases']");
+    const children = [...(phases?.children ?? [])] as HTMLElement[];
+    expect(children.map((child) => child.dataset["phase"] ?? child.dataset["help"])).toEqual(["L1", "L2", "L3", "phases"]);
+    expect(phases?.querySelector("legend")).toBeNull();
+    // The picker carries the label itself; the fallback input has a label line.
+    const l2 = phases?.querySelector<HTMLElement>("[data-phase='L2']");
+    const picker = l2?.querySelector<HTMLElement & { label?: string }>("[data-field='direct_L2']");
+    expect(`${picker?.label ?? ""} ${l2?.textContent ?? ""}`).toContain(translate("en", "entity.phase.direct", { phase: "L2" }));
+  });
+
   it("offers a checkbox per sign option and sends a changed one as a boolean", async () => {
     const { hass, element } = await mounted({ update: "success_site" });
     openSettings(element);

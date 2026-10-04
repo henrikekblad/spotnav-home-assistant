@@ -1212,7 +1212,10 @@ export function entityEditorBody(
         for (const phase of PHASES) {
           const group = element(doc, "fieldset", C.entityLine);
           group.dataset["phase"] = phase;
-          group.append(element(doc, "legend", C.siteLegend, phase));
+          // In direct mode each field's own label names its phase; several derived fields share one.
+          if (derived) {
+            group.append(element(doc, "legend", C.siteLegend, phase));
+          }
           const cells = element(doc, "div", C.entityLineCells);
           const names = derived
             ? [

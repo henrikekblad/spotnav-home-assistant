@@ -1141,6 +1141,14 @@ export const VISUAL_STYLES = `
     padding: 0;
     border: 0;
   }
+  /* Derived mode: each phase's legend heads several fields, so it stands clear of the phase above. */
+  .${VISUAL_CLASSES.entityMeters}[data-mode="derived_phase_current"] .${VISUAL_CLASSES.entityLine} + .${VISUAL_CLASSES.entityLine} {
+    margin-top: 12px;
+  }
+  .${VISUAL_CLASSES.entityLine} > .${VISUAL_CLASSES.siteLegend} {
+    font-weight: 500;
+    color: var(--primary-text-color, #212121);
+  }
   .${VISUAL_CLASSES.entityLineCells} {
     display: grid;
     grid-template-columns: minmax(0, 1fr);
