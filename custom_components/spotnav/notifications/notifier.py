@@ -171,7 +171,27 @@ class ChargerNotifier:
             vehicle_not_requesting=controller.charge_progress.state == STATE_VEHICLE_NOT_REQUESTING_CURRENT,
             held_by_charger=controller.held_by_charger,
             charger_disabled=controller.charger_disabled,
+            vehicle_unknown=controller.adapter.reports_connection and controller.adapter.vehicle_connected() is None,
+            at_vehicle_limit=self._at_vehicle_limit(),
         )
+
+    def _at_vehicle_limit(self) -> bool:
+        """Whether the plan's target is above the car's own charge limit and the car has reached that
+        limit: it takes no current, rightly."""
+        controller = self._controller
+        plan = controller.plan
+        if plan is None or plan.target_soc_percent is None:
+            return False
+        reading = controller.target_reading()
+        if reading is None or reading.soc_percent is None:
+            return False
+        from ..runtime import charger_data  # the charger's own state-of-charge source
+
+        data = charger_data(self._hass, self._entry_id)
+        soc_reader = None if data is None else data.soc_reader
+        limit = None if soc_reader is None else soc_reader.vehicle_max_percent(plan.vehicle_id)
+        ceiling = 100.0 if limit is None else min(float(limit), 100.0)
+        return ceiling < plan.target_soc_percent + 0.5 and reading.soc_percent >= ceiling - 0.5
 
     def _arm_recheck(self, due: datetime | None) -> None:
         """Look again when trouble's grace period runs out: nothing else may report meanwhile."""

@@ -31,11 +31,15 @@ when, for three minutes, the charger:
 - stopped it, by something other than SpotNav (the charger's own app, a button on the charger, a fault);
 - is unavailable in Home Assistant;
 - is held by its own schedule or load balancer, or has its own enable switch off;
-- charges, but the car takes no current (for example a car whose own charge limit was reached).
+- charges, but the car takes no current.
 
 It is **not** told for a window's planned end, a target or energy that was reached, a person's Stop in
 the card, the app or a button, a paused Auto, solar or hybrid running the charger, load balancing
-pausing the charge for want of headroom (the card's status says that), or a car that was unplugged.
+pausing the charge for want of headroom (the card's status says that), or a car that was unplugged. Nor
+is "did not start" told while a charger that can say whether a car is there says neither (a fault, an
+offline charger, or a Wallbox showing `Ready`, which the Wallbox integration reports with or without a
+car), and a car that takes no current because it sits at its own charge limit, below the plan's target,
+is not a fault.
 It is told once while it lasts; if the charge recovers and stops again, it is told again.
 
 ## What a notification says

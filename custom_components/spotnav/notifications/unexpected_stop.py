@@ -9,7 +9,10 @@ nothing has taken the charge away on purpose. So none of these is ever a notific
 * a window's planned end, or the plan ending (target reached, energy delivered, the plan cleared);
 * a person's Stop in this window, Auto paused, solar or hybrid running the charger;
 * load balancing pausing the charge for want of headroom (its own status line says so);
-* the car unplugged.
+* the car unplugged, or a charger that can tell whether a car is there saying nothing either way (a
+  fault, an offline charger, a Wallbox's `Ready`) before anything charged in the window: a start that
+  was not taken may simply be no car;
+* a car that takes no current because it sits at its own charge limit, below the plan's target.
 
 While a charge is expected, it is in trouble when the charger is unavailable, or it is not charging, or
 the vehicle is not taking current (`charge_progress.py`). Trouble must last `GRACE_S` (longer than a
@@ -67,6 +70,10 @@ class ExpectationFacts:
     vehicle_not_requesting: bool = False
     held_by_charger: bool = False
     charger_disabled: bool = False
+    #: The charger can tell whether a vehicle is there, and says nothing either way now.
+    vehicle_unknown: bool = False
+    #: A target plan's car is at its own charge limit, so it rightly takes no current.
+    at_vehicle_limit: bool = False
 
 
 class UnexpectedStopDetector:
@@ -95,7 +102,12 @@ class UnexpectedStopDetector:
         if not facts.expected or facts.window is None:
             self._trouble_since = None
             return None
-        healthy = facts.available and facts.charging and not facts.vehicle_not_requesting
+        not_requesting = facts.vehicle_not_requesting and not facts.at_vehicle_limit
+        healthy = facts.available and facts.charging and not not_requesting
+        if facts.available and not facts.charging and facts.vehicle_unknown and not self._charged_in_window:
+            # Perhaps no car at all: not a start that failed.
+            self._trouble_since = None
+            return None
         if healthy:
             self._charged_in_window = True
             self._trouble_since = None
@@ -121,6 +133,6 @@ class UnexpectedStopDetector:
             return REASON_CHARGER_DISABLED
         if facts.held_by_charger:
             return REASON_HELD_BY_CHARGER
-        if facts.vehicle_not_requesting:
+        if facts.vehicle_not_requesting and not facts.at_vehicle_limit:
             return REASON_VEHICLE_NOT_REQUESTING
         return REASON_STOPPED if self._charged_in_window else REASON_NOT_STARTED

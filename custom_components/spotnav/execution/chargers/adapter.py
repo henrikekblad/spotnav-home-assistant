@@ -308,6 +308,14 @@ class ChargerAdapter:
         status = self._status()
         return status is not None and status in self._held_values
 
+    @property
+    def reports_connection(self) -> bool:
+        """Whether this charger can say if a vehicle is plugged in at all (an OCPP connector, or a
+        status sensor whose profile names the values that mean no vehicle)."""
+        if self._connector_status_entity is not None and self._connector_status_entity() is not None:
+            return True
+        return bool(self._disconnected_values)
+
     def vehicle_connected(self) -> bool | None:
         """Whether a vehicle is plugged in, or `None` when this charger cannot say.
 
