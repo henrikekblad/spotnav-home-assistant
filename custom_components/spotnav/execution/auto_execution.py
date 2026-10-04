@@ -729,6 +729,8 @@ class AutoExecutor:
                     and self.current(attempt)
                     and getattr(snapshot, "state", None) == "nothing_to_charge"
                     and not getattr(snapshot, "room_limited", False)
+                    # The sun is expected to cover the need: hybrid's own hand-off decides, not this.
+                    and getattr(snapshot, "reason", None) != "solar_covers_need"
                     and not pause_blocks_execution(self._store.settings(self._entry_id))
                 ):
                     # The need is met (the target reached, or the energy delivered) before the plan ran
