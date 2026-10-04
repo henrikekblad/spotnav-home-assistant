@@ -227,12 +227,13 @@ async def test_a_start_stopped_at_once_frees_its_reservation(hass: HomeAssistant
     assert site.start_allowance_a(b.entry_id) == pytest.approx(16.0), "nothing is on its way to A any more"
 
 
-async def test_a_reservation_is_not_counted_twice_when_the_chargers_own_current_is_unreadable(
+async def test_a_reservation_is_held_whole_when_the_chargers_own_current_is_unreadable(
     hass: HomeAssistant,
 ) -> None:
-    """Bug 6: what a starting charger has drawn is read from its own current sensors. When those read
-    nothing (unavailable, a charger without them) the reservation stays whole for 120 s, while the site
-    meter already shows the draw: the margin is taken twice and the other charger is starved."""
+    """Bug 6, decided the conservative way in the second review (R2): what a starting charger has drawn is
+    read from its own current sensors only. When those read nothing the reservation stays whole until they
+    read or 120 s pass, even though the site meter may already show the draw: a fall of the site's margin
+    may be another load's, so counting A's start twice (B gets nothing for now) is the safe side."""
     from .test_start_reservation import _two_charger_site
     from .world import PHASES
 
@@ -243,7 +244,7 @@ async def test_a_reservation_is_not_counted_twice_when_the_chargers_own_current_
     set_site_current = __import__("tests.world", fromlist=["set_site_current_a"]).set_site_current_a
     set_site_current(hass, "pair_site", 10.0)  # A draws 10 A, seen by the site meter
     await hass.async_block_till_done()
-    assert site.start_allowance_a(b.entry_id) == pytest.approx(10.0), "A's 10 A are counted once"
+    assert site.start_allowance_a(b.entry_id) == pytest.approx(0.0), "A's 10 A are held until A's own current reads"
 
 
 async def test_installing_a_plan_for_later_with_an_unavailable_stop_button(hass: HomeAssistant) -> None:

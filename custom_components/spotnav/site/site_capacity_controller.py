@@ -148,9 +148,6 @@ DECISION_LOG_LENGTH = 200
 #: charger's own current has not shown it drawing by then (`SiteCapacityController.reserve_start`): longer
 #: than a slow charger takes to answer a Start and a meter to report the draw.
 START_RESERVATION_S = 120.0
-#: How long (seconds) a start holds its share when the charger's own current cannot be read: by then the
-#: site meter shows the draw (what it shows already is not counted twice meanwhile).
-START_RESERVATION_UNREAD_S = 30.0
 
 # Battery charge power (W) from which the battery counts as charging for the limit explanation, and
 # the remaining fuse margin (A) at or below which the site counts as sitting at its limit.
@@ -261,11 +258,10 @@ class SiteCapacityController:
         self._yield_now: Callable[[], float] = time.monotonic
         # Starts on their way, per charger: the amps a start was given, the phases it draws from, and until
         # when (`_yield_now` seconds) the reservation holds. What another start may take is the measured
-        # margin less what these have not drawn yet (`start_allowance_a`). Also when it was taken and the
-        # site's margin per phase then, for a charger whose own current cannot be read.
-        self._start_reservations: dict[
-            str, tuple[float, tuple[PhaseName, ...], float, float, dict[PhaseName, float | None]]
-        ] = {}
+        # margin less what these have not drawn yet (`start_allowance_a`). A charger whose own current cannot
+        # be read holds its whole share until it can or the time is up: a fall of the site's margin may be
+        # another load, and counting a start twice is the safe side.
+        self._start_reservations: dict[str, tuple[float, tuple[PhaseName, ...], float]] = {}
         # Last logged apply outcome per charger, so a line is emitted per change rather than per
         # recompute.
         self._logged_apply_outcomes: dict[str, tuple[Any, ...]] = {}
@@ -797,47 +793,30 @@ class SiteCapacityController:
         phases = None if request is None else request.phases_used()
         if not phases:
             return
-        fresh = self._calculate()
-        now = self._yield_now()
         self._start_reservations[charger_entry_id] = (
             float(amps),
             tuple(phases),
-            now + START_RESERVATION_S,
-            now,
-            {phase: fresh.measured_margin_a.get(phase) for phase in phases},
+            self._yield_now() + START_RESERVATION_S,
         )
 
     def _reserved_by_others_a(self, charger_entry_id: str) -> dict[PhaseName, float]:
-        """Per phase, the amps the other chargers' starts on their way have not drawn yet."""
+        """Per phase, the amps the other chargers' starts on their way have not drawn yet. What a charger
+        has drawn is read from its own current only: while that reads nothing the whole share is held (a
+        change of the site's margin may be another load's), until `START_RESERVATION_S` pass."""
         now = self._yield_now()
-        for other, (_amps, _phases, until, _at, _margins) in list(self._start_reservations.items()):
+        for other, (_amps, _phases, until) in list(self._start_reservations.items()):
             if now >= until:
                 del self._start_reservations[other]
         if not self._start_reservations:
             return {}
         requests = {r.charger_entry_id: r for r in self._build_requests()}
-        margins_now: dict[PhaseName, float] | None = None
         reserved: dict[PhaseName, float] = {}
-        for other, (amps, phases, _until, at, margins_then) in self._start_reservations.items():
+        for other, (amps, phases, _until) in self._start_reservations.items():
             if other == charger_entry_id:
                 continue
             delivered = None if other not in requests else requests[other].measured_current_a
             for phase in phases:
-                own = None if delivered is None else delivered.get(phase).value
-                if own is not None:
-                    drawn = own
-                else:
-                    # The charger's own current cannot be read: what the site meter shows of it already is
-                    # the margin it took since the start, and after a short while the meter shows it all.
-                    if now - at >= START_RESERVATION_UNREAD_S:
-                        continue
-                    if margins_now is None:
-                        margins_now = {
-                            p: m for p, m in self._calculate().measured_margin_a.items() if m is not None
-                        }
-                    then = margins_then.get(phase)
-                    current = margins_now.get(phase)
-                    drawn = 0.0 if then is None or current is None else max(0.0, then - current)
+                drawn = 0.0 if delivered is None else (delivered.get(phase).value or 0.0)
                 reserved[phase] = reserved.get(phase, 0.0) + max(0.0, amps - drawn)
         return reserved
 

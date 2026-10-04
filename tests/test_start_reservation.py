@@ -135,9 +135,9 @@ def _overload(entry_id: str) -> Any:
     )
 
 
-async def test_an_unread_reservation_ends_after_a_short_while(hass: HomeAssistant) -> None:
-    """A charger whose own current reads nothing holds its share at most `START_RESERVATION_UNREAD_S`."""
-    from custom_components.spotnav.site.site_capacity_controller import START_RESERVATION_UNREAD_S
+async def test_an_unread_reservation_is_held_whole_until_it_expires(hass: HomeAssistant) -> None:
+    """A charger whose own current reads nothing holds its whole share until `START_RESERVATION_S` pass."""
+    from custom_components.spotnav.site.site_capacity_controller import START_RESERVATION_S
 
     a, b, site, _, _ = await _two_charger_site(hass, site_a=0.0)  # 20 A of margin
     clock = {"now": 1000.0}
@@ -148,7 +148,9 @@ async def test_an_unread_reservation_ends_after_a_short_while(hass: HomeAssistan
     await hass.async_block_till_done()
     assert site.start_allowance_a(b.entry_id) == pytest.approx(10.0), "the meter does not show it yet"
 
-    clock["now"] += START_RESERVATION_UNREAD_S + 1
+    clock["now"] += START_RESERVATION_S - 1
+    assert site.start_allowance_a(b.entry_id) == pytest.approx(10.0), "still on its way"
+    clock["now"] += 2
     assert site.start_allowance_a(b.entry_id) == pytest.approx(20.0)
 
 
