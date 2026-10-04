@@ -91,10 +91,11 @@ class CommandOutcome:
     unobserved: bool = False
 
 
-@dataclass
+@dataclass(eq=False)
 class ShadowToken:
     """One `begin`: the task it belongs to, whether it is the outermost feed of that task, whether it lined the
-    session up with today's state (not mid-way through another task's feed), and whether it worked."""
+    session up with today's state (not mid-way through another task's feed), and whether it worked. Compared by
+    identity: two nested feeds of one task look alike, and closing the inner must not take the outer off the stack."""
 
     key: object
     outermost: bool
@@ -278,8 +279,10 @@ class OwnershipShadow:
     def _close(self, token: ShadowToken) -> None:
         stack = self._stack.get(token.key)
         if stack is not None:
-            if token in stack:
-                stack.remove(token)
+            for index in range(len(stack) - 1, -1, -1):
+                if stack[index] is token:
+                    del stack[index]
+                    break
             if not stack:
                 self._stack.pop(token.key, None)
         count = self._open.get(token.key, 0) - 1

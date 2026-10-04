@@ -115,3 +115,27 @@ async def test_a_persons_stop_and_start_follow_the_core_when_it_drives(
     assert controller.ownership_shadow.counts["disagreements"] == 0
     await executor.async_shutdown()
     await controller.async_shutdown()
+
+
+async def test_shadow_token_equality_confuses_nested_tokens() -> None:
+    """Closing the inner of nested feeds of one task takes that very token off the stack, not an outer one that
+    looks the same, so `verdict` then reads the feed still open."""
+    from datetime import datetime, timezone
+
+    import asyncio
+
+    from custom_components.spotnav.core import events as ev
+    from custom_components.spotnav.execution.ownership_shadow import OwnershipShadow
+
+    at = datetime(2026, 10, 4, 22, 0, tzinfo=timezone.utc)
+    shadow = OwnershipShadow(lambda: ChargeSession(), now=lambda: at, drives=True)
+    outer = shadow.begin()
+    mid = shadow.begin()
+    inner = shadow.begin()
+    shadow.end(inner, ev.ConnectionUnknown())
+    stack = shadow._stack[asyncio.current_task()]  # noqa: SLF001
+    assert stack[-1] is mid, stack
+    assert stack == [outer, mid] and stack[0] is outer
+    shadow.end(mid, ev.ConnectionUnknown())
+    shadow.end(outer, ev.ConnectionUnknown())
+    assert not shadow._stack  # noqa: SLF001
