@@ -42,11 +42,27 @@ SUPPORTED_SCHEMAS: Final = (1,)
 EnergyDriver = Literal["manual_kwh", "target_soc"]
 
 #: What a person may mean by "stop for now"; resolved to an instant (or none) at admission.
-PauseChoice = Literal["next_period", "until_tomorrow", "until_resumed"]
+PauseChoice = Literal["next_period", "until_tomorrow", "until_resumed", "manual"]
 PAUSE_NEXT_PERIOD: Final = "next_period"
 PAUSE_UNTIL_TOMORROW: Final = "until_tomorrow"
 PAUSE_UNTIL_RESUMED: Final = "until_resumed"
+#: The pause choices a person picks (`pause` requests, `pause_choices`).
 PAUSE_CHOICES: Final = (PAUSE_NEXT_PERIOD, PAUSE_UNTIL_TOMORROW, PAUSE_UNTIL_RESUMED)
+#: A person's Start or Stop: Auto is paused for the plug-in session. Never picked as a choice; the
+#: Start or the Stop itself admits it (`AutoExecutor`), and it ends with the session.
+PAUSE_MANUAL: Final = "manual"
+#: Every choice a stored pause may carry.
+STORED_PAUSE_CHOICES: Final = (*PAUSE_CHOICES, PAUSE_MANUAL)
+#: What the person did that paused Auto (`PauseIntent.action`).
+MANUAL_START: Final = "start"
+MANUAL_STOP: Final = "stop"
+MANUAL_ACTIONS: Final = (MANUAL_START, MANUAL_STOP)
+#: Which plug-in session a manual pause belongs to (`PauseIntent.scope`): the one the car is in now (it
+#: ends at the unplug), or, for a Stop given with no car plugged in, the next one (it ends at the unplug
+#: after the next plug-in).
+MANUAL_SCOPE_PLUG_IN: Final = "plug_in"
+MANUAL_SCOPE_NEXT_PLUG_IN: Final = "next_plug_in"
+MANUAL_SCOPES: Final = (MANUAL_SCOPE_PLUG_IN, MANUAL_SCOPE_NEXT_PLUG_IN)
 
 DRIVER_MANUAL_KWH: Final = "manual_kwh"
 DRIVER_TARGET_SOC: Final = "target_soc"
@@ -326,11 +342,21 @@ class PauseIntent:
     market zone), or until resumed. A bounded choice is resolved by the execution boundary
     to one aware instant at admission, so expiry is a comparison against the clock and a
     restart resumes the same decision. `admitted_at` records when it began.
+
+    `manual` is the pause a person's Start or Stop takes: no instant ends it, the plug-in session does
+    (`scope`), and `action` says which of the two set it. Both are carried only by a manual pause.
     """
 
     choice: PauseChoice | None = None
     admitted_at: datetime | None = None
     expires_at: datetime | None = None
+    action: str | None = None
+    scope: str | None = None
+
+    @property
+    def manual(self) -> bool:
+        """Whether a person's Start or Stop paused Auto for the plug-in session."""
+        return self.choice == PAUSE_MANUAL
 
     @property
     def admitted(self) -> bool:
@@ -350,11 +376,16 @@ class PauseIntent:
         return self.admitted and not self.ended_at(now)
 
     def as_dict(self) -> dict[str, Any]:
-        return {
+        stored: dict[str, Any] = {
             "choice": self.choice,
             "admitted_at": None if self.admitted_at is None else self.admitted_at.isoformat(),
             "expires_at": None if self.expires_at is None else self.expires_at.isoformat(),
         }
+        if self.manual:
+            # Additive: written only for a manual pause, so every other pause is stored as before.
+            stored["action"] = self.action
+            stored["scope"] = self.scope
+        return stored
 
     @classmethod
     def from_stored(cls, raw: Any) -> PauseIntent:
@@ -364,20 +395,28 @@ class PauseIntent:
             frozenset(cls().as_dict()),
             "invalid_pause",
             "a stored pause intent",
+            optional=frozenset({"action", "scope"}),
         )
         choice = stored["choice"]
-        if choice is not None and choice not in PAUSE_CHOICES:
+        if choice is not None and choice not in STORED_PAUSE_CHOICES:
             _refuse("invalid_pause", "a stored pause choice is not one this release knows")
         return cls(
             choice=choice,
             admitted_at=_stored_instant(stored["admitted_at"], "admitted_at"),
             expires_at=_stored_instant(stored["expires_at"], "expires_at"),
+            action=stored.get("action"),
+            scope=stored.get("scope"),
         ).validated()
 
     def validated(self) -> PauseIntent:
         """The same intent, or a refusal naming what cannot be true of a pause."""
-        if self.choice is not None and self.choice not in PAUSE_CHOICES:
+        if self.choice is not None and self.choice not in STORED_PAUSE_CHOICES:
             _refuse("invalid_pause", f"{self.choice!r} is not a pause choice this release knows")
+        if self.manual:
+            if self.action not in MANUAL_ACTIONS or self.scope not in MANUAL_SCOPES:
+                _refuse("invalid_pause", "a manual pause names the Start or Stop that set it and its plug-in")
+        elif self.action is not None or self.scope is not None:
+            _refuse("invalid_pause", "only a manual pause carries an action and a plug-in")
         for moment, what in ((self.admitted_at, "admitted_at"), (self.expires_at, "expires_at")):
             if moment is not None and moment.tzinfo is None:
                 _refuse("invalid_pause", f"a pause's {what} must be timezone-aware")
@@ -385,9 +424,10 @@ class PauseIntent:
             if self.expires_at is not None or self.admitted_at is not None:
                 _refuse("invalid_pause", "an absent pause carries no instants")
             return self
-        if self.choice == PAUSE_UNTIL_RESUMED:
+        if self.choice in (PAUSE_UNTIL_RESUMED, PAUSE_MANUAL):
             if self.expires_at is not None:
-                # "Until I resume" has no expiry; storing one would silently end it.
+                # "Until I resume" has no expiry, nor does a manual pause (its plug-in ends it); storing one
+                # would silently end it.
                 _refuse("invalid_pause", "an indefinite pause cannot carry an expiry")
             return self
         if self.expires_at is None:

@@ -540,12 +540,13 @@ def _adopt_running(solar: SolarController, *, now: float) -> None:
     solar.adopt(now)
 
 
-def _person_stopped_state(site: SiteCapacityController) -> SolarExecutionState:
-    """The `SolarExecutionState` while a person's Stop holds the sun back: no verdict was computed."""
+def _paused_state(site: SiteCapacityController) -> SolarExecutionState:
+    """The `SolarExecutionState` while Auto is paused (a person's Start or Stop pauses it for the plug-in):
+    no verdict was computed."""
     return SolarExecutionState(
         state="off",
         action="hold",
-        reason="person_stopped",
+        reason="paused",
         requested_a=None,
         net_grid_w=None,
         export_w=None,
@@ -738,14 +739,14 @@ class SolarExecutionCoordinator:
         if settings.strategy == STRATEGY_HYBRID:
             self._log_hybrid_satisfied(False)
         held_by_plan = settings.strategy == STRATEGY_HYBRID and self._controller.plan_window_active_now
-        if not held_by_plan and self._controller.person_stopped:
-            # A person's Stop holds the sun back until the car is plugged in again, a person starts the
-            # charge, or a plan window begins; a charge started again some other way is theirs. Fresh
-            # afterwards: the start delay runs from then.
+        if pause_blocks_execution(settings):
+            # Auto is paused (a person's Start or Stop pauses it for the plug-in): the sun neither starts,
+            # stops nor modulates the charger, and takes over nothing. Fresh afterwards: the start delay runs
+            # from then, and a charge the car ended is seeded from the charger's record.
             self._solar = None
             self._took_over = False
-            self._state = _person_stopped_state(site)
-            self._record_decision(state="off", action="hold", reason="person_stopped")
+            self._state = _paused_state(site)
+            self._record_decision(state="off", action="hold", reason="paused")
             if settings.strategy == STRATEGY_HYBRID:
                 await self._async_recalculate_hybrid_preview()
             site.notify_solar_surplus_changed()
@@ -753,7 +754,7 @@ class SolarExecutionCoordinator:
 
         if self._solar is None:
             self._solar = self._build_controller(site)
-        if not held_by_plan and not pause_blocks_execution(settings):
+        if not held_by_plan:
             self._maybe_clear_ended(self._solar)
             if await self._take_over(site):
                 # A charge the charger began by itself was decided this tick (kept, stopped, or waiting
@@ -781,7 +782,7 @@ class SolarExecutionCoordinator:
             # verdict is not carried out while a plan window owns the charger.
             pass
         else:
-            await self._apply_verdict(verdict)
+            verdict = await self._apply_verdict(verdict)
         self._update_state(
             verdict, site, held_by_plan=held_by_plan, basis=solar_basis(site, self._charger_entry_id, observation)
         )
@@ -1116,7 +1117,7 @@ class SolarExecutionCoordinator:
                 "SpotNav charger %s: a charge the charger began by itself is kept on the sun's surplus",
                 self._charger_entry_id,
             )
-            await self._apply_verdict(verdict)
+            verdict = await self._apply_verdict(verdict)
         self._update_state(verdict, site, basis=basis)
         self._log_transition(verdict)
         self._record_verdict(verdict, held_by_plan=False)
@@ -1262,16 +1263,29 @@ class SolarExecutionCoordinator:
         self._decision_signature = signature
         self._decision_state = state
 
-    async def _apply_verdict(self, verdict: SolarVerdict) -> None:
+    async def _apply_verdict(self, verdict: SolarVerdict) -> SolarVerdict:
+        """Carry out one verdict; returns the verdict that stands. A start that did not go out (refused
+        under the executor's lock, held back by load balancing, or not executed by the charger's control)
+        leaves solar `off`, as after a charge something else ended: nothing runs, and the next start waits
+        its minimum off time."""
         if verdict.action == "start":
             assert verdict.requested_a is not None
-            await self._executor.async_solar_start(int(verdict.requested_a))
+            if not await self._executor.async_solar_start(int(verdict.requested_a)):
+                _LOGGER.info(
+                    "%s charger %s: the start did not go out; solar stays off",
+                    SOLAR_SURPLUS_LOG_TOKEN,
+                    self._charger_entry_id,
+                )
+                if self._solar is None:
+                    return replace(verdict, action="hold")
+                return replace(self._solar.charge_ended(self._now(), "charger_stopped"), action="hold")
         elif verdict.action == "stop":
             await self._executor.async_solar_stop()
         elif verdict.action == "set_current":
             assert verdict.requested_a is not None
             await self._executor.async_solar_set_current(int(verdict.requested_a))
         # hold: nothing to do.
+        return verdict
 
     def _update_state(
         self,

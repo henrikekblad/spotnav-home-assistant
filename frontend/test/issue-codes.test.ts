@@ -150,12 +150,24 @@ describe("every status code the backend composes is decoded and worded", () => {
     }
   });
 
-  it("says what ends a person's Stop: a plug-in where the charger reports one, else only a Start or a window", () => {
-    const say = (ends: string) =>
-      lineText({ code: "stopped_by_person", params: { ends } } as StatusLine, FORMAT, NOW);
-    expect(say("replug")).toContain("plugged in again");
-    expect(say("start")).not.toContain("plugged in");
-    expect(say("start")).toContain("Start now");
+  it("says what a person's Start or Stop paused, and what ends it", () => {
+    const say = (action: string, ends: string, language = "en") =>
+      lineText(
+        { code: "paused", params: { until: null, choice: "manual", action, ends } } as StatusLine,
+        { ...FORMAT, language } as typeof FORMAT,
+        NOW,
+      );
+    expect(say("stop", "unplug")).toBe("Stopped manually – until the car is unplugged.");
+    expect(say("start", "unplug")).toBe("Charging manually – until the car is full or unplugged.");
+    expect(say("stop", "next_plug_in")).toBe("Stopped manually – until the next plug-in ends.");
+    expect(say("stop", "resume")).toContain("until you resume automatic charging");
+    expect(say("start", "resume")).toContain("full or you resume automatic charging");
+    expect(say("stop", "unplug", "sv")).toBe("Stoppad manuellt – tills bilen kopplas ur.");
+    expect(say("start", "unplug", "sv")).toBe("Laddar manuellt – tills bilen är full eller kopplas ur.");
+    // Any other pause reads as it always did.
+    expect(
+      lineText({ code: "paused", params: { until: null, choice: "until_resumed", action: null, ends: null } } as StatusLine, FORMAT, NOW),
+    ).toBe("Paused until you resume.");
   });
 
   it.each(STATUS_CODES)("%s has a wording in every language", (code) => {

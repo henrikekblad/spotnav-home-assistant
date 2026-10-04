@@ -139,7 +139,7 @@ function instantOrNull(source: Record<string, unknown>, key: string): string | n
   return value;
 }
 
-const PAUSE_CHOICES = ["next_period", "until_tomorrow", "until_resumed"] as const;
+const PAUSE_CHOICES = ["next_period", "until_tomorrow", "until_resumed", "manual"] as const;
 const DRIVERS = ["manual_kwh", "target_soc"] as const;
 /**
  * The writable strategy vocabulary (`STORED_STRATEGIES` in `auto_settings.py`). A backend that
@@ -313,7 +313,12 @@ export function decodeSettingsRecord(raw: unknown): SettingsRecord {
  */
 export function decodePauseObservation(raw: unknown): PauseObservation {
   const source = record(raw);
-  exactKeys(source, PAUSE_KEYS);
+  const manual = source["choice"] === "manual";
+  // A manual pause (a person's Start or Stop) also names its action and plug-in.
+  exactKeys(source, manual ? [...PAUSE_KEYS, "action", "scope"] : PAUSE_KEYS);
+  if (manual && (!["start", "stop"].includes(String(source["action"])) || !["plug_in", "next_plug_in"].includes(String(source["scope"])))) {
+    return bad();
+  }
   const choice = textOrNull(source, "choice");
   if (choice !== null && !(PAUSE_CHOICES as readonly string[]).includes(choice)) {
     return bad();
@@ -325,13 +330,15 @@ export function decodePauseObservation(raw: unknown): PauseObservation {
       ? bad()
       : { choice: null, admitted_at: null, expires_at: null };
   }
-  if (choice === "until_resumed" ? expiresAt !== null : expiresAt === null) {
+  if (choice === "until_resumed" || manual ? expiresAt !== null : expiresAt === null) {
     return bad();
   }
   if (admittedAt !== null && expiresAt !== null && Date.parse(expiresAt) <= Date.parse(admittedAt)) {
     return bad();
   }
-  return { choice, admitted_at: admittedAt, expires_at: expiresAt };
+  return manual
+    ? { choice, admitted_at: admittedAt, expires_at: expiresAt, action: String(source["action"]), scope: String(source["scope"]) }
+    : { choice, admitted_at: admittedAt, expires_at: expiresAt };
 }
 
 export type SettingsDecodeResult =

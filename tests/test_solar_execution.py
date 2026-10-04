@@ -201,9 +201,9 @@ async def test_pause_blocks_solar_from_starting(hass: HomeAssistant) -> None:
     clock.value = 125.0
     await tick_site(hass, site_controller)
 
-    # The pure controller's verdict still says "start" (pause is an execution-layer gate), but nothing reached the charger.
+    # The pure controller's verdict said "start", the gate refused it, and solar does not believe it runs.
     assert coordinator.state is not None
-    assert coordinator.state.action == "start"
+    assert (coordinator.state.state, coordinator.state.action) == ("off", "hold")
     assert not turn_on_calls
     assert controller.charging is False
 

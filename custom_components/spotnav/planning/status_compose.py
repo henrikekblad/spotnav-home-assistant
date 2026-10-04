@@ -21,8 +21,12 @@ Precedence (first match wins the headline; "add" rows append a fact line)
    planning_error.
    Exception: when the charger is drawing current, one charging_now line follows them (the tone
    is unchanged).
-2. paused (headline), then charging_now(until=None) when the charger is drawing anyway (manual
-   Start under a pause).
+2. paused{until, choice, action, ends} (headline), then charging_now(until=None) when the charger is
+   drawing anyway (a person's Start). A person's Start or Stop pauses Auto for the plug-in session: choice
+   `manual`, `action` the Start or the Stop, and `ends` what ends it: `unplug` (the plug-in the car is
+   in), `next_plug_in` (a Stop given with no car plugged in: the unplug after the next plug-in) or
+   `resume` (a charger that cannot say when a car is plugged in). A Start also ends when the car is full;
+   clients say so. Every other pause carries `action` and `ends` as null.
 3. Strategy headline when `strategy_state` exists (solar / hybrid), in place of 4. A solar that is off
    for want of a basis says why where it is known (solar_no_grid_power, solar_battery_unreadable) in
    place of solar_no_reading_*; then solar_charger_current_missing (it runs blind, at the minimum current)
@@ -60,9 +64,6 @@ Precedence (first match wins the headline; "add" rows append a fact line)
 6. Notices appended after the headline (and after the target fact): price_data_stale,
    price_data_degraded (usable rows exist, or degraded/incomplete), unpriced,
    hold_overridden (a person started the charge again after SpotNav held it, and it may go on),
-   stopped_by_person (under a solar or hybrid headline, right after it: a person stopped the charge, and
-   the sun does not start it again until the car is plugged in again, a person starts it, or a plan
-   window begins),
    remaining_need_estimated (a manual need counted without the energy register: its last remainder
    kept, or the charger's recorded charges),
    held_by_charger (the charger's own scheduler or load balancer holds the charge), charger_disabled
@@ -135,7 +136,7 @@ STATUS_CODES: Final[dict[str, tuple[str, tuple[str, ...]]]] = {
     "price_horizon_missing": (TONE_BLOCKING, ()),
     "planning_unavailable": (TONE_BLOCKING, ("reason",)),
     "planning_error": (TONE_BLOCKING, ("reason",)),
-    "paused": (TONE_NORMAL, ("until", "choice")),
+    "paused": (TONE_NORMAL, ("until", "choice", "action", "ends")),
     "charging_now": (TONE_NORMAL, ("until",)),
     # The plan's last window ended with the car still drawing on a charge to its own limit: it goes on
     # until the car stops by itself, at most until `until` (an hour past the window, never past the
@@ -212,7 +213,6 @@ STATUS_CODES: Final[dict[str, tuple[str, tuple[str, ...]]]] = {
     # A person stopped the charge: the sun (solar, hybrid's sun) does not start it again until the car is
     # plugged in again, a person starts it, or a plan window begins. `ends` is `replug` for a charger
     # that says when a car is plugged in, else `start` (only a Start or a plan window ends it).
-    "stopped_by_person": (TONE_NORMAL, ("ends",)),
     # A manual need capped at the room left in the battery: `kwh` is that room (the car is almost full).
     "need_limited_by_room": (TONE_NORMAL, ("kwh",)),
     # A charge to the car's own limit (`percent`, 100 when it states none): the car ends it, not SpotNav.
@@ -376,9 +376,7 @@ class StatusFacts:
     hold_until: datetime | None = None
     #: A person started the charge again after the hold and it is allowed to continue.
     hold_overridden: bool = False
-    #: A person's Stop holds the sun back (`ChargingController.person_stopped`).
-    person_stopped: bool = False
-    #: Whether the charger says when a car is plugged in, so a plug-in ends that Stop.
+    #: Whether the charger says when a car is plugged in, so an unplug ends a person's manual pause.
     reports_plug_in: bool = True
     #: A Start is in effect for a plan that charges to the car's own limit: that limit (100 when the car
     #: states none), else `None`.
@@ -389,6 +387,9 @@ class StatusFacts:
     paused: bool = False
     pause_until: datetime | None = None
     pause_choice: str | None = None
+    #: A manual pause's Start or Stop, and which plug-in it belongs to (`PauseIntent.action`, `.scope`).
+    pause_action: str | None = None
+    pause_scope: str | None = None
     installed_periods: tuple[tuple[datetime, datetime], ...] = ()
     proposal: ProposalFacts | None = None
     relation_applied: bool | None = None
@@ -808,12 +809,20 @@ def _pending_line(facts: StatusFacts) -> dict[str, Any]:
     return _line("proposal_pending", installs_at=aware_iso(active[1]), waits_for="window_end")
 
 
-def _person_stop_lines(facts: StatusFacts) -> list[dict[str, Any]]:
-    """`stopped_by_person` under a solar or hybrid headline while a person's Stop holds the sun back and
-    nothing charges (a charge started again some other way is the person's own)."""
-    if not facts.person_stopped or facts.charging:
-        return []
-    return [_line("stopped_by_person", ends="replug" if facts.reports_plug_in else "start")]
+def _paused_line(facts: StatusFacts) -> dict[str, Any]:
+    """The pause headline; a manual pause also says whose action it was and what ends it."""
+    action = ends = None
+    if facts.pause_choice == "manual":
+        action = facts.pause_action
+        if not facts.reports_plug_in:
+            ends = "resume"
+        elif facts.pause_scope == "next_plug_in":
+            ends = "next_plug_in"
+        else:
+            ends = "unplug"
+    return _line(
+        "paused", until=aware_iso(facts.pause_until), choice=facts.pause_choice, action=action, ends=ends
+    )
 
 
 def compose_status(facts: StatusFacts) -> dict[str, Any]:
@@ -838,16 +847,14 @@ def compose_status(facts: StatusFacts) -> dict[str, Any]:
 
     lines: list[dict[str, Any]] = []
     if facts.paused:
-        lines.append(_line("paused", until=aware_iso(facts.pause_until), choice=facts.pause_choice))
+        lines.append(_paused_line(facts))
         if facts.charging:
             lines.append(_line("charging_now", until=None))
     elif facts.solar is not None:
         lines.extend(_solar_lines(facts.solar, charging=facts.charging))
-        lines.extend(_person_stop_lines(facts))
         lines.extend(_price_wait_lines(facts))
     elif facts.hybrid is not None:
         lines.append(_hybrid_line(facts.hybrid, facts.proposal))
-        lines.extend(_person_stop_lines(facts))
         lines.extend(_price_wait_lines(facts))
     else:
         lines.extend(_plan_headline(facts))

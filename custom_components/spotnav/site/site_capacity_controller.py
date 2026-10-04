@@ -80,7 +80,7 @@ from ..execution.controller import (
     RESTORE_RESTORED,
 )
 from ..execution.yield_stepping import YieldConfig, YieldObservation, YieldStepper, YieldVerdict
-from ..planning.auto_settings import STRATEGY_HYBRID, STRATEGY_SOLAR
+from ..planning.auto_settings import MANUAL_START, STRATEGY_HYBRID, STRATEGY_SOLAR
 from ..runtime import charger_data, controller_for, domain_data
 from ..vehicles.capability import build_capability_snapshot, SiteCapabilitySnapshot
 from .measurement_problem import measurement_problem, MeasurementProblem, UNHEALTHY_STATES
@@ -143,6 +143,11 @@ _DIRECTION_HISTORY_LENGTH = 10
 
 # Decisions kept per site for diagnostics and the debug bundle (oldest dropped first).
 DECISION_LOG_LENGTH = 200
+
+#: How long (seconds) a start on its way holds its share of the site's margin for other starts, when the
+#: charger's own current has not shown it drawing by then (`SiteCapacityController.reserve_start`): longer
+#: than a slow charger takes to answer a Start and a meter to report the draw.
+START_RESERVATION_S = 120.0
 
 # Battery charge power (W) from which the battery counts as charging for the limit explanation, and
 # the remaining fuse margin (A) at or below which the site counts as sitting at its limit.
@@ -251,6 +256,10 @@ class SiteCapacityController:
         # Clock for `YieldObservation.now`, in seconds. Monotonic so a wall-clock step cannot freeze
         # the stepper; replaceable in tests.
         self._yield_now: Callable[[], float] = time.monotonic
+        # Starts on their way, per charger: the amps a start was given, the phases it draws from, and until
+        # when (`_yield_now` seconds) the reservation holds. What another start may take is the measured
+        # margin less what these have not drawn yet (`start_allowance_a`).
+        self._start_reservations: dict[str, tuple[float, tuple[PhaseName, ...], float]] = {}
         # Last logged apply outcome per charger, so a line is emitted per change rather than per
         # recompute.
         self._logged_apply_outcomes: dict[str, tuple[Any, ...]] = {}
@@ -373,7 +382,10 @@ class SiteCapacityController:
                     charger_controller.add_listener(self._on_charger_controller_changed)
                 )
                 charger_controller.set_start_cap(
-                    lambda charger_entry_id=charger_entry_id: self.start_allowance_a(charger_entry_id)
+                    lambda charger_entry_id=charger_entry_id: self.start_allowance_a(charger_entry_id),
+                    reserve=lambda amps, charger_entry_id=charger_entry_id: self.reserve_start(
+                        charger_entry_id, amps
+                    ),
                 )
                 self._controller_listener_cancels.append(
                     lambda controller=charger_controller: controller.set_start_cap(None)
@@ -758,14 +770,51 @@ class SiteCapacityController:
         if not phases:
             return None
         delivered = request.measured_current_a
+        reserved = self._reserved_by_others_a(charger_entry_id)
         allowances: list[float] = []
         for phase in phases:
             margin = fresh.measured_margin_a.get(phase)
             if margin is None:
                 return None
             own = 0.0 if delivered is None else (delivered.get(phase).value or 0.0)
-            allowances.append(margin + own)
+            allowances.append(margin + own - reserved.get(phase, 0.0))
         return max(0.0, min(allowances))
+
+    def reserve_start(self, charger_entry_id: str, amps: float | None) -> None:
+        """A start of `amps` is on its way to this charger (`None`: it did not go out, or is over). Until
+        the charger draws it or `START_RESERVATION_S` pass, another start on the site is given only what is
+        left (`start_allowance_a`): two starts in one tick never both take the whole margin."""
+        if amps is None or amps <= 0:
+            self._start_reservations.pop(charger_entry_id, None)
+            return
+        request = next((r for r in self._build_requests() if r.charger_entry_id == charger_entry_id), None)
+        phases = None if request is None else request.phases_used()
+        if not phases:
+            return
+        self._start_reservations[charger_entry_id] = (
+            float(amps),
+            tuple(phases),
+            self._yield_now() + START_RESERVATION_S,
+        )
+
+    def _reserved_by_others_a(self, charger_entry_id: str) -> dict[PhaseName, float]:
+        """Per phase, the amps the other chargers' starts on their way have not drawn yet."""
+        now = self._yield_now()
+        for other, (_amps, _phases, until) in list(self._start_reservations.items()):
+            if now >= until:
+                del self._start_reservations[other]
+        if not self._start_reservations:
+            return {}
+        requests = {r.charger_entry_id: r for r in self._build_requests()}
+        reserved: dict[PhaseName, float] = {}
+        for other, (amps, phases, _until) in self._start_reservations.items():
+            if other == charger_entry_id:
+                continue
+            delivered = None if other not in requests else requests[other].measured_current_a
+            for phase in phases:
+                drawn = 0.0 if delivered is None else (delivered.get(phase).value or 0.0)
+                reserved[phase] = reserved.get(phase, 0.0) + max(0.0, amps - drawn)
+        return reserved
 
     def _active_control_allowed(self) -> bool:
         """Both gates: the compile-time `ACTIVE_CONTROL_READY` and this site's
@@ -831,193 +880,216 @@ class SiteCapacityController:
         fresh = self._calculate()
         max_age_s = float(self.config.get(CONF_MAX_AGE_S, DEFAULT_MAX_AGE_S))
         margin_by_charger = self._most_restrictive_margin_by_charger(fresh)
-        for charger_entry_id, decision in self.regulator_decisions.items():
-            # Re-checked per charger: a pass admitted while active control was on must not
-            # keep writing after it was turned off (see `async_disable_active_control`).
-            if not self._active_control_allowed():
-                return
-            charger_controller = controller_for(self.hass, charger_entry_id)
-            if not self._is_commandable_charger(charger_controller):
-                self._log_active_control_outcome(
-                    charger_entry_id,
-                    decision,
-                    outcome="held",
-                    detail=(
-                        "charger_not_commandable"
-                        if charger_controller is not None
-                        else "charger_not_loaded"
-                    ),
-                )
-                continue
-            probe = self._battery_probes.get(charger_entry_id)
-            if probe is not None and probe.probing:
-                # A battery probe is running (or its stop is not confirmed yet): it alone judges
-                # this charger until it is over, on the freshly read measurements.
-                await self._async_battery_probe_pass(
-                    charger_entry_id, charger_controller, decision, fresh, probe
-                )
-                continue
-            proposed = decision.proposed_current_a
-            if proposed is None:
-                continue
-            failure = applyability_failure(
-                decision=decision,
-                signed_active_power_w=fresh.phase_signed_active_power_w,
-                signed_active_power_age_s=fresh.phase_signed_active_power_age_s,
-                signed_active_power_reason=fresh.phase_signed_active_power_reason,
-                max_age_s=max_age_s,
-                zero_margin_w=DEFAULT_ZERO_MARGIN_W,
-            )
-            if failure is not None:
-                self._log_active_control_outcome(
-                    charger_entry_id,
-                    decision,
-                    outcome="held",
-                    detail=failure.kind,
-                    detail_phase=failure.phase,
-                )
-                continue
-            # Damping decides write or hold; consulted every pass so a pending value's dwell
-            # advances.
-            damper = self._damper_for(charger_entry_id)
-            # Captured before `consider`, which advances this charger's own
-            # Captured before `consider` advances the damper; also the yield stepper's `assigned_a`
-            # (the value last written).
-            previous_setpoint = damper.last_written_a
-
-            # A grid-charging battery that may give way to the car: start the car at its minimum as
-            # a probe (only where nothing else would start it; see `site/battery_probe.py`).
-            if await self._async_maybe_resume_paused_charge(
-                charger_entry_id, charger_controller, decision, fresh, damper, previous_setpoint
-            ):
-                continue
-            if await self._async_maybe_start_battery_probe(
-                charger_entry_id, charger_controller, decision, fresh, damper, previous_setpoint
-            ):
-                continue
-
-            # Yield-verified stepping, only when enabled. The probe gate matters even though writes
-            # are suppressed during a probe: its artificial steps would contaminate the observation.
-            yield_verdict: YieldVerdict | None = None
-            if (
-                bool(self.config.get(CONF_YIELD_STEPPING_ENABLED, DEFAULT_YIELD_STEPPING_ENABLED))
-                and not charger_controller._probe.in_flight
-            ):
-                yield_verdict = self._consult_yield_stepper(
-                    charger_entry_id=charger_entry_id,
-                    decision=decision,
-                    fresh=fresh,
-                    assigned_a=previous_setpoint,
-                )
-                self._record_yield_stepping_verdict(charger_entry_id, yield_verdict)
-                self._log_yield_stepping_transition(charger_entry_id, yield_verdict, fresh)
-
-            if yield_verdict is not None and yield_verdict.action == "hold":
-                # A hold carries no current: skip the damper and write nothing.
-                self._log_active_control_outcome(
-                    charger_entry_id,
-                    decision,
-                    outcome="held",
-                    detail=f"yield_stepping_{yield_verdict.reason}",
-                    yield_verdict=yield_verdict,
-                )
-                continue
-
-            if (
-                yield_verdict is not None
-                and yield_verdict.action == "passthrough"
-                and yield_verdict.reason != "passthrough_ceiling"
-                and self._battery_holds_grid_at_limit(
-                    decision, fresh, charger_controller, charger_entry_id, previous_setpoint
-                )
-            ):
-                # The battery regulating the grid to the limit, not an overload: the car is not
-                # stepped down for it. Anything above the band never gets here.
-                self._log_active_control_outcome(
-                    charger_entry_id,
-                    decision,
-                    outcome="held",
-                    detail=DETAIL_HELD_BATTERY_AT_LIMIT,
-                    yield_verdict=yield_verdict,
-                )
-                continue
-
-            if yield_verdict is not None and yield_verdict.action == "write":
-                # The stepper's own current replaces the raw proposal; `urgent` lets a revert skip
-                # deadband and dwell.
-                damping = damper.consider(
-                    proposed_current_a=yield_verdict.current_a,
-                    margin_a=margin_by_charger.get(charger_entry_id),
-                    urgent=yield_verdict.urgent,
-                    # A step sized from a battery that was verified to give way is paced by the
-                    # stepper's own settle time and gap, not by the dwell.
-                    verified_step=(
-                        yield_verdict.battery_credit_a is not None
-                        or yield_verdict.reason == "down_step_absorbed_by_battery"
-                    ),
-                )
-            else:
-                # Passthrough: the raw proposal, urgent only if the stepper says so.
-                damping = damper.consider(
-                    proposed_current_a=proposed,
-                    margin_a=margin_by_charger.get(charger_entry_id),
-                    urgent=yield_verdict.urgent if yield_verdict is not None else False,
-                )
-            if not damping.write or damping.current_a is None:
-                self._log_active_control_outcome(
-                    charger_entry_id,
-                    decision,
-                    outcome="held",
-                    detail=f"damping_{damping.reason}",
-                    yield_verdict=yield_verdict,
-                )
-                continue
-            setpoint = round(damping.current_a)
-            if setpoint != damping.current_a:
-                _LOGGER.debug(
-                    "SpotNav site %s active control: charger %s proposal %sA is "
-                    "rounded to %sA before writing",
+        for charger_entry_id, decision in list(self.regulator_decisions.items()):
+            try:
+                if not await self._async_apply_to_charger(
+                    charger_entry_id, decision, fresh, max_age_s, margin_by_charger
+                ):
+                    return
+            except Exception:  # noqa: BLE001 - one charger's failure must not cost the others their writes
+                _LOGGER.exception(
+                    "SpotNav site %s active control: charger %s failed; the pass goes on with the others",
                     self.entry_id,
                     charger_entry_id,
-                    damping.current_a,
-                    setpoint,
                 )
-            # Last synchronous check before the write; nothing awaits between here and the charger's
-            # lock.
-            if not self._active_control_allowed():
-                return
-            # The charger's own write path owns the OCPP read-modify-write and stays best-effort; any
-            # other adapter may refuse by policy, and then the fuse decides (stop or hold).
-            write = await charger_controller.async_apply_regulated_current(
-                int(setpoint),
-                must_lower=(
-                    decision.reason in MUST_LOWER_REASONS
-                    or damping.reason in ("protection", "urgent")
-                ),
-            )
-            if not write.written:
-                # Nothing went out: the damper must not believe it did, or the next deadband and the
-                # restore would be measured against a value the charger never had.
-                damper.forget_write(previous_setpoint)
-                self._log_active_control_outcome(
-                    charger_entry_id,
-                    decision,
-                    outcome="held",
-                    detail=f"adapter_{write.code}" if write.outcome == "held" else write.code,
-                    yield_verdict=yield_verdict,
-                )
-                continue
+
+    async def _async_apply_to_charger(
+        self,
+        charger_entry_id: str,
+        decision: RegulatorDecision,
+        fresh: SiteCapacityResult,
+        max_age_s: float,
+        margin_by_charger: dict[str, float | None],
+    ) -> bool:
+        """One charger's step of `_async_apply_active_control`. `False` when the pass must end (active
+        control was turned off meanwhile)."""
+        # Re-checked per charger: a pass admitted while active control was on must not
+        # keep writing after it was turned off (see `async_disable_active_control`).
+        if not self._active_control_allowed():
+            return False
+        charger_controller = controller_for(self.hass, charger_entry_id)
+        if not self._is_commandable_charger(charger_controller):
             self._log_active_control_outcome(
                 charger_entry_id,
                 decision,
-                outcome="wrote",
-                detail=damping.reason,
-                setpoint=int(setpoint),
-                previous_setpoint=(
-                    None if previous_setpoint is None else round(previous_setpoint)
+                outcome="held",
+                detail=(
+                    "charger_not_commandable"
+                    if charger_controller is not None
+                    else "charger_not_loaded"
                 ),
+            )
+            return True
+        probe = self._battery_probes.get(charger_entry_id)
+        if probe is not None and probe.probing:
+            # A battery probe is running (or its stop is not confirmed yet): it alone judges
+            # this charger until it is over, on the freshly read measurements.
+            await self._async_battery_probe_pass(
+                charger_entry_id, charger_controller, decision, fresh, probe
+            )
+            return True
+        proposed = decision.proposed_current_a
+        if proposed is None:
+            return True
+        failure = applyability_failure(
+            decision=decision,
+            signed_active_power_w=fresh.phase_signed_active_power_w,
+            signed_active_power_age_s=fresh.phase_signed_active_power_age_s,
+            signed_active_power_reason=fresh.phase_signed_active_power_reason,
+            max_age_s=max_age_s,
+            zero_margin_w=DEFAULT_ZERO_MARGIN_W,
+        )
+        if failure is not None:
+            self._log_active_control_outcome(
+                charger_entry_id,
+                decision,
+                outcome="held",
+                detail=failure.kind,
+                detail_phase=failure.phase,
+            )
+            return True
+        # Damping decides write or hold; consulted every pass so a pending value's dwell
+        # advances.
+        damper = self._damper_for(charger_entry_id)
+        # Captured before `consider`, which advances this charger's own
+        # Captured before `consider` advances the damper; also the yield stepper's `assigned_a`
+        # (the value last written).
+        previous_setpoint = damper.last_written_a
+
+        # A grid-charging battery that may give way to the car: start the car at its minimum as
+        # a probe (only where nothing else would start it; see `site/battery_probe.py`).
+        if await self._async_maybe_resume_paused_charge(
+            charger_entry_id, charger_controller, decision, fresh, damper, previous_setpoint
+        ):
+            return True
+        if await self._async_maybe_start_battery_probe(
+            charger_entry_id, charger_controller, decision, fresh, damper, previous_setpoint
+        ):
+            return True
+
+        # Yield-verified stepping, only when enabled. The probe gate matters even though writes
+        # are suppressed during a probe: its artificial steps would contaminate the observation.
+        yield_verdict: YieldVerdict | None = None
+        if (
+            bool(self.config.get(CONF_YIELD_STEPPING_ENABLED, DEFAULT_YIELD_STEPPING_ENABLED))
+            and not charger_controller._probe.in_flight
+        ):
+            yield_verdict = self._consult_yield_stepper(
+                charger_entry_id=charger_entry_id,
+                decision=decision,
+                fresh=fresh,
+                assigned_a=previous_setpoint,
+            )
+            self._record_yield_stepping_verdict(charger_entry_id, yield_verdict)
+            self._log_yield_stepping_transition(charger_entry_id, yield_verdict, fresh)
+
+        if yield_verdict is not None and yield_verdict.action == "hold":
+            # A hold carries no current: skip the damper and write nothing.
+            self._log_active_control_outcome(
+                charger_entry_id,
+                decision,
+                outcome="held",
+                detail=f"yield_stepping_{yield_verdict.reason}",
                 yield_verdict=yield_verdict,
             )
+            return True
+
+        if (
+            yield_verdict is not None
+            and yield_verdict.action == "passthrough"
+            and yield_verdict.reason != "passthrough_ceiling"
+            and self._battery_holds_grid_at_limit(
+                decision, fresh, charger_controller, charger_entry_id, previous_setpoint
+            )
+        ):
+            # The battery regulating the grid to the limit, not an overload: the car is not
+            # stepped down for it. Anything above the band never gets here.
+            self._log_active_control_outcome(
+                charger_entry_id,
+                decision,
+                outcome="held",
+                detail=DETAIL_HELD_BATTERY_AT_LIMIT,
+                yield_verdict=yield_verdict,
+            )
+            return True
+
+        if yield_verdict is not None and yield_verdict.action == "write":
+            # The stepper's own current replaces the raw proposal; `urgent` lets a revert skip
+            # deadband and dwell.
+            damping = damper.consider(
+                proposed_current_a=yield_verdict.current_a,
+                margin_a=margin_by_charger.get(charger_entry_id),
+                urgent=yield_verdict.urgent,
+                # A step sized from a battery that was verified to give way is paced by the
+                # stepper's own settle time and gap, not by the dwell.
+                verified_step=(
+                    yield_verdict.battery_credit_a is not None
+                    or yield_verdict.reason == "down_step_absorbed_by_battery"
+                ),
+            )
+        else:
+            # Passthrough: the raw proposal, urgent only if the stepper says so.
+            damping = damper.consider(
+                proposed_current_a=proposed,
+                margin_a=margin_by_charger.get(charger_entry_id),
+                urgent=yield_verdict.urgent if yield_verdict is not None else False,
+            )
+        if not damping.write or damping.current_a is None:
+            self._log_active_control_outcome(
+                charger_entry_id,
+                decision,
+                outcome="held",
+                detail=f"damping_{damping.reason}",
+                yield_verdict=yield_verdict,
+            )
+            return True
+        setpoint = round(damping.current_a)
+        if setpoint != damping.current_a:
+            _LOGGER.debug(
+                "SpotNav site %s active control: charger %s proposal %sA is "
+                "rounded to %sA before writing",
+                self.entry_id,
+                charger_entry_id,
+                damping.current_a,
+                setpoint,
+            )
+        # Last synchronous check before the write; nothing awaits between here and the charger's
+        # lock.
+        if not self._active_control_allowed():
+            return False
+        # The charger's own write path owns the OCPP read-modify-write and stays best-effort; any
+        # other adapter may refuse by policy, and then the fuse decides (stop or hold).
+        write = await charger_controller.async_apply_regulated_current(
+            int(setpoint),
+            must_lower=(
+                decision.reason in MUST_LOWER_REASONS
+                or damping.reason in ("protection", "urgent")
+            ),
+        )
+        if not write.written:
+            # Nothing went out: the damper must not believe it did, or the next deadband and the
+            # restore would be measured against a value the charger never had.
+            damper.forget_write(previous_setpoint)
+            self._log_active_control_outcome(
+                charger_entry_id,
+                decision,
+                outcome="held",
+                detail=f"adapter_{write.code}" if write.outcome == "held" else write.code,
+                yield_verdict=yield_verdict,
+            )
+            return True
+        self._log_active_control_outcome(
+            charger_entry_id,
+            decision,
+            outcome="wrote",
+            detail=damping.reason,
+            setpoint=int(setpoint),
+            previous_setpoint=(
+                None if previous_setpoint is None else round(previous_setpoint)
+            ),
+            yield_verdict=yield_verdict,
+        )
+        return True
 
     # -- a grid-charging battery that holds the grid at the fuse (`site/battery_probe.py`)
 
@@ -1147,12 +1219,14 @@ class SiteCapacityController:
         )
 
     def _charge_still_wanted(self, charger_entry_id: str, charger_controller: Any) -> bool:
-        """Whether a charge balancing paused is still wanted: Auto is not paused by a person (a
-        stop, window end, solar off or new plan outside every window has already cleared the
-        controller's own mark). When it is not wanted the mark is dropped."""
+        """Whether a charge balancing paused is still wanted: Auto is not paused, or a person's Start paused
+        it and the charge is theirs (a stop, window end, solar off or new plan outside every window has
+        already cleared the controller's own mark). When it is not wanted the mark is dropped."""
         store = domain_data(self.hass).auto_store
         settings = None if store is None else store.settings(charger_entry_id)
-        if settings is not None and settings.pause.admitted:
+        if settings is not None and settings.pause.admitted and not (
+            settings.pause.manual and settings.pause.action == MANUAL_START
+        ):
             charger_controller.forget_balancing_pause()
             return False
         return True

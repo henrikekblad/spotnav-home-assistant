@@ -37,8 +37,8 @@ limit, with `Retry-After`) or 502 (the charger command failed).
 | `dashboard` | The dashboard document below, for this charger. Takes an optional `api_version`. |
 | `sessions` | The charge history, the same request and answer as `spotnav/get_sessions` below (`month`, `format`, `limit`, `from`, `to`), with `"ok": true` and the `action` beside it. A refusal is HTTP 400 with `{"ok": false, "error": "spotnav_invalid_range" \| "spotnav_unsupported_api_version", "action": "sessions"}`. Nothing is withheld. |
 | `settings` | Replace the charger's settings: `{"expected_revision": n, "settings": {...}}`. |
-| `start` | Start charging now; optional `amps`. |
-| `stop` | Stop now, or with a `choice` (`next_period`, `until_tomorrow`, `until_resumed`) pause automatic execution. |
+| `start` | Start charging now; optional `amps`. Pauses automatic execution for the plug-in session (pause choice `manual`). |
+| `stop` | Stop now, which pauses automatic execution for the plug-in session (pause choice `manual`), or with a `choice` (`next_period`, `until_tomorrow`, `until_resumed`) pause it for that span instead. |
 | `resume` | Clear a pause. |
 | `refresh_vehicle` | Re-read the vehicle's Home Assistant entities (`vehicle_id`); never wakes the car. |
 | `set_charge_limit` | Write the vehicle's charge-limit entity (`vehicle_id`, `percent`). |
@@ -174,6 +174,14 @@ intervals), `plan` and `planning` (proposal, installed plan, and why), `control`
 action and the automatic action, with pause choices), `live`, `status` (typed status lines), `strategy`
 and `strategy_state`, `vehicles` and `soc`, `site`, `charging_phases`, `phase_detection`, `charge_progress`.
 Example documents are in `tests/fixtures/dashboard/`.
+
+**A person's own pause.** A Start or Stop pauses automatic execution for the plug-in session: the
+`control.pause` record then carries the choice `manual` with two more keys, `action` (`start` or `stop`)
+and `scope` (`plug_in`, the plug-in the car is in, or `next_plug_in` for a Stop given with no car), and no
+`expires_at`. `manual` is never one of the `pause_choices` and cannot be asked for; the automatic action
+beside it is `resume` (a `stop` with another choice replaces it). The `paused` status line carries
+`action` and `ends` (`unplug`, `next_plug_in`, or `resume` on a charger that cannot tell when a car is
+plugged in); both are null for every other pause. Every other pause record keeps its three keys.
 
 **Battery room.** The `soc` block's additive `room_kwh` is the wall energy the battery still has room for,
 to the car's own charge limit (else 100 %): `capacity_kwh x (ceiling - value) / 100 / efficiency`, `null`

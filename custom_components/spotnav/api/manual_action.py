@@ -2,9 +2,10 @@
 
 It routes once, to the boundary that owns the behaviour:
 
-* `start` -> `AutoExecutor.async_manual_start` (same as a button press and the webhook `cancel`);
-* `stop` -> `AutoPlannerController.async_pause(choice)`, which stores the typed pause before it
-  stops anything and reports a failed stop as `pause_stop_failed`;
+* `start` -> `AutoExecutor.async_manual_start` (same as a button press), and `stop` with no choice ->
+  the immediate stop: a person's Start or Stop, which pauses Auto for the plug-in session (`manual`);
+* `stop` with a choice -> `AutoPlannerController.async_pause(choice)`, which stores the typed pause before
+  it stops anything and reports a failed stop as `pause_stop_failed`;
 * `resume` -> `AutoPlannerController.async_resume`.
 
 Properties: no direct effect (one request is at most one call to one boundary, no retry);

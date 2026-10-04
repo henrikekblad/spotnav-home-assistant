@@ -92,6 +92,10 @@ It is best effort and is not a protective device. Turning it off gives back any 
 - A sudden overload is reduced immediately. Other changes are damped: a change smaller than the
   *deadband* (2 A) is ignored, and a new level must hold for the *dwell* time (60 s) before it
   is written, so the charger does not dither.
+- A start never gives the car more than the site has room for now, and a start on its way holds its
+  share of that room until the charger draws it (at most two minutes): two chargers starting in the
+  same moment share the margin instead of both taking all of it. A charger that fails or times out
+  during a pass does not keep the others from being lowered.
 - It requires a site with usable measurement and a charger SpotNav can command: one whose
   current SpotNav is set to change (an OCPP charger set through ChangeConfiguration, or a charger
   with a current number or service, see [supported hardware](supported.md)). A charger whose

@@ -73,11 +73,22 @@ const EXPECTED: Record<
     error: "pause_clear_failed",
   },
   "action_pending.json": {
+    // A person's Start pauses Auto for the plug-in session; while it awaits the charger's answer, neither
+    // axis offers anything.
     immediate: ["none", "action_pending"],
     automatic: ["none", "action_pending"],
     choices: [],
-    pause: { choice: null, admitted: false, expires: false },
-    blocks: false,
+    pause: { choice: "manual", admitted: true, expires: false },
+    blocks: true,
+    error: null,
+  },
+  "manual_stop.json": {
+    // A person's Stop: Auto paused for the plug-in session, Resume on offer and no choice beside it.
+    immediate: ["start", null],
+    automatic: ["resume", null],
+    choices: [],
+    pause: { choice: "manual", admitted: true, expires: false },
+    blocks: true,
     error: null,
   },
   "no_settings.json": {

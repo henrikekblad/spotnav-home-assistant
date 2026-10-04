@@ -324,35 +324,38 @@ async def test_a_persons_stop_sticks_until_they_start_again(hass: HomeAssistant)
         await tick_site(hass, site)
 
     assert not turn_on_calls, "a person's Stop must stick"
-    assert coordinator.state is not None and coordinator.state.reason == "person_stopped"
+    assert coordinator.state is not None and coordinator.state.reason == "paused"
     facts = dashboard_api.status_facts(dashboard_api.capture_dashboard(hass, charger))
-    assert facts.person_stopped is True
-    # Under the hybrid headline, worded by the clients (this charger has no price area, so its own status
-    # is the setup's; the line is composed from the same fact).
+    assert (facts.paused, facts.pause_choice, facts.pause_action) == (True, "manual", "stop")
+    # The pause takes the headline, worded by the clients from the same facts.
     lines = compose_status(
-        StatusFacts(now=facts.now, strategy=STRATEGY_HYBRID, hybrid=HybridFacts(), person_stopped=True)
+        StatusFacts(now=facts.now, strategy=STRATEGY_HYBRID, hybrid=HybridFacts(), paused=True,
+                    pause_choice="manual", pause_action="stop", pause_scope="plug_in")
     )["lines"]
-    assert lines[:2] == [{"code": "hybrid_unknown", "params": {}}, {"code": "stopped_by_person", "params": {"ends": "replug"}}]
+    assert lines[0] == {
+        "code": "paused", "params": {"until": None, "choice": "manual", "action": "stop", "ends": "unplug"}
+    }
 
-    # The person starts the charge: the Stop is over (their Start is theirs, and stays so).
+    # The person starts the charge: their Start is theirs, and stays so (Auto is still paused for them).
     await executor.async_manual_start()
-    assert controller.person_stopped is False
+    assert executor.pause_intent.action == "start"
 
 
 async def test_a_persons_stop_ends_with_the_plug_in(hass: HomeAssistant) -> None:
     charger, site_entry, controller, coordinator, clock, turn_on_calls, _off = await _setup(hass)
     executor = executor_for(hass, charger.entry_id)
     assert executor is not None
-    await executor.async_manual_stop()
-    assert controller.person_stopped is True
-
     connected: list[bool | None] = [True]
     controller.adapter.vehicle_connected = lambda: connected[0]  # type: ignore[method-assign]
     controller._observe_connection()  # noqa: SLF001 - the observation point under test
+    await executor.async_manual_stop()
+    assert executor.pause_intent.choice == "manual"
+
     connected[0] = False
     controller._observe_connection()  # noqa: SLF001
+    await hass.async_block_till_done()
 
-    assert controller.person_stopped is False
+    assert not executor.pause_intent.admitted
 
 
 async def test_a_start_on_a_battery_that_turns_to_feed_the_car_is_stopped_and_backs_off(
@@ -408,10 +411,10 @@ async def test_a_persons_stop_survives_a_restart(hass: HomeAssistant) -> None:
     executor = executor_for(hass, charger.entry_id)
     assert executor is not None
     await executor.async_manual_stop()
-    assert controller.person_stopped is True
+    assert executor.pause_intent.choice == "manual"
 
     controller = await _restart(hass, charger)
-    assert controller.person_stopped is True
+    assert executor_for(hass, charger.entry_id).pause_intent.choice == "manual"
     coordinator = hass.config_entries.async_get_entry(charger.entry_id).runtime_data.solar
     coordinator._now = clock.now  # noqa: SLF001 - the fake clock, as `solar_setup` installs it
     coordinator.async_start()
@@ -423,7 +426,7 @@ async def test_a_persons_stop_survives_a_restart(hass: HomeAssistant) -> None:
         clock.value = float(t)
         await tick_site(hass, site)
     assert not turn_on_calls
-    assert coordinator.state is not None and coordinator.state.reason == "person_stopped"
+    assert coordinator.state is not None and coordinator.state.reason == "paused"
 
 
 async def test_a_battery_credit_back_off_survives_a_restart(hass: HomeAssistant) -> None:

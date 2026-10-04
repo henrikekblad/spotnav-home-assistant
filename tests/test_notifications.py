@@ -39,7 +39,7 @@ from custom_components.spotnav.notifications.unexpected_stop import (
     UnexpectedStopDetector,
 )
 from custom_components.spotnav.planning.auto_settings import AutoSettings, AutoSettingsError
-from custom_components.spotnav.runtime import domain_data
+from custom_components.spotnav.runtime import domain_data, executor_for
 
 from .world import controller_of, setup_charger
 
@@ -315,7 +315,26 @@ async def test_a_persons_stop_inside_the_window_is_not_a_surprise(hass: HomeAssi
     hass.states.async_set("switch.charger_a", "on")
     await controller.async_install(_window_now())
     await hass.async_block_till_done()
-    await controller.async_stop(person=True)
+    await executor_for(hass, entry.entry_id).async_manual_stop()
+    hass.states.async_set("switch.charger_a", "off")
+    await hass.async_block_till_done()
+    await _later(hass, freezer, GRACE_S + 60)
+    assert calls == []
+
+
+async def test_a_persons_start_and_its_end_are_no_surprise_either(hass: HomeAssistant, freezer: Any) -> None:
+    """A person's Start pauses Auto too: nothing the plan expected is missing while it runs or after the
+    person stops it again."""
+    entry, calls = await _charger(hass)
+    controller = controller_of(hass, entry.entry_id)
+    await controller.async_install(_window_now())
+    await hass.async_block_till_done()
+    executor = executor_for(hass, entry.entry_id)
+    await executor.async_manual_start()
+    hass.states.async_set("switch.charger_a", "on")
+    await hass.async_block_till_done()
+    await _later(hass, freezer, GRACE_S + 60)
+    await executor.async_manual_stop()
     hass.states.async_set("switch.charger_a", "off")
     await hass.async_block_till_done()
     await _later(hass, freezer, GRACE_S + 60)

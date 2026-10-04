@@ -57,7 +57,7 @@ A row of four cells sits under the plan. Each shows a state and opens or does on
 
 | Cell | What it shows | What it does |
 | ---- | ------------- | ------------ |
-| **Charge now** or **Charging** | Start when not charging, Stop while charging | **Start** starts a charge now and **Stop** stops it now. Start promises no duration: automatic charging may take over again at its next reconciliation. A bare Stop changes the charger and leaves the plan alone. |
+| **Charge now** or **Charging** | Start when not charging, Stop while charging | **Start** starts a charge now and **Stop** stops it now. Either pauses automatic charging until the car is unplugged (a Start also until the car is full), and the Schedule cell then offers **Resume**. See [Start and Stop](strategies.md#what-every-strategy-shares). |
 | **Schedule active** or **Schedule paused** | Pause or Resume | **Pause** suspends automatic charging and asks for how long: **Until the next planned period**, **Until tomorrow** or **Until I resume**. Only the choices the charger offers are listed. **Resume** clears the pause. |
 | **Strategy** | The chosen strategy | Opens **Charging strategy**: **Cheapest**, **Solar** and **Hybrid**, see [charging strategies](strategies.md). A strategy that cannot work on this installation is listed with the reason, for example that Solar requires a site that can measure the solar surplus. |
 | **Plan** | Energy, deadline and current, for example `20 kWh · No deadline · 16 A` | Opens the plan settings, see [Plan](#plan-settings). |
@@ -78,6 +78,7 @@ serious each is. Examples:
 | A new charging proposal is ready. | A newer proposal exists and is not installed yet. |
 | Charging now; scheduled until 05:30. | A charge is running inside a planned period. |
 | Automatic charging is paused. / Paused until 07:00. | A pause is in effect. |
+| Stopped manually – until the car is unplugged. / Charging manually – until the car is full or unplugged. | You pressed Stop or Start: automatic charging is paused for this plug-in. A Stop given with no car plugged in reads *until the next plug-in ends*; on a charger that cannot tell when a car is plugged in, *until you resume automatic charging*. |
 | Stopped at 80 % (estimated, reading 40 min old) | The target was reached; shows the level the charge stopped at and how old or estimated it was. |
 | Charging is limited to 10 A by the site's load balancing. | Active load balancing has lowered the current. |
 | The home battery charges from the grid and shares the main fuse: the car gets 11 A. / House consumption limits the car to 11 A. | The same, with the cause when SpotNav knows it. |

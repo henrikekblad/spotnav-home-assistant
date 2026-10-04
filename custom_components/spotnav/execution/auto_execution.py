@@ -22,14 +22,15 @@ import asyncio
 import hashlib
 import json
 import logging
-from collections.abc import Awaitable, Callable
+from collections.abc import AsyncIterator, Awaitable, Callable
+from contextlib import asynccontextmanager
 from dataclasses import dataclass, replace
 from datetime import datetime, time as dt_time, timedelta, timezone
 from typing import Any, Final
 
 from homeassistant.core import callback, HomeAssistant
 from homeassistant.exceptions import HomeAssistantError
-from homeassistant.helpers.event import async_track_point_in_time
+from homeassistant.helpers.event import async_track_point_in_time, async_track_time_interval
 from homeassistant.util import dt as dt_util
 
 from ..planning.auto_settings import (
@@ -37,6 +38,11 @@ from ..planning.auto_settings import (
     AutoSettingsError,
     AutoSettingsStore,
     DRIVER_TARGET_SOC,
+    MANUAL_SCOPE_NEXT_PLUG_IN,
+    MANUAL_SCOPE_PLUG_IN,
+    MANUAL_START,
+    MANUAL_STOP,
+    PAUSE_MANUAL,
     PAUSE_NEXT_PERIOD,
     PAUSE_UNTIL_RESUMED,
     PAUSE_UNTIL_TOMORROW,
@@ -46,7 +52,14 @@ from ..planning.auto_settings import (
     STRATEGY_SOLAR,
 )
 from ..planning.phases import effective_phases
-from .controller import ChargingController, ChargingExecutionError, ChargingPlan
+from .controller import (
+    AUTOMATIC_BALANCING_RESUME,
+    AUTOMATIC_STOP,
+    ChargingController,
+    ChargingExecutionError,
+    ChargingPlan,
+)
+from .manual_pause import ManualChargeWatch
 
 
 _LOGGER = logging.getLogger(__name__)
@@ -85,15 +98,20 @@ ACTION_STOP: Final = "stop"
 ACTION_RESUME: Final = "resume"
 ACTION_NONE: Final = "none"
 
-#: The two product axes: *immediate* (what the charger may do now, one `start` or `stop`, never
-#: touching planning mode, pause or plan) and *automatic* (what may happen to Home Assistant's
-#: automatic execution, one `pause` with its choice or one `resume`).
+#: The two product axes: *immediate* (what the charger may do now, one `start` or `stop`, never touching
+#: planning mode, and pausing Auto for the plug-in session as the person's own pause, `manual`) and
+#: *automatic* (what may happen to Home Assistant's automatic execution, one `pause` with its choice or one
+#: `resume`).
 ACTION_PAUSE: Final = "pause"
 IMMEDIATE_ACTIONS: Final = (ACTION_START, ACTION_STOP)
 
 #: How long a manual Start stays "just sent" before the boundary stops waiting for the charger to
 #: report charging.
 MANUAL_START_ACK_TIMEOUT: Final = timedelta(seconds=30)
+
+#: How often a person's charge under a manual pause is looked at for the car ending it (`ManualChargeWatch`):
+#: a car at 0 A reports nothing new.
+MANUAL_WATCH_INTERVAL: Final = timedelta(seconds=30)
 
 #: Stable reasons a control description carries when there is no action.
 CONTROL_NO_SETTINGS: Final = "no_settings"
@@ -207,8 +225,8 @@ def decide_immediate(facts: ControlFacts) -> ImmediateDecision:
     """The immediate command that is truthful right now, and only that.
 
     Blind to the planning axes (mode, stored pause, plan): a command to the charger is answered by its
-    own state. A person can start charging while Auto is paused, and stop a charge Auto installed (which
-    is an automatic decision, a pause).
+    own state. A person can start charging while Auto is paused, and stop a charge Auto installed; either
+    pauses Auto for the plug-in session (`AutoExecutor._manual_start_locked`, `_immediate_stop_locked`).
 
     * no settings record: nothing to command yet;
     * a Start still awaiting the charger's report: nothing, with `action_pending`;
@@ -244,6 +262,9 @@ def decide_automatic(facts: ControlFacts) -> AutomaticDecision:
     Precedence:
 
     * no settings record: nothing is configurable yet;
+    * a manual pause (a person's Start or Stop): only `resume` is offered, whatever else happened (the
+      person's own Stop is the retry of a stop that failed, on the immediate axis), except nothing while
+      the person's Start awaits the charger's report;
     * a failed pause stop: re-sending the same choice is the documented retry;
     * a pause whose clearing write failed: still persisted, nothing to resume; the code says why;
     * any other stored pause: only an explicit `resume` is offered;
@@ -253,6 +274,10 @@ def decide_automatic(facts: ControlFacts) -> AutomaticDecision:
     """
     if not facts.has_settings:
         return AutomaticDecision(ACTION_NONE, CONTROL_NO_SETTINGS, ())
+    if facts.pause.manual:
+        if facts.start_pending:
+            return AutomaticDecision(ACTION_NONE, CONTROL_ACTION_PENDING, ())
+        return AutomaticDecision(ACTION_RESUME, None, ())
     if facts.pause.admitted:
         if facts.last_error == EXECUTION_PAUSE_STOP_FAILED:
             return AutomaticDecision(ACTION_PAUSE, None, facts.pause_choices)
@@ -519,6 +544,43 @@ class AutoExecutor:
         self._cancel_start_timeout: Callable[[], None] | None = None
         # Set by `attach_preview`: how applied/pending state is published beside an unchanged proposal.
         self._change_hook: Callable[[], Awaitable[Any]] | None = None
+        # Every automatic decision of the controller (its window timers, the hold, a stray charge, a
+        # top-off, the regulator's resume) asks this boundary first, under its lock.
+        controller.set_automatic_gate(self)
+        # A manual pause ends with its plug-in session: the controller tells every plug-in and unplug.
+        controller.set_connection_observer(self._on_connection)
+        # A person's charge under a manual pause, watched for the car ending it (`_sync_manual_watch`).
+        self._manual_watch = ManualChargeWatch()
+        self._cancel_manual_listener: Callable[[], None] | None = None
+        self._cancel_manual_interval: Callable[[], None] | None = None
+        self._manual_end_pending = False
+
+    def automatic_allowed(self, kind: str) -> bool:
+        """Whether an automatic decision of this kind (`controller.AUTOMATIC_*`) may act now, by the
+        persisted record (`pause_blocks_execution`): while a pause holds execution nothing automatic starts
+        a charge, claims one or resumes one load balancing paused. A stop still may: a pause wants the
+        charger stopped (one whose own stop failed leaves its plan behind it). Under a person's manual
+        pause the person owns the charger: nothing automatic stops their Start, and load balancing resumes
+        only a charge they started."""
+        settings = self._store.settings(self._entry_id)
+        if not pause_blocks_execution(settings):
+            return True
+        pause = settings.pause
+        if pause.manual:
+            # The person owns the charger for the plug-in session. A stop agrees with their Stop and never
+            # overrules their Start; load balancing resumes only a charge they started.
+            if kind == AUTOMATIC_BALANCING_RESUME:
+                return pause.action == MANUAL_START
+            return kind == AUTOMATIC_STOP and pause.action == MANUAL_STOP
+        return kind == AUTOMATIC_STOP
+
+    @asynccontextmanager
+    async def automatic_turn(self, kind: str) -> AsyncIterator[bool]:
+        """Hold this boundary's lock for one automatic decision of the controller, and say whether it may
+        act (`automatic_allowed`), decided at the moment it acts: a person's Start, Stop or pause cannot
+        land between the answer and the command."""
+        async with self._lock:
+            yield self.automatic_allowed(kind)
 
     @property
     def controller(self) -> ChargingController:
@@ -690,6 +752,9 @@ class AutoExecutor:
             self._start_pending = False
             self._start_ack_timed_out = False
             self._disarm_start_ack()
+            self._sync_manual_watch()
+            if self._controller._connection_observer == self._on_connection:  # noqa: SLF001 - our own hook
+                self._controller.set_connection_observer(None)
             if self._cancel_pause is not None:
                 # No appointment may survive to write to a store or stop a charger for an ended boundary.
                 cancel_pause = self._cancel_pause
@@ -711,80 +776,86 @@ class AutoExecutor:
         installed is charging now, in which case it waits for that window's boundary. A strategy with no
         plan of its own (solar) clears a plan Auto still owns, the same call `_pause_locked` uses.
         """
-        application = application_for(settings, snapshot, effective_phases(self._hass, self._entry_id))
         async with self._lock:
-            applied = self.applied
-            if application is None:
-                # A non-executable result supersedes pending execution: installing what a waiting
-                # change was built from would be speculation.
-                if self.current(attempt):
-                    self._pending = None
-                if settings.strategy == STRATEGY_SOLAR and applied is not None:
-                    try:
-                        await self._controller.async_stop(clear_schedule=True)
-                    except Exception as err:  # noqa: BLE001 - reported, never hidden
-                        _LOGGER.warning(
-                            "Clearing the plan for solar strategy failed: %s", type(err).__name__
-                        )
-                        self._last_error = EXECUTION_SOLAR_STAND_DOWN_FAILED
-                        await self._notify_change()
-                        return applied
-                    self._applied = None
-                    self._last_error = None
-                    await self._notify_change()
-                    return None
-                if (
-                    applied is not None
-                    and self.current(attempt)
-                    and getattr(snapshot, "state", None) == "nothing_to_charge"
-                    and not getattr(snapshot, "room_limited", False)
-                    # The sun is expected to cover the need: hybrid's own hand-off decides, not this.
-                    and getattr(snapshot, "reason", None) != "solar_covers_need"
-                    and not pause_blocks_execution(self._store.settings(self._entry_id))
-                ):
-                    # The need is met (the target reached, or the energy delivered) before the plan ran
-                    # out: its windows still ahead would buy what nobody needs. Not when only the room
-                    # left in the battery says so: the car ends that charge itself when it is full.
-                    try:
-                        await self._controller.async_end_plan_need_met()
-                    except Exception as err:  # noqa: BLE001 - reported, the next calculation retries
-                        _LOGGER.warning(
-                            "Clearing a plan whose need is met failed: %s", type(err).__name__
-                        )
-                        return applied
-                    self._applied = applied
-                    await self._notify_change()
-                    return None
-                return applied
-            if not self._may_apply(application, attempt):
-                # Nothing installs and a waiting change is superseded by this attempt's answer, but a
-                # stale attempt must not touch newer state, so the wait is dropped only if this is newest.
-                if self.current(attempt):
-                    self._pending = None
-                return applied
-            if applied is not None and applied.identity == application.identity:
-                self._applied = applied
+            return await self._reconcile_locked(settings, snapshot, attempt=attempt)
+
+    async def _reconcile_locked(
+        self, settings: AutoSettings, snapshot: Any, *, attempt: int
+    ) -> AutoApplication | None:
+        """`async_reconcile` itself, with this boundary's lock held."""
+        application = application_for(settings, snapshot, effective_phases(self._hass, self._entry_id))
+        applied = self.applied
+        if application is None:
+            # A non-executable result supersedes pending execution: installing what a waiting
+            # change was built from would be speculation.
+            if self.current(attempt):
                 self._pending = None
-                return applied
-            if not self._is_material(application, applied):
-                self._applied = applied
-                self._pending = None
-                return applied
-            if self.window_charging_now():
-                # A window is charging and is never shortened: the change waits for the boundary
-                # the plan's timers mark.
-                self._pending = PendingApplication(
-                    application=application,
-                    attempt=attempt,
-                    settings_revision=self._store.settings(self._entry_id).revision,
-                    price_identity=application.price_identity,
-                )
+            if settings.strategy == STRATEGY_SOLAR and applied is not None:
+                try:
+                    await self._controller.async_stop(clear_schedule=True)
+                except Exception as err:  # noqa: BLE001 - reported, never hidden
+                    _LOGGER.warning(
+                        "Clearing the plan for solar strategy failed: %s", type(err).__name__
+                    )
+                    self._last_error = EXECUTION_SOLAR_STAND_DOWN_FAILED
+                    await self._notify_change()
+                    return applied
+                self._applied = None
+                self._last_error = None
                 await self._notify_change()
-                return applied
-            if not self._prices_still_live(application, attempt):
-                return applied
-            await self._install_application(application)
-            return self.applied
+                return None
+            if (
+                applied is not None
+                and self.current(attempt)
+                and getattr(snapshot, "state", None) == "nothing_to_charge"
+                and not getattr(snapshot, "room_limited", False)
+                # The sun is expected to cover the need: hybrid's own hand-off decides, not this.
+                and getattr(snapshot, "reason", None) != "solar_covers_need"
+                and not pause_blocks_execution(self._store.settings(self._entry_id))
+            ):
+                # The need is met (the target reached, or the energy delivered) before the plan ran
+                # out: its windows still ahead would buy what nobody needs. Not when only the room
+                # left in the battery says so: the car ends that charge itself when it is full.
+                try:
+                    await self._controller.async_end_plan_need_met()
+                except Exception as err:  # noqa: BLE001 - reported, the next calculation retries
+                    _LOGGER.warning(
+                        "Clearing a plan whose need is met failed: %s", type(err).__name__
+                    )
+                    return applied
+                self._applied = applied
+                await self._notify_change()
+                return None
+            return applied
+        if not self._may_apply(application, attempt):
+            # Nothing installs and a waiting change is superseded by this attempt's answer, but a
+            # stale attempt must not touch newer state, so the wait is dropped only if this is newest.
+            if self.current(attempt):
+                self._pending = None
+            return applied
+        if applied is not None and applied.identity == application.identity:
+            self._applied = applied
+            self._pending = None
+            return applied
+        if not self._is_material(application, applied):
+            self._applied = applied
+            self._pending = None
+            return applied
+        if self.window_charging_now():
+            # A window is charging and is never shortened: the change waits for the boundary
+            # the plan's timers mark.
+            self._pending = PendingApplication(
+                application=application,
+                attempt=attempt,
+                settings_revision=self._store.settings(self._entry_id).revision,
+                price_identity=application.price_identity,
+            )
+            await self._notify_change()
+            return applied
+        if not self._prices_still_live(application, attempt):
+            return applied
+        await self._install_application(application)
+        return self.applied
 
     async def async_apply_pending(self) -> AutoApplication | None:
         """A boundary arrived: install the waiting proposal, if it still holds.
@@ -924,11 +995,10 @@ class AutoExecutor:
             )
 
     async def async_manual_start(self, amps: int | None = None) -> None:
-        """A person starting a charge. Immediate, never an authority change.
+        """A person starting a charge: it pauses Auto, schedule and strategy, for the plug-in session.
 
         Inside the boundary because it mutates the plan: the attempt is invalidated and any waiting change
-        dropped, so a manual decision cannot be overwritten by an Auto installation. Neither the mode nor
-        the pause is touched.
+        dropped, so a manual decision cannot be overwritten by an Auto installation.
         """
         async with self._lock:
             await self._manual_start_locked(amps)
@@ -936,18 +1006,47 @@ class AutoExecutor:
     async def _manual_start_locked(self, amps: int | None = None) -> None:
         """The manual start itself, with this boundary's lock held.
 
-        The command is sent first; only once accepted is the start marked as awaiting the charger's report,
-        inside the lock so no request is admitted in between. A failing command leaves nothing pending and
-        keeps a retry possible.
+        * The command is sent first; a failing one changes nothing else and keeps a retry possible. Nothing
+          automatic can act between the command and the pause: every automatic decision waits for this
+          boundary's lock (`automatic_turn`).
+        * Once accepted, the manual pause (`PAUSE_MANUAL`, action `start`) is stored; a pause the person
+          chose for a span (until tomorrow, until resumed) already holds Auto and is kept. With no car
+          plugged in nothing is paused: the command went out as it always has.
+        * A paused Auto's plan is dropped without touching the charger (its windows' ends would stop what
+          the person started), and the start is marked as awaiting the charger's report.
         """
         self.begin_attempt()
         self._pending = None
-        if await self._controller.async_start(amps, manual=True) is False:
+        started = await self._controller.async_start(amps, manual=True)
+        if started is False and not self._controller.paused_by_balancing:
             # The charger's control was unavailable and the command never went out: a failed command
             # like any other, with nothing pending and a retry possible.
             raise HomeAssistantError("The start command was not executed: the charge control is unavailable")
+        # Started, or held back by load balancing for want of headroom: either way the person's charge,
+        # which the regulator resumes when there is room.
+        before = self._store.settings(self._entry_id).pause
+        if (not before.admitted or before.manual) and self._controller.adapter.vehicle_connected() is not False:
+            await self._store_pause(self._manual_intent(MANUAL_START, MANUAL_SCOPE_PLUG_IN))
+        if pause_blocks_execution(self._store.settings(self._entry_id)):
+            await self._controller.async_drop_plan()
+            self._applied = None
+        self._sync_manual_watch()
+        if started is False:
+            await self._notify_change()
+            raise HomeAssistantError("The start is held back by load balancing until the site has room")
         self._note_manual_start_sent()
         await self._notify_change()
+
+    def _manual_intent(self, action: str, scope: str) -> PauseIntent:
+        """The manual pause a person's Start or Stop takes now."""
+        return PauseIntent(
+            choice=PAUSE_MANUAL, admitted_at=self._now(), expires_at=None, action=action, scope=scope
+        )
+
+    async def _store_pause(self, intent: PauseIntent) -> None:
+        """Store a pause intent and arm (or drop) its expiry. Raises when it could not be stored."""
+        await self._store.async_update(self._entry_id, mutate=lambda current: replace(current, pause=intent))
+        self._arm_pause_expiry(intent.expires_at)
 
     def _note_manual_start_sent(self) -> None:
         """Remember that a manual Start was accepted and is not yet acknowledged.
@@ -1024,23 +1123,23 @@ class AutoExecutor:
             cancel()
 
     async def async_manual_stop(self) -> None:
-        """A person stopping a charge: immediate, in the boundary, no authority change."""
+        """A person stopping a charge: it pauses Auto, schedule and strategy, for the plug-in session."""
         async with self._lock:
             await self._immediate_stop_locked()
 
     async def async_manual_cancel(self) -> None:
-        """A person cancelling the schedule: immediate, in the boundary, no other change."""
+        """A person cancelling the schedule: a Stop, which clears the plan and pauses Auto for the plug-in."""
         async with self._lock:
-            self.begin_attempt()
-            self._pending = None
-            await self._controller.async_cancel()
-            await self._notify_change()
+            await self._immediate_stop_locked()
 
     async def async_manual_follow(self) -> None:
-        """A person re-arming the saved plan: immediate, in the boundary, no other change."""
+        """A person re-arming the saved plan. A manual pause ends first (the person hands the charger back
+        to Auto, which replans from the live proposal); then the plan in force is followed, if there is one."""
         async with self._lock:
             self.begin_attempt()
             self._pending = None
+            if self.pause_intent.manual:
+                await self._end_manual_pause_locked("follow")
             await self._controller.async_follow_schedule()
             await self._notify_change()
 
@@ -1074,6 +1173,8 @@ class AutoExecutor:
                 self._entry_id, mutate=lambda current: replace(current, pause=intent)
             )
             self._arm_pause_expiry(intent.expires_at)
+            # A pause the person picks replaces a manual one, and its watch.
+            self._sync_manual_watch()
         self._pending = None
         if self.applied is None:
             self._last_error = None
@@ -1105,9 +1206,22 @@ class AutoExecutor:
             self._entry_id, mutate=lambda settings: replace(settings, pause=PauseIntent())
         )
         self._arm_pause_expiry(None)
+        self._sync_manual_watch()
         self.begin_attempt()
         self._last_error = None
+        await self._rearm_kept_plan()
         await self._notify_change()
+
+    async def _rearm_kept_plan(self) -> None:
+        """A pause ended while a plan it could not clear stayed (its stop failed): arm that plan again, so a
+        window its timer left unstarted while the pause held starts now. Logged, never raised: the next
+        calculation reconciles."""
+        if self._controller.plan is None:
+            return
+        try:
+            await self._controller.async_rearm()
+        except Exception as err:  # noqa: BLE001 - the pause is over either way
+            _LOGGER.warning("Arming the plan again after a pause failed: %s", type(err).__name__)
 
     def control_facts(self) -> ControlFacts:
         """One moment's control facts, read here and nowhere else. Memory only, no write or
@@ -1177,6 +1291,12 @@ class AutoExecutor:
                     # The choices are the same snapshot's pause choices, never a second read.
                     facts.pause_choices if immediate.action == ACTION_STOP else (),
                 )
+            elif action == ACTION_STOP and choice is not None and facts.pause.manual:
+                # A pause the person picks replaces their manual one; the card offers it as Resume only, so
+                # the choices are this snapshot's own, never one more read.
+                if choice not in facts.pause_choices:
+                    raise AutoControlRefused("invalid_pause", f"{choice!r} is not an available pause choice")
+                admitted = ControlDecision(ACTION_STOP, None, facts.pause_choices)
             else:
                 automatic = axes.automatic
                 wanted = ACTION_RESUME if action == ACTION_RESUME else ACTION_PAUSE
@@ -1230,15 +1350,198 @@ class AutoExecutor:
             await self._resume_locked()
 
     async def _immediate_stop_locked(self) -> None:
-        """The immediate stop, with this boundary's lock held.
+        """A person's Stop, with this boundary's lock held.
 
-        Invalidate the attempt and drop any waiting change, stop the charger through the controller,
-        publish. No pause, mode change or authority change.
+        The manual pause (`PAUSE_MANUAL`, action `stop`) is stored first: for the plug-in the car is in, or,
+        with no car plugged in, for the next one ("do not charge when I plug in"). A pause the person chose
+        for a span is kept. Then the charger is stopped and Auto's plan cleared, as a pause does. A stop that
+        fails keeps the pause, records `pause_stop_failed` and raises; Stop again is the retry.
         """
         self.begin_attempt()
         self._pending = None
-        await self._controller.async_stop(person=True)
+        before = self._store.settings(self._entry_id).pause
+        if not before.admitted or before.manual:
+            connected = self._controller.adapter.vehicle_connected()
+            waiting = before.manual and before.scope == MANUAL_SCOPE_NEXT_PLUG_IN and connected is not True
+            scope = MANUAL_SCOPE_NEXT_PLUG_IN if connected is False or waiting else MANUAL_SCOPE_PLUG_IN
+            await self._store_pause(self._manual_intent(MANUAL_STOP, scope))
+            self._sync_manual_watch()
+        try:
+            await self._controller.async_stop(clear_schedule=True)
+        except Exception:
+            self._last_error = EXECUTION_PAUSE_STOP_FAILED
+            await self._notify_change()
+            raise
+        self._applied = None
+        if self._last_error == EXECUTION_PAUSE_STOP_FAILED:
+            self._last_error = None
         await self._notify_change()
+
+    # ------------------------------------------------------------------ the manual pause's end
+
+    async def _end_manual_pause_locked(self, reason: str, *, car_ended: bool = False) -> bool:
+        """End a manual pause (the plug-in session is over, the car ended the person's charge, the person
+        follows the plan again), with this boundary's lock held, and hand the charger back to Auto: the
+        live proposal is reconciled at once. Returns whether one was ended.
+
+        After the car ended the charge, a window of the plan already open is not started again
+        (`ChargingController.async_note_car_ended`): the car is full.
+        """
+        intent = self._store.settings(self._entry_id).pause
+        if not intent.manual:
+            return False
+        self.begin_attempt()
+        self._pending = None
+        await self._store.async_update(
+            self._entry_id,
+            mutate=lambda current: replace(current, pause=PauseIntent()) if current.pause == intent else current,
+        )
+        self._arm_pause_expiry(None)
+        if self._last_error == EXECUTION_PAUSE_STOP_FAILED:
+            self._last_error = None
+        self._sync_manual_watch()
+        _LOGGER.info("SpotNav charger %s: Auto resumes (%s)", self._entry_id, reason)
+        if car_ended:
+            await self._controller.async_note_car_ended()
+        await self._rearm_kept_plan()
+        snapshot = None if self._live_snapshot is None else self._live_snapshot()
+        if snapshot is not None:
+            try:
+                await self._reconcile_locked(
+                    self._store.settings(self._entry_id), snapshot, attempt=self.begin_attempt()
+                )
+            except Exception as err:  # noqa: BLE001 - the pause is over; the next calculation reconciles
+                _LOGGER.warning("Reconciling after a manual pause failed: %s", type(err).__name__)
+                self._last_error = EXECUTION_RECONCILE_FAILED
+        await self._notify_change()
+        return True
+
+    @callback
+    def _on_connection(self, previous: bool | None, connected: bool) -> None:
+        """The charger reported a plug-in, an unplug, or its first connection after a restart: a manual
+        pause ends with the plug-in session it was given in (`_async_connection_changed`)."""
+        if self._shutdown or not self.pause_intent.manual:
+            return
+        self._hass.async_create_task(self._async_connection_changed(previous, connected))
+
+    async def _async_connection_changed(self, previous: bool | None, connected: bool) -> None:
+        """Decided under the lock against the stored pause:
+
+        * an unplug ends a pause of the plug-in the car was in; one given with no car plugged in waits for
+          the plug-in after it;
+        * a plug-in starts the session a pause given with no car was for; any other plug-in means the
+          session its pause was given in is over (an unplug nobody saw: a restart, a charger offline);
+        * the first connection known after a restart, no car: the session ended while nobody looked.
+        """
+        try:
+            async with self._lock:
+                intent = self.pause_intent
+                if self._shutdown or not intent.manual:
+                    return
+                waiting = intent.scope == MANUAL_SCOPE_NEXT_PLUG_IN
+                if connected and previous is False and waiting:
+                    await self._store.async_update(
+                        self._entry_id,
+                        mutate=lambda current: replace(
+                            current, pause=replace(current.pause, scope=MANUAL_SCOPE_PLUG_IN)
+                        )
+                        if current.pause == intent
+                        else current,
+                    )
+                    await self._notify_change()
+                    return
+                if waiting:
+                    return
+                if (connected and previous is False) or not connected:
+                    await self._end_manual_pause_locked("plugged in" if connected else "unplugged")
+        except Exception as err:  # noqa: BLE001 - a callback's task must not raise; the next report decides
+            _LOGGER.warning("Ending a manual pause at a plug-in or unplug failed: %s", type(err).__name__)
+
+    def _sync_manual_watch(self) -> None:
+        """Watch a person's charge for the car ending it while a manual pause of a Start stands, and only
+        then: on every change the controller tells, and one regular look (a car at 0 A reports nothing
+        new)."""
+        wanted = not self._shutdown and self.pause_intent.manual and self.pause_intent.action == MANUAL_START
+        if not wanted:
+            self._manual_watch.reset()
+            if self._cancel_manual_listener is not None:
+                self._cancel_manual_listener()
+                self._cancel_manual_listener = None
+            if self._cancel_manual_interval is not None:
+                self._cancel_manual_interval()
+                self._cancel_manual_interval = None
+            return
+        if self._cancel_manual_listener is None:
+            self._cancel_manual_listener = self._controller.add_listener(self._look_at_manual_charge)
+        if self._cancel_manual_interval is None:
+            self._cancel_manual_interval = async_track_time_interval(
+                self._hass, self._look_at_manual_charge_timer, MANUAL_WATCH_INTERVAL, cancel_on_shutdown=True
+            )
+        # A look now: a charge already on (the Start was answered before the watch began) is seen.
+        self._look_at_manual_charge()
+
+    @callback
+    def _look_at_manual_charge_timer(self, _now: datetime) -> None:
+        self._look_at_manual_charge()
+
+    @callback
+    def _look_at_manual_charge(self) -> None:
+        """One look at the person's charge (`ManualChargeWatch`): the car ending it ends the pause."""
+        if self._shutdown or self._manual_end_pending:
+            return
+        intent = self.pause_intent
+        if not intent.manual or intent.action != MANUAL_START:
+            return
+        controller = self._controller
+        ended = self._manual_watch.observe(
+            now=dt_util.utcnow(),
+            control_on=controller.charge_control_on,
+            drawing=controller.car_drawing(),
+            held=controller.held_by_charger,
+            balancing_paused=controller.paused_by_balancing,
+            start_pending=controller.start_pending,
+            connection=controller.connection()[0],
+            connector_status=controller.charge_progress_facts().connector_status,
+        )
+        if ended:
+            self._manual_end_pending = True
+            self._hass.async_create_task(self._async_manual_charge_ended())
+
+    async def _async_manual_charge_ended(self) -> None:
+        """The car ended the person's charge by itself: the manual pause of their Start ends, and Auto
+        resumes without starting a window that was already open (the car is full)."""
+        try:
+            async with self._lock:
+                intent = self.pause_intent
+                if self._shutdown or not intent.manual or intent.action != MANUAL_START:
+                    return
+                await self._end_manual_pause_locked("the car ended the charge", car_ended=True)
+        except Exception as err:  # noqa: BLE001 - a callback's task must not raise; the next look decides
+            _LOGGER.warning("Ending a manual pause after the car ended the charge failed: %s", type(err).__name__)
+        finally:
+            self._manual_end_pending = False
+
+    async def async_after_restore(self) -> None:
+        """After the charger's saved state is back (`ChargingController.async_initialize`): a person's Stop
+        an older release stored becomes the manual pause it now is, and a manual Start's charge is watched
+        again."""
+        if self._shutdown:
+            return
+        async with self._lock:
+            if self._controller.take_legacy_person_stop():
+                if not self.pause_intent.admitted:
+                    try:
+                        await self._store_pause(self._manual_intent(MANUAL_STOP, MANUAL_SCOPE_PLUG_IN))
+                    except Exception as err:  # noqa: BLE001 - logged; nothing is started by this either way
+                        _LOGGER.warning("Carrying over a stored person's Stop failed: %s", type(err).__name__)
+                    else:
+                        _LOGGER.info(
+                            "SpotNav charger %s: a stored person's Stop is now Auto paused for the plug-in",
+                            self._entry_id,
+                        )
+                # The charger's record is saved without the older key from here on.
+                await self._controller.async_save_record()
+            self._sync_manual_watch()
 
     async def async_end_plan_need_met(self) -> bool:
         """The manual need is delivered (the register watcher saw it): end Auto's own plan now, without
@@ -1268,29 +1571,33 @@ class AutoExecutor:
                 await self._notify_change()
             return started
 
-    async def async_solar_start(self, amps: int) -> None:
+    async def async_solar_start(self, amps: int) -> bool:
         """One solar start, from `SolarController`'s verdict, through the same boundary, lock and
         `ChargingController.async_start` as every other start.
 
         Admits `hybrid` as well as `solar`; for `hybrid` the caller has already established that no plan
         window is active. Only the pause and the strategy are re-checked, live under the lock. A manual
         Stop shares the lock, so the two cannot interleave, and solar respects it until it arms a fresh
-        start.
+        start. Returns whether the start went out: refused here, held back by load balancing, or not
+        executed by the charger's control is `False`, and solar must not believe it runs a charge.
         """
         async with self._lock:
             settings = self._store.settings(self._entry_id)
             if pause_blocks_execution(settings) or settings.strategy not in (
                 STRATEGY_SOLAR, STRATEGY_HYBRID
             ):
-                return
-            await self._controller.async_start(amps, cause="solar")
+                return False
+            started = await self._controller.async_start(amps, cause="solar")
             await self._notify_change()
+            return started
 
     async def async_solar_stop(self) -> None:
         """One solar stop, through the same lock and `ChargingController.async_stop` as every other
-        stop.
+        stop. Never of a charge a person started under their manual pause (`automatic_allowed`).
         """
         async with self._lock:
+            if not self.automatic_allowed(AUTOMATIC_STOP):
+                return
             await self._controller.async_stop()
             await self._notify_change()
 
@@ -1341,8 +1648,9 @@ class AutoExecutor:
         after = self._store.settings(self._entry_id)
         if action == ACTION_RESUME:
             return before.pause.admitted and not after.pause.admitted
-        if action == ACTION_STOP:
-            return after.pause.admitted and not before.pause.admitted
+        if action in (ACTION_STOP, ACTION_START):
+            # A pause admitted, or a manual pause taken or changed by a person's Start or Stop.
+            return after.pause.admitted and after.pause != before.pause
         return False
 
     def _pause_transition(
@@ -1394,6 +1702,7 @@ class AutoExecutor:
                 return False
             self._last_error = None
             self._arm_pause_expiry(None)
+            await self._rearm_kept_plan()
             await self._notify_change()
             return True
 
@@ -1493,6 +1802,7 @@ class AutoExecutor:
         if (
             self._last_error == EXECUTION_PAUSE_STOP_FAILED
             and stored.choice is not None
+            and not stored.manual
             and stored.choice not in choices
         ):
             choices.append(stored.choice)

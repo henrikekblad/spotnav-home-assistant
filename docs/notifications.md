@@ -33,8 +33,8 @@ when, for three minutes, the charger:
 - is held by its own schedule or load balancer, or has its own enable switch off;
 - charges, but the car takes no current.
 
-It is **not** told for a window's planned end, a target or energy that was reached, a person's Stop in
-the card, the app or a button, a paused Auto, solar or hybrid running the charger, load balancing
+It is **not** told for a window's planned end, a target or energy that was reached, a person's Start or
+Stop in the card, the app or a button (it pauses Auto for the plug-in), a paused Auto, solar or hybrid running the charger, load balancing
 pausing the charge for want of headroom (the card's status says that), or a car that was unplugged. Nor
 is "did not start" told while a charger that can say whether a car is there says neither (a fault, an
 offline charger, or a Wallbox showing `Ready`, which the Wallbox integration reports with or without a

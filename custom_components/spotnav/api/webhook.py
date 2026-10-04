@@ -100,8 +100,9 @@ async def async_manual_action(
     """Route a manual charger action through the charger's one authority boundary.
 
     The boundary keeps a button press or webhook `cancel` from interleaving with an Auto
-    installation, and a cancel's notification from reinstalling the plan it cancelled. `start`,
-    `stop`, `follow` and `cancel` touch neither mode nor pause.
+    installation, and a cancel's notification from reinstalling the plan it cancelled. `start`, `stop` and
+    `cancel` are a person's Start or Stop: they pause Auto for the plug-in session (`manual`); `follow` ends
+    that pause and follows the plan.
 
     `stop` with a typed `choice` is a pause and `resume` clears it; both go to the planner controller
     because they concern automatic execution. A `stop` without a choice is the immediate stop.

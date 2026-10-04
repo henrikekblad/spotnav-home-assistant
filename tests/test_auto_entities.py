@@ -769,7 +769,8 @@ async def test_the_three_auto_buttons_reach_the_backend_exactly_once(
     assert settings_of(hass, entry.entry_id).execution_paused is False
     assert hass.states.get(execution).state in ("scheduled", "active", "complete")
 
-    cancel = Counted(monkeypatch, controller_of(hass, entry.entry_id), "async_cancel")
+    # Cancel is a person's Stop: one stop that clears the plan, and Auto paused for the plug-in.
+    cancel = Counted(monkeypatch, controller_of(hass, entry.entry_id), "async_stop")
     await call(
         hass,
         "button",
@@ -778,6 +779,7 @@ async def test_the_three_auto_buttons_reach_the_backend_exactly_once(
     )
     assert cancel.calls == 1
     assert controller_of(hass, entry.entry_id).plan is None
+    assert settings_of(hass, entry.entry_id).pause.choice == "manual"
 
 
 async def test_recalculate_incomplete_settings_is_safe(

@@ -10,9 +10,19 @@ energy to charge (or a [target state of charge](target-soc.md)), the maximum num
 periods, and an optional departure time. The card marks what is missing.
 
 - **Automatic execution.** Home Assistant installs the plan and starts and stops the charger at
-  the planned times. It survives restarts. **Start** and **Stop** always override the plan
-  for the moment, and **Pause** suspends automatic execution until the next period, until
-  tomorrow, or until you resume it.
+  the planned times. It survives restarts. **Pause** suspends automatic execution until the next
+  period, until tomorrow, or until you resume it.
+- **Start and Stop pause Auto for the plug-in.** Pressing **Start** or **Stop** (in the card, the app,
+  with a button or any other manual path) hands the charger to you: Auto, schedule and strategy alike,
+  is paused until the car is unplugged. Nothing automatic starts or stops the charger meanwhile (no plan
+  period, top-off, hold, solar or hybrid); load balancing still keeps the fuse safe. A **Start** also
+  ends when the car ends the charge by itself (full, at its limit, or no longer drawing): Auto then
+  resumes and plans again, without starting the period that is already running. A **Stop** with no
+  car plugged in means "do not charge when I plug in": it lasts through the next plug-in and ends at
+  the unplug after it. **Resume** (or picking another pause) gives the charger back to Auto at once.
+  The status says *Stopped manually – until the car is unplugged* or *Charging manually – until the car
+  is full or unplugged*. The pause survives a restart. On a charger that cannot tell when a car is
+  plugged in, only Resume ends it, and the status says so.
 - **Settings are one record.** The card, the app and the entities all edit the same settings.
   A write names the revision it edited, so two clients cannot silently overwrite each other.
 - **Prices** come from the SpotNav Relay, exactly as published: EUR per kWh with each area's
@@ -52,9 +62,9 @@ yourself overrides the weekdays.
 
 **Plugging in and unplugging.** SpotNav plans again a few seconds after the car is plugged in or
 unplugged, and again the moment the departure passes, without waiting for the next price. A car
-plugged in while a planned period is running starts charging at once, unless you stopped the charge
-yourself during that period, Auto is paused, solar charging owns the charger or load balancing has no
-room for the minimum current. A charge the charger starts by itself inside a planned period counts as the plan's, so it stops with the
+plugged in while a planned period is running starts charging at once, unless Auto is paused (your own
+Start or Stop pauses it until the car is unplugged), the car ended a charge you started during that
+period, solar charging owns the charger or load balancing has no room for the minimum current. A charge the charger starts by itself inside a planned period counts as the plan's, so it stops with the
 period or when the need is met. Plugged in between periods, it waits for the next one as before. Only a
 status that shows a car there or gone counts as a plug-in or an unplug: a fault, an offline or updating
 charger, OCPP's Unavailable and a Wallbox's Ready (shown with or without a car) say nothing either way. When
@@ -122,10 +132,9 @@ cannot, and for a direct site without the total it says the meter's total grid p
   surplus for the minimum current it is kept as a solar charge at the minimum and checked like a start,
   otherwise (or with no usable reading) it is stopped at once, with no fading time to ride out. A
   charge you start with **Start** is yours and is left alone.
-- After you press **Stop**, the sun does not start the charge again until the car is plugged in
-  again, you press **Start** (or follow the plan again) or a planned period begins, also after a
-  restart; the status says so, and for a charger that cannot tell when a car is plugged in it names
-  only Start and the next planned period. A false battery credit's wait also outlasts a restart.
+- After you press **Stop** or **Start**, the sun neither starts nor stops the charger until the car is
+  unplugged or you resume Auto (see *Start and Stop pause Auto for the plug-in* above), also after a
+  restart. A false battery credit's wait also outlasts a restart.
 - Solar follows what the charger reports. When the car ends the charge by itself (the connector says
   *Finishing* or *SuspendedEV*, or the car draws nothing for five minutes), the status says
   *the car is full* when it is at its own charge limit, and then nothing starts until the car is plugged
@@ -158,4 +167,4 @@ cheapest.
   forecast drops.
 - Outside a planned period the sun's rules above own the charger, also when there is no plan at all
   because the sun covers the need: a charge the charger began by itself is kept or stopped at once,
-  and a Stop sticks, as under Solar.
+  and a Start or Stop pauses Auto for the plug-in, as under Solar.

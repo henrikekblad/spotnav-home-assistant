@@ -288,6 +288,14 @@ class StartStopPath(ABC):
     def entity_ids(self) -> tuple[str, ...]:
         """The entities whose reports change `enabled_state`."""
 
+    def memory(self) -> dict[str, Any]:
+        """What this path remembers that a restart must not forget (plain JSON values); none by default."""
+        return {}
+
+    def restore_memory(self, memory: dict[str, Any]) -> None:
+        """Take back what `memory` gave, after a restart. Storage is untrusted: a wrong kind reads as absent."""
+        del memory  # a path that remembers nothing takes nothing back
+
     @abstractmethod
     def describe(self) -> dict[str, Any]: ...
 

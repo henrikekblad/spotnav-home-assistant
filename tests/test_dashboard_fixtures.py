@@ -415,6 +415,7 @@ EXPECTED_FIXTURES: Final = frozenset(
         "resume_active.json",
         "pause_clear_failed.json",
         "action_pending.json",
+        "manual_stop.json",
         "no_settings.json",
     }
 )
