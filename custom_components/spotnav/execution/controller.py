@@ -2314,6 +2314,10 @@ class ChargingController:
         `number.set_value`. Best effort: the request is recorded by the caller either way, and every way
         this cannot proceed logs one warning naming no entity and writes nothing.
         """
+        if reason == WRITE_REGULATOR and self._stop_in_flight:
+            # A stop holds `_assign_lock` while its command is on its way: the regulator's write never waits
+            # for it, it is simply not sent (`_assign_current_locked` checks again once the lock is held).
+            return REGULATED_STOPPING
         async with self._assign_lock:
             return await self._assign_current_locked(amps, verify=verify, reason=reason)
 
@@ -2670,7 +2674,11 @@ class ChargingController:
             self._stop_in_flight = True
             failure: Exception | None = None
             try:
-                executed = await self.adapter.async_stop()
+                # Under `_assign_lock`: a current write already on its way lands before the stop goes out, so it
+                # cannot lift the stop after it (Easee pauses by its limit). The stop waits for that one write
+                # at most: every regulator write behind it sees `_stop_in_flight` and sends nothing.
+                async with self._assign_lock:
+                    executed = await self.adapter.async_stop()
             except Exception as err:  # noqa: BLE001 - a command that failed outright did not execute either
                 failure = err
                 executed = False
