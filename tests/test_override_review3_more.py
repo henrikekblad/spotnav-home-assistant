@@ -378,3 +378,40 @@ def timedelta_s(seconds: float) -> Any:
     from datetime import timedelta
 
     return timedelta(seconds=seconds)
+
+
+async def test_r5_giving_up_on_a_charger_under_a_persons_stop_is_notified_and_wakes_the_app(
+    hass: HomeAssistant, freezer: Any, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """R5 notification: when SpotNav gives up stopping a charger under a person's Stop, the chosen phones hear
+    it as the "did not go as planned" event (`plan_stopped`, on by default), and the paired app is woken."""
+    from custom_components.spotnav.runtime import charger_data, executor_for
+
+    from .test_notifications import _charger, _later
+
+    entry, calls = await _charger(hass)
+    woken: list[str] = []
+    push = charger_data(hass, entry.entry_id).push
+    monkeypatch.setattr(push, "async_event", lambda event, _now: woken.append(event))
+    await executor_for(hass, entry.entry_id).async_manual_stop()
+    await hass.async_block_till_done()
+    for n in range(4):
+        hass.states.async_set("switch.charger_a", "on", {"report": n})  # the mocked stop changes nothing
+        await hass.async_block_till_done()
+        await _later(hass, freezer, 31)
+    controller = charger_data(hass, entry.entry_id).controller
+    assert controller.ignores_person_stop
+    assert [call.data["message"] for call in calls] == [
+        "The charger keeps charging although it was stopped. Stop it at the charger or unplug the car."
+    ]
+    assert calls[0].data["data"]["tag"] == f"spotnav_{entry.entry_id}_plan_stopped"
+    assert woken.count("plan_stopped") == 1
+
+
+def test_r5_the_give_up_message_is_short_in_every_language() -> None:
+    from custom_components.spotnav.notifications.messages import compose, LANGUAGES
+
+    for language in LANGUAGES:
+        message = compose("plan_stopped", "G", {"reason": "charger_ignores_stop"}, language)[1]
+        assert message != compose("plan_stopped", "G", {"reason": "not_started"}, language)[1], language
+        assert len(message) < 120, language

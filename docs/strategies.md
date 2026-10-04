@@ -25,7 +25,9 @@ periods, and an optional departure time. The card marks what is missing.
   plugged in is refused. A **Stop** with no car plugged in means "do not charge when I plug in": it
   lasts through the next plug-in (also one made while Home Assistant was down) and ends at the unplug
   after it, and a charge the charger begins by itself meanwhile is stopped at once (at most once every
-  30 seconds; a charger that keeps charging after three stops is left alone and the status says so).
+  30 seconds; a charger that keeps charging, or begins again, after three stops within ten minutes is left
+  alone, the status says so and the phones chosen for notifications are told, until the person acts or
+  the car is unplugged).
   A **Start** or **Stop** always reaches the charger first, and holds even if the pause cannot be saved
   (the save is tried again). **Resume** (or picking another pause)
   gives the charger back to Auto at once.

@@ -6,7 +6,8 @@ trackers, so a disabled event entity does not silence a phone:
 * `ChargerEventTracker` (`execution/charger_events.py`) for `charge_started`, `plugged_in`, `unplugged`,
   `plan_installed` and `plan_at_risk`;
 * `UnexpectedStopDetector` (`unexpected_stop.py`) for `plan_stopped`, looked at again when its grace
-  period runs out;
+  period runs out, and the controller's `ignores_person_stop` for `plan_stopped` as
+  `charger_ignores_stop` (SpotNav gave up stopping a charger that keeps charging under a person's Stop);
 * the controller's `completion_record` for `charge_complete`, with the charge's energy and cost from
   its session.
 
@@ -57,6 +58,8 @@ REPEAT_S: Final = 15 * 60.0
 HOURLY_LIMIT: Final = 12
 #: What a tap opens when no dashboard path is set: Home Assistant's default dashboard.
 DEFAULT_URL: Final = "/"
+#: `plan_stopped`'s reason when SpotNav gave up stopping a charger under a person's Stop.
+REASON_CHARGER_IGNORES_STOP: Final = "charger_ignores_stop"
 #: A completed charge's session is the open one, or one that closed this recently.
 _SESSION_RECENT_S: Final = 600.0
 
@@ -101,6 +104,7 @@ class ChargerNotifier:
         self._stops = UnexpectedStopDetector()
         self._snapshot: AutoSnapshot | None = None
         self._completion_at: str | None = None
+        self._ignores_stop = False
         self._baselined = False
         self._recheck: CALLBACK_TYPE | None = None
         self._recheck_at: datetime | None = None
@@ -146,6 +150,10 @@ class ChargerNotifier:
         reason = self._stops.observe(self._expectation(now))
         if reason is not None:
             events.append((EVENT_PLAN_STOPPED, {"reason": reason}))
+        ignores_stop = bool(controller.ignores_person_stop)
+        if self._baselined and ignores_stop and not self._ignores_stop:
+            events.append((EVENT_PLAN_STOPPED, {"reason": REASON_CHARGER_IGNORES_STOP}))
+        self._ignores_stop = ignores_stop
         completion = controller.completion_record
         completion_at = None if completion is None else completion.get("at")
         if self._baselined and completion is not None and completion_at != self._completion_at:
@@ -234,7 +242,14 @@ class ChargerNotifier:
         notifications = self._store.settings(self._entry_id).notifications
         if not notifications.wants(event):
             return
-        last = self._last_sent.get(event)
+        # Giving up on a charger under a person's Stop is its own kind of trouble: a missed window told a
+        # moment before does not silence it.
+        repeat_key = (
+            REASON_CHARGER_IGNORES_STOP
+            if event == EVENT_PLAN_STOPPED and attributes.get("reason") == REASON_CHARGER_IGNORES_STOP
+            else event
+        )
+        last = self._last_sent.get(repeat_key)
         if last is not None and (now - last).total_seconds() < REPEAT_S:
             _LOGGER.debug("SpotNav charger %s: %s not notified again so soon", self._entry_id, event)
             return
@@ -250,7 +265,7 @@ class ChargerNotifier:
         ]
         if not targets:
             return
-        self._last_sent[event] = now
+        self._last_sent[repeat_key] = now
         self._sent_times.append(now)
         title, message = compose(
             event, self._name(), self._facts_for(event, attributes), language_of(self._hass.config.language)
