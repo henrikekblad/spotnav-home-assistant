@@ -112,6 +112,11 @@ PLUG_IN_RESTART_S: Final = 900.0
 #: not believed (one false high reading must not end a plan).
 JUMP_MARGIN_KWH: Final = 0.5
 
+#: A met need opens again only when the count falls this far below the request (a count wavering at the
+#: request is still met), and only once that lower count has held this long.
+REOPEN_BELOW_KWH: Final = 0.3
+REOPEN_HOLD_S: Final = 120.0
+
 #: The current a rise is judged against at the least: 63 A on three phases (about 43 kW).
 CEILING_A: Final = 63
 
@@ -527,6 +532,8 @@ class AutoPlannerController:
         self._live_baseline: EnergyBaseline | None = None
         self._sessions_cancel: Callable[[], None] | None = None
         self._energy_met_done: str | None = None
+        # The epoch and since when a met need's count has stood clearly below the request.
+        self._reopen_since: tuple[str, datetime] | None = None
 
         self._listeners: list[Callable[[AutoSnapshot], None]] = []
         self._unsubscribe: Callable[[], None] | None = None
@@ -896,9 +903,11 @@ class AutoPlannerController:
         departure's own appointment armed (the instant it passes, the next occurrence is planned).
         """
         energy: dict[str, Any] = {}
+        # Armed (and the register read once) first, so a reading nobody saw (Home Assistant was down, the
+        # entry reloaded) is in the count this calculation uses.
+        self._arm_energy_watch(settings)
         snapshot = await self._compute_plan(settings, attempt, energy)
         self._arm_departure(settings)
-        self._arm_energy_watch(settings)
         self._arm_charge_watch()
         return replace(snapshot, **energy) if energy else snapshot
 
@@ -1653,6 +1662,9 @@ class AutoPlannerController:
         self._energy_cancel = async_track_state_change_event(
             self._hass, [entity_id], self._on_energy_reading
         )
+        # What the register says now was never seen: judged like any reading (a jump the charging time
+        # cannot explain waits for a later, different one).
+        self._on_energy_reading()
 
     def _drop_energy_watch(self) -> None:
         if self._energy_cancel is not None:
@@ -1705,8 +1717,11 @@ class AutoPlannerController:
         reading = self._read_energy_register()
         if stored is None or reading is None or stored.register_kwh is None:
             return
-        new_state = None if event is None else (getattr(event, "data", None) or {}).get("new_state")
-        changed_at = None if new_state is None else new_state.last_changed
+        entity_id = self._energy_register_entity_id()
+        state = None if entity_id is None else self._hass.states.get(entity_id)
+        # When the reading itself changed, whichever way it reached us: a state read again is no new
+        # reading.
+        changed_at = None if state is None else state.last_changed
         step = self._advance(stored, reading, changed_at)
         if step.baseline != stored:
             self._live_baseline = step.baseline
@@ -1715,14 +1730,28 @@ class AutoPlannerController:
         if not step.accepted:
             return
         key = step.baseline.departure_key
+        met = self._energy_met_done == key or step.baseline.met_at is not None
         if step.delivered_kwh < settings.requested_kwh:
-            if self._energy_met_done == key or step.baseline.met_at is not None:
-                # The count that said the need was delivered proved false: the need is open again.
-                self._energy_met_done = None
-                reopened = replace(step.baseline, met_at=None)
-                self._live_baseline = reopened
-                self._hass.async_create_task(self._async_need_reopened(reopened))
+            if not met:
+                return
+            if step.delivered_kwh > settings.requested_kwh - REOPEN_BELOW_KWH:
+                # A count that wavers at the request: still met.
+                self._reopen_since = None
+                return
+            now = self._now()
+            if self._reopen_since is None or self._reopen_since[0] != key:
+                self._reopen_since = (key, now)
+                return
+            if (now - self._reopen_since[1]).total_seconds() < REOPEN_HOLD_S:
+                return
+            # The count that said the need was delivered proved false, and has held lower: open again.
+            self._reopen_since = None
+            self._energy_met_done = None
+            reopened = replace(step.baseline, met_at=None, met_requested_kwh=None)
+            self._live_baseline = reopened
+            self._hass.async_create_task(self._async_need_reopened(reopened))
             return
+        self._reopen_since = None
         if self._energy_met_done == key:
             return
         self._energy_met_done = key
@@ -1735,7 +1764,11 @@ class AutoPlannerController:
     async def _async_energy_met(self, baseline: EnergyBaseline) -> None:
         """End the plan whose energy is delivered, then plan again once to say so."""
         if baseline.met_at is None:
-            met = replace(baseline, met_at=self._now())
+            met = replace(
+                baseline,
+                met_at=self._now(),
+                met_requested_kwh=self._store.settings(self._entry_id).requested_kwh,
+            )
             self._live_baseline = met
             await self._save_baseline(met)
         if self._executor is not None and self._executor.applied is not None:
@@ -1863,15 +1896,25 @@ class AutoPlannerController:
         delivered = counted_kwh(stored)
         remaining = max(0.0, requested - delivered)
         met_at = stored.met_at
-        if remaining > 0 and met_at is not None:
-            # More is asked for than was delivered (the request was raised, or the count proved false):
-            # the remainder is the need, and the count goes on.
-            met_at = None
-            self._energy_met_done = None
-        elif remaining <= 0 and met_at is None:
-            met_at = calculated_at
+        met_requested = stored.met_requested_kwh
+        if met_at is not None:
+            raised = requested > (met_requested if met_requested is not None else delivered) + 1e-6
+            if raised and remaining > 0:
+                # More is asked for than was delivered: the remainder is the need, and the count goes on.
+                met_at = met_requested = None
+                self._energy_met_done = None
+            else:
+                # Met stays met: only the register watcher opens it again, on a count that proved false
+                # and held lower (`_on_energy_reading`), never on a count wavering at the request.
+                remaining = 0.0
+        elif remaining <= 0:
+            met_at, met_requested = calculated_at, requested
         updated = replace(
-            stored, remaining_kwh=round(remaining, 6), delivered_kwh=round(delivered, 6), met_at=met_at
+            stored,
+            remaining_kwh=round(remaining, 6),
+            delivered_kwh=round(delivered, 6),
+            met_at=met_at,
+            met_requested_kwh=met_requested,
         )
         if updated != stored:
             await self._save_baseline(updated)

@@ -815,6 +815,8 @@ class EnergyBaseline:
     * `rejected_kwh`, `rejected_at`, `rejected_mark_s`: a reading that climbed further than the charger
       can deliver, when it changed, and the charge clock then; believed only if a later, different
       reading holds at or above it and is deliverable from it;
+    * `met_requested_kwh`: the request when the need was met, so a raised request is told from a count
+      that wavers;
     * `charge_mark_s`: the charger's charge clock at the last believed reading
       (`ChargingController.charging_seconds`), so a rise is judged by the charging time since.
     """
@@ -836,6 +838,7 @@ class EnergyBaseline:
     rejected_at: datetime | None = None
     rejected_mark_s: float | None = None
     charge_mark_s: float | None = None
+    met_requested_kwh: float | None = None
 
     def as_dict(self) -> dict[str, Any]:
         record: dict[str, Any] = {"register_kwh": self.register_kwh, "departure_key": self.departure_key}
@@ -871,6 +874,7 @@ class EnergyBaseline:
                     "rejected_kwh",
                     "rejected_mark_s",
                     "charge_mark_s",
+                    "met_requested_kwh",
                 }
             ),
         )
@@ -919,6 +923,7 @@ class EnergyBaseline:
             rejected_at=instants["rejected_at"],
             rejected_mark_s=numbers["rejected_mark_s"],
             charge_mark_s=numbers["charge_mark_s"],
+            met_requested_kwh=numbers["met_requested_kwh"],
         )
 
 
@@ -935,6 +940,7 @@ _BASELINE_READINGS: Final = (
     "rejected_kwh",
     "rejected_mark_s",
     "charge_mark_s",
+    "met_requested_kwh",
 )
 
 
