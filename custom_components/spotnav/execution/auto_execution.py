@@ -1268,23 +1268,25 @@ class AutoExecutor:
                 await self._notify_change()
             return started
 
-    async def async_solar_start(self, amps: int) -> None:
+    async def async_solar_start(self, amps: int) -> bool:
         """One solar start, from `SolarController`'s verdict, through the same boundary, lock and
         `ChargingController.async_start` as every other start.
 
         Admits `hybrid` as well as `solar`; for `hybrid` the caller has already established that no plan
         window is active. Only the pause and the strategy are re-checked, live under the lock. A manual
         Stop shares the lock, so the two cannot interleave, and solar respects it until it arms a fresh
-        start.
+        start. Returns whether the start went out: refused here, held back by load balancing, or not
+        executed by the charger's control is `False`, and solar must not believe it runs a charge.
         """
         async with self._lock:
             settings = self._store.settings(self._entry_id)
             if pause_blocks_execution(settings) or settings.strategy not in (
                 STRATEGY_SOLAR, STRATEGY_HYBRID
             ):
-                return
-            await self._controller.async_start(amps, cause="solar")
+                return False
+            started = await self._controller.async_start(amps, cause="solar")
             await self._notify_change()
+            return started
 
     async def async_solar_stop(self) -> None:
         """One solar stop, through the same lock and `ChargingController.async_stop` as every other

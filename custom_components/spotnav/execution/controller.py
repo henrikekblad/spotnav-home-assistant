@@ -115,6 +115,8 @@ CONNECTION_UNPLUGGED = "unplugged"
 EXECUTION_STORAGE_FAILED = "storage_failed"
 EXECUTION_RESCHEDULE_FAILED = "reschedule_failed"
 EXECUTION_ROLLBACK_FAILED = "rollback_failed"
+#: A stop the charger's control did not execute (it was unavailable): nothing of the charge is forgotten.
+EXECUTION_STOP_NOT_EXECUTED = "stop_not_executed"
 
 
 class ChargingExecutionError(RuntimeError):
@@ -1132,14 +1134,14 @@ class ChargingController:
             gap=self._next_window_start() is not None and not self._hold_blocked(),
         )
         if decision == HOLD:
-            self.hass.async_create_task(self._async_hold_stop())
+            self._async_spawn(self._async_hold_stop(), "the hold's stop")
         elif self._window_charge_unclaimed():
             self.hass.async_create_task(self._async_claim_window_charge())
         elif self._plan_charge:
             if self._control_observation is False:
                 self.hass.async_create_task(self._async_forget_plan_charge())
             elif self._plan_charge_strays():
-                self.hass.async_create_task(self._async_stray_stop())
+                self._async_spawn(self._async_stray_stop(), "the stray charge's stop")
         return decision in (HOLD, OVERRIDE) or before != (hold.held, hold.overridden, connected)
 
     def _window_charge_unclaimed(self) -> bool:
@@ -2147,6 +2149,8 @@ class ChargingController:
         the window-end stop and an explicit cancel record nothing. Clearing the plan drops the state-change
         subscription, since a gone plan enforces nothing.
         """
+        was_owned = self._hold.owned
+        was_balancing = (self._paused_by_balancing, self._paused_charge)
         self._hold.spotnav_stopped()
         self._paused_by_balancing = False
         self._paused_charge = None
@@ -2155,8 +2159,23 @@ class ChargingController:
         plan_charge = self._plan_charge
         origin = self._charge_origin
         if self._stop_needed:
+            was_sent_at = self._stop_sent_at
             self._stop_sent_at = dt_util.utcnow()
-            await self.adapter.async_stop()
+            if await self.adapter.async_stop() is False:
+                # The command never went out (the control is unavailable): nothing of the charge is
+                # forgotten, neither who owns it nor the plan, so the retries that apply to a running
+                # charge (a pause's retry, the stray-charge stop) still find it.
+                self._stop_sent_at = was_sent_at
+                self._hold.owned = was_owned
+                self._paused_by_balancing, self._paused_charge = was_balancing
+                _LOGGER.warning(
+                    "SpotNav charger %s: the stop was not executed (the charge control is unavailable)",
+                    self.entry_id,
+                )
+                self._notify()
+                raise ChargingExecutionError(
+                    EXECUTION_STOP_NOT_EXECUTED, "the stop command was not executed"
+                )
             self._plan_charge = False
             self._charge_origin = None
         elif self._control_observation is not None:
@@ -2659,7 +2678,7 @@ class ChargingController:
         """
         if self.plan is None or self.plan.target_soc_percent is None:
             return
-        self.hass.async_create_task(self._async_enforce_target())
+        self._async_spawn(self._async_enforce_target(), "the target's stop")
 
 
 
@@ -2711,7 +2730,7 @@ class ChargingController:
                 self.entry_id,
             )
             return
-        self.hass.async_create_task(self.async_stop(clear_schedule=False))
+        self._async_spawn(self.async_stop(clear_schedule=False), "the window end's stop")
 
     @callback
     def _async_final_end_callback(self, _now: datetime) -> None:
@@ -2731,12 +2750,12 @@ class ChargingController:
         if self._top_off_wanted() is not None:
             # A car still drawing on a charge to its own limit finishes it: the top-off decides again
             # under the lock, and ends the plan as this would have when it may not run.
-            self.hass.async_create_task(self._async_begin_top_off())
+            self._async_spawn(self._async_begin_top_off(), "the last window's end")
             return
         if self.plan is not None and self._control_on:
             # A charge still running at the last window's end: the plan is done.
             self._record_completion("plan_done", target_soc_percent=self.plan.target_soc_percent)
-        self.hass.async_create_task(self.async_stop(clear_schedule=True))
+        self._async_spawn(self.async_stop(clear_schedule=True), "the last window end's stop")
 
     # ------------------------------------------------------------------ the top-off (`top_off.py`)
 
@@ -2876,7 +2895,7 @@ class ChargingController:
 
     @callback
     def _async_top_off_deadline_callback(self, _now: datetime) -> None:
-        self.hass.async_create_task(self._async_end_top_off(TOP_OFF_DEADLINE))
+        self._async_spawn(self._async_end_top_off(TOP_OFF_DEADLINE), "the top-off\'s end")
 
     @callback
     def _async_top_off_interval(self, _now: datetime) -> None:
@@ -2892,16 +2911,16 @@ class ChargingController:
             return
         now = dt_util.utcnow()
         if now >= until:
-            self.hass.async_create_task(self._async_end_top_off(TOP_OFF_DEADLINE))
+            self._async_spawn(self._async_end_top_off(TOP_OFF_DEADLINE), "the top-off\'s end")
             return
         if self.adapter.vehicle_connected() is False:
-            self.hass.async_create_task(self._async_end_top_off(TOP_OFF_UNPLUGGED))
+            self._async_spawn(self._async_end_top_off(TOP_OFF_UNPLUGGED), "the top-off\'s end")
             return
         if self._paused_by_balancing:
             self._top_off_idle_since = None
             return
         if self._control_observation is False:
-            self.hass.async_create_task(self._async_end_top_off(TOP_OFF_OFF))
+            self._async_spawn(self._async_end_top_off(TOP_OFF_OFF), "the top-off\'s end")
             return
         if self._car_drawing() is not False:
             self._top_off_idle_since = None
@@ -2911,7 +2930,7 @@ class ChargingController:
             self._top_off_idle_since = now
             return
         if (now - since).total_seconds() >= top_off.IDLE_S:
-            self.hass.async_create_task(self._async_end_top_off(TOP_OFF_FULL))
+            self._async_spawn(self._async_end_top_off(TOP_OFF_FULL), "the top-off\'s end")
 
     async def _async_end_top_off(self, reason: str) -> None:
         """End a top-off, decided again under the lock, and the plan with it.
@@ -2948,6 +2967,18 @@ class ChargingController:
             elif reason == TOP_OFF_DEADLINE and self._control_on:
                 self._record_completion("plan_done", target_soc_percent=plan.target_soc_percent)
             await self._stop_locked(clear_schedule=True)
+
+    def _async_spawn(self, work: Any, what: str) -> None:
+        """Run one decision a timer or a report made, as a task whose failure is logged, not raised into
+        Home Assistant's loop: a stop the charger did not execute keeps the charge as it was, and the
+        next report or timer decides again."""
+        self.hass.async_create_task(self._async_logged(work, what))
+
+    async def _async_logged(self, work: Any, what: str) -> None:
+        try:
+            await work
+        except Exception as err:  # noqa: BLE001 - logged; the charge stays as it was
+            _LOGGER.warning("SpotNav charger %s: %s failed: %s", self.entry_id, what, type(err).__name__)
 
     def _cancel_timers(self) -> None:
         for cancel in self._timer_cancels:

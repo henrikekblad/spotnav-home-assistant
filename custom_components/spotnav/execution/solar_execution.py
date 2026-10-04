@@ -781,7 +781,7 @@ class SolarExecutionCoordinator:
             # verdict is not carried out while a plan window owns the charger.
             pass
         else:
-            await self._apply_verdict(verdict)
+            verdict = await self._apply_verdict(verdict)
         self._update_state(
             verdict, site, held_by_plan=held_by_plan, basis=solar_basis(site, self._charger_entry_id, observation)
         )
@@ -1116,7 +1116,7 @@ class SolarExecutionCoordinator:
                 "SpotNav charger %s: a charge the charger began by itself is kept on the sun's surplus",
                 self._charger_entry_id,
             )
-            await self._apply_verdict(verdict)
+            verdict = await self._apply_verdict(verdict)
         self._update_state(verdict, site, basis=basis)
         self._log_transition(verdict)
         self._record_verdict(verdict, held_by_plan=False)
@@ -1262,16 +1262,29 @@ class SolarExecutionCoordinator:
         self._decision_signature = signature
         self._decision_state = state
 
-    async def _apply_verdict(self, verdict: SolarVerdict) -> None:
+    async def _apply_verdict(self, verdict: SolarVerdict) -> SolarVerdict:
+        """Carry out one verdict; returns the verdict that stands. A start that did not go out (refused
+        under the executor's lock, held back by load balancing, or not executed by the charger's control)
+        leaves solar `off`, as after a charge something else ended: nothing runs, and the next start waits
+        its minimum off time."""
         if verdict.action == "start":
             assert verdict.requested_a is not None
-            await self._executor.async_solar_start(int(verdict.requested_a))
+            if not await self._executor.async_solar_start(int(verdict.requested_a)):
+                _LOGGER.info(
+                    "%s charger %s: the start did not go out; solar stays off",
+                    SOLAR_SURPLUS_LOG_TOKEN,
+                    self._charger_entry_id,
+                )
+                if self._solar is None:
+                    return replace(verdict, action="hold")
+                return replace(self._solar.charge_ended(self._now(), "charger_stopped"), action="hold")
         elif verdict.action == "stop":
             await self._executor.async_solar_stop()
         elif verdict.action == "set_current":
             assert verdict.requested_a is not None
             await self._executor.async_solar_set_current(int(verdict.requested_a))
         # hold: nothing to do.
+        return verdict
 
     def _update_state(
         self,
