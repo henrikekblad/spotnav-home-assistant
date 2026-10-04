@@ -5,7 +5,7 @@ starts or stops it. The pause is Auto's own pause with the choice `manual`, carr
 it, persisted like any pause. It ends when the car is unplugged (a Stop given with no car plugged in
 lasts through the next plug-in and ends at the unplug after it), when the person resumes Auto or picks
 another pause, or, after a Start, when the car ends the charge by itself; then Auto resumes and replans,
-and a window already open when the car ended it is not started again.
+and no window starts the full car again in that plug-in unless its need grew.
 """
 
 from __future__ import annotations
@@ -173,12 +173,30 @@ async def test_a_start_replaces_a_stop_and_a_stop_a_start(hass: HomeAssistant, t
     await world.shutdown()
 
 
-async def test_a_start_with_no_car_pauses_nothing(hass: HomeAssistant, timers: FakeScheduler) -> None:
+async def test_a_start_with_no_car_is_refused_and_pauses_nothing(hass: HomeAssistant, timers: FakeScheduler) -> None:
     world = await pause_world(hass, timers, connected=False)
+
+    with pytest.raises(AutoControlRefused) as refused:
+        await world.executor.async_manual_start()
+
+    assert refused.value.code == "vehicle_not_connected"
+    assert world.starts == [], "nothing is sent to a charger with no car"
+    assert world.pause == PauseIntent()
+    await world.shutdown()
+
+
+async def test_a_start_when_the_connection_is_not_known_goes_out_and_replaces_a_stop(
+    hass: HomeAssistant, timers: FakeScheduler
+) -> None:
+    world = await pause_world(hass, timers, connected=False)
+    await world.executor.async_manual_stop()
+    assert _manual(world) == (PAUSE_MANUAL, MANUAL_STOP, MANUAL_SCOPE_NEXT_PLUG_IN)
+    await world.plug.set(None)  # the status says nothing either way
 
     await world.executor.async_manual_start()
 
-    assert world.pause == PauseIntent()
+    assert world.controller.charging
+    assert world.pause.action == MANUAL_START, "a Start never leaves the Stop it contradicts"
     await world.shutdown()
 
 
@@ -250,8 +268,39 @@ async def test_a_full_car_ends_a_start_and_the_open_window_is_not_started_again(
     assert len(world.starts) == starts
     freezer.tick(timedelta(hours=2, minutes=1))
     await restarted.fire("_async_start_callback")
-    assert len(world.starts) == starts + 1, "a later window starts as planned"
+    assert len(world.starts) == starts, "nor a later window of the same plug-in: the car is still full"
     await restarted.shutdown()
+
+
+async def test_a_later_window_starts_a_car_whose_charge_dropped_after_it_ended_a_start(
+    hass: HomeAssistant, timers: FakeScheduler, freezer
+) -> None:
+    from types import SimpleNamespace
+
+    world = await pause_world(hass, timers)
+    soc = {"value": 80.0}
+    world.controller._soc_reader = lambda _vehicle: SimpleNamespace(soc_percent=soc["value"])  # noqa: SLF001
+    world.controller.car_drawing = lambda: False  # type: ignore[method-assign]
+    await world.executor.async_manual_start()
+    await world.switch("off")  # the car ended it
+    freezer.tick(timedelta(seconds=30))
+    async_fire_time_changed(hass)
+    await hass.async_block_till_done()
+    assert world.pause == PauseIntent()
+
+    await install_schedule(world.controller, two_windows())
+    starts = len(world.starts)
+    soc["value"] = 79.0  # less than the hysteresis
+    freezer.tick(timedelta(hours=2, minutes=1))
+    await world.fire("_async_start_callback")
+    assert len(world.starts) == starts
+
+    await install_schedule(world.controller, two_windows())
+    soc["value"] = 77.0  # the car was used: its need grew
+    freezer.tick(timedelta(hours=2, minutes=1))
+    await world.fire("_async_start_callback")
+    assert len(world.starts) == starts + 1
+    await world.shutdown()
 
 
 async def test_a_car_that_stops_drawing_ends_a_start_after_the_idle_time(
@@ -358,8 +407,8 @@ async def test_follow_ends_a_manual_pause(hass: HomeAssistant, timers: FakeSched
     world = await pause_world(hass, timers, plan=two_windows())
     await world.executor.async_manual_stop()
 
-    with pytest.raises(Exception):
-        await world.executor.async_manual_follow()  # no plan to follow: Auto has not replanned here
+    # No plan to follow (Auto has not replanned here): the pause's end was the request, and no error.
+    await world.executor.async_manual_follow()
 
     assert world.pause == PauseIntent()
     await world.shutdown()
@@ -438,3 +487,65 @@ def test_a_stored_manual_pause_must_say_what_set_it(raw: dict[str, Any]) -> None
 
     with pytest.raises(AutoSettingsError):
         PauseIntent.from_stored(raw)
+
+
+# ---------------------------------------------------------------------------- reviews of the rule
+
+
+async def test_a_plug_in_reported_while_a_stop_is_stored_keeps_the_stop_for_that_plug_in(
+    hass: HomeAssistant, timers: FakeScheduler
+) -> None:
+    """Stop with no car; the car is plugged in while the pause is being written: the plug-in is decided
+    against the stored pause afterwards, so the Stop holds for that plug-in and ends at its unplug."""
+    world = await pause_world(hass, timers, connected=False)
+    real_update = world.store.async_update
+
+    async def update_with_a_plug_in(*args: Any, **kwargs: Any) -> Any:
+        # Reported while the pause is on its way to the store (not waited for: the Stop holds the lock).
+        world.plug.connected = True
+        hass.states.async_set("switch.a", "off", {"plug": True, "stamp": "during the write"})
+        return await real_update(*args, **kwargs)
+
+    world.store.async_update = update_with_a_plug_in  # type: ignore[method-assign]
+    await world.executor.async_manual_stop()
+    world.store.async_update = real_update  # type: ignore[method-assign]
+    await hass.async_block_till_done()
+
+    assert _manual(world) == (PAUSE_MANUAL, MANUAL_STOP, MANUAL_SCOPE_PLUG_IN)
+    await world.plug.set(False)
+    await hass.async_block_till_done()
+    assert world.pause == PauseIntent()
+    await world.shutdown()
+
+
+async def test_a_safety_stop_of_a_persons_start_is_resumed_by_load_balancing(
+    hass: HomeAssistant, timers: FakeScheduler
+) -> None:
+    world = await pause_world(hass, timers)
+    await world.executor.async_manual_start(10)
+    assert world.controller.charging
+
+    await world.controller._regulated_stop("safety_stop", cause="rate_limited")  # noqa: SLF001
+
+    assert world.controller.paused_by_balancing, "the person's charge waits for room, as after a pause"
+    assert await world.controller.async_battery_probe_start(8)
+    assert world.controller.charging
+    await world.shutdown()
+
+
+async def test_a_start_whose_pause_cannot_be_stored_still_charges_and_says_so(
+    hass: HomeAssistant, timers: FakeScheduler
+) -> None:
+    from custom_components.spotnav.execution.auto_execution import AutoControlCommitted
+
+    world = await pause_world(hass, timers)
+
+    async def broken(*_a: Any, **_k: Any) -> Any:
+        raise OSError("disk full")
+
+    world.store.async_update = broken  # type: ignore[method-assign]
+    with pytest.raises(AutoControlCommitted):
+        await world.executor.async_manual_start(10)
+
+    assert world.controller.charging, "the charger command decides"
+    await world.shutdown()

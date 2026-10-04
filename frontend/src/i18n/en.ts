@@ -487,6 +487,7 @@ export const en = {
   "action.error.confirmationFailed":
     "The action was accepted, but its current state could not be confirmed.",
   "action.error.invalidPause": "That pause choice is not available for this charger right now.",
+  "action.error.notConnected": "No car is plugged in, so there is nothing to start.",
   "action.error.charger": "The configured charger could not be reached.",
   "action.error.version": "This card and the integration speak different action versions.",
   "action.error.generic":

@@ -54,6 +54,7 @@ from ..planning.auto_settings import (
 from ..planning.phases import effective_phases
 from .controller import (
     AUTOMATIC_BALANCING_RESUME,
+    AUTOMATIC_PERSON_RESUME,
     AUTOMATIC_STOP,
     ChargingController,
     ChargingExecutionError,
@@ -124,6 +125,8 @@ CONTROL_ACTION_PENDING: Final = "action_pending"
 #: failure after the effect is `EXECUTION_RECONCILE_FAILED`.)
 EXECUTION_ACTION_UNAVAILABLE: Final = "action_unavailable"
 EXECUTION_ACTION_FAILED: Final = "action_failed"
+#: A Start refused because the charger says no car is plugged in: nothing was sent and nothing paused.
+EXECUTION_VEHICLE_NOT_CONNECTED: Final = "vehicle_not_connected"
 
 
 class AutoControlError(Exception):
@@ -554,6 +557,9 @@ class AutoExecutor:
         self._cancel_manual_listener: Callable[[], None] | None = None
         self._cancel_manual_interval: Callable[[], None] | None = None
         self._manual_end_pending = False
+        # A person's Start or Stop is between its charger command and its pause's write: a plug-in or an
+        # unplug reported meanwhile is decided after the write, against the pause it stored.
+        self._manual_write_in_flight = False
 
     def automatic_allowed(self, kind: str) -> bool:
         """Whether an automatic decision of this kind (`controller.AUTOMATIC_*`) may act now, by the
@@ -561,11 +567,14 @@ class AutoExecutor:
         a charge, claims one or resumes one load balancing paused. A stop still may: a pause wants the
         charger stopped (one whose own stop failed leaves its plan behind it). Under a person's manual
         pause the person owns the charger: nothing automatic stops their Start, and load balancing resumes
-        only a charge they started."""
+        only a charge they started. A charge a person started is resumed by load balancing under any pause
+        but their Stop (`AUTOMATIC_PERSON_RESUME`)."""
         settings = self._store.settings(self._entry_id)
+        pause = settings.pause
+        if kind == AUTOMATIC_PERSON_RESUME:
+            return not (pause.manual and pause.action == MANUAL_STOP)
         if not pause_blocks_execution(settings):
             return True
-        pause = settings.pause
         if pause.manual:
             # The person owns the charger for the plug-in session. A stop agrees with their Stop and never
             # overrules their Start; load balancing resumes only a charge they started.
@@ -573,6 +582,12 @@ class AutoExecutor:
                 return pause.action == MANUAL_START
             return kind == AUTOMATIC_STOP and pause.action == MANUAL_STOP
         return kind == AUTOMATIC_STOP
+
+    def holds_charger_off(self) -> bool:
+        """Whether a person's Stop pauses Auto: any charge the charger begins by itself is stopped at once,
+        whatever the plan's windows say (`ChargingController._observe_person_hold`)."""
+        pause = self._store.settings(self._entry_id).pause
+        return pause.manual and pause.action == MANUAL_STOP
 
     @asynccontextmanager
     async def automatic_turn(self, kind: str) -> AsyncIterator[bool]:
@@ -1006,36 +1021,54 @@ class AutoExecutor:
     async def _manual_start_locked(self, amps: int | None = None) -> None:
         """The manual start itself, with this boundary's lock held.
 
-        * The command is sent first; a failing one changes nothing else and keeps a retry possible. Nothing
-          automatic can act between the command and the pause: every automatic decision waits for this
-          boundary's lock (`automatic_turn`).
-        * Once accepted, the manual pause (`PAUSE_MANUAL`, action `start`) is stored; a pause the person
-          chose for a span (until tomorrow, until resumed) already holds Auto and is kept. With no car
-          plugged in nothing is paused: the command went out as it always has.
+        * A charger that says no car is plugged in is refused (`vehicle_not_connected`): nothing is sent and
+          nothing paused. One that cannot say (a status that says nothing) is started as ever.
+        * The command is sent first and decides: a failing one changes nothing else and keeps a retry
+          possible. Nothing automatic can act between the command and the pause: every automatic decision
+          waits for this boundary's lock (`automatic_turn`).
+        * Once accepted, the manual pause (`PAUSE_MANUAL`, action `start`) is stored, replacing a person's
+          Stop; a pause the person chose for a span (until tomorrow, until resumed) already holds Auto and is
+          kept. A pause that could not be stored is logged and reported (`reconcile_failed`) after the rest
+          is done: the charge the person started stands.
         * A paused Auto's plan is dropped without touching the charger (its windows' ends would stop what
           the person started), and the start is marked as awaiting the charger's report.
         """
+        if self._controller.adapter.vehicle_connected() is False:
+            raise AutoControlRefused(EXECUTION_VEHICLE_NOT_CONNECTED, "no car is plugged in")
         self.begin_attempt()
         self._pending = None
-        started = await self._controller.async_start(amps, manual=True)
-        if started is False and not self._controller.paused_by_balancing:
-            # The charger's control was unavailable and the command never went out: a failed command
-            # like any other, with nothing pending and a retry possible.
-            raise HomeAssistantError("The start command was not executed: the charge control is unavailable")
-        # Started, or held back by load balancing for want of headroom: either way the person's charge,
-        # which the regulator resumes when there is room.
-        before = self._store.settings(self._entry_id).pause
-        if (not before.admitted or before.manual) and self._controller.adapter.vehicle_connected() is not False:
-            await self._store_pause(self._manual_intent(MANUAL_START, MANUAL_SCOPE_PLUG_IN))
+        save_error: Exception | None = None
+        self._manual_write_in_flight = True
+        try:
+            started = await self._controller.async_start(amps, manual=True)
+            if started is False and not self._controller.paused_by_balancing:
+                # The charger's control was unavailable and the command never went out: a failed command
+                # like any other, with nothing pending and a retry possible.
+                raise HomeAssistantError("The start command was not executed: the charge control is unavailable")
+            # Started, or held back by load balancing for want of headroom: either way the person's charge,
+            # which the regulator resumes when there is room.
+            before = self._store.settings(self._entry_id).pause
+            if not before.admitted or before.manual:
+                try:
+                    await self._store_pause(self._manual_intent(MANUAL_START, MANUAL_SCOPE_PLUG_IN))
+                except Exception as err:  # noqa: BLE001 - the charge stands; reported below
+                    _LOGGER.warning("Storing a person's Start as Auto's pause failed: %s", type(err).__name__)
+                    save_error = err
+        finally:
+            self._manual_write_in_flight = False
         if pause_blocks_execution(self._store.settings(self._entry_id)):
             await self._controller.async_drop_plan()
             self._applied = None
         self._sync_manual_watch()
         if started is False:
             await self._notify_change()
+            if save_error is not None:
+                raise AutoControlCommitted(EXECUTION_RECONCILE_FAILED) from save_error
             raise HomeAssistantError("The start is held back by load balancing until the site has room")
         self._note_manual_start_sent()
         await self._notify_change()
+        if save_error is not None:
+            raise AutoControlCommitted(EXECUTION_RECONCILE_FAILED) from save_error
 
     def _manual_intent(self, action: str, scope: str) -> PauseIntent:
         """The manual pause a person's Start or Stop takes now."""
@@ -1140,6 +1173,10 @@ class AutoExecutor:
             self._pending = None
             if self.pause_intent.manual:
                 await self._end_manual_pause_locked("follow")
+                if self._controller.plan is None:
+                    # Auto has the charger back and nothing to follow yet: the pause's end was the request.
+                    await self._notify_change()
+                    return
             await self._controller.async_follow_schedule()
             await self._notify_change()
 
@@ -1352,30 +1389,51 @@ class AutoExecutor:
     async def _immediate_stop_locked(self) -> None:
         """A person's Stop, with this boundary's lock held.
 
-        The manual pause (`PAUSE_MANUAL`, action `stop`) is stored first: for the plug-in the car is in, or,
-        with no car plugged in, for the next one ("do not charge when I plug in"). A pause the person chose
-        for a span is kept. Then the charger is stopped and Auto's plan cleared, as a pause does. A stop that
-        fails keeps the pause, records `pause_stop_failed` and raises; Stop again is the retry.
+        The charger is stopped first and Auto's plan cleared, as a pause does: nothing may keep a person's
+        Stop from the charger. Then the manual pause (`PAUSE_MANUAL`, action `stop`) is stored: for the
+        plug-in the car is in, or, with no car plugged in by the last connection the charger stated (a
+        status that says nothing now says nothing either way), for the next one ("do not charge when I plug
+        in"). A pause the person chose for a span is kept. A stop that fails still stores the pause, records
+        `pause_stop_failed` and raises; Stop again is the retry. A pause that could not be stored is logged
+        and reported (`reconcile_failed`); the charger is stopped all the same.
         """
         self.begin_attempt()
         self._pending = None
         before = self._store.settings(self._entry_id).pause
+        scope: str | None = None
         if not before.admitted or before.manual:
             connected = self._controller.adapter.vehicle_connected()
+            if connected is None:
+                connected = self._controller.known_connected
             waiting = before.manual and before.scope == MANUAL_SCOPE_NEXT_PLUG_IN and connected is not True
             scope = MANUAL_SCOPE_NEXT_PLUG_IN if connected is False or waiting else MANUAL_SCOPE_PLUG_IN
-            await self._store_pause(self._manual_intent(MANUAL_STOP, scope))
-            self._sync_manual_watch()
+        stop_error: Exception | None = None
+        save_error: Exception | None = None
+        self._manual_write_in_flight = True
         try:
-            await self._controller.async_stop(clear_schedule=True)
-        except Exception:
+            try:
+                await self._controller.async_stop(clear_schedule=True)
+            except Exception as err:  # noqa: BLE001 - raised below, after the pause is stored
+                stop_error = err
+            if scope is not None:
+                try:
+                    await self._store_pause(self._manual_intent(MANUAL_STOP, scope))
+                except Exception as err:  # noqa: BLE001 - the charger is stopped; reported below
+                    _LOGGER.warning("Storing a person's Stop as Auto's pause failed: %s", type(err).__name__)
+                    save_error = err
+                self._sync_manual_watch()
+        finally:
+            self._manual_write_in_flight = False
+        if stop_error is not None:
             self._last_error = EXECUTION_PAUSE_STOP_FAILED
             await self._notify_change()
-            raise
+            raise stop_error
         self._applied = None
         if self._last_error == EXECUTION_PAUSE_STOP_FAILED:
             self._last_error = None
         await self._notify_change()
+        if save_error is not None:
+            raise AutoControlCommitted(EXECUTION_RECONCILE_FAILED) from save_error
 
     # ------------------------------------------------------------------ the manual pause's end
 
@@ -1402,7 +1460,7 @@ class AutoExecutor:
         self._sync_manual_watch()
         _LOGGER.info("SpotNav charger %s: Auto resumes (%s)", self._entry_id, reason)
         if car_ended:
-            await self._controller.async_note_car_ended()
+            await self._controller.async_note_car_ended(self._store.settings(self._entry_id).target.vehicle_id)
         await self._rearm_kept_plan()
         snapshot = None if self._live_snapshot is None else self._live_snapshot()
         if snapshot is not None:
@@ -1420,7 +1478,7 @@ class AutoExecutor:
     def _on_connection(self, previous: bool | None, connected: bool) -> None:
         """The charger reported a plug-in, an unplug, or its first connection after a restart: a manual
         pause ends with the plug-in session it was given in (`_async_connection_changed`)."""
-        if self._shutdown or not self.pause_intent.manual:
+        if self._shutdown or not (self.pause_intent.manual or self._manual_write_in_flight):
             return
         self._hass.async_create_task(self._async_connection_changed(previous, connected))
 
@@ -1429,9 +1487,14 @@ class AutoExecutor:
 
         * an unplug ends a pause of the plug-in the car was in; one given with no car plugged in waits for
           the plug-in after it;
-        * a plug-in starts the session a pause given with no car was for; any other plug-in means the
-          session its pause was given in is over (an unplug nobody saw: a restart, a charger offline);
+        * a plug-in starts the session a pause given with no car was for, and so does the first connection
+          known after a restart when it is a car (plugged in while Home Assistant was down); any other
+          plug-in means the session its pause was given in is over (an unplug nobody saw: a restart, a
+          charger offline);
         * the first connection known after a restart, no car: the session ended while nobody looked.
+
+        A status that says nothing is never a plug-in or an unplug: the controller reports only connections
+        the charger stated.
         """
         try:
             async with self._lock:
@@ -1439,7 +1502,7 @@ class AutoExecutor:
                 if self._shutdown or not intent.manual:
                     return
                 waiting = intent.scope == MANUAL_SCOPE_NEXT_PLUG_IN
-                if connected and previous is False and waiting:
+                if connected and previous is not True and waiting:
                     await self._store.async_update(
                         self._entry_id,
                         mutate=lambda current: replace(
@@ -1528,7 +1591,8 @@ class AutoExecutor:
         if self._shutdown:
             return
         async with self._lock:
-            if self._controller.take_legacy_person_stop():
+            legacy = self._controller.take_legacy_person_stop()
+            if legacy:
                 if not self.pause_intent.admitted:
                     try:
                         await self._store_pause(self._manual_intent(MANUAL_STOP, MANUAL_SCOPE_PLUG_IN))
@@ -1542,6 +1606,9 @@ class AutoExecutor:
                 # The charger's record is saved without the older key from here on.
                 await self._controller.async_save_record()
             self._sync_manual_watch()
+        # A charge running under a person's Stop (the charger began it while Home Assistant was down) is
+        # stopped now, not at the charger's next report.
+        self._controller.note_person_hold()
 
     async def async_end_plan_need_met(self) -> bool:
         """The manual need is delivered (the register watcher saw it): end Auto's own plan now, without
@@ -1591,15 +1658,26 @@ class AutoExecutor:
             await self._notify_change()
             return started
 
-    async def async_solar_stop(self) -> None:
+    async def async_solar_stop(self) -> bool:
         """One solar stop, through the same lock and `ChargingController.async_stop` as every other
         stop. Never of a charge a person started under their manual pause (`automatic_allowed`).
+
+        Returns `False` only when the stop did not go out (the charger's control did not execute it, or the
+        command failed): the charge and who owns it are kept, logged, never raised into solar's evaluation,
+        and solar tries again on its next tick. A stop that is not solar's to make is `True`: nothing is
+        left for solar to do.
         """
         async with self._lock:
             if not self.automatic_allowed(AUTOMATIC_STOP):
-                return
-            await self._controller.async_stop()
+                return True
+            try:
+                await self._controller.async_stop()
+            except Exception as err:  # noqa: BLE001 - solar keeps the stop pending and retries
+                _LOGGER.warning("Solar's stop did not go out: %s", getattr(err, "code", type(err).__name__))
+                await self._notify_change()
+                return False
             await self._notify_change()
+            return True
 
     async def async_solar_take_over_stop(self) -> bool:
         """The stop of a charge the charger began by itself that solar found nothing to keep on

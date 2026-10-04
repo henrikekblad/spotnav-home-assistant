@@ -385,6 +385,9 @@ class EaseeDynamicLimit(CurrentPath):
             return ASSIGN_RATE_LIMITED
         if needed == 2 and not await self._send(amps - 1):
             return ASSIGN_WRITE_FAILED
+        if needed == 2 and self._paused():
+            # A pause landed between the two sends: the second would lift it.
+            return ASSIGN_IGNORED_WHILE_PAUSED
         if not await self._send(amps):
             return ASSIGN_WRITE_FAILED
         self.last_written_a = amps

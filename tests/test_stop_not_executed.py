@@ -128,3 +128,63 @@ async def test_a_refused_solar_start_leaves_solar_off(hass: HomeAssistant) -> No
     assert coordinator.state is not None
     assert coordinator.state.state == "off", coordinator.state
     assert coordinator._solar is not None and not coordinator._solar.running  # noqa: SLF001
+
+
+# ------------------------------------------------------------------- automatic paths retry, never raise
+
+
+async def test_a_last_window_end_whose_stop_is_not_executed_is_retried(hass: HomeAssistant, freezer) -> None:
+    """The plan's last window ends while the charge control is unavailable: nothing is raised, the charge
+    stays the plan's, and the stop is decided again `STOP_RETRY_S` later, when the control is back."""
+    from pytest_homeassistant_custom_component.common import async_fire_time_changed
+
+    from custom_components.spotnav.execution.controller import STOP_RETRY_S
+
+    controller = await _charging_plan_controller(hass)
+    real_stop = controller.adapter.async_stop
+    calls = _refuse_stops(controller)
+
+    freezer.tick(timedelta(minutes=51))
+    async_fire_time_changed(hass)
+    await hass.async_block_till_done()
+    assert calls, "the last window's end tried to stop"
+    assert controller.charging and controller.charge_origin == "plan_window"
+
+    controller.adapter.async_stop = real_stop  # type: ignore[method-assign]  # the control is back
+    freezer.tick(timedelta(seconds=STOP_RETRY_S + 1))
+    async_fire_time_changed(hass)
+    await hass.async_block_till_done()
+    assert not controller.charging, "the retry stopped the plan's charge"
+
+
+async def test_a_stop_command_that_fails_outright_is_one_that_was_not_executed(hass: HomeAssistant) -> None:
+    controller = await _charging_plan_controller(hass)
+
+    async def fails() -> bool:
+        raise TimeoutError("the charger's cloud did not answer")
+
+    controller.adapter.async_stop = fails  # type: ignore[method-assign]
+    with pytest.raises(ChargingExecutionError) as raised:
+        await controller.async_stop()
+
+    assert raised.value.code == EXECUTION_STOP_NOT_EXECUTED
+    assert controller.charge_origin == "plan_window", "the owner is kept as for a refused stop"
+
+
+async def test_a_stop_not_executed_reaches_a_person_as_a_translated_error(hass: HomeAssistant) -> None:
+    import json
+    from pathlib import Path
+
+    from homeassistant.exceptions import HomeAssistantError
+
+    controller = await _charging_plan_controller(hass)
+    _refuse_stops(controller)
+    with pytest.raises(HomeAssistantError) as raised:
+        await controller.async_stop()
+
+    assert raised.value.translation_key == EXECUTION_STOP_NOT_EXECUTED
+    root = Path(__file__).parents[1] / "custom_components" / "spotnav" / "translations"
+    for language in ("en", "sv"):
+        exceptions = json.loads((root / f"{language}.json").read_text())["exceptions"]
+        for code in ("stop_not_executed", "storage_failed", "reschedule_failed", "rollback_failed"):
+            assert exceptions[code]["message"]
