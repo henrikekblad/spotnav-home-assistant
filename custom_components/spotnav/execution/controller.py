@@ -834,6 +834,20 @@ class ChargingController:
         if self._charge_progress.evaluate() or changed:
             self._notify()
 
+    def _remember_paused_charge(self, origin: str | None, plan_charge: bool) -> None:
+        """Load balancing holds a charge back (paused it, or refused its start below the floor): remember
+        what it was, so the regulator's resume (`async_battery_probe_start`) gives it back that origin."""
+        self._paused_by_balancing = True
+        self._paused_charge = (origin, plan_charge)
+
+    def _charge_clock_running(self) -> bool:
+        """Whether the charge clock runs: the charger charges or its control is on, or this cannot be
+        told (an unreadable control, a charger with no status and a control that says nothing, such as a
+        button pair). Lenient on purpose: the clock only bounds what an energy register may count."""
+        if self._control_on or self._control_observation is None:
+            return True
+        return not self.adapter.status_readable() and self.adapter.enabled_state() is None
+
     def _tick_charge_clock(self) -> None:
         """Advance the charge clock: the seconds the charge control has been on (or the charger charging)
         since this controller started, observed at every report and every command."""
@@ -841,10 +855,11 @@ class ChargingController:
         since = self._charge_clock_since
         if since is not None and now > since:
             self._charge_clock_s += (now - since).total_seconds()
-        self._charge_clock_since = now if self._control_on else None
+        self._charge_clock_since = now if self._charge_clock_running() else None
 
     def charging_seconds(self) -> float:
-        """How long the charger has been charging (its charge control on) since this controller started.
+        """How long the charger has been, or may have been, charging since this controller started
+        (`_charge_clock_running`).
         Only differences mean anything: what an energy register may have counted between two readings
         is bounded by the charging time between them (`planning/auto_controller.advance_register`)."""
         self._tick_charge_clock()
@@ -1461,9 +1476,10 @@ class ChargingController:
                 amps, capped=capped, cause=None if origin in (None, "manual") else origin
             )
             if not executed:
-                self._paused_by_balancing = True
+                # Still no room: still the same charge waiting.
+                self._remember_paused_charge(origin, plan_charge)
                 return False
-            if self._paused_charge is not None:
+            if origin is not None or plan_charge:
                 self._charge_origin, self._plan_charge = origin, plan_charge
                 if self._start_cause is not None and origin is not None:
                     self._start_cause = (origin, self._start_cause[1])
@@ -1498,6 +1514,8 @@ class ChargingController:
           the load balancer computes against.
         """
         self._paused_by_balancing = False
+        # Whatever balancing paused before is over: this start is a charge of its own.
+        self._paused_charge = None
         if manual:
             self._person_stop_until = None
         if manual and self._target_stop is not None:
@@ -1513,7 +1531,11 @@ class ChargingController:
             allowance = self._start_allowance_a() if capped else None
             if allowance is not None:
                 if allowance < DEFAULT_MIN_CURRENT_A:
-                    self._paused_by_balancing = True
+                    # The charge that was asked for waits for headroom as what it is (the plan's, a
+                    # person's, the sun's); the regulator's resume gives it back that origin.
+                    self._remember_paused_charge(
+                        "manual" if manual else cause or "other", cause == "plan_window" and not manual
+                    )
                     _LOGGER.info(
                         "SpotNav charger %s: not started, the site allows %.1fA (below the %sA floor)",
                         self.entry_id,
@@ -1698,8 +1720,7 @@ class ChargingController:
             return RegulatedWrite(REGULATED_HELD, "stop_failed", False)
         # Set after the stop (which clears it): this stop is the balancing pause itself.
         if code == "pause" and was_on:
-            self._paused_by_balancing = True
-            self._paused_charge = paused_charge
+            self._remember_paused_charge(*paused_charge)
         return RegulatedWrite(REGULATED_STOPPED, code, False)
 
     async def async_restore_current(self, *, lowered_by_balancing: bool) -> CurrentRestore:
@@ -1940,6 +1961,7 @@ class ChargingController:
         """
         self._hold.spotnav_stopped()
         self._paused_by_balancing = False
+        self._paused_charge = None
         # What cannot be read (a restart before the charger's entities exist) says nothing about
         # whether the charge is still running, so the flag survives until it can be seen.
         plan_charge = self._plan_charge

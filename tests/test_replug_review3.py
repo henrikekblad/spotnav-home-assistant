@@ -85,9 +85,11 @@ async def test_a_need_met_on_a_count_that_proves_false_is_planned_again(hass: Ho
         assert car.controller.plan is None and car.baseline().met_at is not None
 
         await _delivered(hass, frozen, 1001.1, minutes=1)  # back where it was: that rise was false
+        assert car.baseline().met_at is not None, "not on one lower reading"
+        await _delivered(hass, frozen, 1001.15, minutes=3)  # and it holds lower
 
         assert car.baseline().met_at is None
-        assert car.preview.snapshot().remaining_kwh == pytest.approx(1.9)
+        assert car.preview.snapshot().remaining_kwh == pytest.approx(1.85)
         assert car.controller.plan is not None, "the open need is planned again"
 
 
