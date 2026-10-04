@@ -708,9 +708,12 @@ class SolarExecutionCoordinator:
         if await self._executor.async_solar_stop():
             self._stop_owed = False
 
-    def _adopt_solar_charge(self, solar: SolarController) -> None:
+    async def _adopt_solar_charge(self, site: SiteCapacityController, solar: SolarController) -> bool:
         """A charge of solar's own that solar is not running (a start load balancing held back as solar's,
-        which its regulator resumed later): solar takes it back, so it stops it when the sun goes."""
+        which its regulator resumed later, perhaps long after the sun went): solar takes it back and decides
+        it at once on this reading, as a take-over (`SolarController.take_over`): no `min_on_s`, since solar
+        did not start it now. A surplus that covers the start minimum keeps it at that minimum; anything
+        less, or no usable reading, stops it now. Returns whether it decided this tick."""
         controller = self._controller
         if (
             solar.running
@@ -719,13 +722,29 @@ class SolarExecutionCoordinator:
             or not controller.charging
             or controller.start_pending
         ):
-            return
+            return False
+        now = self._now()
+        started_at = self._first_evaluated_at
+        starting_up = started_at is not None and now - started_at < MEASUREMENT_WARNING_GRACE_S
+        observation = self._observation(site, now)
+        verdict = solar.take_over(observation, wait_for_reading=starting_up)
+        basis = solar_basis(site, self._charger_entry_id, observation)
+        if verdict.action == "hold":
+            self._update_state(verdict, site, basis=basis)
+            self._log_transition(verdict)
+            self._record_verdict(verdict, held_by_plan=False)
+            return True
         _LOGGER.info(
-            "%s charger %s: a charge of solar's own runs (resumed by load balancing); solar runs it again",
+            "%s charger %s: a charge of solar's own runs (resumed by load balancing); solar %s",
             SOLAR_SURPLUS_LOG_TOKEN,
             self._charger_entry_id,
+            "stops it now" if verdict.action == "stop" else "runs it again on the surplus",
         )
-        _adopt_running(solar, now=self._now())
+        verdict = await self._apply_verdict(verdict)
+        self._update_state(verdict, site, basis=basis)
+        self._log_transition(verdict)
+        self._record_verdict(verdict, held_by_plan=False)
+        return True
 
     async def _async_evaluate(self) -> None:
         site = self._site
@@ -800,7 +819,12 @@ class SolarExecutionCoordinator:
         if self._solar is None:
             self._solar = self._build_controller(site)
         if not held_by_plan:
-            self._adopt_solar_charge(self._solar)
+            if await self._adopt_solar_charge(site, self._solar):
+                # Solar's own charge resumed by load balancing was decided this tick (kept or stopped).
+                if settings.strategy == STRATEGY_HYBRID:
+                    await self._async_recalculate_hybrid_preview()
+                site.notify_solar_surplus_changed()
+                return
             self._maybe_clear_ended(self._solar)
             if await self._take_over(site):
                 # A charge the charger began by itself was decided this tick (kept, stopped, or waiting
