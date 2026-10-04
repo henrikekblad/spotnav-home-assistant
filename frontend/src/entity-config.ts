@@ -135,11 +135,21 @@ export type EntityField = EntityFieldEntity | EntityFieldNumber | EntityFieldEnu
 /** How each phase's current was obtained (`site_capacity.CurrentBasis`); `null` for an unusable phase. */
 export type CurrentBasis = "measured" | "apparent" | "reactive" | "estimated";
 
+/**
+ * The stored source a direct site reads its phase currents from in place of the three `direct_L{n}`
+ * entities: one entity carrying each phase as an attribute, or an entity per phase. Read-only;
+ * naming the three entities replaces it.
+ */
+export type SiteCurrentSource =
+  | { kind: "attributes"; entityId: string; name: string; attributes: Record<(typeof PHASES)[number], string | null> }
+  | { kind: "separate_entities"; entityIds: Record<(typeof PHASES)[number], string | null> };
+
 export interface SiteMeasurement {
   mode: string;
   currentEstimated: boolean;
   assumedPowerFactor: number | null;
   basis: Record<(typeof PHASES)[number], CurrentBasis | null>;
+  currentSource: SiteCurrentSource | null;
 }
 
 /** One phase that makes the site's measurement unusable: it read nothing usable, or is stale. */
@@ -437,9 +447,33 @@ function decodeBasis(value: unknown): CurrentBasis | null {
   return typeof value === "string" && BASES.includes(value) ? (value as CurrentBasis) : bad();
 }
 
+function decodePhaseTexts(raw: unknown): Record<(typeof PHASES)[number], string | null> {
+  const source = record(raw);
+  exactKeys(source, PHASES);
+  return { L1: textOrNull(source, "L1"), L2: textOrNull(source, "L2"), L3: textOrNull(source, "L3") };
+}
+
+function decodeCurrentSource(raw: unknown): SiteCurrentSource | null {
+  if (raw === null) {
+    return null;
+  }
+  const source = record(raw);
+  exactKeys(source, ["kind", "entity_id", "name", "attributes", "entity_ids"]);
+  const kind = oneOf(source, "kind", ["attributes", "separate_entities"] as const);
+  if (kind === "attributes") {
+    return {
+      kind,
+      entityId: text(source, "entity_id"),
+      name: text(source, "name"),
+      attributes: decodePhaseTexts(source["attributes"]),
+    };
+  }
+  return { kind, entityIds: decodePhaseTexts(source["entity_ids"]) };
+}
+
 function decodeMeasurement(raw: unknown): SiteMeasurement {
   const source = record(raw);
-  exactKeys(source, ["mode", "current_estimated", "assumed_power_factor", "basis"]);
+  exactKeys(source, ["mode", "current_estimated", "assumed_power_factor", "basis", "current_source"]);
   const basis = record(source["basis"]);
   exactKeys(basis, PHASES);
   return {
@@ -451,6 +485,7 @@ function decodeMeasurement(raw: unknown): SiteMeasurement {
       L2: decodeBasis(basis["L2"]),
       L3: decodeBasis(basis["L3"]),
     },
+    currentSource: decodeCurrentSource(source["current_source"]),
   };
 }
 

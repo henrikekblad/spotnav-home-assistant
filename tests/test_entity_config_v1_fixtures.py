@@ -14,7 +14,7 @@ from typing import Any, Awaitable, Callable, Final
 
 from homeassistant.core import HomeAssistant
 
-from custom_components.spotnav.const import CONF_GRID_POWER_SOURCE, MEASUREMENT_MODE_DERIVED
+from custom_components.spotnav.const import CONF_DIRECT_ENTITIES, CONF_GRID_POWER_SOURCE, MEASUREMENT_MODE_DERIVED
 from tests.helpers import add_ambiguous_vehicle_device
 from tests.test_vehicle_soc_command import set_message
 from tests.messages import get_message, register, update_entity_config_message
@@ -81,6 +81,37 @@ async def _get_detected(hass, ws, _token) -> dict[str, Any]:
     charger, _ = await setup_charger_and_site(
         hass, "get_detected", measurement_mode=MEASUREMENT_MODE_DERIVED, derived_entities=derived
     )
+    return (await ws_call(await admin(hass, ws), get_message(charger.entry_id)))["result"]
+
+
+async def _get_attributes(hass, ws, _token) -> dict[str, Any]:
+    """A direct site read from one entity's attributes, as a detected Easee Equalizer is stored: the
+    source and no direct entities, so the three `direct_L{n}` fields are empty and
+    `measurement.current_source` names the entity and its attributes."""
+    current = register(
+        hass,
+        "sensor",
+        "home_equalizer_current",
+        "Home Equalizer Current",
+        state_currentL1=6.0,
+        state_currentL2=5.0,
+        state_currentL3=4.0,
+    )
+    charger, site = await setup_charger_and_site(
+        hass,
+        "get_attributes",
+        site_current_source={
+            "kind": "attributes",
+            "entity_ids": None,
+            "entity_id": current,
+            "attributes": {"L1": "state_currentL1", "L2": "state_currentL2", "L3": "state_currentL3"},
+            "attribute_unit_override": "A",
+            "trust_entity_unit_for_attributes": False,
+        },
+        extra_data={"site_current_signed": True},
+    )
+    hass.config_entries.async_update_entry(site, data={**site.data, CONF_DIRECT_ENTITIES: {}})
+    await hass.async_block_till_done()
     return (await ws_call(await admin(hass, ws), get_message(charger.entry_id)))["result"]
 
 
@@ -281,6 +312,7 @@ async def _vehicle_refused(hass, ws, _token) -> dict[str, Any]:
 Builder = Callable[..., Awaitable[dict[str, Any]]]
 
 ENTITY_CONFIG_V1_FIXTURES: Final[dict[str, Builder]] = {
+    "get_attributes.json": _get_attributes,
     "get_direct.json": _get_direct,
     "get_direct_total.json": _get_direct_total,
     "get_derived.json": _get_derived,

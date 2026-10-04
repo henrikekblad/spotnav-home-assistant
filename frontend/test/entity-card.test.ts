@@ -1085,6 +1085,80 @@ describe("the site's estimate, warnings, sign options and detected meters", () =
     expect(children[0]?.querySelector("legend")?.textContent).toBe("L1");
   });
 
+  it("names each direct phase once, in its field's label, with no heading of its own", async () => {
+    const { element } = await mounted();
+    openSettings(element);
+    await settle();
+    edit(element, "site");
+    const phases = openDialog(element)?.querySelector<HTMLElement>("[data-part='phases']");
+    const children = [...(phases?.children ?? [])] as HTMLElement[];
+    expect(children.map((child) => child.dataset["phase"] ?? child.dataset["help"])).toEqual(["L1", "L2", "L3", "phases"]);
+    expect(phases?.querySelector("legend")).toBeNull();
+    // The picker carries the label itself; the fallback input has a label line.
+    const l2 = phases?.querySelector<HTMLElement>("[data-phase='L2']");
+    const picker = l2?.querySelector<HTMLElement & { label?: string }>("[data-field='direct_L2']");
+    expect(`${picker?.label ?? ""} ${l2?.textContent ?? ""}`).toContain(translate("en", "entity.phase.direct", { phase: "L2" }));
+  });
+
+  it("shows a site read from one entity's attributes as what is read, and keeps it on a save that leaves it", async () => {
+    const { hass, element } = await mounted({ get: "get_attributes", update: "success_site" });
+    openSettings(element);
+    await settle();
+    edit(element, "site");
+    const group = openDialog(element)?.querySelector<HTMLElement>("[data-part='phases'] [data-part='phase-source']");
+    expect(group?.textContent).toContain(
+      "Read from Home Equalizer Current (sensor.home_equalizer_current), attributes state_currentL1, state_currentL2, state_currentL3",
+    );
+    expect(group?.querySelector<HTMLInputElement>("input[data-choice='source']")?.checked).toBe(true);
+    // No empty pickers that would say nothing is set.
+    expect(openDialog(element)?.querySelector("[data-field='direct_L1']")).toBeNull();
+    type(element, "main_fuse_a", "32");
+    save(element);
+    await settle();
+    expect(updates(hass)[0]).toMatchObject({ expected: { main_fuse_a: 25 }, changes: { main_fuse_a: 32 } });
+    expect(Object.keys(updates(hass)[0]?.["changes"] as object)).toEqual(["main_fuse_a"]);
+  });
+
+  it("replaces the attribute source with three chosen entities, and needs all three", async () => {
+    const { hass, element } = await mounted({ get: "get_attributes", update: "success_site" });
+    openSettings(element);
+    await settle();
+    edit(element, "site");
+    choose(element, "phase-source", "choose");
+    const help = openDialog(element)?.querySelector("[data-part='phase-source'] [data-help='phases']");
+    expect(help?.textContent).toContain(translate("en", "entity.help.phaseSource"));
+    const pick = (name: string, value: string): void => {
+      const control = field(element, name);
+      if (control.tagName.toLowerCase() === "ha-selector") {
+        control.dispatchEvent(new CustomEvent("value-changed", { detail: { value }, bubbles: true }));
+      } else {
+        type(element, name, value);
+      }
+    };
+    pick("direct_L1", "sensor.own_l1");
+    save(element);
+    await settle();
+    expect(updates(hass)).toHaveLength(0);
+    for (const name of ["direct_L2", "direct_L3"]) {
+      expect(fieldError(element, name)?.textContent, name).toBe(translate("en", "entity.error.field.required"));
+    }
+    pick("direct_L2", "sensor.own_l2");
+    pick("direct_L3", "sensor.own_l3");
+    save(element);
+    await settle();
+    expect(updates(hass)[0]).toMatchObject({
+      expected: { direct_L1: "", direct_L2: "", direct_L3: "" },
+      changes: { direct_L1: "sensor.own_l1", direct_L2: "sensor.own_l2", direct_L3: "sensor.own_l3" },
+    });
+  });
+
+  it("says a stored source's three entities by name in five languages", () => {
+    for (const language of ["en", "sv", "nb", "da", "fi"] as const) {
+      expect(translate(language, "entity.phaseSource.entities", { entities: "A, B, C" }), language).toContain("A, B, C");
+      expect(translate(language, "entity.phaseSource.attributes", { source: "Q", attributes: "x, y" }), language).toContain("Q");
+    }
+  });
+
   it("offers a checkbox per sign option and sends a changed one as a boolean", async () => {
     const { hass, element } = await mounted({ update: "success_site" });
     openSettings(element);
