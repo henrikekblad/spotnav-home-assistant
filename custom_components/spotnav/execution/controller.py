@@ -403,6 +403,8 @@ REGULATED_WROTE = "wrote"
 REGULATED_HELD = "held"
 #: The fuse needed a lower current the adapter could not write in time: the charge was stopped.
 REGULATED_STOPPED = "stopped"
+#: Why a write was held: a stop of the charge was on its way.
+REGULATED_STOPPING = "stop_in_flight"
 
 
 @dataclass(frozen=True, slots=True)
@@ -497,6 +499,9 @@ class ChargingController:
         # When this controller last sent a stop, until the charger is seen to stop: a charge still
         # running then is one being stopped, not one the charger began by itself.
         self._stop_sent_at: datetime | None = None
+        # A stop command on its way to the charger: the regulator writes no current meanwhile, since on
+        # some chargers (Easee) a current written while the stop lands lifts it again.
+        self._stop_in_flight = False
         # Whether the charge that runs was started by a plan window of ours (not a person's Start, not
         # solar). Persisted: a restart outside every window must still know the charge is ours.
         self._plan_charge = False
@@ -1354,18 +1359,22 @@ class ChargingController:
         self.hass.async_create_task(self._async_write_after_start())
 
     async def _async_write_after_start(self) -> None:
-        """Write the requested current now that the session exists; a refusal is not retried."""
-        amps = self._requested_current_a
-        if amps is None or not self.adapter.capabilities.set_current:
-            return
-        await self._async_assign_current_outcome(amps, reason=WRITE_SESSION_START)
+        """Write the requested current now that the session exists; a refusal is not retried. Under the
+        operation lock, so it never lands inside a stop."""
+        async with self._lock:
+            amps = self._requested_current_a
+            if amps is None or not self.adapter.capabilities.set_current:
+                return
+            await self._async_assign_current_outcome(amps, reason=WRITE_SESSION_START)
 
     async def _async_resend_current(self) -> None:
-        """Send the last requested current again, the limit having been cleared by the charger."""
-        amps = self._requested_current_a
-        if amps is None:
-            return
-        await self._async_assign_current_outcome(amps, reason=WRITE_RESEND)
+        """Send the last requested current again, the limit having been cleared by the charger. Under the
+        operation lock, so it never lands inside a stop."""
+        async with self._lock:
+            amps = self._requested_current_a
+            if amps is None:
+                return
+            await self._async_assign_current_outcome(amps, reason=WRITE_RESEND)
 
     def _watched_control_entities(self) -> list[str]:
         """The charge control and whatever else reports the charging state, each once."""
@@ -1867,6 +1876,10 @@ class ChargingController:
             # Below the floor no valid pilot current exists, for OCPP as for any charger: the only
             # way to give the car less is to stop it (OCPP sends nothing for such a value).
             return await self._regulated_stop("pause")
+        if self._stop_in_flight:
+            # A stop is on its way: it gives the car less than any current would, and a current written
+            # while it lands would lift it on a charger that pauses by its limit.
+            return RegulatedWrite(REGULATED_HELD, REGULATED_STOPPING, False)
         outcome = await self._async_assign_current_outcome(amps, reason=WRITE_REGULATOR)
         if outcome in IN_EFFECT_OUTCOMES:
             return RegulatedWrite(REGULATED_WROTE, outcome, True)
@@ -2161,7 +2174,12 @@ class ChargingController:
         if self._stop_needed:
             was_sent_at = self._stop_sent_at
             self._stop_sent_at = dt_util.utcnow()
-            if await self.adapter.async_stop() is False:
+            self._stop_in_flight = True
+            try:
+                executed = await self.adapter.async_stop()
+            finally:
+                self._stop_in_flight = False
+            if executed is False:
                 # The command never went out (the control is unavailable): nothing of the charge is
                 # forgotten, neither who owns it nor the plan, so the retries that apply to a running
                 # charge (a pause's retry, the stray-charge stop) still find it.

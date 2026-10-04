@@ -49,8 +49,11 @@ EASEE_TIME_TO_LIVE_MIN: Final = 0
 EASEE_READBACK_DELAY_S: Final = 2.0
 #: A read-back that still disagrees after this long says the service silently did nothing.
 EASEE_CONFIRM_AFTER_S: Final = 20.0
-#: Easee statuses in which no cable is connected, so a move out of one is a plug-in.
-_EASEE_DISCONNECTED: Final = frozenset({"disconnected", "offline", STATE_UNAVAILABLE, STATE_UNKNOWN, ""})
+#: The Easee status in which no cable is connected, so a move out of it is a plug-in.
+_EASEE_NO_CABLE: Final = frozenset({"disconnected"})
+#: Statuses that say nothing about the cable: an offline charger, or a sensor blinking through unavailable
+#: or unknown. A move out of one is a plug-in only when the last status that said something was no cable.
+_EASEE_UNREADABLE: Final = frozenset({"offline", STATE_UNAVAILABLE, STATE_UNKNOWN, ""})
 #: Easee statuses in which a `start` (authorize) is what the charger waits for.
 _EASEE_AWAITING_AUTHORIZATION: Final = frozenset({"awaiting_authorization", "authenticating"})
 #: The status in which an authorized charger that was not paused by us waits for a start, and in which
@@ -103,6 +106,9 @@ class EaseeCommandPath(StartStopPath):
         #: `True` after a pause of ours, `False` after a resume, `None` when nothing is known (a
         #: restart, a plug-in).
         self.paused: bool | None = None
+        # A pause command on its way: the status still says `charging` until the charger has paused, and a
+        # dynamic limit written meanwhile would lift the pause the moment it lands.
+        self._pausing = False
 
     def is_paused(self) -> bool:
         """Whether a dynamic limit must not be written now: the charger was paused by us and
@@ -111,13 +117,16 @@ class EaseeCommandPath(StartStopPath):
         plug-in the charger sits in `awaiting_start` and is owed its limit
         (`EaseeDynamicLimit.needs_resend`).
         """
+        if self._pausing:
+            return True
         status = self._status()
         if status is not None:
-            if status in _EASEE_DISCONNECTED:
-                self.paused = None  # a plug-in clears Easee's dynamic limit and with it the pause
+            if status in _EASEE_NO_CABLE:
+                self.paused = None  # unplugged: the plug-in clears Easee's dynamic limit and with it the pause
                 return False
             if status == "charging":
                 self.paused = False  # someone resumed it; what the charger does is the truth
+            # A status that says nothing (unavailable, unknown, offline) changes nothing we know.
         if self.paused is None and self._read_back() == 0:
             return True
         return bool(self.paused)
@@ -163,8 +172,13 @@ class EaseeCommandPath(StartStopPath):
         return True
 
     async def async_stop(self) -> bool:
-        # Never `stop`: deauthorizing would make the next Start wait for an authorization again.
-        await self._command("pause")
+        # Never `stop`: deauthorizing would make the next Start wait for an authorization again. Paused from
+        # the moment the command leaves: a limit written while it is on its way would resume the charge.
+        self._pausing = True
+        try:
+            await self._command("pause")
+        finally:
+            self._pausing = False
         self.paused = True
         return True
 
@@ -245,6 +259,9 @@ class EaseeDynamicLimit(CurrentPath):
         self._now = now
         self._written_at: datetime | None = None
         self._suspect = False
+        # The last status that said something about the cable (`needs_resend`): a blip through unavailable
+        # is judged against it, never against the blip.
+        self._last_known_status: str | None = None
 
     def limit_entity_id(self) -> str | None:
         """The charger's enabled `dynamic_charger_limit` sensor, or `None` when it has none (it is
@@ -387,15 +404,29 @@ class EaseeDynamicLimit(CurrentPath):
         return recent + count <= limit
 
     def needs_resend(self, old_status: str | None, new_status: str | None) -> bool:
-        """Whether a status change is a plug-in or a reboot, after which the limit is gone."""
+        """Whether a status change is a plug-in or a reboot, after which the limit is gone.
+
+        A plug-in is a move to a cable status from no cable, judged against the last status that said
+        something: `awaiting_start` -> `unavailable` -> `awaiting_start` is a blip, not a plug-in. Coming
+        back from a blip or a reboot the limit may be gone too, so it is sent again, but never over a pause
+        of ours: that limit would resume the charge behind the pause.
+        """
         if not self.policy.resend_after_plug_in:
             return False
         old = (old_status or "").strip().lower()
         new = (new_status or "").strip().lower()
-        plugged_in = old in _EASEE_DISCONNECTED and new not in _EASEE_DISCONNECTED
-        if plugged_in:
+        if new in _EASEE_UNREADABLE:
+            return False
+        before = self._last_known_status if old in _EASEE_UNREADABLE else old
+        self._last_known_status = new
+        if new in _EASEE_NO_CABLE:
+            return False
+        if before in _EASEE_NO_CABLE:
             self._on_plug_in()  # the charger cleared its limit, and our pause with it
-        return plugged_in
+            return True
+        if old in _EASEE_UNREADABLE:
+            return not self._paused()
+        return False
 
     def describe(self) -> dict[str, Any]:
         return current_description(self.kind, service=f"{_EASEE_DOMAIN}.set_charger_dynamic_limit")
