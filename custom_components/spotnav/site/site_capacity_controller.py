@@ -150,6 +150,10 @@ DECISION_LOG_LENGTH = 200
 #: than a slow charger takes to answer a Start and a meter to report the draw.
 START_RESERVATION_S = 120.0
 
+#: How long (seconds) shutdown and turning active control off wait for the apply passes and the chargers'
+#: operations they cancel to end.
+RETIRE_TIMEOUT_S = 5.0
+
 # Battery charge power (W) from which the battery counts as charging for the limit explanation, and
 # the remaining fuse margin (A) at or below which the site counts as sitting at its limit.
 LIMIT_BATTERY_CHARGING_W = 300.0
@@ -231,9 +235,19 @@ class SiteCapacityController:
         self._state_listener_cancel: Callable[[], None] | None = None
         self._controller_listener_cancels: list[Callable[[], None]] = []
         self._listeners: set[Callable[[], None]] = set()
-        # In-flight active-control apply pass, if any: prevents overlapping passes and lets shutdown
-        # cancel it.
+        # The latest active-control apply pass, and whether one was created and has not begun yet (two
+        # recomputes in one tick make one pass). A pass only decides and spawns: each charger's step runs as
+        # that charger's own task (`_charger_ops`), so a pass never waits for a charger's slow command before
+        # the next pass may run.
         self._apply_task: asyncio.Task[None] | None = None
+        self._apply_pending = False
+        # Every pass still running (awaiting the steps it spawned), for shutdown and disable.
+        self._apply_passes: set[asyncio.Task[None]] = set()
+        # The one operation in flight per charger (a write, a resume, a probe's start or pass): a pass skips
+        # a charger while its previous operation runs, and runs again when that one returns
+        # (`_skipped_while_busy`), so a newer decision (a lowering one above all) goes out at once.
+        self._charger_ops: dict[str, asyncio.Task[None]] = {}
+        self._skipped_while_busy: set[str] = set()
         # Serialises active-control transitions for this instance; a transition on a closed (shut-
         # down) controller is refused.
         self.transition_lock = asyncio.Lock()
@@ -370,9 +384,31 @@ class SiteCapacityController:
         for cancel in self._controller_listener_cancels:
             cancel()
         self._controller_listener_cancels.clear()
-        if self._apply_task is not None and not self._apply_task.done():
-            self._apply_task.cancel()
+        await self._async_retire_operations()
+
+    async def _async_retire_operations(self) -> None:
+        """Cancel every apply pass and every charger's operation in flight, and wait for them to end (at most
+        `RETIRE_TIMEOUT_S`): nothing this controller decided reaches a charger afterwards. A cancelled
+        command may already have left; what the charger then carries is for the next reader to see."""
         self._apply_task = None
+        self._apply_pending = False
+        self._skipped_while_busy.clear()
+        tasks = [task for task in (*self._apply_passes, *self._charger_ops.values()) if not task.done()]
+        for task in tasks:
+            task.cancel()
+        if tasks:
+            _done, pending = await asyncio.wait(tasks, timeout=RETIRE_TIMEOUT_S)
+            if pending:
+                _LOGGER.warning(
+                    "SpotNav site %s: %s charger operation(s) did not end within %ss of being cancelled",
+                    self.entry_id,
+                    len(pending),
+                    RETIRE_TIMEOUT_S,
+                )
+            for task in tasks:
+                if task.done() and not task.cancelled() and task.exception() is not None:
+                    _LOGGER.debug("Retired active-control operation had failed", exc_info=task.exception())
+        self._charger_ops.clear()
 
     def _register_controller_listeners(self) -> None:
         """Subscribe to each associated charger controller once per controller lifetime; unloaded or
@@ -831,12 +867,19 @@ class SiteCapacityController:
         )
 
     def _schedule_apply_active_control(self) -> None:
-        """Queue one apply pass unless one is in flight; the running pass re-reads its measurements
-        and the next recompute supersedes anything skipped.
+        """Queue one apply pass unless one is queued and has not begun (it reads the latest decisions when it
+        does). A pass that is waiting for its chargers' operations holds no other pass back: a charger whose
+        operation still runs is skipped, and looked at again when that operation returns.
         """
-        if self._apply_task is not None and not self._apply_task.done():
+        if self._closed or self._apply_pending:
             return
-        self._apply_task = self.hass.async_create_task(self._async_apply_active_control())
+        self._apply_pending = True
+        task = self.hass.async_create_task(
+            self._async_apply_active_control(), f"spotnav site {self.entry_id} apply pass"
+        )
+        self._apply_task = task
+        self._apply_passes.add(task)
+        task.add_done_callback(self._apply_passes.discard)
 
     async def _async_apply_active_control(self) -> None:
         """Write this recompute's decisions to the chargers that opted in.
@@ -857,7 +900,8 @@ class SiteCapacityController:
         Outcomes are logged once per change (`_log_active_control_outcome`). This method knows
         nothing about why a decision says what it says; that is `site/regulator.py`.
         """
-        if not self._active_control_allowed():
+        self._apply_pending = False
+        if not self._active_control_allowed() or self._closed:
             return
         # A charger of doubtful ownership is never written; held proposals are still logged.
         if self.membership_conflicts:
@@ -885,24 +929,66 @@ class SiteCapacityController:
         fresh = self._calculate()
         max_age_s = float(self.config.get(CONF_MAX_AGE_S, DEFAULT_MAX_AGE_S))
         margin_by_charger = self._most_restrictive_margin_by_charger(fresh)
-        # Each charger's write runs as its own task: one charger's slow service call (a cloud that takes its
-        # time to answer) never holds another charger's must-lower write. The decisions stay in order.
-        writes: dict[str, asyncio.Task[None]] = {}
+        # Each charger's step runs as its own task: one charger's slow service call (a write, a resume's or a
+        # probe's start through a cloud that takes its time to answer) never holds another charger's
+        # must-lower write, in this pass or the next. Steps start in decision order; one step per charger.
+        spawned: list[asyncio.Task[None]] = []
+        for charger_entry_id, decision in list(self.regulator_decisions.items()):
+            if not self._active_control_allowed():
+                break
+            running = self._charger_ops.get(charger_entry_id)
+            if running is not None and not running.done():
+                # Its previous operation still runs: decided again as soon as that returns.
+                self._skipped_while_busy.add(charger_entry_id)
+                _LOGGER.debug(
+                    "SpotNav site %s active control: charger %s skipped this pass, its previous command runs",
+                    self.entry_id,
+                    charger_entry_id,
+                )
+                continue
+            task = self.hass.async_create_task(
+                self._async_charger_step(charger_entry_id, decision, fresh, max_age_s, margin_by_charger),
+                f"spotnav site {self.entry_id} step for {charger_entry_id}",
+            )
+            self._charger_ops[charger_entry_id] = task
+            task.add_done_callback(
+                lambda done, charger_entry_id=charger_entry_id: self._on_charger_op_done(charger_entry_id, done)
+            )
+            spawned.append(task)
+        if not spawned:
+            return
+        # Awaited so that whoever awaits this pass sees its steps through; no later pass waits for it.
         try:
-            for charger_entry_id, decision in list(self.regulator_decisions.items()):
-                try:
-                    if not await self._async_apply_to_charger(
-                        charger_entry_id, decision, fresh, max_age_s, margin_by_charger, writes=writes
-                    ):
-                        return
-                except Exception:  # noqa: BLE001 - one charger's failure must not cost the others their writes
-                    self._log_charger_pass_failure(charger_entry_id)
-        finally:
-            for charger_entry_id, task in writes.items():
-                try:
-                    await task
-                except Exception:  # noqa: BLE001 - one charger's failure must not cost the others their writes
-                    self._log_charger_pass_failure(charger_entry_id)
+            await asyncio.wait(spawned)
+        except asyncio.CancelledError:
+            # A retired pass takes its steps with it: none is left running unowned.
+            for task in spawned:
+                task.cancel()
+            raise
+
+    async def _async_charger_step(
+        self,
+        charger_entry_id: str,
+        decision: RegulatorDecision,
+        fresh: SiteCapacityResult,
+        max_age_s: float,
+        margin_by_charger: dict[str, float | None],
+    ) -> None:
+        """One charger's step of a pass, as that charger's own task; its failure is its own."""
+        try:
+            await self._async_apply_to_charger(charger_entry_id, decision, fresh, max_age_s, margin_by_charger)
+        except Exception:  # noqa: BLE001 - one charger's failure must not cost the others their writes
+            self._log_charger_pass_failure(charger_entry_id)
+
+    def _on_charger_op_done(self, charger_entry_id: str, task: asyncio.Task[None]) -> None:
+        """A charger's operation ended: forget it, and if a pass skipped the charger meanwhile, decide again now
+        on the latest decisions (a lower current that came up meanwhile goes out at once)."""
+        if self._charger_ops.get(charger_entry_id) is task:
+            del self._charger_ops[charger_entry_id]
+        if charger_entry_id in self._skipped_while_busy:
+            self._skipped_while_busy.discard(charger_entry_id)
+            if not self._closed and not task.cancelled():
+                self._schedule_apply_active_control()
 
     def _log_charger_pass_failure(self, charger_entry_id: str) -> None:
         _LOGGER.exception(
@@ -918,12 +1004,9 @@ class SiteCapacityController:
         fresh: SiteCapacityResult,
         max_age_s: float,
         margin_by_charger: dict[str, float | None],
-        *,
-        writes: dict[str, asyncio.Task[None]] | None = None,
     ) -> bool:
-        """One charger's step of `_async_apply_active_control`. `False` when the pass must end (active
-        control was turned off meanwhile). With `writes`, the charger's write is started as a task kept
-        there for the pass to await, instead of awaited here."""
+        """One charger's step of `_async_apply_active_control`, run as that charger's operation
+        (`_async_charger_step`). `False` when active control was turned off meanwhile."""
         # Re-checked per charger: a pass admitted while active control was on must not
         # keep writing after it was turned off (see `async_disable_active_control`).
         if not self._active_control_allowed():
@@ -1034,13 +1117,16 @@ class SiteCapacityController:
             )
             return True
 
+        # An overload's reduction is never held for the dwell, whatever margin the damper is shown: the
+        # regulator saw a phase over the fuse (urgency only ever hastens a reduction).
+        overload = decision.reason in MUST_LOWER_REASONS
         if yield_verdict is not None and yield_verdict.action == "write":
             # The stepper's own current replaces the raw proposal; `urgent` lets a revert skip
             # deadband and dwell.
             damping = damper.consider(
                 proposed_current_a=yield_verdict.current_a,
                 margin_a=margin_by_charger.get(charger_entry_id),
-                urgent=yield_verdict.urgent,
+                urgent=yield_verdict.urgent or overload,
                 # A step sized from a battery that was verified to give way is paced by the
                 # stepper's own settle time and gap, not by the dwell.
                 verified_step=(
@@ -1053,7 +1139,7 @@ class SiteCapacityController:
             damping = damper.consider(
                 proposed_current_a=proposed,
                 margin_a=margin_by_charger.get(charger_entry_id),
-                urgent=yield_verdict.urgent if yield_verdict is not None else False,
+                urgent=(yield_verdict.urgent if yield_verdict is not None else False) or overload,
             )
         if not damping.write or damping.current_a is None:
             self._log_active_control_outcome(
@@ -1076,9 +1162,9 @@ class SiteCapacityController:
             )
         # Last synchronous check before the write; nothing awaits between here and the charger's
         # lock.
-        if not self._active_control_allowed():
+        if not self._active_control_allowed() or self._closed:
             return False
-        work = self._async_write_regulated(
+        await self._async_write_regulated(
             charger_entry_id,
             charger_controller,
             decision,
@@ -1088,12 +1174,6 @@ class SiteCapacityController:
             previous_setpoint,
             yield_verdict,
         )
-        if writes is None:
-            await work
-        else:
-            writes[charger_entry_id] = self.hass.async_create_task(
-                work, f"spotnav site {self.entry_id} write to {charger_entry_id}"
-            )
         return True
 
     async def _async_write_regulated(
@@ -1608,16 +1688,9 @@ class SiteCapacityController:
             raise SiteControllerClosed
         was_enabled = self.active_control_enabled
         self.config[CONF_ACTIVE_CONTROL_ENABLED] = False
-        task = self._apply_task
-        self._apply_task = None
-        if task is not None and not task.done():
-            task.cancel()
-            try:
-                await task
-            except asyncio.CancelledError:
-                pass
-            except Exception:  # noqa: BLE001 - a failing pass is being retired, nothing more
-                _LOGGER.debug("Retired active-control pass had failed", exc_info=True)
+        # Every pass and every charger's operation in flight is cancelled and waited for (briefly), so no
+        # write of theirs lands after the restore below.
+        await self._async_retire_operations()
         evidence = {
             charger_entry_id: damper.last_written_a is not None
             for charger_entry_id, damper in self._dampers.items()
