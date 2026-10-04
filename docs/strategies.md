@@ -131,3 +131,6 @@ cheapest.
   completely, so hoping for sun can make charging dearer but never late.
 - It holds back energy only when the expected solar saving is worth the price risk.
 - Every replan re-reads the remaining need, so a cloudy day moves energy back to the grid.
+- When the expected sun covers the whole remaining need, nothing is bought from the grid: the status
+  reads *Hybrid · 0 kWh from grid, … kWh expected from sun*, and the next replan buys again if the
+  forecast drops.

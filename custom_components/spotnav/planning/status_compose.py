@@ -103,6 +103,7 @@ QUIET_PLANNING_REASONS: Final = frozenset(
         "buying_before_publication",
         "charging_without_prices",
         "already_at_target",
+        "solar_covers_need",
         "shutdown",
         "solar_running",
     }

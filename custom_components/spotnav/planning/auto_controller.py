@@ -288,6 +288,9 @@ AutoReason = Literal[
     #: remainder is charged at once at unknown prices. A notice, not an alarm.
     "charging_without_prices",
     "already_at_target",
+    #: `nothing_to_charge`, strategy `hybrid`: the forecast sun is credited with the whole remaining need,
+    #: so nothing is bought from the grid (the hybrid line says how much the sun is expected to give).
+    "solar_covers_need",
     "no_published_prices",
     "price_data_invalid",
     "insufficient_price_horizon",
@@ -1068,6 +1071,13 @@ class AutoPlannerController:
                 self._hass, self._entry_id, hybrid_outcome, plan_window_active=plan_window_active
             )
             energy_kwh = hybrid_outcome.result.grid_kwh
+            if energy_kwh <= 0:
+                # The sun is credited with the whole need: no grid energy to place, and the planner
+                # refuses a non-positive amount (`invalid_energy`). A normal state, not a failure.
+                return self._fresh_snapshot(
+                    settings, "nothing_to_charge", "solar_covers_need", calculated_at,
+                    entry=entry, price_snapshot=area_snapshot,
+                )
 
         plan_request = PlanRequest(
             area_id=entry.id,
@@ -1442,7 +1452,12 @@ class AutoPlannerController:
             "deadline_too_short": "deadline_too_short",
             "missing_fx_rate": "missing_fx_rate",
         }
-        return mapping.get(code, "unexpected_failure")
+        reason = mapping.get(code)
+        if reason is None:
+            # Validated inputs the planner still refused: a bug to find, so it is named in the log.
+            _LOGGER.warning("Auto planning refused its inputs with planner code %s", code)
+            return "unexpected_failure"
+        return reason
 
     @staticmethod
     def _fiscal_for(settings: AutoSettings, entry: AreaEntry) -> FiscalChoice | None:

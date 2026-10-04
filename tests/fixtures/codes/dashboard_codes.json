@@ -47,6 +47,7 @@
     "ready",
     "settings_missing",
     "shutdown",
+    "solar_covers_need",
     "solar_execution_unavailable",
     "solar_running",
     "target_capacity_unknown",
