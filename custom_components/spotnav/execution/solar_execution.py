@@ -492,20 +492,28 @@ def solar_basis(
 def _adopt_running(solar: SolarController, *, now: float) -> None:
     """Seed a fresh `SolarController` as already `on`, because the charger is already charging under
     solar (a restart found it mid-charge, or a manual Start left it running): adopt it rather than stop
-    it, so a restart does not cycle the contactor.
-
-    `SolarController` has no public seeding entry point and a fresh one starts at `off`, where it can
-    only `hold`. This is the narrowest reach into its attributes, done once before the first
-    `observe()`, seeding what a real start transition leaves behind so `min_on_s` and `stale_grace_s`
-    behave as if it had started under this coordinator.
+    it, so a restart does not cycle the contactor. `min_on_s` and `stale_grace_s` behave as if it had
+    started under this coordinator.
     """
-    solar._state = "on"  # noqa: SLF001 -- see this function's own docstring
-    solar._on_since = now
-    solar._arming_since = None
-    solar._disarming_since = None
-    solar._last_stop_at = None
-    solar._last_requested_a = None
-    solar._stale_since = None
+    solar.adopt(now)
+
+
+def _person_stopped_state(site: SiteCapacityController) -> SolarExecutionState:
+    """The `SolarExecutionState` while a person's Stop holds the sun back: no verdict was computed."""
+    return SolarExecutionState(
+        state="off",
+        action="hold",
+        reason="person_stopped",
+        requested_a=None,
+        net_grid_w=None,
+        export_w=None,
+        car_w=None,
+        battery_w=None,
+        available_w=None,
+        available_a=None,
+        priority_effective=None,
+        active_control_active=bool(site.config.get(CONF_ACTIVE_CONTROL_ENABLED, False)),
+    )
 
 
 def _satisfied_state(site: SiteCapacityController) -> SolarExecutionState:
@@ -569,6 +577,9 @@ class SolarExecutionCoordinator:
         self._logged_held_by_plan: bool | None = None
         # Same, for the satisfied transition.
         self._logged_satisfied: bool | None = None
+        # Whether the charge solar runs is one the charger began by itself and solar took over
+        # (`_take_over`): leaving solar does not stop it, as it never stopped a charge it did not start.
+        self._took_over = False
         # Coalescing guard: `_on_site_update` fires often, but an evaluation awaits
         # `AutoExecutor`'s lock and `SolarController` is not reentrant, so a trigger arriving mid-
         # evaluation is dropped; the next site recompute retries.
@@ -625,11 +636,13 @@ class SolarExecutionCoordinator:
                 self._state is not None
                 and self._state.state in ("on", "disarming")
                 and not self._state.held_by_plan
+                and not self._took_over
             ):
                 # Solar itself was driving this charge (never while `held_by_plan`, when a plan window
-                # was running it).
+                # was running it, nor a charge the charger began by itself that solar took over).
                 await self._executor.async_solar_stop()
             self._solar = None
+            self._took_over = False
             self._state = None
             site.notify_solar_surplus_changed()
             return
@@ -645,6 +658,7 @@ class SolarExecutionCoordinator:
             ):
                 await self._executor.async_solar_stop()
             self._solar = None
+            self._took_over = False
             self._state = _satisfied_state(site)
             self._log_hybrid_satisfied(True)
             await self._async_recalculate_hybrid_preview()
@@ -652,9 +666,23 @@ class SolarExecutionCoordinator:
             return
         if settings.strategy == STRATEGY_HYBRID:
             self._log_hybrid_satisfied(False)
+        held_by_plan = settings.strategy == STRATEGY_HYBRID and self._controller.plan_window_active_now
+        if not held_by_plan and self._controller.person_stopped:
+            # A person's Stop holds the sun back until the car is plugged in again, a person starts the
+            # charge, or a plan window begins; a charge started again some other way is theirs. Fresh
+            # afterwards: the start delay runs from then.
+            self._solar = None
+            self._took_over = False
+            self._state = _person_stopped_state(site)
+            if settings.strategy == STRATEGY_HYBRID:
+                await self._async_recalculate_hybrid_preview()
+            site.notify_solar_surplus_changed()
+            return
 
         if self._solar is None:
             self._solar = self._build_controller(site)
+        if not held_by_plan and not pause_blocks_execution(settings):
+            await self._take_over(site)
         observation = _build_observation(
             site,
             self._charger_entry_id,
@@ -667,7 +695,9 @@ class SolarExecutionCoordinator:
         if self._unmeasured_start_allowed(site, now=observation.now):
             observation = replace(observation, unmeasured_start_allowed=True)
         verdict = self._solar.observe(observation)
-        held_by_plan = settings.strategy == STRATEGY_HYBRID and self._controller.plan_window_active_now
+        if verdict.action in ("start", "stop") or verdict.state == "off":
+            # Solar's own start, or no charge of solar's any more.
+            self._took_over = False
         if held_by_plan:
             # Arbitration: the state machine saw this observation (its timers keep ticking) but its
             # verdict is not carried out while a plan window owns the charger.
@@ -826,6 +856,43 @@ class SolarExecutionCoordinator:
         if max_current_a is not None:
             config_kwargs["max_current_a"] = float(max_current_a)
         return SolarConfig(**config_kwargs)
+
+    async def _take_over(self, site: SiteCapacityController) -> None:
+        """Take over a charge the charger began by itself (at plug-in, say) while solar is not running
+        one: from now on solar's rules decide it, as for a charge solar started. It is regulated to the
+        surplus, at the minimum current at once when there is too little for more, and stopped after
+        `stop_delay_s` when the surplus does not come back (no `min_on_s`: solar never started it). A
+        person's Start, a plan window's charge and one a person started again after a hold or their
+        own Stop are never taken.
+        """
+        solar = self._solar
+        if solar is None or solar.running or not self._controller.self_started_charge():
+            return
+        now = self._now()
+        config = solar.config
+        solar.adopt(now, requested_a=None, on_since=now - config.min_on_s)
+        self._took_over = True
+        _LOGGER.info(
+            "SpotNav charger %s: a charge the charger began by itself is taken over by the sun's rules",
+            self._charger_entry_id,
+        )
+        observation = _build_observation(
+            site,
+            self._charger_entry_id,
+            now=now,
+            effective_phases=effective_phases(self._hass, self._charger_entry_id),
+        )
+        breakdown = surplus_breakdown(observation, solar.priority_now(now))
+        if breakdown is None:
+            return
+        watts_per_a = len(observation.car_phases) * breakdown.mean_voltage_v
+        assert config.stop_a is not None
+        if watts_per_a > 0 and breakdown.available_w / watts_per_a < config.stop_a:
+            # Too little for the charge: down to the minimum while the stop delay runs, rather than
+            # the full current it began at.
+            minimum = config.min_current_a
+            solar.adopt(now, requested_a=minimum, on_since=now - config.min_on_s)
+            await self._executor.async_solar_set_current(int(minimum))
 
     def _build_controller(self, site: SiteCapacityController) -> SolarController:
         solar = SolarController(self._solar_config(site))

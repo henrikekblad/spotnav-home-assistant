@@ -308,6 +308,18 @@ CASES: list[tuple[str, StatusFacts, str, list[dict[str, Any]]]] = [
     ("hybrid waiting for price data", base(strategy="hybrid", hybrid=HybridFacts("no_price_data")), "normal", [{"code": "hybrid_no_price_data", "params": {}}]),
     ("hybrid need met", base(strategy="hybrid", hybrid=HybridFacts("satisfied_need_met", 0.0)), "normal", [{"code": "hybrid_satisfied", "params": {}}]),
     (
+        "a person's Stop holds the sun back: said right after the hybrid headline",
+        base(strategy="hybrid", hybrid=HybridFacts("satisfied_need_met", 0.0), person_stopped=True),
+        "normal",
+        [{"code": "hybrid_satisfied", "params": {}}, {"code": "stopped_by_person", "params": {}}],
+    ),
+    (
+        "a person's Stop under solar, and nothing said once a charge runs again (it is theirs)",
+        base(strategy="solar", solar=SolarFacts("off", "person_stopped"), person_stopped=True, charging=True),
+        "normal",
+        [{"code": "solar_waiting_for_sun", "params": {}}],
+    ),
+    (
         "hybrid waiting for tomorrow's prices keeps the wait line",
         base(
             strategy="hybrid",

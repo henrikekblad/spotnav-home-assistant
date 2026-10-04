@@ -177,6 +177,7 @@ export const STATUS_WORDING: Readonly<Record<StatusCode, TranslationKey>> = {
   charger_disabled: "issue.chargerDisabled",
   held_until_window: "status.heldUntilWindow",
   hold_overridden: "issue.holdOverridden",
+  stopped_by_person: "status.stoppedByPerson",
   need_limited_by_room: "status.needLimitedByRoom",
   charging_to_vehicle_limit: "status.chargingToVehicleLimit",
   remaining_need_estimated: "issue.needKept",

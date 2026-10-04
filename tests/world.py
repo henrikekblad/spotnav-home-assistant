@@ -220,6 +220,7 @@ async def solar_setup(
     main_fuse_a: float = 25.0,
     charging_at_setup: bool = False,
     strategy: str = STRATEGY_SOLAR,
+    battery_entity: str | None = None,
 ) -> tuple[object, object, object, SolarExecutionCoordinator, SecondsClock, list, list]:
     """One charger, set up *before* its site -- the common real/test ordering
     (`SolarExecutionCoordinator.async_start`'s own docstring) -- with its strategy already
@@ -234,6 +235,8 @@ async def solar_setup(
     `strategy` selects `solar` or `hybrid`: `SolarExecutionCoordinator` runs identically for both,
     and this is the one fixture that builds a real charger, a real derived-mode site and a real,
     ticking coordinator together.
+
+    `battery_entity` wires a home battery's aggregate power (positive = charging) into the site.
     """
     prefix = f"{entry_id}_charger"
     hass.states.async_set(f"switch.{prefix}", "on" if charging_at_setup else "off")
@@ -299,6 +302,7 @@ async def solar_setup(
         },
         measurement_mode=MEASUREMENT_MODE_DERIVED,
         derived_entities=derived_entities,
+        battery_aggregate_power_entity=battery_entity,
     )
     assert await hass.config_entries.async_setup(site_entry.entry_id)
     await hass.async_block_till_done()

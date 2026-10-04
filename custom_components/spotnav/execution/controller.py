@@ -19,7 +19,7 @@ import math
 from collections.abc import Callable
 from dataclasses import asdict, dataclass
 from datetime import datetime, timedelta
-from typing import Any, Literal
+from typing import Any, Final, Literal
 
 from homeassistant.const import STATE_UNAVAILABLE, STATE_UNKNOWN
 from homeassistant.core import callback, Event, EventStateChangedData, HomeAssistant, State
@@ -159,6 +159,10 @@ ABSOLUTE_MAX_AMPS = 80
 # Unit strings accepted for a current-limit entity. A missing or unknown unit is never
 # assumed to be amperes (same rule as `site_capacity.classify_current`).
 _AMPERE_UNITS = ("a", "amp", "amps", "ampere", "amperes")
+
+#: How long a charge still running after a stop of ours is taken as that stop on its way, not as a charge
+#: the charger began by itself (`ChargingController.self_started_charge`).
+STOP_ACK_S: Final = 120.0
 
 #: Why a top-off ends (`_async_end_top_off`): the car stopped drawing by itself, its deadline came, the
 #: car was unplugged, or the charge was turned off by other means.
@@ -472,6 +476,13 @@ class ChargingController:
         # The end of the window a person stopped the charge in: until then a plug-in or a new plan
         # does not start that window again. In memory only, as a person's Stop has always been.
         self._person_stop_until: datetime | None = None
+        # A person's Stop, for solar and hybrid's sun: no surplus starts the charger again until the car
+        # is plugged in again, a person starts it, or a plan window begins (`person_stopped`). In memory
+        # only, as `_person_stop_until`.
+        self._person_stopped = False
+        # When this controller last sent a stop, until the charger is seen to stop: a charge still
+        # running then is one being stopped, not one the charger began by itself.
+        self._stop_sent_at: datetime | None = None
         # Whether the charge that runs was started by a plan window of ours (not a person's Start, not
         # solar). Persisted: a restart outside every window must still know the charge is ours.
         self._plan_charge = False
@@ -914,6 +925,8 @@ class ChargingController:
         if previous is None or previous == connected:
             return
         event = CONNECTION_PLUGGED_IN if connected else CONNECTION_UNPLUGGED
+        # A person's Stop belongs to the plug-in it was made in.
+        self._person_stopped = False
         if connected:
             self._plugged_in_at = dt_util.utcnow()
             self.hass.async_create_task(self._async_save_connection())
@@ -1200,6 +1213,31 @@ class ChargingController:
         if self._hold.held or self.adapter.vehicle_connected() is True:
             return start
         return None
+
+    @property
+    def person_stopped(self) -> bool:
+        """Whether a person's Stop is in effect for the sun: solar and hybrid start nothing until the car
+        is plugged in again, a person starts the charge, or a plan window begins."""
+        return self._person_stopped
+
+    def self_started_charge(self) -> bool:
+        """Whether a charge runs that the charger began by itself (at plug-in, say): nobody here started
+        it, it is no plan window's, no Start is on its way, and it is not a person's (one started again
+        after a hold, or after their own Stop)."""
+        if not self.charging:
+            self._stop_sent_at = None
+            return False
+        stop_sent_at = self._stop_sent_at
+        if stop_sent_at is not None and (dt_util.utcnow() - stop_sent_at).total_seconds() < STOP_ACK_S:
+            # A stop of ours the charger has not answered yet.
+            return False
+        return (
+            self._charge_origin is None
+            and not self._plan_charge
+            and not self.start_pending
+            and not self._hold.overridden
+            and not self._person_stopped
+        )
 
     @property
     def hold_overridden(self) -> bool:
@@ -1574,6 +1612,7 @@ class ChargingController:
         self._paused_charge = None
         if manual:
             self._person_stop_until = None
+            self._person_stopped = False
         if manual and self._target_stop is not None:
             self._target_stop = None
             await self._async_save()
@@ -2015,6 +2054,8 @@ class ChargingController:
                 clear_schedule = True
             elif person:
                 self._person_stop_until = self._open_window_end()
+            if person:
+                self._person_stopped = True
             await self._stop_locked(clear_schedule=clear_schedule)
 
     async def _stop_locked(self, *, clear_schedule: bool = False) -> None:
@@ -2033,6 +2074,7 @@ class ChargingController:
         plan_charge = self._plan_charge
         origin = self._charge_origin
         if self._stop_needed:
+            self._stop_sent_at = dt_util.utcnow()
             await self.adapter.async_stop()
             self._plan_charge = False
             self._charge_origin = None
@@ -2325,8 +2367,10 @@ class ChargingController:
         the target ended the plan instead of starting anything, so a caller arming timers knows there is no
         plan left to arm.
         """
-        # The plug-in session a hold belonged to ends where the next window starts.
+        # The plug-in session a hold belonged to ends where the next window starts, and with it a person's
+        # Stop of the sun's charging.
         self._hold.end_session()
+        self._person_stopped = False
         if self._target_stopping:
             # A stop is in flight and the plan stays live until its turn_off is awaited: starting now
             # would race it. Report the charge as over so no caller arms timers or starts it.

@@ -58,6 +58,9 @@ Precedence (first match wins the headline; "add" rows append a fact line)
 6. Notices appended after the headline (and after the target fact): price_data_stale,
    price_data_degraded (usable rows exist, or degraded/incomplete), unpriced,
    hold_overridden (a person started the charge again after SpotNav held it, and it may go on),
+   stopped_by_person (under a solar or hybrid headline, right after it: a person stopped the charge, and
+   the sun does not start it again until the car is plugged in again, a person starts it, or a plan
+   window begins),
    remaining_need_estimated (a manual need counted without the energy register: its last remainder
    kept, or the charger's recorded charges),
    held_by_charger (the charger's own scheduler or load balancer holds the charge), charger_disabled
@@ -195,6 +198,9 @@ STATUS_CODES: Final[dict[str, tuple[str, tuple[str, ...]]]] = {
     "held_until_window": (TONE_NORMAL, ("time",)),
     # A person started the charge again after that stop: the plan is overridden and it may go on.
     "hold_overridden": (TONE_NOTICE, ()),
+    # A person stopped the charge: the sun (solar, hybrid's sun) does not start it again until the car is
+    # plugged in again, a person starts it, or a plan window begins.
+    "stopped_by_person": (TONE_NORMAL, ()),
     # A manual need capped at the room left in the battery: `kwh` is that room (the car is almost full).
     "need_limited_by_room": (TONE_NORMAL, ("kwh",)),
     # A charge to the car's own limit (`percent`, 100 when it states none): the car ends it, not SpotNav.
@@ -344,6 +350,8 @@ class StatusFacts:
     hold_until: datetime | None = None
     #: A person started the charge again after the hold and it is allowed to continue.
     hold_overridden: bool = False
+    #: A person's Stop holds the sun back (`ChargingController.person_stopped`).
+    person_stopped: bool = False
     #: A Start is in effect for a plan that charges to the car's own limit: that limit (100 when the car
     #: states none), else `None`.
     vehicle_limit_percent: float | None = None
@@ -742,6 +750,12 @@ def _pending_line(facts: StatusFacts) -> dict[str, Any]:
     return _line("proposal_pending", installs_at=aware_iso(active[1]), waits_for="window_end")
 
 
+def _person_stop_lines(facts: StatusFacts) -> list[dict[str, Any]]:
+    """`stopped_by_person` under a solar or hybrid headline while a person's Stop holds the sun back and
+    nothing charges (a charge started again some other way is the person's own)."""
+    return [_line("stopped_by_person")] if facts.person_stopped and not facts.charging else []
+
+
 def compose_status(facts: StatusFacts) -> dict[str, Any]:
     """The whole status block for one moment, from typed facts only."""
     if facts.starting_up:
@@ -769,9 +783,11 @@ def compose_status(facts: StatusFacts) -> dict[str, Any]:
             lines.append(_line("charging_now", until=None))
     elif facts.solar is not None:
         lines.extend(_solar_lines(facts.solar))
+        lines.extend(_person_stop_lines(facts))
         lines.extend(_price_wait_lines(facts))
     elif facts.hybrid is not None:
         lines.append(_hybrid_line(facts.hybrid, facts.proposal))
+        lines.extend(_person_stop_lines(facts))
         lines.extend(_price_wait_lines(facts))
     else:
         lines.extend(_plan_headline(facts))
