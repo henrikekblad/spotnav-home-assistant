@@ -731,10 +731,27 @@ export function sliderRepresents(value: number, minimum: number, step: number): 
 
 /**
  * The energy slider's domain for an exact value: the ordinary interval, extended upward to include a
- * representable value above it, so a stored `150` is drawn where it is.
+ * representable value above it, so a stored `150` is drawn where it is. With the battery's room known
+ * (the dashboard's `soc.room_kwh`) the ordinary top is that room, rounded up to the slider's step, when it
+ * is lower: more than the car can take is never offered, and a stored value above it is still drawn.
  */
-export function energySliderMaximum(value: number): number {
-  return Number.isFinite(value) && value > ENERGY_SLIDER_MAX_KWH ? value : ENERGY_SLIDER_MAX_KWH;
+export function energySliderMaximum(value: number, roomKwh: number | null = null): number {
+  const top = roomKwh === null || !Number.isFinite(roomKwh) ? ENERGY_SLIDER_MAX_KWH : energyRoomTop(roomKwh);
+  return Number.isFinite(value) && value > top ? value : top;
+}
+
+/** The battery's room as the slider's top: rounded up to its step, within its ordinary interval. */
+function energyRoomTop(roomKwh: number): number {
+  const steps = Math.ceil(roomKwh / ENERGY_SLIDER_STEP_KWH - STEP_EPSILON);
+  return Math.min(ENERGY_SLIDER_MAX_KWH, Math.max(ENERGY_SLIDER_MIN_KWH, steps * ENERGY_SLIDER_STEP_KWH));
+}
+
+/**
+ * Whether an amount is all the battery has room for, so the car, not SpotNav, ends the charge (the backend
+ * caps the need at the room and leaves the end to the car). `false` while the room is unknown.
+ */
+export function energyAtRoom(value: number, roomKwh: number | null): boolean {
+  return roomKwh !== null && Number.isFinite(value) && value >= roomKwh - STEP_EPSILON;
 }
 
 /**

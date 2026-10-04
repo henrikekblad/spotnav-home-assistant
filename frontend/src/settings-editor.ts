@@ -16,6 +16,7 @@ import {
   PERIODS_MIN,
   TARGET_PERCENT_MAX,
   TARGET_PERCENT_MIN,
+  energyAtRoom,
   energySliderMaximum,
   nominalPowerKw,
   sliderRepresents,
@@ -25,7 +26,7 @@ import {
   type SettingsFormValues,
 } from "./settings";
 import { VISUAL_CLASSES as C, summaryValueClass } from "./visual-styles";
-import { chargeCeiling, effectiveTarget, pythonRoundedAbove, targetNeedKwh } from "./target-need";
+import { chargeCeiling, effectiveTarget, pythonRound, pythonRoundedAbove, targetNeedKwh } from "./target-need";
 import type { Soc, Vehicle } from "./validate";
 
 export interface SettingsEditorForm {
@@ -329,6 +330,13 @@ export function settingsEditorBody(
       into.append(element(doc, "p", C.settingsNote, translate(language, "settings.energy.targetSoc")));
       return;
     }
+    // The battery's room, when the dashboard states it: the slider's top, and where the car ends the charge.
+    const room = form.soc?.room_kwh ?? null;
+    const carEnds = carEndsNote(form.soc?.vehicle_max_percent ?? null);
+    carEnds.dataset["note"] = "car-ends";
+    const paintCarEnds = (): void => {
+      carEnds.hidden = !energyAtRoom(Number(energyInput.value.trim().replace(",", ".")), room);
+    };
     into.append(
       pairedControls(doc, language, {
         id: `${idPrefix}-energy`,
@@ -336,14 +344,31 @@ export function settingsEditorBody(
         sliderLabel: translate(language, "settings.energy.slider"),
         minimum: ENERGY_SLIDER_MIN_KWH,
         step: ENERGY_SLIDER_STEP_KWH,
-        maximumOf: energySliderMaximum,
+        maximumOf: (value) => energySliderMaximum(value, room),
         unit: "kWh",
         input: energyInput,
         readOnly: form.readOnly,
-        onChange: () => {},
+        onChange: paintCarEnds,
       }).field,
     );
+    into.append(carEnds);
+    paintCarEnds();
   };
+
+  /**
+   * The note under a slider at its top (a target at or above the car's own limit, or every kWh the battery
+   * has room for): the car, not SpotNav, ends that charge. Hidden until shown.
+   */
+  function carEndsNote(limit: number | null): HTMLElement {
+    const note = element(
+      doc,
+      "p",
+      C.settingsNote,
+      translate(language, "settings.carEndsCharge", { percent: formatNumber(language, chargeCeiling(limit), 0) }),
+    );
+    note.hidden = true;
+    return note;
+  }
 
   /**
    * The departure day below the time: "Every day" (no date) or "On a date" (up to seven days ahead). Choosing
@@ -568,6 +593,9 @@ export function settingsEditorBody(
     facts.dataset["soc"] = "facts";
     const verdict = element(doc, "p", C.settingsNote);
     verdict.dataset["soc"] = "verdict";
+    const carEnds = element(doc, "p", C.settingsNote);
+    carEnds.dataset["soc"] = "car-ends";
+    carEnds.hidden = true;
     const need = element(doc, "div");
     const reading = element(doc, "p", C.settingsNote);
     reading.dataset["soc"] = "reading";
@@ -622,6 +650,10 @@ export function settingsEditorBody(
           reading.hidden = false;
         }
       }
+      // At or above the car's own limit (100 % when it states none) the car ends the charge itself.
+      const ceiling = chargeCeiling(limit);
+      carEnds.hidden = !(draftKnown && pythonRound(draft) >= ceiling);
+      carEnds.textContent = translate(language, "settings.carEndsCharge", { percent: formatNumber(language, ceiling, 0) });
       if (draftKnown) {
         if (now !== null && effectiveTarget(draft, limit) <= now) {
           verdict.textContent = translate(language, "settings.soc.noNeed");
@@ -699,6 +731,7 @@ export function settingsEditorBody(
         readOnly: form.readOnly,
         onChange: paint,
       }).field,
+      carEnds,
     );
     if (soc !== null) {
       block.append(verdict, need);

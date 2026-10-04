@@ -353,7 +353,7 @@ describe("the vehicle-side advisory", () => {
     await settle();
     const soc = {
       age_s: 30, capacity_kwh: 77, efficiency: 0.9, estimated: false, missing: [], source: "vehicle",
-      vehicle_id: "ev6", vehicle_name: "EV6", vehicles: [],
+      vehicle_id: "ev6", vehicle_name: "EV6", vehicles: [], room_kwh: null,
     };
     hass.resolveNext(dashboard({ charge_progress: ADVISORY, soc: { ...soc, ...facts } }));
     await settle();
@@ -375,6 +375,22 @@ describe("the vehicle-side advisory", () => {
       dashboard({
         charge_progress: ADVISORY,
         status: { tone: "normal", lines: [{ code: "hybrid_satisfied", params: {} }] },
+      }),
+    );
+    await settle();
+
+    expect(shadow(element).querySelector(`.${VISUAL_CLASSES.advisory}`)).toBeNull();
+  });
+
+  it("says nothing when the car ends a charge to its own limit and stops taking current", async () => {
+    const hass = new FakeHass();
+    const element = card();
+    element.hass = hass;
+    await settle();
+    hass.resolveNext(
+      dashboard({
+        charge_progress: ADVISORY,
+        status: { tone: "normal", lines: [{ code: "charging_to_vehicle_limit", params: { percent: 100 } }] },
       }),
     );
     await settle();

@@ -60,6 +60,7 @@ from ..execution.charger_entities import charge_control_problem
 from ..startup import NOT_STARTING, StartupState, startup_state
 from ..execution.charger_connection import CONNECTION_STATES, UNKNOWN as CONNECTION_UNKNOWN
 from ..execution.charge_progress import ChargeProgress, NOT_OBSERVED
+from ..execution.target_stop import charge_ceiling_percent
 from ..execution.controller import (
     ChargingController,
     CURRENT_RANGE_DEFAULT_MAX_A,
@@ -115,7 +116,7 @@ from ..util import aware_iso, finite_number
 from ..vehicles import vehicle_properties
 from ..vehicles.charger_inventory import charger_entries
 from ..vehicles.duplicate_chargers import duplicates_of
-from ..vehicles.soc_estimate import CHARGE_EFFICIENCY, target_need_kwh
+from ..vehicles.soc_estimate import battery_room_kwh, CHARGE_EFFICIENCY, target_need_kwh
 from ..vehicles.vehicle_discovery import discover_vehicles, resolve_target_vehicle
 from .common import (
     ERROR_CHARGER_REQUIRED,
@@ -230,6 +231,8 @@ class CapturedLive:
     #: The next window's start while a charge is held back for it, and whether a person overrode it.
     hold_until: datetime | None = None
     hold_overridden: bool = False
+    #: A Start is in effect for a plan that charges to the car's own limit: the car ends it.
+    charging_to_vehicle_limit: bool = False
 
 
 @dataclass(frozen=True, slots=True)
@@ -319,6 +322,8 @@ class CapturedSoc:
     vehicle_id: str | None = None
     vehicle_choices: tuple[tuple[str, str], ...] = ()
     vehicle_max_percent: float | None = None
+    #: The wall energy the battery has room for, to the car's own limit (else 100 %).
+    room_kwh: float | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -572,6 +577,7 @@ def capture_soc(
         vehicle_id=vehicle_id,
         vehicle_choices=tuple((c.id, c.name) for c in candidates) if len(candidates) > 1 else (),
         vehicle_max_percent=max_percent,
+        room_kwh=battery_room_kwh(soc_percent=value, capacity_kwh=capacity, vehicle_max_percent=max_percent),
     )
 
 
@@ -933,6 +939,7 @@ def capture_dashboard(
             charger_disabled=bool(controller is not None and controller.charger_disabled),
             hold_until=None if controller is None else controller.hold_until,
             hold_overridden=bool(controller is not None and controller.hold_overridden),
+            charging_to_vehicle_limit=bool(controller is not None and controller.charging_to_vehicle_limit),
         ),
         execution=CapturedExecution(
             state=EXECUTION_NOT_APPLIED if executor is None else executor.execution_state(),
@@ -1769,6 +1776,8 @@ def serialize_soc(soc: CapturedSoc | None) -> dict[str, Any] | None:
     `(min(target, floor(vehicle_max_percent)) - value) x capacity_kwh / efficiency`, zero at or below
     `value`. `efficiency` is `soc_estimate.CHARGE_EFFICIENCY`; `vehicle_max_percent` is the vehicle's
     own charge limit; `vehicles` lists every candidate `{id, name}` when more than one exists.
+    `room_kwh` is the wall energy the battery still has room for, the same formula with the target at
+    100 (`soc_estimate.battery_room_kwh`): what a manual amount is capped at, and the kWh slider's top.
     """
     if soc is None:
         return None
@@ -1785,6 +1794,7 @@ def serialize_soc(soc: CapturedSoc | None) -> dict[str, Any] | None:
         "vehicle_name": _text(soc.vehicle_name),
         "vehicle_id": _text(soc.vehicle_id),
         "vehicle_max_percent": finite_number(soc.vehicle_max_percent),
+        "room_kwh": None if finite_number(soc.room_kwh) is None else round(soc.room_kwh, 2),
         "efficiency": CHARGE_EFFICIENCY,
         "vehicles": [{"id": vid, "name": name} for vid, name in soc.vehicle_choices],
         "missing": [
@@ -1848,6 +1858,7 @@ def status_facts(capture: CapturedDashboard) -> StatusFacts:
             history_weeks=None if snapshot.history is None else snapshot.history.weeks,
             energy_basis=snapshot.energy_basis,
             remaining_kwh=finite_number(snapshot.remaining_kwh),
+            room_kwh=finite_number(snapshot.room_kwh) if snapshot.room_limited else None,
         )
     proposal = None
     section = _proposal_section(capture)
@@ -1900,6 +1911,9 @@ def status_facts(capture: CapturedDashboard) -> StatusFacts:
         charger_disabled=capture.live.charger_disabled,
         hold_until=None if capture.live.hold_until is None else _utc(capture.live.hold_until),
         hold_overridden=capture.live.hold_overridden,
+        vehicle_limit_percent=(
+            _charge_ceiling(capture.soc) if capture.live.charging_to_vehicle_limit else None
+        ),
         paused=capture.execution.paused is True,
         pause_until=None if pause is None else _utc(pause.expires_at),
         pause_choice=None if pause is None else pause.choice,
@@ -1936,6 +1950,11 @@ def status_facts(capture: CapturedDashboard) -> StatusFacts:
             cause=site.limit_cause,
         ),
     )
+
+
+def _charge_ceiling(soc: CapturedSoc | None) -> float:
+    """The level the planned car charges to: its own charge limit when known, else 100."""
+    return charge_ceiling_percent(None if soc is None else soc.vehicle_max_percent)
 
 
 def serialize_status(capture: CapturedDashboard) -> dict[str, Any]:

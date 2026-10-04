@@ -144,6 +144,12 @@
       ],
       "tone": "normal"
     },
+    "charging_to_vehicle_limit": {
+      "params": [
+        "percent"
+      ],
+      "tone": "normal"
+    },
     "charging_without_prices": {
       "params": [],
       "tone": "notice"
@@ -204,6 +210,12 @@
     "load_balancing_unavailable": {
       "params": [],
       "tone": "notice"
+    },
+    "need_limited_by_room": {
+      "params": [
+        "kwh"
+      ],
+      "tone": "normal"
     },
     "no_plan": {
       "params": [],

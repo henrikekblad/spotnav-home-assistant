@@ -197,7 +197,13 @@ async def _async_setup_charger_entry(hass: HomeAssistant, entry: ChargerConfigEn
     )
     await soc_reader.async_load()
     entry.async_on_unload(soc_reader.async_shutdown)
-    controller = ChargingController(hass, entry.entry_id, dict(entry.data), soc_reader=soc_reader.read)
+    controller = ChargingController(
+        hass,
+        entry.entry_id,
+        dict(entry.data),
+        soc_reader=soc_reader.read,
+        vehicle_limit_reader=soc_reader.vehicle_max_percent,
+    )
     data = entry.runtime_data = ChargerData(controller=controller, soc_reader=soc_reader)
     entry.async_on_unload(controller.async_shutdown)
 

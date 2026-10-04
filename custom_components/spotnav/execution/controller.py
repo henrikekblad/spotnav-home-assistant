@@ -86,7 +86,11 @@ from .charge_progress import (
     START_ACK_TIMEOUT_S,
 )
 from .pilot_floor_probe import connector_entity_id, PilotFloorProbe, PROBE_TOKEN, STORE_KEY
-from .target_stop import decide_target_stop, SocReading
+from .target_stop import (
+    charges_to_vehicle_limit,
+    decide_target_stop,
+    SocReading,
+)
 from .window_hold import HOLD, OVERRIDE, WindowHold
 
 
@@ -173,6 +177,9 @@ class ChargingPlan:
     # from. Both optional; absent means "no target": the charge ends with its window.
     target_soc_percent: float | None = None
     vehicle_id: str | None = None
+    # A manual amount at least the room left in the battery: the car ends the charge when it is full,
+    # so neither the delivered energy nor an estimate ends it first.
+    to_vehicle_limit: bool = False
     # What Auto built this plan from: identity, settings revision and price identity.
     # Internal metadata, never read out of a payload.
     auto_identity: str | None = None
@@ -421,6 +428,7 @@ class ChargingController:
         *,
         soc_reader: Callable[[str | None], SocReading | None] | None = None,
         end_window_guard: Callable[[], bool] | None = None,
+        vehicle_limit_reader: Callable[[str | None], float | None] | None = None,
     ) -> None:
         self.hass = hass
         self.entry_id = entry_id
@@ -516,6 +524,8 @@ class ChargingController:
         # How this controller reads a vehicle's state of charge, or `None` when it enforces no
         # target.
         self._soc_reader = soc_reader
+        # The vehicle's own charge limit (`SocReader.vehicle_max_percent`), or `None` when unknown.
+        self._vehicle_limit_reader = vehicle_limit_reader
         # The record of the last target stop, persisted with the plan (see `_async_save`).
         # Written only by the target-stop path.
         self._target_stop: dict[str, Any] | None = None
@@ -972,6 +982,13 @@ class ChargingController:
         """
         async with self._lock:
             if self.plan is None:
+                return False
+            if self.charges_to_vehicle_limit():
+                # The car ends this charge itself when it is full: no count or estimate of ours ends it.
+                _LOGGER.info(
+                    "SpotNav charger %s: the plan charges to the car's own limit, leaving its end to the car",
+                    self.entry_id,
+                )
                 return False
             if self.plan.target_soc_percent is not None:
                 # The target's own stop, with its record, or nothing.
@@ -2291,7 +2308,9 @@ class ChargingController:
             return False
         reading = self.target_reading()
         decision = decide_target_stop(
-            target_soc_percent=self.plan.target_soc_percent, reading=reading
+            target_soc_percent=self.plan.target_soc_percent,
+            reading=reading,
+            to_vehicle_limit=self.charges_to_vehicle_limit(),
         )
         if not decision.stop:
             return False
@@ -2340,6 +2359,28 @@ class ChargingController:
         if self._soc_reader is None or self.plan is None:
             return None
         return self._soc_reader(self.plan.vehicle_id)
+
+    def vehicle_limit_percent(self, vehicle_id: str | None) -> float | None:
+        """The vehicle's own charge limit, or `None` when unknown or nothing reads it."""
+        if self._vehicle_limit_reader is None:
+            return None
+        return self._vehicle_limit_reader(vehicle_id)
+
+    def charges_to_vehicle_limit(self) -> bool:
+        """Whether the plan in force charges to the car's own limit, so the car, not SpotNav, ends it: a
+        target at or above that limit (or 100 % when it is unknown), or a manual amount Auto capped at the
+        room left in the battery (`ChargingPlan.to_vehicle_limit`)."""
+        plan = self.plan
+        if plan is None:
+            return False
+        if plan.target_soc_percent is None:
+            return plan.to_vehicle_limit
+        return charges_to_vehicle_limit(plan.target_soc_percent, self.vehicle_limit_percent(plan.vehicle_id))
+
+    @property
+    def charging_to_vehicle_limit(self) -> bool:
+        """A Start is in effect for a plan that charges to the car's own limit: the car ends it."""
+        return self.charges_to_vehicle_limit() and self._control_on
 
     @property
     def target_stop_record(self) -> dict[str, Any] | None:

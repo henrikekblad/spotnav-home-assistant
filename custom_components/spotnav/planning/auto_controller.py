@@ -46,6 +46,7 @@ from ..execution.controller import CONNECTION_PLUGGED_IN
 from ..sessions.model import STARTED_OTHER
 from ..sessions.recorder import RESET_TOLERANCE_KWH
 from ..vehicles.soc_estimate import (
+    battery_room_kwh,
     read_energy_register_kwh,
     REGISTER_TOLERANCE_KWH,
     SocReader,
@@ -361,6 +362,12 @@ class _EnergyResolution:
     basis: str | None = None
     #: The energy counted as delivered toward this need, when the basis knows it.
     delivered_kwh: float | None = None
+    #: A manual need only: the wall energy the battery still has room for (to the car's own charge limit,
+    #: else 100 %), when a level and a battery size are known; `room_limited` when the need was capped at
+    #: it, and `uncapped_kwh` the need before that cap.
+    room_kwh: float | None = None
+    room_limited: bool = False
+    uncapped_kwh: float | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -420,6 +427,10 @@ class AutoSnapshot:
     energy_basis: str | None = None
     remaining_kwh: float | None = None
     delivered_kwh: float | None = None
+    #: `manual_kwh` only: the wall energy the battery has room for, when known, and whether the need was
+    #: capped at it (the car ends that charge itself when it is full).
+    room_kwh: float | None = None
+    room_limited: bool = False
 
     def meaningful_key(self) -> tuple[Any, ...]:
         """What a listener hears about, and is not told twice.
@@ -453,6 +464,8 @@ class AutoSnapshot:
             self.wait_rule,
             self.energy_basis,
             None if self.remaining_kwh is None else round(self.remaining_kwh, 1),
+            None if self.room_kwh is None else round(self.room_kwh, 1),
+            self.room_limited,
             None if self.proposal is None else self._proposal_key(self.proposal),
         )
 
@@ -995,8 +1008,11 @@ class AutoPlannerController:
         if resolved.basis is not None:
             energy.update(
                 energy_basis=resolved.basis,
-                remaining_kwh=resolved.kwh,
+                # The need as counted, before any cap at the battery's room.
+                remaining_kwh=resolved.kwh if resolved.uncapped_kwh is None else resolved.uncapped_kwh,
                 delivered_kwh=resolved.delivered_kwh,
+                room_kwh=resolved.room_kwh,
+                room_limited=resolved.room_limited,
             )
 
         if energy_kwh <= 0:
@@ -1470,7 +1486,7 @@ class AutoPlannerController:
         """The energy the plan should deliver: the manual figure (less energy already delivered toward
         the current departure, when trustworthy) or what a target needs from live state of charge."""
         if settings.driver != DRIVER_TARGET_SOC:
-            return await self._manual_kwh_remaining(settings, calculated_at, entry)
+            return self._capped_by_room(settings, await self._manual_kwh_remaining(settings, calculated_at, entry))
         facts = None if self._vehicle_reader is None else self._vehicle_reader(settings.target.vehicle_id or "")
         live_soc = None if facts is None else facts.soc_percent
         if live_soc is None:
@@ -1506,6 +1522,28 @@ class AutoPlannerController:
         kwh = wall_kwh if wall_kwh is not None else settings.requested_kwh
         # Always trustworthy: live state of charge already reflects everything delivered.
         return _EnergyResolution(kwh=kwh, delivered_energy_trustworthy=True)
+
+    def _capped_by_room(self, settings: AutoSettings, resolution: _EnergyResolution) -> _EnergyResolution:
+        """A manual need no larger than the battery has room for.
+
+        With a level (a reading or an estimate) and a battery size, the room is the wall energy to the
+        car's own charge limit (else 100 %): `capacity x (ceiling - soc) / 100 / efficiency`. A need at or
+        above it is capped there and marked `room_limited`: the car ends that charge when it is full, so
+        nothing of ours stops it first. Without either fact the need stands as counted.
+        """
+        facts = None if self._vehicle_reader is None else self._vehicle_reader(settings.target.vehicle_id or "")
+        if facts is None:
+            return resolution
+        room = battery_room_kwh(
+            soc_percent=facts.soc_percent,
+            capacity_kwh=facts.reported_capacity_kwh,
+            vehicle_max_percent=facts.max_percent,
+        )
+        if room is None:
+            return resolution
+        if resolution.kwh <= 0 or resolution.kwh < room:
+            return replace(resolution, room_kwh=room)
+        return replace(resolution, kwh=room, room_kwh=room, room_limited=True, uncapped_kwh=resolution.kwh)
 
     def _departure_key(self, settings: AutoSettings, calculated_at: datetime, entry: AreaEntry) -> str:
         """A stable name for which departure occurrence this is, for `_manual_kwh_remaining`'s reset rule.

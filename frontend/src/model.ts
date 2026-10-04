@@ -467,9 +467,12 @@ function carNeedsNoCharge(soc: Dashboard["soc"]): boolean {
   return stop !== null && soc.value >= Math.min(stop, ceiling ?? stop);
 }
 
-/** Whether the backend's own status says the charging need is already met (e.g. a manual kWh plan with a full car). */
+/**
+ * Whether the backend's own status says the charging need is already met (e.g. a manual kWh plan with a full
+ * car), or that the car ends this charge itself at its own limit: a car that stops taking current then is full.
+ */
 function needAlreadyMet(status: Dashboard["status"]): boolean {
-  return status.lines.some((line) => line.code === "hybrid_satisfied");
+  return status.lines.some((line) => line.code === "hybrid_satisfied" || line.code === "charging_to_vehicle_limit");
 }
 
 function strategyFactsFor(dashboard: Dashboard, language: Language): StrategyFacts {

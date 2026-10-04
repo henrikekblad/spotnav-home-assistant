@@ -329,6 +329,8 @@ async def test_the_soc_block_and_the_capability_follow_the_reader(
         "target_percent": 80.0, "need_kwh": 34.22, "capacity_kwh": CAPACITY, "vehicle_name": "EV6",
         "vehicle_id": car_id, "vehicles": [], "missing": [],
         "vehicle_max_percent": None, "efficiency": 0.9,
+        # The battery's room to 100 %: (100 - 40) % of 77 kWh, at the wall.
+        "room_kwh": 51.33,
     }
 
     # Two hours on, 30 kWh through the meter and no new poll: an estimate, marked as one.

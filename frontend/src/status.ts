@@ -130,6 +130,8 @@ export const STATUS_WORDING: Readonly<Record<StatusCode, TranslationKey>> = {
   charger_disabled: "issue.chargerDisabled",
   held_until_window: "status.heldUntilWindow",
   hold_overridden: "issue.holdOverridden",
+  need_limited_by_room: "status.needLimitedByRoom",
+  charging_to_vehicle_limit: "status.chargingToVehicleLimit",
   remaining_need_estimated: "issue.needKept",
   site_measurement_problem: "issue.siteMeasurement",
   duplicate_charger: "issue.duplicateCharger",
@@ -351,6 +353,10 @@ export function lineText(line: StatusLine, format: FormatContext, nowMs: number)
       const need = needEstimated(language, p);
       return say(need.key, need.params);
     }
+    case "need_limited_by_room":
+      return say("status.needLimitedByRoom", { kwh: formatNumber(language, num(p["kwh"]) ?? 0, 1) });
+    case "charging_to_vehicle_limit":
+      return say("status.chargingToVehicleLimit", { percent: formatNumber(language, num(p["percent"]) ?? 100, 0) });
     case "duplicate_charger":
       return say("issue.duplicateCharger", { other: typeof p["other"] === "string" ? p["other"] : "" });
     case "charger_unavailable": {

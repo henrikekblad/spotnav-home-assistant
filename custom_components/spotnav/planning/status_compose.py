@@ -44,6 +44,9 @@ Precedence (first match wins the headline; "add" rows append a fact line)
      checked (the window still ends the charge). The record wins if both were ever present.
    HA always enforces a target; "this Home Assistant version won't stop at the target" is the
    app's own capability check, never said here.
+   need_limited_by_room{kwh} (a manual need capped at the room left in the battery) and
+   charging_to_vehicle_limit{percent} (a Start in effect for a plan that charges to the car's own
+   limit, which the car ends itself) follow them; tone normal.
    `settings_suggested{fields}` (tone normal) follows the notices while first-run defaults
    (area, phases, amps) are unconfirmed; any settings edit clears it.
 6. Notices appended after the headline (and after the target fact): price_data_stale,
@@ -169,6 +172,10 @@ STATUS_CODES: Final[dict[str, tuple[str, tuple[str, ...]]]] = {
     "held_until_window": (TONE_NORMAL, ("time",)),
     # A person started the charge again after that stop: the plan is overridden and it may go on.
     "hold_overridden": (TONE_NOTICE, ()),
+    # A manual need capped at the room left in the battery: `kwh` is that room (the car is almost full).
+    "need_limited_by_room": (TONE_NORMAL, ("kwh",)),
+    # A charge to the car's own limit (`percent`, 100 when it states none): the car ends it, not SpotNav.
+    "charging_to_vehicle_limit": (TONE_NORMAL, ("percent",)),
     # A manual need counted without the energy register: `kwh` remains, `basis` says how it was told:
     # `kept` (the register cannot be read; its last remainder is kept) or `sessions` (no register; the
     # charger's recorded charges since the plug-in or the last departure).
@@ -201,6 +208,8 @@ class PlanningFacts:
     #: `requested`) and the need that remains, in kWh.
     energy_basis: str | None = None
     remaining_kwh: float | None = None
+    #: `manual_kwh` only: the battery's room in kWh when the need was capped at it, else `None`.
+    room_kwh: float | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -295,6 +304,9 @@ class StatusFacts:
     hold_until: datetime | None = None
     #: A person started the charge again after the hold and it is allowed to continue.
     hold_overridden: bool = False
+    #: A Start is in effect for a plan that charges to the car's own limit: that limit (100 when the car
+    #: states none), else `None`.
+    vehicle_limit_percent: float | None = None
     paused: bool = False
     pause_until: datetime | None = None
     pause_choice: str | None = None
@@ -590,6 +602,18 @@ def _notices(facts: StatusFacts) -> list[dict[str, Any]]:
     return lines
 
 
+def _vehicle_limit_lines(facts: StatusFacts) -> list[dict[str, Any]]:
+    """The facts of a charge the car ends itself: a manual need capped at the battery's room, and a Start
+    in effect for a plan that charges to the car's own limit."""
+    lines: list[dict[str, Any]] = []
+    planning = facts.planning
+    if planning is not None and planning.room_kwh is not None and planning.room_kwh > 0:
+        lines.append(_line("need_limited_by_room", kwh=round(planning.room_kwh, 1)))
+    if facts.vehicle_limit_percent is not None and not facts.paused:
+        lines.append(_line("charging_to_vehicle_limit", percent=round(facts.vehicle_limit_percent)))
+    return lines
+
+
 def _target_lines(facts: StatusFacts) -> list[dict[str, Any]]:
     target = facts.target
     if target is None:
@@ -668,6 +692,7 @@ def compose_status(facts: StatusFacts) -> dict[str, Any]:
     if _pending_proposal(facts) and not any(line["code"] == "proposal_pending" for line in lines):
         lines.append(_pending_line(facts))
     lines.extend(_target_lines(facts))
+    lines.extend(_vehicle_limit_lines(facts))
     lines.extend(_notices(facts))
     if facts.suggested:
         lines.append(_line("settings_suggested", fields=list(facts.suggested)))

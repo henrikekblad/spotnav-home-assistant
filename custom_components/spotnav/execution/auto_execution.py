@@ -296,13 +296,17 @@ def auto_application_identity(
     driver: str,
     settings_revision: int,
     price_identity: str | None,
+    to_vehicle_limit: bool = False,
 ) -> str:
     """A deterministic identity for one Auto application, over execution-relevant facts: ordered
     bounds, current, phases, area, energy, unpriced flag, target fields, driver, settings revision
-    and price identity.
+    and price identity, and whether the car ends the charge itself (named only when it does, so every
+    other identity stays what it was).
     """
+    extra: dict[str, Any] = {"to_vehicle_limit": True} if to_vehicle_limit else {}
     canonical = json.dumps(
         {
+            **extra,
             "periods": [[start, end] for start, end in periods],
             "amps": amps,
             "phases": phases,
@@ -338,7 +342,8 @@ class AutoApplication:
 
     @property
     def material_key(self) -> tuple[Any, ...]:
-        """What the charger would do: hours, current, phases, area, target, unpriced flag."""
+        """What the charger would do: hours, current, phases, area, target, unpriced flag, and whether the
+        car ends the charge itself."""
         return (
             self.periods,
             self.plan.amps,
@@ -347,7 +352,14 @@ class AutoApplication:
             self.plan.unpriced,
             self.plan.target_soc_percent,
             self.plan.vehicle_id,
+            self.plan.to_vehicle_limit,
         )
+
+
+def manual_to_vehicle_limit(settings: AutoSettings, snapshot: Any) -> bool:
+    """A manual amount Auto capped at the room left in the battery (`AutoSnapshot.room_limited`): the car
+    ends that charge itself when it is full."""
+    return settings.driver != DRIVER_TARGET_SOC and bool(getattr(snapshot, "room_limited", False))
 
 
 def auto_plan_for(
@@ -366,6 +378,7 @@ def auto_plan_for(
     target = settings.target
     carries_target = settings.driver == DRIVER_TARGET_SOC and target.target_percent is not None
     return ChargingPlan(
+        to_vehicle_limit=manual_to_vehicle_limit(settings, snapshot),
         start=periods[0]["start"],
         end=periods[-1]["end"],
         amps=settings.amps if settings.amps is not None else 0,
@@ -418,6 +431,7 @@ def application_for(settings: AutoSettings, snapshot: Any, phases: int = 3) -> A
     target = settings.target
     carries_target = settings.driver == DRIVER_TARGET_SOC and target.target_percent is not None
     identity = auto_application_identity(
+        to_vehicle_limit=manual_to_vehicle_limit(settings, snapshot),
         periods=periods,
         amps=settings.amps,
         phases=phases,
@@ -714,10 +728,12 @@ class AutoExecutor:
                     applied is not None
                     and self.current(attempt)
                     and getattr(snapshot, "state", None) == "nothing_to_charge"
+                    and not getattr(snapshot, "room_limited", False)
                     and not pause_blocks_execution(self._store.settings(self._entry_id))
                 ):
                     # The need is met (the target reached, or the energy delivered) before the plan ran
-                    # out: its windows still ahead would buy what nobody needs.
+                    # out: its windows still ahead would buy what nobody needs. Not when only the room
+                    # left in the battery says so: the car ends that charge itself when it is full.
                     try:
                         await self._controller.async_end_plan_need_met()
                     except Exception as err:  # noqa: BLE001 - reported, the next calculation retries
