@@ -761,6 +761,24 @@
     },
     "no_push_registered": {
       "message": "No SpotNav charger has the app's instant notifications turned on, so no test push was sent. Any Companion phones chosen for notifications were still sent a test message."
+    },
+    "stop_not_executed": {
+      "message": "The charger did not take the stop: its control is unavailable. Try again when the charger is back."
+    },
+    "storage_failed": {
+      "message": "The charging plan could not be saved."
+    },
+    "reschedule_failed": {
+      "message": "The charging plan could not be armed; the previous one stands."
+    },
+    "rollback_failed": {
+      "message": "The charging plan could not be armed, nor the previous one restored."
+    },
+    "vehicle_not_connected": {
+      "message": "No car is plugged in, so there is nothing to start."
+    },
+    "reconcile_failed": {
+      "message": "The charger took the command, but automatic charging could not be updated to match. Check the charger's status."
     }
   }
 }

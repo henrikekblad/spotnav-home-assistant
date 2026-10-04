@@ -25,6 +25,7 @@ from ..const import CONF_WEBHOOK_ID, DOMAIN
 from ..notifications.push import ERROR_INVALID_PUSH, parse_push_register, PushRegisterError
 from ..notifications.targets import available_targets
 from ..execution.auto_execution import ACTION_RESUME, ACTION_STOP, AutoControlError
+from ..execution.controller import ChargingExecutionError
 from ..planning.auto_settings import AutoSettingsError
 from ..planning.phases import effective_phases
 from ..runtime import ChargerConfigEntry, domain_data
@@ -314,6 +315,10 @@ def _handler_for(entry: ChargerConfigEntry) -> Callable[..., Awaitable[web.Respo
             # committed with a failed follow-up. The stable code is the content.
             _LOGGER.debug("Refused a SpotNav webhook action: %s", refusal.code)
             return web.json_response({"ok": False, "error": refusal.code}, status=409)
+        except ChargingExecutionError as failure:
+            # The charger could not be brought to it (a stop its control did not take): the stable code.
+            _LOGGER.warning("SpotNav charger command failed: %s", failure.code)
+            return web.json_response({"ok": False, "error": failure.code}, status=502)
         except Exception:
             _LOGGER.exception("SpotNav charger command failed")
             return web.json_response({"ok": False, "error": "Charger command failed"}, status=502)

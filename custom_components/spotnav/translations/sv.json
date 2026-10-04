@@ -761,6 +761,24 @@
     },
     "no_push_registered": {
       "message": "Ingen SpotNav-laddare har appens direktnotiser påslagna, så ingen testpush skickades. Companion-telefoner som valts för notiser fick ändå ett testmeddelande."
+    },
+    "stop_not_executed": {
+      "message": "Laddaren tog inte emot stoppet: dess styrning är inte tillgänglig. Försök igen när laddaren är tillbaka."
+    },
+    "storage_failed": {
+      "message": "Laddplanen kunde inte sparas."
+    },
+    "reschedule_failed": {
+      "message": "Laddplanen kunde inte aktiveras; den tidigare gäller."
+    },
+    "rollback_failed": {
+      "message": "Laddplanen kunde inte aktiveras och den tidigare kunde inte återställas."
+    },
+    "vehicle_not_connected": {
+      "message": "Ingen bil är ansluten, så det finns inget att starta."
+    },
+    "reconcile_failed": {
+      "message": "Laddaren tog emot kommandot, men den automatiska laddningen kunde inte uppdateras efter det. Kontrollera laddarens status."
     }
   }
 }

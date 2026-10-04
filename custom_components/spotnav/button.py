@@ -13,7 +13,13 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 from .const import DOMAIN
 from .entity import AutoSurface, SpotNavAutoEntity, SpotNavChargingEntity
-from .execution.auto_execution import AutoExecutor, EXECUTION_PAUSE_STOP_FAILED
+from .execution.auto_execution import (
+    AutoControlError,
+    AutoExecutor,
+    EXECUTION_PAUSE_STOP_FAILED,
+    EXECUTION_RECONCILE_FAILED,
+    EXECUTION_VEHICLE_NOT_CONNECTED,
+)
 from .execution.controller import ChargingController
 from .runtime import ChargerConfigEntry, executor_for
 
@@ -84,7 +90,20 @@ class ControlButton(SpotNavChargingEntity, ButtonEntity):
         return self._key != "follow" or self.controller.plan is not None
 
     async def async_press(self) -> None:
-        await self._action()
+        try:
+            await self._action()
+        except AutoControlError as err:
+            # The boundary's stable code, as a sentence the person can read (`ChargingExecutionError` is one
+            # already).
+            if err.code in _TRANSLATED_CONTROL_CODES:
+                raise HomeAssistantError(
+                    err.code, translation_domain=DOMAIN, translation_key=err.code
+                ) from err
+            raise HomeAssistantError(f"The charger command failed ({err.code})") from err
+
+
+#: The boundary's codes a control button can meet that have a translated sentence.
+_TRANSLATED_CONTROL_CODES = frozenset({EXECUTION_VEHICLE_NOT_CONNECTED, EXECUTION_RECONCILE_FAILED})
 
 
 class AutoActionButton(SpotNavAutoEntity, ButtonEntity):
