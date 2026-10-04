@@ -485,6 +485,9 @@ class ChargingController:
         self._automatic_gate: AutomaticGate | None = None
         # What the site lets a start give the car (`set_start_cap`); `None` means no cap applies.
         self._start_cap: Callable[[], float | None] | None = None
+        # Where a capped start says how much it took, so another start on the site in the same tick is given
+        # only what is left (`set_start_cap`); `None` when nothing is reserved.
+        self._start_reserve: Callable[[float | None], None] | None = None
         self._last_connected: bool | None = None
         # The last connection the charger reported in so many words (`None` until it said one): only a
         # change between two known states is a plug-in or an unplug, never a status that comes back after
@@ -1676,10 +1679,27 @@ class ChargingController:
             return None
         return hint[0]
 
-    def set_start_cap(self, cap: Callable[[], float | None] | None) -> None:
+    def set_start_cap(
+        self,
+        cap: Callable[[], float | None] | None,
+        *,
+        reserve: Callable[[float | None], None] | None = None,
+    ) -> None:
         """Set (or clear) what a start may give the car: the site's allowance in amps while active
-        control is on and the measurements are usable, else `None` (no cap)."""
+        control is on and the measurements are usable, else `None` (no cap). `reserve` is told what a
+        capped start took (`None` when it did not go out), so the site gives a second start in the same
+        tick only what is left."""
         self._start_cap = cap
+        self._start_reserve = reserve if cap is not None else None
+
+    def _reserve_start(self, amps: float | None) -> None:
+        reserve = self._start_reserve
+        if reserve is None:
+            return
+        try:
+            reserve(amps)
+        except Exception:  # noqa: BLE001 - a failing reservation must not block a start; the regulator still follows
+            _LOGGER.debug("Start reservation failed", exc_info=True)
 
     def _start_allowance_a(self) -> float | None:
         cap = self._start_cap
@@ -1771,6 +1791,7 @@ class ChargingController:
             self._target_stop = None
             await self._async_save()
         explicit_amps = amps if amps is not None else (self.plan.amps if self.plan is not None else None)
+        reserved = False
         if explicit_amps is not None:
             self._validate_amps(explicit_amps)
             self._requested_current_a = explicit_amps
@@ -1795,6 +1816,10 @@ class ChargingController:
                     self._notify()
                     return False
                 explicit_amps = min(explicit_amps, int(allowance))
+                # Taken now, before the first await: a start beside this one in the same tick on the same
+                # site reads the allowance less this.
+                self._reserve_start(explicit_amps)
+                reserved = True
             if self.current_control == CURRENT_CONTROL_CHANGE_CONFIGURATION:
                 await self._async_assign_current(explicit_amps)
             elif self._writes_current_at_start and not self.adapter.policy.ignored_while_paused:
@@ -1831,6 +1856,8 @@ class ChargingController:
                 executed = await self.adapter.async_start(explicit_amps)
             except BaseException:
                 # The command failed outright: whatever it was to begin is not ours, nor anybody's.
+                if reserved:
+                    self._reserve_start(None)
                 self._start_cause = was_cause
                 self._start_sent_at = None
                 self._start_write_pending = False
@@ -1840,6 +1867,8 @@ class ChargingController:
                 raise
             if not executed:
                 # The command never went out: nothing is awaiting an answer, and nothing may say so.
+                if reserved:
+                    self._reserve_start(None)
                 self._start_cause = was_cause
                 self._start_sent_at = None
                 self._start_write_pending = False
