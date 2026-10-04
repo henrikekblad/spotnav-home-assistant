@@ -103,8 +103,6 @@ SESSION_REGISTER_ZERO_KWH: Final = RESET_TOLERANCE_KWH
 #: many readings over this long: a lifetime register reads 0 for a moment while its charger reboots.
 DROP_HOLD_READINGS: Final = 2
 DROP_HOLD_S: Final = 120.0
-#: A pending drop older than this many hold times is forgotten: a new drop starts its own count.
-DROP_EXPIRY_FACTOR: Final = 3
 
 #: This soon after a plug-in, a register that falls to about zero is one that counts per plug-in, and
 #: counts again from zero at once.
@@ -232,9 +230,9 @@ def advance_register(
         plugged_in_at is not None and 0.0 <= (now - plugged_in_at).total_seconds() <= PLUG_IN_RESTART_S
     )
     if not (near_plug_in and to_zero):
+        # A reading that did not continue the drop has cleared it, so a pending drop is this same drop,
+        # however far apart its readings come.
         pending_at = baseline.pending_drop_at
-        if pending_at is not None and (now - pending_at).total_seconds() > DROP_HOLD_S * DROP_EXPIRY_FACTOR:
-            pending_at = None  # a drop pending this long is long over: this one starts afresh
         first = pending_at or now
         count = baseline.pending_drop_count + 1 if pending_at is not None else 1
         if count < DROP_HOLD_READINGS or (now - first).total_seconds() < DROP_HOLD_S:
@@ -1964,11 +1962,9 @@ class AutoPlannerController:
             await self._save_baseline(updated)
         return _EnergyResolution(
             kwh=remaining,
-            delivered_energy_trustworthy=stored.rejected_kwh is None
-            and (
-                stored.pending_drop_at is None
-                or (calculated_at - stored.pending_drop_at).total_seconds() > DROP_HOLD_S * DROP_EXPIRY_FACTOR
-            ),
+            # Untrustworthy only while a reading is in doubt: a rise rejected, or a drop pending (both clear
+            # once it resolves, whether the register started again or came back).
+            delivered_energy_trustworthy=stored.rejected_kwh is None and stored.pending_drop_at is None,
             basis="register",
             delivered_kwh=delivered,
         )
