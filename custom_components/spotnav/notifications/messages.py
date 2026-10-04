@@ -35,6 +35,7 @@ _TEXT: Final[dict[str, dict[str, str]]] = {
         "complete.target": "Charging complete: the target {percent} was reached.",
         "complete.energy": "Charging complete: the requested energy was delivered.",
         "complete.plan_done": "The planned charge has finished.",
+        "complete.vehicle_full": "Charging complete: the car is full.",
         "started": "Charging started.",
         "started.until": "Charging started, until {time}.",
         "plugged_in": "The car is plugged in.",
@@ -57,6 +58,7 @@ _TEXT: Final[dict[str, dict[str, str]]] = {
         "complete.target": "Laddningen är klar: målet {percent} är nått.",
         "complete.energy": "Laddningen är klar: den begärda energin är levererad.",
         "complete.plan_done": "Den planerade laddningen är slutförd.",
+        "complete.vehicle_full": "Laddningen är klar: bilen är full.",
         "started": "Laddningen har startat.",
         "started.until": "Laddningen har startat, till {time}.",
         "plugged_in": "Bilen är ansluten.",
@@ -79,6 +81,7 @@ _TEXT: Final[dict[str, dict[str, str]]] = {
         "complete.target": "Opladningen er færdig: målet {percent} er nået.",
         "complete.energy": "Opladningen er færdig: den ønskede energi er leveret.",
         "complete.plan_done": "Den planlagte opladning er afsluttet.",
+        "complete.vehicle_full": "Opladningen er færdig: bilen er fuld.",
         "started": "Opladningen er startet.",
         "started.until": "Opladningen er startet, til {time}.",
         "plugged_in": "Bilen er tilsluttet.",
@@ -101,6 +104,7 @@ _TEXT: Final[dict[str, dict[str, str]]] = {
         "complete.target": "Ladingen er ferdig: målet {percent} er nådd.",
         "complete.energy": "Ladingen er ferdig: den ønskede energien er levert.",
         "complete.plan_done": "Den planlagte ladingen er fullført.",
+        "complete.vehicle_full": "Ladingen er ferdig: bilen er full.",
         "started": "Ladingen har startet.",
         "started.until": "Ladingen har startet, til {time}.",
         "plugged_in": "Bilen er tilkoblet.",
@@ -123,6 +127,7 @@ _TEXT: Final[dict[str, dict[str, str]]] = {
         "complete.target": "Lataus on valmis: tavoite {percent} saavutettiin.",
         "complete.energy": "Lataus on valmis: pyydetty energia on toimitettu.",
         "complete.plan_done": "Suunniteltu lataus on päättynyt.",
+        "complete.vehicle_full": "Lataus on valmis: auto on täynnä.",
         "started": "Lataus alkoi.",
         "started.until": "Lataus alkoi, klo {time} asti.",
         "plugged_in": "Auto on kytketty.",
@@ -205,6 +210,8 @@ def compose(event: str, name: str, facts: dict[str, Any], language: str) -> tupl
             message = text["complete.target"].format(percent=percent_text(language, percent))
         elif reason == "energy":
             message = text["complete.energy"]
+        elif reason == "vehicle_full":
+            message = text["complete.vehicle_full"]
         else:
             message = text["complete.plan_done"]
         message += _figures(language, text, "charged", kwh, cost, estimate=False)

@@ -34,6 +34,8 @@ export const nb: Record<keyof typeof en, string> = {
   "status.loadBalancingLimitedByBattery": "Hjemmebatteriet lader fra nettet og deler hovedsikringen: bilen får {limit} A.",
   "status.loadBalancingLimitedByHouse": "Husets forbruk begrenser bilen til {limit} A.",
   "status.chargingNowOpen": "Lader nå.",
+  "status.toppingOff": "Lader til bilen er full (senest til {time}).",
+  "status.toppingOffOpen": "Lader til bilen er full.",
   "status.startingUp": "Starter opp…",
   "status.scheduledNoTime": "Lading er planlagt.",
   "status.nothingToCharge": "Ingenting å lade akkurat nå.",

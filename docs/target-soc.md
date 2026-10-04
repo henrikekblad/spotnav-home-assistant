@@ -42,7 +42,10 @@ fixed number of kWh instead.
 - **To the car's own limit.** A target at or above the car's own charge limit (or 100 % when the car
   states none) is the car's to end: SpotNav keeps the charge on within the planned periods and never
   stops it on a reading or an estimate, and a car that stops taking current there is full, not a fault.
-  The status says *Charging until the car stops at its own limit (100 %)* while it runs.
+  The status says *Charging until the car stops at its own limit (100 %)* while it runs. A car still
+  drawing when the last planned period ends is let finish: the charge stays on until the car stops by
+  itself, at most an hour past the period and never past the departure (*Charging until the car is full
+  (at most until 06:40)*). A target below the car's limit still ends with its last period.
 - **Unreadable levels never stop a charge and never prevent one.** A sleeping car reports
   nothing; the period's own end remains the guard.
 - **Manual Start** is a decision by a person and is not vetoed by a level at or above the

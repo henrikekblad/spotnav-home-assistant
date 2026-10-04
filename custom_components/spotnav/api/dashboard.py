@@ -233,6 +233,9 @@ class CapturedLive:
     hold_overridden: bool = False
     #: A Start is in effect for a plan that charges to the car's own limit: the car ends it.
     charging_to_vehicle_limit: bool = False
+    #: While the car finishes a charge to its own limit past the plan's last window, that top-off's
+    #: deadline (`ChargingController.top_off_until`).
+    top_off_until: datetime | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -940,6 +943,7 @@ def capture_dashboard(
             hold_until=None if controller is None else controller.hold_until,
             hold_overridden=bool(controller is not None and controller.hold_overridden),
             charging_to_vehicle_limit=bool(controller is not None and controller.charging_to_vehicle_limit),
+            top_off_until=None if controller is None else controller.top_off_until,
         ),
         execution=CapturedExecution(
             state=EXECUTION_NOT_APPLIED if executor is None else executor.execution_state(),
@@ -1914,6 +1918,7 @@ def status_facts(capture: CapturedDashboard) -> StatusFacts:
         vehicle_limit_percent=(
             _charge_ceiling(capture.soc) if capture.live.charging_to_vehicle_limit else None
         ),
+        top_off_until=None if capture.live.top_off_until is None else _utc(capture.live.top_off_until),
         paused=capture.execution.paused is True,
         pause_until=None if pause is None else _utc(pause.expires_at),
         pause_choice=None if pause is None else pause.choice,
