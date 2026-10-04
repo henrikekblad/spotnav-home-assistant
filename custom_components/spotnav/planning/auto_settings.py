@@ -809,7 +809,11 @@ class EnergyBaseline:
     * `carried_kwh`: energy counted before the register started again, still part of this epoch;
     * `remaining_kwh`, `delivered_kwh`: the last remainder, and the energy delivered, the register
       vouched for, kept while it cannot be read;
-    * `met_at`: when the need was first found delivered in this epoch.
+    * `met_at`: when the need was first found delivered in this epoch;
+    * `previous_register_kwh`: the reading believed before the last one, so a rise that falls straight
+      back is told from a register that started again;
+    * `rejected_kwh`: a reading that climbed faster than the charger can deliver, believed only if the
+      next reading holds at or above it.
     """
 
     register_kwh: float | None
@@ -824,6 +828,8 @@ class EnergyBaseline:
     pending_drop_count: int = 0
     delivered_kwh: float | None = None
     met_at: datetime | None = None
+    previous_register_kwh: float | None = None
+    rejected_kwh: float | None = None
 
     def as_dict(self) -> dict[str, Any]:
         record: dict[str, Any] = {"register_kwh": self.register_kwh, "departure_key": self.departure_key}
@@ -831,7 +837,7 @@ class EnergyBaseline:
             value = getattr(self, name)
             if value is not None:
                 record[name] = value.isoformat()
-        for name in ("last_register_kwh", "remaining_kwh", "pending_drop_kwh", "delivered_kwh"):
+        for name in _BASELINE_READINGS:
             value = getattr(self, name)
             if value is not None:
                 record[name] = value
@@ -855,6 +861,8 @@ class EnergyBaseline:
                     "pending_drop_kwh",
                     "pending_drop_count",
                     "delivered_kwh",
+                    "previous_register_kwh",
+                    "rejected_kwh",
                 }
             ),
         )
@@ -875,7 +883,7 @@ class EnergyBaseline:
                 _refuse("invalid_energy_baseline", "a stored energy baseline's instants must be instants")
             instants[name] = parsed
         numbers: dict[str, float | None] = {}
-        for name in ("last_register_kwh", "carried_kwh", "remaining_kwh", "pending_drop_kwh", "delivered_kwh"):
+        for name in (*_BASELINE_READINGS, "carried_kwh"):
             value = stored.get(name)
             numbers[name] = None if value is None else _finite(value, "invalid_energy_baseline", name)
         for name in ("carried_kwh", "remaining_kwh", "delivered_kwh"):
@@ -898,11 +906,23 @@ class EnergyBaseline:
             pending_drop_count=count,
             delivered_kwh=numbers["delivered_kwh"],
             met_at=instants["met_at"],
+            previous_register_kwh=numbers["previous_register_kwh"],
+            rejected_kwh=numbers["rejected_kwh"],
         )
 
 
 #: The instants an energy baseline may carry, stored as ISO text.
 _BASELINE_INSTANTS: Final = ("started_at", "last_register_at", "pending_drop_at", "met_at")
+
+#: The energies an energy baseline may carry beside its reference, written only when known.
+_BASELINE_READINGS: Final = (
+    "last_register_kwh",
+    "remaining_kwh",
+    "pending_drop_kwh",
+    "delivered_kwh",
+    "previous_register_kwh",
+    "rejected_kwh",
+)
 
 
 #: Settings a first-run default may fill in (see `planning/first_run.py`).

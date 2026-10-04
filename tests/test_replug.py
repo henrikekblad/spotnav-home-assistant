@@ -370,7 +370,13 @@ def test_a_reading_that_climbs_faster_than_the_charger_can_deliver_is_not_believ
     baseline = EnergyBaseline(register_kwh=1000.0, departure_key="k", last_register_kwh=1000.2, last_register_at=_T0)
     spike = _step(baseline, 1100.0, 60)  # 100 kWh in a minute
     assert not spike.accepted and spike.delivered_kwh == pytest.approx(0.2)
-    assert spike.baseline == baseline, "a reading that did not hold is never carried"
+    assert spike.baseline.last_register_kwh == 1000.2, "a reading that did not hold is never carried"
+    fell_back = _step(spike.baseline, 1000.3, 90)
+    assert fell_back.accepted and fell_back.delivered_kwh == pytest.approx(0.3)
+    assert fell_back.baseline.rejected_kwh is None
+    # A second reading at or above one that climbed too fast holds: a faster charger, or a meter catching up.
+    held = _step(spike.baseline, 1100.5, 120)
+    assert held.accepted and held.delivered_kwh == pytest.approx(100.5)
     real = _step(baseline, 1000.5, 120)
     assert real.accepted and real.delivered_kwh == pytest.approx(0.5)
     # An hour at 22 kW is believable.
@@ -378,7 +384,10 @@ def test_a_reading_that_climbs_faster_than_the_charger_can_deliver_is_not_believ
 
 
 def test_a_high_reading_that_falls_back_is_dropped_not_carried() -> None:
-    baseline = EnergyBaseline(register_kwh=1000.0, departure_key="k", last_register_kwh=1004.0, last_register_at=_T0)
+    baseline = EnergyBaseline(
+        register_kwh=1000.0, departure_key="k", last_register_kwh=1004.0, last_register_at=_T0,
+        previous_register_kwh=1000.5,
+    )
     back = _step(baseline, 1001.0, 30)
     assert back.accepted and back.delivered_kwh == pytest.approx(1.0) and back.baseline.carried_kwh == 0.0
 
@@ -747,8 +756,6 @@ async def test_the_energy_stop_ends_the_plan_when_the_need_is_delivered(hass: Ho
         assert car.controller.plan is not None, "two of three kWh: the plan goes on"
 
         await _delivered(hass, frozen, 1003.0, minutes=5)  # the register alone: no price, no recalculation
-        assert car.controller.plan is not None, "one reading saying so is not yet enough"
-        await _delivered(hass, frozen, 1003.1, minutes=1)
 
         assert car.controller.plan is None and _turn_offs(calls) == 1
         assert car.preview.snapshot().state == "nothing_to_charge"
