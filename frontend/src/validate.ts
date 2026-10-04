@@ -1270,9 +1270,9 @@ export const STATUS_CODE_TABLE = {
   solar_no_reading_stopped: ["normal", {}],
   solar_no_reading_waiting: ["normal", {}],
   solar_waiting_for_sun: ["normal", {}],
-  solar_no_grid_power: ["notice", { entity: "textOrNull" }],
-  solar_battery_unreadable: ["notice", { entity: "textOrNull" }],
-  solar_charger_current_missing: ["notice", { entity: "textOrNull" }],
+  solar_no_grid_power: ["notice", { entity: "textOrNull", entity_name: "textOrNull" }],
+  solar_battery_unreadable: ["notice", { entity: "textOrNull", entity_name: "textOrNull" }],
+  solar_charger_current_missing: ["notice", { entity: "textOrNull", entity_name: "textOrNull" }],
   solar_site_incomplete: ["normal", { phases: "codes" }],
   solar_unknown: ["normal", {}],
   hybrid_grid: [
@@ -1303,7 +1303,7 @@ export const STATUS_CODE_TABLE = {
     "notice",
     { no_value_phases: "codes", no_value_entities: "codes", stale_phases: "codes", max_age_s: "numberOrNull" },
   ],
-  site_meter_unavailable: ["notice", { entities: "codes", cause: "text" }],
+  site_meter_unavailable: ["notice", { entities: "codes", cause: "text", entity_names: "codes" }],
   duplicate_charger: ["notice", { other: "text" }],
 } as const satisfies Record<string, readonly [StatusTone, Record<string, StatusParamKind>]>;
 

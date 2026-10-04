@@ -335,7 +335,8 @@
     "site_meter_unavailable": {
       "params": [
         "cause",
-        "entities"
+        "entities",
+        "entity_names"
       ],
       "tone": "notice"
     },
@@ -345,13 +346,15 @@
     },
     "solar_battery_unreadable": {
       "params": [
-        "entity"
+        "entity",
+        "entity_name"
       ],
       "tone": "notice"
     },
     "solar_charger_current_missing": {
       "params": [
-        "entity"
+        "entity",
+        "entity_name"
       ],
       "tone": "notice"
     },
@@ -367,7 +370,8 @@
     },
     "solar_no_grid_power": {
       "params": [
-        "entity"
+        "entity",
+        "entity_name"
       ],
       "tone": "notice"
     },

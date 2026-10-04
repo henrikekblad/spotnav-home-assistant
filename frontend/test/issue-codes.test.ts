@@ -55,9 +55,9 @@ function sample(kind: string): unknown {
   }
 }
 
-/** Entity ids are shown as they are; any other text param is a code that must never be shown raw. */
+/** Entity ids and friendly names are shown as they are; any other text param is a code that must never be shown raw. */
 function sampleFor(name: string, kind: string): unknown {
-  if (name === "entity") {
+  if (name === "entity" || name === "entity_name") {
     return "sensor.sample_entity";
   }
   if (name === "entities") {

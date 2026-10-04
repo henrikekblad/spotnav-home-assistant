@@ -90,9 +90,18 @@ export function meterUnavailableText(language: Language, entities: readonly stri
   return wording === null ? "" : translate(language, wording.key, wording.params);
 }
 
-/** The entity a line names, or `null`. */
+/** The entity a line names, as its friendly name when the backend gave one, else its id; or `null`. */
 function entityOf(p: StatusLine["params"]): string | null {
+  const name = p["entity_name"];
+  if (typeof name === "string" && name !== "") return name;
   return typeof p["entity"] === "string" && p["entity"] !== "" ? p["entity"] : null;
+}
+
+/** The meter's sensors as friendly names where the backend gave them (parallel to `entities`). */
+function meterNames(p: StatusLine["params"]): string[] {
+  const ids = strings(p["entities"]);
+  const names = strings(p["entity_names"]);
+  return names.length === ids.length ? names.map((name, i) => (name !== "" ? name : ids[i]!)) : ids;
 }
 
 /** The wording of the lines that say why solar has no full basis, and of the meter's unavailable sensors. */
@@ -118,7 +127,7 @@ function basisWording(line: StatusLine): { key: TranslationKey; params: Record<s
     case "site_meter_unavailable":
       return {
         key: p["cause"] === "inverter_standby" ? "status.meterUnavailable.inverter" : "status.meterUnavailable.meter",
-        params: { entities: strings(p["entities"]).join(", ") },
+        params: { entities: meterNames(p).join(", ") },
       };
     default:
       return null;
