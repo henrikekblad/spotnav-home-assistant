@@ -776,6 +776,7 @@
           "L3": null
         },
         "current_estimated": false,
+        "current_source": null,
         "mode": "direct_phase_current"
       },
       "name": "Site",

@@ -1,7 +1,7 @@
 {
   "api_version": 1,
   "config": {
-    "charger_id": "charger",
+    "charger_id": "get_attributes",
     "control": {
       "capabilities": {
         "reads_charging_state": false,
@@ -35,7 +35,7 @@
       },
       "start_stop": {
         "entity_ids": [
-          "switch.charger_control"
+          "switch.get_attributes_control"
         ],
         "inverted": false,
         "kind": "switch",
@@ -50,13 +50,13 @@
           "switch"
         ],
         "current": {
-          "entity_id": "switch.charger_control",
+          "entity_id": "switch.get_attributes_control",
           "exists": true,
-          "friendly_name": "Control charger"
+          "friendly_name": "Control get_attributes"
         },
         "effective": {
-          "entity_id": "switch.charger_control",
-          "friendly_name": "Control charger",
+          "entity_id": "switch.get_attributes_control",
+          "friendly_name": "Control get_attributes",
           "source": "configured"
         },
         "field": "charge_control",
@@ -154,16 +154,8 @@
         "allowed_domains": [
           "sensor"
         ],
-        "current": {
-          "entity_id": "sensor.niro_battery",
-          "exists": true,
-          "friendly_name": "niro battery"
-        },
-        "effective": {
-          "entity_id": "sensor.niro_battery",
-          "friendly_name": "niro battery",
-          "source": "automatic"
-        },
+        "current": null,
+        "effective": null,
         "field": "vehicle_soc",
         "kind": "entity",
         "required": false,
@@ -219,16 +211,8 @@
         "allowed_domains": [
           "sensor"
         ],
-        "current": {
-          "entity_id": "sensor.site_charger_l1",
-          "exists": false,
-          "friendly_name": "sensor.site_charger_l1"
-        },
-        "effective": {
-          "entity_id": "sensor.site_charger_l1",
-          "friendly_name": "sensor.site_charger_l1",
-          "source": "configured"
-        },
+        "current": null,
+        "effective": null,
         "field": "direct_L1",
         "kind": "entity",
         "required": true,
@@ -242,16 +226,8 @@
         "allowed_domains": [
           "sensor"
         ],
-        "current": {
-          "entity_id": "sensor.site_charger_l2",
-          "exists": false,
-          "friendly_name": "sensor.site_charger_l2"
-        },
-        "effective": {
-          "entity_id": "sensor.site_charger_l2",
-          "friendly_name": "sensor.site_charger_l2",
-          "source": "configured"
-        },
+        "current": null,
+        "effective": null,
         "field": "direct_L2",
         "kind": "entity",
         "required": true,
@@ -265,16 +241,8 @@
         "allowed_domains": [
           "sensor"
         ],
-        "current": {
-          "entity_id": "sensor.site_charger_l3",
-          "exists": false,
-          "friendly_name": "sensor.site_charger_l3"
-        },
-        "effective": {
-          "entity_id": "sensor.site_charger_l3",
-          "friendly_name": "sensor.site_charger_l3",
-          "source": "configured"
-        },
+        "current": null,
+        "effective": null,
         "field": "direct_L3",
         "kind": "entity",
         "required": true,
@@ -286,7 +254,7 @@
         "kind": "flag",
         "required": false,
         "scope": "site",
-        "value": false,
+        "value": true,
         "writable": true
       },
       {
@@ -384,81 +352,30 @@
       "measurement": {
         "assumed_power_factor": null,
         "basis": {
-          "L1": null,
-          "L2": null,
-          "L3": null
+          "L1": "measured",
+          "L2": "measured",
+          "L3": "measured"
         },
         "current_estimated": false,
-        "current_source": null,
+        "current_source": {
+          "attributes": {
+            "L1": "state_currentL1",
+            "L2": "state_currentL2",
+            "L3": "state_currentL3"
+          },
+          "entity_id": "sensor.home_equalizer_current",
+          "entity_ids": null,
+          "kind": "attributes",
+          "name": "Home Equalizer Current"
+        },
         "mode": "direct_phase_current"
       },
       "name": "Site",
-      "warnings": [
-        {
-          "code": "measurement_unhealthy",
-          "device_name": null,
-          "entity_id": null,
-          "integration": null,
-          "interval_s": 120.0,
-          "inverter": false,
-          "limits_a": null,
-          "negative_phases": [],
-          "option": null,
-          "phases": [
-            {
-              "age_s": null,
-              "cause": "no_value",
-              "entity_id": "sensor.site_charger_l1",
-              "phase": "L1"
-            },
-            {
-              "age_s": null,
-              "cause": "no_value",
-              "entity_id": "sensor.site_charger_l2",
-              "phase": "L2"
-            },
-            {
-              "age_s": null,
-              "cause": "no_value",
-              "entity_id": "sensor.site_charger_l3",
-              "phase": "L3"
-            }
-          ],
-          "unavailable_entities": []
-        }
-      ]
+      "warnings": []
     },
-    "vehicles": [
-      {
-        "candidates": [
-          {
-            "entity_id": "sensor.niro_battery",
-            "friendly_name": "niro battery"
-          }
-        ],
-        "id": "vehicle_niro",
-        "name": "Niro",
-        "selected": {
-          "entity_id": "sensor.niro_battery",
-          "friendly_name": "niro battery"
-        },
-        "source": "automatic"
-      }
-    ]
+    "vehicles": []
   },
   "error": null,
   "field_errors": [],
-  "ok": true,
-  "vehicle": {
-    "capacity_kwh": 64.8,
-    "capacity_source": "stored",
-    "consumption_kwh_per_10km": 1.7,
-    "id": "vehicle_niro",
-    "max_percent": null,
-    "name": "Niro",
-    "onboard_phases": 3,
-    "soc_entity_id": "sensor.niro_battery",
-    "soc_percent": 55.0,
-    "suggested_onboard_phases": null
-  }
+  "ok": true
 }

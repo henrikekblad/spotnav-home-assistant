@@ -61,6 +61,7 @@ from ..const import (
     CONF_CURRENT_LIMIT_NONE,
     CONF_DERIVED_ENTITIES,
     CONF_DIRECT_ENTITIES,
+    CONF_SITE_CURRENT_SOURCE,
     CONF_ENERGY_REGISTER_ENTITY,
     CONF_POWER_ENTITY,
     CONF_GRID_POWER_SOURCE,
@@ -101,6 +102,7 @@ from .entity_fields import (
     CHARGER_FIELDS,
     current_charger_values,
     current_site_values,
+    stored_site_current_source,
     derived_field,
     derived_fields,
     DERIVED_SUBFIELDS,
@@ -307,11 +309,15 @@ def _write_site(hass: HomeAssistant, entry: ConfigEntry, changes: dict[str, Any]
             # Cleared: the export half goes with it (validation refused an export alone).
             updated.pop(CONF_GRID_POWER_SOURCE, None)
     if any(direct_field(phase) in changes for phase in PHASES):
-        direct = dict(entry.data.get(CONF_DIRECT_ENTITIES) or {})
+        # Entities named for the phases replace a stored current source (validation required all three).
+        replaced = stored_site_current_source(entry) is not None
+        direct = {} if replaced else dict(entry.data.get(CONF_DIRECT_ENTITIES) or {})
         for phase in PHASES:
             if direct_field(phase) in changes:
                 direct[phase] = changes[direct_field(phase)]
         updated[CONF_DIRECT_ENTITIES] = direct
+        if replaced:
+            updated.pop(CONF_SITE_CURRENT_SOURCE, None)
     if any(derived_field(phase, sub) in changes for phase in PHASES for sub in DERIVED_SUBFIELDS):
         derived = {phase: dict(values) for phase, values in (entry.data.get(CONF_DERIVED_ENTITIES) or {}).items()}
         for phase in PHASES:

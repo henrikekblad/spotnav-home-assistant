@@ -1025,6 +1025,7 @@
           "L3": "estimated"
         },
         "current_estimated": true,
+        "current_source": null,
         "mode": "derived_phase_current"
       },
       "name": "Site",

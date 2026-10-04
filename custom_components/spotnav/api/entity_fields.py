@@ -21,8 +21,9 @@ into a wire refusal and a pass into a write.
   `battery_power_inverted`), the battery aggregate power sensor with its optional discharge half, and
   the maximum measurement age. `apply_detection` (write only) applies a detected meter or battery
   (`site/site_detection.py`) chosen by id; the server recomputes the detection and never takes a mapping
-  from the caller. Not included: the
-  generic current source (`CONF_SITE_CURRENT_SOURCE`, a wizard), membership, active control's
+  from the caller. The generic current source (`CONF_SITE_CURRENT_SOURCE`, set by a detection or the
+  wizard) is not a field: `measurement.current_source` reports it read-only, and naming the three
+  `direct_L{n}` entities replaces it. Not included: membership, active control's
   opt-in and the regulator/yield/solar/hybrid settings (`api/site_settings.py`). Numeric bounds
   (`MAIN_FUSE_MIN_A`, `MAX_AGE_MIN_S`) are shared with the flow's schema. Entity existence and
   domain are checked here only; the interactive flow leaves that to its picker.
@@ -90,7 +91,7 @@ from ..site.site_detection import (
     freshness_warnings,
     MeterCandidate,
 )
-from ..site.measurement_source import grid_power_source_from_dict, source_from_dict
+from ..site.measurement_source import PhaseMeasurementSource, grid_power_source_from_dict, source_from_dict
 from ..execution.charger_entities import (
     charger_entries,
     CONFLICT_DISABLED,
@@ -905,11 +906,19 @@ def vehicle_soc_vehicles(hass: HomeAssistant) -> list[dict[str, Any]]:
 
 
 
+def stored_site_current_source(entry: ConfigEntry) -> PhaseMeasurementSource | None:
+    """The site's stored current source (`CONF_SITE_CURRENT_SOURCE`, e.g. an Easee Equalizer's one entity
+    with the three phases as attributes), or `None`. A direct site reads it in place of `direct_L{n}`.
+    """
+    return source_from_dict(entry.data.get(CONF_SITE_CURRENT_SOURCE))
+
+
 def current_site_values(entry: ConfigEntry) -> dict[str, Any]:
     """Every site field's stored value in the shape `changes`/`expected` use: `""` for an unconfigured
-    entity field, the plain value otherwise.
+    entity field, the plain value otherwise. The `direct_L{n}` fields are `""` while a stored current
+    source is read in their place, so what they would hold is never shown as what is read.
     """
-    direct = entry.data.get(CONF_DIRECT_ENTITIES) or {}
+    direct = {} if stored_site_current_source(entry) is not None else (entry.data.get(CONF_DIRECT_ENTITIES) or {})
     derived = entry.data.get(CONF_DERIVED_ENTITIES) or {}
     grid_total = grid_power_source_from_dict(entry.data.get(CONF_GRID_POWER_SOURCE))
     values: dict[str, Any] = {
@@ -1051,6 +1060,14 @@ def site_field_errors(
         # The detected candidate supplies the whole set; nothing else is required of this write.
         return errors
     required_fields = direct_fields() if mode == MEASUREMENT_MODE_DIRECT else required_derived_fields()
+    if (
+        mode == MEASUREMENT_MODE_DIRECT
+        and stored_site_current_source(entry) is not None
+        and not any(field in changes for field in direct_fields())
+    ):
+        # The stored current source measures every phase; naming one entity replaces it, and then all
+        # three are needed.
+        required_fields = ()
     for field in required_fields:
         if field in failed_fields:
             continue
@@ -1330,6 +1347,7 @@ def site_measurement_info(hass: HomeAssistant, entry: ConfigEntry) -> dict[str, 
         "current_estimated": bool(result is not None and result.current_estimated),
         "assumed_power_factor": None if result is None else result.estimated_power_factor,
         "basis": {phase: (None if result is None else result.phase_current_basis.get(phase)) for phase in PHASES},
+        "current_source": _current_source_row(hass, stored_site_current_source(entry)),
     }
 
     registry = er.async_get(hass)
@@ -1434,6 +1452,30 @@ def site_measurement_info(hass: HomeAssistant, entry: ConfigEntry) -> dict[str, 
 def _friendly(hass: HomeAssistant, entity_id: str) -> str:
     state = hass.states.get(entity_id)
     return state.name if state is not None else entity_id
+
+
+def _current_source_row(hass: HomeAssistant, source: PhaseMeasurementSource | None) -> dict[str, Any] | None:
+    """`measurement.current_source`: the stored source a direct site reads its phase currents from in
+    place of `direct_L{n}`, or `None`. `attributes`: one entity (`entity_id`, `name`) and the attribute
+    per phase; `separate_entities`: an entity per phase in `entity_ids`.
+    """
+    if source is None:
+        return None
+    if source.kind == "attributes" and source.entity_id:
+        return {
+            "kind": "attributes",
+            "entity_id": source.entity_id,
+            "name": _friendly(hass, source.entity_id),
+            "attributes": {phase: (source.attributes or {}).get(phase) for phase in PHASES},
+            "entity_ids": None,
+        }
+    return {
+        "kind": "separate_entities",
+        "entity_id": None,
+        "name": None,
+        "attributes": None,
+        "entity_ids": {phase: (source.entity_ids or {}).get(phase) for phase in PHASES},
+    }
 
 
 def _meter_row(hass: HomeAssistant, entry: ConfigEntry, candidate: MeterCandidate) -> dict[str, Any]:

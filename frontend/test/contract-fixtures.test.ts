@@ -1060,6 +1060,21 @@ const ENTITY_CONFIG_V1_EXPECTED: Record<
       siteChargers: 1,
     },
   },
+  "get_attributes.json": {
+    ok: true,
+    code: null,
+    fieldErrors: [],
+    config: {
+      charger: "get_attributes",
+      fields: [...CHARGER, ...SITE_FIXED, ...DIRECT, ...SITE_TAIL],
+      mode: "direct_phase_current",
+      chargeControl: "switch.get_attributes_control",
+      currentLimit: null,
+      fuse: 25,
+      maxAge: 120,
+      siteChargers: 1,
+    },
+  },
   "get_direct_total.json": {
     ok: true,
     code: null,
@@ -1320,6 +1335,23 @@ describe("the backend's entity_config v1 contract fixtures", () => {
     const age = byName.get("max_age_s");
     expect(age === undefined ? null : age.kind === "number" ? age.value : "wrong kind", name).toBe(expected.config.maxAge);
     expect(config.site?.chargerCount ?? null, name).toBe(expected.config.siteChargers);
+    // The stored source a direct site reads in place of its three entities; only the Equalizer site has one.
+    expect(config.site?.measurement.currentSource ?? null, name).toEqual(
+      name === "get_attributes.json"
+        ? {
+            kind: "attributes",
+            entityId: "sensor.home_equalizer_current",
+            name: "Home Equalizer Current",
+            attributes: { L1: "state_currentL1", L2: "state_currentL2", L3: "state_currentL3" },
+          }
+        : null,
+    );
+    if (name === "get_attributes.json") {
+      for (const phase of ["L1", "L2", "L3"]) {
+        const direct = byName.get(`direct_${phase}`);
+        expect(direct?.kind === "entity" ? direct.current : undefined, phase).toBeNull();
+      }
+    }
     // The vehicles a charge-level sensor can be chosen for, as the backend listed them.
     const vehicles = VEHICLES_EXPECTED[name] ?? [];
     expect(
