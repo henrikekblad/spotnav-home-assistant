@@ -162,6 +162,86 @@ def loop_callback_guard(monkeypatch):
     assert not violations, "\n".join(violations)
 
 
+# --- The charge-ownership core's shadow: every test runs with it, and it must agree with today's code ---
+
+#: Over the whole run: events the shadow decided, comparisons, disagreements (explained or not), drifts, errors.
+SHADOW_TOTALS: dict[str, int] = {}
+#: Every drift seen (a change of today's owner or intent that no event explained), for the run's summary.
+DRIFTS: list[tuple[str, dict[str, Any]]] = []
+
+
+@pytest.fixture(autouse=True)
+def ownership_shadow_agrees(request):
+    """Every test runs the charge-ownership core in shadow mode beside today's code
+    (`execution/ownership_shadow.py`) and fails on a disagreement nobody explained, or on a shadow error.
+
+    An explained one is a real difference of today's code the core does not copy, named in
+    `tests/shadow_known.py` with its event sequence; a test about the shadow itself opts out with the
+    `shadow_disagreement_expected` marker.
+    """
+    from custom_components.spotnav.execution import ownership_shadow
+
+    from .shadow_known import explain
+
+    seen: list[tuple[str, dict[str, Any]]] = []
+
+    def listener(kind: str, record: dict[str, Any]) -> None:
+        seen.append((kind, record))
+        if kind == "drift":
+            DRIFTS.append((request.node.nodeid, record))
+
+    ownership_shadow.LISTENERS.append(listener)
+    yield seen
+    ownership_shadow.LISTENERS.remove(listener)
+    unexplained: list[dict[str, Any]] = []
+    for kind, record in seen:
+        key = kind
+        if kind == "disagreement":
+            reason = explain(record)
+            key = "disagreement_explained" if reason else "disagreement"
+            if reason:
+                SHADOW_TOTALS[f"explained:{reason}"] = SHADOW_TOTALS.get(f"explained:{reason}", 0) + 1
+            else:
+                unexplained.append(record)
+        elif kind == "error":
+            unexplained.append(record)
+        SHADOW_TOTALS[key] = SHADOW_TOTALS.get(key, 0) + 1
+    if request.node.get_closest_marker("shadow_disagreement_expected") is not None:
+        return
+    if unexplained:
+        import json
+        import os
+
+        dump = os.environ.get("SPOTNAV_SHADOW_DUMP")
+        if dump:
+            name = request.node.nodeid.replace("/", "_").replace("::", "__")
+            with open(os.path.join(dump, f"{name}.json"), "w", encoding="utf-8") as handle:
+                json.dump(unexplained, handle, indent=1, default=str)
+        pytest.fail(
+            "the ownership core's shadow disagrees with today's code:\n"
+            + "\n".join(json.dumps(record, default=str)[:4000] for record in unexplained[:3]),
+            pytrace=False,
+        )
+
+
+def pytest_sessionfinish(session, exitstatus):
+    """With `SPOTNAV_SHADOW_REPORT` set, write the run's shadow totals there (JSON)."""
+    import json
+    import os
+
+    from custom_components.spotnav.execution import ownership_shadow
+
+    path = os.environ.get("SPOTNAV_SHADOW_REPORT")
+    if not path:
+        return
+    worker = os.environ.get("PYTEST_XDIST_WORKER")
+    if worker:
+        path = f"{path}.{worker}"
+    totals = {**SHADOW_TOTALS, **{f"shadow_{key}": value for key, value in ownership_shadow.TOTALS.items()}}
+    with open(path, "w", encoding="utf-8") as handle:
+        json.dump({"totals": totals, "drifts": DRIFTS}, handle, indent=1, sort_keys=True, default=str)
+
+
 # --- The relay seam: one fake wire, one clock, one opt-in offline installation ---
 
 

@@ -241,6 +241,11 @@ async def _async_setup_charger_entry(hass: HomeAssistant, entry: ChargerConfigEn
                 and state.state in ("on", "arming", "disarming")
             )
         )
+        # The same guard's sun's part on its own, for the charge-ownership core's shadow (which decides the pause's).
+        controller.set_solar_hold_probe(
+            lambda: (state := solar_execution_state(hass, entry.entry_id)) is not None
+            and state.state in ("on", "arming", "disarming")
+        )
         if price_manager is not None:
             await _async_setup_auto_preview(hass, entry, data, settings_store, price_manager)
 

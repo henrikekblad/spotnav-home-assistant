@@ -61,6 +61,8 @@ from .controller import (
     ChargingPlan,
 )
 from .manual_pause import ManualChargeWatch
+from ..core import events as core_events
+from .ownership_shadow import CommandOutcome, INTENT, NullShadow, OwnershipShadow
 
 
 _LOGGER = logging.getLogger(__name__)
@@ -564,6 +566,10 @@ class AutoExecutor:
         # A person's Start or Stop is between its charger command and its pause's write: a plug-in or an
         # unplug reported meanwhile is decided after the write, against the pause it stored.
         self._manual_write_in_flight = False
+        # The charge-ownership core in shadow mode, the controller's (`ownership_shadow.py`): this boundary feeds it
+        # a person's Start, Stop, pause and resume, and the sun's commands.
+        shadow = getattr(controller, "ownership_shadow", None)
+        self._shadow: OwnershipShadow | NullShadow = shadow if isinstance(shadow, OwnershipShadow) else NullShadow()
 
     def automatic_allowed(self, kind: str) -> bool:
         """Whether an automatic decision of this kind (`controller.AUTOMATIC_*`) may act now, by the
@@ -814,8 +820,11 @@ class AutoExecutor:
             if self.current(attempt):
                 self._pending = None
             if settings.strategy == STRATEGY_SOLAR and applied is not None:
+                token = self._shadow.begin()
+                outcome = CommandOutcome(False)
                 try:
                     await self._controller.async_stop(clear_schedule=True)
+                    outcome = self._shadow_stop_outcome()
                 except Exception as err:  # noqa: BLE001 - reported, never hidden
                     _LOGGER.warning(
                         "Clearing the plan for solar strategy failed: %s", type(err).__name__
@@ -823,6 +832,13 @@ class AutoExecutor:
                     self._last_error = EXECUTION_SOLAR_STAND_DOWN_FAILED
                     await self._notify_change()
                     return applied
+                finally:
+                    self._shadow.end(
+                        token,
+                        core_events.StrategyChange(strategy=STRATEGY_SOLAR, plan_applied=True),
+                        legacy=("stop",),
+                        outcome=outcome,
+                    )
                 self._applied = None
                 self._last_error = None
                 await self._notify_change()
@@ -1041,6 +1057,44 @@ class AutoExecutor:
         * A paused Auto's plan is dropped without touching the charger (its windows' ends would stop what
           the person started), and the start is marked as awaiting the charger's report.
         """
+        token = self._shadow.begin()
+        connected = self._shadow_connected(fallback=False)
+        note: dict[str, Any] = {"legacy": [], "outcome": None}
+        try:
+            await self._manual_start_body(amps, note)
+        finally:
+            if connected is ...:
+                self._shadow.cancel(token)
+            else:
+                self._shadow.end(
+                    token,
+                    core_events.PersonStart(connected=connected),
+                    legacy=note["legacy"],
+                    outcome=note["outcome"],
+                )
+
+    def _shadow_stop_outcome(self) -> CommandOutcome:
+        """A stop through the controller that returned: what became of it, for the ownership shadow."""
+        read = getattr(self._controller, "_shadow_stop_outcome", None)
+        if read is None:
+            return CommandOutcome(True)
+        try:
+            return read(True)
+        except Exception:  # noqa: BLE001 - the shadow never raises into the real path
+            return CommandOutcome(True)
+
+    def _shadow_connected(self, *, fallback: bool) -> Any:
+        """What the charger says of a car now (with `fallback`, the last it stated when it says nothing), for the
+        ownership shadow; `...` when it cannot be read."""
+        try:
+            connected = self._controller.adapter.vehicle_connected()
+            if connected is None and fallback:
+                connected = self._controller.known_connected
+            return connected
+        except Exception:  # noqa: BLE001 - the shadow never raises into the real path
+            return ...
+
+    async def _manual_start_body(self, amps: int | None, note: dict[str, Any]) -> None:
         if self._controller.adapter.vehicle_connected() is False:
             raise AutoControlRefused(EXECUTION_VEHICLE_NOT_CONNECTED, "no car is plugged in")
         self.begin_attempt()
@@ -1048,7 +1102,12 @@ class AutoExecutor:
         save_error: Exception | None = None
         self._manual_write_in_flight = True
         try:
+            note["legacy"].append("start")
+            note["outcome"] = CommandOutcome(False)
             started = await self._controller.async_start(amps, manual=True)
+            note["outcome"] = CommandOutcome(
+                started is not False, balancing_held=started is False and self._controller.paused_by_balancing
+            )
             if started is False and not self._controller.paused_by_balancing:
                 # The charger's control was unavailable and the command never went out: a failed command
                 # like any other, with nothing pending and a retry possible.
@@ -1243,6 +1302,23 @@ class AutoExecutor:
 
     async def _pause_locked(self, choice: PauseChoice = PAUSE_UNTIL_RESUMED) -> None:
         """The pause itself. Runs with this boundary's lock held, and never translates failures."""
+        token = self._shadow.begin()
+        plan_applied = self.applied is not None
+        note: dict[str, Any] = {"legacy": [], "outcome": None, "stored": False}
+        try:
+            await self._pause_body(choice, note)
+        finally:
+            if note["stored"]:
+                self._shadow.end(
+                    token,
+                    core_events.PauseChoiceMade(choice=choice, plan_applied=plan_applied),
+                    legacy=note["legacy"],
+                    outcome=note["outcome"],
+                )
+            else:
+                self._shadow.cancel(token)
+
+    async def _pause_body(self, choice: PauseChoice, note: dict[str, Any]) -> None:
         self.begin_attempt()
         now = self._now()
         settings = self._store.settings(self._entry_id)
@@ -1255,15 +1331,19 @@ class AutoExecutor:
             self._arm_pause_expiry(intent.expires_at)
             # A pause the person picks replaces a manual one, and its watch.
             self._sync_manual_watch()
+        note["stored"] = True
         self._pending = None
         if self.applied is None:
             self._last_error = None
             await self._notify_change()
             return
+        note["legacy"].append("stop")
+        note["outcome"] = CommandOutcome(False)
         try:
             # Through the controller: the same path every stop uses, and the only code here that
             # may touch a charger.
             await self._controller.async_stop(clear_schedule=True)
+            note["outcome"] = self._shadow_stop_outcome()
         except Exception as err:  # noqa: BLE001 - reported as a partial failure, never hidden
             _LOGGER.warning(
                 "Stopping the charger while pausing failed: %s", type(err).__name__
@@ -1282,11 +1362,17 @@ class AutoExecutor:
 
     async def _resume_locked(self) -> None:
         """The resume itself. Runs with this boundary's lock held."""
-        await self._store.async_update(
-            self._entry_id, mutate=lambda settings: replace(settings, pause=PauseIntent())
-        )
+        token = self._shadow.begin()
+        try:
+            await self._store.async_update(
+                self._entry_id, mutate=lambda settings: replace(settings, pause=PauseIntent())
+            )
+        except BaseException:
+            self._shadow.cancel(token)
+            raise
         self._arm_pause_expiry(None)
         self._sync_manual_watch()
+        self._shadow.end(token, core_events.Resume(reason=core_events.RESUME_PERSON))
         self.begin_attempt()
         self._last_error = None
         await self._rearm_kept_plan()
@@ -1440,6 +1526,20 @@ class AutoExecutor:
         `pause_stop_failed` and raises; Stop again is the retry. A pause that could not be stored is logged
         and reported (`reconcile_failed`); the charger is stopped all the same.
         """
+        token = self._shadow.begin()
+        connected = self._shadow_connected(fallback=True)
+        note: dict[str, Any] = {"outcome": None}
+        try:
+            await self._immediate_stop_body(note)
+        finally:
+            if connected is ...:
+                self._shadow.cancel(token)
+            else:
+                self._shadow.end(
+                    token, core_events.PersonStop(connected=connected), legacy=("stop",), outcome=note["outcome"]
+                )
+
+    async def _immediate_stop_body(self, note: dict[str, Any]) -> None:
         self.begin_attempt()
         self._pending = None
         # The person acted: a charger SpotNav gave up stopping under their earlier Stop is watched afresh.
@@ -1456,8 +1556,10 @@ class AutoExecutor:
         save_error: Exception | None = None
         self._manual_write_in_flight = True
         try:
+            note["outcome"] = CommandOutcome(False)
             try:
                 await self._controller.async_stop(clear_schedule=True)
+                note["outcome"] = self._shadow_stop_outcome()
             except Exception as err:  # noqa: BLE001 - raised below, after the pause is stored
                 stop_error = err
             if scope is not None:
@@ -1495,17 +1597,32 @@ class AutoExecutor:
             return False
         self.begin_attempt()
         self._pending = None
-        await self._store.async_update(
-            self._entry_id,
-            mutate=lambda current: replace(current, pause=PauseIntent()) if current.pause == intent else current,
-        )
-        self._arm_pause_expiry(None)
-        if self._last_error == EXECUTION_PAUSE_STOP_FAILED:
-            self._last_error = None
-        self._sync_manual_watch()
-        _LOGGER.info("SpotNav charger %s: Auto resumes (%s)", self._entry_id, reason)
-        if car_ended:
-            await self._controller.async_note_car_ended(self._store.settings(self._entry_id).target.vehicle_id)
+        # A plug-in's or an unplug's end of the pause the controller already fed; Follow and the car's end are this.
+        fed = reason == "follow" or car_ended
+        token = self._shadow.begin() if fed else None
+        try:
+            await self._store.async_update(
+                self._entry_id,
+                mutate=lambda current: replace(current, pause=PauseIntent()) if current.pause == intent else current,
+            )
+            self._arm_pause_expiry(None)
+            if self._last_error == EXECUTION_PAUSE_STOP_FAILED:
+                self._last_error = None
+            self._sync_manual_watch()
+            _LOGGER.info("SpotNav charger %s: Auto resumes (%s)", self._entry_id, reason)
+            if car_ended:
+                await self._controller.async_note_car_ended(self._store.settings(self._entry_id).target.vehicle_id)
+        except BaseException:
+            if token is not None:
+                self._shadow.cancel(token)
+            raise
+        if token is None:
+            self._shadow.check(INTENT, "manual_pause_end")
+        else:
+            self._shadow.end(
+                token,
+                core_events.CarEnded() if car_ended else core_events.Resume(reason=core_events.RESUME_FOLLOW),
+            )
         await self._rearm_kept_plan()
         snapshot = None if self._live_snapshot is None else self._live_snapshot()
         if snapshot is not None:
@@ -1556,6 +1673,7 @@ class AutoExecutor:
                         if current.pause == intent
                         else current,
                     )
+                    self._shadow.check(INTENT, "manual_pause_plug_in")
                     await self._notify_change()
                     return
                 if waiting:
@@ -1695,11 +1813,23 @@ class AutoExecutor:
         """
         async with self._lock:
             settings = self._store.settings(self._entry_id)
-            if pause_blocks_execution(settings) or settings.strategy not in (
-                STRATEGY_SOLAR, STRATEGY_HYBRID
-            ):
-                return False
-            started = await self._controller.async_start(amps, cause="solar")
+            token = self._shadow.begin()
+            strategy_ok = settings.strategy in (STRATEGY_SOLAR, STRATEGY_HYBRID)
+            legacy: list[str] = []
+            outcome: CommandOutcome | None = None
+            try:
+                if pause_blocks_execution(settings) or not strategy_ok:
+                    return False
+                legacy.append("start")
+                outcome = CommandOutcome(False)
+                started = await self._controller.async_start(amps, cause="solar")
+                outcome = CommandOutcome(
+                    started, balancing_held=not started and self._controller.paused_by_balancing
+                )
+            finally:
+                self._shadow.end(
+                    token, core_events.SolarStart(strategy_ok=strategy_ok), legacy=legacy, outcome=outcome
+                )
             await self._notify_change()
             return started
 
@@ -1713,14 +1843,23 @@ class AutoExecutor:
         left for solar to do.
         """
         async with self._lock:
-            if not self.automatic_allowed(AUTOMATIC_STOP):
-                return True
+            token = self._shadow.begin()
+            legacy: list[str] = []
+            outcome: CommandOutcome | None = None
             try:
-                await self._controller.async_stop()
-            except Exception as err:  # noqa: BLE001 - solar keeps the stop pending and retries
-                _LOGGER.warning("Solar's stop did not go out: %s", getattr(err, "code", type(err).__name__))
-                await self._notify_change()
-                return False
+                if not self.automatic_allowed(AUTOMATIC_STOP):
+                    return True
+                legacy.append("stop")
+                outcome = CommandOutcome(False)
+                try:
+                    await self._controller.async_stop()
+                except Exception as err:  # noqa: BLE001 - solar keeps the stop pending and retries
+                    _LOGGER.warning("Solar's stop did not go out: %s", getattr(err, "code", type(err).__name__))
+                    await self._notify_change()
+                    return False
+                outcome = self._shadow_stop_outcome()
+            finally:
+                self._shadow.end(token, core_events.SolarStop(), legacy=legacy, outcome=outcome)
             await self._notify_change()
             return True
 
@@ -1733,20 +1872,50 @@ class AutoExecutor:
         """
         async with self._lock:
             settings = self._store.settings(self._entry_id)
-            if pause_blocks_execution(settings) or settings.strategy not in (
-                STRATEGY_SOLAR, STRATEGY_HYBRID
-            ):
-                return False
             controller = self._controller
-            if controller.top_off_until is not None or (
-                settings.strategy == STRATEGY_HYBRID and controller.plan_window_active_now
-            ):
-                return False
-            if not controller.self_started_charge():
-                return False
-            await controller.async_stop()
+            token = self._shadow.begin()
+            facts = self._shadow_take_over_facts(settings)
+            legacy: list[str] = []
+            outcome: CommandOutcome | None = None
+            try:
+                if pause_blocks_execution(settings) or settings.strategy not in (
+                    STRATEGY_SOLAR, STRATEGY_HYBRID
+                ):
+                    return False
+                if controller.top_off_until is not None or (
+                    settings.strategy == STRATEGY_HYBRID and controller.plan_window_active_now
+                ):
+                    return False
+                if not controller.self_started_charge():
+                    return False
+                legacy.append("stop")
+                outcome = CommandOutcome(False)
+                await controller.async_stop()
+                outcome = self._shadow_stop_outcome()
+            finally:
+                if facts is None:
+                    self._shadow.cancel(token)
+                else:
+                    self._shadow.end(
+                        token, core_events.SolarStop(take_over=True, **facts), legacy=legacy, outcome=outcome
+                    )
             await self._notify_change()
             return True
+
+    def _shadow_take_over_facts(self, settings: AutoSettings) -> dict[str, Any] | None:
+        """What a take-over decides from, read before it (the ownership shadow), or `None` when unreadable."""
+        controller = self._controller
+        try:
+            return {
+                "strategy_ok": settings.strategy in (STRATEGY_SOLAR, STRATEGY_HYBRID),
+                "top_off_or_window": controller.top_off_until is not None
+                or (settings.strategy == STRATEGY_HYBRID and controller.plan_window_active_now),
+                "charging": controller.charging,
+                "start_pending": controller._shadow_start_pending(),  # noqa: SLF001 - read without its side effect
+                "stop_recent": controller._shadow_stop_recent(),  # noqa: SLF001
+            }
+        except Exception:  # noqa: BLE001 - the shadow never raises into the real path
+            return None
 
     async def async_solar_set_current(self, amps: int) -> None:
         """One solar modulation: recorded as a *requested* current only
@@ -1805,17 +1974,20 @@ class AutoExecutor:
                 return False
             self.begin_attempt()
             self._pending = None
+            token = self._shadow.begin()
             try:
                 await self._store.async_update(
                     self._entry_id, mutate=lambda current: replace(current, pause=PauseIntent())
                 )
             except AutoSettingsError as err:
+                self._shadow.cancel(token)
                 # A refusal (unreadable or conflicting record): the intent stands untouched.
                 _LOGGER.warning("Clearing an expired Auto pause was refused: %s", err.code)
                 self._last_error = EXECUTION_PAUSE_CLEAR_FAILED
                 await self._notify_change()
                 return False
             except Exception as err:  # noqa: BLE001 - the persistence boundary itself failed
+                self._shadow.cancel(token)
                 # A failed write: reported by its stable code, and the intent stands.
                 _LOGGER.warning(
                     "Clearing an expired Auto pause failed to persist: %s", type(err).__name__
@@ -1825,6 +1997,7 @@ class AutoExecutor:
                 return False
             self._last_error = None
             self._arm_pause_expiry(None)
+            self._shadow.end(token, core_events.Resume(reason=core_events.RESUME_EXPIRED))
             await self._rearm_kept_plan()
             await self._notify_change()
             return True
