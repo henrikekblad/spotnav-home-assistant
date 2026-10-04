@@ -71,6 +71,7 @@ from .runtime import (
 )
 from .services import async_register_services
 from .notifications.notifier import ChargerNotifier
+from .notifications.push import ChargerPush
 from .sessions.inputs import current_fiscal, price_book_for, session_facts
 from .sessions.history_import import HistoryImporter, START_DELAY_S as HISTORY_IMPORT_DELAY_S
 from .sessions.recorder import SessionRecorder
@@ -243,6 +244,9 @@ async def _async_setup_charger_entry(hass: HomeAssistant, entry: ChargerConfigEn
         if price_manager is not None:
             await _async_setup_auto_preview(hass, entry, data, settings_store, price_manager)
 
+    # Before the webhook, whose `push_register` writes it.
+    push = data.push = ChargerPush(hass, entry.entry_id)
+    await push.async_load()
     async_register_charger_webhook(hass, entry)
     await controller.async_initialize()
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
@@ -320,6 +324,7 @@ def _async_start_notifier(
         store=store,
         sessions=domain_data(hass).session_store,
         currency=_currency,
+        push=data.push,
     )
     entry.async_on_unload(notifier.async_shutdown)
     notifier.async_start(data.preview)
@@ -459,6 +464,7 @@ async def async_remove_entry(hass: HomeAssistant, entry: ConfigEntry) -> None:
     async_leave_sites(hass, entry.entry_id)
     await async_remove_auto_state(hass, entry.entry_id)
     await SocReader.async_remove_stored(hass, entry.entry_id)
+    await ChargerPush.async_remove_stored(hass, entry.entry_id)
     session_store = domain_data(hass).session_store
     if session_store is not None:
         await session_store.async_remove_charger(entry.entry_id)

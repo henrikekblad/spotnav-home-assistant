@@ -436,6 +436,8 @@ async def test_no_fixture_is_left_unwritten() -> None:
         [
             "dashboard.json",
             "dashboard_unsupported_version.json",
+            "push_register_invalid.json",
+            "push_register_success.json",
             "update_charger_priority_conflict.json",
             "update_charger_priority_invalid_value.json",
             "update_charger_priority_no_site.json",

@@ -73,6 +73,12 @@ def _history_import(hass: HomeAssistant, entry_id: str) -> dict[str, Any] | None
     return None if importer is None else importer.diagnostics()
 
 
+def _push(hass: HomeAssistant, entry_id: str) -> dict[str, Any] | None:
+    data = charger_data(hass, entry_id)
+    push = None if data is None else data.push
+    return None if push is None else push.diagnostics()
+
+
 def _charger_diagnostics(hass: HomeAssistant, entry: ConfigEntry) -> dict[str, Any]:
     controller = controller_for(hass, entry.entry_id)
     resolved = controller.resolve_current() if controller else None
@@ -84,6 +90,9 @@ def _charger_diagnostics(hass: HomeAssistant, entry: ConfigEntry) -> dict[str, A
         # The one-off import of charges from before the sessions feature: status, range, sessions and
         # how many hours were priced.
         "history_import": _history_import(hass, entry.entry_id),
+        # The paired app's instant notifications: registered or not, the events, the last wake-up's
+        # result and time. Never the relay ref.
+        "push": _push(hass, entry.entry_id),
         "controller": None
         if controller is None
         else {

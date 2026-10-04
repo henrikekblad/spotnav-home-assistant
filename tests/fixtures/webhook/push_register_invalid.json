@@ -1,0 +1,5 @@
+{
+  "action": "push_register",
+  "error": "invalid_push_register",
+  "ok": false
+}

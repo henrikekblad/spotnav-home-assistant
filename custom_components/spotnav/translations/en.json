@@ -755,6 +755,12 @@
     },
     "not_auto_mode": {
       "message": "Auto price is not the planning mode for this charger."
+    },
+    "unknown_test_charger": {
+      "message": "No loaded SpotNav charger has that config entry or entity id."
+    },
+    "no_push_registered": {
+      "message": "No SpotNav charger has the app's instant notifications turned on, so no test push was sent. Any Companion phones chosen for notifications were still sent a test message."
     }
   }
 }

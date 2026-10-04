@@ -28,6 +28,7 @@ async def test_every_documented_action_has_a_handler() -> None:
         "update_vehicle",
         "update_site_settings",
         "update_charger_priority",
+        "push_register",
     }
 
 

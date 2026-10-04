@@ -49,3 +49,23 @@ unconfirm_vehicle:
       example: 8f14e45fceea167a5a36dedd4bea2543
       selector:
         text:
+
+send_test_notification:
+  name: Send a test notification
+  description: >
+    For a field test without unplugging the car. Sends the SpotNav app a test
+    push through the SpotNav relay for every charger the app turned instant
+    notifications on for, and a test message to the Companion app phones
+    chosen for that charger's notifications. Refused when no charger has the
+    app's instant notifications turned on. The result per charger is logged
+    and returned.
+  fields:
+    charger:
+      name: Charger
+      description: >
+        The charger's config entry ID, or the entity ID of one of its entities.
+        Leave out for every charger.
+      required: false
+      example: 01J9ZQ2X3V4W5Y6Z7A8B9C0D1E
+      selector:
+        text:

@@ -755,6 +755,12 @@
     },
     "not_auto_mode": {
       "message": "Auto-pris är inte planeringsläget för den här laddaren."
+    },
+    "unknown_test_charger": {
+      "message": "Ingen inläst SpotNav-laddare har det konfigurations-id:t eller entitets-id:t."
+    },
+    "no_push_registered": {
+      "message": "Ingen SpotNav-laddare har appens direktnotiser påslagna, så ingen testpush skickades. Companion-telefoner som valts för notiser fick ändå ett testmeddelande."
     }
   }
 }

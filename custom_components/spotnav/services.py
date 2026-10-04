@@ -11,16 +11,18 @@ from typing import Any
 
 import voluptuous as vol
 from homeassistant.components import websocket_api
-from homeassistant.core import HomeAssistant, ServiceCall
+from homeassistant.core import HomeAssistant, ServiceCall, ServiceResponse, SupportsResponse
+from homeassistant.exceptions import ServiceValidationError
 from homeassistant.helpers import config_validation as cv
+from homeassistant.helpers import entity_registry as er
 
-from .const import DOMAIN
+from .const import CONF_ENTRY_TYPE, DOMAIN, ENTRY_TYPE_SITE
 from .repairs import (
     async_clear_vehicle_soc,
     async_record_vehicle_soc,
     async_sync_resolution_repairs,
 )
-from .runtime import domain_data
+from .runtime import charger_data, domain_data
 from .vehicles.discovery_decisions import (
     DECISION_DOMAIN_VEHICLE,
     DECISION_DOMAIN_VEHICLE_CHARGE_LIMIT,
@@ -83,7 +85,78 @@ def async_register_services(hass: HomeAssistant) -> None:
             continue
         hass.services.async_register(DOMAIN, service, handler, schema=decision_schema)
 
+    if not hass.services.has_service(DOMAIN, SERVICE_SEND_TEST_NOTIFICATION):
+
+        async def async_send_test_notification(call: ServiceCall) -> ServiceResponse:
+            return await _async_send_test_notification(hass, call)
+
+        hass.services.async_register(
+            DOMAIN,
+            SERVICE_SEND_TEST_NOTIFICATION,
+            async_send_test_notification,
+            schema=vol.Schema({vol.Optional("charger"): cv.string}),
+            supports_response=SupportsResponse.OPTIONAL,
+        )
+
     websocket_api.async_register_command(hass, _async_ws_resolve_required)
+
+
+#: A field test without unplugging the car: a test push to the paired app, a test message to the
+#: chosen Companion phones. In Developer tools only, never in the card.
+SERVICE_SEND_TEST_NOTIFICATION = "send_test_notification"
+
+
+def _test_chargers(hass: HomeAssistant, charger: str | None) -> list[Any]:
+    """The loaded charger entries a test goes to: all, or the one named by entry id or by one of its
+    entities."""
+    entries = [
+        entry
+        for entry in hass.config_entries.async_entries(DOMAIN)
+        if entry.data.get(CONF_ENTRY_TYPE) != ENTRY_TYPE_SITE and charger_data(hass, entry.entry_id) is not None
+    ]
+    if charger is None:
+        return entries
+    registered = er.async_get(hass).async_get(charger)
+    entry_id = registered.config_entry_id if registered is not None else charger
+    chosen = [entry for entry in entries if entry.entry_id == entry_id]
+    if not chosen:
+        raise ServiceValidationError(
+            "No loaded SpotNav charger by that entry or entity id",
+            translation_domain=DOMAIN,
+            translation_key="unknown_test_charger",
+        )
+    return chosen
+
+
+async def _async_send_test_notification(hass: HomeAssistant, call: ServiceCall) -> ServiceResponse:
+    """Send every chosen charger's paired app a test push and its chosen phones a test message.
+
+    Each charger's result is logged (never the relay ref) and answered; with no app registered on any of
+    them it is refused after the phones were told.
+    """
+    results: dict[str, Any] = {}
+    registered = False
+    for entry in _test_chargers(hass, call.data.get("charger")):
+        data = charger_data(hass, entry.entry_id)
+        push = None if data is None else data.push
+        notifier = None if data is None else data.notifier
+        result = None if push is None else await push.async_send_test()
+        notified = [] if notifier is None else await notifier.async_send_test()
+        registered = registered or result is not None
+        _LOGGER.info(
+            "SpotNav test notification for %s: app push %s, Companion phones %s",
+            entry.title,
+            "not registered" if result is None else result,
+            ", ".join(notified) or "none",
+        )
+        results[entry.entry_id] = {"name": entry.title, "push": result, "notified": notified}
+    if not registered:
+        raise ServiceValidationError(
+            "No SpotNav charger has the app's instant notifications registered",
+            translation_domain=DOMAIN,
+            translation_key="no_push_registered",
+        )
+    return {"chargers": results}
 
 
 @websocket_api.websocket_command({vol.Required("type"): "spotnav/resolve_required"})
