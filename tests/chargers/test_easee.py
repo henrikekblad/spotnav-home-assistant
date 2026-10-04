@@ -114,7 +114,13 @@ async def test_easee_commands_count_against_the_budget_but_are_never_refused(has
         await adapter.async_stop()
 
     assert len(commands) == 30
+    # The status still says `charging` only because the pauses have not been reported yet: held.
+    assert await adapter.async_set_current(9, reason=WRITE_REGULATOR) == ASSIGN_IGNORED_WHILE_PAUSED
+    await adapter.async_start()
+    assert len(commands) == 31
+    # Resumed, and the commands have used up the minute's budget.
     assert await adapter.async_set_current(9, reason=WRITE_REGULATOR) == ASSIGN_RATE_LIMITED
+    assert limits == []
 
 
 async def test_easee_sends_the_limit_again_after_a_plug_in_and_a_reboot(hass: HomeAssistant) -> None:
@@ -246,3 +252,79 @@ async def test_easee_resends_the_limit_after_a_plug_in_that_followed_a_pause(has
 
     assert await adapter.async_set_current(8, reason=WRITE_RESEND) == ASSIGN_ASSIGNED
     assert limits[-1].data["current"] == 8
+
+
+async def test_a_charging_status_that_lags_behind_our_pause_does_not_let_a_limit_lift_it(
+    hass: HomeAssistant,
+) -> None:
+    """The cloud reports the pause seconds after it was sent: a `charging` status meanwhile is the old
+    one, and a limit above 0 written now would resume the charge."""
+    clock = Clock()
+    adapter, commands, limits = await _easee_commands(hass, clock)
+    hass.states.async_set("sensor.easee_status", "charging")
+    await adapter.async_stop()
+    clock.advance(5)
+
+    assert await adapter.async_set_current(10, reason=WRITE_REGULATOR) == ASSIGN_IGNORED_WHILE_PAUSED
+    clock.advance(60)
+    assert await adapter.async_set_current(11, reason=WRITE_REGULATOR) == ASSIGN_IGNORED_WHILE_PAUSED
+    assert limits == []
+
+
+async def test_a_resume_in_the_easee_app_after_the_pause_has_shown_is_still_recognised(
+    hass: HomeAssistant,
+) -> None:
+    clock = Clock()
+    adapter, _, limits = await _easee_commands(hass, clock)
+    hass.states.async_set("sensor.easee_status", "charging")
+    await adapter.async_stop()
+    clock.advance(5)
+    hass.states.async_set("sensor.easee_status", "awaiting_start")
+    assert await adapter.async_set_current(10, reason=WRITE_REGULATOR) == ASSIGN_IGNORED_WHILE_PAUSED
+    clock.advance(5)
+    hass.states.async_set("sensor.easee_status", "charging")
+
+    assert await adapter.async_set_current(10, reason=WRITE_REGULATOR) == ASSIGN_ASSIGNED
+    assert [call.data["current"] for call in limits] == [10]
+
+
+async def test_a_paused_status_seen_only_as_a_state_change_still_ends_the_lag(hass: HomeAssistant) -> None:
+    """The pause can land and be resumed between two regulator passes: the controller hands every status
+    change to `needs_resend`, which is how the adapter learns of it."""
+    clock = Clock()
+    adapter, _, limits = await _easee_commands(hass, clock)
+    hass.states.async_set("sensor.easee_status", "charging")
+    await adapter.async_stop()
+    clock.advance(5)
+    adapter.current.needs_resend("charging", "awaiting_start")
+    adapter.current.needs_resend("awaiting_start", "charging")
+
+    assert await adapter.async_set_current(10, reason=WRITE_REGULATOR) == ASSIGN_ASSIGNED
+    assert len(limits) == 1
+
+
+async def test_an_unreadable_status_does_not_end_the_lag(hass: HomeAssistant) -> None:
+    clock = Clock()
+    adapter, _, limits = await _easee_commands(hass, clock)
+    hass.states.async_set("sensor.easee_status", "charging")
+    await adapter.async_stop()
+    adapter.current.needs_resend("charging", "unavailable")
+    adapter.current.needs_resend("unavailable", "charging")
+
+    assert await adapter.async_set_current(10, reason=WRITE_REGULATOR) == ASSIGN_IGNORED_WHILE_PAUSED
+    assert limits == []
+
+
+async def test_a_charging_status_after_the_lag_window_is_a_resume(hass: HomeAssistant) -> None:
+    """A pause the cloud never reported (or a resume that came before the status could show the pause):
+    after the window the charger's own `charging` is the truth again."""
+    clock = Clock()
+    adapter, _, limits = await _easee_commands(hass, clock)
+    hass.states.async_set("sensor.easee_status", "charging")
+    await adapter.async_stop()
+    clock.advance(89)
+    assert await adapter.async_set_current(10, reason=WRITE_REGULATOR) == ASSIGN_IGNORED_WHILE_PAUSED
+    clock.advance(1)
+
+    assert await adapter.async_set_current(10, reason=WRITE_REGULATOR) == ASSIGN_ASSIGNED
+    assert len(limits) == 1

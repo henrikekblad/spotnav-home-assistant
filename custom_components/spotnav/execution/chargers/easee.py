@@ -66,6 +66,11 @@ EASEE_LIMIT_SENSOR_KEY: Final = "dynamic_charger_limit"
 #: After a charge was started or re-sent at the floor, the regulator may not take it lower for this
 #: long: a fast 7 A to 6 A drop aborts charges on slow cars (evcc#33963).
 EASEE_START_HOLD_S: Final = 60.0
+#: After a pause of ours, a `charging` status for this long is taken as the cloud not having reported
+#: the pause yet, unless a status other than `charging` came first. The cloud usually reports it within
+#: seconds; 90 s leaves room for a slow or missed push, and a person who resumes in the Easee app
+#: meanwhile is recognised at the latest when it runs out (only a current write waits until then).
+EASEE_PAUSE_LAG_S: Final = 90.0
 
 
 class EaseeCommandPath(StartStopPath):
@@ -96,8 +101,10 @@ class EaseeCommandPath(StartStopPath):
         status: Callable[[], str | None] = lambda: None,
         authorization_required: Callable[[], bool | None] = lambda: None,
         read_back: Callable[[], int | None] = lambda: None,
+        now: Callable[[], datetime] = dt_util.utcnow,
     ) -> None:
         super().__init__(hass)
+        self._now = now
         self.device_id = device_id
         self._limiter = limiter
         self._status = status
@@ -112,6 +119,9 @@ class EaseeCommandPath(StartStopPath):
         # How many pauses of ours have left so far: a dynamic-limit write that sees this change between its
         # two sends had a pause land under it (`EaseeDynamicLimit.async_set`).
         self.pauses_sent = 0
+        # When our last pause was sent, until a status other than `charging` (or `EASEE_PAUSE_LAG_S`)
+        # says the charger has taken it: a `charging` status before then is the old one, not a resume.
+        self._pause_sent_at: datetime | None = None
 
     def pause_count(self) -> int:
         return self.pauses_sent
@@ -131,11 +141,31 @@ class EaseeCommandPath(StartStopPath):
                 self.paused = None  # unplugged: the plug-in clears Easee's dynamic limit and with it the pause
                 return False
             if status == "charging":
-                self.paused = False  # someone resumed it; what the charger does is the truth
+                if not self._pause_lagging():
+                    self.paused = False  # someone resumed it; what the charger does is the truth
+            else:
+                self.note_status(status)
             # A status that says nothing (unavailable, unknown, offline) changes nothing we know.
         if self.paused is None and self._read_back() == 0:
             return True
         return bool(self.paused)
+
+    def _pause_lagging(self) -> bool:
+        """Whether a `charging` status may still be the one from before our pause: the pause was sent
+        less than `EASEE_PAUSE_LAG_S` ago and no other status has been seen since."""
+        sent = self._pause_sent_at
+        if self.paused is not True or sent is None:
+            return False
+        if (self._now() - sent).total_seconds() < EASEE_PAUSE_LAG_S:
+            return True
+        self._pause_sent_at = None
+        return False
+
+    def note_status(self, status: str | None) -> None:
+        """A status the charger reported: one that says something and is not `charging` shows the pause
+        has landed, so a `charging` after it is a resume (by a person, in the Easee app)."""
+        if status and status != "charging" and status not in _EASEE_UNREADABLE:
+            self._pause_sent_at = None
 
     def memory(self) -> dict[str, Any]:
         """A pause of ours, so a restart does not take a paused charger for one a limit may be written to
@@ -152,6 +182,7 @@ class EaseeCommandPath(StartStopPath):
         a stale read-back of the old limit still says.
         """
         self.paused = False
+        self._pause_sent_at = None
 
     def _start_owed(self) -> bool:
         """Whether a `start` (authorize) must precede the `resume`: the charger says it waits for an
@@ -185,6 +216,7 @@ class EaseeCommandPath(StartStopPath):
             await self._command("start")
         await self._command("resume")
         self.paused = False
+        self._pause_sent_at = None
         return True
 
     async def async_stop(self) -> bool:
@@ -192,6 +224,7 @@ class EaseeCommandPath(StartStopPath):
         # the moment the command leaves: a limit written while it is on its way would resume the charge.
         self._pausing = True
         self.pauses_sent += 1
+        self._pause_sent_at = self._now()
         try:
             await self._command("pause")
         finally:
@@ -263,6 +296,7 @@ class EaseeDynamicLimit(CurrentPath):
         paused: Callable[[], bool] = lambda: False,
         pause_count: Callable[[], int] = lambda: 0,
         on_plug_in: Callable[[], None] = lambda: None,
+        on_status: Callable[[str], None] = lambda _status: None,
         min_start_a: float = DEFAULT_MIN_CURRENT_A,
     ) -> None:
         super().__init__(policy)
@@ -271,6 +305,7 @@ class EaseeDynamicLimit(CurrentPath):
         self._paused = paused
         self._pause_count = pause_count
         self._on_plug_in = on_plug_in
+        self._on_status = on_status
         self.hass = hass
         self.device_id = device_id
         self.status_entity_id = status_entity_id
@@ -434,10 +469,11 @@ class EaseeDynamicLimit(CurrentPath):
         back from a blip or a reboot the limit may be gone too, so it is sent again, but never over a pause
         of ours: that limit would resume the charge behind the pause.
         """
-        if not self.policy.resend_after_plug_in:
-            return False
         old = (old_status or "").strip().lower()
         new = (new_status or "").strip().lower()
+        self._on_status(new)  # every change, so a pause that lands between two polls is not missed
+        if not self.policy.resend_after_plug_in:
+            return False
         if new in _EASEE_UNREADABLE:
             return False
         before = self._last_known_status if old in _EASEE_UNREADABLE else old
@@ -476,6 +512,7 @@ def _easee_path(context: ChargerContext) -> StartStopPath | None:
         status=context.status,
         authorization_required=lambda: _easee_authorization_required(hass, context.status_entity_id),
         read_back=context.read_back,
+        now=context.now,
     )
 
 
@@ -493,6 +530,7 @@ def _easee_current(context: ChargerContext) -> CurrentPath | None:
         paused=path.is_paused,
         pause_count=path.pause_count,
         on_plug_in=path.forget_pause,
+        on_status=path.note_status,
         min_start_a=(context.profile.min_start_current_a if context.profile is not None else None)
         or DEFAULT_MIN_CURRENT_A,
     )
