@@ -576,12 +576,36 @@ describe("the control block", () => {
           admitted_at_ms: Date.parse("2026-09-22T18:00:00+02:00"),
           expires_at: "2026-09-23T00:00:00+02:00",
           expires_at_ms: Date.parse("2026-09-23T00:00:00+02:00"),
+          action: null,
+          scope: null,
         },
         pause_blocks_execution: true,
         execution_error: "pause_stop_failed",
         can_act: false,
       });
     }
+  });
+
+  it("reads a person's own pause with the action and plug-in it names, and refuses one that names neither", () => {
+    const manual = (fields: Record<string, unknown>) =>
+      decode(
+        withControl(
+          control({
+            automatic_action: "resume",
+            pause_choices: [],
+            pause_blocks_execution: true,
+            pause: { choice: "manual", admitted_at: "2026-09-22T18:00:00+02:00", expires_at: null, ...fields },
+          }),
+        ),
+      );
+    const read = manual({ action: "stop", scope: "next_plug_in" });
+    expect(read.ok).toBe(true);
+    if (read.ok) {
+      expect(read.value.control.pause).toMatchObject({ choice: "manual", action: "stop", scope: "next_plug_in" });
+    }
+    expect(manual({}).ok).toBe(false);
+    expect(manual({ action: "pause", scope: "plug_in" }).ok).toBe(false);
+    expect(manual({ action: "start", scope: "plug_in", expires_at: "2026-09-23T00:00:00+02:00" }).ok).toBe(false);
   });
 
   it("reads both axes at once, for the rows of the product's matrix", () => {

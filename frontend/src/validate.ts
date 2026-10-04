@@ -341,6 +341,10 @@ export interface Pause {
   admitted_at_ms: number | null;
   expires_at: string | null;
   expires_at_ms: number | null;
+  /** A manual pause (a person's Start or Stop): `start` or `stop`; `null` for every other pause. */
+  action: string | null;
+  /** A manual pause's plug-in: `plug_in` (the one the car is in) or `next_plug_in`; else `null`. */
+  scope: string | null;
 }
 
 export interface StrategyRow {
@@ -877,6 +881,10 @@ function decodeLive(source: Record<string, unknown>): Live {
 }
 
 const PAUSE_CHOICES = ["next_period", "until_tomorrow", "until_resumed"] as const;
+/** Every choice a stored pause may carry: the ones a person picks, and `manual` (a person's Start or Stop). */
+export const STORED_PAUSE_CHOICES = [...PAUSE_CHOICES, "manual"] as const;
+const MANUAL_ACTIONS = ["start", "stop"] as const;
+const MANUAL_SCOPES = ["plug_in", "next_plug_in"] as const;
 
 const STRATEGIES = ["cheapest", "solar", "hybrid"] as const;
 const UNAVAILABLE_STRATEGIES = ["solar", "hybrid"] as const;
@@ -949,8 +957,14 @@ function enumOrNull<T extends string>(
  * `expires_at`.
  */
 function decodePause(source: Record<string, unknown>): Pause {
-  exactKeys(source, ["choice", "admitted_at", "expires_at"]);
-  const choice = enumOrNull(source, "choice", PAUSE_CHOICES);
+  const manual = source["choice"] === "manual";
+  exactKeys(source, manual ? ["choice", "admitted_at", "expires_at", "action", "scope"] : ["choice", "admitted_at", "expires_at"]);
+  const choice = enumOrNull(source, "choice", STORED_PAUSE_CHOICES);
+  const action = manual ? enumOrNull(source, "action", MANUAL_ACTIONS) : null;
+  const scope = manual ? enumOrNull(source, "scope", MANUAL_SCOPES) : null;
+  if (manual && (action === null || scope === null)) {
+    return bad();
+  }
   const [admittedAt, admittedAtMs] = instantOrNull(source, "admitted_at");
   const [expiresAt, expiresAtMs] = instantOrNull(source, "expires_at");
   if (choice === null) {
@@ -963,11 +977,14 @@ function decodePause(source: Record<string, unknown>): Pause {
       admitted_at_ms: null,
       expires_at: null,
       expires_at_ms: null,
+      action: null,
+      scope: null,
     };
   }
   // The admission instant is optional: a pause may exist without a known start, and the browser must
   // not invent one. A timed pause needs an end instant, and cannot end before it was admitted.
-  if (choice === "until_resumed" ? expiresAt !== null : expiresAt === null) {
+  // Until resumed and a manual pause have no expiry (the plug-in session ends a manual one).
+  if (choice === "until_resumed" || manual ? expiresAt !== null : expiresAt === null) {
     return bad();
   }
   if (admittedAtMs !== null && expiresAtMs !== null && expiresAtMs <= admittedAtMs) {
@@ -979,6 +996,8 @@ function decodePause(source: Record<string, unknown>): Pause {
     admitted_at_ms: admittedAtMs,
     expires_at: expiresAt,
     expires_at_ms: expiresAtMs,
+    action,
+    scope,
   };
 }
 
@@ -1248,7 +1267,7 @@ export const STATUS_CODE_TABLE = {
   price_horizon_missing: ["blocking", {}],
   planning_unavailable: ["blocking", { reason: "textOrNull" }],
   planning_error: ["blocking", { reason: "textOrNull" }],
-  paused: ["normal", { until: "instantOrNull", choice: "choiceOrNull" }],
+  paused: ["normal", { until: "instantOrNull", choice: "choiceOrNull", action: "textOrNull", ends: "textOrNull" }],
   charging_now: ["normal", { until: "instantOrNull" }],
   topping_off: ["normal", { until: "instant" }],
   charging_without_prices: ["notice", {}],
@@ -1297,7 +1316,6 @@ export const STATUS_CODE_TABLE = {
   charger_disabled: ["notice", {}],
   held_until_window: ["normal", { time: "instant" }],
   hold_overridden: ["notice", {}],
-  stopped_by_person: ["normal", { ends: "text" }],
   need_limited_by_room: ["normal", { kwh: "number" }],
   charging_to_vehicle_limit: ["normal", { percent: "number" }],
   remaining_need_estimated: ["notice", { kwh: "number", basis: "text" }],
@@ -1350,7 +1368,7 @@ function decodeStatusParam(source: Record<string, unknown>, key: string, kind: S
       return Number.isInteger(value) ? value : bad();
     }
     case "choiceOrNull":
-      return enumOrNull(source, key, PAUSE_CHOICES);
+      return enumOrNull(source, key, STORED_PAUSE_CHOICES);
     case "codes":
       return arrayValue(source, key).map((entry) => (typeof entry === "string" ? entry : bad()));
   }

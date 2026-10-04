@@ -38,6 +38,7 @@ const EXPECTED: Record<string, [[string, string | null], [string, string | null]
   "resume_active.json": [["start", "action.start"], ["resume", "action.resume"]],
   "pause_clear_failed.json": [["start", "action.start"], ["none", null]],
   "action_pending.json": [["none", null], ["none", null]],
+  "manual_stop.json": [["start", "action.start"], ["resume", "action.resume"]],
   "no_settings.json": [["none", null], ["none", null]],
 };
 

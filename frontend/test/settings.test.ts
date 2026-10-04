@@ -151,6 +151,20 @@ describe("the settings-v2 decoder", () => {
     }
   });
 
+  it("reads a person's own pause, which names its action and plug-in, and refuses one without them", () => {
+    const manual = { choice: "manual", admitted_at: "2026-09-22T18:00:00+02:00", expires_at: null };
+    const read = decode({ ...success(), pause: { ...manual, action: "start", scope: "plug_in" } });
+    expect(read.ok && read.value.ok).toBe(true);
+    if (read.ok && read.value.ok) {
+      expect(read.value.pause).toEqual({ ...manual, action: "start", scope: "plug_in" });
+    }
+    expect(decode({ ...success(), pause: manual })).toEqual({ ok: false, failure: "malformed" });
+    expect(decode({ ...success(), pause: { ...aPause, action: "stop", scope: "plug_in" } })).toEqual({
+      ok: false,
+      failure: "malformed",
+    });
+  });
+
   it("refuses a different contract version as unsupported, never as a partial read", () => {
     expect(decode({ ...success(), api_version: 2 })).toEqual({ ok: false, failure: "unsupported" });
     // A missing or non-numeric version is not a version disagreement: the payload is not this shape.

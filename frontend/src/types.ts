@@ -197,6 +197,9 @@ export interface PauseObservation {
   choice: string | null;
   admitted_at: string | null;
   expires_at: string | null;
+  /** Only a manual pause (a person's Start or Stop) carries these. */
+  action?: string;
+  scope?: string;
 }
 
 /**
