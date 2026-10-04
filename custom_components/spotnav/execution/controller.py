@@ -1060,6 +1060,13 @@ class ChargingController:
         self._known_connected = connected
         if previous == connected:
             return
+        if self._paused_by_balancing and (connected is False or previous is False):
+            # The plug-in session a balancing pause held a charge for is over (an unplug, or the first
+            # connection after a restart says no car): nothing is left for the regulator to resume, and a
+            # new plug-in is not that charge either.
+            self._paused_by_balancing = False
+            self._paused_charge = None
+            self._save_memory_soon()
         self._tell_connection_observer(previous, connected)
         if previous is None:
             return

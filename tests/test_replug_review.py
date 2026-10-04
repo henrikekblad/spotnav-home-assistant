@@ -290,7 +290,7 @@ async def test_one_start_when_the_plug_in_replan_installs_a_plan_with_its_window
         assert len([c for c in slow if c[0] == "turn_on"]) == 1, "one start for one plug-in"
 
 
-async def test_a_charge_balancing_paused_is_resumed_by_the_regulator_not_the_plug_in(hass: HomeAssistant) -> None:
+async def test_a_balancing_pause_ends_with_its_plug_in_and_the_next_plug_in_starts_as_any(hass: HomeAssistant) -> None:
     allowance = {"a": 3.0}
     hass.states.async_set("switch.a", "off")
     starts, _ = _obedient_switch(hass)
@@ -305,10 +305,11 @@ async def test_a_charge_balancing_paused_is_resumed_by_the_regulator_not_the_plu
     assert starts == [] and controller.paused_by_balancing
     allowance["a"] = 6.5  # headroom, but within the regulator's resume margin
     await plug.set(False)
+    assert not controller.paused_by_balancing, "the unplug ends the plug-in the pause held a charge for"
 
-    await plug.set(True)
+    await plug.set(True)  # a new plug-in inside the window: an ordinary plug-in start, capped as any start
 
-    assert starts == [] and controller.paused_by_balancing, "the regulator's resume decides"
+    assert len(starts) == 1 and not controller.paused_by_balancing
     await controller.async_shutdown()
 
 
