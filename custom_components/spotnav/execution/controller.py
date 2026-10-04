@@ -438,6 +438,12 @@ class ChargingController:
         # change between two known states is a plug-in or an unplug, never a status that comes back after
         # a restart or a blip through `unavailable`.
         self._known_connected: bool | None = None
+        # The charge clock (`charging_seconds`): seconds counted while charging, and since when it runs.
+        self._charge_clock_s = 0.0
+        self._charge_clock_since: datetime | None = None
+        # What a charge load balancing paused was (its origin, and whether it was the plan's), so the
+        # regulator's resume gives it back (`async_battery_probe_start`).
+        self._paused_charge: tuple[str | None, bool] | None = None
         #: When a vehicle was last seen plugged in (known unplugged, then known plugged in). Persisted: a
         #: charge counted per plug-in must not start counting again after a restart.
         self._plugged_in_at: datetime | None = None
@@ -820,12 +826,29 @@ class ChargingController:
 
         A charger that forgets its current limit on plug-in or reboot is told it again.
         """
+        self._tick_charge_clock()
         self._maybe_resend_current(event)
         self._maybe_write_after_start(event)
         self._observe_connection()
         changed = self._observe_hold()
         if self._charge_progress.evaluate() or changed:
             self._notify()
+
+    def _tick_charge_clock(self) -> None:
+        """Advance the charge clock: the seconds the charge control has been on (or the charger charging)
+        since this controller started, observed at every report and every command."""
+        now = dt_util.utcnow()
+        since = self._charge_clock_since
+        if since is not None and now > since:
+            self._charge_clock_s += (now - since).total_seconds()
+        self._charge_clock_since = now if self._control_on else None
+
+    def charging_seconds(self) -> float:
+        """How long the charger has been charging (its charge control on) since this controller started.
+        Only differences mean anything: what an energy register may have counted between two readings
+        is bounded by the charging time between them (`planning/auto_controller.advance_register`)."""
+        self._tick_charge_clock()
+        return self._charge_clock_s
 
     def _observe_connection(self) -> None:
         """Notice a plug-in or an unplug: a change between two connection states the charger reported.
@@ -1432,10 +1455,20 @@ class ChargingController:
             if not self._paused_by_balancing or self.charging:
                 return False
             kept = self._requested_current_a
-            executed = await self._start_locked(amps, capped=capped)
+            origin, plan_charge = self._paused_charge or (None, False)
+            # The charge balancing paused goes on as what it was: the plan's, a person's or the sun's.
+            executed = await self._start_locked(
+                amps, capped=capped, cause=None if origin in (None, "manual") else origin
+            )
             if not executed:
                 self._paused_by_balancing = True
                 return False
+            if self._paused_charge is not None:
+                self._charge_origin, self._plan_charge = origin, plan_charge
+                if self._start_cause is not None and origin is not None:
+                    self._start_cause = (origin, self._start_cause[1])
+                self._paused_charge = None
+                await self._async_save_quietly()
             if kept is not None and self._requested_current_a != kept:
                 self._requested_current_a = kept
                 await self._async_save()
@@ -1523,7 +1556,17 @@ class ChargingController:
             # opens its session record at once, and the record must know who started it.
             was_cause = self._start_cause
             self._start_cause = (("manual" if manual else cause or "other"), sent_at)
-            executed = await self.adapter.async_start(explicit_amps)
+            try:
+                executed = await self.adapter.async_start(explicit_amps)
+            except BaseException:
+                # The command failed outright: whatever it was to begin is not ours, nor anybody's.
+                self._start_cause = was_cause
+                self._start_sent_at = None
+                self._start_write_pending = False
+                self._hold.owned = was_owned
+                self._plan_charge = was_plan_charge
+                self._charge_origin = was_origin
+                raise
             if not executed:
                 # The command never went out: nothing is awaiting an answer, and nothing may say so.
                 self._start_cause = was_cause
@@ -1647,6 +1690,7 @@ class ChargingController:
         # Only a charge that was running can be one balancing interrupted; a pause written to a
         # charger somebody already stopped must not make it look wanted.
         was_on = self._control_on
+        paused_charge = (self._charge_origin, self._plan_charge)
         try:
             await self.async_stop()
         except Exception:  # noqa: BLE001 - reported, and the next pass tries again
@@ -1655,6 +1699,7 @@ class ChargingController:
         # Set after the stop (which clears it): this stop is the balancing pause itself.
         if code == "pause" and was_on:
             self._paused_by_balancing = True
+            self._paused_charge = paused_charge
         return RegulatedWrite(REGULATED_STOPPED, code, False)
 
     async def async_restore_current(self, *, lowered_by_balancing: bool) -> CurrentRestore:
@@ -2051,6 +2096,7 @@ class ChargingController:
         Every path that changes this charger's state calls this, so the observation is evaluated once per
         observation point instead of by a polling loop.
         """
+        self._tick_charge_clock()
         self._charge_progress.evaluate()
         if (
             self._charge_origin is not None
