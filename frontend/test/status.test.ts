@@ -62,6 +62,22 @@ describe("the status line renders the block and nothing else", () => {
     ]);
   });
 
+  it("says when a manual need is capped at the battery's room, and that the car ends a charge to its own limit", () => {
+    const capped = block(statusLine("auto_installed", { start: "2026-09-22T22:00:00+00:00" }), statusLine("need_limited_by_room", { kwh: 3.44 }));
+    expect(statusText(capped, format("en"), NOW)).toContain("Limited to 3.4 kWh: the car is almost full.");
+    expect(statusText(capped, format("sv"), NOW)).toContain("Begränsat till 3,4 kWh: bilen är nästan full.");
+    const toLimit = block(statusLine("charging_now", { until: null }), statusLine("charging_to_vehicle_limit", { percent: 100 }));
+    expect(statusText(toLimit, format("en"), NOW)).toContain("Charging until the car stops at its own limit (100 %).");
+    expect(statusText(toLimit, format("sv"), NOW)).toContain("Laddar tills bilen stoppar vid sin egen laddgräns (100 %).");
+    for (const language of ["da", "fi", "nb"] as const) {
+      expect(statusText(capped, format(language), NOW)).not.toContain("{kwh}");
+      expect(statusText(toLimit, format(language), NOW)).not.toContain("{percent}");
+    }
+    // Normal facts, never an item to review.
+    expect(issuesOf(capped, "en")).toEqual([]);
+    expect(issuesOf(toLimit, "en")).toEqual([]);
+  });
+
   it("names the phases that make the site measurement unusable, and where they are read from", () => {
     const empty = block(
       statusLine("waiting_for_tomorrow"),

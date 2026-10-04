@@ -619,6 +619,7 @@ describe("the backend's v7 soc", () => {
       vehicle_id: "<id>",
       vehicles: [],
       vehicle_max_percent: null,
+      room_kwh: 21.33,
       efficiency: 0.9,
       missing: [],
     });
@@ -645,6 +646,8 @@ describe("the backend's v7 soc", () => {
         { id: "vehicle_niro", name: "Niro" },
       ],
       vehicle_max_percent: 80,
+      // The room to the car's own limit (80 %), which is the target here too.
+      room_kwh: 34.22,
       efficiency: 0.9,
       missing: [],
     });

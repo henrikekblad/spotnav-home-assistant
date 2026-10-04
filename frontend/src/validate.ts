@@ -316,6 +316,8 @@ export interface Soc {
   vehicle_id: string | null;
   vehicles: Array<{ id: string; name: string }>;
   vehicle_max_percent: number | null;
+  /** The wall energy the battery still has room for (to the car's own limit, else 100 %), when known. */
+  room_kwh: number | null;
   efficiency: number;
   missing: Array<"capacity" | "soc" | "vehicle">;
 }
@@ -1288,6 +1290,8 @@ export const STATUS_CODE_TABLE = {
   charger_disabled: ["notice", {}],
   held_until_window: ["normal", { time: "instant" }],
   hold_overridden: ["notice", {}],
+  need_limited_by_room: ["normal", { kwh: "number" }],
+  charging_to_vehicle_limit: ["normal", { percent: "number" }],
   remaining_need_estimated: ["notice", { kwh: "number", basis: "text" }],
   site_measurement_problem: [
     "notice",
@@ -1616,6 +1620,7 @@ function socOrNull(root: Record<string, unknown>): Soc | null {
     "vehicle_id",
     "vehicles",
     "vehicle_max_percent",
+    "room_kwh",
     "efficiency",
     "missing",
   ]);
@@ -1641,6 +1646,7 @@ function socOrNull(root: Record<string, unknown>): Soc | null {
       return { id: text(item, "id"), name: text(item, "name") };
     }),
     vehicle_max_percent: boundedOrNull(source, "vehicle_max_percent", 0, 100),
+    room_kwh: boundedOrNull(source, "room_kwh", 0, Number.POSITIVE_INFINITY),
     efficiency: boundedOrNull(source, "efficiency", 0, 1, true) ?? bad(),
     missing,
   };
