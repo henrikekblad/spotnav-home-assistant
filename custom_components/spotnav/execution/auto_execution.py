@@ -1442,6 +1442,8 @@ class AutoExecutor:
         """
         self.begin_attempt()
         self._pending = None
+        # The person acted: a charger SpotNav gave up stopping under their earlier Stop is watched afresh.
+        self._controller.reset_person_hold()
         before = self._store.settings(self._entry_id).pause
         scope: str | None = None
         if not before.admitted or before.manual:

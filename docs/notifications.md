@@ -42,6 +42,12 @@ car), and a car that takes no current because it sits at its own charge limit, b
 is not a fault.
 It is told once while it lasts; if the charge recovers and stops again, it is told again.
 
+The same event also tells when SpotNav gives up stopping a charger under a person's **Stop**: a charger
+that keeps charging, or begins again, after three stops within ten minutes is left alone, and the
+phones hear "The charger keeps charging although it was stopped". The card's status says so until the
+person presses Start, Stop or Resume, or the car is unplugged. This one is not held back by a "did not
+start" told shortly before it.
+
 ## What a notification says
 
 A short line in Home Assistant's language (English, Swedish, Danish, Norwegian or Finnish), titled

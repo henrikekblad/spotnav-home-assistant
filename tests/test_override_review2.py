@@ -218,8 +218,7 @@ async def test_r5_stops_under_a_persons_stop_are_spaced_and_given_up_after_three
     hass: HomeAssistant, timers: FakeScheduler, freezer
 ) -> None:
     """R5: a charger that keeps saying 'on' after each stop it accepted gets one stop per 30 s, also with no
-    new report; after three such stops SpotNav gives up and says so; a report of the charger off, or an
-    unplug, starts afresh."""
+    new report; after three such stops SpotNav gives up and says so; an unplug starts afresh."""
     from datetime import timedelta
 
     from pytest_homeassistant_custom_component.common import async_fire_time_changed
@@ -247,11 +246,15 @@ async def test_r5_stops_under_a_persons_stop_are_spaced_and_given_up_after_three
     assert len(stops) == 3, f"{len(stops)} stops"
     assert world.controller.ignores_person_stop
 
+    # Review D: every stop of the plug-in counts, taken or not; given up on, the charger is left alone until
+    # the person acts or the car is unplugged (a report of it off no longer starts afresh).
     await world.switch("off")  # the charger took one at last
-    assert not world.controller.ignores_person_stop
+    assert world.controller.ignores_person_stop
     hass.states.async_set(SWITCH, "on", {"plug": True, "meter": 99})  # and begins by itself again
     await hass.async_block_till_done()
-    assert len(stops) == 4
+    assert len(stops) == 3
+    await world.plug.set(False)
+    assert not world.controller.ignores_person_stop
     await world.shutdown()
 
 
@@ -444,7 +447,8 @@ async def test_a_persons_charge_stopped_for_safety_is_resumed_at_most_once_per_f
     hass: HomeAssistant, timers: FakeScheduler, freezer
 ) -> None:
     """P3 kept a safety stop of a person's charge for load balancing to resume. A fuse that keeps needing it
-    must not cycle the charger: such a charge is resumed at most once per five minutes."""
+    must not cycle the charger: such a charge is resumed at most once per five minutes. (Review D: the five
+    minutes count from the last safety stop, so the first resume waits for them too.)"""
     from datetime import timedelta
 
     world = await pause_world(hass, timers)
@@ -453,6 +457,7 @@ async def test_a_persons_charge_stopped_for_safety_is_resumed_at_most_once_per_f
     await controller._regulated_stop("safety_stop")  # noqa: SLF001
     await hass.async_block_till_done()
     assert controller.paused_by_balancing
+    freezer.tick(timedelta(minutes=5, seconds=1))
     assert await controller.async_battery_probe_start(8)
     await hass.async_block_till_done()
 

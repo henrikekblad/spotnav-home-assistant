@@ -94,8 +94,16 @@ It is best effort and is not a protective device. Turning it off gives back any 
   is written, so the charger does not dither.
 - A start never gives the car more than the site has room for now, and a start on its way holds its
   share of that room until the charger draws it (at most two minutes): two chargers starting in the
-  same moment share the margin instead of both taking all of it. A charger that fails or times out
-  during a pass does not keep the others from being lowered.
+  same moment share the margin instead of both taking all of it. A charger whose own current cannot be
+  read holds its whole share for those two minutes even if the car draws less, which may keep another
+  start lower for that long: counting a start twice is the safe side. A charger that fails or is slow
+  to answer (a cloud service) does not keep the others from being lowered: each charger's command runs
+  on its own, one at a time per charger, and a lower current decided meanwhile goes out as soon as the
+  one on its way returns. A stop waits for a current change already on its way, so the change cannot
+  undo it.
+- A person's charge that load balancing stopped for safety (the current could not be lowered in time)
+  is started again when there is room, no sooner than five minutes after that stop, and only within
+  the same plug-in.
 - It requires a site with usable measurement and a charger SpotNav can command: one whose
   current SpotNav is set to change (an OCPP charger set through ChangeConfiguration, or a charger
   with a current number or service, see [supported hardware](supported.md)). A charger whose

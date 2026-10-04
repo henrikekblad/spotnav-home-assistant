@@ -31,6 +31,7 @@ _TEXT: Final[dict[str, dict[str, str]]] = {
         "stopped.charger_unavailable": "The charger is unavailable during a planned window.",
         "stopped.vehicle_not_requesting": "The car is not taking current during a planned window.",
         "stopped.held_by_charger": "The charger's own schedule is holding back the planned charge.",
+        "stopped.charger_ignores_stop": "The charger keeps charging although it was stopped. Stop it at the charger or unplug the car.",
         "stopped.charger_disabled": "The charger is disabled, so the planned charge cannot start.",
         "at_risk": "The charge will not be ready by the departure.",
         "at_risk.time": "The charge will not be ready by the departure at {time}.",
@@ -55,6 +56,7 @@ _TEXT: Final[dict[str, dict[str, str]]] = {
         "stopped.charger_unavailable": "Laddaren är inte tillgänglig under ett planerat fönster.",
         "stopped.vehicle_not_requesting": "Bilen tar inte emot ström under ett planerat fönster.",
         "stopped.held_by_charger": "Laddarens eget schema håller tillbaka den planerade laddningen.",
+        "stopped.charger_ignores_stop": "Laddaren fortsätter ladda fast den stoppades. Stoppa den vid laddaren eller koppla ur bilen.",
         "stopped.charger_disabled": "Laddaren är avstängd, så den planerade laddningen kan inte starta.",
         "at_risk": "Laddningen hinner inte bli klar till avresan.",
         "at_risk.time": "Laddningen hinner inte bli klar till avresan {time}.",
@@ -79,6 +81,7 @@ _TEXT: Final[dict[str, dict[str, str]]] = {
         "stopped.charger_unavailable": "Laderen er ikke tilgængelig i et planlagt vindue.",
         "stopped.vehicle_not_requesting": "Bilen tager ikke strøm i et planlagt vindue.",
         "stopped.held_by_charger": "Laderens egen tidsplan holder den planlagte opladning tilbage.",
+        "stopped.charger_ignores_stop": "Laderen bliver ved med at lade, selvom den blev stoppet. Stop den ved laderen, eller tag stikket ud af bilen.",
         "stopped.charger_disabled": "Laderen er slået fra, så den planlagte opladning kan ikke starte.",
         "at_risk": "Opladningen bliver ikke færdig til afgangen.",
         "at_risk.time": "Opladningen bliver ikke færdig til afgangen kl. {time}.",
@@ -103,6 +106,7 @@ _TEXT: Final[dict[str, dict[str, str]]] = {
         "stopped.charger_unavailable": "Laderen er ikke tilgjengelig i et planlagt vindu.",
         "stopped.vehicle_not_requesting": "Bilen tar ikke imot strøm i et planlagt vindu.",
         "stopped.held_by_charger": "Laderens egen tidsplan holder den planlagte ladingen tilbake.",
+        "stopped.charger_ignores_stop": "Laderen fortsetter å lade selv om den ble stoppet. Stopp den ved laderen eller koble fra bilen.",
         "stopped.charger_disabled": "Laderen er slått av, så den planlagte ladingen kan ikke starte.",
         "at_risk": "Ladingen blir ikke ferdig til avreise.",
         "at_risk.time": "Ladingen blir ikke ferdig til avreise kl. {time}.",
@@ -127,6 +131,7 @@ _TEXT: Final[dict[str, dict[str, str]]] = {
         "stopped.charger_unavailable": "Laturi ei ole käytettävissä suunnitellun jakson aikana.",
         "stopped.vehicle_not_requesting": "Auto ei ota virtaa suunnitellun jakson aikana.",
         "stopped.held_by_charger": "Laturin oma aikataulu pidättää suunniteltua latausta.",
+        "stopped.charger_ignores_stop": "Laturi jatkaa lataamista, vaikka se pysäytettiin. Pysäytä se laturista tai irrota auto.",
         "stopped.charger_disabled": "Laturi on pois käytöstä, joten suunniteltu lataus ei voi alkaa.",
         "at_risk": "Lataus ei valmistu lähtöön mennessä.",
         "at_risk.time": "Lataus ei valmistu lähtöön klo {time} mennessä.",
@@ -198,7 +203,8 @@ def _figures(
 def compose(event: str, name: str, facts: dict[str, Any], language: str) -> tuple[str, str]:
     """The title and the message of one notification.
 
-    `facts` by event: `plan_stopped` {reason}; `plan_at_risk` {time?}; `charge_complete` {reason,
+    `facts` by event: `plan_stopped` {reason} (`charger_ignores_stop` too: the charger keeps charging under a
+    person's Stop); `plan_at_risk` {time?}; `charge_complete` {reason,
     target_percent?, kwh?, cost?}; `charge_started` {until?}; `plan_installed` {time, kwh?, cost?}.
     """
     text = _TEXT[language if language in _TEXT else "en"]
