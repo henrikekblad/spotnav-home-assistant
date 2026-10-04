@@ -479,6 +479,7 @@ export const sv: Record<keyof typeof en, string> = {
   "action.error.confirmationFailed":
     "Åtgärden togs emot, men dess aktuella tillstånd kunde inte bekräftas.",
   "action.error.invalidPause": "Det pausvalet är inte tillgängligt för den här laddaren just nu.",
+  "action.error.notConnected": "Ingen bil är ansluten, så det finns inget att starta.",
   "action.error.charger": "Den konfigurerade laddaren kunde inte nås.",
   "action.error.version": "Kortet och integrationen talar olika åtgärdsversioner.",
   "action.error.generic": "Åtgärden misslyckades. Kontrollera anslutningen till Home Assistant och försök igen.",

@@ -641,6 +641,9 @@ export function actionErrorKey(code: string | null): TranslationKey {
   if (code === "invalid_pause") {
     return "action.error.invalidPause";
   }
+  if (code === "vehicle_not_connected") {
+    return "action.error.notConnected";
+  }
   if (code === "spotnav_unsupported_api_version") {
     return "action.error.version";
   }

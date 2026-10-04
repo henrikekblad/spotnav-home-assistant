@@ -479,6 +479,7 @@ export const fi: Record<keyof typeof en, string> = {
   "action.error.confirmationFailed":
     "Toiminto hyväksyttiin, mutta sen nykyistä tilaa ei voitu vahvistaa.",
   "action.error.invalidPause": "Tämä taukovaihtoehto ei ole juuri nyt käytettävissä tälle laturille.",
+  "action.error.notConnected": "Autoa ei ole kytketty, joten käynnistettävää ei ole.",
   "action.error.charger": "Määritettyä laturia ei tavoitettu.",
   "action.error.version": "Kortti ja integraatio käyttävät eri toimintoversioita.",
   "action.error.generic": "Toiminto epäonnistui. Tarkista yhteys Home Assistant -palveluun ja yritä uudelleen.",

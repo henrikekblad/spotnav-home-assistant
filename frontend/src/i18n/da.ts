@@ -479,6 +479,7 @@ export const da: Record<keyof typeof en, string> = {
   "action.error.confirmationFailed":
     "Handlingen blev accepteret, men den aktuelle tilstand kunne ikke bekræftes.",
   "action.error.invalidPause": "Det pausevalg er ikke tilgængeligt for denne lader lige nu.",
+  "action.error.notConnected": "Der er ingen bil tilsluttet, så der er intet at starte.",
   "action.error.charger": "Den konfigurerede lader kunne ikke nås.",
   "action.error.version": "Kortet og integrationen taler forskellige handlingsversioner.",
   "action.error.generic": "Handlingen mislykkedes. Tjek forbindelsen til Home Assistant, og prøv igen.",
