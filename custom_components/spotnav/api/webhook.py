@@ -24,7 +24,13 @@ from homeassistant.core import HomeAssistant
 from ..const import CONF_WEBHOOK_ID, DOMAIN
 from ..notifications.push import ERROR_INVALID_PUSH, parse_push_register, PushRegisterError
 from ..notifications.targets import available_targets
-from ..execution.auto_execution import ACTION_RESUME, ACTION_STOP, AutoControlError
+from ..execution.auto_execution import (
+    ACTION_RESUME,
+    ACTION_STOP,
+    AutoControlCommitted,
+    AutoControlError,
+    EXECUTION_RECONCILE_FAILED,
+)
 from ..execution.controller import ChargingExecutionError
 from ..planning.auto_settings import AutoSettingsError
 from ..planning.phases import effective_phases
@@ -131,16 +137,32 @@ async def async_manual_action(
 
 
 
+async def _executed_command(entry: ChargerConfigEntry, action: str, **kwargs: Any) -> Outcome:
+    """A person's Start or immediate Stop: the charger command decides. One the charger executed whose pause
+    could not be saved (`reconcile_failed`: it holds in memory and the save is retried) is a success with
+    an additive `warning`, never a conflict that says nothing moved."""
+    try:
+        await async_manual_action(entry, action, **kwargs)
+    except AutoControlCommitted as committed:
+        if committed.code != EXECUTION_RECONCILE_FAILED:
+            raise
+        _LOGGER.warning("SpotNav charger %s: done, but its pause could not be saved yet", action)
+        return {"warning": EXECUTION_RECONCILE_FAILED}
+    return None
+
+
 async def _start(hass: HomeAssistant, entry: ChargerConfigEntry, payload: dict[str, Any]) -> Outcome:
     """A human deciding to charge; a reading at or above the target does not veto it."""
     amps = int(payload["amps"]) if "amps" in payload else None
-    await async_manual_action(entry, "start", amps=amps)
-    return None
+    return await _executed_command(entry, "start", amps=amps)
 
 
 async def _stop(hass: HomeAssistant, entry: ChargerConfigEntry, payload: dict[str, Any]) -> Outcome:
     """With a `choice` it is Auto's pause; without one, the immediate stop."""
-    await async_manual_action(entry, "stop", choice=payload.get("choice"))
+    choice = payload.get("choice")
+    if choice is None:
+        return await _executed_command(entry, "stop")
+    await async_manual_action(entry, "stop", choice=choice)
     return None
 
 

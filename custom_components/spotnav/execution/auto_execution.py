@@ -1069,9 +1069,8 @@ class AutoExecutor:
             self._applied = None
         self._sync_manual_watch()
         if started is False:
+            # Not executed (yet): said as such, whatever became of the pause's save (it holds in memory).
             await self._notify_change()
-            if save_error is not None:
-                raise AutoControlCommitted(EXECUTION_RECONCILE_FAILED) from save_error
             raise HomeAssistantError("The start is held back by load balancing until the site has room")
         self._note_manual_start_sent()
         await self._notify_change()

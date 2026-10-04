@@ -30,7 +30,9 @@ Treat webhook ids as secrets and do not share the sensor's attributes.
 webhook is bound to its own charger. A `charger_id` in the body is ignored. Success is
 `{"ok": true, "action": ...}`; errors are `{"ok": false, "error": ...}` with HTTP 400 (bad
 request), 409 (refused by the automatic-execution boundary, with a stable code), 429 (per-vehicle rate
-limit, with `Retry-After`) or 502 (the charger command failed).
+limit, with `Retry-After`) or 502 (the charger command failed). A `start` or an immediate `stop` the
+charger executed whose pause could not be saved answers `{"ok": true, "action": ..., "warning":
+"reconcile_failed"}`: the pause holds in memory and the save is retried.
 
 | Action | Effect |
 | ------ | ------ |

@@ -408,3 +408,33 @@ async def test_an_unplug_during_a_resume_that_did_not_start_ends_the_balancing_p
     await hass.async_block_till_done()
     assert not controller.paused_by_balancing, "a balancing pause outlived the unplug"
     await world.shutdown()
+
+
+async def test_a_webhook_start_or_stop_the_charger_executed_answers_ok_with_a_warning_when_the_save_failed(
+    hass: HomeAssistant, hass_client_no_auth
+) -> None:
+    """The charger took the person's Start (and later Stop), but the pause could not be saved: the answer
+    is 200 with `ok` and the additive `warning: reconcile_failed`, not a 409 that says nothing moved."""
+    from custom_components.spotnav.runtime import domain_data
+
+    from .helpers import setup_two_chargers
+
+    _entry_a, _entry_b, turn_on_calls, turn_off_calls = await setup_two_chargers(hass)
+    store = domain_data(hass).auto_store
+
+    async def broken(_document: Any) -> None:
+        raise OSError("disk full")
+
+    store._store.async_save = broken  # type: ignore[method-assign]  # noqa: SLF001
+    client = await hass_client_no_auth()
+    resp = await client.post("/api/webhook/webhook-a", json={"version": 1, "action": "start", "amps": 10})
+    assert resp.status == 200
+    assert await resp.json() == {"ok": True, "action": "start", "warning": "reconcile_failed"}
+    assert len(turn_on_calls) == 1
+
+    hass.states.async_set("switch.charger_a", "on")
+    await hass.async_block_till_done()
+    resp = await client.post("/api/webhook/webhook-a", json={"version": 1, "action": "stop"})
+    assert resp.status == 200
+    assert await resp.json() == {"ok": True, "action": "stop", "warning": "reconcile_failed"}
+    assert len(turn_off_calls) == 1
