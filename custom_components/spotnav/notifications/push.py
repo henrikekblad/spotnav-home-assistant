@@ -66,6 +66,8 @@ RESULT_RATE_LIMITED: Final = "rate_limited"
 RESULT_PUSH_DISABLED: Final = "push_disabled"
 RESULT_TIMEOUT: Final = "timeout"
 RESULT_NETWORK: Final = "network"
+#: The relay's 400 for a ref it cannot open (e.g. after its push key rotated).
+_INVALID_REF: Final = "invalid_ref"
 
 
 class PushRegisterError(ValueError):
@@ -227,7 +229,8 @@ class ChargerPush:
         """One request to the relay; the result code, never the ref.
 
         A 404 drops the registration only when the relay says the token is unknown (`unknown_ref`), not
-        for any 404 a proxy might answer.
+        for any 404 a proxy might answer; a 400 `invalid_ref` (a ref sealed under a rotated key) drops it
+        too.
         """
         body: dict[str, Any] = {"v": WAKE_VERSION, "push_ref": push_ref}
         if kind != KIND_WAKE:
@@ -237,7 +240,7 @@ class ChargerPush:
             async with asyncio.timeout(WAKE_TIMEOUT_S):
                 async with async_get_clientsession(self._hass).post(self._url, json=body) as response:
                     status = response.status
-                    if status == 404:
+                    if status in (400, 404):
                         try:
                             answer = await response.json(content_type=None)
                         except ValueError:
@@ -249,7 +252,9 @@ class ChargerPush:
             return RESULT_NETWORK
         if status == 200:
             return RESULT_SENT
-        if status == 404 and error == RESULT_UNKNOWN_REF:
+        if (status == 404 and error == RESULT_UNKNOWN_REF) or (status == 400 and error == _INVALID_REF):
+            # Unregistered at Firebase, or a ref the relay can no longer open (its push key rotated):
+            # it will never work again, so it is dropped and the app registers anew.
             return RESULT_UNKNOWN_REF
         if status == 429:
             return RESULT_RATE_LIMITED

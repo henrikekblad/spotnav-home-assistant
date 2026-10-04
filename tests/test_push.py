@@ -287,6 +287,7 @@ async def test_the_relay_forgetting_the_token_drops_the_ref_and_other_failures_k
         (429, {"error": "rate_limited"}, "rate_limited"),
         (503, {"error": "push_disabled"}, "push_disabled"),
         (502, {"error": "fcm_failed"}, "http_502"),
+        (400, {"error": "invalid_request"}, "http_400"),  # only invalid_ref drops it
     ):
         relay.status, relay.body = status, body
         await _toggle(hass)
@@ -311,6 +312,13 @@ async def test_the_relay_forgetting_the_token_drops_the_ref_and_other_failures_k
         "last_wake_at": push.diagnostics()["last_wake_at"],
     }
     assert REF not in _ours(caplog), "the ref is never logged"
+
+    # A ref the relay can no longer open (its push key rotated) is dropped as well.
+    await _register(hass, entry.entry_id, events=("charge_started",))
+    await _later(hass, freezer, REPEAT_S + 60)
+    relay.status, relay.body = 400, {"error": "invalid_ref"}
+    await _toggle(hass)
+    assert push.registration is None
 
 
 async def test_a_wake_up_is_bounded_in_time(hass: HomeAssistant, monkeypatch: pytest.MonkeyPatch) -> None:
