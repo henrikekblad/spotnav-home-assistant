@@ -203,3 +203,34 @@ async def test_a_feed_inside_another_is_decided_after_it(hass: HomeAssistant) ->
     assert [record["event"]["kind"] for record in events] == ["person_start", "charger_reported_on"]
     assert events[1]["queued"] and events[1]["core"] == []
     assert shadow.counts["disagreements"] == 0
+
+
+async def test_a_connection_read_that_raises_at_start_up_leaves_no_feed_open(
+    hass: HomeAssistant, timers: FakeScheduler
+) -> None:
+    """The first connection read after a restart is taken before the shadow's feed opens: one that raises leaves
+    nothing open behind it, so later feeds are still compared."""
+    world = await pause_world(hass, timers, plan=two_windows())
+    controller = world.controller
+    shadow = controller.ownership_shadow
+    real = controller.adapter.vehicle_connected
+    cancel, controller._progress_listener_cancel = controller._progress_listener_cancel, None  # noqa: SLF001
+
+    def broken() -> bool | None:
+        raise RuntimeError("the connection could not be read")
+
+    controller.adapter.vehicle_connected = broken
+    try:
+        with pytest.raises(RuntimeError):
+            controller._async_arm_progress_listener()  # noqa: SLF001 - the start-up read under test
+    finally:
+        controller.adapter.vehicle_connected = real
+    assert shadow.depth == 0 and not shadow._open  # noqa: SLF001
+    leftover = controller._progress_listener_cancel  # noqa: SLF001
+    if leftover is not None:
+        leftover()
+    controller._progress_listener_cancel = cancel  # noqa: SLF001
+    compared = shadow.counts["compared"]
+    await world.executor.async_manual_stop()
+    assert shadow.counts["compared"] > compared
+    await world.shutdown()
