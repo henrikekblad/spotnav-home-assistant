@@ -438,3 +438,29 @@ async def test_a_webhook_start_or_stop_the_charger_executed_answers_ok_with_a_wa
     assert resp.status == 200
     assert await resp.json() == {"ok": True, "action": "stop", "warning": "reconcile_failed"}
     assert len(turn_off_calls) == 1
+
+
+async def test_a_persons_charge_stopped_for_safety_is_resumed_at_most_once_per_five_minutes(
+    hass: HomeAssistant, timers: FakeScheduler, freezer
+) -> None:
+    """P3 kept a safety stop of a person's charge for load balancing to resume. A fuse that keeps needing it
+    must not cycle the charger: such a charge is resumed at most once per five minutes."""
+    from datetime import timedelta
+
+    world = await pause_world(hass, timers)
+    await world.executor.async_manual_start(10)
+    controller = world.controller
+    await controller._regulated_stop("safety_stop")  # noqa: SLF001
+    await hass.async_block_till_done()
+    assert controller.paused_by_balancing
+    assert await controller.async_battery_probe_start(8)
+    await hass.async_block_till_done()
+
+    await controller._regulated_stop("safety_stop")  # noqa: SLF001 - the fuse again
+    await hass.async_block_till_done()
+    freezer.tick(timedelta(minutes=2))
+    assert not await controller.async_battery_probe_start(8), "resumed again within five minutes"
+    assert controller.paused_by_balancing, "still held for later"
+    freezer.tick(timedelta(minutes=3, seconds=1))
+    assert await controller.async_battery_probe_start(8)
+    await world.shutdown()

@@ -140,6 +140,9 @@ STOP_RETRY_S: Final = 30.0
 #: (`ChargingController.ignores_person_stop`) rather than send a stop per report.
 PERSON_HOLD_STOP_GAP_S: Final = 30.0
 PERSON_HOLD_MAX_STOPS: Final = 3
+#: A person's charge load balancing stopped for safety (not its below-floor pause) is resumed by the
+#: regulator at most once per this many seconds, so a fuse that keeps needing the stop never cycles it.
+SAFETY_RESUME_GAP_S: Final = 300.0
 
 
 class AutomaticGate(Protocol):
@@ -550,6 +553,10 @@ class ChargingController:
         # that would put back what was held for a session compares it, so an unplug while the command was on
         # its way wins (`_session_unchanged`).
         self._session_generation = 0
+        # The charge load balancing holds was stopped for safety (`_regulated_stop`, any code but its pause),
+        # and when such a charge was last resumed (`SAFETY_RESUME_GAP_S`).
+        self._held_for_safety = False
+        self._safety_resumed_at: datetime | None = None
         # The appointment at which an automatic stop the charger's control did not execute is decided again
         # (`_automatic_stop_locked`), or `None`.
         self._stop_retry_cancel: Callable[[], None] | None = None
@@ -2083,6 +2090,12 @@ class ChargingController:
             )
             if not allowed or not self._paused_by_balancing or self.charging:
                 return False
+            safety = self._held_for_safety
+            if safety and self._safety_resumed_at is not None:
+                since = (dt_util.utcnow() - self._safety_resumed_at).total_seconds()
+                if 0 <= since < SAFETY_RESUME_GAP_S:
+                    # Stopped for safety again soon after the last resume: held until the gap is over.
+                    return False
             kept = self._requested_current_a
             session = self._session_generation
             # The charge balancing paused goes on as what it was: the plan's, a person's or the sun's.
@@ -2104,6 +2117,9 @@ class ChargingController:
                     self._paused_by_balancing = False
                     self._paused_charge = None
                 return False
+            self._held_for_safety = False
+            if safety:
+                self._safety_resumed_at = dt_util.utcnow()
             if origin is not None or plan_charge:
                 self._charge_origin, self._plan_charge = origin, plan_charge
                 if self._start_cause is not None and origin is not None:
@@ -2385,6 +2401,7 @@ class ChargingController:
                     and (code == "pause" or paused_charge[0] == "manual")
                     and self._session_generation == session
                 ):
+                    self._held_for_safety = code != "pause"
                     self._remember_paused_charge(*paused_charge)
                     self._save_memory_soon()
         except Exception:  # noqa: BLE001 - reported, and the next pass tries again
