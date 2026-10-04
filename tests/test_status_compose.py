@@ -311,7 +311,13 @@ CASES: list[tuple[str, StatusFacts, str, list[dict[str, Any]]]] = [
         "a person's Stop holds the sun back: said right after the hybrid headline",
         base(strategy="hybrid", hybrid=HybridFacts("satisfied_need_met", 0.0), person_stopped=True),
         "normal",
-        [{"code": "hybrid_satisfied", "params": {}}, {"code": "stopped_by_person", "params": {}}],
+        [{"code": "hybrid_satisfied", "params": {}}, {"code": "stopped_by_person", "params": {"ends": "replug"}}],
+    ),
+    (
+        "a person's Stop on a charger that cannot say when a car is plugged in: only a Start or a window ends it",
+        base(strategy="hybrid", hybrid=HybridFacts("satisfied_need_met", 0.0), person_stopped=True, reports_plug_in=False),
+        "normal",
+        [{"code": "hybrid_satisfied", "params": {}}, {"code": "stopped_by_person", "params": {"ends": "start"}}],
     ),
     (
         "a person's Stop under solar, and nothing said once a charge runs again (it is theirs)",

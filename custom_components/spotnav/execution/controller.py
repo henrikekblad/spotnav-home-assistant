@@ -477,9 +477,17 @@ class ChargingController:
         # does not start that window again. In memory only, as a person's Stop has always been.
         self._person_stop_until: datetime | None = None
         # A person's Stop, for solar and hybrid's sun: no surplus starts the charger again until the car
-        # is plugged in again, a person starts it, or a plan window begins (`person_stopped`). In memory
-        # only, as `_person_stop_until`.
+        # is plugged in again, a person starts it, or a plan window begins (`person_stopped`). Persisted: a
+        # restart must not let the sun start what a person stopped.
         self._person_stopped = False
+        # Solar's battery-credit back-off (`site/solar_surplus.py`): until when a charging battery is not
+        # counted, and how long the next back-off is. Kept here, and persisted, so neither a restart nor a
+        # rebuilt solar controller forgets it.
+        self._credit_backoff_until: datetime | None = None
+        self._credit_backoff_next_s: float | None = None
+        # Whether `async_initialize` has restored the saved state: until then what this controller says
+        # about a charge (its origin, a person's Stop) is not yet known.
+        self._restored = False
         # When this controller last sent a stop, until the charger is seen to stop: a charge still
         # running then is one being stopped, not one the charger began by itself.
         self._stop_sent_at: datetime | None = None
@@ -627,6 +635,17 @@ class ChargingController:
         The target-stop record is restored too: it explains why a finished charge ended, and a restart must
         not erase it.
         """
+        try:
+            await self._restore_locked()
+        finally:
+            self._restored = True
+
+    @property
+    def restored(self) -> bool:
+        """Whether the saved state has been restored (`async_initialize`)."""
+        return self._restored
+
+    async def _restore_locked(self) -> None:
         saved = await self._store.async_load()
         if saved:
             if saved.get("plan"):
@@ -640,6 +659,19 @@ class ChargingController:
             self._plan_charge = saved.get("plan_charge") is True
             origin = saved.get("charge_origin")
             self._charge_origin = origin if isinstance(origin, str) else None
+            self._person_stopped = saved.get("person_stopped") is True
+            backoff = saved.get("solar_credit_backoff")
+            if isinstance(backoff, dict):
+                until = backoff.get("until")
+                parsed_until = dt_util.parse_datetime(until) if isinstance(until, str) else None
+                self._credit_backoff_until = (
+                    parsed_until if parsed_until is not None and parsed_until.tzinfo is not None else None
+                )
+                next_s = backoff.get("next_s")
+                self._credit_backoff_next_s = (
+                    float(next_s) if isinstance(next_s, (int, float)) and not isinstance(next_s, bool) and next_s > 0
+                    else None
+                )
             plugged = saved.get("plugged_in_at")
             parsed = dt_util.parse_datetime(plugged) if isinstance(plugged, str) else None
             self._plugged_in_at = parsed if parsed is not None and parsed.tzinfo is not None else None
@@ -926,9 +958,11 @@ class ChargingController:
             return
         event = CONNECTION_PLUGGED_IN if connected else CONNECTION_UNPLUGGED
         # A person's Stop belongs to the plug-in it was made in.
+        was_stopped = self._person_stopped
         self._person_stopped = False
         if connected:
             self._plugged_in_at = dt_util.utcnow()
+        if connected or was_stopped:
             self.hass.async_create_task(self._async_save_connection())
         _LOGGER.debug("SpotNav charger %s: vehicle %s", self.entry_id, event)
         handled = False
@@ -1214,6 +1248,32 @@ class ChargingController:
             return start
         return None
 
+    async def _set_person_stopped_locked(self, value: bool) -> None:
+        """Set the person's Stop of the sun, saved when it changes. The lock is held."""
+        if self._person_stopped == value:
+            return
+        self._person_stopped = value
+        await self._async_save_quietly()
+
+    @property
+    def reports_plug_in(self) -> bool:
+        """Whether the charger says when a car is plugged in (a status entity), so a plug-in can end things."""
+        return self.connection()[1] is not None
+
+    @property
+    def solar_credit_backoff(self) -> tuple[datetime | None, float | None]:
+        """Solar's battery-credit back-off: until when a charging battery is not counted, and the next
+        back-off's length (`None` for the default)."""
+        return self._credit_backoff_until, self._credit_backoff_next_s
+
+    async def async_set_solar_credit_backoff(self, until: datetime | None, next_s: float | None) -> None:
+        """Record solar's battery-credit back-off, saved when it changes."""
+        if not self._restored or (until, next_s) == (self._credit_backoff_until, self._credit_backoff_next_s):
+            return
+        async with self._lock:
+            self._credit_backoff_until, self._credit_backoff_next_s = until, next_s
+            await self._async_save_quietly()
+
     @property
     def person_stopped(self) -> bool:
         """Whether a person's Stop is in effect for the sun: solar and hybrid start nothing until the car
@@ -1496,8 +1556,9 @@ class ChargingController:
         """The follow itself. Runs with the operation lock held."""
         if self.plan is None:
             raise HomeAssistantError("No charging schedule is active")
-        # A person asking to follow the plan again ends their own Stop of the window open now.
+        # A person asking to follow the plan again ends their own Stop of the window open now, and of the sun.
         self._person_stop_until = None
+        await self._set_person_stopped_locked(False)
         await self._reschedule_locked()
 
     async def async_start(
@@ -1612,7 +1673,7 @@ class ChargingController:
         self._paused_charge = None
         if manual:
             self._person_stop_until = None
-            self._person_stopped = False
+            await self._set_person_stopped_locked(False)
         if manual and self._target_stop is not None:
             self._target_stop = None
             await self._async_save()
@@ -2055,7 +2116,7 @@ class ChargingController:
             elif person:
                 self._person_stop_until = self._open_window_end()
             if person:
-                self._person_stopped = True
+                await self._set_person_stopped_locked(True)
             await self._stop_locked(clear_schedule=clear_schedule)
 
     async def _stop_locked(self, *, clear_schedule: bool = False) -> None:
@@ -2272,6 +2333,11 @@ class ChargingController:
                 "target_stop": self._target_stop,
                 # The deadline of a top-off that runs past the last window, else `None`.
                 "top_off_until": None if self._top_off_until is None else self._top_off_until.isoformat(),
+                "person_stopped": self._person_stopped,
+                "solar_credit_backoff": {
+                    "until": None if self._credit_backoff_until is None else self._credit_backoff_until.isoformat(),
+                    "next_s": self._credit_backoff_next_s,
+                },
                 # The pilot-floor probe's record; written only through its host interface, absent until
                 # the probe has started.
                 STORE_KEY: self._probe_record,
@@ -2370,7 +2436,7 @@ class ChargingController:
         # The plug-in session a hold belonged to ends where the next window starts, and with it a person's
         # Stop of the sun's charging.
         self._hold.end_session()
-        self._person_stopped = False
+        await self._set_person_stopped_locked(False)
         if self._target_stopping:
             # A stop is in flight and the plan stays live until its turn_off is awaited: starting now
             # would race it. Report the charge as over so no caller arms timers or starts it.

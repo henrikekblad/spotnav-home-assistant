@@ -233,6 +233,8 @@ class CapturedLive:
     hold_overridden: bool = False
     #: A person's Stop holds the sun back (`ChargingController.person_stopped`).
     person_stopped: bool = False
+    #: Whether the charger says when a car is plugged in (`ChargingController.reports_plug_in`).
+    reports_plug_in: bool = True
     #: A Start is in effect for a plan that charges to the car's own limit: the car ends it.
     charging_to_vehicle_limit: bool = False
     #: While the car finishes a charge to its own limit past the plan's last window, that top-off's
@@ -945,6 +947,7 @@ def capture_dashboard(
             hold_until=None if controller is None else controller.hold_until,
             hold_overridden=bool(controller is not None and controller.hold_overridden),
             person_stopped=bool(controller is not None and controller.person_stopped),
+            reports_plug_in=bool(controller is not None and controller.reports_plug_in),
             charging_to_vehicle_limit=bool(controller is not None and controller.charging_to_vehicle_limit),
             top_off_until=None if controller is None else controller.top_off_until,
         ),
@@ -1932,6 +1935,7 @@ def status_facts(capture: CapturedDashboard) -> StatusFacts:
         hold_until=None if capture.live.hold_until is None else _utc(capture.live.hold_until),
         hold_overridden=capture.live.hold_overridden,
         person_stopped=capture.live.person_stopped,
+        reports_plug_in=capture.live.reports_plug_in,
         vehicle_limit_percent=(
             _charge_ceiling(capture.soc) if capture.live.charging_to_vehicle_limit else None
         ),

@@ -169,7 +169,7 @@ async def test_a_persons_stop_sticks_until_they_start_again(hass: HomeAssistant)
     lines = compose_status(
         StatusFacts(now=facts.now, strategy=STRATEGY_HYBRID, hybrid=HybridFacts(), person_stopped=True)
     )["lines"]
-    assert [line["code"] for line in lines][:2] == ["hybrid_unknown", "stopped_by_person"]
+    assert lines[:2] == [{"code": "hybrid_unknown", "params": {}}, {"code": "stopped_by_person", "params": {"ends": "replug"}}]
 
     # The person starts the charge: the Stop is over (their Start is theirs, and stays so).
     await executor.async_manual_start()
@@ -230,3 +230,70 @@ async def test_a_start_on_a_battery_that_turns_to_feed_the_car_is_stopped_and_ba
         await tick_site(hass, site)
     assert not turn_on_calls
     assert coordinator.state.state == "off"
+
+
+async def _restart(hass: HomeAssistant, charger: Any) -> Any:
+    """Reload the charger entry, as a restart does: the controller and the solar coordinator are rebuilt
+    from what was saved."""
+    assert await hass.config_entries.async_reload(charger.entry_id)
+    await hass.async_block_till_done()
+    return controller_of(hass, charger.entry_id)
+
+
+async def test_a_persons_stop_survives_a_restart(hass: HomeAssistant) -> None:
+    charger, site_entry, controller, coordinator, clock, turn_on_calls, _off = await _setup(hass)
+    executor = executor_for(hass, charger.entry_id)
+    assert executor is not None
+    await executor.async_manual_stop()
+    assert controller.person_stopped is True
+
+    controller = await _restart(hass, charger)
+    assert controller.person_stopped is True
+    coordinator = hass.config_entries.async_get_entry(charger.entry_id).runtime_data.solar
+    coordinator._now = clock.now  # noqa: SLF001 - the fake clock, as `solar_setup` installs it
+    coordinator.async_start()
+    site = controller_of(hass, site_entry.entry_id)
+    _battery(hass, 8000.0)
+    set_site_power_w(hass, "solar_site", 0.0)
+    turn_on_calls.clear()
+    for t in range(0, 1200, 30):
+        clock.value = float(t)
+        await tick_site(hass, site)
+    assert not turn_on_calls
+    assert coordinator.state is not None and coordinator.state.reason == "person_stopped"
+
+
+async def test_a_battery_credit_back_off_survives_a_restart(hass: HomeAssistant) -> None:
+    charger, site_entry, controller, coordinator, clock, turn_on_calls, turn_off_calls = await _setup(hass)
+    site = controller_of(hass, site_entry.entry_id)
+    prefix = charger.entry_id
+    _battery(hass, 8000.0)
+    set_site_power_w(hass, "solar_site", 0.0)
+    await tick_site(hass, site)
+    clock.value = 125.0
+    await tick_site(hass, site)
+    hass.states.async_set(f"switch.{prefix}", "on")
+    clock.value = 160.0
+    set_charger_delivered_a(hass, prefix, 6.0)
+    _battery(hass, -6.0 * 3 * 230.0)
+    await tick_site(hass, site)
+    assert coordinator.state is not None and coordinator.state.reason == "battery_credit_false"
+    hass.states.async_set(f"switch.{prefix}", "off")
+    set_charger_delivered_a(hass, prefix, 0.0)
+    until, next_s = controller.solar_credit_backoff
+    assert until is not None and next_s == 1200.0
+
+    controller = await _restart(hass, charger)
+    assert controller.solar_credit_backoff[0] == until
+    coordinator = hass.config_entries.async_get_entry(charger.entry_id).runtime_data.solar
+    clock.value = 0.0
+    coordinator._now = clock.now  # noqa: SLF001
+    coordinator.async_start()
+    _battery(hass, 8000.0)
+    turn_on_calls.clear()
+    # Well inside the ten minutes left of it, a charging battery is still not counted: nothing starts.
+    for t in range(0, 400, 30):
+        clock.value = float(t)
+        await tick_site(hass, site)
+    assert not turn_on_calls
+    assert coordinator.state is not None and coordinator.state.priority_effective == "battery_first"

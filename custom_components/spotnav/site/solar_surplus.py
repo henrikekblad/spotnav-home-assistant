@@ -390,6 +390,20 @@ class SolarController:
             return "battery_first"
         return self._config.priority
 
+    def credit_backoff(self, now: float) -> tuple[float | None, float]:
+        """The battery-credit back-off as the caller keeps it: the seconds it still runs (`None` when it
+        does not) and the next back-off's length."""
+        until = self._credit_backoff_until
+        remaining = None if until is None or until <= now else until - now
+        return remaining, self._next_backoff_s
+
+    def seed_credit_backoff(self, now: float, remaining_s: float | None, next_s: float | None) -> None:
+        """Restore a back-off the caller kept (a restart, a rebuilt controller): `remaining_s` more seconds
+        of it, and the next one's length (`None` for the configured start)."""
+        self._credit_backoff_until = None if remaining_s is None or remaining_s <= 0 else now + remaining_s
+        if next_s is not None and next_s > 0:
+            self._next_backoff_s = min(next_s, self._config.credit_backoff_max_s)
+
     def adopt(self, now: float, *, requested_a: float | None = None, on_since: float | None = None) -> None:
         """Take a charge that is already running as this controller's own: `on` from `now`, with no
         start verification (it was not started on a credited surplus). `on_since` dates the charge for

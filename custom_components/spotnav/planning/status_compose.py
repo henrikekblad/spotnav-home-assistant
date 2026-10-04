@@ -199,8 +199,9 @@ STATUS_CODES: Final[dict[str, tuple[str, tuple[str, ...]]]] = {
     # A person started the charge again after that stop: the plan is overridden and it may go on.
     "hold_overridden": (TONE_NOTICE, ()),
     # A person stopped the charge: the sun (solar, hybrid's sun) does not start it again until the car is
-    # plugged in again, a person starts it, or a plan window begins.
-    "stopped_by_person": (TONE_NORMAL, ()),
+    # plugged in again, a person starts it, or a plan window begins. `ends` is `replug` for a charger
+    # that says when a car is plugged in, else `start` (only a Start or a plan window ends it).
+    "stopped_by_person": (TONE_NORMAL, ("ends",)),
     # A manual need capped at the room left in the battery: `kwh` is that room (the car is almost full).
     "need_limited_by_room": (TONE_NORMAL, ("kwh",)),
     # A charge to the car's own limit (`percent`, 100 when it states none): the car ends it, not SpotNav.
@@ -352,6 +353,8 @@ class StatusFacts:
     hold_overridden: bool = False
     #: A person's Stop holds the sun back (`ChargingController.person_stopped`).
     person_stopped: bool = False
+    #: Whether the charger says when a car is plugged in, so a plug-in ends that Stop.
+    reports_plug_in: bool = True
     #: A Start is in effect for a plan that charges to the car's own limit: that limit (100 when the car
     #: states none), else `None`.
     vehicle_limit_percent: float | None = None
@@ -753,7 +756,9 @@ def _pending_line(facts: StatusFacts) -> dict[str, Any]:
 def _person_stop_lines(facts: StatusFacts) -> list[dict[str, Any]]:
     """`stopped_by_person` under a solar or hybrid headline while a person's Stop holds the sun back and
     nothing charges (a charge started again some other way is the person's own)."""
-    return [_line("stopped_by_person")] if facts.person_stopped and not facts.charging else []
+    if not facts.person_stopped or facts.charging:
+        return []
+    return [_line("stopped_by_person", ends="replug" if facts.reports_plug_in else "start")]
 
 
 def compose_status(facts: StatusFacts) -> dict[str, Any]:

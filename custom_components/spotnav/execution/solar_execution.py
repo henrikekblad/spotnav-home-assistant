@@ -36,11 +36,13 @@ from __future__ import annotations
 
 import logging
 import time
+from datetime import timedelta
 from collections.abc import Callable
 from dataclasses import dataclass, field, replace
 from typing import Any, Final
 
 from homeassistant.core import callback, HomeAssistant
+from homeassistant.util import dt as dt_util
 
 from ..const import (
     CONF_ACTIVE_CONTROL_ENABLED,
@@ -627,7 +629,9 @@ class SolarExecutionCoordinator:
 
     async def _async_evaluate(self) -> None:
         site = self._site
-        if site is None:
+        if site is None or not self._controller.restored:
+            # Before the charger's saved state is back, who started a charge and a person's Stop are
+            # unknown: nothing is decided on them (the site's next recompute evaluates again).
             return
         settings = self._store.settings(self._charger_entry_id)
         if settings.strategy not in (STRATEGY_SOLAR, STRATEGY_HYBRID):
@@ -695,6 +699,7 @@ class SolarExecutionCoordinator:
         if self._unmeasured_start_allowed(site, now=observation.now):
             observation = replace(observation, unmeasured_start_allowed=True)
         verdict = self._solar.observe(observation)
+        await self._keep_credit_backoff(self._solar)
         if verdict.action in ("start", "stop") or verdict.state == "off":
             # Solar's own start, or no charge of solar's any more.
             self._took_over = False
@@ -896,9 +901,26 @@ class SolarExecutionCoordinator:
 
     def _build_controller(self, site: SiteCapacityController) -> SolarController:
         solar = SolarController(self._solar_config(site))
+        now = self._now()
+        # The battery-credit back-off outlives this instance (a rebuild, a restart): kept on the charger.
+        until, next_s = self._controller.solar_credit_backoff
+        remaining = None if until is None else (until - dt_util.utcnow()).total_seconds()
+        solar.seed_credit_backoff(now, remaining, next_s)
         if self._controller.charging:
-            _adopt_running(solar, now=self._now())
+            _adopt_running(solar, now=now)
         return solar
+
+    async def _keep_credit_backoff(self, solar: SolarController) -> None:
+        """Hand the battery-credit back-off to the charger, which keeps it across a rebuild and a restart."""
+        remaining, next_s = solar.credit_backoff(self._now())
+        until = None if remaining is None else dt_util.utcnow() + timedelta(seconds=remaining)
+        kept_until, kept_next = self._controller.solar_credit_backoff
+        if kept_next == next_s and (
+            (until is None and kept_until is None)
+            or (until is not None and kept_until is not None and abs((until - kept_until).total_seconds()) < 1.0)
+        ):
+            return
+        await self._controller.async_set_solar_credit_backoff(until, next_s)
 
     async def _apply_verdict(self, verdict: SolarVerdict) -> None:
         if verdict.action == "start":

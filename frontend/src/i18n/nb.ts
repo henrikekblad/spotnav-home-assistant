@@ -83,6 +83,7 @@ export const nb: Record<keyof typeof en, string> = {
   "issue.chargerDisabled": "Laderens egen aktiveringsbryter er av, så den kan ikke starte. Slå den på i laderens innstillinger.",
   "issue.holdOverridden": "Ladingen ble startet utenfor planen og får fortsette.",
   "status.stoppedByPerson": "Du stoppet ladingen. Solen starter den ikke igjen før bilen kobles til på nytt, du trykker på Start nå eller et planlagt vindu begynner.",
+  "status.stoppedByPersonUntilStart": "Du stoppet ladingen. Solen starter den ikke igjen før du trykker på Start nå eller neste planlagte vindu begynner.",
   "status.needLimitedByRoom": "Begrenset til {kwh} kWh: bilen er nesten full.",
   "status.chargingToVehicleLimit": "Lader til bilen stopper ved sin egen ladegrense ({percent} %).",
   "issue.needKept": "Energimåleren kan ikke leses: {kwh} kWh gjenstår ifølge siste avlesning.",

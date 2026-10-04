@@ -1295,7 +1295,7 @@ export const STATUS_CODE_TABLE = {
   charger_disabled: ["notice", {}],
   held_until_window: ["normal", { time: "instant" }],
   hold_overridden: ["notice", {}],
-  stopped_by_person: ["normal", {}],
+  stopped_by_person: ["normal", { ends: "text" }],
   need_limited_by_room: ["normal", { kwh: "number" }],
   charging_to_vehicle_limit: ["normal", { percent: "number" }],
   remaining_need_estimated: ["notice", { kwh: "number", basis: "text" }],

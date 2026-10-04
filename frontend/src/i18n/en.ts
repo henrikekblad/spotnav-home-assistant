@@ -84,6 +84,7 @@ export const en = {
   "issue.chargerDisabled": "The charger's own enable switch is off, so it cannot start. Turn it on in the charger's settings.",
   "issue.holdOverridden": "Charging was started outside the plan and is allowed to continue.",
   "status.stoppedByPerson": "You stopped the charge. The sun does not start it again until the car is plugged in again, you press Start now or a planned window begins.",
+  "status.stoppedByPersonUntilStart": "You stopped the charge. The sun does not start it again until you press Start now or the next planned window begins.",
   "status.needLimitedByRoom": "Limited to {kwh} kWh: the car is almost full.",
   "status.chargingToVehicleLimit": "Charging until the car stops at its own limit ({percent} %).",
   "issue.needKept": "The energy meter cannot be read: {kwh} kWh remains, from its last reading.",
