@@ -11,6 +11,23 @@ and controller state, and for a site the measurements, their ages and the load-b
 decisions. The webhook id and OCPP charge point id are redacted, and no webhook or pairing URL is
 included, so the file is safe to attach to a public bug report.
 
+The site entry's file (and the card's **Download debug info** in Settings, Support, for
+administrators) also carries the whole installation as one debug bundle (`bundle_version` 4):
+
+- `history_60min` per site: the last hour, one sample a minute kept in memory (nothing is read from
+  the recorder). Each sample has the grid's total power, the site's current per phase, the house
+  battery's power and, per charger, its measured current, charge control, connection and connector
+  status and the car's state of charge. There is no PV power: a site has no PV sensor to read.
+- `solar_decision_log` in the site's diagnostics, per charger: what solar and hybrid decided, the
+  last 200 (time, strategy, state from and to, action, reason, the current asked for, the surplus,
+  export, battery, grid and car power and the priority). Only changes and actions are kept, never an
+  unchanged tick.
+- `client`, added by the card to the file it saves: the card version and bundle hash this browser runs
+  and a short user agent, next to the backend's `versions.card_bundle_hash` (the file) and
+  `card_bundle_hash_served` (the one browsers are handed). When they differ, the file says so in
+  `client.note`, and the card's Support section says it too: the browser or the Companion app runs an
+  older card. Reload the page; in the Companion app, force-stop the app and open it again.
+
 Useful entities on each charger: *Auto plan state*, *Auto execution state*, *Next planned
 charging start*, *Planned cost* and *Auto settings revision*. On a site: *Capacity state* and one
 *Proposed current* sensor per charger.

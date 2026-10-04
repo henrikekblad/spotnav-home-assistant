@@ -12,6 +12,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { translate, type Language } from "../src/i18n";
 import { SETTINGS_API_VERSION, type SettingsRecord } from "../src/types";
 import { VISUAL_CLASSES } from "../src/visual-styles";
+import { CARD_OUTDATED_NOTE, setOwnCardBundleHashForTest } from "../src/card-identity";
+import { CARD_VERSION } from "../src/generated/version";
 import { FakeHass, mountCard } from "./helpers";
 
 const DASHBOARD_DIR = join(__dirname, "..", "..", "tests", "fixtures", "dashboard");
@@ -308,8 +310,52 @@ describe("Download debug info", () => {
 
     expect(clicked).toEqual(["spotnav-debug-2026-10-03.json"]);
     expect(created).toHaveLength(1);
-    expect(JSON.parse(await (created[0] as Blob).text())).toEqual(BUNDLE);
+    const saved = JSON.parse(await (created[0] as Blob).text()) as Record<string, unknown>;
+    const { client, ...rest } = saved;
+    expect(rest).toEqual(BUNDLE);
+    // The card running here is recorded beside the backend's versions; a test run has no bundle URL.
+    expect(client).toMatchObject({ card_bundle_hash: null, card_version: CARD_VERSION, card_outdated: null });
     expect(debugButton(element)?.disabled).toBe(false);
+  });
+
+  it("records an outdated card in the file and says so in Support", async () => {
+    setOwnCardBundleHashForTest("11111111");
+    try {
+      const { hass, element } = await mounted();
+      await openSettings(element);
+      const created: Blob[] = [];
+      const win = element.ownerDocument.defaultView as Window & typeof globalThis;
+      win.URL.createObjectURL = vi.fn((blob: Blob) => {
+        created.push(blob);
+        return "blob:debug";
+      });
+      win.URL.revokeObjectURL = vi.fn();
+      vi.spyOn(win.HTMLAnchorElement.prototype, "click").mockImplementation(() => undefined);
+      const note = (): HTMLElement | null =>
+        section(element, "support")?.querySelector<HTMLElement>("[data-card-outdated]") ?? null;
+      expect(note()?.hidden).toBe(true);
+
+      debugButton(element)?.click();
+      await settle();
+      hass.resolveNext({
+        api_version: 1,
+        ok: true,
+        error: null,
+        bundle: { ...BUNDLE, versions: { card_bundle_hash: "22222222", card_bundle_hash_served: "33333333" } },
+      });
+      await settle();
+
+      const saved = JSON.parse(await (created[0] as Blob).text()) as { client: Record<string, unknown> };
+      expect(saved.client).toMatchObject({
+        card_bundle_hash: "11111111",
+        card_outdated: true,
+        note: CARD_OUTDATED_NOTE,
+      });
+      expect(note()?.hidden).toBe(false);
+      expect(note()?.textContent).toBe(translate("en", "debug.cardOutdated"));
+    } finally {
+      setOwnCardBundleHashForTest(null);
+    }
   });
 
   it("says so when the backend refuses", async () => {
@@ -323,5 +369,39 @@ describe("Download debug info", () => {
 
     expect(text(element)).toContain(translate("en", "debug.error.notAdmin"));
     expect(debugButton(element)?.disabled).toBe(false);
+  });
+});
+
+describe("Support says when the card here is older than the one served", () => {
+  afterEach(() => {
+    setOwnCardBundleHashForTest(null);
+  });
+
+  async function opened(served: string, language: Language = "en"): Promise<{ element: Element; hass: FakeHass }> {
+    setOwnCardBundleHashForTest("11111111");
+    const result = await mounted(fixture("start_idle"), false, language);
+    result.hass.cardInfoHandler = async () => ({
+      api_version: 1,
+      ok: true,
+      error: null,
+      spotnav_version: "1.0.0",
+      card_bundle_hash: served,
+    });
+    settingsGeneralButton(result.element, language).click();
+    await settle();
+    return result;
+  }
+
+  it("shows the note to any user when the hashes differ, in their language", async () => {
+    const { element, hass } = await opened("22222222", "sv");
+    expect(hass.cardInfoMessages.at(-1)).toMatchObject({ type: "spotnav/get_card_info", api_version: 1 });
+    const note = section(element, "support")?.querySelector<HTMLElement>("[data-card-outdated]");
+    expect(note?.hidden).toBe(false);
+    expect(note?.textContent).toBe(translate("sv", "debug.cardOutdated"));
+  });
+
+  it("stays quiet when they match", async () => {
+    const { element } = await opened("11111111");
+    expect(section(element, "support")?.querySelector<HTMLElement>("[data-card-outdated]")?.hidden).toBe(true);
   });
 });

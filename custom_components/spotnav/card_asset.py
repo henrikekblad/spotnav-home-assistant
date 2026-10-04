@@ -95,6 +95,7 @@ async def async_setup_card_asset(hass: HomeAssistant) -> None:
     )
     data.card_served = True
     digest = await hass.async_add_executor_job(read_bundle_digest)
+    data.card_served_digest = digest
     url = card_asset_url(await async_manifest_version(hass) or "unknown", digest)
     _LOGGER.debug("Serving the bundled SpotNav card at %s", url)
     async_load_card_in_frontend(hass, url)

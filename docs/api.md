@@ -106,6 +106,8 @@ config entry id. Reading is open to every authenticated user; writes require an 
 | `spotnav/choose_vehicle_soc` | Choose (or clear) a vehicle's state-of-charge sensor. |
 | `spotnav/update_vehicle` | A vehicle's battery capacity, consumption and onboard charger. |
 | `spotnav/update_site_settings` | Solar priority, forecast sources, active load balancing. |
+| `spotnav/get_debug_bundle` | The redacted installation-wide debug bundle (administrators only). |
+| `spotnav/get_card_info` | Which card the integration serves, for any signed-in user: `{"api_version": 1, "ok": true, "error": null, "spotnav_version", "card_bundle_hash"}`. The card compares the hash with the one in the URL it was loaded from. Not a dashboard field, so an older card is never handed a key it does not know. |
 | `spotnav/get_sessions` | A charger's charge sessions: summaries per month and day and the latest sessions, the same for one chosen `month`, or with `format: "csv"` and optional `from` and `to` dates (or a `month`) the sessions of that range as CSV text. |
 
 Rules that hold across them:

@@ -482,6 +482,29 @@ class SolarController:
         if next_s is not None and next_s > 0:
             self._next_backoff_s = min(next_s, self._config.credit_backoff_max_s)
 
+    def ended_backoff(self, now: float) -> tuple[SolarEndCause | None, float | None, float]:
+        """A charge the car ended as the caller keeps it: why (`None` when nothing waits), the seconds until
+        a stopped car is tried again (`None` when no retry is pending) and the next retry's length."""
+        return self._ended, self.retry_in(now), self._next_retry_s
+
+    def seed_ended_backoff(
+        self, now: float, cause: SolarEndCause | None, remaining_s: float | None, next_s: float | None
+    ) -> None:
+        """Restore a charge the car ended that the caller kept (a restart, a rebuilt controller): why,
+        `remaining_s` more seconds before a stopped car is tried again (`None` or past: it may be now), and
+        the next retry's length (`None` for the configured start). `charger_stopped` is no wait."""
+        if next_s is not None and next_s > 0:
+            self._next_retry_s = min(next_s, self._config.ended_retry_max_s)
+        if cause not in ("vehicle_full", "car_stopped"):
+            self._ended = None
+            self._retry_at = None
+            return
+        self._ended = cause
+        if cause == "vehicle_full":
+            self._retry_at = None
+        else:
+            self._retry_at = now + remaining_s if remaining_s is not None and remaining_s > 0 else now
+
     def adopt(self, now: float, *, requested_a: float | None = None, on_since: float | None = None) -> None:
         """Take a charge that is already running as this controller's own: `on` from `now`, with no
         start verification (it was not started on a credited surplus). `on_since` dates the charge for

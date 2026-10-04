@@ -29,11 +29,11 @@ async def test_bundle_has_every_section(hass: HomeAssistant) -> None:
     charger, site = await setup_charger_and_site(hass)
     bundle = await async_build_debug_bundle(hass)
 
-    assert bundle["bundle_version"] == 3
+    assert bundle["bundle_version"] == 4
     for key in ("versions", "related_integrations", "price_data", "sites", "chargers", "log"):
         assert key in bundle
     versions = bundle["versions"]
-    assert {"spotnav", "card_bundle_hash", "home_assistant", "python", "installation_type"} <= set(versions)
+    assert {"spotnav", "card_bundle_hash", "card_bundle_hash_served", "home_assistant", "python", "installation_type"} <= set(versions)
     assert versions["spotnav"]
     assert [s["entry_id"] for s in bundle["sites"]] == [site.entry_id]
     assert bundle["sites"][0]["diagnostics"]["result"] is not None
@@ -287,3 +287,83 @@ async def test_a_secret_in_a_read_attribute_is_redacted_by_key(hass: HomeAssista
     assert item["roles"] == ["site_current_source"]
     assert item["attributes_read"] == {"token": REDACTED}
     assert "tok-in-attribute" not in json.dumps(bundle)
+
+
+async def _sample_minutes(hass: HomeAssistant, minutes: int) -> None:
+    from datetime import timedelta
+
+    from homeassistant.util import dt as dt_util
+    from pytest_homeassistant_custom_component.common import async_fire_time_changed
+
+    start = dt_util.utcnow()
+    for minute in range(1, minutes + 1):
+        async_fire_time_changed(hass, start + timedelta(seconds=61 * minute))
+        await hass.async_block_till_done()
+
+
+async def test_bundle_has_the_last_hour_one_sample_a_minute(hass: HomeAssistant) -> None:
+    from custom_components.spotnav.site.site_history import SAMPLE_COUNT
+
+    charger, site = await setup_charger_and_site(hass)
+    bundle = await async_build_debug_bundle(hass)
+    assert bundle["sites"][0]["history_60min"] == []
+
+    await _sample_minutes(hass, 3)
+    history = (await async_build_debug_bundle(hass))["sites"][0]["history_60min"]
+    assert len(history) == 3
+    sample = history[-1]
+    assert {"time", "grid_w", "grid_source", "site_current_a", "battery_w", "chargers"} <= set(sample)
+    assert "pv_w" not in sample  # no PV sensor is known to a site
+    assert set(sample["site_current_a"]) == {"L1", "L2", "L3"}
+    item = sample["chargers"][charger.entry_id]
+    assert {"current_a", "charge_control", "charging", "connection", "connector_status", "soc_percent"} <= set(item)
+    assert item["charge_control"] == hass.states.get(charger.data["charge_control"]).state
+
+    # Bounded to the last hour.
+    await _sample_minutes(hass, SAMPLE_COUNT + 5)
+    history = (await async_build_debug_bundle(hass))["sites"][0]["history_60min"]
+    assert len(history) == SAMPLE_COUNT
+
+
+async def test_the_history_and_the_solar_log_are_redacted_with_the_rest(hass: HomeAssistant) -> None:
+    """A secret that turns up in a sampled state, or a person's name in a logged reason, is scrubbed."""
+    charger, site = await setup_charger_and_site(hass)
+    hass.config_entries.async_update_entry(charger, data={**charger.data, "access_token": "tok-sampled-1"})
+    await hass.auth.async_create_user("Zebediah Quux")
+    hass.states.async_set(charger.data["charge_control"], "tok-sampled-1 Zebediah Quux")
+    await _sample_minutes(hass, 1)
+    solar = charger.runtime_data.solar
+    assert solar is not None
+    solar._record_decision(state="off", action="hold", reason="Zebediah Quux")  # noqa: SLF001
+
+    bundle = await async_build_debug_bundle(hass)
+    text = json.dumps(bundle)
+    assert "tok-sampled-1" not in text and "Zebediah" not in text
+    site_section = bundle["sites"][0]
+    assert site_section["history_60min"][-1]["chargers"][charger.entry_id]["charge_control"] == f"{REDACTED} <user>"
+    assert site_section["diagnostics"]["solar_decision_log"][charger.entry_id][-1]["reason"] == "<user>"
+
+
+async def test_card_info_answers_any_user(
+    hass: HomeAssistant, hass_ws_client, hass_read_only_access_token: str
+) -> None:
+    from custom_components.spotnav.card_asset import read_bundle_digest
+
+    await setup_charger_and_site(hass)
+    digest = await hass.async_add_executor_job(read_bundle_digest)
+    for client in (
+        await admin(hass, hass_ws_client),
+        await non_admin(hass, hass_ws_client, hass_read_only_access_token),
+    ):
+        frame = await ws_call(client, {"type": "spotnav/get_card_info", "api_version": 1})
+        assert frame["success"] is True
+        result = frame["result"]
+        assert set(result) == {"api_version", "ok", "error", "spotnav_version", "card_bundle_hash"}
+        assert result["ok"] is True and result["card_bundle_hash"] == digest and result["spotnav_version"]
+
+    # The served hash wins over the file's (an update Home Assistant has not been restarted for).
+    domain_data(hass).card_served_digest = "abcd1234"
+    frame = await ws_call(await admin(hass, hass_ws_client), {"type": "spotnav/get_card_info", "api_version": 1})
+    assert frame["result"]["card_bundle_hash"] == "abcd1234"
+    wrong = await ws_call(await admin(hass, hass_ws_client), {"type": "spotnav/get_card_info", "api_version": 2})
+    assert wrong["success"] is False and wrong["error"]["code"] == "spotnav_unsupported_api_version"

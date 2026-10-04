@@ -38,7 +38,13 @@
   anything else is `charger_stopped`. The control still on with the car drawing nothing for `CAR_IDLE_S`
   is the car ending it too, and solar stops it. A car at or above its own limit is `vehicle_full`, else
   `car_stopped` (tried again after a back-off). A re-plug, a state of charge `SOC_DROP_PCT` lower, or a
-  higher limit or target clears it.
+  higher limit or target clears it. That wait, the next retry's length and what the car ended at are kept
+  on the charger's controller and saved (`_keep_ended`), and seeded into a rebuilt controller
+  (`_seed_ended`), so a restart or a strategy switch keeps them, as the battery-credit back-off is kept.
+* What solar decides is logged per charger in a bounded list (`decision_log`, the last
+  `SOLAR_DECISION_LOG_LENGTH`): every action (`start`, `stop`, `set_current`, `take_over`) and every hold
+  whose state or reason changed, with the energy balance it read. The site's diagnostics and the debug
+  bundle carry it.
 * A charger that is not charging draws nothing, whatever its measured current still reads: a sensor keeps
   its last value when a charge ends, and that leftover is not the car's draw (`_build_observation`'s
   `charger_idle`).
@@ -48,6 +54,7 @@ from __future__ import annotations
 
 import logging
 import time
+from collections import deque
 from datetime import datetime, timedelta
 from collections.abc import Callable
 from dataclasses import dataclass, field, replace
@@ -124,6 +131,10 @@ CAR_DREW_S: Final = 600.0
 SOC_DROP_PCT: Final = 2.0
 #: The connector status of a charger holding the car back itself (its own pilot, a load balancer).
 SUSPENDED_EVSE: Final = "SuspendedEVSE"
+
+#: Solar and hybrid decisions kept per charger for the diagnostics and the debug bundle (oldest dropped
+#: first), like the regulator's decision log.
+SOLAR_DECISION_LOG_LENGTH: Final = 200
 
 #: Token for hybrid arbitration handoff logs.
 HYBRID_LOG_TOKEN: Final = "HYBRID"
@@ -615,6 +626,13 @@ class SolarExecutionCoordinator:
         self._idle_since: float | None = None
         self._drawing_since: float | None = None
         self._ended_context: tuple[datetime | None, float | None, float | None, float | None] | None = None
+        # Bounded log of what solar decided for this charger, newest last (`decision_log`): only changes and
+        # actions, never an unchanged hold. `_decision_signature` is the last entry's (state, action, reason,
+        # held by plan), `_decision_state` its state, `_strategy` the strategy of the evaluation running.
+        self._decision_log: deque[dict[str, Any]] = deque(maxlen=SOLAR_DECISION_LOG_LENGTH)
+        self._decision_signature: tuple[Any, ...] | None = None
+        self._decision_state: str | None = None
+        self._strategy: str | None = None
         # Coalescing guard: `_on_site_update` fires often, but an evaluation awaits
         # `AutoExecutor`'s lock and `SolarController` is not reentrant, so a trigger arriving mid-
         # evaluation is dropped; the next site recompute retries.
@@ -667,6 +685,8 @@ class SolarExecutionCoordinator:
             # unknown: nothing is decided on them (the site's next recompute evaluates again).
             return
         settings = self._store.settings(self._charger_entry_id)
+        if settings.strategy in (STRATEGY_SOLAR, STRATEGY_HYBRID):
+            self._strategy = settings.strategy
         if settings.strategy not in (STRATEGY_SOLAR, STRATEGY_HYBRID):
             # Neither solar nor hybrid: go dormant; the active strategy owns the charger.
             if (
@@ -678,6 +698,9 @@ class SolarExecutionCoordinator:
                 # Solar itself was driving this charge (never while `held_by_plan`, when a plan window
                 # was running it, nor a charge the charger began by itself that solar took over).
                 await self._executor.async_solar_stop()
+                self._record_decision(state="off", action="stop", reason="strategy_left")
+            elif self._state is not None:
+                self._record_decision(state="off", action="hold", reason="strategy_left")
             self._solar = None
             self._took_over = False
             self._state = None
@@ -694,6 +717,9 @@ class SolarExecutionCoordinator:
                 and not self._state.held_by_plan
             ):
                 await self._executor.async_solar_stop()
+                self._record_decision(state="off", action="stop", reason="hybrid_satisfied")
+            else:
+                self._record_decision(state="off", action="hold", reason="hybrid_satisfied")
             self._solar = None
             self._took_over = False
             self._state = _satisfied_state(site)
@@ -711,6 +737,7 @@ class SolarExecutionCoordinator:
             self._solar = None
             self._took_over = False
             self._state = _person_stopped_state(site)
+            self._record_decision(state="off", action="hold", reason="person_stopped")
             if settings.strategy == STRATEGY_HYBRID:
                 await self._async_recalculate_hybrid_preview()
             site.notify_solar_surplus_changed()
@@ -727,6 +754,7 @@ class SolarExecutionCoordinator:
                 # left on); the observation below then decides from `off`.
                 await self._apply_verdict(ended)
                 self._log_transition(ended)
+                self._record_verdict(ended, held_by_plan=False)
         observation = _build_observation(
             site,
             self._charger_entry_id,
@@ -741,6 +769,7 @@ class SolarExecutionCoordinator:
             observation = replace(observation, unmeasured_start_allowed=True)
         verdict = self._solar.observe(observation)
         await self._keep_credit_backoff(self._solar)
+        await self._keep_ended(self._solar)
         if verdict.action in ("start", "stop") or verdict.state == "off":
             # Solar's own start, or no charge of solar's any more.
             self._took_over = False
@@ -754,6 +783,7 @@ class SolarExecutionCoordinator:
             verdict, site, held_by_plan=held_by_plan, basis=solar_basis(site, self._charger_entry_id, observation)
         )
         self._log_transition(verdict)
+        self._record_verdict(verdict, held_by_plan=held_by_plan)
         self._log_hybrid_handoff(held_by_plan)
         if settings.strategy == STRATEGY_HYBRID:
             await self._async_recalculate_hybrid_preview()
@@ -1036,6 +1066,7 @@ class SolarExecutionCoordinator:
             "SpotNav charger %s: a charge the charger began by itself is taken over by the sun's rules",
             self._charger_entry_id,
         )
+        self._record_decision(state="on", action="take_over", reason="take_over")
         observation = _build_observation(
             site,
             self._charger_entry_id,
@@ -1053,6 +1084,18 @@ class SolarExecutionCoordinator:
             minimum = config.min_current_a
             solar.adopt(now, requested_a=minimum, on_since=now - config.min_on_s)
             await self._executor.async_solar_set_current(int(minimum))
+            self._record_decision(
+                state="on",
+                action="set_current",
+                reason="take_over",
+                requested_a=minimum,
+                available_w=breakdown.available_w,
+                export_w=breakdown.export_w,
+                battery_w=breakdown.battery_w,
+                net_grid_w=breakdown.net_grid_w,
+                car_w=breakdown.car_w,
+                priority=breakdown.priority_effective,
+            )
 
     def _build_controller(self, site: SiteCapacityController) -> SolarController:
         solar = SolarController(self._solar_config(site))
@@ -1061,6 +1104,8 @@ class SolarExecutionCoordinator:
         until, next_s = self._controller.solar_credit_backoff
         remaining = None if until is None else (until - dt_util.utcnow()).total_seconds()
         solar.seed_credit_backoff(now, remaining, next_s)
+        # So does a charge the car ended by itself, and what it ended at (`_keep_ended`).
+        self._seed_ended(solar, now)
         if self._controller.charging:
             _adopt_running(solar, now=now)
         return solar
@@ -1076,6 +1121,119 @@ class SolarExecutionCoordinator:
         ):
             return
         await self._controller.async_set_solar_credit_backoff(until, next_s)
+
+    def _seed_ended(self, solar: SolarController, now: float) -> None:
+        """Restore the wait after a charge the car ended from the charger's saved record (`_keep_ended`).
+        Storage is untrusted: a field of the wrong kind reads as absent."""
+        record = self._controller.solar_car_ended
+        if not isinstance(record, dict):
+            return
+        cause = record.get("cause")
+        retry_at = _parse_aware(record.get("retry_at"))
+        remaining = None if retry_at is None else (retry_at - dt_util.utcnow()).total_seconds()
+        next_s = _positive_number(record.get("next_retry_s"))
+        solar.seed_ended_backoff(
+            now, cause if cause in ("vehicle_full", "car_stopped") else None, remaining, next_s
+        )
+        context = record.get("context")
+        if solar.ended is not None and isinstance(context, dict):
+            self._ended_context = (
+                _parse_aware(context.get("plugged_in_at")),
+                _number(context.get("soc_percent")),
+                _number(context.get("limit_percent")),
+                _number(context.get("target_percent")),
+            )
+        elif solar.ended is None:
+            self._ended_context = None
+
+    async def _keep_ended(self, solar: SolarController) -> None:
+        """Hand the wait after a charge the car ended to the charger, which keeps it across a rebuild and a
+        restart: why, when a stopped car is tried again, the next retry's length and what it ended at."""
+        cause, remaining, next_s = solar.ended_backoff(self._now())
+        retry_at = None if remaining is None else dt_util.utcnow() + timedelta(seconds=remaining)
+        context = self._ended_context if cause is not None else None
+        record: dict[str, Any] | None = {
+            "cause": cause,
+            "retry_at": None if retry_at is None else retry_at.isoformat(),
+            "next_retry_s": next_s,
+            "context": None
+            if context is None
+            else {
+                "plugged_in_at": None if context[0] is None else context[0].isoformat(),
+                "soc_percent": context[1],
+                "limit_percent": context[2],
+                "target_percent": context[3],
+            },
+        }
+        if cause is None and next_s == solar.config.ended_retry_s:
+            record = None
+        kept = self._controller.solar_car_ended
+        if _same_ended_record(kept, record):
+            return
+        await self._controller.async_set_solar_car_ended(record)
+
+    @property
+    def decision_log(self) -> list[dict[str, Any]]:
+        """A copy of this charger's bounded solar decision log, oldest first: plain values only."""
+        return [dict(entry) for entry in self._decision_log]
+
+    def _record_verdict(self, verdict: SolarVerdict, *, held_by_plan: bool) -> None:
+        """Log one verdict when it acts or changes something (`_record_decision`)."""
+        self._record_decision(
+            state=verdict.state,
+            action=verdict.action,
+            reason=verdict.reason,
+            requested_a=verdict.requested_a,
+            available_w=verdict.available_w,
+            export_w=verdict.export_w,
+            battery_w=verdict.battery_w,
+            net_grid_w=verdict.net_grid_w,
+            car_w=verdict.car_w,
+            priority=verdict.priority_effective,
+            held_by_plan=held_by_plan,
+        )
+
+    def _record_decision(
+        self,
+        *,
+        state: str,
+        action: str,
+        reason: str,
+        requested_a: float | None = None,
+        available_w: float | None = None,
+        export_w: float | None = None,
+        battery_w: float | None = None,
+        net_grid_w: float | None = None,
+        car_w: float | None = None,
+        priority: str | None = None,
+        held_by_plan: bool = False,
+    ) -> None:
+        """Append one entry to the decision log: an action (`start`, `stop`, `set_current`, `take_over`)
+        always, a `hold` only when its state, reason or plan hold differs from the last entry. `held_by_plan`
+        is a verdict a plan window kept from being carried out."""
+        signature = (state, action, reason, held_by_plan)
+        if action == "hold" and signature == self._decision_signature:
+            return
+        self._decision_log.append(
+            {
+                "time": dt_util.utcnow().isoformat(),
+                "strategy": self._strategy,
+                "from": self._decision_state,
+                "to": state,
+                "action": action,
+                "reason": reason,
+                "held_by_plan": held_by_plan,
+                "requested_a": requested_a,
+                "available_w": available_w,
+                "export_w": export_w,
+                "battery_w": battery_w,
+                "net_grid_w": net_grid_w,
+                "car_w": car_w,
+                "priority": priority,
+            }
+        )
+        self._decision_signature = signature
+        self._decision_state = state
 
     async def _apply_verdict(self, verdict: SolarVerdict) -> None:
         if verdict.action == "start":
@@ -1209,6 +1367,37 @@ class SolarExecutionCoordinator:
             verdict.battery_w,
             verdict.priority_effective,
         )
+
+
+def _parse_aware(value: Any) -> datetime | None:
+    """An ISO timestamp with a time zone, else `None`."""
+    parsed = dt_util.parse_datetime(value) if isinstance(value, str) else None
+    return parsed if parsed is not None and parsed.tzinfo is not None else None
+
+
+def _number(value: Any) -> float | None:
+    """A finite JSON number as a float, else `None`."""
+    if isinstance(value, bool) or not isinstance(value, (int, float)) or value != value:
+        return None
+    return float(value)
+
+
+def _positive_number(value: Any) -> float | None:
+    number = _number(value)
+    return number if number is not None and number > 0 else None
+
+
+def _same_ended_record(kept: dict[str, Any] | None, record: dict[str, Any] | None) -> bool:
+    """Whether two car-ended records say the same, a retry time within a second counting as the same (it
+    is recomputed from a monotonic clock on every evaluation)."""
+    if kept is None or record is None:
+        return kept is record
+    if {**kept, "retry_at": None} != {**record, "retry_at": None}:
+        return False
+    kept_at, new_at = _parse_aware(kept.get("retry_at")), _parse_aware(record.get("retry_at"))
+    if kept_at is None or new_at is None:
+        return kept_at is None and new_at is None
+    return abs((kept_at - new_at).total_seconds()) < 1.0
 
 
 def async_setup_solar_execution(

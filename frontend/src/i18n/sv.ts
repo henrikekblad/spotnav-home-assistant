@@ -603,6 +603,8 @@ export const sv: Record<keyof typeof en, string> = {
     "Bara administratörer kan ladda ner felsökningsinfo.",
   "debug.error.failed":
     "Felsökningsinfon kunde inte hämtas.",
+  "debug.cardOutdated":
+    "Kortet i den här webbläsaren eller appen är äldre än SpotNav. Ladda om sidan; i Home Assistants Companion-app: tvångsstoppa appen och öppna den igen.",
   "settings.readOnly":
     "Bara administratörer kan ändra inställningar. Du kan läsa dem här.",
   "settings.save":

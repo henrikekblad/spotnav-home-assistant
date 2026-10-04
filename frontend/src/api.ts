@@ -255,6 +255,14 @@ export async function getDebugBundle(hass: HomeAssistantLike): Promise<unknown> 
   });
 }
 
+/** Which card the integration serves (any signed-in user): `unknown` until decoded. */
+export async function getCardInfo(hass: HomeAssistantLike): Promise<unknown> {
+  return await call<unknown>(hass, {
+    type: "spotnav/get_card_info",
+    api_version: DEBUG_API_VERSION,
+  });
+}
+
 export async function getEntityConfig(hass: HomeAssistantLike, chargerId: string): Promise<unknown> {
   return await call<unknown>(hass, {
     type: "spotnav/get_entity_config",

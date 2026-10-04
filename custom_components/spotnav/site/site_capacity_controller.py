@@ -71,6 +71,7 @@ from ..const import (
     SITE_RECOMPUTE_INTERVAL_S,
     SOLAR_PRIORITY_CAR_FIRST,
 )
+from .site_history import SAMPLE_INTERVAL_S as HISTORY_SAMPLE_INTERVAL_S, SiteHistory
 from ..execution.controller import (
     CurrentRestore,
     REGULATED_STOPPED,
@@ -256,6 +257,9 @@ class SiteCapacityController:
         # Bounded in-memory log of what the regulator did, newest last; read through
         # `regulator_decision_log` by the diagnostics and the debug bundle, never by a decision.
         self._decision_log: deque[dict[str, Any]] = deque(maxlen=DECISION_LOG_LENGTH)
+        # The last hour, one sample a minute (`site/site_history.py`), for the debug bundle only.
+        self._history = SiteHistory()
+        self._history_cancel: Callable[[], None] | None = None
         # Logging-only memory of the last conflict list; `membership_conflicts` itself is always
         # live.
         self._last_logged_conflicts: list[SiteMembershipConflict] = self.membership_conflicts
@@ -322,11 +326,26 @@ class SiteCapacityController:
                 self.hass, cadence_entity_ids, self._async_state_reported
             )
         self._register_controller_listeners()
+        self._history_cancel = async_track_time_interval(
+            self.hass, self._async_sample_history, timedelta(seconds=HISTORY_SAMPLE_INTERVAL_S)
+        )
+
+    @callback
+    def _async_sample_history(self, _now: datetime) -> None:
+        self._history.sample(self)
+
+    @property
+    def history_samples(self) -> list[dict[str, Any]]:
+        """The last hour's minute samples, oldest first (`site/site_history.py`)."""
+        return self._history.samples
 
     async def async_shutdown(self) -> None:
         """Cancel the timer and listeners and any unfinished apply pass."""
         self._closed = True
         self._cancel_probe_timer()
+        if self._history_cancel is not None:
+            self._history_cancel()
+            self._history_cancel = None
         if self._timer_cancel is not None:
             self._timer_cancel()
             self._timer_cancel = None

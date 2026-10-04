@@ -27,6 +27,12 @@ export class FakeHass implements HomeAssistantLike {
    */
   readonly entityMessages: Record<string, unknown>[] = [];
   entityHandler: ((message: Record<string, unknown>) => Promise<unknown>) | null = null;
+  /**
+   * `spotnav/get_card_info`, read when the Settings popover opens, is answered on its own line too:
+   * `cardInfoHandler` answers it; the default never answers.
+   */
+  readonly cardInfoMessages: Record<string, unknown>[] = [];
+  cardInfoHandler: ((message: Record<string, unknown>) => Promise<unknown>) | null = null;
 
   callWS<T>(message: Record<string, unknown>): Promise<T> {
     return this.callWSFor(this, message);
@@ -37,6 +43,10 @@ export class FakeHass implements HomeAssistantLike {
     if (message["type"] === "spotnav/get_entity_config" || message["type"] === "spotnav/update_entity_config" || message["type"] === "spotnav/choose_vehicle_soc" || message["type"] === "spotnav/update_vehicle") {
       this.entityMessages.push(message);
       return (this.entityHandler === null ? new Promise<unknown>(() => undefined) : this.entityHandler(message)) as Promise<T>;
+    }
+    if (message["type"] === "spotnav/get_card_info") {
+      this.cardInfoMessages.push(message);
+      return (this.cardInfoHandler === null ? new Promise<unknown>(() => undefined) : this.cardInfoHandler(message)) as Promise<T>;
     }
     this.messages.push(message);
     this.callers.push(from);
