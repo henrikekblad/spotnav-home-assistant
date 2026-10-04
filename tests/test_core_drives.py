@@ -84,18 +84,22 @@ async def test_todays_code_acts_on_the_cores_verdict_when_it_drives(
     await controller.async_shutdown()
 
 
-async def test_the_cores_owner_is_taken_back_by_todays_two_fields(hass: HomeAssistant, timers: FakeScheduler) -> None:
-    """Today's `charge_origin` and `plan_charge` follow the core's one owner (a charger seen off clears
-    `plan_charge` at once and `charge_origin` only at the next notify pass; the core has one owner)."""
+async def test_the_cores_owner_is_taken_back_by_todays_two_fields_one_way(
+    hass: HomeAssistant, timers: FakeScheduler
+) -> None:
+    """A charge the core says nobody here owns clears today's `charge_origin` and `plan_charge`; an owner the core
+    names is never written back over them (today's code sets them where it starts or claims a charge, and forgets
+    `plan_charge` by itself when it sees the charger off)."""
     controller, executor, _starts = await _charger(hass, drives=True)
-    controller._charge_origin, controller._plan_charge = "plan_window", False  # noqa: SLF001 - today's drift
-    assert controller._take_core_owner(ChargeSession(owner="plan"))  # noqa: SLF001
-    assert (controller.charge_origin, controller._plan_charge) == ("plan_window", True)  # noqa: SLF001
+    controller._charge_origin, controller._plan_charge = "plan_window", False  # noqa: SLF001 - today's own forget
+    assert not controller._take_core_owner(ChargeSession(owner="plan"))  # noqa: SLF001
+    assert (controller.charge_origin, controller._plan_charge) == ("plan_window", False)  # noqa: SLF001
     assert not controller._take_core_owner(ChargeSession(owner="top_off"))  # noqa: SLF001
     assert controller._take_core_owner(ChargeSession(owner="charger_self"))  # noqa: SLF001
     assert (controller.charge_origin, controller._plan_charge) == (None, False)  # noqa: SLF001
-    assert controller._take_core_owner(ChargeSession(owner="person"))  # noqa: SLF001
-    assert controller.charge_origin == "manual"
+    assert not controller._take_core_owner(ChargeSession(owner="none"))  # noqa: SLF001
+    assert not controller._take_core_owner(ChargeSession(owner="person"))  # noqa: SLF001
+    assert controller.charge_origin is None
     await executor.async_shutdown()
     await controller.async_shutdown()
 
@@ -139,3 +143,45 @@ async def test_shadow_token_equality_confuses_nested_tokens() -> None:
     shadow.end(mid, ev.ConnectionUnknown())
     shadow.end(outer, ev.ConnectionUnknown())
     assert not shadow._stack  # noqa: SLF001
+
+
+@pytest.mark.parametrize("drives", [False, True])
+async def test_a_charge_seen_off_is_not_handed_back_to_the_plan_at_every_report(hass, timers, drives):
+    """Step 2: a pause whose stop failed, then the charge stops some other way. Today's code forgets the plan charge
+    (`_async_forget_plan_charge`, plan_charge False, origin kept); the core still says `plan`. Driving, its write-back
+    is one-way (it may clear today's owner fields, never set them back to an owner), so later reports neither hand
+    the charge back to the plan nor save again."""
+    from homeassistant.exceptions import HomeAssistantError
+    from custom_components.spotnav.execution import ownership_shadow
+    from custom_components.spotnav.planning.auto_settings import PAUSE_UNTIL_RESUMED
+    from .pause_world import pause_world, two_windows, SWITCH
+
+    default = ownership_shadow.CORE_OWNERSHIP_DEFAULT
+    ownership_shadow.CORE_OWNERSHIP_DEFAULT = drives
+    try:
+        world = await pause_world(hass, timers, plan=two_windows())
+
+        async def failing() -> bool:
+            raise HomeAssistantError("the charge control is unavailable")
+
+        world.controller.adapter.async_stop = failing
+        await world.executor.async_pause(PAUSE_UNTIL_RESUMED)
+        await world.switch("off")
+        saves = []
+        real = world.controller._async_save
+
+        async def counting(*a, **k):
+            saves.append(1)
+            return await real(*a, **k)
+
+        world.controller._async_save = counting
+        flips = []
+        for index in range(6):
+            hass.states.async_set(SWITCH, "off", {"report": index})
+            await hass.async_block_till_done()
+            flips.append(world.controller._plan_charge)
+        written = world.controller.ownership_shadow.counts["written_back"]
+        await world.shutdown()
+        assert written <= 1 and len(saves) <= 1, (drives, written, len(saves), flips)
+    finally:
+        ownership_shadow.CORE_OWNERSHIP_DEFAULT = default

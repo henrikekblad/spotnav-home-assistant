@@ -4199,13 +4199,17 @@ class ChargingController:
         self._solar_hold_probe = probe
 
     def _take_core_owner(self, session: ChargeSession) -> bool:
-        """When the core drives: today's two owner fields take the core's owner, so everything that reads them
-        (the re-arm, the stray stop, a claim, the sun's take-over, a balancing pause) follows it. Whether they
+        """When the core drives: a charge the core says nobody here owns clears today's two owner fields, so
+        everything that reads them (the re-arm, the stray stop, a claim, the sun's take-over, a balancing pause)
+        follows it. One-way: an owner is never written back. Today's code sets its fields where it starts or claims
+        a charge, and clears `plan_charge` on its own when it sees the charger off (`_async_forget_plan_charge`);
+        setting it back to the core's owner after every feed would undo that at every report. Whether they
         changed."""
-        origin, plan_charge = _CORE_OWNER_ORIGIN.get(session.owner, (None, False))
-        if (self._charge_origin, self._plan_charge) == (origin, plan_charge):
+        if session.owner in _CORE_OWNER_ORIGIN:
             return False
-        self._charge_origin, self._plan_charge = origin, plan_charge
+        if (self._charge_origin, self._plan_charge) == (None, False):
+            return False
+        self._charge_origin, self._plan_charge = None, False
         self._save_memory_soon()
         return True
 

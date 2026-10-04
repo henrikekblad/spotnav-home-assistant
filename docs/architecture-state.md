@@ -117,14 +117,17 @@ On:
   (`OwnershipShadow.verdict`). Each spawned task still checks its facts again before it sends anything.
 * A person's Stop takes the plug-in session the core decides, and a plug-in or an unplug leaves the manual pause the
   core decided for it.
-* After each feed today's two owner fields (`charge_origin`, `plan_charge`) take the core's one owner
-  (`ChargingController._take_core_owner`), so everything that reads them follows it.
+* After each feed a charge the core says nobody here owns clears today's two owner fields (`charge_origin`,
+  `plan_charge`; `ChargingController._take_core_owner`), so everything that reads them follows it. One-way: an
+  owner is never written back over them. Today's code sets them where it starts or claims a charge and forgets
+  `plan_charge` by itself when it sees the charger off; writing the core's owner back after every feed would undo
+  that at every report.
 * An event whose facts are all known up front (a plug-in or an unplug, a person's Start or Stop) is decided when it
   begins, and a verdict a decision point asks for is that feed's decision at once: what happens inside it (a task
   Home Assistant starts eagerly) is decided after it.
 
 The shadow still compares, before the owner is taken back, and counts each decision where today's rule on the same
-state would have chosen otherwise (`verdict_differs`) and each owner it wrote over today's fields (`written_back`).
+state would have chosen otherwise (`verdict_differs`) and each time it cleared today's fields (`written_back`).
 `SPOTNAV_CORE_OWNERSHIP=1` runs the whole test suite with the option on. Not yet the core's: the persisted record
 (today's keys are still what is saved), load balancing's memory of the charge it holds, the hold's memory and the
 car-ended record (all read from today's fields at each feed).
@@ -137,6 +140,6 @@ car-ended record (all read from today's fields at each feed).
   changes nothing).
 * `tests/test_core_replay.py`: replay of a synthetic bundle and of a real charger's recording, and the shadow's own
   guarantees.
-* `tests/test_core_drives.py`: the option, today's code following the core's verdict, the owner taken back.
-* Every test runs with the shadow (`tests/conftest.py`, `ownership_shadow_agrees`) and fails on a disagreement
-  nobody explained (`tests/shadow_known.py`).
+* `tests/test_core_drives.py`: the option, today's code following the core's verdict, the owner cleared one-way.
+* Every test runs with the shadow (`tests/conftest.py`, `ownership_shadow_agrees`) and fails on a disagreement or a
+  drift nobody explained (`tests/shadow_known.py`).

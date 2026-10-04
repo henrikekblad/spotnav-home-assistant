@@ -188,8 +188,8 @@ class OwnershipShadow:
     ) -> None:
         SHADOWS.add(self)
         self._legacy = legacy
-        # Step 2: the core drives (today's code acts on `verdict` and takes the core's owner back, `writer`), or it
-        # only shadows (today's state stays the truth after a comparison).
+        # Step 2: the core drives (today's code acts on `verdict`, and a charge the core says nobody owns clears
+        # today's owner fields, `writer`), or it only shadows (today's state stays the truth after a comparison).
         self.drives = drives
         self._writer = writer
         self._now = now if now is not None else dt_util.utcnow
@@ -513,7 +513,7 @@ class OwnershipShadow:
         self._keep_quiet(record)
         self._disagree(where, differs, core_kinds, legacy)
         if self.drives:
-            # The core's state is the truth: today's code takes its owner back (`_write_back`).
+            # The core's state is the truth (today's owner fields are cleared one-way, `_write_back`).
             return
         # Today's state stays the truth.
         keep = self.session
