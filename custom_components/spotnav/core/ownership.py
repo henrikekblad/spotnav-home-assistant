@@ -466,7 +466,11 @@ def _person_hold(session: ChargeSession, now: datetime, *, control_on: bool, sta
     """C7 and R5: under a person's Stop a charge the charger begins is stopped, with a gap and a give-up."""
     if not session.held_off_by_person:
         return _reset_person_hold(session), ()
-    if session.hold_stop_pending or not control_on or start_pending or session.hold_gave_up:
+    if session.hold_stop_pending or not control_on or session.hold_gave_up:
+        return session, ()
+    if start_pending or session.start_pending:
+        # A start on its way (a person's Start under their own Stop) is never stopped: the report of the charge
+        # may come before the start's result does, and today's code reads no start pending once it charges.
         return session, ()
     tried_at = session.hold_tried_at
     if tried_at is not None and (now - tried_at).total_seconds() < PERSON_HOLD_STOP_GAP_S:

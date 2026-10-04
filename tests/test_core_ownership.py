@@ -298,6 +298,17 @@ def test_a_start_on_its_way_is_never_stopped_under_a_person_stop() -> None:
     assert kinds(commands) == []
 
 
+def test_person_start_under_their_stop_is_not_stopped_by_c7_while_the_report_beats_the_result() -> None:
+    """A person's Start under their Stop: the charger reports charging before the start's result comes back. The
+    controller's `_shadow_start_pending` reads False once the charger charges, so the event says start_pending=False;
+    the core's own pending Start keeps C7 from stopping the person's own Start."""
+    s = ChargeSession(plugged=True, manual=ManualPause("stop", "plug_in"))
+    s, cmds = decide(s, ev.PersonStart(connected=True), T0)
+    assert [c.kind for c in cmds] == ["start"]
+    s, cmds = decide(s, ev.ChargerReportedOn(charging=True, was_on=False, start_pending=False), T0)
+    assert all(c.kind != "stop" for c in cmds), cmds
+
+
 def test_the_stops_under_a_person_stop_give_up_after_three_in_ten_minutes() -> None:
     """R5 cycling: every stop counts, taken or not; then the give-up and its notification."""
     session = ChargeSession(manual=STOP, plugged=True)
