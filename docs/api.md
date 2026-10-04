@@ -219,9 +219,13 @@ question; a three-phase charge starts the count over).
 (`entity`: `null` when a direct site's total grid power is not set, else its entity that has no fresh
 reading) or `solar_battery_unreadable` (`entity`); while solar runs, the same line follows the headline.
 `solar_charger_current_missing` (`entity`: `null` when not set, else the unreadable entity) follows the
-headline while the charger's own measured current is unknown and solar runs blind at the minimum current,
+headline while the charger's own measured current is unknown and solar runs blind at the minimum current
+(the unreadable case only while the charge is on or a start is pending: a charger that is not charging
+reports no current by nature),
 and `solar_site_incomplete` (`phases`) while a direct site's phase measurement is unusable and solar runs
-on the total grid power only. `site_meter_unavailable` (`entities`, `cause`: `inverter_standby` or
+on the total grid power only. Every line naming an entity also carries the additive `entity_name` (its friendly name, the id when it has
+none; `entity_names`, parallel to `entities`, on `site_meter_unavailable`), which clients prefer to the id.
+`site_meter_unavailable` (`entities`, `cause`: `inverter_standby` or
 `meter_unavailable`) replaces `site_measurement_problem` when the phases without a value are the meter's
 sensors reading `unavailable`/`unknown` together: every phase at once, or a known inverter integration's
 (SolaX, Huawei, SolarEdge, Fronius, ...), which go unavailable when the inverter is in standby at night.

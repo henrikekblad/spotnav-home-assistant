@@ -823,7 +823,11 @@ CASES: list[tuple[str, StatusFacts, str, list[dict[str, Any]]]] = [
             {"code": "waiting_for_tomorrow", "params": {}},
             {
                 "code": "site_meter_unavailable",
-                "params": {"entities": ["sensor.solax_grid_current_l1"], "cause": "inverter_standby"},
+                "params": {
+                    "entities": ["sensor.solax_grid_current_l1"],
+                    "cause": "inverter_standby",
+                    "entity_names": ["sensor.solax_grid_current_l1"],
+                },
             },
         ],
     ),
@@ -840,14 +844,14 @@ CASES: list[tuple[str, StatusFacts, str, list[dict[str, Any]]]] = [
         "notice",
         [
             {"code": "waiting_for_tomorrow", "params": {}},
-            {"code": "site_meter_unavailable", "params": {"entities": ["sensor.meter"], "cause": "meter_unavailable"}},
+            {"code": "site_meter_unavailable", "params": {"entities": ["sensor.meter"], "cause": "meter_unavailable", "entity_names": ["sensor.meter"]}},
         ],
     ),
     (
         "solar off for want of a total grid power says to set it, in place of no usable reading",
         base(strategy="solar", solar=SolarFacts("off", "no_basis_off", basis_problem="grid_power_not_set")),
         "notice",
-        [{"code": "solar_no_grid_power", "params": {"entity": None}}],
+        [{"code": "solar_no_grid_power", "params": {"entity": None, "entity_name": None}}],
     ),
     (
         "solar off for an unreadable total grid power names its entity",
@@ -858,7 +862,7 @@ CASES: list[tuple[str, StatusFacts, str, list[dict[str, Any]]]] = [
             ),
         ),
         "notice",
-        [{"code": "solar_no_grid_power", "params": {"entity": "sensor.net"}}],
+        [{"code": "solar_no_grid_power", "params": {"entity": "sensor.net", "entity_name": "sensor.net"}}],
     ),
     (
         "solar holding on in its grace with an unreadable battery keeps its headline and says why",
@@ -871,7 +875,7 @@ CASES: list[tuple[str, StatusFacts, str, list[dict[str, Any]]]] = [
         "notice",
         [
             {"code": "solar_charging", "params": {"requested_a": 6.0}},
-            {"code": "solar_battery_unreadable", "params": {"entity": "sensor.bat"}},
+            {"code": "solar_battery_unreadable", "params": {"entity": "sensor.bat", "entity_name": "sensor.bat"}},
         ],
     ),
     (
@@ -885,7 +889,7 @@ CASES: list[tuple[str, StatusFacts, str, list[dict[str, Any]]]] = [
         "notice",
         [
             {"code": "solar_waiting_for_sun", "params": {}},
-            {"code": "solar_charger_current_missing", "params": {"entity": None}},
+            {"code": "solar_charger_current_missing", "params": {"entity": None, "entity_name": None}},
             {"code": "solar_site_incomplete", "params": {"phases": ["L1"]}},
         ],
     ),
@@ -893,6 +897,7 @@ CASES: list[tuple[str, StatusFacts, str, list[dict[str, Any]]]] = [
         "solar with an unreadable charger current names its entity",
         base(
             strategy="solar",
+            charging=True,
             solar=SolarFacts(
                 "on",
                 "charger_measurement_missing",
@@ -904,7 +909,42 @@ CASES: list[tuple[str, StatusFacts, str, list[dict[str, Any]]]] = [
         "notice",
         [
             {"code": "solar_charging", "params": {"requested_a": 6.0}},
-            {"code": "solar_charger_current_missing", "params": {"entity": "sensor.easee_current"}},
+            {
+                "code": "solar_charger_current_missing",
+                "params": {"entity": "sensor.easee_current", "entity_name": "sensor.easee_current"},
+            },
+        ],
+    ),
+    (
+        "an unreadable charger current while the charger is not charging says nothing",
+        base(
+            strategy="solar",
+            solar=SolarFacts(
+                "off", None, charger_current="unreadable", charger_current_entity="sensor.halo_current"
+            ),
+        ),
+        "normal",
+        [{"code": "solar_waiting_for_sun", "params": {}}],
+    ),
+    (
+        "an unreadable charger current with a start pending is named by its friendly name",
+        base(
+            strategy="solar",
+            solar=SolarFacts(
+                "arming",
+                None,
+                charger_current="unreadable",
+                charger_current_entity="sensor.halo_current",
+                charger_current_entity_name="HALO current",
+            ),
+        ),
+        "notice",
+        [
+            {"code": "solar_arming", "params": {}},
+            {
+                "code": "solar_charger_current_missing",
+                "params": {"entity": "sensor.halo_current", "entity_name": "HALO current"},
+            },
         ],
     ),
     (

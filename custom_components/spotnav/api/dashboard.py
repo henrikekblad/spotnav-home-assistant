@@ -20,6 +20,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field, replace
 from datetime import date, datetime, timedelta
+from collections.abc import Mapping
 from typing import Any, Callable, Final, Iterable, Sequence
 
 import voluptuous as vol
@@ -427,6 +428,8 @@ class CapturedDashboard:
     charger_priority: str | None = None
     #: The notify services the settings' `notifications.available` lists (`notifications/targets.py`).
     notify_available: tuple[tuple[str, str], ...] = ()
+    #: Friendly names of the entities a status line names (`entity_id -> name`), where they have one.
+    entity_names: tuple[tuple[str, str], ...] = ()
 
 
 def capture_target(controller: ChargingController | None) -> CapturedTarget | None:
@@ -993,7 +996,25 @@ def capture_dashboard(
         starting_up=starting_up,
         charger_priority=capture_charger_priority(hass, entry),
         notify_available=available_targets(hass),
+        entity_names=_status_entity_names(hass, site),
     )
+
+
+def _status_entity_names(hass: HomeAssistant, site: CapturedSite | None) -> tuple[tuple[str, str], ...]:
+    """The friendly names of the entities the status lines name: solar's basis and charger current, and
+    the meter's unavailable sensors."""
+    if site is None:
+        return ()
+    solar = site.solar_state or {}
+    ids = [solar.get("basis_entity"), solar.get("charger_current_entity")]
+    if site.measurement_problem is not None:
+        ids.extend(site.measurement_problem.unavailable_entities)
+    names: dict[str, str] = {}
+    for entity_id in ids:
+        name = _entity_name(hass, entity_id)
+        if name:
+            names[entity_id] = name
+    return tuple(names.items())
 
 
 def capture_charger_priority(hass: HomeAssistant, entry: ConfigEntry) -> str | None:
@@ -1837,7 +1858,9 @@ def serialize_vehicle(vehicle: CapturedVehicle) -> dict[str, Any]:
     }
 
 
-def _measurement_facts(problem: MeasurementProblem | None) -> SiteMeasurementFacts | None:
+def _measurement_facts(
+    problem: MeasurementProblem | None, names: Mapping[str, str]
+) -> SiteMeasurementFacts | None:
     if problem is None:
         return None
     no_value = problem.of("no_value")
@@ -1847,6 +1870,7 @@ def _measurement_facts(problem: MeasurementProblem | None) -> SiteMeasurementFac
         stale_phases=tuple(item.phase for item in problem.of("stale")),
         max_age_s=finite_number(problem.max_age_s),
         unavailable_entities=problem.unavailable_entities,
+        unavailable_entity_names=tuple(names.get(entity) for entity in problem.unavailable_entities),
         inverter=problem.inverter,
     )
 
@@ -1857,6 +1881,7 @@ def status_facts(capture: CapturedDashboard) -> StatusFacts:
     """
     settings = capture.settings
     snapshot = capture.snapshot
+    names = dict(capture.entity_names)
     planning = None
     if snapshot is not None:
         planning = PlanningFacts(
@@ -1902,6 +1927,8 @@ def status_facts(capture: CapturedDashboard) -> StatusFacts:
             basis_entity=_text(basis.get("basis_entity")),
             charger_current=_text(basis.get("charger_current")),
             charger_current_entity=_text(basis.get("charger_current_entity")),
+            basis_entity_name=names.get(_text(basis.get("basis_entity")) or ""),
+            charger_current_entity_name=names.get(_text(basis.get("charger_current_entity")) or ""),
             site_incomplete_phases=tuple(str(phase) for phase in basis.get("site_incomplete_phases") or ()),
         )
     elif state is not None and strategy == STRATEGY_HYBRID:
@@ -1958,7 +1985,7 @@ def status_facts(capture: CapturedDashboard) -> StatusFacts:
             stop_reading_age_s=capture.target.stop_reading_age_s,
             unverifiable_reason=capture.target.unverifiable_reason,
         ),
-        site_measurement=None if site is None else _measurement_facts(site.measurement_problem),
+        site_measurement=None if site is None else _measurement_facts(site.measurement_problem, names),
         duplicate_chargers=capture.duplicates,
         starting_up=capture.starting_up.active,
         load_balancing_capable=bool(capture.charger.capability_map().get("load_balancing")),

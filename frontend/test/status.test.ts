@@ -82,6 +82,19 @@ describe("the status line renders the block and nothing else", () => {
     expect(statusText(grid, format("en"), NOW)).toBe("Solar · no grid power reading — set Total grid power under Site entities");
     const unreadable = block(statusLine("solar_no_grid_power", { entity: "sensor.net" }));
     expect(statusText(unreadable, format("sv"), NOW)).toBe("Sol · nätets totala effekt (sensor.net) har ingen färsk mätning");
+    // A friendly name is shown in place of the raw id, in the lines that name an entity.
+    const named = block(
+      statusLine("solar_charger_current_missing", { entity: "sensor.halo_current", entity_name: "HALO current" }),
+      statusLine("site_meter_unavailable", {
+        entities: ["sensor.a", "sensor.b"],
+        cause: "meter_unavailable",
+        entity_names: ["Meter A", "Meter B"],
+      }),
+    );
+    const namedText = statusText(named, format("en"), NOW);
+    expect(namedText).toContain("HALO current");
+    expect(namedText).toContain("Meter A, Meter B");
+    expect(namedText).not.toContain("sensor.");
     for (const language of ["da", "fi", "nb"] as const) {
       expect(statusText(field, format(language), NOW)).not.toMatch(/\{\w+\}/u);
     }

@@ -163,12 +163,15 @@ STATUS_CODES: Final[dict[str, tuple[str, tuple[str, ...]]]] = {
     "solar_waiting_for_sun": (TONE_NORMAL, ()),
     # Solar has no basis because a direct site's total grid power is not set (`entity` null) or its
     # `entity` has no fresh reading; in place of solar_no_reading_waiting/_stopped.
-    "solar_no_grid_power": (TONE_NOTICE, ("entity",)),
+    "solar_no_grid_power": (TONE_NOTICE, ("entity", "entity_name")),
     # Solar has no basis because the configured battery power `entity` has no fresh reading.
-    "solar_battery_unreadable": (TONE_NOTICE, ("entity",)),
+    "solar_battery_unreadable": (TONE_NOTICE, ("entity", "entity_name")),
     # The charger's own measured current is not set (`entity` null) or its `entity` does not read: solar
-    # runs blind, starting only at the minimum current. A fact beside the solar headline.
-    "solar_charger_current_missing": (TONE_NOTICE, ("entity",)),
+    # runs blind, starting only at the minimum current. A fact beside the solar headline. The unreadable
+    # case is shown only while the charge is on or a start is pending: a charger that is not charging
+    # (an OCPP connector Available/Preparing/Finishing/Suspended) reports no current by nature.
+    # `entity_name` is the entity's friendly name (the id when it has none), `null` with `entity`.
+    "solar_charger_current_missing": (TONE_NOTICE, ("entity", "entity_name")),
     # The site's measurement is unusable on `phases` (L1/L2/L3), and solar runs on the total grid power
     # only. A fact beside the solar headline.
     "solar_site_incomplete": (TONE_NORMAL, ("phases",)),
@@ -219,7 +222,8 @@ STATUS_CODES: Final[dict[str, tuple[str, tuple[str, ...]]]] = {
     # In place of site_measurement_problem when the meter's sensors (`entities`) are unavailable together:
     # `cause` is `inverter_standby` for a known inverter integration's sensors (it may be in standby, as at
     # night), else `meter_unavailable` (every phase at once).
-    "site_meter_unavailable": (TONE_NOTICE, ("entities", "cause")),
+    # `entity_names` is the friendly names parallel to `entities` (an id when it has no name).
+    "site_meter_unavailable": (TONE_NOTICE, ("entities", "cause", "entity_names")),
     # Another SpotNav charger entry, titled `other`, is the same physical charger as this one.
     "duplicate_charger": (TONE_NOTICE, ("other",)),
 }
@@ -271,6 +275,9 @@ class SolarFacts:
     #: `not_set` or `unreadable` while the charger's own current is unknown, and its entity.
     charger_current: str | None = None
     charger_current_entity: str | None = None
+    #: Friendly names of `basis_entity` and `charger_current_entity` (`None`: unnamed, the id shows).
+    basis_entity_name: str | None = None
+    charger_current_entity_name: str | None = None
     #: The phases of an unusable site measurement solar runs without.
     site_incomplete_phases: tuple[str, ...] = ()
 
@@ -321,6 +328,8 @@ class SiteMeasurementFacts:
     #: The meter's sensors that are unavailable together (`site/measurement_problem.py`), and whether
     #: they are a known inverter integration's.
     unavailable_entities: tuple[str, ...] = ()
+    #: Friendly names parallel to `unavailable_entities` (`None`: unnamed, the id shows).
+    unavailable_entity_names: tuple[str | None, ...] = ()
     inverter: bool = False
 
 
@@ -483,17 +492,26 @@ def _plan_facts(
     return lines
 
 
+def _named(entity: str | None, name: str | None) -> str | None:
+    """The friendly name of an entity, its id when it has none, `None` with no entity."""
+    return None if entity is None else (name or entity)
+
+
 def _solar_basis_line(solar: SolarFacts) -> dict[str, Any] | None:
     """The specific reason solar has no basis, when one is known."""
     if solar.basis_problem in ("grid_power_not_set", "grid_power_unreadable"):
         entity = solar.basis_entity if solar.basis_problem == "grid_power_unreadable" else None
-        return _line("solar_no_grid_power", entity=entity)
+        return _line("solar_no_grid_power", entity=entity, entity_name=_named(entity, solar.basis_entity_name))
     if solar.basis_problem == "battery_unreadable":
-        return _line("solar_battery_unreadable", entity=solar.basis_entity)
+        return _line(
+            "solar_battery_unreadable",
+            entity=solar.basis_entity,
+            entity_name=_named(solar.basis_entity, solar.basis_entity_name),
+        )
     return None
 
 
-def _solar_lines(solar: SolarFacts) -> list[dict[str, Any]]:
+def _solar_lines(solar: SolarFacts, *, charging: bool) -> list[dict[str, Any]]:
     """The solar headline and the facts about its basis: the specific reason in place of "no usable
     reading" while solar is off for it (beside any other state), then the charger's own current missing and
     the site phases it runs without."""
@@ -505,9 +523,19 @@ def _solar_lines(solar: SolarFacts) -> list[dict[str, Any]]:
         lines.append(_solar_line(solar))
         if basis is not None:
             lines.append(basis)
-    if solar.charger_current in ("not_set", "unreadable"):
+    # Unreadable matters only with the charge on or a start pending; a charger that is not charging has
+    # no current to report. Not set is a configuration fact, always shown.
+    if solar.charger_current == "not_set" or (
+        solar.charger_current == "unreadable" and (charging or solar.state == "arming")
+    ):
         entity = solar.charger_current_entity if solar.charger_current == "unreadable" else None
-        lines.append(_line("solar_charger_current_missing", entity=entity))
+        lines.append(
+            _line(
+                "solar_charger_current_missing",
+                entity=entity,
+                entity_name=_named(entity, solar.charger_current_entity_name),
+            )
+        )
     if solar.site_incomplete_phases:
         lines.append(_line("solar_site_incomplete", phases=list(solar.site_incomplete_phases)))
     return lines
@@ -662,6 +690,11 @@ def _notices(facts: StatusFacts) -> list[dict[str, Any]]:
                 "site_meter_unavailable",
                 entities=list(measurement.unavailable_entities),
                 cause="inverter_standby" if measurement.inverter else "meter_unavailable",
+                entity_names=[
+                    (measurement.unavailable_entity_names[i] if i < len(measurement.unavailable_entity_names) else None)
+                    or entity
+                    for i, entity in enumerate(measurement.unavailable_entities)
+                ],
             )
         )
     elif measurement is not None and (measurement.no_value_phases or measurement.stale_phases):
@@ -787,7 +820,7 @@ def compose_status(facts: StatusFacts) -> dict[str, Any]:
         if facts.charging:
             lines.append(_line("charging_now", until=None))
     elif facts.solar is not None:
-        lines.extend(_solar_lines(facts.solar))
+        lines.extend(_solar_lines(facts.solar, charging=facts.charging))
         lines.extend(_person_stop_lines(facts))
         lines.extend(_price_wait_lines(facts))
     elif facts.hybrid is not None:

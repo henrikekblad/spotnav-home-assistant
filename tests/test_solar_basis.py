@@ -192,7 +192,7 @@ async def test_the_field_case_starts_blind_at_the_minimum_and_names_what_is_miss
         "solar_charger_current_missing",
         "solar_site_incomplete",
     ]
-    assert lines[1]["params"] == {"entity": None} and lines[2]["params"] == {"phases": ["L1"]}
+    assert lines[1]["params"] == {"entity": None, "entity_name": None} and lines[2]["params"] == {"phases": ["L1"]}
 
     _set_total(hass, TOTAL, -1500.0)
     clock.value = 300.0
@@ -235,7 +235,7 @@ async def test_an_unreadable_total_is_named_in_place_of_no_usable_reading(hass: 
 
     assert coordinator.state.reason == "no_basis_off"
     assert coordinator.state.basis.problem == "grid_power_unreadable"
-    assert _codes(hass, charger)[0] == {"code": "solar_no_grid_power", "params": {"entity": TOTAL}}
+    assert _codes(hass, charger)[0] == {"code": "solar_no_grid_power", "params": {"entity": TOTAL, "entity_name": "grid total w"}}
 
 
 async def test_a_total_that_is_not_set_says_to_set_it(hass: HomeAssistant) -> None:
