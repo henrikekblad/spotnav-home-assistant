@@ -27,6 +27,7 @@ from __future__ import annotations
 
 import asyncio
 from collections import deque
+import weakref
 from collections.abc import Callable, Iterable
 from dataclasses import dataclass, replace
 from datetime import datetime
@@ -63,10 +64,17 @@ FIELD_MANUAL: Final = "manual"
 FIELD_SPAN: Final = "span_pause"
 COMPARED: Final = (FIELD_OWNER, FIELD_MANUAL, FIELD_SPAN)
 INTENT: Final = (FIELD_MANUAL, FIELD_SPAN)
+#: Events whose commands' results come back later, as events of their own (a report's or a timer's spawned stop).
+_RESULTS_LATER: Final = frozenset({"charger_reported_on", "charger_reported_off", "timer"})
 #: Who hears every disagreement, drift and shadow error (`kind`, record): the test suite's collector.
 LISTENERS: list[Callable[[str, dict[str, Any]], None]] = []
 #: What every shadow in this process counted (a test run's summary).
 TOTALS: dict[str, int] = {}
+#: Whether the core drives ownership for a charger whose entry data does not say (`const.CONF_CORE_OWNERSHIP`). Off:
+#: today's code decides and the core only shadows it. A test run turns it on to run the suite in both modes.
+CORE_OWNERSHIP_DEFAULT = False
+#: Every shadow alive (a test's dump of what each recorded).
+SHADOWS: weakref.WeakSet[OwnershipShadow] = weakref.WeakSet()
 
 
 @dataclass(frozen=True)
@@ -89,6 +97,11 @@ class ShadowToken:
     outermost: bool
     ok: bool = True
     lined_up: bool = True
+    #: When the core drives: the event decided at `begin` (its facts known up front), the session it was decided
+    #: from, and the commands it asked for. `end` then only feeds back the result.
+    early: Event | None = None
+    early_pre: ChargeSession | None = None
+    early_commands: tuple[Command, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -114,9 +127,19 @@ class NullShadow:
     """A shadow that does nothing, for a boundary built around something that is not a `ChargingController`."""
 
     depth = 0
+    drives = False
 
-    def begin(self) -> ShadowToken:
+    def begin(self, early: Event | None = None) -> ShadowToken:
         return ShadowToken(None, False, ok=False)
+
+    def verdict(self, event: Event) -> None:
+        return None
+
+    def alone(self, own: int = 0) -> bool:
+        return True
+
+    def choose(self, site: str, today: bool, core: bool) -> bool:
+        return core
 
     def end(self, token: ShadowToken, event: Event, **_kwargs: Any) -> None:
         return
@@ -151,12 +174,25 @@ def _compact(session: ChargeSession) -> dict[str, Any]:
 class OwnershipShadow:
     """The core in shadow mode for one charger. `legacy` reads today's state as a session; `now` is the clock."""
 
-    def __init__(self, legacy: Callable[[], ChargeSession], *, now: Callable[[], datetime] | None = None) -> None:
+    def __init__(
+        self,
+        legacy: Callable[[], ChargeSession],
+        *,
+        now: Callable[[], datetime] | None = None,
+        drives: bool = False,
+        writer: Callable[[ChargeSession], bool] | None = None,
+    ) -> None:
+        SHADOWS.add(self)
         self._legacy = legacy
+        # Step 2: the core drives (today's code acts on `verdict` and takes the core's owner back, `writer`), or it
+        # only shadows (today's state stays the truth after a comparison).
+        self.drives = drives
+        self._writer = writer
         self._now = now if now is not None else dt_util.utcnow
         self.session = ChargeSession()
-        # Open feeds per asyncio task (`None`: a callback outside any task).
+        # Open feeds per asyncio task (`None`: a callback outside any task), and the tokens themselves.
         self._open: dict[object, int] = {}
+        self._stack: dict[object, list[ShadowToken]] = {}
         # A plug-in or an unplug changed the core's intent; today's boundary writes it later (`check`).
         self._intent_deferred = False
         # Feeds that ended while another task's was open, decided after it (`end`).
@@ -168,6 +204,8 @@ class OwnershipShadow:
             "drift": 0,
             "skipped": 0,
             "observed": 0,
+            "written_back": 0,
+            "verdict_differs": 0,
             "errors": 0,
         }
         self.disagreements: deque[dict[str, Any]] = deque(maxlen=DISAGREEMENT_RING)
@@ -181,6 +219,12 @@ class OwnershipShadow:
         """How many feeds the running task has open."""
         return self._open.get(_task_key(), 0)
 
+    def alone(self, own: int = 0) -> bool:
+        """Whether no feed is open but the running task's own `own` ones: the core's session then says what it
+        decided so far, with nothing queued behind another feed."""
+        key = _task_key()
+        return self._open.get(key, 0) <= own and not self._others_open(key)
+
     def _others_open(self, key: object) -> bool:
         # A task that ended with a feed open (cancelled between `begin` and `end`) holds nothing any more.
         for other in [other for other in self._open if other is not None and other is not key]:
@@ -189,26 +233,48 @@ class OwnershipShadow:
                 self._open.pop(other, None)
         return any(count > 0 for other, count in self._open.items() if other is not key)
 
-    def begin(self) -> ShadowToken:
-        """Before today's code acts. Never raises."""
+    def begin(self, early: Event | None = None) -> ShadowToken:
+        """Before today's code acts. Never raises. When the core drives, an `early` event (one whose facts are all
+        known before anything acts: a plug-in, a person's Start or Stop) is decided here, so what its effects do
+        meanwhile (a task Home Assistant starts eagerly inside it) is decided after it."""
         key = _task_key()
         depth = self._open.get(key, 0)
         others = self._others_open(key)
         self._open[key] = depth + 1
         if depth:
-            return ShadowToken(key, False)
-        if others:
+            token = ShadowToken(key, False)
+        elif others:
             # Mid-way through another task's feed (a task Home Assistant started eagerly inside it, or one that
             # landed while it awaited a command): today's state is not to be read as a whole now.
-            return ShadowToken(key, True, lined_up=False)
+            token = ShadowToken(key, True, lined_up=False)
+        else:
+            try:
+                self._line_up()
+            except Exception:  # noqa: BLE001 - the shadow never raises into the real path
+                self._error("begin")
+                return ShadowToken(key, True, ok=False)
+            token = ShadowToken(key, True)
+        self._stack.setdefault(key, []).append(token)
+        if early is not None and self.drives:
+            self._decide_early(token, early)
+        return token
+
+    def _decide_early(self, token: ShadowToken, event: Event) -> tuple[Command, ...]:
         try:
-            self._line_up()
-        except Exception:  # noqa: BLE001 - the shadow never raises into the real path
-            self._error("begin")
-            return ShadowToken(key, True, ok=False)
-        return ShadowToken(key, True)
+            token.early_pre = self.session
+            self.session, token.early_commands = decide(self.session, event, self._now())
+            token.early = event
+        except Exception:  # noqa: BLE001 - decided at `end` as ever
+            self._error("begin_early")
+        return token.early_commands
 
     def _close(self, token: ShadowToken) -> None:
+        stack = self._stack.get(token.key)
+        if stack is not None:
+            if token in stack:
+                stack.remove(token)
+            if not stack:
+                self._stack.pop(token.key, None)
         count = self._open.get(token.key, 0) - 1
         if count > 0:
             self._open[token.key] = count
@@ -220,6 +286,10 @@ class OwnershipShadow:
 
     def cancel(self, token: ShadowToken) -> None:
         """A `begin` whose happening turned out to be none (nothing to feed)."""
+        if token.early is not None:
+            # Decided already, and acted on: it is fed as it was decided.
+            self.end(token, token.early)
+            return
         self._close(token)
         if self._queue and self._idle():
             try:
@@ -334,8 +404,12 @@ class OwnershipShadow:
 
     def _decide(self, item: _Feed) -> tuple[dict[str, Any], tuple[str, ...]]:
         now = self._now()
-        pre = self.session
-        session, commands = decide(pre, item.event, now)
+        if item.token.early is not None and item.token.early_pre is not None:
+            # Decided at `begin`: only its result is new.
+            pre, session, commands = item.token.early_pre, self.session, item.token.early_commands
+        else:
+            pre = self.session
+            session, commands = decide(pre, item.event, now)
         acted = next((command for command in commands if command.kind in ("start", "stop")), None)
         result: CommandResult | None = None
         if item.outcome is not None and acted is not None:
@@ -346,6 +420,10 @@ class OwnershipShadow:
                 balancing_held=item.outcome.balancing_held,
                 unobserved=item.outcome.unobserved,
             )
+            session, _ = decide(session, result, now)
+        elif acted is not None and item.event.kind not in _RESULTS_LATER:
+            # The feed is over and today's code sent nothing: the command the core asked for did not happen.
+            result = CommandResult(command=acted.kind, reason=getattr(acted, "reason", ""), executed=False)
             session, _ = decide(session, result, now)
         self.session = session
         self._count("events")
@@ -386,9 +464,14 @@ class OwnershipShadow:
         }
         if record is not None:
             record["today_after"] = {name: _field(today, name) for name in COMPARED}
+        if self.drives:
+            self._write_back(self._today_fields())
         if not differs and core_kinds == legacy:
             return
         self._disagree(where, differs, core_kinds, legacy)
+        if self.drives:
+            # The core's state is the truth: today's code takes its owner back (`_write_back`).
+            return
         # Today's state stays the truth.
         keep = self.session
         self.session = replace(today, pending=keep.pending)
@@ -417,6 +500,64 @@ class OwnershipShadow:
         _LOGGER.debug("SpotNav ownership shadow: disagreement at %s: %s %s", where, differs, disagreement["commands"])
         self._tell("disagreement", disagreement)
 
+    def _write_back(self, today: str | None = None) -> None:
+        writer = self._writer
+        if writer is None:
+            return
+        try:
+            changed = writer(self.session)
+        except Exception:  # noqa: BLE001 - the shadow never raises into the real path
+            self._error("write_back")
+            return
+        if changed:
+            # Today's own fields said otherwise: the core's owner overrode them.
+            self._count("written_back")
+            self._tell(
+                "write_back",
+                {"owner": self.session.owner, "today": today, "events": list(self.events)[-CONTEXT_EVENTS:]},
+            )
+
+    def _today_fields(self) -> str | None:
+        reader = getattr(self, "today_fields", None)
+        return None if reader is None else reader()
+
+    def preview(self, event: Event) -> tuple[ChargeSession, tuple[Command, ...]]:
+        """What the core decides for `event` now, from its session (lined up by the `begin` before), without taking
+        it: today's code acts on it when the core drives (`verdict`)."""
+        return decide(self.session, event, self._now())
+
+    def verdict(self, event: Event) -> frozenset[tuple[str, str]] | None:
+        """When the core drives: the commands it decides for `event` now, as `(kind, reason)` (a notification's code
+        as its reason). `None` when it does not drive, or could not decide: today's code then decides as ever."""
+        if not self.drives:
+            return None
+        stack = self._stack.get(_task_key())
+        token = stack[-1] if stack else None
+        try:
+            if token is not None and token.early is None:
+                # The decision today's code is about to act on is this feed's: taken now, before its effects.
+                commands = self._decide_early(token, event)
+                if token.early is None:
+                    return None
+            else:
+                _session, commands = self.preview(event)
+        except Exception:  # noqa: BLE001 - today's decision stands
+            self._error("verdict")
+            return None
+        return frozenset(
+            (command.kind, str(getattr(command, "reason", getattr(command, "code", ""))))
+            for command in commands
+            if command.kind != "keep"
+        )
+
+    def choose(self, site: str, today: bool, core: bool) -> bool:
+        """When the core drives: the core's choice at `site`; one today's rule (on the same state) would have made
+        differently is counted and told (`verdict_differs`)."""
+        if today != core:
+            self._count("verdict_differs")
+            self._tell("verdict_differs", {"site": site, "today": today, "core": core, "events": list(self.events)[-8:]})
+        return core
+
     def _count(self, name: str) -> None:
         self.counts[name] += 1
         TOTALS[name] = TOTALS.get(name, 0) + 1
@@ -438,6 +579,7 @@ class OwnershipShadow:
     def diagnostics(self) -> dict[str, Any]:
         """For diagnostics and the debug bundle: the counts, the session, the rings."""
         return {
+            "drives": self.drives,
             "counts": dict(self.counts),
             "session": self.session.to_dict(),
             "disagreements": list(self.disagreements),

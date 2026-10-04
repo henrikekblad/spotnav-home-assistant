@@ -1057,8 +1057,8 @@ class AutoExecutor:
         * A paused Auto's plan is dropped without touching the charger (its windows' ends would stop what
           the person started), and the start is marked as awaiting the charger's report.
         """
-        token = self._shadow.begin()
         connected = self._shadow_connected(fallback=False)
+        token = self._shadow.begin(early=None if connected is ... else core_events.PersonStart(connected=connected))
         note: dict[str, Any] = {"legacy": [], "outcome": None}
         try:
             await self._manual_start_body(amps, note)
@@ -1072,6 +1072,17 @@ class AutoExecutor:
                     legacy=note["legacy"],
                     outcome=note["outcome"],
                 )
+
+    def _core_stop_scope(self, connected: Any, scope: str | None) -> str | None:
+        """When the core drives: the plug-in session a person's Stop pauses Auto for, as it decides it (`None`: a
+        pause they chose for a span is kept). Otherwise today's `scope`."""
+        if not self._shadow.drives or connected is ...:
+            return scope
+        try:
+            session = self._shadow.session
+        except Exception:  # noqa: BLE001 - today's decision stands
+            return scope
+        return None if session.manual is None else session.manual.scope
 
     def _shadow_stop_outcome(self) -> CommandOutcome:
         """A stop through the controller that returned: what became of it, for the ownership shadow."""
@@ -1526,9 +1537,9 @@ class AutoExecutor:
         `pause_stop_failed` and raises; Stop again is the retry. A pause that could not be stored is logged
         and reported (`reconcile_failed`); the charger is stopped all the same.
         """
-        token = self._shadow.begin()
         connected = self._shadow_connected(fallback=True)
-        note: dict[str, Any] = {"outcome": None}
+        token = self._shadow.begin(early=None if connected is ... else core_events.PersonStop(connected=connected))
+        note: dict[str, Any] = {"outcome": None, "connected": connected, "early": token.early is not None}
         try:
             await self._immediate_stop_body(note)
         finally:
@@ -1540,6 +1551,7 @@ class AutoExecutor:
                 )
 
     async def _immediate_stop_body(self, note: dict[str, Any]) -> None:
+        connected = note.get("connected")
         self.begin_attempt()
         self._pending = None
         # The person acted: a charger SpotNav gave up stopping under their earlier Stop is watched afresh.
@@ -1552,6 +1564,7 @@ class AutoExecutor:
                 connected = self._controller.known_connected
             waiting = before.manual and before.scope == MANUAL_SCOPE_NEXT_PLUG_IN and connected is not True
             scope = MANUAL_SCOPE_NEXT_PLUG_IN if connected is False or waiting else MANUAL_SCOPE_PLUG_IN
+        scope = self._core_stop_scope(note.get("connected"), scope)
         stop_error: Exception | None = None
         save_error: Exception | None = None
         self._manual_write_in_flight = True
@@ -1642,9 +1655,10 @@ class AutoExecutor:
         pause ends with the plug-in session it was given in (`_async_connection_changed`)."""
         if self._shutdown or not (self.pause_intent.manual or self._manual_write_in_flight):
             return
-        self._hass.async_create_task(self._async_connection_changed(previous, connected))
+        want = getattr(self._controller, "core_connection_manual", ...)
+        self._hass.async_create_task(self._async_connection_changed(previous, connected, want))
 
-    async def _async_connection_changed(self, previous: bool | None, connected: bool) -> None:
+    async def _async_connection_changed(self, previous: bool | None, connected: bool, want: Any = ...) -> None:
         """Decided under the lock against the stored pause:
 
         * an unplug ends a pause of the plug-in the car was in; one given with no car plugged in waits for
@@ -1662,6 +1676,12 @@ class AutoExecutor:
             async with self._lock:
                 intent = self.pause_intent
                 if self._shutdown or not intent.manual:
+                    return
+                if self._shadow.drives and want is ... and self._shadow.alone():
+                    # Decided while another feed was open: the core's session has decided it since.
+                    want = self._shadow.session.manual
+                if self._shadow.drives and want is not ...:
+                    await self._core_connection_changed(intent, connected, want)
                     return
                 waiting = intent.scope == MANUAL_SCOPE_NEXT_PLUG_IN
                 if connected and previous is not True and waiting:
@@ -1682,6 +1702,23 @@ class AutoExecutor:
                     await self._end_manual_pause_locked("plugged in" if connected else "unplugged")
         except Exception as err:  # noqa: BLE001 - a callback's task must not raise; the next report decides
             _LOGGER.warning("Ending a manual pause at a plug-in or unplug failed: %s", type(err).__name__)
+
+    async def _core_connection_changed(self, intent: PauseIntent, connected: bool, manual: Any) -> None:
+        """When the core drives: a plug-in or an unplug leaves the manual pause the core decided for it when the
+        controller saw the connection (`manual`): ended, moved to the plug-in, or as it was."""
+        if manual is not None and (manual.action, manual.scope) == (intent.action, intent.scope):
+            return
+        if manual is None:
+            await self._end_manual_pause_locked("plugged in" if connected else "unplugged")
+            return
+        await self._store.async_update(
+            self._entry_id,
+            mutate=lambda current: replace(current, pause=replace(current.pause, scope=manual.scope))
+            if current.pause == intent
+            else current,
+        )
+        self._shadow.check(INTENT, "manual_pause_plug_in")
+        await self._notify_change()
 
     def _sync_manual_watch(self) -> None:
         """Watch a person's charge for the car ending it while a manual pause of a Start stands, and only
@@ -1818,7 +1855,9 @@ class AutoExecutor:
             legacy: list[str] = []
             outcome: CommandOutcome | None = None
             try:
-                if pause_blocks_execution(settings) or not strategy_ok:
+                verdict = self._shadow.verdict(core_events.SolarStart(strategy_ok=strategy_ok))
+                refused = pause_blocks_execution(settings) or not strategy_ok
+                if refused if verdict is None else not self._shadow.choose("solar_start", not refused, ("start", "solar") in verdict):
                     return False
                 legacy.append("start")
                 outcome = CommandOutcome(False)
@@ -1847,7 +1886,9 @@ class AutoExecutor:
             legacy: list[str] = []
             outcome: CommandOutcome | None = None
             try:
-                if not self.automatic_allowed(AUTOMATIC_STOP):
+                verdict = self._shadow.verdict(core_events.SolarStop())
+                allowed = self.automatic_allowed(AUTOMATIC_STOP)
+                if not allowed if verdict is None else not self._shadow.choose("solar_stop", allowed, ("stop", "solar") in verdict):
                     return True
                 legacy.append("stop")
                 outcome = CommandOutcome(False)
@@ -1878,15 +1919,19 @@ class AutoExecutor:
             legacy: list[str] = []
             outcome: CommandOutcome | None = None
             try:
-                if pause_blocks_execution(settings) or settings.strategy not in (
+                verdict = None if facts is None else self._shadow.verdict(core_events.SolarStop(take_over=True, **facts))
+                if verdict is not None:
+                    if ("stop", "take_over") not in verdict:
+                        return False
+                elif pause_blocks_execution(settings) or settings.strategy not in (
                     STRATEGY_SOLAR, STRATEGY_HYBRID
                 ):
                     return False
-                if controller.top_off_until is not None or (
+                elif controller.top_off_until is not None or (
                     settings.strategy == STRATEGY_HYBRID and controller.plan_window_active_now
                 ):
                     return False
-                if not controller.self_started_charge():
+                elif not controller.self_started_charge():
                     return False
                 legacy.append("stop")
                 outcome = CommandOutcome(False)

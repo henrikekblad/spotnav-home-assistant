@@ -10,6 +10,10 @@ CONF_CURRENT_CONTROL = "current_control"
 # does not fall back to the OCPP session limit it would otherwise find by itself. Stored only while
 # true, so a charger that never chose it keeps exactly its old data.
 CONF_CURRENT_LIMIT_NONE = "current_limit_none"
+# Development option, off unless a charger's entry data says `true` (no card or flow sets it): the charge-ownership
+# core (`core/ownership.py`) decides who owns the charge and which person intent holds, and today's code follows it
+# (`execution/ownership_shadow.py`). Off, today's code decides exactly as before and the core only shadows it.
+CONF_CORE_OWNERSHIP = "core_ownership"
 # Optional per charger: a `sensor` with the charger's cumulative energy register (kWh). When set,
 # energy already delivered toward the departure is subtracted from `requested_kwh`, so a replan
 # does not buy it twice (baseline: `auto_settings.EnergyBaseline`).
