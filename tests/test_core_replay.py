@@ -194,6 +194,7 @@ async def test_a_feed_inside_another_is_decided_after_it(hass: HomeAssistant) ->
     """A report that lands while a person's Start awaits its command is decided after the Start."""
     state = {"session": ChargeSession(plugged=True, manual=ManualPause("stop", "plug_in"))}
     shadow = OwnershipShadow(lambda: state["session"])
+    shadow.session = state["session"]
     outer = shadow.begin()
     inner = shadow.begin()
     shadow.end(inner, ev.ChargerReportedOn(charging=True, was_on=True), legacy=("stop",))

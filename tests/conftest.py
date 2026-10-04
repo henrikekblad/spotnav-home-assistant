@@ -191,15 +191,17 @@ COMMANDS: dict[str, list[str]] | None = None
 @pytest.fixture(autouse=True)
 def ownership_shadow_agrees(request):
     """Every test runs the charge-ownership core in shadow mode beside today's code
-    (`execution/ownership_shadow.py`) and fails on a disagreement nobody explained, or on a shadow error.
+    (`execution/ownership_shadow.py`) and fails on a disagreement nobody explained, on a drift nobody explained,
+    or on a shadow error.
 
-    An explained one is a real difference of today's code the core does not copy, named in
-    `tests/shadow_known.py` with its event sequence; a test about the shadow itself opts out with the
-    `shadow_disagreement_expected` marker.
+    An explained disagreement is a real difference of today's code the core does not copy, named in
+    `tests/shadow_known.py` with its event sequence; an explained drift is a test that sets today's state directly,
+    named there with what it sets. A test about the shadow itself opts out with the `shadow_disagreement_expected`
+    marker.
     """
     from custom_components.spotnav.execution import ownership_shadow
 
-    from .shadow_known import explain
+    from .shadow_known import explain, explain_drift
 
     seen: list[tuple[str, dict[str, Any]]] = []
 
@@ -250,6 +252,12 @@ def ownership_shadow_agrees(request):
                 SHADOW_TOTALS[f"explained:{reason}"] = SHADOW_TOTALS.get(f"explained:{reason}", 0) + 1
             else:
                 unexplained.append(record)
+        elif kind == "drift":
+            reason = explain_drift(request.node.originalname, record)
+            if reason:
+                SHADOW_TOTALS[f"drift_explained:{reason}"] = SHADOW_TOTALS.get(f"drift_explained:{reason}", 0) + 1
+            else:
+                unexplained.append({"drift": record})
         elif kind == "error":
             unexplained.append(record)
         SHADOW_TOTALS[key] = SHADOW_TOTALS.get(key, 0) + 1
