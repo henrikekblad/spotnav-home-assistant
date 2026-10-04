@@ -323,6 +323,12 @@
       ],
       "tone": "normal"
     },
+    "site_current_negative": {
+      "params": [
+        "phases"
+      ],
+      "tone": "notice"
+    },
     "site_measurement_problem": {
       "params": [
         "max_age_s",

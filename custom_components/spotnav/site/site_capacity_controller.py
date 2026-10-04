@@ -19,12 +19,14 @@ from dataclasses import dataclass, replace
 from datetime import datetime, timedelta
 from typing import Any, Literal
 
+from homeassistant.config_entries import ConfigEntryState
 from homeassistant.const import STATE_UNAVAILABLE, STATE_UNKNOWN
-from homeassistant.core import callback, Event, EventStateChangedData, HomeAssistant
+from homeassistant.core import callback, Event, EventStateChangedData, EventStateReportedData, HomeAssistant
 from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers.event import (
     async_call_later,
     async_track_state_change_event,
+    async_track_state_report_event,
     async_track_time_interval,
 )
 from homeassistant.util import dt as dt_util
@@ -81,10 +83,13 @@ from ..planning.auto_settings import STRATEGY_HYBRID, STRATEGY_SOLAR
 from ..runtime import charger_data, controller_for, domain_data
 from ..vehicles.capability import build_capability_snapshot, SiteCapabilitySnapshot
 from .measurement_problem import measurement_problem, MeasurementProblem, UNHEALTHY_STATES
+from .meter_cadence import ReportCadence, solar_liveness
+from .site_detection import UPDATE_BEHAVIOUR
 from .solar_capability import solar_capability
 from .measurement_source import (
     combine_power_pair,
     grid_power_source_from_dict,
+    negative_phases,
     PhaseMeasurementSource,
     read_phase_measurement,
     source_from_dict,
@@ -149,6 +154,9 @@ LIMIT_CAUSE_HOUSE_CONSUMPTION = "house_consumption"
 
 #: Decision-log details of the battery-on-the-fuse handling (`site/battery_probe.py`).
 DETAIL_HELD_BATTERY_AT_LIMIT = "held_battery_at_limit"
+#: Decision-log detail of a proposal held because a meter load balancing reads updates too seldom
+#: (`site/meter_cadence.py`).
+DETAIL_HELD_METER_TOO_SLOW = "meter_too_slow"
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -261,6 +269,10 @@ class SiteCapacityController:
         self._last_seen_active_power_report_at: dict[PhaseName, datetime | None] = {
             phase: None for phase in PHASES
         }
+        # How often each measurement entity reports (`site/meter_cadence.py`): fed from every state
+        # write Home Assistant reports, changed or not, and sampled on each recompute.
+        self._cadence = ReportCadence()
+        self._report_listener_cancel: Callable[[], None] | None = None
         self.result: SiteCapacityResult = self._calculate()
         self._update_direction_history()
         # One regulator decision per associated charger (`site/regulator.py`); acting on them is
@@ -304,6 +316,11 @@ class SiteCapacityController:
             self._state_listener_cancel = async_track_state_change_event(
                 self.hass, tracked_entity_ids, self._async_state_changed
             )
+        cadence_entity_ids = self.cadence_entity_ids()
+        if cadence_entity_ids:
+            self._report_listener_cancel = async_track_state_report_event(
+                self.hass, cadence_entity_ids, self._async_state_reported
+            )
         self._register_controller_listeners()
 
     async def async_shutdown(self) -> None:
@@ -316,6 +333,9 @@ class SiteCapacityController:
         if self._state_listener_cancel is not None:
             self._state_listener_cancel()
             self._state_listener_cancel = None
+        if self._report_listener_cancel is not None:
+            self._report_listener_cancel()
+            self._report_listener_cancel = None
         for cancel in self._controller_listener_cancels:
             cancel()
         self._controller_listener_cancels.clear()
@@ -371,6 +391,104 @@ class SiteCapacityController:
     def _async_state_changed(self, _event: Event[EventStateChangedData]) -> None:
         self._recompute()
 
+    @callback
+    def _async_state_reported(self, event: Event[EventStateReportedData]) -> None:
+        """A write that changed nothing: only its instant is noted, for the meter's cadence."""
+        new_state = event.data.get("new_state")
+        if new_state is not None:
+            self._cadence.observe(event.data["entity_id"], getattr(new_state, "last_reported", None))
+
+    def _observe_reports(self) -> None:
+        for entity_id in self.cadence_entity_ids():
+            state = self.hass.states.get(entity_id)
+            if state is not None:
+                self._cadence.observe(entity_id, getattr(state, "last_reported", None) or state.last_updated)
+
+    def load_balancing_entity_ids(self) -> list[str]:
+        """The entities load balancing reads the site's phases from: the direct source's, or every
+        per-phase entity of a derived site."""
+        entity_ids: set[str] = set()
+        mode = self.config.get(CONF_MEASUREMENT_MODE)
+        if mode == MEASUREMENT_MODE_DIRECT:
+            site_source = self._resolve_site_current_source()
+            if site_source is not None:
+                entity_ids.update(_source_entity_ids(site_source))
+        elif mode == MEASUREMENT_MODE_DERIVED:
+            for phase_entities in (self.config.get(CONF_DERIVED_ENTITIES) or {}).values():
+                entity_ids.update(value for value in (phase_entities or {}).values() if value)
+        return sorted(entity_ids)
+
+    def cadence_entity_ids(self) -> list[str]:
+        """The measurement entities whose update interval is watched: load balancing's, the total grid
+        power's and the home battery's."""
+        entity_ids = set(self.load_balancing_entity_ids())
+        grid_total = grid_power_source_from_dict(self.config.get(CONF_GRID_POWER_SOURCE))
+        if grid_total is not None:
+            entity_ids.update(grid_total.entity_ids)
+        entity_ids.update(self.battery_entity_ids())
+        return sorted(entity_ids)
+
+    def battery_entity_ids(self) -> list[str]:
+        return [
+            entity_id
+            for entity_id in (
+                self.config.get(CONF_BATTERY_AGGREGATE_POWER_ENTITY),
+                self.config.get(CONF_BATTERY_DISCHARGE_POWER_ENTITY),
+            )
+            if entity_id
+        ]
+
+    def report_interval_s(self, entity_id: str) -> float | None:
+        """The median interval between `entity_id`'s reports, once enough are seen."""
+        return self._cadence.interval_s(entity_id)
+
+    @property
+    def slow_meters(self) -> dict[str, float]:
+        """The measurement entities that update too seldom for load balancing, with their interval."""
+        max_age_s = float(self.config.get(CONF_MAX_AGE_S, DEFAULT_MAX_AGE_S))
+        return self._cadence.slow(self.cadence_entity_ids(), max_age_s)
+
+    @property
+    def load_balancing_slow_meters(self) -> dict[str, float]:
+        """The entities load balancing reads that update too seldom for it: it is held while any is."""
+        lb = set(self.load_balancing_entity_ids())
+        return {entity_id: interval for entity_id, interval in self.slow_meters.items() if entity_id in lb}
+
+    def _change_only_alive(self, entity_id: str) -> bool:
+        """Whether `entity_id` is from an integration that writes only on change, is available, and its
+        integration's entry is loaded: silent, but not dead."""
+        state = self.hass.states.get(entity_id)
+        if state is None or state.state in (STATE_UNAVAILABLE, STATE_UNKNOWN):
+            return False
+        entry = er.async_get(self.hass).async_get(entity_id)
+        if entry is None:
+            return False
+        behaviour = UPDATE_BEHAVIOUR.get(entry.platform)
+        if behaviour is None or not behaviour.on_change_only:
+            return False
+        config_entry = (
+            self.hass.config_entries.async_get_entry(entry.config_entry_id) if entry.config_entry_id else None
+        )
+        return config_entry is not None and config_entry.state is ConfigEntryState.LOADED
+
+    def solar_accepts(self, value: PhaseValue | None, entity_ids: list[str]) -> bool:
+        """Whether solar may use `value`, read from `entity_ids`: usable, and live by solar's age limit
+        for the slowest of them (`site/meter_cadence.py`)."""
+        if value is None or value.problem is not None or value.value is None or not entity_ids:
+            return False
+        max_age_s = float(self.config.get(CONF_MAX_AGE_S, DEFAULT_MAX_AGE_S))
+        intervals = [self._cadence.interval_s(entity_id) for entity_id in entity_ids]
+        known = [interval for interval in intervals if interval is not None]
+        liveness = solar_liveness(
+            value.age_s,
+            value.report_age_s,
+            max_age_s=max_age_s,
+            # The slowest half decides, and only when every half's interval is known.
+            interval_s=max(known) if len(known) == len(entity_ids) else None,
+            change_only_alive=all(self._change_only_alive(entity_id) for entity_id in entity_ids),
+        )
+        return liveness in ("fresh", "confirmed_unchanged") and value.age_s is not None
+
     def _tracked_entity_ids(self) -> list[str]:
         """Entities whose state change triggers a recompute: the site's measurement entities for its
         mode, plus each charger's charge-control and current-limit entities. Computed once; config
@@ -419,6 +537,7 @@ class SiteCapacityController:
         previous = self.result
         previous_conflicts = self._last_logged_conflicts
         current_conflicts = self.membership_conflicts
+        self._observe_reports()
         self.result = self._calculate()
         self._update_direction_history()
         previous_decisions = self.regulator_decisions
@@ -676,6 +795,18 @@ class SiteCapacityController:
                         decision,
                         outcome="held",
                         detail="membership_conflict",
+                    )
+            return
+        # A meter load balancing reads that is fresh only now and then: nothing is written on it.
+        slow = self.load_balancing_slow_meters
+        if slow:
+            for charger_entry_id, decision in self.regulator_decisions.items():
+                if decision.proposed_current_a is not None:
+                    self._log_active_control_outcome(
+                        charger_entry_id,
+                        decision,
+                        outcome="held",
+                        detail=DETAIL_HELD_METER_TOO_SLOW,
                     )
             return
         fresh = self._calculate()
@@ -1846,8 +1977,10 @@ class SiteCapacityController:
 
         `state` is `not_configured`, `missing`, `invalid`, `stale` or, for a usable reading, `fresh` or
         `confirmed_unchanged` (as `classify_phase_liveness` grades the phases: a value Home Assistant
-        stopped updating but keeps hearing from is accepted). Watts only for a usable reading, so a
-        stale or missing total is unknown, never zero export.
+        stopped updating but keeps hearing from is accepted). A meter that reports too seldom for load
+        balancing, or only on change, is accepted for longer (`solar_accepts`): solar and the dashboard
+        read this, never the fuse protection. Watts only for a usable reading, so a stale or missing
+        total is unknown, never zero export.
         """
         total = self.grid_total_power()
         if total is None:
@@ -1857,9 +1990,12 @@ class SiteCapacityController:
         if total.problem is not None or total.value is None:
             return None, "missing"
         max_age_s = float(self.config.get(CONF_MAX_AGE_S, DEFAULT_MAX_AGE_S))
-        liveness = classify_phase_liveness(total.age_s, total.report_age_s, max_age_s)
-        if liveness in ("fresh", "confirmed_unchanged") and total.age_s is not None:
-            return total.value, liveness
+        source = grid_power_source_from_dict(self.config.get(CONF_GRID_POWER_SOURCE))
+        if source is not None and self.solar_accepts(total, list(source.entity_ids)):
+            # Graded at the maximum age for the state's name: `fresh` within it, else accepted as
+            # unchanged (a slow or change-only meter, see `site/meter_cadence.py`).
+            liveness = classify_phase_liveness(total.age_s, total.report_age_s, max_age_s)
+            return total.value, "fresh" if liveness == "fresh" else "confirmed_unchanged"
         return None, "stale"
 
     def grid_power_snapshot(self) -> dict[str, Any]:
@@ -2024,7 +2160,12 @@ class SiteCapacityController:
             entry = registry.async_get(entity_id)
             if entry is not None:
                 platforms[entity_id] = entry.platform
-        return measurement_problem(self.result, entities, unavailable=unavailable, platforms=platforms)
+        negative: tuple[PhaseName, ...] = ()
+        if self.config.get(CONF_MEASUREMENT_MODE) == MEASUREMENT_MODE_DIRECT:
+            negative = negative_phases(self.hass, self._resolve_site_current_source())
+        return measurement_problem(
+            self.result, entities, unavailable=unavailable, platforms=platforms, negative=negative
+        )
 
     def _read_direct_entities(self) -> DirectPhaseMeasurement:
         source = self._resolve_site_current_source()

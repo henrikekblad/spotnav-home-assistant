@@ -1872,6 +1872,7 @@ def _measurement_facts(
         unavailable_entities=problem.unavailable_entities,
         unavailable_entity_names=tuple(names.get(entity) for entity in problem.unavailable_entities),
         inverter=problem.inverter,
+        negative_phases=problem.negative_phases,
     )
 
 

@@ -278,7 +278,7 @@
         "kind": "flag",
         "required": false,
         "scope": "site",
-        "value": false,
+        "value": true,
         "writable": true
       },
       {
@@ -391,7 +391,7 @@
           {
             "applied": true,
             "confidence": "high",
-            "current_signed": false,
+            "current_signed": true,
             "disabled_entities": [],
             "entities": [
               {

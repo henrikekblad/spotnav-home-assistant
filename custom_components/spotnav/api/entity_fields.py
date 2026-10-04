@@ -35,6 +35,7 @@ from typing import Any, Final, Literal
 
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
+from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers import entity_registry as er
 
 from ..const import (
@@ -1277,6 +1278,40 @@ def _external_balancer_warnings(hass: HomeAssistant) -> list[dict[str, Any]]:
     return []
 
 
+def _slow_meter_warnings(hass: HomeAssistant, controller: Any) -> list[dict[str, Any]]:
+    """One `meter_updates_slowly` per device (or entity, without one) whose measurement entities report
+    too seldom for load balancing (`site/meter_cadence.py`): `device_name` names it, `interval_s` is the
+    longest of its entities' intervals. Load balancing is held while one it reads is listed; solar and
+    planning go on with a longer age limit.
+    """
+    if controller is None:
+        return []
+    registry = er.async_get(hass)
+    devices = dr.async_get(hass)
+    groups: dict[str, dict[str, Any]] = {}
+    for entity_id, interval_s in sorted(controller.slow_meters.items()):
+        registered = registry.async_get(entity_id)
+        device = (
+            devices.async_get(registered.device_id) if registered is not None and registered.device_id else None
+        )
+        key = device.id if device is not None else entity_id
+        name = (device.name_by_user or device.name) if device is not None else None
+        group = groups.setdefault(
+            key,
+            {
+                "code": "meter_updates_slowly",
+                "integration": registered.platform if registered is not None else None,
+                "entity_id": entity_id,
+                "interval_s": round(interval_s, 1),
+                "option": None,
+                "device_name": name or _friendly(hass, entity_id),
+                "phases": [],
+            },
+        )
+        group["interval_s"] = max(group["interval_s"], round(interval_s, 1))
+    return list(groups.values())
+
+
 def site_measurement_info(hass: HomeAssistant, entry: ConfigEntry) -> dict[str, Any]:
     """The `measurement`, `warnings` and `detection` blocks of `get_entity_config`'s `site`.
 
@@ -1284,7 +1319,8 @@ def site_measurement_info(hass: HomeAssistant, entry: ConfigEntry) -> dict[str, 
       `reactive` or `estimated`) and whether any is an estimate, with the power factor assumed.
     * `warnings`: the phases that make the measurement unusable and why (`measurement_unhealthy`, first),
       measurement sources whose integration updates more slowly than the site's maximum age (naming the
-      integration's option where known), and devices with their own load balancing.
+      integration's option where known), measurement entities seen to report too seldom for load
+      balancing (`meter_updates_slowly`), and devices with their own load balancing.
     * `detection`: the fresh meter and battery candidates and whether the stored setup is one.
     """
     controller = site_controller_for(hass, entry.entry_id)
@@ -1315,6 +1351,7 @@ def site_measurement_info(hass: HomeAssistant, entry: ConfigEntry) -> dict[str, 
         }
         for warning in freshness_warnings(platforms, max_age_s)
     ]
+    warnings.extend(_slow_meter_warnings(hass, controller))
     for own in find_own_load_balancing_from_hass(hass):
         warnings.append(
             {
@@ -1371,6 +1408,9 @@ def site_measurement_info(hass: HomeAssistant, entry: ConfigEntry) -> dict[str, 
                 # integration's (it may be in standby); empty and false otherwise.
                 "unavailable_entities": list(problem.unavailable_entities),
                 "inverter": problem.inverter,
+                # The phases that read a negative current while the site is not set to read a signed
+                # one: the meter reports export as negative, and "Grid current is signed" is the fix.
+                "negative_phases": list(problem.negative_phases),
             },
         )
     for warning in warnings:
@@ -1379,6 +1419,7 @@ def site_measurement_info(hass: HomeAssistant, entry: ConfigEntry) -> dict[str, 
         warning.setdefault("limits_a", None)
         warning.setdefault("unavailable_entities", [])
         warning.setdefault("inverter", False)
+        warning.setdefault("negative_phases", [])
     detection = site_detection(hass, entry)
     return {
         "measurement": measurement,

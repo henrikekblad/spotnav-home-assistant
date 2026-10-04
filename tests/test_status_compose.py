@@ -832,6 +832,23 @@ CASES: list[tuple[str, StatusFacts, str, list[dict[str, Any]]]] = [
         ],
     ),
     (
+        "a meter that reports export as a negative current on a site reading it unsigned names the fix",
+        base(
+            waiting_for_tomorrow=True,
+            site_measurement=SiteMeasurementFacts(
+                no_value_phases=("L2", "L3"),
+                no_value_entities=("sensor.pulse_l2", "sensor.pulse_l3"),
+                max_age_s=120.0,
+                negative_phases=("L2", "L3"),
+            ),
+        ),
+        "notice",
+        [
+            {"code": "waiting_for_tomorrow", "params": {}},
+            {"code": "site_current_negative", "params": {"phases": ["L2", "L3"]}},
+        ],
+    ),
+    (
         "a meter whose every phase is unavailable says so without guessing at an inverter",
         base(
             waiting_for_tomorrow=True,

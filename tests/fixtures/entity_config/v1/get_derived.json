@@ -576,7 +576,7 @@
           {
             "applied": false,
             "confidence": "high",
-            "current_signed": false,
+            "current_signed": true,
             "disabled_entities": [],
             "entities": [
               {
@@ -645,6 +645,7 @@
           "interval_s": 120.0,
           "inverter": false,
           "limits_a": null,
+          "negative_phases": [],
           "option": null,
           "phases": [
             {

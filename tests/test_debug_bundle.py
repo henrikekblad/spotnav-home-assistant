@@ -29,7 +29,7 @@ async def test_bundle_has_every_section(hass: HomeAssistant) -> None:
     charger, site = await setup_charger_and_site(hass)
     bundle = await async_build_debug_bundle(hass)
 
-    assert bundle["bundle_version"] == 2
+    assert bundle["bundle_version"] == 3
     for key in ("versions", "related_integrations", "price_data", "sites", "chargers", "log"):
         assert key in bundle
     versions = bundle["versions"]
@@ -195,3 +195,95 @@ async def test_command_refuses_a_non_admin_and_another_version(
     wrong = await ws_call(await admin(hass, hass_ws_client), {"type": "spotnav/get_debug_bundle", "api_version": 9})
     assert wrong["success"] is False
     assert wrong["error"]["code"] == "spotnav_unsupported_api_version"
+
+
+async def test_bundle_states_every_measurement_entity_as_home_assistant_holds_it(hass: HomeAssistant) -> None:
+    """Every entity the site's measurement reads is in the bundle with its raw state, unit, classes,
+    attribute names (values only of the attributes read), the three timestamps and its integration."""
+    from homeassistant.helpers import entity_registry as er
+
+    registry = er.async_get(hass)
+    registry.async_get_or_create("sensor", "tibber", "home1_rt_currentL1", suggested_object_id="pulse_l1")
+    for phase, value in (("1", "4.467"), ("2", "-2.445"), ("3", "-2.756")):
+        hass.states.async_set(
+            f"sensor.pulse_l{phase}",
+            value,
+            {"unit_of_measurement": "A", "device_class": "current", "state_class": "measurement", "friendly_name": f"L{phase}"},
+        )
+    hass.states.async_set(
+        "sensor.eq_current",
+        "11.4",
+        {"state_currentL1": 11.4, "state_currentL2": -4.1, "state_currentL3": -4.9, "access_token": "tok-meter-1"},
+    )
+    hass.states.async_set("sensor.eq_import", "0.5", {"unit_of_measurement": "kW", "device_class": "power"})
+    hass.states.async_set("sensor.eq_export", "1.2", {"unit_of_measurement": "kW", "device_class": "power"})
+    charger, site = await setup_charger_and_site(
+        hass,
+        direct_entities={"L1": "sensor.pulse_l1", "L2": "sensor.pulse_l2", "L3": "sensor.pulse_l3"},
+        phase_wiring={
+            "entry_a": {
+                "phases": 3,
+                "measured_current_source": {
+                    "kind": "attributes",
+                    "entity_id": "sensor.eq_current",
+                    "attributes": {"L1": "state_currentL1", "L2": "state_currentL2", "L3": "state_currentL3"},
+                    "attribute_unit_override": "A",
+                    "trust_entity_unit_for_attributes": False,
+                },
+            }
+        },
+        extra_data={"grid_power_source": {"power": "sensor.eq_import", "power_export": "sensor.eq_export"}},
+    )
+
+    bundle = await async_build_debug_bundle(hass)
+    entities = bundle["sites"][0]["measurement_entities"]
+
+    assert set(entities) == {
+        "sensor.pulse_l1",
+        "sensor.pulse_l2",
+        "sensor.pulse_l3",
+        "sensor.eq_current",
+        "sensor.eq_import",
+        "sensor.eq_export",
+    }
+    l2 = entities["sensor.pulse_l2"]
+    assert l2["roles"] == ["direct_L2"]
+    assert l2["state"] == "-2.445"
+    assert (l2["unit"], l2["device_class"], l2["state_class"]) == ("A", "current", "measurement")
+    assert l2["attribute_names"] == ["device_class", "friendly_name", "state_class", "unit_of_measurement"]
+    assert l2["attributes_read"] == {}
+    state = hass.states.get("sensor.pulse_l2")
+    assert l2["last_changed"] == state.last_changed.isoformat()
+    assert l2["last_reported"] == state.last_reported.isoformat()
+    assert l2["last_updated"] == state.last_updated.isoformat()
+    assert entities["sensor.pulse_l1"]["platform"] == "tibber"
+    assert entities["sensor.pulse_l3"]["platform"] is None
+    assert entities["sensor.eq_import"]["roles"] == ["grid_power"]
+    assert entities["sensor.eq_export"]["roles"] == ["grid_power_export"]
+    equalizer = entities["sensor.eq_current"]
+    assert equalizer["roles"] == ["charger_measured_current:entry_a"]
+    assert equalizer["attributes_read"] == {"state_currentL1": 11.4, "state_currentL2": -4.1, "state_currentL3": -4.9}
+    # A secret-looking attribute is named, never valued.
+    assert "access_token" in equalizer["attribute_names"]
+    assert "tok-meter-1" not in json.dumps(bundle)
+
+
+async def test_a_secret_in_a_read_attribute_is_redacted_by_key(hass: HomeAssistant) -> None:
+    hass.states.async_set("sensor.odd", "1", {"token": "tok-in-attribute"})
+    charger, site = await setup_charger_and_site(
+        hass,
+        site_current_source={
+            "kind": "attributes",
+            "entity_id": "sensor.odd",
+            "attributes": {"L1": "token", "L2": "token", "L3": "token"},
+            "attribute_unit_override": "A",
+            "trust_entity_unit_for_attributes": False,
+        },
+    )
+
+    bundle = await async_build_debug_bundle(hass)
+
+    item = bundle["sites"][0]["measurement_entities"]["sensor.odd"]
+    assert item["roles"] == ["site_current_source"]
+    assert item["attributes_read"] == {"token": REDACTED}
+    assert "tok-in-attribute" not in json.dumps(bundle)

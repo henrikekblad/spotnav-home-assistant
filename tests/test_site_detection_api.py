@@ -174,6 +174,8 @@ async def test_a_direct_candidate_applies_as_direct_mode_and_keeps_the_derived_e
     data = hass.config_entries.async_get_entry(site_entry.entry_id).data
     assert data[CONF_MEASUREMENT_MODE] == MEASUREMENT_MODE_DIRECT
     assert data["direct_entities"]["L1"] == made["tibber_current_l1"]
+    # The Pulse's currents carry the export sign: read as signed from the start.
+    assert data["site_current_signed"] is True
 
 
 async def test_an_easee_equalizer_warns_and_applies_an_attributes_source(hass: HomeAssistant, hass_ws_client) -> None:

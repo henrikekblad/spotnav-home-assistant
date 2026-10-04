@@ -517,11 +517,11 @@ CASES = {
     ),
     "tibber": (
         tibber_pulse,
-        Expect(MEASUREMENT_MODE_DIRECT, roles=frozenset({"current"}), integration="tibber"),
+        Expect(MEASUREMENT_MODE_DIRECT, signed_current=True, roles=frozenset({"current"}), integration="tibber"),
     ),
     "tibber_with_production": (
         tibber_pulse_with_production,
-        Expect(MEASUREMENT_MODE_DIRECT, roles=frozenset({"current", "grid_power", "grid_power_export"}), integration="tibber"),
+        Expect(MEASUREMENT_MODE_DIRECT, signed_current=True, roles=frozenset({"current", "grid_power", "grid_power_export"}), integration="tibber"),
     ),
     "dsmr_totals": (
         dsmr_p1_with_totals,
@@ -617,7 +617,7 @@ CASES = {
     ),
     "easee_equalizer": (
         easee_equalizer,
-        Expect(MEASUREMENT_MODE_DIRECT, roles=frozenset({"current"}), disabled=1, integration="easee"),
+        Expect(MEASUREMENT_MODE_DIRECT, signed_current=True, roles=frozenset({"current"}), disabled=1, integration="easee"),
     ),
 }
 

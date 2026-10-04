@@ -693,7 +693,7 @@
           {
             "applied": false,
             "confidence": "high",
-            "current_signed": false,
+            "current_signed": true,
             "disabled_entities": [],
             "entities": [
               {
@@ -743,7 +743,7 @@
           {
             "applied": false,
             "confidence": "high",
-            "current_signed": false,
+            "current_signed": true,
             "disabled_entities": [
               "sensor.easee_equalizer_current"
             ],
@@ -788,6 +788,7 @@
           "interval_s": 120.0,
           "inverter": false,
           "limits_a": null,
+          "negative_phases": [],
           "option": null,
           "phases": [
             {
@@ -819,6 +820,7 @@
           "interval_s": null,
           "inverter": false,
           "limits_a": null,
+          "negative_phases": [],
           "option": null,
           "phases": [],
           "unavailable_entities": []

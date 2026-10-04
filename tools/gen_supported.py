@@ -477,8 +477,9 @@ def meters_section() -> list[str]:
         (
             f"Easee Equalizer ({domains_text(('easee',))})",
             "Direct phase current, all phases on one entity",
-            "None needed",
-            "The Equalizer balances load by itself and may fight active control.",
+            "Negative current while exporting, read as its size",
+            "The Equalizer balances load by itself and may fight active control. Its values come every 5-10 "
+            "minutes and are written only on a change: too seldom for load balancing, enough for solar.",
             verified("meter", "easee"),
         )
     )

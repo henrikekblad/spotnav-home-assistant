@@ -153,6 +153,18 @@ def _site_diagnostics(hass: HomeAssistant, entry: ConfigEntry) -> dict[str, Any]
         "regulator_decision_log": [] if controller is None else controller.regulator_decision_log,
         # The battery-on-the-fuse probe per charger: state, last outcome and why, back-off left.
         "battery_probe": {} if controller is None else controller.battery_probe_snapshot,
+        # How often each measurement entity reports (median of its recent `last_reported` gaps, `None`
+        # until enough are seen), and which ones hold load balancing for reporting too seldom.
+        "report_cadence": None
+        if controller is None
+        else {
+            "interval_s": {
+                entity_id: controller.report_interval_s(entity_id)
+                for entity_id in controller.cadence_entity_ids()
+            },
+            "too_slow_for_load_balancing": sorted(controller.slow_meters),
+            "load_balancing_held": sorted(controller.load_balancing_slow_meters),
+        },
     }
 
 

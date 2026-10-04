@@ -80,6 +80,11 @@ function measurementLineText(language: Language, p: StatusLine["params"]): strin
   });
 }
 
+/** The meter reports a negative current (export) on `phases` while the site reads it unsigned. */
+export function negativeCurrentText(language: Language, phases: readonly string[]): string {
+  return translate(language, "status.siteCurrentNegative", { phases: listOf(language, phases) });
+}
+
 /** The meter's sensors unavailable together: an inverter's (it may be in standby), or every phase at once. */
 export function meterUnavailableText(language: Language, entities: readonly string[], inverter: boolean): string {
   const line: StatusLine = {
@@ -195,6 +200,7 @@ export const STATUS_WORDING: Readonly<Record<StatusCode, TranslationKey>> = {
   remaining_need_estimated: "issue.needKept",
   site_measurement_problem: "issue.siteMeasurement",
   site_meter_unavailable: "status.meterUnavailable.meter",
+  site_current_negative: "status.siteCurrentNegative",
   duplicate_charger: "issue.duplicateCharger",
 };
 
@@ -425,6 +431,8 @@ export function lineText(line: StatusLine, format: FormatContext, nowMs: number)
     }
     case "site_measurement_problem":
       return measurementLineText(language, p);
+    case "site_current_negative":
+      return negativeCurrentText(language, strings(p["phases"]));
     case "remaining_need_estimated": {
       const need = needEstimated(language, p);
       return say(need.key, need.params);
@@ -494,6 +502,17 @@ export function issuesOf(status: Status | null, language: Language): Issue[] {
         params: {},
         technical: null,
         text: measurementLineText(language, line.params),
+      });
+      continue;
+    }
+    if (line.code === "site_current_negative") {
+      issues.push({
+        code: line.code,
+        severity,
+        textKey: STATUS_WORDING[line.code],
+        params: { phases: listOf(language, strings(line.params["phases"])) },
+        technical: null,
+        text: negativeCurrentText(language, strings(line.params["phases"])),
       });
       continue;
     }

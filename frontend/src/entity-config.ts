@@ -164,6 +164,8 @@ export interface SiteWarning {
   unavailableEntities: string[];
   /** They are a known inverter integration's: it may be in standby. */
   inverter: boolean;
+  /** `measurement_unhealthy` only: the phases that read a negative current on a site that reads it unsigned. */
+  negativePhases: string[];
 }
 
 export interface DetectedEntityRow {
@@ -476,9 +478,14 @@ function decodeWarning(raw: unknown): SiteWarning {
     "limits_a",
     "unavailable_entities",
     "inverter",
+    "negative_phases",
   ]);
   const unavailable = source["unavailable_entities"];
   if (!Array.isArray(unavailable) || !unavailable.every((entry) => typeof entry === "string")) {
+    return bad();
+  }
+  const negative = source["negative_phases"];
+  if (!Array.isArray(negative) || !negative.every((entry) => typeof entry === "string")) {
     return bad();
   }
   const phases = source["phases"];
@@ -496,6 +503,7 @@ function decodeWarning(raw: unknown): SiteWarning {
     limitsA: decodeLimits(source["limits_a"]),
     unavailableEntities: unavailable as string[],
     inverter: flag(source, "inverter"),
+    negativePhases: negative as string[],
   };
 }
 

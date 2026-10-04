@@ -393,6 +393,7 @@
           "interval_s": 120.0,
           "inverter": false,
           "limits_a": null,
+          "negative_phases": [],
           "option": null,
           "phases": [
             {

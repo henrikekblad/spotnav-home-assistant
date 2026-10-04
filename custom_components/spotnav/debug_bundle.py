@@ -9,9 +9,13 @@ webhook ids, tokens, secrets and the OCPP charge point id by key, coordinates ro
 and every string scrubbed of the known webhook ids, webhook paths, bearer tokens, the home location
 and the names of Home Assistant's users. Entity ids are kept; they are what a support answer needs.
 
-Every fact is in the bundle once (version 2): the price data at the top; a site's `result` and
+Every fact is in the bundle once (version 3): the price data at the top; a site's `result` and
 `capability` and a charger's command log (`controller.adapter.commands`) inside the entry's
-`diagnostics`; a charger's plan, strategy and progress inside its `dashboard`.
+`diagnostics`; a charger's plan, strategy and progress inside its `dashboard`. Version 3 adds a site's
+`measurement_entities`: every entity its measurement reads, as Home Assistant holds it (state, unit,
+classes, attribute names and the values of the attributes read, the three timestamps, the integration),
+so a support answer can tell a signed meter, a slow one and a stale one apart. Entity states only, never
+an integration's settings.
 """
 
 from __future__ import annotations
@@ -31,20 +35,30 @@ from homeassistant.util import dt as dt_util
 from .api.dashboard import capture_dashboard, serialize_dashboard
 from .card_asset import CARD_ASSET_PATH, read_bundle_digest
 from .const import (
+    CONF_BATTERY_AGGREGATE_POWER_ENTITY,
+    CONF_BATTERY_DISCHARGE_POWER_ENTITY,
+    CONF_BATTERY_PER_PHASE_SOURCE,
     CONF_CHARGER_PLATFORM,
+    CONF_DERIVED_ENTITIES,
+    CONF_DIRECT_ENTITIES,
     CONF_ENTRY_TYPE,
+    CONF_GRID_POWER_SOURCE,
+    CONF_MEASURED_CURRENT_SOURCE,
     CONF_OCPP_CHARGE_POINT_ID,
+    CONF_PHASE_WIRING,
+    CONF_SITE_CURRENT_SOURCE,
     DOMAIN,
     ENTRY_TYPE_SITE,
 )
 from .diagnostics import _price_data, entry_diagnostics, TO_REDACT
 from .execution.other_controllers import CONTROLLERS
 from .planning.hybrid_forecast import async_forecast_capable_domains
-from .runtime import domain_data
+from .runtime import domain_data, site_controller_for
+from .site.measurement_source import grid_power_source_from_dict, source_from_dict
 
 _LOGGER = logging.getLogger(__name__)
 
-BUNDLE_VERSION: Final = 2
+BUNDLE_VERSION: Final = 3
 REDACTED: Final = "**REDACTED**"
 
 #: Keys whose value is never shown, wherever they sit in the bundle.
@@ -229,6 +243,109 @@ async def _versions(hass: HomeAssistant) -> dict[str, Any]:
     }
 
 
+def _source_roles(
+    found: dict[str, dict[str, Any]], source_data: Any, role: str
+) -> None:
+    """Note the entities of a stored phase source under `role`, with the attributes it reads."""
+    source = source_from_dict(source_data)
+    if source is None:
+        return
+    if source.kind == "attributes" and source.entity_id:
+        item = found.setdefault(source.entity_id, {"roles": set(), "attributes": set()})
+        item["roles"].add(role)
+        item["attributes"].update((source.attributes or {}).values())
+        return
+    for phase, entity_id in (source.entity_ids or {}).items():
+        found.setdefault(entity_id, {"roles": set(), "attributes": set()})["roles"].add(f"{role}_{phase}")
+
+
+def measurement_entity_roles(config: Mapping[str, Any]) -> dict[str, dict[str, Any]]:
+    """Every entity a site's measurement reads (`entity id -> {roles, attributes}`): the direct and
+    derived phase entities, the current source, the total grid power, the battery and each charger's
+    measured current source; `attributes` are the attribute names read from it."""
+    found: dict[str, dict[str, Any]] = {}
+
+    def note(entity_id: Any, role: str) -> None:
+        if isinstance(entity_id, str) and entity_id:
+            found.setdefault(entity_id, {"roles": set(), "attributes": set()})["roles"].add(role)
+
+    for phase, entity_id in (config.get(CONF_DIRECT_ENTITIES) or {}).items():
+        note(entity_id, f"direct_{phase}")
+    for phase, entities in (config.get(CONF_DERIVED_ENTITIES) or {}).items():
+        for kind, entity_id in (entities or {}).items():
+            note(entity_id, f"derived_{phase}_{kind}")
+    _source_roles(found, config.get(CONF_SITE_CURRENT_SOURCE), "site_current_source")
+    grid_total = grid_power_source_from_dict(config.get(CONF_GRID_POWER_SOURCE))
+    if grid_total is not None:
+        note(grid_total.power, "grid_power")
+        note(grid_total.power_export, "grid_power_export")
+    note(config.get(CONF_BATTERY_AGGREGATE_POWER_ENTITY), "battery_power")
+    note(config.get(CONF_BATTERY_DISCHARGE_POWER_ENTITY), "battery_discharge_power")
+    _source_roles(found, config.get(CONF_BATTERY_PER_PHASE_SOURCE), "battery_per_phase")
+    for charger_entry_id, wiring in (config.get(CONF_PHASE_WIRING) or {}).items():
+        if isinstance(wiring, Mapping):
+            _source_roles(
+                found, wiring.get(CONF_MEASURED_CURRENT_SOURCE), f"charger_measured_current:{charger_entry_id}"
+            )
+    return found
+
+
+def _iso_or_none(moment: Any) -> str | None:
+    return moment.isoformat() if moment is not None else None
+
+
+def _json_safe(value: Any) -> Any:
+    if value is None or isinstance(value, (bool, int, float, str)):
+        return value
+    if isinstance(value, Mapping):
+        return {str(key): _json_safe(item) for key, item in value.items()}
+    if isinstance(value, (list, tuple)):
+        return [_json_safe(item) for item in value]
+    return str(value)
+
+
+def site_measurement_entities(hass: HomeAssistant, entry: ConfigEntry) -> dict[str, dict[str, Any]]:
+    """Each entity a site's measurement reads, as Home Assistant holds it: why it is read (`roles`), its
+    state, unit, device and state class, the names of its attributes and the values of the ones read,
+    `last_changed`, `last_reported` and `last_updated`, and the integration that provides it. Nothing
+    but entity state: a value under a secret-looking key is redacted with the rest of the bundle."""
+    from homeassistant.helpers import entity_registry as er
+
+    controller = site_controller_for(hass, entry.entry_id)
+    config = controller.config if controller is not None else dict(entry.data)
+    registry = er.async_get(hass)
+    result: dict[str, dict[str, Any]] = {}
+    for entity_id, use in sorted(measurement_entity_roles(config).items()):
+        registered = registry.async_get(entity_id)
+        state = hass.states.get(entity_id)
+        item: dict[str, Any] = {
+            "roles": sorted(use["roles"]),
+            "platform": registered.platform if registered is not None else None,
+            "registered": registered is not None,
+            "state": None if state is None else state.state,
+        }
+        if state is not None:
+            attributes = state.attributes
+            item.update(
+                {
+                    "unit": attributes.get("unit_of_measurement"),
+                    "device_class": attributes.get("device_class"),
+                    "state_class": attributes.get("state_class"),
+                    "attribute_names": sorted(str(name) for name in attributes),
+                    "attributes_read": {
+                        name: _json_safe(attributes.get(name)) for name in sorted(use["attributes"])
+                    },
+                    "last_changed": _iso_or_none(state.last_changed),
+                    "last_reported": _iso_or_none(getattr(state, "last_reported", None)),
+                    "last_updated": _iso_or_none(state.last_updated),
+                }
+            )
+        if controller is not None:
+            item["report_interval_s"] = controller.report_interval_s(entity_id)
+        result[entity_id] = item
+    return result
+
+
 def _trim_dashboard(dashboard: dict[str, Any]) -> dict[str, Any]:
     """The dashboard as the card gets it, minus the chart rows (the bundle states the price status)."""
     trimmed = dict(dashboard)
@@ -273,8 +390,18 @@ async def async_build_debug_bundle(hass: HomeAssistant) -> dict[str, Any]:
     charger_sections = [await _charger_section(hass, entry, forecast) for entry in chargers]
     site_sections = []
     for entry in sites:
+        try:
+            measurement_entities: Any = site_measurement_entities(hass, entry)
+        except Exception as err:  # noqa: BLE001 - one odd entity must not cost the whole bundle
+            _LOGGER.warning("The debug bundle could not read a site's measurement entities: %s", type(err).__name__)
+            measurement_entities = {"available": False, "reason": "read_failed"}
         site_sections.append(
-            {"entry_id": entry.entry_id, "title": entry.title, "diagnostics": _entry_diagnostics(hass, entry)}
+            {
+                "entry_id": entry.entry_id,
+                "title": entry.title,
+                "diagnostics": _entry_diagnostics(hass, entry),
+                "measurement_entities": measurement_entities,
+            }
         )
     vehicle_entities = [
         vehicle.get("soc_entity_id")

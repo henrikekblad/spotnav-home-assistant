@@ -942,7 +942,7 @@
           {
             "applied": false,
             "confidence": "high",
-            "current_signed": false,
+            "current_signed": true,
             "disabled_entities": [],
             "entities": [
               {
@@ -992,7 +992,7 @@
           {
             "applied": false,
             "confidence": "high",
-            "current_signed": false,
+            "current_signed": true,
             "disabled_entities": [
               "sensor.easee_equalizer_current"
             ],
@@ -1037,6 +1037,7 @@
           "interval_s": 300.0,
           "inverter": false,
           "limits_a": null,
+          "negative_phases": [],
           "option": "Polling frequency (Modbus poll interval, 1-10 s)",
           "phases": [],
           "unavailable_entities": []
@@ -1049,6 +1050,7 @@
           "interval_s": null,
           "inverter": false,
           "limits_a": null,
+          "negative_phases": [],
           "option": null,
           "phases": [],
           "unavailable_entities": []

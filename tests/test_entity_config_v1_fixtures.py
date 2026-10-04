@@ -46,7 +46,9 @@ async def _get_direct_total(hass, ws, _token) -> dict[str, Any]:
             CONF_GRID_POWER_SOURCE: {
                 "power": made["tibber_power"],
                 "power_export": made["tibber_power_production"],
-            }
+            },
+            # The Pulse's currents are signed, as its detection applies them.
+            "site_current_signed": True,
         },
     )
     return (await ws_call(await admin(hass, ws), get_message(charger.entry_id)))["result"]
