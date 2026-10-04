@@ -29,7 +29,8 @@ periods, and an optional departure time. The card marks what is missing.
   alone, the status says so and the phones chosen for notifications are told, until the person acts or
   the car is unplugged).
   A **Start** or **Stop** always reaches the charger first, and holds even if the pause cannot be saved
-  (the save is tried again). **Resume** (or picking another pause)
+  (the save is tried again); a restart of Home Assistant before the save succeeded loses the pause, and Auto
+  goes by what it had saved before the press. **Resume** (or picking another pause)
   gives the charger back to Auto at once.
   The status says *Stopped manually – until the car is unplugged* or *Charging manually – until the car
   is full or unplugged*. The pause survives a restart. On a charger that cannot tell when a car is
