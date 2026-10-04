@@ -66,6 +66,9 @@ COMPARED: Final = (FIELD_OWNER, FIELD_MANUAL, FIELD_SPAN)
 INTENT: Final = (FIELD_MANUAL, FIELD_SPAN)
 #: Events whose commands' results come back later, as events of their own (a report's or a timer's spawned stop).
 _RESULTS_LATER: Final = frozenset({"charger_reported_on", "charger_reported_off", "timer"})
+#: A charger's report of its control: recorded only when it decided something or something moved, so a charger
+#: that reports every few seconds does not push the plug-in and a person's actions out of the event ring.
+_REPORTS: Final = frozenset({"charger_reported_on", "charger_reported_off"})
 #: Who hears every disagreement, drift and shadow error (`kind`, record): the test suite's collector.
 LISTENERS: list[Callable[[str, dict[str, Any]], None]] = []
 #: What every shadow in this process counted (a test run's summary).
@@ -206,11 +209,15 @@ class OwnershipShadow:
             "observed": 0,
             "written_back": 0,
             "verdict_differs": 0,
+            "quiet": 0,
             "errors": 0,
         }
         self.disagreements: deque[dict[str, Any]] = deque(maxlen=DISAGREEMENT_RING)
         self.drift: deque[dict[str, Any]] = deque(maxlen=DRIFT_RING)
         self.events: deque[dict[str, Any]] = deque(maxlen=EVENT_RING)
+        # Records kept so far, and a quiet report's record held back with the count at the time (`_decide`).
+        self._recorded = 0
+        self._quiet: tuple[dict[str, Any], int] | None = None
 
     # ------------------------------------------------------------------ feeding
 
@@ -331,6 +338,8 @@ class OwnershipShadow:
                 record["unchecked"] = True
         except Exception:  # noqa: BLE001 - the shadow never raises into the real path
             self._error(event.kind)
+        finally:
+            self._quiet = None
 
     def feed(
         self,
@@ -394,9 +403,12 @@ class OwnershipShadow:
         self.session = replace(today, pending=self.session.pending)
 
     def _drain(self) -> None:
+        held = self._quiet
         while self._queue:
             item = self._queue.popleft()
             record, _kinds = self._decide(item)
+            # A quiet queued report is compared with nothing: it is not kept.
+            self._quiet = held
             # Decided after the feed it landed in, while today's code decided it mid-way through that one: its
             # commands are kept in the record, and only the state after both is compared.
             record["queued"] = True
@@ -438,10 +450,37 @@ class OwnershipShadow:
             record["result"] = result.to_dict()
         if item.token.outermost and item.token.lined_up:
             record["pre"] = _compact(pre)
-        self.events.append(record)
+        if (
+            item.event.kind in _REPORTS
+            and session == pre
+            and not item.legacy
+            and result is None
+            and all(command.kind == "keep" for command in commands)
+        ):
+            # Nothing decided, nothing moved: kept only if a disagreement comes of it (`_compare`).
+            self._count("quiet")
+            self._quiet = (record, self._recorded)
+        else:
+            self._record(record)
         if item.defer_intent and (session.manual, session.span_pause) != (pre.manual, pre.span_pause):
             self._intent_deferred = True
         return record, tuple(sorted(command.kind for command in commands if command.kind != "keep"))
+
+    def _record(self, record: dict[str, Any]) -> None:
+        self.events.append(record)
+        self._recorded += 1
+
+    def _keep_quiet(self, record: dict[str, Any] | None) -> None:
+        """A quiet report a disagreement came of is kept after all, in its place before the records decided after
+        it."""
+        quiet = self._quiet
+        if record is None or quiet is None or quiet[0] is not record:
+            return
+        self._quiet = None
+        items = list(self.events)
+        items.insert(len(items) - min(self._recorded - quiet[1], len(items)), record)
+        self.events = deque(items, maxlen=EVENT_RING)
+        self._recorded += 1
 
     def _compare(
         self,
@@ -468,6 +507,7 @@ class OwnershipShadow:
             self._write_back(self._today_fields())
         if not differs and core_kinds == legacy:
             return
+        self._keep_quiet(record)
         self._disagree(where, differs, core_kinds, legacy)
         if self.drives:
             # The core's state is the truth: today's code takes its owner back (`_write_back`).

@@ -99,8 +99,11 @@ later: the core's intent is kept until the boundary's own `check`. The shadow ne
 every failure is caught and counted.
 
 Diagnostics and the debug bundle (version 5) carry `ownership_shadow`: counts, the session, the last 50
-disagreements and drifts and the last 200 events (facts only: no entity ids, no secrets). `core/replay.py` feeds a
-bundle's events to the core again (`python -m custom_components.spotnav.core.replay bundle.json`).
+disagreements and drifts and the last 200 events (facts only: no entity ids, no secrets). A charger's report of
+its control is recorded only when the core decided something or something moved (`quiet` counts the others, and
+one a disagreement comes of is kept after all), so a charger that reports every few seconds does not push the
+plug-in and a person's actions out of the ring. `core/replay.py` feeds a bundle's events to the core again
+(`python -m custom_components.spotnav.core.replay bundle.json`).
 
 ## Step 2: the core drives, behind an option
 

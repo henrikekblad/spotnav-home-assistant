@@ -234,3 +234,42 @@ async def test_a_connection_read_that_raises_at_start_up_leaves_no_feed_open(
     await world.executor.async_manual_stop()
     assert shadow.counts["compared"] > compared
     await world.shutdown()
+
+
+async def test_a_report_that_decides_nothing_keeps_the_plug_in_and_the_persons_actions_in_the_ring(
+    hass: HomeAssistant, timers: FakeScheduler
+) -> None:
+    """A charger that reports its control every few seconds with nothing new: those reports are not recorded, so
+    the event ring still holds the plug-in and the person's Stop after more of them than the ring holds."""
+    from .pause_world import SWITCH
+
+    world = await pause_world(hass, timers, plan=two_windows())
+    await world.plug.set(False)
+    await world.plug.set(True)
+    await world.executor.async_manual_stop()
+    shadow = world.controller.ownership_shadow
+    for index in range(EVENT_RING + 20):
+        hass.states.async_set(SWITCH, "off", {"report": index})
+    await hass.async_block_till_done()
+    kinds = [record["event"]["kind"] for record in shadow.diagnostics()["events"]]
+    assert "plug_in" in kinds and "person_stop" in kinds, kinds
+    assert shadow.counts["quiet"] >= EVENT_RING
+    assert shadow.counts["disagreements"] == 0
+    report = replay_bundle(json.loads(json.dumps(_bundle(shadow.diagnostics()["events"]), default=str)))["charger_a"]
+    assert report.mismatches == ()
+    await world.shutdown()
+
+
+@pytest.mark.shadow_disagreement_expected
+async def test_a_quiet_report_a_disagreement_comes_of_is_kept(hass: HomeAssistant) -> None:
+    state = {"session": ChargeSession(plugged=True)}
+    shadow = OwnershipShadow(lambda: state["session"], now=lambda: datetime(2026, 10, 4, 22, tzinfo=timezone.utc))
+    shadow.session = state["session"]
+    shadow.feed(ev.ChargerReportedOff(notified=False))
+    assert shadow.counts["quiet"] == 1 and not shadow.diagnostics()["events"]
+    token = shadow.begin()
+    state["session"] = ChargeSession(plugged=True, owner="plan")
+    shadow.end(token, ev.ChargerReportedOff(notified=False))
+    (disagreement,) = shadow.diagnostics()["disagreements"]
+    assert [record["event"]["kind"] for record in disagreement["events"]] == ["charger_reported_off"]
+    assert len(shadow.diagnostics()["events"]) == 1
