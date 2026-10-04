@@ -57,6 +57,13 @@ and a charging battery is not counted again for `credit_backoff_s`, doubling wit
 `credit_backoff_max_s`, and back to `credit_backoff_s` after a credit that held. A discharging battery is
 never surplus under either priority.
 
+The charger's own state is the caller's to watch: a charge solar runs that ended without solar (the
+charge control went off, or the car drew nothing for a while) is handed in through `charge_ended`. A car
+that ended it by itself (`vehicle_full`, `car_stopped`) is not started again at once: a stopped car is
+tried again after `ended_retry_s`, doubling with each charge it ends up to `ended_retry_max_s`, and a car at
+its own limit not at all, until the caller clears it (`clear_ended`: a re-plug, a lower state of charge, a
+higher limit or target). Anything else that ended it (`charger_stopped`) is an ordinary stop.
+
 Freshness: a `None` where a reading is needed means no basis this tick. From
 `off` or `arming` that means never start; a running charge is kept for
 `stale_grace_s`. Stale ticks neither advance nor reset the timers.
@@ -114,7 +121,15 @@ SolarReason = Literal[
     # Recovered above `stop_a`: back to `on`.
     "disarming_recover",
     "stop_after_delay",
+    # The charge ended without solar (`SolarController.charge_ended`): the car stopped drawing by itself
+    # at its own limit, or short of it (tried again after the back-off), or something else ended it.
+    "vehicle_full",
+    "car_stopped",
+    "charger_stopped",
 ]
+
+# Why a charge solar ran ended without solar (`SolarController.charge_ended`).
+SolarEndCause = Literal["vehicle_full", "car_stopped", "charger_stopped"]
 
 
 @dataclass(frozen=True, slots=True, kw_only=True)
@@ -143,6 +158,10 @@ class SolarConfig:
     # A false battery credit: how long a charging battery is not counted, doubling up to the maximum.
     credit_backoff_s: float = 600.0
     credit_backoff_max_s: float = 14400.0
+    # A car that stopped drawing by itself short of its limit: how long until it is tried again, doubling
+    # with each charge it ends, up to the maximum.
+    ended_retry_s: float = 1800.0
+    ended_retry_max_s: float = 14400.0
 
     def __post_init__(self) -> None:
         start_a = self.min_current_a if self.start_a is None else self.start_a
@@ -357,6 +376,11 @@ class SolarController:
         self._credited_start = False
         self._credit_backoff_until: float | None = None
         self._next_backoff_s: float = config.credit_backoff_s
+        # A charge the car ended by itself (module docstring): why, until when no new one starts (`None`
+        # for a car at its own limit: until cleared), and how long the next wait is.
+        self._ended: SolarEndCause | None = None
+        self._retry_at: float | None = None
+        self._next_retry_s: float = config.ended_retry_s
 
         self._net_grid_w: float | None = None
         self._export_w: float | None = None
@@ -382,6 +406,60 @@ class SolarController:
     @property
     def last_requested_a(self) -> float | None:
         return self._last_requested_a
+
+    @property
+    def ended(self) -> SolarEndCause | None:
+        """Why the car ended the last charge by itself (`vehicle_full`, `car_stopped`), until cleared."""
+        return self._ended
+
+    def retry_in(self, now: float) -> float | None:
+        """The seconds until a stopped car may be started again; `None` when nothing waits for a retry."""
+        if self._ended != "car_stopped" or self._retry_at is None or self._retry_at <= now:
+            return None
+        return self._retry_at - now
+
+    def charge_ended(self, now: float, cause: SolarEndCause) -> SolarVerdict:
+        """The charge solar ran ended without solar: `off` from `now`, with a stop the caller carries out
+        (the charge control may still be on, and a stop also forgets who started it). A car that ended it
+        by itself waits for its retry (module docstring); `charger_stopped` is an ordinary stop."""
+        cfg = self._config
+        self._state = "off"
+        self._last_stop_at = now
+        self._on_since = None
+        self._arming_since = None
+        self._disarming_since = None
+        self._last_requested_a = None
+        self._verify_until = None
+        self._credited_start = False
+        self._import_since = None
+        if cause == "charger_stopped":
+            self._ended = None
+            self._retry_at = None
+        else:
+            self._ended = cause
+            if cause == "vehicle_full":
+                self._retry_at = None
+            else:
+                self._retry_at = now + self._next_retry_s
+                self._next_retry_s = min(self._next_retry_s * 2.0, cfg.ended_retry_max_s)
+        return self._verdict("stop", None, cause)
+
+    def car_drew(self) -> None:
+        """The car took a charge again: the next one it ends waits the shortest retry again."""
+        self._ended = None
+        self._retry_at = None
+        self._next_retry_s = self._config.ended_retry_s
+
+    def clear_ended(self) -> None:
+        """Start afresh after a charge the car ended (a re-plug, a lower state of charge, a higher limit or
+        target): no wait, and the shortest retry next time."""
+        self.car_drew()
+
+    def _ended_blocks(self, now: float) -> bool:
+        """Whether a charge the car ended still keeps a new one from starting."""
+        if self._ended is None or self._state not in ("off", "arming"):
+            return False
+        return self._retry_at is None or now < self._retry_at
 
     def priority_now(self, now: float) -> SolarPriority:
         """The priority the surplus is reckoned with now: `battery_first` while a false battery credit
@@ -422,6 +500,16 @@ class SolarController:
     def observe(self, observation: SolarObservation) -> SolarVerdict:
         """Update state from one observation and return its verdict."""
         now = observation.now
+
+        if self._ended_blocks(now):
+            # The car ended the last charge by itself: nothing starts until its retry, or until cleared.
+            # The surplus is still reckoned for the diagnostics.
+            self._refresh_breakdown(observation)
+            self._state = "off"
+            self._arming_since = None
+            self._stale_since = None
+            assert self._ended is not None
+            return self._verdict("hold", None, self._ended)
 
         if self._charger_measurement_missing(observation):
             return self._handle_charger_measurement_missing(observation)

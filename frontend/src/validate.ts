@@ -1270,6 +1270,8 @@ export const STATUS_CODE_TABLE = {
   solar_no_reading_stopped: ["normal", {}],
   solar_no_reading_waiting: ["normal", {}],
   solar_waiting_for_sun: ["normal", {}],
+  solar_vehicle_full: ["normal", {}],
+  solar_car_stopped: ["normal", { time: "instantOrNull" }],
   solar_no_grid_power: ["notice", { entity: "textOrNull", entity_name: "textOrNull" }],
   solar_battery_unreadable: ["notice", { entity: "textOrNull", entity_name: "textOrNull" }],
   solar_charger_current_missing: ["notice", { entity: "textOrNull", entity_name: "textOrNull" }],

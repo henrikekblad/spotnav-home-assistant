@@ -134,6 +134,22 @@ describe("every status code the backend composes is decoded and worded", () => {
     expect(decoded.ok, code).toBe(true);
   });
 
+  it("says a car that ended the charge by itself is full, or is tried again at a time, never charging", () => {
+    const full = lineText({ code: "solar_vehicle_full", params: {} } as StatusLine, FORMAT, NOW);
+    expect(full).toContain("full");
+    const retry = lineText(
+      { code: "solar_car_stopped", params: { time: "2026-10-04T14:20:00+00:00" } } as StatusLine,
+      FORMAT,
+      NOW,
+    );
+    expect(retry).toContain("trying again at");
+    const untimed = lineText({ code: "solar_car_stopped", params: { time: null } } as StatusLine, FORMAT, NOW);
+    expect(untimed).toContain("stopped charging");
+    for (const text of [full, retry, untimed]) {
+      expect(text).not.toContain("charging from surplus");
+    }
+  });
+
   it("says what ends a person's Stop: a plug-in where the charger reports one, else only a Start or a window", () => {
     const say = (ends: string) =>
       lineText({ code: "stopped_by_person", params: { ends } } as StatusLine, FORMAT, NOW);

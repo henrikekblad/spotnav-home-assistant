@@ -185,6 +185,12 @@ def _text(value: Any) -> str | None:
     return value if isinstance(value, str) and value else None
 
 
+def _instant(value: Any) -> datetime | None:
+    """An offset-bearing ISO instant, `None` for anything else."""
+    parsed = dt_util.parse_datetime(value) if isinstance(value, str) else None
+    return parsed if parsed is not None and parsed.tzinfo is not None else None
+
+
 def _day(value: date | None) -> str | None:
     return None if value is None else value.isoformat()
 
@@ -1930,6 +1936,7 @@ def status_facts(capture: CapturedDashboard) -> StatusFacts:
             basis_entity_name=names.get(_text(basis.get("basis_entity")) or ""),
             charger_current_entity_name=names.get(_text(basis.get("charger_current_entity")) or ""),
             site_incomplete_phases=tuple(str(phase) for phase in basis.get("site_incomplete_phases") or ()),
+            retry_at=_instant(basis.get("retry_at")),
         )
     elif state is not None and strategy == STRATEGY_HYBRID:
         hybrid = HybridFacts(

@@ -125,6 +125,14 @@ cannot, and for a direct site without the total it says the meter's total grid p
   again, you press **Start** (or follow the plan again) or a planned period begins, also after a
   restart; the status says so, and for a charger that cannot tell when a car is plugged in it names
   only Start and the next planned period. A false battery credit's wait also outlasts a restart.
+- Solar follows what the charger reports. When the car ends the charge by itself (the connector says
+  *Finishing* or *SuspendedEV*, or the car draws nothing for five minutes), the status says
+  *the car is full* when it is at its own charge limit, and then nothing starts until the car is plugged
+  in again; otherwise it says *the car stopped charging* and when it is tried again: after 30 minutes,
+  twice as long after each charge the car ends again, up to four hours. A new plug-in, a state of
+  charge that has fallen, or a higher charge limit or target ends the wait at once. A charge something
+  else turned off is an ordinary stop. A charger that is not charging draws nothing, whatever its
+  current sensor still shows.
 - **Solar priority** (a site setting): *car first* uses surplus before the house battery;
   *battery first* leaves the surplus to the battery and charges the car from what it does not
   take. A house battery power sensor can be set on the site.

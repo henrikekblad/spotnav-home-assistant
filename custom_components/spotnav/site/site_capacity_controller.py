@@ -1615,6 +1615,8 @@ class SiteCapacityController:
                 "charger_current": state.basis.charger_current if state else None,
                 "charger_current_entity": state.basis.charger_current_entity if state else None,
                 "site_incomplete_phases": list(state.basis.site_incomplete_phases) if state else [],
+                # When a car that stopped charging by itself is tried again (`car_stopped`).
+                "retry_at": state.retry_at.isoformat() if state and state.retry_at else None,
             }
         return snapshot
 
