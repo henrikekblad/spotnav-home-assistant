@@ -353,3 +353,58 @@ async def test_a_target_stop_not_executed_still_arms_the_plans_window_timers(
     armed = {getattr(timer.action, "__name__", "") for timer in timers.pending}
     assert "_async_start_callback" in armed and armed & {"_async_end_callback", "_async_final_end_callback"}, armed
     await controller.async_shutdown()
+
+
+async def test_an_unplug_during_a_stop_not_executed_ends_the_balancing_pause(
+    hass: HomeAssistant, timers: FakeScheduler
+) -> None:
+    """A balancing pause is held for a person's charge; a stop goes to the charger, which is unplugged
+    while the command is on its way and then reports it not executed. The unplug happened: the stop's
+    failure branch does not put the balancing pause back for a plug-in that is over."""
+    import pytest
+
+    from custom_components.spotnav.execution.controller import ChargingExecutionError
+
+    world = await pause_world(hass, timers)
+    await world.executor.async_manual_start(10)
+    controller = world.controller
+    controller._remember_paused_charge("manual", False)  # noqa: SLF001 - balancing holds a person's charge
+
+    async def unplugged_on_the_way() -> bool:
+        world.plug.connected = False
+        hass.states.async_set(SWITCH, "on", {"plug": False, "stamp": "unplug"})
+        for _ in range(5):
+            await asyncio.sleep(0)
+        return False
+
+    controller.adapter.async_stop = unplugged_on_the_way  # type: ignore[method-assign]
+    with pytest.raises(ChargingExecutionError):
+        await controller.async_stop(balancing=True)
+    await hass.async_block_till_done()
+    assert not controller._paused_by_balancing, "a balancing pause outlived the unplug"  # noqa: SLF001
+    await world.shutdown()
+
+
+async def test_an_unplug_during_a_resume_that_did_not_start_ends_the_balancing_pause(
+    hass: HomeAssistant, timers: FakeScheduler
+) -> None:
+    """The regulator resumes a person's charge load balancing held; the car is unplugged while the start is
+    on its way and the start does not go out. The unplug wins: nothing is left to resume."""
+    world = await pause_world(hass, timers)
+    await world.executor.async_manual_start(10)
+    controller = world.controller
+    await controller._regulated_stop("pause")  # noqa: SLF001
+    assert controller.paused_by_balancing
+
+    async def unplugged_on_the_way(_amps: int | None = None) -> bool:
+        world.plug.connected = False
+        hass.states.async_set(SWITCH, "off", {"plug": False, "stamp": "unplug"})
+        for _ in range(5):
+            await asyncio.sleep(0)
+        return False
+
+    controller.adapter.async_start = unplugged_on_the_way  # type: ignore[method-assign]
+    assert not await controller.async_battery_probe_start(8)
+    await hass.async_block_till_done()
+    assert not controller.paused_by_balancing, "a balancing pause outlived the unplug"
+    await world.shutdown()

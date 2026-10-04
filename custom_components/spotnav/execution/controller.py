@@ -546,6 +546,10 @@ class ChargingController:
         self._person_hold_tried_at: datetime | None = None
         self._person_hold_gave_up = False
         self._person_hold_retry_cancel: Callable[[], None] | None = None
+        # Counts plug-in sessions that ended (an unplug, a first report of no car): a command's failure branch
+        # that would put back what was held for a session compares it, so an unplug while the command was on
+        # its way wins (`_session_unchanged`).
+        self._session_generation = 0
         # The appointment at which an automatic stop the charger's control did not execute is decided again
         # (`_automatic_stop_locked`), or `None`.
         self._stop_retry_cancel: Callable[[], None] | None = None
@@ -1074,6 +1078,8 @@ class ChargingController:
         self._known_connected = connected
         if previous == connected:
             return
+        if connected is False or previous is False:
+            self._session_generation += 1
         if self._paused_by_balancing and (connected is False or previous is False):
             # The plug-in session a balancing pause held a charge for is over (an unplug, or the first
             # connection after a restart says no car): nothing is left for the regulator to resume, and a
@@ -2078,18 +2084,25 @@ class ChargingController:
             if not allowed or not self._paused_by_balancing or self.charging:
                 return False
             kept = self._requested_current_a
+            session = self._session_generation
             # The charge balancing paused goes on as what it was: the plan's, a person's or the sun's.
             try:
                 executed = await self._start_locked(
                     amps, capped=capped, cause=None if origin in (None, "manual") else origin
                 )
             except BaseException:
-                # The command failed outright: the charge is still the one balancing holds back.
-                self._remember_paused_charge(origin, plan_charge)
+                # The command failed outright: the charge is still the one balancing holds back, unless the
+                # car was unplugged meanwhile.
+                if self._session_generation == session:
+                    self._remember_paused_charge(origin, plan_charge)
                 raise
             if not executed:
-                # Still no room: still the same charge waiting.
-                self._remember_paused_charge(origin, plan_charge)
+                # Still no room: still the same charge waiting, unless the car was unplugged meanwhile.
+                if self._session_generation == session:
+                    self._remember_paused_charge(origin, plan_charge)
+                else:
+                    self._paused_by_balancing = False
+                    self._paused_charge = None
                 return False
             if origin is not None or plan_charge:
                 self._charge_origin, self._plan_charge = origin, plan_charge
@@ -2361,12 +2374,17 @@ class ChargingController:
                 # lock: a person's Stop that lands first is never remembered as a charge to resume.
                 was_on = self._control_on
                 paused_charge = (self._charge_origin, self._plan_charge)
+                session = self._session_generation
                 # A balancing stop: a top-off running past the last window goes on, paused like any charge.
                 await self._stop_request_locked(balancing=True)
                 # Set after the stop (which clears it): this stop is the balancing pause itself. A safety stop
                 # of a person's charge is remembered the same way, so the regulator gives it back when there
-                # is room.
-                if was_on and (code == "pause" or paused_charge[0] == "manual"):
+                # is room. Never for a plug-in that ended while the stop was on its way.
+                if (
+                    was_on
+                    and (code == "pause" or paused_charge[0] == "manual")
+                    and self._session_generation == session
+                ):
                     self._remember_paused_charge(*paused_charge)
                     self._save_memory_soon()
         except Exception:  # noqa: BLE001 - reported, and the next pass tries again
@@ -2621,6 +2639,7 @@ class ChargingController:
         """
         was_owned = self._hold.owned
         was_balancing = (self._paused_by_balancing, self._paused_charge)
+        session = self._session_generation
         self._hold.spotnav_stopped()
         self._paused_by_balancing = False
         self._paused_charge = None
@@ -2646,7 +2665,9 @@ class ChargingController:
                 # charge (a pause's retry, the stray-charge stop) still find it.
                 self._stop_sent_at = was_sent_at
                 self._hold.owned = was_owned
-                self._paused_by_balancing, self._paused_charge = was_balancing
+                if self._session_generation == session:
+                    # Not after an unplug while the command was on its way: that plug-in's pause is over.
+                    self._paused_by_balancing, self._paused_charge = was_balancing
                 _LOGGER.warning(
                     "SpotNav charger %s: the stop was not executed (the charge control is unavailable)",
                     self.entry_id,
