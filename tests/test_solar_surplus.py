@@ -999,3 +999,69 @@ def test_a_discharging_battery_is_never_surplus():
         ctrl = SolarController(_config(priority=priority))
         verdict = ctrl.observe(_obs(0.0, grid_w=0.0, battery_w=-8000.0, car_delivered_a=15.7))
         assert verdict.available_w == pytest.approx(15.7 * 3 * VOLTAGE_V - 8000.0)
+
+
+def _started_plainly(ctrl: SolarController, now: float) -> None:
+    """Started at `now` on a plain surplus and charging at the minimum."""
+    ctrl.observe(_obs(now, grid_w=-SIX_A_W))
+    assert ctrl.observe(_obs(now + 125.0, grid_w=-SIX_A_W)).action == "start"
+
+
+def test_a_car_that_stopped_by_itself_waits_its_retry_then_waits_twice_as_long():
+    ctrl = SolarController(_config())
+    _started_plainly(ctrl, 0.0)
+    ended = ctrl.charge_ended(1000.0, "car_stopped")
+    assert (ended.action, ended.reason, ended.state) == ("stop", "car_stopped", "off")
+    assert ctrl.retry_in(1000.0) == 1800.0
+
+    # Plenty of surplus inside the wait: nothing arms, and the surplus is still reckoned.
+    for t in (1100.0, 2000.0, 2790.0):
+        held = ctrl.observe(_obs(t, grid_w=-2 * SIX_A_W))
+        assert (held.action, held.reason, held.state) == ("hold", "car_stopped", "off")
+        assert held.available_w == pytest.approx(2 * SIX_A_W)
+
+    # After it, the ordinary start rules.
+    assert ctrl.observe(_obs(2800.0, grid_w=-SIX_A_W)).state == "arming"
+    assert ctrl.observe(_obs(2925.0, grid_w=-SIX_A_W)).action == "start"
+    ctrl.charge_ended(3300.0, "car_stopped")
+    assert ctrl.retry_in(3300.0) == 3600.0
+    ctrl.charge_ended(3300.0, "car_stopped")
+    ctrl.charge_ended(3300.0, "car_stopped")
+    ctrl.charge_ended(3300.0, "car_stopped")
+    assert ctrl.retry_in(3300.0) == 14400.0, "the wait is capped"
+
+
+def test_a_car_that_drew_again_or_a_clear_waits_only_the_shortest_retry():
+    ctrl = SolarController(_config())
+    ctrl.charge_ended(0.0, "car_stopped")
+    ctrl.charge_ended(0.0, "car_stopped")
+    assert ctrl.retry_in(0.0) == 3600.0
+    ctrl.car_drew()
+    assert ctrl.ended is None and ctrl.retry_in(0.0) is None
+    ctrl.charge_ended(0.0, "car_stopped")
+    assert ctrl.retry_in(0.0) == 1800.0
+    ctrl.clear_ended()
+    assert ctrl.observe(_obs(400.0, grid_w=-SIX_A_W)).state == "arming"
+
+
+def test_a_car_at_its_own_limit_gets_no_retry_until_cleared():
+    ctrl = SolarController(_config())
+    _started_plainly(ctrl, 0.0)
+    ctrl.charge_ended(1000.0, "vehicle_full")
+    assert ctrl.retry_in(1000.0) is None
+    for t in (5000.0, 20000.0, 100000.0):
+        assert ctrl.observe(_obs(t, grid_w=-2 * SIX_A_W)).reason == "vehicle_full"
+    ctrl.clear_ended()
+    assert ctrl.observe(_obs(100100.0, grid_w=-SIX_A_W)).state == "arming"
+
+
+def test_a_charge_something_else_ended_is_an_ordinary_stop():
+    ctrl = SolarController(_config())
+    _started_plainly(ctrl, 0.0)
+    ended = ctrl.charge_ended(1000.0, "charger_stopped")
+    assert (ended.action, ended.reason, ended.state) == ("stop", "charger_stopped", "off")
+    assert ctrl.ended is None
+    # `min_off_s` (300 s) from that stop, then the ordinary start.
+    ctrl.observe(_obs(1100.0, grid_w=-SIX_A_W))
+    assert ctrl.observe(_obs(1250.0, grid_w=-SIX_A_W)).reason == "arming_min_off_wait"
+    assert ctrl.observe(_obs(1300.0, grid_w=-SIX_A_W)).action == "start"

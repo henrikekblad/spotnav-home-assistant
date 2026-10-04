@@ -252,6 +252,24 @@ CASES: list[tuple[str, StatusFacts, str, list[dict[str, Any]]]] = [
         [{"code": "solar_charging", "params": {"requested_a": 9.0}}],
     ),
     ("solar arming", base(strategy="solar", solar=SolarFacts("arming")), "normal", [{"code": "solar_arming", "params": {}}]),
+    (
+        "solar off, the car ended the charge at its own limit",
+        base(strategy="solar", solar=SolarFacts("off", "vehicle_full")),
+        "normal",
+        [{"code": "solar_vehicle_full", "params": {}}],
+    ),
+    (
+        "solar off, the car stopped charging short of its limit and is tried again later",
+        base(strategy="solar", solar=SolarFacts("off", "car_stopped", retry_at=NOW + timedelta(minutes=30))),
+        "normal",
+        [{"code": "solar_car_stopped", "params": {"time": (NOW + timedelta(minutes=30)).isoformat()}}],
+    ),
+    (
+        "solar off, something else ended the charge: an ordinary off",
+        base(strategy="solar", solar=SolarFacts("off", "charger_stopped")),
+        "normal",
+        [{"code": "solar_waiting_for_sun", "params": {}}],
+    ),
     ("solar disarming", base(strategy="solar", solar=SolarFacts("disarming")), "normal", [{"code": "solar_disarming", "params": {}}]),
     (
         "solar off, no reading while stopped",

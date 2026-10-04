@@ -30,13 +30,24 @@
   they joined): each coordinator gathers the other members' facts (`SolarExecutionCoordinator.
   share_member`) and hands its own controller the split (`site/solar_surplus.py`'s
   `priority_adjust_w`) on top of its own reckoning.
+* Solar follows the charger, not its own belief: a charge it runs that ended without it is handed to the
+  controller (`SolarController.charge_ended`, `SolarExecutionCoordinator._watch_charge`). The charge
+  control went off after it was seen on (not a load-balancing pause): the car ended it when the
+  connector says `Finishing` or `SuspendedEV`, or the car had stopped drawing just before; an unplug or
+  anything else is `charger_stopped`. The control still on with the car drawing nothing for `CAR_IDLE_S`
+  is the car ending it too, and solar stops it. A car at or above its own limit is `vehicle_full`, else
+  `car_stopped` (tried again after a back-off). A re-plug, a state of charge `SOC_DROP_PCT` lower, or a
+  higher limit or target clears it.
+* A charger that is not charging draws nothing, whatever its measured current still reads: a sensor keeps
+  its last value when a charge ends, and that leftover is not the car's draw (`_build_observation`'s
+  `charger_idle`).
 """
 
 from __future__ import annotations
 
 import logging
 import time
-from datetime import timedelta
+from datetime import datetime, timedelta
 from collections.abc import Callable
 from dataclasses import dataclass, field, replace
 from typing import Any, Final
@@ -73,6 +84,7 @@ from ..site.solar_capability import solar_capability
 from ..site.solar_surplus import (
     SolarConfig,
     SolarController,
+    SolarEndCause,
     SolarObservation,
     SolarShareMember,
     SolarVerdict,
@@ -80,6 +92,8 @@ from ..site.solar_surplus import (
     surplus_breakdown,
 )
 from .auto_execution import AutoExecutor, pause_blocks_execution
+from .charge_progress import SUSPENDED_EV
+from .charger_connection import CHARGING, DISCONNECTED, FINISHED
 from .controller import ChargingController
 
 
@@ -99,6 +113,16 @@ TAKES_LESS_MARGIN_A: Final = 2.0
 #: How long (seconds) after a start a charger's draw is left to settle before it counts as taking less:
 #: a car ramps up over several seconds.
 TAKES_LESS_GRACE_S: Final = 60.0
+
+#: A charge solar runs whose car draws nothing this long (seconds) while the charge control is on: the car
+#: ended it by itself.
+CAR_IDLE_S: Final = 300.0
+#: How long (seconds) a car must draw before a charge it ends again waits only the shortest retry.
+CAR_DREW_S: Final = 600.0
+#: A state of charge this many percent below the one the car ended its charge at: it may take one again.
+SOC_DROP_PCT: Final = 2.0
+#: The connector status of a charger holding the car back itself (its own pilot, a load balancer).
+SUSPENDED_EVSE: Final = "SuspendedEVSE"
 
 #: Token for hybrid arbitration handoff logs.
 HYBRID_LOG_TOKEN: Final = "HYBRID"
@@ -182,6 +206,8 @@ class SolarExecutionState:
     satisfied: bool = False
     #: What keeps solar from a full basis, named.
     basis: SolarBasis = field(default_factory=SolarBasis)
+    #: When a car that stopped charging by itself (`car_stopped`) is tried again, `None` otherwise.
+    retry_at: datetime | None = None
 
 
 def solar_execution_state(hass: HomeAssistant, charger_entry_id: str) -> SolarExecutionState | None:
@@ -347,6 +373,7 @@ def _build_observation(
     *,
     now: float,
     effective_phases: int | None = None,
+    charger_idle: bool = False,
 ) -> SolarObservation:
     """One tick's `SolarObservation` from the site's computed result plus this charger's
     measured current.
@@ -357,6 +384,8 @@ def _build_observation(
     fuse headroom (`_fuse_caps`, which also covers an incomplete phase measurement). `effective_phases`
     is what the charge uses (`planning/phases.py`): a car on fewer phases than the charger is wired for
     draws on that many of them. A single-phase charger of unknown phase is reckoned on `STAND_IN_PHASE`.
+    `charger_idle` is a charger that is not charging: what its measured current still reads is a leftover,
+    and it draws nothing (a phase that does not read stays unknown).
     """
     result = site.result
     measured = site.charger_measured_current(charger_entry_id)
@@ -370,6 +399,8 @@ def _build_observation(
         car_delivered_a = {
             phase: (None if measured is None else measured.get(phase).value) for phase in car_phases
         }
+    if charger_idle:
+        car_delivered_a = {phase: (None if value is None else 0.0) for phase, value in car_delivered_a.items()}
 
     phase_cap_a: dict[PhaseName, float | None] | None = None
     if site.config.get("measurement_mode") == MEASUREMENT_MODE_DIRECT:
@@ -582,6 +613,13 @@ class SolarExecutionCoordinator:
         # Whether the charge solar runs is one the charger began by itself and solar took over
         # (`_take_over`): leaving solar does not stop it, as it never stopped a charge it did not start.
         self._took_over = False
+        # The watch on the charge solar runs (`_watch_charge`): whether its charge control was seen on, since
+        # when the car has drawn nothing with it on, and since when it has drawn. Then what a charge the car
+        # ended was ended at (`_ended_context`): the plug-in, its state of charge, its limit and the target.
+        self._seen_control_on = False
+        self._idle_since: float | None = None
+        self._drawing_since: float | None = None
+        self._ended_context: tuple[datetime | None, float | None, float | None, float | None] | None = None
         # Coalescing guard: `_on_site_update` fires often, but an evaluation awaits
         # `AutoExecutor`'s lock and `SolarController` is not reentrant, so a trigger arriving mid-
         # evaluation is dropped; the next site recompute retries.
@@ -687,11 +725,19 @@ class SolarExecutionCoordinator:
             self._solar = self._build_controller(site)
         if not held_by_plan and not pause_blocks_execution(settings):
             await self._take_over(site)
+            self._maybe_clear_ended(self._solar)
+            ended = self._watch_charge(self._solar, self._now())
+            if ended is not None:
+                # The charge ended without solar: a stop forgets who started it (and ends a charge the car
+                # left on); the observation below then decides from `off`.
+                await self._apply_verdict(ended)
+                self._log_transition(ended)
         observation = _build_observation(
             site,
             self._charger_entry_id,
             now=self._now(),
             effective_phases=effective_phases(self._hass, self._charger_entry_id),
+            charger_idle=self._charger_idle(),
         )
         share_adjust_w = self._share_adjust_w(site, observation)
         if share_adjust_w:
@@ -721,6 +767,119 @@ class SolarExecutionCoordinator:
         # asks the site to render again (see
         # `SiteCapacityController.notify_solar_surplus_changed`).
         site.notify_solar_surplus_changed()
+
+    def _charger_idle(self) -> bool:
+        """Whether the charger is not charging: no Start on its way, and neither its charging state nor its
+        connection says charging. Its measured current then is a leftover (`_build_observation`)."""
+        controller = self._controller
+        if controller.start_pending or controller.charging:
+            return False
+        return controller.connection()[0] != CHARGING
+
+    def _watch_charge(self, solar: SolarController, now: float) -> SolarVerdict | None:
+        """The charger's own state against solar's: the verdict that ends a charge solar runs which ended
+        without it (module docstring), else `None`. Never while load balancing has paused the charge (its
+        regulator resumes it), and a charge control never seen on (a Start not taken yet) ended nothing."""
+        controller = self._controller
+        if not solar.running:
+            self._seen_control_on = False
+            self._idle_since = None
+            self._drawing_since = None
+            return None
+        if controller.paused_by_balancing:
+            return None
+        if controller.charge_control_on:
+            self._seen_control_on = True
+            drawing = controller.car_drawing()
+            if controller.held_by_charger or controller.charge_progress_facts().connector_status == SUSPENDED_EVSE:
+                # The charger holds the car back, not the car itself.
+                drawing = None
+            if drawing is True:
+                self._idle_since = None
+                if self._drawing_since is None:
+                    self._drawing_since = now
+                if solar.ended is not None and now - self._drawing_since >= CAR_DREW_S:
+                    solar.car_drew()
+                    self._ended_context = None
+                return None
+            self._drawing_since = None
+            if drawing is None:
+                self._idle_since = None
+                return None
+            if self._idle_since is None:
+                self._idle_since = now
+            if now - self._idle_since < CAR_IDLE_S:
+                return None
+            return self._end(solar, now, self._car_cause())
+        if not self._seen_control_on or controller.start_pending:
+            return None
+        connection = controller.connection()[0]
+        status = controller.charge_progress_facts().connector_status
+        cause: SolarEndCause
+        if connection == DISCONNECTED:
+            cause = "charger_stopped"
+        elif connection == FINISHED or status == SUSPENDED_EV or self._idle_since is not None:
+            cause = self._car_cause()
+        else:
+            cause = "charger_stopped"
+        return self._end(solar, now, cause)
+
+    def _end(self, solar: SolarController, now: float, cause: SolarEndCause) -> SolarVerdict:
+        """Hand the controller a charge that ended without solar, remembering what it ended at."""
+        self._seen_control_on = False
+        self._idle_since = None
+        self._drawing_since = None
+        self._took_over = False
+        self._ended_context = None if cause == "charger_stopped" else self._vehicle_context()
+        _LOGGER.info(
+            "%s charger %s: the charge ended without solar (%s)",
+            SOLAR_SURPLUS_LOG_TOKEN,
+            self._charger_entry_id,
+            cause,
+        )
+        return solar.charge_ended(now, cause)
+
+    def _vehicle_context(self) -> tuple[datetime | None, float | None, float | None, float | None]:
+        """What a charge the car ended is ended at: the plug-in, the state of charge, the car's own limit
+        and the target (each `None` when unknown)."""
+        settings = self._store.settings(self._charger_entry_id)
+        vehicle_id = settings.target.vehicle_id
+        data = charger_data(self._hass, self._charger_entry_id)
+        reading = None if data is None else data.soc_reader.read(vehicle_id)
+        soc = None if reading is None else reading.soc_percent
+        limit = self._controller.vehicle_limit_percent(vehicle_id)
+        return self._controller.plugged_in_at, soc, limit, settings.target.target_percent
+
+    def _car_cause(self) -> SolarEndCause:
+        """`vehicle_full` for a car at or above its own limit (100 % when it states none), else
+        `car_stopped`."""
+        _plugged, soc, limit, _target = self._vehicle_context()
+        if soc is not None and soc >= (100.0 if limit is None else limit):
+            return "vehicle_full"
+        return "car_stopped"
+
+    def _maybe_clear_ended(self, solar: SolarController) -> None:
+        """Clear a charge the car ended once it may take one again: plugged in anew (or unplugged), a
+        state of charge `SOC_DROP_PCT` lower, or a higher limit or target than it ended at."""
+        if solar.ended is None:
+            return
+        context = self._ended_context
+        clear = context is None or self._controller.adapter.vehicle_connected() is False
+        if not clear and context is not None:
+            plugged, soc, limit, target = context
+            now_plugged, now_soc, now_limit, now_target = self._vehicle_context()
+            clear = (
+                (now_plugged is not None and now_plugged != plugged)
+                or (soc is not None and now_soc is not None and now_soc <= soc - SOC_DROP_PCT)
+                or (now_limit is not None and now_limit > (100.0 if limit is None else limit))
+                or (target is not None and now_target is not None and now_target > target)
+            )
+        if clear:
+            _LOGGER.info(
+                "%s charger %s: the car may take a charge again", SOLAR_SURPLUS_LOG_TOKEN, self._charger_entry_id
+            )
+            solar.clear_ended()
+            self._ended_context = None
 
     def solar_activity(self, site: SiteCapacityController) -> tuple[str, float | None] | None:
         """This charger's solar state on `site` and since when it has been charging, `None` when it takes
@@ -784,6 +943,7 @@ class SolarExecutionCoordinator:
             self._charger_entry_id,
             now=now,
             effective_phases=effective_phases(self._hass, self._charger_entry_id),
+            charger_idle=self._charger_idle(),
         )
         return self._member(site, observation, order=order, now=now)
 
@@ -956,7 +1116,14 @@ class SolarExecutionCoordinator:
             active_control_active=bool(site.config.get(CONF_ACTIVE_CONTROL_ENABLED, False)),
             held_by_plan=held_by_plan,
             basis=basis if basis is not None else SolarBasis(),
+            retry_at=self._retry_at(),
         )
+
+    def _retry_at(self) -> datetime | None:
+        """When a car that stopped charging by itself is tried again, on the wall clock."""
+        solar = self._solar
+        remaining = None if solar is None else solar.retry_in(self._now())
+        return None if remaining is None else dt_util.utcnow() + timedelta(seconds=remaining)
 
     def _log_hybrid_handoff(self, held_by_plan: bool) -> None:
         """INFO, once per real handoff transition, under the token HYBRID."""

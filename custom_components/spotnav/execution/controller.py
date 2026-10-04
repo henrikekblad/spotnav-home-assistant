@@ -2202,6 +2202,11 @@ class ChargingController:
         return self.charging or self.adapter.enabled_state() is True
 
     @property
+    def charge_control_on(self) -> bool:
+        """Whether a Start is in effect (`_control_on`): charging, or the charge control enabled."""
+        return self._control_on
+
+    @property
     def _control_observation(self) -> bool | None:
         """`_control_on` as an observation: `None` while the charge control cannot be read
         (missing, unavailable or unknown) and no status says the charger is charging, so a charge
@@ -2731,6 +2736,10 @@ class ChargingController:
             return _parse_datetime(plan.departure)
         except ValueError:
             return None
+
+    def car_drawing(self) -> bool | None:
+        """Whether the car draws current now (`top_off.car_drawing`), `None` when nothing can tell."""
+        return self._car_drawing()
 
     def _car_drawing(self) -> bool | None:
         """Whether the car draws current now, from the facts the progress observation reads."""

@@ -97,7 +97,9 @@
     "arming_dip",
     "arming_min_off_wait",
     "battery_credit_false",
+    "car_stopped",
     "charger_measurement_missing",
+    "charger_stopped",
     "disarming_delay",
     "disarming_min_on_wait",
     "disarming_recover",
@@ -111,7 +113,8 @@
     "start_verifying",
     "stop_after_delay",
     "unmeasured_arming",
-    "unmeasured_start"
+    "unmeasured_start",
+    "vehicle_full"
   ],
   "status_codes": {
     "auto_installed": {
@@ -351,6 +354,12 @@
       ],
       "tone": "notice"
     },
+    "solar_car_stopped": {
+      "params": [
+        "time"
+      ],
+      "tone": "normal"
+    },
     "solar_charger_current_missing": {
       "params": [
         "entity",
@@ -394,6 +403,10 @@
       "tone": "blocking"
     },
     "solar_unknown": {
+      "params": [],
+      "tone": "normal"
+    },
+    "solar_vehicle_full": {
       "params": [],
       "tone": "normal"
     },

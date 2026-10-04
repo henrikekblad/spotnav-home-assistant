@@ -20,8 +20,10 @@ from custom_components.spotnav.planning.auto_settings import (
 )
 from custom_components.spotnav.const import (
     CONF_MEASURED_CURRENT_SOURCE,
+    CONF_MODE,
     DOMAIN,
     MEASUREMENT_MODE_DERIVED,
+    MODE_OCPP,
 )
 from custom_components.spotnav.execution.controller import ChargingController, ChargingPlan
 from custom_components.spotnav.site.measurement_source import PhaseMeasurementSource, source_to_dict
@@ -221,6 +223,7 @@ async def solar_setup(
     charging_at_setup: bool = False,
     strategy: str = STRATEGY_SOLAR,
     battery_entity: str | None = None,
+    ocpp_target: tuple[str, int] | None = None,
 ) -> tuple[object, object, object, SolarExecutionCoordinator, SecondsClock, list, list]:
     """One charger, set up *before* its site -- the common real/test ordering
     (`SolarExecutionCoordinator.async_start`'s own docstring) -- with its strategy already
@@ -237,6 +240,8 @@ async def solar_setup(
     ticking coordinator together.
 
     `battery_entity` wires a home battery's aggregate power (positive = charging) into the site.
+    `ocpp_target` (charge point id, connector) gives the charger an OCPP connector, whose status and
+    current-import sensors the test then sets (`sensor.<cpid>_connector_<n>_status_connector`).
     """
     prefix = f"{entry_id}_charger"
     hass.states.async_set(f"switch.{prefix}", "on" if charging_at_setup else "off")
@@ -248,6 +253,8 @@ async def solar_setup(
         current_limit=None,
         webhook_id=f"webhook-{entry_id}",
         title="Solar charger",
+        ocpp_target=ocpp_target,
+        extra=None if ocpp_target is None else {CONF_MODE: MODE_OCPP},
     )
     assert await hass.config_entries.async_setup(charger.entry_id)
     await hass.async_block_till_done()

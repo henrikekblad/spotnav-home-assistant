@@ -167,6 +167,8 @@ export const STATUS_WORDING: Readonly<Record<StatusCode, TranslationKey>> = {
   solar_no_reading_stopped: "strategy.status.solar.noReadingStopped",
   solar_no_reading_waiting: "strategy.status.solar.noReadingWaiting",
   solar_waiting_for_sun: "strategy.status.solar.waitingForSun",
+  solar_vehicle_full: "strategy.status.solar.vehicleFull",
+  solar_car_stopped: "strategy.status.solar.carStopped",
   solar_no_grid_power: "strategy.status.solar.noGridPower",
   solar_battery_unreadable: "strategy.status.solar.batteryUnreadable",
   solar_charger_current_missing: "strategy.status.solar.chargerCurrentNotSet",
@@ -227,6 +229,7 @@ export const STATUS_VARIANT_KEYS: readonly TranslationKey[] = [
   "strategy.status.solar.chargerCurrentUnreadable",
   "status.meterUnavailable.inverter",
   "status.stoppedByPersonUntilStart",
+  "strategy.status.solar.carStoppedNoTime",
 ];
 
 const MISSING_FIELD_KEYS: Readonly<Record<string, TranslationKey>> = {
@@ -368,6 +371,12 @@ export function lineText(line: StatusLine, format: FormatContext, nowMs: number)
     }
     case "plan_distance":
       return say("status.planDistance", { distance: distanceText(language, num(p["mil"]) ?? 0, format.countries) });
+    case "solar_car_stopped": {
+      const time = ms(p["time"]);
+      return time === null || !zoned
+        ? say("strategy.status.solar.carStoppedNoTime")
+        : say("strategy.status.solar.carStopped", { time: clock(format, time) });
+    }
     case "solar_charging": {
       const amps = num(p["requested_a"]);
       return amps === null

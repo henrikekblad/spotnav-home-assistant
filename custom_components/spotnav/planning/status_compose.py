@@ -26,7 +26,9 @@ Precedence (first match wins the headline; "add" rows append a fact line)
 3. Strategy headline when `strategy_state` exists (solar / hybrid), in place of 4. A solar that is off
    for want of a basis says why where it is known (solar_no_grid_power, solar_battery_unreadable) in
    place of solar_no_reading_*; then solar_charger_current_missing (it runs blind, at the minimum current)
-   and solar_site_incomplete (the phases it runs without, on the total grid power) follow. When planning
+   and solar_site_incomplete (the phases it runs without, on the total grid power) follow. A charge the
+   car ended by itself is solar_vehicle_full (at its own limit) or solar_car_stopped{time} (tried again
+   at `time`) in place of solar_waiting_for_sun. When planning
    is waiting on prices (waiting_for_history, waiting_for_publication, buying_before_publication)
    that plan line follows the strategy headline (normal tone, params as in 4), so the wait is
    never hidden by the strategy.
@@ -161,6 +163,11 @@ STATUS_CODES: Final[dict[str, tuple[str, tuple[str, ...]]]] = {
     "solar_no_reading_stopped": (TONE_NORMAL, ()),
     "solar_no_reading_waiting": (TONE_NORMAL, ()),
     "solar_waiting_for_sun": (TONE_NORMAL, ()),
+    # The car ended the charge by itself at its own limit: the sun starts nothing until it is plugged in
+    # again (or its state of charge falls, or its limit or the target rises).
+    "solar_vehicle_full": (TONE_NORMAL, ()),
+    # The car ended the charge by itself short of its limit: the sun tries again at `time`.
+    "solar_car_stopped": (TONE_NORMAL, ("time",)),
     # Solar has no basis because a direct site's total grid power is not set (`entity` null) or its
     # `entity` has no fresh reading; in place of solar_no_reading_waiting/_stopped.
     "solar_no_grid_power": (TONE_NOTICE, ("entity", "entity_name")),
@@ -280,6 +287,8 @@ class SolarFacts:
     charger_current_entity_name: str | None = None
     #: The phases of an unusable site measurement solar runs without.
     site_incomplete_phases: tuple[str, ...] = ()
+    #: When a car that stopped charging by itself (`car_stopped`) is tried again.
+    retry_at: datetime | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -549,6 +558,10 @@ def _solar_line(solar: SolarFacts) -> dict[str, Any]:
     if solar.state == "disarming":
         return _line("solar_disarming")
     if solar.state == "off":
+        if solar.reason == "vehicle_full":
+            return _line("solar_vehicle_full")
+        if solar.reason == "car_stopped":
+            return _line("solar_car_stopped", time=None if solar.retry_at is None else aware_iso(solar.retry_at))
         if solar.reason == "no_basis_stopped":
             return _line("solar_no_reading_stopped")
         if solar.reason == "no_basis_off":
