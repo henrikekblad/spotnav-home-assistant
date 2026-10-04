@@ -131,6 +131,16 @@ class EaseeCommandPath(StartStopPath):
             return True
         return bool(self.paused)
 
+    def memory(self) -> dict[str, Any]:
+        """A pause of ours, so a restart does not take a paused charger for one a limit may be written to
+        (the read-back of 0 A says so only while the limit sensor is enabled)."""
+        return {} if self.paused is None else {"paused": self.paused}
+
+    def restore_memory(self, memory: dict[str, Any]) -> None:
+        paused = memory.get("paused")
+        if isinstance(paused, bool) and self.paused is None:
+            self.paused = paused
+
     def forget_pause(self) -> None:
         """A plug-in cleared the charger's limit and our pause with it: nothing is paused now, whatever
         a stale read-back of the old limit still says.

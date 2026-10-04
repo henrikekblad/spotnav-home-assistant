@@ -147,6 +147,16 @@ class ChargerAdapter:
         self._last_current: dict[str, Any] | None = None
         self._after_reads: set[CALLBACK_TYPE] = set()
 
+    # -- what a restart must not forget
+
+    def memory(self) -> dict[str, Any]:
+        """What the start/stop path remembers (an Easee pause of ours), as plain JSON values."""
+        return self.path.memory()
+
+    def restore_memory(self, memory: Any) -> None:
+        if isinstance(memory, dict):
+            self.path.restore_memory(memory)
+
     # -- commands
 
     async def async_start(self, amps: int | None = None) -> bool:

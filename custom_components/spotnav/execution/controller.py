@@ -516,6 +516,10 @@ class ChargingController:
         # A person's Stop as an older release stored it (`person_stopped`), read once at the restore for
         # the execution boundary to take over as its manual pause (`take_legacy_person_stop`).
         self._legacy_person_stopped = False
+        # What the record last saved of the facts below that change outside a plan's own saves (a balancing
+        # pause and the charge it held, the hold's session, who started the charge, the adapter's memory):
+        # a change is saved soon (`_save_memory_soon`), so a restart does not forget it.
+        self._saved_memory: tuple[Any, ...] | None = None
         # Solar's battery-credit back-off (`site/solar_surplus.py`): until when a charging battery is not
         # counted, and how long the next back-off is. Kept here, and persisted, so neither a restart nor a
         # rebuilt solar controller forgets it.
@@ -746,6 +750,19 @@ class ChargingController:
             self._top_off_until = (
                 parsed_top_off if parsed_top_off is not None and parsed_top_off.tzinfo is not None else None
             )
+            balancing = saved.get("balancing_pause")
+            if isinstance(balancing, dict):
+                origin = balancing.get("origin")
+                self._paused_by_balancing = True
+                self._paused_charge = (
+                    origin if isinstance(origin, str) else None,
+                    balancing.get("plan_charge") is True,
+                )
+            hold = saved.get("hold")
+            if isinstance(hold, dict):
+                self._hold.held = hold.get("held") is True
+                self._hold.overridden = hold.get("overridden") is True
+            self.adapter.restore_memory(saved.get("adapter_memory"))
             raw_probe = saved.get(STORE_KEY)
             if isinstance(raw_probe, dict):
                 self._probe_record = raw_probe
@@ -760,6 +777,7 @@ class ChargingController:
                     self._probe_record.get("last_written"),
                     self._probe_record.get("remembered"),
                 )
+        self._saved_memory = self._memory_signature()
         await self._reschedule_locked()
         # Armed for the controller's whole life, not only while a plan is: a manual Start has no
         # plan, and a scheduled one is observed from acceptance.
@@ -1801,6 +1819,7 @@ class ChargingController:
         """The wish to charge is gone (Auto paused by a person, say): balancing's pause is not a charge
         to resume any more."""
         self._paused_by_balancing = False
+        self._save_memory_soon()
 
     async def async_battery_probe_start(self, amps: int, *, capped: bool = False) -> bool:
         """Resume a charge that load balancing paused, at `amps`, as a battery probe.
@@ -2089,6 +2108,7 @@ class ChargingController:
         # Set after the stop (which clears it): this stop is the balancing pause itself.
         if code == "pause" and was_on:
             self._remember_paused_charge(*paused_charge)
+            self._save_memory_soon()
         return RegulatedWrite(REGULATED_STOPPED, code, False)
 
     async def async_restore_current(self, *, lowered_by_balancing: bool) -> CurrentRestore:
@@ -2537,6 +2557,7 @@ class ChargingController:
             # The charge ended by itself: its origin must not label the next one. A Start the charger has
             # not answered yet keeps its origin, or the charge it begins would look like nobody's.
             self._charge_origin = None
+        self._save_memory_soon()
         for listener in self._listeners:
             listener()
 
@@ -2556,7 +2577,32 @@ class ChargingController:
         if maximum is not None and amps > maximum:
             raise ValueError(f"Charging current must be at most {maximum:g} A")
 
+    def _memory_signature(self) -> tuple[Any, ...]:
+        """The facts `_save_memory_soon` keeps saved, as one comparable value."""
+        return (
+            self._paused_by_balancing,
+            self._paused_charge,
+            self._hold.held,
+            self._hold.overridden,
+            self._charge_origin,
+            self._plan_charge,
+            tuple(sorted(self.adapter.memory().items())),
+        )
+
+    def _save_memory_soon(self) -> None:
+        """Save the record soon when one of the facts a restart must not forget changed outside a save of
+        its own (a balancing pause, the hold, a charge seen ending by itself, an Easee pause of ours)."""
+        if not self._restored or self._memory_signature() == self._saved_memory:
+            return
+        self.hass.async_create_task(self._async_save_memory())
+
+    async def _async_save_memory(self) -> None:
+        async with self._lock:
+            if self._memory_signature() != self._saved_memory:
+                await self._async_save_quietly()
+
     async def _async_save(self) -> None:
+        signature = self._memory_signature()
         await self._store.async_save(
             {
                 "plan": asdict(self.plan) if self.plan else None,
@@ -2571,6 +2617,17 @@ class ChargingController:
                 "top_off_until": None if self._top_off_until is None else self._top_off_until.isoformat(),
                 # When the car last ended a person's charge by itself, in this plug-in.
                 "car_ended_at": None if self._car_ended_at is None else self._car_ended_at.isoformat(),
+                # A charge load balancing paused, and what it was, so its regulator resumes it after a restart.
+                "balancing_pause": None
+                if not self._paused_by_balancing
+                else {
+                    "origin": None if self._paused_charge is None else self._paused_charge[0],
+                    "plan_charge": bool(self._paused_charge is not None and self._paused_charge[1]),
+                },
+                # The hold's plug-in session: held, and a person's override of it.
+                "hold": {"held": self._hold.held, "overridden": self._hold.overridden},
+                # What the start/stop path remembers (an Easee pause of ours).
+                "adapter_memory": self.adapter.memory(),
                 "solar_credit_backoff": {
                     "until": None if self._credit_backoff_until is None else self._credit_backoff_until.isoformat(),
                     "next_s": self._credit_backoff_next_s,
@@ -2581,6 +2638,7 @@ class ChargingController:
                 STORE_KEY: self._probe_record,
             }
         )
+        self._saved_memory = signature
 
     async def _reschedule_locked(self) -> None:
         """Arm the plan's timers, or clear a plan that is over. The lock is held.
@@ -2631,6 +2689,8 @@ class ChargingController:
             # to stop.
             spared = (
                 self._charge_origin in ("manual", "solar")
+                # A person's override of the hold (kept across a restart) is theirs, as after the hold.
+                or (self._hold.overridden and self._hold.held)
                 or not self._automatic_permitted(AUTOMATIC_STOP)
                 or self._hold_blocked()
                 or (self._end_window_guard is not None and self._end_window_guard())
@@ -2640,6 +2700,7 @@ class ChargingController:
                 await self._stop_locked(clear_schedule=False)
                 if was_charging:
                     self._hold.held_now()
+                    await self._async_save_quietly()
         for index, (start, end) in enumerate(windows):
             if start > now:
                 self._timer_cancels.append(async_track_point_in_utc_time(
