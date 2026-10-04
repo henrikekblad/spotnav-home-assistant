@@ -1522,8 +1522,10 @@ class ChargingController:
             "SpotNav charger %s: a charge began while a person's Stop pauses Auto; stopping it", self.entry_id
         )
         tried_at = self._person_hold_tried_at = dt_util.utcnow()
-        if await self._automatic_stop_locked("the stop under a person's Stop"):
-            self._person_hold_stop_times.append(tried_at)
+        # Every attempt counts, taken or not: a command that raised may still have stopped the charger, and
+        # one that keeps failing must end in the give-up and its notification, not in endless retries.
+        self._person_hold_stop_times.append(tried_at)
+        await self._automatic_stop_locked("the stop under a person's Stop")
 
     @asynccontextmanager
     async def _automatic(self, kind: str) -> AsyncIterator[bool]:
