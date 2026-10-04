@@ -165,3 +165,45 @@ async def test_a_charger_that_has_shut_down_takes_no_regulator_write_stop_or_res
     assert calls == []
     assert not write.written and not paused.written
     assert resumed is False
+
+
+async def test_a_start_reads_the_sites_allowance_only_after_a_lowering_write_on_its_way_has_landed(
+    hass: HomeAssistant,
+) -> None:
+    """Raising after lowering: the regulator's must-lower write is on its way when a Start comes. The Start's
+    allowance is read after that write has landed (under `_assign_lock`), not before, so the current the
+    Start writes is never one decided before the lowering and sent after it."""
+    from .charger_helpers import Clock
+    from .test_charger_controller_paths import _controller
+
+    controller = await _controller(hass, "easee", clock=Clock())
+    hass.states.async_set("sensor.easee_status", "charging", {"config_authorizationRequired": False})
+    events: list[str] = []
+    gate = asyncio.Event()
+
+    async def limit(call: Any) -> None:
+        events.append(f"limit {call.data['current']} sent")
+        await gate.wait()
+        events.append("limit landed")
+
+    async def command(call: Any) -> None:
+        events.append(call.data["action_command"])
+
+    hass.services.async_register("easee", "set_charger_dynamic_limit", limit)
+    hass.services.async_register("easee", "action_command", command)
+
+    def cap() -> float:
+        events.append("allowance read")
+        return 10.0
+
+    controller.set_start_cap(cap, reserve=lambda _amps: None)
+    write = hass.async_create_task(controller.async_apply_regulated_current(8, must_lower=True))
+    await _spin(10)
+    assert events == ["limit 8 sent"]
+    start = hass.async_create_task(controller.async_start(16, manual=True))
+    await _spin(10)
+    gate.set()
+    await write
+    await start
+    assert events.index("allowance read") > events.index("limit landed"), events
+    await controller.async_shutdown()

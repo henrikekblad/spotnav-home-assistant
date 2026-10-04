@@ -2179,48 +2179,58 @@ class ChargingController:
         if explicit_amps is not None:
             self._validate_amps(explicit_amps)
             self._requested_current_a = explicit_amps
-            # With active control on, a start never gives the car more than the site allows now:
-            # `min(request, allowance)`, and no start at all below the floor (the request stays on
-            # record, so the regulator resumes the charge when headroom returns).
-            allowance = self._start_allowance_a() if capped else None
-            if allowance is not None:
-                if allowance < DEFAULT_MIN_CURRENT_A:
-                    # The charge that was asked for waits for headroom as what it is (the plan's, a
-                    # person's, the sun's); the regulator's resume gives it back that origin.
-                    self._remember_paused_charge(
-                        "manual" if manual else cause or "other", cause == "plan_window" and not manual
-                    )
-                    _LOGGER.info(
-                        "SpotNav charger %s: not started, the site allows %.1fA (below the %sA floor)",
-                        self.entry_id,
-                        allowance,
-                        DEFAULT_MIN_CURRENT_A,
-                    )
-                    await self._async_save()
-                    self._notify()
-                    return False
-                explicit_amps = min(explicit_amps, int(allowance))
-                # Taken now, before the first await: a start beside this one in the same tick on the same
-                # site reads the allowance less this.
-                self._reserve_start(explicit_amps)
-                reserved = True
+            too_low: float | None = None
             try:
-                if self.current_control == CURRENT_CONTROL_CHANGE_CONFIGURATION:
-                    await self._async_assign_current(explicit_amps)
-                elif self._writes_current_at_start and not self.adapter.policy.ignored_while_paused:
-                    outcome = await self._async_assign_current_outcome(
-                        explicit_amps, reason=WRITE_SESSION_START
-                    )
-                    # A session-bound number is not there before the session: write when it appears.
-                    self._start_write_pending = (
-                        outcome == ASSIGN_TARGET_UNAVAILABLE and self.adapter.policy.session_bound
-                    )
-                await self._async_save()
+                # Under `_assign_lock` from the allowance to the write: a regulator write lowering this charger
+                # that is on its way lands first, and the start never sends a current decided before it.
+                async with self._assign_lock:
+                    # With active control on, a start never gives the car more than the site allows now:
+                    # `min(request, allowance)`, and no start at all below the floor (the request stays on
+                    # record, so the regulator resumes the charge when headroom returns).
+                    allowance = self._start_allowance_a() if capped else None
+                    if allowance is not None and allowance < DEFAULT_MIN_CURRENT_A:
+                        too_low = allowance
+                    else:
+                        if allowance is not None:
+                            explicit_amps = min(explicit_amps, int(allowance))
+                            # Taken now, before the next await: a start beside this one in the same tick on the
+                            # same site reads the allowance less this.
+                            self._reserve_start(explicit_amps)
+                            reserved = True
+                        if self.current_control == CURRENT_CONTROL_CHANGE_CONFIGURATION:
+                            await self._assign_current_locked(
+                                explicit_amps, verify=False, reason=WRITE_SESSION_START
+                            )
+                        elif self._writes_current_at_start and not self.adapter.policy.ignored_while_paused:
+                            outcome = await self._assign_current_locked(
+                                explicit_amps, verify=False, reason=WRITE_SESSION_START
+                            )
+                            # A session-bound number is not there before the session: write when it appears.
+                            self._start_write_pending = (
+                                outcome == ASSIGN_TARGET_UNAVAILABLE and self.adapter.policy.session_bound
+                            )
+                if too_low is None:
+                    await self._async_save()
             except BaseException:
                 # Nothing went out: the site's margin is not on its way to this charger.
                 if reserved:
                     self._reserve_start(None)
                 raise
+            if too_low is not None:
+                # The charge that was asked for waits for headroom as what it is (the plan's, a person's, the
+                # sun's); the regulator's resume gives it back that origin.
+                self._remember_paused_charge(
+                    "manual" if manual else cause or "other", cause == "plan_window" and not manual
+                )
+                _LOGGER.info(
+                    "SpotNav charger %s: not started, the site allows %.1fA (below the %sA floor)",
+                    self.entry_id,
+                    too_low,
+                    DEFAULT_MIN_CURRENT_A,
+                )
+                await self._async_save()
+                self._notify()
+                return False
         executed = True
         # From here the charge is SpotNav's, whoever asked (a window, a manual Start, a webhook,
         # solar or hybrid execution): the hold of a charge that starts by itself leaves it alone.
