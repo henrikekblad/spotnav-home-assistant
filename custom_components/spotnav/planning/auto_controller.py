@@ -43,6 +43,7 @@ from ..pricing.price_refresh import PriceRefreshManager
 from ..pricing.relay_contract import AreaEntry
 from ..runtime import domain_data
 from ..execution.controller import CONNECTION_PLUGGED_IN
+from ..sessions.model import STARTED_HYBRID, STARTED_MANUAL, STARTED_SOLAR
 from ..sessions.recorder import RESET_TOLERANCE_KWH
 from ..vehicles.soc_estimate import (
     read_energy_register_kwh,
@@ -111,6 +112,9 @@ PLUG_IN_RESTART_S: Final = 900.0
 #: not believed (one false high reading must not end a plan).
 JUMP_MARGIN_KWH: Final = 0.5
 
+#: The current a rise is judged against at the least: 63 A on three phases (about 43 kW).
+CEILING_A: Final = 63
+
 
 @dataclass(frozen=True, slots=True)
 class RegisterStep:
@@ -133,54 +137,67 @@ def advance_register(
     """Take one register reading into a baseline's epoch.
 
     * A reading at or above the last one is believed when it climbed no faster than the charger can
-      deliver (`max_kw` since the last change, plus `JUMP_MARGIN_KWH`); otherwise it is ignored.
-    * A reading below the last one but not below where the epoch began (nor about zero) is the last
+      deliver (`max_kw` since the last change, plus `JUMP_MARGIN_KWH`), or when it is the second reading
+      in a row at or above one that climbed too fast (a faster charger, or a meter that caught up). A
+      single reading that climbed too fast and then fell back is never believed.
+    * A reading that falls back to the one before the last (a rise that did not hold) is the last
       reading proving false: the count goes back to it.
-    * Any other drop is a register that started again only when it fell to about zero soon after a
-      plug-in (one that counts per plug-in), or once the drop has held for
-      `DROP_HOLD_READINGS` readings over `DROP_HOLD_S`. What was counted before is carried. Until then it
-      is a glitch (a lifetime register that reads 0 while its charger reboots) and nothing moves.
+    * Any other drop is a register that started again: at once when it fell to about zero soon after a
+      plug-in (one that counts per plug-in), otherwise once the drop has held for `DROP_HOLD_READINGS`
+      readings over `DROP_HOLD_S` (until then it is a glitch, such as a lifetime register reading 0 while
+      its charger reboots, and nothing moves). What was counted before is carried; the register counts
+      from zero when what it shows is no more than could have been delivered since the last reading
+      (so the energy delivered while the drop held is counted too), else from its new reading (a meter
+      replaced).
     """
     reference = baseline.register_kwh if baseline.register_kwh is not None else reading
     last = baseline.last_register_kwh if baseline.last_register_kwh is not None else reference
     carried = baseline.carried_kwh
     held = carried + max(0.0, last - reference)
-    calm = {"pending_drop_kwh": None, "pending_drop_at": None, "pending_drop_count": 0}
+    since = baseline.last_register_at or baseline.started_at
+    calm = {"pending_drop_kwh": None, "pending_drop_at": None, "pending_drop_count": 0, "rejected_kwh": None}
+
+    def deliverable(rise: float) -> bool:
+        if since is None:
+            return True
+        hours = max(0.0, (now - since).total_seconds()) / 3600.0
+        return rise <= max_kw * hours + JUMP_MARGIN_KWH
+
+    def believe(new_reference: float, new_carried: float, previous: float | None) -> RegisterStep:
+        updated = replace(
+            baseline,
+            register_kwh=new_reference,
+            carried_kwh=round(new_carried, 6),
+            previous_register_kwh=previous,
+            last_register_kwh=reading,
+            last_register_at=now,
+            **calm,
+        )
+        return RegisterStep(new_carried + max(0.0, reading - new_reference), updated, True)
+
     if reading >= last - REGISTER_TOLERANCE_KWH:
         if reading <= last:
-            return RegisterStep(carried + max(0.0, reading - reference), replace(baseline, register_kwh=reference, **calm), True)
-        since = baseline.last_register_at or baseline.started_at
-        if since is not None:
-            hours = max(0.0, (now - since).total_seconds()) / 3600.0
-            if reading - last > max_kw * hours + JUMP_MARGIN_KWH:
-                return RegisterStep(held, baseline, False)
-        updated = replace(
-            baseline, register_kwh=reference, last_register_kwh=reading, last_register_at=now, **calm
-        )
-        return RegisterStep(carried + max(0.0, reading - reference), updated, True)
+            return RegisterStep(carried + max(0.0, reading - reference), replace(baseline, register_kwh=reference), True)
+        rejected = baseline.rejected_kwh
+        if deliverable(reading - last) or (rejected is not None and reading >= rejected - REGISTER_TOLERANCE_KWH):
+            return believe(reference, carried, last)
+        return RegisterStep(held, replace(baseline, rejected_kwh=reading), False)
     to_zero = reading <= SESSION_REGISTER_ZERO_KWH
-    if not to_zero and reading >= reference - REGISTER_TOLERANCE_KWH:
-        # Back below a reading that did not hold, still within the epoch: that reading was false.
-        updated = replace(baseline, register_kwh=reference, last_register_kwh=reading, last_register_at=now, **calm)
-        return RegisterStep(carried + max(0.0, reading - reference), updated, True)
+    previous = baseline.previous_register_kwh
+    if not to_zero and previous is not None and reading >= previous - REGISTER_TOLERANCE_KWH:
+        # Back to where it was before the last rise: that rise was false.
+        return believe(reference, carried, baseline.previous_register_kwh)
     near_plug_in = (
         plugged_in_at is not None and 0.0 <= (now - plugged_in_at).total_seconds() <= PLUG_IN_RESTART_S
     )
     if not (near_plug_in and to_zero):
-        since = baseline.pending_drop_at or now
+        first = baseline.pending_drop_at or now
         count = baseline.pending_drop_count + 1 if baseline.pending_drop_at is not None else 1
-        if count < DROP_HOLD_READINGS or (now - since).total_seconds() < DROP_HOLD_S:
-            pending = replace(baseline, pending_drop_kwh=reading, pending_drop_at=since, pending_drop_count=count)
+        if count < DROP_HOLD_READINGS or (now - first).total_seconds() < DROP_HOLD_S:
+            pending = replace(baseline, pending_drop_kwh=reading, pending_drop_at=first, pending_drop_count=count)
             return RegisterStep(held, pending, False)
-    restarted = replace(
-        baseline,
-        register_kwh=0.0 if reading <= SESSION_REGISTER_ZERO_KWH else reading,
-        carried_kwh=round(held, 6),
-        last_register_kwh=reading,
-        last_register_at=now,
-        **calm,
-    )
-    return RegisterStep(held + (reading if reading <= SESSION_REGISTER_ZERO_KWH else 0.0), restarted, True)
+    from_zero = to_zero or deliverable(reading)
+    return believe(0.0 if from_zero else reading, held, None)
 
 
 AutoState = Literal[
@@ -471,10 +488,9 @@ class AutoPlannerController:
         self._energy_cancel: Callable[[], None] | None = None
         self._energy_watched: str | None = None
         # The count the register watcher keeps between calculations (`_baseline`), and the epoch whose
-        # delivered energy was seen once (`_energy_met_seen`) and acted on (`_energy_met_done`).
+        # delivered energy was acted on (`_energy_met_done`).
         self._live_baseline: EnergyBaseline | None = None
         self._sessions_cancel: Callable[[], None] | None = None
-        self._energy_met_seen: str | None = None
         self._energy_met_done: str | None = None
 
         self._listeners: list[Callable[[AutoSnapshot], None]] = []
@@ -1471,7 +1487,9 @@ class AutoPlannerController:
         return resolve_departure(calculated_at, entry.tz, settings.departure, calculated_at)
 
     def _charge_begun_after(self, since: datetime) -> datetime | None:
-        """The start of the latest recorded charge that began after `since`, or `None`."""
+        """The start of the latest recorded charge that began after `since`, or `None`. A charge a person
+        or the sun started is theirs, not a new need: only one the plan or the charger itself started
+        counts."""
         store = domain_data(self._hass).session_store
         if store is None:
             return None
@@ -1479,7 +1497,11 @@ class AutoPlannerController:
         open_session = store.open_raw(self._entry_id)
         if open_session is not None:
             sessions.append(open_session)
-        starts = [session.start for session in sessions if session.start > since]
+        starts = [
+            session.start
+            for session in sessions
+            if session.start > since and session.started_by not in (STARTED_MANUAL, STARTED_SOLAR, STARTED_HYBRID)
+        ]
         return max(starts, default=None)
 
     def _epoch_start(self, departure_key: str, calculated_at: datetime) -> datetime:
@@ -1653,14 +1675,11 @@ class AutoPlannerController:
             if _structural(stored, step.baseline):
                 self._hass.async_create_task(self._save_baseline(step.baseline))
         if not step.accepted or step.delivered_kwh < settings.requested_kwh:
-            self._energy_met_seen = None
             return
+        # A believed reading (one that climbed no faster than the charger can deliver) is enough: a
+        # register that reports once an hour must not let the charge run on for another hour.
         key = step.baseline.departure_key
         if self._energy_met_done == key:
-            return
-        if self._energy_met_seen != key:
-            # The first reading that says the need is delivered: one more must say it too.
-            self._energy_met_seen = key
             return
         self._energy_met_done = key
         self._hass.async_create_task(self._async_energy_met(step.baseline))
@@ -1693,7 +1712,8 @@ class AutoPlannerController:
             baseline,
             reading,
             self._now(),
-            max_kw=power_kw(max_a, 3),
+            # Generous: a charger's stated range can be the everyday 32 A while it delivers 43 kW.
+            max_kw=power_kw(max(max_a, CEILING_A), 3),
             plugged_in_at=None if controller is None else controller.plugged_in_at,
         )
 
@@ -1739,7 +1759,7 @@ class AutoPlannerController:
 
         if stored is None or stored.departure_key != departure_key:
             # A fresh epoch: the current reading (or None) is the new starting point.
-            self._energy_met_seen = self._energy_met_done = None
+            self._energy_met_done = None
             await self._save_baseline(
                 EnergyBaseline(
                     register_kwh=current_reading,
@@ -2037,7 +2057,7 @@ async def async_remove_auto_state(hass: HomeAssistant, entry_id: str) -> None:
 def _structural(before: EnergyBaseline, after: EnergyBaseline) -> bool:
     """Whether a reading changed more than the last reading itself: a drop pending or accepted, a
     register that started again. Only these are saved between calculations."""
-    keep = ("last_register_kwh", "last_register_at")
+    keep = ("last_register_kwh", "last_register_at", "previous_register_kwh")
     return any(
         getattr(before, name) != getattr(after, name)
         for name in before.__dataclass_fields__

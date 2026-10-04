@@ -315,23 +315,16 @@ async def test_a_charge_balancing_paused_is_resumed_by_the_regulator_not_the_plu
 # ------------------------------------------------------ L3: a met need stops only the plan's charge
 
 
-@pytest.mark.parametrize("owner", ["hold_guard", "end_window_guard", "self_started"])
+@pytest.mark.parametrize("owner", ["hold_guard", "end_window_guard"])
 async def test_a_met_need_does_not_stop_a_charge_the_plan_does_not_own(hass: HomeAssistant, owner: str) -> None:
     controller, plug, starts, stops = await _switch_controller(hass, None)
-    if owner == "self_started":
-        await install_schedule(controller, _open_window())  # starts it as the plan's charge
-        await plug.set(True, control="off")
-        await controller.async_stop()  # the window's charge ended
-        await plug.set(True, control="on")  # and the car started by itself
-        assert controller.charge_origin is None
+    await install_schedule(controller, _open_window())
+    await plug.set(True, control="on")
+    assert controller.charge_origin == "plan_window"
+    if owner == "hold_guard":
+        controller.set_hold_guard(lambda: True)
     else:
-        await install_schedule(controller, _open_window())
-        await plug.set(True, control="on")
-        assert controller.charge_origin == "plan_window"
-        if owner == "hold_guard":
-            controller.set_hold_guard(lambda: True)
-        else:
-            controller.set_end_window_guard(lambda: True)
+        controller.set_end_window_guard(lambda: True)
     stops.clear()
 
     assert await controller.async_end_plan_need_met() is True

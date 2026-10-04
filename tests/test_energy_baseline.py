@@ -207,7 +207,7 @@ async def test_a_meter_reset_gives_no_subtraction_then_resumes(session: Session)
     serve(session.transport, flat=True)
     await session.set_auto(requested_kwh=10.0, departure=time(20, 0))
 
-    _set_register(session.hass, 2.0)  # a meter reset: lower than the stored baseline (50.0)
+    _set_register(session.hass, 30.0)  # a meter replaced: lower than the stored baseline (50.0)
     reset_snapshot = await session.preview.async_recalculate()
     assert reset_snapshot.proposal is not None
     assert reset_snapshot.proposal.delivered_kwh >= 10.0 - 0.5, "no subtraction across a reset"
@@ -218,10 +218,10 @@ async def test_a_meter_reset_gives_no_subtraction_then_resumes(session: Session)
     held_snapshot = await session.preview.async_recalculate()
     assert held_snapshot.proposal is not None and held_snapshot.proposal.delivered_kwh >= 10.0 - 0.5
     baseline = session.store.energy_baseline(session.entry_id)
-    assert baseline is not None and baseline.register_kwh == 2.0, "re-baselined at the new low"
+    assert baseline is not None and baseline.register_kwh == 30.0, "re-baselined at the new meter's reading"
 
     session.clock.advance(minutes=5)
-    _set_register(session.hass, 3.0)  # a further 1 kWh delivered since the reset
+    _set_register(session.hass, 31.0)  # a further 1 kWh delivered since the reset
     resumed_snapshot = await session.preview.async_recalculate()
     assert resumed_snapshot.proposal is not None
     assert resumed_snapshot.proposal.delivered_kwh <= 10.0 - 1.0 + 0.5, (

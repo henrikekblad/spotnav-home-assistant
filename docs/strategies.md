@@ -54,7 +54,10 @@ yourself overrides the weekdays.
 unplugged, and again the moment the departure passes, without waiting for the next price. A car
 plugged in while a planned period is running starts charging at once, unless you stopped the charge
 yourself during that period, Auto is paused, solar charging owns the charger or load balancing has no
-room for the minimum current. Plugged in between periods, it waits for the next one as before. When
+room for the minimum current. A charge the charger starts by itself inside a planned period counts as the plan's, so it stops with the
+period or when the need is met. Plugged in between periods, it waits for the next one as before. Only a
+status that shows a car there or gone counts as a plug-in or an unplug: a fault, an offline or updating
+charger, OCPP's Unavailable and a Wallbox's Ready (shown with or without a car) say nothing either way. When
 the need is met before the plan has run out (the target is reached, or the requested energy has been
 delivered, also by **Charge now** or by the sun) the periods still ahead are cleared and the charge a
 period started is stopped; a charge you started yourself goes on.
@@ -62,7 +65,7 @@ period started is stopped; a charge you started yourself goes on.
 **Counting the requested energy.** With a departure, energy delivered since that departure's
 previous occurrence counts toward the request, also across unplugging and plugging in again. With no
 departure, each plug-in starts a new count; a charger that cannot report a plug-in starts one with the
-first charge after the request was met. The count comes from the charger's energy register; a register
+first charge after the request was met that neither you (**Charge now**) nor the sun started. The count comes from the charger's energy register; a register
 that starts again from zero at each plug-in is counted on. A reading that drops for a moment (a charger
 that restarts) or climbs faster than the charger can deliver is not believed, so it never ends a plan. If the register cannot be read, the last
 remaining energy it showed is kept rather than buying the whole request again, and with no register
