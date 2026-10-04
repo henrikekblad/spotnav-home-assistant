@@ -522,3 +522,50 @@ async def test_the_probe_start_never_restarts_a_charge_that_was_not_paused_by_ba
     assert await controller.async_battery_probe_start(6) is False
     assert turn_on == []
     await controller.async_shutdown()
+
+
+async def test_the_regulators_write_does_not_wait_for_the_operation_lock(hass: HomeAssistant) -> None:
+    """R1: a Start or Stop on its way (holding the operation lock) never delays the regulator's write."""
+    import asyncio
+
+    clock = Clock()
+    controller = await _controller(hass, "wallbox", clock=clock)
+    number = async_mock_service(hass, "number", "set_value")
+    release = asyncio.Event()
+
+    async def slow_command() -> None:
+        async with controller._lock:  # noqa: SLF001
+            await release.wait()
+
+    holder = hass.async_create_task(slow_command())
+    await asyncio.sleep(0)
+    write = hass.async_create_task(controller.async_apply_regulated_current(10, must_lower=True))
+    for _ in range(10):
+        await asyncio.sleep(0)
+    assert write.done() and len(number) == 1, "the write waited for the command's lock"
+    release.set()
+    await holder
+    await controller.async_shutdown()
+
+
+async def test_a_stop_that_begins_while_the_regulators_write_waits_is_not_lifted(hass: HomeAssistant) -> None:
+    """R1: the write waits for the charger's write lock (a Start's write); a stop begins meanwhile. Right
+    before the send the state is read again: nothing is sent and the write is held as a stop on its way."""
+    import asyncio
+
+    from custom_components.spotnav.execution.controller import REGULATED_STOPPING
+
+    clock = Clock()
+    controller = await _controller(hass, "wallbox", clock=clock)
+    number = async_mock_service(hass, "number", "set_value")
+
+    async with controller._assign_lock:  # noqa: SLF001 - a Start's write on its way
+        write = hass.async_create_task(controller.async_apply_regulated_current(10, must_lower=True))
+        for _ in range(5):
+            await asyncio.sleep(0)
+        controller._stop_in_flight = True  # noqa: SLF001 - a stop leaves now
+    result = await write
+    controller._stop_in_flight = False  # noqa: SLF001
+    assert (result.outcome, result.code) == (REGULATED_HELD, REGULATED_STOPPING)
+    assert number == []
+    await controller.async_shutdown()

@@ -2177,6 +2177,10 @@ class ChargingController:
                 "Not assigning %sA: the pilot-floor probe is stepping the current down", amps
             )
             return ASSIGN_PROBE_IN_FLIGHT
+        if reason == WRITE_REGULATOR and self._stop_in_flight:
+            # The regulator writes without the operation lock: a stop on its way (or one that began while this
+            # write waited for `_assign_lock`) is not lifted by a current sent under it.
+            return REGULATED_STOPPING
         # Everything below is the adapter's: for an OCPP charger the very same read, rewrite and
         # write of `AssignedCurrent` it has always been (`OcppAssignedCurrent`); for any other, a
         # write under the platform's policy.
@@ -2198,33 +2202,30 @@ class ChargingController:
           charger and the next pass tries again.
 
         A stop is never refused by a write policy. It takes the operation lock, so it cannot land
-        inside a plan replacement.
+        inside a plan replacement; the write itself does not (see below).
         """
         if amps < DEFAULT_MIN_CURRENT_A:
             # Below the floor no valid pilot current exists, for OCPP as for any charger: the only
             # way to give the car less is to stop it (OCPP sends nothing for such a value).
             return await self._regulated_stop("pause")
-        if self._stop_in_flight:
-            # A stop is on its way (holding the lock): held at once rather than written after it lands.
+        # Never under the operation lock: a must-lower write waits for no Start or Stop on its way (a slow cloud
+        # command). What it must not do is lift a pause, so the state is read again, with no wait in between,
+        # right before the send (`_assign_current_locked`; Easee also between its two sends).
+        outcome = await self._async_assign_current_outcome(amps, reason=WRITE_REGULATOR)
+        if outcome == REGULATED_STOPPING:
+            # A stop is on its way: it gives the car less than any current would, and a current written
+            # while it lands would lift it on a charger that pauses by its limit.
             return RegulatedWrite(REGULATED_HELD, REGULATED_STOPPING, False)
-        # Under the operation lock, as every stop and start: a stop cannot land between the sends of one
-        # write (Easee's two-step write), where the second send would lift it again.
-        async with self._lock:
-            if self._stop_in_flight:
-                # A stop is on its way: it gives the car less than any current would, and a current written
-                # while it lands would lift it on a charger that pauses by its limit.
-                return RegulatedWrite(REGULATED_HELD, REGULATED_STOPPING, False)
-            outcome = await self._async_assign_current_outcome(amps, reason=WRITE_REGULATOR)
-            if outcome in IN_EFFECT_OUTCOMES:
-                return RegulatedWrite(REGULATED_WROTE, outcome, True)
-            if not must_lower:
-                return RegulatedWrite(REGULATED_HELD, outcome, False)
-            applied = self.adapter.current.setpoint_a()
-            if applied is None:
-                applied = self._requested_current_a
-            if applied is not None and amps >= applied:
-                # Already at or below what the fuse needs: nothing to lower.
-                return RegulatedWrite(REGULATED_HELD, outcome, False)
+        if outcome in IN_EFFECT_OUTCOMES:
+            return RegulatedWrite(REGULATED_WROTE, outcome, True)
+        if not must_lower:
+            return RegulatedWrite(REGULATED_HELD, outcome, False)
+        applied = self.adapter.current.setpoint_a()
+        if applied is None:
+            applied = self._requested_current_a
+        if applied is not None and amps >= applied:
+            # Already at or below what the fuse needs: nothing to lower.
+            return RegulatedWrite(REGULATED_HELD, outcome, False)
         return await self._regulated_stop("safety_stop", cause=outcome)
 
     async def _regulated_stop(self, code: str, *, cause: str | None = None) -> RegulatedWrite:

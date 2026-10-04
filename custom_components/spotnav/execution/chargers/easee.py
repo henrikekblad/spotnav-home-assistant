@@ -109,6 +109,12 @@ class EaseeCommandPath(StartStopPath):
         # A pause command on its way: the status still says `charging` until the charger has paused, and a
         # dynamic limit written meanwhile would lift the pause the moment it lands.
         self._pausing = False
+        # How many pauses of ours have left so far: a dynamic-limit write that sees this change between its
+        # two sends had a pause land under it (`EaseeDynamicLimit.async_set`).
+        self.pauses_sent = 0
+
+    def pause_count(self) -> int:
+        return self.pauses_sent
 
     def is_paused(self) -> bool:
         """Whether a dynamic limit must not be written now: the charger was paused by us and
@@ -185,6 +191,7 @@ class EaseeCommandPath(StartStopPath):
         # Never `stop`: deauthorizing would make the next Start wait for an authorization again. Paused from
         # the moment the command leaves: a limit written while it is on its way would resume the charge.
         self._pausing = True
+        self.pauses_sent += 1
         try:
             await self._command("pause")
         finally:
@@ -254,6 +261,7 @@ class EaseeDynamicLimit(CurrentPath):
         limiter: WriteRateLimiter,
         now: Callable[[], datetime] = dt_util.utcnow,
         paused: Callable[[], bool] = lambda: False,
+        pause_count: Callable[[], int] = lambda: 0,
         on_plug_in: Callable[[], None] = lambda: None,
         min_start_a: float = DEFAULT_MIN_CURRENT_A,
     ) -> None:
@@ -261,6 +269,7 @@ class EaseeDynamicLimit(CurrentPath):
         self._min_start_a = max(DEFAULT_MIN_CURRENT_A, min_start_a)
         self._floor_written_at: datetime | None = None
         self._paused = paused
+        self._pause_count = pause_count
         self._on_plug_in = on_plug_in
         self.hass = hass
         self.device_id = device_id
@@ -358,6 +367,7 @@ class EaseeDynamicLimit(CurrentPath):
         if self._paused():
             # A limit above 0 would lift the pause; the Start that follows sends it again.
             return ASSIGN_IGNORED_WHILE_PAUSED
+        pauses_before = self._pause_count()
         floor = math.ceil(self._min_start_a - 1e-9)
         if reason in (WRITE_SESSION_START, WRITE_RESEND):
             amps = max(amps, floor)  # never below the start minimum; never lowered either
@@ -385,8 +395,8 @@ class EaseeDynamicLimit(CurrentPath):
             return ASSIGN_RATE_LIMITED
         if needed == 2 and not await self._send(amps - 1):
             return ASSIGN_WRITE_FAILED
-        if needed == 2 and self._paused():
-            # A pause landed between the two sends: the second would lift it.
+        if needed == 2 and (self._paused() or self._pause_count() != pauses_before):
+            # A pause landed between the two sends (on its way, or already out): the second would lift it.
             return ASSIGN_IGNORED_WHILE_PAUSED
         if not await self._send(amps):
             return ASSIGN_WRITE_FAILED
@@ -481,6 +491,7 @@ def _easee_current(context: ChargerContext) -> CurrentPath | None:
         limiter=context.limiter,
         now=context.now,
         paused=path.is_paused,
+        pause_count=path.pause_count,
         on_plug_in=path.forget_pause,
         min_start_a=(context.profile.min_start_current_a if context.profile is not None else None)
         or DEFAULT_MIN_CURRENT_A,

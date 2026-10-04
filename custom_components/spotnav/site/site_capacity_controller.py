@@ -73,6 +73,7 @@ from ..const import (
 )
 from .site_history import SAMPLE_INTERVAL_S as HISTORY_SAMPLE_INTERVAL_S, SiteHistory
 from ..execution.controller import (
+    ChargingController,
     CurrentRestore,
     REGULATED_STOPPED,
     RESTORE_FAILED,
@@ -102,7 +103,7 @@ from .battery_probe import (
     PROBE_MAX_FUSE_FACTOR,
     within_held_band,
 )
-from .regulator_damping import RegulatorDamper
+from .regulator_damping import DampingDecision, RegulatorDamper
 from .regulator import (
     allocate_regulator_decisions,
     applyability_failure,
@@ -884,18 +885,31 @@ class SiteCapacityController:
         fresh = self._calculate()
         max_age_s = float(self.config.get(CONF_MAX_AGE_S, DEFAULT_MAX_AGE_S))
         margin_by_charger = self._most_restrictive_margin_by_charger(fresh)
-        for charger_entry_id, decision in list(self.regulator_decisions.items()):
-            try:
-                if not await self._async_apply_to_charger(
-                    charger_entry_id, decision, fresh, max_age_s, margin_by_charger
-                ):
-                    return
-            except Exception:  # noqa: BLE001 - one charger's failure must not cost the others their writes
-                _LOGGER.exception(
-                    "SpotNav site %s active control: charger %s failed; the pass goes on with the others",
-                    self.entry_id,
-                    charger_entry_id,
-                )
+        # Each charger's write runs as its own task: one charger's slow service call (a cloud that takes its
+        # time to answer) never holds another charger's must-lower write. The decisions stay in order.
+        writes: dict[str, asyncio.Task[None]] = {}
+        try:
+            for charger_entry_id, decision in list(self.regulator_decisions.items()):
+                try:
+                    if not await self._async_apply_to_charger(
+                        charger_entry_id, decision, fresh, max_age_s, margin_by_charger, writes=writes
+                    ):
+                        return
+                except Exception:  # noqa: BLE001 - one charger's failure must not cost the others their writes
+                    self._log_charger_pass_failure(charger_entry_id)
+        finally:
+            for charger_entry_id, task in writes.items():
+                try:
+                    await task
+                except Exception:  # noqa: BLE001 - one charger's failure must not cost the others their writes
+                    self._log_charger_pass_failure(charger_entry_id)
+
+    def _log_charger_pass_failure(self, charger_entry_id: str) -> None:
+        _LOGGER.exception(
+            "SpotNav site %s active control: charger %s failed; the pass goes on with the others",
+            self.entry_id,
+            charger_entry_id,
+        )
 
     async def _async_apply_to_charger(
         self,
@@ -904,9 +918,12 @@ class SiteCapacityController:
         fresh: SiteCapacityResult,
         max_age_s: float,
         margin_by_charger: dict[str, float | None],
+        *,
+        writes: dict[str, asyncio.Task[None]] | None = None,
     ) -> bool:
         """One charger's step of `_async_apply_active_control`. `False` when the pass must end (active
-        control was turned off meanwhile)."""
+        control was turned off meanwhile). With `writes`, the charger's write is started as a task kept
+        there for the pass to await, instead of awaited here."""
         # Re-checked per charger: a pass admitted while active control was on must not
         # keep writing after it was turned off (see `async_disable_active_control`).
         if not self._active_control_allowed():
@@ -1061,10 +1078,40 @@ class SiteCapacityController:
         # lock.
         if not self._active_control_allowed():
             return False
+        work = self._async_write_regulated(
+            charger_entry_id,
+            charger_controller,
+            decision,
+            damper,
+            damping,
+            int(setpoint),
+            previous_setpoint,
+            yield_verdict,
+        )
+        if writes is None:
+            await work
+        else:
+            writes[charger_entry_id] = self.hass.async_create_task(
+                work, f"spotnav site {self.entry_id} write to {charger_entry_id}"
+            )
+        return True
+
+    async def _async_write_regulated(
+        self,
+        charger_entry_id: str,
+        charger_controller: ChargingController,
+        decision: RegulatorDecision,
+        damper: RegulatorDamper,
+        damping: DampingDecision,
+        setpoint: int,
+        previous_setpoint: float | None,
+        yield_verdict: YieldVerdict | None,
+    ) -> None:
+        """The write of one charger's regulated current and what it means for its damper and the log."""
         # The charger's own write path owns the OCPP read-modify-write and stays best-effort; any
         # other adapter may refuse by policy, and then the fuse decides (stop or hold).
         write = await charger_controller.async_apply_regulated_current(
-            int(setpoint),
+            setpoint,
             must_lower=(
                 decision.reason in MUST_LOWER_REASONS
                 or damping.reason in ("protection", "urgent")
@@ -1081,19 +1128,18 @@ class SiteCapacityController:
                 detail=f"adapter_{write.code}" if write.outcome == "held" else write.code,
                 yield_verdict=yield_verdict,
             )
-            return True
+            return
         self._log_active_control_outcome(
             charger_entry_id,
             decision,
             outcome="wrote",
             detail=damping.reason,
-            setpoint=int(setpoint),
+            setpoint=setpoint,
             previous_setpoint=(
                 None if previous_setpoint is None else round(previous_setpoint)
             ),
             yield_verdict=yield_verdict,
         )
-        return True
 
     # -- a grid-charging battery that holds the grid at the fuse (`site/battery_probe.py`)
 
