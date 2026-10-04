@@ -1065,3 +1065,57 @@ def test_a_charge_something_else_ended_is_an_ordinary_stop():
     ctrl.observe(_obs(1100.0, grid_w=-SIX_A_W))
     assert ctrl.observe(_obs(1250.0, grid_w=-SIX_A_W)).reason == "arming_min_off_wait"
     assert ctrl.observe(_obs(1300.0, grid_w=-SIX_A_W)).action == "start"
+
+
+# --- a charge the charger began by itself (`SolarController.take_over`) ---------------------------------
+
+
+def test_take_over_with_no_surplus_stops_at_once_and_starts_min_off():
+    sc = SolarController(SolarConfig())
+    # 16 A drawn, the grid carries it and 300 W of house.
+    verdict = sc.take_over(_obs(1000.0, grid_w=16.0 * 3 * VOLTAGE_V + 300.0, car_delivered_a=16.0))
+    assert (verdict.action, verdict.reason, verdict.state) == ("stop", "off_no_surplus", "off")
+    assert not sc.running
+    # A surplus right after waits out `min_off_s` (300 s) from that stop, then the start delay.
+    sunny = -8.0 * 3 * VOLTAGE_V
+    assert sc.observe(_obs(1010.0, grid_w=sunny)).reason == "arming_delay"
+    assert sc.observe(_obs(1200.0, grid_w=sunny)).reason == "arming_min_off_wait"
+    assert sc.observe(_obs(1300.0, grid_w=sunny)).action == "start"
+
+
+def test_take_over_short_of_the_start_minimum_stops_too():
+    sc = SolarController(SolarConfig())
+    # 5 A of sun beside the car: enough to keep a running charge of the sun's (stop_a 5 A), not to start one.
+    verdict = sc.take_over(_obs(0.0, grid_w=(16.0 - 5.0) * 3 * VOLTAGE_V, car_delivered_a=16.0))
+    assert verdict.action == "stop"
+
+
+def test_take_over_with_a_surplus_keeps_it_at_the_start_minimum_and_verifies():
+    sc = SolarController(SolarConfig())
+    verdict = sc.take_over(_obs(0.0, grid_w=-4.0 * 3 * VOLTAGE_V, car_delivered_a=6.0))
+    assert (verdict.action, verdict.requested_a, verdict.reason, verdict.state) == (
+        "set_current",
+        6.0,
+        "start_verifying",
+        "on",
+    )
+    assert sc.observe(_obs(60.0, grid_w=-4.0 * 3 * VOLTAGE_V, car_delivered_a=6.0)).reason == "start_verifying"
+    after = sc.observe(_obs(121.0, grid_w=-4.0 * 3 * VOLTAGE_V, car_delivered_a=6.0))
+    assert (after.action, after.requested_a) == ("set_current", 10.0)
+    # No `min_on_s` of a start the sun never made: a lasting drop stops it after the stop delay alone.
+    cloud = 10.0 * 3 * VOLTAGE_V + 1000.0
+    assert sc.observe(_obs(130.0, grid_w=cloud, car_delivered_a=10.0)).reason == "disarming_delay"
+    assert sc.observe(_obs(431.0, grid_w=cloud, car_delivered_a=10.0)).action == "stop"
+
+
+def test_take_over_with_no_usable_reading_stops_unless_told_to_wait():
+    blind = _obs(0.0, grid_w={"L1": None, "L2": 0.0, "L3": 0.0}, car_delivered_a=16.0)
+    waiting = SolarController(SolarConfig())
+    verdict = waiting.take_over(blind, wait_for_reading=True)
+    assert (verdict.action, verdict.reason, verdict.state) == ("hold", "no_basis_off", "off")
+    stopped = SolarController(SolarConfig())
+    verdict = stopped.take_over(blind)
+    assert (verdict.action, verdict.reason) == ("stop", "no_basis_stopped")
+    # The charger's own current unreadable is no basis either.
+    verdict = SolarController(SolarConfig()).take_over(_obs(0.0, grid_w=-5000.0, car_delivered_a={"L1": None}))
+    assert (verdict.action, verdict.reason) == ("stop", "no_basis_stopped")
