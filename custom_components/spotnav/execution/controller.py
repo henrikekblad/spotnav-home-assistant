@@ -908,8 +908,12 @@ class ChargingController:
             return False
         if self._hold_blocked() or self._person_stopped_now():
             return False
-        if self.adapter.vehicle_connected() is False or self._control_on or self.start_pending:
-            # Already on, or a Start (the replanned plan's own window start) is on its way.
+        if self._control_on:
+            # The charger started by itself at plug-in: the charge is the plan's (its stops apply).
+            await self._claim_window_charge_locked()
+            return False
+        if self.adapter.vehicle_connected() is False or self.start_pending:
+            # A Start (the replanned plan's own window start) is on its way.
             return False
         if self._paused_by_balancing:
             # Load balancing stopped this charge: its regulator resumes it, with its own margin and dwell.
@@ -991,12 +995,44 @@ class ChargingController:
         )
         if decision == HOLD:
             self.hass.async_create_task(self._async_hold_stop())
+        elif self._window_charge_unclaimed():
+            self.hass.async_create_task(self._async_claim_window_charge())
         elif self._plan_charge:
             if self._control_observation is False:
                 self.hass.async_create_task(self._async_forget_plan_charge())
             elif self._plan_charge_strays():
                 self.hass.async_create_task(self._async_stray_stop())
         return decision in (HOLD, OVERRIDE) or before != (hold.held, hold.overridden, connected)
+
+    def _window_charge_unclaimed(self) -> bool:
+        """Whether a charge runs inside an open window of the plan that nobody started: the charger began
+        it by itself (at plug-in, say). It is the plan's, so the plan's stops (its window's end, a met
+        need) apply to it; never a person's, solar's, or one something else owns, or after a person's
+        Stop in this window.
+        """
+        return (
+            self._control_observation is True
+            and not self._plan_charge
+            and self._charge_origin is None
+            and self.plan_window_active_now
+            and not self._hold_blocked()
+            and not self._person_stopped_now()
+        )
+
+    async def _async_claim_window_charge(self) -> None:
+        async with self._lock:
+            await self._claim_window_charge_locked()
+
+    async def _claim_window_charge_locked(self) -> bool:
+        if not self._window_charge_unclaimed():
+            return False
+        self._plan_charge = True
+        self._charge_origin = "plan_window"
+        self._hold.spotnav_started()
+        _LOGGER.info("SpotNav charger %s: a charge began by itself in a planned window; it is the plan's", self.entry_id)
+        await self._async_save_quietly()
+        self._notify()
+        return True
 
     async def _async_hold_stop(self) -> None:
         """The one stop of a charge that started by itself outside a window: the ordinary stop,
@@ -1483,13 +1519,14 @@ class ChargingController:
             # Recorded before the first await: an accepted Start the charger has not answered is not
             # a failure, and the observation must not blame the car (see `charge_progress.py`).
             sent_at = self._start_sent_at = dt_util.utcnow()
+            # Recorded before the command: a charger that reports charging before the command returns
+            # opens its session record at once, and the record must know who started it.
+            was_cause = self._start_cause
+            self._start_cause = (("manual" if manual else cause or "other"), sent_at)
             executed = await self.adapter.async_start(explicit_amps)
-            if executed:
-                # The local, not the attribute: a charger that reports charging before the command
-                # returns has already cleared `_start_sent_at` (`start_pending`).
-                self._start_cause = (("manual" if manual else cause or "other"), sent_at)
             if not executed:
                 # The command never went out: nothing is awaiting an answer, and nothing may say so.
+                self._start_cause = was_cause
                 self._start_sent_at = None
                 self._start_write_pending = False
                 self._hold.owned = was_owned
@@ -2015,8 +2052,14 @@ class ChargingController:
         observation point instead of by a polling loop.
         """
         self._charge_progress.evaluate()
-        if self._charge_origin is not None and not self.charging and self._control_observation is False:
-            # The charge ended by itself: its origin must not label the next one.
+        if (
+            self._charge_origin is not None
+            and not self.charging
+            and self._control_observation is False
+            and not self.start_pending
+        ):
+            # The charge ended by itself: its origin must not label the next one. A Start the charger has
+            # not answered yet keeps its origin, or the charge it begins would look like nobody's.
             self._charge_origin = None
         for listener in self._listeners:
             listener()
@@ -2093,11 +2136,19 @@ class ChargingController:
                 return
         else:
             # Re-arming outside a window stops a charge that runs; a person who starts it again
-            # after that is respected, as after the hold (`window_hold.py`).
-            was_charging = self.charging
-            await self._stop_locked(clear_schedule=False)
-            if was_charging:
-                self._hold.held_now()
+            # after that is respected, as after the hold (`window_hold.py`). A charge a person or the sun
+            # started, or one something else owns (a pause, solar, the hybrid hand-off), is not the plan's
+            # to stop.
+            spared = (
+                self._charge_origin in ("manual", "solar")
+                or self._hold_blocked()
+                or (self._end_window_guard is not None and self._end_window_guard())
+            )
+            if not spared:
+                was_charging = self.charging
+                await self._stop_locked(clear_schedule=False)
+                if was_charging:
+                    self._hold.held_now()
         for index, (start, end) in enumerate(windows):
             if start > now:
                 self._timer_cancels.append(async_track_point_in_utc_time(
