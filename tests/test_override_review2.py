@@ -218,8 +218,7 @@ async def test_r5_stops_under_a_persons_stop_are_spaced_and_given_up_after_three
     hass: HomeAssistant, timers: FakeScheduler, freezer
 ) -> None:
     """R5: a charger that keeps saying 'on' after each stop it accepted gets one stop per 30 s, also with no
-    new report; after three such stops SpotNav gives up and says so; a report of the charger off, or an
-    unplug, starts afresh."""
+    new report; after three such stops SpotNav gives up and says so; an unplug starts afresh."""
     from datetime import timedelta
 
     from pytest_homeassistant_custom_component.common import async_fire_time_changed
@@ -247,11 +246,15 @@ async def test_r5_stops_under_a_persons_stop_are_spaced_and_given_up_after_three
     assert len(stops) == 3, f"{len(stops)} stops"
     assert world.controller.ignores_person_stop
 
+    # Review D: every stop of the plug-in counts, taken or not; given up on, the charger is left alone until
+    # the person acts or the car is unplugged (a report of it off no longer starts afresh).
     await world.switch("off")  # the charger took one at last
-    assert not world.controller.ignores_person_stop
+    assert world.controller.ignores_person_stop
     hass.states.async_set(SWITCH, "on", {"plug": True, "meter": 99})  # and begins by itself again
     await hass.async_block_till_done()
-    assert len(stops) == 4
+    assert len(stops) == 3
+    await world.plug.set(False)
+    assert not world.controller.ignores_person_stop
     await world.shutdown()
 
 

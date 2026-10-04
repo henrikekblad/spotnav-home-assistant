@@ -261,3 +261,120 @@ async def test_an_unplug_ends_a_safety_stops_hold_so_the_next_plug_in_is_not_hel
     room["a"] = 16.0
     assert await controller.async_battery_probe_start(8), "held for the safety stop of the plug-in before"
     await world.shutdown()
+
+
+async def test_r5_a_charger_that_takes_each_stop_and_begins_again_within_minutes_is_given_up_on(
+    hass: HomeAssistant, timers: Any, freezer: Any
+) -> None:
+    """R5 cycling: under a person's Stop every stop sent in the plug-in counts, also one the charger took (it
+    reported off): at most three in any ten minutes. A charger that begins again 40 s after each stop gets
+    three, then SpotNav gives up and says so, and it stays given up when the charger reports off and on
+    again, until the person acts or the car is unplugged."""
+    from datetime import timedelta
+
+    from .pause_world import pause_world
+
+    world = await pause_world(hass, timers)
+    await world.executor.async_manual_stop()
+    before = len(world.stops)
+    for _ in range(4):
+        freezer.tick(timedelta(seconds=40))
+        await world.switch("on")  # begins by itself; the obedient switch takes the stop
+    assert len(world.stops) - before == 3, f"{len(world.stops) - before} stops in two minutes"
+    assert world.controller.ignores_person_stop
+
+    await world.switch("off")
+    freezer.tick(timedelta(seconds=40))
+    await world.switch("on")
+    assert len(world.stops) - before == 3, "a report of the charger off started the stops afresh"
+    assert world.controller.ignores_person_stop
+
+    await world.plug.set(False)
+    assert not world.controller.ignores_person_stop
+    await world.shutdown()
+
+
+async def test_r5_stops_more_than_ten_minutes_apart_are_never_given_up(
+    hass: HomeAssistant, timers: Any, freezer: Any
+) -> None:
+    """R5 cycling: the three stops are counted in any ten minutes; a charger that begins again a little over
+    every five minutes never has three within ten, and gets a stop each time."""
+    from datetime import timedelta
+
+    from .pause_world import pause_world
+
+    world = await pause_world(hass, timers)
+    await world.executor.async_manual_stop()
+    before = len(world.stops)
+    for _ in range(6):
+        freezer.tick(timedelta(minutes=5, seconds=1))
+        await world.switch("on")
+    assert len(world.stops) - before == 6
+    assert not world.controller.ignores_person_stop
+    await world.shutdown()
+
+
+async def test_r5_a_persons_new_stop_ends_the_give_up(hass: HomeAssistant, timers: Any, freezer: Any) -> None:
+    """R5: given up on, the status says so until the person acts: their Stop again sends a stop and SpotNav
+    watches the charger afresh."""
+    from datetime import timedelta
+
+    from .pause_world import pause_world
+
+    world = await pause_world(hass, timers)
+    await world.executor.async_manual_stop()
+    for _ in range(4):
+        freezer.tick(timedelta(seconds=40))
+        await world.switch("on")
+    assert world.controller.ignores_person_stop
+    hass.services.async_remove("switch", "turn_off")  # the charger no longer takes a stop at all
+    calls: list[Any] = []
+
+    async def ignored(call: Any) -> None:
+        calls.append(call)
+
+    hass.services.async_register("switch", "turn_off", ignored)
+    await world.executor.async_manual_stop()
+    await hass.async_block_till_done()
+    assert len(calls) == 1
+    assert not world.controller.ignores_person_stop
+    await world.shutdown()
+
+
+async def test_r5_the_stop_retry_honours_the_gap_and_a_stop_on_its_way(
+    hass: HomeAssistant, timers: Any
+) -> None:
+    """R5 double stop: the retry of a stop that was not executed goes through the same gate as every stop
+    under a person's Stop: none while another is on its way, none within 30 s of the last."""
+    from homeassistant.util import dt as dt_util
+
+    from .pause_world import pause_world
+
+    world = await pause_world(hass, timers)
+    await world.executor.async_manual_stop()
+    calls: list[Any] = []
+
+    async def ignored(call: Any) -> None:
+        calls.append(call)
+
+    hass.services.async_register("switch", "turn_off", ignored)
+    await world.switch("on")
+    assert len(calls) == 1
+    controller = world.controller
+
+    await controller._async_retry_stop()  # noqa: SLF001 - within the gap of that stop
+    await hass.async_block_till_done()
+    assert len(calls) == 1, "a retry within 30 s of the last stop"
+
+    controller._person_hold_tried_at = dt_util.utcnow() - timedelta_s(60)  # noqa: SLF001
+    controller._person_hold_stop_pending = True  # noqa: SLF001 - a stop is on its way
+    await controller._async_retry_stop()  # noqa: SLF001
+    await hass.async_block_till_done()
+    assert len(calls) == 1, "a retry beside a stop on its way"
+    await world.shutdown()
+
+
+def timedelta_s(seconds: float) -> Any:
+    from datetime import timedelta
+
+    return timedelta(seconds=seconds)
