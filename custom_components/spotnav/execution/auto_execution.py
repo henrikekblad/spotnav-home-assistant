@@ -22,7 +22,8 @@ import asyncio
 import hashlib
 import json
 import logging
-from collections.abc import Awaitable, Callable
+from collections.abc import AsyncIterator, Awaitable, Callable
+from contextlib import asynccontextmanager
 from dataclasses import dataclass, replace
 from datetime import datetime, time as dt_time, timedelta, timezone
 from typing import Any, Final
@@ -46,7 +47,12 @@ from ..planning.auto_settings import (
     STRATEGY_SOLAR,
 )
 from ..planning.phases import effective_phases
-from .controller import ChargingController, ChargingExecutionError, ChargingPlan
+from .controller import (
+    AUTOMATIC_STOP,
+    ChargingController,
+    ChargingExecutionError,
+    ChargingPlan,
+)
 
 
 _LOGGER = logging.getLogger(__name__)
@@ -519,6 +525,26 @@ class AutoExecutor:
         self._cancel_start_timeout: Callable[[], None] | None = None
         # Set by `attach_preview`: how applied/pending state is published beside an unchanged proposal.
         self._change_hook: Callable[[], Awaitable[Any]] | None = None
+        # Every automatic decision of the controller (its window timers, the hold, a stray charge, a
+        # top-off, the regulator's resume) asks this boundary first, under its lock.
+        controller.set_automatic_gate(self)
+
+    def automatic_allowed(self, kind: str) -> bool:
+        """Whether an automatic decision of this kind (`controller.AUTOMATIC_*`) may act now, by the
+        persisted record (`pause_blocks_execution`): while a pause holds execution nothing automatic starts
+        a charge, claims one or resumes one load balancing paused. A stop still may: a pause wants the
+        charger stopped (one whose own stop failed leaves its plan behind it)."""
+        if not pause_blocks_execution(self._store.settings(self._entry_id)):
+            return True
+        return kind == AUTOMATIC_STOP
+
+    @asynccontextmanager
+    async def automatic_turn(self, kind: str) -> AsyncIterator[bool]:
+        """Hold this boundary's lock for one automatic decision of the controller, and say whether it may
+        act (`automatic_allowed`), decided at the moment it acts: a person's Start, Stop or pause cannot
+        land between the answer and the command."""
+        async with self._lock:
+            yield self.automatic_allowed(kind)
 
     @property
     def controller(self) -> ChargingController:
