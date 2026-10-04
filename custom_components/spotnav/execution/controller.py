@@ -89,6 +89,7 @@ from .charge_progress import (
 )
 from .pilot_floor_probe import connector_entity_id, PilotFloorProbe, PROBE_TOKEN, STORE_KEY
 from .target_stop import (
+    charge_ceiling_percent,
     charges_to_vehicle_limit,
     decide_target_stop,
     SocReading,
@@ -1127,10 +1128,14 @@ class ChargingController:
         return self._known_connected
 
     def _car_ended_holds_window(self) -> bool:
-        """Whether the car ended a person's charge by itself in this plug-in (`async_note_car_ended`) and a
-        window of the plan is open now: the car is full, so no window starts it again in this plug-in, unless
-        its state of charge has dropped since by the hysteresis the sun's rules use (`SOC_DROP_PCT`): the
-        need grew."""
+        """Whether the car ended a person's charge by itself in this plug-in (`async_note_car_ended`) and the
+        window open now is not to start it again.
+
+        Only a car known full (`_car_ended_known_full`) keeps every later window of the plug-in from starting
+        it, unless its state of charge has dropped since by the hysteresis the sun's rules use
+        (`SOC_DROP_PCT`): the need grew. A car that only stopped drawing (its own timer, a preconditioning
+        pause, a fault, or a state of charge nobody can read) skips just the window already open then; a
+        later window charges it as planned."""
         ended_at = self._car_ended_at
         if ended_at is None or self.plan is None:
             return False
@@ -1141,7 +1146,29 @@ class ChargingController:
         now = dt_util.utcnow()
         if not any(start <= now < end for start, end in windows):
             return False
-        return not self._car_ended_need_grew()
+        if self._car_ended_known_full():
+            return not self._car_ended_need_grew()
+        return any(start <= now < end and start <= ended_at for start, end in windows)
+
+    def _car_ended_known_full(self) -> bool:
+        """Whether the car that ended a person's charge was full for the plan in force: its state of charge
+        was read (not estimated) then and is at or above the plan's target, or the car's own limit when the
+        plan charges to it."""
+        ended_soc = self._car_ended_soc
+        plan = self.plan
+        if ended_soc is None or plan is None:
+            return False
+        if (
+            self._car_ended_vehicle is not None
+            and plan.vehicle_id is not None
+            and self._car_ended_vehicle != plan.vehicle_id
+        ):
+            return False
+        if self.charges_to_vehicle_limit():
+            return ended_soc >= charge_ceiling_percent(self.vehicle_limit_percent(plan.vehicle_id))
+        if plan.target_soc_percent is None:
+            return False
+        return ended_soc >= plan.target_soc_percent
 
     def _car_ended_need_grew(self) -> bool:
         """Whether the car's state of charge has dropped by `SOC_DROP_PCT` since it ended a person's charge."""
@@ -1173,7 +1200,11 @@ class ChargingController:
                     reading = self._soc_reader(vehicle_id)
                 except Exception:  # noqa: BLE001 - an unreadable car is a state of charge not known
                     reading = None
-            self._car_ended_soc = None if reading is None else reading.soc_percent
+            # Only a read state of charge says whether the car is full (`_car_ended_known_full`), never an
+            # estimate carried forward.
+            self._car_ended_soc = (
+                None if reading is None or getattr(reading, "estimated", False) else reading.soc_percent
+            )
             self._car_ended_vehicle = vehicle_id
             # A record kept from an earlier charge (its retry long past) must not let the sun start the car the
             # watch just found full: the wait starts now.
@@ -2903,8 +2934,8 @@ class ChargingController:
             return
         active = any(start <= now < end for start, end in windows)
         if active and self._car_ended_holds_window():
-            # The car ended a person's charge in this plug-in: it is full, and no window starts it again
-            # unless its need grew.
+            # The car ended a person's charge in this plug-in: the window open then is not started again,
+            # nor any later one while the car is known full and its need has not grown.
             pass
         elif active:
             # A window already open is a window start like any other and goes through the veto, so

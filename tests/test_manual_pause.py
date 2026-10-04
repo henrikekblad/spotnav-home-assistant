@@ -268,8 +268,65 @@ async def test_a_full_car_ends_a_start_and_the_open_window_is_not_started_again(
     assert len(world.starts) == starts
     freezer.tick(timedelta(hours=2, minutes=1))
     await restarted.fire("_async_start_callback")
-    assert len(world.starts) == starts, "nor a later window of the same plug-in: the car is still full"
+    # Second review (R3): with no state of charge to read, the car is not known full: it only stopped
+    # drawing, so a later window charges it as planned (only the window open then was skipped).
+    assert len(world.starts) == starts + 1, "a later window starts a car not known to be full"
     await restarted.shutdown()
+
+
+async def test_a_car_known_full_after_it_ended_a_start_is_not_started_by_a_later_window(
+    hass: HomeAssistant, timers: FakeScheduler, freezer
+) -> None:
+    """R3: the car ended the person's charge at a state of charge read at or above the plan's target: no
+    later window of the plug-in starts it, also after a restart."""
+    from types import SimpleNamespace
+
+    world = await pause_world(hass, timers)
+    reading = SimpleNamespace(
+        soc_percent=80.0, estimated=False, source="entity", vehicle_id=None, age_s=1.0, entity_id=None
+    )
+    world.controller._soc_reader = lambda _vehicle: reading  # noqa: SLF001
+    world.controller.car_drawing = lambda: False  # type: ignore[method-assign]
+    await world.executor.async_manual_start()
+    await world.switch("off")  # the car ended it, full
+    freezer.tick(timedelta(seconds=30))
+    async_fire_time_changed(hass)
+    await hass.async_block_till_done()
+    assert world.pause == PauseIntent()
+
+    starts = len(world.starts)
+    await install_schedule(world.controller, {**two_windows(), "target_soc_percent": 80})
+    restarted = await world.restart()
+    restarted.controller._soc_reader = lambda _vehicle: reading  # noqa: SLF001
+    freezer.tick(timedelta(hours=2, minutes=1))
+    await restarted.fire("_async_start_callback")
+    assert len(world.starts) == starts, "a later window started a car known full"
+    await restarted.shutdown()
+
+
+async def test_an_estimated_state_of_charge_does_not_make_a_car_known_full(
+    hass: HomeAssistant, timers: FakeScheduler, freezer
+) -> None:
+    """R3: only a read state of charge says the car is full; an estimate carried forward does not."""
+    from types import SimpleNamespace
+
+    world = await pause_world(hass, timers)
+    world.controller._soc_reader = lambda _vehicle: SimpleNamespace(  # noqa: SLF001
+        soc_percent=85.0, estimated=True
+    )
+    world.controller.car_drawing = lambda: False  # type: ignore[method-assign]
+    await world.executor.async_manual_start()
+    await world.switch("off")
+    freezer.tick(timedelta(seconds=30))
+    async_fire_time_changed(hass)
+    await hass.async_block_till_done()
+
+    await install_schedule(world.controller, {**two_windows(), "amps": 10})
+    starts = len(world.starts)
+    freezer.tick(timedelta(hours=2, minutes=1))
+    await world.fire("_async_start_callback")
+    assert len(world.starts) == starts + 1
+    await world.shutdown()
 
 
 async def test_a_later_window_starts_a_car_whose_charge_dropped_after_it_ended_a_start(
@@ -279,7 +336,9 @@ async def test_a_later_window_starts_a_car_whose_charge_dropped_after_it_ended_a
 
     world = await pause_world(hass, timers)
     soc = {"value": 80.0}
-    world.controller._soc_reader = lambda _vehicle: SimpleNamespace(soc_percent=soc["value"])  # noqa: SLF001
+    world.controller._soc_reader = lambda _vehicle: SimpleNamespace(  # noqa: SLF001
+        soc_percent=soc["value"], estimated=False, source="entity", vehicle_id=None, age_s=1.0, entity_id=None
+    )
     world.controller.car_drawing = lambda: False  # type: ignore[method-assign]
     await world.executor.async_manual_start()
     await world.switch("off")  # the car ended it
@@ -288,14 +347,15 @@ async def test_a_later_window_starts_a_car_whose_charge_dropped_after_it_ended_a
     await hass.async_block_till_done()
     assert world.pause == PauseIntent()
 
-    await install_schedule(world.controller, two_windows())
+    # The car ended it at the plan's target, so it is known full (R3: the hysteresis is that case's rule).
+    await install_schedule(world.controller, {**two_windows(), "target_soc_percent": 80})
     starts = len(world.starts)
     soc["value"] = 79.0  # less than the hysteresis
     freezer.tick(timedelta(hours=2, minutes=1))
     await world.fire("_async_start_callback")
     assert len(world.starts) == starts
 
-    await install_schedule(world.controller, two_windows())
+    await install_schedule(world.controller, {**two_windows(), "target_soc_percent": 80})
     soc["value"] = 77.0  # the car was used: its need grew
     freezer.tick(timedelta(hours=2, minutes=1))
     await world.fire("_async_start_callback")
