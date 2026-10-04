@@ -43,6 +43,12 @@ shown in [Set up SpotNav](setup.md#2-add-a-site-optional). You provide:
     import (100 W per phase; a battery discharging into the car counts as import), and stopped once
     import beyond that has lasted the solar stop delay; the reason is `charger_measurement_missing`.
     The status says the charger's own current is not set (`solar_charger_current_missing`).
+- On a direct site whose phase measurement is incomplete (a phase with no value, such as an inverter's
+  sensor in standby), solar still runs on the total grid power. A phase that reads keeps its own fuse
+  headroom; a phase that cannot be read caps the charger at what it draws there now, or the minimum
+  current if that is more, even while the total exports: the total is netted over the phases, and a
+  three-phase inverter's export says nothing about one phase's import. Current never rises on a phase
+  that cannot be read.
 - A single-phase charger whose phase is unknown is reckoned by solar on a stand-in phase: the total
   grid power does not depend on the phase, the fuse cap is the lowest of all three phases' caps, and
   its draw the largest phase its measured current reads.
