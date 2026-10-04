@@ -786,6 +786,7 @@
           "entity_id": null,
           "integration": null,
           "interval_s": 120.0,
+          "inverter": false,
           "limits_a": null,
           "option": null,
           "phases": [
@@ -807,7 +808,8 @@
               "entity_id": "sensor.site_err_charger_l3",
               "phase": "L3"
             }
-          ]
+          ],
+          "unavailable_entities": []
         },
         {
           "code": "own_load_balancing",
@@ -815,9 +817,11 @@
           "entity_id": null,
           "integration": "easee",
           "interval_s": null,
+          "inverter": false,
           "limits_a": null,
           "option": null,
-          "phases": []
+          "phases": [],
+          "unavailable_entities": []
         }
       ]
     },

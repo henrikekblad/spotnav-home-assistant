@@ -15,6 +15,17 @@
   comes from `SiteCapacityController.charger_measured_current`. The battery comes from
   `battery_aggregate_power`, usable only when fresh, with `battery_configured` set from whether an
   aggregate entity exists, never inferred from the reading itself.
+* A direct site whose phase measurement is incomplete (a phase with no value, e.g. an inverter in
+  standby) still runs on the total grid power: a phase that reads keeps its own fuse headroom, and a phase
+  that does not caps the charger at the fuse limit only while the total shows export (surplus can only
+  exist below the fuse) and otherwise at what it draws now, or the minimum current if that is more: no
+  current is raised beyond the minimum on an unreadable phase unless the grid exports.
+* A single-phase charger whose phase is not known is reckoned on a stand-in phase (`L1`): the total does not
+  depend on the phase, the fuse cap is the lowest of all three phases' caps, and its draw the largest
+  phase its own measured current reads.
+* What keeps solar from a basis is named (`SolarBasis`): the total grid power not set or unreadable, an
+  unreadable battery, the charger's own current not set or unreadable (solar then runs blind, at the
+  minimum current only), and the phases of an incomplete site measurement it runs without.
 * Several chargers on one site share the surplus in the site's charger order (priority, then the order
   they joined): each coordinator gathers the other members' facts (`SolarExecutionCoordinator.
   share_member`) and hands its own controller the split (`site/solar_surplus.py`'s
@@ -26,13 +37,17 @@ from __future__ import annotations
 import logging
 import time
 from collections.abc import Callable
-from dataclasses import dataclass, replace
+from dataclasses import dataclass, field, replace
 from typing import Any, Final
 
 from homeassistant.core import callback, HomeAssistant
 
 from ..const import (
     CONF_ACTIVE_CONTROL_ENABLED,
+    CONF_BATTERY_AGGREGATE_POWER_ENTITY,
+    CONF_MAIN_FUSE_A,
+    CONF_MEASURED_CURRENT_SOURCE,
+    CONF_SAFETY_MARGIN_A,
     CONF_CHARGER_ENTRY_IDS,
     CONF_ENTRY_TYPE,
     CONF_GRID_POWER_SOURCE,
@@ -48,7 +63,9 @@ from ..planning.phases import effective_phases
 from ..planning.grid_voltage import stored_voltage_between_phases_v
 from ..planning.auto_settings import AutoSettingsStore, STRATEGY_HYBRID, STRATEGY_SOLAR
 from ..runtime import charger_data, preview_for, site_controller_for
-from ..site.site_capacity import PhaseName, PHASES
+from ..site.measurement_problem import UNHEALTHY_STATES
+from ..site.measurement_source import grid_power_source_from_dict, source_from_dict
+from ..site.site_capacity import PhaseName, PHASES, charger_order_key
 from ..site.site_capacity_controller import SiteCapacityController
 from ..site.solar_capability import solar_capability
 from ..site.solar_surplus import (
@@ -118,6 +135,24 @@ def site_supports_solar(hass: HomeAssistant, charger_entry_id: str) -> bool:
 
 
 @dataclass(frozen=True, slots=True)
+class SolarBasis:
+    """What keeps solar from a full basis, named for the status (`planning/status_compose.py`).
+
+    `problem` is why there is no basis at all: `grid_power_not_set` or `grid_power_unreadable` (a direct
+    site's total grid power, `problem_entity` its entity) or `battery_unreadable`. `charger_current` is
+    `not_set` or `unreadable` (`charger_current_entity`) while the charger's own measured current is
+    unknown, so solar runs blind at the minimum current. `site_incomplete_phases` are the phases of an
+    unusable site measurement that solar runs without, on the total grid power.
+    """
+
+    problem: str | None = None
+    problem_entity: str | None = None
+    charger_current: str | None = None
+    charger_current_entity: str | None = None
+    site_incomplete_phases: tuple[str, ...] = ()
+
+
+@dataclass(frozen=True, slots=True)
 class SolarExecutionState:
     """Live solar-execution facts for one charger, for its Auto state.
 
@@ -143,6 +178,8 @@ class SolarExecutionState:
     #: `True` while this charger is on `hybrid` and its remaining need is `<= 0` (`plan_hybrid`'s
     #: `satisfied`).
     satisfied: bool = False
+    #: What keeps solar from a full basis, named.
+    basis: SolarBasis = field(default_factory=SolarBasis)
 
 
 def solar_execution_state(hass: HomeAssistant, charger_entry_id: str) -> SolarExecutionState | None:
@@ -169,16 +206,30 @@ def _liveness_gated(
     return diagnostic.get(phase)
 
 
+def _wiring(site: SiteCapacityController, charger_entry_id: str) -> dict[str, Any]:
+    return (site.config.get(CONF_PHASE_WIRING) or {}).get(charger_entry_id) or {}
+
+
 def _car_phases(site: SiteCapacityController, charger_entry_id: str) -> tuple[PhaseName, ...]:
     """This charger's wired phases from the site's `CONF_PHASE_WIRING` (as
     `SiteCapacityController._build_requests` reads them). Empty when a single-phase
-    charger's phase is unknown, which `site/solar_surplus.py` treats as no basis.
+    charger's phase is unknown (`_phase_unknown`).
     """
-    wiring: dict[str, Any] = (site.config.get(CONF_PHASE_WIRING) or {}).get(charger_entry_id) or {}
+    wiring = _wiring(site, charger_entry_id)
     if wiring.get("phases", 3) == 3:
         return PHASES
     phase = wiring.get("phase")
     return (phase,) if phase else ()
+
+
+def _phase_unknown(site: SiteCapacityController, charger_entry_id: str) -> bool:
+    """A single-phase charger whose phase is not set in the site's wiring."""
+    wiring = _wiring(site, charger_entry_id)
+    return wiring.get("phases", 3) != 3 and not wiring.get("phase")
+
+
+#: The phase a single-phase charger of unknown phase is reckoned on (`_build_observation`).
+STAND_IN_PHASE: Final[PhaseName] = "L1"
 
 
 #: The phase voltage assumed for a site with no voltage readings (direct measurement), the Nordic
@@ -213,19 +264,54 @@ def _split_total(
     return {phase: (share if phase in car_phases else 0.0) for phase in PHASES}
 
 
+def _fuse_limit_a(site: SiteCapacityController) -> float | None:
+    """The most current a phase may carry: the main fuse less the safety margin; `None` with no fuse."""
+    main_fuse_a = site.config.get(CONF_MAIN_FUSE_A)
+    if main_fuse_a is None:
+        return None
+    return float(main_fuse_a) - float(site.config.get(CONF_SAFETY_MARGIN_A, 0.0))
+
+
+def _phase_headroom_a(result: Any, phase: PhaseName, fuse_limit_a: float | None) -> float | None:
+    """One phase's fuse headroom: the site's own, or, while the site's measurement as a whole is unusable,
+    the fuse limit less this phase's own reading when that is fresh. `None` when the phase does not read."""
+    headroom = result.phase_headroom_a.get(phase)
+    if headroom is not None:
+        return headroom
+    if fuse_limit_a is None or result.phase_liveness.get(phase) not in ("fresh", "confirmed_unchanged"):
+        return None
+    measured = result.measured_phase_current_a.get(phase)
+    return None if measured is None else fuse_limit_a - measured
+
+
 def _fuse_caps(
     result: Any,
-    car_phases: tuple[PhaseName, ...],
-    car_delivered_a: dict[PhaseName, float | None],
+    delivered_a: dict[PhaseName, float | None],
+    *,
+    fuse_limit_a: float | None,
+    exporting: bool,
+    min_current_a: float,
+    measurement_unusable: bool,
 ) -> dict[PhaseName, float | None]:
-    """The most current the charger may draw on each of its phases: what it draws now plus the
-    phase's fuse headroom from the measured current. `None` where either is unknown.
+    """The most current the charger may draw on each phase of `delivered_a`: what it draws there now
+    (nothing when unknown) plus the phase's fuse headroom. A phase with no reading caps it at the fuse
+    limit while the total grid power shows export (surplus can only exist below the fuse), and otherwise
+    at what it draws now, or the minimum current if that is more: no current is raised beyond the minimum
+    on a phase that cannot be read unless the grid exports. `None` with no fuse to reckon by, and `None` for a phase with no headroom
+    while the site's measurement is not unusable (a site that is off or not configured gets no cap).
     """
     caps: dict[PhaseName, float | None] = {}
-    for phase in car_phases:
-        delivered = car_delivered_a.get(phase)
-        headroom = result.phase_headroom_a.get(phase)
-        caps[phase] = None if delivered is None or headroom is None else delivered + headroom
+    for phase, delivered in delivered_a.items():
+        draw = 0.0 if delivered is None else delivered
+        headroom = _phase_headroom_a(result, phase, fuse_limit_a)
+        if headroom is not None:
+            caps[phase] = draw + headroom
+        elif fuse_limit_a is None or not measurement_unusable:
+            caps[phase] = None
+        elif exporting:
+            caps[phase] = fuse_limit_a
+        else:
+            caps[phase] = max(min_current_a, draw)
     return caps
 
 
@@ -246,6 +332,16 @@ def _limited_to(
     return tuple(phase for phase in car_phases if phase in ranked[:limit])
 
 
+def _delivered_any_phase(measured: Any) -> float | None:
+    """A single-phase charger of unknown phase: the largest phase its measured current reads, `None`
+    when no phase reads."""
+    if measured is None:
+        return None
+    values = [measured.get(phase).value for phase in PHASES]
+    numbers = [value for value in values if isinstance(value, (int, float))]
+    return max(numbers) if numbers else None
+
+
 def _build_observation(
     site: SiteCapacityController,
     charger_entry_id: str,
@@ -259,15 +355,22 @@ def _build_observation(
     A derived site reads the signed power and voltage of every phase. A direct site reads the
     meter's total grid power (`SiteCapacityController.grid_total_reading`, unknown unless fresh),
     splits it over the charger's phases at the nominal voltage and caps the result by each phase's
-    fuse headroom. `effective_phases` is what the charge uses (`planning/phases.py`): a car on fewer phases
-    than the charger is wired for draws on that many of them.
+    fuse headroom (`_fuse_caps`, which also covers an incomplete phase measurement). `effective_phases`
+    is what the charge uses (`planning/phases.py`): a car on fewer phases than the charger is wired for
+    draws on that many of them. A single-phase charger of unknown phase is reckoned on `STAND_IN_PHASE`.
     """
     result = site.result
     measured = site.charger_measured_current(charger_entry_id)
-    car_phases = _limited_to(_car_phases(site, charger_entry_id), effective_phases, measured)
-    car_delivered_a: dict[PhaseName, float | None] = {
-        phase: (None if measured is None else measured.get(phase).value) for phase in car_phases
-    }
+    phase_unknown = _phase_unknown(site, charger_entry_id)
+    car_delivered_a: dict[PhaseName, float | None]
+    if phase_unknown:
+        car_phases: tuple[PhaseName, ...] = (STAND_IN_PHASE,)
+        car_delivered_a = {STAND_IN_PHASE: _delivered_any_phase(measured)}
+    else:
+        car_phases = _limited_to(_car_phases(site, charger_entry_id), effective_phases, measured)
+        car_delivered_a = {
+            phase: (None if measured is None else measured.get(phase).value) for phase in car_phases
+        }
 
     phase_cap_a: dict[PhaseName, float | None] | None = None
     if site.config.get("measurement_mode") == MEASUREMENT_MODE_DIRECT:
@@ -277,7 +380,24 @@ def _build_observation(
             stored_voltage_between_phases_v(site.config), len(car_phases)
         )
         voltage_v: dict[PhaseName, float | None] = {phase: nominal_v for phase in PHASES}
-        phase_cap_a = _fuse_caps(result, car_phases, car_delivered_a)
+        cap_delivered = (
+            {phase: car_delivered_a[STAND_IN_PHASE] for phase in PHASES} if phase_unknown else car_delivered_a
+        )
+        caps = _fuse_caps(
+            result,
+            cap_delivered,
+            fuse_limit_a=_fuse_limit_a(site),
+            exporting=total_w is not None and total_w < 0,
+            min_current_a=float(_wiring(site, charger_entry_id).get("min_current_a", DEFAULT_MIN_CURRENT_A)),
+            measurement_unusable=result.state in UNHEALTHY_STATES,
+        )
+        if phase_unknown:
+            values = list(caps.values())
+            phase_cap_a = {
+                STAND_IN_PHASE: None if any(cap is None for cap in values) else min(values)  # type: ignore[type-var]
+            }
+        else:
+            phase_cap_a = caps
     else:
         signed_grid_w = {
             phase: _liveness_gated(
@@ -289,6 +409,10 @@ def _build_observation(
             phase: _liveness_gated(result.phase_liveness, result.phase_voltage_v, phase)
             for phase in PHASES
         }
+        if phase_unknown:
+            # Which phase the car is on is unknown: the mean of the phases that read.
+            known = [value for value in voltage_v.values() if value is not None]
+            voltage_v = {**voltage_v, STAND_IN_PHASE: sum(known) / len(known) if known else None}
 
     battery_reading = site.battery_aggregate_power()
     battery_configured = battery_reading is not None
@@ -311,6 +435,61 @@ def _build_observation(
         car_phases=car_phases,
         battery_configured=battery_configured,
         phase_cap_a=phase_cap_a,
+    )
+
+
+def _source_entity(source_data: Any, phases: tuple[PhaseName, ...]) -> str | None:
+    """The entity a measured-current source reads the charger's phases from (its first one)."""
+    source = source_from_dict(source_data)
+    if source is None:
+        return None
+    if source.entity_id:
+        return source.entity_id
+    entity_ids = source.entity_ids or {}
+    for phase in (*phases, *PHASES):
+        if entity_ids.get(phase):
+            return entity_ids[phase]
+    return None
+
+
+def solar_basis(
+    site: SiteCapacityController, charger_entry_id: str, observation: SolarObservation
+) -> SolarBasis:
+    """`SolarBasis` for one charger's observation."""
+    problem: str | None = None
+    problem_entity: str | None = None
+    incomplete: tuple[str, ...] = ()
+    direct = site.config.get("measurement_mode") == MEASUREMENT_MODE_DIRECT
+    if direct:
+        total_w, state = site.grid_total_reading()
+        if state == "not_configured":
+            problem = "grid_power_not_set"
+        elif total_w is None:
+            problem = "grid_power_unreadable"
+            source = grid_power_source_from_dict(site.config.get(CONF_GRID_POWER_SOURCE))
+            problem_entity = None if source is None else source.power
+        else:
+            measurement = site.measurement_problem
+            if measurement is not None:
+                incomplete = tuple(item.phase for item in measurement.phases)
+    if problem is None and observation.battery_configured and observation.battery_w is None:
+        problem = "battery_unreadable"
+        problem_entity = site.config.get(CONF_BATTERY_AGGREGATE_POWER_ENTITY)
+    charger_current: str | None = None
+    charger_current_entity: str | None = None
+    if any(observation.car_delivered_a.get(phase) is None for phase in observation.car_phases):
+        source_data = _wiring(site, charger_entry_id).get(CONF_MEASURED_CURRENT_SOURCE)
+        if site.charger_measured_current(charger_entry_id) is None:
+            charger_current = "not_set"
+        else:
+            charger_current = "unreadable"
+            charger_current_entity = _source_entity(source_data, observation.car_phases)
+    return SolarBasis(
+        problem=problem,
+        problem_entity=problem_entity,
+        charger_current=charger_current,
+        charger_current_entity=charger_current_entity,
+        site_incomplete_phases=incomplete,
     )
 
 
@@ -388,6 +567,8 @@ class SolarExecutionCoordinator:
         self._site_unsub: Callable[[], None] | None = None
         self._state: SolarExecutionState | None = None
         self._logged: tuple[Any, ...] | None = None
+        # The missing-measurement warning is said once per coordinator, not on every blind transition.
+        self._warned_missing = False
         # Previous tick's `held_by_plan`, so the handoff is logged once per transition.
         self._logged_held_by_plan: bool | None = None
         # Same, for the satisfied transition.
@@ -487,6 +668,8 @@ class SolarExecutionCoordinator:
         share_adjust_w = self._share_adjust_w(site, observation)
         if share_adjust_w:
             observation = replace(observation, share_adjust_w=share_adjust_w)
+        if self._unmeasured_start_allowed(site, now=observation.now):
+            observation = replace(observation, unmeasured_start_allowed=True)
         verdict = self._solar.observe(observation)
         held_by_plan = settings.strategy == STRATEGY_HYBRID and self._controller.plan_window_active_now
         if held_by_plan:
@@ -495,7 +678,9 @@ class SolarExecutionCoordinator:
             pass
         else:
             await self._apply_verdict(verdict)
-        self._update_state(verdict, site, held_by_plan=held_by_plan)
+        self._update_state(
+            verdict, site, held_by_plan=held_by_plan, basis=solar_basis(site, self._charger_entry_id, observation)
+        )
         self._log_transition(verdict)
         self._log_hybrid_handoff(held_by_plan)
         if settings.strategy == STRATEGY_HYBRID:
@@ -505,6 +690,45 @@ class SolarExecutionCoordinator:
         # asks the site to render again (see
         # `SiteCapacityController.notify_solar_surplus_changed`).
         site.notify_solar_surplus_changed()
+
+    def solar_activity(self, site: SiteCapacityController) -> tuple[str, float | None] | None:
+        """This charger's solar state on `site` and since when it has been charging, `None` when it takes
+        no part (another site, or no solar controller: not on `solar` or `hybrid`)."""
+        if self._site is not site or self._solar is None or self._state is None or self._state.held_by_plan:
+            return None
+        return self._state.state, self._solar.on_since
+
+    def _unmeasured_start_allowed(self, site: SiteCapacityController, *, now: float) -> bool:
+        """Whether a blind start (no reading of this charger's own current) may go ahead: no other charger
+        on the site is arming, except one after this one in the site's order (it yields to this one), and
+        none started under solar less than `TAKES_LESS_GRACE_S` ago (its draw is not in the grid reading
+        yet). Two chargers never claim the same export at once."""
+        members = list(site.config.get(CONF_CHARGER_ENTRY_IDS) or [])
+        if self._charger_entry_id not in members:
+            return False
+        own_key = charger_order_key(
+            site.charger_priority(self._charger_entry_id), members.index(self._charger_entry_id), self._charger_entry_id
+        )
+        for order, charger_entry_id in enumerate(members):
+            if charger_entry_id == self._charger_entry_id:
+                continue
+            data = charger_data(self._hass, charger_entry_id)
+            coordinator = None if data is None else data.solar
+            activity = None if coordinator is None else coordinator.solar_activity(site)
+            if activity is None:
+                continue
+            state, on_since = activity
+            if state == "arming":
+                peer_key = charger_order_key(site.charger_priority(charger_entry_id), order, charger_entry_id)
+                peer_measured = coordinator is not None and coordinator.state is not None and (
+                    coordinator.state.basis.charger_current is None
+                )
+                # A peer that reads its own current never yields; a blind one after this one does.
+                if peer_measured or peer_key < own_key:
+                    return False
+            elif state in ("on", "disarming") and (on_since is None or now - on_since < TAKES_LESS_GRACE_S):
+                return False
+        return True
 
     def share_member(self, site: SiteCapacityController, *, order: int) -> SolarShareMember | None:
         """This charger's place in its site's surplus split, or `None` when it takes no part: not on
@@ -625,7 +849,12 @@ class SolarExecutionCoordinator:
         # hold: nothing to do.
 
     def _update_state(
-        self, verdict: SolarVerdict, site: SiteCapacityController, *, held_by_plan: bool = False
+        self,
+        verdict: SolarVerdict,
+        site: SiteCapacityController,
+        *,
+        held_by_plan: bool = False,
+        basis: SolarBasis | None = None,
     ) -> None:
         self._state = SolarExecutionState(
             state=verdict.state,
@@ -641,6 +870,7 @@ class SolarExecutionCoordinator:
             priority_effective=verdict.priority_effective,
             active_control_active=bool(site.config.get(CONF_ACTIVE_CONTROL_ENABLED, False)),
             held_by_plan=held_by_plan,
+            basis=basis if basis is not None else SolarBasis(),
         )
 
     def _log_hybrid_handoff(self, held_by_plan: bool) -> None:
@@ -701,17 +931,18 @@ class SolarExecutionCoordinator:
         signature: tuple[Any, ...] = (verdict.state, verdict.action, verdict.reason)
         if signature == self._logged:
             return
-        warn_missing = verdict.reason == "charger_measurement_missing"
+        warn_missing = verdict.reason == "charger_measurement_missing" and not self._warned_missing
         if warn_missing and self._now() - self._born_at < MEASUREMENT_WARNING_GRACE_S:
             # Still starting up: say nothing and remember nothing, so the next tick after the grace
             # warns if the measurement is still missing.
             return
         self._logged = signature
         if warn_missing:
+            self._warned_missing = True
             _LOGGER.warning(
-                "Solar on charger %s holds: the charger's own measured current is missing, so a charge "
-                "is never started, and a running one stays at the minimum current only while the grid shows "
-                "no real import (it is stopped when it does). Set the "
+                "Solar on charger %s runs blind: the charger's own measured current is missing, so a charge "
+                "starts only at the minimum current when the export covers it, and stays there only while "
+                "the grid shows no real import (it is stopped when it does). Set the "
                 "charger's measured current source in the site wiring.",
                 self._charger_entry_id,
             )

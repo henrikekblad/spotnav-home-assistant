@@ -1367,11 +1367,18 @@ def site_measurement_info(hass: HomeAssistant, entry: ConfigEntry) -> dict[str, 
                     }
                     for item in problem.phases
                 ],
+                # The meter's sensors that are unavailable together, and whether they are a known inverter
+                # integration's (it may be in standby); empty and false otherwise.
+                "unavailable_entities": list(problem.unavailable_entities),
+                "inverter": problem.inverter,
             },
         )
     for warning in warnings:
-        # Only the battery limit warning states the two limits.
+        # Only the battery limit warning states the two limits, and only the measurement's the sensors
+        # that are unavailable together.
         warning.setdefault("limits_a", None)
+        warning.setdefault("unavailable_entities", [])
+        warning.setdefault("inverter", False)
     detection = site_detection(hass, entry)
     return {
         "measurement": measurement,

@@ -214,6 +214,24 @@ answer yet, sets the additive `suggested_onboard_phases` (`1` or `null`) on that
 answers with `update_vehicle`, `1` to accept and `3` to keep three phases (either answer ends the
 question; a three-phase charge starts the count over).
 
+**Why solar has no full basis.** Additive status codes name it. In place of `solar_no_reading_waiting` /
+`solar_no_reading_stopped`, a solar charger that is off for want of a basis says `solar_no_grid_power`
+(`entity`: `null` when a direct site's total grid power is not set, else its entity that has no fresh
+reading) or `solar_battery_unreadable` (`entity`); while solar runs, the same line follows the headline.
+`solar_charger_current_missing` (`entity`: `null` when not set, else the unreadable entity) follows the
+headline while the charger's own measured current is unknown and solar runs blind at the minimum current,
+and `solar_site_incomplete` (`phases`) while a direct site's phase measurement is unusable and solar runs
+on the total grid power only. `site_meter_unavailable` (`entities`, `cause`: `inverter_standby` or
+`meter_unavailable`) replaces `site_measurement_problem` when the phases without a value are the meter's
+sensors reading `unavailable`/`unknown` together: every phase at once, or a known inverter integration's
+(SolaX, Huawei, SolarEdge, Fronius, ...), which go unavailable when the inverter is in standby at night.
+The site sensor's `solar_surplus` rows carry the same facts as `basis_problem`, `basis_entity`,
+`charger_current`, `charger_current_entity` and `site_incomplete_phases`.
+
+A site's `warnings` in `get_entity_config` carry the additive `unavailable_entities` (a list) and
+`inverter` (bool): for `measurement_unhealthy`, the meter's sensors unavailable together as above; empty
+and false otherwise.
+
 A site's `warnings` in `get_entity_config` carry the additive `limits_a` (`null`, or for
 `battery_import_limit_differs` `{"battery": A, "spotnav": A}` per phase). That warning says a home battery
 integration's own grid import limit and SpotNav's (the main fuse minus the safety margin) differ by more

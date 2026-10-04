@@ -449,6 +449,11 @@ async def test_solar_surplus_attribute_present_and_disabled_for_a_cheapest_charg
         "battery_w": None,
         "export_w": None,
         "priority_effective": None,
+        "basis_problem": None,
+        "basis_entity": None,
+        "charger_current": None,
+        "charger_current_entity": None,
+        "site_incomplete_phases": [],
     }
     assert site_controller.solar_surplus_snapshot == snapshot
 

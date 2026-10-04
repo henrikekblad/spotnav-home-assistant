@@ -80,6 +80,48 @@ function measurementLineText(language: Language, p: StatusLine["params"]): strin
   });
 }
 
+/** The meter's sensors unavailable together: an inverter's (it may be in standby), or every phase at once. */
+export function meterUnavailableText(language: Language, entities: readonly string[], inverter: boolean): string {
+  const line: StatusLine = {
+    code: "site_meter_unavailable",
+    params: { entities: [...entities], cause: inverter ? "inverter_standby" : "meter_unavailable" },
+  };
+  const wording = basisWording(line);
+  return wording === null ? "" : translate(language, wording.key, wording.params);
+}
+
+/** The entity a line names, or `null`. */
+function entityOf(p: StatusLine["params"]): string | null {
+  return typeof p["entity"] === "string" && p["entity"] !== "" ? p["entity"] : null;
+}
+
+/** The wording of the lines that say why solar has no full basis, and of the meter's unavailable sensors. */
+function basisWording(line: StatusLine): { key: TranslationKey; params: Record<string, string> } | null {
+  const p = line.params;
+  const entity = entityOf(p);
+  switch (line.code) {
+    case "solar_no_grid_power":
+      return entity === null
+        ? { key: "strategy.status.solar.noGridPower", params: {} }
+        : { key: "strategy.status.solar.noGridPowerEntity", params: { entity } };
+    case "solar_battery_unreadable":
+      return { key: "strategy.status.solar.batteryUnreadable", params: { entity: entity ?? "" } };
+    case "solar_charger_current_missing":
+      return entity === null
+        ? { key: "strategy.status.solar.chargerCurrentNotSet", params: {} }
+        : { key: "strategy.status.solar.chargerCurrentUnreadable", params: { entity } };
+    case "solar_site_incomplete":
+      return { key: "strategy.status.solar.siteIncomplete", params: { phases: strings(p["phases"]).join(", ") } };
+    case "site_meter_unavailable":
+      return {
+        key: p["cause"] === "inverter_standby" ? "status.meterUnavailable.inverter" : "status.meterUnavailable.meter",
+        params: { entities: strings(p["entities"]).join(", ") },
+      };
+    default:
+      return null;
+  }
+}
+
 export const STATUS_WORDING: Readonly<Record<StatusCode, TranslationKey>> = {
   starting_up: "status.startingUp",
   charger_unavailable: "issue.chargerMissing",
@@ -113,6 +155,10 @@ export const STATUS_WORDING: Readonly<Record<StatusCode, TranslationKey>> = {
   solar_no_reading_stopped: "strategy.status.solar.noReadingStopped",
   solar_no_reading_waiting: "strategy.status.solar.noReadingWaiting",
   solar_waiting_for_sun: "strategy.status.solar.waitingForSun",
+  solar_no_grid_power: "strategy.status.solar.noGridPower",
+  solar_battery_unreadable: "strategy.status.solar.batteryUnreadable",
+  solar_charger_current_missing: "strategy.status.solar.chargerCurrentNotSet",
+  solar_site_incomplete: "strategy.status.solar.siteIncomplete",
   solar_unknown: "strategy.status.solar.unknown",
   hybrid_grid: "strategy.status.hybrid.grid",
   hybrid_no_forecast: "strategy.status.hybrid.noForecast",
@@ -135,6 +181,7 @@ export const STATUS_WORDING: Readonly<Record<StatusCode, TranslationKey>> = {
   charging_to_vehicle_limit: "status.chargingToVehicleLimit",
   remaining_need_estimated: "issue.needKept",
   site_measurement_problem: "issue.siteMeasurement",
+  site_meter_unavailable: "status.meterUnavailable.meter",
   duplicate_charger: "issue.duplicateCharger",
 };
 
@@ -163,6 +210,9 @@ export const STATUS_VARIANT_KEYS: readonly TranslationKey[] = [
   "strategy.status.solar.chargingUnknown",
   "strategy.status.hybrid.creditSuffix",
   "issue.needFromSessions",
+  "strategy.status.solar.noGridPowerEntity",
+  "strategy.status.solar.chargerCurrentUnreadable",
+  "status.meterUnavailable.inverter",
 ];
 
 const MISSING_FIELD_KEYS: Readonly<Record<string, TranslationKey>> = {
@@ -226,6 +276,10 @@ export function lineText(line: StatusLine, format: FormatContext, nowMs: number)
     translate(language, key, params);
   const zoned = hasZone(format);
   const p = line.params;
+  const basis = basisWording(line);
+  if (basis !== null) {
+    return say(basis.key, basis.params);
+  }
   switch (line.code) {
     case "paused": {
       const until = ms(p["until"]);
@@ -427,6 +481,11 @@ export function issuesOf(status: Status | null, language: Language): Issue[] {
         technical: null,
         text: measurementLineText(language, line.params),
       });
+      continue;
+    }
+    const basis = basisWording(line);
+    if (basis !== null) {
+      issues.push({ code: line.code, severity, textKey: basis.key, params: basis.params, technical: null });
       continue;
     }
     if (line.code === "remaining_need_estimated") {

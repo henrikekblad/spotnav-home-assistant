@@ -791,6 +791,35 @@ describe("the site's estimate, warnings, sign options and detected meters", () =
     expect(notices?.querySelector("[data-warning='own_load_balancing']")?.textContent).toContain("Easee Equalizer");
   });
 
+  it("names the meter's unavailable sensors as an inverter in standby in the site's notices", async () => {
+    const warning = {
+      code: "measurement_unhealthy",
+      integration: null,
+      entity_id: null,
+      interval_s: 120,
+      option: null,
+      device_name: null,
+      phases: [{ phase: "L1", cause: "no_value", entity_id: "sensor.solax_grid_current_l1", age_s: null }],
+      limits_a: null,
+      unavailable_entities: ["sensor.solax_grid_current_l1"],
+      inverter: true,
+    };
+    const { element } = await mounted({
+      get: "get_detected",
+      patch: (answer: Record<string, unknown>) => {
+        const config = answer["config"] as { site: Record<string, unknown> };
+        return { ...answer, config: { ...config, site: { ...config.site, warnings: [warning] } } };
+      },
+    });
+    openSettings(element);
+    await settle();
+    edit(element, "site");
+    const blocking = openDialog(element)?.querySelector("[data-notices='blocking']");
+    expect(blocking?.querySelector("[data-warning='measurement_unhealthy']")?.textContent).toBe(
+      "The meter's sensors are unavailable (the inverter may be in standby): sensor.solax_grid_current_l1.",
+    );
+  });
+
   it("lists the site's notes once each, as one list, the measurement problem first", async () => {
     const note = (code: string, extra: Record<string, unknown> = {}) => ({
       code,
@@ -801,6 +830,8 @@ describe("the site's estimate, warnings, sign options and detected meters", () =
       device_name: "Easee Equalizer",
       phases: [],
       limits_a: null,
+      unavailable_entities: [],
+      inverter: false,
       ...extra,
     });
     const warnings = [
@@ -1307,6 +1338,8 @@ describe("the external balancer warning", () => {
     device_name: "Zaptec",
     phases: [],
     limits_a: null,
+      unavailable_entities: [],
+      inverter: false,
   };
   const withSiteWarnings = (warnings: Array<Record<string, unknown>>) => (answer: Record<string, unknown>) => {
     const config = answer["config"] as { site: Record<string, unknown> };
@@ -1352,6 +1385,8 @@ describe("the battery's grid import limit warning: two limits on one fuse", () =
     device_name: null,
     phases: [],
     limits_a: { battery: 15.9, spotnav: 24 },
+    unavailable_entities: [],
+    inverter: false,
   };
   const withSiteWarnings = (warnings: Array<Record<string, unknown>>) => (answer: Record<string, unknown>) => {
     const config = answer["config"] as { site: Record<string, unknown> };

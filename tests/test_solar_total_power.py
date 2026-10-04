@@ -76,6 +76,7 @@ async def direct_solar_setup(
     phase: str | None = None,
     site_amps: float = 3.0,
     extra_data: dict[str, Any] | None = None,
+    measured: bool = True,
 ):
     """A charger on `solar`, then a direct-mode site (per-phase current only) with the meter's total grid
     power. Returns `(charger, site_entry, site_controller, coordinator, clock, turn_on_calls)`."""
@@ -114,11 +115,17 @@ async def direct_solar_setup(
                 "phases": phases,
                 "phase": phase,
                 "min_current_a": 6.0,
-                CONF_MEASURED_CURRENT_SOURCE: source_to_dict(
-                    PhaseMeasurementSource(
-                        kind="separate_entities",
-                        entity_ids={p: f"sensor.{prefix}_{p.lower()}" for p in PHASES},
-                    )
+                **(
+                    {
+                        CONF_MEASURED_CURRENT_SOURCE: source_to_dict(
+                            PhaseMeasurementSource(
+                                kind="separate_entities",
+                                entity_ids={p: f"sensor.{prefix}_{p.lower()}" for p in PHASES},
+                            )
+                        )
+                    }
+                    if measured
+                    else {"measured_source_declined": True}
                 ),
             }
         },

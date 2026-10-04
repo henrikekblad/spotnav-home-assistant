@@ -30,12 +30,17 @@ With the meter's total power instead of per-phase power (`SolarObservation.phase
 split evenly over the phases the car uses and each phase's figure is capped by its fuse headroom.
 
 A charger whose own measured current is missing (not configured, or unreadable) while the grid and the
-battery read fine is a standing fault, not a passing gap: it never starts a charge, and does not
-stop a running one merely for it (a stop would be followed by whatever resumes the charger, round
-and round); the running charge is held at the minimum current only while the grid shows export or next to no import
-(`missing_import_tolerance_w` per phase the car uses); import beyond that for `stop_delay_s` and
-`min_on_s` stops it as a normal solar stop. Solar never charges from the grid on the strength of a
-fault.
+battery read fine runs blind, at its minimum current only: what the car draws is unknown, so no surplus
+can be sized beyond the minimum. It starts (at the start minimum, then held at the minimum current) only
+when the caller allows it (`SolarObservation.unmeasured_start_allowed`: no other charger on the site is
+about to start or has just started, so two chargers never claim the same export) and the spare power
+without the car (`_spare_w`: export, plus a charging battery under `car_first`) covers the start minimum
+for `start_delay_s`, after `min_off_s`, and within the fuse caps. A running charge is never stopped
+merely for the missing reading (a stop would be followed by whatever resumes the charger, round and
+round); it stays at the minimum current while the spare power is not below `-missing_import_tolerance_w`
+per phase the car uses (a battery discharging into the car counts as import), and import beyond that for
+`stop_delay_s` and `min_on_s` stops it as a normal solar stop. Solar never charges from the grid on the
+strength of a fault, and never asks for more than the minimum current without the car's own reading.
 
 Several chargers on one site share the surplus in the site's charger order (priority First, Normal,
 Last; ties by the order they joined, as capacity allocation serves them): `share_surplus` offers the
@@ -78,6 +83,10 @@ SolarReason = Literal[
     # nothing to size the surplus against, so no charge starts, and a running one is held at the minimum
     # current while the grid shows no real import and stopped (once) when it does.
     "charger_measurement_missing",
+    # The same, while a blind start at the minimum current is armed (spare power covers the start
+    # minimum) or carried out.
+    "unmeasured_arming",
+    "unmeasured_start",
     "off_no_surplus",
     "arming_delay",
     "arming_min_off_wait",
@@ -148,6 +157,9 @@ class SolarObservation:
     # What the site's priority order moves to or from this charger, in watts, on top of its own
     # reckoning (`priority_adjust_w`); 0.0 for a charger alone on its site.
     share_adjust_w: float = 0.0
+    # Whether a charger with no reading of its own current may start blind, at the minimum current: the
+    # caller's judgement that no other charger on the site is about to start or has only just started.
+    unmeasured_start_allowed: bool = False
 
 
 @dataclass(frozen=True, slots=True)
@@ -376,21 +388,40 @@ class SolarController:
             return False
         return not (observation.battery_configured and observation.battery_w is None)
 
+    def _spare_w(self, observation: SolarObservation) -> float:
+        """The power the site has to spare with the car's own draw not counted back in: export, plus a
+        battery that is charging under `car_first`; a discharging battery counts against it under either
+        priority. A running car's draw is already in the grid reading."""
+        net_grid_w = sum(observation.signed_grid_w[phase] for phase in PHASES)  # type: ignore[misc]
+        battery_w = observation.battery_w
+        if battery_w is None:
+            return -net_grid_w
+        if self._config.priority == "car_first":
+            return battery_w - net_grid_w
+        return min(0.0, battery_w) - net_grid_w
+
     def _handle_charger_measurement_missing(self, observation: SolarObservation) -> SolarVerdict:
-        """Never start. A running charge is brought down to the minimum current once and held there
-        while the grid shows export or next to no import; sustained import stops it."""
+        """Blind, at the minimum current (module docstring): a start only when allowed and covered by
+        spare power; a running charge held at the minimum while there is no real import, and stopped
+        when import lasts."""
         now = observation.now
         self._stale_since = None
-        if self._state in ("off", "arming"):
-            self._state = "off"
-            self._arming_since = None
-            self._import_since = None
-            return self._verdict("hold", None, "charger_measurement_missing")
         cfg = self._config
         net_grid_w = sum(observation.signed_grid_w[phase] for phase in PHASES)  # type: ignore[misc]
+        spare_w = self._spare_w(observation)
         self._net_grid_w = net_grid_w
         self._export_w = max(0.0, -net_grid_w)
-        importing = net_grid_w > cfg.missing_import_tolerance_w * len(observation.car_phases)
+        self._battery_w = observation.battery_w
+        # Without the car's draw there is no surplus to state.
+        self._car_w = None
+        self._available_w = None
+        self._available_a = None
+        self._priority_effective = (
+            "car_first" if cfg.priority == "car_first" and observation.battery_w is not None else "battery_first"
+        )
+        if self._state in ("off", "arming"):
+            return self._unmeasured_off_or_arming(observation, spare_w)
+        importing = spare_w < -cfg.missing_import_tolerance_w * len(observation.car_phases)
         if not importing:
             self._import_since = None
         else:
@@ -413,6 +444,42 @@ class SolarController:
             self._last_requested_a = minimum
             return self._verdict("set_current", minimum, "charger_measurement_missing")
         return self._verdict("hold", None, "charger_measurement_missing")
+
+    def _unmeasured_off_or_arming(self, observation: SolarObservation, spare_w: float) -> SolarVerdict:
+        """A blind start at the start minimum, once the spare power has covered it for `start_delay_s`
+        (after `min_off_s`) and every fuse cap allows it; anything short of that is back to `off`."""
+        now = observation.now
+        cfg = self._config
+        assert cfg.start_a is not None
+        car_phases = observation.car_phases
+        mean_voltage = sum(observation.voltage_v[phase] for phase in car_phases) / len(car_phases)  # type: ignore[misc]
+        caps_allow = True
+        if observation.phase_cap_a is not None:
+            caps = [observation.phase_cap_a.get(phase) for phase in car_phases]
+            caps_allow = all(cap is not None and cap >= cfg.start_a for cap in caps)
+        covered = (
+            observation.unmeasured_start_allowed
+            and caps_allow
+            and mean_voltage > 0
+            and spare_w >= cfg.start_a * len(car_phases) * mean_voltage
+        )
+        self._import_since = None
+        if not covered:
+            self._state = "off"
+            self._arming_since = None
+            return self._verdict("hold", None, "charger_measurement_missing")
+        if self._state != "arming":
+            self._arming_since = now
+        self._state = "arming"
+        assert self._arming_since is not None
+        min_off_ok = self._last_stop_at is None or (now - self._last_stop_at) >= cfg.min_off_s
+        if now - self._arming_since >= cfg.start_delay_s and min_off_ok:
+            self._state = "on"
+            self._on_since = now
+            self._arming_since = None
+            self._last_requested_a = cfg.start_a
+            return self._verdict("start", cfg.start_a, "unmeasured_start")
+        return self._verdict("hold", None, "unmeasured_arming")
 
     def _refresh_breakdown(self, observation: SolarObservation) -> float | None:
         """Compute this tick's surplus breakdown and store it for `_verdict`.
