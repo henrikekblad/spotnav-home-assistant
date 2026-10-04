@@ -102,6 +102,30 @@ Diagnostics and the debug bundle (version 5) carry `ownership_shadow`: counts, t
 disagreements and drifts and the last 200 events (facts only: no entity ids, no secrets). `core/replay.py` feeds a
 bundle's events to the core again (`python -m custom_components.spotnav.core.replay bundle.json`).
 
+## Step 2: the core drives, behind an option
+
+A charger whose entry data says `core_ownership: true` (`const.CONF_CORE_OWNERSHIP`; no card or flow sets it, and it
+is off otherwise) lets the core decide. Off, today's code decides exactly as before and the core only shadows it.
+On:
+
+* At every decision point fed to the shadow (a window's start and end, the re-arm, the stray stop, the top-off, the
+  need-met stop, a report's hold, claim and stray stop, the stop under a person's Stop and its give-up, load
+  balancing's resume, the sun's start, stop and take-over), today's code acts on the core's verdict
+  (`OwnershipShadow.verdict`). Each spawned task still checks its facts again before it sends anything.
+* A person's Stop takes the plug-in session the core decides, and a plug-in or an unplug leaves the manual pause the
+  core decided for it.
+* After each feed today's two owner fields (`charge_origin`, `plan_charge`) take the core's one owner
+  (`ChargingController._take_core_owner`), so everything that reads them follows it.
+* An event whose facts are all known up front (a plug-in or an unplug, a person's Start or Stop) is decided when it
+  begins, and a verdict a decision point asks for is that feed's decision at once: what happens inside it (a task
+  Home Assistant starts eagerly) is decided after it.
+
+The shadow still compares, before the owner is taken back, and counts each decision where today's rule on the same
+state would have chosen otherwise (`verdict_differs`) and each owner it wrote over today's fields (`written_back`).
+`SPOTNAV_CORE_OWNERSHIP=1` runs the whole test suite with the option on. Not yet the core's: the persisted record
+(today's keys are still what is saved), load balancing's memory of the charge it holds, the hold's memory and the
+car-ended record (all read from today's fields at each feed).
+
 ## Tests
 
 * `tests/test_core_ownership.py`: table tests of every rule.
@@ -110,5 +134,6 @@ bundle's events to the core again (`python -m custom_components.spotnav.core.rep
   changes nothing).
 * `tests/test_core_replay.py`: replay of a synthetic bundle and of a real charger's recording, and the shadow's own
   guarantees.
+* `tests/test_core_drives.py`: the option, today's code following the core's verdict, the owner taken back.
 * Every test runs with the shadow (`tests/conftest.py`, `ownership_shadow_agrees`) and fails on a disagreement
   nobody explained (`tests/shadow_known.py`).
