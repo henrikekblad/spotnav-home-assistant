@@ -78,6 +78,21 @@ describe("the status line renders the block and nothing else", () => {
     expect(issuesOf(toLimit, "en")).toEqual([]);
   });
 
+  it("says a car finishing past the plan's last window charges until it is full, at most until a time", () => {
+    const topOff = block(
+      statusLine("topping_off", { until: "2026-09-22T21:40:00+00:00" }),
+      statusLine("charging_to_vehicle_limit", { percent: 80 }),
+    );
+    const en = statusText(topOff, format("en"), NOW);
+    expect(en).toContain("Charging until the car is full (at most until 23:40)");
+    expect(en).toContain("Charging until the car stops at its own limit (80 %).");
+    expect(statusText(topOff, format("sv"), NOW)).toContain("Laddar tills bilen är full (som längst till 23:40)");
+    for (const language of ["da", "fi", "nb"] as const) {
+      expect(statusText(topOff, format(language), NOW)).not.toContain("{time}");
+    }
+    expect(issuesOf(topOff, "en")).toEqual([]);
+  });
+
   it("names the phases that make the site measurement unusable, and where they are read from", () => {
     const empty = block(
       statusLine("waiting_for_tomorrow"),

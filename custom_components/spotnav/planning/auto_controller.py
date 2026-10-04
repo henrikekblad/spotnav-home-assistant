@@ -431,6 +431,9 @@ class AutoSnapshot:
     #: capped at it (the car ends that charge itself when it is full).
     room_kwh: float | None = None
     room_limited: bool = False
+    #: The departure instant this calculation planned for, or `None` without one: a plan carries it, so
+    #: a top-off past its last window never runs beyond it (`execution/top_off.py`).
+    departure_at: datetime | None = None
 
     def meaningful_key(self) -> tuple[Any, ...]:
         """What a listener hears about, and is not told twice.
@@ -989,6 +992,9 @@ class AutoPlannerController:
             return self._fresh_snapshot(settings, "waiting_for_prices", "no_prices_yet", calculated_at)
         entry = area_snapshot.catalogue
 
+        departure_at = self._departure_instant(settings, calculated_at, entry)
+        if departure_at is not None:
+            energy["departure_at"] = departure_at
         fiscal = self._fiscal_for(settings, entry)
         if fiscal is None:
             return self._fresh_snapshot(

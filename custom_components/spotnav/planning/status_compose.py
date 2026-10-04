@@ -28,7 +28,9 @@ Precedence (first match wins the headline; "add" rows append a fact line)
    that plan line follows the strategy headline (normal tone, params as in 4), so the wait is
    never hidden by the strategy.
 4. Plan headline, the card's `statusSentence` chain:
-     charging_without_prices (+plan_energy) > charging_now (+plan_energy +plan_cost) >
+     charging_without_prices (+plan_energy) > topping_off{until} (the plan's last window ended with the
+     car still drawing on a charge to its own limit: it charges until the car is full, at most until
+     `until`) > charging_now (+plan_energy +plan_cost) >
      held_until_window{time} (a charge that started by itself outside the plan was stopped, or a car
      waits for the next window) >
      waiting_for_history > waiting_for_publication > buying_before_publication > auto_planned (+energy +cost +distance) >
@@ -46,7 +48,8 @@ Precedence (first match wins the headline; "add" rows append a fact line)
    app's own capability check, never said here.
    need_limited_by_room{kwh} (a manual need capped at the room left in the battery) and
    charging_to_vehicle_limit{percent} (a Start in effect for a plan that charges to the car's own
-   limit, which the car ends itself) follow them; tone normal.
+   limit, which the car ends itself) follow them; tone normal. Under a solar or hybrid headline a
+   top-off is the fact line topping_off{until} after them.
    `settings_suggested{fields}` (tone normal) follows the notices while first-run defaults
    (area, phases, amps) are unconfirmed; any settings edit clears it.
 6. Notices appended after the headline (and after the target fact): price_data_stale,
@@ -123,6 +126,10 @@ STATUS_CODES: Final[dict[str, tuple[str, tuple[str, ...]]]] = {
     "planning_error": (TONE_BLOCKING, ("reason",)),
     "paused": (TONE_NORMAL, ("until", "choice")),
     "charging_now": (TONE_NORMAL, ("until",)),
+    # The plan's last window ended with the car still drawing on a charge to its own limit: it goes on
+    # until the car stops by itself, at most until `until` (an hour past the window, never past the
+    # departure).
+    "topping_off": (TONE_NORMAL, ("until",)),
     "charging_without_prices": (TONE_NOTICE, ()),
     "waiting_for_publication": (TONE_NORMAL, ("publication_at",)),
     # A dated departure leaves the unpublished hours for later because the same weekday-hours were
@@ -307,6 +314,9 @@ class StatusFacts:
     #: A Start is in effect for a plan that charges to the car's own limit: that limit (100 when the car
     #: states none), else `None`.
     vehicle_limit_percent: float | None = None
+    #: While the car finishes a charge to its own limit past the plan's last window, the latest that
+    #: top-off may run to, else `None`.
+    top_off_until: datetime | None = None
     paused: bool = False
     pause_until: datetime | None = None
     pause_choice: str | None = None
@@ -501,6 +511,8 @@ def _plan_headline(facts: StatusFacts) -> list[dict[str, Any]]:
 
     if planning is not None and planning.reason == "charging_without_prices":
         return [_line("charging_without_prices"), *_plan_facts(proposal, energy=True, cost=False, distance=False)]
+    if facts.top_off_until is not None:
+        return [_line("topping_off", until=aware_iso(facts.top_off_until))]
     if facts.charging and active is not None:
         return [
             _line("charging_now", until=aware_iso(active[1])),
@@ -611,6 +623,9 @@ def _vehicle_limit_lines(facts: StatusFacts) -> list[dict[str, Any]]:
         lines.append(_line("need_limited_by_room", kwh=round(planning.room_kwh, 1)))
     if facts.vehicle_limit_percent is not None and not facts.paused:
         lines.append(_line("charging_to_vehicle_limit", percent=round(facts.vehicle_limit_percent)))
+    if facts.top_off_until is not None and not facts.paused and (facts.solar is not None or facts.hybrid is not None):
+        # The plan chain says it in its headline; a strategy headline keeps its place, so it is said here.
+        lines.append(_line("topping_off", until=aware_iso(facts.top_off_until)))
     return lines
 
 

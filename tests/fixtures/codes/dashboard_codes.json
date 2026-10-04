@@ -385,6 +385,12 @@
       ],
       "tone": "notice"
     },
+    "topping_off": {
+      "params": [
+        "until"
+      ],
+      "tone": "normal"
+    },
     "unpriced": {
       "params": [],
       "tone": "notice"

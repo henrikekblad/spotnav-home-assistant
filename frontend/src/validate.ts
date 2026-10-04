@@ -1250,6 +1250,7 @@ export const STATUS_CODE_TABLE = {
   planning_error: ["blocking", { reason: "textOrNull" }],
   paused: ["normal", { until: "instantOrNull", choice: "choiceOrNull" }],
   charging_now: ["normal", { until: "instantOrNull" }],
+  topping_off: ["normal", { until: "instant" }],
   charging_without_prices: ["notice", {}],
   waiting_for_publication: ["normal", { publication_at: "instantOrNull" }],
   waiting_for_history: ["normal", { weekday: "int", percent: "int", weeks: "int" }],

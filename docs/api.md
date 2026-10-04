@@ -168,6 +168,13 @@ itself (a capped amount, or a target at or above the car's own limit) it carries
 `charging_to_vehicle_limit` (`percent`, the car's limit, 100 when it states none). A client shows its kWh
 slider up to `room_kwh` when it is present; an older backend has neither field nor line.
 
+**Top-off.** When the plan's last window ends with the car still drawing on such a charge, the charge stays
+on until the car stops by itself (two minutes without current), at most an hour past the window and never
+past the departure. Meanwhile the status headline is `topping_off` (`until`, the latest instant it may run
+to; a fact line after `charging_to_vehicle_limit` under a solar or hybrid headline), `charging_to_vehicle_limit`
+stays, and the execution state is `active`. A charge the car ended this way is notified as *Charging
+complete: the car is full*; one that reached the hour ends as the window's end would have.
+
 The additive `charger_priority` block is this charger's place in its site's order, which capacity
 allocation and solar surplus both follow: `null` for a charger on no site, else `{"value": "first" |
 "normal" | "last", "choices": ["first", "normal", "last"], "writable": bool}`. `writable` is true over

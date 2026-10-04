@@ -93,6 +93,7 @@ export const STATUS_WORDING: Readonly<Record<StatusCode, TranslationKey>> = {
   planning_error: "issue.error",
   paused: "control.pausedUntil",
   charging_now: "status.chargingNow",
+  topping_off: "status.toppingOff",
   charging_without_prices: "issue.chargingWithoutPrices",
   waiting_for_publication: "status.waitingForPublication",
   waiting_for_history: "status.waitingForHistory",
@@ -238,6 +239,13 @@ export function lineText(line: StatusLine, format: FormatContext, nowMs: number)
       return until === null || !zoned
         ? say("status.chargingNowOpen")
         : say("status.chargingNow", { time: clock(format, until) });
+    }
+    case "topping_off": {
+      // Past the plan's last window, the car finishes a charge to its own limit: until it stops by itself.
+      const until = ms(p["until"]);
+      return until === null || !zoned
+        ? say("status.toppingOffOpen")
+        : say("status.toppingOff", { time: clock(format, until) });
     }
     case "waiting_for_publication": {
       const at = ms(p["publication_at"]);

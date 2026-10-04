@@ -83,6 +83,17 @@ keeps it on within the planned periods and never stops it on an estimate or the 
 that then stops taking current is full, not a fault. The card's and the app's kWh slider goes no higher
 than that room.
 
+**The car finishes, even past the last period.** A car near its own limit lowers the current over the
+last half hour or so, so the plan's last period can end while it still draws. For a charge the car ends
+itself, SpotNav then keeps the charge on until the car stops drawing by itself (no current, or the car
+saying it wants none, for two minutes in a row), at most an hour past the period's end and never past
+the departure. The status says *Charging until the car is full (at most until 06:40)* meanwhile, and a
+car that stops is told as *Charging complete: the car is full*; reaching the hour ends the charge as the
+period's end would have, with no warning that it stopped. A Stop, a pause or the car being unplugged ends
+it at once, load balancing still limits and pauses it, and a car that has already stopped drawing when
+the period ends is not kept on. A target below the car's limit, or an amount the battery has room for,
+still ends with its last period.
+
 A daily departure whose morning lies beyond the last published price (before the afternoon
 publication) waits for the publication when that is safe. The history only explains that wait
 (*Waiting: Saturdays were 30 % cheaper the last 4 weeks*), or ends it when the hours still available

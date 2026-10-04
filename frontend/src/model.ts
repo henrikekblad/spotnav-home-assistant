@@ -472,7 +472,10 @@ function carNeedsNoCharge(soc: Dashboard["soc"]): boolean {
  * car), or that the car ends this charge itself at its own limit: a car that stops taking current then is full.
  */
 function needAlreadyMet(status: Dashboard["status"]): boolean {
-  return status.lines.some((line) => line.code === "hybrid_satisfied" || line.code === "charging_to_vehicle_limit");
+  return status.lines.some(
+    (line) =>
+      line.code === "hybrid_satisfied" || line.code === "charging_to_vehicle_limit" || line.code === "topping_off",
+  );
 }
 
 function strategyFactsFor(dashboard: Dashboard, language: Language): StrategyFacts {

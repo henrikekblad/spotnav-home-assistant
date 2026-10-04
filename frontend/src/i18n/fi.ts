@@ -34,6 +34,8 @@ export const fi: Record<keyof typeof en, string> = {
   "status.loadBalancingLimitedByBattery": "Kotiakku lataa verkosta ja jakaa pääsulakkeen: auto saa {limit} A.",
   "status.loadBalancingLimitedByHouse": "Talon kulutus rajoittaa auton {limit} A:iin.",
   "status.chargingNowOpen": "Ladataan nyt.",
+  "status.toppingOff": "Ladataan, kunnes auto on täynnä (enintään klo {time} asti).",
+  "status.toppingOffOpen": "Ladataan, kunnes auto on täynnä.",
   "status.startingUp": "Käynnistyy…",
   "status.scheduledNoTime": "Lataus on aikataulutettu.",
   "status.nothingToCharge": "Ei mitään ladattavaa juuri nyt.",

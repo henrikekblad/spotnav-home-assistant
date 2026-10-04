@@ -14,7 +14,7 @@ has its own choice, so the driver of each car can follow their own charger.
 |---|---|---|
 | Charging stopped or did not start as planned | yes | see below |
 | The charge will not be ready by the departure | yes | the departure cannot be met with the time left; once each time it becomes so |
-| Charging complete | yes | the target state of charge was reached, the requested energy was delivered, or the plan's last window ended while the car was charging |
+| Charging complete | yes | the target state of charge was reached, the requested energy was delivered, the car stopped by itself when full after the plan's last window, or the plan's last window (or the hour after it that a car still charging to its own limit gets) ended while the car was charging |
 | Charging started | no | the charger starts charging, for whatever reason |
 | Car plugged in / Car unplugged | no | for a charger that can say whether a car is connected |
 | New plan | no | a plan different from the one before is installed, with its start, energy and estimated cost |

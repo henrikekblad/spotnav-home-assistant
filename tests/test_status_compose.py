@@ -23,6 +23,8 @@ from custom_components.spotnav.planning.status_compose import (
     compose_status,
 )
 
+from custom_components.spotnav.util import aware_iso
+
 from .helpers import setup_two_chargers, webhook_dashboard
 
 NOW = datetime(2026, 9, 22, 20, 0, tzinfo=timezone.utc)
@@ -715,6 +717,30 @@ CASES: list[tuple[str, StatusFacts, str, list[dict[str, Any]]]] = [
         [
             {"code": "charging_now", "params": {"until": None}},
             {"code": "charging_to_vehicle_limit", "params": {"percent": 100}},
+        ],
+    ),
+    (
+        "a top-off past the last window says the car charges until it is full, and that it ends it",
+        base(charging=True, vehicle_limit_percent=100.0, top_off_until=NOW + timedelta(minutes=45)),
+        "normal",
+        [
+            {"code": "topping_off", "params": {"until": aware_iso(NOW + timedelta(minutes=45))}},
+            {"code": "charging_to_vehicle_limit", "params": {"percent": 100}},
+        ],
+    ),
+    (
+        "a top-off beside a strategy headline is a fact line after the car's own limit",
+        base(
+            charging=True,
+            vehicle_limit_percent=80.0,
+            top_off_until=NOW + timedelta(minutes=30),
+            hybrid=HybridFacts(reason="satisfied_need_met"),
+        ),
+        "normal",
+        [
+            {"code": "hybrid_satisfied", "params": {}},
+            {"code": "charging_to_vehicle_limit", "params": {"percent": 80}},
+            {"code": "topping_off", "params": {"until": aware_iso(NOW + timedelta(minutes=30))}},
         ],
     ),
     (

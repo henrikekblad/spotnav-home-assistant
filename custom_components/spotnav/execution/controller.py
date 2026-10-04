@@ -91,6 +91,7 @@ from .target_stop import (
     decide_target_stop,
     SocReading,
 )
+from . import top_off
 from .window_hold import HOLD, OVERRIDE, WindowHold
 
 
@@ -159,6 +160,13 @@ ABSOLUTE_MAX_AMPS = 80
 # assumed to be amperes (same rule as `site_capacity.classify_current`).
 _AMPERE_UNITS = ("a", "amp", "amps", "ampere", "amperes")
 
+#: Why a top-off ends (`_async_end_top_off`): the car stopped drawing by itself, its deadline came, the
+#: car was unplugged, or the charge was turned off by other means.
+TOP_OFF_FULL = "full"
+TOP_OFF_DEADLINE = "deadline"
+TOP_OFF_UNPLUGGED = "unplugged"
+TOP_OFF_OFF = "off"
+
 
 @dataclass(slots=True)
 class ChargingPlan:
@@ -180,6 +188,9 @@ class ChargingPlan:
     # A manual amount at least the room left in the battery: the car ends the charge when it is full,
     # so neither the delivered energy nor an estimate ends it first.
     to_vehicle_limit: bool = False
+    # The departure this plan is for (an ISO instant), when it has one: a top-off past the last window
+    # never runs beyond it (`top_off.py`).
+    departure: str | None = None
     # What Auto built this plan from: identity, settings revision and price identity.
     # Internal metadata, never read out of a payload.
     auto_identity: str | None = None
@@ -534,6 +545,12 @@ class ChargingController:
         # The last time a charge ended because its plan was done (`completion_record`). In memory only:
         # a restart is not a completion.
         self._completion: dict[str, Any] | None = None
+        # While the car finishes a charge to its own limit past the plan's last window (`top_off.py`):
+        # the latest it may run to (persisted, so a restart resumes or ends it), since when the car has
+        # drawn nothing (in memory: a restart looks afresh), and the top-off's own timers.
+        self._top_off_until: datetime | None = None
+        self._top_off_idle_since: datetime | None = None
+        self._top_off_cancels: list[Callable[[], None]] = []
         # The one state-change subscription, alive while a plan with a target is (see
         # `_async_reschedule`).
         self._state_listener_cancel: Callable[[], None] | None = None
@@ -630,6 +647,11 @@ class ChargingController:
                 _LOGGER.warning(
                     "Discarding invalid saved SpotNav target stop record: %r", raw_target_stop
                 )
+            raw_top_off = saved.get("top_off_until")
+            parsed_top_off = dt_util.parse_datetime(raw_top_off) if isinstance(raw_top_off, str) else None
+            self._top_off_until = (
+                parsed_top_off if parsed_top_off is not None and parsed_top_off.tzinfo is not None else None
+            )
             raw_probe = saved.get(STORE_KEY)
             if isinstance(raw_probe, dict):
                 self._probe_record = raw_probe
@@ -689,7 +711,7 @@ class ChargingController:
         itself on (an accepted manual or scheduled Start), or the installed plan covers this
         instant. A plan whose stored instants cannot be read answers `False` rather than raising.
         """
-        if self._control_on:
+        if self._control_on or self.top_off_until is not None:
             return True
         plan = self.plan
         if plan is None:
@@ -720,8 +742,9 @@ class ChargingController:
     @property
     def completion_record(self) -> dict[str, Any] | None:
         """The last charge that ended because its plan was done, or `None`: `at` (ISO instant),
-        `reason` (`target` reached, requested `energy` delivered, or `plan_done`: the plan's last window
-        ended while it charged) and, for a target, `target_soc_percent` and `soc_percent`.
+        `reason` (`target` reached, requested `energy` delivered, `plan_done`: the plan's last window, or
+        the top-off after it, ended while it charged, or `vehicle_full`: the car stopped drawing by itself
+        during the top-off) and, for a target, `target_soc_percent` and `soc_percent`.
         """
         return self._completion
 
@@ -840,6 +863,7 @@ class ChargingController:
         self._maybe_resend_current(event)
         self._maybe_write_after_start(event)
         self._observe_connection()
+        self._top_off_tick()
         changed = self._observe_hold()
         if self._charge_progress.evaluate() or changed:
             self._notify()
@@ -929,10 +953,12 @@ class ChargingController:
         return True
 
     def _open_window_end(self) -> datetime | None:
-        """The end of the plan's window open now, or `None`."""
+        """The end of the plan's window open now (a top-off's deadline while one runs), or `None`."""
         plan = self.plan
         if plan is None:
             return None
+        if self.top_off_until is not None:
+            return self.top_off_until
         try:
             windows = plan.windows
         except ValueError:
@@ -953,6 +979,9 @@ class ChargingController:
 
     async def _plug_in_start_locked(self) -> bool:
         if self._open_window_end() is None or self._target_stopping:
+            return False
+        if self.top_off_until is not None:
+            # Past the last window nothing starts: a top-off only lets a running charge finish.
             return False
         if self._hold_blocked() or self._person_stopped_now():
             return False
@@ -1113,6 +1142,9 @@ class ChargingController:
         if plan is None or not self._plan_charge or self._control_observation is not True:
             return False
         if self._hold_blocked() or (self._end_window_guard is not None and self._end_window_guard()):
+            return False
+        if self.top_off_until is not None:
+            # The car finishes its charge past the last window: the top-off ends it, not this stop.
             return False
         try:
             windows = plan.windows
@@ -1359,6 +1391,8 @@ class ChargingController:
         self._validate_amps(plan.amps)
         previous_plan = self.plan
         previous_target_stop = self._target_stop
+        # A new plan replaces the one a top-off finished: its windows decide from here.
+        self._clear_top_off()
         self.plan = plan
         # The plan this record described is being replaced.
         self._target_stop = None
@@ -1736,7 +1770,8 @@ class ChargingController:
         was_on = self._control_on
         paused_charge = (self._charge_origin, self._plan_charge)
         try:
-            await self.async_stop()
+            # A balancing stop: a top-off running past the last window goes on, paused like any charge.
+            await self.async_stop(balancing=True)
         except Exception:  # noqa: BLE001 - reported, and the next pass tries again
             _LOGGER.exception("SpotNav charger %s: the safety stop failed", self.entry_id)
             return RegulatedWrite(REGULATED_HELD, "stop_failed", False)
@@ -1963,13 +1998,22 @@ class ChargingController:
             "session_limit_state": None if session_state is None else str(session_state.state),
         }
 
-    async def async_stop(self, *, clear_schedule: bool = False, person: bool = False) -> None:
+    async def async_stop(
+        self, *, clear_schedule: bool = False, person: bool = False, balancing: bool = False
+    ) -> None:
         """Stop charging, optionally removing the saved schedule. Takes the operation lock and
         delegates to `_stop_locked`. `person` marks a person's Stop: inside an open window it keeps a
         plug-in or a new plan from starting that window again (`async_start_on_plug_in`).
+
+        Any stop but load balancing's pause (`balancing`) ends a top-off, and with it the plan whose
+        windows are all past: a person's Stop, a pause, solar standing it down.
         """
         async with self._lock:
-            if person:
+            if self._top_off_until is not None and not balancing:
+                # The plan ends with its top-off: no window of it is left for a person's Stop to keep.
+                _LOGGER.info("SpotNav charger %s: the top-off is stopped", self.entry_id)
+                clear_schedule = True
+            elif person:
                 self._person_stop_until = self._open_window_end()
             await self._stop_locked(clear_schedule=clear_schedule)
 
@@ -2003,6 +2047,7 @@ class ChargingController:
             self._plan_charge = False
             self._charge_origin = None
             self.plan = None
+            self._clear_top_off()
             self._cancel_timers()
             self._async_disarm_target_listener()
             # The probe's subscription follows the plan: with no plan nothing may be watched.
@@ -2018,6 +2063,8 @@ class ChargingController:
     async def _shutdown_locked(self) -> None:
         """The shutdown itself. Runs with the operation lock held."""
         self._cancel_timers()
+        # A top-off's deadline stays stored: the next start resumes it or ends it.
+        self._cancel_top_off_timers()
         # State-change subscriptions are local callbacks too: nothing may be decided or called
         # once this controller is gone.
         self._async_disarm_target_listener()
@@ -2181,6 +2228,8 @@ class ChargingController:
                 # Written only by the target-stop path. A window ending normally and an explicit cancel
                 # record nothing here (`async_stop` does not touch this key).
                 "target_stop": self._target_stop,
+                # The deadline of a top-off that runs past the last window, else `None`.
+                "top_off_until": None if self._top_off_until is None else self._top_off_until.isoformat(),
                 # The pilot-floor probe's record; written only through its host interface, absent until
                 # the probe has started.
                 STORE_KEY: self._probe_record,
@@ -2207,6 +2256,10 @@ class ChargingController:
         now = dt_util.utcnow()
         windows = self.plan.windows
         if now >= windows[-1][1]:
+            if self._resume_top_off(now):
+                # The car is finishing its charge past the last window (a restart, a follow): the
+                # top-off's own timers end it.
+                return
             # A plan whose windows are all past is history, kept so the execution layer can report it
             # as `complete` (a reload must not claim Auto never ran); nothing is armed for it.
             self._async_disarm_target_listener()
@@ -2489,11 +2542,15 @@ class ChargingController:
         set_current).
 
         Unlike `charge_expected_now` it ignores `self.charging` (a fact about the plan, not about the switch
-        being on for another reason) and answers `False` for a plan whose stored instants cannot be read.
+        being on for another reason) and answers `False` for a plan whose stored instants cannot be read. A
+        top-off past the last window (`top_off_until`) is the plan's too: nothing else takes the charger
+        while it runs.
         """
         plan = self.plan
         if plan is None:
             return False
+        if self.top_off_until is not None:
+            return True
         try:
             windows = plan.windows
         except ValueError:
@@ -2524,7 +2581,9 @@ class ChargingController:
     def _async_final_end_callback(self, _now: datetime) -> None:
         """The last window ended: stop and clear the schedule, unless `end_window_guard` says the
         sun can carry the charge past this boundary; then neither happens and solar mode owns the
-        charger (see `plan_window_active_now`, `False` once every window is past).
+        charger (see `plan_window_active_now`, `False` once every window is past). A plan that charges
+        to the car's own limit with the car still drawing is not stopped either: the car finishes it in
+        a top-off (`top_off.py`, `_async_begin_top_off`).
         """
         if self._end_window_guard is not None and self._end_window_guard():
             _LOGGER.debug(
@@ -2533,10 +2592,222 @@ class ChargingController:
                 self.entry_id,
             )
             return
+        if self._top_off_wanted() is not None:
+            # A car still drawing on a charge to its own limit finishes it: the top-off decides again
+            # under the lock, and ends the plan as this would have when it may not run.
+            self.hass.async_create_task(self._async_begin_top_off())
+            return
         if self.plan is not None and self._control_on:
             # A charge still running at the last window's end: the plan is done.
             self._record_completion("plan_done", target_soc_percent=self.plan.target_soc_percent)
         self.hass.async_create_task(self.async_stop(clear_schedule=True))
+
+    # ------------------------------------------------------------------ the top-off (`top_off.py`)
+
+    @property
+    def top_off_until(self) -> datetime | None:
+        """While the car finishes a charge to its own limit past the plan's last window, the latest the
+        top-off may run to (`top_off.deadline`); else `None`."""
+        if self._top_off_until is None or self.plan is None:
+            return None
+        return self._top_off_until
+
+    def _plan_departure(self) -> datetime | None:
+        """The departure the plan is for, or `None` when it has none (or it cannot be read)."""
+        plan = self.plan
+        if plan is None or not plan.departure:
+            return None
+        try:
+            return _parse_datetime(plan.departure)
+        except ValueError:
+            return None
+
+    def _car_drawing(self) -> bool | None:
+        """Whether the car draws current now, from the facts the progress observation reads."""
+        facts = self.charge_progress_facts()
+        return top_off.car_drawing(
+            connector_status=facts.connector_status,
+            current_a=facts.current_import_a,
+            power_mode=facts.power_mode,
+            power_w=facts.power_w,
+            idle_power_w=facts.idle_power_w,
+        )
+
+    def _top_off_wanted(self) -> datetime | None:
+        """The deadline of the top-off the plan's last window ending calls for, else `None`.
+
+        Only for a plan that charges to the car's own limit, with its charge still on, nothing else
+        owning the charger (a pause, solar), load balancing not pausing it, a car not known to be gone,
+        and the car still drawing by what the charger measures (a control that is merely on is no
+        evidence). Never past the departure: a deadline already reached is none.
+        """
+        plan = self.plan
+        if plan is None or not self.charges_to_vehicle_limit():
+            return None
+        try:
+            window_end = plan.windows[-1][1]
+        except ValueError:
+            return None
+        if not self._control_on or self._paused_by_balancing or self._hold_blocked():
+            return None
+        if self.adapter.vehicle_connected() is False or self._car_drawing() is not True:
+            return None
+        until = top_off.deadline(window_end, self._plan_departure())
+        if until <= dt_util.utcnow():
+            return None
+        return until
+
+    async def _async_begin_top_off(self) -> None:
+        """The plan's last window ended with the car still drawing on a charge to its own limit: keep the
+        charge on until the car stops by itself or the deadline. Decided again under the lock; when it
+        may no longer run, the plan ends as its last window's end ends it."""
+        async with self._lock:
+            plan = self.plan
+            if plan is None or self._top_off_until is not None:
+                return
+            try:
+                window_end = plan.windows[-1][1]
+            except ValueError:
+                return
+            if dt_util.utcnow() < window_end:
+                # Replaced meanwhile by a plan with a window still ahead: its own timers decide.
+                return
+            until = self._top_off_wanted()
+            if until is None:
+                if self._control_on:
+                    self._record_completion("plan_done", target_soc_percent=plan.target_soc_percent)
+                await self._stop_locked(clear_schedule=True)
+                return
+            self._top_off_until = until
+            self._top_off_idle_since = None
+            _LOGGER.info(
+                "SpotNav charger %s: the last window ended with the car still drawing; letting it finish "
+                "until it stops by itself, at most until %s",
+                self.entry_id,
+                until.isoformat(),
+            )
+            await self._async_save_quietly()
+            self._arm_top_off_timers()
+            self._notify()
+
+    def _resume_top_off(self, now: datetime) -> bool:
+        """At a re-arm with every window past (a restart, a follow): go on with a stored top-off whose
+        deadline is still ahead. One that is over is forgotten, and the plan's charge is stopped as any
+        charge that strays past the last window is. Whether one goes on."""
+        until = self._top_off_until
+        if until is None:
+            return False
+        if self.plan is None or now >= until or self._hold_blocked():
+            self._clear_top_off()
+            return False
+        # A restart looks afresh: the car must stop drawing for the whole idle time again.
+        self._top_off_idle_since = None
+        self._arm_top_off_timers()
+        _LOGGER.info(
+            "SpotNav charger %s: going on with the top-off, at most until %s", self.entry_id, until.isoformat()
+        )
+        return True
+
+    def _arm_top_off_timers(self) -> None:
+        """The top-off's deadline, and a regular look (a car at 0 A reports nothing new)."""
+        self._cancel_top_off_timers()
+        until = self._top_off_until
+        if until is None:
+            return
+        self._top_off_cancels.append(
+            async_track_point_in_utc_time(self.hass, self._async_top_off_deadline_callback, until)
+        )
+        self._top_off_cancels.append(
+            async_track_time_interval(
+                self.hass, self._async_top_off_interval, top_off.CHECK_INTERVAL, cancel_on_shutdown=True
+            )
+        )
+
+    def _cancel_top_off_timers(self) -> None:
+        for cancel in self._top_off_cancels:
+            cancel()
+        self._top_off_cancels.clear()
+
+    def _clear_top_off(self) -> None:
+        """Forget a top-off (its record is saved with the plan's next save)."""
+        self._cancel_top_off_timers()
+        self._top_off_until = None
+        self._top_off_idle_since = None
+
+    @callback
+    def _async_top_off_deadline_callback(self, _now: datetime) -> None:
+        self.hass.async_create_task(self._async_end_top_off(TOP_OFF_DEADLINE))
+
+    @callback
+    def _async_top_off_interval(self, _now: datetime) -> None:
+        self._top_off_tick()
+
+    @callback
+    def _top_off_tick(self) -> None:
+        """One look at a running top-off: past its deadline, the car gone, the charge off by other means,
+        or the car drawing nothing for `top_off.IDLE_S` in a row ends it. A charge load balancing paused
+        is not the car's choice, and a car whose drawing cannot be read is not counted as idle."""
+        until = self.top_off_until
+        if until is None:
+            return
+        now = dt_util.utcnow()
+        if now >= until:
+            self.hass.async_create_task(self._async_end_top_off(TOP_OFF_DEADLINE))
+            return
+        if self.adapter.vehicle_connected() is False:
+            self.hass.async_create_task(self._async_end_top_off(TOP_OFF_UNPLUGGED))
+            return
+        if self._paused_by_balancing:
+            self._top_off_idle_since = None
+            return
+        if self._control_observation is False:
+            self.hass.async_create_task(self._async_end_top_off(TOP_OFF_OFF))
+            return
+        if self._car_drawing() is not False:
+            self._top_off_idle_since = None
+            return
+        since = self._top_off_idle_since
+        if since is None:
+            self._top_off_idle_since = now
+            return
+        if (now - since).total_seconds() >= top_off.IDLE_S:
+            self.hass.async_create_task(self._async_end_top_off(TOP_OFF_FULL))
+
+    async def _async_end_top_off(self, reason: str) -> None:
+        """End a top-off, decided again under the lock, and the plan with it.
+
+        `full` (the car stopped drawing by itself) is a completion of its own; the deadline is the plan's
+        ordinary end (`plan_done` while the charge is on); the car gone or the charge already off records
+        nothing.
+        """
+        async with self._lock:
+            until = self._top_off_until
+            plan = self.plan
+            if until is None or plan is None:
+                return
+            now = dt_util.utcnow()
+            if reason == TOP_OFF_DEADLINE:
+                valid = now >= until
+            elif reason == TOP_OFF_UNPLUGGED:
+                valid = self.adapter.vehicle_connected() is False
+            elif reason == TOP_OFF_OFF:
+                valid = self._control_observation is False and not self._paused_by_balancing
+            else:
+                since = self._top_off_idle_since
+                valid = (
+                    not self._paused_by_balancing
+                    and since is not None
+                    and (now - since).total_seconds() >= top_off.IDLE_S
+                    and self._car_drawing() is False
+                )
+            if not valid:
+                return
+            _LOGGER.info("SpotNav charger %s: the top-off ends (%s)", self.entry_id, reason)
+            if reason == TOP_OFF_FULL:
+                self._record_completion("vehicle_full", target_soc_percent=plan.target_soc_percent)
+            elif reason == TOP_OFF_DEADLINE and self._control_on:
+                self._record_completion("plan_done", target_soc_percent=plan.target_soc_percent)
+            await self._stop_locked(clear_schedule=True)
 
     def _cancel_timers(self) -> None:
         for cancel in self._timer_cancels:

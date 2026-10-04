@@ -389,10 +389,16 @@ def auto_plan_for(
         periods=periods,
         target_soc_percent=float(target.target_percent) if carries_target else None,
         vehicle_id=target.vehicle_id if carries_target else None,
+        departure=_departure_text(getattr(snapshot, "departure_at", None)),
         auto_identity=application_identity,
         auto_settings_revision=settings.revision,
         auto_price_identity=snapshot.price_identity,
     )
+
+
+def _departure_text(departure: Any) -> str | None:
+    """The departure a plan is for, as the plan stores it (an ISO instant), or `None`."""
+    return departure.isoformat() if isinstance(departure, datetime) else None
 
 
 def application_from_plan(plan: ChargingPlan) -> AutoApplication | None:
@@ -602,8 +608,8 @@ class AutoExecutor:
 
         * `paused` first: a paused charger applies nothing;
         * `apply_pending` when a newer proposal waits for a window boundary;
-        * the charger's plan: a window open now is `active`, one ahead `scheduled`, an Auto plan with all
-          windows past `complete`;
+        * the charger's plan: a window open now (or the top-off past its last one) is `active`, one ahead
+          `scheduled`, an Auto plan with all windows past `complete`;
         * a recorded failure with nothing on the charger is `execution_error`;
         * otherwise `not_applied`.
         """
@@ -617,7 +623,7 @@ class AutoExecutor:
         if plan is not None and plan.auto_owned:
             now = self._now()
             windows = plan.windows
-            if any(start <= now < end for start, end in windows):
+            if self._controller.top_off_until is not None or any(start <= now < end for start, end in windows):
                 return EXECUTION_PENDING if self._pending is not None else EXECUTION_ACTIVE
             if any(start > now for start, _ in windows):
                 return EXECUTION_PENDING if self._pending is not None else EXECUTION_SCHEDULED
@@ -632,10 +638,13 @@ class AutoExecutor:
         return EXECUTION_NOT_APPLIED
 
     def window_charging_now(self) -> bool:
-        """Whether a window Auto installed is charging right now, by the injected clock."""
+        """Whether a window Auto installed is charging right now, by the injected clock. A top-off past
+        its last window is part of it: a change waits for the top-off's end as for a window's."""
         plan = self._controller.plan
         if plan is None or not plan.auto_owned:
             return False
+        if self._controller.top_off_until is not None:
+            return True
         now = self._now()
         return any(start <= now < end for start, end in plan.windows)
 
