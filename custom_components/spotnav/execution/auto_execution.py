@@ -1294,6 +1294,30 @@ class AutoExecutor:
             await self._controller.async_stop()
             await self._notify_change()
 
+    async def async_solar_take_over_stop(self) -> bool:
+        """The stop of a charge the charger began by itself that solar found nothing to keep on
+        (`SolarExecutionCoordinator._take_over`), decided again under the lock: never once Auto is
+        paused, the strategy left solar and hybrid, a hybrid plan window or a top-off owns the charger,
+        or the charge is no longer one the charger began by itself (a person's Start, a plan's).
+        Returns whether it stopped.
+        """
+        async with self._lock:
+            settings = self._store.settings(self._entry_id)
+            if pause_blocks_execution(settings) or settings.strategy not in (
+                STRATEGY_SOLAR, STRATEGY_HYBRID
+            ):
+                return False
+            controller = self._controller
+            if controller.top_off_until is not None or (
+                settings.strategy == STRATEGY_HYBRID and controller.plan_window_active_now
+            ):
+                return False
+            if not controller.self_started_charge():
+                return False
+            await controller.async_stop()
+            await self._notify_change()
+            return True
+
     async def async_solar_set_current(self, amps: int) -> None:
         """One solar modulation: recorded as a *requested* current only
         (`ChargingController.async_set_requested_current`), never `async_start`, which would write

@@ -221,6 +221,7 @@ async def solar_setup(
     entry_id: str = "solar",
     main_fuse_a: float = 25.0,
     charging_at_setup: bool = False,
+    charge_origin_at_setup: str | None = None,
     strategy: str = STRATEGY_SOLAR,
     battery_entity: str | None = None,
     ocpp_target: tuple[str, int] | None = None,
@@ -234,6 +235,8 @@ async def solar_setup(
     entry is even set up, for the restart-adoption tests: `ChargingController.charging`
     is a live read of that switch's state, so this is what "HA restarted while the
     charger was already charging" looks like from this integration's own point of view.
+    `charge_origin_at_setup` is who the saved state says started that charge (`solar`, `manual`):
+    without one it is a charge the charger began by itself, which solar decides at once.
 
     `strategy` selects `solar` or `hybrid`: `SolarExecutionCoordinator` runs identically for both,
     and this is the one fixture that builds a real charger, a real derived-mode site and a real,
@@ -258,6 +261,8 @@ async def solar_setup(
     )
     assert await hass.config_entries.async_setup(charger.entry_id)
     await hass.async_block_till_done()
+    if charge_origin_at_setup is not None:
+        controller_of(hass, charger.entry_id)._charge_origin = charge_origin_at_setup  # noqa: SLF001 - the saved origin
 
     # *After* the charger entry is set up, not before: this integration forwards the
     # `switch` platform, so setup loads the core `switch` `EntityComponent`, which
