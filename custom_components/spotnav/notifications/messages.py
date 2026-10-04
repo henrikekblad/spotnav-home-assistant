@@ -11,6 +11,8 @@ from dataclasses import dataclass
 from typing import Any, Final
 
 LANGUAGES: Final = ("en", "sv", "da", "nb", "fi")
+#: A person's test (`spotnav.send_test_notification`), not an event a charger has.
+EVENT_TEST: Final = "test"
 
 
 def language_of(configured: str | None) -> str:
@@ -37,6 +39,7 @@ _TEXT: Final[dict[str, dict[str, str]]] = {
         "complete.plan_done": "The planned charge has finished.",
         "complete.vehicle_full": "Charging complete: the car is full.",
         "started": "Charging started.",
+        "test": "Test notification from SpotNav: notifications reach this phone.",
         "started.until": "Charging started, until {time}.",
         "plugged_in": "The car is plugged in.",
         "unplugged": "The car is unplugged.",
@@ -60,6 +63,7 @@ _TEXT: Final[dict[str, dict[str, str]]] = {
         "complete.plan_done": "Den planerade laddningen är slutförd.",
         "complete.vehicle_full": "Laddningen är klar: bilen är full.",
         "started": "Laddningen har startat.",
+        "test": "Testnotis från SpotNav: notiserna når den här telefonen.",
         "started.until": "Laddningen har startat, till {time}.",
         "plugged_in": "Bilen är ansluten.",
         "unplugged": "Bilen är urkopplad.",
@@ -83,6 +87,7 @@ _TEXT: Final[dict[str, dict[str, str]]] = {
         "complete.plan_done": "Den planlagte opladning er afsluttet.",
         "complete.vehicle_full": "Opladningen er færdig: bilen er fuld.",
         "started": "Opladningen er startet.",
+        "test": "Testnotifikation fra SpotNav: notifikationerne når frem til denne telefon.",
         "started.until": "Opladningen er startet, til {time}.",
         "plugged_in": "Bilen er tilsluttet.",
         "unplugged": "Bilen er frakoblet.",
@@ -106,6 +111,7 @@ _TEXT: Final[dict[str, dict[str, str]]] = {
         "complete.plan_done": "Den planlagte ladingen er fullført.",
         "complete.vehicle_full": "Ladingen er ferdig: bilen er full.",
         "started": "Ladingen har startet.",
+        "test": "Testvarsel fra SpotNav: varslene når frem til denne telefonen.",
         "started.until": "Ladingen har startet, til {time}.",
         "plugged_in": "Bilen er tilkoblet.",
         "unplugged": "Bilen er frakoblet.",
@@ -129,6 +135,7 @@ _TEXT: Final[dict[str, dict[str, str]]] = {
         "complete.plan_done": "Suunniteltu lataus on päättynyt.",
         "complete.vehicle_full": "Lataus on valmis: auto on täynnä.",
         "started": "Lataus alkoi.",
+        "test": "SpotNavin testi-ilmoitus: ilmoitukset tulevat tähän puhelimeen.",
         "started.until": "Lataus alkoi, klo {time} asti.",
         "plugged_in": "Auto on kytketty.",
         "unplugged": "Auto on irrotettu.",

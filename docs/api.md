@@ -45,6 +45,7 @@ limit, with `Retry-After`) or 502 (the charger command failed).
 | `update_vehicle` | Change a vehicle's capacity, consumption or onboard charger, with `expected` values. |
 | `update_site_settings` | Change solar priority or forecast sources of the charger's site. |
 | `update_charger_priority` | Change this charger's priority on its site: `{"priority", "expected"}` (see below). |
+| `push_register` | The app's instant notifications: `{"push_ref", "events"}`, or `{"push_ref": null}` to stop (see below). |
 
 **Withheld settings fields.** The settings record has a `departure_weekdays` (an optional list of
 weekday numbers, 1 Monday to 7 Sunday, at least one, default all seven: the days a daily departure
@@ -72,6 +73,18 @@ that exist now, named after their phones). A replacement may leave the field out
 choice is kept; `available` may be echoed and is ignored; a bad value is refused with
 `invalid_notifications`. It is withheld from the webhook like the fields above (ask with
 `"reads": ["notifications"]`).
+
+**Instant notifications.** `push_register` takes `push_ref`, the opaque reference the SpotNav relay
+gave the app for its Firebase token (base64url text, at most 512 characters), or `null` to stop, and an
+optional `events` (the notification event ids above; default `plan_stopped`, `plan_at_risk`,
+`charge_complete`). It is stored per charger and kept across restarts; the answer is `{"ok": true,
+"action": "push_register"}`, a bad body HTTP 400 `{"ok": false, "error": "invalid_push_register",
+"action": "push_register"}`. When one of those events happens, Home Assistant posts `{"v": 1,
+"push_ref"}` to the relay's `/v1/push/wake` (10 s, never retried, the same event not again within 15
+minutes, at most twelve an hour), and the relay sends the app an empty wake-up; the app then reads
+this charger as usual. Nothing about the charge goes to the relay. A relay answer of 404
+`unknown_ref` drops the reference. This is independent of the Companion phones chosen in
+`notifications`. Examples are in `tests/fixtures/webhook/push_register_*.json`.
 
 Turning **active load balancing** on or off is not available through the webhook, only through
 the WebSocket by an administrator.

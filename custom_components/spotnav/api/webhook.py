@@ -22,6 +22,7 @@ from homeassistant.components import webhook
 from homeassistant.core import HomeAssistant
 
 from ..const import CONF_WEBHOOK_ID, DOMAIN
+from ..notifications.push import ERROR_INVALID_PUSH, parse_push_register, PushRegisterError
 from ..notifications.targets import available_targets
 from ..execution.auto_execution import ACTION_RESUME, ACTION_STOP, AutoControlError
 from ..planning.auto_settings import AutoSettingsError
@@ -227,6 +228,22 @@ async def _settings(hass: HomeAssistant, entry: ChargerConfigEntry, payload: dic
     return web.json_response(_for_app({**settings_envelope(committed, effective_phases(hass, entry.entry_id), fiscal_included_for(hass, committed), available_targets(hass)), "action": action}, payload))
 
 
+async def _push_register(hass: HomeAssistant, entry: ChargerConfigEntry, payload: dict[str, Any]) -> Outcome:
+    """The paired app's instant notifications: its relay `push_ref` and the events it wants woken for,
+    or `null` to stop. Stored per charger (`notifications/push.py`); the ref is never logged."""
+    action = "push_register"
+    try:
+        registration = parse_push_register(payload)
+    except PushRegisterError as refusal:
+        _log_rejected(refusal)
+        return web.json_response({"ok": False, "error": ERROR_INVALID_PUSH, "action": action}, status=400)
+    push = entry.runtime_data.push
+    if push is None:
+        raise RuntimeError("this charger has no push registration")
+    await push.async_register(registration)
+    return None
+
+
 def _bounded_write(
     write: Callable[[HomeAssistant, ChargerConfigEntry, dict[str, Any]], Awaitable[tuple[int, dict[str, Any]]]],
     action: str,
@@ -255,6 +272,7 @@ ACTIONS: Final[dict[str, Handler]] = {
     "update_charger_priority": _bounded_write(
         async_webhook_update_charger_priority, "update_charger_priority"
     ),
+    "push_register": _push_register,
 }
 
 

@@ -46,6 +46,7 @@ if TYPE_CHECKING:
     from .sessions.recorder import SessionRecorder
     from .sessions.store import SessionStore
     from .notifications.notifier import ChargerNotifier
+    from .notifications.push import ChargerPush
 
 
 @dataclass
@@ -63,6 +64,8 @@ class ChargerData:
     sessions: SessionRecorder | None = None
     history_import: HistoryImporter | None = None
     notifier: ChargerNotifier | None = None
+    #: The paired app's instant-notification registration (`notifications/push.py`).
+    push: ChargerPush | None = None
 
 
 @dataclass

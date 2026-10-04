@@ -14,6 +14,9 @@ Every event first sets a baseline: loading the integration is not an event. Send
 per charger: the same event is not sent again within `REPEAT_S`, and no more than `HOURLY_LIMIT`
 notifications go out in an hour. Each notification carries a `tag` (one per charger and event), so a
 phone replaces an older one of the same kind instead of stacking them, and a `url` a tap opens.
+
+The paired app's instant notifications (`push.py`) hear about the same events, with their own choice
+of events and their own limits, whether or not any phone is chosen here.
 """
 
 from __future__ import annotations
@@ -41,7 +44,8 @@ from ..execution.controller import ChargingController
 from ..planning.auto_controller import AutoSnapshot
 from ..planning.auto_settings import AutoSettingsStore
 from ..sessions.store import SessionStore
-from .messages import compose, language_of, Money
+from .messages import compose, EVENT_TEST, language_of, Money
+from .push import ChargerPush
 from .settings import EVENT_CHARGE_COMPLETE, EVENT_PLAN_STOPPED, NOTIFY_DOMAIN
 from .unexpected_stop import ExpectationFacts, UnexpectedStopDetector
 
@@ -83,6 +87,7 @@ class ChargerNotifier:
         store: AutoSettingsStore,
         sessions: SessionStore | None = None,
         currency: Callable[[], str | None] = lambda: None,
+        push: ChargerPush | None = None,
     ) -> None:
         self._hass = hass
         self._entry_id = entry_id
@@ -91,6 +96,7 @@ class ChargerNotifier:
         self._store = store
         self._sessions = sessions
         self._currency = currency
+        self._push = push
         self._tracker = ChargerEventTracker()
         self._stops = UnexpectedStopDetector()
         self._snapshot: AutoSnapshot | None = None
@@ -222,6 +228,9 @@ class ChargerNotifier:
     # ------------------------------------------------------------------ sending
 
     def _maybe_send(self, event: str, attributes: dict[str, Any], now: datetime) -> None:
+        if self._push is not None:
+            # The paired app's wake-up, with its own events and limits, whatever phones are chosen here.
+            self._push.async_event(event, now)
         notifications = self._store.settings(self._entry_id).notifications
         if not notifications.wants(event):
             return
@@ -246,8 +255,13 @@ class ChargerNotifier:
         title, message = compose(
             event, self._name(), self._facts_for(event, attributes), language_of(self._hass.config.language)
         )
-        url = notifications.url or DEFAULT_URL
-        payload = {
+        payload = self._payload(event, title, message, notifications.url)
+        for target in targets:
+            self._hass.async_create_task(self._async_send(target, payload), eager_start=True)
+
+    def _payload(self, event: str, title: str, message: str, url: str | None) -> dict[str, Any]:
+        url = url or DEFAULT_URL
+        return {
             "title": title,
             "message": message,
             "data": {
@@ -259,14 +273,33 @@ class ChargerNotifier:
                 "channel": "SpotNav",
             },
         }
-        for target in targets:
-            self._hass.async_create_task(self._async_send(target, payload), eager_start=True)
 
-    async def _async_send(self, target: str, payload: dict[str, Any]) -> None:
+    async def async_send_test(self) -> list[str]:
+        """A test message to the chosen phones that exist now (`spotnav.send_test_notification`), outside
+        the limits: the services it went to."""
+        notifications = self._store.settings(self._entry_id).notifications
+        targets = [
+            target
+            for target in notifications.targets
+            if self._hass.services.has_service(NOTIFY_DOMAIN, target)
+        ]
+        if not targets:
+            return []
+        title, message = compose(EVENT_TEST, self._name(), {}, language_of(self._hass.config.language))
+        payload = self._payload(EVENT_TEST, title, message, notifications.url)
+        sent = []
+        for target in targets:
+            if await self._async_send(target, payload):
+                sent.append(target)
+        return sent
+
+    async def _async_send(self, target: str, payload: dict[str, Any]) -> bool:
         try:
             await self._hass.services.async_call(NOTIFY_DOMAIN, target, payload, blocking=True)
         except Exception as err:  # noqa: BLE001 - a phone that cannot be reached must not stop the charger
             _LOGGER.warning("SpotNav could not notify %s: %s", target, type(err).__name__)
+            return False
+        return True
 
     def _facts_for(self, event: str, attributes: dict[str, Any]) -> dict[str, Any]:
         """What the message says beside the event: times in the installation's zone, kWh, money."""

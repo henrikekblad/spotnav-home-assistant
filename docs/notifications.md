@@ -59,6 +59,20 @@ twelve notifications an hour. Each kind has its own tag, so a phone replaces an 
 the same kind instead of stacking them. On Android they arrive in a notification channel named
 **SpotNav**, which can be given its own sound or importance in the phone's settings.
 
+## Instant notifications in the SpotNav app
+
+The SpotNav Android app can tell its own phone about the same events without the Companion app. It
+checks Home Assistant every 15 minutes by itself; with **Instant notifications** turned on in the app,
+Home Assistant also wakes it at once through the SpotNav server when one of the events the app chose
+happens. The wake-up carries nothing but an opaque reference to the phone: the app then reads what
+happened from Home Assistant, as it always does. The Home Assistant diagnostics of a charger say
+whether an app is registered and how the last wake-up went.
+
+**Testing.** The action `spotnav.send_test_notification` (Developer tools → Actions), optionally for
+one charger, sends the app a test push and the Companion phones chosen above a test message. It is
+refused when no charger has the app's instant notifications turned on, and the result per charger is
+logged.
+
 ## For the paired app and automations
 
 The choice is the settings record's `notifications` field (see [Apps and API](api.md)). The
