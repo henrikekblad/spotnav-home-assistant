@@ -263,6 +263,9 @@ async def test_a_satisfied_hybrid_stops_a_charge_it_started(hass: HomeAssistant)
         {"unit_of_measurement": "kWh", "device_class": "energy", "state_class": "total_increasing"},
     )
     controller.energy_register_entity_id = register
+    # The charger's charge clock, moved by hand: the register may only count what charging time allows.
+    charged = {"s": 0.0}
+    controller.charging_seconds = lambda: charged["s"]
     store = domain_data(hass).auto_store
     assert store is not None
     await store.async_update(
@@ -286,8 +289,9 @@ async def test_a_satisfied_hybrid_stops_a_charge_it_started(hass: HomeAssistant)
     assert len(turn_on_calls) == 1
     hass.states.async_set(f"switch.{charger.entry_id}", "on")
 
-    # The register now shows the full request delivered -- the target is met while solar is
-    # still running the charge it started.
+    # The register now shows the full request delivered, after an hour of charging -- the target is
+    # met while solar is still running the charge it started.
+    charged["s"] = 3600.0
     hass.states.async_set(
         register, "5.0",
         {"unit_of_measurement": "kWh", "device_class": "energy", "state_class": "total_increasing"},

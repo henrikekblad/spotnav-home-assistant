@@ -322,8 +322,10 @@ _T0 = datetime(2026, 9, 22, 6, tzinfo=dt_util.UTC)
 
 
 def _step(baseline: EnergyBaseline, reading: float, seconds: float, *, plugged_in_at: datetime | None = None):
+    # Charging the whole time since `_T0`, the last believed reading's instant in these baselines.
     return advance_register(
-        baseline, reading, _T0 + timedelta(seconds=seconds), max_kw=22.0, plugged_in_at=plugged_in_at
+        baseline, reading, _T0 + timedelta(seconds=seconds), max_kw=22.0, plugged_in_at=plugged_in_at,
+        charged_s=seconds,
     )
 
 
