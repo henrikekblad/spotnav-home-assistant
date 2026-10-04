@@ -756,7 +756,7 @@ def test_a_restart_forgets_what_today_keeps_in_memory_only() -> None:
         hold_stop_times=(T0,),
         hold_gave_up=True,
         hold_stop_pending=True,
-        pending=PendingCommand("stop", "person"),
+        pending=(PendingCommand("stop", "person"),),
     )
     session, commands = run(ChargeSession.from_json(before.to_json()), ev.Restart())
     assert kinds(commands) == []
@@ -792,7 +792,10 @@ def test_the_session_round_trips_and_refuses_what_it_cannot_read() -> None:
         hold_tried_at=T0,
         hold_gave_up=True,
         hold_stop_pending=True,
-        pending=PendingCommand("start", "balancing_resume", "none", "plan", "plan", True, "pause", True),
+        pending=(
+            PendingCommand("start", "balancing_resume", "none", "plan", "plan", True, "pause", True),
+            PendingCommand("stop", "hold"),
+        ),
     )
     assert ChargeSession.from_json(session.to_json()) == session
     raw = session.to_dict()

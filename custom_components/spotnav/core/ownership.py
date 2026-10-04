@@ -252,25 +252,23 @@ def _reset_person_hold(session: ChargeSession) -> ChargeSession:
     return session.with_changes(hold_stop_times=(), hold_tried_at=None, hold_gave_up=False)
 
 
+def _awaiting(session: ChargeSession, command: PendingCommand) -> tuple[PendingCommand, ...]:
+    """The commands awaiting a result, with `command` in place of an earlier one of the same kind and reason."""
+    kept = tuple(item for item in session.pending if (item.command, item.reason) != (command.command, command.reason))
+    return (*kept, command)
+
+
 def _start(session: ChargeSession, reason: str, owner_after: str, **pending: object) -> Decision:
     """Ask for a start; whatever balancing paused before is over (`_start_locked`)."""
-    return (
-        _no_balancing(session).with_changes(
-            pending=PendingCommand("start", reason, owner_before=session.owner, owner_after=owner_after, **pending)  # type: ignore[arg-type]
-        ),
-        (Start(reason),),
-    )
+    command = PendingCommand("start", reason, owner_before=session.owner, owner_after=owner_after, **pending)  # type: ignore[arg-type]
+    return _no_balancing(session).with_changes(pending=_awaiting(session, command)), (Start(reason),)
 
 
 def _stop(session: ChargeSession, reason: str, *, clear_schedule: bool = False, **pending: object) -> Decision:
-    return (
-        session.with_changes(
-            pending=PendingCommand(
-                "stop", reason, owner_before=session.owner, clear_schedule=clear_schedule, **pending  # type: ignore[arg-type]
-            )
-        ),
-        (Stop(reason, clear_schedule),),
+    command = PendingCommand(
+        "stop", reason, owner_before=session.owner, clear_schedule=clear_schedule, **pending  # type: ignore[arg-type]
     )
+    return session.with_changes(pending=_awaiting(session, command)), (Stop(reason, clear_schedule),)
 
 
 def _plug_in(session: ChargeSession, event: PlugIn, now: datetime) -> Decision:
@@ -481,7 +479,7 @@ def _person_hold(session: ChargeSession, now: datetime, *, control_on: bool, sta
             hold_stop_times=(*recent, now),
             hold_tried_at=now,
             hold_stop_pending=True,
-            pending=PendingCommand("stop", REASON_PERSON_HOLD, owner_before=session.owner),
+            pending=_awaiting(session, PendingCommand("stop", REASON_PERSON_HOLD, owner_before=session.owner)),
         ),
         (Stop(REASON_PERSON_HOLD),),
     )
@@ -489,8 +487,14 @@ def _person_hold(session: ChargeSession, now: datetime, *, control_on: bool, sta
 
 def _reported_on(session: ChargeSession, event: ChargerReportedOn, now: datetime) -> Decision:
     s = session
-    if s.owner == OWNER_NONE and event.charging and not event.start_pending and not event.stop_recent:
-        # Nobody here started it: the charger began it by itself.
+    if (
+        s.owner == OWNER_NONE
+        and event.charging
+        and not event.start_pending
+        and not event.stop_recent
+        and not s.start_pending
+    ):
+        # Nobody here started it: the charger began it by itself (not a start of ours awaiting its result).
         s = s.with_changes(owner=OWNER_CHARGER_SELF)
     if event.connected is False:
         s = s.with_changes(held=False, overridden=False)
@@ -510,7 +514,11 @@ def _reported_on(session: ChargeSession, event: ChargerReportedOn, now: datetime
         s, open_window_start=event.open_window_start, known_full=event.car_ended_known_full, need_grew=event.need_grew
     )
     unclaimed = (
-        s.owner in (OWNER_NONE, OWNER_CHARGER_SELF) and event.window_open and not blocked and not ended_holds
+        s.owner in (OWNER_NONE, OWNER_CHARGER_SELF)
+        and not s.start_pending
+        and event.window_open
+        and not blocked
+        and not ended_holds
     )
     strays = (
         s.owner == OWNER_PLAN
@@ -613,7 +621,7 @@ def _plan_dropped(session: ChargeSession, event: PlanDropped, now: datetime) -> 
 def _restart(session: ChargeSession, event: Restart, now: datetime) -> Decision:
     # What today keeps in memory only is gone; the connection is unknown until the charger states one.
     s = _reset_person_hold(session).with_changes(
-        plugged=None, hold_stop_pending=False, held_for_safety=False, safety_stopped_at=None, pending=None
+        plugged=None, hold_stop_pending=False, held_for_safety=False, safety_stopped_at=None, pending=()
     )
     if event.legacy_person_stop and not s.paused:
         s = s.with_changes(manual=ManualPause(MANUAL_STOP, SCOPE_PLUG_IN))
@@ -625,11 +633,13 @@ def _timer(session: ChargeSession, event: Timer, now: datetime) -> Decision:
 
 
 def _command_result(session: ChargeSession, event: CommandResult, now: datetime) -> Decision:
-    pending = session.pending
-    if pending is not None and pending.command == event.command and pending.reason == event.reason:
-        s = session.with_changes(pending=None)
+    pending = next(
+        (item for item in session.pending if (item.command, item.reason) == (event.command, event.reason)), None
+    )
+    if pending is not None:
+        s = session.with_changes(pending=tuple(item for item in session.pending if item is not pending))
     else:
-        s, pending = session, None
+        s = session
     if event.command == "start":
         if event.reason == REASON_BALANCING_RESUME:
             if event.executed:

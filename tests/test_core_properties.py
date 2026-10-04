@@ -385,7 +385,7 @@ class OwnershipMachine(RuleBasedStateMachine):
             assert getattr(session, name) == getattr(before, name), name
         if not (legacy and not before.paused):
             assert session.manual == before.manual
-        assert session.plugged is None and session.pending is None
+        assert session.plugged is None and session.pending == ()
         self.session = session
 
 

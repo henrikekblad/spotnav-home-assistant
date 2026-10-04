@@ -21,7 +21,7 @@ charger_state_machine_2026-10-04.md`, section 1); this record names each once:
   sooner than its gap.
 * `hold_stop_*`: the stops sent under a person's Stop of a charge the charger began by itself (C7, R5): when
   they went out, when the last was tried, whether SpotNav gave up, and whether one is on its way.
-* `pending`: a command the core asked for whose result has not come back yet (`ownership.CommandResult`).
+* `pending`: the commands the core asked for whose results have not come back yet (`ownership.CommandResult`).
 
 Serialised as JSON with a version field (`to_dict`/`from_dict`); a record of another version is refused.
 """
@@ -122,7 +122,7 @@ class ChargeSession:
     hold_tried_at: datetime | None = None
     hold_gave_up: bool = False
     hold_stop_pending: bool = False
-    pending: PendingCommand | None = None
+    pending: tuple[PendingCommand, ...] = field(default=())
 
     def __post_init__(self) -> None:
         if self.owner not in OWNERS:
@@ -145,6 +145,11 @@ class ChargeSession:
     def held_off_by_person(self) -> bool:
         """Whether a person's Stop pauses Auto: any charge the charger begins is stopped (C7)."""
         return self.manual is not None and self.manual.action == MANUAL_STOP
+
+    @property
+    def start_pending(self) -> bool:
+        """Whether a start the core asked for has not come back: the charge that runs is that start's."""
+        return any(command.command == "start" for command in self.pending)
 
     @property
     def person_started(self) -> bool:
@@ -177,18 +182,19 @@ class ChargeSession:
             "hold_tried_at": _iso(self.hold_tried_at),
             "hold_gave_up": self.hold_gave_up,
             "hold_stop_pending": self.hold_stop_pending,
-            "pending": None
-            if self.pending is None
-            else {
-                "command": self.pending.command,
-                "reason": self.pending.reason,
-                "owner_before": self.pending.owner_before,
-                "owner_after": self.pending.owner_after,
-                "paused_origin": self.pending.paused_origin,
-                "was_on": self.pending.was_on,
-                "code": self.pending.code,
-                "clear_schedule": self.pending.clear_schedule,
-            },
+            "pending": [
+                {
+                    "command": command.command,
+                    "reason": command.reason,
+                    "owner_before": command.owner_before,
+                    "owner_after": command.owner_after,
+                    "paused_origin": command.paused_origin,
+                    "was_on": command.was_on,
+                    "code": command.code,
+                    "clear_schedule": command.clear_schedule,
+                }
+                for command in self.pending
+            ],
         }
 
     @classmethod
@@ -202,7 +208,6 @@ class ChargeSession:
         if set(raw) != expected:
             raise SessionError(f"session fields differ: {sorted(set(raw) ^ expected)}")
         manual = raw["manual"]
-        pending = raw["pending"]
         try:
             return cls(
                 plugged=_optional_bool(raw["plugged"], "plugged"),
@@ -222,17 +227,18 @@ class ChargeSession:
                 hold_tried_at=_instant(raw["hold_tried_at"], "hold_tried_at"),
                 hold_gave_up=_bool(raw["hold_gave_up"], "hold_gave_up"),
                 hold_stop_pending=_bool(raw["hold_stop_pending"], "hold_stop_pending"),
-                pending=None
-                if pending is None
-                else PendingCommand(
-                    command=_text(_member(pending, "command"), "command"),
-                    reason=_text(_member(pending, "reason"), "reason"),
-                    owner_before=_text(_member(pending, "owner_before"), "owner_before"),
-                    owner_after=_optional_text(_member(pending, "owner_after"), "owner_after"),
-                    paused_origin=_optional_text(_member(pending, "paused_origin"), "paused_origin"),
-                    was_on=_bool(_member(pending, "was_on"), "was_on"),
-                    code=_optional_text(_member(pending, "code"), "code"),
-                    clear_schedule=_bool(_member(pending, "clear_schedule"), "clear_schedule"),
+                pending=tuple(
+                    PendingCommand(
+                        command=_text(_member(pending, "command"), "command"),
+                        reason=_text(_member(pending, "reason"), "reason"),
+                        owner_before=_text(_member(pending, "owner_before"), "owner_before"),
+                        owner_after=_optional_text(_member(pending, "owner_after"), "owner_after"),
+                        paused_origin=_optional_text(_member(pending, "paused_origin"), "paused_origin"),
+                        was_on=_bool(_member(pending, "was_on"), "was_on"),
+                        code=_optional_text(_member(pending, "code"), "code"),
+                        clear_schedule=_bool(_member(pending, "clear_schedule"), "clear_schedule"),
+                    )
+                    for pending in _list(raw["pending"])
                 ),
             )
         except SessionError:
