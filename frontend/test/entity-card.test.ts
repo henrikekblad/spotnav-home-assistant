@@ -145,7 +145,12 @@ describe("the Settings page's charger and site cards", () => {
     await settle();
     expect(gets(hass)).toEqual([{ type: "spotnav/get_entity_config", api_version: 1, charger_id: "entry_a" }]);
 
-    expect(sectionRows(element, "entities")).toEqual(["start_stop", "current", "energy_register"]);
+    expect(sectionRows(element, "entities")).toEqual([
+      "start_stop",
+      "current",
+      "energy_register",
+      "charger_priority",
+    ]);
     expect(rowText(element, "start_stop")).toContain(translate("en", "control.startStop"));
     expect(rowText(element, "start_stop")).toContain("Control get_direct");
     expect(rowText(element, "current")).toContain(translate("en", "control.current.none"));
@@ -221,6 +226,39 @@ describe("the Settings page's charger and site cards", () => {
     expect(section?.querySelector("[data-code]")?.getAttribute("data-code")).toBe("spotnav_no_site");
     const button = openDialog(element)?.querySelector<HTMLButtonElement>("[data-section='entities'] [data-edit-entities]");
     expect(button?.disabled).toBe(true);
+  });
+
+  it("shows the charger's priority in words from the dashboard block, and hides it when the block is null or unreadable", async () => {
+    const shown = await mounted({
+      patchDashboard: (payload) => {
+        (payload["charger_priority"] as Record<string, unknown>)["value"] = "last";
+      },
+    });
+    openSettings(shown.element);
+    await settle();
+    expect(rowText(shown.element, "charger_priority")).toContain(translate("en", "entity.field.chargerPriority"));
+    expect(rowText(shown.element, "charger_priority")).toContain(translate("en", "entity.priority.last"));
+
+    for (const block of [null, "junk", { value: 3 }]) {
+      document.body.innerHTML = "";
+      const hidden = await mounted({
+        patchDashboard: (payload) => {
+          payload["charger_priority"] = block;
+        },
+      });
+      openSettings(hidden.element);
+      await settle();
+      expect(sectionRows(hidden.element, "entities")).toEqual(["start_stop", "current", "energy_register"]);
+    }
+    document.body.innerHTML = "";
+    const absent = await mounted({
+      patchDashboard: (payload) => {
+        delete payload["charger_priority"];
+      },
+    });
+    openSettings(absent.element);
+    await settle();
+    expect(sectionRows(absent.element, "entities")).toEqual(["start_stop", "current", "energy_register"]);
   });
 
   it("shows only the charger's card and no site rows when the charger has no site", async () => {

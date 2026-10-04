@@ -1958,6 +1958,19 @@ export function createCardView(input: CardViewInput): CardView {
     if (powerField !== undefined && powerField.kind === "entity" && powerField.current !== null) {
       nodes.push(overviewRow("power_entity", translate(model.language, "entity.field.powerEntity"), powerField.current.friendlyName));
     }
+    if (model.chargerPriority !== null) {
+      const priority = model.chargerPriority;
+      nodes.push(
+        overviewRow(
+          "charger_priority",
+          translate(model.language, "entity.field.chargerPriority"),
+          translate(
+            model.language,
+            priority === "first" ? "entity.priority.first" : priority === "last" ? "entity.priority.last" : "entity.priority.normal",
+          ),
+        ),
+      );
+    }
     for (const conflict of control?.conflicts ?? []) {
       const warning = element(
         doc,
