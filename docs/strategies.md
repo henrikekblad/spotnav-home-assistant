@@ -171,7 +171,7 @@ for example Forecast.Solar or Solcast). Without a forecast source, hybrid plans 
 cheapest.
 
 - It never holds back more energy than it could still buy before the deadline if the sun failed
-  completely, so hoping for sun can make charging dearer but never late.
+  completely, so hoping for sun can make charging more expensive but never late.
 - It holds back energy only when the expected solar saving is worth the price risk.
 - Every replan re-reads the remaining need, so a cloudy day moves energy back to the grid.
 - When the expected sun covers the whole remaining need, nothing is bought from the grid: the status

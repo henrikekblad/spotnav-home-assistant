@@ -31,7 +31,7 @@ The graph shows the price of every interval, in the price area's currency per kW
 - One horizontal axis is one local day, 00:00 to 24:00. Today is drawn over tomorrow, and an
   earlier day is subdued. Tomorrow's prices appear once they are published, usually in the
   afternoon.
-- Bars cheaper than the day's average are marked as cheap and dearer ones as expensive. A line
+- Bars cheaper than the day's average are marked as cheap and pricier ones as expensive. A line
   marks now, and the current interval is highlighted.
 - The plan is drawn on top of the prices. **Scheduled** bands are the charging periods Home
   Assistant has installed and will follow. **Proposal** bands are a newer plan that is ready but
@@ -101,7 +101,7 @@ a window boundary) stays in the same session. The **Charge history** dialog show
 time, this month first: pick another with the arrows or the list of months that have charges (up to
 24 months back). It shows the month's energy, cost, average price, number of charges and solar share,
 a bar for every day (the height is the day's energy; the colour is the day's average price against
-the month, green for the cheapest to red for the dearest; hover or tap a bar for that day's energy,
+the month, green for the cheapest to red for the most expensive; hover or tap a bar for that day's energy,
 cost, price and solar share), and the month's charges with how each started: a planned window, by
 hand, solar surplus, hybrid, or started elsewhere.
 
@@ -123,7 +123,7 @@ hand, solar surplus, hybrid, or started elsewhere.
   priced, and priced on a later start once the prices exist) and marked **imported (hourly)**: the start
   cause and solar share are unknown. They count in every total.
 - **Savings** compare with the same energy at the day's average price. It is an estimate, shown
-  as one, and is negative when a charge happened to be dearer than the average.
+  as one, and is negative when a charge happened to cost more than the average.
 - **Export CSV** saves the sessions of the month shown, one row per session, in local time.
 
 Sessions are kept for two years, per charger, and survive restarts. Each charger also has sensors

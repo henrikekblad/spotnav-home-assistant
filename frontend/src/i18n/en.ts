@@ -108,7 +108,7 @@ export const en = {
   "history.month.previous": "Previous month",
   "history.month.next": "Next month",
   "history.chart.label": "Energy per day",
-  "history.chart.hint": "Tap or hover a bar for the day's figures. The colour is the day's average price against the month: green cheap, red dear.",
+  "history.chart.hint": "Tap or hover a bar for the day's figures. The colour is the day's average price against the month: green cheap, red expensive.",
   "history.chart.noCharge": "{date}: no charge",
   "history.sessionsHeading": "Charges",
   "history.sessions.one": "{count} charge",
