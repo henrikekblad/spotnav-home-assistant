@@ -644,6 +644,9 @@ class SolarExecutionCoordinator:
         # `AutoExecutor`'s lock and `SolarController` is not reentrant, so a trigger arriving mid-
         # evaluation is dropped; the next site recompute retries.
         self._evaluating = False
+        # A stop of solar's charge that did not go out (the charger's control did not take it): tried again
+        # every tick until the charger is seen off (`_retry_owed_stop`).
+        self._stop_owed = False
 
     @property
     def state(self) -> SolarExecutionState | None:
@@ -682,8 +685,47 @@ class SolarExecutionCoordinator:
     async def _async_evaluate_guarded(self) -> None:
         try:
             await self._async_evaluate()
+        except Exception as err:  # noqa: BLE001 - a tick's failure is logged; the next tick decides again
+            _LOGGER.warning(
+                "%s charger %s: evaluating solar failed: %s",
+                SOLAR_SURPLUS_LOG_TOKEN,
+                self._charger_entry_id,
+                type(err).__name__,
+            )
         finally:
             self._evaluating = False
+
+    async def _retry_owed_stop(self) -> None:
+        """Send again a stop of solar's charge that did not go out, until the charger is seen off. Only while
+        the charge is still solar's (`charge_origin`): a person's Start or a plan's charge is not solar's to
+        stop."""
+        if not self._stop_owed:
+            return
+        controller = self._controller
+        if controller.charge_origin != "solar" or not controller.charge_control_on:
+            self._stop_owed = False
+            return
+        if await self._executor.async_solar_stop():
+            self._stop_owed = False
+
+    def _adopt_solar_charge(self, solar: SolarController) -> None:
+        """A charge of solar's own that solar is not running (a start load balancing held back as solar's,
+        which its regulator resumed later): solar takes it back, so it stops it when the sun goes."""
+        controller = self._controller
+        if (
+            solar.running
+            or self._stop_owed
+            or controller.charge_origin != "solar"
+            or not controller.charging
+            or controller.start_pending
+        ):
+            return
+        _LOGGER.info(
+            "%s charger %s: a charge of solar's own runs (resumed by load balancing); solar runs it again",
+            SOLAR_SURPLUS_LOG_TOKEN,
+            self._charger_entry_id,
+        )
+        _adopt_running(solar, now=self._now())
 
     async def _async_evaluate(self) -> None:
         site = self._site
@@ -693,6 +735,7 @@ class SolarExecutionCoordinator:
             return
         if self._first_evaluated_at is None:
             self._first_evaluated_at = self._now()
+        await self._retry_owed_stop()
         settings = self._store.settings(self._charger_entry_id)
         if settings.strategy in (STRATEGY_SOLAR, STRATEGY_HYBRID):
             self._strategy = settings.strategy
@@ -706,7 +749,8 @@ class SolarExecutionCoordinator:
             ):
                 # Solar itself was driving this charge (never while `held_by_plan`, when a plan window
                 # was running it, nor a charge the charger began by itself that solar took over).
-                await self._executor.async_solar_stop()
+                if not await self._executor.async_solar_stop():
+                    self._stop_owed = True
                 self._record_decision(state="off", action="stop", reason="strategy_left")
             elif self._state is not None:
                 self._record_decision(state="off", action="hold", reason="strategy_left")
@@ -725,7 +769,8 @@ class SolarExecutionCoordinator:
                 and self._state.state in ("on", "disarming")
                 and not self._state.held_by_plan
             ):
-                await self._executor.async_solar_stop()
+                if not await self._executor.async_solar_stop():
+                    self._stop_owed = True
                 self._record_decision(state="off", action="stop", reason="hybrid_satisfied")
             else:
                 self._record_decision(state="off", action="hold", reason="hybrid_satisfied")
@@ -755,6 +800,7 @@ class SolarExecutionCoordinator:
         if self._solar is None:
             self._solar = self._build_controller(site)
         if not held_by_plan:
+            self._adopt_solar_charge(self._solar)
             self._maybe_clear_ended(self._solar)
             if await self._take_over(site):
                 # A charge the charger began by itself was decided this tick (kept, stopped, or waiting
@@ -1280,7 +1326,9 @@ class SolarExecutionCoordinator:
                     return replace(verdict, action="hold")
                 return replace(self._solar.charge_ended(self._now(), "charger_stopped"), action="hold")
         elif verdict.action == "stop":
-            await self._executor.async_solar_stop()
+            if not await self._executor.async_solar_stop():
+                # Kept pending: the next tick sends it again (`_retry_owed_stop`).
+                self._stop_owed = True
         elif verdict.action == "set_current":
             assert verdict.requested_a is not None
             await self._executor.async_solar_set_current(int(verdict.requested_a))

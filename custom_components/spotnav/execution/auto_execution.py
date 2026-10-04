@@ -1658,15 +1658,26 @@ class AutoExecutor:
             await self._notify_change()
             return started
 
-    async def async_solar_stop(self) -> None:
+    async def async_solar_stop(self) -> bool:
         """One solar stop, through the same lock and `ChargingController.async_stop` as every other
         stop. Never of a charge a person started under their manual pause (`automatic_allowed`).
+
+        Returns `False` only when the stop did not go out (the charger's control did not execute it, or the
+        command failed): the charge and who owns it are kept, logged, never raised into solar's evaluation,
+        and solar tries again on its next tick. A stop that is not solar's to make is `True`: nothing is
+        left for solar to do.
         """
         async with self._lock:
             if not self.automatic_allowed(AUTOMATIC_STOP):
-                return
-            await self._controller.async_stop()
+                return True
+            try:
+                await self._controller.async_stop()
+            except Exception as err:  # noqa: BLE001 - solar keeps the stop pending and retries
+                _LOGGER.warning("Solar's stop did not go out: %s", getattr(err, "code", type(err).__name__))
+                await self._notify_change()
+                return False
             await self._notify_change()
+            return True
 
     async def async_solar_take_over_stop(self) -> bool:
         """The stop of a charge the charger began by itself that solar found nothing to keep on
