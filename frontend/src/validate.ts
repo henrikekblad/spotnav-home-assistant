@@ -262,6 +262,15 @@ export interface Dashboard {
   connection: ConnectionState | null;
   /** The start-up grace: `null` when the backend says nothing (an older one). */
   starting_up: StartingUp | null;
+  /** The charger's place in its site's allocation order; `null` without a site or when unreadable. */
+  charger_priority: ChargerPriority | null;
+}
+
+/** The `charger_priority` block: the selected priority, the choices and whether it can be written. */
+export interface ChargerPriority {
+  value: string;
+  choices: string[];
+  writable: boolean;
 }
 
 /**
@@ -1421,6 +1430,7 @@ export function decodeDashboard(raw: unknown): DecodeResult {
         status: decodeStatus(record(required(root, "status"))),
         connection: connectionOrNull(root),
         starting_up: startingUpOrNull(root),
+        charger_priority: chargerPriorityOrNull(root),
       },
     };
   } catch {
@@ -1462,8 +1472,8 @@ const DASHBOARD_KEYS = [
 /**
  * Keys a client may find on the dashboard that a backend of the same version may also leave out:
  * `sessions_summary` (this and last month's charge sessions, for a client that wants them there)
- * is accepted and never read (the card's History view asks `spotnav/get_sessions`), and so is
- * `charger_priority` (the paired app's; the card edits the priority in the entity configuration).
+ * is accepted and never read (the card's History view asks `spotnav/get_sessions`). `charger_priority`
+ * is read tolerantly for the settings overview; the card edits it in the entity configuration.
  */
 const OPTIONAL_DASHBOARD_KEYS = ["sessions_summary", "connection", "starting_up", "charger_priority"] as const;
 
@@ -1486,6 +1496,18 @@ function connectionOrNull(root: Record<string, unknown>): ConnectionState | null
   } catch {
     return null;
   }
+}
+
+/** The `charger_priority` block, or `null` when it is missing, null or unreadable. Independent like `connection`. */
+function chargerPriorityOrNull(root: Record<string, unknown>): ChargerPriority | null {
+  const value = root.charger_priority;
+  if (!isRecord(value) || typeof value.value !== "string" || value.value === "") {
+    return null;
+  }
+  const choices = Array.isArray(value.choices)
+    ? value.choices.filter((choice): choice is string => typeof choice === "string")
+    : [];
+  return { value: value.value, choices, writable: value.writable === true };
 }
 
 /**

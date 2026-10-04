@@ -220,6 +220,8 @@ export interface CardModel {
   connection: ConnectionState | null;
   /** The start-up grace is on: the status says "Starting up…" and Start/Stop are offered disabled. */
   startingUp: boolean;
+  /** The charger's priority in its site ("first", "normal", "last"); `null` without a site. */
+  chargerPriority: string | null;
   vehicles: Vehicle[];
   targetVehicleId: string | null;
   planRelation: PlanRelationKind;
@@ -717,6 +719,7 @@ export function buildModel(input: BuildInput): CardModel {
     soc: socFor(dashboard),
     connection: dashboard.connection,
     startingUp: dashboard.starting_up?.active === true,
+    chargerPriority: dashboard.charger_priority?.value ?? null,
     vehicles: vehiclesFor(dashboard),
     targetVehicleId: targetVehicleIdFor(dashboard),
     contextArea: market?.area_id ?? market?.area_name ?? null,
