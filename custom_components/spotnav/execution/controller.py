@@ -1472,9 +1472,14 @@ class ChargingController:
             kept = self._requested_current_a
             origin, plan_charge = self._paused_charge or (None, False)
             # The charge balancing paused goes on as what it was: the plan's, a person's or the sun's.
-            executed = await self._start_locked(
-                amps, capped=capped, cause=None if origin in (None, "manual") else origin
-            )
+            try:
+                executed = await self._start_locked(
+                    amps, capped=capped, cause=None if origin in (None, "manual") else origin
+                )
+            except BaseException:
+                # The command failed outright: the charge is still the one balancing holds back.
+                self._remember_paused_charge(origin, plan_charge)
+                raise
             if not executed:
                 # Still no room: still the same charge waiting.
                 self._remember_paused_charge(origin, plan_charge)

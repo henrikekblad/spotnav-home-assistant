@@ -103,6 +103,8 @@ SESSION_REGISTER_ZERO_KWH: Final = RESET_TOLERANCE_KWH
 #: many readings over this long: a lifetime register reads 0 for a moment while its charger reboots.
 DROP_HOLD_READINGS: Final = 2
 DROP_HOLD_S: Final = 120.0
+#: A pending drop older than this many hold times is forgotten: a new drop starts its own count.
+DROP_EXPIRY_FACTOR: Final = 3
 
 #: This soon after a plug-in, a register that falls to about zero is one that counts per plug-in, and
 #: counts again from zero at once.
@@ -115,6 +117,9 @@ JUMP_MARGIN_KWH: Final = 0.5
 #: A met need opens again only when the count falls this far below the request (a count wavering at the
 #: request is still met), and only once that lower count has held this long.
 REOPEN_BELOW_KWH: Final = 0.3
+
+#: The believed count is written at most this often between calculations.
+COUNT_SAVE_S: Final = 60.0
 REOPEN_HOLD_S: Final = 120.0
 
 #: The current a rise is judged against at the least: 63 A on three phases (about 43 kW).
@@ -165,18 +170,18 @@ def advance_register(
     last = baseline.last_register_kwh if baseline.last_register_kwh is not None else reference
     carried = baseline.carried_kwh
     held = carried + max(0.0, last - reference)
-    calm = {
-        "pending_drop_kwh": None,
-        "pending_drop_at": None,
-        "pending_drop_count": 0,
-        "rejected_kwh": None,
-        "rejected_at": None,
-        "rejected_mark_s": None,
-    }
+    no_drop = {"pending_drop_kwh": None, "pending_drop_at": None, "pending_drop_count": 0}
+    calm = {**no_drop, "rejected_kwh": None, "rejected_at": None, "rejected_mark_s": None}
 
     def deliverable(rise: float, mark: float | None) -> bool:
-        # A clock that restarted (Home Assistant did) counts from its own start.
-        charging = charged_s if mark is None or mark > charged_s else charged_s - mark
+        if mark is not None and mark > charged_s:
+            # The clock started again (Home Assistant restarted): while it was down charging cannot be
+            # ruled out, so the time since the last believed reading counts as well.
+            since = baseline.last_register_at
+            wall = 0.0 if since is None else max(0.0, (now - since).total_seconds())
+            charging = max(charged_s, wall)
+        else:
+            charging = charged_s if mark is None else charged_s - mark
         return rise <= max_kw * charging / 3600.0 + JUMP_MARGIN_KWH
 
     def believe(new_reference: float, new_carried: float, previous: float | None) -> RegisterStep:
@@ -194,7 +199,10 @@ def advance_register(
 
     if reading >= last - REGISTER_TOLERANCE_KWH:
         if reading <= last:
-            return RegisterStep(carried + max(0.0, reading - reference), replace(baseline, register_kwh=reference), True)
+            # Back at (or just below) the last reading: whatever drop was pending did not hold.
+            return RegisterStep(
+                carried + max(0.0, reading - reference), replace(baseline, register_kwh=reference, **no_drop), True
+            )
         if deliverable(reading - last, baseline.charge_mark_s):
             return believe(reference, carried, last)
         rejected = baseline.rejected_kwh
@@ -207,10 +215,12 @@ def advance_register(
         ):
             return believe(reference, carried, last)
         if rejected is not None and not later:
-            return RegisterStep(held, baseline, False)  # the same rejected reading, read again
+            return RegisterStep(held, replace(baseline, **no_drop), False)  # the same rejected reading, again
         return RegisterStep(
             held,
-            replace(baseline, rejected_kwh=reading, rejected_at=changed_at or now, rejected_mark_s=charged_s),
+            replace(
+                baseline, rejected_kwh=reading, rejected_at=changed_at or now, rejected_mark_s=charged_s, **no_drop
+            ),
             False,
         )
     to_zero = reading <= SESSION_REGISTER_ZERO_KWH
@@ -222,8 +232,11 @@ def advance_register(
         plugged_in_at is not None and 0.0 <= (now - plugged_in_at).total_seconds() <= PLUG_IN_RESTART_S
     )
     if not (near_plug_in and to_zero):
-        first = baseline.pending_drop_at or now
-        count = baseline.pending_drop_count + 1 if baseline.pending_drop_at is not None else 1
+        pending_at = baseline.pending_drop_at
+        if pending_at is not None and (now - pending_at).total_seconds() > DROP_HOLD_S * DROP_EXPIRY_FACTOR:
+            pending_at = None  # a drop pending this long is long over: this one starts afresh
+        first = pending_at or now
+        count = baseline.pending_drop_count + 1 if pending_at is not None else 1
         if count < DROP_HOLD_READINGS or (now - first).total_seconds() < DROP_HOLD_S:
             pending = replace(baseline, pending_drop_kwh=reading, pending_drop_at=first, pending_drop_count=count)
             return RegisterStep(held, pending, False)
@@ -532,6 +545,9 @@ class AutoPlannerController:
         self._live_baseline: EnergyBaseline | None = None
         self._sessions_cancel: Callable[[], None] | None = None
         self._energy_met_done: str | None = None
+        # When the believed count was last written, and the one appointment to write it again.
+        self._count_saved_at: datetime | None = None
+        self._count_save_cancel: Callable[[], None] | None = None
         # The epoch and since when a met need's count has stood clearly below the request.
         self._reopen_since: tuple[str, datetime] | None = None
 
@@ -566,6 +582,9 @@ class AutoPlannerController:
         self._cancel_departure()
         self._cancel_connection()
         self._drop_energy_watch()
+        if self._count_save_cancel is not None:
+            self._count_save_cancel()
+            self._count_save_cancel = None
         # Forced: shutdown takes a new attempt, so the gate would otherwise drop the stopped state.
         self._publish(await self._state_only("planning_unavailable", "shutdown"), force=True)
         self._listeners.clear()
@@ -1727,6 +1746,8 @@ class AutoPlannerController:
             self._live_baseline = step.baseline
             if _structural(stored, step.baseline):
                 self._hass.async_create_task(self._save_baseline(step.baseline))
+            else:
+                self._save_count_soon()
         if not step.accepted:
             return
         key = step.baseline.departure_key
@@ -1756,6 +1777,29 @@ class AutoPlannerController:
             return
         self._energy_met_done = key
         self._hass.async_create_task(self._async_energy_met(step.baseline))
+
+    def _save_count_soon(self) -> None:
+        """Keep the believed count on disk, at most once a minute: a restart must find the reading (and
+        the charge clock) the next one is judged against."""
+        if self._count_save_cancel is not None or self._shutdown:
+            return
+        now = self._now()
+        due = None if self._count_saved_at is None else self._count_saved_at + timedelta(seconds=COUNT_SAVE_S)
+        if due is None or due <= now:
+            self._count_saved_at = now
+            if self._live_baseline is not None:
+                self._hass.async_create_task(self._save_baseline(self._live_baseline))
+            return
+
+        @callback
+        def save(_now: datetime) -> None:
+            self._count_save_cancel = None
+            if self._shutdown or self._live_baseline is None:
+                return
+            self._count_saved_at = self._now()
+            self._hass.async_create_task(self._save_baseline(self._live_baseline))
+
+        self._count_save_cancel = self._manager.schedule_at(due, save)
 
     async def _async_need_reopened(self, baseline: EnergyBaseline) -> None:
         await self._save_baseline(baseline)
@@ -1920,13 +1964,18 @@ class AutoPlannerController:
             await self._save_baseline(updated)
         return _EnergyResolution(
             kwh=remaining,
-            delivered_energy_trustworthy=stored.pending_drop_at is None and stored.rejected_kwh is None,
+            delivered_energy_trustworthy=stored.rejected_kwh is None
+            and (
+                stored.pending_drop_at is None
+                or (calculated_at - stored.pending_drop_at).total_seconds() > DROP_HOLD_S * DROP_EXPIRY_FACTOR
+            ),
             basis="register",
             delivered_kwh=delivered,
         )
 
     async def _save_baseline(self, baseline: EnergyBaseline) -> None:
         self._live_baseline = baseline
+        self._count_saved_at = self._now()
         await self._store.async_update(self._entry_id, energy_baseline=baseline)
 
     def _unread_remainder(
