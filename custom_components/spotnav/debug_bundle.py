@@ -23,6 +23,11 @@ charge control, connection, connector status and the car's state of charge; `sit
 inside the site's `diagnostics`, `solar_decision_log` (per member charger, what solar and hybrid decided:
 only changes and actions). The card adds a `client` block to the file it saves (the card version and
 bundle hash the browser runs, and a short user agent); the backend never sees it.
+
+Version 5 adds, inside each charger's `diagnostics.controller`, `ownership_shadow`: the charge-ownership core run
+in shadow mode beside today's code (`execution/ownership_shadow.py`), with its counts, its session, and the last
+disagreements, drifts and events it saw (facts only: no entity ids, no secrets), which `core/replay.py` feeds to
+the core again.
 """
 
 from __future__ import annotations
@@ -65,7 +70,7 @@ from .site.measurement_source import grid_power_source_from_dict, source_from_di
 
 _LOGGER = logging.getLogger(__name__)
 
-BUNDLE_VERSION: Final = 4
+BUNDLE_VERSION: Final = 5
 REDACTED: Final = "**REDACTED**"
 
 #: Keys whose value is never shown, wherever they sit in the bundle.

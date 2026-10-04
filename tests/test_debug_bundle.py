@@ -29,7 +29,7 @@ async def test_bundle_has_every_section(hass: HomeAssistant) -> None:
     charger, site = await setup_charger_and_site(hass)
     bundle = await async_build_debug_bundle(hass)
 
-    assert bundle["bundle_version"] == 4
+    assert bundle["bundle_version"] == 5
     for key in ("versions", "related_integrations", "price_data", "sites", "chargers", "log"):
         assert key in bundle
     versions = bundle["versions"]
