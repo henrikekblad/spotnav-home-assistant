@@ -2044,17 +2044,23 @@ class ChargingController:
                 # site reads the allowance less this.
                 self._reserve_start(explicit_amps)
                 reserved = True
-            if self.current_control == CURRENT_CONTROL_CHANGE_CONFIGURATION:
-                await self._async_assign_current(explicit_amps)
-            elif self._writes_current_at_start and not self.adapter.policy.ignored_while_paused:
-                outcome = await self._async_assign_current_outcome(
-                    explicit_amps, reason=WRITE_SESSION_START
-                )
-                # A session-bound number is not there before the session: write when it appears.
-                self._start_write_pending = (
-                    outcome == ASSIGN_TARGET_UNAVAILABLE and self.adapter.policy.session_bound
-                )
-            await self._async_save()
+            try:
+                if self.current_control == CURRENT_CONTROL_CHANGE_CONFIGURATION:
+                    await self._async_assign_current(explicit_amps)
+                elif self._writes_current_at_start and not self.adapter.policy.ignored_while_paused:
+                    outcome = await self._async_assign_current_outcome(
+                        explicit_amps, reason=WRITE_SESSION_START
+                    )
+                    # A session-bound number is not there before the session: write when it appears.
+                    self._start_write_pending = (
+                        outcome == ASSIGN_TARGET_UNAVAILABLE and self.adapter.policy.session_bound
+                    )
+                await self._async_save()
+            except BaseException:
+                # Nothing went out: the site's margin is not on its way to this charger.
+                if reserved:
+                    self._reserve_start(None)
+                raise
         executed = True
         # From here the charge is SpotNav's, whoever asked (a window, a manual Start, a webhook,
         # solar or hybrid execution): the hold of a charge that starts by itself leaves it alone.
@@ -2519,6 +2525,8 @@ class ChargingController:
         elif self._control_observation is not None:
             self._plan_charge = False
             self._charge_origin = None
+        # Whatever start was on its way is over: its share of the site's margin is free for another.
+        self._reserve_start(None)
         if (
             (plan_charge and not self._plan_charge) or origin != self._charge_origin
         ) and not clear_schedule:

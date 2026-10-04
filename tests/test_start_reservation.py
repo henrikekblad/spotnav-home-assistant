@@ -133,3 +133,32 @@ def _overload(entry_id: str) -> Any:
         reason="reducing_current_due_to_active_import_overload",
         limiting_phase=None,
     )
+
+
+async def test_an_unread_reservation_ends_after_a_short_while(hass: HomeAssistant) -> None:
+    """A charger whose own current reads nothing holds its share at most `START_RESERVATION_UNREAD_S`."""
+    from custom_components.spotnav.site.site_capacity_controller import START_RESERVATION_UNREAD_S
+
+    a, b, site, _, _ = await _two_charger_site(hass, site_a=0.0)  # 20 A of margin
+    clock = {"now": 1000.0}
+    site._yield_now = lambda: clock["now"]  # noqa: SLF001
+    assert await a.async_start(10) is True
+    for p in PHASES:
+        hass.states.async_set(f"sensor.ca_{p.lower()}", "unavailable")
+    await hass.async_block_till_done()
+    assert site.start_allowance_a(b.entry_id) == pytest.approx(10.0), "the meter does not show it yet"
+
+    clock["now"] += START_RESERVATION_UNREAD_S + 1
+    assert site.start_allowance_a(b.entry_id) == pytest.approx(20.0)
+
+
+async def test_a_start_that_fails_after_reserving_frees_its_reservation(hass: HomeAssistant) -> None:
+    a, b, site, _, _ = await _two_charger_site(hass, site_a=4.0)
+
+    async def broken_save() -> None:
+        raise OSError("disk full")
+
+    a._async_save = broken_save  # type: ignore[method-assign]  # noqa: SLF001
+    with pytest.raises(OSError):
+        await a.async_start(16)
+    assert site.start_allowance_a(b.entry_id) == pytest.approx(16.0)
