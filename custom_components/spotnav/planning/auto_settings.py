@@ -812,8 +812,11 @@ class EnergyBaseline:
     * `met_at`: when the need was first found delivered in this epoch;
     * `previous_register_kwh`: the reading believed before the last one, so a rise that falls straight
       back is told from a register that started again;
-    * `rejected_kwh`: a reading that climbed faster than the charger can deliver, believed only if the
-      next reading holds at or above it.
+    * `rejected_kwh`, `rejected_at`, `rejected_mark_s`: a reading that climbed further than the charger
+      can deliver, when it changed, and the charge clock then; believed only if a later, different
+      reading holds at or above it and is deliverable from it;
+    * `charge_mark_s`: the charger's charge clock at the last believed reading
+      (`ChargingController.charging_seconds`), so a rise is judged by the charging time since.
     """
 
     register_kwh: float | None
@@ -830,6 +833,9 @@ class EnergyBaseline:
     met_at: datetime | None = None
     previous_register_kwh: float | None = None
     rejected_kwh: float | None = None
+    rejected_at: datetime | None = None
+    rejected_mark_s: float | None = None
+    charge_mark_s: float | None = None
 
     def as_dict(self) -> dict[str, Any]:
         record: dict[str, Any] = {"register_kwh": self.register_kwh, "departure_key": self.departure_key}
@@ -863,6 +869,8 @@ class EnergyBaseline:
                     "delivered_kwh",
                     "previous_register_kwh",
                     "rejected_kwh",
+                    "rejected_mark_s",
+                    "charge_mark_s",
                 }
             ),
         )
@@ -908,11 +916,14 @@ class EnergyBaseline:
             met_at=instants["met_at"],
             previous_register_kwh=numbers["previous_register_kwh"],
             rejected_kwh=numbers["rejected_kwh"],
+            rejected_at=instants["rejected_at"],
+            rejected_mark_s=numbers["rejected_mark_s"],
+            charge_mark_s=numbers["charge_mark_s"],
         )
 
 
 #: The instants an energy baseline may carry, stored as ISO text.
-_BASELINE_INSTANTS: Final = ("started_at", "last_register_at", "pending_drop_at", "met_at")
+_BASELINE_INSTANTS: Final = ("started_at", "last_register_at", "pending_drop_at", "met_at", "rejected_at")
 
 #: The energies an energy baseline may carry beside its reference, written only when known.
 _BASELINE_READINGS: Final = (
@@ -922,6 +933,8 @@ _BASELINE_READINGS: Final = (
     "delivered_kwh",
     "previous_register_kwh",
     "rejected_kwh",
+    "rejected_mark_s",
+    "charge_mark_s",
 )
 
 

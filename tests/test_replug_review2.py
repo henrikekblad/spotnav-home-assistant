@@ -15,7 +15,7 @@ from homeassistant.core import HomeAssistant
 from homeassistant.util import dt as dt_util
 from pytest_homeassistant_custom_component.common import async_fire_time_changed
 
-from custom_components.spotnav.planning.auto_controller import advance_register
+from custom_components.spotnav.planning.auto_controller import advance_register, CEILING_A
 from custom_components.spotnav.planning.auto_settings import EnergyBaseline
 from custom_components.spotnav.planning.planner import power_kw
 from tests.relay import serve as serve_prices
@@ -187,20 +187,25 @@ def test_a_session_register_that_restarted_unseen_keeps_what_it_counted() -> Non
     baseline = EnergyBaseline(
         register_kwh=0.0, departure_key="2026-09-23T07:00:00+02:00", started_at=T0,
         last_register_kwh=8.0, last_register_at=T0 + timedelta(hours=1), previous_register_kwh=7.8,
+        charge_mark_s=3600.0,
     )
-    first = advance_register(baseline, 0.9, T0 + timedelta(hours=5), max_kw=22.0, plugged_in_at=None)
+    # Charging again for ten minutes after the restart nobody saw.
+    first = advance_register(baseline, 0.9, T0 + timedelta(hours=5), max_kw=22.0, plugged_in_at=None, charged_s=4200.0)
     assert first.delivered_kwh == pytest.approx(8.0), "the 8 kWh of this departure are not forgotten"
-    held = advance_register(first.baseline, 1.4, T0 + timedelta(hours=5, minutes=3), max_kw=22.0, plugged_in_at=None)
+    held = advance_register(
+        first.baseline, 1.4, T0 + timedelta(hours=5, minutes=3), max_kw=22.0, plugged_in_at=None, charged_s=4380.0
+    )
     assert held.accepted and held.delivered_kwh == pytest.approx(9.4), "and what it counted while the drop held"
 
 
 def test_a_43_kw_charger_with_the_default_32_a_range_is_still_counted() -> None:
-    max_kw = power_kw(32, 3)
+    # The planner judges a rise against at least 63 A whatever range a charger states (`CEILING_A`).
+    max_kw = power_kw(max(32, CEILING_A), 3)
     baseline = EnergyBaseline(register_kwh=1000.0, departure_key="k", started_at=T0, last_register_kwh=1000.0,
                               last_register_at=T0)
     for minute in range(3, 61, 3):  # a reading every 3 minutes at 43 kW
         step = advance_register(baseline, 1000.0 + 43.0 * minute / 60, T0 + timedelta(minutes=minute),
-                                max_kw=max_kw, plugged_in_at=None)
+                                max_kw=max_kw, plugged_in_at=None, charged_s=minute * 60.0)
         baseline = step.baseline
     assert step.accepted and step.delivered_kwh == pytest.approx(43.0)
 

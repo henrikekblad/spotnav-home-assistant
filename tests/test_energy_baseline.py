@@ -56,6 +56,15 @@ def _set_register(hass: HomeAssistant, kwh: float | None) -> None:
     )
 
 
+def _charging_all_along(session: Session) -> None:
+    """The charger charges the whole time, by the session's own clock (this module freezes
+    `dt_util.utcnow`, which the controller's charge clock reads): what a register may count between
+    two readings is bounded by the charging time between them."""
+    started = session.clock()
+    session.hass.states.async_set(session.charge_control, "on")
+    session.controller.charging_seconds = lambda: (session.clock() - started).total_seconds()  # type: ignore[method-assign]
+
+
 def _wire_energy_register(session: Session) -> None:
     """`ChargingController.energy_register_entity_id` resolves once at that controller's own
     construction (the explicit override, or -- for an OCPP charger -- one
@@ -66,6 +75,7 @@ def _wire_energy_register(session: Session) -> None:
     itself is `tests/test_ocpp_012_compatibility.py`'s registry-shaped fixtures' job.
     """
     session.controller.energy_register_entity_id = ENERGY_ENTITY
+    _charging_all_along(session)
 
 
 async def test_a_fresh_baseline_is_established_on_the_first_compute(session: Session) -> None:
@@ -214,14 +224,15 @@ async def test_a_meter_reset_gives_no_subtraction_then_resumes(session: Session)
     baseline = session.store.energy_baseline(session.entry_id)
     assert baseline is not None and baseline.register_kwh == 50.0, "one low reading may be a glitch"
 
-    session.clock.advance(minutes=3)  # the drop holds: a second reading, minutes later
+    session.clock.advance(minutes=3)  # the drop holds: a second report, minutes later
+    _set_register(session.hass, 30.05)
     held_snapshot = await session.preview.async_recalculate()
     assert held_snapshot.proposal is not None and held_snapshot.proposal.delivered_kwh >= 10.0 - 0.5
     baseline = session.store.energy_baseline(session.entry_id)
-    assert baseline is not None and baseline.register_kwh == 30.0, "re-baselined at the new meter's reading"
+    assert baseline is not None and baseline.register_kwh == 30.05, "re-baselined at the new meter's reading"
 
     session.clock.advance(minutes=5)
-    _set_register(session.hass, 31.0)  # a further 1 kWh delivered since the reset
+    _set_register(session.hass, 31.05)  # a further 1 kWh delivered since the reset
     resumed_snapshot = await session.preview.async_recalculate()
     assert resumed_snapshot.proposal is not None
     assert resumed_snapshot.proposal.delivered_kwh <= 10.0 - 1.0 + 0.5, (

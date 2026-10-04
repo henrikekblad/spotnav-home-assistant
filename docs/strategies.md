@@ -67,7 +67,9 @@ previous occurrence counts toward the request, also across unplugging and pluggi
 departure, each plug-in starts a new count; a charger that cannot report a plug-in starts one with the
 first charge after the request was met that neither you (**Charge now**) nor the sun started. The count comes from the charger's energy register; a register
 that starts again from zero at each plug-in is counted on. A reading that drops for a moment (a charger
-that restarts) or climbs faster than the charger can deliver is not believed, so it never ends a plan. If the register cannot be read, the last
+that restarts) or rises by more than the charger can have delivered while it was charging is not
+believed, so it never ends a plan; a reading the energy count believed and a later one proved false
+opens the need again. If the register cannot be read, the last
 remaining energy it showed is kept rather than buying the whole request again, and with no register
 at all the charger's recorded charges since the count began are used; the status says so either way.
 
