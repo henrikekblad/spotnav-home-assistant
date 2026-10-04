@@ -305,6 +305,44 @@ CASES: list[tuple[str, StatusFacts, str, list[dict[str, Any]]]] = [
     ),
     ("hybrid waiting for price data", base(strategy="hybrid", hybrid=HybridFacts("no_price_data")), "normal", [{"code": "hybrid_no_price_data", "params": {}}]),
     ("hybrid need met", base(strategy="hybrid", hybrid=HybridFacts("satisfied_need_met", 0.0)), "normal", [{"code": "hybrid_satisfied", "params": {}}]),
+    (
+        "hybrid waiting for tomorrow's prices keeps the wait line",
+        base(
+            strategy="hybrid",
+            hybrid=HybridFacts("last_call_no_slack", 12.0, 0.0, True),
+            planning=planning("waiting_for_publication", "publication_pending", publication_at=at(15)),
+        ),
+        "normal",
+        [
+            {"code": "hybrid_grid", "params": {"grid_kwh": 12.0, "credit_kwh": None, "window_start": None, "window_end": None}},
+            {"code": "waiting_for_publication", "params": {"publication_at": iso(15)}},
+        ],
+    ),
+    (
+        "solar waiting for history keeps the wait line",
+        base(
+            strategy="solar",
+            solar=SolarFacts("unknown"),
+            planning=planning(
+                "waiting_for_publication", "waiting_for_history", history_weekday=2, history_percent=12, history_weeks=4
+            ),
+        ),
+        "normal",
+        [
+            {"code": "solar_unknown", "params": {}},
+            {"code": "waiting_for_history", "params": {"weekday": 2, "percent": 12, "weeks": 4}},
+        ],
+    ),
+    (
+        "hybrid buying before publication keeps the buy line",
+        base(
+            strategy="hybrid",
+            hybrid=HybridFacts(None, None),
+            planning=planning("proposal_ready", "buying_before_publication", must_buy_now_kwh=3.5),
+        ),
+        "normal",
+        [{"code": "hybrid_unknown", "params": {}}, {"code": "buying_before_publication", "params": {"kwh": 3.5}}],
+    ),
     ("hybrid unknown", base(strategy="hybrid", hybrid=HybridFacts(None, None)), "normal", [{"code": "hybrid_unknown", "params": {}}]),
     (
         "target SoC: capacity missing",
