@@ -444,7 +444,8 @@ async def test_a_persons_charge_stopped_for_safety_is_resumed_at_most_once_per_f
     hass: HomeAssistant, timers: FakeScheduler, freezer
 ) -> None:
     """P3 kept a safety stop of a person's charge for load balancing to resume. A fuse that keeps needing it
-    must not cycle the charger: such a charge is resumed at most once per five minutes."""
+    must not cycle the charger: such a charge is resumed at most once per five minutes. (Review D: the five
+    minutes count from the last safety stop, so the first resume waits for them too.)"""
     from datetime import timedelta
 
     world = await pause_world(hass, timers)
@@ -453,6 +454,7 @@ async def test_a_persons_charge_stopped_for_safety_is_resumed_at_most_once_per_f
     await controller._regulated_stop("safety_stop")  # noqa: SLF001
     await hass.async_block_till_done()
     assert controller.paused_by_balancing
+    freezer.tick(timedelta(minutes=5, seconds=1))
     assert await controller.async_battery_probe_start(8)
     await hass.async_block_till_done()
 

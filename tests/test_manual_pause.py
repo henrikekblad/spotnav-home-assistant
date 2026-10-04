@@ -579,8 +579,12 @@ async def test_a_plug_in_reported_while_a_stop_is_stored_keeps_the_stop_for_that
 
 
 async def test_a_safety_stop_of_a_persons_start_is_resumed_by_load_balancing(
-    hass: HomeAssistant, timers: FakeScheduler
+    hass: HomeAssistant, timers: FakeScheduler, freezer: Any
 ) -> None:
+    from datetime import timedelta
+
+    from custom_components.spotnav.execution.controller import SAFETY_RESUME_GAP_S
+
     world = await pause_world(hass, timers)
     await world.executor.async_manual_start(10)
     assert world.controller.charging
@@ -588,6 +592,8 @@ async def test_a_safety_stop_of_a_persons_start_is_resumed_by_load_balancing(
     await world.controller._regulated_stop("safety_stop", cause="rate_limited")  # noqa: SLF001
 
     assert world.controller.paused_by_balancing, "the person's charge waits for room, as after a pause"
+    # No sooner than the gap after the safety stop (review D).
+    freezer.tick(timedelta(seconds=SAFETY_RESUME_GAP_S + 1))
     assert await world.controller.async_battery_probe_start(8)
     assert world.controller.charging
     await world.shutdown()

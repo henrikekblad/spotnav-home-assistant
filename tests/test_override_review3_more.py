@@ -207,3 +207,57 @@ async def test_a_start_reads_the_sites_allowance_only_after_a_lowering_write_on_
     await start
     assert events.index("allowance read") > events.index("limit landed"), events
     await controller.async_shutdown()
+
+
+async def test_a_persons_charge_stopped_for_safety_waits_five_minutes_from_the_last_safety_stop(
+    hass: HomeAssistant, timers: Any, freezer: Any
+) -> None:
+    """P3: the five minutes are counted from the last safety stop, not from the last resume. Resumed five
+    minutes after the first stop and stopped again five and a half minutes later, the charge is not resumed
+    at once (five minutes after the resume), only five minutes after that second stop."""
+    from datetime import timedelta
+
+    from .pause_world import pause_world
+
+    world = await pause_world(hass, timers)
+    await world.executor.async_manual_start(10)
+    controller = world.controller
+    await controller._regulated_stop("safety_stop")  # noqa: SLF001
+    await hass.async_block_till_done()
+    assert not await controller.async_battery_probe_start(8), "resumed at once after a safety stop"
+    freezer.tick(timedelta(minutes=5, seconds=1))
+    assert await controller.async_battery_probe_start(8)
+    await hass.async_block_till_done()
+
+    freezer.tick(timedelta(minutes=5, seconds=30))
+    await controller._regulated_stop("safety_stop")  # noqa: SLF001
+    await hass.async_block_till_done()
+    assert not await controller.async_battery_probe_start(8), "resumed within five minutes of the safety stop"
+    freezer.tick(timedelta(minutes=5, seconds=1))
+    assert await controller.async_battery_probe_start(8)
+    await world.shutdown()
+
+
+async def test_an_unplug_ends_a_safety_stops_hold_so_the_next_plug_in_is_not_held_by_it(
+    hass: HomeAssistant, timers: Any
+) -> None:
+    """P3: a safety stop belongs to the plug-in it was made in. After an unplug and a new plug-in, a person's
+    charge held back by the site's allowance is resumed when there is room, not held for the old stop."""
+    from .pause_world import pause_world
+
+    world = await pause_world(hass, timers)
+    await world.executor.async_manual_start(10)
+    controller = world.controller
+    await controller._regulated_stop("safety_stop")  # noqa: SLF001
+    await hass.async_block_till_done()
+    await world.plug.set(False)
+    await world.plug.set(True)
+    await hass.async_block_till_done()
+
+    room = {"a": 4.0}
+    controller.set_start_cap(lambda: room["a"], reserve=lambda _amps: None)
+    assert await controller.async_start(10, manual=True) is False
+    assert controller.paused_by_balancing
+    room["a"] = 16.0
+    assert await controller.async_battery_probe_start(8), "held for the safety stop of the plug-in before"
+    await world.shutdown()
