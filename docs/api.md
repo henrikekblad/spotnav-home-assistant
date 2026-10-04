@@ -160,6 +160,14 @@ action and the automatic action, with pause choices), `live`, `status` (typed st
 and `strategy_state`, `vehicles` and `soc`, `site`, `charging_phases`, `phase_detection`, `charge_progress`.
 Example documents are in `tests/fixtures/dashboard/`.
 
+**Battery room.** The `soc` block's additive `room_kwh` is the wall energy the battery still has room for,
+to the car's own charge limit (else 100 %): `capacity_kwh x (ceiling - value) / 100 / efficiency`, `null`
+without a level or a battery size. A manual amount is planned at most that much; when it is capped the
+status carries `need_limited_by_room` (`kwh`), and while a Start is in effect for a plan the car ends
+itself (a capped amount, or a target at or above the car's own limit) it carries
+`charging_to_vehicle_limit` (`percent`, the car's limit, 100 when it states none). A client shows its kWh
+slider up to `room_kwh` when it is present; an older backend has neither field nor line.
+
 The additive `charger_priority` block is this charger's place in its site's order, which capacity
 allocation and solar surplus both follow: `null` for a charger on no site, else `{"value": "first" |
 "normal" | "last", "choices": ["first", "normal", "last"], "writable": bool}`. `writable` is true over

@@ -361,10 +361,10 @@ def add_car(hass: HomeAssistant, name: str, *, percent: str = "55") -> str:
 
 
 async def charger_and_car(
-    hass: HomeAssistant, *, capacity: float | None = CAPACITY, **settings: Any
+    hass: HomeAssistant, *, capacity: float | None = CAPACITY, soc_percent: str = "40", **settings: Any
 ) -> tuple[Any, str, str]:
     """A real charger entry with an energy register, and a vehicle device with one state of
-    charge sensor (a cloud poll), a range signal and, optionally, a remembered pack size."""
+    charge sensor (a cloud poll, at `soc_percent`), a range signal and, optionally, a remembered pack size."""
     hass.states.async_set("switch.wallbox", "off")
     charger = make_entry(
         hass, entry_id="soc_charger", charge_control="switch.wallbox", current_limit=None,
@@ -382,7 +382,7 @@ async def charger_and_car(
     device = dr.async_get(hass).async_get_or_create(
         config_entry_id="car_entry", identifiers={("test", "ev6")}, name="EV6"
     )
-    soc = add_percent_battery_sensor(hass, device.id, object_id="ev6_battery", percent="40")
+    soc = add_percent_battery_sensor(hass, device.id, object_id="ev6_battery", percent=soc_percent)
     range_entry = er.async_get(hass).async_get_or_create(
         "sensor", "test", "ev6_range", device_id=device.id, suggested_object_id="ev6_range"
     )

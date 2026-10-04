@@ -176,10 +176,13 @@ class ChargerNotifier:
         )
 
     def _at_vehicle_limit(self) -> bool:
-        """Whether the plan's target is above the car's own charge limit and the car has reached that
-        limit: it takes no current, rightly."""
+        """Whether the car takes no current rightly: the plan charges to the car's own limit (the car ends
+        it), or its target is above that limit and the car has reached it."""
         controller = self._controller
         plan = controller.plan
+        if plan is not None and controller.charges_to_vehicle_limit():
+            # A charge to the car's own limit ends when the car stops taking current: that is full.
+            return True
         if plan is None or plan.target_soc_percent is None:
             return False
         reading = controller.target_reading()

@@ -249,6 +249,23 @@ def target_need_kwh(
     return resolution.reason, resolution.kwh / CHARGE_EFFICIENCY
 
 
+def battery_room_kwh(
+    *, soc_percent: float | None, capacity_kwh: float | None, vehicle_max_percent: float | None = None
+) -> float | None:
+    """The wall energy the battery still has room for: `capacity x (ceiling - soc) / 100 / efficiency`,
+    the ceiling being the car's own charge limit (else 100), zero at or above it; `None` without a level
+    or a battery size."""
+    if soc_percent is None:
+        return None
+    _, kwh = target_need_kwh(
+        soc_percent=soc_percent,
+        capacity_kwh=capacity_kwh,
+        target_percent=100,
+        vehicle_max_percent=vehicle_max_percent,
+    )
+    return kwh
+
+
 def read_energy_register_kwh(hass: HomeAssistant, entity_id: str | None) -> float | None:
     """A cumulative energy register in kWh, or `None` when unreadable or not a meter.
 

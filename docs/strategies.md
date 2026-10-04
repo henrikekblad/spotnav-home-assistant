@@ -74,6 +74,15 @@ request does not stop and start the charge. If the register cannot be read, the 
 remaining energy it showed is kept rather than buying the whole request again, and with no register
 at all the charger's recorded charges since the count began are used; the status says so either way.
 
+**No more than the battery has room for.** When the car's level (a reading or an estimate) and its battery
+size are known, a requested amount is capped at the room left: battery size x (the car's own charge
+limit, else 100 %, minus the level) / 100, divided by the charging efficiency. A car at 96 % with 77.4 kWh
+is planned 3.4 kWh, not the 43.5 kWh asked for, and the status says *Limited to 3.4 kWh: the car is almost
+full*. Such a charge, like a target at or above the car's own limit (or 100 %), is ended by the car: SpotNav
+keeps it on within the planned periods and never stops it on an estimate or the delivered energy; a car
+that then stops taking current is full, not a fault. The card's and the app's kWh slider goes no higher
+than that room.
+
 A daily departure whose morning lies beyond the last published price (before the afternoon
 publication) waits for the publication when that is safe. The history only explains that wait
 (*Waiting: Saturdays were 30 % cheaper the last 4 weeks*), or ends it when the hours still available

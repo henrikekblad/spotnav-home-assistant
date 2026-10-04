@@ -13,6 +13,7 @@ vehicle's while it is live. Nothing here writes anything; the controller acts on
 
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass
 from typing import Final, Literal
 
@@ -72,7 +73,25 @@ class TargetDecision:
         "no_target",
         "no_source",
         "reading_unusable",
+        #: The target is at or above the car's own charge limit: the car ends the charge, not SpotNav.
+        "vehicle_limit",
     ]
+
+
+def charge_ceiling_percent(vehicle_max_percent: float | None) -> float:
+    """The level a charge can reach: the car's own charge limit (whole percent, as the planner caps a
+    target) when it is known, else 100."""
+    if vehicle_max_percent is None or not math.isfinite(vehicle_max_percent):
+        return 100.0
+    return float(min(100, max(0, math.floor(vehicle_max_percent))))
+
+
+def charges_to_vehicle_limit(target_soc_percent: float | None, vehicle_max_percent: float | None) -> bool:
+    """Whether a target asks for everything the car will take: at or above its own charge limit, or 100
+    when the limit is unknown. The car then ends the charge itself."""
+    if target_soc_percent is None:
+        return False
+    return target_soc_percent >= charge_ceiling_percent(vehicle_max_percent)
 
 
 def resolve_soc_reading(
@@ -142,13 +161,16 @@ def _reading_for_entity(
 
 
 def decide_target_stop(
-    *, target_soc_percent: float | None, reading: SocReading | None
+    *, target_soc_percent: float | None, reading: SocReading | None, to_vehicle_limit: bool = False
 ) -> TargetDecision:
     """Whether this reading means the charge is over.
 
     Pure and side-effect free:
 
     * no target: `no_target`, answered before looking at any reading;
+    * a target at or above the car's own charge limit (`to_vehicle_limit`): `vehicle_limit`, never a
+      stop: the car ends the charge when it is full, and neither a reading nor an estimate of SpotNav's
+      may end it first;
     * no reading or an unusable value: `reading_unusable`, never a stop; the window's own end remains
       the guard;
     * reading >= target: `reached`, compared as floats without rounding (89.6 is below 90);
@@ -157,6 +179,8 @@ def decide_target_stop(
     """
     if target_soc_percent is None:
         return TargetDecision(stop=False, reason="no_target")
+    if to_vehicle_limit:
+        return TargetDecision(stop=False, reason="vehicle_limit")
     if reading is None or reading.soc_percent is None:
         return TargetDecision(stop=False, reason="reading_unusable")
     if reading.estimated:

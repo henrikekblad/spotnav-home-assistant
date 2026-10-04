@@ -2219,6 +2219,7 @@
     "estimated": true,
     "missing": [],
     "need_kwh": 4.22,
+    "room_kwh": 21.33,
     "source": "vehicle",
     "target_percent": 80.0,
     "value": 75.1,

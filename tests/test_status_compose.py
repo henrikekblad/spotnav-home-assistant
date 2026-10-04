@@ -686,6 +686,44 @@ CASES: list[tuple[str, StatusFacts, str, list[dict[str, Any]]]] = [
         ],
     ),
     (
+        "a manual need capped at the battery's room says so beside the plan",
+        base(
+            waiting_for_tomorrow=True,
+            planning=PlanningFacts(
+                state="waiting_for_prices", reason="no_prices_yet", energy_basis="register", remaining_kwh=43.5,
+                room_kwh=3.44,
+            ),
+        ),
+        "normal",
+        [
+            {"code": "waiting_for_tomorrow", "params": {}},
+            {"code": "need_limited_by_room", "params": {"kwh": 3.4}},
+        ],
+    ),
+    (
+        "a full battery says nothing about a cap of nothing",
+        base(
+            planning=PlanningFacts(state="nothing_to_charge", reason="already_at_target", room_kwh=0.0),
+        ),
+        "normal",
+        [{"code": "nothing_to_charge", "params": {}}],
+    ),
+    (
+        "a charge to the car's own limit says the car ends it",
+        base(charging=True, vehicle_limit_percent=100.0),
+        "normal",
+        [
+            {"code": "charging_now", "params": {"until": None}},
+            {"code": "charging_to_vehicle_limit", "params": {"percent": 100}},
+        ],
+    ),
+    (
+        "a pause says nothing about the car's own limit",
+        base(paused=True, vehicle_limit_percent=90.0),
+        "normal",
+        [{"code": "paused", "params": {"until": None, "choice": None}}],
+    ),
+    (
         "a site measurement with phases that read nothing names them and their entities",
         base(
             waiting_for_tomorrow=True,
