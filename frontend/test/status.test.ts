@@ -17,6 +17,15 @@ const block = (...lines: Array<ReturnType<typeof statusLine>>): Status =>
   ({ tone: "normal", lines }) as unknown as Status;
 
 describe("the status line renders the block and nothing else", () => {
+  it("says a charger kept charging after SpotNav's stops, in every language", () => {
+    const status = block(statusLine("charger_ignores_stop"));
+    expect(statusText(status, format("en"), NOW)).toContain("keeps charging although it was stopped");
+    expect(statusText(status, format("sv"), NOW)).toContain("Laddaren fortsätter ladda fast den stoppades");
+    for (const language of ["da", "nb", "fi"] as const) {
+      expect(statusText(status, format(language), NOW)).toContain("SpotNav");
+    }
+  });
+
   it("explains a charger whose own enable switch is off, in every language", () => {
     const status = block(statusLine("waiting_for_tomorrow"), statusLine("charger_disabled"));
     expect(statusText(status, format("en"), NOW)).toBe(

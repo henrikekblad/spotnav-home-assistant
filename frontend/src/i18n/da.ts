@@ -81,6 +81,7 @@ export const da: Record<keyof typeof en, string> = {
   "issue.loadBalancing": "Lastbalancering er ikke tilgængelig for denne lader.",
   "issue.heldByCharger": "Laderens eget skema eller lastbalancering holder opladningen tilbage, så den er ikke startet.",
   "issue.chargerDisabled": "Laderens egen aktiveringskontakt er slået fra, så den kan ikke starte. Slå den til i laderens indstillinger.",
+  "issue.chargerIgnoresStop": "Laderen bliver ved med at lade, selvom den blev stoppet, så SpotNav sender ikke flere stop. Stop den ved laderen, eller tag stikket ud af bilen.",
   "issue.holdOverridden": "Opladningen blev startet uden for planen og må fortsætte.",
   "status.needLimitedByRoom": "Begrænset til {kwh} kWh: bilen er næsten fuld.",
   "status.chargingToVehicleLimit": "Lader, indtil bilen stopper ved sin egen ladegrænse ({percent} %).",

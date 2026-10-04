@@ -81,6 +81,7 @@ export const nb: Record<keyof typeof en, string> = {
   "issue.loadBalancing": "Lastbalansering er ikke tilgjengelig for denne laderen.",
   "issue.heldByCharger": "Laderens egen timeplan eller lastbalansering holder tilbake ladingen, så den har ikke startet.",
   "issue.chargerDisabled": "Laderens egen aktiveringsbryter er av, så den kan ikke starte. Slå den på i laderens innstillinger.",
+  "issue.chargerIgnoresStop": "Laderen fortsetter å lade selv om den ble stoppet, så SpotNav sender ikke flere stopp. Stopp den ved laderen eller koble fra bilen.",
   "issue.holdOverridden": "Ladingen ble startet utenfor planen og får fortsette.",
   "status.needLimitedByRoom": "Begrenset til {kwh} kWh: bilen er nesten full.",
   "status.chargingToVehicleLimit": "Lader til bilen stopper ved sin egen ladegrense ({percent} %).",

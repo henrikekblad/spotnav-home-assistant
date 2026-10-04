@@ -1259,6 +1259,7 @@ type StatusParamKind = "text" | "textOrNull" | "instant" | "instantOrNull" | "nu
 export const STATUS_CODE_TABLE = {
   starting_up: ["normal", {}],
   charger_unavailable: ["blocking", { problem: "textOrNull", entity: "textOrNull" }],
+  charger_ignores_stop: ["blocking", {}],
   price_data_invalid: ["blocking", { reason: "textOrNull" }],
   price_data_unavailable: ["blocking", { reason: "textOrNull" }],
   settings_incomplete: ["notice", { reason: "textOrNull", missing: "codes" }],

@@ -139,6 +139,10 @@
       "params": [],
       "tone": "notice"
     },
+    "charger_ignores_stop": {
+      "params": [],
+      "tone": "blocking"
+    },
     "charger_unavailable": {
       "params": [
         "entity",

@@ -17,12 +17,17 @@ periods, and an optional departure time. The card marks what is missing.
   is paused until the car is unplugged. Nothing automatic starts or stops the charger meanwhile (no plan
   period, top-off, hold, solar or hybrid); load balancing still keeps the fuse safe. A **Start** also
   ends when the car ends the charge by itself (full, at its limit, or no longer drawing): Auto then
-  resumes and plans again, but no period starts the full car again while it stays plugged in, unless
-  its state of charge drops by a couple of percent. A **Start** while the charger says no car is
+  resumes and plans again without starting the period that is already running. When the car's state of
+  charge read then shows it full for the plan (at its target, or at its own limit when the plan charges
+  to it), no later period starts it again while it stays plugged in, unless its state of charge drops
+  by a couple of percent; a car that only stopped drawing, or whose state of charge cannot be read, is
+  charged by the later periods as planned. A **Start** while the charger says no car is
   plugged in is refused. A **Stop** with no car plugged in means "do not charge when I plug in": it
   lasts through the next plug-in (also one made while Home Assistant was down) and ends at the unplug
-  after it, and a charge the charger begins by itself meanwhile is stopped at once. A **Stop** always
-  reaches the charger first, even if the pause cannot be saved. **Resume** (or picking another pause)
+  after it, and a charge the charger begins by itself meanwhile is stopped at once (at most once every
+  30 seconds; a charger that keeps charging after three stops is left alone and the status says so).
+  A **Start** or **Stop** always reaches the charger first, and holds even if the pause cannot be saved
+  (the save is tried again). **Resume** (or picking another pause)
   gives the charger back to Auto at once.
   The status says *Stopped manually – until the car is unplugged* or *Charging manually – until the car
   is full or unplugged*. The pause survives a restart. On a charger that cannot tell when a car is
@@ -67,8 +72,8 @@ yourself overrides the weekdays.
 **Plugging in and unplugging.** SpotNav plans again a few seconds after the car is plugged in or
 unplugged, and again the moment the departure passes, without waiting for the next price. A car
 plugged in while a planned period is running starts charging at once, unless Auto is paused (your own
-Start or Stop pauses it until the car is unplugged), the car ended a charge you started since it
-was plugged in, solar charging owns the charger or load balancing has no room for the minimum current. A charge the charger starts by itself inside a planned period counts as the plan's, so it stops with the
+Start or Stop pauses it until the car is unplugged), the car ended a charge you started in that
+period (or since it was plugged in, when it was full), solar charging owns the charger or load balancing has no room for the minimum current. A charge the charger starts by itself inside a planned period counts as the plan's, so it stops with the
 period or when the need is met. Plugged in between periods, it waits for the next one as before. Only a
 status that shows a car there or gone counts as a plug-in or an unplug: a fault, an offline or updating
 charger, OCPP's Unavailable and a Wallbox's Ready (shown with or without a car) say nothing either way. When

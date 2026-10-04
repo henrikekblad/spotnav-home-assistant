@@ -81,6 +81,7 @@ export const fi: Record<keyof typeof en, string> = {
   "issue.loadBalancing": "Kuormanhallinta ei ole käytettävissä tälle laturille.",
   "issue.heldByCharger": "Laturin oma aikataulu tai kuormanhallinta pidättää latausta, joten se ei ole alkanut.",
   "issue.chargerDisabled": "Laturin oma käyttöönottokytkin on pois päältä, joten lataus ei voi alkaa. Kytke se päälle laturin asetuksista.",
+  "issue.chargerIgnoresStop": "Laturi jatkaa lataamista, vaikka se pysäytettiin, joten SpotNav ei lähetä enää pysäytyksiä. Pysäytä se laturista tai irrota auto.",
   "issue.holdOverridden": "Lataus käynnistettiin suunnitelman ulkopuolella ja sen annetaan jatkua.",
   "status.needLimitedByRoom": "Enintään {kwh} kWh: auto on lähes täynnä.",
   "status.chargingToVehicleLimit": "Ladataan, kunnes auto lopettaa itse omaan latausrajaansa ({percent} %).",

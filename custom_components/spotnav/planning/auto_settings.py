@@ -1022,6 +1022,9 @@ class AutoSettingsStore:
         self._stored: dict[str, Any] = {}
         self._loaded = False
         self._lock = asyncio.Lock()
+        # In memory but not yet in the file (`async_hold_unsaved`): the next save of any change, or
+        # `async_flush`, writes it.
+        self._unsaved = False
 
     async def async_load(self) -> None:
         """Read the file once. Bad content is ignored, never fatal.
@@ -1251,6 +1254,50 @@ class AutoSettingsStore:
             await self._store.async_save(document)
             self._entries = candidate
             self._stored = document
+            self._unsaved = False
+            return True
+
+    async def async_hold_unsaved(
+        self, entry_id: str, *, mutate: Callable[[AutoSettings], AutoSettings]
+    ) -> AutoSettings:
+        """Make a settings change the in-memory truth although it could not be saved.
+
+        Only for a change that already happened in the world (a person's Start or Stop the charger
+        executed): what reads the settings must act on it at once. The file catches up at the next save of
+        any change, or `async_flush`; a restart before that loses it, as the failed save already did.
+        """
+        async with self._lock:
+            current = self.settings(entry_id)
+            updated = replace(mutate(current).validated(), revision=current.revision + 1)
+            existing = self._entries.get(entry_id)
+            entry = _Entry(
+                settings=updated,
+                proposal=None if existing is None else existing.proposal,
+                energy_baseline=None if existing is None else existing.energy_baseline,
+                suggested=() if existing is None else existing.suggested,
+            )
+            self._entries = {**self._entries, entry_id: entry}
+            self._unsaved = True
+            return updated
+
+    @property
+    def unsaved(self) -> bool:
+        """Whether memory holds a change the file does not have yet (`async_hold_unsaved`)."""
+        return self._unsaved
+
+    async def async_flush(self) -> bool:
+        """Write what memory holds when it is ahead of the file. Returns whether the file is current."""
+        async with self._lock:
+            if not self._unsaved:
+                return True
+            document = self._document(self._entries)
+            try:
+                await self._store.async_save(document)
+            except Exception as err:  # noqa: BLE001 - the caller tries again
+                _LOGGER.warning("Saving the Auto settings failed again: %s", type(err).__name__)
+                return False
+            self._stored = document
+            self._unsaved = False
             return True
 
     async def _async_commit(self, entry_id: str, entry: _Entry) -> None:
@@ -1266,6 +1313,8 @@ class AutoSettingsStore:
         await self._store.async_save(document)
         self._entries = candidate
         self._stored = document
+        # The whole document went out, with whatever memory held ahead of the file.
+        self._unsaved = False
 
     def _document(self, entries: dict[str, _Entry]) -> dict[str, Any]:
         """The whole stored file, from one set of records."""

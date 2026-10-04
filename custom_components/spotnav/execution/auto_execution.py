@@ -30,7 +30,7 @@ from typing import Any, Final
 
 from homeassistant.core import callback, HomeAssistant
 from homeassistant.exceptions import HomeAssistantError
-from homeassistant.helpers.event import async_track_point_in_time, async_track_time_interval
+from homeassistant.helpers.event import async_call_later, async_track_point_in_time, async_track_time_interval
 from homeassistant.util import dt as dt_util
 
 from ..planning.auto_settings import (
@@ -109,6 +109,8 @@ IMMEDIATE_ACTIONS: Final = (ACTION_START, ACTION_STOP)
 #: How long a manual Start stays "just sent" before the boundary stops waiting for the charger to
 #: report charging.
 MANUAL_START_ACK_TIMEOUT: Final = timedelta(seconds=30)
+#: How long (seconds) after a person's pause could not be saved the settings file is written again.
+PAUSE_SAVE_RETRY_S: Final = 60.0
 
 #: How often a person's charge under a manual pause is looked at for the car ending it (`ManualChargeWatch`):
 #: a car at 0 A reports nothing new.
@@ -537,6 +539,8 @@ class AutoExecutor:
         # The one appointment at which a bounded pause ends; cancelled by `async_shutdown` and
         # re-armed from the stored intent on restore (`async_restore_pause`).
         self._cancel_pause: Callable[[], None] | None = None
+        # The next try to write a person's pause that memory holds ahead of the file (`_store_manual_pause`).
+        self._cancel_save_retry: Callable[[], None] | None = None
         # A manual Start accepted and not yet answered by the charger's state. Not a source of
         # charger truth: it says a command is outstanding, and the two handles below end it.
         self._start_pending = False
@@ -770,6 +774,10 @@ class AutoExecutor:
             self._sync_manual_watch()
             if self._controller._connection_observer == self._on_connection:  # noqa: SLF001 - our own hook
                 self._controller.set_connection_observer(None)
+            if self._cancel_save_retry is not None:
+                cancel_save_retry = self._cancel_save_retry
+                self._cancel_save_retry = None
+                cancel_save_retry()
             if self._cancel_pause is not None:
                 # No appointment may survive to write to a store or stop a charger for an ended boundary.
                 cancel_pause = self._cancel_pause
@@ -1050,7 +1058,7 @@ class AutoExecutor:
             before = self._store.settings(self._entry_id).pause
             if not before.admitted or before.manual:
                 try:
-                    await self._store_pause(self._manual_intent(MANUAL_START, MANUAL_SCOPE_PLUG_IN))
+                    await self._store_manual_pause(self._manual_intent(MANUAL_START, MANUAL_SCOPE_PLUG_IN))
                 except Exception as err:  # noqa: BLE001 - the charge stands; reported below
                     _LOGGER.warning("Storing a person's Start as Auto's pause failed: %s", type(err).__name__)
                     save_error = err
@@ -1061,9 +1069,8 @@ class AutoExecutor:
             self._applied = None
         self._sync_manual_watch()
         if started is False:
+            # Not executed (yet): said as such, whatever became of the pause's save (it holds in memory).
             await self._notify_change()
-            if save_error is not None:
-                raise AutoControlCommitted(EXECUTION_RECONCILE_FAILED) from save_error
             raise HomeAssistantError("The start is held back by load balancing until the site has room")
         self._note_manual_start_sent()
         await self._notify_change()
@@ -1080,6 +1087,42 @@ class AutoExecutor:
         """Store a pause intent and arm (or drop) its expiry. Raises when it could not be stored."""
         await self._store.async_update(self._entry_id, mutate=lambda current: replace(current, pause=intent))
         self._arm_pause_expiry(intent.expires_at)
+
+    async def _store_manual_pause(self, intent: PauseIntent) -> None:
+        """Store the pause of a person's Start or Stop the charger already executed. When the file cannot be
+        written the pause is still the in-memory truth at once (everything that reads the settings acts on
+        what the person did, never on the pause before it) and the file is written again until it takes it.
+        Raises the save's failure, for the caller to report."""
+        try:
+            await self._store_pause(intent)
+        except Exception:
+            try:
+                await self._store.async_hold_unsaved(
+                    self._entry_id, mutate=lambda current: replace(current, pause=intent)
+                )
+            except Exception as err:  # noqa: BLE001 - logged; the save's failure is what is reported
+                _LOGGER.warning("Holding a person's pause in memory failed: %s", type(err).__name__)
+            else:
+                self._arm_pause_expiry(intent.expires_at)
+                self._arm_save_retry()
+            raise
+
+    def _arm_save_retry(self) -> None:
+        if self._cancel_save_retry is not None or self._shutdown:
+            return
+        self._cancel_save_retry = async_call_later(self._hass, PAUSE_SAVE_RETRY_S, self._on_save_retry)
+
+    @callback
+    def _on_save_retry(self, _now: datetime) -> None:
+        self._cancel_save_retry = None
+        if self._shutdown:
+            return
+        self._hass.async_create_task(self._async_retry_save(), "spotnav pause save retry")
+
+    async def _async_retry_save(self) -> None:
+        unsaved = getattr(self._store, "unsaved", False)
+        if unsaved and not await self._store.async_flush():
+            self._arm_save_retry()
 
     def _note_manual_start_sent(self) -> None:
         """Remember that a manual Start was accepted and is not yet acknowledged.
@@ -1417,7 +1460,7 @@ class AutoExecutor:
                 stop_error = err
             if scope is not None:
                 try:
-                    await self._store_pause(self._manual_intent(MANUAL_STOP, scope))
+                    await self._store_manual_pause(self._manual_intent(MANUAL_STOP, scope))
                 except Exception as err:  # noqa: BLE001 - the charger is stopped; reported below
                     _LOGGER.warning("Storing a person's Stop as Auto's pause failed: %s", type(err).__name__)
                     save_error = err

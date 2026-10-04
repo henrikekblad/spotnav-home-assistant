@@ -89,6 +89,7 @@ from .charge_progress import (
 )
 from .pilot_floor_probe import connector_entity_id, PilotFloorProbe, PROBE_TOKEN, STORE_KEY
 from .target_stop import (
+    charge_ceiling_percent,
     charges_to_vehicle_limit,
     decide_target_stop,
     SocReading,
@@ -134,6 +135,14 @@ AUTOMATIC_PERSON_RESUME: Final = "person_resume"
 #: How long (seconds) after an automatic stop the charger's control did not execute, while the charger is
 #: seen charging, the decision is taken again (besides the next report of the charger's state).
 STOP_RETRY_S: Final = 30.0
+#: Under a person's Stop, a charge the charger begins by itself is stopped at most once per this many
+#: seconds, and after this many stops it did not take in one plug-in SpotNav gives up and says so
+#: (`ChargingController.ignores_person_stop`) rather than send a stop per report.
+PERSON_HOLD_STOP_GAP_S: Final = 30.0
+PERSON_HOLD_MAX_STOPS: Final = 3
+#: A person's charge load balancing stopped for safety (not its below-floor pause) is resumed by the
+#: regulator at most once per this many seconds, so a fuse that keeps needing the stop never cycles it.
+SAFETY_RESUME_GAP_S: Final = 300.0
 
 
 class AutomaticGate(Protocol):
@@ -532,6 +541,22 @@ class ChargingController:
         # A stop of a charge the charger began by itself under a person's Stop is on its way
         # (`_observe_person_hold`): one at a time.
         self._person_hold_stop_pending = False
+        # The stops of such charges that went out and the charger did not take (it still says it charges),
+        # when the last was tried, and whether they were given up (`PERSON_HOLD_MAX_STOPS`): at most one per
+        # `PERSON_HOLD_STOP_GAP_S`, never a stop per report. A report of the charger off, a plug-in, an
+        # unplug or the end of the person's Stop starts afresh.
+        self._person_hold_stops = 0
+        self._person_hold_tried_at: datetime | None = None
+        self._person_hold_gave_up = False
+        self._person_hold_retry_cancel: Callable[[], None] | None = None
+        # Counts plug-in sessions that ended (an unplug, a first report of no car): a command's failure branch
+        # that would put back what was held for a session compares it, so an unplug while the command was on
+        # its way wins (`_session_unchanged`).
+        self._session_generation = 0
+        # The charge load balancing holds was stopped for safety (`_regulated_stop`, any code but its pause),
+        # and when such a charge was last resumed (`SAFETY_RESUME_GAP_S`).
+        self._held_for_safety = False
+        self._safety_resumed_at: datetime | None = None
         # The appointment at which an automatic stop the charger's control did not execute is decided again
         # (`_automatic_stop_locked`), or `None`.
         self._stop_retry_cancel: Callable[[], None] | None = None
@@ -1060,6 +1085,8 @@ class ChargingController:
         self._known_connected = connected
         if previous == connected:
             return
+        if connected is False or previous is False:
+            self._session_generation += 1
         if self._paused_by_balancing and (connected is False or previous is False):
             # The plug-in session a balancing pause held a charge for is over (an unplug, or the first
             # connection after a restart says no car): nothing is left for the regulator to resume, and a
@@ -1070,6 +1097,8 @@ class ChargingController:
         self._tell_connection_observer(previous, connected)
         if previous is None:
             return
+        # The stops under a person's Stop belong to the plug-in they were sent in.
+        self._reset_person_hold()
         event = CONNECTION_PLUGGED_IN if connected else CONNECTION_UNPLUGGED
         # What the car ended belongs to the plug-in it ended in.
         had_car_ended = self._car_ended_at is not None
@@ -1127,10 +1156,14 @@ class ChargingController:
         return self._known_connected
 
     def _car_ended_holds_window(self) -> bool:
-        """Whether the car ended a person's charge by itself in this plug-in (`async_note_car_ended`) and a
-        window of the plan is open now: the car is full, so no window starts it again in this plug-in, unless
-        its state of charge has dropped since by the hysteresis the sun's rules use (`SOC_DROP_PCT`): the
-        need grew."""
+        """Whether the car ended a person's charge by itself in this plug-in (`async_note_car_ended`) and the
+        window open now is not to start it again.
+
+        Only a car known full (`_car_ended_known_full`) keeps every later window of the plug-in from starting
+        it, unless its state of charge has dropped since by the hysteresis the sun's rules use
+        (`SOC_DROP_PCT`): the need grew. A car that only stopped drawing (its own timer, a preconditioning
+        pause, a fault, or a state of charge nobody can read) skips just the window already open then; a
+        later window charges it as planned."""
         ended_at = self._car_ended_at
         if ended_at is None or self.plan is None:
             return False
@@ -1141,7 +1174,29 @@ class ChargingController:
         now = dt_util.utcnow()
         if not any(start <= now < end for start, end in windows):
             return False
-        return not self._car_ended_need_grew()
+        if self._car_ended_known_full():
+            return not self._car_ended_need_grew()
+        return any(start <= now < end and start <= ended_at for start, end in windows)
+
+    def _car_ended_known_full(self) -> bool:
+        """Whether the car that ended a person's charge was full for the plan in force: its state of charge
+        was read (not estimated) then and is at or above the plan's target, or the car's own limit when the
+        plan charges to it."""
+        ended_soc = self._car_ended_soc
+        plan = self.plan
+        if ended_soc is None or plan is None:
+            return False
+        if (
+            self._car_ended_vehicle is not None
+            and plan.vehicle_id is not None
+            and self._car_ended_vehicle != plan.vehicle_id
+        ):
+            return False
+        if self.charges_to_vehicle_limit():
+            return ended_soc >= charge_ceiling_percent(self.vehicle_limit_percent(plan.vehicle_id))
+        if plan.target_soc_percent is None:
+            return False
+        return ended_soc >= plan.target_soc_percent
 
     def _car_ended_need_grew(self) -> bool:
         """Whether the car's state of charge has dropped by `SOC_DROP_PCT` since it ended a person's charge."""
@@ -1173,7 +1228,11 @@ class ChargingController:
                     reading = self._soc_reader(vehicle_id)
                 except Exception:  # noqa: BLE001 - an unreadable car is a state of charge not known
                     reading = None
-            self._car_ended_soc = None if reading is None else reading.soc_percent
+            # Only a read state of charge says whether the car is full (`_car_ended_known_full`), never an
+            # estimate carried forward.
+            self._car_ended_soc = (
+                None if reading is None or getattr(reading, "estimated", False) else reading.soc_percent
+            )
             self._car_ended_vehicle = vehicle_id
             # A record kept from an earlier charge (its retry long past) must not let the sun start the car the
             # watch just found full: the wait starts now.
@@ -1364,25 +1423,93 @@ class ChargingController:
         """While a person's Stop pauses Auto, a charge the charger begins by itself (a free-charging OCPP
         charger, an Easee without authorization, at plug-in or at any time) is stopped at once, whatever the
         plan's windows say. Never a Start on its way: the person's own Start replaces their Stop, decided
-        again under the boundary's lock."""
+        again under the boundary's lock.
+
+        At most one stop per `PERSON_HOLD_STOP_GAP_S` (a charger whose status lags says `on` at every report
+        after a stop it took), and after `PERSON_HOLD_MAX_STOPS` that went out while the charger still says it
+        charges, no more: the status says the charger does not take SpotNav's stop."""
+        if not self._held_off_by_person():
+            self._reset_person_hold()
+            return
+        if self._control_observation is False:
+            # The charger took the stop (or never charged): a charge it begins later starts afresh, no sooner
+            # than the gap after the last stop.
+            tried_at = self._person_hold_tried_at
+            self._reset_person_hold()
+            self._person_hold_tried_at = tried_at
+            return
         if self._person_hold_stop_pending or self._control_observation is not True or self.start_pending:
             return
-        if not self._held_off_by_person():
+        if self._person_hold_gave_up:
+            return
+        tried_at = self._person_hold_tried_at
+        if tried_at is not None:
+            wait_s = PERSON_HOLD_STOP_GAP_S - (dt_util.utcnow() - tried_at).total_seconds()
+            if wait_s > 0:
+                # Looked at again when the gap is over, even if the charger reports nothing new by then.
+                if self._person_hold_retry_cancel is None:
+                    self._person_hold_retry_cancel = async_call_later(
+                        self.hass, wait_s, self._person_hold_retry_callback
+                    )
+                return
+        if self._person_hold_stops >= PERSON_HOLD_MAX_STOPS:
+            self._person_hold_gave_up = True
+            _LOGGER.warning(
+                "SpotNav charger %s: the charger kept charging after %s stops under a person's Stop; no more "
+                "are sent until it stops, the car is unplugged or the Stop ends",
+                self.entry_id,
+                self._person_hold_stops,
+            )
+            self._notify()
             return
         self._person_hold_stop_pending = True
         self._async_spawn(self._async_person_hold_stop(), "the stop under a person's Stop")
+
+    @callback
+    def _person_hold_retry_callback(self, _now: datetime) -> None:
+        self._person_hold_retry_cancel = None
+        self._observe_person_hold()
+
+    def _cancel_person_hold_retry(self) -> None:
+        cancel = self._person_hold_retry_cancel
+        self._person_hold_retry_cancel = None
+        if cancel is not None:
+            cancel()
+
+    def _reset_person_hold(self) -> None:
+        """A new plug-in session, or no person's Stop any more: the stops under it start afresh."""
+        gave_up = self._person_hold_gave_up
+        self._person_hold_stops = 0
+        self._person_hold_tried_at = None
+        self._person_hold_gave_up = False
+        self._cancel_person_hold_retry()
+        if gave_up:
+            self._notify()
+
+    @property
+    def ignores_person_stop(self) -> bool:
+        """Under a person's Stop the charger kept charging after `PERSON_HOLD_MAX_STOPS` stops it was sent:
+        SpotNav sends no more, and the status says so."""
+        return self._person_hold_gave_up and self._held_off_by_person()
 
     async def _async_person_hold_stop(self) -> None:
         try:
             async with self._automatic(AUTOMATIC_STOP) as allowed:
                 if not allowed or not self._held_off_by_person() or self.start_pending or not self._control_on:
                     return
-                _LOGGER.info(
-                    "SpotNav charger %s: a charge began while a person's Stop pauses Auto; stopping it", self.entry_id
-                )
-                await self._automatic_stop_locked("the stop under a person's Stop")
+                await self._person_hold_stop_locked()
         finally:
             self._person_hold_stop_pending = False
+
+    async def _person_hold_stop_locked(self) -> None:
+        """One stop of a charge a person's Stop holds off, counted (`_observe_person_hold`). Runs with the
+        operation lock held."""
+        _LOGGER.info(
+            "SpotNav charger %s: a charge began while a person's Stop pauses Auto; stopping it", self.entry_id
+        )
+        self._person_hold_tried_at = dt_util.utcnow()
+        if await self._automatic_stop_locked("the stop under a person's Stop"):
+            self._person_hold_stops += 1
 
     @asynccontextmanager
     async def _automatic(self, kind: str) -> AsyncIterator[bool]:
@@ -1936,6 +2063,11 @@ class ChargingController:
         or started it since (a person's Stop, a window's end, a target stop all clear it)."""
         return self._paused_by_balancing and not self.charging
 
+    @property
+    def paused_charge_origin(self) -> str | None:
+        """What the charge load balancing holds back was (`manual` for a person's), or `None`."""
+        return None if self._paused_charge is None else self._paused_charge[0]
+
     def forget_balancing_pause(self) -> None:
         """The wish to charge is gone (Auto paused by a person, say): balancing's pause is not a charge
         to resume any more."""
@@ -1958,20 +2090,36 @@ class ChargingController:
             )
             if not allowed or not self._paused_by_balancing or self.charging:
                 return False
+            safety = self._held_for_safety
+            if safety and self._safety_resumed_at is not None:
+                since = (dt_util.utcnow() - self._safety_resumed_at).total_seconds()
+                if 0 <= since < SAFETY_RESUME_GAP_S:
+                    # Stopped for safety again soon after the last resume: held until the gap is over.
+                    return False
             kept = self._requested_current_a
+            session = self._session_generation
             # The charge balancing paused goes on as what it was: the plan's, a person's or the sun's.
             try:
                 executed = await self._start_locked(
                     amps, capped=capped, cause=None if origin in (None, "manual") else origin
                 )
             except BaseException:
-                # The command failed outright: the charge is still the one balancing holds back.
-                self._remember_paused_charge(origin, plan_charge)
+                # The command failed outright: the charge is still the one balancing holds back, unless the
+                # car was unplugged meanwhile.
+                if self._session_generation == session:
+                    self._remember_paused_charge(origin, plan_charge)
                 raise
             if not executed:
-                # Still no room: still the same charge waiting.
-                self._remember_paused_charge(origin, plan_charge)
+                # Still no room: still the same charge waiting, unless the car was unplugged meanwhile.
+                if self._session_generation == session:
+                    self._remember_paused_charge(origin, plan_charge)
+                else:
+                    self._paused_by_balancing = False
+                    self._paused_charge = None
                 return False
+            self._held_for_safety = False
+            if safety:
+                self._safety_resumed_at = dt_util.utcnow()
             if origin is not None or plan_charge:
                 self._charge_origin, self._plan_charge = origin, plan_charge
                 if self._start_cause is not None and origin is not None:
@@ -2177,6 +2325,10 @@ class ChargingController:
                 "Not assigning %sA: the pilot-floor probe is stepping the current down", amps
             )
             return ASSIGN_PROBE_IN_FLIGHT
+        if reason == WRITE_REGULATOR and self._stop_in_flight:
+            # The regulator writes without the operation lock: a stop on its way (or one that began while this
+            # write waited for `_assign_lock`) is not lifted by a current sent under it.
+            return REGULATED_STOPPING
         # Everything below is the adapter's: for an OCPP charger the very same read, rewrite and
         # write of `AssignedCurrent` it has always been (`OcppAssignedCurrent`); for any other, a
         # write under the platform's policy.
@@ -2198,33 +2350,30 @@ class ChargingController:
           charger and the next pass tries again.
 
         A stop is never refused by a write policy. It takes the operation lock, so it cannot land
-        inside a plan replacement.
+        inside a plan replacement; the write itself does not (see below).
         """
         if amps < DEFAULT_MIN_CURRENT_A:
             # Below the floor no valid pilot current exists, for OCPP as for any charger: the only
             # way to give the car less is to stop it (OCPP sends nothing for such a value).
             return await self._regulated_stop("pause")
-        if self._stop_in_flight:
-            # A stop is on its way (holding the lock): held at once rather than written after it lands.
+        # Never under the operation lock: a must-lower write waits for no Start or Stop on its way (a slow cloud
+        # command). What it must not do is lift a pause, so the state is read again, with no wait in between,
+        # right before the send (`_assign_current_locked`; Easee also between its two sends).
+        outcome = await self._async_assign_current_outcome(amps, reason=WRITE_REGULATOR)
+        if outcome == REGULATED_STOPPING:
+            # A stop is on its way: it gives the car less than any current would, and a current written
+            # while it lands would lift it on a charger that pauses by its limit.
             return RegulatedWrite(REGULATED_HELD, REGULATED_STOPPING, False)
-        # Under the operation lock, as every stop and start: a stop cannot land between the sends of one
-        # write (Easee's two-step write), where the second send would lift it again.
-        async with self._lock:
-            if self._stop_in_flight:
-                # A stop is on its way: it gives the car less than any current would, and a current written
-                # while it lands would lift it on a charger that pauses by its limit.
-                return RegulatedWrite(REGULATED_HELD, REGULATED_STOPPING, False)
-            outcome = await self._async_assign_current_outcome(amps, reason=WRITE_REGULATOR)
-            if outcome in IN_EFFECT_OUTCOMES:
-                return RegulatedWrite(REGULATED_WROTE, outcome, True)
-            if not must_lower:
-                return RegulatedWrite(REGULATED_HELD, outcome, False)
-            applied = self.adapter.current.setpoint_a()
-            if applied is None:
-                applied = self._requested_current_a
-            if applied is not None and amps >= applied:
-                # Already at or below what the fuse needs: nothing to lower.
-                return RegulatedWrite(REGULATED_HELD, outcome, False)
+        if outcome in IN_EFFECT_OUTCOMES:
+            return RegulatedWrite(REGULATED_WROTE, outcome, True)
+        if not must_lower:
+            return RegulatedWrite(REGULATED_HELD, outcome, False)
+        applied = self.adapter.current.setpoint_a()
+        if applied is None:
+            applied = self._requested_current_a
+        if applied is not None and amps >= applied:
+            # Already at or below what the fuse needs: nothing to lower.
+            return RegulatedWrite(REGULATED_HELD, outcome, False)
         return await self._regulated_stop("safety_stop", cause=outcome)
 
     async def _regulated_stop(self, code: str, *, cause: str | None = None) -> RegulatedWrite:
@@ -2234,21 +2383,30 @@ class ChargingController:
             code,
             "" if cause is None else f": {cause}",
         )
-        # Only a charge that was running can be one balancing interrupted; a pause written to a
-        # charger somebody already stopped must not make it look wanted.
-        was_on = self._control_on
-        paused_charge = (self._charge_origin, self._plan_charge)
         try:
-            # A balancing stop: a top-off running past the last window goes on, paused like any charge.
-            await self.async_stop(balancing=True)
+            async with self._lock:
+                # Only a charge that was running can be one balancing interrupted; a pause written to a
+                # charger somebody already stopped must not make it look wanted. Read under the operation
+                # lock: a person's Stop that lands first is never remembered as a charge to resume.
+                was_on = self._control_on
+                paused_charge = (self._charge_origin, self._plan_charge)
+                session = self._session_generation
+                # A balancing stop: a top-off running past the last window goes on, paused like any charge.
+                await self._stop_request_locked(balancing=True)
+                # Set after the stop (which clears it): this stop is the balancing pause itself. A safety stop
+                # of a person's charge is remembered the same way, so the regulator gives it back when there
+                # is room. Never for a plug-in that ended while the stop was on its way.
+                if (
+                    was_on
+                    and (code == "pause" or paused_charge[0] == "manual")
+                    and self._session_generation == session
+                ):
+                    self._held_for_safety = code != "pause"
+                    self._remember_paused_charge(*paused_charge)
+                    self._save_memory_soon()
         except Exception:  # noqa: BLE001 - reported, and the next pass tries again
             _LOGGER.exception("SpotNav charger %s: the safety stop failed", self.entry_id)
             return RegulatedWrite(REGULATED_HELD, "stop_failed", False)
-        # Set after the stop (which clears it): this stop is the balancing pause itself. A safety stop of a
-        # person's charge is remembered the same way, so the regulator gives it back when there is room.
-        if was_on and (code == "pause" or paused_charge[0] == "manual"):
-            self._remember_paused_charge(*paused_charge)
-            self._save_memory_soon()
         return RegulatedWrite(REGULATED_STOPPED, code, False)
 
     async def async_restore_current(self, *, lowered_by_balancing: bool) -> CurrentRestore:
@@ -2498,6 +2656,7 @@ class ChargingController:
         """
         was_owned = self._hold.owned
         was_balancing = (self._paused_by_balancing, self._paused_charge)
+        session = self._session_generation
         self._hold.spotnav_stopped()
         self._paused_by_balancing = False
         self._paused_charge = None
@@ -2523,7 +2682,9 @@ class ChargingController:
                 # charge (a pause's retry, the stray-charge stop) still find it.
                 self._stop_sent_at = was_sent_at
                 self._hold.owned = was_owned
-                self._paused_by_balancing, self._paused_charge = was_balancing
+                if self._session_generation == session:
+                    # Not after an unplug while the command was on its way: that plug-in's pause is over.
+                    self._paused_by_balancing, self._paused_charge = was_balancing
                 _LOGGER.warning(
                     "SpotNav charger %s: the stop was not executed (the charge control is unavailable)",
                     self.entry_id,
@@ -2618,8 +2779,8 @@ class ChargingController:
             if not allowed:
                 return
             if self._held_off_by_person():
-                if self._control_on and not self.start_pending:
-                    await self._automatic_stop_locked("the stop under a person's Stop")
+                if self._control_on and not self.start_pending and not self._person_hold_gave_up:
+                    await self._person_hold_stop_locked()
                 return
             if self.plan is not None:
                 await self._reschedule_locked()
@@ -2633,6 +2794,7 @@ class ChargingController:
         """The shutdown itself. Runs with the operation lock held."""
         self._cancel_timers()
         self._cancel_stop_retry()
+        self._cancel_person_hold_retry()
         # A top-off's deadline stays stored: the next start resumes it or ends it.
         self._cancel_top_off_timers()
         # State-change subscriptions are local callbacks too: nothing may be decided or called
@@ -2894,13 +3056,15 @@ class ChargingController:
             return
         active = any(start <= now < end for start, end in windows)
         if active and self._car_ended_holds_window():
-            # The car ended a person's charge in this plug-in: it is full, and no window starts it again
-            # unless its need grew.
+            # The car ended a person's charge in this plug-in: the window open then is not started again,
+            # nor any later one while the car is known full and its need has not grown.
             pass
         elif active:
             # A window already open is a window start like any other and goes through the veto, so
-            # a restart mid-window cannot switch a charger on for a car already at target.
-            if await self._start_window_locked():
+            # a restart mid-window cannot switch a charger on for a car already at target. Only a plan the
+            # target's stop ended arms nothing: one whose stop was not executed stays, and its windows'
+            # timers are armed as ever.
+            if await self._start_window_locked() and self.plan is None:
                 return
         else:
             # Re-arming outside a window stops a charge that runs; a person who starts it again
