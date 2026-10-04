@@ -106,7 +106,9 @@
     "on_modulate",
     "on_steady",
     "start_after_delay",
-    "stop_after_delay"
+    "stop_after_delay",
+    "unmeasured_arming",
+    "unmeasured_start"
   ],
   "status_codes": {
     "auto_installed": {
@@ -327,9 +329,28 @@
       ],
       "tone": "notice"
     },
+    "site_meter_unavailable": {
+      "params": [
+        "cause",
+        "entities"
+      ],
+      "tone": "notice"
+    },
     "solar_arming": {
       "params": [],
       "tone": "normal"
+    },
+    "solar_battery_unreadable": {
+      "params": [
+        "entity"
+      ],
+      "tone": "notice"
+    },
+    "solar_charger_current_missing": {
+      "params": [
+        "entity"
+      ],
+      "tone": "notice"
     },
     "solar_charging": {
       "params": [
@@ -341,12 +362,24 @@
       "params": [],
       "tone": "normal"
     },
+    "solar_no_grid_power": {
+      "params": [
+        "entity"
+      ],
+      "tone": "notice"
+    },
     "solar_no_reading_stopped": {
       "params": [],
       "tone": "normal"
     },
     "solar_no_reading_waiting": {
       "params": [],
+      "tone": "normal"
+    },
+    "solar_site_incomplete": {
+      "params": [
+        "phases"
+      ],
       "tone": "normal"
     },
     "solar_unavailable": {

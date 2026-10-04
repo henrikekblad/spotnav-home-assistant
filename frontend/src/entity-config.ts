@@ -160,6 +160,10 @@ export interface SiteWarning {
   phases: SiteWarningPhase[];
   /** `battery_import_limit_differs` only: the battery's grid import limit and SpotNav's, in A per phase. */
   limitsA: { battery: number; spotnav: number } | null;
+  /** `measurement_unhealthy` only: the meter's sensors that are unavailable together, else empty. */
+  unavailableEntities: string[];
+  /** They are a known inverter integration's: it may be in standby. */
+  inverter: boolean;
 }
 
 export interface DetectedEntityRow {
@@ -461,7 +465,22 @@ function decodeWarningPhase(raw: unknown): SiteWarningPhase {
 
 function decodeWarning(raw: unknown): SiteWarning {
   const source = record(raw);
-  exactKeys(source, ["code", "integration", "entity_id", "interval_s", "option", "device_name", "phases", "limits_a"]);
+  exactKeys(source, [
+    "code",
+    "integration",
+    "entity_id",
+    "interval_s",
+    "option",
+    "device_name",
+    "phases",
+    "limits_a",
+    "unavailable_entities",
+    "inverter",
+  ]);
+  const unavailable = source["unavailable_entities"];
+  if (!Array.isArray(unavailable) || !unavailable.every((entry) => typeof entry === "string")) {
+    return bad();
+  }
   const phases = source["phases"];
   if (!Array.isArray(phases)) {
     return bad();
@@ -475,6 +494,8 @@ function decodeWarning(raw: unknown): SiteWarning {
     deviceName: textOrNull(source, "device_name"),
     phases: phases.map(decodeWarningPhase),
     limitsA: decodeLimits(source["limits_a"]),
+    unavailableEntities: unavailable as string[],
+    inverter: flag(source, "inverter"),
   };
 }
 

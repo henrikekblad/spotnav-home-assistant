@@ -23,7 +23,10 @@ Precedence (first match wins the headline; "add" rows append a fact line)
    is unchanged).
 2. paused (headline), then charging_now(until=None) when the charger is drawing anyway (manual
    Start under a pause).
-3. Strategy headline when `strategy_state` exists (solar / hybrid), in place of 4. When planning
+3. Strategy headline when `strategy_state` exists (solar / hybrid), in place of 4. A solar that is off
+   for want of a basis says why where it is known (solar_no_grid_power, solar_battery_unreadable) in
+   place of solar_no_reading_*; then solar_charger_current_missing (it runs blind, at the minimum current)
+   and solar_site_incomplete (the phases it runs without, on the total grid power) follow. When planning
    is waiting on prices (waiting_for_history, waiting_for_publication, buying_before_publication)
    that plan line follows the strategy headline (normal tone, params as in 4), so the wait is
    never hidden by the strategy.
@@ -56,7 +59,8 @@ Precedence (first match wins the headline; "add" rows append a fact line)
    kept, or the charger's recorded charges),
    held_by_charger (the charger's own scheduler or load balancer holds the charge), charger_disabled
    (its own enable switch is off, so it cannot start), site_measurement_problem (the phases that
-   make the site's measurement unusable and why), duplicate_charger (another entry is the same physical
+   make the site's measurement unusable and why; site_meter_unavailable in its place when the meter's
+   sensors are unavailable together, as an inverter in standby leaves them), duplicate_charger (another entry is the same physical
    charger), load_balancing_limited, load_balancing_unavailable. Tone `notice` if any is present;
    otherwise `normal`. A proposal waiting for a window boundary is the normal line proposal_pending.
 
@@ -146,6 +150,17 @@ STATUS_CODES: Final[dict[str, tuple[str, tuple[str, ...]]]] = {
     "solar_no_reading_stopped": (TONE_NORMAL, ()),
     "solar_no_reading_waiting": (TONE_NORMAL, ()),
     "solar_waiting_for_sun": (TONE_NORMAL, ()),
+    # Solar has no basis because a direct site's total grid power is not set (`entity` null) or its
+    # `entity` has no fresh reading; in place of solar_no_reading_waiting/_stopped.
+    "solar_no_grid_power": (TONE_NOTICE, ("entity",)),
+    # Solar has no basis because the configured battery power `entity` has no fresh reading.
+    "solar_battery_unreadable": (TONE_NOTICE, ("entity",)),
+    # The charger's own measured current is not set (`entity` null) or its `entity` does not read: solar
+    # runs blind, starting only at the minimum current. A fact beside the solar headline.
+    "solar_charger_current_missing": (TONE_NOTICE, ("entity",)),
+    # The site's measurement is unusable on `phases` (L1/L2/L3), and solar runs on the total grid power
+    # only. A fact beside the solar headline.
+    "solar_site_incomplete": (TONE_NORMAL, ("phases",)),
     "solar_unknown": (TONE_NORMAL, ()),
     "hybrid_grid": (TONE_NORMAL, ("grid_kwh", "credit_kwh", "window_start", "window_end")),
     "hybrid_no_forecast": (TONE_NORMAL, ()),
@@ -186,6 +201,10 @@ STATUS_CODES: Final[dict[str, tuple[str, tuple[str, ...]]]] = {
         TONE_NOTICE,
         ("no_value_phases", "no_value_entities", "stale_phases", "max_age_s"),
     ),
+    # In place of site_measurement_problem when the meter's sensors (`entities`) are unavailable together:
+    # `cause` is `inverter_standby` for a known inverter integration's sensors (it may be in standby, as at
+    # night), else `meter_unavailable` (every phase at once).
+    "site_meter_unavailable": (TONE_NOTICE, ("entities", "cause")),
     # Another SpotNav charger entry, titled `other`, is the same physical charger as this one.
     "duplicate_charger": (TONE_NOTICE, ("other",)),
 }
@@ -230,6 +249,15 @@ class SolarFacts:
     state: str
     reason: str | None = None
     requested_a: float | None = None
+    #: Why solar has no basis (`grid_power_not_set`, `grid_power_unreadable`, `battery_unreadable`) and
+    #: the entity concerned (`execution/solar_execution.py`'s `SolarBasis`).
+    basis_problem: str | None = None
+    basis_entity: str | None = None
+    #: `not_set` or `unreadable` while the charger's own current is unknown, and its entity.
+    charger_current: str | None = None
+    charger_current_entity: str | None = None
+    #: The phases of an unusable site measurement solar runs without.
+    site_incomplete_phases: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True, slots=True)
@@ -275,6 +303,10 @@ class SiteMeasurementFacts:
     no_value_entities: tuple[str, ...] = ()
     stale_phases: tuple[str, ...] = ()
     max_age_s: float | None = None
+    #: The meter's sensors that are unavailable together (`site/measurement_problem.py`), and whether
+    #: they are a known inverter integration's.
+    unavailable_entities: tuple[str, ...] = ()
+    inverter: bool = False
 
 
 @dataclass(frozen=True, slots=True)
@@ -429,6 +461,36 @@ def _plan_facts(
     return lines
 
 
+def _solar_basis_line(solar: SolarFacts) -> dict[str, Any] | None:
+    """The specific reason solar has no basis, when one is known."""
+    if solar.basis_problem in ("grid_power_not_set", "grid_power_unreadable"):
+        entity = solar.basis_entity if solar.basis_problem == "grid_power_unreadable" else None
+        return _line("solar_no_grid_power", entity=entity)
+    if solar.basis_problem == "battery_unreadable":
+        return _line("solar_battery_unreadable", entity=solar.basis_entity)
+    return None
+
+
+def _solar_lines(solar: SolarFacts) -> list[dict[str, Any]]:
+    """The solar headline and the facts about its basis: the specific reason in place of "no usable
+    reading" while solar is off for it (beside any other state), then the charger's own current missing and
+    the site phases it runs without."""
+    basis = _solar_basis_line(solar)
+    lines: list[dict[str, Any]] = []
+    if basis is not None and solar.state == "off" and solar.reason in ("no_basis_off", "no_basis_stopped"):
+        lines.append(basis)
+    else:
+        lines.append(_solar_line(solar))
+        if basis is not None:
+            lines.append(basis)
+    if solar.charger_current in ("not_set", "unreadable"):
+        entity = solar.charger_current_entity if solar.charger_current == "unreadable" else None
+        lines.append(_line("solar_charger_current_missing", entity=entity))
+    if solar.site_incomplete_phases:
+        lines.append(_line("solar_site_incomplete", phases=list(solar.site_incomplete_phases)))
+    return lines
+
+
 def _solar_line(solar: SolarFacts) -> dict[str, Any]:
     if solar.state == "on":
         return _line("solar_charging", requested_a=solar.requested_a)
@@ -570,7 +632,15 @@ def _notices(facts: StatusFacts) -> list[dict[str, Any]]:
     if facts.charger_disabled and not facts.charging:
         lines.append(_line("charger_disabled"))
     measurement = facts.site_measurement
-    if measurement is not None and (measurement.no_value_phases or measurement.stale_phases):
+    if measurement is not None and measurement.unavailable_entities:
+        lines.append(
+            _line(
+                "site_meter_unavailable",
+                entities=list(measurement.unavailable_entities),
+                cause="inverter_standby" if measurement.inverter else "meter_unavailable",
+            )
+        )
+    elif measurement is not None and (measurement.no_value_phases or measurement.stale_phases):
         lines.append(
             _line(
                 "site_measurement_problem",
@@ -682,7 +752,7 @@ def compose_status(facts: StatusFacts) -> dict[str, Any]:
         if facts.charging:
             lines.append(_line("charging_now", until=None))
     elif facts.solar is not None:
-        lines.append(_solar_line(facts.solar))
+        lines.extend(_solar_lines(facts.solar))
         lines.extend(_price_wait_lines(facts))
     elif facts.hybrid is not None:
         lines.append(_hybrid_line(facts.hybrid, facts.proposal))

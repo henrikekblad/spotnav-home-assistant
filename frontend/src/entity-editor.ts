@@ -48,7 +48,7 @@ import {
   vehicleChoice,
 } from "./entity-config";
 import { formatFixed, formatNumber } from "./format";
-import { measurementProblemText } from "./status";
+import { measurementProblemText, meterUnavailableText } from "./status";
 import {
   CAPACITY_MAX_KWH,
   CAPACITY_MIN_KWH,
@@ -99,6 +99,9 @@ function labelOf(language: Language, field: string): string {
 
 function warningText(language: Language, warning: SiteWarning): string {
   const integration = warning.integration ?? "";
+  if (warning.code === "measurement_unhealthy" && warning.unavailableEntities.length > 0) {
+    return meterUnavailableText(language, warning.unavailableEntities, warning.inverter);
+  }
   if (warning.code === "measurement_unhealthy") {
     const of = (cause: "no_value" | "stale") => warning.phases.filter((item) => item.cause === cause);
     return measurementProblemText(language, {

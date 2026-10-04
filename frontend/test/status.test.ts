@@ -62,6 +62,39 @@ describe("the status line renders the block and nothing else", () => {
     ]);
   });
 
+  it("says why solar has no full basis and names the meter's unavailable sensors, in every language", () => {
+    const field = block(
+      statusLine("solar_waiting_for_sun"),
+      statusLine("solar_charger_current_missing", { entity: null }),
+      statusLine("solar_site_incomplete", { phases: ["L1"] }),
+      statusLine("site_meter_unavailable", { entities: ["sensor.solax_grid_current_l1"], cause: "inverter_standby" }),
+    );
+    expect(statusText(field, format("en"), NOW)).toBe(
+      "Solar · waiting for sun · The charger's own current is not set — choose it under Site wiring (e.g. Easee Current); until then solar starts only at the minimum current · The site measurement is incomplete (L1) — solar runs on total grid power only · The meter's sensors are unavailable (the inverter may be in standby): sensor.solax_grid_current_l1.",
+    );
+    expect(statusText(field, format("sv"), NOW)).toContain(
+      "Laddarens egen ström är inte vald — välj den under Anläggningens koppling (t.ex. Easee Current)",
+    );
+    expect(statusText(field, format("sv"), NOW)).toContain(
+      "Mätarens sensorer är otillgängliga (växelriktaren kan vara i viloläge): sensor.solax_grid_current_l1.",
+    );
+    const grid = block(statusLine("solar_no_grid_power", { entity: null }));
+    expect(statusText(grid, format("en"), NOW)).toBe("Solar · no grid power reading — set Total grid power under Site entities");
+    const unreadable = block(statusLine("solar_no_grid_power", { entity: "sensor.net" }));
+    expect(statusText(unreadable, format("sv"), NOW)).toBe("Sol · nätets totala effekt (sensor.net) har ingen färsk mätning");
+    for (const language of ["da", "fi", "nb"] as const) {
+      expect(statusText(field, format(language), NOW)).not.toMatch(/\{\w+\}/u);
+    }
+    // The missing current and the meter are items to review; the incomplete site is a normal fact.
+    expect(issuesOf({ ...field, tone: "notice" }, "en").map((issue) => issue.code)).toEqual([
+      "solar_charger_current_missing",
+      "site_meter_unavailable",
+    ]);
+    expect(issueText("en", issuesOf({ ...field, tone: "notice" }, "en")[1]!)).toBe(
+      "The meter's sensors are unavailable (the inverter may be in standby): sensor.solax_grid_current_l1.",
+    );
+  });
+
   it("says when a manual need is capped at the battery's room, and that the car ends a charge to its own limit", () => {
     const capped = block(statusLine("auto_installed", { start: "2026-09-22T22:00:00+00:00" }), statusLine("need_limited_by_room", { kwh: 3.44 }));
     expect(statusText(capped, format("en"), NOW)).toContain("Limited to 3.4 kWh: the car is almost full.");

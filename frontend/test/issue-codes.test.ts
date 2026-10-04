@@ -55,9 +55,20 @@ function sample(kind: string): unknown {
   }
 }
 
+/** Entity ids are shown as they are; any other text param is a code that must never be shown raw. */
+function sampleFor(name: string, kind: string): unknown {
+  if (name === "entity") {
+    return "sensor.sample_entity";
+  }
+  if (name === "entities") {
+    return ["sensor.sample_entity"];
+  }
+  return sample(kind);
+}
+
 function fullLine(code: StatusCode): StatusLine {
   const kinds = STATUS_CODE_TABLE[code][1] as Record<string, string>;
-  return { code, params: Object.fromEntries(Object.entries(kinds).map(([name, kind]) => [name, sample(kind)])) } as StatusLine;
+  return { code, params: Object.fromEntries(Object.entries(kinds).map(([name, kind]) => [name, sampleFor(name, kind)])) } as StatusLine;
 }
 
 describe("every code the backend emits is known to the card", () => {

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import math
+from dataclasses import replace
 import random
 
 import pytest
@@ -828,3 +829,95 @@ def test_small_fluctuations_around_zero_for_thirty_minutes_do_not_flap():
 
     assert {v.action for v in verdicts if v.action in ("start", "stop")} == set()
     assert {v.state for v in verdicts} == {"on"}
+
+
+# ------------------------------------------------- blind, at the minimum, without the charger's own current
+
+
+def _blind(now: float, grid_w: float, *, battery_w: float | None = None, caps: dict | None = None, allowed: bool = True):
+    observation = _obs(
+        now,
+        grid_w=grid_w,
+        car_delivered_a={"L1": None},
+        car_phases=("L1",),
+        battery_w=battery_w,
+        battery_configured=battery_w is not None,
+    )
+    return replace(observation, unmeasured_start_allowed=allowed, phase_cap_a=caps)
+
+
+def test_a_blind_charger_starts_at_the_minimum_once_the_export_has_covered_it_for_the_delay():
+    ctrl = SolarController(_config(min_current_a=6.0))
+    # 6 A on one phase at 230 V is 1380 W.
+    first = ctrl.observe(_blind(0.0, -1500.0))
+    assert (first.action, first.state, first.reason) == ("hold", "arming", "unmeasured_arming")
+    assert ctrl.observe(_blind(60.0, -1500.0)).reason == "unmeasured_arming"
+    start = ctrl.observe(_blind(120.0, -1500.0))
+
+    assert (start.action, start.requested_a, start.state, start.reason) == ("start", 6.0, "on", "unmeasured_start")
+    # It never asks for more than the minimum, whatever the export.
+    later = [ctrl.observe(_blind(150.0 + 30 * i, -6000.0)) for i in range(20)]
+    assert {v.action for v in later} == {"hold"} and {v.state for v in later} == {"on"}
+
+
+def test_a_blind_charger_does_not_start_on_too_little_export_or_when_the_site_says_wait():
+    ctrl = SolarController(_config(min_current_a=6.0))
+    short = [ctrl.observe(_blind(float(t), -1300.0)) for t in range(0, 600, 30)]
+    assert {v.state for v in short} == {"off"} and {v.action for v in short} == {"hold"}
+
+    waiting = SolarController(_config(min_current_a=6.0))
+    held = [waiting.observe(_blind(float(t), -6000.0, allowed=False)) for t in range(0, 600, 30)]
+    assert {v.state for v in held} == {"off"} and {v.reason for v in held} == {"charger_measurement_missing"}
+
+
+def test_a_dip_while_arming_starts_the_blind_delay_over():
+    ctrl = SolarController(_config(min_current_a=6.0))
+    ctrl.observe(_blind(0.0, -1500.0))
+    ctrl.observe(_blind(90.0, -500.0))
+    ctrl.observe(_blind(100.0, -1500.0))
+
+    assert ctrl.observe(_blind(200.0, -1500.0)).action == "hold"
+    assert ctrl.observe(_blind(220.0, -1500.0)).action == "start"
+
+
+def test_a_fuse_cap_below_the_start_minimum_keeps_a_blind_charger_off():
+    ctrl = SolarController(_config(min_current_a=6.0))
+    verdicts = [ctrl.observe(_blind(float(t), -6000.0, caps={"L1": 5.0})) for t in range(0, 600, 30)]
+    assert {v.state for v in verdicts} == {"off"}
+
+    unknown = SolarController(_config(min_current_a=6.0))
+    verdicts = [unknown.observe(_blind(float(t), -6000.0, caps={"L1": None})) for t in range(0, 600, 30)]
+    assert {v.state for v in verdicts} == {"off"}
+
+
+def test_a_charging_battery_counts_as_spare_under_car_first_only():
+    car_first = SolarController(_config(min_current_a=6.0, priority="car_first"))
+    car_first.observe(_blind(0.0, 0.0, battery_w=2000.0))
+    assert car_first.observe(_blind(120.0, 0.0, battery_w=2000.0)).action == "start"
+
+    battery_first = SolarController(_config(min_current_a=6.0, priority="battery_first"))
+    verdicts = [battery_first.observe(_blind(float(t), 0.0, battery_w=2000.0)) for t in range(0, 600, 30)]
+    assert {v.state for v in verdicts} == {"off"}
+
+
+def test_a_blind_charge_that_drains_the_battery_is_stopped_like_one_that_imports():
+    ctrl = SolarController(_config(min_current_a=6.0, stop_delay_s=60.0, min_on_s=0.0))
+    ctrl.observe(_blind(0.0, -1500.0))
+    assert ctrl.observe(_blind(120.0, -1500.0)).action == "start"
+
+    ctrl.observe(_blind(150.0, 0.0, battery_w=-1400.0))
+    verdict = ctrl.observe(_blind(220.0, 0.0, battery_w=-1400.0))
+
+    assert (verdict.action, verdict.reason, verdict.state) == ("stop", "charger_measurement_missing", "off")
+    # And it waits out `min_off_s` before a blind start again.
+    ctrl.observe(_blind(230.0, -1500.0))
+    assert ctrl.observe(_blind(360.0, -1500.0)).action == "hold"
+    assert ctrl.observe(_blind(530.0, -1500.0)).action == "start"
+
+
+def test_a_blind_verdict_states_no_surplus_it_cannot_know():
+    ctrl = SolarController(_config(min_current_a=6.0))
+    verdict = ctrl.observe(_blind(0.0, -1500.0))
+
+    assert verdict.car_w is None and verdict.available_w is None and verdict.available_a is None
+    assert verdict.net_grid_w == -1500.0 and verdict.export_w == 1500.0

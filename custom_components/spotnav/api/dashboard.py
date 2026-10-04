@@ -1836,6 +1836,8 @@ def _measurement_facts(problem: MeasurementProblem | None) -> SiteMeasurementFac
         no_value_entities=tuple(item.entity_id for item in no_value if item.entity_id),
         stale_phases=tuple(item.phase for item in problem.of("stale")),
         max_age_s=finite_number(problem.max_age_s),
+        unavailable_entities=problem.unavailable_entities,
+        inverter=problem.inverter,
     )
 
 
@@ -1880,7 +1882,18 @@ def status_facts(capture: CapturedDashboard) -> StatusFacts:
     strategy = None if settings is None else strategy_of(settings)
     solar = hybrid = None
     if state is not None and strategy == STRATEGY_SOLAR:
-        solar = SolarFacts(state=state["state"], reason=state["reason"], requested_a=state["requested_a"])
+        # The basis facts are the live snapshot's, not part of the `strategy_state` contract.
+        basis = (None if capture.site is None else capture.site.solar_state) or {}
+        solar = SolarFacts(
+            state=state["state"],
+            reason=state["reason"],
+            requested_a=state["requested_a"],
+            basis_problem=_text(basis.get("basis_problem")),
+            basis_entity=_text(basis.get("basis_entity")),
+            charger_current=_text(basis.get("charger_current")),
+            charger_current_entity=_text(basis.get("charger_current_entity")),
+            site_incomplete_phases=tuple(str(phase) for phase in basis.get("site_incomplete_phases") or ()),
+        )
     elif state is not None and strategy == STRATEGY_HYBRID:
         hybrid = HybridFacts(
             reason=state["reason"],

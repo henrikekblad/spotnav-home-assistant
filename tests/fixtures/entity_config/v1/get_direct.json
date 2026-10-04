@@ -391,6 +391,7 @@
           "entity_id": null,
           "integration": null,
           "interval_s": 120.0,
+          "inverter": false,
           "limits_a": null,
           "option": null,
           "phases": [
@@ -412,7 +413,8 @@
               "entity_id": "sensor.site_get_direct_l3",
               "phase": "L3"
             }
-          ]
+          ],
+          "unavailable_entities": []
         }
       ]
     },

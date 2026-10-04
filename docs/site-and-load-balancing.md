@@ -35,9 +35,17 @@ shown in [Set up SpotNav](setup.md#2-add-a-site-optional). You provide:
     A one-phase charger is read from T3 only (TN). The charger's dialog shows the source the
     site reads, read-only.
   - Without any measured current for a charger, the regulator holds (`charger_measurement_unusable`)
-    and solar never starts that charger. A running charge is held at the minimum current while the
-    grid shows export or about zero import (100 W per phase), and stopped once import beyond that
-    has lasted the solar stop delay; the reason is `charger_measurement_missing`.
+    and solar runs that charger blind, at the minimum current only. It starts (reason
+    `unmeasured_start`, after `unmeasured_arming`) when the spare power without the car (export, plus
+    a charging battery under car first) has covered the start minimum for the solar start delay, no
+    other charger on the site is about to start or started less than a minute ago, and the fuse caps
+    allow it. A running charge is held at the minimum current while there is export or about zero
+    import (100 W per phase; a battery discharging into the car counts as import), and stopped once
+    import beyond that has lasted the solar stop delay; the reason is `charger_measurement_missing`.
+    The status says the charger's own current is not set (`solar_charger_current_missing`).
+- A single-phase charger whose phase is unknown is reckoned by solar on a stand-in phase: the total
+  grid power does not depend on the phase, the fuse cap is the lowest of all three phases' caps, and
+  its draw the largest phase its measured current reads.
 
 After the basics, SpotNav looks for your grid meter in the entity registry (see
 [Meter detection](#meter-detection-signs-and-estimated-current)). When it finds the meter and

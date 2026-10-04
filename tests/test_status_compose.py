@@ -763,6 +763,107 @@ CASES: list[tuple[str, StatusFacts, str, list[dict[str, Any]]]] = [
         ],
     ),
     (
+        "an inverter's sensors gone unavailable together are named as the meter in standby",
+        base(
+            waiting_for_tomorrow=True,
+            site_measurement=SiteMeasurementFacts(
+                no_value_phases=("L1",),
+                no_value_entities=("sensor.solax_grid_current_l1",),
+                max_age_s=120.0,
+                unavailable_entities=("sensor.solax_grid_current_l1",),
+                inverter=True,
+            ),
+        ),
+        "notice",
+        [
+            {"code": "waiting_for_tomorrow", "params": {}},
+            {
+                "code": "site_meter_unavailable",
+                "params": {"entities": ["sensor.solax_grid_current_l1"], "cause": "inverter_standby"},
+            },
+        ],
+    ),
+    (
+        "a meter whose every phase is unavailable says so without guessing at an inverter",
+        base(
+            waiting_for_tomorrow=True,
+            site_measurement=SiteMeasurementFacts(
+                no_value_phases=("L1", "L2", "L3"),
+                no_value_entities=("sensor.meter",),
+                unavailable_entities=("sensor.meter",),
+            ),
+        ),
+        "notice",
+        [
+            {"code": "waiting_for_tomorrow", "params": {}},
+            {"code": "site_meter_unavailable", "params": {"entities": ["sensor.meter"], "cause": "meter_unavailable"}},
+        ],
+    ),
+    (
+        "solar off for want of a total grid power says to set it, in place of no usable reading",
+        base(strategy="solar", solar=SolarFacts("off", "no_basis_off", basis_problem="grid_power_not_set")),
+        "notice",
+        [{"code": "solar_no_grid_power", "params": {"entity": None}}],
+    ),
+    (
+        "solar off for an unreadable total grid power names its entity",
+        base(
+            strategy="solar",
+            solar=SolarFacts(
+                "off", "no_basis_stopped", basis_problem="grid_power_unreadable", basis_entity="sensor.net"
+            ),
+        ),
+        "notice",
+        [{"code": "solar_no_grid_power", "params": {"entity": "sensor.net"}}],
+    ),
+    (
+        "solar holding on in its grace with an unreadable battery keeps its headline and says why",
+        base(
+            strategy="solar",
+            solar=SolarFacts(
+                "on", "no_basis_grace", requested_a=6.0, basis_problem="battery_unreadable", basis_entity="sensor.bat"
+            ),
+        ),
+        "notice",
+        [
+            {"code": "solar_charging", "params": {"requested_a": 6.0}},
+            {"code": "solar_battery_unreadable", "params": {"entity": "sensor.bat"}},
+        ],
+    ),
+    (
+        "solar without the charger's own current says to choose it, and the site phases it runs without",
+        base(
+            strategy="solar",
+            solar=SolarFacts(
+                "off", "charger_measurement_missing", charger_current="not_set", site_incomplete_phases=("L1",)
+            ),
+        ),
+        "notice",
+        [
+            {"code": "solar_waiting_for_sun", "params": {}},
+            {"code": "solar_charger_current_missing", "params": {"entity": None}},
+            {"code": "solar_site_incomplete", "params": {"phases": ["L1"]}},
+        ],
+    ),
+    (
+        "solar with an unreadable charger current names its entity",
+        base(
+            strategy="solar",
+            solar=SolarFacts(
+                "on",
+                "charger_measurement_missing",
+                requested_a=6.0,
+                charger_current="unreadable",
+                charger_current_entity="sensor.easee_current",
+            ),
+        ),
+        "notice",
+        [
+            {"code": "solar_charging", "params": {"requested_a": 6.0}},
+            {"code": "solar_charger_current_missing", "params": {"entity": "sensor.easee_current"}},
+        ],
+    ),
+    (
         "a charger that is the same physical charger as another entry says which",
         base(waiting_for_tomorrow=True, duplicate_chargers=("Garage Easee",)),
         "notice",

@@ -19,7 +19,9 @@ from dataclasses import dataclass, replace
 from datetime import datetime, timedelta
 from typing import Any, Literal
 
+from homeassistant.const import STATE_UNAVAILABLE, STATE_UNKNOWN
 from homeassistant.core import callback, Event, EventStateChangedData, HomeAssistant
+from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers.event import (
     async_call_later,
     async_track_state_change_event,
@@ -78,7 +80,7 @@ from ..execution.yield_stepping import YieldConfig, YieldObservation, YieldStepp
 from ..planning.auto_settings import STRATEGY_HYBRID, STRATEGY_SOLAR
 from ..runtime import charger_data, controller_for, domain_data
 from ..vehicles.capability import build_capability_snapshot, SiteCapabilitySnapshot
-from .measurement_problem import measurement_problem, MeasurementProblem
+from .measurement_problem import measurement_problem, MeasurementProblem, UNHEALTHY_STATES
 from .solar_capability import solar_capability
 from .measurement_source import (
     combine_power_pair,
@@ -1607,6 +1609,12 @@ class SiteCapacityController:
                 "battery_w": state.battery_w if state else None,
                 "export_w": state.export_w if state else None,
                 "priority_effective": state.priority_effective if state else None,
+                # What keeps solar from a full basis (`execution/solar_execution.py`'s `SolarBasis`).
+                "basis_problem": state.basis.problem if state else None,
+                "basis_entity": state.basis.problem_entity if state else None,
+                "charger_current": state.basis.charger_current if state else None,
+                "charger_current_entity": state.basis.charger_current_entity if state else None,
+                "site_incomplete_phases": list(state.basis.site_incomplete_phases) if state else [],
             }
         return snapshot
 
@@ -2002,7 +2010,21 @@ class SiteCapacityController:
     @property
     def measurement_problem(self) -> MeasurementProblem | None:
         """The phases that make the site's measurement unusable right now (`site/measurement_problem.py`)."""
-        return measurement_problem(self.result, self.phase_entities())
+        if self.result.state not in UNHEALTHY_STATES:
+            return None
+        entities = self.phase_entities()
+        named = {entity_id for entity_id in entities.values() if entity_id}
+        unavailable: set[str] = set()
+        platforms: dict[str, str] = {}
+        registry = er.async_get(self.hass)
+        for entity_id in named:
+            state = self.hass.states.get(entity_id)
+            if state is not None and state.state in (STATE_UNAVAILABLE, STATE_UNKNOWN):
+                unavailable.add(entity_id)
+            entry = registry.async_get(entity_id)
+            if entry is not None:
+                platforms[entity_id] = entry.platform
+        return measurement_problem(self.result, entities, unavailable=unavailable, platforms=platforms)
 
     def _read_direct_entities(self) -> DirectPhaseMeasurement:
         source = self._resolve_site_current_source()
