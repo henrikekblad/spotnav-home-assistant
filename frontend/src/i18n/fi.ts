@@ -396,7 +396,7 @@ export const fi: Record<keyof typeof en, string> = {
   "action.start": "Aloita nyt",
   "action.stop": "Pysäytä",
   "action.resume": "Jatka automaattista latausta",
-  "action.startHelp": "Aloittaa latauksen nyt. Se ei lupaa kestoa: Auto voi ottaa ohjat seuraavassa täsmäytyksessä.",
+  "action.startHelp": "Aloittaa latauksen nyt ja keskeyttää automaattisen latauksen, kunnes auto on täynnä tai irrotetaan.",
   "action.pauseAutomatic": "Keskeytä automaattinen lataus",
   "action.pauseAutomaticShort": "Keskeytä",
   "action.resumeShort": "Jatka",

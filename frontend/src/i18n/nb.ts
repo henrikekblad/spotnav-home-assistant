@@ -396,7 +396,7 @@ export const nb: Record<keyof typeof en, string> = {
   "action.start": "Start nå",
   "action.stop": "Stopp",
   "action.resume": "Gjenoppta automatisk lading",
-  "action.startHelp": "Starter en lading nå. Den lover ingen varighet: Auto kan ta over igjen ved neste avstemming.",
+  "action.startHelp": "Starter en lading nå og pauser automatisk lading til bilen er full eller kobles fra.",
   "action.pauseAutomatic": "Pause automatisk lading",
   "action.pauseAutomaticShort": "Pause",
   "action.resumeShort": "Gjenoppta",

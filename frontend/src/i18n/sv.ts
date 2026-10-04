@@ -396,8 +396,7 @@ export const sv: Record<keyof typeof en, string> = {
   "action.start": "Starta nu",
   "action.stop": "Stoppa",
   "action.resume": "Återuppta automatisk laddning",
-  "action.startHelp":
-    "Startar en laddning nu. Den lovar ingen varaktighet: Auto kan ta över igen vid nästa avstämning.",
+  "action.startHelp": "Startar en laddning nu och pausar automatisk laddning tills bilen är full eller kopplas ur.",
   "action.pauseAutomatic": "Pausa automatisk laddning",
   "action.pauseAutomaticShort": "Pausa",
   "action.resumeShort": "Återuppta",

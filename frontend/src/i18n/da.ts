@@ -396,7 +396,7 @@ export const da: Record<keyof typeof en, string> = {
   "action.start": "Start nu",
   "action.stop": "Stop",
   "action.resume": "Genoptag automatisk opladning",
-  "action.startHelp": "Starter en opladning nu. Den lover ingen varighed: Auto kan tage over igen ved næste afstemning.",
+  "action.startHelp": "Starter en opladning nu og sætter automatisk opladning på pause, indtil bilen er fuld eller frakobles.",
   "action.pauseAutomatic": "Pause automatisk opladning",
   "action.pauseAutomaticShort": "Pause",
   "action.resumeShort": "Genoptag",

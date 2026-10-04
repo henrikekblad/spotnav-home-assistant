@@ -423,8 +423,7 @@ export const en = {
   "action.start": "Start now",
   "action.stop": "Stop",
   "action.resume": "Resume automatic charging",
-  "action.startHelp":
-    "Starts a charge now. It promises no duration: Auto may take over again at its next reconciliation.",
+  "action.startHelp": "Starts a charge now and pauses automatic charging until the car is full or unplugged.",
   "action.pauseAutomatic": "Pause automatic charging",
   "action.pauseAutomaticShort": "Pause",
   "action.resumeShort": "Resume",
