@@ -22,6 +22,8 @@ from custom_components.spotnav.log_buffer import (
 )
 from custom_components.spotnav.runtime import domain_data
 
+from custom_components.spotnav.core.replay import replay_bundle
+
 from .world import admin, non_admin, setup_charger_and_site, ws_call
 
 
@@ -44,6 +46,10 @@ async def test_bundle_has_every_section(hass: HomeAssistant) -> None:
     assert "dashboard" in section and "status" in section
     assert "plan" in section["dashboard"] and "strategy" in section["dashboard"]
     assert "commands" in section["diagnostics"]["controller"]["adapter"]
+    # Version 5: the ownership core's shadow, replayable as it is.
+    shadow = section["diagnostics"]["controller"]["ownership_shadow"]
+    assert shadow["counts"]["disagreements"] == 0 and shadow["events"]
+    assert replay_bundle(json.loads(json.dumps(bundle)))[charger.entry_id].mismatches == ()
     # Each fact once: the price data at the top only, the rest inside the entry's diagnostics or dashboard.
     for gone in ("plan_and_auto", "command_log"):
         assert gone not in section
