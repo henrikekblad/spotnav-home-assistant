@@ -16,6 +16,7 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 
 from .const import (
+    CONF_CHARGER_ENTRY_IDS,
     CONF_ENTRY_TYPE,
     CONF_OCPP_CHARGE_POINT_ID,
     CONF_WEBHOOK_ID,
@@ -151,6 +152,10 @@ def _site_diagnostics(hass: HomeAssistant, entry: ConfigEntry) -> dict[str, Any]
         # What the regulator did, newest last, bounded: when, from and to amps, why, the limiting
         # phase, the battery's power and the measured currents. A plain list a bundle can read.
         "regulator_decision_log": [] if controller is None else controller.regulator_decision_log,
+        # What solar and hybrid decided per member charger, newest last, bounded: when, the strategy, the
+        # state from and to, the action and why, the current asked for and the energy balance it read.
+        # Only changes and actions, never an unchanged hold.
+        "solar_decision_log": _solar_decision_logs(hass, entry),
         # The battery-on-the-fuse probe per charger: state, last outcome and why, back-off left.
         "battery_probe": {} if controller is None else controller.battery_probe_snapshot,
         # How often each measurement entity reports (median of its recent `last_reported` gaps, `None`
@@ -166,6 +171,19 @@ def _site_diagnostics(hass: HomeAssistant, entry: ConfigEntry) -> dict[str, Any]
             "load_balancing_held": sorted(controller.load_balancing_slow_meters),
         },
     }
+
+
+def _solar_decision_logs(hass: HomeAssistant, entry: ConfigEntry) -> dict[str, list[dict[str, Any]]]:
+    """Each member charger's solar decision log (`SolarExecutionCoordinator.decision_log`), by entry id;
+    a charger with no solar coordinator loaded is left out."""
+    controller = site_controller_for(hass, entry.entry_id)
+    config = controller.config if controller is not None else entry.data
+    logs: dict[str, list[dict[str, Any]]] = {}
+    for charger_entry_id in config.get(CONF_CHARGER_ENTRY_IDS) or []:
+        data = charger_data(hass, charger_entry_id)
+        if data is not None and data.solar is not None:
+            logs[charger_entry_id] = data.solar.decision_log
+    return logs
 
 
 def _regulator_decision_to_dict(decision: RegulatorDecision) -> dict[str, Any]:

@@ -602,6 +602,8 @@ export const nb: Record<keyof typeof en, string> = {
     "Bare administratorer kan laste ned feilsøkingsinfo.",
   "debug.error.failed":
     "Feilsøkingsinfoen kunne ikke hentes.",
+  "debug.cardOutdated":
+    "Kortet i denne nettleseren eller appen er eldre enn SpotNav. Last inn siden på nytt; i Home Assistants Companion-app: tving appen til å stoppe, og åpne den igjen.",
   "settings.readOnly":
     "Bare administratorer kan endre innstillinger. Du kan lese dem her.",
   "settings.save":

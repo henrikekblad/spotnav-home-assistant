@@ -130,7 +130,8 @@ cannot, and for a direct site without the total it says the meter's total grid p
   *the car is full* when it is at its own charge limit, and then nothing starts until the car is plugged
   in again; otherwise it says *the car stopped charging* and when it is tried again: after 30 minutes,
   twice as long after each charge the car ends again, up to four hours. A new plug-in, a state of
-  charge that has fallen, or a higher charge limit or target ends the wait at once. A charge something
+  charge that has fallen, or a higher charge limit or target ends the wait at once. The wait, and what
+  the car ended at, outlast a restart and a switch to another strategy and back. A charge something
   else turned off is an ordinary stop. A charger that is not charging draws nothing, whatever its
   current sensor still shows.
 - **Solar priority** (a site setting): *car first* uses surplus before the house battery;

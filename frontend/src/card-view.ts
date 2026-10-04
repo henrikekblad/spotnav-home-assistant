@@ -266,6 +266,8 @@ export interface CardView {
   setOverviewNotice(failure: FailureSentence | null): void;
   /** The debug download is being prepared: the button says so and cannot be pressed again. */
   setDebugPending(pending: boolean): void;
+  /** Whether the card running here differs from the one the integration serves: Support then says to reload. */
+  setCardOutdated(outdated: boolean): void;
   /** Close the Settings popover without returning focus (the card is about to redraw it). */
   closeSettingsOverview(): void;
   /** Whether the Notifications dialog is open. */
@@ -1810,6 +1812,12 @@ export function createCardView(input: CardViewInput): CardView {
     section.append(
       element(doc, "h4", C.settingsSectionHeading, translate(model.language, "settings.section.support")),
     );
+    const outdatedNote = element(doc, "p", C.muted, translate(model.language, "debug.cardOutdated"));
+    outdatedNote.dataset["cardOutdated"] = "true";
+    outdatedNote.setAttribute("role", "status");
+    cardOutdatedNote = outdatedNote;
+    paintCardOutdated();
+    section.append(outdatedNote);
     if (input.isAdmin) {
       section.append(element(doc, "p", C.muted, translate(model.language, "debug.intro")));
     }
@@ -1841,6 +1849,14 @@ export function createCardView(input: CardViewInput): CardView {
 
   let debugButton: HTMLButtonElement | null = null;
   let debugPending = false;
+  let cardOutdatedNote: HTMLElement | null = null;
+  let cardIsOutdated = false;
+
+  function paintCardOutdated(): void {
+    if (cardOutdatedNote !== null) {
+      cardOutdatedNote.hidden = !cardIsOutdated;
+    }
+  }
 
   function paintDebugButton(): void {
     if (debugButton === null) {
@@ -3031,6 +3047,10 @@ export function createCardView(input: CardViewInput): CardView {
     setDebugPending(pending: boolean): void {
       debugPending = pending;
       paintDebugButton();
+    },
+    setCardOutdated(outdated: boolean): void {
+      cardIsOutdated = outdated;
+      paintCardOutdated();
     },
     setOverviewNotice(failure: FailureSentence | null): void {
       overviewNotice = failure;

@@ -602,6 +602,8 @@ export const fi: Record<keyof typeof en, string> = {
     "Vain ylläpitäjät voivat ladata vianetsintätiedot.",
   "debug.error.failed":
     "Vianetsintätietoja ei voitu hakea.",
+  "debug.cardOutdated":
+    "Tämän selaimen tai sovelluksen kortti on vanhempi kuin SpotNav. Lataa sivu uudelleen; Home Assistantin Companion-sovelluksessa pakota sovellus pysähtymään ja avaa se uudelleen.",
   "settings.readOnly":
     "Vain ylläpitäjät voivat muuttaa asetuksia. Voit lukea ne tässä.",
   "settings.save":

@@ -130,7 +130,7 @@ It is best effort and is not a protective device. Turning it off gives back any 
 - **Decision log.** Every change the regulator makes or holds (time, from and to amps, the reason,
   the limiting phase, the battery power and the measured currents) is kept in a bounded list per
   site, the last 200, shown as `regulator_decision_log` in the site's diagnostics (and so in the
-  debug bundle).
+  debug bundle). What solar and hybrid decide is beside it, per charger, as `solar_decision_log`.
 - Reading a measurement that has not changed is told apart from a dead link before the reading
   is treated as stale.
 

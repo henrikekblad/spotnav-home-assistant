@@ -16,6 +16,13 @@ Every fact is in the bundle once (version 3): the price data at the top; a site'
 classes, attribute names and the values of the attributes read, the three timestamps, the integration),
 so a support answer can tell a signed meter, a slow one and a stale one apart. Entity states only, never
 an integration's settings.
+
+Version 4 adds a site's `history_60min` (the last hour, one in-memory sample a minute: the grid's total
+power, the site's current per phase, the battery's power and each member charger's measured current,
+charge control, connection, connector status and the car's state of charge; `site/site_history.py`) and,
+inside the site's `diagnostics`, `solar_decision_log` (per member charger, what solar and hybrid decided:
+only changes and actions). The card adds a `client` block to the file it saves (the card version and
+bundle hash the browser runs, and a short user agent); the backend never sees it.
 """
 
 from __future__ import annotations
@@ -58,7 +65,7 @@ from .site.measurement_source import grid_power_source_from_dict, source_from_di
 
 _LOGGER = logging.getLogger(__name__)
 
-BUNDLE_VERSION: Final = 3
+BUNDLE_VERSION: Final = 4
 REDACTED: Final = "**REDACTED**"
 
 #: Keys whose value is never shown, wherever they sit in the bundle.
@@ -236,6 +243,9 @@ async def _versions(hass: HomeAssistant) -> dict[str, Any]:
     return {
         "spotnav": integration.version.string if integration.version is not None else None,
         "card_bundle_hash": digest,
+        # The hash in the URL browsers load the card from: differs from the file's after an update
+        # Home Assistant has not been restarted for.
+        "card_bundle_hash_served": domain_data(hass).card_served_digest,
         "card_bundle_file": CARD_ASSET_PATH.name,
         "home_assistant": HA_VERSION,
         "python": sys.version.split()[0],
@@ -395,12 +405,14 @@ async def async_build_debug_bundle(hass: HomeAssistant) -> dict[str, Any]:
         except Exception as err:  # noqa: BLE001 - one odd entity must not cost the whole bundle
             _LOGGER.warning("The debug bundle could not read a site's measurement entities: %s", type(err).__name__)
             measurement_entities = {"available": False, "reason": "read_failed"}
+        controller = site_controller_for(hass, entry.entry_id)
         site_sections.append(
             {
                 "entry_id": entry.entry_id,
                 "title": entry.title,
                 "diagnostics": _entry_diagnostics(hass, entry),
                 "measurement_entities": measurement_entities,
+                "history_60min": [] if controller is None else controller.history_samples,
             }
         )
     vehicle_entities = [

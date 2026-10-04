@@ -87,6 +87,8 @@ class SpotNavData:
     session_store: SessionStore | None = None
     resync_cancel: Callable[[], None] | None = None
     card_served: bool = False
+    #: The bundle hash in the card URL Home Assistant hands the browsers (`card_asset.py`), `None` until served.
+    card_served_digest: str | None = None
     log_buffer: SpotNavLogBuffer | None = None
     #: When the integration loaded; the start-up grace (`startup.py`) counts from here.
     started_at: datetime = field(default_factory=dt_util.utcnow)

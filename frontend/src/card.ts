@@ -21,6 +21,7 @@ import {
   SpotnavApiError,
   UNSUPPORTED_API_VERSION,
   getDashboard,
+  getCardInfo,
   getDebugBundle,
   getEntityConfig,
   getSessions,
@@ -58,6 +59,7 @@ import {
   type EntityScope,
 } from "./entity-config";
 import { decodeDebugAnswer, saveDebugBundle } from "./debug-download";
+import { cardOutdated, clientBlock, decodeCardInfo, ownCardBundleHash, servedHashFromBundle } from "./card-identity";
 import { saveTextFile } from "./download";
 import { ensureHaSelector } from "./entity-editor";
 import { decodeCsv, decodeSessions, type SessionsAnswer } from "./history";
@@ -1218,12 +1220,43 @@ export class SpotnavCard extends HTMLElement {
       fail(answer.code === "spotnav_not_admin" ? "debug.error.notAdmin" : "debug.error.failed", answer.code);
       return;
     }
-    if (!saveDebugBundle(doc, answer.bundle, new Date())) {
+    // The card running here, next to the backend's own versions: a stale card in a browser or the
+    // Companion app is a common cause of "it shows the old thing".
+    const served = servedHashFromBundle(answer.bundle);
+    const client = clientBlock(doc.defaultView?.navigator?.userAgent ?? null, served);
+    if (client.card_outdated !== null && this.view === view) {
+      view.setCardOutdated(client.card_outdated);
+    }
+    if (!saveDebugBundle(doc, { ...answer.bundle, client }, new Date())) {
       fail("debug.error.failed", null);
       return;
     }
     if (this.view === view) {
       view.setDebugPending(false);
+    }
+  }
+
+  /**
+   * The Settings popover was opened: ask which card the integration serves, and say in Support when the
+   * card running here is another (an old module kept by the browser or the Companion app). Any failure,
+   * an integration without the command included, says nothing.
+   */
+  private async loadCardInfo(): Promise<void> {
+    const hass = this.hassObject;
+    const view = this.view;
+    if (!this.connected || hass === null || view === null || ownCardBundleHash() === null) {
+      return;
+    }
+    let raw: unknown;
+    try {
+      raw = await getCardInfo(hass);
+    } catch {
+      return;
+    }
+    const decoded = decodeCardInfo(raw);
+    const outdated = decoded === null ? null : cardOutdated(ownCardBundleHash(), decoded.cardBundleHash);
+    if (outdated !== null && this.view === view) {
+      view.setCardOutdated(outdated);
     }
   }
 
@@ -2051,6 +2084,7 @@ export class SpotnavCard extends HTMLElement {
         },
         onSettingsOverviewOpened: () => {
           void this.loadEntityConfig();
+          void this.loadCardInfo();
         },
         onOpenEntityEditor: (scope) => {
           this.openEntityEditor(scope);

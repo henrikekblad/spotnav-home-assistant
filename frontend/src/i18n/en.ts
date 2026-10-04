@@ -616,6 +616,8 @@ export const en = {
     "Only administrators can download debug info.",
   "debug.error.failed":
     "The debug info could not be fetched.",
+  "debug.cardOutdated":
+    "The card in this browser or app is older than SpotNav. Reload the page; in the Home Assistant Companion app, force-stop the app and open it again.",
   "settings.readOnly":
     "Only administrators can change settings. You can read them here.",
   "settings.save":

@@ -485,6 +485,10 @@ class ChargingController:
         # rebuilt solar controller forgets it.
         self._credit_backoff_until: datetime | None = None
         self._credit_backoff_next_s: float | None = None
+        # Solar's wait after a charge the car ended by itself (`car_stopped`, `vehicle_full`): a plain record
+        # the solar coordinator writes and reads (`SolarExecutionCoordinator._keep_ended`), persisted for the
+        # same reason as the back-off above. `None` when there is nothing to keep.
+        self._solar_car_ended: dict[str, Any] | None = None
         # Whether `async_initialize` has restored the saved state: until then what this controller says
         # about a charge (its origin, a person's Stop) is not yet known.
         self._restored = False
@@ -672,6 +676,9 @@ class ChargingController:
                     float(next_s) if isinstance(next_s, (int, float)) and not isinstance(next_s, bool) and next_s > 0
                     else None
                 )
+            car_ended = saved.get("solar_car_ended")
+            # Storage is untrusted: the coordinator decodes each field again; only the shape is checked here.
+            self._solar_car_ended = dict(car_ended) if isinstance(car_ended, dict) else None
             plugged = saved.get("plugged_in_at")
             parsed = dt_util.parse_datetime(plugged) if isinstance(plugged, str) else None
             self._plugged_in_at = parsed if parsed is not None and parsed.tzinfo is not None else None
@@ -1272,6 +1279,19 @@ class ChargingController:
             return
         async with self._lock:
             self._credit_backoff_until, self._credit_backoff_next_s = until, next_s
+            await self._async_save_quietly()
+
+    @property
+    def solar_car_ended(self) -> dict[str, Any] | None:
+        """Solar's wait after a charge the car ended by itself, as the solar coordinator recorded it."""
+        return None if self._solar_car_ended is None else dict(self._solar_car_ended)
+
+    async def async_set_solar_car_ended(self, record: dict[str, Any] | None) -> None:
+        """Record solar's wait after a charge the car ended (plain JSON values), saved when it changes."""
+        if not self._restored or record == self._solar_car_ended:
+            return
+        async with self._lock:
+            self._solar_car_ended = None if record is None else dict(record)
             await self._async_save_quietly()
 
     @property
@@ -2343,6 +2363,7 @@ class ChargingController:
                     "until": None if self._credit_backoff_until is None else self._credit_backoff_until.isoformat(),
                     "next_s": self._credit_backoff_next_s,
                 },
+                "solar_car_ended": self._solar_car_ended,
                 # The pilot-floor probe's record; written only through its host interface, absent until
                 # the probe has started.
                 STORE_KEY: self._probe_record,
