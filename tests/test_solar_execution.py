@@ -249,13 +249,13 @@ async def test_a_manual_stop_is_respected_like_a_price_executions_own(
 async def test_restart_adoption_does_not_cycle_the_contactor_and_still_stops_normally(
     hass: HomeAssistant,
 ) -> None:
-    """A charger found already charging under `solar` at start-up is adopted as `on` rather than left to rediscover that over `start_delay_s`.
+    """A charger found already charging under `solar` at start-up (its saved origin says solar started it) is adopted as `on` rather than left to rediscover that over `start_delay_s`.
 
     Proves no immediate stop (the contactor is not cycled) despite no surplus at all, and that the
     state machine does stop it once `stop_delay_s`/`min_on_s` are satisfied.
     """
     charger, site_entry, controller, coordinator, clock, turn_on_calls, turn_off_calls = (
-        await solar_setup(hass, charging_at_setup=True)
+        await solar_setup(hass, charging_at_setup=True, charge_origin_at_setup="solar")
     )
     site_controller = controller_of(hass, site_entry.entry_id)
     prefix = charger.entry_id

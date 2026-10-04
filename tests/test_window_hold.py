@@ -225,3 +225,17 @@ async def test_an_easee_that_starts_charging_between_windows_is_paused_once(hass
 
     assert [call.data["action_command"] for call in commands] == ["pause"]
     await controller.async_shutdown()
+
+
+async def test_a_plan_installed_after_the_charger_began_by_itself_stops_it_at_once(hass: HomeAssistant) -> None:
+    """Cheapest at plug-in: the charger begins a charge before the replan has a plan, so the hold sees no
+    window ahead yet. The plan that comes after is installed outside its window and stops the charge then,
+    not at a later poll."""
+    controller, stops, _ = await _switch_controller(hass)
+    await _plug_in_charging(hass)
+    assert stops == []
+
+    await install_schedule(controller, _windows())
+
+    assert len(stops) == 1
+    await controller.async_shutdown()

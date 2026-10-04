@@ -41,6 +41,9 @@
   higher limit or target clears it. That wait, the next retry's length and what the car ended at are kept
   on the charger's controller and saved (`_keep_ended`), and seeded into a rebuilt controller
   (`_seed_ended`), so a restart or a strategy switch keeps them, as the battery-credit back-off is kept.
+* A charge the charger began by itself (at plug-in, say) is decided on its first usable reading
+  (`_take_over`): kept as solar's own at the start minimum when the surplus covers it, else stopped at
+  once. It is never adopted as a running charge of solar's at a restart: a restart decides it the same way.
 * What solar decides is logged per charger in a bounded list (`decision_log`, the last
   `SOLAR_DECISION_LOG_LENGTH`): every action (`start`, `stop`, `set_current`, `take_over`) and every hold
   whose state or reason changed, with the energy balance it read. The site's diagnostics and the debug
@@ -605,6 +608,9 @@ class SolarExecutionCoordinator:
         # When this coordinator first evaluated, for the start-up grace of the missing-measurement
         # warning (set on that first evaluation so an injected clock is the one it reads).
         self._born_at: float | None = None
+        # When this coordinator first evaluated with the charger's saved state back: a charge the charger
+        # began by itself waits this long for a usable reading after a restart (`_take_over`).
+        self._first_evaluated_at: float | None = None
         self._solar: SolarController | None = None
         self._site: SiteCapacityController | None = None
         self._site_unsub: Callable[[], None] | None = None
@@ -684,6 +690,8 @@ class SolarExecutionCoordinator:
             # Before the charger's saved state is back, who started a charge and a person's Stop are
             # unknown: nothing is decided on them (the site's next recompute evaluates again).
             return
+        if self._first_evaluated_at is None:
+            self._first_evaluated_at = self._now()
         settings = self._store.settings(self._charger_entry_id)
         if settings.strategy in (STRATEGY_SOLAR, STRATEGY_HYBRID):
             self._strategy = settings.strategy
@@ -746,8 +754,14 @@ class SolarExecutionCoordinator:
         if self._solar is None:
             self._solar = self._build_controller(site)
         if not held_by_plan and not pause_blocks_execution(settings):
-            await self._take_over(site)
             self._maybe_clear_ended(self._solar)
+            if await self._take_over(site):
+                # A charge the charger began by itself was decided this tick (kept, stopped, or waiting
+                # for its first reading after a restart).
+                if settings.strategy == STRATEGY_HYBRID:
+                    await self._async_recalculate_hybrid_preview()
+                site.notify_solar_surplus_changed()
+                return
             ended = self._watch_charge(self._solar, self._now())
             if ended is not None:
                 # The charge ended without solar: a stop forgets who started it (and ends a charge the car
@@ -755,18 +769,7 @@ class SolarExecutionCoordinator:
                 await self._apply_verdict(ended)
                 self._log_transition(ended)
                 self._record_verdict(ended, held_by_plan=False)
-        observation = _build_observation(
-            site,
-            self._charger_entry_id,
-            now=self._now(),
-            effective_phases=effective_phases(self._hass, self._charger_entry_id),
-            charger_idle=self._charger_idle(),
-        )
-        share_adjust_w = self._share_adjust_w(site, observation)
-        if share_adjust_w:
-            observation = replace(observation, share_adjust_w=share_adjust_w)
-        if self._unmeasured_start_allowed(site, now=observation.now):
-            observation = replace(observation, unmeasured_start_allowed=True)
+        observation = self._observation(site, self._now())
         verdict = self._solar.observe(observation)
         await self._keep_credit_backoff(self._solar)
         await self._keep_ended(self._solar)
@@ -792,6 +795,23 @@ class SolarExecutionCoordinator:
         # asks the site to render again (see
         # `SiteCapacityController.notify_solar_surplus_changed`).
         site.notify_solar_surplus_changed()
+
+    def _observation(self, site: SiteCapacityController, now: float) -> SolarObservation:
+        """This tick's observation for the controller, with the site's priority split and whether a blind
+        start may go ahead."""
+        observation = _build_observation(
+            site,
+            self._charger_entry_id,
+            now=now,
+            effective_phases=effective_phases(self._hass, self._charger_entry_id),
+            charger_idle=self._charger_idle(),
+        )
+        share_adjust_w = self._share_adjust_w(site, observation)
+        if share_adjust_w:
+            observation = replace(observation, share_adjust_w=share_adjust_w)
+        if self._unmeasured_start_allowed(site, now=observation.now):
+            observation = replace(observation, unmeasured_start_allowed=True)
+        return observation
 
     def _charger_idle(self) -> bool:
         """Whether the charger is not charging: no Start on its way, and neither its charging state nor its
@@ -1047,55 +1067,60 @@ class SolarExecutionCoordinator:
             config_kwargs["max_current_a"] = float(max_current_a)
         return SolarConfig(**config_kwargs)
 
-    async def _take_over(self, site: SiteCapacityController) -> None:
-        """Take over a charge the charger began by itself (at plug-in, say) while solar is not running
-        one: from now on solar's rules decide it, as for a charge solar started. It is regulated to the
-        surplus, at the minimum current at once when there is too little for more, and stopped after
-        `stop_delay_s` when the surplus does not come back (no `min_on_s`: solar never started it). A
-        person's Start, a plan window's charge and one a person started again after a hold or their
-        own Stop are never taken.
+    async def _take_over(self, site: SiteCapacityController) -> bool:
+        """Decide a charge the charger began by itself (at plug-in, say) while solar is not running one,
+        on the first usable reading (`SolarController.take_over`): it never had a surplus, so there is no
+        cloud to ride out. A surplus that covers the start minimum keeps it as solar's own charge, at the
+        start minimum and verified as a start is (no `min_on_s`: solar never started it). Anything less,
+        or no usable reading of the site or of the charger's own current, stops it at once, through a
+        stop decided again under the executor's lock. Only for `MEASUREMENT_WARNING_GRACE_S` after this
+        coordinator first evaluated (a restart: the readings may not be back yet) does a missing reading
+        wait instead. A person's Start, a plan window's charge, a top-off and one a person started again
+        after a hold or their own Stop are never taken (`ChargingController.self_started_charge`).
+        Returns whether it decided this tick.
         """
         solar = self._solar
         if solar is None or solar.running or not self._controller.self_started_charge():
-            return
+            return False
         now = self._now()
-        config = solar.config
-        solar.adopt(now, requested_a=None, on_since=now - config.min_on_s)
-        self._took_over = True
-        _LOGGER.info(
-            "SpotNav charger %s: a charge the charger began by itself is taken over by the sun's rules",
-            self._charger_entry_id,
-        )
+        started_at = self._first_evaluated_at
+        starting_up = started_at is not None and now - started_at < MEASUREMENT_WARNING_GRACE_S
+        observation = self._observation(site, now)
+        verdict = solar.take_over(observation, wait_for_reading=starting_up)
+        basis = solar_basis(site, self._charger_entry_id, observation)
+        if verdict.action == "hold":
+            # Waiting for the first reading after a restart: nothing is changed on the charger.
+            self._update_state(verdict, site, basis=basis)
+            self._log_transition(verdict)
+            self._record_verdict(verdict, held_by_plan=False)
+            return True
         self._record_decision(state="on", action="take_over", reason="take_over")
-        observation = _build_observation(
-            site,
-            self._charger_entry_id,
-            now=now,
-            effective_phases=effective_phases(self._hass, self._charger_entry_id),
-        )
-        breakdown = surplus_breakdown(observation, solar.priority_now(now))
-        if breakdown is None:
-            return
-        watts_per_a = len(observation.car_phases) * breakdown.mean_voltage_v
-        assert config.stop_a is not None
-        if watts_per_a > 0 and breakdown.available_w / watts_per_a < config.stop_a:
-            # Too little for the charge: down to the minimum while the stop delay runs, rather than
-            # the full current it began at.
-            minimum = config.min_current_a
-            solar.adopt(now, requested_a=minimum, on_since=now - config.min_on_s)
-            await self._executor.async_solar_set_current(int(minimum))
-            self._record_decision(
-                state="on",
-                action="set_current",
-                reason="take_over",
-                requested_a=minimum,
-                available_w=breakdown.available_w,
-                export_w=breakdown.export_w,
-                battery_w=breakdown.battery_w,
-                net_grid_w=breakdown.net_grid_w,
-                car_w=breakdown.car_w,
-                priority=breakdown.priority_effective,
+        if verdict.action == "stop":
+            self._took_over = False
+            if not await self._executor.async_solar_take_over_stop():
+                # Under the lock it was no longer the charger's own charge to decide (a person's Start, a
+                # plan window): left alone, and the next tick decides from there.
+                _LOGGER.info(
+                    "SpotNav charger %s: a charge the charger began by itself is no longer solar's to stop",
+                    self._charger_entry_id,
+                )
+                return True
+            _LOGGER.info(
+                "SpotNav charger %s: a charge the charger began by itself is stopped at once (%s)",
+                self._charger_entry_id,
+                verdict.reason,
             )
+        else:
+            self._took_over = True
+            _LOGGER.info(
+                "SpotNav charger %s: a charge the charger began by itself is kept on the sun's surplus",
+                self._charger_entry_id,
+            )
+            await self._apply_verdict(verdict)
+        self._update_state(verdict, site, basis=basis)
+        self._log_transition(verdict)
+        self._record_verdict(verdict, held_by_plan=False)
+        return True
 
     def _build_controller(self, site: SiteCapacityController) -> SolarController:
         solar = SolarController(self._solar_config(site))
@@ -1106,7 +1131,9 @@ class SolarExecutionCoordinator:
         solar.seed_credit_backoff(now, remaining, next_s)
         # So does a charge the car ended by itself, and what it ended at (`_keep_ended`).
         self._seed_ended(solar, now)
-        if self._controller.charging:
+        if self._controller.charging and not self._controller.self_started_charge():
+            # A charge found running (a restart, a strategy switch) is adopted, never cycled; one the charger
+            # began by itself is not: `_take_over` decides it on its first reading.
             _adopt_running(solar, now=now)
         return solar
 

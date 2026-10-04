@@ -118,9 +118,10 @@ cannot, and for a direct site without the total it says the meter's total grid p
   start that counted a charging house battery is stopped at once if the battery then turns to feed
   the car, and a charging battery is not counted again for ten minutes (twice as long after each
   such start, up to four hours). A discharging battery never counts as surplus.
-- A charge the charger begins by itself (at plug-in, say) is taken over: its current follows the
-  surplus, down to the minimum at once when there is too little, and it stops when the surplus does
-  not come back. A charge you start with **Start** is yours and is left alone.
+- A charge the charger begins by itself (at plug-in, say) is decided on the first reading: with a
+  surplus for the minimum current it is kept as a solar charge at the minimum and checked like a start,
+  otherwise (or with no usable reading) it is stopped at once, with no fading time to ride out. A
+  charge you start with **Start** is yours and is left alone.
 - After you press **Stop**, the sun does not start the charge again until the car is plugged in
   again, you press **Start** (or follow the plan again) or a planned period begins, also after a
   restart; the status says so, and for a charger that cannot tell when a car is plugged in it names
@@ -156,5 +157,5 @@ cheapest.
   reads *Hybrid · 0 kWh from grid, … kWh expected from sun*, and the next replan buys again if the
   forecast drops.
 - Outside a planned period the sun's rules above own the charger, also when there is no plan at all
-  because the sun covers the need: a charge the charger began by itself is taken over and follows the
-  surplus, and a Stop sticks as under Solar.
+  because the sun covers the need: a charge the charger began by itself is kept or stopped at once,
+  and a Stop sticks, as under Solar.

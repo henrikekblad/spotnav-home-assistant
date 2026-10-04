@@ -64,6 +64,11 @@ tried again after `ended_retry_s`, doubling with each charge it ends up to `ende
 its own limit not at all, until the caller clears it (`clear_ended`: a re-plug, a lower state of charge, a
 higher limit or target). Anything else that ended it (`charger_stopped`) is an ordinary stop.
 
+A charge the charger began by itself (at plug-in, say) is the caller's to hand in through `take_over`, and
+is decided on the first usable reading: it never had a surplus, so it gets no stop delay to ride out a
+cloud. A surplus that covers the start minimum keeps it, as a start at the start minimum with its
+verification; anything less, or no usable reading, stops it at once.
+
 Freshness: a `None` where a reading is needed means no basis this tick. From
 `off` or `arming` that means never start; a running charge is kept for
 `stale_grace_s`. Stale ticks neither advance nor reset the timers.
@@ -519,6 +524,51 @@ class SolarController:
         self._stale_since = None
         self._verify_until = None
         self._credited_start = False
+
+    def take_over(self, observation: SolarObservation, *, wait_for_reading: bool = False) -> SolarVerdict:
+        """Decide at once, on this observation, a charge the charger began by itself (at plug-in, say)
+        while this controller runs none (module docstring). It never had a surplus, so there is no cloud
+        to ride out. A surplus that covers the start minimum makes it this controller's own charge,
+        asked for the start minimum and verified as a start is, with no `min_on_s` (solar never started
+        it). Short of that it is stopped now (`off_no_surplus`), and with no usable reading too
+        (`no_basis_stopped`): the safe side of a charge nobody asked for is not charging. Only
+        `wait_for_reading` (the readings may not be back yet after a restart) holds it instead
+        (`no_basis_off`, nothing changed), and the caller asks again. A stop here starts `min_off_s` as
+        any stop does."""
+        now = observation.now
+        cfg = self._config
+        assert cfg.start_a is not None
+        available_a = self._refresh_breakdown(observation)
+        if available_a is None:
+            if wait_for_reading:
+                return self._verdict("hold", None, "no_basis_off")
+            return self._stop_taken_over(now, "no_basis_stopped")
+        self._stale_since = None
+        if available_a < cfg.start_a:
+            return self._stop_taken_over(now, "off_no_surplus")
+        self._state = "on"
+        self._on_since = now - cfg.min_on_s
+        self._arming_since = None
+        self._disarming_since = None
+        self._import_since = None
+        requested = self._clamp_request(cfg.start_a)
+        self._last_requested_a = requested
+        self._verify_until = now + cfg.verify_s
+        self._credited_start = self._battery_credited()
+        return self._verdict("set_current", requested, "start_verifying")
+
+    def _stop_taken_over(self, now: float, reason: SolarReason) -> SolarVerdict:
+        """`off` from `now`, with the stop of a charge `take_over` found nothing to keep it on."""
+        self._state = "off"
+        self._last_stop_at = now
+        self._on_since = None
+        self._arming_since = None
+        self._disarming_since = None
+        self._import_since = None
+        self._last_requested_a = None
+        self._verify_until = None
+        self._credited_start = False
+        return self._verdict("stop", None, reason)
 
     def observe(self, observation: SolarObservation) -> SolarVerdict:
         """Update state from one observation and return its verdict."""
