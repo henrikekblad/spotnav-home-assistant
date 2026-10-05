@@ -603,6 +603,8 @@ export const sv: Record<keyof typeof en, string> = {
     "imorgon",
   "settings.deadline.periods":
     "Högsta antal laddperioder",
+  "settings.deadline.periodsValue.one": "{count} period",
+  "settings.deadline.periodsValue.other": "{count} perioder",
   "settings.current.title":
     "Planerad ström",
   "settings.current.intro":
@@ -676,11 +678,9 @@ export const sv: Record<keyof typeof en, string> = {
   "settings.error.readOnly":
     "Bara administratörer kan ändra inställningar.",
   "settings.energy.slider":
-    "Energireglage, 0,5 till 100 kWh i halvkWh-steg",
+    "Energireglage, {min} till {max} kWh i halvkWh-steg",
   "settings.current.slider":
     "Strömreglage, {min} till {max} A i hela ampere",
-  "settings.sliderOutOfRange":
-    "Det exakta värdet ligger utanför reglagets intervall. Använd sifferfältet.",
   "settings.current.power":
     "Nominell effekt ≈ {power} kW",
   "settings.current.powerUnknown":

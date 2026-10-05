@@ -734,21 +734,6 @@ export const CURRENT_SLIDER_STEP_A = 1;
 const STEP_EPSILON = 1e-9;
 
 /**
- * Whether a slider with this step can represent an exact value.
- *
- * HTML anchors the step grid at the slider's minimum, so a half-kWh slider cannot show `20.25`. A
- * representable value is drawn on the slider; otherwise the slider is disabled and marked while the
- * exact number field keeps the value. Nothing is clamped or rounded.
- */
-export function sliderRepresents(value: number, minimum: number, step: number): boolean {
-  if (!Number.isFinite(value) || value < minimum) {
-    return false;
-  }
-  const steps = (value - minimum) / step;
-  return Math.abs(steps - Math.round(steps)) < STEP_EPSILON;
-}
-
-/**
  * The energy slider's domain for an exact value: the ordinary interval, extended upward to include a
  * representable value above it, so a stored `150` is drawn where it is. `top` is the ordinary top when the
  * battery's room is known (`energyFillTop`); without it the ordinary top is 100 kWh. A stored value above

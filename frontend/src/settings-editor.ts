@@ -1,11 +1,11 @@
-// The three focused planning editors as standards-based controls (`input type="number"`, `"time"`,
+// The three focused planning editors as standards-based controls (`input type="range"`, `"time"`,
 // `"checkbox"`; no private Home Assistant components). One module for each resting trigger and the
 // dialog body it opens. Nothing here talks to the backend or judges a value; `settings.ts` and the
 // card own every judgement and request.
 
 import { ageSentence as sharedAgeSentence } from "./vehicle-line";
 import { energyAmount, formatFixed, formatNumber, percentAmount } from "./format";
-import { translate, type Language, type TranslationKey } from "./i18n";
+import { pluralForm, translate, type Language, type TranslationKey } from "./i18n";
 import {
   CURRENT_SLIDER_STEP_A,
   ENERGY_SLIDER_MIN_KWH,
@@ -17,7 +17,6 @@ import {
   energyFillTop,
   energySliderMaximum,
   nominalPowerKw,
-  sliderRepresents,
   type CurrentRange,
   type DepartureDays,
   type SettingsEditorKind,
@@ -156,20 +155,6 @@ function checkboxField(doc: Document, id: string, labelText: string, control: HT
   return wrapper;
 }
 
-function numberInput(
-  doc: Document,
-  options: { min: number; max: number; step: number | "any"; value: string },
-): HTMLInputElement {
-  const input = doc.createElement("input") as HTMLInputElement;
-  input.type = "number";
-  input.min = String(options.min);
-  input.max = String(options.max);
-  input.step = String(options.step);
-  input.value = options.value;
-  input.inputMode = "decimal";
-  input.className = C.settingsInput;
-  return input;
-}
 function rangeInput(
   doc: Document,
   options: { min: number; max: number; step: number; value: number; label: string },
@@ -183,80 +168,6 @@ function rangeInput(
   input.value = String(options.value);
   input.setAttribute("aria-label", options.label);
   return input;
-}
-
-/**
- * One slider and its exact number field, synchronized. The pair is presentation only and sends
- * nothing. The number field is the authority a Save reads, so the slider never clamps or rounds: a
- * value it cannot represent leaves it disabled and marked while the field keeps the value.
- */
-function pairedControls(
-  doc: Document,
-  language: Language,
-  options: {
-    id: string;
-    labelText: string;
-    sliderLabel: string;
-    minimum: number;
-    step: number;
-    maximumOf: (value: number) => number;
-    unit: string;
-    input: HTMLInputElement;
-    readOnly: boolean;
-    onChange: () => void;
-  },
-): { field: HTMLElement; slider: HTMLInputElement } {
-  const number = options.input;
-  number.step = "any";
-  number.min = String(options.minimum);
-  const markId = `${options.id}-slider-mark`;
-  const mark = element(doc, "p", C.settingsNote, translate(language, "settings.sliderOutOfRange"));
-  mark.id = markId;
-  const readNumber = (): number => Number(number.value.trim().replace(",", "."));
-  const slider = rangeInput(doc, {
-    min: options.minimum,
-    max: options.maximumOf(readNumber()),
-    step: options.step,
-    value: options.minimum,
-    label: options.sliderLabel,
-  });
-  slider.setAttribute("aria-describedby", markId);
-
-  const paint = (): void => {
-    const value = readNumber();
-    const maximum = options.maximumOf(value);
-    const represents = sliderRepresents(value, options.minimum, options.step) && value <= maximum;
-    slider.max = String(maximum);
-    slider.value = represents ? String(value) : String(options.minimum);
-    slider.disabled = options.readOnly || !represents;
-    mark.hidden = represents || options.readOnly;
-    options.onChange();
-  };
-
-  slider.addEventListener("input", () => {
-    number.value = slider.value;
-    options.onChange();
-  });
-  number.addEventListener("input", () => {
-    paint();
-  });
-
-  const pair = element(doc, "div", C.settingsPair);
-  const unit = element(doc, "span", C.settingsUnit, options.unit);
-  pair.append(slider, number, unit);
-  pair.append(mark);
-  if (options.readOnly) {
-    number.disabled = true;
-  }
-  const fieldNode = element(doc, "div", C.settingsField);
-  fieldNode.setAttribute("role", "group");
-  fieldNode.setAttribute("aria-labelledby", `${options.id}-label`);
-  const label = element(doc, "label", C.settingsLabel, options.labelText);
-  label.id = `${options.id}-label`;
-  label.setAttribute("for", number.id);
-  fieldNode.append(label, pair);
-  paint();
-  return { field: fieldNode, slider };
 }
 
 /**
@@ -282,7 +193,8 @@ function nearestStep(value: number, minimum: number, step: number, maximum: numb
 }
 
 /**
- * A field whose only control is its slider (the requested energy, the charge target), as the app draws it:
+ * A field whose only control is its slider (the requested energy, the charge target, the charging periods,
+ * the planned current), as the app draws it:
  * the label and the value the slider stands for share one row, the value at its end, and the slider takes
  * the full width under them, in a track a mark can be drawn on. The slider opens at the step nearest
  * `value`; the caller keeps the exact value and writes the text with `show`.
@@ -370,19 +282,14 @@ export function settingsEditorBody(
     dateInput.max = form.days.max;
   }
   dateInput.value = form.values.departureDate;
-  const periodsInput = rangeInput(doc, {
-    min: PERIODS_MIN,
-    max: PERIODS_MAX,
-    step: 1,
-    value: Number(form.values.maxPeriods),
-    label: translate(language, "settings.deadline.periods"),
-  });
-  const currentInput = numberInput(doc, {
-    min: form.currentRange.minA,
-    max: form.currentRange.maxA,
-    step: 1,
-    value: form.values.current,
-  });
+  // The charging periods and the planned current exactly as stored, until their sliders move: like the
+  // energy, neither has a number field, and a Save that does not move them keeps them as they are.
+  let periodsValue = form.values.maxPeriods;
+  let currentValue = form.values.current;
+  const storedNumber = (text: string): number => {
+    const trimmed = text.trim();
+    return trimmed === "" ? Number.NaN : Number(trimmed.replace(",", "."));
+  };
 
   const appendEnergy = (into: HTMLElement = body): void => {
     if (form.energyReadOnly && form.kind !== "plan") {
@@ -432,13 +339,18 @@ export function settingsEditorBody(
     // Where the slider stands on opening: the last step for a stored Fill, else the step nearest the stored
     // amount, on a track that reaches a stored amount above its ordinary top. Moving it never shrinks that.
     const opensFilled = atFill() && top !== null;
+    const maximum = opensFilled ? top : energySliderMaximum(stored(), top);
     const row = sliderRow(doc, {
       id,
       labelText: translate(language, "settings.energy.label"),
-      sliderLabel: translate(language, "settings.energy.slider"),
+      // The slider's own range, its top the Fill top (or a stored amount above it) rather than 100 kWh.
+      sliderLabel: translate(language, "settings.energy.slider", {
+        min: formatNumber(language, minimum, 1),
+        max: formatNumber(language, maximum, 1),
+      }),
       minimum,
       step: ENERGY_SLIDER_STEP_KWH,
-      maximum: opensFilled ? top : energySliderMaximum(stored(), top),
+      maximum,
       value: opensFilled ? top : stored(),
       readOnly: form.readOnly,
       part: "energy-value",
@@ -602,7 +514,6 @@ export function settingsEditorBody(
   const appendDeadline = (): void => {
     enabledInput.disabled = form.readOnly;
     timeInput.disabled = form.readOnly;
-    periodsInput.disabled = form.readOnly;
     body.append(
       checkboxField(doc, `${idPrefix}-deadline-enabled`, translate(language, "settings.deadline.enabled"), enabledInput),
     );
@@ -616,19 +527,34 @@ export function settingsEditorBody(
       departure.hidden = !enabledInput.checked;
     });
     body.append(departure);
-    const periodsValue = element(doc, "output", C.settingsUnit, periodsInput.value);
-    periodsValue.dataset["periodsValue"] = "true";
-    periodsInput.addEventListener("input", () => {
-      periodsValue.textContent = periodsInput.value;
+    const periodsRow = sliderRow(doc, {
+      id: `${idPrefix}-deadline-periods`,
+      labelText: translate(language, "settings.deadline.periods"),
+      sliderLabel: translate(language, "settings.deadline.periods"),
+      minimum: PERIODS_MIN,
+      step: 1,
+      maximum: PERIODS_MAX,
+      value: storedNumber(periodsValue),
+      readOnly: form.readOnly,
+      part: "periods-value",
     });
-    const periodsPair = element(doc, "div", C.settingsPair);
-    periodsPair.append(periodsInput, periodsValue);
-    periodsInput.id = `${idPrefix}-deadline-periods`;
-    const periodsLabel = element(doc, "label", C.settingsLabel, translate(language, "settings.deadline.periods"));
-    periodsLabel.setAttribute("for", periodsInput.id);
-    const periodsBlock = element(doc, "div", C.settingsField);
-    periodsBlock.append(periodsLabel, periodsPair);
-    body.append(periodsBlock);
+    // "3 periods", in the reader's own plural rule.
+    const showPeriods = (): void => {
+      const count = storedNumber(periodsValue);
+      periodsRow.show(
+        Number.isFinite(count)
+          ? translate(language, `settings.deadline.periodsValue.${pluralForm(language, count)}` as TranslationKey, {
+              count: formatNumber(language, count, 3),
+            })
+          : translate(language, "settings.value.unset"),
+      );
+    };
+    periodsRow.slider.addEventListener("input", () => {
+      periodsValue = periodsRow.slider.value;
+      showPeriods();
+    });
+    showPeriods();
+    body.append(periodsRow.group);
   };
 
   // The phases a charge uses are not chosen here: the charger's wiring and the vehicle's onboard charger decide
@@ -637,11 +563,10 @@ export function settingsEditorBody(
     translate(language, count === 1 ? "settings.phases.one" : "settings.phases.three");
 
   const appendCurrent = (): void => {
-    currentInput.disabled = form.readOnly;
     const power = element(doc, "p", C.settingsPower);
     power.setAttribute("aria-live", "polite");
     const paintPower = (): void => {
-      const amps = Number(currentInput.value.trim().replace(",", "."));
+      const amps = storedNumber(currentValue);
       const phases = form.phases;
       const nominal = nominalPowerKw(amps, phases);
       power.dataset["phases"] = phases === null ? "" : String(phases);
@@ -658,22 +583,35 @@ export function settingsEditorBody(
               power: formatNumber(language, nominal, 1),
             });
     };
-    const paired = pairedControls(doc, language, {
+    const currentRow = sliderRow(doc, {
       id: `${idPrefix}-current`,
       labelText: translate(language, "settings.current.label"),
       sliderLabel: translate(language, "settings.current.slider", {
-        min: String(form.currentRange.minA),
-        max: String(form.currentRange.maxA),
+        min: formatNumber(language, form.currentRange.minA, 0),
+        max: formatNumber(language, form.currentRange.maxA, 0),
       }),
       minimum: form.currentRange.minA,
       step: CURRENT_SLIDER_STEP_A,
-      maximumOf: () => form.currentRange.maxA,
-      unit: "A",
-      input: currentInput,
+      maximum: form.currentRange.maxA,
+      value: storedNumber(currentValue),
       readOnly: form.readOnly,
-      onChange: paintPower,
+      part: "current-value",
     });
-    body.append(paired.field);
+    // The current as stored, exactly (`10 A`, a stored `80 A` outside the charger's range), or as the slider
+    // sets it once moved.
+    const showCurrent = (): void => {
+      const amps = storedNumber(currentValue);
+      currentRow.show(
+        Number.isFinite(amps) ? `${formatNumber(language, amps, 3)} A` : translate(language, "settings.value.unset"),
+      );
+    };
+    currentRow.slider.addEventListener("input", () => {
+      currentValue = currentRow.slider.value;
+      showCurrent();
+      paintPower();
+    });
+    showCurrent();
+    body.append(currentRow.group);
     body.append(power);
     if (form.limitedBy === "vehicle") {
       const reason = element(doc, "p", C.settingsNote, translate(language, "settings.phases.limitedByVehicle"));
@@ -960,8 +898,8 @@ export function settingsEditorBody(
         .map((check) => check.value)
         .join("");
     }
-    values.maxPeriods = periodsInput.value;
-    values.current = currentInput.value;
+    values.maxPeriods = periodsValue;
+    values.current = currentValue;
     if (form.kind === "plan") {
       values.driver = socRadio.checked ? "target_soc" : "manual_kwh";
       values.targetPercent = targetValue;

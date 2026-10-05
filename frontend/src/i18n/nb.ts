@@ -603,6 +603,8 @@ export const nb: Record<keyof typeof en, string> = {
     "i morgen",
   "settings.deadline.periods":
     "Høyeste antall ladeperioder",
+  "settings.deadline.periodsValue.one": "{count} periode",
+  "settings.deadline.periodsValue.other": "{count} perioder",
   "settings.current.title":
     "Planlagt strøm",
   "settings.current.intro":
@@ -676,11 +678,9 @@ export const nb: Record<keyof typeof en, string> = {
   "settings.error.readOnly":
     "Bare administratorer kan endre innstillinger.",
   "settings.energy.slider":
-    "Energiskyver, 0,5 til 100 kWh i halvkWh-trinn",
+    "Energiskyver, {min} til {max} kWh i halvkWh-trinn",
   "settings.current.slider":
     "Strømglidebryter, {min} til {max} A i hele ampere",
-  "settings.sliderOutOfRange":
-    "Den eksakte verdien er utenfor skyverens område. Bruk tallfeltet.",
   "settings.current.power":
     "Nominell effekt ≈ {power} kW",
   "settings.current.powerUnknown":
