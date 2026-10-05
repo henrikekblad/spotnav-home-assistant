@@ -228,8 +228,8 @@ client also notices a changed area list without polling `areas.json` often.
       "minor_unit": "öre",
       "vat_percent": 25,
       "suggested_tax": 36,
-      "publication": { "time": "13:00", "tz": "Europe/Brussels" },
       "suggested_grid_fee": 30,
+      "publication": { "time": "13:00", "tz": "Europe/Brussels" },
       "source": { "name": "ENTSO-E Transparency Platform", "url": "https://transparency.entsoe.eu/" }
     }
   ]
