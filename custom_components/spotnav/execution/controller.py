@@ -2144,7 +2144,8 @@ class ChargingController:
                     self._paused_charge = None
                 return False
             self._held_for_safety = False
-            if origin is not None or plan_charge:
+            # A charge the charger began by itself stays its own (no origin), not a start with no cause.
+            if (self._charge_origin, self._plan_charge) != (origin, plan_charge):
                 self._charge_origin, self._plan_charge = origin, plan_charge
                 if self._start_cause is not None and origin is not None:
                     self._start_cause = (origin, self._start_cause[1])
