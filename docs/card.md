@@ -40,6 +40,10 @@ The graph shows the price of every interval, in the price area's currency per kW
 - Touch or hover an interval to read its price. With the keyboard, the arrow keys step through the
   intervals, Home and End jump to the ends, and Escape clears the selection. Times follow the
   price area's time zone, and the autumn hour that repeats is shown with its offset.
+- Press the summary line to fold the graph into a slim strip of the same day: the charging
+  periods as bars (the ones already over dimmed), the line for now and the hours under it. Press it
+  again to open the graph. The choice is remembered per charger in that browser. To start folded
+  where nothing is remembered yet, add `chart: compact` to the card's YAML.
 
 ## The plan
 
