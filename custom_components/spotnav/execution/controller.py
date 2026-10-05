@@ -23,7 +23,7 @@ from datetime import datetime, timedelta
 from typing import Any, AsyncContextManager, Final, Literal, Protocol
 
 from homeassistant.const import STATE_UNAVAILABLE, STATE_UNKNOWN
-from homeassistant.core import callback, Event, EventStateChangedData, HomeAssistant, State
+from homeassistant.core import callback, Event, EventStateChangedData, HassJob, HomeAssistant, State
 from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers.event import (
     async_call_later,
@@ -98,7 +98,7 @@ from .target_stop import (
 from . import top_off
 from .window_hold import HOLD, OVERRIDE, WindowHold
 from ..core import events as core_events
-from ..core.session import ChargeSession
+from ..core.session import ChargeSession, SessionError
 from . import ownership_shadow as ownership_shadow_module
 from .ownership_shadow import (
     CommandOutcome,
@@ -115,6 +115,12 @@ _LOGGER = logging.getLogger(__name__)
 #: How often a charge is looked at for the phases it uses.
 PHASE_SAMPLE_INTERVAL = timedelta(seconds=30)
 STORE_VERSION = 1
+#: The store key of the core's own session record (`ChargeSession.to_store`), kept beside today's keys while the core
+#: drives (`CONF_CORE_OWNERSHIP`); today's keys are still written too.
+SESSION_STORE_KEY = "charge_session"
+#: A change of the core's session that no save of today's keys carried is saved this long after it, once: never at
+#: every report.
+SESSION_SAVE_DELAY_S = 30.0
 
 #: How long an accepted Start counts as the cause of the charge that follows it (the charge session record).
 START_CAUSE_TTL_S = 300.0
@@ -763,7 +769,15 @@ class ChargingController:
         # The manual pause the core decided for the plug-in or unplug being told (`core_connection_manual`).
         self._core_connection_manual: Any = ...
         self._core_hold_verdict: frozenset[tuple[str, str]] | None = None
-        self._shadow = OwnershipShadow(self._shadow_session, drives=self._core_drives, writer=self._take_core_owner)
+        # The core's session as last saved (`SESSION_STORE_KEY`), and the debounced save of a change (`_persist_session`).
+        self._session_saved: ChargeSession | None = None
+        self._session_save_cancel: Callable[[], None] | None = None
+        self._shadow = OwnershipShadow(
+            self._shadow_session,
+            drives=self._core_drives,
+            writer=self._take_core_owner,
+            persist=self._persist_session,
+        )
         self._shadow.today_fields = lambda: f"origin={self._charge_origin} plan_charge={self._plan_charge}"
 
     async def async_initialize(self) -> None:
@@ -883,12 +897,19 @@ class ChargingController:
                     self._probe_record.get("remembered"),
                 )
         self._saved_memory = self._memory_signature()
-        # The core's session is what was read back, as the core would read its own record.
+        stored, migrate = self._stored_session(saved)
+        # The core's session is what was read back: its own record when it drives and one was read, else today's.
         self._shadow.restart(
             core_events.Restart(
                 legacy_person_stop=self._legacy_person_stopped and self._automatic_gate is not None
-            )
+            ),
+            stored,
         )
+        if stored is not None:
+            self._session_saved = stored
+        if migrate:
+            # Read from today's keys once: the core's own record is written now, beside them.
+            await self._async_save_session()
         await self._reschedule_locked()
         # Armed for the controller's whole life, not only while a plan is: a manual Start has no
         # plan, and a scheduled one is observed from acceptance.
@@ -3175,6 +3196,9 @@ class ChargingController:
     async def _shutdown_locked(self) -> None:
         """The shutdown itself. Runs with the operation lock held."""
         self._cancel_timers()
+        if self._cancel_session_save():
+            # A change of the core's session still waiting for its debounced save.
+            await self._async_save_session()
         self._cancel_stop_retry()
         self._cancel_person_hold_retry()
         # A top-off's deadline stays stored: the next start resumes it or ends it.
@@ -3367,44 +3391,137 @@ class ChargingController:
 
     async def _async_save(self) -> None:
         signature = self._memory_signature()
-        await self._store.async_save(
-            {
-                "plan": asdict(self.plan) if self.plan else None,
-                "requested_current_a": self._requested_current_a,
-                "plan_charge": self._plan_charge,
-                "charge_origin": self._charge_origin,
-                "plugged_in_at": None if self._plugged_in_at is None else self._plugged_in_at.isoformat(),
-                # Written only by the target-stop path. A window ending normally and an explicit cancel
-                # record nothing here (`async_stop` does not touch this key).
-                "target_stop": self._target_stop,
-                # The deadline of a top-off that runs past the last window, else `None`.
-                "top_off_until": None if self._top_off_until is None else self._top_off_until.isoformat(),
-                # When the car last ended a person's charge by itself, in this plug-in.
-                "car_ended_at": None if self._car_ended_at is None else self._car_ended_at.isoformat(),
-                "car_ended_soc": self._car_ended_soc,
-                "car_ended_vehicle": self._car_ended_vehicle,
-                # A charge load balancing paused, and what it was, so its regulator resumes it after a restart.
-                "balancing_pause": None
-                if not self._paused_by_balancing
-                else {
-                    "origin": None if self._paused_charge is None else self._paused_charge[0],
-                    "plan_charge": bool(self._paused_charge is not None and self._paused_charge[1]),
-                },
-                # The hold's plug-in session: held, and a person's override of it.
-                "hold": {"held": self._hold.held, "overridden": self._hold.overridden},
-                # What the start/stop path remembers (an Easee pause of ours).
-                "adapter_memory": self.adapter.memory(),
-                "solar_credit_backoff": {
-                    "until": None if self._credit_backoff_until is None else self._credit_backoff_until.isoformat(),
-                    "next_s": self._credit_backoff_next_s,
-                },
-                "solar_car_ended": self._solar_car_ended,
-                # The pilot-floor probe's record; written only through its host interface, absent until
-                # the probe has started.
-                STORE_KEY: self._probe_record,
-            }
-        )
+        record = self._store_record()
+        session = self._session_record()
+        if session is not None:
+            record[SESSION_STORE_KEY] = session[1]
+        elif self._core_drives and self._session_saved is not None:
+            # Unreadable now: the record saved last is kept, not dropped.
+            record[SESSION_STORE_KEY] = self._session_saved.to_store()
+        await self._store.async_save(record)
         self._saved_memory = signature
+        if session is not None:
+            self._session_saved = session[0]
+            self._cancel_session_save()
+
+    def _store_record(self) -> dict[str, Any]:
+        """Today's keys, as saved."""
+        return {
+            "plan": asdict(self.plan) if self.plan else None,
+            "requested_current_a": self._requested_current_a,
+            "plan_charge": self._plan_charge,
+            "charge_origin": self._charge_origin,
+            "plugged_in_at": None if self._plugged_in_at is None else self._plugged_in_at.isoformat(),
+            # Written only by the target-stop path. A window ending normally and an explicit cancel
+            # record nothing here (`async_stop` does not touch this key).
+            "target_stop": self._target_stop,
+            # The deadline of a top-off that runs past the last window, else `None`.
+            "top_off_until": None if self._top_off_until is None else self._top_off_until.isoformat(),
+            # When the car last ended a person's charge by itself, in this plug-in.
+            "car_ended_at": None if self._car_ended_at is None else self._car_ended_at.isoformat(),
+            "car_ended_soc": self._car_ended_soc,
+            "car_ended_vehicle": self._car_ended_vehicle,
+            # A charge load balancing paused, and what it was, so its regulator resumes it after a restart.
+            "balancing_pause": None
+            if not self._paused_by_balancing
+            else {
+                "origin": None if self._paused_charge is None else self._paused_charge[0],
+                "plan_charge": bool(self._paused_charge is not None and self._paused_charge[1]),
+            },
+            # The hold's plug-in session: held, and a person's override of it.
+            "hold": {"held": self._hold.held, "overridden": self._hold.overridden},
+            # What the start/stop path remembers (an Easee pause of ours).
+            "adapter_memory": self.adapter.memory(),
+            "solar_credit_backoff": {
+                "until": None if self._credit_backoff_until is None else self._credit_backoff_until.isoformat(),
+                "next_s": self._credit_backoff_next_s,
+            },
+            "solar_car_ended": self._solar_car_ended,
+            # The pilot-floor probe's record; written only through its host interface, absent until
+            # the probe has started.
+            STORE_KEY: self._probe_record,
+        }
+
+    # ------------------------------------------------------------------ the core's stored session
+
+    def _session_record(self) -> tuple[ChargeSession, dict[str, Any]] | None:
+        """When the core drives: its session as a restart reads it back, and as stored. `None` when it does not
+        drive (nothing of it is written then), or the session could not be read (the last record saved stays)."""
+        if not self._core_drives:
+            return None
+        try:
+            stored = self._shadow.session.stored()
+            return stored, stored.to_store()
+        except Exception:  # noqa: BLE001 - the record is a safeguard, never a reason to fail a save
+            _LOGGER.debug("SpotNav charger %s: the charge session could not be stored", self.entry_id, exc_info=True)
+            return None
+
+    def _stored_session(self, saved: dict[str, Any] | None) -> tuple[ChargeSession | None, bool]:
+        """When the core drives: its session as stored (`None`: none, or none it can read), and whether today's keys
+        are to be migrated into its record (one is missing, or of a version it does not know). Off, `(None, False)`:
+        today's restore exactly."""
+        if not self._core_drives:
+            return None, False
+        raw = saved.get(SESSION_STORE_KEY) if saved else None
+        if raw is None:
+            return None, bool(saved)
+        try:
+            return ChargeSession.from_store(raw), False
+        except SessionError as err:
+            _LOGGER.info(
+                "SpotNav charger %s: the stored charge session is not readable (%s); it is read from the older "
+                "keys again",
+                self.entry_id,
+                err,
+            )
+            return None, True
+
+    def _persist_session(self, session: ChargeSession) -> None:
+        """The core decided (`OwnershipShadow`, only when it drives): a session whose stored record changed is saved
+        once, `SESSION_SAVE_DELAY_S` later, with whatever else changed by then. A report that changes nothing stored
+        writes nothing, and many changes in a row are one save."""
+        if not self._restored or self._shut_down or self._session_save_cancel is not None:
+            return
+        if session.stored() == self._session_saved:
+            return
+        self._session_save_cancel = async_call_later(
+            self.hass, SESSION_SAVE_DELAY_S, HassJob(self._session_save_callback, cancel_on_shutdown=True)
+        )
+
+    def _cancel_session_save(self) -> bool:
+        """Cancel a debounced save of the core's session; whether one was waiting."""
+        cancel = self._session_save_cancel
+        self._session_save_cancel = None
+        if cancel is None:
+            return False
+        cancel()
+        return True
+
+    @callback
+    def _session_save_callback(self, _now: datetime) -> None:
+        self._session_save_cancel = None
+        self.hass.async_create_task(self._async_save_session_locked())
+
+    async def _async_save_session_locked(self) -> None:
+        async with self._lock:
+            if not self._shut_down:
+                await self._async_save_session()
+
+    async def _async_save_session(self) -> None:
+        """Write the core's session record alone, when it changed: today's keys stay as they were last saved (each
+        of today's own saves writes them, with the record as it is then). The operation lock is held."""
+        session = self._session_record()
+        if session is None or session[0] == self._session_saved:
+            return
+        try:
+            saved = await self._store.async_load()
+            record = dict(saved) if isinstance(saved, dict) else self._store_record()
+            record[SESSION_STORE_KEY] = session[1]
+            await self._store.async_save(record)
+        except Exception as err:  # noqa: BLE001 - the record is a safeguard, never a reason to fail
+            _LOGGER.warning("Saving the SpotNav charge session failed: %s", type(err).__name__)
+            return
+        self._session_saved = session[0]
 
     async def _reschedule_locked(self) -> None:
         """Arm the plan's timers, or clear a plan that is over. The lock is held.

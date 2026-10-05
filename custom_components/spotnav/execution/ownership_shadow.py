@@ -185,6 +185,7 @@ class OwnershipShadow:
         now: Callable[[], datetime] | None = None,
         drives: bool = False,
         writer: Callable[[ChargeSession], bool] | None = None,
+        persist: Callable[[ChargeSession], None] | None = None,
     ) -> None:
         SHADOWS.add(self)
         self._legacy = legacy
@@ -192,6 +193,9 @@ class OwnershipShadow:
         # today's owner fields, `writer`), or it only shadows (today's state stays the truth after a comparison).
         self.drives = drives
         self._writer = writer
+        # When the core drives: told the session after each decision, to keep it across a restart (debounced by the
+        # caller: a decision that leaves the stored record as it was writes nothing).
+        self._persist = persist
         self._now = now if now is not None else dt_util.utcnow
         self.session = ChargeSession()
         # Open feeds per asyncio task (`None`: a callback outside any task), and the tokens themselves.
@@ -241,10 +245,11 @@ class OwnershipShadow:
                 self._open.pop(other, None)
         return any(count > 0 for other, count in self._open.items() if other is not key)
 
-    def begin(self, early: Event | None = None) -> ShadowToken:
+    def begin(self, early: Event | None = None, *, line_up: bool = True) -> ShadowToken:
         """Before today's code acts. Never raises. When the core drives, an `early` event (one whose facts are all
         known before anything acts: a plug-in, a person's Start or Stop) is decided here, so what its effects do
-        meanwhile (a task Home Assistant starts eagerly inside it) is decided after it."""
+        meanwhile (a task Home Assistant starts eagerly inside it) is decided after it. `line_up=False` decides from
+        the core's own session as it is (a restart from the stored record)."""
         key = _task_key()
         depth = self._open.get(key, 0)
         others = self._others_open(key)
@@ -257,7 +262,8 @@ class OwnershipShadow:
             token = ShadowToken(key, True, lined_up=False)
         else:
             try:
-                self._line_up()
+                if line_up:
+                    self._line_up()
             except Exception:  # noqa: BLE001 - the shadow never raises into the real path
                 self._error("begin")
                 return ShadowToken(key, True, ok=False)
@@ -343,6 +349,7 @@ class OwnershipShadow:
             self._error(event.kind)
         finally:
             self._quiet = None
+        self._persisted()
 
     def feed(
         self,
@@ -356,15 +363,25 @@ class OwnershipShadow:
         decides with no state of its own changing (a hand-off at a window's end)."""
         self.end(self.begin(), event, legacy=legacy, outcome=outcome, fields=fields)
 
-    def restart(self, event: Event) -> None:
-        """The record was read back after a restart: the core's session is today's as read, and the restart is fed."""
+    def restart(self, event: Event, stored: ChargeSession | None = None) -> None:
+        """The record was read back after a restart, and the restart is fed. The core's session is today's as read;
+        when the core drives and its own stored record was read (`stored`), that record, decided from as it is and
+        then compared with today's. Whether the charger charges by itself is seen now, not stored: an owner of
+        nobody or of the charger itself is today's."""
+        from_store = stored is not None and self.drives
         try:
-            self.session = self._legacy()
+            today = self._legacy()
+            if stored is not None and from_store:
+                if {stored.owner, today.owner} <= {OWNER_NONE, OWNER_CHARGER_SELF}:
+                    stored = replace(stored, owner=today.owner)
+                self.session = stored
+            else:
+                self.session = today
             self._intent_deferred = False
         except Exception:  # noqa: BLE001 - the shadow never raises into the real path
             self._error("restart")
             return
-        self.feed(event)
+        self.end(self.begin(line_up=not from_store), event)
 
     def check(self, fields: tuple[str, ...], where: str) -> None:
         """Compare now, with no event: for an effect today's code makes later than the event that causes it (a
@@ -542,6 +559,16 @@ class OwnershipShadow:
         self.disagreements.append(disagreement)
         _LOGGER.debug("SpotNav ownership shadow: disagreement at %s: %s %s", where, differs, disagreement["commands"])
         self._tell("disagreement", disagreement)
+
+    def _persisted(self) -> None:
+        """When the core drives: tell the keeper of the stored record the session as it is now (never raises)."""
+        persist = self._persist
+        if not self.drives or persist is None or self.depth:
+            return
+        try:
+            persist(self.session)
+        except Exception:  # noqa: BLE001 - the shadow never raises into the real path
+            self._error("persist")
 
     def _write_back(self, today: str | None = None) -> None:
         writer = self._writer

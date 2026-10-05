@@ -133,9 +133,20 @@ On:
 
 The shadow still compares, before the owner is taken back, and counts each decision where today's rule on the same
 state would have chosen otherwise (`verdict_differs`) and each time it cleared today's fields (`written_back`).
-`SPOTNAV_CORE_OWNERSHIP=1` runs the whole test suite with the option on. Not yet the core's: the persisted record
-(today's keys are still what is saved), load balancing's memory of the charge it holds, the hold's memory and the
-car-ended record (all read from today's fields at each feed).
+`SPOTNAV_CORE_OWNERSHIP=1` runs the whole test suite with the option on.
+
+With the option on the core's session is also kept across restarts, as one versioned record per charger
+(`charge_session` in the charger's store, `ChargeSession.to_store`) beside today's keys, which are still written as
+before. The record leaves out what a restart clears anyway (`TRANSIENT_FIELDS`: commands awaiting a result, the stops
+under a person's Stop and their give-up, the safety stop's gap). Every save of today's keys writes it as it is then;
+a change no such save carried is saved once, `SESSION_SAVE_DELAY_S` later, alone (today's keys on disk untouched), and
+at shutdown if still waiting, so a report that changes nothing stored writes nothing and many changes in a row are one
+save. At a restart the core decides from the record and compares it with today's restored state; a record that is
+missing or of a version the core does not know is read from today's keys once (`legacy_session`) and written. With the
+option off nothing of it is written or read: today's restore, exactly.
+
+Not yet the core's: load balancing's memory of the charge it holds, the hold's memory and the car-ended record, and
+the session itself after the restart (all read from today's fields at each feed, which lines the session up).
 
 ## Tests
 
@@ -146,5 +157,8 @@ car-ended record (all read from today's fields at each feed).
 * `tests/test_core_replay.py`: replay of a synthetic bundle and of a real charger's recording, and the shadow's own
   guarantees.
 * `tests/test_core_drives.py`: the option, today's code following the core's verdict, the owner cleared one-way.
+* `tests/test_core_recheck.py`: a background task's re-check asked of the core, and its command's result.
+* `tests/test_core_session_store.py`: the stored record: round trip, migration from today's keys, an unknown version,
+  no save at every report, and a restart in each scope of a manual pause.
 * Every test runs with the shadow (`tests/conftest.py`, `ownership_shadow_agrees`) and fails on a disagreement or a
   drift nobody explained (`tests/shadow_known.py`).

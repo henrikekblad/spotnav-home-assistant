@@ -142,6 +142,10 @@ async def test_power_is_an_attribute_when_known(hass: HomeAssistant) -> None:
 async def test_origin_survives_a_restart(hass: HomeAssistant) -> None:
     controller, _charger, _site = await _world(hass)
     controller._charge_origin = "solar"  # noqa: SLF001
+    # Set directly, so the ownership core is told as a solar start would tell it: when it drives, its own stored
+    # record is what a restart reads back (`charge_session`), and it must say the same.
+    shadow = controller.ownership_shadow
+    shadow.session = replace(shadow.session, owner="solar")
     await controller._async_save()  # noqa: SLF001
     saved = await controller._store.async_load()  # noqa: SLF001
     assert saved["charge_origin"] == "solar"

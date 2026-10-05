@@ -411,6 +411,12 @@ class OwnershipMachine(RuleBasedStateMachine):
         before = self.session
         read_back = ChargeSession.from_json(before.to_json())
         assert read_back == before
+        # The record a charger keeps (`to_store`) leaves out only what the restart clears anyway.
+        stored = ChargeSession.from_store(before.to_store())
+        assert stored == before.stored()
+        assert decide(stored, ev.Restart(legacy_person_stop=legacy), self.now) == decide(
+            read_back, ev.Restart(legacy_person_stop=legacy), self.now
+        )
         session, commands = decide(read_back, ev.Restart(legacy_person_stop=legacy), self.now)
         assert [command.kind for command in commands] == ["keep"]
         for name in ("owner", "held", "overridden", "car_ended_at", "balancing_paused", "paused_origin", "span_pause"):

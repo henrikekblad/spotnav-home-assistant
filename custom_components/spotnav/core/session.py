@@ -23,7 +23,9 @@ charger_state_machine_2026-10-04.md`, section 1); this record names each once:
   they went out, when the last was tried, whether SpotNav gave up, and whether one is on its way.
 * `pending`: the commands the core asked for whose results have not come back yet (`ownership.CommandResult`).
 
-Serialised as JSON with a version field (`to_dict`/`from_dict`); a record of another version is refused.
+Serialised as JSON with a version field (`to_dict`/`from_dict`); a record of another version is refused. The
+record a charger keeps across restarts (`to_store`/`from_store`) leaves out what a restart clears anyway
+(`TRANSIENT_FIELDS`: commands awaiting a result, the stops under a person's Stop, the safety stop's gap).
 """
 
 from __future__ import annotations
@@ -35,6 +37,19 @@ from typing import Any, Final
 
 #: The version of the serialised record (`to_dict`).
 SESSION_VERSION: Final = 1
+#: The version of the stored record (`to_store`): a stored record of any other version is read as none.
+STORED_VERSION: Final = 1
+#: What a restart clears (`ownership._restart`), so never stored: commands awaiting a result, the stops under a
+#: person's Stop and their give-up, and the safety stop's gap.
+TRANSIENT_FIELDS: Final = (
+    "pending",
+    "hold_stop_times",
+    "hold_tried_at",
+    "hold_gave_up",
+    "hold_stop_pending",
+    "held_for_safety",
+    "safety_stopped_at",
+)
 
 OWNER_NONE: Final = "none"
 OWNER_PLAN: Final = "plan"
@@ -246,6 +261,33 @@ class ChargeSession:
         except (TypeError, ValueError) as err:
             raise SessionError(str(err)) from err
 
+    def stored(self) -> ChargeSession:
+        """This session as a restart reads it back: the transient fields at their defaults."""
+        return replace(self, **{name: _DEFAULTS[name] for name in TRANSIENT_FIELDS})
+
+    def to_store(self) -> dict[str, Any]:
+        """The record a charger keeps across restarts: `to_dict` without the transient fields, with its own
+        version (`STORED_VERSION`)."""
+        record = {key: value for key, value in self.to_dict().items() if key not in TRANSIENT_FIELDS}
+        record["version"] = STORED_VERSION
+        return record
+
+    @classmethod
+    def from_store(cls, raw: Any) -> ChargeSession:
+        """A session from `to_store`'s output (the transient fields at their defaults), or `SessionError`: another
+        version, a missing or unknown field, or a field of the wrong shape."""
+        if not isinstance(raw, dict):
+            raise SessionError("a stored session is an object")
+        if raw.get("version") != STORED_VERSION:
+            raise SessionError(f"stored session version {raw.get('version')!r} is not {STORED_VERSION}")
+        expected = {"version"} | {item.name for item in fields(cls) if item.name not in TRANSIENT_FIELDS}
+        if set(raw) != expected:
+            raise SessionError(f"stored session fields differ: {sorted(set(raw) ^ expected)}")
+        full = ChargeSession().to_dict()
+        full.update({key: value for key, value in raw.items() if key != "version"})
+        full["version"] = SESSION_VERSION
+        return cls.from_dict(full)
+
     def to_json(self) -> str:
         return json.dumps(self.to_dict(), sort_keys=True, separators=(",", ":"))
 
@@ -310,3 +352,6 @@ def _required_instant(value: Any, what: str) -> datetime:
     if moment.tzinfo is None:
         raise SessionError(f"{what} must be timezone-aware")
     return moment
+
+
+_DEFAULTS: Final[dict[str, Any]] = {name: getattr(ChargeSession(), name) for name in TRANSIENT_FIELDS}
