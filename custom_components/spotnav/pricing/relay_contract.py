@@ -23,7 +23,7 @@ import logging
 import math
 import re
 from dataclasses import dataclass
-from datetime import date, datetime, timedelta
+from datetime import date, datetime, time, timedelta
 from types import MappingProxyType
 from typing import Any, Final, Literal, Mapping
 from urllib.parse import urlsplit
@@ -61,6 +61,9 @@ INCLUDED_FIELDS: Final = ("vat", "tax", "grid_fee")
 
 #: An area id: upper-case letters, digits and hyphens, at most 32 of them (`[A-Z0-9-]{1,32}`).
 AREA_ID_PATTERN: Final = re.compile(r"^[A-Z0-9-]{1,32}$")
+
+#: A v2 area's `publication.time`: a local wall-clock time, exactly `HH:MM`.
+PUBLICATION_TIME_PATTERN: Final = re.compile(r"([01][0-9]|2[0-3]):([0-5][0-9])")
 
 #: The only unit a day document may be priced in (the relay is EUR-native); anything else is a
 #: contract violation, not a conversion.
@@ -221,6 +224,23 @@ def _resolution(raw: Any, what: str) -> int:
 
 
 @dataclass(frozen=True, slots=True)
+class AreaPublication:
+    """When an area's prices for tomorrow are expected: a wall-clock time in a zone (contract v2, `publication`).
+
+    The day before the market day, at `local_time` in `tz`. A source's own clock, not the area's: ENTSO-E
+    is 13:00 Brussels for every bidding zone, Octopus Agile 16:00 London, Spain's PVPC 20:15 Madrid.
+    """
+
+    local_time: time
+    tz: str
+
+
+#: An area that states no publication time (every v1 list, and a v2 list before the field) is expected
+#: when ENTSO-E's day-ahead prices are: 13:00 Brussels.
+DEFAULT_PUBLICATION: Final = AreaPublication(local_time=time(13, 0), tz="Europe/Brussels")
+
+
+@dataclass(frozen=True, slots=True)
 class AreaEntry:
     """One area the relay can price, as its catalogue states it.
 
@@ -236,6 +256,7 @@ class AreaEntry:
     Paris calendar). `included` names what the published price already holds (`vat`, `tax`,
     `grid_fee`): those settings are locked and nothing is added for them. `source` is the v2 list's
     attribution, `None` from a v1 list. `eic` is `None` for an area that has none (a GSP group).
+    `publication` is when tomorrow's prices are expected; [DEFAULT_PUBLICATION] unless the v2 list states it.
     """
 
     id: str
@@ -252,6 +273,7 @@ class AreaEntry:
     market_tz: str = ""
     included: tuple[str, ...] = ()
     source: AreaSource | None = None
+    publication: AreaPublication = DEFAULT_PUBLICATION
 
     def __post_init__(self) -> None:
         if not self.market_tz:
@@ -514,6 +536,7 @@ def _parse_area(raw: Any, version: int = SUPPORTED_VERSION) -> AreaEntry:
     market_tz = timezone
     included: tuple[str, ...] = ()
     source: AreaSource | None = None
+    publication = DEFAULT_PUBLICATION
     if version == 1:
         eic: str | None = _text(area, "eic", what)
     else:
@@ -525,6 +548,7 @@ def _parse_area(raw: Any, version: int = SUPPORTED_VERSION) -> AreaEntry:
                 _fail("invalid_field", f"{what}: {market_tz!r} is not a known timezone")
         included = _included(area, what)
         source = _source(area, what)
+        publication = _publication(area, area_id)
 
     return AreaEntry(
         id=area_id,
@@ -541,6 +565,48 @@ def _parse_area(raw: Any, version: int = SUPPORTED_VERSION) -> AreaEntry:
         market_tz=market_tz,
         included=included,
         source=source,
+        publication=publication,
+    )
+
+
+def _publication(area: Mapping[str, Any], area_id: str) -> AreaPublication:
+    """`publication`: absent is [DEFAULT_PUBLICATION]; present is `{"time": "HH:MM", "tz": <zone>}`.
+
+    A malformed one is not a reason to drop the area: its prices are as good as ever, only the time to
+    look for them is unknown, so the default is used and the fault logged once. Unknown keys are ignored.
+    """
+    if "publication" not in area:
+        return DEFAULT_PUBLICATION
+    raw = area["publication"]
+    problem: str | None = None
+    if not isinstance(raw, dict):
+        problem = "is not an object"
+    else:
+        clock = raw.get("time")
+        zone = raw.get("tz")
+        match = PUBLICATION_TIME_PATTERN.fullmatch(clock) if isinstance(clock, str) else None
+        if match is None:
+            problem = "has no 'time' as HH:MM"
+        elif not isinstance(zone, str) or not zone or dt_util.get_time_zone(zone) is None:
+            problem = "has no known 'tz'"
+        else:
+            return AreaPublication(local_time=time(int(match[1]), int(match[2])), tz=zone)
+    _log_ignored(area_id, problem, raw)
+    return DEFAULT_PUBLICATION
+
+
+def _log_ignored(area_id: str, problem: str, raw: Any) -> None:
+    """Once per area and published value, so a list re-read every hour does not repeat it."""
+    key = f"publication:{area_id}:{json.dumps(raw, sort_keys=True, default=str)[:200]}"
+    if key in _SKIPPED_LOGGED:
+        return
+    _SKIPPED_LOGGED.add(key)
+    _LOGGER.warning(
+        "Area %s in the relay's area list: 'publication' %s; expecting its prices at %s %s",
+        area_id,
+        problem,
+        DEFAULT_PUBLICATION.local_time.strftime("%H:%M"),
+        DEFAULT_PUBLICATION.tz,
     )
 
 

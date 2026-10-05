@@ -1,0 +1,96 @@
+{
+  "v": 2,
+  "generated": "2026-10-05T20:22:35+02:00",
+  "areas": [
+    {
+      "id": "ES-PVPC",
+      "countries": [
+        "ES"
+      ],
+      "name": "Spain – PVPC (regulated)",
+      "tz": "Europe/Madrid",
+      "currency": "EUR",
+      "major_unit": "€",
+      "minor_unit": "cent",
+      "included": [
+        "grid_fee"
+      ],
+      "vat_percent": 21,
+      "publication": {
+        "time": "20:15",
+        "tz": "Europe/Madrid"
+      },
+      "source": {
+        "name": "Red Eléctrica (ESIOS) – PVPC",
+        "url": "https://www.esios.ree.es/es/pvpc"
+      }
+    },
+    {
+      "id": "GB-C",
+      "countries": [
+        "GB"
+      ],
+      "name": "GB C – London",
+      "tz": "Europe/London",
+      "market_tz": "Europe/Paris",
+      "currency": "GBP",
+      "major_unit": "£",
+      "minor_unit": "p",
+      "included": [
+        "vat",
+        "tax",
+        "grid_fee"
+      ],
+      "publication": {
+        "time": "16:00",
+        "tz": "Europe/London"
+      },
+      "source": {
+        "name": "Octopus Energy (Agile)",
+        "url": "https://octopus.energy/smart/agile/"
+      }
+    },
+    {
+      "id": "PT",
+      "eic": "10YPT-REN------W",
+      "countries": [
+        "PT"
+      ],
+      "name": "Portugal",
+      "tz": "Europe/Lisbon",
+      "market_tz": "Europe/Madrid",
+      "currency": "EUR",
+      "major_unit": "€",
+      "minor_unit": "cent",
+      "vat_percent": 23,
+      "suggested_tax": 0.1,
+      "source": {
+        "name": "ENTSO-E Transparency Platform",
+        "url": "https://transparency.entsoe.eu/"
+      }
+    },
+    {
+      "id": "SE4",
+      "eic": "10Y1001A1001A47J",
+      "countries": [
+        "SE"
+      ],
+      "name": "Malmö",
+      "tz": "Europe/Stockholm",
+      "currency": "SEK",
+      "major_unit": "kr",
+      "minor_unit": "öre",
+      "vat_percent": 25,
+      "suggested_tax": 36,
+      "suggested_grid_fee": 30,
+      "publication": {
+        "time": "13:00",
+        "tz": "Europe/Brussels"
+      },
+      "source": {
+        "name": "ENTSO-E Transparency Platform",
+        "url": "https://transparency.entsoe.eu/"
+      }
+    }
+  ]
+}
