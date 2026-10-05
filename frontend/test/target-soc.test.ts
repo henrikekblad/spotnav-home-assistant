@@ -497,7 +497,7 @@ describe("the target slider's value on its label row", () => {
       expect(slider(element).value, language).toBe(at);
       expect(slider(element).disabled, language).toBe(false);
       // A Save that moved the current, not the slider, keeps the stored target exactly.
-      const current = q<HTMLInputElement>(element, "[aria-labelledby$='-current-label'] input[type='number']")!;
+      const current = q<HTMLInputElement>(element, "[aria-labelledby$='-current-label'] input[type='range']")!;
       current.value = "16";
       current.dispatchEvent(new Event("input"));
       saveButton(element)!.click();

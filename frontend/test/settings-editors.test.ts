@@ -1075,7 +1075,7 @@ describe("the current slider and the nominal power beside it", () => {
     expect(currentText(element)).toBe("10 A");
     const label = editorDialog(element)?.querySelector("[data-part='current-value']")?.parentElement;
     expect(label?.textContent).toContain(translate("sv", "settings.current.label"));
-    expect(sliderNode(element)?.getAttribute("aria-label")).toBe("Strömreglage, 6 till 32 A i hela ampere");
+    expect(inputs(element)[0]?.getAttribute("aria-label")).toBe("Strömreglage, 6 till 32 A i hela ampere");
   });
 
   it.each([

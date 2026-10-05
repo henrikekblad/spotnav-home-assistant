@@ -292,7 +292,7 @@ describe("the kWh slider with a known room", () => {
       // No "slider out of range" note for the energy editor: the value text says what is stored.
       expect(openDialog(element).querySelector("[data-part='energy'] [id$='-slider-mark']"), language).toBeNull();
       // A Save that moved another field, not the slider, keeps the stored amount exactly.
-      const current = q<HTMLInputElement>(element, "[aria-labelledby$='-current-label'] input[type='number']")!;
+      const current = q<HTMLInputElement>(element, "[aria-labelledby$='-current-label'] input[type='range']")!;
       current.value = "16";
       current.dispatchEvent(new Event("input"));
       const body = await save(element, hass);
