@@ -202,7 +202,11 @@ async function cardShot(name, expr, pad = 0) { await shot(name, expr, pad, { blu
 async function saveAmps(amps) {
   await cardButton("^Plan:");
   await sleep(800);
-  await fillField("input[type=number]", amps, null, 1);
+  // The planned current is a range slider (6 to 16 A): set it the way a drag would.
+  await b.eval(`(() => { const D = window.__docs; const i = D.deepAll("input[type=range]").filter(D.visible).find((e) => e.id.endsWith("-plan-current"));
+    Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value").set.call(i, ${JSON.stringify(String(amps))});
+    i.dispatchEvent(new Event("input", { bubbles: true })); i.dispatchEvent(new Event("change", { bubbles: true })); })()`);
+  await sleep(300);
   await b.click("button", "^Save$");
   await sleep(2500);
 }

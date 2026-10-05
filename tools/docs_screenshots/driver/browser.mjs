@@ -57,7 +57,7 @@ export class Browser {
     };
     await b.send("Runtime.enable"); await b.send("Page.enable");
     await b.send("Emulation.setDeviceMetricsOverride", { width, height, deviceScaleFactor: 1, mobile: false });
-    await b.send("Emulation.setEmulatedMedia", { features: [{ name: "prefers-color-scheme", value: "light" }] });
+    await b.send("Emulation.setEmulatedMedia", { features: [{ name: "prefers-color-scheme", value: "dark" }] });
     await b.send("Emulation.setLocaleOverride", { locale: "en-US" }).catch(() => {});
     await b.send("Emulation.setTimezoneOverride", { timezoneId: "Europe/Stockholm" }).catch(() => {});
     await b.send("Page.addScriptToEvaluateOnNewDocument", { source: PAGE_HELPERS });
@@ -80,7 +80,7 @@ export class Browser {
     return r.result.value;
   }
 
-  /** Put the tokens where the frontend looks for them, so the page opens signed in (English, light). */
+  /** Put the tokens where the frontend looks for them, so the page opens signed in (English, dark). */
   async signIn(tokens) {
     const stored = {
       access_token: tokens.access_token, token_type: "Bearer", expires_in: tokens.expires_in,
@@ -91,7 +91,7 @@ export class Browser {
       try {
         localStorage.setItem("hassTokens", ${JSON.stringify(JSON.stringify(stored))});
         localStorage.setItem("selectedLanguage", '"en"');
-        localStorage.setItem("selectedTheme", '{"dark":false}');
+        localStorage.setItem("selectedTheme", '{"dark":true}');
         localStorage.setItem("dockedSidebar", '"docked"');
       } catch (e) {}` });
   }

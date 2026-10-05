@@ -21,7 +21,7 @@ requirements then). A run takes about two minutes.
    not modified.
 3. `driver/shots.mjs` onboards the instance through its onboarding API (user "demo", English, Sweden,
    southern Sweden, metric), signs in through the normal login flow, creates the demo devices, then
-   drives headless chromium (1280 px wide, light theme, English) through the flows and crops each
+   drives headless chromium (1280 px wide, English, Home Assistant's own dark theme: the browser reports `prefers-color-scheme: dark` and the stored profile theme setting is `{"dark":true}`) through the flows and crops each
    dialog or the card to its own bounding box.
 
 ## Demo integrations (`demo_components/`)
