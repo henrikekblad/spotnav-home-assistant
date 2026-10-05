@@ -157,8 +157,8 @@ price area and taxes** opens the editor.
 - **VAT** (as a percentage), **Energy tax** and **Grid transfer** (both in the area's smallest
   currency unit) can each be switched off, use the area's suggested value, or use your own value.
   **Reset to suggestion** returns to the suggestion when the area publishes one.
-- Under the area, a small linked line names where its prices come from (ENTSO-E, or Octopus Energy
-  (Agile) in Great Britain).
+- Under the area, a small linked line names where its prices come from (ENTSO-E, Red Eléctrica
+  for Spain's regulated PVPC, or Octopus Energy (Agile) in Great Britain).
 - Where the published price already includes VAT, energy tax or grid transfer (all three in Great
   Britain), that component is checked, locked and marked **Included in the price**, and nothing is
   added for it. For Great Britain, **Find my region** looks the region up from a postcode (see

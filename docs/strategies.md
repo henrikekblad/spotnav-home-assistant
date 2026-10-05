@@ -38,7 +38,7 @@ periods, and an optional departure time. The card marks what is missing.
 - **Settings are one record.** The card, the app and the entities all edit the same settings.
   A write names the revision it edited, so two clients cannot silently overwrite each other.
 - **Prices** come from the SpotNav Relay, exactly as published: EUR per kWh with each area's
-  currency, units and time zone. Home Assistant never converts or guesses. Fiscal components
+  currency, units, time zone and the day's ECB rate, which the planner applies. Home Assistant never guesses a price. Fiscal components
   (VAT, energy tax, grid transfer fee) can each be off, use the relay's suggestion for the
   area, or use your own value. See [Prices](prices.md).
 - **Tomorrow's prices** are published in the afternoon. If a deadline needs hours that are not

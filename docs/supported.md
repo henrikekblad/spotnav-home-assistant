@@ -243,7 +243,7 @@ The Hybrid strategy holds back grid energy when a solar forecast promises sun. I
 
 ## Supported price areas
 
-Prices come from the SpotNav relay, which publishes the European day-ahead bidding zones from the ENTSO-E Transparency Platform and the fourteen Great Britain regions from Octopus Energy's Agile tariff. The card's area picker lists every area the relay publishes and names its price source, linked, in the price settings.
+Prices come from the SpotNav relay, which publishes the European day-ahead bidding zones from the ENTSO-E Transparency Platform, Spain's regulated PVPC tariff from Red Eléctrica and the fourteen Great Britain regions from Octopus Energy's Agile tariff. The card's area picker lists every area the relay publishes and names its price source, linked, in the price settings.
 
 ### Great Britain (Octopus Agile)
 
