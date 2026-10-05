@@ -282,6 +282,57 @@ function nearestStep(value: number, minimum: number, step: number, maximum: numb
 }
 
 /**
+ * A field whose only control is its slider (the requested energy, the charge target), as the app draws it:
+ * the label and the value the slider stands for share one row, the value at its end, and the slider takes
+ * the full width under them, in a track a mark can be drawn on. The slider opens at the step nearest
+ * `value`; the caller keeps the exact value and writes the text with `show`.
+ */
+function sliderRow(
+  doc: Document,
+  options: {
+    id: string;
+    labelText: string;
+    sliderLabel: string;
+    minimum: number;
+    step: number;
+    maximum: number;
+    value: number;
+    readOnly: boolean;
+    /** The value text's `data-part`. */
+    part: string;
+  },
+): { group: HTMLElement; slider: HTMLInputElement; track: HTMLElement; show: (text: string) => void } {
+  const slider = rangeInput(doc, {
+    min: options.minimum,
+    max: options.maximum,
+    step: options.step,
+    value: options.minimum,
+    label: options.sliderLabel,
+  });
+  slider.id = options.id;
+  slider.value = String(nearestStep(options.value, options.minimum, options.step, options.maximum));
+  slider.disabled = options.readOnly;
+  const label = element(doc, "label", C.settingsLabel, options.labelText);
+  label.id = `${options.id}-label`;
+  label.setAttribute("for", options.id);
+  const amount = element(doc, "span", C.settingsAmount);
+  amount.dataset["part"] = options.part;
+  const head = element(doc, "div", C.settingsHead);
+  head.append(label, amount);
+  const track = element(doc, "div", C.settingsTrack);
+  track.append(slider);
+  const group = element(doc, "div", C.settingsField);
+  group.setAttribute("role", "group");
+  group.setAttribute("aria-labelledby", label.id);
+  group.append(head, track);
+  const show = (text: string): void => {
+    amount.textContent = text;
+    slider.setAttribute("aria-valuetext", text);
+  };
+  return { group, slider, track, show };
+}
+
+/**
  * The body of one focused editor: owned fields only (energy one, deadline three, current one). A
  * read-only form (non-administrator, or energy while the driver is target-SoC) has no Save at all.
  */
@@ -378,38 +429,28 @@ export function settingsEditorBody(
       return text === "" ? Number.NaN : Number(text.replace(",", "."));
     };
 
-    // The slider is the only control: the label and the value it stands for share one row above it, and
-    // the slider, with its "full" mark on the track, takes the full width under them.
-    const slider = rangeInput(doc, {
-      min: minimum,
-      max: energySliderMaximum(stored(), top),
+    // Where the slider stands on opening: the last step for a stored Fill, else the step nearest the stored
+    // amount, on a track that reaches a stored amount above its ordinary top. Moving it never shrinks that.
+    const opensFilled = atFill() && top !== null;
+    const row = sliderRow(doc, {
+      id,
+      labelText: translate(language, "settings.energy.label"),
+      sliderLabel: translate(language, "settings.energy.slider"),
+      minimum,
       step: ENERGY_SLIDER_STEP_KWH,
-      value: minimum,
-      label: translate(language, "settings.energy.slider"),
+      maximum: opensFilled ? top : energySliderMaximum(stored(), top),
+      value: opensFilled ? top : stored(),
+      readOnly: form.readOnly,
+      part: "energy-value",
     });
-    slider.id = id;
-    slider.disabled = form.readOnly;
+    const { slider } = row;
     slider.setAttribute("aria-describedby", roomHelp.id);
-    const label = element(doc, "label", C.settingsLabel, translate(language, "settings.energy.label"));
-    label.id = `${id}-label`;
-    label.setAttribute("for", id);
-    const amount = element(doc, "span", C.settingsAmount);
-    amount.dataset["part"] = "energy-value";
-    const head = element(doc, "div", C.settingsHead);
-    head.append(label, amount);
-    const track = element(doc, "div", C.settingsTrack);
-    track.append(slider, fullMark);
-    const group = element(doc, "div", C.settingsField);
-    group.setAttribute("role", "group");
-    group.setAttribute("aria-labelledby", label.id);
-    group.append(head, track);
+    row.track.append(fullMark);
 
     /** The value text, its accessible copy, the "full" mark and the line under the slider. */
     const describe = (): void => {
       const filling = atFill();
-      const shown = filling ? translate(language, "settings.energy.fill") : energyRowValue(language, stored());
-      amount.textContent = shown;
-      slider.setAttribute("aria-valuetext", shown);
+      row.show(filling ? translate(language, "settings.energy.fill") : energyRowValue(language, stored()));
       if (room === null || top === null) {
         fullMark.hidden = true;
         roomHelp.hidden = true;
@@ -426,13 +467,6 @@ export function settingsEditorBody(
       roomHelp.hidden = false;
     };
 
-    // Where the slider stands on opening: the last step for a stored Fill, else the step nearest the stored
-    // amount, on a track that reaches a stored amount above its ordinary top. Moving it never shrinks that.
-    const filling = atFill() && top !== null;
-    const maximum = filling ? top : energySliderMaximum(stored(), top);
-    slider.max = String(maximum);
-    slider.value = String(filling ? top : nearestStep(stored(), minimum, ENERGY_SLIDER_STEP_KWH, maximum));
-
     slider.addEventListener("input", () => {
       const value = Number(slider.value);
       // The last step of a slider whose top is the ordinary one (not a stored amount drawn above it).
@@ -441,7 +475,7 @@ export function settingsEditorBody(
       energyValue = slider.value;
       describe();
     });
-    into.append(group, roomHelp);
+    into.append(row.group, roomHelp);
     describe();
   };
 
@@ -652,12 +686,9 @@ export function settingsEditorBody(
 
   const socRadio = doc.createElement("input") as HTMLInputElement;
   const energyRadio = doc.createElement("input") as HTMLInputElement;
-  const targetInput = numberInput(doc, {
-    min: TARGET_PERCENT_MIN,
-    max: TARGET_PERCENT_MAX,
-    step: "any",
-    value: form.values.targetPercent === "" ? "80" : form.values.targetPercent,
-  });
+  // The charge target exactly as stored (80 % for none), until its slider moves: like the energy, it has no
+  // number field, and a target off the slider's step is kept as it is by a Save that does not move it.
+  let targetValue = form.values.targetPercent === "" ? "80" : form.values.targetPercent;
 
   let vehicleSelect: HTMLSelectElement | null = null;
 
@@ -678,7 +709,6 @@ export function settingsEditorBody(
     const block = element(doc, "div");
     block.dataset["part"] = "soc";
     const soc = form.soc;
-    targetInput.disabled = form.readOnly;
     const facts = element(doc, "p", C.settingsNote);
     facts.dataset["soc"] = "facts";
     const verdict = element(doc, "p", C.settingsNote);
@@ -713,8 +743,8 @@ export function settingsEditorBody(
       const now = other ? null : soc.value;
       const limit = other ? (own?.max_percent ?? null) : soc.vehicle_max_percent;
       const capacity = other ? (own?.capacity_kwh ?? null) : soc.capacity_kwh;
-      const draft = Number(targetInput.value.trim().replace(",", "."));
-      const draftKnown = targetInput.value.trim() !== "" && Number.isFinite(draft);
+      const draft = Number(targetValue.trim().replace(",", "."));
+      const draftKnown = targetValue.trim() !== "" && Number.isFinite(draft);
 
       const parts: string[] = [];
       if (now !== null) {
@@ -808,21 +838,33 @@ export function settingsEditorBody(
       block.append(facts);
       block.append(reading);
     }
-    block.append(
-      pairedControls(doc, language, {
-        id: `${idPrefix}-target`,
-        labelText: translate(language, "settings.soc.target"),
-        sliderLabel: translate(language, "settings.soc.slider"),
-        minimum: TARGET_PERCENT_MIN,
-        step: 1,
-        maximumOf: () => TARGET_PERCENT_MAX,
-        unit: "%",
-        input: targetInput,
-        readOnly: form.readOnly,
-        onChange: paint,
-      }).field,
-      carEnds,
-    );
+    const storedTarget = (): number => {
+      const text = targetValue.trim();
+      return text === "" ? Number.NaN : Number(text.replace(",", "."));
+    };
+    const targetRow = sliderRow(doc, {
+      id: `${idPrefix}-target`,
+      labelText: translate(language, "settings.soc.target"),
+      sliderLabel: translate(language, "settings.soc.slider"),
+      minimum: TARGET_PERCENT_MIN,
+      step: 1,
+      maximum: TARGET_PERCENT_MAX,
+      value: storedTarget(),
+      readOnly: form.readOnly,
+      part: "target-value",
+    });
+    // The target as stored, exactly (`80 %`, `80.5 %`), or as the slider sets it once moved.
+    const showTarget = (): void => {
+      const value = storedTarget();
+      targetRow.show(Number.isFinite(value) ? `${formatNumber(language, value, 3)} %` : "");
+    };
+    targetRow.slider.addEventListener("input", () => {
+      targetValue = targetRow.slider.value;
+      showTarget();
+      paint();
+    });
+    showTarget();
+    block.append(targetRow.group, carEnds);
     if (soc !== null) {
       block.append(verdict, need);
       paint();
@@ -922,7 +964,7 @@ export function settingsEditorBody(
     values.current = currentInput.value;
     if (form.kind === "plan") {
       values.driver = socRadio.checked ? "target_soc" : "manual_kwh";
-      values.targetPercent = targetInput.value;
+      values.targetPercent = targetValue;
       // The picked vehicle, else the record's, else the resolved one: what a target-mode Save writes as
       // `target.vehicle_id`.
       const picked = vehicleSelect === null ? "" : (vehicleSelect as HTMLSelectElement).value;

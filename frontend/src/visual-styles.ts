@@ -311,8 +311,8 @@ export const VISUAL_STYLES = `
   /*
    * A slider beside its exact number field. Grid sizing rather than flex: the slider takes what is left
    * (minmax(0, 1fr)), the field gets a bounded share wide enough for the longest accepted value, and
-   * the unit is sized by its text. The out-of-domain note spans every column. Current and the charge
-   * target share one layout; the energy slider has no number field and stands alone in its track.
+   * the unit is sized by its text. The out-of-domain note spans every column. The current uses it; the
+   * energy and charge-target sliders have no number field and stand alone under their label row.
    */
   .spotnav-settings-pair {
     display: grid;
@@ -344,8 +344,9 @@ export const VISUAL_STYLES = `
     margin: 4px 0 0;
   }
   /*
-   * The energy editor's label row: the label, and the value the slider stands for (an amount, or "Fill")
-   * at its end, as the app writes "Charging ........ 20.0 kWh". The slider under it takes the full width.
+   * A lone slider's label row (energy, charge target): the label, and the value the slider stands for (an
+   * amount, "Fill" or a percentage) at its end, as the app writes "Charging ........ 20.0 kWh". The slider
+   * under it takes the full width.
    */
   .spotnav-settings-head {
     display: flex;
