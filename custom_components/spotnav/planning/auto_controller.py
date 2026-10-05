@@ -121,6 +121,12 @@ REOPEN_BELOW_KWH: Final = 0.3
 #: The believed count is written at most this often between calculations.
 COUNT_SAVE_S: Final = 60.0
 REOPEN_HOLD_S: Final = 120.0
+#: How long a register that has been read may go unread before the status says the need is counted
+#: without it: a restart, or a charger that has not sent its first meter value yet, is not a meter
+#: that cannot be read.
+UNREAD_NOTICE_GRACE_S: Final = 30 * 60.0
+#: The bases a register that reads again is planned on at once (`_on_energy_reading`).
+_UNREAD_BASES: Final = ("kept", "kept_recent", "sessions", "requested")
 
 #: The current a rise is judged against at the least: 63 A on three phases (about 43 kW).
 CEILING_A: Final = 63
@@ -370,9 +376,12 @@ class _EnergyResolution:
     kwh: float
     delivered_energy_trustworthy: bool
     #: How a manual need was counted: `register` (the energy register vouches for it), `kept` (the
-    #: register cannot be read, the last remainder it vouched for is kept), `sessions` (no register,
-    #: counted from the charger's recorded sessions) or `requested` (nothing delivered is known);
-    #: `None` for a target, whose live state of charge already says it.
+    #: register cannot be read, the last remainder it vouched for is kept), `kept_recent` (the same, while
+    #: a register that was read has been unread for less than `UNREAD_NOTICE_GRACE_S`), `rebased` (the
+    #: count began without a reading and reads now: what was known before, counted on from now),
+    #: `sessions` (no reading, counted from the charger's recorded sessions) or `requested` (nothing
+    #: delivered is known); `None` for a target, whose live state of charge already says it. Only `kept`
+    #: and `sessions` say the meter cannot be read (`status_compose`).
     basis: str | None = None
     #: The energy counted as delivered toward this need, when the basis knows it.
     delivered_kwh: float | None = None
@@ -586,6 +595,12 @@ class AutoPlannerController:
         self._count_save_cancel: Callable[[], None] | None = None
         # The epoch and since when a met need's count has stood clearly below the request.
         self._reopen_since: tuple[str, datetime] | None = None
+        # Since when this process has seen the register unread (cleared by a reading), whether a reading
+        # that came back has asked for its one replan, and the appointment that says so at the end of
+        # the grace (`UNREAD_NOTICE_GRACE_S`).
+        self._register_unread_since: datetime | None = None
+        self._reading_replan_asked = False
+        self._unread_notice_cancel: Callable[[], None] | None = None
 
         self._listeners: list[Callable[[AutoSnapshot], None]] = []
         self._unsubscribe: Callable[[], None] | None = None
@@ -618,6 +633,7 @@ class AutoPlannerController:
         self._cancel_departure()
         self._cancel_connection()
         self._drop_energy_watch()
+        self._cancel_unread_notice()
         if self._count_save_cancel is not None:
             self._count_save_cancel()
             self._count_save_cancel = None
@@ -1829,6 +1845,7 @@ class AutoPlannerController:
             return
         stored = self._baseline()
         reading = self._read_energy_register()
+        self._note_register_read(reading)
         if stored is None or reading is None or stored.register_kwh is None:
             return
         entity_id = self._energy_register_entity_id()
@@ -1872,6 +1889,52 @@ class AutoPlannerController:
             return
         self._energy_met_done = key
         self._hass.async_create_task(self._async_energy_met(step.baseline))
+
+    def _note_register_read(self, reading: float | None) -> None:
+        """What the register says now, as the unread grace and the replan on its return see it.
+
+        Unread: the grace counts from the first time this process saw it so (so from this controller's
+        start at the latest), and the next reading may ask for a replan again. Read: a need counted
+        without it (`_UNREAD_BASES`) is planned again, once per return, so the plan and the status follow
+        the register at once rather than at the next price event; a replan that still cannot read it
+        asks for nothing more.
+        """
+        if reading is None:
+            if self._register_unread_since is None:
+                self._register_unread_since = self._now()
+            self._reading_replan_asked = False
+            return
+        self._register_unread_since = None
+        self._cancel_unread_notice()
+        snapshot = self._snapshot
+        if (
+            self._reading_replan_asked
+            or self._shutdown
+            or snapshot is None
+            or snapshot.energy_basis not in _UNREAD_BASES
+        ):
+            return
+        self._reading_replan_asked = True
+        self._hass.async_create_task(self.async_recalculate())
+
+    def _arm_unread_notice(self, when: datetime) -> None:
+        """Plan again at `when`, the end of the unread grace, so the notice appears then on its own."""
+        if self._shutdown:
+            return
+        self._cancel_unread_notice()
+
+        @callback
+        def due(_now: datetime) -> None:
+            self._unread_notice_cancel = None
+            if not self._shutdown:
+                self._hass.async_create_task(self.async_recalculate())
+
+        self._unread_notice_cancel = self._manager.schedule_at(when, due)
+
+    def _cancel_unread_notice(self) -> None:
+        if self._unread_notice_cancel is not None:
+            self._unread_notice_cancel()
+            self._unread_notice_cancel = None
 
     def _save_count_soon(self) -> None:
         """Keep the believed count on disk, at most once a minute: a restart must find the reading (and
@@ -1974,9 +2037,11 @@ class AutoPlannerController:
           or a reset): what it counted before is carried. One that falls elsewhere (a meter replaced)
           carries what it counted and starts again from its new reading.
         * Without a reading, a partial charge is never bought again in full: the last remainder the
-          register vouched for is kept (`kept`); with no register at all, the charger's recorded sessions
-          since the epoch began are counted (`sessions`); only with neither is the whole request planned.
-          None of these is trustworthy enough for `hybrid` to credit forecast sun.
+          register vouched for is kept (`kept`, `kept_recent` for the first `UNREAD_NOTICE_GRACE_S` this
+          process sees it unread); with no register at all, the charger's recorded sessions since the
+          epoch began are counted (`sessions`); only with neither is the whole request planned. A count
+          that began without a reading and reads now counts on from now (`rebased`). None of these is
+          trustworthy enough for `hybrid` to credit forecast sun.
         """
         requested = settings.requested_kwh
         departure_key = self._departure_key(settings, calculated_at, entry)
@@ -2006,7 +2071,22 @@ class AutoPlannerController:
             )
 
         if current_reading is None:
-            return self._unread_remainder(settings, stored, departure_key)
+            self._note_register_read(None)
+            unread = self._unread_remainder(settings, stored, departure_key)
+            since = self._register_unread_since
+            if (
+                unread.basis == "kept"
+                and since is not None
+                and self._energy_register_entity_id() is not None
+                and (stored.register_kwh is not None or stored.last_register_kwh is not None)
+            ):
+                # A register that was read, unread only briefly: planned on what it vouched for, quietly,
+                # until the grace ends; then the notice shows, without waiting for a price event.
+                ends = since + timedelta(seconds=UNREAD_NOTICE_GRACE_S)
+                if calculated_at < ends:
+                    self._arm_unread_notice(ends)
+                    return replace(unread, basis="kept_recent")
+            return unread
 
         if stored.register_kwh is None:
             # The register had no reading when this epoch began: count from now. What it vouched for
@@ -2020,7 +2100,12 @@ class AutoPlannerController:
                     charge_mark_s=self._charged_s(),
                 )
             )
-            return self._unread_remainder(settings, stored, departure_key)
+            rebased = self._unread_remainder(settings, stored, departure_key)
+            # Readable now, so not a meter that cannot be read: the same need, still not trustworthy
+            # enough for `hybrid` to credit forecast sun.
+            if rebased.basis in ("kept", "sessions"):
+                return replace(rebased, basis="rebased")
+            return rebased
 
         if stored.last_register_kwh is None:
             # A record from before readings were judged one by one: its count is the register now, as it

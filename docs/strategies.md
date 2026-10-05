@@ -94,7 +94,9 @@ believed, so it never ends a plan; a count that a later reading proves false ope
 once it stands at least 0.3 kWh below the request for two minutes, so a register wavering at the
 request does not stop and start the charge. If the register cannot be read, the last
 remaining energy it showed is kept rather than buying the whole request again, and with no register
-at all the charger's recorded charges since the count began are used; the status says so either way.
+at all the charger's recorded charges since the count began are used; the status says so either way,
+though a register that was read and is unread for less than half an hour (Home Assistant restarting, a
+charger that has not sent its first reading yet) is not reported, and the plan follows its next reading at once.
 
 **No more than the battery has room for.** When the car's level (a reading or an estimate) and its battery
 size are known, a requested amount is capped at the room left: battery size x (the car's own charge
