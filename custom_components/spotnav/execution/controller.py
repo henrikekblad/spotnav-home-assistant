@@ -4064,7 +4064,8 @@ class ChargingController:
         """A window ended and another follows: stop the plan's charge (never one a person or the sun owns,
         `_window_end_spared_owner`) but keep the schedule, unless
         `end_window_guard` says the sun can carry the charge past this boundary (see
-        `set_end_window_guard`), in which case nothing happens and charging continues.
+        `set_end_window_guard`), in which case nothing happens and charging continues, or the next plan
+        takes the charge over at this boundary (`_successor_continues`).
         """
         if self._end_window_guard is not None and self._end_window_guard():
             _LOGGER.debug(
@@ -4074,7 +4075,43 @@ class ChargingController:
             )
             self._shadow.feed(core_events.WindowEnd(handed_off=True))
             return
+        if self._successor_continues():
+            self._shadow.feed(core_events.WindowEnd(continued=True))
+            self._async_spawn(self._async_hand_over(final=False), "the window end's hand-over")
+            return
+        self._window_end()
+
+    def _window_end(self) -> None:
         self._async_spawn(self._async_window_end_stop(clear_schedule=False), "the window end's stop")
+
+    def _successor_continues(self) -> bool:
+        """Whether the execution boundary holds the next plan, waiting for this window boundary, with a window
+        open now (`AutoExecutor.successor_continues`): a best-effort plan ending at its departure while the next
+        departure's plan begins then. Its install takes the charge over, so this boundary sends no stop and
+        records no end: no contactor cycle, one charge. Either order of the two works: a plan installed first
+        cancels this end's timer and its re-arm keeps the charge (`_reschedule_locked`)."""
+        probe = getattr(self._automatic_gate, "successor_continues", None)
+        if probe is None:
+            return False
+        try:
+            return bool(probe())
+        except Exception:  # noqa: BLE001 - an unreadable boundary hands nothing over: the end as ever
+            return False
+
+    async def _async_hand_over(self, *, final: bool) -> None:
+        """The window boundary handed to the next plan (`_successor_continues`): it is installed now. When it is
+        not after all (its proposal went stale meanwhile), the boundary ends the charge as it always did."""
+        plan = self.plan
+        apply = getattr(self._automatic_gate, "async_apply_pending", None)
+        if apply is not None:
+            await apply()
+        if self.plan is not plan or self._shut_down:
+            return
+        _LOGGER.debug("SpotNav charger %s: the next plan was not installed at the window's end", self.entry_id)
+        if final:
+            self._final_window_end()
+        else:
+            self._window_end()
 
     @callback
     def _async_final_end_callback(self, _now: datetime) -> None:
@@ -4083,7 +4120,8 @@ class ChargingController:
         sun can carry the charge past this boundary; then neither happens and solar mode owns the
         charger (see `plan_window_active_now`, `False` once every window is past). A plan that charges
         to the car's own limit with the car still drawing is not stopped either: the car finishes it in
-        a top-off (`top_off.py`, `_async_begin_top_off`).
+        a top-off (`top_off.py`, `_async_begin_top_off`), nor one the next plan takes over at this instant
+        (`_successor_continues`).
         """
         if self._end_window_guard is not None and self._end_window_guard():
             _LOGGER.debug(
@@ -4093,6 +4131,14 @@ class ChargingController:
             )
             self._shadow.feed(core_events.FinalWindowEnd(handed_off=True))
             return
+        if self._successor_continues():
+            # The next plan begins now and takes the charge over: no stop, no top-off, and no end recorded.
+            self._shadow.feed(core_events.FinalWindowEnd(continued=True))
+            self._async_spawn(self._async_hand_over(final=True), "the last window end's hand-over")
+            return
+        self._final_window_end()
+
+    def _final_window_end(self) -> None:
         if self._window_end_spared_owner() is not None:
             # Not the plan's charge: the plan ends with its last window, the charge goes on (decided again
             # under the lock).

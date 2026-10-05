@@ -270,7 +270,6 @@ async def test_a_restart_outside_the_windows_leaves_a_charge_now_running(
     await restarted.shutdown()
 
 
-@pytest.mark.xfail(strict=True, reason="pre-existing in main 1.11 (best-effort departure); the same in both modes")
 @pytest.mark.usefixtures("offline_relay")
 @pytest.mark.parametrize("on", [False, True], ids=["off", "on"])
 async def test_rev_g_preexisting_the_departure_does_not_cycle_a_charge_the_next_plan_continues(
@@ -315,3 +314,86 @@ async def test_rev_g_preexisting_the_departure_does_not_cycle_a_charge_the_next_
             await hass.async_block_till_done()
     at_departure = [call for call in calls if call[1] == 7200]
     assert at_departure != [("turn_off", 7200), ("turn_on", 7200)], calls
+
+
+@pytest.mark.usefixtures("offline_relay")
+@pytest.mark.parametrize("on", [False, True], ids=["off", "on"])
+@pytest.mark.parametrize("first", ["window_end", "next_plan"])
+async def test_the_next_plan_beginning_at_the_departure_takes_the_charge_over_in_either_order(
+    hass: HomeAssistant, transport: Any, monkeypatch: pytest.MonkeyPatch, on: bool, first: str
+) -> None:
+    """A best-effort plan to a 10:00 departure, and the next departure's plan waiting for the boundary with its first
+    window opening at 10:00. Whether the last window's end or the next plan's install comes first, the charge goes
+    on: no stop, no start, and the plan's end recorded as no `plan_done`."""
+    from datetime import time
+
+    from freezegun import freeze_time
+    from homeassistant.core import callback
+    from homeassistant.util import dt as dt_util
+    from pytest_homeassistant_custom_component.common import async_fire_time_changed
+
+    from .relay import serve as serve_prices
+    from .test_dashboard_api import NOW
+    from .test_replug import _car
+
+    monkeypatch.setattr(ownership_shadow, "CORE_OWNERSHIP_DEFAULT", on)
+    serve_prices(transport, rising=True)
+    calls: list[tuple[str, int]] = []
+    with freeze_time(NOW) as frozen:
+        begin = dt_util.utcnow()
+
+        @callback
+        def on_call(event: Any) -> None:
+            data = event.data
+            if data["service"] in ("turn_on", "turn_off"):
+                calls.append((data["service"], int((dt_util.utcnow() - begin).total_seconds())))
+                targets = data["service_data"]["entity_id"]
+                for entity_id in [targets] if isinstance(targets, str) else targets:
+                    hass.states.async_set(entity_id, "on" if data["service"] == "turn_on" else "off")
+
+        hass.bus.async_listen("call_service", on_call)
+        car = await _car(hass, frozen, kwh=100.0, departure=time(10, 0), departure_enabled=True)
+        frozen.tick(timedelta(hours=1, minutes=59))
+        async_fire_time_changed(hass, dt_util.utcnow())
+        await hass.async_block_till_done()
+        old_plan = car.controller.plan
+        frozen.tick(timedelta(minutes=1))
+        assert car.executor.successor_continues(), "the next departure's plan waits for the boundary"
+        if first == "next_plan":
+            await car.executor.async_apply_pending()
+            assert car.controller.plan is not old_plan
+        async_fire_time_changed(hass, dt_util.utcnow())
+        await hass.async_block_till_done()
+        assert car.controller.plan is not old_plan, "the next plan is installed"
+        assert car.controller.charging
+        completion = car.controller.completion_record
+        frozen.tick(timedelta(minutes=20))
+        async_fire_time_changed(hass, dt_util.utcnow())
+        await hass.async_block_till_done()
+    assert [call for call in calls if call[1] >= 7200] == [], calls
+    assert completion is None or completion.get("reason") != "plan_done", completion
+
+
+async def test_a_next_plan_that_is_not_installed_after_all_leaves_the_window_end_as_ever(
+    hass: HomeAssistant, timers: FakeScheduler, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The boundary said the next plan takes the charge over, but its install did not happen (the proposal went stale
+    meanwhile): the plan's last window's end stops the plan's charge as it always did."""
+    from homeassistant.util import dt as dt_util
+
+    from .pause_world import open_window
+
+    world = await pause_world(hass, timers, plan={"periods": [open_window()], "amps": 10})
+    assert world.controller.charging
+    monkeypatch.setattr(world.executor, "successor_continues", lambda: True)
+    applied: list[bool] = []
+
+    async def apply() -> None:
+        applied.append(True)
+
+    monkeypatch.setattr(world.executor, "async_apply_pending", apply)
+    stops = len(world.stops)
+    world.controller._async_final_end_callback(dt_util.utcnow())  # noqa: SLF001 - the last window's end is due
+    await hass.async_block_till_done()
+    assert applied == [True] and len(world.stops) == stops + 1
+    await world.shutdown()

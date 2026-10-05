@@ -735,6 +735,21 @@ class AutoExecutor:
         now = self._now()
         return any(start <= now < end for start, end in plan.windows)
 
+    def successor_continues(self) -> bool:
+        """Whether the next plan waits for the window boundary that is now (`PendingApplication`) and a window of it
+        is open at this instant: it takes the charge over, so the boundary stops nothing and records no end
+        (`ChargingController._async_hand_over`). Read without the lock and without side effects; installing it
+        (`async_apply_pending`) checks everything again."""
+        pending = self._pending
+        if pending is None or not self.current(pending.attempt):
+            return False
+        try:
+            windows = pending.application.plan.windows
+        except (AttributeError, ValueError):
+            return False
+        now = self._now()
+        return any(start <= now < end for start, end in windows)
+
     @staticmethod
     def _is_material(candidate: AutoApplication, applied: AutoApplication | None) -> bool:
         """Whether a candidate changes what the charger does, or only re-describes it."""

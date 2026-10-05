@@ -95,20 +95,25 @@ class WindowStart(Event):
 
 @dataclass(frozen=True)
 class WindowEnd(Event):
-    """A window ends and another follows. `handed_off`: the sun can carry the charge past it (hybrid)."""
+    """A window ends and another follows. `handed_off`: the sun can carry the charge past it (hybrid).
+    `continued`: the next plan, waiting for this boundary, has a window open now and takes the charge over."""
 
     kind: ClassVar[str] = "window_end"
     handed_off: bool = False
+    continued: bool = False
 
 
 @dataclass(frozen=True)
 class FinalWindowEnd(Event):
     """The plan's last window ends. `top_off_wanted`: a charge to the car's own limit with the car still drawing
-    goes on as a top-off (`top_off.py`)."""
+    goes on as a top-off (`top_off.py`). `continued`: the next plan, waiting for this boundary, has a window open
+    now and takes the charge over (a best-effort plan ending at its departure, the next departure's plan
+    beginning then)."""
 
     kind: ClassVar[str] = "final_window_end"
     handed_off: bool = False
     top_off_wanted: bool = False
+    continued: bool = False
 
 
 @dataclass(frozen=True)

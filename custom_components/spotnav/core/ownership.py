@@ -372,14 +372,21 @@ def _window_start(session: ChargeSession, event: WindowStart, now: datetime) -> 
 
 
 def _window_end(session: ChargeSession, event: WindowEnd, now: datetime) -> Decision:
-    if event.handed_off or not automatic_allowed(session, GATE_STOP) or window_end_spared(session):
-        # The sun carries it, a pause holds the stop, or the charge is not the plan's: it goes on.
+    if (
+        event.handed_off
+        or event.continued
+        or not automatic_allowed(session, GATE_STOP)
+        or window_end_spared(session)
+    ):
+        # The sun carries it, the next plan takes it over, a pause holds the stop, or the charge is not the
+        # plan's: it goes on.
         return session, ()
     return _stop(session, REASON_WINDOW_END)
 
 
 def _final_window_end(session: ChargeSession, event: FinalWindowEnd, now: datetime) -> Decision:
-    if event.handed_off or not automatic_allowed(session, GATE_STOP):
+    if event.handed_off or event.continued or not automatic_allowed(session, GATE_STOP):
+        # The sun carries it, the next plan takes it over (no stop, no top-off), or a pause holds the stop.
         return session, ()
     if window_end_spared(session):
         # Not the plan's charge: it goes on with no top-off, and the shell ends the plan with no stop.

@@ -910,3 +910,13 @@ def test_the_cores_constants_are_todays() -> None:
     assert PERSON_HOLD_WINDOW_S == controller.PERSON_HOLD_WINDOW_S
     assert SAFETY_RESUME_GAP_S == controller.SAFETY_RESUME_GAP_S
     assert {item.name for item in dataclass_fields(ChargeSession)} >= {"owner", "manual", "span_pause"}
+
+
+@pytest.mark.parametrize("event", [ev.WindowEnd(continued=True), ev.FinalWindowEnd(continued=True)])
+def test_a_window_end_the_next_plan_takes_over_stops_nothing(event: ev.Event) -> None:
+    """The next plan, waiting for this boundary, has a window open now: the plan's charge goes on (no stop, no
+    top-off), and the owner stays the plan's."""
+    session, commands = run(ChargeSession(owner="plan"), event)
+    assert kinds(commands) == [] and session.owner == "plan"
+    session, commands = run(ChargeSession(owner="plan"), ev.FinalWindowEnd(continued=True, top_off_wanted=True))
+    assert kinds(commands) == [] and session.owner == "plan"
