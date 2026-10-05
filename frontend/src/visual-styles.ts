@@ -357,7 +357,7 @@ export const VISUAL_STYLES = `
     top: 0;
     left: calc(8px + (100% - 16px) * var(--spotnav-mark, 0));
     transform: translateX(-50%);
-    padding-top: 1.375rem;
+    padding-top: 1.125rem;
     font-size: 0.75em;
     line-height: 1;
     white-space: nowrap;
