@@ -261,6 +261,15 @@ A site's `warnings` in `get_entity_config` carry the additive `unavailable_entit
 `inverter` (bool): for `measurement_unhealthy`, the meter's sensors unavailable together as above; empty
 and false otherwise.
 
+A site's `measurement` in `get_entity_config` carries the additive `current_source`: `null`, or the source
+a direct site reads its phase currents from in place of the three `direct_L{n}` entities (set by a
+detection, e.g. an Easee Equalizer, or the setup wizard), read-only:
+`{"kind": "attributes", "entity_id", "name", "attributes": {"L1", "L2", "L3"}, "entity_ids": null}` for one
+entity carrying each phase as an attribute (`name` is its friendly name), or
+`{"kind": "separate_entities", "entity_id": null, "name": null, "attributes": null, "entity_ids": {"L1", "L2", "L3"}}`.
+While it is set the `direct_L{n}` fields report no `current`, and a write that leaves them out keeps it.
+A write that names any of them replaces it, so all three are then required (`required` on each missing one).
+
 A site's `warnings` in `get_entity_config` carry the additive `limits_a` (`null`, or for
 `battery_import_limit_differs` `{"battery": A, "spotnav": A}` per phase). That warning says a home battery
 integration's own grid import limit and SpotNav's (the main fuse minus the safety margin) differ by more

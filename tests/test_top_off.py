@@ -276,6 +276,24 @@ async def test_the_sun_taking_over_at_the_window_end_is_no_top_off(hass: HomeAss
     await controller.async_shutdown()
 
 
+async def test_a_persons_charge_at_the_last_window_end_is_no_top_off_and_goes_on(
+    hass: HomeAssistant, freezer: Any
+) -> None:
+    """The person pressed Start inside the plan's last window: the charge is theirs, not the plan's, so the
+    window's end neither stops it nor hands it to a top-off (which would stop it later). The plan ends."""
+    charger = Charger(hass)
+    controller = await _controller(hass)
+    end = dt_util.utcnow() + timedelta(minutes=10)
+    await controller.async_install(_plan(end, to_vehicle_limit=True))
+    await hass.async_block_till_done()
+    charger.amps(10.0)
+    assert await controller.async_start(manual=True)
+    await _later(hass, freezer, 600)
+    assert controller.top_off_until is None and controller.plan is None
+    assert charger.stops == 0 and controller.charging and controller.charge_origin == "manual"
+    await controller.async_shutdown()
+
+
 async def test_a_restart_mid_top_off_goes_on_and_ends_it_by_the_same_rules(hass: HomeAssistant, freezer: Any) -> None:
     controller, charger, end = await _charging_at_the_window_end(hass, freezer, to_vehicle_limit=True)
     await _later(hass, freezer, 10 * 60)

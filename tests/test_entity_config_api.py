@@ -24,6 +24,7 @@ from custom_components.spotnav.const import (
     CONF_MAX_AGE_S,
     CONF_MEASUREMENT_MODE,
     CONF_SAFETY_MARGIN_A,
+    CONF_SITE_CURRENT_SOURCE,
     MEASUREMENT_MODE_DERIVED,
 )
 
@@ -483,3 +484,88 @@ async def test_a_site_charger_takes_a_priority_and_a_lone_charger_has_none(hass:
         )["result"]
         assert refused["error"] == "spotnav_invalid_value"
         assert refused["field_errors"] == [{"field": "charger_priority", "code": code}]
+
+
+def _equalizer_source(entity_id: str) -> dict:
+    return {
+        "kind": "attributes",
+        "entity_id": entity_id,
+        "entity_ids": None,
+        "attributes": {"L1": "state_currentL1", "L2": "state_currentL2", "L3": "state_currentL3"},
+        "attribute_unit_override": "A",
+        "trust_entity_unit_for_attributes": False,
+    }
+
+
+async def test_a_site_read_from_one_entitys_attributes_reports_it_and_keeps_it_until_three_are_named(
+    hass: HomeAssistant, hass_ws_client
+) -> None:
+    equalizer = register(
+        hass,
+        "sensor",
+        "easee_equalizer_current",
+        "Equalizer Current",
+        state_currentL1=4.0,
+        state_currentL2=5.0,
+        state_currentL3=6.0,
+    )
+    charger, site = await setup_charger_and_site(hass, site_current_source=_equalizer_source(equalizer))
+    client = await admin(hass, hass_ws_client)
+
+    config = (await ws_call(client, get_message(charger.entry_id)))["result"]["config"]
+    assert config["site"]["measurement"]["current_source"] == {
+        "kind": "attributes",
+        "entity_id": equalizer,
+        "name": "Equalizer Current",
+        "attributes": {"L1": "state_currentL1", "L2": "state_currentL2", "L3": "state_currentL3"},
+        "entity_ids": None,
+    }
+    # The direct entities stored beside it are not what is read, so none is shown as configured.
+    for phase in ("L1", "L2", "L3"):
+        assert field({"config": config}, f"direct_{phase}")["current"] is None
+
+    # Untouched, the source is kept: a write of another field needs no phase entities.
+    result = (
+        await ws_call(
+            client,
+            update_entity_config_message(
+                charger.entry_id, scope="site", expected={"main_fuse_a": 25}, changes={"main_fuse_a": 32}
+            ),
+        )
+    )["result"]
+    assert result["ok"] is True
+    data = hass.config_entries.async_get_entry(site.entry_id).data
+    assert data[CONF_SITE_CURRENT_SOURCE]["entity_id"] == equalizer and data[CONF_MAIN_FUSE_A] == 32.0
+
+    # Naming some phases only would leave the others unread: each missing one is required.
+    l1, l2, l3 = (register(hass, "sensor", f"own_l{n}", f"Own L{n}", device_class="current") for n in "123")
+    result = (
+        await ws_call(
+            client,
+            update_entity_config_message(
+                charger.entry_id, scope="site", expected={"direct_L1": ""}, changes={"direct_L1": l1}
+            ),
+        )
+    )["result"]
+    assert result["ok"] is False
+    assert sorted(error["field"] for error in result["field_errors"]) == ["direct_L2", "direct_L3"]
+    assert hass.config_entries.async_get_entry(site.entry_id).data[CONF_SITE_CURRENT_SOURCE] is not None
+
+    # All three replace the source.
+    result = (
+        await ws_call(
+            client,
+            update_entity_config_message(
+                charger.entry_id,
+                scope="site",
+                expected={"direct_L1": "", "direct_L2": "", "direct_L3": ""},
+                changes={"direct_L1": l1, "direct_L2": l2, "direct_L3": l3},
+            ),
+        )
+    )["result"]
+    assert result["ok"] is True
+    data = hass.config_entries.async_get_entry(site.entry_id).data
+    assert CONF_SITE_CURRENT_SOURCE not in data
+    assert data[CONF_DIRECT_ENTITIES] == {"L1": l1, "L2": l2, "L3": l3}
+    assert result["config"]["site"]["measurement"]["current_source"] is None
+    assert field(result, "direct_L2")["current"]["entity_id"] == l2

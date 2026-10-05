@@ -128,6 +128,11 @@ START_CAUSE_TTL_S = 300.0
 # Token for hybrid window-end handoff logs (see `_async_end_callback`).
 HYBRID_LOG_TOKEN = "HYBRID"
 
+#: Who owns a charge a plan window's end leaves alone (`_window_end_spared_owner`): a person's Start, a start
+#: with no cause (Charge now on a charger without Auto) and the sun's. Never `plan_window`, nor a charge the
+#: charger began by itself (no origin), which the window's end stops as it always did.
+WINDOW_END_SPARED_ORIGINS: Final = frozenset({"manual", "other", "solar"})
+
 #: What a connection handler is told (`set_connection_handler`): a vehicle was plugged in, or unplugged.
 CONNECTION_PLUGGED_IN = "plugged_in"
 CONNECTION_UNPLUGGED = "unplugged"
@@ -2482,7 +2487,8 @@ class ChargingController:
                 self._paused_charge = None
             return False
         self._held_for_safety = False
-        if origin is not None or plan_charge:
+        # A charge the charger began by itself stays its own (no origin), not a start with no cause.
+        if (self._charge_origin, self._plan_charge) != (origin, plan_charge):
             self._charge_origin, self._plan_charge = origin, plan_charge
             if self._start_cause is not None and origin is not None:
                 self._start_cause = (origin, self._start_cause[1])
@@ -3960,7 +3966,8 @@ class ChargingController:
 
     @callback
     def _async_end_callback(self, _now: datetime) -> None:
-        """A window ended and another follows: stop but keep the schedule, unless
+        """A window ended and another follows: stop the plan's charge (never one a person or the sun owns,
+        `_window_end_spared_owner`) but keep the schedule, unless
         `end_window_guard` says the sun can carry the charge past this boundary (see
         `set_end_window_guard`), in which case nothing happens and charging continues.
         """
@@ -3976,7 +3983,8 @@ class ChargingController:
 
     @callback
     def _async_final_end_callback(self, _now: datetime) -> None:
-        """The last window ended: stop and clear the schedule, unless `end_window_guard` says the
+        """The last window ended: stop the plan's charge (a person's or the sun's goes on,
+        `_window_end_spared_owner`) and clear the schedule, unless `end_window_guard` says the
         sun can carry the charge past this boundary; then neither happens and solar mode owns the
         charger (see `plan_window_active_now`, `False` once every window is past). A plan that charges
         to the car's own limit with the car still drawing is not stopped either: the car finishes it in
@@ -3990,6 +3998,11 @@ class ChargingController:
             )
             self._shadow.feed(core_events.FinalWindowEnd(handed_off=True))
             return
+        if self._window_end_spared_owner() is not None:
+            # Not the plan's charge: the plan ends with its last window, the charge goes on (decided again
+            # under the lock).
+            self._async_spawn(self._async_window_end_stop(clear_schedule=True), "the last window's end")
+            return
         if self._top_off_wanted() is not None:
             # A car still drawing on a charge to its own limit finishes it: the top-off decides again
             # under the lock, and ends the plan as this would have when it may not run.
@@ -4001,37 +4014,76 @@ class ChargingController:
         self._async_spawn(self._async_window_end_stop(clear_schedule=True), "the last window end's stop")
 
     async def _async_window_end_stop(self, *, clear_schedule: bool) -> None:
-        """A window's end stops the charge, as an automatic decision (`_automatic`)."""
+        """A window's end stops the plan's charge, as an automatic decision (`_automatic`)."""
         async with self._automatic(AUTOMATIC_STOP) as allowed:
+            event = core_events.FinalWindowEnd() if clear_schedule else core_events.WindowEnd()
             token = self._shadow.begin()
             legacy: list[str] = []
             outcome: CommandOutcome | None = None
             try:
-                verdict = self._shadow.verdict(
-                    core_events.FinalWindowEnd() if clear_schedule else core_events.WindowEnd()
-                )
-                if (
-                    allowed
-                    if verdict is None
-                    else self._shadow.choose(
-                        "window_end",
-                        allowed,
-                        ("stop", "final_window_end" if clear_schedule else "window_end") in verdict,
+                verdict = self._shadow.verdict(event)
+                spared = self._window_end_spared_owner()
+                stop = allowed and spared is None
+                if verdict is not None:
+                    stop = self._shadow.choose(
+                        "window_end", stop, ("stop", "final_window_end" if clear_schedule else "window_end") in verdict
                     )
-                ):
+                if stop:
                     legacy.append("stop")
                     outcome = CommandOutcome(False)
                     stopped = await self._automatic_stop_locked(
                         "the window end's stop", clear_schedule=clear_schedule, request=True
                     )
                     outcome = self._shadow_stop_outcome(stopped)
+                elif allowed:
+                    await self._window_end_spare_locked(spared, clear_schedule=clear_schedule)
             finally:
-                self._shadow.end(
-                    token,
-                    core_events.FinalWindowEnd() if clear_schedule else core_events.WindowEnd(),
-                    legacy=legacy,
-                    outcome=outcome,
-                )
+                self._shadow.end(token, event, legacy=legacy, outcome=outcome)
+
+    def _window_end_spared_owner(self) -> str | None:
+        """Who owns the charge a plan window's end leaves alone, else `None` (the end stops it).
+
+        A window's end stops only the plan's own charge: the window's, or one the charger began by itself
+        inside it (claimed, or not yet). A charge a person started (a Start, Charge now), or the sun, goes
+        on, and so does one load balancing holds back for them: the regulator still gives it back. Read
+        under the operation lock by the stop itself; the timer's callback reads it too, to choose between
+        the stop and the top-off. The core decides the same (`core.ownership.window_end_spared`).
+        """
+        if self._plan_charge:
+            return None
+        origin = self._charge_origin
+        if self._control_observation is False and not self.start_pending:
+            # Seen off with no Start on its way: an origin left from a charge that ended owns nothing.
+            origin = None
+        if origin is None and self._paused_by_balancing and self._paused_charge is not None:
+            origin, plan_charge = self._paused_charge
+            if plan_charge:
+                return None
+        return origin if origin in WINDOW_END_SPARED_ORIGINS else None
+
+    async def _window_end_spare_locked(self, owner: str | None, *, clear_schedule: bool) -> None:
+        """A window's end that leaves the charge running, with the operation lock held: it is not the plan's
+        (`owner`, or the core's owner when the core drives), and the last window's end ends the plan."""
+        _LOGGER.info(
+            "SpotNav charger %s: a planned window ended; the charge is not the plan's (%s), so it goes on%s",
+            self.entry_id,
+            owner or self._shadow.session.owner,
+            " and the plan ends" if clear_schedule else "",
+        )
+        if clear_schedule:
+            await self._end_plan_locked()
+
+    async def _end_plan_locked(self) -> None:
+        """Clear the plan, its top-off and its timers without touching the charger, as a stop that clears
+        the schedule clears them (`_stop_locked`)."""
+        self._plan_charge = False
+        self.plan = None
+        self._clear_top_off()
+        self._cancel_timers()
+        self._async_disarm_target_listener()
+        self._async_disarm_probe_listener()
+        await self._async_save()
+        self._notify()
 
     # ------------------------------------------------------------------ the top-off (`top_off.py`)
 
@@ -4071,8 +4123,9 @@ class ChargingController:
     def _top_off_wanted(self) -> datetime | None:
         """The deadline of the top-off the plan's last window ending calls for, else `None`.
 
-        Only for a plan that charges to the car's own limit, with its charge still on, nothing else
-        owning the charger (a pause, solar), load balancing not pausing it, a car not known to be gone,
+        Only for a plan that charges to the car's own limit, with its charge still on and the plan's (not a
+        person's or the sun's, `_window_end_spared_owner`), nothing else owning the charger (a pause,
+        solar), load balancing not pausing it, a car not known to be gone,
         and the car still drawing by what the charger measures (a control that is merely on is no
         evidence). Never past the departure: a deadline already reached is none.
         """
@@ -4084,6 +4137,8 @@ class ChargingController:
         except ValueError:
             return None
         if not self._control_on or self._paused_by_balancing or self._hold_blocked():
+            return None
+        if self._window_end_spared_owner() is not None:
             return None
         if self.adapter.vehicle_connected() is False or self._car_drawing() is not True:
             return None
@@ -4116,16 +4171,21 @@ class ChargingController:
             outcome: CommandOutcome | None = None
             try:
                 until = self._top_off_wanted()
+                spared = self._window_end_spared_owner()
+                stop = until is None and spared is None
                 verdict = self._shadow.verdict(core_events.FinalWindowEnd(top_off_wanted=until is not None))
                 if verdict is not None:
-                    # The core decides: the last window's stop, a top-off, or (not its to decide now) nothing.
-                    if self._shadow.choose("final_window_end", until is None, ("stop", "final_window_end") in verdict):
+                    # The core decides: the last window's stop, a top-off, or a charge it leaves running.
+                    stop = self._shadow.choose("final_window_end", stop, ("stop", "final_window_end") in verdict)
+                    if stop:
                         until = None
-                    elif until is None:
-                        return
                 if until is None:
                     if self._control_on:
                         self._record_completion("plan_done", target_soc_percent=plan.target_soc_percent)
+                    if not stop:
+                        # Not the plan's charge: it goes on, and the plan ends.
+                        await self._window_end_spare_locked(spared, clear_schedule=True)
+                        return
                     legacy.append("stop")
                     outcome = CommandOutcome(False)
                     stopped = await self._automatic_stop_locked("the last window end's stop", clear_schedule=True)

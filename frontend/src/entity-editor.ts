@@ -43,6 +43,7 @@ import {
   type EntityFieldFlag,
   type EntityScope,
   type EntitySite,
+  type SiteCurrentSource,
   type SiteWarning,
   type VehicleSoc,
   vehicleChoice,
@@ -383,6 +384,19 @@ export function conflictText(language: Language, conflict: ControlConflict, name
   return conflict.kind === "disabled"
     ? translate(language, "control.disabled", { name })
     : translate(language, "control.conflict", { label: conflict.label, name });
+}
+
+/** What a stored phase current source reads: its entity (by name) and attributes, or its three entities. */
+function currentSourceText(language: Language, config: EntityConfig, source: SiteCurrentSource): string {
+  if (source.kind === "attributes") {
+    const named = source.name === source.entityId ? source.entityId : `${source.name} (${source.entityId})`;
+    const attributes = PHASES.map((phase) => source.attributes[phase]).filter((name) => name !== null);
+    return translate(language, "entity.phaseSource.attributes", { source: named, attributes: attributes.join(", ") });
+  }
+  const entities = PHASES.map((phase) => source.entityIds[phase])
+    .filter((id): id is string => id !== null)
+    .map((id) => entityNameIn(config, id));
+  return translate(language, "entity.phaseSource.entities", { entities: entities.join(", ") });
 }
 
 /** An entity's friendly name when the configuration states it, else its id. */
@@ -1188,6 +1202,44 @@ export function entityEditorBody(
           ? "one"
           : "none";
 
+      // A direct site may read its phases from one stored source (an Easee Equalizer's one entity with
+      // the phases as attributes) in place of three entities: it is shown as what is read, and naming
+      // the three entities instead replaces it on save.
+      const currentSource = config.site?.measurement.currentSource ?? null;
+      let phaseSourceKind = "source";
+      const phaseSource =
+        currentSource === null
+          ? null
+          : choiceGroup(
+              "phase-source",
+              "entity.phaseSource.title",
+              [
+                { value: "source", label: "entity.phaseSource.attributes", text: currentSourceText(language, config, currentSource) },
+                { value: "choose", label: "entity.phaseSource.choose" },
+              ],
+              () => phaseSourceKind,
+              (value) => {
+                phaseSourceKind = value;
+                paintPhases();
+              },
+              { fieldsAfter: "choose" },
+            );
+      if (phaseSource !== null) {
+        // Chosen instead, all three are needed: one left empty would keep the source unseen.
+        requirers.push((draft) =>
+          currentMode() === MEASUREMENT_DIRECT && phaseSourceKind === "choose"
+            ? PHASES.map((phase) => directFieldName(phase)).filter((name) => (draft[name] ?? "").trim() === "")
+            : [],
+        );
+        clearers.push((draft) => {
+          if (currentMode() === MEASUREMENT_DIRECT && phaseSourceKind === "source") {
+            for (const phase of PHASES) {
+              draft[directFieldName(phase)] = "";
+            }
+          }
+        });
+      }
+
       const paintPhases = (): void => {
         for (const name of phaseFieldNames(MEASUREMENT_DIRECT).concat(phaseFieldNames(MEASUREMENT_DERIVED))) {
           errorNodes.delete(name);
@@ -1208,11 +1260,27 @@ export function entityEditorBody(
         // In derived mode the help sits under the grid power and current choices, not repeated here.
         if (!derived) {
           phaseHelp.append(element(doc, "p", C.entityHelp, translate(language, "entity.help.phaseDirect")));
+          if (phaseSource !== null) {
+            phaseHelp.append(element(doc, "p", C.entityHelp, translate(language, "entity.help.phaseSource")));
+          }
+        }
+        // With a stored source in direct mode, the three entities are shown only when chosen instead.
+        const lines = !derived && phaseSource !== null ? phaseSource.fields : phases;
+        if (lines !== phases && phaseSource !== null) {
+          phaseSource.fields.replaceChildren();
+          phases.append(phaseSource.fieldset);
+          if (phaseSourceKind !== "choose") {
+            applyPending();
+            return;
+          }
         }
         for (const phase of PHASES) {
           const group = element(doc, "fieldset", C.entityLine);
           group.dataset["phase"] = phase;
-          group.append(element(doc, "legend", C.siteLegend, phase));
+          // In direct mode each field's own label names its phase; several derived fields share one.
+          if (derived) {
+            group.append(element(doc, "legend", C.siteLegend, phase));
+          }
           const cells = element(doc, "div", C.entityLineCells);
           const names = derived
             ? [
@@ -1229,9 +1297,9 @@ export function entityEditorBody(
             cells.append(entityField(field, labelOf(language, name)));
           }
           group.append(cells);
-          phases.append(group);
+          lines.append(group);
         }
-        phases.append(phaseHelp);
+        lines.append(phaseHelp);
         applyPending();
       };
 
