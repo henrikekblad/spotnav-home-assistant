@@ -96,9 +96,9 @@ charging start*, *Planned cost* and *Auto settings revision*. On a site: *Capaci
   installed; check *Auto execution state* and whether automatic charging is paused.
 - **Prices are stale or missing.** Prices come from the public SpotNav Relay. If the relay is unreachable, the last successful
   fetch is used and the card says the prices are stale. No token or account is involved.
-- **Trying the new charge-ownership logic (experimental, off by default).** With Home Assistant stopped, add
-  `"core_ownership": true` to the charger entry's `data` in `.storage/core.config_entries` and start it again; remove
-  the key the same way to go back. No card or setup step sets it.
+- **Helping test the new charge-ownership logic.** A new core that decides who owns a charge runs beside today's
+  logic and controls nothing: it only records where it would have decided otherwise. Downloading the debug info
+  (card Settings, Support) after a few days of ordinary charging, and sending it with an issue, helps it get there.
 
 ## Vehicles
 

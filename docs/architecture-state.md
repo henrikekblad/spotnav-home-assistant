@@ -1,5 +1,9 @@
 # Charge ownership: the session model and its shadow
 
+> **Developer documentation.** The core described here runs in shadow mode: it decides beside today's code and
+> records where it would differ, but it does not control any charger. Names and fields below follow the code and
+> will change as the work goes on.
+
 For developers. Who owns a charger's charge, and which person intent holds, is today the product of about fifteen
 fields across `execution/controller.py`, `execution/window_hold.py` and the Auto settings' pause. The refactor
 moves that into one explicit record and one pure decision. Step 1 (this) runs the new core **beside** today's

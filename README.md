@@ -96,6 +96,9 @@ cd frontend && npm ci && npm test && npm run check-dist
 The card source is in `frontend/`; the compiled bundle in
 `custom_components/spotnav/www/` is committed and `npm run build` regenerates it.
 
+How charger control is being restructured into one explicit model, running in shadow mode for now, is described in
+[docs/architecture-state.md](docs/architecture-state.md).
+
 ## Licence
 
 [MIT](LICENSE)
