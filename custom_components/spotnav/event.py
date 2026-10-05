@@ -92,7 +92,11 @@ def charger_facts(
             "energy_kwh": plan.energy_kwh,
             "automatic": plan.auto_owned,
         }
-    at_risk = snapshot is not None and snapshot.reason == "deadline_too_short"
+    # At risk: nothing fits before the departure, or the plan is the best effort that cannot meet it.
+    at_risk = snapshot is not None and (
+        snapshot.reason == "deadline_too_short"
+        or (snapshot.proposal is not None and snapshot.proposal.short_of_deadline)
+    )
     at_risk_info: dict[str, Any] = {}
     if at_risk and settings is not None:
         at_risk_info = {

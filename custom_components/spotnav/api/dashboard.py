@@ -1903,6 +1903,8 @@ def status_facts(capture: CapturedDashboard) -> StatusFacts:
             energy_basis=snapshot.energy_basis,
             remaining_kwh=finite_number(snapshot.remaining_kwh),
             room_kwh=finite_number(snapshot.room_kwh) if snapshot.room_limited else None,
+            departure_at=_utc(snapshot.departure_at),
+            expected_soc_percent=finite_number(snapshot.expected_soc_percent),
         )
     proposal = None
     section = _proposal_section(capture)
@@ -1918,6 +1920,7 @@ def status_facts(capture: CapturedDashboard) -> StatusFacts:
             currency=None if cost is None else cost["currency"],
             distance_mil=section["distance_mil"],
             unpriced=section["unpriced"],
+            short_of_deadline=bool(source.short_of_deadline),
         )
     area = capture.area
     state = serialize_strategy_state(capture)

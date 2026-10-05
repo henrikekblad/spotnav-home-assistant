@@ -47,6 +47,7 @@ from ..sessions.model import STARTED_OTHER
 from ..sessions.recorder import RESET_TOLERANCE_KWH
 from ..vehicles.soc_estimate import (
     battery_room_kwh,
+    CHARGE_EFFICIENCY,
     read_energy_register_kwh,
     REGISTER_TOLERANCE_KWH,
     SocReader,
@@ -243,6 +244,16 @@ def advance_register(
     return believe(0.0 if from_zero else reading, held, None)
 
 
+def expected_soc_percent(resolution: _EnergyResolution, planned_kwh: float) -> float | None:
+    """The state of charge a target plan reaches with `planned_kwh` from the wall, or `None` for a need
+    with no live reading and battery size behind it (a manual need)."""
+    soc = resolution.soc_percent
+    capacity = resolution.capacity_kwh
+    if soc is None or capacity is None or capacity <= 0:
+        return None
+    return min(100.0, soc + planned_kwh * CHARGE_EFFICIENCY / capacity * 100.0)
+
+
 def counted_kwh(baseline: EnergyBaseline) -> float:
     """The energy a baseline's epoch has counted so far, as its believed readings say."""
     reference = baseline.register_kwh
@@ -371,6 +382,10 @@ class _EnergyResolution:
     room_kwh: float | None = None
     room_limited: bool = False
     uncapped_kwh: float | None = None
+    #: A target only: the live state of charge and the battery size the need was worked out from, so a
+    #: plan that cannot reach the target by the departure can say what it reaches instead.
+    soc_percent: float | None = None
+    capacity_kwh: float | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -437,6 +452,10 @@ class AutoSnapshot:
     #: The departure instant this calculation planned for, or `None` without one: a plan carries it, so
     #: a top-off past its last window never runs beyond it (`execution/top_off.py`).
     departure_at: datetime | None = None
+    #: A target plan short of its departure (`PlanResult.short_of_deadline`): the state of charge the car
+    #: is expected to reach by then, from the live reading, the planned energy and the charging
+    #: efficiency; `None` for a manual need or a plan that is not short.
+    expected_soc_percent: float | None = None
 
     def meaningful_key(self) -> tuple[Any, ...]:
         """What a listener hears about, and is not told twice.
@@ -1143,6 +1162,10 @@ class AutoPlannerController:
             settings, state, reason, calculated_at, entry=entry, price_snapshot=area_snapshot,
             proposal=result, attempt=attempt, **wait_facts,
         )
+        if result.short_of_deadline:
+            # Best effort: the departure leaves too little time for the need, so every slot up to it is
+            # planned and charged. A warning, not a refusal; the status says what the car will reach.
+            snapshot = replace(snapshot, expected_soc_percent=expected_soc_percent(resolved, result.delivered_kwh))
         if not await self._persist_proposal(settings, snapshot):
             # A proposal whose summary could not be saved is shown with a stable code and installed by
             # nobody. The code is the fact; the exception text is not.
@@ -1171,6 +1194,19 @@ class AutoPlannerController:
         zone = dt_util.get_time_zone(entry.market_tz)
         missing_day = gap.missing_from.astimezone(zone).date()
         publication_at = price_wait.expected_publication_at(missing_day)
+        if gap.short:
+            # The need does not fit before the departure at all: nothing is waited for or picked by
+            # price, every slot up to the departure is charged now (best effort).
+            return (
+                plan_unpriced(request),
+                {
+                    "wait_rule": "implicit",
+                    "price_wait_action": "guarantee",
+                    "publication_at": publication_at,
+                    "must_buy_kwh": request.requested_kwh,
+                },
+                None,
+            )
         max_kw = power_kw(request.amps, request.phases, request.voltage_between_phases_v)
         decision = price_wait.decide(
             now=calculated_at,
@@ -1542,7 +1578,9 @@ class AutoPlannerController:
             )
         kwh = wall_kwh if wall_kwh is not None else settings.requested_kwh
         # Always trustworthy: live state of charge already reflects everything delivered.
-        return _EnergyResolution(kwh=kwh, delivered_energy_trustworthy=True)
+        return _EnergyResolution(
+            kwh=kwh, delivered_energy_trustworthy=True, soc_percent=live_soc, capacity_kwh=capacity
+        )
 
     def _capped_by_room(self, settings: AutoSettings, resolution: _EnergyResolution) -> _EnergyResolution:
         """A manual need no larger than the battery has room for.

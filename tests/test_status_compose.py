@@ -1009,6 +1009,47 @@ CASES: list[tuple[str, StatusFacts, str, list[dict[str, Any]]]] = [
         ],
     ),
     (
+        "a target plan short of its departure charges now and warns what the car reaches by then",
+        base(
+            charging=True,
+            installed_periods=((at(-0.5), at(1.5)),),
+            relation_applied=True,
+            planning=planning(departure_at=at(1.5), expected_soc_percent=44.4615),
+            proposal=proposal(
+                periods=((at(-0.5), at(1.5)),), planned_kwh=7.36, requested_kwh=11.7867, short_of_deadline=True
+            ),
+        ),
+        "notice",
+        [
+            {"code": "charging_now", "params": {"until": iso(1.5)}},
+            {"code": "plan_energy", "params": {"kwh": 7.36}},
+            {"code": "plan_cost", "params": {"amount_minor": 1250, "currency": "SEK"}},
+            {
+                "code": "departure_shortfall",
+                "params": {"kwh": 7.36, "requested_kwh": 11.79, "soc_percent": 44.5, "departure": iso(1.5)},
+            },
+        ],
+    ),
+    (
+        "a manual need short of its departure says the energy, with no state of charge",
+        base(
+            relation_applied=True,
+            planning=planning(),
+            proposal=proposal(periods=((at(2), at(4)),), planned_kwh=7.36, requested_kwh=12.0, short_of_deadline=True),
+        ),
+        "notice",
+        [
+            {"code": "auto_planned", "params": {"start": iso(2)}},
+            {"code": "plan_energy", "params": {"kwh": 7.36}},
+            {"code": "plan_cost", "params": {"amount_minor": 1250, "currency": "SEK"}},
+            {"code": "plan_distance", "params": {"mil": 10.0}},
+            {
+                "code": "departure_shortfall",
+                "params": {"kwh": 7.36, "requested_kwh": 12.0, "soc_percent": None, "departure": iso(4)},
+            },
+        ],
+    ),
+    (
         "blocking beats a pause and a charge",
         base(paused=True, charging=True, planning=planning("incomplete_settings", "settings_missing")),
         "notice",

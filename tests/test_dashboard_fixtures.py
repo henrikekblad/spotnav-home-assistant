@@ -402,6 +402,8 @@ EXPECTED_FIXTURES: Final = frozenset(
         # This module: a target charge with an estimated state of charge, and one that ended on it.
         "target_soc_estimated.json",
         "target_soc_stopped_on_estimate.json",
+        # This module: a target the departure leaves too little time for, planned as best effort.
+        "departure_shortfall.json",
         # `tests/test_vehicle_properties.py`: `vehicles`, `target_vehicle_id`, `soc.efficiency`.
         "target_soc_two_vehicles.json",
         # `tests/test_phases.py`: a one-phase car limiting a three-phase charger.
@@ -600,3 +602,30 @@ async def test_the_target_reached_on_an_estimate_fixture_is_the_serializers_own_
     assert payload["status"]["lines"][0]["code"] != "target_reached"
     payload = json.loads(re.sub(r'"[0-9a-f]{32}"', '"<id>"', json.dumps(payload)))
     _write_or_compare({"target_soc_stopped_on_estimate.json": payload})
+
+
+@freeze_time("2026-09-22 07:58:00")
+async def test_the_departure_shortfall_fixture_is_the_serializers_own_output(
+    hass: HomeAssistant, offline_relay: None
+) -> None:
+    """The field case: a 15.6 kWh car at 2 % with an 80 % target, one phase at 16 A, at 09:58 with the
+    departure at 12:00. Every slot to the departure is planned, and the status is a notice with the
+    `departure_shortfall` line rather than a blocking `planning_unavailable`."""
+    import re
+
+    from tests.world import charger_and_car
+
+    charger, _, _ = await charger_and_car(
+        hass, capacity=15.6, soc_percent="2", amps=16, departure_enabled=True, departure=time(12, 0)
+    )
+    payload = await _payload(hass, charger, can_act=True)
+    assert payload["planning"]["state"] == "proposal_ready"
+    assert payload["status"]["tone"] == "notice"
+    shortfall = [line for line in payload["status"]["lines"] if line["code"] == "departure_shortfall"]
+    assert len(shortfall) == 1
+    params = shortfall[0]["params"]
+    assert params["kwh"] == 7.36 and params["departure"] == "2026-09-22T10:00:00+00:00"
+    assert params["soc_percent"] == pytest.approx(2 + 7.36 * 0.9 / 15.6 * 100, abs=0.05)
+    assert params["requested_kwh"] == pytest.approx(78 / 100 * 15.6 / 0.9, abs=0.01)
+    payload = json.loads(re.sub(r'"[0-9a-f]{32}"', '"<id>"', json.dumps(payload)))
+    _write_or_compare({"departure_shortfall.json": payload})
