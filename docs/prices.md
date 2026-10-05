@@ -45,9 +45,16 @@ quarter-hours and a half-hour price two.
 
 ### When prices are published
 
-Day-ahead prices for tomorrow are published once a day, in the early afternoon (around 13:00
-Brussels time for the ENTSO-E areas, around 16:00 UK time for Agile). Until then only today's prices
-are known. SpotNav never plans on prices that are not published; see
+Prices for tomorrow are published once a day, at a time that depends on the source:
+
+| Source | Expected publication |
+|---|---|
+| ENTSO-E day-ahead (most areas) | about 13:00 Brussels time |
+| Octopus Agile (Great Britain) | about 16:00 UK time |
+| Red Eléctrica PVPC (Spain, regulated) | about 20:15 Madrid time |
+
+Each area states its own expected time in the relay's area list (`publication`), so SpotNav knows
+when to look and how long to wait. Until then only today's prices are known. SpotNav never plans on prices that are not published; see
 [Waiting for tomorrow's prices](#waiting-for-tomorrows-prices).
 
 ## What you pay
@@ -102,8 +109,10 @@ publication, at the charger's rate with a margin, before the departure.
 - If the prices are late and the latest safe start arrives, the remainder is charged at once. The
   departure is kept; only the price is given up. A plan bought without published prices is flagged.
 
-The expected publication is 13:00 Brussels time plus a 45-minute margin, on one European clock for
-every area.
+The expected publication is the area's own `publication` time plus a 45-minute margin, worked out
+in that time's zone, so a clock change cannot shift it. An area that states no time is expected at
+13:00 Brussels time. Until the expected time the card says when the prices are due ("Waiting for
+tomorrow's prices (~16:45)"); after it, SpotNav treats the prices as able to arrive at any moment.
 
 ### The history profile
 
@@ -132,8 +141,9 @@ same area make one set of requests.
 
 - The relay's index says which days exist. SpotNav fetches a day only after the index lists it, so
   it does not ask for days that are not published yet.
-- It reads the index every 30 minutes, every 5 minutes between 12:55 and 15:00 Brussels time while
-  tomorrow is still missing, and every hour once tomorrow is in hand. Each interval varies by ±10 %
+- It reads the index every 30 minutes, every 5 minutes from 5 minutes before an area's expected
+  publication until two hours after it while that area's tomorrow is still missing, and every hour
+  once tomorrow is in hand. Each interval varies by ±10 %
   so installations do not ask at the same moment. After a network failure it backs off from one
   minute up to 30 minutes.
 - The area list is read again once a day, and at once when the index says it has changed.
@@ -218,6 +228,7 @@ client also notices a changed area list without polling `areas.json` often.
       "minor_unit": "öre",
       "vat_percent": 25,
       "suggested_tax": 36,
+      "publication": { "time": "13:00", "tz": "Europe/Brussels" },
       "suggested_grid_fee": 30,
       "source": { "name": "ENTSO-E Transparency Platform", "url": "https://transparency.entsoe.eu/" }
     }
@@ -239,6 +250,7 @@ Areas are sorted by `id`. Only areas the relay can serve are listed.
 | `major_unit`, `minor_unit` | Display labels for the whole and the hundredth unit (`kr`/`öre`, `€`/`cent`, `£`/`p`). Not unique: SEK, NOK and DKK are all `kr`. Display them; do not parse them. |
 | `vat_percent` | Optional. Suggested VAT in percent. |
 | `suggested_tax` | Optional. Suggested electricity tax, in the minor unit per kWh. |
+| `publication` | Optional. `{ "time": "HH:MM", "tz": "<IANA zone>" }`: when tomorrow's prices are expected, in that zone (`13:00` `Europe/Brussels` for ENTSO-E). A client that does not know it, or an area without it, assumes 13:00 Brussels. |
 | `suggested_grid_fee` | Optional. Suggested grid fee, in the minor unit per kWh. |
 | `included` | Optional; absent means `[]`. Which of `vat`, `tax` and `grid_fee` the published price already contains. A client applies none of those. |
 | `source` | `{ "name", "url" }`: where the prices come from, for attribution. |
