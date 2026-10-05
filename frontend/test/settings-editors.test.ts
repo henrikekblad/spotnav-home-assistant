@@ -112,9 +112,10 @@ function inputs(element: Element): HTMLInputElement[] {
   // which is a range control and is placed last for the deadline section.
   const all = Array.from(dialog?.querySelectorAll<HTMLInputElement>(".spotnav-settings-input") ?? []);
   const periods = Array.from(dialog?.querySelectorAll<HTMLInputElement>("input[id$='-deadline-periods']") ?? []);
-  const current = all.filter((node) => node.type === "number").slice(-1);
+  // The current, like the energy, is its slider alone: no number field beside it.
+  const current = Array.from(dialog?.querySelectorAll<HTMLInputElement>("input[type='range'][id$='-current']") ?? []);
   // The departure date picker has its own helper (`dateField`); it is not one of the positional controls.
-  const tail = all.filter((node) => node.type !== "number" && node.type !== "date");
+  const tail = all.filter((node) => node.type !== "date");
   if (focusKind === "energy") {
     // The energy editor's one control is its slider: no number field beside it.
     const slider = dialog?.querySelector<HTMLInputElement>("[data-part='energy'] input[type='range']");
@@ -135,6 +136,16 @@ function enter(node: HTMLInputElement, value: string): void {
 /** The energy editor's value text, on its label row. */
 function energyText(element: Element): string {
   return editorDialog(element)?.querySelector("[data-part='energy'] [data-part='energy-value']")?.textContent ?? "";
+}
+
+/** The current editor's value text, on its label row. */
+function currentText(element: Element): string {
+  return editorDialog(element)?.querySelector("[data-part='current-value']")?.textContent ?? "";
+}
+
+/** The charging periods' value text, on their label row. */
+function periodsText(element: Element): string {
+  return editorDialog(element)?.querySelector("[data-part='periods-value']")?.textContent ?? "";
 }
 
 function button(element: Element, className: string): HTMLButtonElement | null {
@@ -345,7 +356,7 @@ describe("the request lifecycle", () => {
     const [enabled, time, periods] = inputs(element);
     enabled!.checked = false;
     time!.value = "05:15";
-    periods!.value = "8";
+    enter(periods!, "8");
 
     button(element, "spotnav-settings-save")!.click();
     await settle();
@@ -435,23 +446,23 @@ describe("the request lifecycle", () => {
     expect(dashboards(hass).length).toBe(1);
   });
 
-  it("refuses an invalid input locally: one sentence, no request, nothing clamped", async () => {
+  it("asks for no more than the charger's range: the slider stops at its top", async () => {
     const { hass, element } = await openEditor("current");
     const input = inputs(element)[0]!;
-    input.value = "200";
+    enter(input, "200");
+    expect(input.value).toBe("32");
+    expect(currentText(element)).toBe("32 A");
 
     button(element, "spotnav-settings-save")!.click();
     await settle();
 
-    expect(updates(hass)).toHaveLength(0);
-    expect(editorDialog(element)).not.toBeNull();
-    expect(text(element)).toContain(translate("en", "settings.error.outOfRange"));
-    expect(input.value).toBe("200");
+    expect((updates(hass)[0]!["settings"] as Record<string, unknown>)["amps"]).toBe(32);
   });
 
   it("shows a current that was never set as not set, and refuses an empty Save", async () => {
     const { hass, element } = await openEditor("current", { record: aRecord({ amps: null }) });
-    expect(inputs(element)[0]!.value).toBe("");
+    expect(currentText(element)).toBe(translate("en", "settings.value.unset"));
+    expect(sliderNode(element)!.getAttribute("aria-valuetext")).toBe("Not set");
 
     button(element, "spotnav-settings-save")!.click();
     await settle();
@@ -938,7 +949,7 @@ function sliderNode(element: Element): HTMLInputElement | null {
   );
   const label = (node: HTMLInputElement): string => node.getAttribute("aria-label") ?? "";
   if (focusKind === "energy") {
-    return sliders.find((node) => label(node) === translate("en", "settings.energy.slider")) ?? null;
+    return sliders.find((node) => label(node).startsWith("Energy slider")) ?? null;
   }
   if (focusKind === "current") {
     return sliders.find((node) => label(node).startsWith("Current slider")) ?? null;
@@ -946,21 +957,8 @@ function sliderNode(element: Element): HTMLInputElement | null {
   return sliders.find((node) => node.id.endsWith("-deadline-periods")) ?? null;
 }
 
-function unitLabel(element: Element): string {
-  const units = Array.from(editorDialog(element)?.querySelectorAll<HTMLElement>(".spotnav-settings-unit") ?? []);
-  return (focusKind === "current" ? units[units.length - 1] : units[0])?.textContent ?? "";
-}
-
 function powerLine(element: Element): string {
   return editorDialog(element)?.querySelector<HTMLElement>(".spotnav-settings-power")?.textContent ?? "";
-}
-
-/** The honest out-of-domain marker: present and visible only when the slider cannot show the value. */
-function outOfRangeMark(element: Element): HTMLElement | null {
-  const node = editorDialog(element)?.querySelector<HTMLElement>(
-    ".spotnav-settings-pair > .spotnav-settings-note",
-  );
-  return node != null && !node.hidden ? node : null;
 }
 
 describe("the energy slider and its value on the label row", () => {
@@ -974,8 +972,9 @@ describe("the energy slider and its value on the label row", () => {
     expect(range.disabled).toBe(false);
     expect(energyText(element)).toBe("20.0 kWh");
     expect(range.getAttribute("aria-valuetext")).toBe("20.0 kWh");
-    expect(range.getAttribute("aria-label")).toBe(translate("en", "settings.energy.slider"));
-    // No number field and no unit in the energy editor; the current editor keeps both.
+    // The accessible name states the slider's own range.
+    expect(range.getAttribute("aria-label")).toBe("Energy slider, 0.5 to 100 kWh in half-kWh steps");
+    // No number field and no unit in the energy editor.
     const energy = editorDialog(element)!.querySelector<HTMLElement>("[data-part='energy']")!;
     expect(energy.querySelector("input[type='number']")).toBeNull();
     expect(energy.querySelector(".spotnav-settings-unit")).toBeNull();
@@ -1011,13 +1010,15 @@ describe("the energy slider and its value on the label row", () => {
       const energy = await openEditor("energy", { record: aRecord({ requested_kwh: value }) });
       const range = sliderNode(energy.element)!;
 
-      // The value text says exactly what is stored; the slider stands at its nearest step and stays usable,
-      // with no out-of-range note. A stored value above the ordinary top extends it, as before.
+      // The value text says exactly what is stored; the slider stands at its nearest step and stays usable.
+      // A stored value above the ordinary top extends it, as before, and its accessible name says so.
       expect(energyText(energy.element), String(value)).toBe(shown);
       expect(range.value, String(value)).toBe(at);
       expect(range.max, String(value)).toBe(max);
       expect(range.disabled, String(value)).toBe(false);
-      expect(outOfRangeMark(energy.element), String(value)).toBeNull();
+      expect(range.getAttribute("aria-label"), String(value)).toBe(
+        `Energy slider, 0.5 to ${Number(max).toLocaleString("en")} kWh in half-kWh steps`,
+      );
 
       // A Save that moved the current, not the slider, carries the stored value through untouched.
       focusKind = "current";
@@ -1042,24 +1043,39 @@ describe("the energy slider and its value on the label row", () => {
 });
 
 describe("the current slider and the nominal power beside it", () => {
-  it.each([6, 16, 32])("keeps the slider and the field together at %s A", async (amps) => {
+  it.each([6, 16, 32])("states %s A on the label row, with the slider alone under it", async (amps) => {
     document.body.innerHTML = "";
     const { element } = await openEditor("current", { record: aRecord({ amps, phases: 3 }) });
-    const number = inputs(element)[0]!;
     const range = sliderNode(element)!;
 
-    expect(number.value).toBe(String(amps));
+    expect(inputs(element)).toEqual([range]);
     expect(range.value).toBe(String(amps));
     // The charger's own range (the everyday 6 to 32 A when the answer states none), not the 80 A bound.
     expect([range.min, range.max, range.step]).toEqual(["6", "32", "1"]);
-    expect(unitLabel(element)).toBe("A");
+    expect(range.getAttribute("aria-label")).toBe("Current slider, 6 to 32 A in whole amperes");
+    expect(currentText(element)).toBe(`${amps} A`);
+    expect(range.getAttribute("aria-valuetext")).toBe(`${amps} A`);
+    // No number field and no unit: the value stands at the end of the label's row.
+    const group = range.closest<HTMLElement>("[role='group']")!;
+    expect(group.querySelectorAll("input")).toHaveLength(1);
+    expect(group.querySelector(".spotnav-settings-unit")).toBeNull();
+    expect(editorDialog(element)?.querySelector("input[type='number']")).toBeNull();
+    const label = group.querySelector("label")!;
+    expect(label.textContent).toBe(translate("en", "settings.current.label"));
+    expect(label.getAttribute("for")).toBe(range.id);
+    expect(group.querySelector("[data-part='current-value']")!.parentElement).toBe(label.parentElement);
 
-    range.value = "20";
-    range.dispatchEvent(new Event("input", { bubbles: true }));
-    expect(number.value).toBe("20");
-    number.value = "24";
-    number.dispatchEvent(new Event("input", { bubbles: true }));
-    expect(range.value).toBe("24");
+    enter(range, "20");
+    expect(currentText(element)).toBe("20 A");
+    expect(range.getAttribute("aria-valuetext")).toBe("20 A");
+  });
+
+  it("states the current in the reader's language", async () => {
+    const { element } = await openEditor("current", { record: aRecord({ amps: 10 }), language: "sv" });
+    expect(currentText(element)).toBe("10 A");
+    const label = editorDialog(element)?.querySelector("[data-part='current-value']")?.parentElement;
+    expect(label?.textContent).toContain(translate("sv", "settings.current.label"));
+    expect(inputs(element)[0]?.getAttribute("aria-label")).toBe("Strömreglage, 6 till 32 A i hela ampere");
   });
 
   it.each([
@@ -1103,55 +1119,117 @@ describe("the current slider and the nominal power beside it", () => {
     expect(rowValues(element)).toEqual(["20 kWh", "No deadline", "10 A"]);
   });
 
-  it.each([1, 80])("keeps a stored %s A exactly, the slider disabled outside the charger's range", async (amps) => {
+  it.each<[number, string]>([
+    [1, "6"],
+    [80, "32"],
+  ])("keeps a stored %s A exactly outside the charger's range, until the slider moves", async (amps, at) => {
     document.body.innerHTML = "";
-    const { element } = await openEditor("current", { record: aRecord({ amps, phases: 3 }) });
-    expect(inputs(element)[0]!.value).toBe(String(amps));
-    expect(sliderNode(element)!.disabled).toBe(true);
+    const { hass, element } = await openEditor("current", { record: aRecord({ amps, phases: 3 }) });
+    const range = sliderNode(element)!;
+    // The value text says what is stored; the slider stands at its nearest end and stays usable.
+    expect(currentText(element)).toBe(`${amps} A`);
+    expect(range.getAttribute("aria-valuetext")).toBe(`${amps} A`);
+    expect(range.value).toBe(at);
+    expect(range.disabled).toBe(false);
+
+    // A Save that moved the energy, not the current, carries the stored current through untouched.
+    focusKind = "energy";
+    enter(inputs(element)[0]!, "12.5");
+    button(element, "spotnav-settings-save")!.click();
+    await settle();
+    const body = updates(hass)[0]!["settings"] as Record<string, unknown>;
+    expect(body["amps"]).toBe(amps);
+    expect(body["requested_kwh"]).toBe(12.5);
   });
 
-  it("offers the charging periods as a 1 to 8 slider with its value shown", async () => {
-    const { element } = await openEditor("deadline", { record: aRecord({ max_periods: 4 }) });
+  it("states the charging periods on their label row, from a 1 to 8 slider", async () => {
+    const { hass, element } = await openEditor("deadline", { record: aRecord({ max_periods: 4 }) });
     const range = sliderNode(element)!;
     expect([range.min, range.max, range.step, range.value]).toEqual(["1", "8", "1", "4"]);
-    range.value = "7";
-    range.dispatchEvent(new Event("input", { bubbles: true }));
-    expect(editorDialog(element)?.querySelector("[data-periods-value]")?.textContent).toBe("7");
+    expect(periodsText(element)).toBe("4 periods");
+    expect(range.getAttribute("aria-valuetext")).toBe("4 periods");
+    expect(range.getAttribute("aria-label")).toBe(translate("en", "settings.deadline.periods"));
+    const group = range.closest<HTMLElement>("[role='group']")!;
+    const label = group.querySelector("label")!;
+    expect(label.textContent).toBe(translate("en", "settings.deadline.periods"));
+    expect(label.getAttribute("for")).toBe(range.id);
+    expect(group.querySelector("[data-part='periods-value']")!.parentElement).toBe(label.parentElement);
+    // No number, no output beside the slider and no unit.
+    expect(group.querySelectorAll("input")).toHaveLength(1);
+    expect(group.querySelector("output")).toBeNull();
+    expect(group.querySelector(".spotnav-settings-unit")).toBeNull();
+
+    enter(range, "1");
+    expect(periodsText(element)).toBe("1 period");
+    expect(range.getAttribute("aria-valuetext")).toBe("1 period");
+    enter(range, "7");
+    expect(periodsText(element)).toBe("7 periods");
     expect(inputs(element)).toHaveLength(3);
+
+    button(element, "spotnav-settings-save")!.click();
+    await settle();
+    expect((updates(hass)[0]!["settings"] as Record<string, unknown>)["max_periods"]).toBe(7);
+  });
+
+  it.each<[string, number, string]>([
+    ["sv", 1, "1 period"],
+    ["sv", 3, "3 perioder"],
+    ["da", 1, "1 periode"],
+    ["da", 3, "3 perioder"],
+    ["nb", 1, "1 periode"],
+    ["nb", 3, "3 perioder"],
+    ["fi", 1, "1 jakso"],
+    ["fi", 3, "3 jaksoa"],
+    ["en", 3, "3 periods"],
+  ])("words the periods in %s: %s as %s", async (language, count, shown) => {
+    document.body.innerHTML = "";
+    const { element } = await openEditor("deadline", { record: aRecord({ max_periods: count }), language });
+    expect(periodsText(element)).toBe(shown);
   });
 });
 
-  it("attaches those columns to the controls in the order the form renders them", async () => {
-    // The current editor keeps its slider, number field and unit; the energy editor has only its slider, in
-    // a track (with its "full" mark) that takes the full width, and its value on the label row.
+  it("draws every slider the same way: its label row, then the slider alone in its track", async () => {
+    // Energy, periods and current: the label and the value on one row, the slider under them at the full
+    // width. No slider has a number field, a unit or an out-of-range note beside it any more.
     const { element } = await openEditor("current");
-    const pairs = Array.from(editorDialog(element)?.querySelectorAll<HTMLElement>(`.${VISUAL_CLASSES.settingsPair}`) ?? []);
-    expect(pairs.some((node) => node.closest("[data-part='energy']") !== null)).toBe(false);
-    const pair = pairs.find((node) => node.querySelector("input[type='number']") !== null);
-    const children = Array.from(pair?.children ?? []);
+    const dialog = editorDialog(element)!;
+    expect(dialog.querySelector(".spotnav-settings-pair")).toBeNull();
+    expect(dialog.querySelector("input[type='number']")).toBeNull();
+    const sliders = Array.from(dialog.querySelectorAll<HTMLInputElement>("input[type='range']"));
+    expect(sliders.map((node) => node.id.replace(/^.*-(energy|periods|current)$/, "$1"))).toEqual([
+      "energy",
+      "periods",
+      "current",
+    ]);
+    for (const slider of sliders) {
+      const group = slider.closest<HTMLElement>("[role='group']")!;
+      expect(Array.from(group.children).map((node) => node.className), slider.id).toEqual([
+        VISUAL_CLASSES.settingsHead,
+        VISUAL_CLASSES.settingsTrack,
+      ]);
+      const head = group.children[0]!;
+      expect(Array.from(head.children).map((node) => node.className), slider.id).toEqual([
+        VISUAL_CLASSES.settingsLabel,
+        VISUAL_CLASSES.settingsAmount,
+      ]);
+      expect(group.children[1]!.firstElementChild, slider.id).toBe(slider);
+      expect(slider.getAttribute("aria-valuetext"), slider.id).toBe(head.children[1]!.textContent);
+    }
+  });
 
-    // Column 1 the slider, column 2 the number field, column 3 the unit -- and the note, which
-    // spans all of them, last. Reordering these would silently attach the grid to the wrong controls.
-    expect(children.map((node) => node.className)).toEqual([
-      VISUAL_CLASSES.settingsSlider,
-      expect.stringContaining(VISUAL_CLASSES.settingsInput),
-      VISUAL_CLASSES.settingsUnit,
-      expect.stringContaining(VISUAL_CLASSES.settingsNote),
-    ]);
-    expect((children[children.length - 1] as HTMLElement | undefined)?.hidden).toBe(true);
-
-    const energy = editorDialog(element)!.querySelector<HTMLElement>("[data-part='energy']")!;
-    const group = energy.querySelector<HTMLElement>("[role='group']")!;
-    expect(Array.from(group.children).map((node) => node.className)).toEqual([
-      VISUAL_CLASSES.settingsHead,
-      VISUAL_CLASSES.settingsTrack,
-    ]);
-    const head = group.children[0]!;
-    expect(Array.from(head.children).map((node) => node.className)).toEqual([
-      VISUAL_CLASSES.settingsLabel,
-      VISUAL_CLASSES.settingsAmount,
-    ]);
-    expect(group.children[1]!.firstElementChild?.className).toBe(VISUAL_CLASSES.settingsSlider);
+  it("labels the deadline checkbox as the other fields are labelled, after the checkbox", async () => {
+    const { element } = await openEditor("deadline");
+    const dialog = editorDialog(element)!;
+    const row = dialog.querySelector<HTMLElement>(`.${VISUAL_CLASSES.settingsCheckRow}`)!;
+    const [box, label] = Array.from(row.children) as [HTMLInputElement, HTMLLabelElement];
+    expect(box.type).toBe("checkbox");
+    expect(label.tagName).toBe("LABEL");
+    expect(label.getAttribute("for")).toBe(box.id);
+    expect(label.textContent).toBe(translate("en", "settings.deadline.enabled"));
+    // The same label as "Requested energy" or "Departure time".
+    const periodsLabel = dialog.querySelector<HTMLElement>("label[for$='-deadline-periods']")!;
+    expect(label.className).toBe(periodsLabel.className);
+    expect(label.className).toBe(VISUAL_CLASSES.settingsLabel);
   });
 
 describe("the slider draft's lifecycle", () => {
@@ -1176,7 +1254,7 @@ describe("the slider draft's lifecycle", () => {
     const range = sliderNode(element)!;
     range.value = "30";
     range.dispatchEvent(new Event("input", { bubbles: true }));
-    expect(inputs(element)[0]!.value).toBe("30");
+    expect(currentText(element)).toBe("30 A");
 
     document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
     await settle();
@@ -1191,7 +1269,7 @@ describe("the slider draft's lifecycle", () => {
     await settle();
 
     // The server's record again, not the discarded draft.
-    expect(inputs(element)[0]!.value).toBe("10");
+    expect(currentText(element)).toBe("10 A");
     expect(sliderNode(element)!.value).toBe("10");
   });
 
@@ -1209,7 +1287,7 @@ describe("the slider draft's lifecycle", () => {
     await settle();
 
     // The draft survives the conflict rerender, on both controls, with the two choices and no Save.
-    expect(inputs(element)[0]!.value).toBe("24");
+    expect(currentText(element)).toBe("24 A");
     expect(sliderNode(element)!.value).toBe("24");
     expect(button(element, "spotnav-settings-save")).toBeNull();
     expect(dialogButtons(element)).toEqual([
@@ -1249,7 +1327,7 @@ describe("the slider draft's lifecycle", () => {
     hass.resolveNext(success(server));
     await settle();
 
-    expect(inputs(element)[0]!.value).toBe("6");
+    expect(currentText(element)).toBe("6 A");
     expect(sliderNode(element)!.value).toBe("6");
     expect(powerLine(element)).toBe(linePower("3 phases", "4.2"));
     expect(updates(hass)).toHaveLength(1);
@@ -1263,7 +1341,7 @@ describe("the slider draft's lifecycle", () => {
     const label = group?.querySelector<HTMLElement>("label");
 
     expect(range.type).toBe("range");
-    expect(range.getAttribute("aria-label")).toBe(translate("en", "settings.energy.slider"));
+    expect(range.getAttribute("aria-label")).toBe("Energy slider, 0.5 to 100 kWh in half-kWh steps");
     // The energy slider has no out-of-range note: its value text says what is stored.
     expect(group?.querySelector(".spotnav-settings-note")).toBeNull();
     expect(group?.getAttribute("aria-labelledby")).toBe(label?.id);
@@ -1468,7 +1546,7 @@ describe("the departure date picker", () => {
     expect(translate("en", "settings.deadline.datePast")).toMatch(/every day until you choose a new date.*clears it/);
 
     const periods = editorDialog(element)!.querySelector<HTMLInputElement>("input[id$='-deadline-periods']")!;
-    periods.value = "5";
+    enter(periods, "5");
     button(element, "spotnav-settings-save")!.click();
     await settle();
     expect(updates(hass)).toHaveLength(1);

@@ -616,6 +616,8 @@ export const en = {
     "tomorrow",
   "settings.deadline.periods":
     "Maximum charging periods",
+  "settings.deadline.periodsValue.one": "{count} period",
+  "settings.deadline.periodsValue.other": "{count} periods",
   "settings.current.title":
     "Planned current",
   "settings.current.intro":
@@ -689,11 +691,9 @@ export const en = {
   "settings.error.readOnly":
     "Only administrators can change settings.",
   "settings.energy.slider":
-    "Energy slider, 0.5 to 100 kWh in half-kWh steps",
+    "Energy slider, {min} to {max} kWh in half-kWh steps",
   "settings.current.slider":
     "Current slider, {min} to {max} A in whole amperes",
-  "settings.sliderOutOfRange":
-    "The exact value is outside the slider's range. Use the number field.",
   "settings.current.power":
     "Nominal power ≈ {power} kW",
   "settings.current.powerUnknown":

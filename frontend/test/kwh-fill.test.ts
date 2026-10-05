@@ -205,6 +205,14 @@ describe("the kWh slider with a known room", () => {
     expect(help(element)!.textContent).toBe("9.5 kWh fills the battery.");
   });
 
+  it("names the slider's real range, its top the Fill top rather than 100 kWh", async () => {
+    const { element } = await openPlan(fixture(), manual());
+    expect(slider(element).getAttribute("aria-label")).toBe("Energy slider, 0.5 to 30 kWh in half-kWh steps");
+    document.body.innerHTML = "";
+    const sv = await openPlan(fixture(), manual(), "sv");
+    expect(slider(sv.element).getAttribute("aria-label")).toBe("Energireglage, 0,5 till 30 kWh i halvkWh-steg");
+  });
+
   it("above full still shows the amount and the same line", async () => {
     const { element } = await openPlan(fixture(), manual({ requested_kwh: 15 }));
     expect(shown(element).textContent).toBe("15.0 kWh");
@@ -284,7 +292,7 @@ describe("the kWh slider with a known room", () => {
       // No "slider out of range" note for the energy editor: the value text says what is stored.
       expect(openDialog(element).querySelector("[data-part='energy'] [id$='-slider-mark']"), language).toBeNull();
       // A Save that moved another field, not the slider, keeps the stored amount exactly.
-      const current = q<HTMLInputElement>(element, "[aria-labelledby$='-current-label'] input[type='number']")!;
+      const current = q<HTMLInputElement>(element, "[aria-labelledby$='-current-label'] input[type='range']")!;
       current.value = "16";
       current.dispatchEvent(new Event("input"));
       const body = await save(element, hass);

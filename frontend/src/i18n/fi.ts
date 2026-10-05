@@ -603,6 +603,8 @@ export const fi: Record<keyof typeof en, string> = {
     "huomenna",
   "settings.deadline.periods":
     "Latausjaksojen enimmäismäärä",
+  "settings.deadline.periodsValue.one": "{count} jakso",
+  "settings.deadline.periodsValue.other": "{count} jaksoa",
   "settings.current.title":
     "Suunniteltu virta",
   "settings.current.intro":
@@ -676,11 +678,9 @@ export const fi: Record<keyof typeof en, string> = {
   "settings.error.readOnly":
     "Vain ylläpitäjät voivat muuttaa asetuksia.",
   "settings.energy.slider":
-    "Energialiukusäädin, 0,5–100 kWh puolen kWh:n askelin",
+    "Energialiukusäädin, {min}–{max} kWh puolen kWh:n askelin",
   "settings.current.slider":
     "Virran liukusäädin, {min}–{max} A kokonaisina ampeereina",
-  "settings.sliderOutOfRange":
-    "Tarkka arvo on liukusäätimen alueen ulkopuolella. Käytä numerokenttää.",
   "settings.current.power":
     "Nimellisteho ≈ {power} kW",
   "settings.current.powerUnknown":

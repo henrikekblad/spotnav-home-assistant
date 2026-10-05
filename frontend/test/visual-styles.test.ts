@@ -140,94 +140,56 @@ describe("accessibility and theming", () => {
     );
   });
 
-  /**
-   * The pair's own sizing rule, read out of the stylesheet instead of restated here.
-   *
-   * Every number below comes from the CSS that actually ships, so a change to the rule cannot leave
-   * these expectations measuring a stale layout.
-   */
-  function pairColumns(): { rule: string; slider: string; input: [number, number, number]; unit: string } {
-    const block = VISUAL_STYLES.match(/\.spotnav-settings-pair \{[^}]*\}/s)?.[0] ?? "";
-    const rule =
-      block.match(/grid-template-columns:\s*([^;]+);/)?.[1]?.trim().replace(/\s+/g, " ") ?? "";
-    const columns = rule.match(/minmax\(\s*0\s*,\s*1fr\s*\)|clamp\([^)]*\)|auto/g) ?? [];
-    const clamp = columns[1]?.match(/clamp\(\s*([\d.]+)rem\s*,\s*([\d.]+)%\s*,\s*([\d.]+)rem\s*\)/);
-    return {
-      rule,
-      slider: columns[0] ?? "",
-      input: [Number(clamp?.[1]), Number(clamp?.[2]), Number(clamp?.[3])],
-      unit: columns[2] ?? "",
-    };
-  }
-
-  const REM_PX = 16;
-
-  /** The exact width the bounded clamp gives the number field inside a usable row width. */
-  function inputWidthPx(usablePx: number, [minRem, percent, maxRem]: [number, number, number]): number {
-    return Math.min(Math.max((percent / 100) * usablePx, minRem * REM_PX), maxRem * REM_PX);
-  }
-
-  it("gives the slider the flexible width and the exact field a bounded, practical share", () => {
-    const columns = pairColumns();
-
-    // A deterministic grid, not intrinsic flex sizing: the slider is the flexible owner of the rest.
-    expect(columns.slider, columns.rule).toBe("minmax(0, 1fr)");
-    expect(columns.rule).toBe("minmax(0, 1fr) clamp(4.5rem, 20%, 6rem) auto");
-    expect(columns.unit).toBe("auto");
-    // The slider may shrink to nothing rather than push the row wider than the card.
+  it("draws every slider alone under its label row, with no slider-and-field pair left", () => {
+    // The energy, target, periods and current sliders stand alone at the full width; the old pair grid,
+    // its number-field column and its out-of-range note are gone.
+    expect(VISUAL_STYLES).not.toContain("spotnav-settings-pair");
+    expect(Object.values(VISUAL_CLASSES)).not.toContain("spotnav-settings-pair");
     expect(VISUAL_STYLES).toMatch(
-      new RegExp(`\\.${VISUAL_CLASSES.settingsSlider} \\{[^}]*min-width: 0`, "s"),
+      new RegExp(`\\.${VISUAL_CLASSES.settingsSlider} \\{[^}]*width: 100%[^}]*min-width: 0`, "s"),
     );
-
-    // The exact field is bounded in rem, so a localized decimal and `1000` both fit, and it never
-    // grows past its share however wide the card gets.
-    expect(inputWidthPx(320, columns.input)).toBe(4.5 * REM_PX);
-    expect(inputWidthPx(200, columns.input)).toBe(4.5 * REM_PX);
-    expect(inputWidthPx(480, columns.input)).toBe(6 * REM_PX);
-    for (const usable of [200, 320, 390, 480, 768, 1280]) {
-      const width = inputWidthPx(usable, columns.input);
-      expect(width, `${usable} px`).toBeGreaterThanOrEqual(4.5 * REM_PX);
-      expect(width, `${usable} px`).toBeLessThanOrEqual(6 * REM_PX);
-    }
-    // Around the ordinary narrow width the two shares really are roughly 80/20.
-    const ordinary = 480;
-    const share = inputWidthPx(ordinary, columns.input) / ordinary;
-    expect(share).toBeGreaterThan(0.19);
-    expect(share).toBeLessThan(0.21);
-
-    // At 320 px the *worst case* still fits: the bounded field, a compact unit, and two gaps, with the
-    // slider contributing only its `min-width: 0` minimum. (jsdom has no layout engine, so this is the
-    // deterministic arithmetic the rule itself defines -- and it is what the rule exists to make hold.)
-    const worstCasePx = 4.5 * REM_PX + 2 * REM_PX + 2 * 8;
-    expect(worstCasePx).toBeLessThan(320);
-  });
-
-  it("keeps the unit, puts the note on its own row, and has no per-editor variant", () => {
-    // The unit is sized by its own text and never shrinks or wraps.
+    // The unit beside other figures (market, entity editor) is sized by its own text and never wraps.
     expect(VISUAL_STYLES).toMatch(
       new RegExp(`\\.${VISUAL_CLASSES.settingsUnit} \\{[^}]*white-space: nowrap`, "s"),
     );
-    // The honest marker spans every column, so it always starts a fresh row under the pair.
-    const noteRule =
-      VISUAL_STYLES.match(
-        new RegExp(`\\.${VISUAL_CLASSES.settingsPair} > \\.${VISUAL_CLASSES.settingsNote} \\{([^}]*)\}`, "s"),
-      )?.[1] ?? "";
-    expect(noteRule).toContain("grid-column: 1 / -1");
-    // Two control shapes have a grid of their own and no more: the slider pair (one rule for energy and
-    // current both) and the market value row (a figure beside its unit). Neither has a per-editor
-    // variant, and each names its flexible column explicitly, so no intrinsic flex share can return.
-    // (Plus the action bar's two: three columns narrow, six in the wide container query, and the
-    // entity editor's meter line: one column narrow, `none` beside auto columns in the wide one.)
-    expect(VISUAL_STYLES.match(/grid-template-columns:/g)?.length).toBe(6);
-    expect(VISUAL_STYLES).not.toMatch(/spotnav-settings-pair\.spotnav-settings-/);
-    const pairBlock =
-      VISUAL_STYLES.match(new RegExp(`\\.${VISUAL_CLASSES.settingsPair} \\{[^}]*\}`, "s"))?.[0] ?? "";
-    expect(pairBlock).toContain("minmax(0, 1fr)");
-    expect(pairBlock).not.toContain("flex");
+    // Grids of their own: the market value row, the action bar's two (three columns narrow, six in the
+    // wide container query) and the entity editor's meter line (one column narrow, auto columns wide).
+    expect(VISUAL_STYLES.match(/grid-template-columns:/g)?.length).toBe(5);
     const valueBlock =
       VISUAL_STYLES.match(new RegExp(`\\.${VISUAL_CLASSES.marketValue} \\{[^}]*\}`, "s"))?.[0] ?? "";
     expect(valueBlock).toContain("minmax(0, 1fr)");
     expect(valueBlock).not.toContain("flex");
+  });
+
+  it("keeps the help line under a slider close to it, and only that note", () => {
+    // Room under the track for the "full" word, and no more.
+    const marked = VISUAL_STYLES.match(
+      /\.spotnav-settings-track:has\(> \.spotnav-settings-full-mark:not\(\[hidden\]\)\) \{([^}]*)\}/s,
+    )?.[1];
+    expect(marked?.trim()).toBe("padding-bottom: 0.4rem;");
+    // The "full" word starts where the mark's line ends (1.125rem down the 1.25rem slider), so it fits in
+    // that room instead of running into the help line.
+    const word = VISUAL_STYLES.match(new RegExp(`\\.${VISUAL_CLASSES.settingsFullMark} \\{([^}]*)\}`, "s"))?.[1] ?? "";
+    expect(word).toContain("padding-top: 1.125rem");
+    const line = VISUAL_STYLES.match(/\.spotnav-settings-full-mark::before \{([^}]*)\}/s)?.[1] ?? "";
+    expect(line).toContain("top: 0.125rem");
+    expect(line).toContain("height: 1rem");
+    // The note right under a slider's field sits on it; every other note keeps its own space above.
+    const under = VISUAL_STYLES.match(
+      /\.spotnav-settings-field:has\(> \.spotnav-settings-track\) \+ \.spotnav-settings-note \{([^}]*)\}/s,
+    )?.[1];
+    expect(under?.trim()).toBe("margin: 0;");
+    const shared = VISUAL_STYLES.match(/\.spotnav-settings-readonly,\s*\.spotnav-settings-note \{([^}]*)\}/s)?.[1] ?? "";
+    expect(shared).toContain("margin: 8px 0 0");
+  });
+
+  it("sets the checkbox's label as every field label is set", () => {
+    // One label rule for "Finish by a deadline" and "Requested energy": its size, weight and colour.
+    const label = VISUAL_STYLES.match(new RegExp(`\\.${VISUAL_CLASSES.settingsLabel} \\{([^}]*)\}`, "s"))?.[1] ?? "";
+    expect(label).toContain("font-size: 0.85em");
+    expect(label).toContain("font-weight: 400");
+    // No rule sets the checkbox row's label apart.
+    expect(VISUAL_STYLES).not.toMatch(/spotnav-settings-check-row[^{]*spotnav-settings-label/);
   });
 
   it("honours the platform's forced-colours palette for the focus lines", () => {

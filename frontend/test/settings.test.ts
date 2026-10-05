@@ -11,8 +11,6 @@ import { describe, expect, it } from "vitest";
 import { LANGUAGES, translate } from "../src/i18n";
 import {
   AMPS_MAX,
-  AMPS_MIN,
-  CURRENT_SLIDER_STEP_A,
   ENERGY_MAX_KWH,
   ENERGY_MIN_KWH,
   ENERGY_SLIDER_MAX_KWH,
@@ -35,7 +33,6 @@ import {
   settingsErrorKey,
   planSummaryParts,
   settingsSummaries,
-  sliderRepresents,
   type SettingsFormValues,
 } from "../src/settings";
 import {
@@ -582,31 +579,6 @@ describe("the nominal power and the slider rule", () => {
     }
     expect(nominalPowerKw(Number.NaN, 1)).toBeNull();
     expect(nominalPowerKw(Number.POSITIVE_INFINITY, 3)).toBeNull();
-  });
-
-  it("knows which exact values a slider can represent", () => {
-    // The grid is anchored at the slider's own minimum, exactly as HTML anchors it.
-    for (const value of [0.5, 20, 20.5, 100, 150, 1000]) {
-      expect(sliderRepresents(value, ENERGY_SLIDER_MIN_KWH, ENERGY_SLIDER_STEP_KWH), String(value)).toBe(
-        true,
-      );
-    }
-    for (const value of [0.1, 0.25, 20.25, 20.3, Number.NaN, Number.POSITIVE_INFINITY]) {
-      expect(sliderRepresents(value, ENERGY_SLIDER_MIN_KWH, ENERGY_SLIDER_STEP_KWH), String(value)).toBe(
-        false,
-      );
-    }
-    // Whole amperes, on the current slider's own grid.
-    for (const value of [1, 16, 80]) {
-      expect(sliderRepresents(value, AMPS_MIN, CURRENT_SLIDER_STEP_A), String(value)).toBe(true);
-    }
-    for (const value of [0.5, 10.5]) {
-      expect(sliderRepresents(value, AMPS_MIN, CURRENT_SLIDER_STEP_A), String(value)).toBe(false);
-    }
-    // The predicate is about the *grid*; the domain is the form's own check. A current above the
-    // contract's range sits on the grid and is still not offered by this slider.
-    expect(sliderRepresents(200, AMPS_MIN, CURRENT_SLIDER_STEP_A)).toBe(true);
-    expect(200 <= AMPS_MAX).toBe(false);
   });
 
   it("extends the energy slider only to include a representable value above the ordinary interval", () => {
