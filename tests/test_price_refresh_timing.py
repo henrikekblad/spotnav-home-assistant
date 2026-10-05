@@ -118,7 +118,7 @@ def test_the_rollover_instant_is_each_kind_of_local_midnight():
 
 
 def test_the_publication_window_is_the_observed_midday_range_with_margin():
-    """12:55-15:00 Brussels, half-open, in both of Brussels' offsets.
+    """The default window (an area that states no time): 12:55-15:00 Brussels, half-open, in both offsets.
 
     The bounds are measured behaviour, not an ENTSO-E guarantee. Day-ahead publication is a
     **midday** process: every complete day document this repository holds was published between

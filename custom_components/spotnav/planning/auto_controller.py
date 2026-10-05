@@ -1214,10 +1214,7 @@ class AutoPlannerController:
         gap = price_gap(request)
         if gap is None:
             return None
-        # The publication that fills the gap is the market day's (a London evening hour is the next Paris file).
-        zone = dt_util.get_time_zone(entry.market_tz)
-        missing_day = gap.missing_from.astimezone(zone).date()
-        publication_at = price_wait.expected_publication_at(missing_day)
+        publication_at = expected_publication(entry, gap.missing_from)
         if gap.short:
             # The need does not fit before the departure at all: nothing is waited for or picked by
             # price, every slot up to the departure is charged now (best effort).
@@ -1306,9 +1303,6 @@ class AutoPlannerController:
         if decision.outcome != "wait":
             return (known, facts, None)
 
-        # The publication that fills the gap is the market day's (a London evening hour is the next Paris file).
-        zone = dt_util.get_time_zone(entry.market_tz)
-        missing_day = gap.missing_from.astimezone(zone).date()
         waited = price_wait.decide(
             now=calculated_at,
             deadline=gap.deadline,
@@ -1322,7 +1316,7 @@ class AutoPlannerController:
                 )
                 for slot in gap.known
             ),
-            publication_at=price_wait.expected_publication_at(missing_day),
+            publication_at=expected_publication(entry, gap.missing_from),
         )
         if waited.action == "guarantee":
             # Waiting would miss the deadline: the published plan stands, the price given up is only the hope.
@@ -2386,6 +2380,18 @@ class AutoPlannerController:
 
 #: The settings' fiscal components and the names contract v2's `included` uses for them.
 INCLUDED_NAME: Final = {"vat": "vat", "tax": "tax", "transfer": "grid_fee"}
+
+
+def expected_publication(entry: AreaEntry, missing_from: datetime) -> datetime:
+    """When the prices from `missing_from` on are expected (aware UTC, margin included).
+
+    The publication that fills a gap is the market day's (a London evening hour is the next Paris file),
+    at the area's own stated time in its own zone (`publication`, 13:00 Brussels when unstated).
+    """
+    missing_day = missing_from.astimezone(dt_util.get_time_zone(entry.market_tz)).date()
+    return price_wait.expected_publication_at(
+        missing_day, zone=entry.publication.tz, local_time=entry.publication.local_time
+    )
 
 
 def component_included(entry: AreaEntry | None, component: str) -> bool:

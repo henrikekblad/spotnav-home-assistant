@@ -28,7 +28,7 @@ import asyncio
 import logging
 import random
 from dataclasses import dataclass, field
-from datetime import date, datetime, time, timedelta
+from datetime import date, datetime, timedelta
 from functools import partial
 from typing import Any, Callable, Final, Literal
 
@@ -45,7 +45,7 @@ from .price_repository import (
     is_transport,
     PriceRepository,
 )
-from .relay_contract import AreaEntry
+from .relay_contract import DEFAULT_PUBLICATION, AreaEntry, AreaPublication
 
 
 _LOGGER = logging.getLogger(__name__)
@@ -54,17 +54,13 @@ _LOGGER = logging.getLogger(__name__)
 # Timing policy: every number that decides when something happens, named, so it can be tuned
 # without touching the mechanism.
 
-#: The zone the publication window is expressed in. Day-ahead publication is a common European
-#: process, so the window is one European clock, not each area's or the host's.
-PUBLICATION_WINDOW_ZONE: Final = "Europe/Brussels"
-
-#: When the relay's day documents have been observed to appear (a midday process, not an ENTSO-E
-#: guarantee). The window starts just before the earliest complete document observed and ends with
-#: real margin after the latest; a later observation changes only these two constants. The relay
-#: also publishes an early incomplete document shortly before noon, which is why "listed" is not
-#: "usable" (see [refresh_interval]).
-PUBLICATION_WINDOW_START: Final = time(12, 55)
-PUBLICATION_WINDOW_END: Final = time(15, 0)
+#: The publication window around an area's expected publication (`AreaEntry.publication`, 13:00 Brussels
+#: when unstated): from just before it to well after it. ENTSO-E's complete documents have been observed
+#: between 12:59:30 and 13:05 Brussels, with one late delivery around 13:30; the relay also publishes an
+#: early incomplete document shortly before noon, which is why "listed" is not "usable" (see
+#: [refresh_interval]). A policy about when to look, never a claim that prices cannot appear outside it.
+PUBLICATION_WINDOW_LEAD: Final = timedelta(minutes=5)
+PUBLICATION_WINDOW_TAIL: Final = timedelta(hours=2)
 
 #: While tomorrow is still unusable inside that window, ask the index often.
 PUBLICATION_POLL_SECONDS: Final = 5 * 60
@@ -236,14 +232,20 @@ def next_local_midnight(now: datetime, tz: str) -> datetime:
     return datetime(following.year, following.month, following.day, tzinfo=zone)
 
 
-def in_publication_window(now: datetime) -> bool:
-    """Whether an instant falls inside the day-ahead publication window.
+def in_publication_window(now: datetime, publication: AreaPublication = DEFAULT_PUBLICATION) -> bool:
+    """Whether an instant falls inside an area's publication window.
 
-    Expressed in [PUBLICATION_WINDOW_ZONE] and not per-area: it is about when European day-ahead
-    prices appear. A policy about when to look, never a claim that prices cannot appear outside it.
+    The window is built on the publication's own clock (Brussels for ENTSO-E, London for Octopus Agile,
+    Madrid for PVPC), not the area's or the host's, so both offsets of a clock change keep the same wall
+    time. Yesterday's window is checked too, for a time late enough that its window runs past midnight.
     """
-    local = now.astimezone(dt_util.get_time_zone(PUBLICATION_WINDOW_ZONE)).time()
-    return PUBLICATION_WINDOW_START <= local < PUBLICATION_WINDOW_END
+    zone = dt_util.get_time_zone(publication.tz)
+    instant = now.astimezone(zone)
+    for day in (instant.date(), instant.date() - timedelta(days=1)):
+        expected = datetime.combine(day, publication.local_time, tzinfo=zone)
+        if expected - PUBLICATION_WINDOW_LEAD <= instant < expected + PUBLICATION_WINDOW_TAIL:
+            return True
+    return False
 
 
 def day_authority(index_snapshot: IndexSnapshot, area_id: str, day: date) -> DayAuthority:
@@ -288,7 +290,7 @@ def refresh_interval(context: CadenceInput) -> timedelta:
     """How long until this area should be refreshed again: the whole policy, in precedence order.
 
     1. A failing area backs off through [BACKOFF_STEPS_SECONDS].
-    2. A tomorrow that is not usable yet, inside the publication window, polls often. "Not usable",
+    2. A tomorrow that is not usable yet, inside the area's publication window, polls often. "Not usable",
        not "not listed", because an early incomplete document is listed but cannot be planned against.
     3. Nothing to wait for (valid index lists tomorrow, document in hand) is polled slowly.
     4. Otherwise the ordinary cadence.
@@ -857,6 +859,8 @@ class PriceRefreshManager:
         tomorrow_snapshot = self._repository.day_snapshot(record.area_id, tomorrow)
         index_snapshot = self._repository.index_snapshot()
         catalogue_snapshot = self._repository.catalogue_snapshot()
+        # The area's own expected publication; an area the list does not name (yet) gets the default.
+        entry = catalogue_snapshot.area(record.area_id)
         return CadenceInput(
             now=now,
             area_today=today,
@@ -873,7 +877,9 @@ class PriceRefreshManager:
                 or index_snapshot.state == "invalid"
                 or catalogue_snapshot.state == "invalid"
             ),
-            in_publication_window=in_publication_window(now),
+            in_publication_window=in_publication_window(
+                now, DEFAULT_PUBLICATION if entry is None else entry.publication
+            ),
         )
 
     @callback

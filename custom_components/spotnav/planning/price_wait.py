@@ -12,7 +12,7 @@ Applies the slack principle of `planning/hybrid_plan.py` to time instead of sun:
 * guarantee: the latest safe start has arrived and prices are still missing; the remainder is
   charged at once at unknown prices. The deadline is kept, only the price is given up.
 
-Pure: no Home Assistant, no clock, no storage. The publication instant is built in the market's
+Pure: no Home Assistant, no clock, no storage. The publication instant is built in the source's
 zone and converted to UTC before any subtraction, so clock-change days cannot shift it. Comparisons
 carry a small epsilon so a need exactly equal to the wait capacity waits instead of buying a sliver.
 """
@@ -29,8 +29,8 @@ from zoneinfo import ZoneInfo
 #: Fraction of the charger's maximum rate the deadline must still be reachable at (same derating as hybrid).
 FEASIBILITY_MARGIN: Final = 0.8
 
-#: Day-ahead auctions clear on one European clock (prices appear around 13:00 Brussels time,
-#: see `price_refresh.PUBLICATION_WINDOW_START`), so one constant in that zone serves every area.
+#: The default publication: ENTSO-E's day-ahead prices appear around 13:00 Brussels time. An area whose
+#: source publishes at another time states it (`relay_contract.AreaPublication`) and the caller passes it.
 PUBLICATION_ZONE: Final = "Europe/Brussels"
 PUBLICATION_LOCAL_TIME: Final = time(13, 0)
 
@@ -83,9 +83,10 @@ def expected_publication_at(
     zone: str = PUBLICATION_ZONE,
     local_time: time = PUBLICATION_LOCAL_TIME,
 ) -> datetime:
-    """When `missing_day` (local date of the first instant with no price) is expected, as aware UTC.
+    """When `missing_day` (market date of the first instant with no price) is expected, as aware UTC.
 
-    The previous day at the publication time in the market's zone, converted to UTC before the margin is added.
+    The previous day at `local_time` in `zone` (the source's own clock), converted to UTC before the margin
+    is added, so a clock change between the two days cannot shift it.
     """
     previous = missing_day - timedelta(days=1)
     local = datetime.combine(previous, local_time, tzinfo=ZoneInfo(zone))

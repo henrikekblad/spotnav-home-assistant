@@ -101,7 +101,7 @@ When a departure needs hours that are not priced yet (for example a 07:00 depart
 afternoon publication), SpotNav works out how much of the charge can still be done after the
 publication, at the charger's rate with a margin, before the departure.
 
-- If all of it fits, nothing is bought now. The card says *Waiting for tomorrow's prices (~14:00),
+- If all of it fits, nothing is bought now. The card says *Waiting for tomorrow's prices (~13:45),
   will plan then.*
 - If not all of it fits, only the part that cannot wait is bought now, in the cheapest published
   intervals, and the rest is planned when the prices arrive. The card says *Buying 12 kWh now, the
@@ -112,7 +112,8 @@ publication, at the charger's rate with a margin, before the departure.
 The expected publication is the area's own `publication` time plus a 45-minute margin, worked out
 in that time's zone, so a clock change cannot shift it. An area that states no time is expected at
 13:00 Brussels time. Until the expected time the card says when the prices are due ("Waiting for
-tomorrow's prices (~16:45)"); after it, SpotNav treats the prices as able to arrive at any moment.
+tomorrow's prices (~16:45)" in Great Britain); after it, the card names no time and SpotNav treats the
+prices as able to arrive at any moment.
 
 ### The history profile
 
@@ -250,7 +251,7 @@ Areas are sorted by `id`. Only areas the relay can serve are listed.
 | `major_unit`, `minor_unit` | Display labels for the whole and the hundredth unit (`kr`/`öre`, `€`/`cent`, `£`/`p`). Not unique: SEK, NOK and DKK are all `kr`. Display them; do not parse them. |
 | `vat_percent` | Optional. Suggested VAT in percent. |
 | `suggested_tax` | Optional. Suggested electricity tax, in the minor unit per kWh. |
-| `publication` | Optional. `{ "time": "HH:MM", "tz": "<IANA zone>" }`: when tomorrow's prices are expected, in that zone (`13:00` `Europe/Brussels` for ENTSO-E). A client that does not know it, or an area without it, assumes 13:00 Brussels. |
+| `publication` | Optional. `{ "time": "HH:MM", "tz": "<IANA zone>" }`: when tomorrow's prices are expected, in that zone (`13:00` `Europe/Brussels` for ENTSO-E). A client that does not know it, or an area without it, assumes 13:00 Brussels; the integration does the same for one it cannot read, and keeps the area. |
 | `suggested_grid_fee` | Optional. Suggested grid fee, in the minor unit per kWh. |
 | `included` | Optional; absent means `[]`. Which of `vat`, `tax` and `grid_fee` the published price already contains. A client applies none of those. |
 | `source` | `{ "name", "url" }`: where the prices come from, for attribution. |

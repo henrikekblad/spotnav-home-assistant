@@ -182,6 +182,18 @@ CASES: list[tuple[str, StatusFacts, str, list[dict[str, Any]]]] = [
         [{"code": "waiting_for_publication", "params": {"publication_at": iso(15)}}],
     ),
     (
+        "waiting for publication past the expected time names no time: the prices may come any moment",
+        base(planning=planning("waiting_for_publication", "publication_pending", publication_at=at(-0.5))),
+        "normal",
+        [{"code": "waiting_for_publication", "params": {"publication_at": None}}],
+    ),
+    (
+        "waiting for publication at exactly the expected time names no time either",
+        base(planning=planning("waiting_for_publication", "publication_pending", publication_at=at(0))),
+        "normal",
+        [{"code": "waiting_for_publication", "params": {"publication_at": None}}],
+    ),
+    (
         "waiting for publication without a time",
         base(planning=planning("waiting_for_publication", "publication_pending")),
         "normal",

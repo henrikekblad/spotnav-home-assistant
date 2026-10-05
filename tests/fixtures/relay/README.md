@@ -41,6 +41,12 @@ leaves a field out, the fixture leaves it out.
   as zero**), `DK1` (DKK/`kr`/`øre`, **tax present as zero**, grid fee absent).
   Present zero and absent are different facts and are covered as such.
 
+* `areas-v2-publication.json` — a v2 area list with each area's expected publication
+  (`publication: {time, tz}`): `ES-PVPC` 20:15 Madrid, `GB-C` 16:00 London, `SE4` 13:00
+  Brussels, and `PT` stating none (the default, 13:00 Brussels). Hand-written to the documented
+  shape (`docs/prices.md`) from the relay's own v2 list in `../relay_v2/`, which predates the field
+  and so stays the case of a list without it.
+
 ## The invalid documents
 
 One field is wrong in each, and the rest is a valid day, so a test failure names
