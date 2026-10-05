@@ -46,8 +46,15 @@ Decided since (in today's code and the core together): a readable off report wit
 leaves the charge nobody's, whoever owned it, so a charge the charger later begins by itself does not inherit the
 ended one's owner (inside a window the plan claims it again). A window's end stops only the plan's own charge (I3):
 a person's Start, a Charge-now start and the sun's charge go on, and so does one load balancing holds back for
-them; the last window's end then ends the plan with no stop and no top-off. A charge balancing held back that was
-nobody's is resumed as nobody's (the charger's own once seen charging), not as a Charge-now start.
+them; the last window's end then ends the plan with no stop and no top-off. The re-arm outside the windows (a new
+plan installed between windows, a restore, a follow) spares the same charges: only the plan's own charge is the
+plan's to stop. A charge balancing held back that was nobody's is resumed as nobody's (the charger's own once seen
+charging), not as a Charge-now start. A window's end at which the next plan takes over (the execution boundary holds
+it, waiting for that boundary, with a window open then: a best-effort plan ending at its departure while the next
+departure's plan begins) stops nothing and records no end (`continued` on `window_end` and `final_window_end`;
+`ChargingController._successor_continues`): the boundary installs the next plan at once, and its re-arm keeps the
+charge. Installed first, the next plan cancels the end's timer and keeps the charge the same way, so the order of
+the two does not matter; one that is not installed after all leaves the end as it always was.
 
 ```mermaid
 stateDiagram-v2
@@ -143,12 +150,22 @@ state would have chosen otherwise (`verdict_differs`) and each time it cleared t
 With the option on the core's session is also kept across restarts, as one versioned record per charger
 (`charge_session` in the charger's store, `ChargeSession.to_store`) beside today's keys, which are still written as
 before. The record leaves out what a restart clears anyway (`TRANSIENT_FIELDS`: commands awaiting a result, the stops
-under a person's Stop and their give-up, the safety stop's gap). Every save of today's keys writes it as it is then;
-a change no such save carried is saved once, alone (today's keys as last written beside it), by the first decision at
-least `SESSION_SAVE_DELAY_S` after it, and at shutdown if still waiting (no timer of its own, so no other timer moves), so a report that changes nothing stored writes nothing and many changes in a row are one
-save. At a restart the core decides from the record and compares it with today's restored state; a record that is
-missing or of a version the core does not know is read from today's keys once (`legacy_session`) and written. With the
-option off nothing of it is written or read: today's restore, exactly.
+under a person's Stop and their give-up, the safety stop's gap). Every save of today's keys writes it as it is then.
+A change of the owner or of the person intent no such save carried is saved at once, alone (today's keys as last
+written beside it), in a task off the decision's path; the charger's own charge and nobody's count as one there (a
+restart sees which again). Any other change is saved by the first decision at least `SESSION_SAVE_DELAY_S` after it
+(no timer of its own, so no other timer moves), at Home Assistant's stop (`__init__._async_stop`, which unloads no
+entry, so no controller's own shutdown runs; `ChargingController.async_flush_session`) and at an unload's shutdown,
+which also saves a decision that finished while it waited for the lock. So a report that changes nothing stored
+writes nothing and many bookkeeping changes in a row are one save. Beside the record, `charge_session_order` keeps
+two marks on one counter: the core's last decision (`session`) and the last change of today's ownership keys
+(`keys`), as each was written. At a restart the core decides from the record and compares it with today's restored
+state, except that today's keys written after the record's last change (a start whose result had not come back when
+they were saved) are the newer: the session is read from them then, and only the person intent from the record. A
+record that is missing or of a version the core does not know is read from today's keys once (`legacy_session`) and
+written. With the option off nothing of it is written or read: today's restore, exactly. In the shadow's facts, the
+car-ended rule's answer is read only when the core drives; off, it is what today's rule read itself (a read of the
+car's state of charge may move and save its anchor, so the shadow makes none).
 
 Not yet the core's: load balancing's memory of the charge it holds, the hold's memory and the car-ended record, and
 the session itself after the restart (all read from today's fields at each feed, which lines the session up).
@@ -168,5 +185,11 @@ the session itself after the restart (all read from today's fields at each feed,
 * `tests/test_core_plan_ends.py`: 1.11's plan ends and replans in both modes: the best-effort plan stopped at its
   departure, the replan a returning register reading asks for while the plan's charge runs, and a need met by that
   same reading.
+* `tests/test_override_review_g.py`: the review before the merge into main: a real Home Assistant restart (no
+  unload) with the sun's charge, no state-of-charge read by the shadow with the option off, diagnostics naming no
+  entity, give-up counting in both modes, the re-arm sparing a Charge-now start, and the next departure's plan taking
+  the charge over at a best-effort plan's departure in either order.
+* Every restart test runs twice (`both_restarts`): after an unload (`World.restart`) and as Home Assistant's own
+  stop, which unloads nothing (`World.ha_restart`).
 * Every test runs with the shadow (`tests/conftest.py`, `ownership_shadow_agrees`) and fails on a disagreement or a
   drift nobody explained (`tests/shadow_known.py`).
