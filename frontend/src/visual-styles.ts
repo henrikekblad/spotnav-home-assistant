@@ -107,7 +107,6 @@ export const VISUAL_CLASSES = {
   capacityBlock: "spotnav-capacity-block",
   socLink: "spotnav-soc-link",
   settingsConflict: "spotnav-settings-conflict",
-  settingsPair: "spotnav-settings-pair",
   settingsSlider: "spotnav-settings-slider",
   settingsUnit: "spotnav-settings-unit",
   settingsTrack: "spotnav-settings-track",
@@ -283,8 +282,10 @@ export const VISUAL_STYLES = `
     border: 0;
     background: none;
   }
+  /* Every field's label, the deadline checkbox's beside its box included: one size, one weight. */
   .spotnav-settings-label {
     font-size: 0.85em;
+    font-weight: 400;
     color: var(--secondary-text-color, #727272);
   }
   .spotnav-settings-input {
@@ -308,18 +309,6 @@ export const VISUAL_STYLES = `
     gap: 8px;
     margin-top: 12px;
   }
-  /*
-   * A slider beside its exact number field. Grid sizing rather than flex: the slider takes what is left
-   * (minmax(0, 1fr)), the field gets a bounded share wide enough for the longest accepted value, and
-   * the unit is sized by its text. The out-of-domain note spans every column. The current uses it; the
-   * energy and charge-target sliders have no number field and stand alone under their label row.
-   */
-  .spotnav-settings-pair {
-    display: grid;
-    grid-template-columns: minmax(0, 1fr) clamp(4.5rem, 20%, 6rem) auto;
-    align-items: center;
-    gap: 8px;
-  }
   .spotnav-settings-slider {
     width: 100%;
     min-width: 0;
@@ -335,16 +324,8 @@ export const VISUAL_STYLES = `
   .spotnav-settings-slider:disabled {
     opacity: 0.55;
   }
-  .spotnav-settings-pair > .spotnav-settings-input {
-    width: 100%;
-    min-width: 0;
-  }
-  .spotnav-settings-pair > .spotnav-settings-note {
-    grid-column: 1 / -1;
-    margin: 4px 0 0;
-  }
   /*
-   * A lone slider's label row (energy, charge target): the label, and the value the slider stands for (an
+   * A slider's label row (energy, charge target, charging periods, current): the label, and the value the slider stands for (an
    * amount, "Fill" or a percentage) at its end, as the app writes "Charging ........ 20.0 kWh". The slider
    * under it takes the full width.
    */
@@ -369,7 +350,7 @@ export const VISUAL_STYLES = `
     min-width: 0;
   }
   .spotnav-settings-track:has(> .spotnav-settings-full-mark:not([hidden])) {
-    padding-bottom: 1.2em;
+    padding-bottom: 0.4rem;
   }
   .spotnav-settings-full-mark {
     position: absolute;
@@ -418,6 +399,13 @@ export const VISUAL_STYLES = `
   .spotnav-settings-note {
     margin: 8px 0 0;
     color: var(--secondary-text-color, #727272);
+  }
+  /*
+   * The help line right under a slider (what fills the battery, the car ends the charge) sits on it. Only
+   * that note: the others follow a fieldset, a date or a checkbox row and keep their space above.
+   */
+  .spotnav-settings-field:has(> .spotnav-settings-track) + .spotnav-settings-note {
+    margin: 0;
   }
   .spotnav-site-fieldset[data-part="mode"] {
     margin-top: 12px;
