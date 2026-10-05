@@ -166,6 +166,15 @@
       "params": [],
       "tone": "notice"
     },
+    "departure_shortfall": {
+      "params": [
+        "departure",
+        "kwh",
+        "requested_kwh",
+        "soc_percent"
+      ],
+      "tone": "notice"
+    },
     "duplicate_charger": {
       "params": [
         "other"

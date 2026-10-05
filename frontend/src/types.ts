@@ -333,6 +333,8 @@ declare global {
       preview?: boolean;
       documentationURL?: string;
     }>;
+    /** Set by Home Assistant's scoped custom element registry polyfill when it installs. */
+    CustomElementRegistryPolyfill?: unknown;
   }
 }
 

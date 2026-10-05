@@ -73,6 +73,9 @@ describe("the committed asset", () => {
 describe("loading the compiled asset", () => {
   beforeEach(() => {
     delete window.customCards;
+    // What Home Assistant's core script sets when it installs its element registry, which the bundle
+    // waits for before it defines anything (`src/index.ts`).
+    window.CustomElementRegistryPolyfill = {};
   });
 
   it("defines the elements and publishes one picker entry, even if evaluated twice", async () => {

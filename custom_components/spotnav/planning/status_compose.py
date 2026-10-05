@@ -62,11 +62,15 @@ Precedence (first match wins the headline; "add" rows append a fact line)
    top-off is the fact line topping_off{until} after them.
    `settings_suggested{fields}` (tone normal) follows the notices while first-run defaults
    (area, phases, amps) are unconfirmed; any settings edit clears it.
-6. Notices appended after the headline (and after the target fact): price_data_stale,
+6. Notices appended after the headline (and after the target fact): departure_shortfall{kwh,
+   requested_kwh, soc_percent, departure} (the need cannot be met by the departure, so every slot up to
+   it is planned and charged, best effort: about `kwh` of `requested_kwh` kWh, a target's `soc_percent`
+   or null for a manual need, by `departure`; not while paused), price_data_stale,
    price_data_degraded (usable rows exist, or degraded/incomplete), unpriced,
    hold_overridden (a person started the charge again after SpotNav held it, and it may go on),
    remaining_need_estimated (a manual need counted without the energy register: its last remainder
-   kept, or the charger's recorded charges),
+   kept, or the charger's recorded charges; not for `kept_recent`, a register that was read and is
+   unread for less than half an hour, nor `rebased`, one that reads again),
    held_by_charger (the charger's own scheduler or load balancer holds the charge), charger_disabled
    (its own enable switch is off, so it cannot start), site_measurement_problem (the phases that
    make the site's measurement unusable and why; site_meter_unavailable in its place when the meter's
@@ -241,6 +245,10 @@ STATUS_CODES: Final[dict[str, tuple[str, tuple[str, ...]]]] = {
     "site_current_negative": (TONE_NOTICE, ("phases",)),
     # Another SpotNav charger entry, titled `other`, is the same physical charger as this one.
     "duplicate_charger": (TONE_NOTICE, ("other",)),
+    # The need cannot be met by the departure: every slot up to it is planned and charged (best effort).
+    # About `kwh` of the `requested_kwh` the plan was asked for, which a target reads as `soc_percent`
+    # (null for a manual need; clients show it as a whole percent rounded down), by `departure` (an instant).
+    "departure_shortfall": (TONE_NOTICE, ("kwh", "requested_kwh", "soc_percent", "departure")),
 }
 
 STATUS_TONES: Final = (TONE_NORMAL, TONE_NOTICE, TONE_BLOCKING)
@@ -263,6 +271,9 @@ class PlanningFacts:
     remaining_kwh: float | None = None
     #: `manual_kwh` only: the battery's room in kWh when the need was capped at it, else `None`.
     room_kwh: float | None = None
+    #: The departure the plan is for, and a target plan short of it: the state of charge it reaches.
+    departure_at: datetime | None = None
+    expected_soc_percent: float | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -276,6 +287,8 @@ class ProposalFacts:
     currency: str | None = None
     distance_mil: float | None = None
     unpriced: bool | None = None
+    #: The need cannot be met by the departure; the plan is every slot up to it (best effort).
+    short_of_deadline: bool = False
 
 
 @dataclass(frozen=True, slots=True)
@@ -682,6 +695,9 @@ def _plan_headline(facts: StatusFacts) -> list[dict[str, Any]]:
 def _notices(facts: StatusFacts) -> list[dict[str, Any]]:
     """The card's degraded issues that are facts beside a headline (not the pending proposal)."""
     lines: list[dict[str, Any]] = []
+    shortfall = _shortfall_line(facts)
+    if shortfall is not None:
+        lines.append(shortfall)
     if facts.has_settings:
         if facts.price_state == "stale":
             lines.append(_line("price_data_stale", reason=facts.price_reason))
@@ -757,6 +773,25 @@ def _notices(facts: StatusFacts) -> list[dict[str, Any]]:
     elif facts.load_balancing_capable:
         lines.append(_line("load_balancing_unavailable"))
     return lines
+
+
+def _shortfall_line(facts: StatusFacts) -> dict[str, Any] | None:
+    """The best-effort plan's warning: what the car is expected to have by the departure."""
+    proposal = facts.proposal
+    if proposal is None or not proposal.short_of_deadline or facts.paused:
+        return None
+    planning = facts.planning
+    departure = None if planning is None else planning.departure_at
+    if departure is None and proposal.periods:
+        departure = proposal.periods[-1][1]
+    soc = None if planning is None else planning.expected_soc_percent
+    return _line(
+        "departure_shortfall",
+        kwh=None if proposal.planned_kwh is None else round(proposal.planned_kwh, 2),
+        requested_kwh=None if proposal.requested_kwh is None else round(proposal.requested_kwh, 2),
+        soc_percent=None if soc is None else round(soc, 1),
+        departure=None if departure is None else aware_iso(departure),
+    )
 
 
 def _vehicle_limit_lines(facts: StatusFacts) -> list[dict[str, Any]]:

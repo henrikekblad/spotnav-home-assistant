@@ -28,6 +28,7 @@ optional `note` saying what it pins.
 | `reason` | the named no-plan reason, or `null` for a plan | exact |
 | `slots_needed`, `priced_slots`, `unpriced_slots`, `period_count` | counts | exact |
 | `unpriced` | whether the plan charges without published prices | exact |
+| `short_of_deadline` | whether the need cannot be met by the departure, so every slot up to it is planned (best effort) | exact |
 | `currency`, `major_unit`, `minor_unit` | result identity | exact |
 | `periods` | ordered half-open `[start, end)` pairs, as ISO instants | exact |
 | `slot_starts` | the selected slots' starts, in order | exact |
@@ -50,7 +51,7 @@ invented field cannot make a scenario pass vacuously — it fails loudly instead
 | fiscal order | `fiscal_tax_transfer_then_vat` |
 | EUR and non-EUR identity | `eur_area_needs_no_rate_table`, `non_eur_area_uses_the_document_rate`, `non_eur_area_without_a_rate_is_refused` |
 | ties and period caps | `equal_prices_choose_the_earlier_slot` (its two slots are the only cheapest pair, so it is no tie), `period_cap_of_one_forces_one_run`, `greedy_selection_would_be_wrong` |
-| horizon and departures | `no_departure_uses_the_24_hour_horizon`, `departure_crossing_midnight`, `deadline_too_short` |
+| horizon and departures | `no_departure_uses_the_24_hour_horizon`, `departure_crossing_midnight`, `deadline_too_short_plans_every_slot_to_the_departure`, `deadline_too_short` |
 | hourly input, DST days, overlap | `hourly_document_expands_to_quarters`, `spring_day_92_slots_skips_the_missing_hour`, `autumn_day_100_slots_repeats_the_hour`, `overlapping_documents_deduplicate_by_instant` |
 | missing prices (the estimated fallback is retired) | `missing_tomorrow_is_a_named_gap`, `missing_tomorrow_at_the_last_published_slot`, `no_published_prices_at_all` |
 

@@ -47,6 +47,7 @@ describe("the card's computation against the backend's need_kwh in the committed
 
   it("finds the fixtures that carry a need", () => {
     expect(carrying).toEqual([
+      "target_soc_departure_shortfall.json",
       "target_soc_estimated.json",
       "target_soc_phases_limited_by_vehicle.json",
       "target_soc_stopped_on_estimate.json",
