@@ -17,7 +17,7 @@ import {
   formFromRecord,
   replacementFor,
 } from "../src/settings";
-import { issuesOf, statusText } from "../src/status";
+import { issuesOf, issueText, statusText } from "../src/status";
 import { SETTINGS_API_VERSION, type SettingsRecord } from "../src/types";
 import type { Status } from "../src/validate";
 import { statusLine } from "./dashboard-fixtures";
@@ -139,7 +139,7 @@ describe("the slider's top past full", () => {
     // 77 kWh x 100 % / 0.9 = 85.6 kWh; to a 50 % limit, 42.8 kWh.
     expect(energyFillTop(facts(40))).toBe(80);
     expect(energyFillTop(facts(45))).toBe(86);
-    expect(energyFillTop(facts(20, 77, 50))).toBe(43);
+    expect(energyFillTop(facts(30, 77, 50))).toBe(43);
   });
 
   it("has no room clamp beyond the ordinary 100 kWh without a battery size, and no top without a room", () => {
@@ -307,19 +307,19 @@ describe("the Fill status lines", () => {
       statusLine("auto_installed", { start: "2026-09-22T22:00:00+00:00" }),
       statusLine("fill_room_unknown", { kwh: 12 }),
     );
-    expect(statusText(unknown, format("en"), NOW)).toContain(
-      "The car's level or battery size is unknown, so 12.0 kWh is charged instead of filling.",
-    );
-    expect(statusText(unknown, format("sv"), NOW)).toContain(
-      "Bilens nivå eller batteristorlek är okänd, så 12,0 kWh laddas i stället för att fylla.",
-    );
-    expect(issuesOf(unknown, "en").map((issue) => issue.code)).toEqual(["fill_room_unknown"]);
+    expect(issuesOf(unknown, "en").map((issue) => issueText("en", issue))).toEqual([
+      "The car's level or battery size is unknown, so 12 kWh is charged instead of filling.",
+    ]);
+    expect(issuesOf(unknown, "sv").map((issue) => issueText("sv", issue))).toEqual([
+      "Bilens nivå eller batteristorlek är okänd, så 12 kWh laddas i stället för att fylla.",
+    ]);
   });
 
   it("are worded in every language", () => {
     const both = block(statusLine("filling_to_limit", { kwh: 9.5 }), statusLine("fill_room_unknown", { kwh: 12 }));
     for (const language of ["en", "sv", "nb", "da", "fi"] as const) {
       expect(statusText(both, format(language), NOW)).not.toContain("{kwh}");
+      expect(issuesOf(both, language).map((issue) => issueText(language, issue)).join()).not.toContain("{kwh}");
       expect(translate(language, "settings.energy.fill")).not.toBe("");
     }
   });

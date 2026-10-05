@@ -102,6 +102,7 @@ function decode(raw: unknown) {
 function form(overrides: Partial<SettingsFormValues> = {}): SettingsFormValues {
   return {
     energy: "20.5",
+    fill: false,
     deadlineEnabled: true,
     deadlineTime: "06:30",
     departureDate: "",
@@ -492,6 +493,7 @@ describe("the pure replacement builders", () => {
   it("prefills the form from the record, with an unset current shown as empty", () => {
     expect(formFromRecord(aRecord())).toEqual({
       energy: "20.5",
+      fill: false,
       deadlineEnabled: true,
       deadlineTime: "06:30",
       departureDate: "",
