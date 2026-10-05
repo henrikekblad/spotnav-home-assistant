@@ -98,7 +98,7 @@ from .target_stop import (
 from . import top_off
 from .window_hold import HOLD, OVERRIDE, WindowHold
 from ..core import events as core_events
-from ..core.session import ChargeSession, SessionError
+from ..core.session import ChargeSession, OWNER_CHARGER_SELF, OWNER_NONE, SessionError
 from . import ownership_shadow as ownership_shadow_module
 from .ownership_shadow import (
     CommandOutcome,
@@ -120,7 +120,11 @@ STORE_VERSION = 1
 SESSION_STORE_KEY = "charge_session"
 #: A change of the core's session that no save of today's keys carried is saved by the first decision at least this
 #: long after it (or at shutdown), once: never at every report. No timer of its own: a restart's timers are not moved.
+#: A change of the owner or the person intent is not debounced: it is saved at once (`_persist_session`).
 SESSION_SAVE_DELAY_S = 30.0
+#: The store key of which is newer, the core's record or today's keys beside it, as two marks on one counter
+#: (`session`, `keys`): written with them while the core drives, so a restart never lets the older one win.
+SESSION_ORDER_KEY = "charge_session_order"
 
 #: How long an accepted Start counts as the cause of the charge that follows it (the charge session record).
 START_CAUSE_TTL_S = 300.0
@@ -779,6 +783,13 @@ class ChargingController:
         # The whole record as last written or read back, which a save of the session alone writes again beside it.
         self._record_saved: dict[str, Any] | None = None
         self._session_dirty_since: datetime | None = None
+        # Which is newer, the core's session or today's ownership keys (`SESSION_ORDER_KEY`): one counter, moved when
+        # the core decides and when today's keys are seen changed; the marks of each as they were last written.
+        self._order = 0
+        self._session_as_of = 0
+        self._keys_as_of = 0
+        self._keys_seen: tuple[Any, ...] | None = None
+        self._session_written_as_of = 0
         self._shadow = OwnershipShadow(
             self._shadow_session,
             drives=self._core_drives,
@@ -906,12 +917,15 @@ class ChargingController:
                 )
         self._saved_memory = self._memory_signature()
         stored, migrate = self._stored_session(saved)
-        # The core's session is what was read back: its own record when it drives and one was read, else today's.
+        keys_newer = self._restore_order(saved) if stored is not None else False
+        # The core's session is what was read back: its own record when it drives and one was read, else today's;
+        # today's keys where they are newer than the record (written after its last change).
         self._shadow.restart(
             core_events.Restart(
                 legacy_person_stop=self._legacy_person_stopped and self._automatic_gate is not None
             ),
             stored,
+            keys_newer=keys_newer,
         )
         if stored is not None:
             self._session_saved = stored
@@ -3210,8 +3224,9 @@ class ChargingController:
     async def _shutdown_locked(self) -> None:
         """The shutdown itself. Runs with the operation lock held."""
         self._cancel_timers()
-        if self._cancel_session_save():
-            # A change of the core's session still waiting for its debounced save.
+        # A change of the core's session still waiting for its debounced save, or decided while this shutdown waited
+        # for the lock (`_shut_down` is set before it, and no decision saves once it is).
+        if self._cancel_session_save() or self._core_drives:
             await self._async_save_session()
         self._cancel_stop_retry()
         self._cancel_person_hold_retry()
@@ -3409,14 +3424,19 @@ class ChargingController:
         session = self._session_record()
         if session is not None:
             record[SESSION_STORE_KEY] = session[1]
+            self._note_keys()
+            record[SESSION_ORDER_KEY] = {"session": self._session_as_of, "keys": self._keys_as_of}
         elif self._core_drives and self._session_saved is not None:
             # Unreadable now: the record saved last is kept, not dropped.
             record[SESSION_STORE_KEY] = self._session_saved.to_store()
+            self._note_keys()
+            record[SESSION_ORDER_KEY] = {"session": self._session_written_as_of, "keys": self._keys_as_of}
         self._record_saved = record
         await self._store.async_save(record)
         self._saved_memory = signature
         if session is not None:
             self._session_saved = session[0]
+            self._session_written_as_of = record[SESSION_ORDER_KEY]["session"]
             self._cancel_session_save()
 
     def _store_record(self) -> dict[str, Any]:
@@ -3495,11 +3515,22 @@ class ChargingController:
         """The core decided (`OwnershipShadow`, only when it drives). A session whose stored record changed is saved
         by the first decision at least `SESSION_SAVE_DELAY_S` after the change (with whatever else changed by then),
         by a save of today's keys, or at shutdown: a report that changes nothing stored writes nothing, and many
-        changes in a row are one save."""
+        changes in a row are one save. A change of the owner or of the person intent is saved at once (a task, off
+        the decision's own path): Home Assistant's stop unloads no entry, so nothing later may be counted on to save
+        it."""
+        # The session is as of this decision, which lined it up with today's keys as they are now.
+        self._note_keys()
+        self._order += 1
+        self._session_as_of = self._order
         if not self._restored or self._shut_down:
             return
-        if session.stored() == self._session_saved:
+        stored = session.stored()
+        if stored == self._session_saved:
             self._session_dirty_since = None
+            return
+        if self._ownership_changed(stored):
+            self._session_dirty_since = None
+            self.hass.async_create_task(self._async_save_session())
             return
         now = dt_util.utcnow()
         since = self._session_dirty_since
@@ -3508,6 +3539,57 @@ class ChargingController:
         elif (now - since).total_seconds() >= SESSION_SAVE_DELAY_S:
             self._session_dirty_since = None
             self.hass.async_create_task(self._async_save_session())
+
+    def _ownership_changed(self, stored: ChargeSession) -> bool:
+        """Whether `stored` names another owner or another person intent than the record saved last. The charger's own
+        charge and nobody's are one at a restart (it is seen again then), so a charger reporting on and off is no
+        such change."""
+        saved = self._session_saved if self._session_saved is not None else ChargeSession()
+        if (stored.manual, stored.span_pause) != (saved.manual, saved.span_pause):
+            return True
+        unseen = {OWNER_NONE, OWNER_CHARGER_SELF}
+        return stored.owner != saved.owner and not {stored.owner, saved.owner} <= unseen
+
+    def _keys_signature(self) -> tuple[Any, ...]:
+        """Today's keys the core's session is lined up from (`_shadow_session`), as one comparable value."""
+        return (
+            self._charge_origin,
+            self._plan_charge,
+            self._top_off_until,
+            self._car_ended_at,
+            self._paused_by_balancing,
+            self._paused_charge,
+            self._hold.held,
+            self._hold.overridden,
+        )
+
+    def _note_keys(self) -> None:
+        """Today's ownership keys changed since last looked at: they are newer than every decision before now."""
+        signature = self._keys_signature()
+        if signature != self._keys_seen:
+            self._keys_seen = signature
+            self._order += 1
+            self._keys_as_of = self._order
+
+    def _restore_order(self, saved: dict[str, Any] | None) -> bool:
+        """The marks of the record and today's keys read back (`SESSION_ORDER_KEY`), and whether today's keys are the
+        newer: written after the record's last change. A record with no marks (an earlier build) is the newer, as
+        before them."""
+        raw = saved.get(SESSION_ORDER_KEY) if saved else None
+        marks = (raw.get("session"), raw.get("keys")) if isinstance(raw, dict) else (None, None)
+        if not all(isinstance(mark, int) and not isinstance(mark, bool) and mark >= 0 for mark in marks):
+            marks = (0, 0)
+        self._session_as_of = self._session_written_as_of = marks[0]
+        self._keys_as_of = marks[1]
+        self._order = max(marks)
+        self._keys_seen = self._keys_signature()
+        return marks[1] > marks[0]
+
+    async def async_flush_session(self) -> None:
+        """Home Assistant stops (`__init__._async_stop`): it unloads no entry, so `async_shutdown` never runs. A change of
+        the core's session still waiting for its debounced save is saved now."""
+        self._cancel_session_save()
+        await self._async_save_session()
 
     def _cancel_session_save(self) -> bool:
         """Forget a change of the core's session still waiting to be saved; whether one was waiting."""
@@ -3523,7 +3605,17 @@ class ChargingController:
         if session is None or session[0] == self._session_saved:
             return
         base = self._record_saved if self._record_saved is not None else self._store_record()
-        record = {**base, SESSION_STORE_KEY: session[1]}
+        # Today's keys go as last written, so as of the mark they were written with (none: the oldest).
+        order = base.get(SESSION_ORDER_KEY)
+        keys_as_of = order.get("keys") if isinstance(order, dict) else None
+        if not isinstance(keys_as_of, int) or isinstance(keys_as_of, bool):
+            keys_as_of = 0
+        session_as_of = self._session_as_of
+        record = {
+            **base,
+            SESSION_STORE_KEY: session[1],
+            SESSION_ORDER_KEY: {"session": session_as_of, "keys": keys_as_of},
+        }
         self._record_saved = record
         try:
             await self._store.async_save(record)
@@ -3531,6 +3623,7 @@ class ChargingController:
             _LOGGER.warning("Saving the SpotNav charge session failed: %s", type(err).__name__)
             return
         self._session_saved = session[0]
+        self._session_written_as_of = session_as_of
 
     async def _reschedule_locked(self) -> None:
         """Arm the plan's timers, or clear a plan that is over. The lock is held.

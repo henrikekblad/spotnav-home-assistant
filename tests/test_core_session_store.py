@@ -21,7 +21,7 @@ from custom_components.spotnav.core.session import (
     TRANSIENT_FIELDS,
 )
 from custom_components.spotnav.execution import ownership_shadow
-from custom_components.spotnav.execution.controller import SESSION_SAVE_DELAY_S, SESSION_STORE_KEY
+from custom_components.spotnav.execution.controller import SESSION_ORDER_KEY, SESSION_SAVE_DELAY_S, SESSION_STORE_KEY
 from custom_components.spotnav.planning.auto_settings import (
     MANUAL_SCOPE_NEXT_PLUG_IN,
     MANUAL_SCOPE_PLUG_IN,
@@ -29,7 +29,7 @@ from custom_components.spotnav.planning.auto_settings import (
     MANUAL_STOP,
 )
 
-from .pause_world import ENTRY, pause_world, SWITCH, two_windows, World
+from .pause_world import ENTRY, later_window, pause_world, SWITCH, two_windows, World
 from .relay import FakeScheduler
 
 T0 = datetime(2026, 10, 5, 12, 0, tzinfo=timezone.utc)
@@ -159,6 +159,7 @@ async def _settle(hass: HomeAssistant, freezer: Any) -> None:
 
 
 @pytest.mark.usefixtures("drives")
+@pytest.mark.usefixtures("both_restarts")
 async def test_todays_keys_are_migrated_once_into_the_cores_record(
     hass: HomeAssistant, timers: FakeScheduler, saves: list, reads: list
 ) -> None:
@@ -194,6 +195,7 @@ async def test_todays_keys_are_migrated_once_into_the_cores_record(
 
 @pytest.mark.usefixtures("drives")
 @pytest.mark.parametrize("record", [{"version": 99, "owner": "plan"}, "garbled", {"version": 1}])
+@pytest.mark.usefixtures("both_restarts")
 async def test_a_record_of_an_unknown_version_falls_back_to_todays_keys(
     hass: HomeAssistant, timers: FakeScheduler, reads: list, record: Any
 ) -> None:
@@ -215,6 +217,7 @@ async def test_a_record_of_an_unknown_version_falls_back_to_todays_keys(
 
 
 @pytest.mark.usefixtures("shadows")
+@pytest.mark.usefixtures("both_restarts")
 async def test_with_the_option_off_the_record_is_neither_written_nor_read(
     hass: HomeAssistant, timers: FakeScheduler, saves: list, reads: list, freezer: Any
 ) -> None:
@@ -273,6 +276,7 @@ async def test_reports_do_not_write_the_record_each_time(
 
 
 @pytest.mark.usefixtures("drives")
+@pytest.mark.usefixtures("both_restarts")
 async def test_a_restart_with_a_persons_stop_for_the_plug_in_reads_it_from_the_record(
     hass: HomeAssistant, timers: FakeScheduler, reads: list
 ) -> None:
@@ -294,6 +298,7 @@ async def test_a_restart_with_a_persons_stop_for_the_plug_in_reads_it_from_the_r
 
 
 @pytest.mark.usefixtures("drives")
+@pytest.mark.usefixtures("both_restarts")
 async def test_a_restart_with_a_persons_stop_for_the_next_plug_in_reads_it_from_the_record(
     hass: HomeAssistant, timers: FakeScheduler, reads: list
 ) -> None:
@@ -315,6 +320,7 @@ async def test_a_restart_with_a_persons_stop_for_the_next_plug_in_reads_it_from_
 
 
 @pytest.mark.usefixtures("drives")
+@pytest.mark.usefixtures("both_restarts")
 async def test_a_restart_with_a_persons_start_reads_it_from_the_record(
     hass: HomeAssistant, timers: FakeScheduler, reads: list
 ) -> None:
@@ -349,3 +355,108 @@ async def test_a_change_waiting_for_its_debounced_save_is_saved_at_shutdown(
     assert world.controller._session_dirty_since is not None  # noqa: SLF001
     await world.shutdown()
     assert SESSION_STORE_KEY in await _stored(world)
+
+
+# ---------------------------------------------------------------------------------------------- saved in time
+
+
+@pytest.mark.usefixtures("drives")
+async def test_a_change_of_owner_is_saved_at_once(hass: HomeAssistant, timers: FakeScheduler, saves: list) -> None:
+    """The sun's start makes the charge the sun's: the record says so on disk at once, with no later decision or
+    shutdown to wait for (Home Assistant's stop unloads no entry)."""
+    world = await pause_world(hass, timers)
+    assert await world.controller.async_start(cause="solar")
+    await hass.async_block_till_done()
+    assert (await _stored(world))[SESSION_STORE_KEY]["owner"] == "solar"
+    await world.shutdown()
+
+
+@pytest.mark.usefixtures("drives")
+async def test_a_change_of_the_persons_intent_is_saved_at_once(hass: HomeAssistant, timers: FakeScheduler) -> None:
+    world = await pause_world(hass, timers)
+    await world.executor.async_manual_stop()
+    await hass.async_block_till_done()
+    assert (await _stored(world))[SESSION_STORE_KEY]["manual"] == {"action": MANUAL_STOP, "scope": MANUAL_SCOPE_PLUG_IN}
+    await world.shutdown()
+
+
+@pytest.mark.usefixtures("drives")
+async def test_home_assistants_stop_saves_a_change_waiting_for_its_debounced_save(
+    hass: HomeAssistant, timers: FakeScheduler, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Home Assistant's stop (`__init__._async_stop`) unloads no entry: it saves each controller's waiting change."""
+    import custom_components.spotnav as integration
+
+    world = await pause_world(hass, timers)
+    shadow = world.controller.ownership_shadow
+    shadow.session = shadow.session.with_changes(held=True)
+    world.controller._persist_session(shadow.session)  # noqa: SLF001 - a decision changed only bookkeeping
+    assert world.controller._session_dirty_since is not None  # noqa: SLF001 - waiting for its debounced save
+    assert (await _stored(world))[SESSION_STORE_KEY]["held"] is False
+
+    class Entry:
+        entry_id = ENTRY
+
+    class Data:
+        controller, executor, preview = world.controller, world.executor, None
+
+    with monkeypatch.context() as patch:
+        patch.setattr(hass.config_entries, "async_entries", lambda domain=None: [Entry()])
+        patch.setattr(integration, "charger_data", lambda _hass, entry_id: Data() if entry_id == ENTRY else None)
+        patch.setattr(integration, "domain_data", lambda _hass: type("Domain", (), {"price_refresh": None})())
+        await integration._async_stop(hass)  # noqa: SLF001
+    assert (await _stored(world))[SESSION_STORE_KEY]["held"] is True
+    assert world.controller._session_dirty_since is None  # noqa: SLF001
+    await world.shutdown()
+
+
+@pytest.mark.usefixtures("drives")
+async def test_a_decision_made_while_the_shutdown_waits_for_the_lock_is_saved(
+    hass: HomeAssistant, timers: FakeScheduler
+) -> None:
+    """The shutdown marks the controller shut down before it takes the lock, and no decision saves after that mark:
+    one that finishes while the shutdown waits for the lock is saved by the shutdown itself."""
+    import asyncio
+
+    world = await pause_world(hass, timers)
+    controller = world.controller
+    shadow = controller.ownership_shadow
+    async with controller._lock:  # noqa: SLF001 - a decision in flight
+        down = hass.async_create_task(controller.async_shutdown())
+        await asyncio.sleep(0)
+        assert controller._shut_down  # noqa: SLF001
+        shadow.session = shadow.session.with_changes(held=True)
+        controller._persist_session(shadow.session)  # noqa: SLF001 - the decision ends
+    await down
+    assert (await _stored(world))[SESSION_STORE_KEY]["held"] is True
+    await world.executor.async_shutdown()
+
+
+@pytest.mark.shadow_disagreement_expected  # the record's owner against today's keys, compared at the restart
+@pytest.mark.usefixtures("drives", "both_restarts")
+@pytest.mark.parametrize("newer", ["keys", "record"])
+async def test_at_a_restart_the_newer_of_the_record_and_todays_keys_wins(
+    hass: HomeAssistant, timers: FakeScheduler, newer: str
+) -> None:
+    """On disk the record says nobody owns the charge and today's keys say the sun does. Written after the record's
+    last change, today's keys win (the sun's charge is spared); written before it, the record wins (as the core
+    decided last, today's owner is cleared)."""
+    world = await pause_world(hass, timers, plan={"periods": [later_window()], "amps": 10})
+    key = SESSION_ORDER_KEY
+
+    def change(record: dict[str, Any]) -> None:
+        record[SESSION_STORE_KEY] = {**record[SESSION_STORE_KEY], "owner": "none"}
+        record["charge_origin"] = "solar"
+        record[key] = {"session": 3, "keys": 4} if newer == "keys" else {"session": 4, "keys": 3}
+
+    await world.controller.async_start(cause="solar")
+    await hass.async_block_till_done()
+    await _rewrite(world, change)
+    world.controller._session_saved = ChargeSession.from_store(  # noqa: SLF001 - the old controller saves nothing more
+        (await _stored(world))[SESSION_STORE_KEY]
+    )
+    world.controller.ownership_shadow.session = world.controller._session_saved  # noqa: SLF001
+    restarted = await world.restart()
+    expected = "solar" if newer == "keys" else None
+    assert restarted.controller.charge_origin == expected
+    await restarted.shutdown()

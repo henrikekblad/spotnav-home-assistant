@@ -53,9 +53,27 @@ class World:
         await self.hass.async_block_till_done()
 
     async def restart(self) -> World:
-        """Home Assistant restarts: a new controller and boundary over the same stores and states."""
+        """A restart after the entry was unloaded (the controller's own shutdown ran): a new controller and boundary
+        over the same stores and states. `ha_restart` is Home Assistant's own stop, which unloads nothing."""
         await self.executor.async_shutdown()
         await self.controller.async_shutdown()
+        return await self._start_again()
+
+    async def ha_restart(self) -> World:
+        """Home Assistant restarts as it really does: its stop (`__init__._async_stop`) shuts the boundary down and
+        saves what the charge-ownership core has unsaved, but unloads no entry, so the controller's own shutdown
+        never runs. What is on disk then is what the next start reads."""
+        await self.executor.async_shutdown()
+        await self.controller.async_flush_session()
+        await self.hass.async_block_till_done()
+        disk = await self.controller._store.async_load()  # noqa: SLF001
+        # The process ends: the old controller's listeners are dropped, and nothing it would save reaches the disk.
+        self.controller._cancel_session_save()  # noqa: SLF001
+        await self.controller.async_shutdown()
+        await self.controller._store.async_save(dict(disk) if disk else {})  # noqa: SLF001
+        return await self._start_again()
+
+    async def _start_again(self) -> World:
         controller = ChargingController(self.hass, ENTRY, {CONF_CHARGE_CONTROL: SWITCH})
         executor = AutoExecutor(self.hass, controller, self.store)
         plug = Plug.__new__(Plug)

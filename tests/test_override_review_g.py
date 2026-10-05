@@ -57,13 +57,12 @@ def mode(request: pytest.FixtureRequest, monkeypatch: pytest.MonkeyPatch) -> boo
 
 @pytest.mark.shadow_disagreement_expected
 async def test_rev_g_suns_charge_survives_a_real_ha_restart(
-    hass: HomeAssistant, timers: FakeScheduler, mode: bool, request: pytest.FixtureRequest
+    hass: HomeAssistant, timers: FakeScheduler, mode: bool
 ) -> None:
     """The sun's start (`cause="solar"`, as `AutoExecutor.async_solar_start` sends it) with a plan window ahead, then Home Assistant restarts within the session
     record's debounce. Today's keys say `charge_origin=solar`, which today's re-arm spares; the core's record was last written inside the start
     (owner none, the start's result not back yet) and the change after it waits for a later decision or a shutdown
     that HA's stop never calls. The restore takes the stale record as the truth and clears today's origin."""
-    request.applymarker(pytest.mark.xfail(mode, strict=True, reason="F1: the record's last change is lost at a stop"))
     world = await pause_world(hass, timers, plan={"periods": [later_window()], "amps": 10})
     assert await world.controller.async_start(cause="solar")
     await hass.async_block_till_done()

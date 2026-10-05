@@ -149,6 +149,9 @@ async def _async_stop(hass: HomeAssistant, _event: Event | None = None) -> None:
         if data.executor is not None:
             await data.executor.async_shutdown()
     for data in loaded:
+        # No entry is unloaded, so no controller's shutdown saves what the charge-ownership core still has unsaved.
+        await data.controller.async_flush_session()
+    for data in loaded:
         if data.preview is not None:
             await data.preview.async_shutdown()
     manager = domain_data(hass).price_refresh

@@ -363,15 +363,19 @@ class OwnershipShadow:
         decides with no state of its own changing (a hand-off at a window's end)."""
         self.end(self.begin(), event, legacy=legacy, outcome=outcome, fields=fields)
 
-    def restart(self, event: Event, stored: ChargeSession | None = None) -> None:
+    def restart(self, event: Event, stored: ChargeSession | None = None, *, keys_newer: bool = False) -> None:
         """The record was read back after a restart, and the restart is fed. The core's session is today's as read;
         when the core drives and its own stored record was read (`stored`), that record, decided from as it is and
         then compared with today's. Whether the charger charges by itself is seen now, not stored: an owner of
-        nobody or of the charger itself is today's."""
+        nobody or of the charger itself is today's. Today's keys written after the record's last change
+        (`keys_newer`) are the newer: what the session reads from them is today's, and only the person intent
+        (kept by the execution boundary, not in those keys) is the record's."""
         from_store = stored is not None and self.drives
         try:
             today = self._legacy()
             if stored is not None and from_store:
+                if keys_newer:
+                    stored = replace(today, manual=stored.manual, span_pause=stored.span_pause)
                 if {stored.owner, today.owner} <= {OWNER_NONE, OWNER_CHARGER_SELF}:
                     stored = replace(stored, owner=today.owner)
                 self.session = stored

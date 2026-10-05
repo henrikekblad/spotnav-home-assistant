@@ -439,3 +439,14 @@ def pause_appointments(monkeypatch: pytest.MonkeyPatch) -> RecordedAppointments:
 @pytest.fixture
 def flaky(hass: HomeAssistant) -> FlakyStore:
     return FlakyStore()
+
+
+@pytest.fixture(params=["unload", "ha_stop"])
+def both_restarts(request: pytest.FixtureRequest, monkeypatch: pytest.MonkeyPatch) -> str:
+    """Runs a test whose world restarts (`pause_world.World.restart`) once after an unload and once as Home
+    Assistant's own stop, which unloads no entry (`World.ha_restart`)."""
+    from .pause_world import World
+
+    if request.param == "ha_stop":
+        monkeypatch.setattr(World, "restart", World.ha_restart)
+    return request.param

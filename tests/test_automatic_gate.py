@@ -46,6 +46,7 @@ async def test_a_pause_whose_stop_failed_leaves_no_window_able_to_start(
     await world.shutdown()
 
 
+@pytest.mark.usefixtures("both_restarts")
 async def test_a_restart_inside_the_window_of_a_paused_plan_starts_nothing(
     hass: HomeAssistant, timers: FakeScheduler, freezer
 ) -> None:
