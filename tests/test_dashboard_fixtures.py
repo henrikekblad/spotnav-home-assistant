@@ -403,7 +403,7 @@ EXPECTED_FIXTURES: Final = frozenset(
         "target_soc_estimated.json",
         "target_soc_stopped_on_estimate.json",
         # This module: a target the departure leaves too little time for, planned as best effort.
-        "departure_shortfall.json",
+        "target_soc_departure_shortfall.json",
         # `tests/test_vehicle_properties.py`: `vehicles`, `target_vehicle_id`, `soc.efficiency`.
         "target_soc_two_vehicles.json",
         # `tests/test_phases.py`: a one-phase car limiting a three-phase charger.
@@ -628,4 +628,4 @@ async def test_the_departure_shortfall_fixture_is_the_serializers_own_output(
     assert params["soc_percent"] == pytest.approx(2 + 7.36 * 0.9 / 15.6 * 100, abs=0.05)
     assert params["requested_kwh"] == pytest.approx(78 / 100 * 15.6 / 0.9, abs=0.01)
     payload = json.loads(re.sub(r'"[0-9a-f]{32}"', '"<id>"', json.dumps(payload)))
-    _write_or_compare({"departure_shortfall.json": payload})
+    _write_or_compare({"target_soc_departure_shortfall.json": payload})

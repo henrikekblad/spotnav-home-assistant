@@ -246,7 +246,7 @@ STATUS_CODES: Final[dict[str, tuple[str, tuple[str, ...]]]] = {
     "duplicate_charger": (TONE_NOTICE, ("other",)),
     # The need cannot be met by the departure: every slot up to it is planned and charged (best effort).
     # About `kwh` of the `requested_kwh` the plan was asked for, which a target reads as `soc_percent`
-    # (null for a manual need), by `departure` (an instant).
+    # (null for a manual need; clients show it as a whole percent rounded down), by `departure` (an instant).
     "departure_shortfall": (TONE_NOTICE, ("kwh", "requested_kwh", "soc_percent", "departure")),
 }
 

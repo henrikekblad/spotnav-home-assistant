@@ -201,6 +201,7 @@ export const STATUS_WORDING: Readonly<Record<StatusCode, TranslationKey>> = {
   site_meter_unavailable: "status.meterUnavailable.meter",
   site_current_negative: "status.siteCurrentNegative",
   duplicate_charger: "issue.duplicateCharger",
+  departure_shortfall: "status.departureShortfall",
 };
 
 export const STATUS_VARIANT_KEYS: readonly TranslationKey[] = [
@@ -237,7 +238,62 @@ export const STATUS_VARIANT_KEYS: readonly TranslationKey[] = [
   "strategy.status.solar.chargerCurrentUnreadable",
   "status.meterUnavailable.inverter",
   "strategy.status.solar.carStoppedNoTime",
+  "status.departureShortfall.soc",
+  "status.departureShortfall.socNoTime",
+  "status.departureShortfall.kwh",
+  "status.departureShortfall.kwhNoTime",
+  "issue.planningUnavailable.deadlineTooShort",
+  "issue.planningUnavailable.noPublishedPrices",
+  "issue.planningUnavailable.missingFxRate",
+  "issue.planningUnavailable.unexpectedFailure",
 ];
+
+/**
+ * The specific sentence for a `planning_unavailable` reason the backend names, so a known reason never
+ * reads as the generic "no plan with the data available"; an unnamed one keeps the generic sentence.
+ */
+const PLANNING_UNAVAILABLE_KEYS: Readonly<Record<string, TranslationKey>> = {
+  deadline_too_short: "issue.planningUnavailable.deadlineTooShort",
+  no_published_prices: "issue.planningUnavailable.noPublishedPrices",
+  missing_fx_rate: "issue.planningUnavailable.missingFxRate",
+  unexpected_failure: "issue.planningUnavailable.unexpectedFailure",
+  price_data_invalid: "issue.priceInvalid",
+  insufficient_price_horizon: "issue.priceHorizon",
+  solar_execution_unavailable: "issue.solarUnavailable",
+};
+
+function planningUnavailableKey(reason: StatusParam | undefined): TranslationKey {
+  return (typeof reason === "string" ? PLANNING_UNAVAILABLE_KEYS[reason] : undefined) ?? "issue.planningUnavailable";
+}
+
+/**
+ * A plan that cannot meet the departure charges every slot up to it: what the car is expected to have by
+ * then, as a state of charge for a target (with its energy) or as the energy of the need for a manual
+ * one. `time` is the departure's clock time, or `null` where it cannot be told in the market's zone.
+ */
+function shortfallWording(
+  language: Language,
+  p: StatusLine["params"],
+  time: string | null,
+): { key: TranslationKey; params: Record<string, string> } {
+  const kwh = formatNumber(language, num(p["kwh"]) ?? 0, 1);
+  const soc = num(p["soc_percent"]);
+  const requested = num(p["requested_kwh"]);
+  if (soc !== null) {
+    // Whole percent down: an estimate of what the car will have never promises more than it is.
+    const params = { percent: formatNumber(language, Math.floor(soc), 0), kwh };
+    return time === null
+      ? { key: "status.departureShortfall.socNoTime", params }
+      : { key: "status.departureShortfall.soc", params: { ...params, time } };
+  }
+  if (requested !== null && num(p["kwh"]) !== null) {
+    const params = { kwh, requested: formatNumber(language, requested, 1) };
+    return time === null
+      ? { key: "status.departureShortfall.kwhNoTime", params }
+      : { key: "status.departureShortfall.kwh", params: { ...params, time } };
+  }
+  return { key: "status.departureShortfall", params: {} };
+}
 
 const MISSING_FIELD_KEYS: Readonly<Record<string, TranslationKey>> = {
   area: "status.missing.area",
@@ -471,6 +527,13 @@ export function lineText(line: StatusLine, format: FormatContext, nowMs: number)
       return say("status.chargingToVehicleLimit", { percent: formatNumber(language, num(p["percent"]) ?? 100, 0) });
     case "duplicate_charger":
       return say("issue.duplicateCharger", { other: typeof p["other"] === "string" ? p["other"] : "" });
+    case "departure_shortfall": {
+      const departure = ms(p["departure"]);
+      const wording = shortfallWording(language, p, departure === null || !zoned ? null : clock(format, departure));
+      return say(wording.key, wording.params);
+    }
+    case "planning_unavailable":
+      return say(planningUnavailableKey(p["reason"]));
     case "charger_unavailable": {
       const key = chargerProblemKey(p["problem"]);
       return key === null ? say("issue.chargerMissing") : say(key, { entity: typeof p["entity"] === "string" ? p["entity"] : "" });
@@ -552,6 +615,22 @@ export function issuesOf(status: Status | null, language: Language): Issue[] {
     if (line.code === "remaining_need_estimated") {
       const need = needEstimated(language, line.params);
       issues.push({ code: line.code, severity, textKey: need.key, params: need.params, technical: null });
+      continue;
+    }
+    if (line.code === "departure_shortfall") {
+      // The dialog has no market zone to tell the departure's clock time in: the sentence without it.
+      const wording = shortfallWording(language, line.params, null);
+      issues.push({ code: line.code, severity, textKey: wording.key, params: wording.params, technical: null });
+      continue;
+    }
+    if (line.code === "planning_unavailable") {
+      issues.push({
+        code: line.code,
+        severity,
+        textKey: planningUnavailableKey(line.params["reason"]),
+        params: {},
+        technical: reasonOf(line),
+      });
       continue;
     }
     if (line.code === "duplicate_charger") {

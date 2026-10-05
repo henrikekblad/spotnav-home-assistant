@@ -1327,6 +1327,10 @@ export const STATUS_CODE_TABLE = {
   site_meter_unavailable: ["notice", { entities: "codes", cause: "text", entity_names: "codes" }],
   site_current_negative: ["notice", { phases: "codes" }],
   duplicate_charger: ["notice", { other: "text" }],
+  departure_shortfall: [
+    "notice",
+    { kwh: "numberOrNull", requested_kwh: "numberOrNull", soc_percent: "numberOrNull", departure: "instantOrNull" },
+  ],
 } as const satisfies Record<string, readonly [StatusTone, Record<string, StatusParamKind>]>;
 
 export type StatusCode = keyof typeof STATUS_CODE_TABLE;

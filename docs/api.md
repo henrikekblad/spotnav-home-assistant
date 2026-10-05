@@ -147,7 +147,7 @@ Each charger has one **Charger events** entity (an `event` entity). It fires:
 | `charge_finished` | the charger stops charging | `unplugged`, and `energy_kwh` the charger's energy register counted since the start, when it has one |
 | `plugged_in` / `unplugged` | the vehicle is connected / disconnected, for a charger that can say | none |
 | `plan_installed` | a charging plan different from the one before is installed, by Auto or by hand | `start`, `end`, `periods`, `amps`, `energy_kwh`, `automatic` |
-| `plan_at_risk` | the departure cannot be met with the energy that remains; once each time it becomes so | `departure_time`, `requested_kwh` |
+| `plan_at_risk` | the departure cannot be met with the energy that remains (the plan is the best effort, or not one whole quarter-hour is left); once each time it becomes so | `departure_time`, `requested_kwh` |
 
 Starting Home Assistant is not an event. Example, a notification when a charge ends:
 
@@ -192,6 +192,15 @@ status carries `need_limited_by_room` (`kwh`), and while a Start is in effect fo
 itself (a capped amount, or a target at or above the car's own limit) it carries
 `charging_to_vehicle_limit` (`percent`, the car's limit, 100 when it states none). A client shows its kWh
 slider up to `room_kwh` when it is present; an older backend has neither field nor line.
+
+**Best effort before a departure.** When the need cannot be met by the departure, the plan is every
+whole quarter-hour from the first usable one up to the departure (one run, whatever `max_periods` says,
+so the period limit never costs energy), installed and charged like any other: `planning` stays
+`proposal_ready` (or `proposal_unpriced`) and the status carries the notice `departure_shortfall` (`kwh`,
+the planned energy; `requested_kwh`, the need; `soc_percent`, what a target reaches by the departure,
+null for a manual amount; `departure`, the instant). The card shows the percent as a whole number rounded
+down. Only a departure with not one whole quarter-hour left is still refused, as `planning_unavailable`
+with the reason `deadline_too_short`. An older client that does not know the code refuses the document.
 
 **Top-off.** When the plan's last window ends with the car still drawing on such a charge, the charge stays
 on until the car stops by itself (two minutes without current), at most an hour past the window and never
