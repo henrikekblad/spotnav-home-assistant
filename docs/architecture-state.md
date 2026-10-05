@@ -42,7 +42,9 @@ automatic decision asks, the manual pause and its scopes (C1, C2, C6), C7 with i
 car-ended rule (R3), load balancing's resume of a person's charge (C5, R4, P3), the hold, the claim, the stray
 stop, the re-arm, the window ends, the top-off, the target and need-met stops, and the sun's start, stop and
 take-over. Where the research found today's rules questionable (a window end stops any owner's charge, I3), the
-core copies them; deciding them is step 2's.
+core copies them; deciding them is step 2's. Decided since (in today's code and the core together): a readable off
+report with no start of ours on its way leaves the charge nobody's, whoever owned it, so a charge the charger later
+begins by itself does not inherit the ended one's owner (inside a window the plan claims it again).
 
 ```mermaid
 stateDiagram-v2
@@ -58,10 +60,10 @@ stateDiagram-v2
         none --> charge_now: direct_start
         plan --> top_off: final_window_end (car still drawing)
         top_off --> plan: plan_installed, rearm past the last window
-        plan --> none: window_end, target, need_met, rearm, stray, stop went out
-        person --> none: person_stop, balancing_pause (stop went out)
-        solar --> none: solar_stop (stop went out)
-        top_off --> none: top_off_end
+        plan --> none: window_end, target, need_met, rearm, stray, stop went out, charger_reported_off
+        person --> none: person_stop, balancing_pause (stop went out), charger_reported_off
+        solar --> none: solar_stop (stop went out), charger_reported_off
+        top_off --> none: top_off_end, charger_reported_off
     }
     state "person intent" as I {
         [*] --> auto

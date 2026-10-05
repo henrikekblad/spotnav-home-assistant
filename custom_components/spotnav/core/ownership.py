@@ -565,7 +565,9 @@ def _reported_off(session: ChargeSession, event: ChargerReportedOff, now: dateti
     s = session.with_changes(overridden=False)
     if event.connected is False:
         s = s.with_changes(held=False)
-    if s.owner == OWNER_CHARGER_SELF:
+    if not event.start_pending:
+        # Seen off with no start of ours on its way: the charge is nobody's any more, so one the charger later
+        # begins by itself does not inherit its owner (inside a window it is the plan's, by the claim).
         s = s.with_changes(owner=OWNER_NONE)
     return _person_hold(s, now, control_on=False, start_pending=event.start_pending)
 

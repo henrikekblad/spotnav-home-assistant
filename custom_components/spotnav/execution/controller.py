@@ -1113,6 +1113,11 @@ class ChargingController:
         report = self._shadow_report_begin()
         try:
             changed = self._observe_hold()
+            if self._charge_origin is not None and self._control_observation is False and not self.start_pending:
+                # Seen off with no Start of ours on its way: the charge is nobody's any more, so a later one
+                # the charger begins by itself does not inherit its owner (`_plan_charge` goes with it).
+                self._charge_origin = None
+                changed = True
             self._observe_person_hold()
             if self._charge_progress.evaluate() or changed:
                 self._notify()

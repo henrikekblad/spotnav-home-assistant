@@ -551,8 +551,11 @@ def test_a_report_of_the_charger_on_or_off_is_its_own_charge_or_none() -> None:
     assert session.owner == "none"
     session, _ = run(ChargeSession(owner="charger_self", overridden=True), ev.ChargerReportedOff())
     assert session.owner == "none" and not session.overridden
-    session, _ = run(ChargeSession(owner="person"), ev.ChargerReportedOff())
-    assert session.owner == "person", "a report alone ends only the charger's own charge"
+    for owner in ("person", "plan", "solar", "top_off", "charge_now"):
+        session, _ = run(ChargeSession(owner=owner), ev.ChargerReportedOff())
+        assert session.owner == "none", f"seen off with no start on its way, a {owner} charge is nobody's"
+        session, _ = run(ChargeSession(owner=owner), ev.ChargerReportedOff(start_pending=True))
+        assert session.owner == owner, "a start the charger has not answered keeps its owner"
     session, _ = run(ChargeSession(owner="person"), ev.ChargerReportedOff(notified=True))
     assert session.owner == "none", "the pass that tells readers does"
     session, _ = run(ChargeSession(owner="person"), ev.ChargerReportedOff(notified=True, start_pending=True))

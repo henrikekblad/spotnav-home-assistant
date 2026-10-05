@@ -244,8 +244,9 @@ class ChargerReportedOn(Event):
 
 @dataclass(frozen=True)
 class ChargerReportedOff(Event):
-    """The charger reported its charge control off. `notified`: the pass that tells readers ran (`_notify`), which
-    is where a charge that ended by itself loses its owner; a report alone ends only the charger's own charge."""
+    """The charger reported its charge control off (readably). With no start of ours on its way (`start_pending`)
+    the charge is nobody's any more, whoever owned it. `notified`: the pass that tells readers ran (`_notify`), which
+    ends an owner left over the same way."""
 
     kind: ClassVar[str] = "charger_reported_off"
     notified: bool = False
