@@ -4508,6 +4508,9 @@ class ChargingController:
         outcome: CommandOutcome | None = None
         try:
             due = today()
+            if facts is not None and not self._core_drives:
+                # The car-ended rule's answer as today's own rule read it (nothing when it short-circuited first).
+                facts.update(self._shadow_take_car_facts())
             verdict = None if facts is None else self._shadow.verdict(core_events.Recheck(what=what, **facts))
             if verdict is not None:
                 due = self._shadow.choose(f"recheck_{what}", due, (command, what) in verdict)
@@ -4524,10 +4527,15 @@ class ChargingController:
             )
 
     def _recheck_facts(self, what: str) -> dict[str, Any]:
-        """The facts a background task's rule reads, read again under the lock (`core_events.Recheck`)."""
+        """The facts a background task's rule reads, read again under the lock (`core_events.Recheck`).
+
+        The car-ended rule's facts (only the claim's decision reads them) are read here only when the core drives:
+        reading them may read the car's state of charge, which moves and saves its anchor. With the option off they
+        are what today's rule read itself, taken after it (`_recheck`), so the shadow reads nothing of the car."""
         open_start, ahead = self._shadow_windows()
         self._shadow_car_facts = (False, False)
-        self._car_ended_holds_window()
+        if self._core_drives and what == core_events.RECHECK_CLAIM:
+            self._car_ended_holds_window()
         known_full, need_grew = self._shadow_car_facts
         self._shadow_car_facts = (False, False)
         commanded = what in (core_events.RECHECK_HOLD, core_events.RECHECK_PERSON_HOLD)
