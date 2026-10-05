@@ -69,7 +69,8 @@ Precedence (first match wins the headline; "add" rows append a fact line)
    price_data_degraded (usable rows exist, or degraded/incomplete), unpriced,
    hold_overridden (a person started the charge again after SpotNav held it, and it may go on),
    remaining_need_estimated (a manual need counted without the energy register: its last remainder
-   kept, or the charger's recorded charges),
+   kept, or the charger's recorded charges; not for `kept_recent`, a register that was read and is
+   unread for less than half an hour, nor `rebased`, one that reads again),
    held_by_charger (the charger's own scheduler or load balancer holds the charge), charger_disabled
    (its own enable switch is off, so it cannot start), site_measurement_problem (the phases that
    make the site's measurement unusable and why; site_meter_unavailable in its place when the meter's

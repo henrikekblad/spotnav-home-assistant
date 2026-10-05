@@ -587,8 +587,16 @@ async def test_an_unreadable_register_keeps_the_last_remainder_and_says_so(hass:
         await car.replug()
 
         snapshot = car.preview.snapshot()
-        assert snapshot.energy_basis == "kept"
+        assert snapshot.energy_basis == "kept_recent", "unread only briefly: kept, and said nothing of yet"
         assert snapshot.remaining_kwh == pytest.approx(6.5), "never the full ten again"
+        assert not [line for line in car.dashboard()["status"]["lines"] if line["code"] == "remaining_need_estimated"]
+
+        frozen.tick(timedelta(minutes=31))
+        async_fire_time_changed(hass, dt_util.utcnow())
+        await hass.async_block_till_done()
+        snapshot = car.preview.snapshot()
+        assert snapshot.energy_basis == "kept"
+        assert snapshot.remaining_kwh == pytest.approx(6.5)
         lines = car.dashboard()["status"]["lines"]
         assert {"code": "remaining_need_estimated", "params": {"kwh": 6.5, "basis": "kept"}} in lines
 

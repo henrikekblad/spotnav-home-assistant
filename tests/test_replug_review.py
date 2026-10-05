@@ -383,7 +383,7 @@ async def test_a_kept_count_follows_a_changed_request(hass: HomeAssistant, trans
         await hass.async_block_till_done()
 
         await car.preview.async_apply_settings(mutate=lambda settings: replace(settings, requested_kwh=12.0))
-        assert car.preview.snapshot().energy_basis == "kept"
+        assert car.preview.snapshot().energy_basis == "kept_recent", "kept, within the unread grace"
         assert car.preview.snapshot().remaining_kwh == pytest.approx(8.5), "twelve less the 3.5 delivered"
         await car.preview.async_apply_settings(mutate=lambda settings: replace(settings, requested_kwh=5.0))
         assert car.preview.snapshot().remaining_kwh == pytest.approx(1.5)
