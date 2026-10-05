@@ -209,7 +209,6 @@ async def test_rev_g_give_up_counts_the_same_in_both_modes(
 # ---------------------------------------------------------------------------------------------- pre-existing, copied
 
 
-@pytest.mark.xfail(strict=True, reason="pre-existing in main 1.11 and copied by the core: not a branch finding")
 @pytest.mark.parametrize("on", [False, True], ids=["off", "on"])
 async def test_rev_g_preexisting_a_replan_outside_the_windows_leaves_a_charge_now_running(
     hass: HomeAssistant, timers: FakeScheduler, monkeypatch: pytest.MonkeyPatch, on: bool
@@ -228,6 +227,47 @@ async def test_rev_g_preexisting_a_replan_outside_the_windows_leaves_a_charge_no
     await hass.async_block_till_done()
     assert len(world.stops) == stops, "the replan stopped the Charge-now charge"
     await world.shutdown()
+
+
+@pytest.mark.parametrize("on", [False, True], ids=["off", "on"])
+async def test_a_replan_outside_the_windows_leaves_a_persons_start_running(
+    hass: HomeAssistant, timers: FakeScheduler, monkeypatch: pytest.MonkeyPatch, on: bool
+) -> None:
+    """The webhook's and the card's Start (`api.webhook.async_manual_action` -> `AutoExecutor.async_manual_start`)
+    between the plan's windows: the next plan installed stops nothing."""
+    from .helpers import install_schedule
+
+    monkeypatch.setattr(ownership_shadow, "CORE_OWNERSHIP_DEFAULT", on)
+    world = await pause_world(hass, timers, plan={"periods": [later_window()], "amps": 10})
+    await world.executor.async_manual_start()
+    await hass.async_block_till_done()
+    assert world.controller.charging
+    stops = len(world.stops)
+    await install_schedule(world.controller, {"periods": [later_window(hours=3)], "amps": 10})
+    await hass.async_block_till_done()
+    assert len(world.stops) == stops, "the replan stopped the person's Start"
+    await world.shutdown()
+
+
+@pytest.mark.usefixtures("both_restarts")
+@pytest.mark.parametrize("on", [False, True], ids=["off", "on"])
+async def test_a_restart_outside_the_windows_leaves_a_charge_now_running(
+    hass: HomeAssistant, timers: FakeScheduler, monkeypatch: pytest.MonkeyPatch, on: bool
+) -> None:
+    """A Charge-now start with no Auto between the plan's windows, then a restart: the re-arm at the restore stops
+    nothing (only the plan's own charge is the plan's to stop)."""
+    monkeypatch.setattr(ownership_shadow, "CORE_OWNERSHIP_DEFAULT", on)
+    world = await pause_world(hass, timers, plan={"periods": [later_window()], "amps": 10})
+    assert await world.controller.async_start()
+    await hass.async_block_till_done()
+    assert world.controller.charge_origin == "other"
+    stops = len(world.stops)
+    restarted = await world.restart()
+    hass.states.async_set(SWITCH, "on", {"report": "after the restart"})
+    await hass.async_block_till_done()
+    assert len(world.stops) == stops, "the re-arm at the restore stopped the Charge-now charge"
+    assert restarted.controller.charge_origin == "other"
+    await restarted.shutdown()
 
 
 @pytest.mark.xfail(strict=True, reason="pre-existing in main 1.11 (best-effort departure); the same in both modes")

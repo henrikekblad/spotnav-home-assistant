@@ -515,7 +515,10 @@ def test_a_pause_holds_the_window_ends_stop_of_a_person_start() -> None:
     ("session", "spared"),
     [
         (ChargeSession(owner="plan"), False),
-        (ChargeSession(owner="charge_now"), False),
+        # Only the plan's own charge is the plan's to stop: what a window's end spares, the re-arm spares too.
+        (ChargeSession(owner="charge_now"), True),
+        (ChargeSession(owner="none", balancing_paused=True, paused_origin="charge_now"), True),
+        (ChargeSession(owner="none", balancing_paused=True, paused_origin="plan"), False),
         (ChargeSession(owner="charger_self"), False),
         (ChargeSession(owner="person"), True),
         (ChargeSession(owner="solar"), True),

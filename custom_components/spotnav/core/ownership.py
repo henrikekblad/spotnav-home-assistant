@@ -405,7 +405,9 @@ def _rearm(session: ChargeSession, event: Rearm, now: datetime) -> Decision:
             return _stop(s, REASON_STRAY)
         return s, ()
     spared = (
-        session.owner in (OWNER_PERSON, OWNER_SOLAR)
+        # Only the plan's own charge is the plan's to stop: whatever a window's end spares goes on here too.
+        session.owner in WINDOW_END_SPARED
+        or window_end_spared(session)
         or (session.overridden and session.held)
         or not automatic_allowed(session, GATE_STOP)
         or blocked

@@ -3703,9 +3703,10 @@ class ChargingController:
                 return
         else:
             # Re-arming outside a window stops a charge that runs; a person who starts it again
-            # after that is respected, as after the hold (`window_hold.py`). A charge a person or the sun
-            # started, or one something else owns (a pause, solar, the hybrid hand-off), is not the plan's
-            # to stop.
+            # after that is respected, as after the hold (`window_hold.py`). Only the plan's own charge is
+            # the plan's to stop: one a window's end spares (a person's Start, a Charge-now start, the sun's,
+            # one load balancing holds back for them), or one something else owns (a pause, solar, the
+            # hybrid hand-off), goes on.
             token = self._shadow.begin()
             facts = self._shadow_facts(
                 lambda: {
@@ -3718,7 +3719,8 @@ class ChargingController:
             outcome = None
             try:
                 spared = (
-                    self._charge_origin in ("manual", "solar")
+                    self._charge_origin in WINDOW_END_SPARED_ORIGINS
+                    or self._window_end_spared_owner() is not None
                     # A person's override of the hold (kept across a restart) is theirs, as after the hold.
                     or (self._hold.overridden and self._hold.held)
                     or not self._automatic_permitted(AUTOMATIC_STOP)
