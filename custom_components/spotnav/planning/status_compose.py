@@ -152,6 +152,7 @@ STATUS_CODES: Final[dict[str, tuple[str, tuple[str, ...]]]] = {
     # departure).
     "topping_off": (TONE_NORMAL, ("until",)),
     "charging_without_prices": (TONE_NOTICE, ()),
+    # `publication_at`: when the area's prices are due (its own time plus the margin); `None` once past.
     "waiting_for_publication": (TONE_NORMAL, ("publication_at",)),
     # A dated departure leaves the unpublished hours for later because the same weekday-hours were
     # `percent` % cheaper over the last `weeks` weeks; `weekday` is ISO 1 (Monday) .. 7 (Sunday).
@@ -639,7 +640,11 @@ def _price_wait_line(facts: StatusFacts) -> dict[str, Any] | None:
             weeks=planning.history_weeks,
         )
     if planning.state == "waiting_for_publication":
-        return _line("waiting_for_publication", publication_at=aware_iso(planning.publication_at))
+        # A time already past is not when the prices are due: they may come any moment, so none is named.
+        due = planning.publication_at
+        return _line(
+            "waiting_for_publication", publication_at=aware_iso(due) if due is not None and due > facts.now else None
+        )
     if planning.reason == "buying_before_publication" and planning.must_buy_now_kwh is not None:
         return _line("buying_before_publication", kwh=round(planning.must_buy_now_kwh, 3))
     return None
