@@ -181,6 +181,18 @@
       ],
       "tone": "notice"
     },
+    "fill_room_unknown": {
+      "params": [
+        "kwh"
+      ],
+      "tone": "notice"
+    },
+    "filling_to_limit": {
+      "params": [
+        "kwh"
+      ],
+      "tone": "normal"
+    },
     "held_by_charger": {
       "params": [],
       "tone": "notice"

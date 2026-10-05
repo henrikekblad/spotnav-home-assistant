@@ -58,7 +58,9 @@ Precedence (first match wins the headline; "add" rows append a fact line)
    app's own capability check, never said here.
    need_limited_by_room{kwh} (a manual need capped at the room left in the battery) and
    charging_to_vehicle_limit{percent} (a Start in effect for a plan that charges to the car's own
-   limit, which the car ends itself) follow them; tone normal. Under a solar or hybrid headline a
+   limit, which the car ends itself) follow them; tone normal. Under "Fill" filling_to_limit{kwh} (the need
+   is the room, `kwh` now) takes need_limited_by_room's place, and fill_room_unknown{kwh} (no level or no
+   battery size, so the stored `kwh` is planned instead; tone notice) says the fallback. Under a solar or hybrid headline a
    top-off is the fact line topping_off{until} after them.
    `settings_suggested{fields}` (tone normal) follows the notices while first-run defaults
    (area, phases, amps) are unconfirmed; any settings edit clears it.
@@ -222,6 +224,10 @@ STATUS_CODES: Final[dict[str, tuple[str, tuple[str, ...]]]] = {
     # that says when a car is plugged in, else `start` (only a Start or a plan window ends it).
     # A manual need capped at the room left in the battery: `kwh` is that room (the car is almost full).
     "need_limited_by_room": (TONE_NORMAL, ("kwh",)),
+    # "Fill": the need is the room left in the battery, `kwh` now, and the car ends the charge when full.
+    "filling_to_limit": (TONE_NORMAL, ("kwh",)),
+    # "Fill" without a level or a battery size: the stored amount, `kwh`, is planned instead.
+    "fill_room_unknown": (TONE_NOTICE, ("kwh",)),
     # A charge to the car's own limit (`percent`, 100 when it states none): the car ends it, not SpotNav.
     "charging_to_vehicle_limit": (TONE_NORMAL, ("percent",)),
     # A manual need counted without the energy register: `kwh` remains, `basis` says how it was told:
@@ -271,6 +277,8 @@ class PlanningFacts:
     remaining_kwh: float | None = None
     #: `manual_kwh` only: the battery's room in kWh when the need was capped at it, else `None`.
     room_kwh: float | None = None
+    #: `manual_kwh` under "Fill" only: `battery` (the need is the room) or `unknown_room` (the stored amount).
+    fill: str | None = None
     #: The departure the plan is for, and a target plan short of it: the state of charge it reaches.
     departure_at: datetime | None = None
     expected_soc_percent: float | None = None
@@ -718,6 +726,7 @@ def _notices(facts: StatusFacts) -> list[dict[str, Any]]:
         planning is not None
         and planning.energy_basis in ("kept", "sessions")
         and planning.remaining_kwh is not None
+        and planning.fill != "battery"
         and not facts.paused
     ):
         lines.append(
@@ -800,7 +809,10 @@ def _vehicle_limit_lines(facts: StatusFacts) -> list[dict[str, Any]]:
     lines: list[dict[str, Any]] = []
     planning = facts.planning
     if planning is not None and planning.room_kwh is not None and planning.room_kwh > 0:
-        lines.append(_line("need_limited_by_room", kwh=round(planning.room_kwh, 1)))
+        code = "filling_to_limit" if planning.fill == "battery" else "need_limited_by_room"
+        lines.append(_line(code, kwh=round(planning.room_kwh, 1)))
+    if planning is not None and planning.fill == "unknown_room" and planning.remaining_kwh is not None:
+        lines.append(_line("fill_room_unknown", kwh=round(planning.remaining_kwh, 1)))
     if facts.vehicle_limit_percent is not None and not facts.paused:
         lines.append(_line("charging_to_vehicle_limit", percent=round(facts.vehicle_limit_percent)))
     if facts.top_off_until is not None and not facts.paused and (facts.solar is not None or facts.hybrid is not None):

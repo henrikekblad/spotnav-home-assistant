@@ -391,6 +391,9 @@ class _EnergyResolution:
     room_kwh: float | None = None
     room_limited: bool = False
     uncapped_kwh: float | None = None
+    #: A manual need under "Fill" (`AutoSettings.fill_to_limit`): `battery` when the need is the room,
+    #: `unknown_room` when no room is known and the stored amount stands; `None` otherwise.
+    fill: str | None = None
     #: A target only: the live state of charge and the battery size the need was worked out from, so a
     #: plan that cannot reach the target by the departure can say what it reaches instead.
     soc_percent: float | None = None
@@ -458,6 +461,9 @@ class AutoSnapshot:
     #: capped at it (the car ends that charge itself when it is full).
     room_kwh: float | None = None
     room_limited: bool = False
+    #: `manual_kwh` under "Fill" only: `battery` (the need is the room) or `unknown_room` (the stored amount
+    #: stands, since no room is known); `None` otherwise.
+    fill: str | None = None
     #: The departure instant this calculation planned for, or `None` without one: a plan carries it, so
     #: a top-off past its last window never runs beyond it (`execution/top_off.py`).
     departure_at: datetime | None = None
@@ -500,6 +506,7 @@ class AutoSnapshot:
             None if self.remaining_kwh is None else round(self.remaining_kwh, 1),
             None if self.room_kwh is None else round(self.room_kwh, 1),
             self.room_limited,
+            self.fill,
             None if self.proposal is None else self._proposal_key(self.proposal),
         )
 
@@ -1057,6 +1064,7 @@ class AutoPlannerController:
                 delivered_kwh=resolved.delivered_kwh,
                 room_kwh=resolved.room_kwh,
                 room_limited=resolved.room_limited,
+                fill=resolved.fill,
             )
 
         if energy_kwh <= 0:
@@ -1605,15 +1613,27 @@ class AutoPlannerController:
         car's own charge limit (else 100 %): `capacity x (ceiling - soc) / 100 / efficiency`. A need at or
         above it is capped there and marked `room_limited`: the car ends that charge when it is full, so
         nothing of ours stops it first. Without either fact the need stands as counted.
+
+        Under "Fill" (`fill_to_limit`) the need is the room itself, marked `room_limited` the same way; without a
+        room the counted need stands, marked `unknown_room` so the status can say so.
         """
         facts = None if self._vehicle_reader is None else self._vehicle_reader(settings.target.vehicle_id or "")
         if facts is None:
-            return resolution
+            return replace(resolution, fill="unknown_room") if settings.fill_to_limit else resolution
         room = battery_room_kwh(
             soc_percent=facts.soc_percent,
             capacity_kwh=facts.reported_capacity_kwh,
             vehicle_max_percent=facts.max_percent,
         )
+        if settings.fill_to_limit:
+            if room is None:
+                return replace(resolution, fill="unknown_room")
+            # "Fill": the room is the need, whatever was counted against the stored amount; the live level
+            # already reflects what was delivered.
+            return replace(
+                resolution, kwh=room, room_kwh=room, room_limited=True, uncapped_kwh=None, fill="battery",
+                delivered_energy_trustworthy=True,
+            )
         if room is None:
             return resolution
         if resolution.kwh <= 0 or resolution.kwh < room:
