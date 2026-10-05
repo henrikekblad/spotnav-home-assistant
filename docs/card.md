@@ -164,6 +164,7 @@ price area and taxes** opens the editor.
   added for it. For Great Britain, **Find my region** looks the region up from a postcode (see
   [Great Britain: Octopus Agile](setup.md#great-britain-octopus-agile)); amounts are in pounds and
   pence and distances in miles.
+- How the additions are applied, and what is not included, is in [Prices](prices.md#what-you-pay).
 
 ### Vehicle
 

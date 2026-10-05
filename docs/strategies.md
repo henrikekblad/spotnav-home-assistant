@@ -40,7 +40,7 @@ periods, and an optional departure time. The card marks what is missing.
 - **Prices** come from the SpotNav Relay, exactly as published: EUR per kWh with each area's
   currency, units and time zone. Home Assistant never converts or guesses. Fiscal components
   (VAT, energy tax, grid transfer fee) can each be off, use the relay's suggestion for the
-  area, or use your own value.
+  area, or use your own value. See [Prices](prices.md).
 - **Tomorrow's prices** are published in the afternoon. If a deadline needs hours that are not
   priced yet, SpotNav buys what it must now and plans the rest when the prices arrive. Part of
   a plan that had to be bought without published prices is flagged.

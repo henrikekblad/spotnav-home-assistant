@@ -75,6 +75,7 @@ match and choose **Approve**. No Home Assistant password or token is stored on t
 - [Supported chargers, meters, batteries and cars](docs/supported.md).
 - [The card](docs/card.md): graph, plan, buttons, status lines and settings.
 - [Charging strategies](docs/strategies.md): cheapest, solar and hybrid.
+- [Prices](docs/prices.md): sources, taxes and fees, and the relay's published files.
 - [Target state of charge](docs/target-soc.md): vehicles, estimates and stopping at a target.
 - [Site and load balancing](docs/site-and-load-balancing.md): main fuse, measurement sources,
   active control.
