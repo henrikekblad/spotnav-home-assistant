@@ -99,6 +99,8 @@ const dlg = (element: Element): HTMLElement => openDialog(element)!;
 const q = <T extends Element = HTMLElement>(element: Element, selector: string): T | null =>
   dlg(element).querySelector<T>(selector);
 const saveButton = (element: Element) => q<HTMLButtonElement>(element, ".spotnav-settings-save");
+/** The target slider's value, on its label row. */
+const targetText = (element: Element) => q(element, "[data-part='soc'] [data-part='target-value']")?.textContent ?? "";
 const rowText = (element: Element, key: string) => q(element, `[data-soc-row='${key}']`)?.textContent ?? null;
 
 function decodeV7(payload: unknown) {
@@ -259,11 +261,13 @@ describe("the Plan popover in target mode", () => {
     target.checked = true;
     target.dispatchEvent(new Event("change"));
     expect(q(element, "[data-part='energy']")?.hidden).toBe(true);
-    const number = q<HTMLInputElement>(element, "[data-part='soc'] input[type='number']")!;
-    expect(number.value).toBe("80");
-    number.value = "90";
-    number.dispatchEvent(new Event("input"));
-    expect(q<HTMLInputElement>(element, "[data-part='soc'] input[type='range']")?.value).toBe("90");
+    expect(q(element, "[data-part='soc'] input[type='number']")).toBeNull();
+    const slider = q<HTMLInputElement>(element, "[data-part='soc'] input[type='range']")!;
+    expect(slider.value).toBe("80");
+    expect(targetText(element)).toBe("80 %");
+    slider.value = "90";
+    slider.dispatchEvent(new Event("input"));
+    expect(targetText(element)).toBe("90 %");
     saveButton(element)!.click();
     await settle();
     expect(updates(hass)).toHaveLength(1);
@@ -324,20 +328,12 @@ describe("the Plan popover in target mode", () => {
     expect(body["target"]["vehicle_id"]).toBe("car-2");
   });
 
-  it("refuses an impossible target before any request", async () => {
-    const { hass, element } = await openPlan(fixture(), aRecord());
-    const number = q<HTMLInputElement>(element, "[data-part='soc'] input[type='number']")!;
-    number.value = "120";
-    saveButton(element)!.click();
-    await settle();
-    expect(updates(hass)).toHaveLength(0);
-    expect(dlg(element).textContent).toContain(translate("en", "settings.error.outOfRange"));
-  });
-
   it("reapplies only the fields the reader moved onto a newer record after a conflict", async () => {
     const payload = fixture();
     const { hass, element } = await openPlan(payload, aRecord());
-    q<HTMLInputElement>(element, "[data-part='soc'] input[type='number']")!.value = "90";
+    const slider = q<HTMLInputElement>(element, "[data-part='soc'] input[type='range']")!;
+    slider.value = "90";
+    slider.dispatchEvent(new Event("input"));
     saveButton(element)!.click();
     await settle();
     // Someone else remembered a capacity and switched to energy meanwhile.
@@ -428,9 +424,10 @@ describe("the target slider at its top: the car ends the charge", () => {
     const { element } = await openPlan(payload, aRecord({ target: { vehicle_id: "<id>", target_percent: 70 } }), "sv");
     const note = q(element, "[data-soc='car-ends']")!;
     expect(note.hidden).toBe(true);
-    const field = q<HTMLInputElement>(element, "[data-part='soc'] input[type='number']")!;
-    field.value = "80";
-    field.dispatchEvent(new Event("input"));
+    const slider = q<HTMLInputElement>(element, "[data-part='soc'] input[type='range']")!;
+    slider.value = "80";
+    slider.dispatchEvent(new Event("input"));
+    expect(targetText(element)).toBe("80 %");
     expect(note.hidden).toBe(false);
     expect(note.textContent).toBe("Bilen avslutar själv laddningen när den är full eller når sin laddgräns (80 %).");
   });
@@ -445,5 +442,80 @@ describe("the target slider at its top: the car ends the charge", () => {
     slider.dispatchEvent(new Event("input"));
     expect(note.hidden).toBe(false);
     expect(note.textContent).toBe("The car ends the charge itself when it is full or reaches its charge limit (100 %).");
+  });
+});
+
+describe("the target slider's value on its label row", () => {
+  const slider = (element: Element) => q<HTMLInputElement>(element, "[data-part='soc'] input[type='range']")!;
+
+  it("has no number field and no unit: the slider alone, full width, its value at the end of the label row", async () => {
+    for (const language of ["en", "sv"] as const) {
+      document.body.innerHTML = "";
+      const { element } = await openPlan(fixture(), aRecord(), language);
+      const group = q(element, "[data-part='soc'] [role='group']")!;
+      expect(group.querySelectorAll("input")).toHaveLength(1);
+      expect(group.querySelector(".spotnav-settings-unit")).toBeNull();
+      expect(group.querySelector(".spotnav-settings-pair")).toBeNull();
+      // No "slider out of range" note: the value text says what is stored.
+      expect(group.querySelector(".spotnav-settings-note")).toBeNull();
+      const label = group.querySelector("label")!;
+      const value = q(element, "[data-part='soc'] [data-part='target-value']")!;
+      expect(value.parentElement).toBe(label.parentElement);
+      expect(label.getAttribute("for")).toBe(slider(element).id);
+      expect(value.textContent, language).toBe("80 %");
+      expect(slider(element).getAttribute("aria-valuetext"), language).toBe("80 %");
+      expect(slider(element).disabled).toBe(false);
+      expect([slider(element).min, slider(element).max, slider(element).step]).toEqual(["0", "100", "1"]);
+    }
+  });
+
+  it("follows the slider and saves what it stands at", async () => {
+    const { hass, element } = await openPlan(fixture(), aRecord());
+    slider(element).value = "65";
+    slider(element).dispatchEvent(new Event("input"));
+    expect(targetText(element)).toBe("65 %");
+    expect(slider(element).getAttribute("aria-valuetext")).toBe("65 %");
+    saveButton(element)!.click();
+    await settle();
+    const body = updates(hass)[0]!["settings"] as Record<string, any>;
+    expect(body["target"]["target_percent"]).toBe(65);
+  });
+
+  it.each<[number, string, string, string]>([
+    [80.5, "81", "80.5 %", "80,5 %"],
+    [72.25, "72", "72.25 %", "72,25 %"],
+  ])("shows a stored %s percent off the slider's step exactly, the slider at its nearest step, and keeps it on Save", async (stored, at, en, sv) => {
+    for (const [language, text] of [["en", en], ["sv", sv]] as const) {
+      document.body.innerHTML = "";
+      const { hass, element } = await openPlan(
+        fixture(),
+        aRecord({ target: { vehicle_id: "car-1", target_percent: stored } }),
+        language,
+      );
+      expect(targetText(element), language).toBe(text);
+      expect(slider(element).getAttribute("aria-valuetext"), language).toBe(text);
+      expect(slider(element).value, language).toBe(at);
+      expect(slider(element).disabled, language).toBe(false);
+      // A Save that moved the current, not the slider, keeps the stored target exactly.
+      const current = q<HTMLInputElement>(element, "[aria-labelledby$='-current-label'] input[type='number']")!;
+      current.value = "16";
+      current.dispatchEvent(new Event("input"));
+      saveButton(element)!.click();
+      await settle();
+      const body = updates(hass)[0]!["settings"] as Record<string, any>;
+      expect(body["target"]["target_percent"], language).toBe(stored);
+      expect(body["amps"], language).toBe(16);
+    }
+  });
+
+  it("shows a non-administrator the value and a disabled slider", async () => {
+    const { hass, element } = await mounted(fixture(), "en", false);
+    shadow(element).querySelector<HTMLButtonElement>(".spotnav-settings-trigger[data-setting='plan']")!.click();
+    await settle();
+    hass.resolveNext(success(aRecord({ target: { vehicle_id: "car-1", target_percent: 80.5 } })));
+    await settle();
+    expect(targetText(element)).toBe("80.5 %");
+    expect(slider(element).disabled).toBe(true);
+    expect(saveButton(element)).toBeNull();
   });
 });

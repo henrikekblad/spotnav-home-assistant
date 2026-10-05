@@ -138,10 +138,7 @@ describe("the Plan popover's target editor", () => {
     expect(needText(element)).toContain("0.0 kWh");
     drag(element, 5);
     expect(needText(element)).toContain("0.0 kWh");
-    // The typed number moves it the same way.
-    const number = q<HTMLInputElement>(element, "[data-part='soc'] input[type='number']")!;
-    number.value = "70";
-    number.dispatchEvent(new Event("input"));
+    drag(element, 70);
     expect(needText(element)).toContain("25.7 kWh");
   });
 

@@ -94,11 +94,21 @@ function openDialog(element: Element): HTMLElement {
 const q = <T extends Element = HTMLElement>(element: Element, selector: string): T | null =>
   openDialog(element).querySelector<T>(selector);
 const slider = (element: Element) => q<HTMLInputElement>(element, "[data-part='energy'] input[type='range']")!;
-const field = (element: Element) => q<HTMLInputElement>(element, "[data-part='energy'] input[type='number']")!;
-const fillValue = (element: Element) => q(element, "[data-part='energy'] [data-part='energy-fill']");
+const shown = (element: Element) => q(element, "[data-part='energy'] [data-part='energy-value']")!;
 const mark = (element: Element) => q(element, "[data-part='energy'] [data-part='full-mark']");
 const help = (element: Element) => q(element, "[data-note='energy-room']");
 const updates = (hass: FakeHass) => hass.messages.filter((message) => message.type === "spotnav/update_settings");
+
+/** The energy editor has no number field and no unit: the slider and the value on its label row. */
+function onlyTheSlider(element: Element): void {
+  const energy = q(element, "[data-part='energy']")!;
+  expect(energy.querySelectorAll("input")).toHaveLength(1);
+  expect(energy.querySelector(".spotnav-settings-unit")).toBeNull();
+  expect(energy.querySelector(".spotnav-settings-pair")).toBeNull();
+  // The value stands at the end of the label's row, not in a cell beside the slider.
+  expect(shown(element).parentElement).toBe(energy.querySelector("label")!.parentElement);
+  expect(shown(element).parentElement!.contains(slider(element))).toBe(false);
+}
 
 function drag(element: Element, value: string): void {
   slider(element).value = value;
@@ -183,29 +193,39 @@ describe("the settings record's fill_to_limit", () => {
 describe("the kWh slider with a known room", () => {
   it("marks full at the room, below it says what fills the battery", async () => {
     const { element } = await openPlan(fixture(), manual());
+    onlyTheSlider(element);
     expect(slider(element).max).toBe("30");
+    expect(slider(element).value).toBe("6");
+    expect(slider(element).disabled).toBe(false);
     expect(mark(element)!.hidden).toBe(false);
     expect(mark(element)!.textContent).toBe("full");
     expect(mark(element)!.style.getPropertyValue("--spotnav-mark")).toBe(String((9.5 - 0.5) / (30 - 0.5)));
-    expect(field(element).hidden).toBe(false);
-    expect(field(element).value).toBe("6");
-    expect(fillValue(element)!.hidden).toBe(true);
+    expect(shown(element).textContent).toBe("6.0 kWh");
+    expect(slider(element).getAttribute("aria-valuetext")).toBe("6.0 kWh");
     expect(help(element)!.textContent).toBe("9.5 kWh fills the battery.");
   });
 
   it("above full still shows the amount and the same line", async () => {
     const { element } = await openPlan(fixture(), manual({ requested_kwh: 15 }));
-    expect(field(element).value).toBe("15");
-    expect(fillValue(element)!.hidden).toBe(true);
+    expect(shown(element).textContent).toBe("15.0 kWh");
+    expect(slider(element).value).toBe("15");
     expect(help(element)!.textContent).toBe("9.5 kWh fills the battery.");
+  });
+
+  it("follows the slider with the amount it stands at", async () => {
+    const { element, hass } = await openPlan(fixture(), manual());
+    drag(element, "12.5");
+    expect(shown(element).textContent).toBe("12.5 kWh");
+    expect(slider(element).getAttribute("aria-valuetext")).toBe("12.5 kWh");
+    const body = await save(element, hass);
+    expect(body["requested_kwh"]).toBe(12.5);
+    expect(body["fill_to_limit"]).toBe(false);
   });
 
   it("at the last step reads Fill, says the battery is charged until full and stores the choice", async () => {
     const { element, hass } = await openPlan(fixture(), manual());
     drag(element, "30");
-    expect(field(element).hidden).toBe(true);
-    expect(fillValue(element)!.hidden).toBe(false);
-    expect(fillValue(element)!.textContent).toBe("Fill");
+    expect(shown(element).textContent).toBe("Fill");
     expect(slider(element).getAttribute("aria-valuetext")).toBe("Fill");
     expect(help(element)!.textContent).toBe("Charges until the battery is full, 9.5 kWh now.");
     const body = await save(element, hass);
@@ -216,11 +236,9 @@ describe("the kWh slider with a known room", () => {
   it("opens a stored Fill at the last step, whatever amount is stored, and moving off it clears the choice", async () => {
     const { element, hass } = await openPlan(fixture(), manual({ fill_to_limit: true, requested_kwh: 19 }));
     expect(slider(element).value).toBe("30");
-    expect(fillValue(element)!.hidden).toBe(false);
+    expect(shown(element).textContent).toBe("Fill");
     drag(element, "12");
-    expect(fillValue(element)!.hidden).toBe(true);
-    expect(field(element).hidden).toBe(false);
-    expect(field(element).value).toBe("12");
+    expect(shown(element).textContent).toBe("12.0 kWh");
     const body = await save(element, hass);
     expect(body["fill_to_limit"]).toBe(false);
     expect(body["requested_kwh"]).toBe(12);
@@ -236,9 +254,11 @@ describe("the kWh slider with a known room", () => {
   it("speaks Swedish", async () => {
     const { element } = await openPlan(fixture({ value: 80, room_kwh: 7.5, vehicle_max_percent: 90 }), manual({ requested_kwh: 4 }), "sv");
     expect(mark(element)!.textContent).toBe("fullt");
+    expect(shown(element).textContent).toBe("4,0 kWh");
     expect(help(element)!.textContent).toBe("Det behövs 7,5 kWh för att fylla batteriet (till bilens laddgräns 90 %).");
     drag(element, slider(element).max);
-    expect(fillValue(element)!.textContent).toBe("Fyll");
+    expect(shown(element).textContent).toBe("Fyll");
+    expect(slider(element).getAttribute("aria-valuetext")).toBe("Fyll");
     expect(help(element)!.textContent).toBe("Laddar tills batteriet är fullt (till bilens laddgräns 90 %), nu 7,5 kWh.");
   });
 
@@ -246,30 +266,61 @@ describe("the kWh slider with a known room", () => {
     const { element } = await openPlan(fixture(), manual({ requested_kwh: 50 }));
     expect(slider(element).max).toBe("50");
     expect(slider(element).value).toBe("50");
-    expect(field(element).value).toBe("50");
-    expect(fillValue(element)!.hidden).toBe(true);
+    expect(shown(element).textContent).toBe("50.0 kWh");
   });
 
-  it("typing an amount is never Fill", async () => {
-    const { element, hass } = await openPlan(fixture(), manual());
-    field(element).value = "30";
-    field(element).dispatchEvent(new Event("input"));
-    expect(fillValue(element)!.hidden).toBe(true);
-    const body = await save(element, hass);
-    expect(body["fill_to_limit"]).toBe(false);
-    expect(body["requested_kwh"]).toBe(30);
+  it.each<[number, string, string, string]>([
+    [7.3, "7.5", "7.3 kWh", "7,3 kWh"],
+    [20.25, "20.5", "20.25 kWh", "20,25 kWh"],
+    [0.1, "0.5", "0.1 kWh", "0,1 kWh"],
+  ])("shows a stored %s kWh off the half-kWh step exactly, the slider at its nearest step, and keeps it on Save", async (stored, at, en, sv) => {
+    for (const [language, text] of [["en", en], ["sv", sv]] as const) {
+      document.body.innerHTML = "";
+      const { element, hass } = await openPlan(fixture(), manual({ requested_kwh: stored, amps: 10 }), language);
+      expect(shown(element).textContent, language).toBe(text);
+      expect(slider(element).getAttribute("aria-valuetext"), language).toBe(text);
+      expect(slider(element).value, language).toBe(at);
+      expect(slider(element).disabled, language).toBe(false);
+      // No "slider out of range" note for the energy editor: the value text says what is stored.
+      expect(openDialog(element).querySelector("[data-part='energy'] [id$='-slider-mark']"), language).toBeNull();
+      // A Save that moved another field, not the slider, keeps the stored amount exactly.
+      const current = q<HTMLInputElement>(element, "[aria-labelledby$='-current-label'] input[type='number']")!;
+      current.value = "16";
+      current.dispatchEvent(new Event("input"));
+      const body = await save(element, hass);
+      expect(body["requested_kwh"], language).toBe(stored);
+      expect(body["amps"], language).toBe(16);
+    }
+  });
+
+  it("shows a non-administrator the value and a disabled slider", async () => {
+    const hass = new FakeHass();
+    const element = mountCard(CONFIG, hass);
+    element.hass = hass.snapshot("snapshot", "en");
+    await settle();
+    hass.resolveNext(fixture());
+    await settle();
+    shadow(element).querySelector<HTMLButtonElement>(".spotnav-settings-trigger[data-setting='plan']")!.click();
+    await settle();
+    hass.resolveNext(success(manual({ requested_kwh: 7.3 })));
+    await settle();
+    onlyTheSlider(element);
+    expect(shown(element).textContent).toBe("7.3 kWh");
+    expect(slider(element).disabled).toBe(true);
+    expect(q(element, ".spotnav-settings-save")).toBeNull();
   });
 });
 
 describe("the kWh slider without a room, or against an older backend", () => {
   it("is as before while the room is unknown: no mark, no line, no Fill", async () => {
     const { element } = await openPlan(fixture({ room_kwh: null }), manual());
+    onlyTheSlider(element);
     expect(slider(element).max).toBe("100");
     expect(mark(element)!.hidden).toBe(true);
     expect(help(element)!.hidden).toBe(true);
+    expect(shown(element).textContent).toBe("6.0 kWh");
     drag(element, "100");
-    expect(fillValue(element)!.hidden).toBe(true);
-    expect(field(element).value).toBe("100");
+    expect(shown(element).textContent).toBe("100.0 kWh");
   });
 
   it("offers no Fill to a backend whose record has no fill_to_limit", async () => {
@@ -278,7 +329,7 @@ describe("the kWh slider without a room, or against an older backend", () => {
     const { element, hass } = await openPlan(fixture(), older as SettingsRecord);
     expect(mark(element)!.hidden).toBe(false);
     drag(element, "30");
-    expect(fillValue(element)!.hidden).toBe(true);
+    expect(shown(element).textContent).toBe("30.0 kWh");
     const body = await save(element, hass);
     expect("fill_to_limit" in body).toBe(false);
     expect(body["requested_kwh"]).toBe(30);
