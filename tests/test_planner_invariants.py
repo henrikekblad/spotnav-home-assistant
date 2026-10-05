@@ -127,7 +127,12 @@ def test_counts_agree_with_the_slots(scenario: dict[str, Any]) -> None:
     result = calculate_plan(request)
 
     assert result.slots_needed == len(result.slots)
-    assert result.slots_needed == slots_needed(request.requested_kwh, request.amps, request.phases)
+    needed = slots_needed(request.requested_kwh, request.amps, request.phases)
+    if result.short_of_deadline:
+        # Best effort: fewer slots than the need, every one the departure leaves, in one run.
+        assert result.slots_needed < needed and len(result.periods) == 1
+    else:
+        assert result.slots_needed == needed
     assert result.priced_slots + result.unpriced_slots == result.slots_needed
     assert result.unpriced_slots == sum(1 for slot in result.slots if slot.unpriced)
     assert result.unpriced == (result.unpriced_slots > 0)

@@ -102,7 +102,7 @@ const EXPECTED: Record<
 };
 
 /** The two dashboard fixtures whose only facts are the plain proposal ones the other tables already cover. */
-const PLAIN = ["pending_beside_installed.json", "proposal_ready.json"];
+const PLAIN = ["pending_beside_installed.json", "proposal_ready.json", "target_soc_departure_shortfall.json"];
 
 function names(): string[] {
   return readdirSync(DASHBOARD_DIR).sort();
