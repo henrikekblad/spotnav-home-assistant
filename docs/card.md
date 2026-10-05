@@ -76,7 +76,7 @@ serious each is. Examples:
 
 | You see | Meaning |
 | ------- | ------- |
-| Waiting for tomorrow's prices (~14:00), will plan then. | Prices for the deadline are not published yet; SpotNav plans when they are. |
+| Waiting for tomorrow's prices (~13:45), will plan then. | Prices for the deadline are not published yet; SpotNav plans when they are. The time is the area's expected publication plus 45 minutes, and is left out once it has passed. |
 | Buying 12 kWh now, the rest when the prices are published. | The deadline needs hours that are not priced yet, so part of the charge is bought now. |
 | Charging is scheduled from 02:00. / Planned from 02:00. | The installed plan, or a plan that is proposed. |
 | A new charging proposal is ready. | A newer proposal exists and is not installed yet. |
