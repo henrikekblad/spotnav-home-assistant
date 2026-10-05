@@ -816,6 +816,9 @@ async def test_a_paused_charge_is_not_restarted_once_it_is_no_longer_wanted(
     )
     turn_on = async_mock_service(hass, "switch", "turn_on")
     cc._paused_by_balancing = True
+    if ending in ("window_end", "final_window_end"):
+        # A window's end ends only the plan's own wish: the paused charge is the window's.
+        cc._paused_charge = ("plan_window", True)
     await _end_the_wish(hass, cc, charger, ending)
     hass.states.async_set(f"switch.{prefix}", "off")
     set_site_current_a(hass, site, 11.0 if what == "resume" else 20.0)
