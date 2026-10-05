@@ -2020,7 +2020,12 @@ class AutoPlannerController:
                     charge_mark_s=self._charged_s(),
                 )
             )
-            return self._unread_remainder(settings, stored, departure_key)
+            rebased = self._unread_remainder(settings, stored, departure_key)
+            # Readable now, so not a meter that cannot be read: the same need, still not trustworthy
+            # enough for `hybrid` to credit forecast sun.
+            if rebased.basis in ("kept", "sessions"):
+                return replace(rebased, basis="rebased")
+            return rebased
 
         if stored.last_register_kwh is None:
             # A record from before readings were judged one by one: its count is the register now, as it
