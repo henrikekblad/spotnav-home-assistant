@@ -112,7 +112,8 @@ export const VISUAL_CLASSES = {
   settingsUnit: "spotnav-settings-unit",
   settingsTrack: "spotnav-settings-track",
   settingsFullMark: "spotnav-settings-full-mark",
-  settingsFill: "spotnav-settings-fill",
+  settingsHead: "spotnav-settings-head",
+  settingsAmount: "spotnav-settings-amount",
   settingsPower: "spotnav-settings-power",
   settingsError: "spotnav-settings-error",
   settingsNotice: "spotnav-settings-notice",
@@ -310,8 +311,8 @@ export const VISUAL_STYLES = `
   /*
    * A slider beside its exact number field. Grid sizing rather than flex: the slider takes what is left
    * (minmax(0, 1fr)), the field gets a bounded share wide enough for the longest accepted value, and
-   * the unit is sized by its text. The out-of-domain note spans every column. Energy and current share
-   * one layout.
+   * the unit is sized by its text. The out-of-domain note spans every column. Current and the charge
+   * target share one layout; the energy slider has no number field and stands alone in its track.
    */
   .spotnav-settings-pair {
     display: grid;
@@ -341,6 +342,22 @@ export const VISUAL_STYLES = `
   .spotnav-settings-pair > .spotnav-settings-note {
     grid-column: 1 / -1;
     margin: 4px 0 0;
+  }
+  /*
+   * The energy editor's label row: the label, and the value the slider stands for (an amount, or "Fill")
+   * at its end, as the app writes "Charging ........ 20.0 kWh". The slider under it takes the full width.
+   */
+  .spotnav-settings-head {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 8px;
+  }
+  .spotnav-settings-amount {
+    white-space: nowrap;
+    font-weight: 500;
+    font-variant-numeric: tabular-nums;
+    color: var(--primary-color, #03a9f4);
   }
   /*
    * The energy slider's track with its "full" mark: a thin line across the track at the battery's room
@@ -377,32 +394,6 @@ export const VISUAL_STYLES = `
   }
   .spotnav-settings-full-mark[hidden] {
     display: none;
-  }
-  /*
-   * "Fill" stands where the number field and its unit stand (the same row, both columns), which keep their
-   * room while hidden, so the slider does not change width at its last step.
-   */
-  .spotnav-settings-fill {
-    grid-row: 1;
-    grid-column: 2 / -1;
-    justify-self: end;
-    font-weight: 500;
-    color: var(--primary-color, #03a9f4);
-  }
-  .spotnav-settings-fill[hidden] {
-    display: none;
-  }
-  .spotnav-settings-pair > .spotnav-settings-input[hidden],
-  .spotnav-settings-pair > .spotnav-settings-unit[hidden] {
-    display: block;
-    visibility: hidden;
-    grid-row: 1;
-  }
-  .spotnav-settings-pair > .spotnav-settings-input[hidden] {
-    grid-column: 2;
-  }
-  .spotnav-settings-pair > .spotnav-settings-unit[hidden] {
-    grid-column: 3;
   }
   .spotnav-settings-unit {
     white-space: nowrap;
@@ -1308,7 +1299,8 @@ export const VISUAL_STYLES = `
   }
   /* A number field (main fuse, safety margin, measurement age) is headed like the groups around it. */
   .${VISUAL_CLASSES.entityDialog} .${VISUAL_CLASSES.settingsField} > .${VISUAL_CLASSES.entityNumberLabel},
-  .${VISUAL_CLASSES.planDialog} .${VISUAL_CLASSES.settingsField} > .${VISUAL_CLASSES.settingsLabel} {
+  .${VISUAL_CLASSES.planDialog} .${VISUAL_CLASSES.settingsField} > .${VISUAL_CLASSES.settingsLabel},
+  .${VISUAL_CLASSES.planDialog} .${VISUAL_CLASSES.settingsField} > .${VISUAL_CLASSES.settingsHead} > .${VISUAL_CLASSES.settingsLabel} {
     font-weight: 600;
     font-size: 0.95rem;
     color: var(--primary-text-color, inherit);

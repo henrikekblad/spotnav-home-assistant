@@ -8,8 +8,6 @@ import { energyAmount, formatFixed, formatNumber, percentAmount } from "./format
 import { translate, type Language, type TranslationKey } from "./i18n";
 import {
   CURRENT_SLIDER_STEP_A,
-  ENERGY_MAX_KWH,
-  ENERGY_MIN_KWH,
   ENERGY_SLIDER_MIN_KWH,
   ENERGY_SLIDER_STEP_KWH,
   PERIODS_MAX,
@@ -206,13 +204,8 @@ function pairedControls(
     input: HTMLInputElement;
     readOnly: boolean;
     onChange: () => void;
-    /** A value the slider shows whatever the exact field holds (the energy slider's "Fill"), or `null`. */
-    sliderShows?: () => number | null;
-    /** Called before a slider move is copied into the exact field, and when the field is typed in. */
-    onSlide?: (value: number) => void;
-    onType?: () => void;
   },
-): { field: HTMLElement; slider: HTMLInputElement; mark: HTMLElement; pair: HTMLElement; unit: HTMLElement } {
+): { field: HTMLElement; slider: HTMLInputElement } {
   const number = options.input;
   number.step = "any";
   number.min = String(options.minimum);
@@ -232,15 +225,6 @@ function pairedControls(
   const paint = (): void => {
     const value = readNumber();
     const maximum = options.maximumOf(value);
-    const shown = options.sliderShows?.() ?? null;
-    if (shown !== null) {
-      slider.max = String(maximum);
-      slider.value = String(shown);
-      slider.disabled = options.readOnly;
-      mark.hidden = true;
-      options.onChange();
-      return;
-    }
     const represents = sliderRepresents(value, options.minimum, options.step) && value <= maximum;
     slider.max = String(maximum);
     slider.value = represents ? String(value) : String(options.minimum);
@@ -250,12 +234,10 @@ function pairedControls(
   };
 
   slider.addEventListener("input", () => {
-    options.onSlide?.(Number(slider.value));
     number.value = slider.value;
     options.onChange();
   });
   number.addEventListener("input", () => {
-    options.onType?.();
     paint();
   });
 
@@ -274,7 +256,29 @@ function pairedControls(
   label.setAttribute("for", number.id);
   fieldNode.append(label, pair);
   paint();
-  return { field: fieldNode, slider, mark, pair, unit };
+  return { field: fieldNode, slider };
+}
+
+/**
+ * The value the energy editor states on its label row: a slider amount with one decimal (`20.0 kWh`), a
+ * stored amount off the half-kWh step exactly (`7.3 kWh`, `20.25 kWh`), "Not set" for none.
+ */
+function energyRowValue(language: Language, value: number): string {
+  if (!Number.isFinite(value)) {
+    return translate(language, "settings.energy.unset");
+  }
+  const tenths = Math.abs(value * 10 - Math.round(value * 10)) < 1e-9;
+  return `${tenths ? formatFixed(language, value, 1) : formatNumber(language, value, 3)} kWh`;
+}
+
+/** The slider's step nearest a value, within its own interval (its minimum for no value). */
+function nearestStep(value: number, minimum: number, step: number, maximum: number): number {
+  if (!Number.isFinite(value)) {
+    return minimum;
+  }
+  const at = minimum + Math.round((value - minimum) / step) * step;
+  const top = minimum + Math.floor((maximum - minimum) / step + 1e-9) * step;
+  return Math.min(top, Math.max(minimum, at));
 }
 
 /**
@@ -296,14 +300,9 @@ export function settingsEditorBody(
   }
 
   const values: SettingsFormValues = { ...form.values };
-  // `step="any"`: the exact field accepts every finite decimal.
-  const energyInput = numberInput(doc, {
-    min: ENERGY_MIN_KWH,
-    max: ENERGY_MAX_KWH,
-    step: "any",
-    value: form.values.energy,
-  });
-  energyInput.inputMode = "decimal";
+  // The requested energy exactly as stored, until the slider moves: the energy editor has no number field,
+  // so an amount off the slider's step (`7.3` from the app) is kept as it is by a Save that does not move it.
+  let energyValue = form.values.energy;
   const enabledInput = doc.createElement("input") as HTMLInputElement;
   enabledInput.type = "checkbox";
   enabledInput.className = C.settingsInput;
@@ -363,38 +362,59 @@ export function settingsEditorBody(
       limit !== null && chargeCeiling(limit) < 100
         ? translate(language, "settings.energy.limitSuffix", { percent: formatNumber(language, chargeCeiling(limit), 0) })
         : "";
+    const id = `${idPrefix}-energy`;
     const roomHelp = element(doc, "p", C.settingsNote);
+    roomHelp.id = `${id}-room`;
     roomHelp.dataset["note"] = "energy-room";
     roomHelp.hidden = true;
-    const fillValue = element(doc, "span", C.settingsFill, translate(language, "settings.energy.fill"));
-    fillValue.dataset["part"] = "energy-fill";
-    fillValue.hidden = true;
     const fullMark = element(doc, "span", C.settingsFullMark, translate(language, "settings.energy.fullMark"));
     fullMark.dataset["part"] = "full-mark";
     fullMark.setAttribute("aria-hidden", "true");
     fullMark.hidden = true;
     const atFill = (): boolean => fillable && fill;
-    let controls: ReturnType<typeof pairedControls> | null = null;
-    const paintRoom = (): void => {
-      if (controls === null) {
-        return;
-      }
-      const { slider, unit } = controls;
+    const minimum = ENERGY_SLIDER_MIN_KWH;
+    const stored = (): number => {
+      const text = energyValue.trim();
+      return text === "" ? Number.NaN : Number(text.replace(",", "."));
+    };
+
+    // The slider is the only control: the label and the value it stands for share one row above it, and
+    // the slider, with its "full" mark on the track, takes the full width under them.
+    const slider = rangeInput(doc, {
+      min: minimum,
+      max: energySliderMaximum(stored(), top),
+      step: ENERGY_SLIDER_STEP_KWH,
+      value: minimum,
+      label: translate(language, "settings.energy.slider"),
+    });
+    slider.id = id;
+    slider.disabled = form.readOnly;
+    slider.setAttribute("aria-describedby", roomHelp.id);
+    const label = element(doc, "label", C.settingsLabel, translate(language, "settings.energy.label"));
+    label.id = `${id}-label`;
+    label.setAttribute("for", id);
+    const amount = element(doc, "span", C.settingsAmount);
+    amount.dataset["part"] = "energy-value";
+    const head = element(doc, "div", C.settingsHead);
+    head.append(label, amount);
+    const track = element(doc, "div", C.settingsTrack);
+    track.append(slider, fullMark);
+    const group = element(doc, "div", C.settingsField);
+    group.setAttribute("role", "group");
+    group.setAttribute("aria-labelledby", label.id);
+    group.append(head, track);
+
+    /** The value text, its accessible copy, the "full" mark and the line under the slider. */
+    const describe = (): void => {
       const filling = atFill();
-      energyInput.hidden = filling;
-      unit.hidden = filling;
-      fillValue.hidden = !filling;
-      if (filling) {
-        slider.setAttribute("aria-valuetext", translate(language, "settings.energy.fill"));
-      } else {
-        slider.removeAttribute("aria-valuetext");
-      }
+      const shown = filling ? translate(language, "settings.energy.fill") : energyRowValue(language, stored());
+      amount.textContent = shown;
+      slider.setAttribute("aria-valuetext", shown);
       if (room === null || top === null) {
         fullMark.hidden = true;
         roomHelp.hidden = true;
         return;
       }
-      const minimum = ENERGY_SLIDER_MIN_KWH;
       const maximum = Number(slider.max);
       const at = maximum > minimum ? Math.min(1, Math.max(0, (room - minimum) / (maximum - minimum))) : 0;
       fullMark.style.setProperty("--spotnav-mark", String(at));
@@ -405,36 +425,24 @@ export function settingsEditorBody(
         : translate(language, "settings.energy.roomHelp", { kwh, limit: limitText });
       roomHelp.hidden = false;
     };
-    controls = pairedControls(doc, language, {
-      id: `${idPrefix}-energy`,
-      labelText: translate(language, "settings.energy.label"),
-      sliderLabel: translate(language, "settings.energy.slider"),
-      minimum: ENERGY_SLIDER_MIN_KWH,
-      step: ENERGY_SLIDER_STEP_KWH,
-      maximumOf: (value) => (atFill() && top !== null ? top : energySliderMaximum(value, top)),
-      unit: "kWh",
-      input: energyInput,
-      readOnly: form.readOnly,
-      onChange: paintRoom,
-      sliderShows: () => (atFill() ? top : null),
-      onSlide: (value) => {
-        // The last step of a slider whose top is the ordinary one (not a stored amount drawn above it).
-        const slider = controls?.slider;
-        fill = top !== null && slider !== undefined && Number(slider.max) === top && value >= top - 1e-9;
-        values.fill = fill;
-      },
-      onType: () => {
-        fill = false;
-        values.fill = false;
-      },
+
+    // Where the slider stands on opening: the last step for a stored Fill, else the step nearest the stored
+    // amount, on a track that reaches a stored amount above its ordinary top. Moving it never shrinks that.
+    const filling = atFill() && top !== null;
+    const maximum = filling ? top : energySliderMaximum(stored(), top);
+    slider.max = String(maximum);
+    slider.value = String(filling ? top : nearestStep(stored(), minimum, ENERGY_SLIDER_STEP_KWH, maximum));
+
+    slider.addEventListener("input", () => {
+      const value = Number(slider.value);
+      // The last step of a slider whose top is the ordinary one (not a stored amount drawn above it).
+      fill = top !== null && Number(slider.max) === top && value >= top - 1e-9;
+      values.fill = fill;
+      energyValue = slider.value;
+      describe();
     });
-    controls.pair.insertBefore(fillValue, controls.unit.nextSibling);
-    // The slider and its "full" mark share one cell, so the mark is drawn on the track.
-    const track = element(doc, "div", C.settingsTrack);
-    controls.slider.replaceWith(track);
-    track.append(controls.slider, fullMark);
-    into.append(controls.field, roomHelp);
-    paintRoom();
+    into.append(group, roomHelp);
+    describe();
   };
 
   /**
@@ -900,7 +908,7 @@ export function settingsEditorBody(
   }
 
   const read = (): SettingsFormValues => {
-    values.energy = energyInput.value;
+    values.energy = energyValue;
     values.deadlineEnabled = enabledInput.checked;
     values.deadlineTime = timeInput.value;
     values.departureDate = dateInput.value;
