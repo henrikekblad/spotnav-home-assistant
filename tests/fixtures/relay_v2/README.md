@@ -1,7 +1,7 @@
 # Relay contract v2 fixtures
 
 Copied unchanged from `spotnav-relay` (`web/src/domain/__tests__/fixtures/relay/`, relay commit
-`ce6b257`, 2026-10-03). They are not hand-written: the relay's own Go writer produces them
+`2036ea4`, 2026-10-05, for `areas-v2.json`, which now carries each area's `publication`; the rest from `ce6b257`, 2026-10-03). They are not hand-written: the relay's own Go writer produces them
 (`internal/format/web_fixtures_test.go`, which fails when the committed files drift from what the
 writer produces; `SPOTNAV_UPDATE_WEB_FIXTURES=1` rewrites them). Re-sync by copying the directory
 again after the relay test has been run; never edit a file here by hand.

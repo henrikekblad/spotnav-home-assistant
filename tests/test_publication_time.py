@@ -67,9 +67,13 @@ def test_each_area_states_its_own_time_and_an_area_without_one_is_expected_at_13
         "SE4": AreaPublication(local_time=time(13, 0), tz=BRUSSELS),
     }
     assert DEFAULT_PUBLICATION == AreaPublication(local_time=time(13, 0), tz=BRUSSELS)
-    # The relay's own list as it was before the field: every area on the default.
-    unchanged = parse_catalogue(json.loads((V2 / "areas-v2.json").read_text("utf-8")), version=2)
-    assert {entry.publication for entry in unchanged.areas} == {DEFAULT_PUBLICATION}
+    # The relay's own list states every area's time: Agile at 16:00 London, ENTSO-E at 13:00 Brussels.
+    relay = parse_catalogue(json.loads((V2 / "areas-v2.json").read_text("utf-8")), version=2)
+    assert {entry.id: entry.publication for entry in relay.areas} == {
+        "GB-C": GB,
+        "PT": DEFAULT_PUBLICATION,
+        "SE4": DEFAULT_PUBLICATION,
+    }
 
 
 def test_a_v1_list_never_carries_the_field_and_ignores_it_if_it_did() -> None:
