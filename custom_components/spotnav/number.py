@@ -162,7 +162,8 @@ class AutoEnergyNumber(AutoSettingNumber):
         return None if settings is None else settings.requested_kwh
 
     def store_value(self, value: float) -> Any:
-        return lambda settings: replace(settings, requested_kwh=value)
+        # An amount, so not "Fill" any more.
+        return lambda settings: replace(settings, requested_kwh=value, fill_to_limit=False)
 
 
 class AutoPeriodsNumber(AutoSettingNumber):

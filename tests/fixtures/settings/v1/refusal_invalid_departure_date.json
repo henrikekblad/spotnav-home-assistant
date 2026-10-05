@@ -23,6 +23,7 @@
       7
     ],
     "driver": "manual_kwh",
+    "fill_to_limit": false,
     "fiscal_included": [],
     "max_periods": 1,
     "notifications": {

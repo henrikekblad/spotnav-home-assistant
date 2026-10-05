@@ -255,3 +255,15 @@ async def test_a_target_ignores_the_choice(hass: HomeAssistant, transport: Any) 
         assert snapshot.proposal is not None
         assert snapshot.proposal.requested_kwh == pytest.approx(CAPACITY * 0.40 / 0.9, abs=0.01)
         assert snapshot.fill is None
+
+
+async def test_the_energy_entity_sets_an_amount_and_so_clears_the_choice(hass: HomeAssistant) -> None:
+    from .world import call, entity_id, go_auto, setup_charger
+
+    entry = await setup_charger(hass)
+    await go_auto(hass, fill_to_limit=True)
+    assert settings_of(hass, entry.entry_id).fill_to_limit is True
+    energy = entity_id(hass, entry.entry_id, "requested_energy", "number")
+    await call(hass, "number", "set_value", {"entity_id": energy, "value": 7.0})
+    stored = settings_of(hass, entry.entry_id)
+    assert stored.requested_kwh == 7.0 and stored.fill_to_limit is False

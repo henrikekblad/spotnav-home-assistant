@@ -25,6 +25,7 @@
     "phases": 1,
     "amps": 10,
     "requested_kwh": 32.0,
+    "fill_to_limit": false,
     "max_periods": 1,
     "departure_enabled": false,
     "departure_time": "08:00",

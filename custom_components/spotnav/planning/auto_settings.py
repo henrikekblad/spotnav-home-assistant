@@ -469,6 +469,9 @@ class AutoSettings:
     phases: int | None = None
     amps: int | None = None
     requested_kwh: float = DEFAULT_REQUESTED_KWH
+    #: "Fill": a manual need that is the battery's room (to the car's own limit) at each calculation, so it
+    #: follows the car; without a known room `requested_kwh` stands. Ignored by a target.
+    fill_to_limit: bool = False
     max_periods: int = DEFAULT_MAX_PERIODS
     departure_enabled: bool = True
     departure: time = DEFAULT_DEPARTURE
@@ -551,6 +554,8 @@ class AutoSettings:
         if isinstance(self.max_periods, bool) or not isinstance(self.max_periods, int) or not 1 <= self.max_periods <= 8:
             _refuse("invalid_periods", "max_periods must be a whole number between 1 and 8")
         _positive(self.requested_kwh, "invalid_energy", "requested_kwh")
+        if not isinstance(self.fill_to_limit, bool):
+            _refuse("invalid_energy", "fill_to_limit must be a boolean")
         if not isinstance(self.departure, time) or self.departure.tzinfo is not None:
             _refuse("invalid_departure", "departure must be a local wall time")
         if not isinstance(self.departure_enabled, bool):
@@ -618,6 +623,9 @@ class AutoSettings:
         if not self.notifications.is_default:
             # Additive as well: written only once a person chose something.
             stored["notifications"] = self.notifications.as_dict()
+        if self.fill_to_limit:
+            # Additive too: written only when set.
+            stored["fill_to_limit"] = True
         return stored
 
     @classmethod
@@ -631,7 +639,7 @@ class AutoSettings:
             frozenset(cls().as_dict()),
             "unknown_field",
             "a stored settings record",
-            optional=frozenset({"departure_date", "departure_weekdays", "notifications"}),
+            optional=frozenset({"departure_date", "departure_weekdays", "notifications", "fill_to_limit"}),
         )
         revision = stored["revision"]
         if isinstance(revision, bool) or not isinstance(revision, int) or revision < 0:
@@ -673,6 +681,7 @@ class AutoSettings:
             phases=stored["phases"],
             amps=stored["amps"],
             requested_kwh=stored["requested_kwh"],
+            fill_to_limit=stored.get("fill_to_limit", False),
             max_periods=stored["max_periods"],
             departure_enabled=stored["departure_enabled"],
             departure=departure,
