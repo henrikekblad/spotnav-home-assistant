@@ -1903,6 +1903,7 @@ def status_facts(capture: CapturedDashboard) -> StatusFacts:
             energy_basis=snapshot.energy_basis,
             remaining_kwh=finite_number(snapshot.remaining_kwh),
             room_kwh=finite_number(snapshot.room_kwh) if snapshot.room_limited else None,
+            fill=snapshot.fill,
             departure_at=_utc(snapshot.departure_at),
             expected_soc_percent=finite_number(snapshot.expected_soc_percent),
         )

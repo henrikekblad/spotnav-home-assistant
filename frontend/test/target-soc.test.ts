@@ -420,47 +420,8 @@ describe("the phase count", () => {
   });
 });
 
-describe("the slider at its top: the car ends the charge", () => {
-  const manual = (requested: number) =>
-    aRecord({ driver: "manual_kwh", requested_kwh: requested, target: { vehicle_id: "car-1", target_percent: null } });
-  const energySlider = (element: Element) => q<HTMLInputElement>(element, "[data-part='energy'] input[type='range']")!;
-  const energyField = (element: Element) => q<HTMLInputElement>(element, "[data-part='energy'] input[type='number']")!;
-  const energyNote = (element: Element) => q(element, "[data-note='car-ends']")!;
-
-  it("tops the kWh slider at the battery's room and says the car ends the charge there", async () => {
-    const payload = fixture();
-    Object.assign(payload["soc"], { value: 96, room_kwh: 3.44, vehicle_max_percent: 100 });
-    const { element } = await openPlan(payload, manual(2));
-    expect(energySlider(element).max).toBe("3.5");
-    expect(energyNote(element).hidden).toBe(true);
-    energySlider(element).value = "3.5";
-    energySlider(element).dispatchEvent(new Event("input"));
-    expect(energyField(element).value).toBe("3.5");
-    expect(energyNote(element).hidden).toBe(false);
-    expect(energyNote(element).textContent).toBe(
-      "The car ends the charge itself when it is full or reaches its charge limit (100 %).",
-    );
-  });
-
-  it("draws a stored amount above the room where it is, with the note, in Swedish", async () => {
-    const payload = fixture();
-    Object.assign(payload["soc"], { value: 96, room_kwh: 3.44, vehicle_max_percent: 90 });
-    const { element } = await openPlan(payload, manual(43.5), "sv");
-    expect(energySlider(element).max).toBe("43.5");
-    expect(energyNote(element).hidden).toBe(false);
-    expect(energyNote(element).textContent).toBe(
-      "Bilen avslutar själv laddningen när den är full eller når sin laddgräns (90 %).",
-    );
-  });
-
-  it("keeps the ordinary top and no note while the room is unknown", async () => {
-    const payload = fixture();
-    Object.assign(payload["soc"], { room_kwh: null });
-    const { element } = await openPlan(payload, manual(43.5));
-    expect(energySlider(element).max).toBe("100");
-    expect(energyNote(element).hidden).toBe(true);
-  });
-
+// The kWh slider's room, "full" mark and "Fill" step are kwh-fill.test.ts's.
+describe("the target slider at its top: the car ends the charge", () => {
   it("says the car ends a charge to its own limit under the target slider", async () => {
     const payload = fixture();
     Object.assign(payload["soc"], { vehicle_max_percent: 80 });

@@ -756,6 +756,36 @@ CASES: list[tuple[str, StatusFacts, str, list[dict[str, Any]]]] = [
         ],
     ),
     (
+        "fill says the battery is charged until full, with the room now, and no estimate beside it",
+        base(
+            waiting_for_tomorrow=True,
+            planning=PlanningFacts(
+                state="waiting_for_prices", reason="no_prices_yet", energy_basis="kept", remaining_kwh=9.47,
+                room_kwh=9.47, fill="battery",
+            ),
+        ),
+        "normal",
+        [
+            {"code": "waiting_for_tomorrow", "params": {}},
+            {"code": "filling_to_limit", "params": {"kwh": 9.5}},
+        ],
+    ),
+    (
+        "fill without a known room says the stored amount is planned instead",
+        base(
+            waiting_for_tomorrow=True,
+            planning=PlanningFacts(
+                state="waiting_for_prices", reason="no_prices_yet", energy_basis="register", remaining_kwh=12.0,
+                fill="unknown_room",
+            ),
+        ),
+        "notice",
+        [
+            {"code": "waiting_for_tomorrow", "params": {}},
+            {"code": "fill_room_unknown", "params": {"kwh": 12.0}},
+        ],
+    ),
+    (
         "a full battery says nothing about a cap of nothing",
         base(
             planning=PlanningFacts(state="nothing_to_charge", reason="already_at_target", room_kwh=0.0),

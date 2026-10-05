@@ -76,6 +76,17 @@ choice is kept; `available` may be echoed and is ignored; a bad value is refused
 `invalid_notifications`. It is withheld from the webhook like the fields above (ask with
 `"reads": ["notifications"]`).
 
+The record also carries `fill_to_limit` (a boolean, default `false`): "Fill", the kWh slider's last step.
+While it is `true` and the driver is `manual_kwh`, the need is the battery's room (`soc.room_kwh`, to the
+car's own charge limit) at every calculation, so it follows the car between plug-ins, and the car ends the
+charge when it is full; `requested_kwh` is kept beside it and is what is planned while no room is known
+(no level or no battery size). A target ignores it. A replacement may leave it out, and then the stored
+choice is kept, unless the same replacement changes `requested_kwh`: a client that does not know the field
+chose an amount, and that clears it. Setting the requested-energy number entity clears it too. A value that
+is not a boolean is refused with `invalid_energy`. It is withheld from the webhook like the fields above
+(ask with `"reads": ["fill_to_limit"]`), so an older app neither sees it nor is offered a record it would
+refuse.
+
 **Instant notifications.** `push_register` takes `push_ref`, the opaque reference the SpotNav relay
 gave the app for its Firebase token (base64url text, at most 512 characters), or `null` to stop, and an
 optional `events` (the notification event ids above; default `plan_stopped`, `plan_at_risk`,
@@ -191,7 +202,11 @@ without a level or a battery size. A manual amount is planned at most that much;
 status carries `need_limited_by_room` (`kwh`), and while a Start is in effect for a plan the car ends
 itself (a capped amount, or a target at or above the car's own limit) it carries
 `charging_to_vehicle_limit` (`percent`, the car's limit, 100 when it states none). A client shows its kWh
-slider up to `room_kwh` when it is present; an older backend has neither field nor line.
+slider up to `room_kwh` when it is present; an older backend has neither field nor line. Under "Fill"
+(`fill_to_limit`) the status carries `filling_to_limit` (`kwh`, the room now) in place of
+`need_limited_by_room`, and, while no room is known, the notice `fill_room_unknown` (`kwh`, the stored amount
+planned instead). The card's slider goes past the room to `min(capacity to the car's limit, max(30 kWh,
+2 x room))`, rounded up to its half-kWh step, with a "full" mark at the room; its last step is "Fill".
 
 **Best effort before a departure.** When the need cannot be met by the departure, the plan is every
 whole quarter-hour from the first usable one up to the departure (one run, whatever `max_periods` says,

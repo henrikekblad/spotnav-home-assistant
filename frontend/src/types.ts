@@ -143,6 +143,11 @@ export interface SettingsBody {
   phases: number | null;
   amps: number | null;
   requested_kwh: number;
+  /**
+   * "Fill": the manual need is the battery's room at each calculation (the kWh slider's last step). Added
+   * after the first release of the contract: absent on an older backend, and then never sent.
+   */
+  fill_to_limit?: boolean;
   max_periods: number;
   departure_enabled: boolean;
   departure_time: string;

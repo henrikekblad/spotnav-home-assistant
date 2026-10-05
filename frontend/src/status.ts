@@ -195,6 +195,8 @@ export const STATUS_WORDING: Readonly<Record<StatusCode, TranslationKey>> = {
   held_until_window: "status.heldUntilWindow",
   hold_overridden: "issue.holdOverridden",
   need_limited_by_room: "status.needLimitedByRoom",
+  filling_to_limit: "status.fillingToLimit",
+  fill_room_unknown: "status.fillRoomUnknown",
   charging_to_vehicle_limit: "status.chargingToVehicleLimit",
   remaining_need_estimated: "issue.needKept",
   site_measurement_problem: "issue.siteMeasurement",
@@ -523,6 +525,10 @@ export function lineText(line: StatusLine, format: FormatContext, nowMs: number)
     }
     case "need_limited_by_room":
       return say("status.needLimitedByRoom", { kwh: formatNumber(language, num(p["kwh"]) ?? 0, 1) });
+    case "filling_to_limit":
+      return say("status.fillingToLimit", { kwh: formatNumber(language, num(p["kwh"]) ?? 0, 1) });
+    case "fill_room_unknown":
+      return say("status.fillRoomUnknown", { kwh: formatNumber(language, num(p["kwh"]) ?? 0, 1) });
     case "charging_to_vehicle_limit":
       return say("status.chargingToVehicleLimit", { percent: formatNumber(language, num(p["percent"]) ?? 100, 0) });
     case "duplicate_charger":
@@ -615,6 +621,11 @@ export function issuesOf(status: Status | null, language: Language): Issue[] {
     if (line.code === "remaining_need_estimated") {
       const need = needEstimated(language, line.params);
       issues.push({ code: line.code, severity, textKey: need.key, params: need.params, technical: null });
+      continue;
+    }
+    if (line.code === "fill_room_unknown") {
+      const kwh = formatNumber(language, num(line.params["kwh"]) ?? 0, 1);
+      issues.push({ code: line.code, severity, textKey: "status.fillRoomUnknown", params: { kwh }, technical: null });
       continue;
     }
     if (line.code === "departure_shortfall") {

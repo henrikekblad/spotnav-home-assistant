@@ -1318,6 +1318,8 @@ export const STATUS_CODE_TABLE = {
   held_until_window: ["normal", { time: "instant" }],
   hold_overridden: ["notice", {}],
   need_limited_by_room: ["normal", { kwh: "number" }],
+  filling_to_limit: ["normal", { kwh: "number" }],
+  fill_room_unknown: ["notice", { kwh: "number" }],
   charging_to_vehicle_limit: ["normal", { percent: "number" }],
   remaining_need_estimated: ["notice", { kwh: "number", basis: "text" }],
   site_measurement_problem: [

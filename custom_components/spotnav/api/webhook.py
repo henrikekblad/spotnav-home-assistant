@@ -69,7 +69,9 @@ _last_rejected_warning: float | None = None
 #: with an unknown field, and with it the whole dashboard, so the webhook leaves them out until an
 #: app that reads them is out. A request opts in per field with a top-level `reads` list. A
 #: replacement without one keeps the stored value (`fiscal_included` is read-only and never stored).
-APP_UNREAD_SETTINGS: Final = ("departure_date", "departure_weekdays", "fiscal_included", "notifications")
+APP_UNREAD_SETTINGS: Final = (
+    "departure_date", "departure_weekdays", "fiscal_included", "notifications", "fill_to_limit"
+)
 
 
 def _for_app(body: dict[str, Any], payload: dict[str, Any]) -> dict[str, Any]:

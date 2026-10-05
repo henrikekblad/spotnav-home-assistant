@@ -16,7 +16,7 @@ import {
   PERIODS_MIN,
   TARGET_PERCENT_MAX,
   TARGET_PERCENT_MIN,
-  energyAtRoom,
+  energyFillTop,
   energySliderMaximum,
   nominalPowerKw,
   sliderRepresents,
@@ -34,6 +34,8 @@ export interface SettingsEditorForm {
   readOnly: boolean;
   values: SettingsFormValues;
   energyReadOnly: boolean;
+  /** Whether the record has `fill_to_limit`, so the kWh slider's last step can be "Fill". */
+  fillSupported?: boolean;
   /**
    * The phases a charge uses (the record's `phases`, which the server fills in as the effective count): it
    * names the nominal power the draft current gives. Read-only; `null` means unknown.
@@ -204,8 +206,13 @@ function pairedControls(
     input: HTMLInputElement;
     readOnly: boolean;
     onChange: () => void;
+    /** A value the slider shows whatever the exact field holds (the energy slider's "Fill"), or `null`. */
+    sliderShows?: () => number | null;
+    /** Called before a slider move is copied into the exact field, and when the field is typed in. */
+    onSlide?: (value: number) => void;
+    onType?: () => void;
   },
-): { field: HTMLElement; slider: HTMLInputElement; mark: HTMLElement } {
+): { field: HTMLElement; slider: HTMLInputElement; mark: HTMLElement; pair: HTMLElement; unit: HTMLElement } {
   const number = options.input;
   number.step = "any";
   number.min = String(options.minimum);
@@ -225,6 +232,15 @@ function pairedControls(
   const paint = (): void => {
     const value = readNumber();
     const maximum = options.maximumOf(value);
+    const shown = options.sliderShows?.() ?? null;
+    if (shown !== null) {
+      slider.max = String(maximum);
+      slider.value = String(shown);
+      slider.disabled = options.readOnly;
+      mark.hidden = true;
+      options.onChange();
+      return;
+    }
     const represents = sliderRepresents(value, options.minimum, options.step) && value <= maximum;
     slider.max = String(maximum);
     slider.value = represents ? String(value) : String(options.minimum);
@@ -234,13 +250,18 @@ function pairedControls(
   };
 
   slider.addEventListener("input", () => {
+    options.onSlide?.(Number(slider.value));
     number.value = slider.value;
     options.onChange();
   });
-  number.addEventListener("input", paint);
+  number.addEventListener("input", () => {
+    options.onType?.();
+    paint();
+  });
 
   const pair = element(doc, "div", C.settingsPair);
-  pair.append(slider, number, element(doc, "span", C.settingsUnit, options.unit));
+  const unit = element(doc, "span", C.settingsUnit, options.unit);
+  pair.append(slider, number, unit);
   pair.append(mark);
   if (options.readOnly) {
     number.disabled = true;
@@ -253,7 +274,7 @@ function pairedControls(
   label.setAttribute("for", number.id);
   fieldNode.append(label, pair);
   paint();
-  return { field: fieldNode, slider, mark };
+  return { field: fieldNode, slider, mark, pair, unit };
 }
 
 /**
@@ -330,29 +351,90 @@ export function settingsEditorBody(
       into.append(element(doc, "p", C.settingsNote, translate(language, "settings.energy.targetSoc")));
       return;
     }
-    // The battery's room, when the dashboard states it: the slider's top, and where the car ends the charge.
-    const room = form.soc?.room_kwh ?? null;
-    const carEnds = carEndsNote(form.soc?.vehicle_max_percent ?? null);
-    carEnds.dataset["note"] = "car-ends";
-    const paintCarEnds = (): void => {
-      carEnds.hidden = !energyAtRoom(Number(energyInput.value.trim().replace(",", ".")), room);
+    // The battery's room, when the dashboard states it: a "full" mark on the track, a top past it (twice the
+    // room, at least 30 kWh, never past the battery to the car's limit) and a last step that is "Fill".
+    const soc = form.soc ?? null;
+    const room = soc?.room_kwh ?? null;
+    const top = soc === null ? null : energyFillTop(soc);
+    const fillable = top !== null && form.fillSupported === true;
+    let fill = values.fill;
+    const limit = soc?.vehicle_max_percent ?? null;
+    const limitText =
+      limit !== null && chargeCeiling(limit) < 100
+        ? translate(language, "settings.energy.limitSuffix", { percent: formatNumber(language, chargeCeiling(limit), 0) })
+        : "";
+    const roomHelp = element(doc, "p", C.settingsNote);
+    roomHelp.dataset["note"] = "energy-room";
+    roomHelp.hidden = true;
+    const fillValue = element(doc, "span", C.settingsFill, translate(language, "settings.energy.fill"));
+    fillValue.dataset["part"] = "energy-fill";
+    fillValue.hidden = true;
+    const fullMark = element(doc, "span", C.settingsFullMark, translate(language, "settings.energy.fullMark"));
+    fullMark.dataset["part"] = "full-mark";
+    fullMark.setAttribute("aria-hidden", "true");
+    fullMark.hidden = true;
+    const atFill = (): boolean => fillable && fill;
+    let controls: ReturnType<typeof pairedControls> | null = null;
+    const paintRoom = (): void => {
+      if (controls === null) {
+        return;
+      }
+      const { slider, unit } = controls;
+      const filling = atFill();
+      energyInput.hidden = filling;
+      unit.hidden = filling;
+      fillValue.hidden = !filling;
+      if (filling) {
+        slider.setAttribute("aria-valuetext", translate(language, "settings.energy.fill"));
+      } else {
+        slider.removeAttribute("aria-valuetext");
+      }
+      if (room === null || top === null) {
+        fullMark.hidden = true;
+        roomHelp.hidden = true;
+        return;
+      }
+      const minimum = ENERGY_SLIDER_MIN_KWH;
+      const maximum = Number(slider.max);
+      const at = maximum > minimum ? Math.min(1, Math.max(0, (room - minimum) / (maximum - minimum))) : 0;
+      fullMark.style.setProperty("--spotnav-mark", String(at));
+      fullMark.hidden = false;
+      const kwh = formatNumber(language, room, 1);
+      roomHelp.textContent = filling
+        ? translate(language, "settings.energy.fillHelp", { kwh, limit: limitText })
+        : translate(language, "settings.energy.roomHelp", { kwh, limit: limitText });
+      roomHelp.hidden = false;
     };
-    into.append(
-      pairedControls(doc, language, {
-        id: `${idPrefix}-energy`,
-        labelText: translate(language, "settings.energy.label"),
-        sliderLabel: translate(language, "settings.energy.slider"),
-        minimum: ENERGY_SLIDER_MIN_KWH,
-        step: ENERGY_SLIDER_STEP_KWH,
-        maximumOf: (value) => energySliderMaximum(value, room),
-        unit: "kWh",
-        input: energyInput,
-        readOnly: form.readOnly,
-        onChange: paintCarEnds,
-      }).field,
-    );
-    into.append(carEnds);
-    paintCarEnds();
+    controls = pairedControls(doc, language, {
+      id: `${idPrefix}-energy`,
+      labelText: translate(language, "settings.energy.label"),
+      sliderLabel: translate(language, "settings.energy.slider"),
+      minimum: ENERGY_SLIDER_MIN_KWH,
+      step: ENERGY_SLIDER_STEP_KWH,
+      maximumOf: (value) => (atFill() && top !== null ? top : energySliderMaximum(value, top)),
+      unit: "kWh",
+      input: energyInput,
+      readOnly: form.readOnly,
+      onChange: paintRoom,
+      sliderShows: () => (atFill() ? top : null),
+      onSlide: (value) => {
+        // The last step of a slider whose top is the ordinary one (not a stored amount drawn above it).
+        const slider = controls?.slider;
+        fill = top !== null && slider !== undefined && Number(slider.max) === top && value >= top - 1e-9;
+        values.fill = fill;
+      },
+      onType: () => {
+        fill = false;
+        values.fill = false;
+      },
+    });
+    controls.pair.insertBefore(fillValue, controls.unit.nextSibling);
+    // The slider and its "full" mark share one cell, so the mark is drawn on the track.
+    const track = element(doc, "div", C.settingsTrack);
+    controls.slider.replaceWith(track);
+    track.append(controls.slider, fullMark);
+    into.append(controls.field, roomHelp);
+    paintRoom();
   };
 
   /**

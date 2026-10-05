@@ -11,6 +11,9 @@ public face, so nothing here serializes `as_dict()` or accepts `from_stored()` p
 * A third, `notifications` (which phones hear about which events, `notifications/settings.py`): left
   out, the stored choice is kept. Its `available` list (the notify services that exist now, with the
   phones' names) is read-only: a body may echo it and it is ignored.
+* A fourth, `fill_to_limit` ("Fill": the manual need is the battery's room at each calculation): left out, the
+  stored choice is kept, unless the same body moves `requested_kwh` (a client that does not know the field chose
+  an amount, and an amount is not "fill"); then it is cleared.
 * One read-only fact, `fiscal_included`: the fiscal components (`vat`, `tax`, `transfer`) the selected area's
   published price already contains (contract v2's `included`). They are locked as "included in the price" and
   nothing is added for them, whatever the overrides say. A body may echo it; it is never stored.
@@ -71,6 +74,7 @@ SETTINGS_KEYS: Final = frozenset(
         "phases",
         "amps",
         "requested_kwh",
+        "fill_to_limit",
         "max_periods",
         "departure_enabled",
         "departure_time",
@@ -84,7 +88,9 @@ SETTINGS_KEYS: Final = frozenset(
 
 #: Keys a replacement body may leave out (added after the first release of this contract). Absent means "keep
 #: what is stored": a client that does not know the field must not clear what another one set. `null` clears.
-OPTIONAL_SETTINGS_KEYS: Final = frozenset({"departure_date", "departure_weekdays", "phases", "notifications"})
+OPTIONAL_SETTINGS_KEYS: Final = frozenset(
+    {"departure_date", "departure_weekdays", "phases", "notifications", "fill_to_limit"}
+)
 
 #: `phases` joins them since the phases a charge uses stopped being a setting (the charger's wiring and the
 #: vehicle's onboard charger decide them): an older client still sends it, a newer one may leave it out,
@@ -325,6 +331,7 @@ def encode_settings(
         "phases": phases,
         "amps": settings.amps,
         "requested_kwh": settings.requested_kwh,
+        "fill_to_limit": settings.fill_to_limit,
         "max_periods": settings.max_periods,
         "departure_enabled": settings.departure_enabled,
         "departure_time": departure_to_wire(settings.departure),
@@ -369,6 +376,9 @@ def decode_settings(raw: Any) -> AutoSettings:
         overrides=tuple(_override(item) for item in overrides),
         amps=None if stored["amps"] is None else _whole(stored["amps"], "amps", "invalid_amps"),
         requested_kwh=_finite(stored["requested_kwh"], "requested_kwh", "invalid_energy"),
+        fill_to_limit=(
+            _boolean(stored["fill_to_limit"], "fill_to_limit", "invalid_energy") if "fill_to_limit" in stored else False
+        ),
         max_periods=_whole(stored["max_periods"], "max_periods", "invalid_periods"),
         departure_enabled=_boolean(
             stored["departure_enabled"], "departure_enabled", "invalid_departure"
@@ -394,6 +404,7 @@ def replacement_mutator(
     keep_departure_date: bool = False,
     keep_departure_weekdays: bool = False,
     keep_notifications: bool = False,
+    keep_fill_to_limit: bool = False,
 ) -> Callable[[AutoSettings], AutoSettings]:
     """A full replacement expressed as the store's own mutation hook.
 
@@ -411,6 +422,9 @@ def replacement_mutator(
             kept["departure_weekdays"] = current.departure_weekdays
         if keep_notifications:
             kept["notifications"] = current.notifications
+        if keep_fill_to_limit:
+            # Kept only while the amount stays: a body that moves it chose an amount, which is not "fill".
+            kept["fill_to_limit"] = current.fill_to_limit and replacement.requested_kwh == current.requested_kwh
         return replace(replacement, pause=current.pause, **kept)
 
     return mutate
@@ -602,6 +616,7 @@ async def async_update_settings(
         keep_departure_date=isinstance(replacement, Mapping) and "departure_date" not in replacement,
         keep_departure_weekdays=isinstance(replacement, Mapping) and "departure_weekdays" not in replacement,
         keep_notifications=isinstance(replacement, Mapping) and "notifications" not in replacement,
+        keep_fill_to_limit=isinstance(replacement, Mapping) and "fill_to_limit" not in replacement,
     )
     _refuse_amps_above_charger_range(hass, entry_id, decoded)
     controller = preview_for(hass, entry_id)

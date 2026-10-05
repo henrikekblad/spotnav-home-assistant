@@ -8,6 +8,7 @@
 // record over `spotnav/get_settings`, keeps it as an immutable base, and saves one full replacement
 // built from it, so fields a focused edit does not own cannot be lost.
 
+import { chargeCeiling } from "./target-need";
 import { localDayKey, localMidnightAt } from "./chart";
 import { departureDayLabel, energyAmount, formatNumber, hasZone, percentAmount } from "./format";
 import { translate, type Language, type TranslationKey } from "./i18n";
@@ -170,7 +171,13 @@ const RECORD_KEYS = [...BODY_KEYS, "revision"] as const;
  * Keys a record may leave out: all were added after the first release of the contract. `fiscal_included` is
  * read-only (what the area's price already includes): it is read, and never sent back.
  */
-const OPTIONAL_RECORD_KEYS = ["departure_date", "departure_weekdays", "fiscal_included", "notifications"] as const;
+const OPTIONAL_RECORD_KEYS = [
+  "departure_date",
+  "departure_weekdays",
+  "fiscal_included",
+  "notifications",
+  "fill_to_limit",
+] as const;
 /** Every weekday, Monday (1) to Sunday (7): what a record without `departure_weekdays` means. */
 export const ALL_WEEKDAYS: readonly number[] = [1, 2, 3, 4, 5, 6, 7];
 
@@ -290,6 +297,7 @@ export function decodeSettingsRecord(raw: unknown): SettingsRecord {
     phases: wholeOrNull(source, "phases"),
     amps: wholeOrNull(source, "amps"),
     requested_kwh: finite(source, "requested_kwh"),
+    ...(present.includes("fill_to_limit") ? { fill_to_limit: booleanValue(source, "fill_to_limit") } : {}),
     max_periods: whole(source, "max_periods"),
     departure_enabled: booleanValue(source, "departure_enabled"),
     departure_time: wallTime(source, "departure_time"),
@@ -427,6 +435,7 @@ export function encodeBody(record: SettingsRecord): SettingsBody {
     phases: record.phases,
     amps: record.amps,
     requested_kwh: record.requested_kwh,
+    ...(record.fill_to_limit === undefined ? {} : { fill_to_limit: record.fill_to_limit }),
     max_periods: record.max_periods,
     departure_enabled: record.departure_enabled,
     departure_time: record.departure_time,
@@ -494,6 +503,8 @@ export function vehicleReplacement(record: SettingsRecord, vehicleId: string): R
 
 export interface SettingsFormValues {
   energy: string;
+  /** The kWh slider's last step, "Fill" (`fill_to_limit`); always `false` against a backend without it. */
+  fill: boolean;
   deadlineEnabled: boolean;
   deadlineTime: string;
   /** `YYYY-MM-DD`, or `""` for a daily departure. */
@@ -510,6 +521,7 @@ export interface SettingsFormValues {
 export function formFromRecord(record: SettingsRecord): SettingsFormValues {
   return {
     energy: String(record.requested_kwh),
+    fill: record.fill_to_limit === true,
     deadlineEnabled: record.departure_enabled,
     deadlineTime: record.departure_time,
     departureDate: record.departure_date ?? "",
@@ -738,27 +750,48 @@ export function sliderRepresents(value: number, minimum: number, step: number): 
 
 /**
  * The energy slider's domain for an exact value: the ordinary interval, extended upward to include a
- * representable value above it, so a stored `150` is drawn where it is. With the battery's room known
- * (the dashboard's `soc.room_kwh`) the ordinary top is that room, rounded up to the slider's step, when it
- * is lower: more than the car can take is never offered, and a stored value above it is still drawn.
+ * representable value above it, so a stored `150` is drawn where it is. `top` is the ordinary top when the
+ * battery's room is known (`energyFillTop`); without it the ordinary top is 100 kWh. A stored value above
+ * it is still drawn: an untouched value never moves.
  */
-export function energySliderMaximum(value: number, roomKwh: number | null = null): number {
-  const top = roomKwh === null || !Number.isFinite(roomKwh) ? ENERGY_SLIDER_MAX_KWH : energyRoomTop(roomKwh);
-  return Number.isFinite(value) && value > top ? value : top;
+export function energySliderMaximum(value: number, top: number | null = null): number {
+  const ordinary = top === null || !Number.isFinite(top) ? ENERGY_SLIDER_MAX_KWH : top;
+  return Number.isFinite(value) && value > ordinary ? value : ordinary;
 }
 
-/** The battery's room as the slider's top: rounded up to its step, within its ordinary interval. */
-function energyRoomTop(roomKwh: number): number {
-  const steps = Math.ceil(roomKwh / ENERGY_SLIDER_STEP_KWH - STEP_EPSILON);
-  return Math.min(ENERGY_SLIDER_MAX_KWH, Math.max(ENERGY_SLIDER_MIN_KWH, steps * ENERGY_SLIDER_STEP_KWH));
+/** The facts of the dashboard's `soc` block the kWh slider's top is worked out from. */
+export interface FillFacts {
+  room_kwh: number | null;
+  capacity_kwh: number | null;
+  vehicle_max_percent: number | null;
+  efficiency: number;
 }
 
 /**
- * Whether an amount is all the battery has room for, so the car, not SpotNav, ends the charge (the backend
- * caps the need at the room and leaves the end to the car). `false` while the room is unknown.
+ * The kWh slider's top with the battery's room known: `min(capacity to the car's limit, max(30 kWh,
+ * 2 x room))`, rounded up to the slider's step, never past 100 kWh nor below the room's own step. The
+ * capacity to the limit is the wall energy of the whole battery to the car's own charge limit (else 100 %);
+ * without a battery size only the 100 kWh bound applies. The last step is "Fill". `null` without a room.
  */
-export function energyAtRoom(value: number, roomKwh: number | null): boolean {
-  return roomKwh !== null && Number.isFinite(value) && value >= roomKwh - STEP_EPSILON;
+export function energyFillTop(facts: FillFacts): number | null {
+  const room = facts.room_kwh;
+  if (room === null || !Number.isFinite(room)) {
+    return null;
+  }
+  const capacity = facts.capacity_kwh;
+  const toLimit =
+    capacity !== null && capacity > 0 && facts.efficiency > 0
+      ? (capacity * chargeCeiling(facts.vehicle_max_percent)) / 100 / facts.efficiency
+      : ENERGY_SLIDER_MAX_KWH;
+  const wanted = Math.min(ENERGY_SLIDER_MAX_KWH, toLimit, Math.max(FILL_MIN_TOP_KWH, 2 * room));
+  return Math.min(ENERGY_SLIDER_MAX_KWH, Math.max(stepUp(wanted), stepUp(room), ENERGY_SLIDER_MIN_KWH));
+}
+
+/** The least top of a slider that reaches past the room: 30 kWh. */
+const FILL_MIN_TOP_KWH = 30;
+
+function stepUp(kwh: number): number {
+  return Math.ceil(kwh / ENERGY_SLIDER_STEP_KWH - STEP_EPSILON) * ENERGY_SLIDER_STEP_KWH;
 }
 
 /**
@@ -882,6 +915,12 @@ export function replacementFor(
   if (energy !== null && energy.ok && (opened === null || energy.value !== opened.requested_kwh)) {
     next.requested_kwh = energy.value;
     changed = changed || energy.value !== record.requested_kwh;
+  }
+  // "Fill" goes with the energy, and only to a backend that has it.
+  const fillShown = opened === null ? record.fill_to_limit === true : opened.fill_to_limit === true;
+  if (energy !== null && energy.ok && record.fill_to_limit !== undefined && values.fill !== fillShown) {
+    next.fill_to_limit = values.fill;
+    changed = changed || values.fill !== record.fill_to_limit;
   }
   if (amps !== null && amps.ok && (opened === null || amps.value !== opened.amps)) {
     next.amps = amps.value;

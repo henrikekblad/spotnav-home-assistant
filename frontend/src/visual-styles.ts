@@ -110,6 +110,9 @@ export const VISUAL_CLASSES = {
   settingsPair: "spotnav-settings-pair",
   settingsSlider: "spotnav-settings-slider",
   settingsUnit: "spotnav-settings-unit",
+  settingsTrack: "spotnav-settings-track",
+  settingsFullMark: "spotnav-settings-full-mark",
+  settingsFill: "spotnav-settings-fill",
   settingsPower: "spotnav-settings-power",
   settingsError: "spotnav-settings-error",
   settingsNotice: "spotnav-settings-notice",
@@ -335,6 +338,67 @@ export const VISUAL_STYLES = `
   .spotnav-settings-pair > .spotnav-settings-note {
     grid-column: 1 / -1;
     margin: 4px 0 0;
+  }
+  /*
+   * The energy slider's track with its "full" mark: a thin line across the track at the battery's room
+   * (\`--spotnav-mark\`, 0..1 of the track, inset by half a thumb at each end) and its word under it.
+   */
+  .spotnav-settings-track {
+    position: relative;
+    min-width: 0;
+  }
+  .spotnav-settings-track:has(> .spotnav-settings-full-mark:not([hidden])) {
+    padding-bottom: 1.2em;
+  }
+  .spotnav-settings-full-mark {
+    position: absolute;
+    top: 0;
+    left: calc(8px + (100% - 16px) * var(--spotnav-mark, 0));
+    transform: translateX(-50%);
+    padding-top: 1.4em;
+    font-size: 0.75em;
+    line-height: 1;
+    white-space: nowrap;
+    color: var(--secondary-text-color, #727272);
+    pointer-events: none;
+  }
+  .spotnav-settings-full-mark::before {
+    content: "";
+    position: absolute;
+    top: 0.1em;
+    left: 50%;
+    height: 1.2em;
+    transform: translateX(-50%);
+    border-left: 2px solid var(--primary-text-color, #212121);
+  }
+  .spotnav-settings-full-mark[hidden] {
+    display: none;
+  }
+  /*
+   * "Fill" stands where the number field and its unit stand (the same row, both columns), which keep their
+   * room while hidden, so the slider does not change width at its last step.
+   */
+  .spotnav-settings-fill {
+    grid-row: 1;
+    grid-column: 2 / -1;
+    justify-self: end;
+    font-weight: 500;
+    color: var(--primary-color, #03a9f4);
+  }
+  .spotnav-settings-fill[hidden] {
+    display: none;
+  }
+  .spotnav-settings-pair > .spotnav-settings-input[hidden],
+  .spotnav-settings-pair > .spotnav-settings-unit[hidden] {
+    display: block;
+    visibility: hidden;
+    grid-row: 1;
+  }
+  .spotnav-settings-pair > .spotnav-settings-input[hidden] {
+    grid-column: 2;
+  }
+  .spotnav-settings-pair > .spotnav-settings-unit[hidden] {
+    grid-column: 3;
   }
   .spotnav-settings-unit {
     white-space: nowrap;

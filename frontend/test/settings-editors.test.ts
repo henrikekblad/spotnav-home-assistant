@@ -1131,25 +1131,44 @@ describe("the current slider and the nominal power beside it", () => {
 });
 
   it("attaches those columns to the controls in the order the form renders them", async () => {
-    // The same assertion for both editors: the layout has no per-editor variant.
+    // The same layout for both editors; the energy slider sits in a track (with its "full" mark) and has its
+    // "Fill" word beside the unit, which takes the number field's place at its last step.
     for (const kind of ["energy", "current"] as const) {
       document.body.innerHTML = "";
       const { element } = await openEditor(kind);
-      const pair = editorDialog(element)?.querySelector<HTMLElement>(`.${VISUAL_CLASSES.settingsPair}`);
+      const pairs = Array.from(editorDialog(element)?.querySelectorAll<HTMLElement>(`.${VISUAL_CLASSES.settingsPair}`) ?? []);
+      const pair = pairs.find(
+        (node) =>
+          node.querySelector("input[type='number']") !== null &&
+          (kind === "energy") === (node.closest("[data-part='energy']") !== null),
+      );
       const children = Array.from(pair?.children ?? []);
 
       // Column 1 the slider, column 2 the number field, column 3 the unit -- and the note, which
       // spans all of them, last. Reordering these would silently attach the grid to the wrong controls.
-      expect(children.map((node) => node.className), kind).toEqual([
-        VISUAL_CLASSES.settingsSlider,
-        expect.stringContaining(VISUAL_CLASSES.settingsInput),
-        VISUAL_CLASSES.settingsUnit,
-        expect.stringContaining(VISUAL_CLASSES.settingsNote),
-      ]);
-      expect((children[3] as HTMLElement | undefined)?.hidden, kind).toBe(true);
+      const expected =
+        kind === "energy"
+          ? [
+              VISUAL_CLASSES.settingsTrack,
+              expect.stringContaining(VISUAL_CLASSES.settingsInput),
+              VISUAL_CLASSES.settingsUnit,
+              VISUAL_CLASSES.settingsFill,
+              expect.stringContaining(VISUAL_CLASSES.settingsNote),
+            ]
+          : [
+              VISUAL_CLASSES.settingsSlider,
+              expect.stringContaining(VISUAL_CLASSES.settingsInput),
+              VISUAL_CLASSES.settingsUnit,
+              expect.stringContaining(VISUAL_CLASSES.settingsNote),
+            ];
+      expect(children.map((node) => node.className), kind).toEqual(expected);
+      expect((children[children.length - 1] as HTMLElement | undefined)?.hidden, kind).toBe(true);
+      if (kind === "energy") {
+        expect(children[0]!.firstElementChild?.className).toBe(VISUAL_CLASSES.settingsSlider);
+        expect((children[3] as HTMLElement).hidden).toBe(true);
+      }
     }
   });
-
 
 describe("the slider draft's lifecycle", () => {
   it("disables both representations for a non-administrator, and sends nothing", async () => {
