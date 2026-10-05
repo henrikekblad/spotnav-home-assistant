@@ -344,6 +344,42 @@ class Timer(Event):
     start_pending: bool = False
 
 
+#: What a background task decides again (`Recheck.what`): the command's reason (`ownership.REASON_*`).
+RECHECK_HOLD: Final = "hold"
+RECHECK_STRAY: Final = "stray"
+RECHECK_CLAIM: Final = "claim"
+RECHECK_PERSON_HOLD: Final = "person_hold"
+RECHECKS: Final = (RECHECK_HOLD, RECHECK_STRAY, RECHECK_CLAIM, RECHECK_PERSON_HOLD)
+
+
+@dataclass(frozen=True)
+class Recheck(Event):
+    """A background task a report or a timer spawned (the hold's stop, a stray charge's stop, the claim of a window
+    charge, the stop under a person's Stop) has the boundary's lock and decides again whether its command is still
+    due, on the session as it is now: a window may have opened, a plan been installed, a person acted meanwhile.
+
+    `what` is the command's reason. The facts are read again under the lock, as at a report: `control_on` is the
+    one the task's own rule reads (the charge control on as commanded for the hold and the stop under a person's
+    Stop, the control reported on for a claim and a stray charge's stop)."""
+
+    kind: ClassVar[str] = "recheck"
+    what: str = RECHECK_HOLD
+    control_on: bool = False
+    window_ahead_outside: bool = False
+    window_open: bool = False
+    in_window: bool = False
+    plan_present: bool = False
+    open_window_start: datetime | None = None
+    car_ended_known_full: bool = False
+    need_grew: bool = False
+    solar_holds: bool = False
+    plan_auto_owned: bool = True
+    handed_off: bool = False
+    top_off: bool = False
+    start_pending: bool = False
+    owned: bool | None = None
+
+
 @dataclass(frozen=True)
 class CommandResult(Event):
     """What became of a command the core asked for: `executed` (it went out), or not; a start load balancing held
@@ -389,6 +425,7 @@ EVENT_TYPES: Final[dict[str, type[Event]]] = {
         PlanDropped,
         Restart,
         Timer,
+        Recheck,
         CommandResult,
     )
 }

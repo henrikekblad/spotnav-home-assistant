@@ -114,7 +114,12 @@ On:
 * At every decision point fed to the shadow (a window's start and end, the re-arm, the stray stop, the top-off, the
   need-met stop, a report's hold, claim and stray stop, the stop under a person's Stop and its give-up, load
   balancing's resume, the sun's start, stop and take-over), today's code acts on the core's verdict
-  (`OwnershipShadow.verdict`). Each spawned task still checks its facts again before it sends anything.
+  (`OwnershipShadow.verdict`).
+* A task a report or a timer spawns (the hold's stop, a stray charge's stop, the claim of a window charge, the stop
+  under a person's Stop) keeps its re-check under the boundary's lock, and the re-check asks the core: the task's
+  feed lines the session up at that moment and decides a `Recheck` event (the task's own command, awaited since the
+  report, is taken back and asked for again only when still due); the core's verdict sends it. What it sent comes
+  back as its `CommandResult`. With the option off the task sends what today's rule says, and the shadow compares.
 * A person's Stop takes the plug-in session the core decides, and a plug-in or an unplug leaves the manual pause the
   core decided for it.
 * After each feed a charge the core says nobody here owns clears today's two owner fields (`charge_origin`,

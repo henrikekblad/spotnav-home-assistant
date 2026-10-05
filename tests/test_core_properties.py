@@ -41,6 +41,7 @@ AUTOMATIC = {
     "charger_reported_on",
     "charger_reported_off",
     "timer",
+    "recheck",
     "top_off_end",
     "need_met",
     "target_reached",
@@ -372,6 +373,37 @@ class OwnershipMachine(RuleBasedStateMachine):
     @rule(data=st.data(), control_on=st.booleans(), start_pending=st.booleans())
     def timer(self, data, control_on, start_pending) -> None:
         self.step(ev.Timer(control_on=control_on, start_pending=start_pending), data)
+
+    @rule(
+        data=st.data(),
+        what=st.sampled_from(list(ev.RECHECKS)),
+        control_on=st.booleans(),
+        ahead=st.booleans(),
+        window_open=st.booleans(),
+        in_window=st.booleans(),
+        plan_present=st.booleans(),
+        start_pending=st.booleans(),
+        owned=maybe_bool,
+        solar=st.booleans(),
+    )
+    def recheck(
+        self, data, what, control_on, ahead, window_open, in_window, plan_present, start_pending, owned, solar
+    ) -> None:
+        """A background task decides its command again under the boundary's lock."""
+        self.step(
+            ev.Recheck(
+                what=what,
+                control_on=control_on,
+                window_ahead_outside=ahead,
+                window_open=window_open,
+                in_window=in_window,
+                plan_present=plan_present and not self.session.paused,
+                start_pending=start_pending,
+                owned=owned,
+                solar_holds=solar,
+            ),
+            data,
+        )
 
     @rule(legacy=st.booleans())
     def restart(self, legacy) -> None:

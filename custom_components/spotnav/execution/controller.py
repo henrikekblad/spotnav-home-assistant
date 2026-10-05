@@ -16,7 +16,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import math
-from collections.abc import AsyncIterator, Callable
+from collections.abc import AsyncIterator, Awaitable, Callable
 from contextlib import asynccontextmanager
 from dataclasses import asdict, dataclass, replace
 from datetime import datetime, timedelta
@@ -1723,26 +1723,17 @@ class ChargingController:
         return self._person_hold_gave_up and self._held_off_by_person()
 
     async def _async_person_hold_stop(self) -> None:
-        executed = False
-        token: ShadowToken | None = None
+        """The stop under a person's Stop a report or a timer decided, decided again under the boundary's lock
+        (`_recheck`): a person's Start may have replaced their Stop meanwhile."""
         try:
             async with self._automatic(AUTOMATIC_STOP) as allowed:
-                token = self._shadow.begin()
-                if not allowed or not self._held_off_by_person() or self.start_pending or not self._control_on:
-                    return
-                executed = await self._person_hold_stop_locked()
+                await self._recheck(
+                    core_events.RECHECK_PERSON_HOLD,
+                    lambda: allowed and self._held_off_by_person() and not self.start_pending and self._control_on,
+                    self._person_hold_stop_locked,
+                )
         finally:
             self._person_hold_stop_pending = False
-            if token is not None:
-                self._shadow.end(
-                    token,
-                    core_events.CommandResult(
-                        command="stop",
-                        reason="person_hold",
-                        executed=executed,
-                        unobserved=executed and self._shadow_unobserved,
-                    ),
-                )
 
     async def _person_hold_stop_locked(self) -> bool:
         """One stop of a charge a person's Stop holds off, counted (`_observe_person_hold`). Runs with the
@@ -1853,14 +1844,13 @@ class ChargingController:
         )
 
     async def _async_claim_window_charge(self) -> None:
+        """The claim of a window charge a report decided, decided again under the boundary's lock (`_recheck`)."""
         async with self._automatic(AUTOMATIC_START) as allowed:
-            token = self._shadow.begin()
-            claimed = False
-            try:
-                if allowed:
-                    claimed = await self._claim_window_charge_locked()
-            finally:
-                self._shadow.end(token, core_events.CommandResult(command="start", reason="claim", executed=claimed))
+            await self._recheck(
+                core_events.RECHECK_CLAIM,
+                lambda: allowed and self._window_charge_unclaimed() and self._automatic_permitted(AUTOMATIC_START),
+                self._claim_locked,
+            )
 
     async def _claim_window_charge_locked(self) -> bool:
         if not self._window_charge_unclaimed() or not self._automatic_permitted(AUTOMATIC_START):
@@ -1882,16 +1872,15 @@ class ChargingController:
         decided again under the lock, since a window may have opened meanwhile.
         """
         async with self._automatic(AUTOMATIC_STOP) as allowed:
-            if (
-                not allowed
-                or self._next_window_start() is None
-                or self._hold_blocked()
-                or self._hold.owned
-                or not self._control_on
-            ):
-                self._shadow.feed(core_events.CommandResult(command="stop", reason="hold", executed=False))
-                return
-            await self._shadow_stop_result("hold", self._automatic_stop_locked("the hold's stop"))
+            await self._recheck(
+                core_events.RECHECK_HOLD,
+                lambda: allowed
+                and self._next_window_start() is not None
+                and not self._hold_blocked()
+                and not self._hold.owned
+                and self._control_on,
+                lambda: self._automatic_stop_locked("the hold's stop"),
+            )
 
     def _plan_charge_strays(self) -> bool:
         """Whether a charge a plan window of ours started runs while the time is outside every window
@@ -1919,10 +1908,11 @@ class ChargingController:
         lock: a plan may have been installed, or the charge ended, meanwhile.
         """
         async with self._automatic(AUTOMATIC_STOP) as allowed:
-            if allowed and self._plan_charge_strays():
-                await self._shadow_stop_result("stray", self._automatic_stop_locked("the stray charge's stop"))
-            else:
-                self._shadow.feed(core_events.CommandResult(command="stop", reason="stray", executed=False))
+            await self._recheck(
+                core_events.RECHECK_STRAY,
+                lambda: allowed and self._plan_charge_strays(),
+                lambda: self._automatic_stop_locked("the stray charge's stop"),
+            )
 
     async def _async_forget_plan_charge(self) -> None:
         """The charger was seen off: nothing of ours runs, so a later start is not ours."""
@@ -4324,20 +4314,58 @@ class ChargingController:
     def _shadow_start_outcome(self, executed: bool) -> CommandOutcome:
         return CommandOutcome(executed, balancing_held=not executed and self._paused_by_balancing)
 
-    async def _shadow_stop_result(self, reason: str, stop: Any) -> bool:
-        """An asynchronous stop a report decided (the hold's, a stray charge's): its result fed to the shadow."""
+    async def _recheck(
+        self, what: str, today: Callable[[], bool], act: Callable[[], Awaitable[bool]]
+    ) -> bool:
+        """A background task's decision taken again under the boundary's lock and the operation lock: the core
+        decides on its session lined up now (`core_events.Recheck`), and when it drives that verdict sends the
+        command, else today's rule (`today`) does. What the command did comes back to the core as its
+        `CommandResult`. Returns whether it went out."""
         token = self._shadow.begin()
-        executed = False
+        facts = self._shadow_facts(lambda: self._recheck_facts(what))
+        command = "start" if what == core_events.RECHECK_CLAIM else "stop"
+        legacy: list[str] = []
+        outcome: CommandOutcome | None = None
         try:
-            executed = await stop
+            due = today()
+            verdict = None if facts is None else self._shadow.verdict(core_events.Recheck(what=what, **facts))
+            if verdict is not None:
+                due = self._shadow.choose(f"recheck_{what}", due, (command, what) in verdict)
+            if not due:
+                return False
+            legacy.append(command)
+            outcome = CommandOutcome(False)
+            executed = await act()
+            outcome = self._shadow_start_outcome(executed) if command == "start" else self._shadow_stop_outcome(executed)
             return executed
         finally:
-            self._shadow.end(
-                token,
-                core_events.CommandResult(
-                    command="stop", reason=reason, executed=executed, unobserved=executed and self._shadow_unobserved
-                ),
+            self._shadow_end_event(
+                token, facts, lambda: core_events.Recheck(what=what, **facts), legacy=legacy, outcome=outcome
             )
+
+    def _recheck_facts(self, what: str) -> dict[str, Any]:
+        """The facts a background task's rule reads, read again under the lock (`core_events.Recheck`)."""
+        open_start, ahead = self._shadow_windows()
+        self._shadow_car_facts = (False, False)
+        self._car_ended_holds_window()
+        known_full, need_grew = self._shadow_car_facts
+        self._shadow_car_facts = (False, False)
+        commanded = what in (core_events.RECHECK_HOLD, core_events.RECHECK_PERSON_HOLD)
+        return {
+            "control_on": self._control_on if commanded else self._control_observation is True,
+            "window_ahead_outside": ahead,
+            "window_open": self.plan_window_active_now,
+            "in_window": open_start is not None,
+            "plan_present": self.plan is not None,
+            "open_window_start": open_start,
+            "car_ended_known_full": known_full,
+            "need_grew": need_grew,
+            "handed_off": self._shadow_handed_off(),
+            "top_off": self.top_off_until is not None,
+            "start_pending": self._shadow_start_pending(),
+            "owned": self._hold.owned,
+            **self._shadow_hold_facts(),
+        }
 
     async def _shadow_direct_stop(self, stop: Any, clear_schedule: bool) -> None:
         token = self._shadow.begin()

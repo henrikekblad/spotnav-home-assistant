@@ -54,6 +54,11 @@ from .events import (
     PlanInstalled,
     PlugIn,
     Rearm,
+    Recheck,
+    RECHECK_CLAIM,
+    RECHECK_HOLD,
+    RECHECK_PERSON_HOLD,
+    RECHECK_STRAY,
     Restart,
     Resume,
     RESUME_EXPIRED,
@@ -636,6 +641,87 @@ def _timer(session: ChargeSession, event: Timer, now: datetime) -> Decision:
     return _person_hold(session, now, control_on=event.control_on, start_pending=event.start_pending)
 
 
+def _recheck(session: ChargeSession, event: Recheck, now: datetime) -> Decision:
+    """A background task decides again, under the boundary's lock, whether its command is still due (today's
+    tasks re-check their facts the same way). The command the report or the timer asked for is this task's: it is
+    taken back first and asked for again only when it is still due, so a task that sends nothing leaves nothing
+    awaited. What the task then sent comes back as a `CommandResult`."""
+    what = event.what
+    command = "start" if what == RECHECK_CLAIM else "stop"
+    s = session.with_changes(
+        pending=tuple(item for item in session.pending if (item.command, item.reason) != (command, what))
+    )
+    if what == RECHECK_PERSON_HOLD:
+        s = s.with_changes(hold_stop_pending=False)
+    blocked = hold_blocked(s, solar_holds=event.solar_holds, plan_auto_owned=event.plan_auto_owned)
+    if what == RECHECK_HOLD:
+        # A window opened, something else took the charger, SpotNav started the charge, or it is off by now.
+        owned = event.owned if event.owned is not None else s.owner in SPOTNAV_OWNERS
+        if (
+            automatic_allowed(s, GATE_STOP)
+            and event.window_ahead_outside
+            and not blocked
+            and not owned
+            and event.control_on
+        ):
+            return _stop(s, REASON_HOLD)
+        return s, ()
+    if what == RECHECK_STRAY:
+        # A plan installed meanwhile with a window open now, a top-off, the sun's hand-off, or the charge ended.
+        if (
+            automatic_allowed(s, GATE_STOP)
+            and s.owner == OWNER_PLAN
+            and event.plan_present
+            and event.control_on
+            and not event.in_window
+            and not blocked
+            and not event.handed_off
+            and not event.top_off
+        ):
+            return _stop(s, REASON_STRAY)
+        return s, ()
+    if what == RECHECK_CLAIM:
+        ended_holds = car_ended_holds_window(
+            s,
+            open_window_start=event.open_window_start,
+            known_full=event.car_ended_known_full,
+            need_grew=event.need_grew,
+        )
+        if (
+            automatic_allowed(s, GATE_START)
+            and event.control_on
+            and s.owner in (OWNER_NONE, OWNER_CHARGER_SELF)
+            and not s.start_pending
+            and event.window_open
+            and not blocked
+            and not ended_holds
+        ):
+            return _start(s, REASON_CLAIM, OWNER_PLAN)
+        return s, ()
+    if what == RECHECK_PERSON_HOLD:
+        # A person's Start replaced their Stop meanwhile (it never lands between this and the stop), or a start of
+        # theirs is still on its way: nothing is stopped. The gap and the give-up were decided when it was spawned.
+        if (
+            automatic_allowed(s, GATE_STOP)
+            and s.held_off_by_person
+            and event.control_on
+            and not event.start_pending
+            and not s.start_pending
+        ):
+            return (
+                s.with_changes(
+                    hold_stop_times=(*s.hold_stop_times, now),
+                    hold_tried_at=now,
+                    hold_stop_pending=True,
+                    pending=_awaiting(s, PendingCommand("stop", REASON_PERSON_HOLD, owner_before=s.owner)),
+                ),
+                (Stop(REASON_PERSON_HOLD),),
+            )
+        return s, ()
+    # A task this core does not know sends nothing.
+    return s, ()
+
+
 def _command_result(session: ChargeSession, event: CommandResult, now: datetime) -> Decision:
     pending = next(
         (item for item in session.pending if (item.command, item.reason) == (event.command, event.reason)), None
@@ -720,5 +806,6 @@ _HANDLERS: Final[dict[type[Event], Callable[[ChargeSession, Event, datetime], De
     PlanDropped: _plan_dropped,  # type: ignore[dict-item]
     Restart: _restart,  # type: ignore[dict-item]
     Timer: _timer,  # type: ignore[dict-item]
+    Recheck: _recheck,  # type: ignore[dict-item]
     CommandResult: _command_result,  # type: ignore[dict-item]
 }
