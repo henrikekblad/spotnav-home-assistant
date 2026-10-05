@@ -297,6 +297,9 @@ class PriceRepository:
         # Seams for tests (races and clock changes are timing); `None` means the real thing.
         self._store: Store[dict[str, Any]] = store if store is not None else Store(hass, STORAGE_VERSION, STORAGE_KEY)
         self._catalogue: _Cached | None = None
+        #: The index revision (`areas_rev`) the held area list belongs to, as noted by the refresh manager;
+        #: `None` when unknown (nothing noted yet, or a store written before it was kept).
+        self._catalogue_rev: str | None = None
         self._index: _Cached | None = None
         self._days: dict[tuple[str, date], _Cached] = {}
         # The history profile per area; the local day it was last asked for with a definite answer (a
@@ -382,6 +385,17 @@ class PriceRepository:
         return self._index_snapshot(
             state=read_state(self._index is not None, error, refreshing), settled=not refreshing
         )
+
+    def catalogue_revision(self) -> str | None:
+        """The index revision the held area list belongs to, or `None` when unknown."""
+        return self._catalogue_rev
+
+    async def async_note_catalogue_revision(self, revision: str) -> None:
+        """Record that the held area list is the one of this index revision, and keep it in the store."""
+        if self._catalogue is None or revision == self._catalogue_rev:
+            return
+        self._catalogue_rev = revision
+        await self._persist()
 
     async def async_get_catalogue(self, *, refresh: bool = False) -> CatalogueSnapshot:
         """The relay's area list, from memory, from the store, or over the network."""
@@ -629,6 +643,8 @@ class PriceRepository:
         catalogue = self._restore_one(raw.get("catalogue"), "catalogue", _parse_versioned(parse_catalogue))
         if catalogue is not None and _older_than(self._catalogue, catalogue):
             self._catalogue = catalogue
+            stored_rev = raw.get("catalogue_rev")
+            self._catalogue_rev = stored_rev if isinstance(stored_rev, str) and stored_rev else None
         index = self._restore_one(raw.get("index"), "index", _parse_versioned(parse_index))
         if index is not None and _older_than(self._index, index):
             self._index = index
@@ -730,6 +746,7 @@ class PriceRepository:
             return self._after_failure(key, err, self._catalogue_snapshot)
         previous = None if self._catalogue is None else self._catalogue.parsed.version
         self._catalogue = _Cached(document=document, fetched_at=self._now(), parsed=parsed)
+        self._catalogue_rev = None
         if previous is not None and previous != parsed.version and self._index is not None:
             # A list of another version: the index beside it must be read again in that version.
             self._index = None
@@ -944,6 +961,7 @@ class PriceRepository:
         return {
             "schema": STORAGE_VERSION,
             "catalogue": _entry(self._catalogue),
+            "catalogue_rev": self._catalogue_rev,
             "index": _entry(self._index),
             "days": {f"{area_id}|{day.isoformat()}": _entry(cached) for (area_id, day), cached in self._days.items()},
             "profiles": {area_id: _entry(cached) for area_id, cached in self._profiles.items()},

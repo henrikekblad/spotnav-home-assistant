@@ -676,17 +676,34 @@ class PriceRefreshManager:
         immutable day documents it points at are fetched only when the index we hold lists them.
         """
         catalogue = self._repository.catalogue_snapshot()
+        catalogue_fetched = False
         if catalogue.catalogue is None or self._catalogue_age() >= CATALOGUE_MAX_AGE_SECONDS:
             # `refresh=True`: the age rule and the absent case mean "ask again", and only an
             # explicit refresh does that (a default read answers from memory).
             await self._repository.async_get_catalogue(refresh=True)
             self._catalogue_attempted_at = self._now()
+            catalogue_fetched = True
 
         index = await self._repository.async_get_index(refresh=True)
         revision = None if index.index is None else index.index.areas_rev
-        if revision is not None and self._last_areas_rev is not None and revision != self._last_areas_rev:
+        # The held list is compared with the revision it was noted under, which survives a restart: a list
+        # the relay changed while Home Assistant was down is fetched now rather than at the 24-hour mark, and
+        # a held list of unknown revision (a store from before the revision was kept) is fetched once.
+        held_rev = self._repository.catalogue_revision()
+        if (
+            revision is not None
+            and held_rev is None
+            and not catalogue_fetched
+            and self._repository.catalogue_snapshot().source == "network"
+        ):
+            # Fetched in this process (a subscription asked for it) before any index was read beside it.
+            catalogue_fetched = True
+        elif revision is not None and not catalogue_fetched and held_rev != revision:
             await self._repository.async_get_catalogue(refresh=True)
             self._catalogue_attempted_at = self._now()
+            catalogue_fetched = True
+        if revision is not None and catalogue_fetched and self._repository.catalogue_snapshot().catalogue is not None:
+            await self._repository.async_note_catalogue_revision(revision)
         if revision is not None:
             self._last_areas_rev = revision
         self._sync_zones()

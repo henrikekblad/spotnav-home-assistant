@@ -484,6 +484,71 @@ async def test_a_changed_areas_revision_refreshes_the_catalogue_once(
     assert transport.call_count("/v1/areas.json") == 3
 
 
+async def test_an_area_list_that_changed_while_home_assistant_was_down_is_fetched_at_the_first_cycle(
+    hass: HomeAssistant, transport: StubTransport, scheduler: FakeScheduler, clock: Clock
+) -> None:
+    # A first process holds the area list and the index of one revision, and keeps them in the store.
+    store = StoreDouble()
+    transport.serve_area()
+    first = PriceRepository(hass, base_url=BASE_URL, session=transport, now=clock, store=store)
+    first_manager = PriceRefreshManager(hass, first, now=clock, jitter=lambda: 0.5, scheduler=scheduler)
+    await first_manager.async_subscribe(owner_id="entry-a", area_id="SE4", listener=Listener())
+    await hass.async_block_till_done()
+    assert transport.call_count("/v1/areas.json") == 1
+    await first_manager.async_shutdown()
+
+    # The relay changes its area list while Home Assistant is down; the held list is only an hour old.
+    clock.advance(hours=1)
+    changed = json.loads(fixture("index.json"))
+    changed["areas_rev"] = "ffffffffffff"
+    transport.serve("/v1/index.json", 200, json.dumps(changed))
+    restarted = PriceRepository(hass, base_url=BASE_URL, session=transport, now=clock, store=store)
+    await restarted.async_restore()
+    manager = PriceRefreshManager(hass, restarted, now=clock, jitter=lambda: 0.5, scheduler=scheduler)
+    await manager.async_subscribe(owner_id="entry-a", area_id="SE4", listener=Listener())
+    await hass.async_block_till_done()
+    assert transport.call_count("/v1/areas.json") == 2
+
+    # And with the revision unchanged, a restart asks for no list at all.
+    await manager.async_shutdown()
+    again = PriceRepository(hass, base_url=BASE_URL, session=transport, now=clock, store=store)
+    await again.async_restore()
+    calm = PriceRefreshManager(hass, again, now=clock, jitter=lambda: 0.5, scheduler=scheduler)
+    await calm.async_subscribe(owner_id="entry-a", area_id="SE4", listener=Listener())
+    await hass.async_block_till_done()
+    assert transport.call_count("/v1/areas.json") == 2
+    await calm.async_shutdown()
+
+
+async def test_a_held_area_list_of_unknown_revision_is_fetched_once_after_a_restart(
+    hass: HomeAssistant, transport: StubTransport, scheduler: FakeScheduler, clock: Clock
+) -> None:
+    # A store written before the list's revision was kept: the index already of the new revision, the list
+    # of an older one, and nothing saying which.
+    store = StoreDouble()
+    transport.serve_area()
+    first = PriceRepository(hass, base_url=BASE_URL, session=transport, now=clock, store=store)
+    first_manager = PriceRefreshManager(hass, first, now=clock, jitter=lambda: 0.5, scheduler=scheduler)
+    await first_manager.async_subscribe(owner_id="entry-a", area_id="SE4", listener=Listener())
+    await hass.async_block_till_done()
+    await first_manager.async_shutdown()
+    assert store.payload["catalogue_rev"] is not None
+    store.payload.pop("catalogue_rev")
+    calls = transport.call_count("/v1/areas.json")
+
+    restarted = PriceRepository(hass, base_url=BASE_URL, session=transport, now=clock, store=store)
+    await restarted.async_restore()
+    manager = PriceRefreshManager(hass, restarted, now=clock, jitter=lambda: 0.5, scheduler=scheduler)
+    await manager.async_subscribe(owner_id="entry-a", area_id="SE4", listener=Listener())
+    await hass.async_block_till_done()
+    assert transport.call_count("/v1/areas.json") == calls + 1
+    # Noted now, so the next cycle asks for no list.
+    refresh_timer(scheduler).fire()
+    await hass.async_block_till_done()
+    assert transport.call_count("/v1/areas.json") == calls + 1
+    await manager.async_shutdown()
+
+
 async def test_the_local_midnight_rollover_republishes_the_new_date_keys(
     hass: HomeAssistant, manager: PriceRefreshManager, transport: StubTransport, scheduler: FakeScheduler, clock: Clock
 ) -> None:
