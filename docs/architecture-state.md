@@ -182,8 +182,8 @@ the session itself after the restart (all read from today's fields at each feed,
 * `tests/test_core_recheck.py`: a background task's re-check asked of the core, and its command's result.
 * `tests/test_core_session_store.py`: the stored record: round trip, migration from today's keys, an unknown version,
   no save at every report, and a restart in each scope of a manual pause.
-* `tests/test_core_plan_ends.py`: 1.11's plan ends and replans in both modes: the best-effort plan stopped at its
-  departure, the replan a returning register reading asks for while the plan's charge runs, and a need met by that
+* `tests/test_core_plan_ends.py`: 1.11's plan ends and replans in both modes: the best-effort plan's charge taken over
+  at its departure by the next departure's plan, the replan a returning register reading asks for while the plan's charge runs, and a need met by that
   same reading.
 * `tests/test_override_review_g.py`: the review before the merge into main: a real Home Assistant restart (no
   unload) with the sun's charge, no state-of-charge read by the shadow with the option off, diagnostics naming no

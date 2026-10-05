@@ -43,12 +43,13 @@ async def _at(car: Car, frozen: Any, delta: timedelta) -> None:
     await car.hass.async_block_till_done()
 
 
-async def test_a_best_effort_plan_charges_to_the_departure_and_stops_there(
+async def test_a_best_effort_plan_charges_to_the_departure_and_the_next_departures_plan_takes_it_over(
     hass: HomeAssistant, transport: Any, drives: bool
 ) -> None:
     """08:00 with a departure at 10:00 and far more asked than two hours give: every slot to the departure is the
-    plan's own charge, started at once and stopped by the last window's end at the departure (no top-off: that
-    never runs past the departure)."""
+    plan's own charge, started at once. At 10:00 its last window ends while the next departure's plan (rising prices),
+    waiting for that boundary, opens a window then: that plan takes the charge over, with no stop and no start (no
+    contactor cycle, no `plan_done`), and the departure appointment's replan a second later changes nothing of it."""
     serve_prices(transport, rising=True)
     calls = _record_charger_commands(hass)
     with freeze_time(NOW) as frozen:
@@ -62,18 +63,19 @@ async def test_a_best_effort_plan_charges_to_the_departure_and_stops_there(
 
         await _at(car, frozen, timedelta(hours=1, minutes=59))
         assert [call[0] for call in calls] == ["turn_on"], "nothing stops it before the departure"
+        departing = car.controller.plan
 
+        await _at(car, frozen, timedelta(minutes=1))
+        assert car.controller.plan is not departing, "the next departure's plan is installed at the departure"
+        assert [call[0] for call in calls] == ["turn_on"], "the next departure's plan takes the charge over"
+        completion = car.controller.completion_record
+        assert completion is None or completion.get("reason") != "plan_done"
         await _at(car, frozen, timedelta(minutes=2))
-        # 10:00 is both the last window's end and the departure appointment's replan, and which runs first is the
-        # timers' order at the same instant: the last window's end stops the plan's charge and the next departure's
-        # plan (rising prices) opens at once, or that plan comes first and its re-arm stops the charge before its
-        # window at 10:15. Either way the departure stops the plan's charge once.
-        assert [call[0] for call in calls][:2] == ["turn_on", "turn_off"], "the departure ends the plan's charge"
         await _at(car, frozen, timedelta(minutes=15))
-        assert [call[0] for call in calls] == ["turn_on", "turn_off", "turn_on"], "the next departure's own charge"
+        assert [call[0] for call in calls] == ["turn_on"], "one charge across the departure"
+        assert car.controller.charging
         snapshot = car.preview.snapshot()
         assert snapshot.departure_at is not None and snapshot.departure_at > dt_util.utcnow() + timedelta(hours=20)
-        assert snapshot.proposal is not None and not snapshot.proposal.short_of_deadline
         assert car.controller.ownership_shadow.session.owner == OWNER_PLAN
         assert car.controller.charge_origin == "plan_window"
         _agrees(car, drives)
