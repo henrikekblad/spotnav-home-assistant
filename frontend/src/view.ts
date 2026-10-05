@@ -54,7 +54,7 @@ export function parseCardConfig(config: unknown): CardConfig {
   if (chart !== undefined && chart !== "full" && chart !== "compact") {
     throw new Error('SpotNav card: chart must be "full" or "compact"');
   }
-  const presentation = chart === undefined ? {} : { chart };
+  const presentation: { chart?: ChartPresentation } = chart === undefined ? {} : { chart };
   const charger = candidate.charger;
   if (charger === undefined || charger === "") {
     return { type: `custom:${CARD_TYPE}`, charger: "", ...presentation };

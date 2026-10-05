@@ -387,6 +387,8 @@ export const fi: Record<keyof typeof en, string> = {
   "graph.priceAxis": "Hinta, {unit} per kWh",
   "graph.noZone": "Ajat eivät ole käytettävissä: integraatio ei ole raportoinut markkina-aluetta tälle laturille.",
   "graph.hint": "Selaa jaksoja nuolinäppäimillä.",
+  "graph.toggle.show": "Näytä hintakaavio",
+  "graph.toggle.hide": "Piilota hintakaavio",
   "graph.keyboardInstructions":
     "Hintakaavio. Nuolinäppäimet siirtyvät jaksosta toiseen, Home ja End hyppäävät päihin, Escape tyhjentää valinnan.",
   "plan.proposal.one": "Halvin latausjakso ({count})",

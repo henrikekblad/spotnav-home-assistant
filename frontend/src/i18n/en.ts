@@ -414,6 +414,8 @@ export const en = {
   "graph.priceAxis": "Price, {unit} per kWh",
   "graph.noZone": "Times are unavailable: the integration has not reported a market zone for this charger.",
   "graph.hint": "Use the arrow keys to step through the intervals.",
+  "graph.toggle.show": "Show price chart",
+  "graph.toggle.hide": "Hide price chart",
   "graph.keyboardInstructions":
     "Price graph. Arrow keys move from interval to interval, Home and End jump to the ends, Escape clears the selection.",
   "plan.proposal.one": "Cheapest charging period ({count})",
