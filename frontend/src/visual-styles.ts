@@ -1289,7 +1289,8 @@ export const VISUAL_STYLES = `
   /* A number field (main fuse, safety margin, measurement age) is headed like the groups around it. */
   .${VISUAL_CLASSES.entityDialog} .${VISUAL_CLASSES.settingsField} > .${VISUAL_CLASSES.entityNumberLabel},
   .${VISUAL_CLASSES.planDialog} .${VISUAL_CLASSES.settingsField} > .${VISUAL_CLASSES.settingsLabel},
-  .${VISUAL_CLASSES.planDialog} .${VISUAL_CLASSES.settingsField} > .${VISUAL_CLASSES.settingsHead} > .${VISUAL_CLASSES.settingsLabel} {
+  .${VISUAL_CLASSES.planDialog} .${VISUAL_CLASSES.settingsField} > .${VISUAL_CLASSES.settingsHead} > .${VISUAL_CLASSES.settingsLabel},
+  .${VISUAL_CLASSES.planDialog} .${VISUAL_CLASSES.settingsCheckRow} > .${VISUAL_CLASSES.settingsLabel} {
     font-weight: 600;
     font-size: 0.95rem;
     color: var(--primary-text-color, inherit);

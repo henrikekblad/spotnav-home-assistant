@@ -1057,7 +1057,8 @@ var lr="start",pn="stop",Vr="resume",dr="pause";var ju="normal",ji="vehicle_not_
   /* A number field (main fuse, safety margin, measurement age) is headed like the groups around it. */
   .${a.entityDialog} .${a.settingsField} > .${a.entityNumberLabel},
   .${a.planDialog} .${a.settingsField} > .${a.settingsLabel},
-  .${a.planDialog} .${a.settingsField} > .${a.settingsHead} > .${a.settingsLabel} {
+  .${a.planDialog} .${a.settingsField} > .${a.settingsHead} > .${a.settingsLabel},
+  .${a.planDialog} .${a.settingsCheckRow} > .${a.settingsLabel} {
     font-weight: 600;
     font-size: 0.95rem;
     color: var(--primary-text-color, inherit);

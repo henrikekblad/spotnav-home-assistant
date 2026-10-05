@@ -188,8 +188,12 @@ describe("accessibility and theming", () => {
     const label = VISUAL_STYLES.match(new RegExp(`\\.${VISUAL_CLASSES.settingsLabel} \\{([^}]*)\}`, "s"))?.[1] ?? "";
     expect(label).toContain("font-size: 0.85em");
     expect(label).toContain("font-weight: 400");
-    // No rule sets the checkbox row's label apart.
-    expect(VISUAL_STYLES).not.toMatch(/spotnav-settings-check-row[^{]*spotnav-settings-label/);
+    // In the plan dialog the field labels are headed in one rule, and the checkbox row's label is in it too,
+    // so "Finish by a deadline" reads like "Requested energy" there.
+    const headed = VISUAL_STYLES.match(/([^}]*spotnav-settings-check-row > \.spotnav-settings-label) \{([^}]*)\}/s);
+    expect(headed?.[1]).toContain("spotnav-plan-dialog .spotnav-settings-field > .spotnav-settings-label");
+    expect(headed?.[2]).toContain("font-weight: 600");
+    expect(headed?.[2]).toContain("font-size: 0.95rem");
   });
 
   it("honours the platform's forced-colours palette for the focus lines", () => {
