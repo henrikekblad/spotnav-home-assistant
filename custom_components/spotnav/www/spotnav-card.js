@@ -91,7 +91,7 @@ var lr="start",pn="stop",Vr="resume",dr="pause";var Wu="normal",Ki="vehicle_not_
     width: 100%;
     min-width: 0;
     /* A fixed box, so the "full" mark below can cross the track at its middle in every browser. */
-    height: 20px;
+    height: 1.25rem;
     margin: 0;
     accent-color: var(--primary-color, #03a9f4);
   }
@@ -126,7 +126,7 @@ var lr="start",pn="stop",Vr="resume",dr="pause";var Wu="normal",Ki="vehicle_not_
     top: 0;
     left: calc(8px + (100% - 16px) * var(--spotnav-mark, 0));
     transform: translateX(-50%);
-    padding-top: 22px;
+    padding-top: 1.375rem;
     font-size: 0.75em;
     line-height: 1;
     white-space: nowrap;
@@ -136,10 +136,10 @@ var lr="start",pn="stop",Vr="resume",dr="pause";var Wu="normal",Ki="vehicle_not_
   .spotnav-settings-full-mark::before {
     content: "";
     position: absolute;
-    /* Across the 20px slider's track, centred on it. */
-    top: 2px;
+    /* Across the 1.25rem slider's track, centred on it. */
+    top: 0.125rem;
     left: 50%;
-    height: 16px;
+    height: 1rem;
     transform: translateX(-50%);
     border-left: 2px solid var(--primary-text-color, #212121);
   }
