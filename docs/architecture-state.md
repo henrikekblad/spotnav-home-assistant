@@ -141,8 +141,8 @@ With the option on the core's session is also kept across restarts, as one versi
 (`charge_session` in the charger's store, `ChargeSession.to_store`) beside today's keys, which are still written as
 before. The record leaves out what a restart clears anyway (`TRANSIENT_FIELDS`: commands awaiting a result, the stops
 under a person's Stop and their give-up, the safety stop's gap). Every save of today's keys writes it as it is then;
-a change no such save carried is saved once, `SESSION_SAVE_DELAY_S` later, alone (today's keys on disk untouched), and
-at shutdown if still waiting, so a report that changes nothing stored writes nothing and many changes in a row are one
+a change no such save carried is saved once, alone (today's keys as last written beside it), by the first decision at
+least `SESSION_SAVE_DELAY_S` after it, and at shutdown if still waiting (no timer of its own, so no other timer moves), so a report that changes nothing stored writes nothing and many changes in a row are one
 save. At a restart the core decides from the record and compares it with today's restored state; a record that is
 missing or of a version the core does not know is read from today's keys once (`legacy_session`) and written. With the
 option off nothing of it is written or read: today's restore, exactly.

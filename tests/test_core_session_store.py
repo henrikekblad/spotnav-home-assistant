@@ -11,8 +11,6 @@ from typing import Any
 import pytest
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.storage import Store
-from homeassistant.util import dt as dt_util
-from pytest_homeassistant_custom_component.common import async_fire_time_changed
 
 from custom_components.spotnav.core.session import (
     ChargeSession,
@@ -152,9 +150,11 @@ def _intent(world: World) -> tuple[Any, Any]:
     return (None, None) if manual is None else (manual.action, manual.scope)
 
 
-async def _settle(hass: HomeAssistant) -> None:
-    """Let the debounced save of the core's session run."""
-    async_fire_time_changed(hass, dt_util.utcnow() + timedelta(seconds=SESSION_SAVE_DELAY_S + 1))
+async def _settle(hass: HomeAssistant, freezer: Any) -> None:
+    """Let the debounced save of the core's session run: the next report at least its delay later saves it."""
+    freezer.tick(timedelta(seconds=SESSION_SAVE_DELAY_S + 1))
+    current = hass.states.get(SWITCH)
+    hass.states.async_set(SWITCH, current.state, {**current.attributes, "report": "later"})
     await hass.async_block_till_done()
 
 
@@ -216,12 +216,12 @@ async def test_a_record_of_an_unknown_version_falls_back_to_todays_keys(
 
 @pytest.mark.usefixtures("shadows")
 async def test_with_the_option_off_the_record_is_neither_written_nor_read(
-    hass: HomeAssistant, timers: FakeScheduler, saves: list, reads: list
+    hass: HomeAssistant, timers: FakeScheduler, saves: list, reads: list, freezer: Any
 ) -> None:
     world = await pause_world(hass, timers, plan=two_windows())
     await world.executor.async_manual_stop()
     await world.switch("on")
-    await _settle(hass)
+    await _settle(hass, freezer)
     assert saves and all(SESSION_STORE_KEY not in record for record in saves)
 
     # A record a release with the option on left behind is not read: today's restore, exactly.
@@ -247,7 +247,12 @@ async def _reports(hass: HomeAssistant, world: World, saves: list, *, count: int
 
 @pytest.mark.parametrize("toggle", [False, True])
 async def test_reports_do_not_write_the_record_each_time(
-    hass: HomeAssistant, timers: FakeScheduler, saves: list, monkeypatch: pytest.MonkeyPatch, toggle: bool
+    hass: HomeAssistant,
+    timers: FakeScheduler,
+    saves: list,
+    monkeypatch: pytest.MonkeyPatch,
+    freezer: Any,
+    toggle: bool,
 ) -> None:
     """Two hundred reports of a charge running unchanged, or of a charger turning itself on and off with no plan
     (the core's owner moving between nobody and the charger itself at every report): the option on writes no more
@@ -258,7 +263,7 @@ async def test_reports_do_not_write_the_record_each_time(
         world = await pause_world(hass, timers, charging=not toggle)
         during = await _reports(hass, world, saves, count=200, toggle=toggle)
         before = len(saves)
-        await _settle(hass)
+        await _settle(hass, freezer)
         written[drives] = (during, len(saves) - before)
         await world.shutdown()
         hass.services.async_remove("switch", "turn_on")
@@ -341,6 +346,6 @@ async def test_a_change_waiting_for_its_debounced_save_is_saved_at_shutdown(
     world.controller._session_saved = None  # noqa: SLF001 - as if nothing of it was saved yet
     hass.states.async_set(SWITCH, "off", {"report": "a change"})
     await hass.async_block_till_done()
-    assert world.controller._session_save_cancel is not None  # noqa: SLF001
+    assert world.controller._session_dirty_since is not None  # noqa: SLF001
     await world.shutdown()
     assert SESSION_STORE_KEY in await _stored(world)

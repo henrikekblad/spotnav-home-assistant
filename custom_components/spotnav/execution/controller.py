@@ -23,7 +23,7 @@ from datetime import datetime, timedelta
 from typing import Any, AsyncContextManager, Final, Literal, Protocol
 
 from homeassistant.const import STATE_UNAVAILABLE, STATE_UNKNOWN
-from homeassistant.core import callback, Event, EventStateChangedData, HassJob, HomeAssistant, State
+from homeassistant.core import callback, Event, EventStateChangedData, HomeAssistant, State
 from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers.event import (
     async_call_later,
@@ -118,8 +118,8 @@ STORE_VERSION = 1
 #: The store key of the core's own session record (`ChargeSession.to_store`), kept beside today's keys while the core
 #: drives (`CONF_CORE_OWNERSHIP`); today's keys are still written too.
 SESSION_STORE_KEY = "charge_session"
-#: A change of the core's session that no save of today's keys carried is saved this long after it, once: never at
-#: every report.
+#: A change of the core's session that no save of today's keys carried is saved by the first decision at least this
+#: long after it (or at shutdown), once: never at every report. No timer of its own: a restart's timers are not moved.
 SESSION_SAVE_DELAY_S = 30.0
 
 #: How long an accepted Start counts as the cause of the charge that follows it (the charge session record).
@@ -771,7 +771,9 @@ class ChargingController:
         self._core_hold_verdict: frozenset[tuple[str, str]] | None = None
         # The core's session as last saved (`SESSION_STORE_KEY`), and the debounced save of a change (`_persist_session`).
         self._session_saved: ChargeSession | None = None
-        self._session_save_cancel: Callable[[], None] | None = None
+        # The whole record as last written or read back, which a save of the session alone writes again beside it.
+        self._record_saved: dict[str, Any] | None = None
+        self._session_dirty_since: datetime | None = None
         self._shadow = OwnershipShadow(
             self._shadow_session,
             drives=self._core_drives,
@@ -803,6 +805,7 @@ class ChargingController:
 
     async def _restore_locked(self) -> None:
         saved = await self._store.async_load()
+        self._record_saved = dict(saved) if isinstance(saved, dict) else None
         if saved:
             if saved.get("plan"):
                 # Never a plain `ChargingPlan(**record)`: the record carries ownership, so it goes
@@ -3403,6 +3406,7 @@ class ChargingController:
         elif self._core_drives and self._session_saved is not None:
             # Unreadable now: the record saved last is kept, not dropped.
             record[SESSION_STORE_KEY] = self._session_saved.to_store()
+        self._record_saved = record
         await self._store.async_save(record)
         self._saved_memory = signature
         if session is not None:
@@ -3482,46 +3486,40 @@ class ChargingController:
             return None, True
 
     def _persist_session(self, session: ChargeSession) -> None:
-        """The core decided (`OwnershipShadow`, only when it drives): a session whose stored record changed is saved
-        once, `SESSION_SAVE_DELAY_S` later, with whatever else changed by then. A report that changes nothing stored
-        writes nothing, and many changes in a row are one save."""
-        if not self._restored or self._shut_down or self._session_save_cancel is not None:
+        """The core decided (`OwnershipShadow`, only when it drives). A session whose stored record changed is saved
+        by the first decision at least `SESSION_SAVE_DELAY_S` after the change (with whatever else changed by then),
+        by a save of today's keys, or at shutdown: a report that changes nothing stored writes nothing, and many
+        changes in a row are one save."""
+        if not self._restored or self._shut_down:
             return
         if session.stored() == self._session_saved:
+            self._session_dirty_since = None
             return
-        self._session_save_cancel = async_call_later(
-            self.hass, SESSION_SAVE_DELAY_S, HassJob(self._session_save_callback, cancel_on_shutdown=True)
-        )
+        now = dt_util.utcnow()
+        since = self._session_dirty_since
+        if since is None:
+            self._session_dirty_since = now
+        elif (now - since).total_seconds() >= SESSION_SAVE_DELAY_S:
+            self._session_dirty_since = None
+            self.hass.async_create_task(self._async_save_session())
 
     def _cancel_session_save(self) -> bool:
-        """Cancel a debounced save of the core's session; whether one was waiting."""
-        cancel = self._session_save_cancel
-        self._session_save_cancel = None
-        if cancel is None:
-            return False
-        cancel()
-        return True
-
-    @callback
-    def _session_save_callback(self, _now: datetime) -> None:
-        self._session_save_cancel = None
-        self.hass.async_create_task(self._async_save_session_locked())
-
-    async def _async_save_session_locked(self) -> None:
-        async with self._lock:
-            if not self._shut_down:
-                await self._async_save_session()
+        """Forget a change of the core's session still waiting to be saved; whether one was waiting."""
+        waiting = self._session_dirty_since is not None
+        self._session_dirty_since = None
+        return waiting
 
     async def _async_save_session(self) -> None:
-        """Write the core's session record alone, when it changed: today's keys stay as they were last saved (each
-        of today's own saves writes them, with the record as it is then). The operation lock is held."""
+        """Write the core's session record alone, when it changed: today's keys go as they were last written or read
+        back (each of today's own saves writes them, with the record as it is then). Prepared at once and never
+        behind the operation lock, so it delays no decision; a save of today's keys after it writes both again."""
         session = self._session_record()
         if session is None or session[0] == self._session_saved:
             return
+        base = self._record_saved if self._record_saved is not None else self._store_record()
+        record = {**base, SESSION_STORE_KEY: session[1]}
+        self._record_saved = record
         try:
-            saved = await self._store.async_load()
-            record = dict(saved) if isinstance(saved, dict) else self._store_record()
-            record[SESSION_STORE_KEY] = session[1]
             await self._store.async_save(record)
         except Exception as err:  # noqa: BLE001 - the record is a safeguard, never a reason to fail
             _LOGGER.warning("Saving the SpotNav charge session failed: %s", type(err).__name__)
