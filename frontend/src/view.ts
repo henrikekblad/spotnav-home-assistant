@@ -2,9 +2,17 @@
 
 import { CARD_TYPE, type ChargerList, type ChargerSummary } from "./types";
 
+/** How the price chart first shows: the full chart, or the slim 24-hour strip of charging periods. */
+export type ChartPresentation = "full" | "compact";
+
 export interface CardConfig {
   type: string;
   charger: string;
+  /**
+   * The chart's default when this browser has stored no choice for the charger; absent when the YAML
+   * does not set it, so a config round-trips unchanged.
+   */
+  chart?: ChartPresentation;
 }
 
 /**
@@ -36,25 +44,32 @@ export function parseCardConfig(config: unknown): CardConfig {
   }
   if (
     Object.keys(candidate).some(
-      (key) => key !== "type" && key !== "charger" && !HOME_ASSISTANT_CARD_KEYS.has(key),
+      (key) =>
+        key !== "type" && key !== "charger" && key !== "chart" && !HOME_ASSISTANT_CARD_KEYS.has(key),
     )
   ) {
-    throw new Error("SpotNav card: only the type and charger options are supported");
+    throw new Error("SpotNav card: only the type, charger and chart options are supported");
   }
+  const chart = candidate.chart;
+  if (chart !== undefined && chart !== "full" && chart !== "compact") {
+    throw new Error('SpotNav card: chart must be "full" or "compact"');
+  }
+  const presentation = chart === undefined ? {} : { chart };
   const charger = candidate.charger;
   if (charger === undefined || charger === "") {
-    return { type: `custom:${CARD_TYPE}`, charger: "" };
+    return { type: `custom:${CARD_TYPE}`, charger: "", ...presentation };
   }
   if (typeof charger !== "string" || charger.trim() === "" || charger.trim() !== charger) {
     throw new Error(
       "SpotNav card: charger must be a config entry id, with no surrounding whitespace",
     );
   }
-  return { type: `custom:${CARD_TYPE}`, charger };
+  return { type: `custom:${CARD_TYPE}`, charger, ...presentation };
 }
 
-export function editorConfig(chargerId: string): CardConfig {
-  return { type: `custom:${CARD_TYPE}`, charger: chargerId };
+/** The config the editor emits: the chosen charger, keeping a chart option the YAML already set. */
+export function editorConfig(chargerId: string, chart?: ChartPresentation): CardConfig {
+  return { type: `custom:${CARD_TYPE}`, charger: chargerId, ...(chart === undefined ? {} : { chart }) };
 }
 
 export interface ChargerOption {

@@ -31,10 +31,10 @@ describe("configuration", () => {
   it("refuses an unknown option instead of ignoring it", () => {
     expect(() =>
       parseCardConfig({ type: "custom:spotnav-card", charger: "entry_a", theme: "dark" }),
-    ).toThrow(/only the type and charger/);
+    ).toThrow(/only the type, charger and chart options/);
     expect(() =>
       parseCardConfig({ type: "custom:spotnav-card", charger: "entry_a", amps: 16 }),
-    ).toThrow(/only the type and charger/);
+    ).toThrow(/only the type, charger and chart options/);
   });
 
   it("requires a real id: no whitespace-only, and no silent trimming", () => {
@@ -51,6 +51,33 @@ describe("configuration", () => {
     expect(parseCardConfig({ type: "custom:spotnav-card", charger: "entry a" }).charger).toBe(
       "entry a",
     );
+  });
+
+  it("takes the chart option as the collapsed or full default, and refuses any other value", () => {
+    expect(parseCardConfig({ type: "custom:spotnav-card", charger: "entry_a", chart: "compact" })).toEqual({
+      type: "custom:spotnav-card",
+      charger: "entry_a",
+      chart: "compact",
+    });
+    expect(parseCardConfig({ type: "custom:spotnav-card", charger: "entry_a", chart: "full" }).chart).toBe("full");
+    // Without the option the key is absent, so a stored config round-trips unchanged.
+    expect("chart" in parseCardConfig({ type: "custom:spotnav-card", charger: "entry_a" })).toBe(false);
+    for (const value of ["collapsed", "Compact", true, 1, null, ""]) {
+      expect(() =>
+        parseCardConfig({ type: "custom:spotnav-card", charger: "entry_a", chart: value }),
+      ).toThrow(/chart must be "full" or "compact"/);
+    }
+    expect(() =>
+      parseCardConfig({ type: "custom:spotnav-card", charger: "entry_a", chart_collapsed: true }),
+    ).toThrow(/only the type, charger and chart options/);
+  });
+
+  it("keeps the chart option when the editor changes the charger", () => {
+    expect(editorConfig("entry_b", "compact")).toEqual({
+      type: "custom:spotnav-card",
+      charger: "entry_b",
+      chart: "compact",
+    });
   });
 
   it("emits exactly the type and charger keys", () => {
