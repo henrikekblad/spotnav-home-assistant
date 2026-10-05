@@ -34,7 +34,6 @@ const FORBIDDEN = [
   "sensnology",
   "spotnav.sensnology.se",
   "/v1/",
-  "localStorage",
   "sessionStorage",
   "session_storage",
   "webhook",
@@ -60,6 +59,12 @@ describe("the committed asset", () => {
 
   it.each(FORBIDDEN)("does not mention %s", (needle) => {
     expect(SOURCE).not.toContain(needle);
+  });
+
+  it("reaches browser storage once, for the chart's remembered collapsed state only", () => {
+    // The one guarded read of `localStorage` in chart-preference.ts; nothing else in the bundle names it.
+    expect(SOURCE.split("localStorage").length - 1).toBe(1);
+    expect(SOURCE).toContain("spotnav-card.chart.");
   });
 
   it("identifies itself with the integration version it was built from", () => {

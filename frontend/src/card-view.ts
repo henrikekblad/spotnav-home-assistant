@@ -18,6 +18,7 @@ import {
   type ChartSize,
 } from "./chart-interaction";
 import { applyFocus, chartHeightForWidth, renderChart, type ChartLabels } from "./chart-render";
+import { stripBarPlacement, stripBars, stripNowPosition, stripTicks } from "./chart-strip";
 import { createDialog, type DialogHandle } from "./dialog";
 import { notificationsEditorBody, notificationsSummary } from "./notifications";
 import { clock, formatFixed, formatNumber, hasZone, percentAmount, pricePerKwh, wallTimeRepeats, weekdayDate } from "./format";
@@ -86,6 +87,10 @@ export interface CardViewInput {
   observe?: (host: HTMLElement, onResize: () => void) => ChartObserverLike | null;
   setTimer?: (callback: () => void, delayMs: number) => number;
   clearTimer?: (handle: number) => void;
+  /** Start with the chart collapsed to its 24-hour strip (the card's remembered or configured choice). */
+  chartCollapsed?: boolean;
+  /** The price row was pressed and the chart collapsed (`true`) or expanded; the card remembers it. */
+  onChartCollapsedChange?: (collapsed: boolean) => void;
   /**
    * What the row does when a person acts: the card owns the request, the guard and the refresh; the
    * view only reports the click with the backend-supplied choice.
@@ -1098,6 +1103,7 @@ export function createCardView(input: CardViewInput): CardView {
   // viewport is also exactly the box the chart is measured and drawn for.
   const graph = element(doc, "section", C.graphSurface);
   const viewport = element(doc, "div", C.viewport);
+  viewport.id = `${idPrefix}-chart`;
   viewport.tabIndex = 0;
   viewport.setAttribute("role", "img");
   viewport.setAttribute("aria-labelledby", `${idPrefix}-chart-title`);
@@ -1207,7 +1213,53 @@ export function createCardView(input: CardViewInput): CardView {
     // The viewport's height is the policy's answer for the measured width, so the box, viewBox and CSS viewport agree 1:1.
     viewport.style.height = `${chartHeightForWidth(size.width)}px`;
     viewport.append(result.element);
+    paintStrip();
     publish();
+  }
+
+  /**
+   * The collapsed chart's strip, from the same bands, now fact and axis as the chart. Decorative for
+   * assistive technology: the period list below carries the whole schedule in words.
+   */
+  const strip = element(doc, "div", C.strip);
+  strip.id = `${idPrefix}-strip`;
+  strip.setAttribute("aria-hidden", "true");
+  const stripArea = element(doc, "div", C.stripArea);
+  const stripTrack = element(doc, "div", C.stripTrack);
+  const stripNow = element(doc, "span", C.stripNow);
+  const stripLabels = element(doc, "div", C.stripLabels);
+  stripArea.append(stripTrack, stripNow);
+  strip.append(stripArea, stripLabels);
+
+  function paintStrip(): void {
+    const at = now();
+    stripTrack.replaceChildren(
+      ...stripBars(model.bands, at).map((bar) => {
+        const node = element(doc, "span", C.stripBar);
+        node.dataset["kind"] = bar.kind;
+        node.dataset["past"] = bar.past ? "true" : "false";
+        const place = stripBarPlacement(bar);
+        if (place.left !== null) {
+          node.style.left = place.left;
+        }
+        if (place.right !== null) {
+          node.style.right = place.right;
+        }
+        node.style.width = place.width;
+        node.style.minWidth = place.minWidth;
+        return node;
+      }),
+    );
+    const position = stripNowPosition(nowState, at);
+    stripNow.hidden = position === null;
+    stripNow.style.left = position === null ? "" : `${position * 100}%`;
+    stripLabels.replaceChildren(
+      ...stripTicks(model.chart).map((tick) => {
+        const label = element(doc, "span", C.stripLabel, tick.label);
+        label.style.left = `${tick.position * 100}%`;
+        return label;
+      }),
+    );
   }
 
   /** Hand the drawn geometry to the controller: the one geometry, never a recomputed second one. */
@@ -1287,9 +1339,47 @@ export function createCardView(input: CardViewInput): CardView {
   const currentValue = element(doc, "span", C.summaryCurrent, currentText ?? "");
   currentValue.hidden = currentText === null;
   nowValue = currentValue;
-  summary.append(summaryExtremes, currentValue);
+  // The whole price row is the chart's toggle: a small chevron at its right end, always present so the
+  // row's text never moves, and the action in words for assistive technology.
+  const toggle = element(doc, "span", C.chartToggle);
+  const toggleGlyph = element(doc, "span", C.chartToggleGlyph);
+  toggleGlyph.setAttribute("aria-hidden", "true");
+  const toggleWords = element(doc, "span", C.visuallyHidden);
+  toggle.append(toggleGlyph, toggleWords);
+  summary.append(summaryExtremes, currentValue, toggle);
+  summary.setAttribute("role", "button");
+  summary.tabIndex = 0;
+  summary.setAttribute("aria-controls", `${viewport.id} ${strip.id}`);
 
-  graph.append(summary, viewport, readout, hint, legend);
+  let collapsed = input.chartCollapsed === true;
+  function applyCollapsed(): void {
+    summary.setAttribute("aria-expanded", collapsed ? "false" : "true");
+    toggleGlyph.textContent = collapsed ? "\u02c5" : "\u02c4";
+    toggleWords.textContent = translate(model.language, collapsed ? "graph.toggle.show" : "graph.toggle.hide");
+    viewport.hidden = collapsed;
+    readout.hidden = collapsed;
+    hint.hidden = collapsed;
+    legend.hidden = collapsed;
+    strip.hidden = !collapsed;
+  }
+  function toggleChart(): void {
+    collapsed = !collapsed;
+    // A selection belongs to the chart that showed it; either way the reader starts from the now line.
+    interaction?.select(null);
+    applyCollapsed();
+    input.onChartCollapsedChange?.(collapsed);
+  }
+  summary.addEventListener("click", toggleChart);
+  summary.addEventListener("keydown", (event) => {
+    if (event.key === "Enter" || event.key === " ") {
+      event.preventDefault();
+      toggleChart();
+    }
+  });
+  applyCollapsed();
+  paintStrip();
+
+  graph.append(summary, viewport, readout, strip, hint, legend);
   card.append(graph);
 
   interaction = createChartInteraction({

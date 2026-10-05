@@ -3,7 +3,7 @@
 // Every case here drives public element behaviour -- mounting, `hass`, config, the visible actions and
 // the timer -- with fake timers and deferred promises. No sleeps, no private fields, no second model.
 
-import { readFileSync } from "node:fs";
+import { readdirSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -535,7 +535,6 @@ describe("12-13. hostile input and the audits", () => {
     const forbidden = [
       "callService",
       "execute_script",
-      "localStorage",
       "sessionStorage",
       "webhook",
       "pairing",
@@ -563,6 +562,12 @@ describe("12-13. hostile input and the audits", () => {
     for (const entry of forbidden) {
       expect(bundleCode.includes(entry), `bundle contains ${entry}`).toBe(false);
     }
+    // Browser storage only for the chart's remembered collapsed state: one module names it, once.
+    const storageUsers = readdirSync(resolve(__dirname, "../src"))
+      .filter((name) => name.endsWith(".ts"))
+      .filter((name) => stripComments(readFileSync(resolve(__dirname, "../src", name), "utf8")).includes("localStorage"));
+    expect(storageUsers).toEqual(["chart-preference.ts"]);
+    expect(bundle.split("localStorage").length - 1).toBe(1);
     // The one backend operation, and only it: the element calls the API helper for the one version
     // it speaks, and the compiled bundle carries exactly that one command.
     expect(sources[0]).toContain("getDashboard(hass, charger, API_VERSION)");

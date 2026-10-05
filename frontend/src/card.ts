@@ -127,6 +127,7 @@ import {
 } from "./types";
 import { decodeDashboard, type Dashboard, type Soc, type Vehicle } from "./validate";
 import { parseCardConfig, type CardConfig } from "./view";
+import { browserStore, initialChartCollapsed, readChartCollapsed, writeChartCollapsed } from "./chart-preference";
 import { VISUAL_CLASSES, VISUAL_STYLES } from "./visual-styles";
 
 /** One bounded refresh cycle; the retry action exists because a timer alone is not a promise. */
@@ -236,6 +237,11 @@ export class SpotnavCard extends HTMLElement {
   private confirmReadFailed = false;
   private deferredRefresh = false;
   private readonly idPrefix: string;
+  /**
+   * The chart choice made in this card since its config was set: it holds across the view rebuilt on
+   * every refresh even where the browser cannot store it. `null` defers to storage, then the YAML.
+   */
+  private chartCollapsed: boolean | null = null;
 
   constructor() {
     super();
@@ -246,6 +252,7 @@ export class SpotnavCard extends HTMLElement {
 
   setConfig(config: unknown): void {
     this.config = parseCardConfig(config);
+    this.chartCollapsed = null;
     this.generation += 1;
     this.attempt += 1;
     this.inFlight = null;
@@ -1992,6 +1999,18 @@ export class SpotnavCard extends HTMLElement {
    * current view has a dialog open, the render is deferred and applied from `onDialogsClosed`. `force` is
    * for a config change only, where a new charger identity has no dialog worth preserving.
    */
+  /** Collapsed or full: this card's own choice, else this browser's for the charger, else the YAML option. */
+  private chartCollapsedNow(): boolean {
+    if (this.chartCollapsed !== null) {
+      return this.chartCollapsed;
+    }
+    const config = this.config;
+    if (config === null || config.charger === "") {
+      return false;
+    }
+    return initialChartCollapsed(readChartCollapsed(browserStore, config.charger), config.chart);
+  }
+
   private render(options: { force?: boolean } = {}): void {
     if (options.force !== true && this.view !== null && this.view.anyDialogOpen()) {
       this.renderPending = true;
@@ -2016,6 +2035,13 @@ export class SpotnavCard extends HTMLElement {
         }),
         mount: host,
         idPrefix: this.idPrefix,
+        chartCollapsed: this.chartCollapsedNow(),
+        onChartCollapsedChange: (collapsed) => {
+          this.chartCollapsed = collapsed;
+          if (this.config !== null && this.config.charger !== "") {
+            writeChartCollapsed(browserStore, this.config.charger, collapsed);
+          }
+        },
         onAction: (action, choice) => {
           void this.performAction(action, choice);
         },

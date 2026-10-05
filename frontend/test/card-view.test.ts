@@ -284,8 +284,11 @@ describe("the graph and its readout", () => {
     expect(description).toContain("Price graph from");
     expect(description).toContain("Nothing selected.");
     expect(description).toContain("Arrow keys move from interval to interval");
-    // One tab stop for the whole graph, not one per price.
-    expect(root.querySelectorAll("[tabindex='0']").length).toBe(1);
+    // One tab stop for the whole graph, not one per price; the price row above it is the chart's toggle.
+    expect(Array.from(root.querySelectorAll("[tabindex='0']")).map((node) => node.className)).toEqual([
+      VISUAL_CLASSES.summary,
+      VISUAL_CLASSES.viewport,
+    ]);
     card.destroy();
   });
 
@@ -423,8 +426,9 @@ describe("the removed visible prose stays removed, and stays accessible", () => 
     expect(max?.getAttribute("aria-label")).toBe("Max 400 öre/kWh");
     expect(min?.getAttribute("aria-label")).toBe("Min 100 öre/kWh");
     expect(current?.textContent).toContain("Now");
-    // Current sits last, at the right of the overlay's own flex row.
-    expect(summary?.lastElementChild).toBe(current);
+    // Current sits last among the figures, at the right of the row, followed only by the chart toggle's chevron.
+    expect(summary?.lastElementChild?.className).toBe(VISUAL_CLASSES.chartToggle);
+    expect(summary?.lastElementChild?.previousElementSibling).toBe(current);
     // Decorative up/down glyphs, hidden from assistive technology -- the words carry the meaning.
     expect(max?.querySelector(`.${VISUAL_CLASSES.summaryArrow}`)?.getAttribute("aria-hidden")).toBe("true");
     expect(min?.querySelector(`.${VISUAL_CLASSES.summaryArrow}`)?.getAttribute("aria-hidden")).toBe("true");
@@ -827,8 +831,11 @@ describe("the live region, the measured box and one modal at a time", () => {
       expect(image?.contains(node as Node), "not an image descendant").toBe(false);
     }
     expect(readout?.getAttribute("aria-live")).toBe("polite");
-    // Exactly one tab stop in the card, and the SVG itself is not one.
-    expect(root.querySelectorAll("[tabindex='0']").length).toBe(1);
+    // Exactly one tab stop for the chart besides the price row that toggles it, and the SVG itself is not one.
+    expect(Array.from(root.querySelectorAll("[tabindex='0']")).map((node) => node.className)).toEqual([
+      VISUAL_CLASSES.summary,
+      VISUAL_CLASSES.viewport,
+    ]);
     expect(root.querySelectorAll("svg[tabindex]").length).toBe(0);
     expect(image?.querySelector(`.${VISUAL_CLASSES.readout}`)).toBeNull();
     card.destroy();

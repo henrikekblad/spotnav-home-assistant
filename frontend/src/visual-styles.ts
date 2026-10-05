@@ -83,6 +83,15 @@ export const VISUAL_CLASSES = {
   summaryMin: "spotnav-summary-min",
   summaryCurrent: "spotnav-summary-current",
   summaryArrow: "spotnav-summary-arrow",
+  chartToggle: "spotnav-chart-toggle",
+  chartToggleGlyph: "spotnav-chart-toggle-glyph",
+  strip: "spotnav-strip",
+  stripArea: "spotnav-strip-area",
+  stripTrack: "spotnav-strip-track",
+  stripBar: "spotnav-strip-bar",
+  stripNow: "spotnav-strip-now",
+  stripLabels: "spotnav-strip-labels",
+  stripLabel: "spotnav-strip-label",
   settingsIcon: "spotnav-settings-icon",
   settingsValue: "spotnav-settings-value",
   settingsValueLong: "spotnav-settings-value-long",
@@ -1117,7 +1126,17 @@ export const VISUAL_STYLES = `
   .${VISUAL_CLASSES.summaryMin} {
     color: var(--spotnav-cheap, #2e7d32);
   }
+  .${VISUAL_CLASSES.summary}[role="button"] {
+    cursor: pointer;
+    border-radius: 4px;
+  }
+  .${VISUAL_CLASSES.summary}[role="button"]:focus-visible {
+    outline: 2px solid var(--primary-color, #03a9f4);
+    outline-offset: 2px;
+  }
   .${VISUAL_CLASSES.summaryCurrent} {
+    /* Pushed right with the chevron after it; the chevron is always there, so toggling moves nothing. */
+    margin-left: auto;
     flex: 0 1 auto;
     min-width: 0;
     overflow: hidden;
@@ -1127,6 +1146,87 @@ export const VISUAL_STYLES = `
   }
   .${VISUAL_CLASSES.summaryArrow} {
     display: inline-block;
+  }
+  .${VISUAL_CLASSES.chartToggle} {
+    flex: none;
+    display: inline-block;
+    width: 1em;
+    text-align: center;
+    color: var(--secondary-text-color, #727272);
+  }
+  .${VISUAL_CLASSES.chartToggleGlyph} {
+    display: inline-block;
+    width: 1em;
+  }
+  .${VISUAL_CLASSES.viewport}[hidden],
+  .${VISUAL_CLASSES.strip}[hidden] {
+    display: none;
+  }
+  /*
+   * The collapsed chart: a slim rounded track spanning the chart's own 24-hour axis, the plan's periods
+   * as bars in the primary colour (the ones already over dimmed), the now line as the chart draws it, and
+   * the hour labels in the chart's label style.
+   */
+  .${VISUAL_CLASSES.strip} {
+    margin: 6px 0 0;
+    padding: 0 2px;
+  }
+  .${VISUAL_CLASSES.stripArea} {
+    position: relative;
+    padding: 3px 0;
+  }
+  .${VISUAL_CLASSES.stripTrack} {
+    position: relative;
+    height: 0.7rem;
+    overflow: hidden;
+    border-radius: 0.35rem;
+    background: var(--secondary-background-color, #e5e5e5);
+  }
+  .${VISUAL_CLASSES.stripBar} {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    border-radius: 2px;
+    background: var(--primary-color, #03a9f4);
+  }
+  .${VISUAL_CLASSES.stripBar}[data-past="true"] {
+    opacity: 0.4;
+  }
+  .${VISUAL_CLASSES.stripNow} {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    width: 0;
+    margin-left: -1px;
+    border-left: 2px solid ${focusLineColour("now")};
+  }
+  .${VISUAL_CLASSES.stripLabels} {
+    position: relative;
+    height: 1.3em;
+    margin-top: 2px;
+    color: var(--secondary-text-color, #727272);
+    font-size: 11px;
+    line-height: 1.3;
+    font-variant-numeric: tabular-nums;
+  }
+  .${VISUAL_CLASSES.stripLabel} {
+    position: absolute;
+    top: 0;
+    transform: translateX(-50%);
+  }
+  .${VISUAL_CLASSES.stripLabel}:first-child {
+    transform: none;
+  }
+  .${VISUAL_CLASSES.stripLabel}:last-child {
+    transform: translateX(-100%);
+  }
+  @media (forced-colors: active) {
+    .${VISUAL_CLASSES.stripNow} {
+      border-left-color: CanvasText;
+    }
+    .${VISUAL_CLASSES.stripBar} {
+      background: Highlight;
+    }
   }
   /* The Settings popover's sections: one bordered block per topic. */
   .${VISUAL_CLASSES.settingsSection} {

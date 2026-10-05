@@ -387,6 +387,8 @@ export const sv: Record<keyof typeof en, string> = {
   "graph.priceAxis": "Pris, {unit} per kWh",
   "graph.noZone": "Tider är inte tillgängliga: integrationen har inte rapporterat någon marknadszon för den här laddaren.",
   "graph.hint": "Använd piltangenterna för att stega genom intervallen.",
+  "graph.toggle.show": "Visa prisgrafen",
+  "graph.toggle.hide": "Dölj prisgrafen",
   "graph.keyboardInstructions":
     "Prisgraf. Piltangenterna flyttar mellan intervall, Home och End hoppar till ändarna, Escape rensar valet.",
   "plan.proposal.one": "Billigaste laddperioden ({count})",

@@ -2,7 +2,7 @@
 //
 // Choices come from `spotnav/list_chargers`. A configured id the backend no longer offers is kept
 // as an explicit unresolved choice, and the emitted config-changed event carries exactly
-// `{config: {type, charger}}`, the shape Home Assistant reads (`ev.detail.config`). Everything
+// `{config: {type, charger}}` (plus `chart` when the YAML set it), the shape Home Assistant reads (`ev.detail.config`). Everything
 // dynamic goes into the DOM as text or properties, failures are one static sentence, and a
 // rejection's text is never shown.
 //
@@ -128,7 +128,7 @@ export class SpotnavCardEditor extends HTMLElement {
     }
     const only = stubChargerId(this.list);
     if (only !== null) {
-      this.config = editorConfig(only);
+      this.config = editorConfig(only, this.config.chart);
       this.render();
       this.emit(only);
     }
@@ -138,7 +138,7 @@ export class SpotnavCardEditor extends HTMLElement {
     this.dispatchEvent(
       new CustomEvent("config-changed", {
         // Home Assistant's card editor reads `ev.detail.config`.
-        detail: { config: editorConfig(chargerId) },
+        detail: { config: editorConfig(chargerId, this.config.chart) },
         bubbles: true,
         composed: true,
       }),
@@ -171,7 +171,7 @@ export class SpotnavCardEditor extends HTMLElement {
       select.append(item);
     }
     select.addEventListener("change", () => {
-      this.config = editorConfig(select.value);
+      this.config = editorConfig(select.value, this.config.chart);
       this.emit(this.config.charger);
       this.render();
     });

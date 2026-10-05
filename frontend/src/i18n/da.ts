@@ -387,6 +387,8 @@ export const da: Record<keyof typeof en, string> = {
   "graph.priceAxis": "Pris, {unit} per kWh",
   "graph.noZone": "Tider er ikke tilgængelige: integrationen har ikke rapporteret en markedszone for denne lader.",
   "graph.hint": "Brug piletasterne til at gå gennem intervallerne.",
+  "graph.toggle.show": "Vis prisgrafen",
+  "graph.toggle.hide": "Skjul prisgrafen",
   "graph.keyboardInstructions":
     "Prisgraf. Piletasterne flytter mellem intervaller, Home og End springer til enderne, Escape rydder valget.",
   "plan.proposal.one": "Billigste ladeperiode ({count})",
