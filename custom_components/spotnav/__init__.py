@@ -149,6 +149,9 @@ async def _async_stop(hass: HomeAssistant, _event: Event | None = None) -> None:
         if data.executor is not None:
             await data.executor.async_shutdown()
     for data in loaded:
+        # No entry is unloaded, so no controller's shutdown saves what the charge-ownership core still has unsaved.
+        await data.controller.async_flush_session()
+    for data in loaded:
         if data.preview is not None:
             await data.preview.async_shutdown()
     manager = domain_data(hass).price_refresh
@@ -240,6 +243,11 @@ async def _async_setup_charger_entry(hass: HomeAssistant, entry: ChargerConfigEn
                 (state := solar_execution_state(hass, entry.entry_id)) is not None
                 and state.state in ("on", "arming", "disarming")
             )
+        )
+        # The same guard's sun's part on its own, for the charge-ownership core's shadow (which decides the pause's).
+        controller.set_solar_hold_probe(
+            lambda: (state := solar_execution_state(hass, entry.entry_id)) is not None
+            and state.state in ("on", "arming", "disarming")
         )
         if price_manager is not None:
             await _async_setup_auto_preview(hass, entry, data, settings_store, price_manager)

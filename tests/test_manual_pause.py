@@ -60,6 +60,7 @@ async def test_a_stop_pauses_auto_for_the_plug_in_and_clears_its_plan(hass: Home
     await world.shutdown()
 
 
+@pytest.mark.usefixtures("both_restarts")
 async def test_a_stop_survives_a_restart_inside_the_window(
     hass: HomeAssistant, timers: FakeScheduler
 ) -> None:
@@ -92,6 +93,7 @@ async def test_an_unplug_ends_a_stop(hass: HomeAssistant, timers: FakeScheduler)
     await world.shutdown()
 
 
+@pytest.mark.usefixtures("both_restarts")
 async def test_a_stop_without_a_car_holds_through_the_next_plug_in_and_ends_at_its_unplug(
     hass: HomeAssistant, timers: FakeScheduler
 ) -> None:
@@ -112,6 +114,7 @@ async def test_a_stop_without_a_car_holds_through_the_next_plug_in_and_ends_at_i
     await restarted.shutdown()
 
 
+@pytest.mark.usefixtures("both_restarts")
 async def test_a_stop_without_a_car_survives_a_restart_before_the_plug_in(
     hass: HomeAssistant, timers: FakeScheduler
 ) -> None:
@@ -125,6 +128,7 @@ async def test_a_stop_without_a_car_survives_a_restart_before_the_plug_in(
     await restarted.shutdown()
 
 
+@pytest.mark.usefixtures("both_restarts")
 async def test_a_car_unplugged_while_home_assistant_was_down_ends_a_stop(
     hass: HomeAssistant, timers: FakeScheduler
 ) -> None:
@@ -226,6 +230,7 @@ async def test_an_unplug_ends_a_start(hass: HomeAssistant, timers: FakeScheduler
     await world.shutdown()
 
 
+@pytest.mark.usefixtures("both_restarts")
 async def test_a_start_survives_a_restart(hass: HomeAssistant, timers: FakeScheduler) -> None:
     world = await pause_world(hass, timers)
     await world.executor.async_manual_start()
@@ -239,6 +244,7 @@ async def test_a_start_survives_a_restart(hass: HomeAssistant, timers: FakeSched
     await restarted.shutdown()
 
 
+@pytest.mark.usefixtures("both_restarts")
 async def test_a_full_car_ends_a_start_and_the_open_window_is_not_started_again(
     hass: HomeAssistant, timers: FakeScheduler, freezer
 ) -> None:
@@ -274,6 +280,7 @@ async def test_a_full_car_ends_a_start_and_the_open_window_is_not_started_again(
     await restarted.shutdown()
 
 
+@pytest.mark.usefixtures("both_restarts")
 async def test_a_car_known_full_after_it_ended_a_start_is_not_started_by_a_later_window(
     hass: HomeAssistant, timers: FakeScheduler, freezer
 ) -> None:
@@ -500,6 +507,7 @@ async def test_under_a_manual_pause_nothing_is_expected_to_charge(hass: HomeAssi
     await world.shutdown()
 
 
+@pytest.mark.usefixtures("both_restarts")
 async def test_a_stored_person_stop_of_an_older_release_becomes_a_manual_pause(
     hass: HomeAssistant, timers: FakeScheduler
 ) -> None:

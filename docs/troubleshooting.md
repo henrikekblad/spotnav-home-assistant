@@ -12,7 +12,7 @@ decisions. The webhook id and OCPP charge point id are redacted, and no webhook 
 included, so the file is safe to attach to a public bug report.
 
 The site entry's file (and the card's **Download debug info** in Settings, Support, for
-administrators) also carries the whole installation as one debug bundle (`bundle_version` 4):
+administrators) also carries the whole installation as one debug bundle (`bundle_version` 5):
 
 - `history_60min` per site: the last hour, one sample a minute kept in memory (nothing is read from
   the recorder). Each sample has the grid's total power, the site's current per phase, the house
@@ -88,6 +88,9 @@ charging start*, *Planned cost* and *Auto settings revision*. On a site: *Capaci
   installed; check *Auto execution state* and whether automatic charging is paused.
 - **Prices are stale or missing.** Prices come from the public SpotNav Relay. If the relay is unreachable, the last successful
   fetch is used and the card says the prices are stale. No token or account is involved.
+- **Trying the new charge-ownership logic (experimental, off by default).** With Home Assistant stopped, add
+  `"core_ownership": true` to the charger entry's `data` in `.storage/core.config_entries` and start it again; remove
+  the key the same way to go back. No card or setup step sets it.
 
 ## Vehicles
 

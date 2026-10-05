@@ -27,6 +27,7 @@ def _manual(world: Any) -> tuple[str | None, str | None, str | None]:
     return pause.choice, pause.action, pause.scope
 
 
+@pytest.mark.usefixtures("both_restarts")
 async def test_r1_stop_without_car_plug_in_during_restart_ends_at_the_unplug_after_it(
     hass: HomeAssistant, timers: FakeScheduler
 ) -> None:
@@ -87,6 +88,7 @@ async def test_r3_a_stop_that_cannot_store_its_pause_still_stops_the_charger(
     await world.shutdown()
 
 
+@pytest.mark.usefixtures("both_restarts")
 async def test_r4_legacy_person_stopped_with_an_open_window_does_not_start_at_upgrade(
     hass: HomeAssistant, timers: FakeScheduler
 ) -> None:

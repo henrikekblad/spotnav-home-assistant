@@ -162,6 +162,141 @@ def loop_callback_guard(monkeypatch):
     assert not violations, "\n".join(violations)
 
 
+# --- The charge-ownership core's shadow: every test runs with it, and it must agree with today's code ---
+
+
+def pytest_configure(config):
+    """`SPOTNAV_CORE_OWNERSHIP=1` runs the whole suite with the charge-ownership core driving ownership
+    (`const.CONF_CORE_OWNERSHIP` on for every charger that does not say), step 2 of the refactor."""
+    import os
+
+    global COMMANDS
+    if os.environ.get("SPOTNAV_SHADOW_REPORT"):
+        COMMANDS = {}
+    if os.environ.get("SPOTNAV_CORE_OWNERSHIP") == "1":
+        from custom_components.spotnav.execution import ownership_shadow
+
+        ownership_shadow.CORE_OWNERSHIP_DEFAULT = True
+
+
+#: Over the whole run: events the shadow decided, comparisons, disagreements (explained or not), drifts, errors.
+SHADOW_TOTALS: dict[str, int] = {}
+#: Every drift seen (a change of today's owner or intent that no event explained), and every owner the core wrote back
+#: over today's fields when it drives, for the run's summary.
+DRIFTS: list[tuple[str, dict[str, Any]]] = []
+#: With `SPOTNAV_SHADOW_REPORT` set: every start and stop each test sent a charger, to compare the two modes.
+COMMANDS: dict[str, list[str]] | None = None
+
+
+@pytest.fixture(autouse=True)
+def ownership_shadow_agrees(request):
+    """Every test runs the charge-ownership core in shadow mode beside today's code
+    (`execution/ownership_shadow.py`) and fails on a disagreement nobody explained, on a drift nobody explained,
+    or on a shadow error.
+
+    An explained disagreement is a real difference of today's code the core does not copy, named in
+    `tests/shadow_known.py` with its event sequence; an explained drift is a test that sets today's state directly,
+    named there with what it sets. A test about the shadow itself opts out with the `shadow_disagreement_expected`
+    marker.
+    """
+    from custom_components.spotnav.execution import ownership_shadow
+
+    from .shadow_known import explain, explain_drift
+
+    seen: list[tuple[str, dict[str, Any]]] = []
+
+    def listener(kind: str, record: dict[str, Any]) -> None:
+        seen.append((kind, record))
+        if kind in ("drift", "write_back", "verdict_differs"):
+            DRIFTS.append((request.node.nodeid, {"kind": kind, **record}))
+
+    ownership_shadow.LISTENERS.append(listener)
+    commands = COMMANDS.setdefault(request.node.nodeid, []) if COMMANDS is not None else None
+    if commands is not None:
+        from custom_components.spotnav.execution.chargers import adapter as adapter_module
+
+        real_start, real_stop = adapter_module.ChargerAdapter.async_start, adapter_module.ChargerAdapter.async_stop
+
+        async def start(self, *args, **kwargs):
+            commands.append("start")
+            return await real_start(self, *args, **kwargs)
+
+        async def stop(self, *args, **kwargs):
+            commands.append("stop")
+            return await real_stop(self, *args, **kwargs)
+
+        adapter_module.ChargerAdapter.async_start, adapter_module.ChargerAdapter.async_stop = start, stop
+    try:
+        yield seen
+    finally:
+        import os
+
+        dump = os.environ.get("SPOTNAV_SHADOW_DUMP_EVENTS")
+        if dump and dump in request.node.nodeid:
+            import json
+
+            records = [list(shadow.events) for shadow in ownership_shadow.SHADOWS]
+            name = request.node.nodeid.replace("/", "_").replace("::", "__")
+            with open(os.path.join(os.environ.get("SPOTNAV_SHADOW_DUMP", "."), f"events_{name}.json"), "w") as handle:
+                json.dump(records, handle, indent=1, default=str)
+        if commands is not None:
+            adapter_module.ChargerAdapter.async_start, adapter_module.ChargerAdapter.async_stop = real_start, real_stop
+    ownership_shadow.LISTENERS.remove(listener)
+    unexplained: list[dict[str, Any]] = []
+    for kind, record in seen:
+        key = kind
+        if kind == "disagreement":
+            reason = explain(record)
+            key = "disagreement_explained" if reason else "disagreement"
+            if reason:
+                SHADOW_TOTALS[f"explained:{reason}"] = SHADOW_TOTALS.get(f"explained:{reason}", 0) + 1
+            else:
+                unexplained.append(record)
+        elif kind == "drift":
+            reason = explain_drift(request.node.originalname, record)
+            if reason:
+                SHADOW_TOTALS[f"drift_explained:{reason}"] = SHADOW_TOTALS.get(f"drift_explained:{reason}", 0) + 1
+            else:
+                unexplained.append({"drift": record})
+        elif kind == "error":
+            unexplained.append(record)
+        SHADOW_TOTALS[key] = SHADOW_TOTALS.get(key, 0) + 1
+    if request.node.get_closest_marker("shadow_disagreement_expected") is not None:
+        return
+    if unexplained:
+        import json
+        import os
+
+        dump = os.environ.get("SPOTNAV_SHADOW_DUMP")
+        if dump:
+            name = request.node.nodeid.replace("/", "_").replace("::", "__")
+            with open(os.path.join(dump, f"{name}.json"), "w", encoding="utf-8") as handle:
+                json.dump(unexplained, handle, indent=1, default=str)
+        pytest.fail(
+            "the ownership core's shadow disagrees with today's code:\n"
+            + "\n".join(json.dumps(record, default=str)[:4000] for record in unexplained[:3]),
+            pytrace=False,
+        )
+
+
+def pytest_sessionfinish(session, exitstatus):
+    """With `SPOTNAV_SHADOW_REPORT` set, write the run's shadow totals there (JSON)."""
+    import json
+    import os
+
+    from custom_components.spotnav.execution import ownership_shadow
+
+    path = os.environ.get("SPOTNAV_SHADOW_REPORT")
+    if not path:
+        return
+    worker = os.environ.get("PYTEST_XDIST_WORKER")
+    if worker:
+        path = f"{path}.{worker}"
+    totals = {**SHADOW_TOTALS, **{f"shadow_{key}": value for key, value in ownership_shadow.TOTALS.items()}}
+    with open(path, "w", encoding="utf-8") as handle:
+        json.dump({"totals": totals, "drifts": DRIFTS, "commands": COMMANDS}, handle, indent=1, sort_keys=True, default=str)
+
+
 # --- The relay seam: one fake wire, one clock, one opt-in offline installation ---
 
 
@@ -304,3 +439,14 @@ def pause_appointments(monkeypatch: pytest.MonkeyPatch) -> RecordedAppointments:
 @pytest.fixture
 def flaky(hass: HomeAssistant) -> FlakyStore:
     return FlakyStore()
+
+
+@pytest.fixture(params=["unload", "ha_stop"])
+def both_restarts(request: pytest.FixtureRequest, monkeypatch: pytest.MonkeyPatch) -> str:
+    """Runs a test whose world restarts (`pause_world.World.restart`) once after an unload and once as Home
+    Assistant's own stop, which unloads no entry (`World.ha_restart`)."""
+    from .pause_world import World
+
+    if request.param == "ha_stop":
+        monkeypatch.setattr(World, "restart", World.ha_restart)
+    return request.param
