@@ -28,6 +28,14 @@ administrators) also carries the whole installation as one debug bundle (`bundle
   `client.note`, and the card's Support section says it too: the browser or the Companion app runs an
   older card. Reload the page; in the Companion app, force-stop the app and open it again.
 
+To check a saved bundle's charge-ownership recording offline, run
+`.venv/bin/python tools/replay_bundle.py bundle.json` in the integration's repository (no Home
+Assistant needed; `--charger <name or id>` picks one charger, `--json` gives machine output). For
+each charger it prints the shadow's counts and the recorded disagreements and drift, replays the
+recorded events through today's pure core, and says whether the core now decides differently from
+the recording or from the code that ran. A charger without the `ownership_shadow` block (a bundle
+from before version 5) is reported as having nothing to replay. The exit code is 1 when a replay differs.
+
 Useful entities on each charger: *Auto plan state*, *Auto execution state*, *Next planned
 charging start*, *Planned cost* and *Auto settings revision*. On a site: *Capacity state* and one
 *Proposed current* sensor per charger.
