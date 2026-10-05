@@ -7,6 +7,7 @@ random results for every command, against the invariants the refactor is for.
 * At most one owner, and one pause at a time.
 * A charge the charger began by itself is stopped at the first reading with no surplus (I4).
 * A person's Start is never stopped by anything automatic (only by the person, or load balancing for safety).
+* A window's end stops only the plan's own charge: a person's, a Charge-now start's or the sun's goes on (I3).
 * A manual pause of the plug-in session ends at the unplug.
 * A restart (serialise, read back, restart) changes nothing about who owns the charge or what the person wants.
 
@@ -23,7 +24,15 @@ from hypothesis import HealthCheck, settings, strategies as st
 from hypothesis.stateful import invariant, rule, RuleBasedStateMachine, run_state_machine_as_test
 
 from custom_components.spotnav.core import events as ev
-from custom_components.spotnav.core.ownership import decide, Notify, Start, Stop
+from custom_components.spotnav.core.ownership import (
+    automatic_allowed,
+    decide,
+    GATE_STOP,
+    Notify,
+    Start,
+    Stop,
+    window_end_spared,
+)
 from custom_components.spotnav.core.session import ChargeSession, OWNERS, SCOPE_PLUG_IN
 
 T0 = datetime(2026, 10, 4, 22, 0, tzinfo=timezone.utc)
@@ -127,6 +136,18 @@ class OwnershipMachine(RuleBasedStateMachine):
             and not pre.paused
         ):
             assert "stop" in kinds
+        # I3: a window's end stops only the plan's own charge; a person's, a Charge-now start's or the sun's (and one
+        # load balancing holds back for them) goes on, never as a top-off, and the plan ends with no stop.
+        if isinstance(event, (ev.WindowEnd, ev.FinalWindowEnd)):
+            if window_end_spared(pre):
+                assert kinds == ["keep"] and post == pre, (event, pre, kinds)
+            elif not event.handed_off and automatic_allowed(pre, GATE_STOP):
+                topped_off = isinstance(event, ev.FinalWindowEnd) and event.top_off_wanted
+                assert ("stop" in kinds) is not topped_off, (event, pre, kinds)
+                if topped_off and pre.owner == "plan":
+                    assert post.owner == "top_off"
+            else:
+                assert "stop" not in kinds
         # C7: under a person's Stop, a charge the charger begins is stopped at once, or SpotNav says it gives up.
         if (
             isinstance(event, ev.ChargerReportedOn)

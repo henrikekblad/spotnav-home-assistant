@@ -25,6 +25,9 @@ The rules are today's, as the manual-pause specs and their three review rounds s
   the top-off, the target and need-met stops, the sun's start, stop and take-over (I4), load balancing's pause
   and resume: as `execution/controller.py` and `execution/auto_execution.py` decide them today, including the
   places the research found questionable (left as they are in step 1, see docs/architecture-state.md).
+* A window's end stops only the plan's own charge (`window_end_spared`): a person's Start, a Charge-now start
+  and the sun's charge go on, and so does one load balancing holds back for them; the last window's end then
+  ends the plan with no stop and no top-off (I3, decided in today's code and here together).
 """
 
 from __future__ import annotations
@@ -137,6 +140,10 @@ _START_OWNER: Final = {
     REASON_SOLAR: OWNER_SOLAR,
 }
 
+#: Who owns a charge a plan window's end leaves running (`controller.WINDOW_END_SPARED_ORIGINS`): a person, a
+#: Charge-now start and the sun. Never the plan, its top-off, or a charge the charger began by itself.
+WINDOW_END_SPARED: Final = frozenset({OWNER_PERSON, OWNER_CHARGE_NOW, OWNER_SOLAR})
+
 #: Today's `charge_origin` values, as owners (`None`: nobody's).
 ORIGIN_OWNER: Final = {
     "manual": OWNER_PERSON,
@@ -234,6 +241,16 @@ def self_started(session: ChargeSession, *, charging: bool, start_pending: bool,
         and not start_pending
         and not session.overridden
     )
+
+
+def window_end_spared(session: ChargeSession) -> bool:
+    """Whether a plan window's end leaves the charge running (`controller._window_end_spared_owner`): it is a
+    person's, a Charge-now start's or the sun's, or nobody runs one and load balancing holds such a charge back
+    (its regulator still gives it back)."""
+    owner = session.owner
+    if owner in (OWNER_NONE, OWNER_CHARGER_SELF) and session.balancing_paused:
+        owner = session.paused_origin
+    return owner in WINDOW_END_SPARED
 
 
 # ---------------------------------------------------------------------------------------------- decide
@@ -355,14 +372,17 @@ def _window_start(session: ChargeSession, event: WindowStart, now: datetime) -> 
 
 
 def _window_end(session: ChargeSession, event: WindowEnd, now: datetime) -> Decision:
-    if event.handed_off or not automatic_allowed(session, GATE_STOP):
+    if event.handed_off or not automatic_allowed(session, GATE_STOP) or window_end_spared(session):
+        # The sun carries it, a pause holds the stop, or the charge is not the plan's: it goes on.
         return session, ()
-    # Today's rule: any charge, whoever owns it (finding I3/bug 2, kept in step 1).
     return _stop(session, REASON_WINDOW_END)
 
 
 def _final_window_end(session: ChargeSession, event: FinalWindowEnd, now: datetime) -> Decision:
     if event.handed_off or not automatic_allowed(session, GATE_STOP):
+        return session, ()
+    if window_end_spared(session):
+        # Not the plan's charge: it goes on with no top-off, and the shell ends the plan with no stop.
         return session, ()
     if event.top_off_wanted:
         if session.owner == OWNER_PLAN:
@@ -591,8 +611,9 @@ def _balancing_resume(session: ChargeSession, event: BalancingResume, now: datet
         since = (now - session.safety_stopped_at).total_seconds()
         if 0 <= since < SAFETY_RESUME_GAP_S:
             return session, ()
-    # The charge balancing paused goes on as what it was; nobody's becomes a Charge-now start (today's cause).
-    return _start(session, REASON_BALANCING_RESUME, origin or OWNER_CHARGE_NOW, paused_origin=origin)
+    # The charge balancing paused goes on as what it was; nobody's stays nobody's (the charger's own once it is
+    # seen charging), never a Charge-now start a window's end would spare.
+    return _start(session, REASON_BALANCING_RESUME, origin or OWNER_NONE, paused_origin=origin)
 
 
 def _target_reached(session: ChargeSession, event: TargetReached, now: datetime) -> Decision:

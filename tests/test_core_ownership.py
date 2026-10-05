@@ -18,6 +18,7 @@ from custom_components.spotnav.core.ownership import (
     GATE_START,
     GATE_STOP,
     Keep,
+    KEEP,
     Notify,
     NOTIFY_CHARGER_IGNORES_STOP,
     PERSON_HOLD_MAX_STOPS,
@@ -26,6 +27,7 @@ from custom_components.spotnav.core.ownership import (
     SAFETY_RESUME_GAP_S,
     Start,
     Stop,
+    window_end_spared,
 )
 from custom_components.spotnav.core.session import (
     ChargeSession,
@@ -441,15 +443,40 @@ def test_a_balancing_pause_keeps_a_plug_in_from_starting() -> None:
     assert kinds(commands) == []
 
 
-@pytest.mark.parametrize("owner", ["plan", "solar", "charge_now", "charger_self"])
-def test_a_window_end_stops_the_charge_whoever_owns_it(owner: str) -> None:
-    """Today's rule (finding I3, kept in step 1); the hybrid hand-off and a person's Start are spared."""
-    _, commands = run(ChargeSession(owner=owner), ev.WindowEnd())
-    assert commands == (Stop("window_end", False),)
-    _, commands = run(ChargeSession(owner=owner), ev.WindowEnd(handed_off=True))
+@pytest.mark.parametrize(
+    ("session", "stops"),
+    [
+        # The plan's own charge: the window's, its top-off, one the charger began by itself, or none running.
+        (ChargeSession(owner="plan"), True),
+        (ChargeSession(owner="top_off"), True),
+        (ChargeSession(owner="charger_self"), True),
+        (ChargeSession(), True),
+        # A person's Start, a Charge-now start and the sun's charge go on (I3).
+        (ChargeSession(owner="person"), False),
+        (ChargeSession(owner="person", manual=START), False),
+        (ChargeSession(owner="charge_now"), False),
+        (ChargeSession(owner="solar"), False),
+        # Load balancing holds back a charge: it goes on when it was theirs, and stops when it was the plan's.
+        (ChargeSession(balancing_paused=True, paused_origin="person"), False),
+        (ChargeSession(balancing_paused=True, paused_origin="charge_now"), False),
+        (ChargeSession(balancing_paused=True, paused_origin="solar"), False),
+        (ChargeSession(owner="charger_self", balancing_paused=True, paused_origin="solar"), False),
+        (ChargeSession(balancing_paused=True, paused_origin="plan"), True),
+        (ChargeSession(balancing_paused=True), True),
+        # What runs owns the window's end, not what balancing held back before it.
+        (ChargeSession(owner="plan", balancing_paused=True, paused_origin="person"), True),
+        # A held-back charge is only one while balancing holds it.
+        (ChargeSession(paused_origin="person"), True),
+    ],
+)
+def test_a_window_end_stops_only_the_plans_own_charge(session: ChargeSession, stops: bool) -> None:
+    assert window_end_spared(session) is not stops
+    _, commands = run(session, ev.WindowEnd())
+    assert commands == ((Stop("window_end", False),) if stops else (KEEP,))
+    _, commands = run(session, ev.WindowEnd(handed_off=True))
     assert kinds(commands) == []
-    _, commands = run(ChargeSession(owner="person", manual=START), ev.WindowEnd())
-    assert kinds(commands) == []
+    _, commands = run(session, ev.FinalWindowEnd())
+    assert commands == ((Stop("final_window_end", True),) if stops else (KEEP,))
 
 
 def test_the_last_window_end_ends_the_plan_or_lets_the_car_top_off() -> None:
@@ -457,6 +484,28 @@ def test_the_last_window_end_ends_the_plan_or_lets_the_car_top_off() -> None:
     assert commands == (Stop("final_window_end", True),)
     session, commands = run(ChargeSession(owner="plan"), ev.FinalWindowEnd(top_off_wanted=True))
     assert session.owner == "top_off" and kinds(commands) == []
+
+
+@pytest.mark.parametrize(
+    "session",
+    [
+        ChargeSession(owner="person"),
+        ChargeSession(owner="charge_now"),
+        ChargeSession(owner="solar"),
+        ChargeSession(balancing_paused=True, paused_origin="person"),
+    ],
+)
+def test_the_last_window_end_spares_a_charge_not_the_plans_with_no_top_off(session: ChargeSession) -> None:
+    """The plan ends (the shell clears it) with no stop, and a charge someone else owns is never a top-off."""
+    after, commands = run(session, ev.FinalWindowEnd(top_off_wanted=True))
+    assert commands == (KEEP,) and after == session
+    after, commands = run(session, ev.FinalWindowEnd())
+    assert commands == (KEEP,) and after == session
+
+
+def test_a_pause_holds_the_window_ends_stop_of_a_person_start() -> None:
+    _, commands = run(ChargeSession(owner="plan", manual=START), ev.WindowEnd())
+    assert kinds(commands) == []
 
 
 # ---------------------------------------------------------------------------------------------- the re-arm and the hold
@@ -675,7 +724,9 @@ def test_a_balancing_resume_gives_the_charge_back_what_it_was() -> None:
     )
     assert session.owner == "person" and not session.balancing_paused and not session.held_for_safety
     session, _ = run(ChargeSession(balancing_paused=True), ev.BalancingResume(), ok("start", "balancing_resume"))
-    assert session.owner == "charge_now", "nobody's: today's start with no cause"
+    assert session.owner == "none", "nobody's stays nobody's, not a Charge-now start a window's end spares"
+    session, _ = run(session, ev.ChargerReportedOn(charging=True))
+    assert session.owner == "charger_self", "the charger's own once it is seen charging"
     session, _ = run(
         ChargeSession(balancing_paused=True, paused_origin="solar"),
         ev.BalancingResume(),
