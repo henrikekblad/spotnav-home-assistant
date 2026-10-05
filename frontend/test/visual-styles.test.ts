@@ -167,6 +167,13 @@ describe("accessibility and theming", () => {
       /\.spotnav-settings-track:has\(> \.spotnav-settings-full-mark:not\(\[hidden\]\)\) \{([^}]*)\}/s,
     )?.[1];
     expect(marked?.trim()).toBe("padding-bottom: 0.4rem;");
+    // The "full" word starts where the mark's line ends (1.125rem down the 1.25rem slider), so it fits in
+    // that room instead of running into the help line.
+    const word = VISUAL_STYLES.match(new RegExp(`\\.${VISUAL_CLASSES.settingsFullMark} \\{([^}]*)\}`, "s"))?.[1] ?? "";
+    expect(word).toContain("padding-top: 1.125rem");
+    const line = VISUAL_STYLES.match(/\.spotnav-settings-full-mark::before \{([^}]*)\}/s)?.[1] ?? "";
+    expect(line).toContain("top: 0.125rem");
+    expect(line).toContain("height: 1rem");
     // The note right under a slider's field sits on it; every other note keeps its own space above.
     const under = VISUAL_STYLES.match(
       /\.spotnav-settings-field:has\(> \.spotnav-settings-track\) \+ \.spotnav-settings-note \{([^}]*)\}/s,
