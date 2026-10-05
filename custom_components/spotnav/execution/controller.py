@@ -1049,6 +1049,11 @@ class ChargingController:
         self._observe_connection()
         self._top_off_tick()
         changed = self._observe_hold()
+        if self._charge_origin is not None and self._control_observation is False and not self.start_pending:
+            # Seen off with no Start of ours on its way: the charge is nobody's any more, so a later one
+            # the charger begins by itself does not inherit its owner (`_plan_charge` goes with it).
+            self._charge_origin = None
+            changed = True
         self._observe_person_hold()
         if self._charge_progress.evaluate() or changed:
             self._notify()
@@ -2139,7 +2144,8 @@ class ChargingController:
                     self._paused_charge = None
                 return False
             self._held_for_safety = False
-            if origin is not None or plan_charge:
+            # A charge the charger began by itself stays its own (no origin), not a start with no cause.
+            if (self._charge_origin, self._plan_charge) != (origin, plan_charge):
                 self._charge_origin, self._plan_charge = origin, plan_charge
                 if self._start_cause is not None and origin is not None:
                     self._start_cause = (origin, self._start_cause[1])

@@ -208,3 +208,71 @@ async def test_a_charge_the_charger_began_by_itself_unclaimed_stops_at_the_windo
     hass.states.async_set(SWITCH, "on")
     await hass.async_block_till_done()
     assert len(stops) == 2 and controller.charging and controller.hold_overridden
+
+
+async def test_a_persons_start_that_ended_leaves_no_owner_to_a_charge_the_charger_begins_again(
+    hass: HomeAssistant, freezer: Any
+) -> None:
+    """A person's Start (no Auto) ends inside the window; the charger then begins again by itself. That
+    charge is not the person's: the off report already forgot who owned the ended one, so the window
+    claims the new one and its end stops it."""
+    controller, stops = await _controller(hass, *TWO_WINDOWS)
+    assert await controller.async_start(manual=True)
+    assert controller.charge_origin == "manual"
+
+    hass.states.async_set(SWITCH, "off")
+    await hass.async_block_till_done()
+    assert controller.charge_origin is None, "the off report ends the person's ownership"
+
+    hass.states.async_set(SWITCH, "on")
+    await hass.async_block_till_done()
+    assert controller.charging and controller.charge_origin == "plan_window"
+
+    await _to(hass, freezer, _minutes(11))
+
+    assert len(stops) == 1 and not controller.charging, "not spared as the person's"
+
+
+async def test_the_off_report_forgets_the_origin_and_saves_it(hass: HomeAssistant) -> None:
+    """The cleared owner is saved, so a restart does not bring the ended charge's owner back."""
+    controller, _stops = await _controller(hass, *TWO_WINDOWS)
+    assert await controller.async_start(manual=True)
+    await hass.async_block_till_done()
+
+    hass.states.async_set(SWITCH, "off")
+    await hass.async_block_till_done()
+
+    saved = await controller._store.async_load()  # noqa: SLF001 - what a restart reads
+    assert saved["charge_origin"] is None and saved["plan_charge"] is False
+
+
+async def test_a_charge_the_charger_began_by_itself_keeps_its_own_origin_through_a_balancing_pause(
+    hass: HomeAssistant, freezer: Any
+) -> None:
+    """Load balancing pauses a charge the charger began by itself and the regulator gives it back: it is
+    still the charger's own (no origin), not `other`, so the window's end stops it as before."""
+    controller, stops = await _controller(hass, *TWO_WINDOWS)
+    hass.states.async_set(SWITCH, "off")
+    await hass.async_block_till_done()
+    controller._notify()  # noqa: SLF001 - a report that moves the status forgets the ended charge's origin
+    assert controller.charge_origin is None
+    blocked = True
+    controller.set_hold_guard(lambda: blocked)
+    hass.states.async_set(SWITCH, "on")
+    await hass.async_block_till_done()
+    assert controller.charging and controller.charge_origin is None
+
+    await controller._regulated_stop("pause")  # noqa: SLF001 - load balancing pauses the charge
+    await hass.async_block_till_done()
+    assert controller.paused_by_balancing and controller.paused_charge_origin is None
+    assert len(stops) == 1
+
+    assert await controller.async_battery_probe_start(6)
+    await hass.async_block_till_done()
+    assert controller.charging
+    assert controller.charge_origin is None, "the charger's own charge, not `other`"
+    blocked = False
+
+    await _to(hass, freezer, _minutes(11))
+
+    assert len(stops) == 2 and not controller.charging, "the window's end stops it, as before"
