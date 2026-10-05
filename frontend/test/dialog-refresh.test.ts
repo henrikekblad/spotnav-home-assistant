@@ -221,7 +221,7 @@ describe("a refresh never closes an open dialog", () => {
 
     const before = openDialog(element);
     expect(before?.textContent).toContain(translate("en", "settings.plan.title"));
-    const number = before?.querySelector<HTMLInputElement>(".spotnav-settings-input");
+    const number = before?.querySelector<HTMLInputElement>("[data-part='energy'] input[type='range']");
     expect(number).not.toBeNull();
     number!.value = "42.5";
     number!.dispatchEvent(new Event("input", { bubbles: true }));
@@ -231,9 +231,9 @@ describe("a refresh never closes an open dialog", () => {
 
     const after = openDialog(element);
     expect(after).toBe(before); // never destroyed and rebuilt: the same dialog node
-    const stillThere = after?.querySelector<HTMLInputElement>(".spotnav-settings-input");
+    const stillThere = after?.querySelector<HTMLInputElement>("[data-part='energy'] input[type='range']");
     expect(stillThere).toBe(number); // the same input node
-    expect(stillThere?.value).toBe("42.5"); // the reader's own typed value, not reset
+    expect(stillThere?.value).toBe("42.5"); // the reader's own slider value, not reset
   });
 
   it("keeps the market editor open, with a typed figure intact, across two refresh periods", async () => {

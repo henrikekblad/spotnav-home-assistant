@@ -112,17 +112,29 @@ function inputs(element: Element): HTMLInputElement[] {
   // which is a range control and is placed last for the deadline section.
   const all = Array.from(dialog?.querySelectorAll<HTMLInputElement>(".spotnav-settings-input") ?? []);
   const periods = Array.from(dialog?.querySelectorAll<HTMLInputElement>("input[id$='-deadline-periods']") ?? []);
-  const energy = all.filter((node) => node.type === "number").slice(0, 1);
   const current = all.filter((node) => node.type === "number").slice(-1);
   // The departure date picker has its own helper (`dateField`); it is not one of the positional controls.
   const tail = all.filter((node) => node.type !== "number" && node.type !== "date");
   if (focusKind === "energy") {
-    return dialog?.querySelector("[data-energy]") ? [] : energy;
+    // The energy editor's one control is its slider: no number field beside it.
+    const slider = dialog?.querySelector<HTMLInputElement>("[data-part='energy'] input[type='range']");
+    return dialog?.querySelector("[data-energy]") || slider == null ? [] : [slider];
   }
   if (focusKind === "current") {
     return current;
   }
   return [...tail, ...periods];
+}
+
+/** Set a control's value the way a reader does, so its own listeners hear it. */
+function enter(node: HTMLInputElement, value: string): void {
+  node.value = value;
+  node.dispatchEvent(new Event("input", { bubbles: true }));
+}
+
+/** The energy editor's value text, on its label row. */
+function energyText(element: Element): string {
+  return editorDialog(element)?.querySelector("[data-part='energy'] [data-part='energy-value']")?.textContent ?? "";
 }
 
 function button(element: Element, className: string): HTMLButtonElement | null {
@@ -263,6 +275,7 @@ describe("the request lifecycle", () => {
     expect(updates(hass)).toHaveLength(0);
     expect(text(element)).toContain(translate("en", "settings.energy.label"));
     expect(inputs(element)[0]?.value).toBe("20.5");
+    expect(energyText(element)).toBe("20.5 kWh");
   });
 
   it("writes nothing when a dialog is opened and closed again", async () => {
@@ -280,7 +293,7 @@ describe("the request lifecycle", () => {
 
   it("sends one full replacement per Save, with the revision beside the body and never inside it", async () => {
     const { hass, element, record } = await openEditor("current");
-    inputs(element)[0]!.value = "16";
+    enter(inputs(element)[0]!, "16");
 
     button(element, "spotnav-settings-save")!.click();
     await settle();
@@ -311,7 +324,7 @@ describe("the request lifecycle", () => {
     for (const [kind, value] of cases) {
       document.body.innerHTML = "";
       const { hass, element } = await openEditor(kind, { record });
-      inputs(element)[0]!.value = value;
+      enter(inputs(element)[0]!, value);
       button(element, "spotnav-settings-save")!.click();
       await settle();
 
@@ -358,7 +371,7 @@ describe("the request lifecycle", () => {
       // The count is not chosen here any more: the charger's wiring and the car decide it.
       expect(editorDialog(element)?.querySelectorAll("input[data-phases]")).toHaveLength(0);
       expect(editorDialog(element)?.querySelector("[data-part='phases']")).toBeNull();
-      inputs(element)[0]!.value = "16";
+      enter(inputs(element)[0]!, "16");
       button(element, "spotnav-settings-save")!.click();
       await settle();
 
@@ -389,7 +402,7 @@ describe("the request lifecycle", () => {
 
   it("closes without a request on Cancel and offers it beside Save", async () => {
     const { hass, element } = await openEditor("current");
-    inputs(element)[0]!.value = "20";
+    enter(inputs(element)[0]!, "20");
     const cancel = editorDialog(element)?.querySelector<HTMLButtonElement>("[data-action='cancel']");
     expect(cancel?.textContent).toBe(translate("en", "settings.cancel"));
     cancel!.click();
@@ -423,9 +436,9 @@ describe("the request lifecycle", () => {
   });
 
   it("refuses an invalid input locally: one sentence, no request, nothing clamped", async () => {
-    const { hass, element } = await openEditor("energy");
+    const { hass, element } = await openEditor("current");
     const input = inputs(element)[0]!;
-    input.value = "1200";
+    input.value = "200";
 
     button(element, "spotnav-settings-save")!.click();
     await settle();
@@ -433,7 +446,7 @@ describe("the request lifecycle", () => {
     expect(updates(hass)).toHaveLength(0);
     expect(editorDialog(element)).not.toBeNull();
     expect(text(element)).toContain(translate("en", "settings.error.outOfRange"));
-    expect(input.value).toBe("1200");
+    expect(input.value).toBe("200");
   });
 
   it("shows a current that was never set as not set, and refuses an empty Save", async () => {
@@ -456,7 +469,7 @@ describe("the request lifecycle", () => {
     // The editor opens at all -- which is the point: reading the target as a whole number refused the
     // whole document and made every focused editor unreachable for such a charger.
     expect(inputs(element)[0]!.value).toBe("20.5");
-    inputs(element)[0]!.value = "30";
+    enter(inputs(element)[0]!, "30");
     button(element, "spotnav-settings-save")!.click();
     await settle();
 
@@ -474,6 +487,8 @@ describe("the request lifecycle", () => {
     const { hass, element } = await openEditor("energy", { admin: false });
 
     expect(inputs(element)[0]?.value).toBe("20.5");
+    expect(inputs(element)[0]?.disabled).toBe(true);
+    expect(energyText(element)).toBe("20.5 kWh");
     expect(button(element, "spotnav-settings-save")).toBeNull();
     expect(text(element)).toContain(translate("en", "settings.readOnly"));
     expect(updates(hass)).toHaveLength(0);
@@ -558,7 +573,7 @@ async function save(
   options: { value?: string; admin?: boolean; record?: SettingsRecord } = {},
 ) {
   const { hass, element, record } = await openEditor(kind, options);
-  inputs(element)[0]!.value = options.value ?? "30";
+  enter(inputs(element)[0]!, options.value ?? "30");
   button(element, "spotnav-settings-save")!.click();
   await settle();
   hass.resolveNext(answer);
@@ -570,7 +585,7 @@ describe("success and its confirmation", () => {
   it("adopts the returned revision, then confirms with one dashboard read and no optimism", async () => {
     const { hass, element } = await openEditor("energy");
     const dashboardsBefore = dashboards(hass).length;
-    inputs(element)[0]!.value = "30";
+    enter(inputs(element)[0]!, "30");
 
     button(element, "spotnav-settings-save")!.click();
     await settle();
@@ -601,7 +616,7 @@ describe("success and its confirmation", () => {
   it("keeps the confirmed graph and says the saved state could not be confirmed", async () => {
     const { hass, element } = await openEditor("current");
     const graph = chartNode(element);
-    inputs(element)[0]!.value = "16";
+    enter(inputs(element)[0]!, "16");
     button(element, "spotnav-settings-save")!.click();
     await settle();
     hass.resolveNext(success(aRecord({ revision: 8, amps: 16 })));
@@ -621,7 +636,7 @@ describe("a conflict", () => {
   it("keeps the typed values and offers the server's record or a reapply", async () => {
     const server = aRecord({ revision: 9, amps: 6, requested_kwh: 18 });
     const { hass, element } = await openEditor("current");
-    inputs(element)[0]!.value = "16";
+    enter(inputs(element)[0]!, "16");
     button(element, "spotnav-settings-save")!.click();
     await settle();
 
@@ -680,7 +695,7 @@ describe("a conflict", () => {
   it("reloads the server's values on request, writing nothing", async () => {
     const server = aRecord({ revision: 9, amps: 6 });
     const { hass, element } = await openEditor("current");
-    inputs(element)[0]!.value = "16";
+    enter(inputs(element)[0]!, "16");
     button(element, "spotnav-settings-save")!.click();
     await settle();
     hass.resolveNext(refusal("revision_conflict", server));
@@ -709,7 +724,7 @@ describe("refusals and failures", () => {
     document.body.innerHTML = "";
     const { hass, element } = await openEditor("energy");
     const graph = chartNode(element);
-    inputs(element)[0]!.value = "30";
+    enter(inputs(element)[0]!, "30");
     button(element, "spotnav-settings-save")!.click();
     await settle();
 
@@ -725,7 +740,7 @@ describe("refusals and failures", () => {
 
   it("turns a rejected message into one localized sentence, never prose", async () => {
     const { hass, element } = await openEditor("energy");
-    inputs(element)[0]!.value = "30";
+    enter(inputs(element)[0]!, "30");
     button(element, "spotnav-settings-save")!.click();
     await settle();
 
@@ -743,7 +758,7 @@ describe("refusals and failures", () => {
   ])("claims nothing for %s", async (_name, answer, key) => {
     document.body.innerHTML = "";
     const { hass, element } = await openEditor("energy");
-    inputs(element)[0]!.value = "30";
+    enter(inputs(element)[0]!, "30");
     button(element, "spotnav-settings-save")!.click();
     await settle();
 
@@ -759,7 +774,7 @@ describe("refusals and failures", () => {
     const committed = aRecord({ revision: 8, requested_kwh: 30 });
     const { hass, element } = await openEditor("energy");
     const dashboardsBefore = dashboards(hass).length;
-    inputs(element)[0]!.value = "30";
+    enter(inputs(element)[0]!, "30");
     button(element, "spotnav-settings-save")!.click();
     await settle();
 
@@ -787,7 +802,7 @@ describe("lateness, duplication and teardown", () => {
   it("makes a held save's answer inert after the card is disconnected", async () => {
     const { hass, element } = await openEditor("energy");
     const dashboardsBefore = dashboards(hass).length;
-    inputs(element)[0]!.value = "30";
+    enter(inputs(element)[0]!, "30");
     button(element, "spotnav-settings-save")!.click();
     await settle();
 
@@ -841,7 +856,7 @@ describe("lateness, duplication and teardown", () => {
 
   it("sends one update for a double Save click", async () => {
     const { hass, element } = await openEditor("current");
-    inputs(element)[0]!.value = "16";
+    enter(inputs(element)[0]!, "16");
     const save = button(element, "spotnav-settings-save")!;
 
     save.click();
@@ -856,7 +871,7 @@ describe("lateness, duplication and teardown", () => {
     const first = await openEditor("current", { record: aRecord({ revision: 7, amps: 10 }) });
     const second = await openEditor("current", { record: aRecord({ revision: 3, amps: 6 }) });
 
-    inputs(first.element)[0]!.value = "16";
+    enter(inputs(first.element)[0]!, "16");
     button(first.element, "spotnav-settings-save")!.click();
     await settle();
 
@@ -879,7 +894,7 @@ describe("lateness, duplication and teardown", () => {
 
   it("keeps focus inside a conflict dialog, and closing returns it to the trigger", async () => {
     const { hass, element } = await openEditor("current");
-    inputs(element)[0]!.value = "16";
+    enter(inputs(element)[0]!, "16");
     button(element, "spotnav-settings-save")!.click();
     await settle();
     hass.resolveNext(refusal("revision_conflict", aRecord({ revision: 9, amps: 6 })));
@@ -948,24 +963,28 @@ function outOfRangeMark(element: Element): HTMLElement | null {
   return node != null && !node.hidden ? node : null;
 }
 
-describe("the energy slider beside its exact field", () => {
-  it("moves the exact field with the slider, and sends that one value on Save", async () => {
+describe("the energy slider and its value on the label row", () => {
+  it("moves the value text with the slider, and sends that one value on Save", async () => {
     const { hass, element } = await openEditor("energy", { record: aRecord({ requested_kwh: 20 }) });
-    const number = inputs(element)[0]!;
     const range = sliderNode(element)!;
 
-    expect(number.value).toBe("20");
-    expect(number.step, "the exact field is not a half-kWh grid").toBe("any");
+    expect(inputs(element)).toEqual([range]);
     expect(range.value).toBe("20");
     expect([range.min, range.max, range.step]).toEqual(["0.5", "100", "0.5"]);
-    expect(unitLabel(element)).toBe("kWh");
+    expect(range.disabled).toBe(false);
+    expect(energyText(element)).toBe("20.0 kWh");
+    expect(range.getAttribute("aria-valuetext")).toBe("20.0 kWh");
     expect(range.getAttribute("aria-label")).toBe(translate("en", "settings.energy.slider"));
+    // No number field and no unit in the energy editor; the current editor keeps both.
+    const energy = editorDialog(element)!.querySelector<HTMLElement>("[data-part='energy']")!;
+    expect(energy.querySelector("input[type='number']")).toBeNull();
+    expect(energy.querySelector(".spotnav-settings-unit")).toBeNull();
 
-    range.value = "42.5";
-    range.dispatchEvent(new Event("input", { bubbles: true }));
+    enter(range, "42.5");
     await settle();
 
-    expect(number.value).toBe("42.5");
+    expect(energyText(element)).toBe("42.5 kWh");
+    expect(range.getAttribute("aria-valuetext")).toBe("42.5 kWh");
     // Form-local: no request yet, and the resting row is untouched.
     expect(updates(hass)).toHaveLength(0);
     expect(rowValues(element)).toEqual(["20 kWh", "No deadline", "10 A"]);
@@ -978,75 +997,47 @@ describe("the energy slider beside its exact field", () => {
     expect(body["requested_kwh"]).toBe(42.5);
   });
 
-  it("follows a representable typed value, and says so when it cannot", async () => {
-    const { element } = await openEditor("energy", { record: aRecord({ requested_kwh: 20 }) });
-    const number = inputs(element)[0]!;
-    const range = sliderNode(element)!;
-
-    number.value = "20.5";
-    number.dispatchEvent(new Event("input", { bubbles: true }));
-    expect(range.value).toBe("20.5");
-    expect(range.disabled).toBe(false);
-    expect(outOfRangeMark(element)).toBeNull();
-
-    number.value = "20.25";
-    number.dispatchEvent(new Event("input", { bubbles: true }));
-    expect(number.value, "kept exactly").toBe("20.25");
-    expect(range.disabled, "the slider cannot show this value").toBe(true);
-    expect(outOfRangeMark(element)?.textContent).toBe(translate("en", "settings.sliderOutOfRange"));
-  });
-
-  it.each([0.1, 20.25, 100, 150, 1000])(
+  it.each<[number, string, string, string]>([
+    [0.1, "0.5", "100", "0.1 kWh"],
+    [7.3, "7.5", "100", "7.3 kWh"],
+    [20.25, "20.5", "100", "20.25 kWh"],
+    [100, "100", "100", "100.0 kWh"],
+    [150, "150", "150", "150.0 kWh"],
+    [1000, "1000", "1000", "1,000.0 kWh"],
+  ])(
     "keeps a stored %s kWh exactly through opening and a neighbouring save",
-    async (value) => {
+    async (value, at, max, shown) => {
       document.body.innerHTML = "";
       const energy = await openEditor("energy", { record: aRecord({ requested_kwh: value }) });
-      const number = inputs(energy.element)[0]!;
       const range = sliderNode(energy.element)!;
-      expect(number.value).toBe(String(value));
 
-      // The slider is honest about which of them it can show at all: the ordinary interval is
-      // 0.5..100, extended upward for a representable value above it, and switched off -- with the
-      // marker -- for one that is not on its grid or below its minimum.
-      if (value === 0.1 || value === 20.25) {
-        expect(range.disabled, String(value)).toBe(true);
-        expect(outOfRangeMark(energy.element)).not.toBeNull();
-      } else {
-        expect(range.disabled, String(value)).toBe(false);
-        expect(range.max, String(value)).toBe(value > 100 ? String(value) : "100");
-      }
+      // The value text says exactly what is stored; the slider stands at its nearest step and stays usable,
+      // with no out-of-range note. A stored value above the ordinary top extends it, as before.
+      expect(energyText(energy.element), String(value)).toBe(shown);
+      expect(range.value, String(value)).toBe(at);
+      expect(range.max, String(value)).toBe(max);
+      expect(range.disabled, String(value)).toBe(false);
+      expect(outOfRangeMark(energy.element), String(value)).toBeNull();
 
-      // A Save from *another* editor carries the value through untouched, decimal and all.
-      document.body.innerHTML = "";
-      const current = await openEditor("current", { record: aRecord({ requested_kwh: value }) });
-      inputs(current.element)[0]!.value = "16";
-      button(current.element, "spotnav-settings-save")!.click();
+      // A Save that moved the current, not the slider, carries the stored value through untouched.
+      focusKind = "current";
+      enter(inputs(energy.element)[0]!, "16");
+      button(energy.element, "spotnav-settings-save")!.click();
       await settle();
 
-      expect(updates(current.hass)).toHaveLength(1);
-      const body = updates(current.hass)[0]!["settings"] as Record<string, unknown>;
+      expect(updates(energy.hass)).toHaveLength(1);
+      const body = updates(energy.hass)[0]!["settings"] as Record<string, unknown>;
       expect(body["requested_kwh"], String(value)).toBe(value);
+      expect(body["amps"], String(value)).toBe(16);
     },
   );
 
-  it.each([
-    ["empty", ""],
-    ["non-numeric", "abc"],
-    ["not a number", "NaN"],
-    ["infinite", "Infinity"],
-    ["zero", "0"],
-    ["too much", "1200"],
-  ])("sends nothing for an %s exact energy value", async (_name, typed) => {
-    const { hass, element } = await openEditor("energy");
-    const number = inputs(element)[0]!;
-    number.value = typed;
-    number.dispatchEvent(new Event("input", { bubbles: true }));
-
-    button(element, "spotnav-settings-save")!.click();
-    await settle();
-
-    expect(updates(hass)).toHaveLength(0);
-    expect(editorDialog(element)).not.toBeNull();
+  it("states the value in the reader's language", async () => {
+    const { element } = await openEditor("energy", { record: aRecord({ requested_kwh: 7.3 }), language: "sv" });
+    expect(energyText(element)).toBe("7,3 kWh");
+    const range = editorDialog(element)?.querySelector<HTMLInputElement>("[data-part='energy'] input[type='range']");
+    expect(range?.getAttribute("aria-valuetext")).toBe("7,3 kWh");
+    expect(range?.value).toBe("7.5");
   });
 });
 
@@ -1131,43 +1122,36 @@ describe("the current slider and the nominal power beside it", () => {
 });
 
   it("attaches those columns to the controls in the order the form renders them", async () => {
-    // The same layout for both editors; the energy slider sits in a track (with its "full" mark) and has its
-    // "Fill" word beside the unit, which takes the number field's place at its last step.
-    for (const kind of ["energy", "current"] as const) {
-      document.body.innerHTML = "";
-      const { element } = await openEditor(kind);
-      const pairs = Array.from(editorDialog(element)?.querySelectorAll<HTMLElement>(`.${VISUAL_CLASSES.settingsPair}`) ?? []);
-      const pair = pairs.find(
-        (node) =>
-          node.querySelector("input[type='number']") !== null &&
-          (kind === "energy") === (node.closest("[data-part='energy']") !== null),
-      );
-      const children = Array.from(pair?.children ?? []);
+    // The current editor keeps its slider, number field and unit; the energy editor has only its slider, in
+    // a track (with its "full" mark) that takes the full width, and its value on the label row.
+    const { element } = await openEditor("current");
+    const pairs = Array.from(editorDialog(element)?.querySelectorAll<HTMLElement>(`.${VISUAL_CLASSES.settingsPair}`) ?? []);
+    expect(pairs.some((node) => node.closest("[data-part='energy']") !== null)).toBe(false);
+    const pair = pairs.find((node) => node.querySelector("input[type='number']") !== null);
+    const children = Array.from(pair?.children ?? []);
 
-      // Column 1 the slider, column 2 the number field, column 3 the unit -- and the note, which
-      // spans all of them, last. Reordering these would silently attach the grid to the wrong controls.
-      const expected =
-        kind === "energy"
-          ? [
-              VISUAL_CLASSES.settingsTrack,
-              expect.stringContaining(VISUAL_CLASSES.settingsInput),
-              VISUAL_CLASSES.settingsUnit,
-              VISUAL_CLASSES.settingsFill,
-              expect.stringContaining(VISUAL_CLASSES.settingsNote),
-            ]
-          : [
-              VISUAL_CLASSES.settingsSlider,
-              expect.stringContaining(VISUAL_CLASSES.settingsInput),
-              VISUAL_CLASSES.settingsUnit,
-              expect.stringContaining(VISUAL_CLASSES.settingsNote),
-            ];
-      expect(children.map((node) => node.className), kind).toEqual(expected);
-      expect((children[children.length - 1] as HTMLElement | undefined)?.hidden, kind).toBe(true);
-      if (kind === "energy") {
-        expect(children[0]!.firstElementChild?.className).toBe(VISUAL_CLASSES.settingsSlider);
-        expect((children[3] as HTMLElement).hidden).toBe(true);
-      }
-    }
+    // Column 1 the slider, column 2 the number field, column 3 the unit -- and the note, which
+    // spans all of them, last. Reordering these would silently attach the grid to the wrong controls.
+    expect(children.map((node) => node.className)).toEqual([
+      VISUAL_CLASSES.settingsSlider,
+      expect.stringContaining(VISUAL_CLASSES.settingsInput),
+      VISUAL_CLASSES.settingsUnit,
+      expect.stringContaining(VISUAL_CLASSES.settingsNote),
+    ]);
+    expect((children[children.length - 1] as HTMLElement | undefined)?.hidden).toBe(true);
+
+    const energy = editorDialog(element)!.querySelector<HTMLElement>("[data-part='energy']")!;
+    const group = energy.querySelector<HTMLElement>("[role='group']")!;
+    expect(Array.from(group.children).map((node) => node.className)).toEqual([
+      VISUAL_CLASSES.settingsHead,
+      VISUAL_CLASSES.settingsTrack,
+    ]);
+    const head = group.children[0]!;
+    expect(Array.from(head.children).map((node) => node.className)).toEqual([
+      VISUAL_CLASSES.settingsLabel,
+      VISUAL_CLASSES.settingsAmount,
+    ]);
+    expect(group.children[1]!.firstElementChild?.className).toBe(VISUAL_CLASSES.settingsSlider);
   });
 
 describe("the slider draft's lifecycle", () => {
@@ -1280,8 +1264,13 @@ describe("the slider draft's lifecycle", () => {
 
     expect(range.type).toBe("range");
     expect(range.getAttribute("aria-label")).toBe(translate("en", "settings.energy.slider"));
-    expect(range.getAttribute("aria-describedby")).toBe(group?.querySelector(".spotnav-settings-note")?.id);
+    // The energy slider has no out-of-range note: its value text says what is stored.
+    expect(group?.querySelector(".spotnav-settings-note")).toBeNull();
     expect(group?.getAttribute("aria-labelledby")).toBe(label?.id);
+    expect(label?.getAttribute("for")).toBe(range.id);
+    expect(range.disabled).toBe(false);
+    expect(range.step).toBe("0.5");
+    expect(range.getAttribute("aria-valuetext")).toBe("20.5 kWh");
 
     range.focus();
     expect(shadow(element).activeElement).toBe(range);
