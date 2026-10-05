@@ -3,7 +3,9 @@
 Prices are normalized onto a 15-minute grid of absolute instants, converted to the
 area's major unit, taxed (energy tax and transfer fee in the minor unit, then VAT over
 the sum), and exactly the needed whole slots are chosen, in at most the configured
-number of contiguous runs, for the lowest total cost. Every failure is a named
+number of contiguous runs, for the lowest total cost. A need the departure leaves no time
+for is planned as best effort: every whole slot up to the departure, marked
+[PlanResult.short_of_deadline]. Every failure is a named
 [PlanResult.reason]. A slot nobody has published is never filled from another day: the
 window ends in `insufficient_price_horizon` and `planning/price_wait.py` decides what next.
 
@@ -444,6 +446,9 @@ class PlanResult:
     slots_needed: int
     #: The candidate range the plan was chosen from; empty only for a refusal.
     horizon: tuple[HorizonInterval, ...] = ()
+    #: The need cannot be met by the departure, so this is the best effort: every whole slot from the
+    #: first usable one to the departure, `delivered_kwh` below `requested_kwh` (`_window`).
+    short_of_deadline: bool = False
 
     @property
     def has_plan(self) -> bool:
@@ -610,6 +615,8 @@ class _Window:
     required_end: datetime
     needed: int
     per_slot: float
+    #: The need does not fit before the departure: `needed` is every whole slot that does (best effort).
+    short: bool = False
 
     @property
     def end(self) -> datetime:
@@ -661,8 +668,10 @@ def _window(request: PlanRequest) -> _Window | PlannerReason:
             horizon = max(horizon, deadline)
         else:
             deadline = resolve_departure(request.now, request.timezone, request.departure, first_start)
+    departure_deadline = deadline
     if request.window_end is not None:
         deadline = request.window_end if deadline is None else min(deadline, request.window_end)
+    short = False
 
     if deadline is None:
         # No deadline: the window ends exactly at the horizon.
@@ -673,9 +682,25 @@ def _window(request: PlanRequest) -> _Window | PlannerReason:
             return "insufficient_price_horizon"
     else:
         # Deadline: the bound is the latest start, so the last slot may end at the deadline.
-        latest_start_exclusive = min(horizon, deadline - duration + timedelta(minutes=STEP_MINUTES))
+        step = timedelta(minutes=STEP_MINUTES)
+        latest_start_exclusive = min(horizon, deadline - duration + step)
         if latest_start_exclusive <= first_start:
-            return "deadline_too_short"
+            if departure_deadline is None or deadline != departure_deadline:
+                # A caller's own tighter window (the published part, what must be bought before a
+                # publication) is a question about that window: it is refused, never shortened.
+                return "deadline_too_short"
+            # The need cannot be met by the departure. Best effort, the conservative choice: every whole
+            # slot from the first usable one up to the departure, so the car leaves with the most energy
+            # there was time for. That is one contiguous run, so the period limit can never cut energy
+            # here; were it ever to, delivering the most energy wins over the limit.
+            fit = (min(deadline, horizon) - first_start) // step
+            if fit < 1:
+                # Not one whole slot before the departure: nothing can be planned.
+                return "deadline_too_short"
+            needed = fit
+            duration = step * fit
+            latest_start_exclusive = first_start + step
+            short = True
         required_end = latest_start_exclusive + duration
         if request.window_end is not None and deadline == request.window_end:
             # A caller's own window (the published part, or what must be bought before a publication) ends
@@ -690,6 +715,7 @@ def _window(request: PlanRequest) -> _Window | PlannerReason:
         required_end=required_end,
         needed=needed,
         per_slot=per_slot,
+        short=short,
     )
 
 
@@ -706,6 +732,8 @@ class PriceGap:
     missing_from: datetime
     deadline: datetime
     known: tuple[PlanningSlot, ...]
+    #: The need does not fit before the departure at all (best effort, `_Window.short`).
+    short: bool = False
 
 
 def price_gap(request: PlanRequest) -> PriceGap | None:
@@ -728,6 +756,7 @@ def price_gap(request: PlanRequest) -> PriceGap | None:
                 missing_from=cursor,
                 deadline=window.end,
                 known=tuple(known),
+                short=window.short,
             )
         known.append(slot)
         cursor += timedelta(minutes=STEP_MINUTES)
@@ -782,6 +811,7 @@ def plan_unpriced(request: PlanRequest) -> PlanResult:
         priced_slots=0,
         unpriced=True,
         slots_needed=count,
+        short_of_deadline=window.short,
     )
 
 
@@ -862,6 +892,7 @@ def calculate_plan(request: PlanRequest) -> PlanResult:
         unpriced=False,
         slots_needed=needed,
         horizon=_horizon(candidates, selected, zone=zone, fiscal=request.fiscal),
+        short_of_deadline=window.short,
     )
 
 

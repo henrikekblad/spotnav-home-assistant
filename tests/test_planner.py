@@ -57,7 +57,7 @@ DOCUMENT_KEYS = {"area", "date", "tz", "res", "start", "unit", "prices", "fx", "
 EXACT_KEYS = {
     "slots_needed", "priced_slots", "unpriced_slots", "period_count", "unpriced",
     "currency", "major_unit", "minor_unit", "periods", "slot_starts", "local_hours",
-    "local_offsets", "slot_source_days", "departure_instant",
+    "local_offsets", "slot_source_days", "departure_instant", "short_of_deadline",
 }
 FLOAT_KEYS = {
     "requested_kwh", "power_kw", "delivered_kwh", "distance_mil", "estimated_cost",
@@ -261,8 +261,8 @@ def validate(payload: dict[str, Any]) -> None:
         for key, value in expect.items():
             if key == "reason":
                 continue
-            if key == "unpriced":
-                assert _is_bool(value), f"{where}: unpriced must be a boolean"
+            if key in ("unpriced", "short_of_deadline"):
+                assert _is_bool(value), f"{where}: {key} must be a boolean"
             elif key in ("currency", "major_unit", "minor_unit"):
                 assert isinstance(value, str) and value, f"{where}: {key}"
             elif key == "departure_instant":

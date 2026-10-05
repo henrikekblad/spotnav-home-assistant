@@ -486,12 +486,27 @@ async def test_the_guarantee_charges_at_unknown_prices_once_waiting_is_no_longer
     assert_nothing_executed(no_execution)
 
 
-async def test_a_deadline_that_cannot_be_met_is_named(
+async def test_a_deadline_that_cannot_be_met_is_planned_as_best_effort(
     harness: Harness, no_execution: dict[str, Any]
 ) -> None:
-    """An impossible request is refused by name, with the deadline it cannot meet."""
+    """A need the departure leaves no time for is charged in every slot up to it, and marked short."""
     serve(harness.transport)
     controller = await harness.auto(departure=time(9, 0), requested_kwh=200.0)
+
+    snapshot = controller.snapshot()
+    assert snapshot.state == "proposal_ready" and snapshot.reason == "ready"
+    proposal = snapshot.proposal
+    assert proposal is not None and proposal.has_plan and proposal.short_of_deadline
+    assert proposal.slots_needed == 4 and len(proposal.periods) == 1
+    assert_nothing_executed(no_execution)
+
+
+async def test_a_departure_with_not_one_whole_slot_left_is_named(
+    harness: Harness, no_execution: dict[str, Any]
+) -> None:
+    """Ten minutes to the departure hold no quarter-hour: refused by name, with the deadline it cannot meet."""
+    serve(harness.transport)
+    controller = await harness.auto(departure=time(8, 10), requested_kwh=10.0)
 
     snapshot = controller.snapshot()
     assert snapshot.state == "planning_unavailable" and snapshot.reason == "deadline_too_short"
