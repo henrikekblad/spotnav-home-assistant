@@ -77,7 +77,7 @@ unplugged, and again the moment the departure passes, without waiting for the ne
 plugged in while a planned period is running starts charging at once, unless Auto is paused (your own
 Start or Stop pauses it until the car is unplugged), the car ended a charge you started in that
 period (or since it was plugged in, when it was full), solar charging owns the charger or load balancing has no room for the minimum current. A charge the charger starts by itself inside a planned period counts as the plan's, so it stops with the
-period or when the need is met. Plugged in between periods, it waits for the next one as before. Only a
+period or when the need is met. A period's end stops only the plan's own charge: one you started (**Charge now**, also on a charger without Auto) or the sun started goes on past it. Plugged in between periods, it waits for the next one as before. Only a
 status that shows a car there or gone counts as a plug-in or an unplug: a fault, an offline or updating
 charger, OCPP's Unavailable and a Wallbox's Ready (shown with or without a car) say nothing either way. When
 the need is met before the plan has run out (the target is reached, or the requested energy has been
