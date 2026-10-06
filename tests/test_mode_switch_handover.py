@@ -188,6 +188,47 @@ async def test_a_switch_from_cheapest_to_solar_asks_the_sun_on_the_reading_it_ha
     assert (controller.charge_origin == "solar") is (pauses == 0)
 
 
+async def test_a_sun_that_adopted_the_plans_charge_with_no_surplus_does_not_keep_it(hass: HomeAssistant) -> None:
+    """Cheapest's window charges at 16 A with no sun (3.5 kW imported). The person switches to hybrid, where the sun
+    adopts the running charge as `on` and then goes `disarming`, and a minute later to solar: the sun never had a
+    surplus, so the switch stops the charge once, as the same reading does from cheapest. Handed over, the plan's
+    16 A would run from the grid for the sun's minimum on time."""
+    charger, site, controller, coordinator, clock, easee = await _garage(hass, STRATEGY_CHEAPEST)
+    await _plan_window_charge(hass, charger, controller, easee)
+    _sun(hass, export_w=-3500.0)
+    await tick_site(hass, site)
+    await _switch(hass, charger, STRATEGY_HYBRID)
+    clock.value += 5.0
+    await tick_site(hass, site)
+    clock.value += 60.0
+    await tick_site(hass, site)
+    assert coordinator.state is not None and coordinator.state.held_by_plan
+    assert coordinator.state.state in ("on", "disarming")
+
+    await _switch(hass, charger, STRATEGY_SOLAR)
+
+    assert easee.pauses == 1
+    assert controller.plan is None and controller.charge_origin is None
+
+
+async def test_a_hand_over_writes_the_suns_current_at_once(hass: HomeAssistant) -> None:
+    """Handed over with 9 A of sun beside the car, the sun asks for that current on the evaluation the hand-over
+    itself triggers: the plan's 16 A does not go on."""
+    charger, site, controller, coordinator, clock, easee = await _garage(hass)
+    await _plan_window_charge(hass, charger, controller, easee)
+    # The car's 14.5 A minus 1.25 kW imported: about 9 A of sun.
+    _sun(hass, export_w=-1250.0)
+    await tick_site(hass, site)
+    clock.value = 125.0
+    await tick_site(hass, site)
+    assert coordinator.state is not None and coordinator.state.state == "on" and coordinator.state.held_by_plan
+
+    await _switch(hass, charger, STRATEGY_SOLAR)
+
+    assert easee.pauses == 0 and controller.charge_origin == "solar"
+    assert controller.requested_current_a == 9
+
+
 # ------------------------------------------------------------------------------------- sun → plan
 
 
