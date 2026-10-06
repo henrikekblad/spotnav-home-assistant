@@ -726,6 +726,9 @@ class VehicleIdentifier:
         ):
             self._recheck()
             return
+        if session.state == STATE_DECIDED and session.listening and self._method == METHOD_CAMERA:
+            self._correct_camera(session)
+            return
         if not session.listening or session.state == STATE_DECIDED:
             return
         evidence = self._evidence(session, dt_util.utcnow())
@@ -743,6 +746,23 @@ class VehicleIdentifier:
             self._maybe_ask_camera(session, evidence)
 
     # ------------------------------------------------------------------ the camera
+
+    @callback
+    def _correct_camera(self, session: _Session) -> None:
+        """After the camera decided: a car's own decisive report corrects it (the same plug-in's switch, recorded
+        by that report), and the decided car reporting itself unplugged or away with no other car decided brings
+        the question back. A person's answer ends this: it outranks both."""
+        evidence = self._evidence(session, dt_util.utcnow())
+        car, method, conflict = decide(evidence)
+        decided = self._planned_vehicle()
+        if car is not None and method is not None:
+            if car != decided:
+                self._settle(car, method, "recognised")
+            return
+        if any(item.vehicle_id == decided and item.negative is not None for item in evidence) or conflict:
+            session.state = STATE_WAITING
+            session.order = ordered(evidence, self._current_vehicle())
+            self._ask()
 
     def _maybe_ask_camera(self, session: _Session, evidence: Sequence[Evidence]) -> None:
         """Ask the camera, when it may be asked now (`camera_rule.may_query`) and has something to compare."""
@@ -787,10 +807,12 @@ class VehicleIdentifier:
                 self._hass.loop.call_soon(self._evaluate)
             return
         session.camera_failed = False
-        self._apply_camera(session, entity_id, answer.vehicle_id, answer.confidence)
+        self._apply_camera(session, entity_id, answer.vehicle_id, answer.confidence, answer.in_colour)
 
     @callback
-    def _apply_camera(self, session: _Session, entity_id: str | None, answer: str | None, confidence: str | None) -> None:
+    def _apply_camera(
+        self, session: _Session, entity_id: str | None, answer: str | None, confidence: str | None, in_colour: bool = True
+    ) -> None:
         """The camera's answer, applied only while nothing has decided and no one has answered."""
         record = {"entity_id": entity_id, "answer": answer or "none", "confidence": confidence, "used": False}
         session.camera_record = record
@@ -800,12 +822,16 @@ class VehicleIdentifier:
             return
         evidence = self._evidence(session, dt_util.utcnow())
         remaining = [item.vehicle_id for item in evidence if item.negative is None]
-        verdict = camera_verdict(answer, confidence, remaining, self._camera.reference_signatures(remaining))
+        verdict = camera_verdict(
+            answer, confidence, remaining, self._camera.reference_signatures(remaining), in_colour
+        )
         if verdict.prefers is None:
             return
         record["used"] = True
         if verdict.decides is not None:
             self._settle(verdict.decides, METHOD_CAMERA, "recognised")
+            # A car's own report still outranks the camera while the plug-in is listened to (`_correct_camera`).
+            session.listening = True
             return
         session.camera_pick = verdict.prefers
         session.order = ordered(evidence, self._current_vehicle(), session.camera_pick)

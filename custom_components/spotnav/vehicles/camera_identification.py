@@ -17,6 +17,7 @@ the chosen AI Task entity (with a local model, they stay at home), and none goes
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import os
 import secrets
@@ -76,6 +77,8 @@ class CameraAnswer:
 
     vehicle_id: str | None
     confidence: str | None
+    #: The picture now has colour: at night (infrared) colour tells no car apart, whatever the references say.
+    in_colour: bool = True
 
 
 def _entity_choices(hass: HomeAssistant, domain: str, features: int = 0) -> list[dict[str, str]]:
@@ -101,12 +104,17 @@ def offered(hass: HomeAssistant) -> bool:
     return bool(camera_choices(hass)) and bool(ai_task_choices(hass))
 
 
-def _write_temporary(folder: Path, data: bytes) -> Path:
-    folder.mkdir(parents=True, exist_ok=True)
-    path = folder / f"query_{secrets.token_hex(8)}.jpg"
+def _write_temporary(path: Path, data: bytes) -> Path:
+    path.parent.mkdir(parents=True, exist_ok=True)
     path.write_bytes(data)
     os.chmod(path, 0o600)
     return path
+
+
+def _crop_and_colour(jpeg: bytes, frame: Any) -> tuple[bytes, bool]:
+    """The crop, and whether it has colour (a daylight picture; an infrared one is grey all over)."""
+    crop = crop_jpeg(jpeg, frame)
+    return crop, colour_signature(crop) is not None
 
 
 class CameraIdentification:
@@ -117,6 +125,8 @@ class CameraIdentification:
         self._entry_id = entry_id
         self._store = store
         self.references = ReferenceStore(hass, entry_id)
+        # One reference picture at a time at this charger: two taps never interleave a snapshot and its write.
+        self._taking = asyncio.Lock()
 
     async def async_load(self) -> None:
         await self.references.async_load()
@@ -126,21 +136,39 @@ class CameraIdentification:
 
     # ------------------------------------------------------------------ what others read
 
-    def reference_signatures(self, vehicles: Sequence[str]) -> dict[str, list[Signature]]:
-        """Each car's reference pictures' colour signatures, from the chosen camera (a car without one: `[]`)."""
+    def usable(self, vehicle_id: str) -> list[Reference]:
+        """A car's reference pictures that compare with the picture now: taken by the chosen camera with the frame
+        drawn now. One cropped with an earlier frame is stale until it is taken again."""
         settings = self.settings()
-        camera = None if settings is None else settings.camera_entity_id
-        return {
-            car: [] if camera is None else [item.signature for item in self.references.references(car, camera)]
-            for car in vehicles
-        }
+        if settings is None:
+            return []
+        return [
+            item
+            for item in self.references.references(vehicle_id, settings.camera_entity_id)
+            if item.frame == settings.frame
+        ]
+
+    def reference_signatures(self, vehicles: Sequence[str]) -> dict[str, list[Signature]]:
+        """Each car's usable reference pictures' colour signatures (a car without one: `[]`)."""
+        return {car: [item.signature for item in self.usable(car)] for car in vehicles}
 
     def ready_for(self, vehicles: Sequence[str]) -> bool:
         """Whether a query among `vehicles` can say anything: a camera is chosen and one of them has a reference."""
         settings = self.settings()
         if settings is None or self._hass.states.get(settings.camera_entity_id) is None:
             return False
-        return any(self.references.references(car, settings.camera_entity_id) for car in vehicles)
+        return any(self.usable(car) for car in vehicles)
+
+    def wire_references(self, vehicle_id: str) -> list[dict[str, Any]]:
+        """A car's reference pictures from the chosen camera, as a client sees them (`stale` when cropped with
+        another frame)."""
+        settings = self.settings()
+        if settings is None:
+            return []
+        return [
+            item.as_wire(stale=item.frame != settings.frame)
+            for item in self.references.references(vehicle_id, settings.camera_entity_id)
+        ]
 
     def block(self, vehicles: Sequence[str]) -> dict[str, Any] | None:
         """The dashboard's `camera_identification`: the cameras and AI Task entities to choose from, and each
@@ -148,14 +176,10 @@ class CameraIdentification:
         settings = self.settings()
         if settings is None and not offered(self._hass):
             return None
-        camera = None if settings is None else settings.camera_entity_id
         return {
             "cameras": camera_choices(self._hass),
             "ai_tasks": ai_task_choices(self._hass),
-            "references": {
-                car: [] if camera is None else [item.as_wire() for item in self.references.references(car, camera)]
-                for car in vehicles
-            },
+            "references": {car: self.wire_references(car) for car in vehicles},
         }
 
     def diagnostics(self) -> dict[str, Any]:
@@ -194,6 +218,10 @@ class CameraIdentification:
 
     async def async_take_reference(self, vehicle_id: str, kind: str) -> Reference:
         """The camera's picture now, cropped with the frame, kept as the car's `kind` reference."""
+        async with self._taking:
+            return await self._async_take(vehicle_id, kind)
+
+    async def _async_take(self, vehicle_id: str, kind: str) -> Reference:
         settings = self.settings()
         if settings is None:
             raise CameraUnavailable("no_camera")
@@ -229,18 +257,21 @@ class CameraIdentification:
         if settings is None:
             raise CameraUnavailable("no_camera")
         camera = settings.camera_entity_id
-        labelled = labels_for([car for car in candidates if self.references.references(car, camera)])
+        labelled = labels_for([car for car in candidates if self.usable(car)])
         if not labelled:
             raise CameraUnavailable("no_reference")
         snapshot = await self.async_snapshot(camera)
-        crop = await self._hass.async_add_executor_job(crop_jpeg, snapshot.jpeg, settings.frame)
-        temporary = await self._hass.async_add_executor_job(_write_temporary, self.references.folder / "tmp", crop)
+        crop, in_colour = await self._hass.async_add_executor_job(_crop_and_colour, snapshot.jpeg, settings.frame)
+        # Named before it is written, so a query cancelled meanwhile still removes it once the write is done.
+        temporary = self.references.folder / "tmp" / f"query_{secrets.token_hex(8)}.jpg"
         tokens: list[str] = []
+        write = self._hass.async_add_executor_job(_write_temporary, temporary, crop)
         try:
+            await asyncio.shield(write)
             attachments = []
             pictures: list[tuple[str, str]] = []
             for label, car in labelled.items():
-                for reference in self.references.references(car, camera):
+                for reference in self.usable(car):
                     media_id, token = lend(self._hass, self.references.path(reference))
                     tokens.append(token)
                     attachments.append({"media_content_id": media_id, "media_content_type": "image/jpeg"})
@@ -262,6 +293,13 @@ class CameraIdentification:
         finally:
             for token in tokens:
                 take_back(self._hass, token)
-            await self._hass.async_add_executor_job(temporary.unlink, True)
+            await self._async_remove_temporary(write, temporary)
         vehicle_id, confidence = parse_answer((response or {}).get("data"), labelled)
-        return CameraAnswer(vehicle_id, confidence)
+        return CameraAnswer(vehicle_id, confidence, in_colour)
+
+    async def _async_remove_temporary(self, write: asyncio.Future[Path], temporary: Path) -> None:
+        try:
+            await write
+        except Exception:  # noqa: BLE001 - a write that failed left nothing, or a part removed below
+            pass
+        await self._hass.async_add_executor_job(temporary.unlink, True)

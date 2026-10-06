@@ -3,7 +3,8 @@
 The camera is one source of evidence for vehicle identification (`identification.py`). It is asked only while
 the cars' own reports have not decided, and its answer:
 
-* **decides alone** only when it is high confidence, every candidate left has a reference picture, and the car
+* **decides alone** only when it is high confidence, the picture now has colour (never at night: an infrared
+  picture is grey), every candidate left has a reference picture, and the car
   it names is visibly different in colour from every other candidate (`distinct_cars`, from the colour
   signature stored with each reference picture when it was taken; a picture without colour, an infrared night
   picture, says nothing about colour);
@@ -77,13 +78,15 @@ def camera_verdict(
     confidence: str | None,
     candidates: Sequence[str],
     references: Mapping[str, Sequence[Signature]],
+    in_colour: bool = True,
 ) -> CameraVerdict:
     """What the camera's `answer` (a candidate, or `None` for none) at `confidence` counts for among the
     `candidates` the cars' own evidence left, given each car's reference pictures' signatures (a car missing
-    from `references`, or with an empty list, has no reference picture)."""
+    from `references`, or with an empty list, has no reference picture). `in_colour` is whether the picture now
+    has colour: at night (infrared, grey all over) colour tells no car apart, so the camera never decides then."""
     if answer is None or answer not in candidates:
         return CameraVerdict()
-    if confidence != CONFIDENCE_HIGH:
+    if confidence != CONFIDENCE_HIGH or not in_colour:
         return CameraVerdict(prefers=answer)
     if any(not references.get(car) for car in candidates):
         # A car the camera cannot recognise may be the one standing there.
