@@ -240,3 +240,35 @@ describe("the strategy facts", () => {
     expect(model.strategy.rows.every((row) => !row.available)).toBe(true);
   });
 });
+
+describe("what is under way while an action is pending", () => {
+  const build = (dashboard: Dashboard, sentAction: "start" | "stop" | null, shownAutomatic: string | null) =>
+    buildModel({ dashboard, language: "en", nowMs: NOW_MS, sentAction, shownAutomatic }).control;
+  const charging = (name: string, value: boolean): Dashboard => {
+    const dashboard = dashboardFor(name);
+    return { ...dashboard, live: { ...dashboard.live, charging: value } };
+  };
+
+  it("names the command sent, else what the charger's state calls for", () => {
+    expect(build(charging("action_pending.json", false), null, null).pendingAction).toBe("starting");
+    expect(build(charging("action_pending.json", true), null, null).pendingAction).toBe("stopping");
+    expect(build(charging("action_pending.json", true), "start", null).pendingAction).toBe("starting");
+    expect(build(charging("action_pending.json", false), "stop", null).pendingAction).toBe("stopping");
+  });
+
+  it("says nothing is under way, and holds no schedule caption, when nothing is pending", () => {
+    for (const name of ["start_idle.json", "stop_charging.json", "no_settings.json", "pause_clear_failed.json"]) {
+      const control = build(dashboardFor(name), "start", "pause");
+      expect(control.pendingAction, name).toBeNull();
+      expect(control.heldAutomatic, name).toBeNull();
+    }
+  });
+
+  it("holds the schedule action last shown, and only a known one", () => {
+    const pending = dashboardFor("action_pending.json");
+    expect(build(pending, null, "pause").heldAutomatic).toBe("pause");
+    expect(build(pending, null, "resume").heldAutomatic).toBe("resume");
+    expect(build(pending, null, null).heldAutomatic).toBeNull();
+    expect(build(pending, null, "none").heldAutomatic).toBeNull();
+  });
+});

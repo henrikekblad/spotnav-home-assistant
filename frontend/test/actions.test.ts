@@ -966,3 +966,142 @@ describe("the state captions of the action bar", () => {
     expect(translate("sv", "bar.schedulePaused")).toBe("Schema pausat");
   });
 });
+
+describe("the control cells while a Start or Stop awaits the charger", () => {
+  const captionOf = (button: Element | null): string | null | undefined =>
+    button?.querySelector(".spotnav-bar-caption")?.textContent;
+  const valueOf = (button: Element | null): string | null | undefined =>
+    button?.querySelector(".spotnav-settings-value")?.textContent;
+  const waiting = translate("en", "bar.waitingForCharger");
+
+  /** The `action_pending` fixture with the charger's own report set to [charging]. */
+  function pendingWith(charging: boolean): Record<string, unknown> {
+    const payload = fixture("action_pending");
+    payload.live = { ...(payload.live as Record<string, unknown>), charging };
+    return payload;
+  }
+
+  it("says Starting… from the charger's state when this card sent nothing", async () => {
+    const { element } = await mounted(pendingWith(false));
+    const immediate = actionButton(element);
+    expect(immediate?.disabled).toBe(true);
+    expect(captionOf(immediate)).toBe("Charge now");
+    expect(valueOf(immediate)).toBe("Starting…");
+    expect(immediate?.getAttribute("aria-label")).toBe(`Charging: not charging. ${waiting}`);
+    // Nothing was shown before, so there is no schedule caption to keep.
+    expect(plannerButton(element)).toBeNull();
+  });
+
+  it("says Stopping… from the charger's state while it charges", async () => {
+    const { element } = await mounted(pendingWith(true));
+    const immediate = actionButton(element);
+    expect(immediate?.disabled).toBe(true);
+    expect(captionOf(immediate)).toBe("Charging");
+    expect(valueOf(immediate)).toBe("Stopping…");
+    expect(immediate?.getAttribute("aria-label")).toBe(`Charging: charging. ${waiting}`);
+  });
+
+  it("names the Stop it sent at once, and keeps the schedule cell's caption, disabled, until the outcome", async () => {
+    const { hass, element } = await mounted(fixture("stop_charging"));
+    actionButton(element)?.click();
+    // Before any answer: the pressed cell already says what is under way, the other is greyed.
+    expect(valueOf(actionButton(element))).toBe("Stopping…");
+    expect(actionButton(element)?.disabled).toBe(true);
+    expect(valueOf(plannerButton(element))).toBe(translate("en", "action.pauseAutomaticShort"));
+    expect(plannerButton(element)?.disabled).toBe(true);
+
+    hass.resolveNext(started("stop"));
+    await settle();
+    // Home Assistant says action_pending while the charger still reports the charge.
+    hass.resolveNext(pendingWith(true));
+    await settle();
+    expect(captionOf(actionButton(element))).toBe("Charging");
+    expect(valueOf(actionButton(element))).toBe("Stopping…");
+    expect(actionButton(element)?.disabled).toBe(true);
+    const held = plannerButton(element);
+    expect(held, "the schedule cell stays").not.toBeNull();
+    expect(captionOf(held)).toBe("Schedule active");
+    expect(valueOf(held)).toBe(translate("en", "action.pauseAutomaticShort"));
+    expect(held?.disabled).toBe(true);
+    expect(held?.getAttribute("aria-label")).toBe(`Schedule: active. ${waiting}`);
+
+    // The next read offers actions again: both cells are live.
+    await vi.advanceTimersByTimeAsync(5_000);
+    hass.resolveNext(fixture("start_idle"));
+    await settle();
+    expect(valueOf(actionButton(element))).toBe("Start");
+    expect(actionButton(element)?.disabled).toBe(false);
+    expect(plannerButton(element)?.disabled).toBe(false);
+  });
+
+  it("names the Start it sent even while the charger still reports charging", async () => {
+    const { hass, element } = await mounted(fixture("resume_active"));
+    actionButton(element)?.click();
+    expect(valueOf(actionButton(element))).toBe("Starting…");
+    hass.resolveNext(started("start"));
+    await settle();
+    hass.resolveNext(pendingWith(true));
+    await settle();
+    expect(captionOf(actionButton(element))).toBe("Charge now");
+    expect(valueOf(actionButton(element))).toBe("Starting…");
+    const held = plannerButton(element);
+    expect(captionOf(held)).toBe("Schedule paused");
+    expect(valueOf(held)).toBe(translate("en", "action.resumeShort"));
+    expect(held?.disabled).toBe(true);
+  });
+
+  it("drops the kept schedule caption once nothing is pending", async () => {
+    const { hass, element } = await mounted(fixture("start_idle"));
+    actionButton(element)?.click();
+    hass.resolveNext(started("start"));
+    await settle();
+    hass.resolveNext(pendingWith(false));
+    await settle();
+    expect(plannerButton(element)).not.toBeNull();
+    await vi.advanceTimersByTimeAsync(5_000);
+    hass.resolveNext(fixture("no_settings"));
+    await settle();
+    await vi.advanceTimersByTimeAsync(5_000);
+    hass.resolveNext(pendingWith(false));
+    await settle();
+    // A pending read after one that offered no schedule control has no caption to keep.
+    expect(plannerButton(element)).toBeNull();
+  });
+
+  it("gives the Start cell its own word back when the Start is refused", async () => {
+    const { hass, element } = await mounted(fixture("start_idle"));
+    actionButton(element)?.click();
+    expect(valueOf(actionButton(element))).toBe("Starting…");
+    hass.resolveNext(refused("spotnav_action_failed"));
+    await settle();
+    expect(valueOf(actionButton(element))).toBe("Start");
+    expect(actionButton(element)?.getAttribute("aria-label")).toContain(translate("en", "action.start"));
+    expect(actionButton(element)?.disabled).toBe(false);
+  });
+
+  it("leaves the Start cell's word alone while a pause or resume is in flight", async () => {
+    const { element } = await mounted(fixture("resume_active"));
+    plannerButton(element)?.click();
+    expect(valueOf(actionButton(element))).toBe("Start");
+    expect(actionButton(element)?.disabled).toBe(true);
+  });
+
+  it("has the words in every language", () => {
+    const want: Record<string, [string, string]> = {
+      en: ["Starting…", "Stopping…"],
+      sv: ["Startar…", "Stoppar…"],
+      nb: ["Starter…", "Stopper…"],
+      da: ["Starter…", "Stopper…"],
+      fi: ["Käynnistetään…", "Pysäytetään…"],
+    };
+    for (const language of ["en", "sv", "nb", "da", "fi"] as const) {
+      expect(translate(language, "bar.starting"), language).toBe(want[language]?.[0]);
+      expect(translate(language, "bar.stopping"), language).toBe(want[language]?.[1]);
+    }
+    expect(translate("en", "bar.waitingForCharger")).toBe("Waiting for the charger");
+    expect(translate("sv", "bar.waitingForCharger")).toBe("Väntar på laddaren");
+    expect(translate("nb", "bar.waitingForCharger")).toBe("Venter på laderen");
+    expect(translate("da", "bar.waitingForCharger")).toBe("Venter på laderen");
+    expect(translate("fi", "bar.waitingForCharger")).toBe("Odotetaan laturia");
+  });
+});

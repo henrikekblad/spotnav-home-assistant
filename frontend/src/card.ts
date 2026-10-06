@@ -111,6 +111,9 @@ import {
   socFor,
   vehiclesFor,
   siteFactsFor,
+  actionPending,
+  type ControlFacts,
+  type SentAction,
   type SiteFacts,
 } from "./model";
 import { SOLAR_FORECAST_PREFIX, SOLAR_PRIORITY_KEY } from "./solar-editor";
@@ -197,6 +200,13 @@ export class SpotnavCard extends HTMLElement {
   private timer: number | null = null;
   /** After a Start or Stop: the outcome awaited, and the quicker reads until it shows (`charge-bar.ts`). */
   private outcomeWatch: OutcomeWatch | null = null;
+  /**
+   * The Start or Stop this card last sent, kept until a read shows no `action_pending`, so the
+   * Charging cell names what is under way; `null` after a pause or resume.
+   */
+  private sentAction: SentAction | null = null;
+  /** The automatic action last shown, so a pending action keeps the Schedule cell's caption. */
+  private shownAutomatic: string | null = null;
   private outcomeTimer: number | null = null;
   private connected = false;
   private assigned = false;
@@ -262,6 +272,8 @@ export class SpotnavCard extends HTMLElement {
     this.attempt += 1;
     this.inFlight = null;
     this.actionInFlight = null;
+    this.sentAction = null;
+    this.shownAutomatic = null;
     this.deferredRefresh = false;
     this.marketEditor = null;
     this.entityConfig = null;
@@ -307,6 +319,8 @@ export class SpotnavCard extends HTMLElement {
     this.attempt += 1;
     this.inFlight = null;
     this.actionInFlight = null;
+    this.sentAction = null;
+    this.shownAutomatic = null;
     this.deferredRefresh = false;
     this.editor = null;
     this.marketEditor = null;
@@ -504,6 +518,8 @@ export class SpotnavCard extends HTMLElement {
     const attempt = this.attempt;
     let confirmed = false;
     this.actionInFlight = { generation, attempt, action };
+    const previousSent = this.sentAction;
+    this.sentAction = (action === "start" || action === "stop") && choice === null ? action : null;
     this.view?.setActionError(null);
     this.view?.setActionPending(true, action, choice);
     try {
@@ -520,16 +536,22 @@ export class SpotnavCard extends HTMLElement {
         this.followOutcome();
         return;
       }
+      this.sentAction = previousSent;
       this.view?.setActionError({ sentenceKey: actionErrorKey(result.error), code: result.error });
     } catch (error) {
       if (!this.actionAnswerIsCurrent(generation, attempt)) {
         return;
       }
+      this.sentAction = previousSent;
       const code = error instanceof SpotnavApiError ? error.code : null;
       this.view?.setActionError({ sentenceKey: actionErrorKey(code), code });
     } finally {
       if (this.actionInFlight !== null && this.actionInFlight.generation === generation) {
         this.actionInFlight = null;
+        // The confirming read may already show the outcome: nothing pending, nothing to name.
+        if (this.cardState.kind === "ready" && !actionPending(this.cardState.dashboard.control)) {
+          this.sentAction = null;
+        }
         const deferred = this.deferredRefresh;
         this.deferredRefresh = false;
         this.view?.setActionPending(false);
@@ -537,6 +559,23 @@ export class SpotnavCard extends HTMLElement {
           void this.refresh({ purpose: "ordinary" });
         }
       }
+    }
+  }
+
+  /**
+   * After a render: a read with nothing pending forgets the command sent, and the Schedule cell's
+   * caption is kept only while it is offered or held for a pending action.
+   */
+  private rememberControls(control: ControlFacts): void {
+    // A render while the command is still in flight says nothing of its outcome yet.
+    if (control.pendingAction === null && this.actionInFlight === null) {
+      this.sentAction = null;
+    }
+    const automatic = control.automatic.action;
+    if (automatic === "pause" || automatic === "resume") {
+      this.shownAutomatic = automatic;
+    } else if (control.heldAutomatic === null) {
+      this.shownAutomatic = null;
     }
   }
 
@@ -2071,12 +2110,16 @@ export class SpotnavCard extends HTMLElement {
     this.root.replaceChildren(style, host);
 
     if (this.cardState.kind === "ready") {
+      const model = buildModel({
+        dashboard: this.cardState.dashboard,
+        language,
+        nowMs: Date.now(),
+        sentAction: this.sentAction,
+        shownAutomatic: this.shownAutomatic,
+      });
+      this.rememberControls(model.control);
       this.view = createCardView({
-        model: buildModel({
-          dashboard: this.cardState.dashboard,
-          language,
-          nowMs: Date.now(),
-        }),
+        model,
         mount: host,
         idPrefix: this.idPrefix,
         chartCollapsed: this.chartCollapsedNow(),
