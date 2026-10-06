@@ -608,7 +608,8 @@
       "start": "2026-09-21T07:00:00+02:00",
       "started_by": "other",
       "strategy": "cheapest",
-      "vehicle": null
+      "vehicle": null,
+      "vehicle_decided_by": null
     },
     {
       "average_price_minor_per_kwh": null,
@@ -630,7 +631,8 @@
       "start": "2026-09-20T23:00:00+02:00",
       "started_by": "manual",
       "strategy": "cheapest",
-      "vehicle": null
+      "vehicle": null,
+      "vehicle_decided_by": null
     },
     {
       "average_price_minor_per_kwh": 67.355,
@@ -652,7 +654,8 @@
       "start": "2026-09-14T06:00:00+02:00",
       "started_by": "hybrid",
       "strategy": "cheapest",
-      "vehicle": null
+      "vehicle": null,
+      "vehicle_decided_by": null
     },
     {
       "average_price_minor_per_kwh": 19.524,
@@ -674,7 +677,8 @@
       "start": "2026-09-02T12:00:00+02:00",
       "started_by": "solar",
       "strategy": "solar",
-      "vehicle": "Volvo EX30"
+      "vehicle": "Volvo EX30",
+      "vehicle_decided_by": null
     }
   ],
   "month_summary": {
@@ -747,7 +751,8 @@
     "start": "2026-09-22T11:30:00+02:00",
     "started_by": "manual",
     "strategy": "cheapest",
-    "vehicle": null
+    "vehicle": null,
+    "vehicle_decided_by": null
   },
   "retention_days": 730,
   "sessions": [
@@ -771,7 +776,8 @@
       "start": "2026-09-21T07:00:00+02:00",
       "started_by": "other",
       "strategy": "cheapest",
-      "vehicle": null
+      "vehicle": null,
+      "vehicle_decided_by": null
     },
     {
       "average_price_minor_per_kwh": null,
@@ -793,7 +799,8 @@
       "start": "2026-09-20T23:00:00+02:00",
       "started_by": "manual",
       "strategy": "cheapest",
-      "vehicle": null
+      "vehicle": null,
+      "vehicle_decided_by": null
     },
     {
       "average_price_minor_per_kwh": 67.355,
@@ -815,7 +822,8 @@
       "start": "2026-09-14T06:00:00+02:00",
       "started_by": "hybrid",
       "strategy": "cheapest",
-      "vehicle": null
+      "vehicle": null,
+      "vehicle_decided_by": null
     },
     {
       "average_price_minor_per_kwh": 19.524,
@@ -837,7 +845,8 @@
       "start": "2026-09-02T12:00:00+02:00",
       "started_by": "solar",
       "strategy": "solar",
-      "vehicle": "Volvo EX30"
+      "vehicle": "Volvo EX30",
+      "vehicle_decided_by": null
     },
     {
       "average_price_minor_per_kwh": 65.761,
@@ -859,7 +868,8 @@
       "start": "2026-08-31T22:30:00+02:00",
       "started_by": "plan_window",
       "strategy": "cheapest",
-      "vehicle": "Volvo EX30"
+      "vehicle": "Volvo EX30",
+      "vehicle_decided_by": null
     }
   ],
   "this_month": {

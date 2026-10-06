@@ -90,6 +90,7 @@
     }
   },
   "generated_at": "2026-09-22T06:00:00+00:00",
+  "identification": null,
   "live": {
     "charging": false,
     "measured_current_a": null,
@@ -2328,6 +2329,20 @@
       "capacity_source": "stored",
       "consumption_kwh_per_10km": 2.0,
       "id": "vehicle_ev6",
+      "identification": {
+        "location": {
+          "candidates": [],
+          "chosen": false,
+          "entity_id": null,
+          "name": null
+        },
+        "plug": {
+          "candidates": [],
+          "chosen": false,
+          "entity_id": null,
+          "name": null
+        }
+      },
       "max_percent": 80.0,
       "name": "EV6",
       "onboard_phases": 3,
@@ -2340,6 +2355,20 @@
       "capacity_source": "stored",
       "consumption_kwh_per_10km": 1.7,
       "id": "vehicle_niro",
+      "identification": {
+        "location": {
+          "candidates": [],
+          "chosen": false,
+          "entity_id": null,
+          "name": null
+        },
+        "plug": {
+          "candidates": [],
+          "chosen": false,
+          "entity_id": null,
+          "name": null
+        }
+      },
       "max_percent": null,
       "name": "Niro",
       "onboard_phases": 3,

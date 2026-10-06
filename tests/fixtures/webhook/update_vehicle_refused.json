@@ -19,6 +19,20 @@
     "capacity_source": null,
     "consumption_kwh_per_10km": 2.0,
     "id": "vehicle_niro",
+    "identification": {
+      "location": {
+        "candidates": [],
+        "chosen": false,
+        "entity_id": null,
+        "name": null
+      },
+      "plug": {
+        "candidates": [],
+        "chosen": false,
+        "entity_id": null,
+        "name": null
+      }
+    },
     "max_percent": null,
     "name": "Niro",
     "onboard_phases": 3,

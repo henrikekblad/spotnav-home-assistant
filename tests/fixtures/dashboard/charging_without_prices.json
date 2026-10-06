@@ -89,6 +89,7 @@
     }
   },
   "generated_at": "2026-09-22T20:30:00+00:00",
+  "identification": null,
   "live": {
     "charging": false,
     "measured_current_a": null,

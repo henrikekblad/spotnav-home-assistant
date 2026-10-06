@@ -40,6 +40,7 @@ from ..vehicles.vehicle_refresh import async_refresh_vehicle, VehicleRefreshLimi
 from .common import ERROR_UNSUPPORTED_VERSION
 from .dashboard import async_webhook_dashboard, DashboardFailure
 from .entity_config import async_webhook_update_charger_priority, async_webhook_update_vehicle
+from .identification import webhook_choose_vehicle_identification, webhook_identify_vehicle
 from .sessions import SESSIONS_API_VERSION, sessions_answer, SessionsRefusal
 from .settings import (
     async_update_settings,
@@ -300,6 +301,8 @@ ACTIONS: Final[dict[str, Handler]] = {
         async_webhook_update_charger_priority, "update_charger_priority"
     ),
     "push_register": _push_register,
+    "identify_vehicle": webhook_identify_vehicle,
+    "choose_vehicle_identification": webhook_choose_vehicle_identification,
 }
 
 

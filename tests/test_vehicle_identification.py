@@ -38,7 +38,7 @@ from custom_components.spotnav.vehicles.identification import (
     ordered,
 )
 
-from .world import add_car, admin, setup_charger, vehicle_entity, ws_call
+from .world import add_car, setup_charger, vehicle_entity, ws_call
 
 pytestmark = pytest.mark.usefixtures("offline_relay")
 
@@ -137,10 +137,11 @@ class World:
         self.freezer = freezer
         self.connected: bool | None = False
         self.stamp = 0
+        self.t0 = dt_util.utcnow().replace(microsecond=0) + timedelta(days=1)
 
     async def start(self, *, mode: str = "automatic", cars: int = 2, phones: tuple[str, ...] = ("mobile_app_pixel",)):
         hass = self.hass
-        self.freezer.move_to(T0 - timedelta(hours=1))
+        self.freezer.move_to(self.t0 - timedelta(hours=1))
         self.entry = await setup_charger(hass, title="Garage")
         self.switch_on = async_mock_service(hass, "switch", "turn_on")
         self.switch_off = async_mock_service(hass, "switch", "turn_off")
@@ -175,7 +176,7 @@ class World:
             ),
         )
         await self.observe()
-        self.freezer.move_to(T0 - timedelta(seconds=1))
+        self.freezer.move_to(self.t0 - timedelta(seconds=1))
         return self
 
     async def observe(self) -> None:
@@ -188,7 +189,7 @@ class World:
         await self.hass.async_block_till_done()
 
     async def plug_in(self) -> None:
-        self.freezer.move_to(T0)
+        self.freezer.move_to(self.t0)
         self.connected = True
         await self.observe()
 
@@ -393,13 +394,19 @@ async def test_choosing_the_car_in_the_settings_meanwhile_is_the_answer(world: W
     assert world.settings.target.vehicle_id == tesla
 
 
-async def test_the_card_shows_the_question_and_answers_it(world: World, hass: HomeAssistant, hass_ws_client) -> None:
+async def test_the_card_shows_the_question_and_answers_it(
+    world: World, hass: HomeAssistant, hass_ws_client, hass_admin_user
+) -> None:
+    from pytest_homeassistant_custom_component.common import CLIENT_ID
+
     from custom_components.spotnav.api import dashboard as dashboard_api
 
     await world.start()
-    socket = await admin(hass, hass_ws_client)
     await world.plug_in()
     await world.later(ASK_AFTER_S + 5)
+    # Signed in now: a token issued before the clock moved on has expired.
+    refresh = await hass.auth.async_create_refresh_token(hass_admin_user, CLIENT_ID)
+    socket = await hass_ws_client(hass, hass.auth.async_create_access_token(refresh))
     payload = dashboard_api.serialize_dashboard(
         dashboard_api.capture_dashboard(hass, world.entry), can_act=True
     )

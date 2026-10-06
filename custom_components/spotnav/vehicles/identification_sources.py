@@ -18,7 +18,7 @@ identification (`identification.py`), never written and never used to wake a car
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Final
+from typing import Any, Final
 
 from homeassistant.const import STATE_HOME, STATE_UNAVAILABLE, STATE_UNKNOWN
 from homeassistant.core import HomeAssistant, State
@@ -167,6 +167,27 @@ def identification_sources(
         _source(hass, chosen, SOURCE_PLUG, plugs, best_plugs),
         _source(hass, chosen, SOURCE_LOCATION, trackers, trackers),
     )
+
+
+def _name(hass: HomeAssistant, entity_id: str | None) -> str | None:
+    if entity_id is None:
+        return None
+    state = hass.states.get(entity_id)
+    return None if state is None else state.name
+
+
+def sources_block(hass: HomeAssistant, vehicle_id: str) -> dict[str, dict[str, Any]]:
+    """A vehicle row's `identification`: per source its `entity_id` and `name` (`null`: none, or a choice not
+    made), `chosen` (a person decided it; a chosen `null` is "none") and the `candidates` to choose from."""
+    block: dict[str, dict[str, Any]] = {}
+    for kind, source in zip(SOURCES, identification_sources(hass, vehicle_id), strict=True):
+        block[kind] = {
+            "entity_id": source.entity_id,
+            "name": _name(hass, source.entity_id),
+            "chosen": source.chosen,
+            "candidates": [{"entity_id": item, "name": _name(hass, item)} for item in source.candidates],
+        }
+    return block
 
 
 async def async_choose_source(hass: HomeAssistant, vehicle_id: str, kind: str, entity_id: str | None) -> None:

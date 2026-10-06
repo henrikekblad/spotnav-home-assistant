@@ -2276,5 +2276,6 @@
     "until": null,
     "waiting_for": []
   },
-  "charger_priority": null
+  "charger_priority": null,
+  "identification": null
 }

@@ -118,6 +118,7 @@ from ..vehicles import vehicle_properties
 from ..vehicles.charger_inventory import charger_entries
 from ..vehicles.duplicate_chargers import duplicates_of
 from ..vehicles.soc_estimate import battery_room_kwh, CHARGE_EFFICIENCY, target_need_kwh
+from ..vehicles.identification_sources import sources_block
 from ..vehicles.vehicle_discovery import discover_vehicles, resolve_target_vehicle
 from .common import (
     ERROR_CHARGER_REQUIRED,
@@ -360,6 +361,8 @@ class CapturedVehicle:
     onboard_phases: int = vehicle_properties.DEFAULT_ONBOARD_PHASES
     #: `1` when charges suggest the onboard charger is single-phase and nobody has answered yet.
     suggested_onboard_phases: int | None = None
+    #: The car's plug and location sources for vehicle identification (`identification_sources.sources_block`).
+    identification: dict[str, Any] | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -436,6 +439,8 @@ class CapturedDashboard:
     notify_available: tuple[tuple[str, str], ...] = ()
     #: Friendly names of the entities a status line names (`entity_id -> name`), where they have one.
     entity_names: tuple[tuple[str, str], ...] = ()
+    #: Which car is plugged in, while a plug-in is being identified (`vehicles/identification.py`), else `None`.
+    identification: dict[str, Any] | None = None
 
 
 def capture_target(controller: ChargingController | None) -> CapturedTarget | None:
@@ -636,6 +641,7 @@ def capture_vehicles(
                 soc_percent=soc_percent,
                 onboard_phases=own.phases,
                 suggested_onboard_phases=onboard_suggestion(hass, choice.id),
+                identification=sources_block(hass, choice.id),
             )
         )
     return tuple(rows), target_id
@@ -1003,7 +1009,14 @@ def capture_dashboard(
         charger_priority=capture_charger_priority(hass, entry),
         notify_available=available_targets(hass),
         entity_names=_status_entity_names(hass, site),
+        identification=_identification(hass, entry_id),
     )
+
+
+def _identification(hass: HomeAssistant, entry_id: str) -> dict[str, Any] | None:
+    data = charger_data(hass, entry_id)
+    identifier = None if data is None else data.identifier
+    return None if identifier is None else identifier.dashboard()
 
 
 def _status_entity_names(hass: HomeAssistant, site: CapturedSite | None) -> tuple[tuple[str, str], ...]:
@@ -1599,6 +1612,7 @@ def serialize_dashboard(
         "connection": serialize_connection(capture.connection),
         "starting_up": serialize_starting_up(capture.starting_up),
         "charger_priority": serialize_charger_priority(capture.charger_priority, can_act=can_act),
+        "identification": capture.identification,
     }
 
 
@@ -1861,6 +1875,7 @@ def serialize_vehicle(vehicle: CapturedVehicle) -> dict[str, Any]:
         "soc_percent": finite_number(vehicle.soc_percent),
         "onboard_phases": vehicle.onboard_phases,
         "suggested_onboard_phases": vehicle.suggested_onboard_phases,
+        "identification": vehicle.identification,
     }
 
 
