@@ -202,6 +202,19 @@ describe("the Plan popover's target editor", () => {
     expect(((update["settings"] as Record<string, any>)["target"] as Record<string, unknown>)["vehicle_id"]).toBe("vehicle_niro");
   });
 
+  it("shows the target the chosen car keeps here, and sends it with the car", async () => {
+    const record = { ...aRecord(), vehicle_ids: null, identify_mode: "automatic" as const, vehicle_targets: { vehicle_ev6: 80, vehicle_niro: 65 } };
+    const { hass, element } = await openPlan(twoVehicles(), record);
+    const select = q<HTMLSelectElement>(element, "select[data-soc='vehicle-choice']")!;
+    select.value = "vehicle_niro";
+    select.dispatchEvent(new Event("change"));
+    expect(q(element, "[data-part='target-value']")?.textContent).toContain("65");
+    q<HTMLButtonElement>(element, ".spotnav-settings-save")!.click();
+    await settle();
+    const update = hass.messages.find((message) => message.type === "spotnav/update_settings")!;
+    expect((update["settings"] as Record<string, any>)["target"]).toEqual({ vehicle_id: "vehicle_niro", target_percent: 65 });
+  });
+
   it("has no picker with one vehicle, just its name, and no link to Settings anywhere", async () => {
     const payload = twoVehicles();
     payload["soc"]["vehicles"] = [];
