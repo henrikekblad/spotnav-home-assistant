@@ -663,6 +663,8 @@ def test_i4_a_self_started_charge_without_surplus_is_stopped_at_the_first_readin
         ("person", "safety_stop", True, "person", True),
         ("plan", "safety_stop", True, False, False),
         ("plan", "pause", False, False, False),
+        # The owner already cleared (the window's end while a stop of ours was unanswered): nothing is held back.
+        ("none", "pause", True, False, False),
     ],
 )
 def test_a_balancing_stop_remembers_the_charge_it_holds_back(owner, code, was_on, remembered, safety) -> None:

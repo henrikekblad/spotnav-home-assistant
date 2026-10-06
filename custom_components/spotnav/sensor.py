@@ -444,6 +444,9 @@ class SiteStateEntity(SpotNavSiteEntity, SensorEntity):
             # The battery-on-the-fuse probe (`site/battery_probe.py`): one entry per associated
             # charger with its state and last outcome.
             "battery_probe": self.controller.battery_probe_snapshot,
+            # The resumes of a charge load balancing paused: how many in ten minutes, and the back-off left after
+            # too many (`site_capacity_controller.RESUME_LIMIT`).
+            "balancing_resume": self.controller.balancing_resume_snapshot(),
             # Solar surplus priority: `car_first` or `battery_first`, present even when never stored.
             "solar_priority": self.controller.config.get(
                 CONF_SOLAR_PRIORITY, DEFAULT_SOLAR_PRIORITY

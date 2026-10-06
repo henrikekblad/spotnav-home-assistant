@@ -107,18 +107,28 @@ It is best effort and is not a protective device. Turning it off gives back any 
   it drawing nothing, the car is credited with what the site's current rose by since the start, never
   more than the charger was given. So the car is not taken for house load and paused by its own start.
   The site's current itself is never changed: a phase over the fuse with the credit applied is still
-  lowered, or paused, at once. Once the charger's own reading shows the car, it counts alone. A start
-  the charger has not answered yet asks for its current, not for nothing. The credit is in the
-  decision log (`start_credit_a`) and the site's diagnostics.
+  lowered, or paused, at once. The credit only keeps a charger from being paused or lowered by its own
+  start; it never raises a charger: a decision that would go more than one amp above what is credited
+  is taken on the charger's own reading instead (a rise that may be the house's is not the car's).
+  Chargers started together share one rise: each start, in the order they went out, is credited only
+  with what the other chargers' readings and earlier credits do not already account for. What another
+  start may take is still judged on the chargers' own readings. Once the charger's own reading shows
+  the car, it counts alone. A start the charger has not answered yet asks for its current, not for
+  nothing. The credit is in the decision log (`start_credit_a`) and the site's diagnostics.
 - **A charge load balancing paused** (no room for the car's minimum current) is started again once
   every phase it uses has room for the minimum and one amp more for the dwell time (60 s), while the
   charge is still wanted: the plan's window is open, the sun's charge or a person's Start. It goes on as
   the charge it was (a plan's charge stays the plan's). A stopped charger is not paused again, so the
   charge it holds back is not forgotten. A person's Stop, the window's end or a new plan with no window
-  open ends it.
+  open ends it, also while the charger has not yet answered the pause: a pause repeated then holds back
+  nothing. At most two resumes go out in ten minutes; one more due in them waits 15 minutes, so a load
+  that comes and goes does not cycle the relays (the charger is paused at most three times in ten
+  minutes, as Peblar allows). The site sensor and the diagnostics show it (`balancing_resume`).
 - A stop already sent is not sent again by another path for the same decision (a re-arm right after
   the last window's end, the regulator's next pass) for 15 seconds, unless the charger reports charging
   again or SpotNav starts it meanwhile: a charger that has ended the transaction rejects a second stop.
+  A safety stop for the fuse and a person's Stop always go out. A stop under a person's Stop that sent
+  nothing for this reason does not count toward giving up on a charger that ignores the Stop.
 - A person's charge that load balancing stopped for safety (the current could not be lowered in time)
   is started again when there is room, no sooner than five minutes after that stop, and only within
   the same plug-in.

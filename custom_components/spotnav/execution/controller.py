@@ -634,6 +634,8 @@ class ChargingController:
         # and by the charger seen charging again after it was seen not to. `_seen_charging` is the last report.
         self._stop_settle_since: datetime | None = None
         self._seen_charging: bool | None = None
+        # Whether the last `_stop_locked` sent nothing because a stop of ours still settled.
+        self._stop_settled = False
         # A stop command on its way to the charger: the regulator writes no current meanwhile, since on
         # some chargers (Easee) a current written while the stop lands lifts it again.
         self._stop_in_flight = False
@@ -1819,7 +1821,11 @@ class ChargingController:
         # Every attempt counts, taken or not: a command that raised may still have stopped the charger, and
         # one that keeps failing must end in the give-up and its notification, not in endless retries.
         self._person_hold_stop_times.append(tried_at)
-        return await self._automatic_stop_locked("the stop under a person's Stop")
+        stopped = await self._automatic_stop_locked("the stop under a person's Stop")
+        if self._stop_settled and tried_at in self._person_hold_stop_times:
+            # Nothing went out (a stop of ours still settles): no attempt the charger could have ignored.
+            self._person_hold_stop_times.remove(tried_at)
+        return stopped
 
     @asynccontextmanager
     async def _automatic(self, kind: str) -> AsyncIterator[bool]:
@@ -2829,21 +2835,32 @@ class ChargingController:
                 # A charge balancing already holds back (paused by an earlier pass, the charger not seen off yet or
                 # already off): a repeat pause is the same pause, and that charge stays the one to resume.
                 held = (self._paused_by_balancing, self._paused_charge)
+                # A charge nobody owns while a stop of ours is unanswered is that stopped charge, its owner already
+                # cleared (the window's end, a new plan): not one the charger began by itself, nor still wanted.
+                stop_sent_at = self._stop_sent_at
+                owner_cleared = (
+                    paused_charge == (None, False)
+                    and stop_sent_at is not None
+                    and (dt_util.utcnow() - stop_sent_at).total_seconds() < STOP_ACK_S
+                )
                 session = self._session_generation
                 token = self._shadow.begin()
                 outcome = CommandOutcome(False)
                 try:
                     # A balancing stop: a top-off running past the last window goes on, paused like any charge.
-                    await self._stop_request_locked(balancing=True)
+                    # A safety stop is never taken for a pause on its way (`_stop_settling`): the fuse needs it now.
+                    await self._stop_request_locked(balancing=True, urgent=code != "pause")
                     outcome = self._shadow_stop_outcome(True)
                     # Set after the stop (which clears it): this stop is the balancing pause itself. A safety stop
                     # of a person's charge is remembered the same way, so the regulator gives it back when there
-                    # is room. Never for a plug-in that ended while the stop was on its way.
+                    # is room. Never for a plug-in that ended while the stop was on its way, nor for a charge whose
+                    # owner was cleared (`owner_cleared`): a repeat pause after the window's end or a new plan.
                     if held[0] and self._session_generation == session:
                         self._paused_by_balancing, self._paused_charge = held
                     elif (
                         was_on
                         and (code == "pause" or paused_charge[0] == "manual")
+                        and not owner_cleared
                         and self._session_generation == session
                     ):
                         self._held_for_safety = code != "pause"
@@ -3078,35 +3095,43 @@ class ChargingController:
             "session_limit_state": None if session_state is None else str(session_state.state),
         }
 
-    async def async_stop(self, *, clear_schedule: bool = False, balancing: bool = False) -> None:
+    async def async_stop(
+        self, *, clear_schedule: bool = False, balancing: bool = False, urgent: bool = True
+    ) -> None:
         """Stop charging, optionally removing the saved schedule. Takes the operation lock and
         delegates to `_stop_locked`. A person's Stop is the execution boundary's: it pauses Auto for the
         plug-in session and clears the plan (`AutoExecutor`).
 
         Any stop but load balancing's pause (`balancing`) ends a top-off, and with it the plan whose
-        windows are all past: a person's Stop, a pause, solar standing it down.
+        windows are all past: a person's Stop, a pause, solar standing it down. A stop through here goes out
+        even while another settles (`urgent`, a person's): an automatic decision passes `urgent=False`.
         """
         async with self._lock:
+            request = self._stop_request_locked(clear_schedule=clear_schedule, balancing=balancing, urgent=urgent)
             if self._shadow.depth:
-                await self._stop_request_locked(clear_schedule=clear_schedule, balancing=balancing)
+                await request
                 return
-            await self._shadow_direct_stop(self._stop_request_locked(clear_schedule=clear_schedule, balancing=balancing), clear_schedule)
+            await self._shadow_direct_stop(request, clear_schedule)
 
-    async def _stop_request_locked(self, *, clear_schedule: bool = False, balancing: bool = False) -> None:
+    async def _stop_request_locked(
+        self, *, clear_schedule: bool = False, balancing: bool = False, urgent: bool = False
+    ) -> None:
         """`async_stop` itself, with the operation lock held."""
         if self._top_off_until is not None and not balancing:
             # The plan ends with its top-off.
             _LOGGER.info("SpotNav charger %s: the top-off is stopped", self.entry_id)
             clear_schedule = True
-        await self._stop_locked(clear_schedule=clear_schedule)
+        await self._stop_locked(clear_schedule=clear_schedule, urgent=urgent)
 
-    async def _stop_locked(self, *, clear_schedule: bool = False) -> None:
+    async def _stop_locked(self, *, clear_schedule: bool = False, urgent: bool = False) -> None:
         """The stop itself, with the operation lock held: stop charging, optionally removing the saved
         schedule.
 
         Says nothing about a target stop: `_async_target_stop` writes that record before calling this, so
         the window-end stop and an explicit cancel record nothing. Clearing the plan drops the state-change
-        subscription, since a gone plan enforces nothing.
+        subscription, since a gone plan enforces nothing. A stop of an automatic decision while another
+        settles (`_stop_settling`) sends nothing (`_stop_settled` says so); an `urgent` one (a safety stop, a
+        person's Stop) always goes out.
         """
         was_owned = self._hold.owned
         was_balancing = (self._paused_by_balancing, self._paused_charge)
@@ -3120,12 +3145,14 @@ class ChargingController:
         origin = self._charge_origin
         # For the ownership shadow: a stop that sends nothing because the control says nothing keeps the owner.
         self._shadow_unobserved = not self._stop_needed and self._control_observation is None
-        if self._stop_needed and self._stop_settling():
+        self._stop_settled = False
+        if self._stop_needed and not urgent and self._stop_settling():
             # A stop of ours is on its way and the charger has not answered it: this off decision is that stop's.
             # Sent again it meets no transaction, and the charger rejects it.
             _LOGGER.debug(
                 "SpotNav charger %s: a stop is already on its way; not sent again", self.entry_id
             )
+            self._stop_settled = True
             self._cancel_stop_retry()
             self._plan_charge = False
             self._charge_origin = None
