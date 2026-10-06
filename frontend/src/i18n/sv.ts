@@ -39,6 +39,7 @@ export const sv: Record<keyof typeof en, string> = {
   "status.startingUp": "Startar upp…",
   "status.scheduledNoTime": "Laddning är schemalagd.",
   "status.nothingToCharge": "Inget att ladda just nu.",
+  "status.waitingForVehicleUpdate": "Väntar på att bilen rapporterar sin nya laddnivå efter laddningen.",
   "status.pausedShort": "Automatisk laddning är pausad.",
   "status.planEnergy": "{kwh} kWh",
   "status.planCost": "{cost}",

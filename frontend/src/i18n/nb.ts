@@ -39,6 +39,7 @@ export const nb: Record<keyof typeof en, string> = {
   "status.startingUp": "Starter opp…",
   "status.scheduledNoTime": "Lading er planlagt.",
   "status.nothingToCharge": "Ingenting å lade akkurat nå.",
+  "status.waitingForVehicleUpdate": "Venter på at bilen melder sitt nye ladenivå etter ladingen.",
   "status.pausedShort": "Automatisk lading er pauset.",
   "status.planEnergy": "{kwh} kWh",
   "status.planCost": "{cost}",

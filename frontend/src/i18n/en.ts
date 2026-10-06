@@ -40,6 +40,7 @@ export const en = {
   "status.startingUp": "Starting up…",
   "status.scheduledNoTime": "Charging is scheduled.",
   "status.nothingToCharge": "Nothing to charge right now.",
+  "status.waitingForVehicleUpdate": "Waiting for the car to report its new level after the charge.",
   "status.pausedShort": "Automatic charging is paused.",
   "status.planEnergy": "{kwh} kWh",
   "status.planCost": "{cost}",

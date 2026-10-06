@@ -39,6 +39,7 @@ export const fi: Record<keyof typeof en, string> = {
   "status.startingUp": "Käynnistyy…",
   "status.scheduledNoTime": "Lataus on aikataulutettu.",
   "status.nothingToCharge": "Ei mitään ladattavaa juuri nyt.",
+  "status.waitingForVehicleUpdate": "Odotetaan, että auto ilmoittaa uuden varaustasonsa latauksen jälkeen.",
   "status.pausedShort": "Automaattinen lataus on keskeytetty.",
   "status.planEnergy": "{kwh} kWh",
   "status.planCost": "{cost}",
