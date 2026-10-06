@@ -731,7 +731,7 @@ export const fi: Record<keyof typeof en, string> = {
   "settings.carEndsCharge": "Auto lopettaa latauksen itse, kun se on täynnä tai saavuttaa latausrajansa ({percent} %).",
   "settings.soc.readAge": "Luettu {age}",
   "settings.soc.needAfterVehicle": "Tarve lasketaan, kun ajoneuvon valinta on tallennettu.",
-  "vehicleLine.aria": "{name}, {summary}. Valitse ladattava ajoneuvo",
+  "vehicleLine.aria": "{name}, {summary}",
   "vehicleLine.estimateTitle": "Arvio lukemien välillä, luettu {age}",
   "vehicleLine.dialogTitle": "Mikä ajoneuvo ladataan?",
   "vehicleLine.noReading": "Ei lukemaa",
@@ -843,4 +843,5 @@ export const fi: Record<keyof typeof en, string> = {
   "identify.hint.not_plugged_in": "Latauskaapeli kertoo: ei kytketty",
   "identify.hint.away": "Ei kotona",
   "identify.hint.elsewhere": "Toisella laturilla",
+  "identify.changeCarAria": "Vaihda auto – {name}",
 };

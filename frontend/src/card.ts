@@ -81,7 +81,6 @@ import {
   identificationReplacement,
   type IdentificationChoice,
   type NotificationsChoice,
-  vehicleReplacement,
   type ReplacementCheck,
   type CurrentRange,
   type DepartureDays,
@@ -1243,9 +1242,6 @@ export class SpotnavCard extends HTMLElement {
     }
   }
 
-  private async selectVehicle(vehicleId: string): Promise<void> {
-    await this.writeFreshSettings((record) => vehicleReplacement(record, vehicleId));
-  }
 
   /**
    * The Notifications dialog's Save: the same fresh-record write as the strategy, changing only
@@ -2238,9 +2234,6 @@ export class SpotnavCard extends HTMLElement {
           return await findRegion(hass, postcode);
         },
         isAdmin: this.isAdmin,
-        onSelectVehicle: (vehicleId) => {
-          void this.selectVehicle(vehicleId);
-        },
         onSelectStrategy: (strategyId) => {
           void this.selectStrategy(strategyId);
         },

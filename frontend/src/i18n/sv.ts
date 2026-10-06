@@ -731,7 +731,7 @@ export const sv: Record<keyof typeof en, string> = {
   "settings.carEndsCharge": "Bilen avslutar själv laddningen när den är full eller når sin laddgräns ({percent} %).",
   "settings.soc.readAge": "Avläst {age}",
   "settings.soc.needAfterVehicle": "Behovet räknas när fordonsvalet är sparat.",
-  "vehicleLine.aria": "{name}, {summary}. Välj vilket fordon som ska laddas",
+  "vehicleLine.aria": "{name}, {summary}",
   "vehicleLine.estimateTitle": "Uppskattad mellan avläsningarna, avläst {age}",
   "vehicleLine.dialogTitle": "Vilket fordon ska laddas?",
   "vehicleLine.noReading": "Ingen avläsning",
@@ -843,4 +843,5 @@ export const sv: Record<keyof typeof en, string> = {
   "identify.hint.not_plugged_in": "Laddkabeln säger urkopplad",
   "identify.hint.away": "Inte hemma",
   "identify.hint.elsewhere": "Vid en annan laddare",
+  "identify.changeCarAria": "Byt bil – {name}",
 };

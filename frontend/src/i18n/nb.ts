@@ -731,7 +731,7 @@ export const nb: Record<keyof typeof en, string> = {
   "settings.carEndsCharge": "Bilen avslutter selv ladingen når den er full eller når ladegrensen sin ({percent} %).",
   "settings.soc.readAge": "Avlest {age}",
   "settings.soc.needAfterVehicle": "Behovet beregnes når kjøretøyvalget er lagret.",
-  "vehicleLine.aria": "{name}, {summary}. Velg hvilket kjøretøy som skal lades",
+  "vehicleLine.aria": "{name}, {summary}",
   "vehicleLine.estimateTitle": "Anslått mellom avlesningene, avlest {age}",
   "vehicleLine.dialogTitle": "Hvilket kjøretøy skal lades?",
   "vehicleLine.noReading": "Ingen avlesning",
@@ -843,4 +843,5 @@ export const nb: Record<keyof typeof en, string> = {
   "identify.hint.not_plugged_in": "Ladekabelen sier ikke tilkoblet",
   "identify.hint.away": "Ikke hjemme",
   "identify.hint.elsewhere": "Ved en annen lader",
+  "identify.changeCarAria": "Bytt bil – {name}",
 };

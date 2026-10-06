@@ -744,7 +744,7 @@ export const en = {
   "settings.carEndsCharge": "The car ends the charge itself when it is full or reaches its charge limit ({percent} %).",
   "settings.soc.readAge": "Read {age}",
   "settings.soc.needAfterVehicle": "The need is calculated once the vehicle choice is saved.",
-  "vehicleLine.aria": "{name}, {summary}. Choose which vehicle to charge",
+  "vehicleLine.aria": "{name}, {summary}",
   "vehicleLine.estimateTitle": "Estimated between readings, read {age}",
   "vehicleLine.dialogTitle": "Which vehicle should be charged?",
   "vehicleLine.noReading": "No reading",
@@ -856,4 +856,5 @@ export const en = {
   "identify.hint.not_plugged_in": "Its charging cable says unplugged",
   "identify.hint.away": "Not at home",
   "identify.hint.elsewhere": "At another charger",
+  "identify.changeCarAria": "Change car – {name}",
 } as const;

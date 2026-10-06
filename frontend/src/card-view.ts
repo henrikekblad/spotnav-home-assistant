@@ -72,7 +72,7 @@ import type { Vehicle } from "./validate";
 import { vehicleSummary } from "./vehicle-settings";
 import { issueText } from "./status";
 import { historyBody, type HistoryState, type HistoryUi } from "./history";
-import { connectionLabel, vehicleChoicesFor, vehicleLineFor } from "./vehicle-line";
+import { connectionLabel, vehicleLineFor } from "./vehicle-line";
 import type { ChargeBarFacts } from "./charge-bar";
 import {
   fiscalRows,
@@ -142,7 +142,6 @@ export interface CardViewInput {
    * A vehicle other than the planned one was chosen in the vehicle dialog. The view has already closed
    * the dialog; the card owns the write and every outcome.
    */
-  onSelectVehicle?: (vehicleId: string) => void;
   /** The Solar card's Change button, and that dialog's Save (the card judges the draft) and Cancel. */
   onOpenSolarEditor?: () => void;
   onSaveSolar?: (draft: EntityDraft) => void;
@@ -620,6 +619,15 @@ function settingsGearIcon(doc: Document): SVGElement {
 }
 
 /** A small battery glyph for the vehicle line. */
+/** Byt bil's ⇄ at the end of the car line. */
+function swapIcon(doc: Document): SVGElement {
+  const svg = icon(doc, (svg, ns) => {
+    svg.append(strokePath(ns, doc, "M5 8h13M15 5l3 3-3 3M19 16H6M9 13l-3 3 3 3"));
+  });
+  svg.dataset["icon"] = "swap";
+  return svg;
+}
+
 function batteryIcon(doc: Document): SVGElement {
   return icon(doc, (svg, ns) => {
     const body = doc.createElementNS(ns, "path");
@@ -851,7 +859,7 @@ export function createCardView(input: CardViewInput): CardView {
   const header = element(doc, "div", C.header);
   header.append(brandMark(doc, idPrefix));
   const vehicleLine = vehicleLineFor(model.language, model.soc, model.dashboardSettings);
-  let vehicleButton: HTMLButtonElement | null = null;
+  let vehicleButton: HTMLElement | null = null;
   // While the charge bar shows, it already says the charge runs: the connection line steps aside.
   const connectionText = model.chargeBar === null ? connectionLabel(model.language, model.connection) : null;
   const connectionClass = (): string =>
@@ -862,11 +870,18 @@ export function createCardView(input: CardViewInput): CardView {
     if (model.chargerName !== null) {
       identity.append(element(doc, "h3", C.name, model.chargerName));
     }
-    vehicleButton = element(doc, "button", C.vehicleLine);
-    vehicleButton.type = "button";
+    // The car line is Byt bil, for every user, wherever the car at this plug-in can be changed (identification
+    // runs and more than one car can charge here); elsewhere it only states the car.
+    const changeable = model.identification !== null && model.identification.candidates.length >= 2;
+    const lineName = vehicleLine.name ?? translate(model.language, "settings.vehicle.unnamed");
+    const changeLabel = translate(model.language, "identify.changeCarAria", { name: lineName });
+    vehicleButton = element(doc, changeable ? "button" : "div", C.vehicleLine);
+    if (changeable) {
+      (vehicleButton as HTMLButtonElement).type = "button";
+      vehicleButton.setAttribute("aria-haspopup", "dialog");
+    }
     vehicleButton.dataset["vehicleLine"] = vehicleLine.vehicleId;
-    vehicleButton.setAttribute("aria-label", vehicleLine.ariaLabel);
-    vehicleButton.setAttribute("aria-haspopup", "dialog");
+    vehicleButton.setAttribute("aria-label", changeable ? changeLabel : vehicleLine.ariaLabel);
     if (vehicleLine.estimateTitle !== null) {
       vehicleButton.title = vehicleLine.estimateTitle;
       vehicleButton.dataset["estimated"] = "true";
@@ -893,24 +908,20 @@ export function createCardView(input: CardViewInput): CardView {
       const span = element(doc, "span", part.cls, index === 0 ? part.text : `\u00b7 ${part.text}`);
       if (part.connection === true) {
         span.dataset["connection"] = model.connection?.state ?? "";
-        vehicleButton?.setAttribute("aria-label", `${vehicleLine.ariaLabel}, ${connectionText}`);
+        if (!changeable) {
+          vehicleButton?.setAttribute("aria-label", `${vehicleLine.ariaLabel}, ${connectionText}`);
+        }
       }
       vehicleButton?.append(span);
     });
-    vehicleButton.addEventListener("click", () => {
-      openVehicleChoice();
-    });
-    identity.append(vehicleButton);
-    if (model.identification !== null) {
-      // "Byt bil": for every signed-in user, the question's answer or a correction of the car decided.
-      const change = element(doc, "button", C.button, translate(model.language, "identify.changeCar")) as HTMLButtonElement;
-      change.type = "button";
-      change.dataset["changeCar"] = "true";
-      change.addEventListener("click", () => {
-        openChangeCar(change);
+    if (changeable) {
+      vehicleButton.append(swapIcon(doc));
+      const opener = vehicleButton;
+      vehicleButton.addEventListener("click", () => {
+        openChangeCar(opener);
       });
-      identity.append(change);
     }
+    identity.append(vehicleButton);
     header.append(identity);
   } else if (connectionText !== null) {
     // No vehicle: the status alone under the name.
@@ -1813,66 +1824,6 @@ export function createCardView(input: CardViewInput): CardView {
       body,
       // The sheet belongs to the automatic control, so focus returns to *that* button.
       opener: plannerButton,
-    });
-  }
-
-  /**
-   * The vehicle dialog: every vehicle of this charger with its charge, the planned one selected. Choosing
-   * another closes it at once and the card writes `target.vehicle_id`; a reader without write access
-   * sees the same list with the radios disabled. A single vehicle still opens the dialog, so the line
-   * always does what its label says.
-   */
-  function openVehicleChoice(): void {
-    if (destroyed) {
-      return;
-    }
-    issuesDialog.hide({ restoreFocus: false });
-    capabilityDialog.hide({ restoreFocus: false });
-    pauseDialog.hide({ restoreFocus: false });
-    strategyDialog.hide({ restoreFocus: false });
-    settingsOverviewDialog.hide({ restoreFocus: false });
-    const body = element(doc, "div");
-    if (!input.isAdmin) {
-      body.append(element(doc, "p", C.settingsReadOnly, translate(model.language, "settings.readOnly")));
-    }
-    const group = element(doc, "div", C.vehicleChoices);
-    group.setAttribute("role", "radiogroup");
-    group.setAttribute("aria-label", translate(model.language, "vehicleLine.dialogTitle"));
-    const plannedId = model.soc?.vehicle_id ?? model.targetVehicleId;
-    const name = `${idPrefix}-vehicle-choice`;
-    for (const choice of vehicleChoicesFor(model.language, model.vehicles, plannedId)) {
-      const label = element(doc, "label", C.vehicleChoice);
-      const radio = element(doc, "input");
-      radio.type = "radio";
-      radio.name = name;
-      radio.value = choice.id;
-      radio.checked = choice.selected;
-      radio.disabled = !input.isAdmin;
-      radio.dataset["vehicle"] = choice.id;
-      radio.addEventListener("change", () => {
-        if (!radio.checked || choice.selected || !input.isAdmin) {
-          return;
-        }
-        vehicleDialog.hide({ restoreFocus: false });
-        input.onSelectVehicle?.(choice.id);
-      });
-      label.append(
-        radio,
-        element(doc, "span", C.vehicleChoiceName, choice.name),
-        element(
-          doc,
-          "span",
-          C.vehicleChoiceCharge,
-          choice.charge ?? translate(model.language, "vehicleLine.noReading"),
-        ),
-      );
-      group.append(label);
-    }
-    body.append(group);
-    vehicleDialog.show({
-      title: translate(model.language, "vehicleLine.dialogTitle"),
-      body,
-      opener: vehicleButton,
     });
   }
 
