@@ -1,0 +1,179 @@
+{
+ "api_version": 1,
+ "ok": true,
+ "error": null,
+ "field_errors": [],
+ "config": {
+  "charger_id": "entry_plug",
+  "site": null,
+  "fields": [
+   {
+    "field": "charge_control",
+    "scope": "charger",
+    "kind": "entity",
+    "required": true,
+    "writable": true,
+    "current": {
+     "entity_id": "switch.plug_control",
+     "friendly_name": "Control plug",
+     "exists": true
+    },
+    "effective": {
+     "entity_id": "switch.plug_control",
+     "friendly_name": "Control plug",
+     "source": "configured"
+    },
+    "allowed_domains": [
+     "switch"
+    ],
+    "allowed_device_classes": []
+   },
+   {
+    "field": "current_limit",
+    "scope": "charger",
+    "kind": "entity",
+    "required": false,
+    "writable": true,
+    "current": null,
+    "effective": null,
+    "allowed_domains": [
+     "number"
+    ],
+    "allowed_device_classes": [],
+    "none": {
+     "allowed": true,
+     "chosen": false,
+     "automatic": null
+    }
+   },
+   {
+    "field": "energy_register_entity",
+    "scope": "charger",
+    "kind": "entity",
+    "required": false,
+    "writable": true,
+    "current": null,
+    "effective": {
+     "entity_id": "sensor.plug_energy_from_power",
+     "friendly_name": "plug Energy from power",
+     "source": "automatic"
+    },
+    "allowed_domains": [
+     "sensor"
+    ],
+    "allowed_device_classes": [
+     "energy"
+    ],
+    "none": {
+     "allowed": true,
+     "chosen": false,
+     "automatic": null
+    }
+   },
+   {
+    "field": "power_entity",
+    "scope": "charger",
+    "kind": "entity",
+    "required": false,
+    "writable": true,
+    "current": {
+     "entity_id": "sensor.plug_power",
+     "friendly_name": "plug power",
+     "exists": true
+    },
+    "effective": {
+     "entity_id": "sensor.plug_power",
+     "friendly_name": "plug power",
+     "source": "configured"
+    },
+    "allowed_domains": [
+     "sensor"
+    ],
+    "allowed_device_classes": [
+     "power"
+    ]
+   },
+   {
+    "field": "voltage_between_phases_v",
+    "scope": "charger",
+    "kind": "enum",
+    "required": true,
+    "writable": true,
+    "value": "400",
+    "choices": [
+     "400",
+     "230"
+    ]
+   },
+   {
+    "field": "charger_phases",
+    "scope": "charger",
+    "kind": "enum",
+    "required": true,
+    "writable": true,
+    "value": "3",
+    "choices": [
+     "1",
+     "3"
+    ]
+   },
+   {
+    "field": "vehicle_soc",
+    "scope": "charger",
+    "kind": "entity",
+    "required": false,
+    "writable": false,
+    "current": null,
+    "effective": null,
+    "allowed_domains": [
+     "sensor"
+    ],
+    "allowed_device_classes": [
+     "battery"
+    ]
+   }
+  ],
+  "vehicles": [],
+  "control": {
+   "platform": null,
+   "start_stop": {
+    "kind": "switch",
+    "entity_ids": [
+     "switch.plug_control"
+    ],
+    "inverted": false,
+    "start_option": null,
+    "stop_option": null
+   },
+   "current": {
+    "kind": "none",
+    "entity_id": null,
+    "service": null,
+    "enabled": false
+   },
+   "charging_state": {
+    "source": "control",
+    "entity_id": null
+   },
+   "policy": {
+    "min_interval_s": 90.0,
+    "max_writes_per_minute": null,
+    "flash_stored": false,
+    "regulator_writes": true,
+    "zero_pauses": true,
+    "ignored_while_paused": false,
+    "installation_wide": false,
+    "resend_after_plug_in": false
+   },
+   "capabilities": {
+    "start_stop": true,
+    "set_current": false,
+    "regulated_current": false,
+    "reads_charging_state": false,
+    "reads_measured_current": false,
+    "reads_energy_register": true
+   },
+   "conflicts": []
+  }
+ }
+}
