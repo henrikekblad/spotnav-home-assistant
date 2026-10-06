@@ -158,4 +158,3 @@ async def webhook_choose_vehicle_identification(
 def async_setup_identification_api(hass: HomeAssistant) -> None:
     websocket_api.async_register_command(hass, websocket_identify_vehicle)
     websocket_api.async_register_command(hass, websocket_choose_vehicle_identification)
-

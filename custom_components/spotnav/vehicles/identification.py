@@ -617,4 +617,3 @@ class VehicleIdentifier:
         session.nonce = None
         if self._notifier is not None and current is not None:
             self._notifier.retire_vehicle_question(self.tag, session.phones, "kept", session.names.get(current, current))
-
