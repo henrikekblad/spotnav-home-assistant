@@ -26,6 +26,7 @@ const EVENT_KEYS: Record<(typeof NOTIFICATION_EVENTS)[number], TranslationKey> =
   plugged_in: "notifications.event.pluggedIn",
   unplugged: "notifications.event.unplugged",
   plan_installed: "notifications.event.planInstalled",
+  vehicle_identify: "notifications.event.vehicleIdentify",
 };
 
 function element(doc: Document, tag: string, className?: string, text?: string): HTMLElement {

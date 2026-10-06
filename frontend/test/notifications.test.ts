@@ -173,7 +173,7 @@ describe("the Notifications section", () => {
       ["mobile_app_pixel_8", true],
     ]);
     const events = Array.from(dialog.querySelectorAll<HTMLInputElement>("[data-event]"));
-    expect(events.map((box) => box.checked)).toEqual([true, true, true, false, false, false, false]);
+    expect(events.map((box) => box.checked)).toEqual([true, true, true, false, false, false, false, false]);
   });
 
   it("saves the choice into a freshly read record under its revision and returns to Settings", async () => {

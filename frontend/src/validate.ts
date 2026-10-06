@@ -264,6 +264,31 @@ export interface Dashboard {
   starting_up: StartingUp | null;
   /** The charger's place in its site's allocation order; `null` without a site or when unreadable. */
   charger_priority: ChargerPriority | null;
+  /** Which car is plugged in, while a plug-in is identified; `null` otherwise, on an older backend or unreadable. */
+  identification: Identification | null;
+}
+
+/** The `identification` block: the open question (or how it was settled) and the candidates, likeliest first. */
+export interface Identification {
+  state: "waiting" | "asking" | "decided";
+  method: string | null;
+  vehicle_id: string | null;
+  since: string | null;
+  candidates: Array<{ vehicle_id: string; name: string; likely: boolean }>;
+}
+
+/** One of a car's identification sources: what is read (`null`: none, or not chosen yet) and what can be chosen. */
+export interface IdentificationSource {
+  entity_id: string | null;
+  name: string | null;
+  /** A person chose it; a chosen `null` is "none". */
+  chosen: boolean;
+  candidates: Array<{ entity_id: string; name: string | null }>;
+}
+
+export interface VehicleSources {
+  plug: IdentificationSource;
+  location: IdentificationSource;
 }
 
 /** The `charger_priority` block: the selected priority, the choices and whether it can be written. */
@@ -302,6 +327,8 @@ export interface Vehicle {
   onboard_phases: 1 | 3;
   /** `1` when charges suggest the onboard charger is single-phase and nobody has answered yet. */
   suggested_onboard_phases: 1 | null;
+  /** The car's plug sensor and tracker for identification; absent on an older backend. */
+  identification?: VehicleSources;
 }
 
 export interface Soc {
@@ -1470,6 +1497,7 @@ export function decodeDashboard(raw: unknown): DecodeResult {
         connection: connectionOrNull(root),
         starting_up: startingUpOrNull(root),
         charger_priority: chargerPriorityOrNull(root),
+        identification: identificationOrNull(root),
       },
     };
   } catch {
@@ -1514,7 +1542,78 @@ const DASHBOARD_KEYS = [
  * is accepted and never read (the card's History view asks `spotnav/get_sessions`). `charger_priority`
  * is read tolerantly for the settings overview; the card edits it in the entity configuration.
  */
-const OPTIONAL_DASHBOARD_KEYS = ["sessions_summary", "connection", "starting_up", "charger_priority"] as const;
+const OPTIONAL_DASHBOARD_KEYS = [
+  "sessions_summary",
+  "connection",
+  "starting_up",
+  "charger_priority",
+  "identification",
+] as const;
+
+const IDENTIFICATION_STATES = ["waiting", "asking", "decided"] as const;
+
+/** The `identification` block, or `null` when it is missing, null or unreadable: only the question is hidden. */
+function identificationOrNull(root: Record<string, unknown>): Identification | null {
+  const value = root.identification;
+  if (!isRecord(value)) {
+    return null;
+  }
+  try {
+    exactKeys(value, ["state", "method", "vehicle_id", "since", "candidates"]);
+    return {
+      state: oneOfValues(text(value, "state"), IDENTIFICATION_STATES),
+      method: textOrNull(value, "method"),
+      vehicle_id: textOrNull(value, "vehicle_id"),
+      since: textOrNull(value, "since"),
+      candidates: arrayValue(value, "candidates").map((entry) => {
+        const item = record(entry);
+        exactKeys(item, ["vehicle_id", "name", "likely"]);
+        if (typeof item.likely !== "boolean") {
+          return bad();
+        }
+        return { vehicle_id: text(item, "vehicle_id"), name: text(item, "name"), likely: item.likely };
+      }),
+    };
+  } catch {
+    return null;
+  }
+}
+
+function oneOfValues<T extends string>(value: string, allowed: readonly T[]): T {
+  return (allowed as readonly string[]).includes(value) ? (value as T) : bad();
+}
+
+function decodeSource(raw: unknown): IdentificationSource {
+  const source = record(raw);
+  exactKeys(source, ["entity_id", "name", "chosen", "candidates"]);
+  if (typeof source.chosen !== "boolean") {
+    return bad();
+  }
+  return {
+    entity_id: textOrNull(source, "entity_id"),
+    name: textOrNull(source, "name"),
+    chosen: source.chosen,
+    candidates: arrayValue(source, "candidates").map((entry) => {
+      const item = record(entry);
+      exactKeys(item, ["entity_id", "name"]);
+      return { entity_id: text(item, "entity_id"), name: textOrNull(item, "name") };
+    }),
+  };
+}
+
+/** A vehicle row's `identification`, or absent when the backend leaves it out or it is unreadable. */
+function vehicleSourcesOrAbsent(source: Record<string, unknown>): { identification?: VehicleSources } {
+  const value = source["identification"];
+  if (!isRecord(value)) {
+    return {};
+  }
+  try {
+    exactKeys(value, ["plug", "location"]);
+    return { identification: { plug: decodeSource(value.plug), location: decodeSource(value.location) } };
+  } catch {
+    return {};
+  }
+}
 
 /**
  * The `connection`, or `null` when the block is missing or unreadable. Independent like `charge_progress`:
@@ -1691,7 +1790,9 @@ const CAPACITY_SOURCES = ["reported", "stored"] as const;
 
 export function decodeVehicle(raw: unknown): Vehicle {
   const source = record(raw);
+  const optional = Object.prototype.hasOwnProperty.call(source, "identification") ? ["identification"] : [];
   exactKeys(source, [
+    ...optional,
     "id",
     "name",
     "soc_entity_id",
@@ -1719,6 +1820,7 @@ export function decodeVehicle(raw: unknown): Vehicle {
     soc_percent: boundedOrNull(source, "soc_percent", 0, 100),
     onboard_phases: phaseCount(source, "onboard_phases"),
     suggested_onboard_phases: required(source, "suggested_onboard_phases") === null ? null : suggestedPhase(source),
+    ...vehicleSourcesOrAbsent(source),
   };
 }
 

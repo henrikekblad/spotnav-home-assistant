@@ -314,6 +314,38 @@ export interface VehicleChanges {
  * Change a vehicle's battery size, consumption and/or onboard charger under compare-and-set. Administrators only;
  * the answer is the entity envelope plus the vehicle's row.
  */
+/** The identification commands' own version. */
+export const IDENTIFICATION_API_VERSION = 1;
+
+/** A person's answer to "which car is plugged in?" (`spotnav/identify_vehicle`); the answer is decoded by the caller. */
+export async function identifyVehicle(hass: HomeAssistantLike, chargerId: string, vehicleId: string): Promise<unknown> {
+  return await call<unknown>(hass, {
+    type: "spotnav/identify_vehicle",
+    api_version: IDENTIFICATION_API_VERSION,
+    charger_id: chargerId,
+    vehicle_id: vehicleId,
+  });
+}
+
+/**
+ * Choose a car's plug or location source (`spotnav/choose_vehicle_identification`): an entity, `"none"`, or
+ * `null` for automatic.
+ */
+export async function chooseVehicleIdentification(
+  hass: HomeAssistantLike,
+  chargerId: string,
+  request: { vehicleId: string; source: "plug" | "location"; entityId: string | null },
+): Promise<unknown> {
+  return await call<unknown>(hass, {
+    type: "spotnav/choose_vehicle_identification",
+    api_version: IDENTIFICATION_API_VERSION,
+    charger_id: chargerId,
+    vehicle_id: request.vehicleId,
+    source: request.source,
+    entity_id: request.entityId,
+  });
+}
+
 export async function updateVehicle(
   hass: HomeAssistantLike,
   chargerId: string,

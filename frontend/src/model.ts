@@ -39,6 +39,7 @@ import type {
   Control,
   Dashboard,
   Fiscal,
+  Identification,
   Period,
   Site,
   Soc,
@@ -224,6 +225,8 @@ export interface CardModel {
   chargerPriority: string | null;
   vehicles: Vehicle[];
   targetVehicleId: string | null;
+  /** Which car is plugged in, while a plug-in is identified (`null` otherwise or on an older backend). */
+  identification: Identification | null;
   planRelation: PlanRelationKind;
   capabilities: CapabilityItem[];
   contextArea: string | null;
@@ -731,6 +734,7 @@ export function buildModel(input: BuildInput): CardModel {
     chargerPriority: dashboard.charger_priority?.value ?? null,
     vehicles: vehiclesFor(dashboard),
     targetVehicleId: targetVehicleIdFor(dashboard),
+    identification: dashboard.identification,
     contextArea: market?.area_id ?? market?.area_name ?? null,
     contextCurrency: market?.currency ?? null,
     contextAreaName: market?.area_name ?? null,
