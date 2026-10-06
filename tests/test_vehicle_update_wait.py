@@ -32,6 +32,7 @@ from tests.relay import serve as serve_prices
 
 from .sessions_helpers import session
 from .test_dashboard_api import NOW
+from .test_replug import Plug
 from .world import CAPACITY, charger_and_car, controller_of, go_auto
 
 pytestmark = pytest.mark.usefixtures("offline_relay")
@@ -105,10 +106,9 @@ def test_a_charge_before_this_plug_in_or_for_another_car_does_not_count() -> Non
     assert same_car.wait
 
 
-def test_a_charge_that_recorded_no_car_counts_only_when_this_is_the_only_car() -> None:
+def test_a_charge_recorded_for_no_car_never_counts() -> None:
     unrecorded = [_delivered(READ_AT + timedelta(minutes=15), vehicle_id=None)]
     assert _decide(unrecorded).reason == "no_measurement"
-    assert _decide(unrecorded, only_vehicle=True).wait
 
 
 def test_without_a_known_plug_in_nothing_changes() -> None:
@@ -161,8 +161,11 @@ async def _charged(hass: HomeAssistant, transport: Any, frozen: Any, **settings:
     charger, car_id, soc_entity = await charger_and_car(hass, soc_percent="89", **settings)
     controller = controller_of(hass, charger.entry_id)
     controller.energy_register_entity_id = None
-    # The car was plugged in an hour before its last reading (a charger that reports the connection).
-    controller._plugged_in_at = dt_util.utcnow() - timedelta(hours=1)
+    # The charger reports the car plugged in (known unplugged, then plugged in), as it arrives.
+    plug = Plug(hass, controller, "switch.wallbox")
+    await plug.set(False)
+    await plug.set(True)
+    assert controller.plugged_in_for_count == dt_util.utcnow()
     if settings.get("driver") != DRIVER_MANUAL_KWH:
         await go_auto(hass, charger.entry_id, target=TargetSocIntent(vehicle_id=car_id, target_percent=93))
     preview = preview_for(hass, charger.entry_id)
@@ -282,3 +285,65 @@ async def test_a_fixed_kwh_need_is_counted_as_before(hass: HomeAssistant, transp
         snapshot = await world["preview"].async_recalculate()
         assert snapshot.reason != "waiting_for_vehicle_update"
         assert snapshot.proposal is not None
+
+
+async def test_a_car_found_connected_after_a_restart_counts_as_a_new_plug_in(hass: HomeAssistant) -> None:
+    """Cars may have been swapped while Home Assistant was down: the plug-in from before is not this car's
+    for the wait, and the continuity a restored reading needs is not shown."""
+    from custom_components.spotnav.const import CONF_CHARGE_CONTROL
+    from custom_components.spotnav.execution.controller import ChargingController
+
+    with freeze_time(NOW) as frozen:
+        hass.states.async_set("switch.a", "off")
+        controller = ChargingController(hass, "entry_a", {CONF_CHARGE_CONTROL: "switch.a"})
+        await controller.async_initialize()
+        plug = Plug(hass, controller, "switch.a")
+        await plug.set(False)
+        await plug.set(True)
+        seen = dt_util.utcnow()
+        assert controller.plugged_in_since == seen and controller.plugged_in_for_count == seen
+
+        frozen.tick(timedelta(hours=3))
+        await controller.async_shutdown()
+        restarted = ChargingController(hass, "entry_a", {CONF_CHARGE_CONTROL: "switch.a"})
+        restarted.adapter.vehicle_connected = lambda: True  # type: ignore[method-assign]
+        await restarted.async_initialize()
+        assert restarted.plugged_in_at == seen, "the plug-in is still remembered for the per-plug-in count"
+        assert restarted.plugged_in_since is None
+        assert restarted.plugged_in_for_count == dt_util.utcnow()
+
+        restarted.adapter.vehicle_connected = lambda: False  # type: ignore[method-assign]
+        hass.states.async_set("switch.a", "off", {"plug": False, "stamp": "unplug"})
+        await hass.async_block_till_done()
+        assert restarted.plugged_in_for_count is None and restarted.plugged_in_since is None
+        await restarted.async_shutdown()
+
+
+async def test_a_connection_not_known_for_a_while_counts_the_car_after_it_from_then(hass: HomeAssistant) -> None:
+    """A charger offline for a while: the plug-in stays known (the per-plug-in count goes on), but a car
+    connected after the gap counts for the wait from then, and was not watched throughout."""
+    from custom_components.spotnav.const import CONF_CHARGE_CONTROL
+    from custom_components.spotnav.execution.controller import ChargingController
+
+    with freeze_time(NOW) as frozen:
+        hass.states.async_set("switch.a", "off")
+        controller = ChargingController(hass, "entry_a", {CONF_CHARGE_CONTROL: "switch.a"})
+        await controller.async_initialize()
+        plug = Plug(hass, controller, "switch.a")
+        await plug.set(False)
+        await plug.set(True)
+        seen = dt_util.utcnow()
+        frozen.tick(timedelta(minutes=5))
+        await plug.set(None)
+        assert controller.plugged_in_since is None and controller.plugged_in_for_count is None
+        frozen.tick(timedelta(hours=1))
+        await plug.set(True)
+        assert controller.plugged_in_at == seen, "the plug-in itself is unchanged"
+        assert controller.plugged_in_since is None
+        assert controller.plugged_in_for_count == dt_util.utcnow()
+        # A plug-in seen after that is watched again.
+        frozen.tick(timedelta(minutes=5))
+        await plug.set(False)
+        await plug.set(True)
+        assert controller.plugged_in_since == dt_util.utcnow() == controller.plugged_in_for_count
+        await controller.async_shutdown()

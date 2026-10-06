@@ -573,6 +573,13 @@ class ChargingController:
         #: When a vehicle was last seen plugged in (known unplugged, then known plugged in). Persisted: a
         #: charge counted per plug-in must not start counting again after a restart.
         self._plugged_in_at: datetime | None = None
+        # Whether this controller saw that plug-in itself (a change from known unplugged), and when it first
+        # knew of a car connected without seeing it arrive (the first connection known after a restart, or
+        # one that became known later): what `plugged_in_since` and `plugged_in_for_count` answer from.
+        self._plug_in_seen = False
+        self._first_known_connected_at: datetime | None = None
+        # The connection went unknown while a car was known connected (`_observe_connection`).
+        self._connection_gap = False
         # Who is told about a plug-in or an unplug (`set_connection_handler`); it answers whether it
         # takes care of starting an open window itself (Auto replans first).
         self._connection_handler: Callable[[str], bool] | None = None
@@ -1241,8 +1248,20 @@ class ChargingController:
         """
         connected = self.adapter.vehicle_connected()
         if connected is None:
+            if self._known_connected is True:
+                # Nobody watches the connection now (a charger offline, a cloud outage): a car may leave and
+                # another arrive unseen. The plug-in stays known for everything else, but not as one watched
+                # throughout (`plugged_in_since`), and a car connected after it counts as one found connected
+                # (`plugged_in_for_count`), as after a restart.
+                self._plug_in_seen = False
+                self._first_known_connected_at = None
+                self._connection_gap = True
             return
         previous = self._known_connected
+        if self._connection_gap:
+            self._connection_gap = False
+            if connected and previous is True:
+                self._first_known_connected_at = dt_util.utcnow()
         if previous == connected:
             return
         token = self._shadow.begin(
@@ -1261,6 +1280,10 @@ class ChargingController:
     def _connection_changed(self, previous: bool | None, connected: bool) -> None:
         """`_observe_connection` once the charger stated a connection other than the last one."""
         self._known_connected = connected
+        if connected and previous is None and self._first_known_connected_at is None:
+            self._first_known_connected_at = dt_util.utcnow()
+        elif not connected:
+            self._first_known_connected_at = None
         if connected is False or previous is False:
             self._session_generation += 1
             # A safety stop's hold belongs to the plug-in it was made in.
@@ -1285,6 +1308,7 @@ class ChargingController:
         self._car_ended_soc = None
         if connected:
             self._plugged_in_at = dt_util.utcnow()
+            self._plug_in_seen = True
         if connected or had_car_ended:
             self.hass.async_create_task(self._async_save_connection())
         _LOGGER.debug("SpotNav charger %s: vehicle %s", self.entry_id, event)
@@ -1339,6 +1363,25 @@ class ChargingController:
     def plugged_in_at(self) -> datetime | None:
         """When a vehicle was last seen plugged in, or `None` when no plug-in has been seen."""
         return self._plugged_in_at
+
+    @property
+    def plugged_in_since(self) -> datetime | None:
+        """Since when this controller has itself seen the car plugged in, without a gap: the plug-in it saw
+        (a change from known unplugged) while the car is known connected still; `None` otherwise (a plug-in
+        from before a restart, a reload or a stretch where the connection was not known, whose car may have
+        been swapped meanwhile, or no car)."""
+        if self._plug_in_seen and self._known_connected is True:
+            return self._plugged_in_at
+        return None
+
+    @property
+    def plugged_in_for_count(self) -> datetime | None:
+        """The plug-in a car's charges are counted from while it is connected: the one this controller saw,
+        else the first moment it knew of a car connected (a car found plugged in after a restart counts as a
+        new plug-in, since another may have left meanwhile); `None` with no car known connected."""
+        if self._known_connected is not True:
+            return None
+        return self.plugged_in_since or self._first_known_connected_at
 
     @property
     def known_connected(self) -> bool | None:
@@ -2238,6 +2281,9 @@ class ChargingController:
         )
         self._last_connected = first
         self._known_connected = self._last_connected
+        if first:
+            # Found connected at start: not a plug-in this controller saw.
+            self._first_known_connected_at = dt_util.utcnow()
         if self._known_connected is not None:
             # The first connection known since the restart: a car gone meanwhile ended its plug-in.
             try:

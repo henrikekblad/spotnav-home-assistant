@@ -4,16 +4,20 @@ The field case: Home Assistant restarts, the car's state is set again (its `last
 so it reads as a fresh reading) before the charger's integration has its register. The anchor taken then
 has no register and, before this, never produced an estimate: 5.5 kWh were delivered and the planner
 saw the same 89 % again. Now the first readable register value becomes the anchor's baseline (energy
-delivered before it is not credited, never invented), and a value the restart only re-announced does not
-replace an anchor that has a register.
+delivered before it is not credited, never invented). A value whose entity only came back (a reload of
+the car's integration) keeps an anchor that has a register, but only while the charger saw the car
+plugged in throughout; otherwise, as after a restart, it is a new reading: when in doubt, under-count.
 """
 
 from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
+from typing import Any
+
 import pytest
 from freezegun import freeze_time
 from homeassistant.core import HomeAssistant
+from homeassistant.helpers.event import async_track_state_change_event
 
 from custom_components.spotnav.execution.target_stop import SocReading
 from custom_components.spotnav.vehicles.soc_estimate import (
@@ -80,11 +84,18 @@ def test_a_register_that_goes_backwards_after_the_baseline_gives_no_estimate() -
     assert reset.reading == stale, "a meter reset is never negative delivery"
 
 
-def test_a_value_the_restart_only_reannounced_keeps_the_anchor_that_has_a_register() -> None:
-    # Before the restart: 89 % read at 09:00 with the register at 6800.
+def _restored(value: float, age_s: float, anchor: SocAnchor, register: float | None, now: datetime, *,
+              throughout: bool):
+    return resolve_soc(
+        reading=_reading(value, age_s, restored=True), anchor=anchor, register_kwh=register, capacity_kwh=CAPACITY,
+        now=now, vehicle_id="car", plugged_in_throughout=throughout,
+    )
+
+
+def test_a_value_a_reload_only_set_again_keeps_the_anchor_while_the_car_stayed_plugged_in() -> None:
+    # 89 % read at 09:00 with the register at 6800; the car's integration reloads at 10:29.
     kept = SocAnchor(89.0, 6800.0, RESTART - timedelta(hours=1, minutes=30), "vehicle", "car")
-    # The restart sets the same 89 % again (fresh by its timestamp) while the register is unknown.
-    restored = _resolve(_reading(89.0, 1.0, restored=True), kept, None, RESTART + timedelta(seconds=1))
+    restored = _restored(89.0, 1.0, kept, None, RESTART + timedelta(seconds=1), throughout=True)
     assert restored.anchor == kept
     assert restored.reading is not None and restored.reading.age_s == pytest.approx(90 * 60.0 + 1.0)
     # The register reads again; 5.5 kWh were delivered since the real reading.
@@ -96,23 +107,31 @@ def test_a_value_the_restart_only_reannounced_keeps_the_anchor_that_has_a_regist
 
 def test_a_restored_value_keeps_the_anchor_even_when_the_register_reads_at_once() -> None:
     kept = SocAnchor(89.0, 6800.0, RESTART - timedelta(hours=1, minutes=30), "vehicle", "car")
-    now = RESTART + timedelta(seconds=30)
-    restored = _resolve(_reading(89.0, 30.0, restored=True), kept, 6805.5, now)
+    restored = _restored(89.0, 30.0, kept, 6805.5, RESTART + timedelta(seconds=30), throughout=True)
     assert restored.anchor == kept
     assert restored.reading is not None and restored.reading.estimated, "not taken as a fresh reading"
     assert restored.reading.soc_percent == pytest.approx(_expected(89.0, 5.5))
 
 
-def test_the_same_value_outside_the_start_is_a_new_reading() -> None:
+def test_without_the_car_shown_plugged_in_throughout_a_restored_value_is_a_new_reading() -> None:
+    # A restart of Home Assistant, an unplug, or a connection not known: the energy is forgotten (a second
+    # charge at worst), never credited to a car that may have been driven or swapped meanwhile.
+    kept = SocAnchor(89.0, 6800.0, RESTART - timedelta(hours=1, minutes=30), "vehicle", "car")
+    read = _restored(89.0, 1.0, kept, 6805.5, RESTART + timedelta(seconds=1), throughout=False)
+    assert read.anchor is not None and read.anchor.register_kwh == 6805.5
+    assert read.reading is not None and read.reading.soc_percent == 89.0 and not read.reading.estimated
+
+
+def test_the_same_value_as_an_update_is_a_new_reading() -> None:
     kept = SocAnchor(89.0, 6800.0, RESTART - timedelta(hours=1, minutes=30), "vehicle", "car")
     read = _resolve(_reading(89.0, 1.0), kept, 6805.5, RESTART + timedelta(seconds=1))
     assert read.anchor is not None and read.anchor.register_kwh == 6805.5
     assert read.reading is not None and read.reading.soc_percent == 89.0 and not read.reading.estimated
 
 
-def test_a_new_value_after_a_restart_is_still_a_new_reading() -> None:
+def test_a_new_value_that_comes_back_is_still_a_new_reading() -> None:
     kept = SocAnchor(80.0, 6800.0, RESTART - timedelta(hours=2), "vehicle", "car")
-    moved = _resolve(_reading(89.0, 1.0, restored=True), kept, None, RESTART + timedelta(seconds=1))
+    moved = _restored(89.0, 1.0, kept, None, RESTART + timedelta(seconds=1), throughout=True)
     assert moved.anchor is not None and moved.anchor.soc_percent == 89.0
     assert moved.reading is not None and moved.reading.soc_percent == 89.0
 
@@ -194,15 +213,46 @@ async def test_the_field_case_through_the_reader(hass: HomeAssistant) -> None:
         reader.async_shutdown()
 
 
-async def test_a_state_written_as_home_assistant_started_is_flagged_restored(hass: HomeAssistant) -> None:
-    from custom_components.spotnav.execution.target_stop import RESTORE_WINDOW_S, resolve_soc_reading
-    from custom_components.spotnav.runtime import domain_data
+def _reader(hass: HomeAssistant, plugged: dict[str, Any]) -> SocReader:
+    from custom_components.spotnav.execution.target_stop import resolve_soc_reading
 
+    return SocReader(
+        hass,
+        "entry-reload",
+        raw_reader=lambda vehicle_id: resolve_soc_reading(hass, vehicle_id=vehicle_id, entity_id=CAR),
+        register_entity_id=lambda: REGISTER,
+        charge_control=lambda: None,
+        remembered_capacity=lambda _vehicle: CAPACITY,
+        plugged_in_since=lambda: plugged["since"],
+    )
+
+
+async def test_a_reload_of_the_cars_integration_keeps_the_estimate_while_plugged_in(hass: HomeAssistant) -> None:
     with freeze_time(RESTART) as frozen:
+        plugged: dict[str, Any] = {"since": RESTART - timedelta(hours=1)}
+        reader = _reader(hass, plugged)
+        await reader.async_load()
+        _register(hass, "6800.0")
         _car(hass, "89")
-        assert not resolve_soc_reading(hass, vehicle_id="car", entity_id=CAR).restored  # type: ignore[union-attr]
-        domain_data(hass).ha_started_at = RESTART - timedelta(seconds=20)
-        assert resolve_soc_reading(hass, vehicle_id="car", entity_id=CAR).restored  # type: ignore[union-attr]
-        frozen.tick(timedelta(seconds=RESTORE_WINDOW_S))
-        _car(hass, "90")
-        assert not resolve_soc_reading(hass, vehicle_id="car", entity_id=CAR).restored  # type: ignore[union-attr]
+        assert reader.read("car").soc_percent == 89.0  # type: ignore[union-attr]
+        # The reader hears the car's entity as its watch does (`ensure_watch` resolves it from a device, which
+        # this bare entity has not).
+        reader.ensure_watch("car")
+        cancel = async_track_state_change_event(hass, [CAR], reader._on_source_changed)
+        frozen.tick(timedelta(minutes=45))
+        _register(hass, "6805.5")
+        _car(hass, "unavailable")
+        await hass.async_block_till_done()
+        frozen.tick(timedelta(seconds=20))
+        _car(hass, "89")
+        await hass.async_block_till_done()
+        after = reader.read("car")
+        assert after is not None and after.estimated
+        assert after.soc_percent == pytest.approx(_expected(89.0, 5.5), abs=0.01)
+
+        # Unplugged since: the same comeback is a new reading, the energy no longer credited.
+        plugged["since"] = None
+        unplugged = reader.read("car")
+        assert unplugged is not None and not unplugged.estimated and unplugged.soc_percent == 89.0
+        cancel()
+        reader.async_shutdown()

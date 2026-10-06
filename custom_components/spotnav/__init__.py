@@ -17,7 +17,6 @@ from homeassistant.const import EVENT_HOMEASSISTANT_STARTED, EVENT_HOMEASSISTANT
 from homeassistant.core import CoreState, Event, HomeAssistant, callback
 from homeassistant.helpers.event import async_call_later
 from homeassistant.helpers.start import async_at_started
-from homeassistant.util import dt as dt_util
 
 from .api.dashboard import async_setup_dashboard_api
 from .api.debug import async_setup_debug_api
@@ -103,9 +102,6 @@ async def async_setup(hass: HomeAssistant, config: dict[str, Any]) -> bool:
     repeatedly.
     """
     data = domain_data(hass)
-    if hass.state is not CoreState.running:
-        # Home Assistant is starting: every state written now is set again by the start, not read anew.
-        data.ha_started_at = dt_util.utcnow()
     # Keep SpotNav's own recent log records for the debug bundle; changes no log level.
     data.log_buffer = attach_log_buffer()
     await async_setup_decisions(hass)
@@ -208,6 +204,7 @@ async def _async_setup_charger_entry(hass: HomeAssistant, entry: ChargerConfigEn
         register_entity_id=lambda: controller.energy_register_entity_id,
         charge_control=lambda: controller.charge_control,
         remembered_capacity=lambda vehicle_id: stored_capacity_kwh(hass, vehicle_id),
+        plugged_in_since=lambda: controller.plugged_in_since,
     )
     await soc_reader.async_load()
     entry.async_on_unload(soc_reader.async_shutdown)
