@@ -65,7 +65,7 @@ import {
 } from "./market-editor";
 import { settingsEditorBody, settingsTrigger, type SettingsEditorForm } from "./settings-editor";
 import type { Vehicle } from "./validate";
-import { vehicleSummary, type VehicleEdits } from "./vehicle-settings";
+import { vehicleSummary, type VehicleEdits, type VehicleReference } from "./vehicle-settings";
 import {
   multiEditor,
   numberEditor,
@@ -78,7 +78,8 @@ import {
   type NumberEditorInput,
 } from "./value-editors";
 import type { FiscalComponentName, ValueWrite } from "./value-writes";
-import type { IdentifyMode } from "./types";
+import type { IdentifyMode, SettingsRecord } from "./types";
+import { frameEditor, isWholePicture, referenceEditor, referenceText, type CameraPicture } from "./camera-editor";
 import { issueText } from "./status";
 import { historyBody, type HistoryState, type HistoryUi } from "./history";
 import { connectionLabel, vehicleLineFor } from "./vehicle-line";
@@ -89,6 +90,7 @@ import {
   CONSUMPTION_MAX_KWH_PER_10KM,
   CONSUMPTION_MIN_KWH_PER_10KM,
   fiscalRows,
+  cameraReplacement,
   identificationReplacement,
   notificationsReplacement,
   planSummaryParts,
@@ -96,6 +98,11 @@ import {
   type SettingsFormValues,
 } from "./settings";
 import { VISUAL_CLASSES as C } from "./visual-styles";
+
+/** What the camera's editors ask the card for. */
+export type CameraPictureRequest =
+  | { kind: "snapshot" }
+  | { kind: "reference"; vehicleId: string; pictureKind: "day" | "night"; takenAt: string };
 
 export interface CardViewInput {
   model: CardModel;
@@ -192,6 +199,8 @@ export interface CardViewInput {
   onAnswerIdentification?: (vehicleId: string) => void;
   /** One value of the Settings page: the card writes it and answers `null`, or the sentence to show. */
   onWriteValue?: (write: ValueWrite) => Promise<string | null>;
+  /** A picture for the camera's editors: the camera's picture now, or a car's reference thumbnail. */
+  onCameraPicture?: (request: CameraPictureRequest) => Promise<{ picture: CameraPicture } | { code: string | null }>;
   /** A fee's row: the card reads the area's suggestion and opens its editor (`openFiscalEditor`). */
   onEditFiscal?: (component: FiscalComponentName) => void;
 }
@@ -2441,7 +2450,154 @@ export function createCardView(input: CardViewInput): CardView {
         ),
       ),
     );
+    nodes.push(...cameraRows(record));
     return nodes;
+  }
+
+  /**
+   * The camera that helps tell the cars apart (shown where Home Assistant offers a camera and an AI Task entity):
+   * the camera, then with one chosen its frame (the frame editor) and its AI task.
+   */
+  function cameraRows(record: SettingsRecord): HTMLElement[] {
+    const block = model.cameraIdentification;
+    const chosen = record.identify_camera;
+    if (block === null || chosen === undefined) {
+      return [];
+    }
+    const say = (key: TranslationKey): string => translate(model.language, key);
+    const nameIn = (list: ReadonlyArray<{ entity_id: string; name: string }>, id: string): string =>
+      list.find((item) => item.entity_id === id)?.name ?? id;
+    const cameraLabel = say("camera.label");
+    const nodes: HTMLElement[] = [];
+    nodes.push(
+      overviewRow(
+        "identify_camera",
+        cameraLabel,
+        chosen === null ? say("camera.none") : nameIn(block.cameras, chosen.camera_entity_id),
+        () =>
+          editSingle(
+            cameraLabel,
+            [
+              ...block.cameras.map((item) => ({ value: item.entity_id, label: item.name })),
+              { value: "", label: say("camera.none") },
+            ],
+            chosen?.camera_entity_id ?? "",
+            (value) =>
+              writeValue({
+                kind: "settings",
+                build: (fresh) =>
+                  cameraReplacement(fresh, {
+                    cameraEntityId: value === "" ? null : value,
+                    aiTaskEntityId: fresh.identify_camera?.ai_task_entity_id ?? null,
+                  }),
+              }),
+            say("camera.intro"),
+          ),
+      ),
+    );
+    if (chosen !== null) {
+      const frameLabel = say("camera.frame.label");
+      nodes.push(
+        overviewRow(
+          "identify_frame",
+          frameLabel,
+          say(isWholePicture(chosen.frame) ? "camera.frame.whole" : "camera.frame.drawn"),
+          () =>
+            openValueEditor(frameLabel, (handlers) =>
+              frameEditor(
+                doc,
+                model.language,
+                {
+                  load: () => input.onCameraPicture?.({ kind: "snapshot" }) ?? Promise.resolve({ code: null }),
+                  frame: chosen.frame,
+                  idPrefix,
+                },
+                (frame) => writeValue({ kind: "cameraFrame", frame }),
+                handlers,
+              ),
+            ),
+        ),
+      );
+      const aiLabel = say("camera.aiTask.label");
+      nodes.push(
+        overviewRow(
+          "identify_ai_task",
+          aiLabel,
+          chosen.ai_task_entity_id === null ? say("camera.aiTask.default") : nameIn(block.ai_tasks, chosen.ai_task_entity_id),
+          () =>
+            editSingle(
+              aiLabel,
+              [
+                { value: "", label: say("camera.aiTask.default") },
+                ...block.ai_tasks.map((item) => ({ value: item.entity_id, label: item.name })),
+              ],
+              chosen.ai_task_entity_id ?? "",
+              (value) =>
+                writeValue({
+                  kind: "settings",
+                  build: (fresh) =>
+                    cameraReplacement(fresh, {
+                      cameraEntityId: fresh.identify_camera?.camera_entity_id ?? chosen.camera_entity_id,
+                      aiTaskEntityId: value === "" ? null : value,
+                    }),
+                }),
+              say("camera.aiTask.intro"),
+            ),
+        ),
+      );
+    }
+    nodes.push(rowHelp("identify_camera", say("camera.help")));
+    return nodes;
+  }
+
+  /** A car's reference pictures from the chosen camera, when a camera is chosen and the car is this charger's. */
+  function vehicleReference(row: Vehicle): VehicleReference | undefined {
+    const block = model.cameraIdentification;
+    const chosen = model.dashboardSettings?.identify_camera;
+    const pictures = block?.references[row.id];
+    if (block === null || chosen === undefined || chosen === null || pictures === undefined) {
+      return undefined;
+    }
+    const carName = row.name ?? translate(model.language, "settings.vehicle.unnamed");
+    const thumbnail = (kind: "day" | "night"): Promise<CameraPicture | null> => {
+      const picture = pictures.find((item) => item.kind === kind);
+      if (picture === undefined || input.onCameraPicture === undefined) {
+        return Promise.resolve(null);
+      }
+      return input
+        .onCameraPicture({ kind: "reference", vehicleId: row.id, pictureKind: kind, takenAt: picture.taken_at })
+        .then((answer) => ("picture" in answer ? answer.picture : null));
+    };
+    const formatTaken = (iso: string): string => {
+      const instant = Date.parse(iso);
+      return Number.isFinite(instant) && hasZone(model.format)
+        ? `${weekdayDate(model.format, instant)} ${clock(model.format, instant)}`
+        : iso.slice(0, 16).replace("T", " ");
+    };
+    return {
+      text: referenceText(model.language, pictures),
+      kinds: pictures.map((picture) => picture.kind),
+      thumbnail,
+      ...(input.isAdmin
+        ? {
+            onTap: () =>
+              openValueEditor(translate(model.language, "reference.label"), (handlers) =>
+                referenceEditor(
+                  doc,
+                  model.language,
+                  {
+                    carName,
+                    pictures,
+                    thumbnail,
+                    act: (action) => writeValue({ kind: "reference", vehicleId: row.id, action }),
+                    formatTaken,
+                  },
+                  handlers,
+                ),
+              ),
+          }
+        : {}),
+    };
   }
 
   /** A car's editors: each property its own number or choice, written as the vehicle dialog wrote it. */
@@ -2647,6 +2803,7 @@ export function createCardView(input: CardViewInput): CardView {
             planned: row.id === model.targetVehicleId,
             charge: chargeFor(row),
             edits: input.isAdmin ? vehicleEdits(row, state.kind === "ready" ? state.config : null) : {},
+            reference: vehicleReference(row),
           }),
         );
       }

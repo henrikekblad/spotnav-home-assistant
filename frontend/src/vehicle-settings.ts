@@ -20,6 +20,14 @@ export interface VehicleEdits {
   location?: () => void;
 }
 
+/** A car's reference pictures for the camera: the words, the kinds it has, their thumbnails, and its editor. */
+export interface VehicleReference {
+  text: string;
+  kinds: ReadonlyArray<"day" | "night">;
+  thumbnail: (kind: "day" | "night") => Promise<{ url: string } | null>;
+  onTap?: () => void;
+}
+
 export interface VehicleSummaryInput {
   row: Vehicle;
   /** `false` for a vehicle only its sensors are known for: no capacity or consumption rows. */
@@ -28,6 +36,8 @@ export interface VehicleSummaryInput {
   /** The vehicle's charge as the header line spells it (`~36 %`, `36 %`, or `No reading`). */
   charge: string;
   edits: VehicleEdits;
+  /** With a camera chosen: the car's reference pictures. */
+  reference?: VehicleReference | undefined;
 }
 
 function element(doc: Document, tag: string, className?: string, text?: string): HTMLElement {
@@ -119,6 +129,33 @@ export function vehicleSummary(doc: Document, language: Language, input: Vehicle
       edits.location,
       translate(language, "settings.vehicle.sourcesHelp"),
     );
+  }
+  const reference = input.reference;
+  if (reference !== undefined) {
+    // The camera compares the car at the charger with these pictures; without one the car is not recognised.
+    if (row.identification === undefined) {
+      card.append(element(doc, "hr", C.settingsDivider));
+    }
+    valueRow("reference", translate(language, "reference.label"), reference.text, reference.onTap);
+    if (reference.kinds.length > 0) {
+      const thumbs = element(doc, "div", C.referenceThumbs);
+      thumbs.dataset["referenceThumbs"] = row.id;
+      for (const kind of reference.kinds) {
+        const image = doc.createElement("img");
+        image.className = C.referenceThumb;
+        image.alt = translate(language, kind === "day" ? "reference.day" : "reference.night");
+        image.dataset["referenceKind"] = kind;
+        image.hidden = true;
+        thumbs.append(image);
+        void reference.thumbnail(kind).then((picture) => {
+          if (picture !== null) {
+            image.src = picture.url;
+            image.hidden = false;
+          }
+        });
+      }
+      card.append(thumbs);
+    }
   }
   return card;
 }

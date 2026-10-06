@@ -20,6 +20,7 @@
 import {
   SpotnavApiError,
   UNSUPPORTED_API_VERSION,
+  cameraCommand,
   chooseVehicleIdentification,
   getDashboard,
   getCardInfo,
@@ -43,6 +44,7 @@ import {
   brandMark,
   createCardView,
   type ActionId,
+  type CameraPictureRequest,
   type CardView,
   type FailureSentence,
 } from "./card-view";
@@ -64,6 +66,7 @@ import { cardOutdated, clientBlock, decodeCardInfo, ownCardBundleHash, servedHas
 import { saveTextFile } from "./download";
 import { ensureHaSelector } from "./entity-editor";
 import type { FiscalComponentName, ValueWrite } from "./value-writes";
+import { cameraErrorKey, decodePicture, type CameraPicture } from "./camera-editor";
 import { decodeCsv, decodeSessions, type SessionsAnswer } from "./history";
 import {
   SETTINGS_EDITOR_KINDS,
@@ -242,6 +245,8 @@ export class SpotnavCard extends HTMLElement {
   private siteOperation = 0;
   private activeControlBusy = false;
   private entityConfig: EntityConfig | null = null;
+  /** Reference picture thumbnails fetched or being fetched, by car, kind and when the picture was taken. */
+  private readonly thumbnails = new Map<string, Promise<{ picture: CameraPicture } | { code: string | null }>>();
   private entityOperation = 0;
   private historyOperation = 0;
   private history: SessionsAnswer | null = null;
@@ -1784,6 +1789,47 @@ export class SpotnavCard extends HTMLElement {
     return null;
   }
 
+  /**
+   * A picture for the Settings page: the camera's picture now (for the frame editor), or a car's reference
+   * thumbnail (fetched once per picture).
+   */
+  private async cameraPicture(request: CameraPictureRequest): Promise<{ picture: CameraPicture } | { code: string | null }> {
+    const hass = this.hassObject;
+    const config = this.config;
+    if (!this.connected || hass === null || config === null || config.charger === "" || !this.isAdmin) {
+      return { code: null };
+    }
+    const key = request.kind === "reference" ? `${request.vehicleId}/${request.pictureKind}/${request.takenAt}` : null;
+    const cached = key === null ? undefined : this.thumbnails.get(key);
+    if (cached !== undefined) {
+      return await cached;
+    }
+    const fetched = (async (): Promise<{ picture: CameraPicture } | { code: string | null }> => {
+      try {
+        return decodePicture(
+          request.kind === "snapshot"
+            ? await cameraCommand(hass, config.charger, "camera_snapshot")
+            : await cameraCommand(hass, config.charger, "reference_picture", {
+                vehicle_id: request.vehicleId,
+                kind: request.pictureKind,
+              }),
+        );
+      } catch (error) {
+        return { code: error instanceof SpotnavApiError ? error.code : null };
+      }
+    })();
+    if (key !== null) {
+      this.thumbnails.set(key, fetched);
+      // A failed fetch is not kept: the next paint asks again.
+      void fetched.then((answer) => {
+        if (!("picture" in answer)) {
+          this.thumbnails.delete(key);
+        }
+      });
+    }
+    return await fetched;
+  }
+
   /** The request itself: `null` when it took, else the sentence key that says why not. */
   private async performValueWrite(
     hass: HomeAssistantLike,
@@ -1825,6 +1871,20 @@ export class SpotnavCard extends HTMLElement {
         }
         const refused = decoded.value.fieldErrors[0];
         return refused === undefined ? entityErrorKey(decoded.value.code) : fieldErrorKey(refused.code);
+      }
+      case "cameraFrame":
+      case "reference": {
+        const answer = (await (write.kind === "cameraFrame"
+          ? cameraCommand(hass, charger, "save_camera_frame", { frame: write.frame })
+          : write.action === "delete"
+            ? cameraCommand(hass, charger, "delete_reference_picture", { vehicle_id: write.vehicleId, kind: null })
+            : cameraCommand(hass, charger, "take_reference_picture", { vehicle_id: write.vehicleId, kind: write.action }))) as {
+          ok?: unknown;
+          error?: unknown;
+        } | null;
+        return answer !== null && answer.ok === true
+          ? null
+          : cameraErrorKey(typeof answer?.error === "string" ? answer.error : null);
       }
       case "vehicleSource": {
         const answer = (await chooseVehicleIdentification(hass, charger, {
@@ -2187,6 +2247,7 @@ export class SpotnavCard extends HTMLElement {
           void this.answerIdentification(vehicleId);
         },
         onWriteValue: (write) => this.writeValue(write),
+        onCameraPicture: (request) => this.cameraPicture(request),
         onEditFiscal: (component) => {
           void this.editFiscal(component);
         },
