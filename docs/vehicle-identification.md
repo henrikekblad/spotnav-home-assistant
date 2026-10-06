@@ -77,9 +77,18 @@ question as a banner with one button per car, and the SpotNav app will show it t
   with "Tesla chosen." or "Recognised as Tesla." The replacement does not alert again.
 - **No answer keeps the current car.** If the notification is swiped away on Android, the current car is
   kept too, and nothing switches it later.
-- Unplugging the car for more than two minutes takes the question off the phones. A shorter unplug (a reseated
-  cable, a connector that flaps) is the same plug-in: what was decided or answered holds, and it still counts
-  toward the one automatic switch. After twelve hours an unanswered question is taken off as well.
+- Unplugging the car for more than two minutes takes the question off the phones. A shorter unplug is looked at
+  again. When nothing new is reported (a reseated cable, a connector that flaps) it is the same plug-in: what
+  was decided or answered holds, and it still counts toward the one automatic switch. When the decided car
+  reports, since the unplug, that it is not plugged in or away from home, or (unless a person answered)
+  another car's plug sensor turns on, the cable has moved to another car: that car is identified as at a new
+  plug-in, with its own one automatic switch. No question is sent while the charger is empty; a car plugged
+  back in after the three minutes passed is asked about then. After twelve hours an unanswered question is
+  taken off as well.
+- A Home Assistant restart while a car stays plugged in is no new plug-in. What was decided at that plug-in
+  is kept across the restart; a plug-in that was still undecided is identified again from the restart (the
+  question follows after three minutes, as for a plug-in). A button of a question that is gone takes it off
+  the phone.
 - A person's answer holds for the car's stay. It is written after any automatic switch still being saved, and
   written again if another settings change got there first: it is the newest choice and is never dropped.
 - The text names no number plate, place or person, because notifications pass through Google's and Apple's

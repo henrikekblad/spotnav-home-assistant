@@ -442,10 +442,11 @@ after the write; a value that is not one of these is `spotnav_invalid_value`.
 
 The phones' question is the notification event `vehicle_identify`: tag `spotnav_<charger id>_identify`, the
 message "Which car is plugged in?" in Home Assistant's language, and `data.actions` with one
-`{"action": "SPOTNAV_ID_<nonce>_<index>", "title": "<car name>"}` per car (at most three; with more, the two
+`{"action": "SPOTNAV_ID_<charger id>_<nonce>_<index>", "title": "<car name>"}` per car (at most three; with more, the two
 likeliest and `{"action": "URI", "title": "Open SpotNav", "uri": <url>}`). The nonce is 128 random bits, new for
 each question; a `mobile_app_notification_action` event with a matching action is the answer, and the first one
-wins. Each session in the history carries the additive `vehicle_decided_by` (`null` where nothing decided it).
+wins. A button of a question that is gone (answered, unplugged, a restart) takes the question off the phones.
+Each session in the history carries the additive `vehicle_decided_by` (`null` where nothing decided it).
 
 ### History by month
 

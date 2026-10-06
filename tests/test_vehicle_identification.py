@@ -390,19 +390,24 @@ async def test_unplugging_before_an_answer_clears_the_question(world: World) -> 
     assert world.sent()[-1] == {"message": "clear_notification", "data": {"tag": tag}}
 
 
-async def test_a_short_unplug_is_the_same_plug_in_and_its_one_automatic_switch(world: World) -> None:
+async def test_a_cable_moved_to_the_other_car_is_a_new_plug_in_with_its_own_one_switch(world: World) -> None:
     await world.start()
     await world.plug_in()
     world.car_says("Tesla", "plug", "on")
     await world.later(5)
     assert world.settings.target.vehicle_id == world.cars["Tesla"]
     await world.unplug()
-    await world.later(30)
-    await world.plug_in()
     world.car_says("Tesla", "plug", "off")
+    await world.later(30)
+    world.connected = True
+    await world.observe()
     world.car_says("Kia", "plug", "on")
+    await world.later(5)
+    assert world.settings.target.vehicle_id == world.cars["Kia"], "the other car is here now"
+    world.car_says("Kia", "plug", "off")
+    world.car_says("Tesla", "plug", "on")
     await world.later(60)
-    assert world.settings.target.vehicle_id == world.cars["Tesla"], "at most one automatic switch per plug-in"
+    assert world.settings.target.vehicle_id == world.cars["Kia"], "at most one automatic switch for that car"
 
 
 async def test_a_switch_mid_charge_changes_the_plan_never_the_charger(world: World, hass: HomeAssistant) -> None:

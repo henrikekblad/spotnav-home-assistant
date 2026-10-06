@@ -44,6 +44,7 @@ from datetime import datetime, timedelta
 from typing import Any, Final
 
 from homeassistant.core import callback, CALLBACK_TYPE, Event, HomeAssistant, State
+from homeassistant.helpers.storage import Store
 from homeassistant.helpers.event import (
     async_track_point_in_utc_time,
     async_track_state_change_event,
@@ -107,6 +108,8 @@ MAX_BUTTONS: Final = 3
 ACTION_PREFIX: Final = "SPOTNAV_ID_"
 EVENT_ACTION: Final = "mobile_app_notification_action"
 EVENT_CLEARED: Final = "mobile_app_notification_cleared"
+_STORE_VERSION: Final = 1
+_STORE_KEY_PREFIX: Final = f"{DOMAIN}.identification"
 
 
 # --------------------------------------------------------------------------- the judgement (pure)
@@ -213,6 +216,13 @@ class _Session:
     shown: tuple[str, ...] = ()
     phones: tuple[str, ...] = ()
     unsubscribe: list[CALLBACK_TYPE] = field(default_factory=list)
+    #: When the car was unplugged, while the debounce runs.
+    unplugged_at: datetime | None = None
+    #: After a replug within the debounce: what is new since the unplug (`recheck_from`) is looked for until
+    #: `recheck_until`; the replug's instant is `replugged_at`.
+    recheck_from: datetime | None = None
+    recheck_until: datetime | None = None
+    replugged_at: datetime | None = None
 
 
 class VehicleIdentifier:
@@ -245,6 +255,35 @@ class VehicleIdentifier:
         self._switches = 0
         self._switch_lock = asyncio.Lock()
         self._unplug_cancel: CALLBACK_TYPE | None = None
+        # What was decided at this plug-in, kept across a restart (`_STORE_KEY_PREFIX`): a restart with the car
+        # still plugged in is no new plug-in, and a decided car is not asked about again.
+        self._memory: Store[dict[str, Any]] = Store(hass, _STORE_VERSION, f"{_STORE_KEY_PREFIX}.{entry_id}")
+        self._remembered: dict[str, Any] | None = None
+        self._memory_lock = asyncio.Lock()
+
+    async def async_load(self) -> None:
+        """Read what was decided at the plug-in in progress before a restart, if anything."""
+        raw = await self._memory.async_load()
+        self._remembered = raw if isinstance(raw, dict) and raw.get("method") in METHODS else None
+
+    @staticmethod
+    async def async_remove_stored(hass: HomeAssistant, entry_id: str) -> None:
+        """The charger is gone for good: forget what was decided at it."""
+        await Store(hass, _STORE_VERSION, f"{_STORE_KEY_PREFIX}.{entry_id}").async_remove()
+
+    def _remember(self, method: str | None) -> None:
+        """Keep (or, with `None`, forget) what was decided at this plug-in, in the order it was decided."""
+        self._hass.async_create_task(self._async_remember(method), eager_start=True)
+
+    async def _async_remember(self, method: str | None) -> None:
+        async with self._memory_lock:
+            try:
+                if method is None:
+                    await self._memory.async_remove()
+                else:
+                    await self._memory.async_save({"method": method})
+            except Exception as err:  # noqa: BLE001 - losing it costs one question after a restart
+                _LOGGER.debug("SpotNav could not keep the identification decision: %s", type(err).__name__)
 
     # ------------------------------------------------------------------ lifecycle
 
@@ -254,11 +293,21 @@ class VehicleIdentifier:
         self._preview = preview
         self._connected = self._controller.adapter.vehicle_connected()
         self._expected_vehicle = self._settings().target.vehicle_id
+        remembered, self._remembered = self._remembered, None
         self._unsubscribe.append(self._controller.add_listener(self._observe))
         if preview is not None:
             self._unsubscribe.append(preview.add_listener(self._on_snapshot))
         self._unsubscribe.append(self._hass.bus.async_listen(EVENT_ACTION, self._on_action))
         self._unsubscribe.append(self._hass.bus.async_listen(EVENT_CLEARED, self._on_cleared))
+        if self._connected is True:
+            if remembered is not None:
+                # Decided before the restart, the same car still plugged in: nothing to identify again.
+                self._method = remembered["method"]
+            else:
+                # Plugged in across a restart with nothing decided: identify it as a plug-in seen late.
+                self._plugged_in(dt_util.utcnow())
+        elif remembered is not None:
+            self._remember(None)
 
     @callback
     def async_shutdown(self) -> None:
@@ -373,12 +422,29 @@ class VehicleIdentifier:
 
     @callback
     def _plugged_in(self, now: datetime) -> None:
-        if self._unplug_cancel is not None and self._session is not None:
-            # Back within the debounce: the same plug-in, with what was decided or answered.
+        session = self._session
+        if self._unplug_cancel is not None and session is not None:
+            # Back within the debounce: the same plug-in unless what the cars report since the unplug says
+            # another car is here now (`_recheck`).
             self._unplug_cancel()
             self._unplug_cancel = None
+            session.recheck_from = session.unplugged_at
+            session.recheck_until = now + timedelta(seconds=LISTEN_FOR_S)
+            session.replugged_at = now
+            session.unplugged_at = None
+            if session.state == STATE_DECIDED:
+                self._recheck()
+            elif session.state == STATE_WAITING and now >= session.t0 + timedelta(seconds=ASK_AFTER_S):
+                # The ask deadline passed while the charger was empty.
+                self._ask()
             return
+        self._begin(now)
+
+    def _begin(self, now: datetime, *, again: bool = False) -> None:
+        """Identify the car plugged in at `now`. `again`: another car than the one decided is here after a short
+        unplug, so what was decided or answered before no longer applies."""
         self._close()
+        self._remember(None)
         settings = self._settings()
         cars = self._candidates(settings)
         if settings.identify_mode == IDENTIFY_OFF:
@@ -387,7 +453,7 @@ class VehicleIdentifier:
         if len(cars) < 2:
             self._method = METHOD_ONLY_CANDIDATE
             return
-        if self._manual_at is not None and (now - self._manual_at).total_seconds() <= RECENT_CHOICE_S:
+        if not again and self._manual_at is not None and (now - self._manual_at).total_seconds() <= RECENT_CHOICE_S:
             # Chosen just before the car arrived: that is the answer.
             self._method = METHOD_MANUAL
             return
@@ -423,8 +489,12 @@ class VehicleIdentifier:
 
     @callback
     def _unplugged(self) -> None:
-        if self._session is None or self._unplug_cancel is not None:
+        if self._session is None:
+            self._remember(None)
             return
+        if self._unplug_cancel is not None:
+            return
+        self._session.unplugged_at = dt_util.utcnow()
         self._unplug_cancel = async_track_point_in_utc_time(
             self._hass, self._unplug_settled, dt_util.utcnow() + timedelta(seconds=UNPLUG_DEBOUNCE_S)
         )
@@ -437,6 +507,38 @@ class VehicleIdentifier:
         if session is not None and session.state == STATE_ASKING and self._notifier is not None:
             self._notifier.clear_vehicle_question(self.tag, session.phones)
         self._close()
+        self._remember(None)
+
+    @callback
+    def _recheck(self) -> None:
+        """After a replug within the debounce: is it another car than the decided one?
+
+        It is when the decided car reports, since the unplug, that it is not plugged in or away from home, or
+        (unless a person decided) another car's plug sensor went on since the unplug. Then what was decided no
+        longer applies: the new car is identified as a fresh plug-in (a switch or the question, and its own one
+        automatic switch). Otherwise it was a flap and the decided car stays.
+        """
+        session = self._session
+        if session is None or session.recheck_from is None or session.replugged_at is None:
+            return
+        since = session.recheck_from
+        decided = self._planned_vehicle()
+        person = self._method in (METHOD_ANSWERED, METHOD_MANUAL)
+        for car in session.cars:
+            plug_id, location_id = self._sources(car)
+            plug = None if plug_id is None else self._hass.states.get(plug_id)
+            location = None if location_id is None else self._hass.states.get(location_id)
+            if car == decided:
+                gone = (plug is not None and plug_reading(plug) is False and plug.last_reported >= since) or (
+                    location is not None and location_reading(location) is False and location.last_reported >= since
+                )
+                if gone:
+                    break
+            elif not person and plug is not None and plug_reading(plug) is True and plug.last_changed >= since:
+                break
+        else:
+            return
+        self._begin(session.replugged_at, again=True)
 
     def _close(self) -> None:
         if self._unplug_cancel is not None:
@@ -497,7 +599,16 @@ class VehicleIdentifier:
     @callback
     def _evaluate(self) -> None:
         session = self._session
-        if session is None or not session.listening or session.state == STATE_DECIDED or self._connected is False:
+        if session is None or self._connected is False:
+            return
+        if (
+            session.state == STATE_DECIDED
+            and session.recheck_until is not None
+            and dt_util.utcnow() < session.recheck_until
+        ):
+            self._recheck()
+            return
+        if not session.listening or session.state == STATE_DECIDED:
             return
         evidence = self._evidence(session, dt_util.utcnow())
         if session.state == STATE_WAITING:
@@ -536,7 +647,8 @@ class VehicleIdentifier:
     @callback
     def _ask(self) -> None:
         session = self._session
-        if session is None or session.state != STATE_WAITING:
+        if session is None or session.state != STATE_WAITING or self._connected is False:
+            # No question for an empty charger: a replug within the debounce asks, if it still has to.
             return
         session.state = STATE_ASKING
         session.nonce = secrets.token_hex(16)
@@ -545,7 +657,10 @@ class VehicleIdentifier:
         if self._notifier is not None:
             session.phones = self._notifier.ask_vehicle(
                 self.tag,
-                [(f"{ACTION_PREFIX}{session.nonce}_{index}", session.names[car]) for index, car in enumerate(shown)],
+                [
+                    (f"{ACTION_PREFIX}{self._entry_id}_{session.nonce}_{index}", session.names[car])
+                    for index, car in enumerate(shown)
+                ],
                 open_button=open_button,
             )
 
@@ -563,6 +678,7 @@ class VehicleIdentifier:
         session.listening = False
         session.nonce = None
         self._method = method
+        self._remember(method)
         person = method in (METHOD_ANSWERED, METHOD_MANUAL)
         switch = None
         if car != self._planned_vehicle():
@@ -628,18 +744,27 @@ class VehicleIdentifier:
     @callback
     def _on_action(self, event: Event) -> None:
         action = event.data.get("action")
+        if not isinstance(action, str) or not action.startswith(ACTION_PREFIX):
+            return
+        parts = action[len(ACTION_PREFIX):].rsplit("_", 2)
+        if len(parts) != 3 or parts[0] != self._entry_id or not parts[2].isdigit():
+            return
+        _, nonce, index = parts
         session = self._session
-        if session is None or session.nonce is None or not isinstance(action, str):
-            return
-        if not action.startswith(ACTION_PREFIX):
-            return
-        nonce, _, index = action[len(ACTION_PREFIX):].rpartition("_")
-        if not hmac.compare_digest(nonce, session.nonce) or not index.isdigit():
+        if session is None or session.nonce is None or not hmac.compare_digest(nonce, session.nonce):
+            # A button of a question that is gone (answered elsewhere, unplugged, a restart): take it off the
+            # phones rather than leave a button that does nothing.
+            if session is None or session.state != STATE_ASKING:
+                self._clear_everywhere()
             return
         position = int(index)
         if position >= len(session.shown):
             return
         self._settle(session.shown[position], METHOD_ANSWERED, "chosen")
+
+    def _clear_everywhere(self) -> None:
+        if self._notifier is not None:
+            self._notifier.clear_vehicle_question(self.tag, tuple(self._settings().notifications.targets))
 
     @callback
     def _on_cleared(self, event: Event) -> None:
@@ -649,6 +774,7 @@ class VehicleIdentifier:
         # Swiped away: no answer, so the current car stays, and nothing switches it later.
         current = self._current_vehicle()
         self._method = METHOD_ASSUMED
+        self._remember(METHOD_ASSUMED)
         session.state = STATE_DECIDED
         session.listening = False
         session.nonce = None

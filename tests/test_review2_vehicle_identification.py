@@ -11,7 +11,7 @@ import pytest
 from homeassistant.core import HomeAssistant
 
 from custom_components.spotnav.planning.auto_settings import TargetSocIntent
-from custom_components.spotnav.runtime import charger_data, domain_data
+from custom_components.spotnav.runtime import charger_data
 from custom_components.spotnav.vehicles.identification import ASK_AFTER_S
 
 from .test_review_vehicle_identification import _real_disk
