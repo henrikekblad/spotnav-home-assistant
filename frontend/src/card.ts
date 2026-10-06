@@ -1229,7 +1229,9 @@ export class SpotnavCard extends HTMLElement {
     } catch {
       // Not answered: the question stays until the next read says otherwise.
     }
-    if (notPluggedIn && generation === this.generation && this.connected) {
+    if (notPluggedIn && generation === this.generation && this.connected && this.isAdmin) {
+      // Unplugged meanwhile: the choice becomes the plan's car, which only an administrator may set. For
+      // anyone else the confirming read below shows the line as it now is.
       await this.selectVehicle(vehicleId);
       return;
     }

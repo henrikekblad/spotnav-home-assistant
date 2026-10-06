@@ -866,9 +866,11 @@ export function createCardView(input: CardViewInput): CardView {
     if (model.chargerName !== null) {
       identity.append(element(doc, "h3", C.name, model.chargerName));
     }
-    // The car line is Byt bil, for every user, wherever the car at this plug-in can be changed (identification
-    // runs and more than one car can charge here); elsewhere it only states the car.
-    const changeable = model.chargerCars.length >= 2;
+    // The car line is Byt bil wherever the car can be changed (more than one car can charge here): for every
+    // user while a car is plugged in, since any user may answer which car it is. With no car plugged in the
+    // choice is the plan's car, an administrator's setting, so a reader who is not one gets the plain line.
+    const changeable =
+      model.chargerCars.length >= 2 && (input.isAdmin || model.connection?.state !== "disconnected");
     const lineName = vehicleLine.name ?? translate(model.language, "settings.vehicle.unnamed");
     const changeLabel = translate(model.language, "identify.changeCarAria", { name: lineName });
     vehicleButton = element(doc, changeable ? "button" : "div", C.vehicleLine);

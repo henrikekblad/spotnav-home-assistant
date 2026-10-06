@@ -130,3 +130,43 @@ describe("review3: Byt bil for a user who is not an administrator, no car plugge
     expect(sent || said).toBe(true);
   });
 });
+
+describe("Byt bil and who may change the car", () => {
+  it("is offered to a reader while a car is plugged in, and to an administrator without one", async () => {
+    const plugged = await mounted(dashboard(false), "sv", false);
+    expect(changeCar(plugged.element)).not.toBeNull();
+    const unplugged = dashboard(false);
+    unplugged["connection"] = { state: "disconnected", source: null };
+    const admin = await mounted(unplugged, "sv", true);
+    expect(changeCar(admin.element)).not.toBeNull();
+  });
+
+  it("is the plain car line for a reader with no car plugged in", async () => {
+    const payload = dashboard(false);
+    payload["connection"] = { state: "disconnected", source: null };
+    const { element } = await mounted(payload, "sv", false);
+    expect(changeCar(element)).toBeNull();
+    expect(shadow(element).querySelector("[data-vehicle-line]")).not.toBeNull();
+  });
+});
+
+describe("the car line with identification off", () => {
+  it("says no method when the block names none", async () => {
+    const payload = dashboard(false);
+    payload["identification"] = {
+      state: "decided",
+      method: null,
+      vehicle_id: EV6,
+      since: null,
+      candidates: [
+        { vehicle_id: EV6, name: "EV6", likely: false },
+        { vehicle_id: NIRO, name: "Niro", likely: false },
+      ],
+      evidence: [],
+    };
+    const { element } = await mounted(payload, "sv", true);
+    const line = shadow(element).querySelector<HTMLElement>("[data-vehicle-line]")!;
+    expect(line.textContent).not.toContain(translate("sv", "vehicleLine.method.manual"));
+    expect(line.textContent).not.toContain(translate("sv", "vehicleLine.method.assumed"));
+  });
+});
