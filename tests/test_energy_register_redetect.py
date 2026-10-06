@@ -445,3 +445,21 @@ async def test_a_device_without_a_register_at_setup_is_not_a_choice(hass: HomeAs
     assert result["type"] == FlowResultType.CREATE_ENTRY
     assert CONF_ENERGY_REGISTER_NONE not in result["data"]
 
+
+
+
+async def test_a_charger_from_plain_entities_has_nothing_to_look_on(hass: HomeAssistant, monkeypatch) -> None:
+    from custom_components.spotnav import energy_register
+
+    from .world import setup_charger
+
+    calls: list[Any] = []
+    monkeypatch.setattr(energy_register, "detected_register", lambda *args, **kwargs: calls.append(args))
+    entry = await setup_charger(hass)
+
+    er.async_get(hass).async_get_or_create("sensor", "ocpp", "ocpp.cp.conn1.energy_active_import_register.sensor")
+    hass.states.async_set("sensor.cp_connector_1_energy_active_import_register", "1")
+    await hass.async_block_till_done()
+
+    assert calls == []
+    assert controller_of(hass, entry.entry_id).energy_register_entity_id is None

@@ -137,6 +137,9 @@ def async_watch_for_register(hass: HomeAssistant, entry: ConfigEntry, controller
     if controller.energy_register_entity_id is not None or not register_wanted(dict(entry.data)):
         return
     detected = entry.data.get(CONF_MODE) == MODE_DETECTED
+    if not detected and controller.ocpp_target is None:
+        # A charger set up from plain entities: no device and no connector to look on.
+        return
     device_id = _charger_device_id(hass, dict(entry.data)) if detected else None
     registry = er.async_get(hass)
     unsubscribe: list[Callable[[], None]] = []
