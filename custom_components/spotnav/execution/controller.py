@@ -42,6 +42,7 @@ from ..const import (
     CONF_CURRENT_LIMIT_NONE,
     CONF_CURRENT_LIMIT,
     CONF_ENERGY_REGISTER_ENTITY,
+    CONF_ENERGY_REGISTER_NONE,
     CONF_IDLE_POWER_W,
     CONF_MODE,
     CONF_OCPP_CHARGE_POINT_ID,
@@ -680,8 +681,13 @@ class ChargingController:
         # connector's cumulative `Energy.Active.Import.Register` sensor, found through the
         # registries and the entity's key (`ocpp_identity.energy_register_entity_for`), never by
         # constructing an entity id.
+        # A person's "none" (`CONF_ENERGY_REGISTER_NONE`) switches the automatic lookup off.
         self.energy_register_entity_id: str | None = config.get(CONF_ENERGY_REGISTER_ENTITY) or None
-        if self.energy_register_entity_id is None and self.ocpp_target is not None:
+        if (
+            self.energy_register_entity_id is None
+            and self.ocpp_target is not None
+            and not config.get(CONF_ENERGY_REGISTER_NONE)
+        ):
             self.energy_register_entity_id = energy_register_entity_for(hass, self.ocpp_target)
         # A charger behind a smart plug: its power sensor. With no energy register of its own, SpotNav's
         # integrated-energy sensor (`sensor.py`) stands in for one once it exists.
@@ -965,6 +971,20 @@ class ChargingController:
         its state is unusable (see `_validate_current_limit_state`).
         """
         return self._current_limit_entity_value()
+
+    @callback
+    def use_found_energy_register(self, entity_id: str) -> None:
+        """A lifetime register found after setup (`energy_register.async_watch_for_register`) is this
+        charger's register from now on. Whatever counts with it starts from its first reading: a session
+        or a requested-energy count begun without a register is never credited with energy from before.
+        """
+        if self.energy_register_entity_id == entity_id:
+            return
+        self.energy_register_entity_id = entity_id
+        self.adapter.energy_entity_id = entity_id
+        if self.plan is not None and self.plan.target_soc_percent is not None:
+            # The stopping estimate moves with the register: watch it beside the reading.
+            self._async_arm_target_listener()
 
     @callback
     def set_integrated_energy_entity(self, entity_id: str) -> None:

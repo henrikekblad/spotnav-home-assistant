@@ -38,6 +38,7 @@ from .const import (
     PLATFORMS,
     SITE_PLATFORMS,
 )
+from .energy_register import async_store_detected_register, async_watch_for_register
 from .entity_renames import async_setup_entity_renames
 from .log_buffer import attach_log_buffer
 from .execution.auto_execution import AutoExecutor, pause_blocks_execution
@@ -190,6 +191,9 @@ async def _async_setup_charger_entry(hass: HomeAssistant, entry: ChargerConfigEn
             entity_id=vehicle_soc_entity_id(hass, vehicle_id),
         )
 
+    # A detected charger stored without its lifetime register gets the one detection finds now, before
+    # the controller reads its config (`energy_register.py`).
+    async_store_detected_register(hass, entry)
     # The one state-of-charge source both the planner and the stop decision read.
     soc_reader = SocReader(
         hass,
@@ -267,6 +271,8 @@ async def _async_setup_charger_entry(hass: HomeAssistant, entry: ChargerConfigEn
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
     # After the platforms, so a smart plug's integrated-energy sensor already stands in for the register.
     _async_start_session_recorder(hass, entry, data, controller)
+    # Still no register: take the charger's own as soon as its integration registers or reports one.
+    async_watch_for_register(hass, entry, controller)
     _async_start_notifier(hass, entry, data, controller)
     # A charger the flow was asked to add to the site joins it now that its entry id exists.
     await async_apply_site_join(hass, entry)
