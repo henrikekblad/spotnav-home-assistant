@@ -72,7 +72,7 @@ _TEXT: Final[dict[str, dict[str, str]]] = {
         "started": "Laddningen har startat.",
         "test": "Testnotis från SpotNav: notiserna når den här telefonen.",
         "started.until": "Laddningen har startat, till {time}.",
-        "plugged_in": "Bilen är ansluten.",
+        "plugged_in": "Bilen är inkopplad.",
         "unplugged": "Bilen är urkopplad.",
         "plan_installed": "Ny plan: laddar från {time}.",
         "identify.ask": "Vilken bil är inkopplad?",
