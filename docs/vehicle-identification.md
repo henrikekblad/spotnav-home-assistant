@@ -23,9 +23,13 @@ car is detected) and, per car, the car's own dialog. Only an administrator can c
   **Automatic**. SpotNav only reads these entities, and only for identification. They are never used as a
   charge level, a range or a way to start or stop a charge.
 
-The **target** belongs to the car, so each car keeps its own target percent at this charger. When the car
-changes, its own target comes with it. The **departure** belongs to the charger and stays as it is. A
-charger set up before this feature keeps its target for the car it was planning for.
+The **target** belongs to the car: each car has one target percent, the same at every charger. Changing it at
+one charger changes it at every charger planning for that car, and when the car at a charger changes, its own
+target comes with it. The **departure** belongs to the charger and stays as it is. A charger set up before this
+feature gives its target to the car it was planning for, unless that car already has one.
+
+**Vehicles at this charger** also limit what the charger plans for: only those cars are offered as the target
+vehicle in the card and the app, and with one car ticked that car is planned for.
 
 ## What happens at a plug-in
 
@@ -61,7 +65,8 @@ in?**. This event is on by default. It is a notification with one button per car
 buttons, so with more cars the two likeliest get a button and a third opens SpotNav. The card shows the same
 question as a banner with one button per car, and the SpotNav app will show it too.
 
-- The **first answer wins**, from any phone, the card or the app. Choosing the car in the card's or app's
+- The **first answer wins**, from any phone, the card or the app. Any Home Assistant user may answer in the
+  card; changing the identification settings stays an administrator's. Choosing the car in the card's or app's
   settings at the same time also counts as an answer. A person's answer always beats what the cars report.
 - When the question is answered, or a car's report settles it, the notification on every phone is replaced
   with "Tesla chosen." or "Recognised as Tesla." The replacement does not alert again.

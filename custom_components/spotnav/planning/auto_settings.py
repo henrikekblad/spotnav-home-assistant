@@ -506,9 +506,6 @@ class AutoSettings:
     vehicle_ids: tuple[str, ...] | None = None
     #: How the plugged-in vehicle is found when more than one can charge here (`IDENTIFY_MODES`).
     identify_mode: str = IDENTIFY_AUTOMATIC
-    #: The target percent each vehicle had when it was last selected here, by vehicle id. The selected
-    #: vehicle's entry is always `target.target_percent` (`validated` keeps it so): the target follows the car.
-    vehicle_targets: tuple[tuple[str, float], ...] = ()
 
     @property
     def execution_paused(self) -> bool:
@@ -625,20 +622,15 @@ class AutoSettings:
             pause=self.pause.validated(),
             notifications=notifications,
             vehicle_ids=vehicle_ids,
-            vehicle_targets=_vehicle_targets_with(self.vehicle_targets, target),
         )
 
-    def vehicle_target(self, vehicle_id: str | None) -> float | None:
-        """The target percent remembered for `vehicle_id` here, or `None`."""
-        return next((percent for vid, percent in self.vehicle_targets if vid == vehicle_id), None)
-
-    def with_target_vehicle(self, vehicle_id: str | None) -> AutoSettings:
-        """The same settings planning for `vehicle_id`, with that vehicle's remembered target when it has one.
+    def with_target_vehicle(self, vehicle_id: str | None, remembered: float | None) -> AutoSettings:
+        """The same settings planning for `vehicle_id`, with `remembered` (the car's own target,
+        `vehicle_properties`) when it has one.
 
         A vehicle with none keeps the target as it stands (it becomes that vehicle's). The departure stays
         the charger's.
         """
-        remembered = self.vehicle_target(vehicle_id)
         percent = self.target.target_percent if remembered is None else remembered
         return replace(self, target=TargetSocIntent(vehicle_id=vehicle_id, target_percent=percent))
 
@@ -676,8 +668,6 @@ class AutoSettings:
             stored["vehicle_ids"] = list(self.vehicle_ids)
         if self.identify_mode != IDENTIFY_AUTOMATIC:
             stored["identify_mode"] = self.identify_mode
-        if self.vehicle_targets:
-            stored["vehicle_targets"] = dict(self.vehicle_targets)
         return stored
 
     @classmethod
@@ -694,7 +684,7 @@ class AutoSettings:
             optional=frozenset(
                 {
                     "departure_date", "departure_weekdays", "notifications", "fill_to_limit", "vehicle_ids",
-                    "identify_mode", "vehicle_targets",
+                    "identify_mode",
                 }
             ),
         )
@@ -734,9 +724,6 @@ class AutoSettings:
         vehicle_ids = stored.get("vehicle_ids")
         if vehicle_ids is not None and not isinstance(vehicle_ids, list):
             _refuse("invalid_vehicles", "stored vehicle ids must be a list")
-        vehicle_targets = stored.get("vehicle_targets", {})
-        if not isinstance(vehicle_targets, dict):
-            _refuse("invalid_target", "stored vehicle targets must be an object")
         return cls(
             revision=revision,
             area_id=stored["area_id"],
@@ -757,34 +744,7 @@ class AutoSettings:
             notifications=notifications,
             vehicle_ids=None if vehicle_ids is None else tuple(vehicle_ids),
             identify_mode=stored.get("identify_mode", IDENTIFY_AUTOMATIC),
-            vehicle_targets=tuple(vehicle_targets.items()),
         ).validated()
-
-
-def _vehicle_targets_with(
-    targets: Any, target: TargetSocIntent
-) -> tuple[tuple[str, float], ...]:
-    """`targets` checked and sorted by vehicle id, with the selected vehicle's entry set to its target.
-
-    This is also the migration of a record from before per-vehicle targets: its one target becomes its
-    selected vehicle's.
-    """
-    if not isinstance(targets, tuple):
-        _refuse("invalid_target", "vehicle targets must be pairs of a vehicle id and a percent")
-    found: dict[str, float] = {}
-    for item in targets:
-        if not isinstance(item, tuple) or len(item) != 2:
-            _refuse("invalid_target", "vehicle targets must be pairs of a vehicle id and a percent")
-        vehicle_id, percent = item
-        if not isinstance(vehicle_id, str) or not vehicle_id or vehicle_id in found:
-            _refuse("invalid_target", "a vehicle target needs one non-empty vehicle id")
-        percent = _finite(percent, "invalid_target", "vehicle target")
-        if not 0 <= percent <= 100:
-            _refuse("invalid_target", "a vehicle target must be between 0 and 100")
-        found[vehicle_id] = percent
-    if target.vehicle_id is not None and target.target_percent is not None:
-        found[target.vehicle_id] = float(target.target_percent)
-    return tuple(sorted(found.items()))
 
 
 @dataclass(frozen=True, slots=True)
@@ -1128,6 +1088,22 @@ class AutoSettingsStore:
         self._unsaved = False
         # When each charger's settings last changed by a write, for what must stay quiet right after one.
         self._written_at: dict[str, datetime] = {}
+        # Told of every committed settings change (`add_write_listener`), after the save.
+        self._write_listeners: list[Callable[[str, AutoSettings], None]] = []
+
+    def add_write_listener(self, listener: Callable[[str, AutoSettings], None]) -> Callable[[], None]:
+        """`listener(entry_id, settings)` after every committed settings change; answers its remover.
+
+        Called on the event loop with the committed record, outside the store's lock: it may schedule a write
+        but must not await one.
+        """
+        self._write_listeners.append(listener)
+
+        def remove() -> None:
+            if listener in self._write_listeners:
+                self._write_listeners.remove(listener)
+
+        return remove
 
     def last_settings_write(self, entry_id: str) -> datetime | None:
         """When this charger's settings were last changed by a write (any client), or `None`."""
@@ -1277,7 +1253,10 @@ class AutoSettingsStore:
             elif energy_baseline is not None:
                 entry.energy_baseline = energy_baseline
             await self._async_commit(entry_id, entry)
-            return updated
+        if mutate is not None:
+            for listener in list(self._write_listeners):
+                listener(entry_id, updated)
+        return updated
 
     async def async_seed(
         self, entry_id: str, settings: AutoSettings, suggested: tuple[str, ...]

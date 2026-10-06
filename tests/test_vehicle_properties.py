@@ -299,6 +299,7 @@ async def test_the_dashboard_states_every_vehicle_the_target_vehicle_and_the_for
             "plug": {"entity_id": None, "name": None, "chosen": False, "candidates": []},
             "location": {"entity_id": None, "name": None, "chosen": False, "candidates": []},
         },
+        "target_percent": 80.0,
     }
     assert rows["Niro"]["soc_percent"] == 55.0
     assert rows["Niro"]["capacity_source"] == "stored" and rows["Niro"]["capacity_kwh"] == 64.8

@@ -2214,10 +2214,7 @@
       "target_percent": 80.0,
       "vehicle_id": "<id>"
     },
-    "vehicle_ids": null,
-    "vehicle_targets": {
-      "<id>": 80.0
-    }
+    "vehicle_ids": null
   },
   "site": null,
   "soc": {
@@ -2345,7 +2342,8 @@
       "onboard_phases": 3,
       "soc_entity_id": "sensor.ev6_battery",
       "soc_percent": 2.0,
-      "suggested_onboard_phases": null
+      "suggested_onboard_phases": null,
+      "target_percent": 80.0
     }
   ]
 }

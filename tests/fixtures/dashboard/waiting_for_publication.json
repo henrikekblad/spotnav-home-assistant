@@ -1219,8 +1219,7 @@
       "target_percent": null,
       "vehicle_id": null
     },
-    "vehicle_ids": null,
-    "vehicle_targets": {}
+    "vehicle_ids": null
   },
   "site": null,
   "soc": null,

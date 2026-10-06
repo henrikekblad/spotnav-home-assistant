@@ -28,7 +28,6 @@ from custom_components.spotnav.planning.auto_settings import (
     AutoSettingsError,
     IDENTIFY_AUTOMATIC,
     IDENTIFY_MODES,
-    TargetSocIntent,
 )
 
 from .messages import read_settings_message, update_settings_message

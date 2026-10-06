@@ -1,14 +1,15 @@
 """Answering "which car is plugged in?" and choosing a car's identification sources, over both transports.
 
-* `spotnav/identify_vehicle` (WebSocket, administrators) and the webhook action `identify_vehicle`:
+* `spotnav/identify_vehicle` (WebSocket, any signed-in user) and the webhook action `identify_vehicle`:
   `{vehicle_id}` answers the charger's open question (`vehicles/identification.py`). The answer is
   `{"api_version": 1, "ok", "error", "identification"}`, `identification` being the dashboard block after the
   answer. Refusals: `spotnav_not_identifying` (no plug-in is being identified), `spotnav_invalid_value` (not one
-  of the candidates), `spotnav_not_admin`, `spotnav_unknown_charger`, `spotnav_unsupported_api_version`.
+  of the candidates), `spotnav_unknown_charger`, `spotnav_unsupported_api_version`.
 * `spotnav/choose_vehicle_identification` (WebSocket, administrators) and the webhook action of the same name:
   `{vehicle_id, source: "plug" | "location", entity_id}` with `entity_id` one of the source's candidates,
   `"none"` (the car has no such source) or `null` (back to automatic). The answer carries `identification`, the
-  vehicle row's block after the write. Refusals: `spotnav_invalid_value` and the entry-level ones above.
+  vehicle row's block after the write. Refusals: `spotnav_invalid_value`, `spotnav_not_admin` and the entry-level
+  ones above.
 
 A webhook refusal is HTTP 400 with the same code.
 """
@@ -78,12 +79,12 @@ async def async_choose_identification(hass: HomeAssistant, payload: dict[str, An
 async def websocket_identify_vehicle(
     hass: HomeAssistant, connection: websocket_api.ActiveConnection, msg: dict[str, Any]
 ) -> None:
-    """Answer which car is plugged in. Administrators only."""
+    """Answer which car is plugged in. Any signed-in user may: the question goes to the household's phones."""
 
     async def write(entry: Any) -> dict[str, Any]:
         return await async_identify_vehicle(hass, entry.entry_id, msg.get("vehicle_id"))
 
-    await _ws_write_for(hass, connection, msg, write)
+    await _ws_write_for(hass, connection, msg, write, admin_only=False)
 
 
 @websocket_api.websocket_command(
@@ -109,13 +110,18 @@ async def websocket_choose_vehicle_identification(
 
 
 async def _ws_write_for(
-    hass: HomeAssistant, connection: websocket_api.ActiveConnection, msg: dict[str, Any], write: Any
+    hass: HomeAssistant,
+    connection: websocket_api.ActiveConnection,
+    msg: dict[str, Any],
+    write: Any,
+    *,
+    admin_only: bool = True,
 ) -> None:
     version = msg.get("api_version")
     if isinstance(version, bool) or version != IDENTIFICATION_API_VERSION:
         send_unsupported_version(connection, msg, IDENTIFICATION_API_VERSION)
         return
-    if not is_admin(connection):
+    if admin_only and not is_admin(connection):
         connection.send_result(msg["id"], _failure(ERROR_NOT_ADMIN))
         return
     entry, failure = lookup_charger(hass, msg.get("charger_id"))

@@ -26,7 +26,7 @@ nonce, and the first valid answer wins. A choice in the card or the app is an an
 changing the vehicle in the settings meanwhile. Once answered or decided the question is replaced on every
 phone; unplugging clears it. Nobody answering, or the question dismissed, keeps the current car.
 
-A switch is a normal settings write (`AutoSettings.with_target_vehicle`: the car's own remembered target),
+A switch is a normal settings write (`AutoSettings.with_target_vehicle`: the car's own target),
 so the plan recalculates as after any other write. Nothing here starts, stops or owns a charge.
 `method` is how the car was decided, for the session record (`METHODS`).
 """
@@ -54,6 +54,7 @@ from homeassistant.util import dt as dt_util
 from ..const import DOMAIN
 from ..planning.auto_settings import AutoSettings, AutoSettingsStore, IDENTIFY_ASK, IDENTIFY_OFF
 from .identification_sources import identification_sources, location_reading, plug_reading
+from . import vehicle_properties
 from .vehicle_discovery import resolve_target_vehicle
 from .vehicle_refresh import limiter_for, REFRESH_SERVICE, REFRESH_SERVICE_DOMAIN
 
@@ -323,7 +324,8 @@ class VehicleIdentifier:
         return self._store.settings(self._entry_id)
 
     def _current_vehicle(self) -> str | None:
-        return resolve_target_vehicle(self._hass, self._settings().target.vehicle_id)[0]
+        settings = self._settings()
+        return resolve_target_vehicle(self._hass, settings.target.vehicle_id, settings.vehicle_ids)[0]
 
     @callback
     def _observe(self, *_: Any) -> None:
@@ -365,9 +367,8 @@ class VehicleIdentifier:
 
     def _candidates(self, settings: AutoSettings) -> list[tuple[str, str]]:
         """The cars that can charge here, as (id, name), by name."""
-        _, choices = resolve_target_vehicle(self._hass, settings.target.vehicle_id)
-        allowed = settings.vehicle_ids
-        return [(c.id, c.name) for c in choices if allowed is None or c.id in allowed]
+        _, choices = resolve_target_vehicle(self._hass, settings.target.vehicle_id, settings.vehicle_ids)
+        return [(c.id, c.name) for c in choices]
 
     @callback
     def _plugged_in(self, now: datetime) -> None:
@@ -560,8 +561,10 @@ class VehicleIdentifier:
             return
         self._expected_vehicle = car
 
+        remembered = vehicle_properties.stored_properties(self._hass, car).target_percent
+
         def mutate(current: AutoSettings) -> AutoSettings:
-            return current.with_target_vehicle(car)
+            return current.with_target_vehicle(car, remembered)
 
         try:
             if self._preview is not None:

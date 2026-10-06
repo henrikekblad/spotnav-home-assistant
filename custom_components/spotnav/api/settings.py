@@ -14,11 +14,11 @@ public face, so nothing here serializes `as_dict()` or accepts `from_stored()` p
 * A fourth, `fill_to_limit` ("Fill": the manual need is the battery's room at each calculation): left out, the
   stored choice is kept, unless the same body moves `requested_kwh` (a client that does not know the field chose
   an amount, and an amount is not "fill"); then it is cleared.
-* Three more, `vehicle_ids` (the vehicles that can charge here, `null` for every detected one),
-  `identify_mode` (`automatic`, `ask` or `off`: how the plugged-in vehicle is found) and `vehicle_targets`
-  (the target percent per vehicle id): left out, the stored values are kept. The target follows the vehicle:
-  a body that switches `target.vehicle_id` and leaves `target.target_percent` as it was gets the new vehicle's
-  remembered target, and the selected vehicle's entry in `vehicle_targets` is always `target.target_percent`.
+* Two more, `vehicle_ids` (the vehicles that can charge here, `null` for every detected one; it also limits
+  the vehicle this charger plans for) and `identify_mode` (`automatic`, `ask` or `off`: how the plugged-in
+  vehicle is found): left out, the stored values are kept. The target follows the vehicle: it is the car's
+  own (`vehicle_properties`), and a body that switches `target.vehicle_id` and leaves `target.target_percent`
+  as it was gets the new vehicle's target (`vehicles/vehicle_target.py`).
 * One read-only fact, `fiscal_included`: the fiscal components (`vat`, `tax`, `transfer`) the selected area's
   published price already contains (contract v2's `included`). They are locked as "included in the price" and
   nothing is added for them, whatever the overrides say. A body may echo it; it is never stored.
@@ -65,6 +65,7 @@ from ..notifications.settings import NotificationSettings, NotificationSettingsE
 from ..notifications.targets import available_targets, encoded_available
 from ..planning.phases import effective_phases
 from ..runtime import controller_for, domain_data, preview_for
+from ..vehicles import vehicle_properties
 from .common import ERROR_CHARGER_UNLOADED, lookup_charger, send_unsupported_version
 
 
@@ -92,7 +93,6 @@ SETTINGS_KEYS: Final = frozenset(
         "notifications",
         "vehicle_ids",
         "identify_mode",
-        "vehicle_targets",
     }
 )
 
@@ -101,7 +101,7 @@ SETTINGS_KEYS: Final = frozenset(
 OPTIONAL_SETTINGS_KEYS: Final = frozenset(
     {
         "departure_date", "departure_weekdays", "phases", "notifications", "fill_to_limit", "vehicle_ids",
-        "identify_mode", "vehicle_targets",
+        "identify_mode",
     }
 )
 
@@ -356,7 +356,6 @@ def encode_settings(
         "notifications": encode_notifications(settings.notifications, available),
         "vehicle_ids": None if settings.vehicle_ids is None else list(settings.vehicle_ids),
         "identify_mode": settings.identify_mode,
-        "vehicle_targets": dict(settings.vehicle_targets),
     }
 
 
@@ -367,15 +366,6 @@ def vehicle_ids_from_wire(value: Any) -> tuple[str, ...] | None:
     if not isinstance(value, list) or not value or any(not isinstance(item, str) or not item for item in value):
         _refuse("invalid_vehicles", "vehicle_ids must be null or a non-empty list of vehicle ids")
     return tuple(value)
-
-
-def vehicle_targets_from_wire(value: Any) -> tuple[tuple[str, float], ...]:
-    """An object of vehicle id to percent (0-100), or a refusal; nothing coerced."""
-    if not isinstance(value, Mapping):
-        _refuse("invalid_target", "vehicle_targets must be an object of vehicle id to percent")
-    return tuple(
-        (vehicle_id, _finite(percent, "vehicle_targets", "invalid_target")) for vehicle_id, percent in value.items()
-    )
 
 
 def _enum(value: Any, allowed: tuple[str, ...], code: SettingsCode) -> Any:
@@ -435,9 +425,6 @@ def decode_settings(raw: Any) -> AutoSettings:
             if "identify_mode" in stored
             else IDENTIFY_AUTOMATIC
         ),
-        vehicle_targets=(
-            vehicle_targets_from_wire(stored["vehicle_targets"]) if "vehicle_targets" in stored else ()
-        ),
     ).validated()
 
 
@@ -450,8 +437,8 @@ def replacement_mutator(
     keep_fill_to_limit: bool = False,
     keep_vehicle_ids: bool = False,
     keep_identify_mode: bool = False,
-    keep_vehicle_targets: bool = False,
     keep_identification: bool = False,
+    vehicle_target: Callable[[str | None], float | None] | None = None,
 ) -> Callable[[AutoSettings], AutoSettings]:
     """A full replacement expressed as the store's own mutation hook.
 
@@ -459,13 +446,12 @@ def replacement_mutator(
     carry-through, so an edit never clears, admits or re-times a pause (including an expired but
     uncleared one). The store owns the revision increment and the final validation.
 
-    `keep_identification` keeps all three identification fields (`vehicle_ids`, `identify_mode`,
-    `vehicle_targets`). Whatever the body says, a switch of the target vehicle that leaves the percent as it
-    was takes the new vehicle's remembered target: the target follows the car.
+    `keep_identification` keeps both identification fields (`vehicle_ids`, `identify_mode`). Whatever the body
+    says, a switch of the target vehicle that leaves the percent as it was takes the new vehicle's own target
+    (`vehicle_target`, the car's property): the target follows the car.
     """
     keep_vehicle_ids = keep_vehicle_ids or keep_identification
     keep_identify_mode = keep_identify_mode or keep_identification
-    keep_vehicle_targets = keep_vehicle_targets or keep_identification
 
     def mutate(current: AutoSettings) -> AutoSettings:
         kept: dict[str, Any] = {}
@@ -483,17 +469,16 @@ def replacement_mutator(
             kept["vehicle_ids"] = current.vehicle_ids
         if keep_identify_mode:
             kept["identify_mode"] = current.identify_mode
-        if keep_vehicle_targets:
-            kept["vehicle_targets"] = current.vehicle_targets
         updated = replace(replacement, pause=current.pause, **kept)
         chosen = updated.target
+        remembered = None if vehicle_target is None else vehicle_target(chosen.vehicle_id)
         if (
             chosen.vehicle_id != current.target.vehicle_id
             and chosen.target_percent == current.target.target_percent
-            and updated.vehicle_target(chosen.vehicle_id) is not None
+            and remembered is not None
         ):
             # Only the car changed: plan for its own target, not the one the other car had.
-            updated = updated.with_target_vehicle(chosen.vehicle_id)
+            updated = updated.with_target_vehicle(chosen.vehicle_id, remembered)
         return updated
 
     return mutate
@@ -688,7 +673,7 @@ async def async_update_settings(
         keep_fill_to_limit=isinstance(replacement, Mapping) and "fill_to_limit" not in replacement,
         keep_vehicle_ids=isinstance(replacement, Mapping) and "vehicle_ids" not in replacement,
         keep_identify_mode=isinstance(replacement, Mapping) and "identify_mode" not in replacement,
-        keep_vehicle_targets=isinstance(replacement, Mapping) and "vehicle_targets" not in replacement,
+        vehicle_target=lambda vehicle_id: vehicle_properties.stored_properties(hass, vehicle_id).target_percent,
     )
     _refuse_amps_above_charger_range(hass, entry_id, decoded)
     controller = preview_for(hass, entry_id)

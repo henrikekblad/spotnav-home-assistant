@@ -92,7 +92,7 @@ def test_the_wire_names_the_date_and_marks_it_optional() -> None:
     # `notifications` came later still, `fill_to_limit` after it, and the vehicle identification's three last.
     optional = {
         "departure_date", "departure_weekdays", "phases", "notifications", "fill_to_limit", "vehicle_ids",
-        "identify_mode", "vehicle_targets",
+        "identify_mode",
     }
     assert OPTIONAL_SETTINGS_KEYS == optional
     assert REQUIRED_SETTINGS_KEYS == SETTINGS_KEYS - optional

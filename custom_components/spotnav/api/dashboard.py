@@ -363,6 +363,8 @@ class CapturedVehicle:
     suggested_onboard_phases: int | None = None
     #: The car's plug and location sources for vehicle identification (`identification_sources.sources_block`).
     identification: dict[str, Any] | None = None
+    #: The target percent the car is charged to at every charger (`vehicle_properties`), `None` when never set.
+    target_percent: float | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -548,8 +550,10 @@ def target_soc_capable(hass: HomeAssistant, entry_id: str) -> bool:
     if reader is None:
         return False
     store = domain_data(hass).auto_store
-    stored = None if store is None else store.settings(entry_id).target.vehicle_id
-    vehicle_id, _ = resolve_target_vehicle(hass, stored)
+    settings = None if store is None else store.settings(entry_id)
+    stored = None if settings is None else settings.target.vehicle_id
+    allowed = None if settings is None else settings.vehicle_ids
+    vehicle_id, _ = resolve_target_vehicle(hass, stored, allowed)
     if vehicle_id is None:
         if reader.has_source(None) and reader.capacity_kwh(None) is not None:
             return True
@@ -557,6 +561,7 @@ def target_soc_capable(hass: HomeAssistant, entry_id: str) -> bool:
             candidate.battery_capacity_kwh
             or vehicle_properties.stored_properties(hass, candidate.id).capacity_kwh
             for candidate in discover_vehicles(hass)
+            if allowed is None or candidate.id in allowed
         )
     return reader.has_source(vehicle_id) and reader.capacity_kwh(vehicle_id) is not None
 
@@ -569,7 +574,7 @@ def capture_soc(
     reader = None if data is None else data.soc_reader
     if reader is None or settings is None:
         return None
-    vehicle_id, candidates = resolve_target_vehicle(hass, settings.target.vehicle_id)
+    vehicle_id, candidates = resolve_target_vehicle(hass, settings.target.vehicle_id, settings.vehicle_ids)
     choose = vehicle_id is None and len(candidates) > 1
     if not reader.has_source(vehicle_id) and not choose:
         return None
@@ -613,7 +618,7 @@ def capture_vehicles(
     data = charger_data(hass, entry_id)
     reader = None if data is None else data.soc_reader
     stored = None if settings is None else settings.target.vehicle_id
-    target_id, candidates = resolve_target_vehicle(hass, stored)
+    target_id, candidates = resolve_target_vehicle(hass, stored, None if settings is None else settings.vehicle_ids)
     rows: list[CapturedVehicle] = []
     for choice in candidates:
         own = vehicle_properties.stored_properties(hass, choice.id)
@@ -642,6 +647,7 @@ def capture_vehicles(
                 onboard_phases=own.phases,
                 suggested_onboard_phases=onboard_suggestion(hass, choice.id),
                 identification=sources_block(hass, choice.id),
+                target_percent=own.target_percent,
             )
         )
     return tuple(rows), target_id
@@ -1876,6 +1882,7 @@ def serialize_vehicle(vehicle: CapturedVehicle) -> dict[str, Any]:
         "onboard_phases": vehicle.onboard_phases,
         "suggested_onboard_phases": vehicle.suggested_onboard_phases,
         "identification": vehicle.identification,
+        "target_percent": finite_number(vehicle.target_percent),
     }
 
 

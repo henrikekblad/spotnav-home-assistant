@@ -90,17 +90,24 @@ is not a boolean is refused with `invalid_energy`. It is withheld from the webho
 (ask with `"reads": ["fill_to_limit"]`), so an older app neither sees it nor is offered a record it would
 refuse.
 
-The record also carries three fields for [vehicle identification](vehicle-identification.md): `vehicle_ids`
+The record also carries two fields for [vehicle identification](vehicle-identification.md): `vehicle_ids`
 (the vehicles that can charge at this charger: `null` for every detected vehicle, the default, or a non-empty list
-of different vehicle ids), `identify_mode` (`"automatic"`, the default, `"ask"` or `"off"`) and `vehicle_targets`
-(an object of vehicle id to target percent, 0-100, `{}` by default). The target follows the vehicle: the selected
-vehicle's entry is always `target.target_percent` (a body whose map disagrees has the map entry set to it), and a
-replacement that changes `target.vehicle_id` but leaves `target.target_percent` as it was gets the new vehicle's
-remembered target, when it has one. A record stored before these fields reads its target as its selected vehicle's.
-A replacement may leave any of the three out, and then the stored value is kept; a bad list or mode is refused with
-`invalid_vehicles`, a bad map with `invalid_target`. All three are withheld from the webhook like the fields above
-(ask with `"reads": ["vehicle_ids", "identify_mode", "vehicle_targets"]`), so an older app never sees them, and its
-replacements keep them.
+of different vehicle ids) and `identify_mode` (`"automatic"`, the default, `"ask"` or `"off"`). `vehicle_ids` also
+limits what the charger plans for: the dashboard's `vehicles`, `target_vehicle_id`, the `soc` block's choices and
+the planner's car only name those vehicles (the only one of them is the target when none is chosen). A
+replacement may leave either out, and then the stored value is kept; a bad list or mode is refused with
+`invalid_vehicles`. Both are withheld from the webhook like the fields above (ask with
+`"reads": ["vehicle_ids", "identify_mode"]`), so an older app never sees them, and its replacements keep them.
+
+**A car's target is the car's, at every charger.** The target percent is a vehicle property, beside its battery
+size: a vehicle row in `vehicles` carries the additive `target_percent` (0-100, `null` when never set), and
+`update_vehicle` writes it (`changes: {"target_percent": 85}`, `null` clears; anything else is `invalid_target`;
+`expected` may name it). The settings record's `target.target_percent` is its planned car's: a replacement that
+sets it sets the car's, and every other charger planning for that car takes it by a settings write of its own
+(its revision moves). A replacement that changes `target.vehicle_id` but leaves `target.target_percent` as it was
+gets the new car's target, when it has one. At set-up, a charger's target stored before this release becomes its
+selected car's, unless the car already has one. Nothing is withheld for it: the released app reads a vehicle row
+key by key and ignores keys it does not know (as it does the dashboard's root blocks).
 
 **Instant notifications.** `push_register` takes `push_ref`, the opaque reference the SpotNav relay
 gave the app for its Firebase token (base64url text, at most 512 characters), or `null` to stop, and an
@@ -362,11 +369,12 @@ additive `identification`: `{"plug": source, "location": source}`, each source `
 "candidates": [{"entity_id", "name"}]}`; `entity_id` `null` with `chosen` false is nothing found, or several to
 choose from, and with `chosen` true it is the person's "none".
 
-`spotnav/identify_vehicle` (administrators) and the webhook action `identify_vehicle` take `vehicle_id`, one of
+`spotnav/identify_vehicle` (any signed-in user: the question goes to the household's phones) and the webhook action
+`identify_vehicle` take `vehicle_id`, one of
 the candidates, and answer `{"api_version": 1, "ok", "error", "identification"}` with the block after the answer.
 It is the person's answer: it wins over every automatic result, retires the question on every phone, and writes
 the settings as any vehicle choice does. Refusals: `spotnav_not_identifying` (nothing is being identified),
-`spotnav_invalid_value` (not a candidate), `spotnav_not_admin`, `spotnav_unknown_charger`,
+`spotnav_invalid_value` (not a candidate), `spotnav_unknown_charger`,
 `spotnav_unsupported_api_version`; over the webhook HTTP 400 with the same code.
 
 `spotnav/choose_vehicle_identification` (administrators) and the webhook action of the same name take

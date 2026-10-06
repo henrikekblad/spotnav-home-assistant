@@ -73,7 +73,7 @@ def session_facts(hass: HomeAssistant, controller: ChargingController) -> Sessio
     )
     vehicle_id = vehicle_name = None
     if settings is not None:
-        vehicle_id, candidates = resolve_target_vehicle(hass, settings.target.vehicle_id)
+        vehicle_id, candidates = resolve_target_vehicle(hass, settings.target.vehicle_id, settings.vehicle_ids)
         vehicle_name = next((item.name for item in candidates if item.id == vehicle_id), None)
     strategy = None if settings is None else settings.strategy
     data = charger_data(hass, charger_id)
