@@ -64,17 +64,17 @@ def test_a_plug_that_went_on_around_the_plug_in_is_strong_and_one_on_long_before
     assert judge(old, T0, T0 + timedelta(minutes=1)) == Evidence("a", positive="weak", negative=None)
 
 
-def test_unplugged_is_strong_only_when_the_car_said_so_after_the_plug_in() -> None:
-    reported = Candidate(
+def test_unplugged_is_strong_only_when_the_car_went_unplugged_around_the_plug_in() -> None:
+    went = Candidate(
+        "b", plug=state("binary_sensor.b", "off", changed=T0 + timedelta(minutes=2))
+    )
+    assert judge(went, T0, T0 + timedelta(minutes=2)) == Evidence("b", None, METHOD_PLUG_SENSOR)
+    rewritten = Candidate(
         "b", plug=state("binary_sensor.b", "off", changed=T0 - timedelta(hours=5), reported=T0 + timedelta(minutes=2))
     )
-    assert judge(reported, T0, T0 + timedelta(minutes=2)) == Evidence("b", None, METHOD_PLUG_SENSOR)
+    assert judge(rewritten, T0, T0 + timedelta(minutes=2)).negative is None, "a cloud cache written again says nothing"
     stale = Candidate("b", plug=state("binary_sensor.b", "off", changed=T0 - timedelta(hours=5)))
     assert judge(stale, T0, T0 + timedelta(minutes=20)) == Evidence("b", None, None), "an old report says nothing"
-    too_soon = Candidate(
-        "b", plug=state("binary_sensor.b", "off", changed=T0 - timedelta(hours=5), reported=T0 + timedelta(seconds=30))
-    )
-    assert judge(too_soon, T0, T0 + timedelta(minutes=1)).negative is None
 
 
 def test_an_unplugged_report_from_before_the_plug_in_never_excludes_whatever_the_integration() -> None:
