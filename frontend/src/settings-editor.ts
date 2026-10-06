@@ -33,6 +33,8 @@ export interface SettingsEditorForm {
   energyReadOnly: boolean;
   /** Whether the record has `fill_to_limit`, so the kWh slider's last step can be "Fill". */
   fillSupported?: boolean;
+  /** The target percent each car keeps at this charger: choosing a car in the target mode shows its own. */
+  vehicleTargets?: Readonly<Record<string, number>>;
   /**
    * The phases a charge uses (the record's `phases`, which the server fills in as the effective count): it
    * names the nominal power the draft current gives. Read-only; `null` means unknown.
@@ -802,6 +804,16 @@ export function settingsEditorBody(
       paint();
     });
     showTarget();
+    // The target follows the car: choosing another one shows the target it keeps here, when it has one.
+    vehicleSelect?.addEventListener("change", () => {
+      const kept = vehicleSelect === null ? undefined : form.vehicleTargets?.[vehicleSelect.value];
+      if (kept !== undefined) {
+        targetValue = String(kept);
+        targetRow.slider.value = String(nearestStep(kept, TARGET_PERCENT_MIN, 1, TARGET_PERCENT_MAX));
+        showTarget();
+        paint();
+      }
+    });
     block.append(targetRow.group, carEnds);
     if (soc !== null) {
       block.append(verdict, need);
