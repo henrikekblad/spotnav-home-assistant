@@ -577,6 +577,8 @@ class ChargingController:
         # one that became known later): what `plugged_in_since` and `plugged_in_for_count` answer from.
         self._plug_in_seen = False
         self._first_known_connected_at: datetime | None = None
+        # The connection went unknown while a car was known connected (`_observe_connection`).
+        self._connection_gap = False
         # Who is told about a plug-in or an unplug (`set_connection_handler`); it answers whether it
         # takes care of starting an open window itself (Auto replans first).
         self._connection_handler: Callable[[str], bool] | None = None
@@ -1241,8 +1243,20 @@ class ChargingController:
         """
         connected = self.adapter.vehicle_connected()
         if connected is None:
+            if self._known_connected is True:
+                # Nobody watches the connection now (a charger offline, a cloud outage): a car may leave and
+                # another arrive unseen. The plug-in stays known for everything else, but not as one watched
+                # throughout (`plugged_in_since`), and a car connected after it counts as one found connected
+                # (`plugged_in_for_count`), as after a restart.
+                self._plug_in_seen = False
+                self._first_known_connected_at = None
+                self._connection_gap = True
             return
         previous = self._known_connected
+        if self._connection_gap:
+            self._connection_gap = False
+            if connected and previous is True:
+                self._first_known_connected_at = dt_util.utcnow()
         if previous == connected:
             return
         token = self._shadow.begin(
@@ -1349,7 +1363,8 @@ class ChargingController:
     def plugged_in_since(self) -> datetime | None:
         """Since when this controller has itself seen the car plugged in, without a gap: the plug-in it saw
         (a change from known unplugged) while the car is known connected still; `None` otherwise (a plug-in
-        from before a restart or a reload, whose car may have been swapped meanwhile, or no car)."""
+        from before a restart, a reload or a stretch where the connection was not known, whose car may have
+        been swapped meanwhile, or no car)."""
         if self._plug_in_seen and self._known_connected is True:
             return self._plugged_in_at
         return None

@@ -317,3 +317,33 @@ async def test_a_car_found_connected_after_a_restart_counts_as_a_new_plug_in(has
         await hass.async_block_till_done()
         assert restarted.plugged_in_for_count is None and restarted.plugged_in_since is None
         await restarted.async_shutdown()
+
+
+async def test_a_connection_not_known_for_a_while_counts_the_car_after_it_from_then(hass: HomeAssistant) -> None:
+    """A charger offline for a while: the plug-in stays known (the per-plug-in count goes on), but a car
+    connected after the gap counts for the wait from then, and was not watched throughout."""
+    from custom_components.spotnav.const import CONF_CHARGE_CONTROL
+    from custom_components.spotnav.execution.controller import ChargingController
+
+    with freeze_time(NOW) as frozen:
+        hass.states.async_set("switch.a", "off")
+        controller = ChargingController(hass, "entry_a", {CONF_CHARGE_CONTROL: "switch.a"})
+        await controller.async_initialize()
+        plug = Plug(hass, controller, "switch.a")
+        await plug.set(False)
+        await plug.set(True)
+        seen = dt_util.utcnow()
+        frozen.tick(timedelta(minutes=5))
+        await plug.set(None)
+        assert controller.plugged_in_since is None and controller.plugged_in_for_count is None
+        frozen.tick(timedelta(hours=1))
+        await plug.set(True)
+        assert controller.plugged_in_at == seen, "the plug-in itself is unchanged"
+        assert controller.plugged_in_since is None
+        assert controller.plugged_in_for_count == dt_util.utcnow()
+        # A plug-in seen after that is watched again.
+        frozen.tick(timedelta(minutes=5))
+        await plug.set(False)
+        await plug.set(True)
+        assert controller.plugged_in_since == dt_util.utcnow() == controller.plugged_in_for_count
+        await controller.async_shutdown()
