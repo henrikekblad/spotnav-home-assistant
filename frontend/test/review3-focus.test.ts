@@ -50,9 +50,9 @@ describe("a focused charger dialog sends nothing of its hidden parts", () => {
   });
 });
 
-describe("a smart-plug charger as the backend describes it (review3_smart_plug.json, from the backend test)", () => {
+describe("a smart-plug charger as the backend describes it (review/review3_smart_plug.json, from the backend test)", () => {
   it("keeps the plug's power entity when only the charge control is saved", () => {
-    const raw = JSON.parse(readFileSync(join(DIR, "review3_smart_plug.json"), "utf8"));
+    const raw = JSON.parse(readFileSync(join(DIR, "..", "review", "review3_smart_plug.json"), "utf8"));
     const decoded = decodeEntityAnswer(raw);
     if (!decoded.ok || !decoded.value.ok) throw new Error("answer");
     expect(saveFocused(decoded.value.config, "charge-control")).toEqual({});

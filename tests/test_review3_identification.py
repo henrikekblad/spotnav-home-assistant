@@ -2,15 +2,22 @@
 
 from __future__ import annotations
 
+from typing import Any
+
 import pytest
 from homeassistant.core import HomeAssistant
 
 from custom_components.spotnav.vehicles.identification import ASK_AFTER_S
 
-from .test_vehicle_identification import _identify, World, world  # noqa: F401
+from .test_vehicle_identification import _identify, World
 from .world import add_car
 
 pytestmark = pytest.mark.usefixtures("offline_relay")
+
+
+@pytest.fixture
+async def world(hass: HomeAssistant, freezer: Any) -> World:
+    return World(hass, freezer)
 
 
 async def test_a_correction_to_a_car_added_after_the_question_still_retires_it(

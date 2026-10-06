@@ -11,7 +11,8 @@ from .messages import get_message
 from .test_smart_plug import _plug_charger
 from .world import admin, ws_call
 
-OUT = Path(__file__).parent / "fixtures" / "entity_config" / "v1" / "review3_smart_plug.json"
+# Kept out of the v1 contract directory, whose files are exactly the contract fixtures.
+OUT = Path(__file__).parent / "fixtures" / "entity_config" / "review" / "review3_smart_plug.json"
 
 
 async def test_a_smart_plug_charger_reports_no_automatically_found_register(hass: HomeAssistant, hass_ws_client) -> None:

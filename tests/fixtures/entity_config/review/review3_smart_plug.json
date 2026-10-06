@@ -53,11 +53,7 @@
     "required": false,
     "writable": true,
     "current": null,
-    "effective": {
-     "entity_id": "sensor.plug_energy_from_power",
-     "friendly_name": "plug Energy from power",
-     "source": "automatic"
-    },
+    "effective": null,
     "allowed_domains": [
      "sensor"
     ],
