@@ -1838,6 +1838,9 @@ class SiteCapacityController:
         probe = self._probe_for(charger_entry_id)
         if not probe.may_start(now):
             return False
+        # The status before the start goes out: one that turns to charging while the start is on its way
+        # is the car starting, not a status left over from before.
+        charging_before = self._charger_reports_charging(charger_controller)
         started = await charger_controller.async_battery_probe_start(int(probe_a))
         if not started:
             probe.refused(now, "start_refused")
@@ -1857,7 +1860,7 @@ class SiteCapacityController:
             {phase: float(currents[phase]) for phase in PHASES},
             phases,
             dict(zip(phases, delivered_a)),
-            charger_charging=self._charger_reports_charging(charger_controller),
+            charger_charging=charging_before,
         )
         self._schedule_probe_check(probe.window_s)
         self._record_probe_event(

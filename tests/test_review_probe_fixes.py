@@ -9,7 +9,34 @@ from homeassistant.core import HomeAssistant
 from custom_components.spotnav.site import site_capacity_controller as scc
 from custom_components.spotnav.site.battery_probe import BatteryProbe
 
-from .test_battery_fuse import _paused_site, _ramp
+from .test_battery_fuse import _connector_status, _paused_site, _ramp
+from .world import set_charger_delivered_a
+
+
+async def test_a_status_our_own_start_turned_to_charging_still_counts(hass: HomeAssistant, monkeypatch) -> None:
+    """The status is sampled after the start command returns. A charger whose status turns to Charging while
+    that command is awaited (an OCPP StatusNotification, a cloud charger answering slowly) is recorded as
+    'charging at the start', so the very signal the extension exists for no longer counts: the slow car with a
+    lagging reading (no rise of 0.2 A yet) is stopped at 30 s, the field case all over again."""
+    (controller, charger, calls, clock, _dc, site, prefix, cc, turn_off) = await _paused_site(
+        hass, monkeypatch, "rv2order"
+    )
+    _connector_status(hass, prefix, "SuspendedEVSE")
+    original = type(cc).async_battery_probe_start
+
+    async def start_then_status(self, amps, **kwargs):
+        result = await original(self, amps, **kwargs)
+        _connector_status(hass, prefix, "Charging")  # arrives before the await returns
+        return result
+
+    monkeypatch.setattr(type(cc), "async_battery_probe_start", start_then_status)
+    await controller._async_apply_active_control()
+    assert controller.battery_probe_snapshot[charger.entry_id]["state"] == "probing"
+    hass.states.async_set(f"switch.{prefix}", "on")
+    set_charger_delivered_a(hass, prefix, 0.1)  # the OCPP reading lags
+    clock.advance(31.0)
+    await controller._async_apply_active_control()
+    assert turn_off == [], "a charger that turned to Charging on our start was judged at 30 s"
 
 
 def test_a_status_that_flickers_unavailable_revives_a_stale_charging() -> None:
