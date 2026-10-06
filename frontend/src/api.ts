@@ -306,8 +306,19 @@ export async function setVehicleSoc(
 
 export interface VehicleChanges {
   vehicleId: string;
-  changes: { capacity_kwh?: number | null; consumption_kwh_per_10km?: number | null; onboard_phases?: 1 | 3 | null };
-  expected: { capacity_kwh?: number | null; consumption_kwh_per_10km?: number | null; onboard_phases?: 1 | 3 | null };
+  changes: {
+    capacity_kwh?: number | null;
+    consumption_kwh_per_10km?: number | null;
+    onboard_phases?: 1 | 3 | null;
+    /** The car's own target (the same at every charger); `null` clears it. */
+    target_percent?: number | null;
+  };
+  expected: {
+    capacity_kwh?: number | null;
+    consumption_kwh_per_10km?: number | null;
+    onboard_phases?: 1 | 3 | null;
+    target_percent?: number | null;
+  };
 }
 
 /**

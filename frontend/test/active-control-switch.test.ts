@@ -1,8 +1,9 @@
-// The active load-balancing switch in the Settings popover's site section, through the real card.
+// Active load balancing in the Settings page's site section, through the real card: a value row that opens an
+// on/off editor.
 //
 // Available and enabled are separate facts (four combinations), the write is never optimistic, the
-// answer's site block is adopted in place while the popover stays open, and a disable says in words
-// what became of any current balancing had lowered -- a failed restore never reads as restored.
+// answer's site block is adopted in place on the Settings page, and a disable says in words what became of
+// any current balancing had lowered -- a failed restore never reads as restored.
 
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
@@ -62,8 +63,21 @@ async function open(
   return { hass, element };
 }
 
-const control = (element: Element): HTMLInputElement | null =>
-  shadow(element).querySelector<HTMLInputElement>(`input.${VISUAL_CLASSES.switchControl}`);
+/** The row's value, as the reader sees it ("On", "Off", "Saving…"). */
+const shown = (element: Element): string =>
+  shadow(element).querySelector<HTMLElement>("[data-role='active-control-state']")?.textContent ?? "";
+/** The row's value as a button, or `null` when it cannot be changed now. */
+const control = (element: Element): HTMLButtonElement | null =>
+  shadow(element).querySelector<HTMLButtonElement>("button[data-edit='active-control']");
+/** Open the on/off editor and choose. */
+async function turn(element: Element, on: boolean): Promise<void> {
+  control(element)!.click();
+  await settle();
+  const form = shadow(element).querySelector<HTMLFormElement>("form[data-value-editor='single']")!;
+  form.querySelector<HTMLInputElement>(`[data-value-option='${on ? "on" : "off"}']`)!.click();
+  form.requestSubmit();
+  await settle();
+}
 const slot = (element: Element): HTMLElement =>
   shadow(element).querySelector<HTMLElement>("[data-slot='active-control']") as HTMLElement;
 const siteWrites = (hass: FakeHass) => hass.messages.filter((m) => m["type"] === "spotnav/update_site_settings");
@@ -81,44 +95,47 @@ afterEach(() => {
   vi.useRealTimers();
 });
 
-describe("the switch in each available x enabled state", () => {
+describe("the row in each available x enabled state", () => {
   it("available and on: on, and can be turned off", async () => {
     const { element } = await open(ON);
-    expect(control(element)?.checked).toBe(true);
-    expect(control(element)?.disabled).toBe(false);
-    expect(control(element)?.getAttribute("role")).toBe("switch");
+    expect(shown(element)).toBe(translate("en", "site.activeControl.on"));
+    expect(control(element)?.classList.contains(VISUAL_CLASSES.settingRowEditable)).toBe(true);
   });
 
   it("available and off: off, and can be turned on", async () => {
     const { element } = await open(OFF);
-    expect(control(element)?.checked).toBe(false);
-    expect(control(element)?.disabled).toBe(false);
+    expect(shown(element)).toBe(translate("en", "site.activeControl.off"));
+    expect(control(element)).not.toBeNull();
   });
 
   it("enabled but unavailable: stays on, can be turned off, and shows the reason", async () => {
     const { element } = await open(ENABLED_UNAVAILABLE);
-    expect(control(element)?.checked).toBe(true);
-    expect(control(element)?.disabled).toBe(false);
+    expect(shown(element)).toBe(translate("en", "site.activeControl.on"));
+    expect(control(element)).not.toBeNull();
     expect(slot(element).textContent).toContain(translate("en", "site.activeControl.reason.measurement"));
   });
 
-  it("unavailable and off: disabled, cannot be turned on, and shows the reason", async () => {
+  it("unavailable and off: read-only, cannot be turned on, and shows the reason", async () => {
     const { hass, element } = await open(UNAVAILABLE_OFF);
-    expect(control(element)?.checked).toBe(false);
-    expect(control(element)?.disabled).toBe(true);
+    expect(shown(element)).toBe(translate("en", "site.activeControl.off"));
+    expect(control(element)).toBeNull();
     expect(slot(element).textContent).toContain(translate("en", "site.activeControl.reason.measurement"));
-    control(element)?.click();
-    await settle();
     expect(siteWrites(hass)).toHaveLength(0);
   });
 
-  it("says it is best effort and not a protective device, in every state", async () => {
+  it("says it is best effort and not a protective device, in every state, and in the editor", async () => {
     for (const state of [ON, OFF, ENABLED_UNAVAILABLE, UNAVAILABLE_OFF]) {
       document.body.innerHTML = "";
       const { element } = await open(state);
       expect(slot(element).textContent).toContain(translate("en", "site.activeControl.note"));
     }
     expect(translate("en", "site.activeControl.note")).toContain("not a protective device");
+    const { element } = await open(OFF);
+    control(element)!.click();
+    await settle();
+    expect(shadow(element).querySelector("form[data-value-editor='single']")?.textContent).toContain(
+      translate("en", "site.activeControl.note"),
+    );
   });
 
   it("is read-only for a reader who may not write: a state, no control, the reason kept", async () => {
@@ -130,19 +147,17 @@ describe("the switch in each available x enabled state", () => {
 });
 
 describe("the backend's own answer about the switch", () => {
-  it("offers no switch when the site is writable but load balancing is not (a webhook reader)", async () => {
+  it("offers no editor when the site is writable but load balancing is not (a webhook reader)", async () => {
     const { element } = await open(ON, { writable: true, switchWritable: false });
     expect(control(element)).toBeNull();
     expect(slot(element).textContent).toContain(translate("en", "site.activeControl.on"));
   });
 });
 
-describe("a press is never optimistic", () => {
+describe("a change is never optimistic", () => {
   it("stays on the confirmed value and pending while the call runs, sending it alone with its expectation", async () => {
     const { hass, element } = await open(OFF);
-    const input = control(element) as HTMLInputElement;
-    input.click();
-    await settle();
+    await turn(element, true);
     expect(siteWrites(hass)).toEqual([
       {
         type: "spotnav/update_site_settings",
@@ -152,57 +167,55 @@ describe("a press is never optimistic", () => {
         changes: { active_control_enabled: true },
       },
     ]);
-    const pending = control(element) as HTMLInputElement;
-    expect(pending.checked).toBe(false); // still the confirmed value
-    expect(pending.disabled).toBe(true);
-    expect(pending.getAttribute("aria-busy")).toBe("true");
-    expect(slot(element).textContent).toContain(translate("en", "site.activeControl.pending"));
-    // A second press while pending sends nothing.
-    pending.click();
-    await settle();
-    expect(siteWrites(hass)).toHaveLength(1);
+    // Back on the Settings page, saying it is saving, with nothing to press.
+    expect(shown(element)).toBe(translate("en", "site.activeControl.pending"));
+    expect(control(element)).toBeNull();
+    expect(slot(element).querySelector("[aria-busy='true']")).not.toBeNull();
 
     hass.resolveNext(fixture("enable.json"));
     await settle();
-    const after = control(element) as HTMLInputElement;
-    expect(after.checked).toBe(true);
-    expect(after.disabled).toBe(false);
-    expect(after.getAttribute("aria-busy")).toBeNull();
-    // The popover stayed open across the confirming re-read.
+    expect(shown(element)).toBe(translate("en", "site.activeControl.on"));
+    expect(control(element)).not.toBeNull();
+    expect(slot(element).querySelector("[aria-busy]")).toBeNull();
+    // The Settings page stayed open across the confirming re-read.
     expect(shadow(element).querySelector("[data-slot='active-control']")).not.toBeNull();
+  });
+
+  it("sends nothing when the choice is what is stored", async () => {
+    const { hass, element } = await open(ON);
+    await turn(element, true);
+    expect(siteWrites(hass)).toHaveLength(0);
+    expect(shown(element)).toBe(translate("en", "site.activeControl.on"));
   });
 
   it("a refused turn-on keeps it off and says why in its own sentence", async () => {
     const { hass, element } = await open(OFF);
-    control(element)?.click();
-    await settle();
+    await turn(element, true);
     hass.resolveNext(fixture("enable_unavailable.json"));
     await settle();
-    expect(control(element)?.checked).toBe(false);
-    expect(control(element)?.disabled).toBe(true); // the adopted block says unavailable-and-off
+    expect(shown(element)).toBe(translate("en", "site.activeControl.off"));
+    expect(control(element)).toBeNull(); // the adopted block says unavailable-and-off
     expect(slot(element).textContent).toContain(translate("en", "site.activeControl.error.unavailable"));
   });
 
   it("a transport failure keeps the confirmed value and says so", async () => {
     const { hass, element } = await open(ON);
-    control(element)?.click();
-    await settle();
+    await turn(element, false);
     hass.rejectNext(new Error("boom"));
     await settle();
-    expect(control(element)?.checked).toBe(true);
-    expect(control(element)?.disabled).toBe(false);
+    expect(shown(element)).toBe(translate("en", "site.activeControl.on"));
+    expect(control(element)).not.toBeNull();
   });
 });
 
 describe("what a disable says", () => {
   it("nothing needed restoring", async () => {
     const { hass, element } = await open(ON);
-    control(element)?.click();
-    await settle();
+    await turn(element, false);
     expect(siteWrites(hass)[0]?.["changes"]).toEqual({ active_control_enabled: false });
     hass.resolveNext(fixture("disable_not_needed.json"));
     await settle();
-    expect(control(element)?.checked).toBe(false);
+    expect(shown(element)).toBe(translate("en", "site.activeControl.off"));
     const text = slot(element).textContent ?? "";
     expect(text).toContain(translate("en", "site.activeControl.restore.off"));
     expect(text).toContain(translate("en", "site.activeControl.restore.notNeeded"));
@@ -210,8 +223,7 @@ describe("what a disable says", () => {
 
   it("restored, with the current per charger", async () => {
     const { hass, element } = await open(ON);
-    control(element)?.click();
-    await settle();
+    await turn(element, false);
     hass.resolveNext(fixture("disable_restored.json"));
     await settle();
     expect(slot(element).textContent).toContain("The charger was restored to 16 A.");
@@ -220,11 +232,10 @@ describe("what a disable says", () => {
 
   it("a failed restore says the charger may still be limited, in a warning, and keeps the code", async () => {
     const { hass, element } = await open(ON);
-    control(element)?.click();
-    await settle();
+    await turn(element, false);
     hass.resolveNext(fixture("disable_restore_failed.json"));
     await settle();
-    expect(control(element)?.checked).toBe(false); // the opt-in itself is off
+    expect(shown(element)).toBe(translate("en", "site.activeControl.off")); // the opt-in itself is off
     const notice = slot(element).querySelector<HTMLElement>(`.${VISUAL_CLASSES.activeNoticeWarning}`);
     expect(notice).not.toBeNull();
     expect(notice?.textContent).toContain("may still be limited");

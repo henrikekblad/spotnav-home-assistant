@@ -9,8 +9,6 @@ import { describe, expect, it, vi } from "vitest";
 
 import {
   marketEditorBody,
-  marketIcon,
-  marketTrigger,
   type MarketEditorForm,
   type MarketEditorHandlers,
 } from "../src/market-editor";
@@ -136,27 +134,6 @@ function toggle(body: HTMLElement, component: string, enabled: boolean): void {
   box.checked = enabled;
   box.dispatchEvent(new Event("change", { bubbles: true }));
 }
-
-describe("the fourth trigger", () => {
-  it("says what it does rather than repeating the area, and keeps its icon decorative", () => {
-    const trigger = marketTrigger(document, "en", "Malmö · SE4");
-    expect(trigger.dataset["setting"]).toBe("market");
-    // The area is the row above it on the Settings page; the button names the action, and the area
-    // travels in its accessible name only.
-    expect(trigger.getAttribute("aria-label")).toBe("Edit price area and taxes: Malmö · SE4");
-    expect(trigger.textContent).toBe("Edit price area and taxes");
-    expect(trigger.textContent).not.toContain("Malmö");
-    const icon = trigger.querySelector("svg");
-    expect(icon?.getAttribute("aria-hidden")).toBe("true");
-    expect(icon?.getAttribute("focusable")).toBe("false");
-  });
-
-  it("falls back honestly when no area is configured", () => {
-    const trigger = marketTrigger(document, "en", "Not set");
-    expect(trigger.getAttribute("aria-label")).toBe("Edit price area and taxes: Not set");
-    expect(marketIcon(document).getAttribute("viewBox")).toBe("0 0 24 24");
-  });
-});
 
 describe("the compact fiscal row", () => {
   it("has one checkbox and one number field per component, and no radio group anywhere", () => {
@@ -438,8 +415,6 @@ describe("the compact fiscal row", () => {
     const built = build(form({ options: catalogue, values: { ...form().values, areaId: "XX" } }));
     expect(built.body.querySelector("img")).toBeNull();
     expect(built.body.querySelector("option")?.textContent).toBe(`${hostile} · XX`);
-    expect(marketTrigger(document, "en", hostile).getAttribute("aria-label")).toContain(hostile);
-    expect(marketTrigger(document, "en", hostile).querySelector("img")).toBeNull();
   });
 });
 

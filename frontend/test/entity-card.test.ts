@@ -152,15 +152,17 @@ describe("the Settings page's charger and site cards", () => {
       "charger_priority",
     ]);
     expect(rowText(element, "start_stop")).toContain(translate("en", "control.startStop"));
-    expect(rowText(element, "start_stop")).toContain("Control get_direct");
-    expect(rowText(element, "current")).toContain(translate("en", "control.current.none"));
+    // Short status words, never the entity's name or id.
+    expect(rowText(element, "start_stop")).toContain(translate("en", "settings.status.active"));
+    expect(rowText(element, "start_stop")).not.toContain("Control get_direct");
+    expect(rowText(element, "current")).toContain(translate("en", "settings.value.off"));
     // Nothing chosen and nothing found: the energy meter is said to be found automatically.
     expect(rowText(element, "energy_register")).toContain(translate("en", "entity.foundAutomatically"));
-    // One Change button, no sub-heading, no vehicle level among the charger's rows.
+    // One row opens the charger's entity dialog, no sub-heading, no vehicle level among the charger's rows.
     expect(openDialog(element)?.querySelectorAll("[data-section='entities'] [data-edit-entities]")).toHaveLength(1);
     expect(openDialog(element)?.querySelector("[data-section='entities'] [data-row='vehicle_soc']")).toBeNull();
-    expect(openDialog(element)?.querySelector("[data-section='entities'] h4")?.textContent).toBe(
-      translate("en", "settings.section.entities"),
+    expect(openDialog(element)?.querySelector("[data-section='entities'] h4")?.textContent).toMatch(
+      new RegExp(`^${translate("en", "settings.heading.charger")} · `),
     );
   });
 
@@ -197,21 +199,21 @@ describe("the Settings page's charger and site cards", () => {
     });
     openSettings(element);
     await settle();
-    expect(rowText(element, "battery")).toContain("Home battery");
+    expect(rowText(element, "battery")).toContain(translate("en", "settings.status.present"));
+    expect(rowText(element, "battery")).not.toContain("Home battery");
     expect(openDialog(element)?.querySelector("[data-help-for]")).toBeNull();
     expect(openDialog(element)?.querySelector(".spotnav-entity-help-toggle")).toBeNull();
   });
 
-  it("asks a non-administrator nothing, says only administrators can change entities, and disables the buttons", async () => {
+  it("asks a non-administrator nothing, says only administrators can change entities, and offers no editor", async () => {
     const { hass, element } = await mounted({ admin: false });
     openSettings(element);
     await settle();
     expect(gets(hass)).toHaveLength(0);
     const section = openDialog(element)?.querySelector<HTMLElement>("[data-section='entities']");
     expect(section?.textContent).toContain(translate("en", "entity.adminOnly"));
-    const buttons = Array.from(openDialog(element)?.querySelectorAll<HTMLButtonElement>("[data-edit-entities]") ?? []);
-    expect(buttons.length).toBeGreaterThan(0);
-    expect(buttons.every((button) => button.disabled)).toBe(true);
+    // Nothing to change: no entity dialog, and no value in the accent colour (the price area opens read-only).
+    expect(openDialog(element)?.querySelectorAll("[data-edit-entities], .spotnav-setting-row-editable")).toHaveLength(0);
     expect(openDialog(element)?.textContent).toContain(translate("en", "settings.readOnly"));
   });
 
@@ -224,8 +226,7 @@ describe("the Settings page's charger and site cards", () => {
     expect(section?.textContent).toContain(translate("en", "entity.error.read"));
     expect(section?.textContent).not.toContain("spotnav_no_site");
     expect(section?.querySelector("[data-code]")?.getAttribute("data-code")).toBe("spotnav_no_site");
-    const button = openDialog(element)?.querySelector<HTMLButtonElement>("[data-section='entities'] [data-edit-entities]");
-    expect(button?.disabled).toBe(true);
+    expect(openDialog(element)?.querySelector("[data-section='entities'] [data-edit-entities]")).toBeNull();
   });
 
   it("shows the charger's priority in words from the dashboard block, and hides it when the block is null or unreadable", async () => {
@@ -272,12 +273,14 @@ describe("the Settings page's charger and site cards", () => {
     expect(openDialog(element)?.querySelector("[data-section='solar']")).toBeNull();
   });
 
-  it("names the site by its name alone, and by the word Site only when it has none", async () => {
+  it("heads the site as Site · its name, and Site alone when it has none", async () => {
     const { element } = await mounted();
     openSettings(element);
     await settle();
     const heading = openDialog(element)?.querySelector('[data-section="site"] h4')?.textContent ?? "";
-    expect(heading).toBe((dashboardFixture("cheapest_direct_site_admin")["site"] as { name: string }).name);
+    expect(heading).toBe(
+      `${translate("en", "settings.heading.site")} · ${(dashboardFixture("cheapest_direct_site_admin")["site"] as { name: string }).name}`,
+    );
 
     document.body.innerHTML = "";
     const again = await mounted({
@@ -288,7 +291,7 @@ describe("the Settings page's charger and site cards", () => {
     openSettings(again.element);
     await settle();
     expect(openDialog(again.element)?.querySelector('[data-section="site"] h4')?.textContent).toBe(
-      translate("en", "settings.section.site"),
+      translate("en", "settings.heading.site"),
     );
   });
 });
@@ -723,7 +726,7 @@ describe("a charger behind a smart plug", () => {
     const { element } = await mounted({ patch: withPlug });
     openSettings(element);
     await settle();
-    expect(rowText(element, "power_entity")).toContain("Garage plug power");
+    expect(rowText(element, "power_entity")).toContain(translate("en", "settings.status.present"));
     expect(rowText(element, "power_entity")).toContain(translate("en", "entity.field.powerEntity"));
     edit(element, "charger");
     const block = openDialog(element)?.querySelector("[data-field-block='power_entity'], [data-field='power_entity']");
@@ -739,17 +742,8 @@ describe("what is actually in use, and what no longer exists", () => {
     openSettings(element);
     await settle();
     const register = rowText(element, "energy_register");
-    expect(register).toContain("Automatic: halo_charger Connector 1 Energy Active Import Register");
+    expect(register).toContain(translate("en", "entity.foundAutomatically"));
     expect(register).not.toContain(translate("en", "entity.notSet"));
-  });
-
-  it("stacks that long value under its label, with the label kept whole", async () => {
-    const { element } = await mounted({ patch: ownersInstallation });
-    openSettings(element);
-    await settle();
-    const row = openDialog(element)?.querySelector("[data-row=\"energy_register\"]");
-    expect(row?.querySelector(".spotnav-settings-value")?.className).toContain("spotnav-settings-value-long");
-    expect(row?.firstElementChild?.className).toContain("spotnav-capability-label");
   });
 
   it("shows the warning, the help and the automatic entity in the editor", async () => {

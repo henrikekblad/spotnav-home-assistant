@@ -158,38 +158,40 @@ afterEach(() => {
   vi.useRealTimers();
 });
 
+const valueEditor = (element: Element): HTMLFormElement =>
+  openDialog(element)!.querySelector<HTMLFormElement>("form[data-value-editor='multi']")!;
+
 describe("the Notifications section", () => {
-  it("states the chosen phones and events and opens a dialog with a box per phone and per event", async () => {
+  it("states the chosen phones and events, each opening its own choice with a box per phone or per event", async () => {
     const { element } = await mounted(withNotifications(notifications({ targets: ["mobile_app_pixel_8"] })));
     openSettings(element);
     const section = openDialog(element)!.querySelector<HTMLElement>("[data-section='notifications']")!;
+    expect(section.querySelector("h4 svg")?.getAttribute("data-icon")).toBe("notifications");
     expect(section.querySelector("[data-row='notification_targets']")?.textContent).toContain("Pixel 8");
-    section.querySelector<HTMLButtonElement>("[data-edit-notifications]")!.click();
-    const dialog = openDialog(element)!;
-    expect(dialog.querySelector("h3")?.textContent).toBe(translate("en", "notifications.dialogTitle"));
-    const phones = Array.from(dialog.querySelectorAll<HTMLInputElement>("[data-target]"));
-    expect(phones.map((box) => [box.dataset["target"], box.checked])).toEqual([
+    section.querySelector<HTMLButtonElement>("[data-edit='notification_targets']")!.click();
+    await settle();
+    expect(openDialog(element)!.querySelector("h3")?.textContent).toBe(translate("en", "notifications.phones"));
+    const phones = Array.from(valueEditor(element).querySelectorAll<HTMLInputElement>("[data-value-option]"));
+    expect(phones.map((box) => [box.dataset["valueOption"], box.checked])).toEqual([
       ["mobile_app_ipad", false],
       ["mobile_app_pixel_8", true],
     ]);
-    const events = Array.from(dialog.querySelectorAll<HTMLInputElement>("[data-event]"));
+    valueEditor(element).querySelector<HTMLButtonElement>("button[type='button']")!.click();
+    await settle();
+    openDialog(element)!.querySelector<HTMLButtonElement>("[data-edit='notification_events']")!.click();
+    await settle();
+    const events = Array.from(valueEditor(element).querySelectorAll<HTMLInputElement>("[data-value-option]"));
     expect(events.map((box) => box.checked)).toEqual([true, true, true, false, false, false, false, false]);
   });
 
-  it("saves the choice into a freshly read record under its revision and returns to Settings", async () => {
+  it("saves a choice into a freshly read record under its revision, keeping the other half, and returns to Settings", async () => {
     const { hass, element } = await mounted(withNotifications(notifications()));
     openSettings(element);
-    openDialog(element)!.querySelector<HTMLButtonElement>("[data-edit-notifications]")!.click();
-    const dialog = openDialog(element)!;
-    const ipad = dialog.querySelector<HTMLInputElement>("[data-target='mobile_app_ipad']")!;
-    ipad.checked = true;
-    ipad.dispatchEvent(new Event("change"));
-    const plugged = dialog.querySelector<HTMLInputElement>("[data-event='plugged_in']")!;
-    plugged.checked = true;
-    plugged.dispatchEvent(new Event("change"));
-    dialog.querySelector<HTMLFormElement>("form[data-notifications-editor]")!.requestSubmit();
+    openDialog(element)!.querySelector<HTMLButtonElement>("[data-edit='notification_targets']")!.click();
     await settle();
-    expect(openDialog(element)).toBeNull();
+    valueEditor(element).querySelector<HTMLInputElement>("[data-value-option='mobile_app_ipad']")!.click();
+    valueEditor(element).requestSubmit();
+    await settle();
     const current = wire();
     hass.resolveNext({ api_version: SETTINGS_API_VERSION, ok: true, error: null, settings: { ...current, revision: 9 }, pause: { choice: null, admitted_at: null, expires_at: null } });
     await settle();
@@ -199,7 +201,7 @@ describe("the Notifications section", () => {
       amps: 10,
       notifications: {
         targets: ["mobile_app_ipad"],
-        events: ["plan_stopped", "plan_at_risk", "charge_complete", "plugged_in"],
+        events: ["plan_stopped", "plan_at_risk", "charge_complete"],
       },
     });
   });
@@ -207,15 +209,15 @@ describe("the Notifications section", () => {
   it("says when no phone has the app", async () => {
     const { element } = await mounted(withNotifications(notifications({ available: [] })));
     openSettings(element);
-    openDialog(element)!.querySelector<HTMLButtonElement>("[data-edit-notifications]")!.click();
+    openDialog(element)!.querySelector<HTMLButtonElement>("[data-edit='notification_targets']")!.click();
+    await settle();
     expect(openDialog(element)!.textContent).toContain(translate("en", "notifications.noPhones"));
   });
 
   it("cannot be changed by a reader who is not an administrator", async () => {
     const { element } = await mounted(withNotifications(notifications()), false);
     openSettings(element);
-    const button = openDialog(element)!.querySelector<HTMLButtonElement>("[data-edit-notifications]")!;
-    expect(button.disabled).toBe(true);
+    expect(openDialog(element)!.querySelector("[data-section='notifications'] button")).toBeNull();
   });
 
   it("is absent for a backend without notifications", async () => {
@@ -242,14 +244,12 @@ describe("the hint for events on and no recipients", () => {
     }
   });
 
-  it("shows in the Notifications section and its dialog, and not once a phone is chosen", async () => {
+  it("shows in the Notifications section, and not once a phone is chosen", async () => {
     const hint = translate("en", "notifications.noRecipients");
     const { element } = await mounted(withNotifications(notifications()));
     openSettings(element);
     const section = openDialog(element)!.querySelector<HTMLElement>("[data-section='notifications']")!;
     expect(section.querySelector("[data-notice='notifications_no_targets']")?.textContent).toBe(hint);
-    section.querySelector<HTMLButtonElement>("[data-edit-notifications]")!.click();
-    expect(openDialog(element)!.querySelector("[data-notice='notifications_no_targets']")?.textContent).toBe(hint);
 
     const chosen = await mounted(withNotifications(notifications({ targets: ["mobile_app_pixel_8"] })));
     openSettings(chosen.element);

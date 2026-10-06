@@ -55,6 +55,13 @@ export const VISUAL_CLASSES = {
   settingsTrigger: "spotnav-settings-trigger",
   settingsSection: "spotnav-settings-section",
   settingsSectionHeading: "spotnav-settings-section-heading",
+  settingRow: "spotnav-setting-row",
+  settingRowLabel: "spotnav-setting-row-label",
+  settingRowValue: "spotnav-setting-row-value",
+  settingRowEditable: "spotnav-setting-row-editable",
+  settingRowHelp: "spotnav-setting-row-help",
+  settingRowSuggestion: "spotnav-setting-row-suggestion",
+  settingsDivider: "spotnav-settings-divider",
   settingsSectionValue: "spotnav-settings-section-value",
   settingsSectionConfigure: "spotnav-settings-section-configure",
   settingsSupportActions: "spotnav-settings-support-actions",
@@ -192,8 +199,6 @@ export const VISUAL_CLASSES = {
   capabilityLabel: "spotnav-capability-label",
   capabilityState: "spotnav-capability-state",
   capabilityNote: "spotnav-capability-note",
-  switchGroup: "spotnav-switch-group",
-  switchControl: "spotnav-switch",
   activeNotice: "spotnav-active-notice",
   activeNoticeWarning: "spotnav-active-notice-warning",
   historyBody: "spotnav-history-body",
@@ -1321,6 +1326,75 @@ export const VISUAL_STYLES = `
     font-size: 0.9rem;
     font-weight: 500;
   }
+  .${VISUAL_CLASSES.settingsSectionHeading} > svg {
+    vertical-align: -3px;
+    margin-right: 6px;
+  }
+  /*
+   * A value row in the app's compact style: the label left, the value right-aligned at the same size; a
+   * changeable value is a button in the accent colour, a read-only one in the normal text colour.
+   */
+  .${VISUAL_CLASSES.settingRow} {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 4px 12px;
+    min-width: 0;
+    padding: 3px 0;
+  }
+  .${VISUAL_CLASSES.settingRowLabel} {
+    flex: 0 1 auto;
+    min-width: 0;
+    color: var(--secondary-text-color, #727272);
+    overflow-wrap: break-word;
+  }
+  /* The price area's value is also the area dialog's trigger: right-aligned like every other value. */
+  .${VISUAL_CLASSES.settingRowValue}.${VISUAL_CLASSES.settingsTrigger} {
+    display: block;
+  }
+  .${VISUAL_CLASSES.settingRowValue} {
+    flex: 1 1 auto;
+    min-width: 0;
+    text-align: right;
+    font: inherit;
+    font-weight: 500;
+    color: var(--primary-text-color, #212121);
+    overflow-wrap: break-word;
+  }
+  .${VISUAL_CLASSES.settingRowEditable} {
+    background: none;
+    border: 0;
+    padding: 0;
+    cursor: pointer;
+    color: var(--primary-color, #03a9f4);
+  }
+  .${VISUAL_CLASSES.settingRowEditable}:disabled {
+    cursor: default;
+    color: var(--primary-text-color, #212121);
+  }
+  .${VISUAL_CLASSES.settingRowHelp} {
+    margin: 0 0 4px;
+    font-size: 0.82rem;
+    color: var(--secondary-text-color, #727272);
+    overflow-wrap: break-word;
+  }
+  .${VISUAL_CLASSES.settingsDivider} {
+    border: 0;
+    border-top: 1px solid var(--divider-color, #e0e0e0);
+    margin: 8px 0;
+  }
+  .${VISUAL_CLASSES.settingRowSuggestion} {
+    display: block;
+    margin: 4px 0;
+    padding: 0;
+    background: none;
+    border: 0;
+    font: inherit;
+    cursor: pointer;
+    color: var(--primary-color, #03a9f4);
+    text-align: left;
+  }
   .${VISUAL_CLASSES.settingsSectionValue} {
     font-variant-numeric: tabular-nums;
   }
@@ -1870,57 +1944,6 @@ export const VISUAL_STYLES = `
     color: var(--secondary-text-color, #727272);
     font-size: 0.78rem;
     overflow-wrap: break-word;
-  }
-  .${VISUAL_CLASSES.switchGroup} {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    flex: 0 0 auto;
-  }
-  .${VISUAL_CLASSES.switchControl} {
-    appearance: none;
-    -webkit-appearance: none;
-    position: relative;
-    box-sizing: border-box;
-    flex: 0 0 auto;
-    inline-size: 2.6em;
-    block-size: 1.5em;
-    margin: 0;
-    border: 0;
-    border-radius: 0.75em;
-    background: var(--switch-unchecked-track-color, var(--disabled-text-color, #9e9e9e));
-    cursor: pointer;
-    transition: background-color 0.15s;
-  }
-  .${VISUAL_CLASSES.switchControl}::after {
-    content: "";
-    position: absolute;
-    inset-block-start: 0.2em;
-    inset-inline-start: 0.2em;
-    inline-size: 1.1em;
-    block-size: 1.1em;
-    border-radius: 50%;
-    background: var(--switch-unchecked-button-color, #ffffff);
-    transition: transform 0.15s;
-  }
-  .${VISUAL_CLASSES.switchControl}:checked {
-    background: var(--switch-checked-track-color, var(--primary-color, #03a9f4));
-  }
-  .${VISUAL_CLASSES.switchControl}:checked::after {
-    transform: translateX(1.1em);
-    background: var(--switch-checked-button-color, #ffffff);
-  }
-  .${VISUAL_CLASSES.switchControl}:disabled {
-    opacity: 0.45;
-    cursor: default;
-  }
-  .${VISUAL_CLASSES.switchControl}[aria-busy="true"] {
-    opacity: 0.6;
-    cursor: progress;
-  }
-  .${VISUAL_CLASSES.switchControl}:focus-visible {
-    outline: 2px solid var(--primary-color, #03a9f4);
-    outline-offset: 2px;
   }
   .${VISUAL_CLASSES.activeNotice} {
     margin: 4px 0 0;

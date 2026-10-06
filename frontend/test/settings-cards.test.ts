@@ -76,9 +76,14 @@ const choose = (element: Element, label: RegExp): HTMLInputElement =>
     .find((node) => label.test(node.textContent ?? ""))!
     .querySelector<HTMLInputElement>("input")!;
 
-async function openSolar(payload = dashboard(withSources(["forecast_solar:roof"])), options = {}) {
+/** Open the Solar section's value: the priority (one of two) or the forecast sources (several). */
+async function openSolar(
+  which: "solar_priority" | "solar_forecast" = "solar_priority",
+  payload = dashboard(withSources(["forecast_solar:roof"])),
+  options = {},
+) {
   const opened = await open(payload, options);
-  solarCard(opened.element)!.querySelector<HTMLButtonElement>("[data-edit-solar]")!.click();
+  solarCard(opened.element)!.querySelector<HTMLButtonElement>(`[data-edit='${which}']`)!.click();
   await settle();
   return opened;
 }
@@ -93,16 +98,20 @@ afterEach(() => {
   document.body.innerHTML = "";
 });
 
-describe("the Solar card", () => {
+describe("the Solar section", () => {
   it("summarises the priority and the forecast sources in words, marked as applying to every charger on the site", async () => {
     const { element } = await open(dashboard(withSources(["forecast_solar:roof", "forecast_solar:garage"])));
     const card = solarCard(element)!;
     expect(card.querySelector("h4")?.textContent).toBe(translate("en", "settings.section.solar"));
+    expect(card.querySelector("h4 svg")?.getAttribute("data-icon")).toBe("solar");
     expect(card.textContent).toContain(translate("en", "site.applies.one"));
     expect(card.querySelector("[data-row='solar_priority']")?.textContent).toContain(translate("en", "site.solarPriority.carFirst"));
     expect(card.querySelector("[data-row='solar_forecast']")?.textContent).toContain("Roof, Garage");
-    // One Change button, and nothing on the page that saves by itself.
-    expect(card.querySelectorAll("button")).toHaveLength(1);
+    // Each value is its own button, and nothing on the page saves by itself.
+    expect(Array.from(card.querySelectorAll<HTMLElement>("button")).map((node) => node.dataset["edit"])).toEqual([
+      "solar_priority",
+      "solar_forecast",
+    ]);
     expect(card.querySelector("input")).toBeNull();
   });
 
@@ -118,47 +127,46 @@ describe("the Solar card", () => {
     expect(solarCard(element)).toBeNull();
   });
 
-  it("disables the Change button for a non-administrator", async () => {
+  it("is read-only for a non-administrator", async () => {
     const { element } = await open(dashboard(withSources()), { admin: false });
-    expect(solarCard(element)!.querySelector<HTMLButtonElement>("[data-edit-solar]")!.disabled).toBe(true);
+    expect(solarCard(element)!.querySelector("button")).toBeNull();
   });
 });
 
-describe("the Solar dialog", () => {
-  it("opens from the card with the stored choices, Save and Cancel, and no request", async () => {
+describe("the Solar editors", () => {
+  it("open with the stored choice, a positive button and Cancel, and no request", async () => {
     const { hass, element } = await openSolar();
-    expect(dlg(element).parentElement?.textContent).toContain(translate("en", "site.solar.dialogTitle"));
+    expect(dlg(element).parentElement?.textContent).toContain(translate("en", "site.solarPriority.title"));
     expect(choose(element, /Car first/).checked).toBe(true);
+    const buttons = Array.from(dlg(element).querySelectorAll<HTMLButtonElement>("form button")).map((node) => node.textContent);
+    expect(buttons).toEqual([translate("en", "identify.choose"), translate("en", "settings.cancel")]);
+    expect(siteWrites(hass)).toHaveLength(0);
+    cancelButton(element).click();
+    await settle();
+    await openSolarAgain(element, "solar_forecast");
     expect(choose(element, /Roof/).checked).toBe(true);
     expect(choose(element, /Garage/).checked).toBe(false);
-    const buttons = Array.from(dlg(element).querySelectorAll<HTMLButtonElement>("form button")).map((node) => node.textContent);
-    expect(buttons).toEqual([translate("en", "settings.save"), translate("en", "settings.cancel")]);
-    expect(siteWrites(hass)).toHaveLength(0);
   });
 
-  it("writes nothing while choosing, and only the changed fields on Save, each with what was shown", async () => {
+  it("sends only the priority, with what was shown", async () => {
     const { hass, element } = await openSolar();
     choose(element, /Battery first/).click();
-    choose(element, /Garage/).click();
     expect(siteWrites(hass)).toHaveLength(0);
     saveButton(element).click();
     await settle();
     expect(siteWrites(hass)).toHaveLength(1);
-    expect(siteWrites(hass)[0]).toMatchObject({
-      type: "spotnav/update_site_settings",
-      charger_id: "entry_a",
-      expected: { solar_priority: "car_first", solar_forecast: ["forecast_solar:roof"] },
-      changes: { solar_priority: "battery_first", solar_forecast: ["forecast_solar:roof", "forecast_solar:garage"] },
-    });
-  });
-
-  it("sends only the priority when only it changed", async () => {
-    const { hass, element } = await openSolar();
-    choose(element, /Battery first/).click();
-    saveButton(element).click();
-    await settle();
+    expect(siteWrites(hass)[0]).toMatchObject({ type: "spotnav/update_site_settings", charger_id: "entry_a" });
     expect(siteWrites(hass)[0]?.["changes"]).toEqual({ solar_priority: "battery_first" });
     expect(siteWrites(hass)[0]?.["expected"]).toEqual({ solar_priority: "car_first" });
+  });
+
+  it("sends only the forecast sources, with what was shown", async () => {
+    const { hass, element } = await openSolar("solar_forecast");
+    choose(element, /Garage/).click();
+    saveButton(element).click();
+    await settle();
+    expect(siteWrites(hass)[0]?.["changes"]).toEqual({ solar_forecast: ["forecast_solar:roof", "forecast_solar:garage"] });
+    expect(siteWrites(hass)[0]?.["expected"]).toEqual({ solar_forecast: ["forecast_solar:roof"] });
   });
 
   it("returns to Settings after a committed write, with one read of the dashboard", async () => {
@@ -172,7 +180,7 @@ describe("the Solar dialog", () => {
     hass.resolveNext(dashboard(withSources(["forecast_solar:roof"])));
     await settle();
     expect(dlg(element).querySelector("[data-section='solar']")).not.toBeNull();
-    expect(dlg(element).querySelector("[data-entity-editor]")).toBeNull();
+    expect(dlg(element).querySelector("form[data-value-editor]")).toBeNull();
   });
 
   it("sends nothing when nothing changed, and returns to Settings", async () => {
@@ -195,20 +203,25 @@ describe("the Solar dialog", () => {
     );
   });
 
-  it("stays open with the sentence for a refusal, keeping the choices", async () => {
+  it("stays open with the sentence for a refusal, keeping the choice", async () => {
     const { hass, element } = await openSolar();
     choose(element, /Battery first/).click();
     saveButton(element).click();
     await settle();
     hass.resolveNext(read("site_settings", "v1", "invalid_value.json"));
     await settle();
-    expect(dlg(element).querySelector("[data-entity-editor='solar']")).not.toBeNull();
+    expect(dlg(element).querySelector("form[data-value-editor='single']")).not.toBeNull();
     expect(dlg(element).textContent).toContain(translate("en", "settings.error.invalid"));
     expect(dlg(element).textContent).not.toContain("spotnav_invalid_value");
     expect(choose(element, /Battery first/).checked).toBe(true);
     expect(saveButton(element).disabled).toBe(false);
   });
 });
+
+async function openSolarAgain(element: Element, which: string): Promise<void> {
+  solarCard(element)!.querySelector<HTMLButtonElement>(`[data-edit='${which}']`)!.click();
+  await settle();
+}
 
 describe("the overview's words", () => {
   it("shows no raw reason code and no technical-detail label, only sentences", async () => {
@@ -238,10 +251,9 @@ describe("the overview's words", () => {
     expect(text).not.toContain("some_future_reason");
   });
 
-  it("saves nothing by itself: the only control on the overview is the active-control switch", async () => {
+  it("saves nothing by itself: the overview has no input at all, only values that open their editors", async () => {
     const { hass, element } = await open(dashboard(withSources(["forecast_solar:roof"])));
-    const controls = Array.from(dlg(element).querySelectorAll<HTMLInputElement>("input, select, textarea"));
-    expect(controls.map((node) => node.getAttribute("role"))).toEqual(["switch"]);
+    expect(dlg(element).querySelectorAll("input, select, textarea")).toHaveLength(0);
     expect(dlg(element).querySelector("[data-action='save-phases']")).toBeNull();
     expect(siteWrites(hass)).toHaveLength(0);
   });

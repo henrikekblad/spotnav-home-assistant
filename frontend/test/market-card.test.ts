@@ -268,10 +268,10 @@ afterEach(() => {
 describe("the combined editor session", () => {
   it("starts both reads in one operation and shows the form only once both are accepted", async () => {
     const { hass, element } = await mounted();
-    // The trigger labels itself from the dashboard's own market facts: no request of its own.
-    expect(marketTrigger(element).textContent).toBe(translate("en", "market.edit"));
+    // The trigger is the area row's value, from the dashboard's own market facts: no request of its own.
+    expect(marketTrigger(element).textContent).toBe("Malmö · SE4");
     expect(marketTrigger(element).getAttribute("aria-label")).toBe(
-      translate("en", "market.aria", { value: "Malmö · SE4" }),
+      translate("en", "settings.row.changeable", { label: translate("en", "context.area"), value: "Malmö · SE4" }),
     );
 
     marketTrigger(element).click();
@@ -755,7 +755,7 @@ describe("truthfulness after a market save", () => {
     await settle();
     expect(text(element)).toContain(translate("en", "settings.error.confirmationFailed"));
     expect(text(element)).not.toContain(translate("en", "settings.error.reconcileFailed"));
-    expect(marketTrigger(element).textContent).toBe(translate("en", "market.edit"));
+    expect(marketTrigger(element).textContent).toBe("Malmö · SE4");
     expect(hass.outstanding).toBe(0);
   });
 

@@ -244,17 +244,16 @@ describe("the Settings page", () => {
     expect(ev6.querySelector("[data-row='location']")?.textContent).toContain(translate("en", "identify.source.choose"));
   });
 
-  it("states the mode and the cars at this charger, and saves a new choice as a settings replacement", async () => {
+  it("states the mode and the cars at this charger in the charger's section, and saves the cars as a settings replacement", async () => {
     const payload = dashboard();
     const { hass, element } = await openSettings(payload);
-    const section = openDialog(element)!.querySelector<HTMLElement>("[data-section='identification']")!;
-    expect(section.textContent).toContain(translate("en", "identify.mode.automatic"));
-    expect(section.textContent).toContain(translate("en", "identify.vehicles.all"));
-    section.querySelector<HTMLButtonElement>("[data-edit-identification]")!.click();
+    const section = openDialog(element)!.querySelector<HTMLElement>("[data-section='entities']")!;
+    expect(section.querySelector("[data-row='identify_mode']")?.textContent).toContain(translate("en", "identify.mode.automatic"));
+    expect(section.querySelector("[data-row='identify_vehicles']")?.textContent).toContain(translate("en", "identify.vehicles.all"));
+    section.querySelector<HTMLButtonElement>("[data-edit='identify_vehicles']")!.click();
     await settle();
-    const form = openDialog(element)!.querySelector<HTMLFormElement>("[data-identification-editor]")!;
-    form.querySelector<HTMLInputElement>("[data-identify-mode='ask']")!.click();
-    form.querySelector<HTMLInputElement>(`[data-identify-vehicle='${EV6}']`)!.click();
+    const form = openDialog(element)!.querySelector<HTMLFormElement>("form[data-value-editor='multi']")!;
+    form.querySelector<HTMLInputElement>(`[data-value-option='${EV6}']`)!.click();
     form.requestSubmit();
     await settle();
     expect(hass.messages.some((message) => message.type === "spotnav/get_settings")).toBe(true);
@@ -265,7 +264,7 @@ describe("the Settings page", () => {
     });
     await settle();
     const update = hass.messages.find((message) => message.type === "spotnav/update_settings") as Record<string, any>;
-    expect(update["settings"]["identify_mode"]).toBe("ask");
+    expect(update["settings"]["identify_mode"]).toBe("automatic");
     expect(update["settings"]["vehicle_ids"]).toEqual([NIRO]);
   });
 
@@ -274,23 +273,23 @@ describe("the Settings page", () => {
     payload["vehicles"] = payload["vehicles"].slice(0, 1);
     payload["vehicle_choices"] = payload["vehicle_choices"].slice(0, 1);
     const { element } = await openSettings(payload);
-    expect(openDialog(element)!.querySelector("[data-section='identification']")).toBeNull();
+    expect(openDialog(element)!.querySelector("[data-row='identify_mode'], [data-row='identify_vehicles']")).toBeNull();
   });
 
-  it("chooses a car's location source in its dialog", async () => {
+  it("chooses a car's location source in its own editor", async () => {
     const { hass, element } = await openSettings(dashboard());
     openDialog(element)!
       .querySelector<HTMLElement>(`[data-section='vehicle'][data-vehicle='${EV6}']`)!
-      .querySelector<HTMLButtonElement>("[data-edit-vehicle]")!
+      .querySelector<HTMLButtonElement>("[data-edit='location']")!
       .click();
     await settle();
-    const select = openDialog(element)!.querySelector<HTMLSelectElement>("[data-part='location'] select")!;
-    expect(Array.from(select.options).map((option) => option.value)).toEqual([
+    const form = openDialog(element)!.querySelector<HTMLFormElement>("form[data-value-editor='single']")!;
+    const options = Array.from(form.querySelectorAll<HTMLInputElement>("[data-value-option]"));
+    expect(options.map((option) => option.dataset["valueOption"])).toEqual([
       "", "device_tracker.ev6_location", "device_tracker.ev6_phone", "none",
     ]);
-    select.value = "device_tracker.ev6_phone";
-    select.dispatchEvent(new Event("change"));
-    openDialog(element)!.querySelector<HTMLFormElement>("form")!.requestSubmit();
+    form.querySelector<HTMLInputElement>("[data-value-option='device_tracker.ev6_phone']")!.click();
+    form.requestSubmit();
     await settle();
     const sent = hass.messages.find((message) => message.type === "spotnav/choose_vehicle_identification");
     expect(sent).toEqual({
@@ -469,13 +468,13 @@ describe("the cars at this charger", () => {
       { id: NIRO, name: "Niro" },
     ];
     const { hass, element } = await openSettings(payload);
-    const section = openDialog(element)!.querySelector<HTMLElement>("[data-section='identification']")!;
-    expect(section.textContent).toContain("Niro");
-    section.querySelector<HTMLButtonElement>("[data-edit-identification]")!.click();
+    const row = openDialog(element)!.querySelector<HTMLElement>("[data-row='identify_vehicles']")!;
+    expect(row.textContent).toContain("Niro");
+    row.querySelector<HTMLButtonElement>("button")!.click();
     await settle();
-    const form = openDialog(element)!.querySelector<HTMLFormElement>("[data-identification-editor]")!;
-    const boxes = Array.from(form.querySelectorAll<HTMLInputElement>("[data-identify-vehicle]"));
-    expect(boxes.map((box) => [box.dataset["identifyVehicle"], box.checked])).toEqual([[EV6, false], [NIRO, true]]);
+    const form = openDialog(element)!.querySelector<HTMLFormElement>("form[data-value-editor='multi']")!;
+    const boxes = Array.from(form.querySelectorAll<HTMLInputElement>("[data-value-option]"));
+    expect(boxes.map((box) => [box.dataset["valueOption"], box.checked])).toEqual([[EV6, false], [NIRO, true]]);
     boxes[0]!.click();
     form.requestSubmit();
     await settle();

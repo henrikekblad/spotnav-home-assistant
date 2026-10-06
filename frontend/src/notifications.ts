@@ -41,6 +41,20 @@ function element(doc: Document, tag: string, className?: string, text?: string):
 }
 
 /** A chosen service's name: its phone's, or the service itself when no phone answers to it now. */
+/** The phones a person can choose (the available ones, then any chosen one that is gone), as editor options. */
+export function phoneOptions(language: Language, record: NotificationsRecord): Array<{ value: string; label: string }> {
+  const services = [
+    ...record.available.map((entry) => entry.service),
+    ...record.targets.filter((service) => !record.available.some((entry) => entry.service === service)),
+  ];
+  return services.map((service) => ({ value: service, label: targetName(language, record, service) }));
+}
+
+/** Every event, in the backend's order, as editor options. */
+export function eventOptions(language: Language): Array<{ value: string; label: string }> {
+  return NOTIFICATION_EVENTS.map((event) => ({ value: event, label: translate(language, EVENT_KEYS[event]) }));
+}
+
 function targetName(language: Language, record: NotificationsRecord, service: string): string {
   const found = record.available.find((entry) => entry.service === service);
   return found !== undefined ? found.name : translate(language, "notifications.missing", { name: service });
@@ -88,98 +102,4 @@ export function notificationsSummary(
       }),
     },
   ];
-}
-
-/**
- * The dialog body: a checkbox per phone (the available ones, then any chosen one that is gone) and per
- * event. `url` is where a tap opens, the page the card is on.
- */
-export function notificationsEditorBody(
-  doc: Document,
-  language: Language,
-  record: NotificationsRecord,
-  url: string | null,
-  handlers: NotificationsEditorHandlers,
-): NotificationsEditorBody {
-  const targets = new Set(record.targets);
-  const events = new Set(record.events);
-  const choice = (): NotificationsChoice => ({
-    targets: [...targets],
-    events: NOTIFICATION_EVENTS.filter((event) => events.has(event)),
-    url,
-  });
-
-  const body = element(doc, "form") as HTMLFormElement;
-  body.noValidate = true;
-  body.dataset["notificationsEditor"] = "true";
-  body.append(element(doc, "p", C.siteApplies, translate(language, "notifications.intro")));
-  const missing = noRecipientsNote(doc, language, record);
-  if (missing !== null) {
-    body.append(missing);
-  }
-
-  const phones = element(doc, "fieldset", C.siteFieldset);
-  phones.dataset["part"] = "targets";
-  phones.append(element(doc, "legend", C.siteLegend, translate(language, "notifications.phones")));
-  const services = [
-    ...record.available.map((entry) => entry.service),
-    ...record.targets.filter((service) => !record.available.some((entry) => entry.service === service)),
-  ];
-  for (const service of services) {
-    const label = element(doc, "label", C.siteChoice);
-    const box = doc.createElement("input");
-    box.type = "checkbox";
-    box.checked = targets.has(service);
-    box.dataset["target"] = service;
-    box.addEventListener("change", () => {
-      if (box.checked) {
-        targets.add(service);
-      } else {
-        targets.delete(service);
-      }
-    });
-    label.append(box, doc.createTextNode(targetName(language, record, service)));
-    phones.append(label);
-  }
-  if (services.length === 0) {
-    phones.append(element(doc, "p", C.settingsNote, translate(language, "notifications.noPhones")));
-  }
-  body.append(phones);
-
-  const kinds = element(doc, "fieldset", C.siteFieldset);
-  kinds.dataset["part"] = "events";
-  kinds.append(element(doc, "legend", C.siteLegend, translate(language, "notifications.events")));
-  for (const event of NOTIFICATION_EVENTS) {
-    const label = element(doc, "label", C.siteChoice);
-    const box = doc.createElement("input");
-    box.type = "checkbox";
-    box.checked = events.has(event);
-    box.dataset["event"] = event;
-    box.addEventListener("change", () => {
-      if (box.checked) {
-        events.add(event);
-      } else {
-        events.delete(event);
-      }
-    });
-    label.append(box, doc.createTextNode(translate(language, EVENT_KEYS[event])));
-    kinds.append(label);
-  }
-  body.append(kinds);
-
-  const actions = element(doc, "div", C.settingsActions);
-  const save = element(doc, "button", `${C.button} ${C.settingsSave}`, translate(language, "settings.save")) as HTMLButtonElement;
-  save.type = "submit";
-  const cancel = element(doc, "button", C.button, translate(language, "settings.cancel")) as HTMLButtonElement;
-  cancel.type = "button";
-  actions.append(save, cancel);
-  body.append(actions);
-  body.addEventListener("submit", (event) => {
-    event.preventDefault();
-    handlers.onSave(choice());
-  });
-  cancel.addEventListener("click", () => {
-    handlers.onCancel();
-  });
-  return { body, choice };
 }
