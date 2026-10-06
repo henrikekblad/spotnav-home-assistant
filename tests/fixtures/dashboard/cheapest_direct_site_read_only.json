@@ -2211,13 +2211,15 @@
     "driver": "manual_kwh",
     "fill_to_limit": false,
     "fiscal_included": [],
+    "identify_mode": "automatic",
     "max_periods": 1,
     "notifications": {
       "available": [],
       "events": [
         "plan_stopped",
         "plan_at_risk",
-        "charge_complete"
+        "charge_complete",
+        "vehicle_identify"
       ],
       "targets": [],
       "url": null
@@ -2230,7 +2232,9 @@
     "target": {
       "target_percent": null,
       "vehicle_id": null
-    }
+    },
+    "vehicle_ids": null,
+    "vehicle_targets": {}
   },
   "site": {
     "active_control": {

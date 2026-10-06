@@ -70,7 +70,8 @@ _last_rejected_warning: float | None = None
 #: app that reads them is out. A request opts in per field with a top-level `reads` list. A
 #: replacement without one keeps the stored value (`fiscal_included` is read-only and never stored).
 APP_UNREAD_SETTINGS: Final = (
-    "departure_date", "departure_weekdays", "fiscal_included", "notifications", "fill_to_limit"
+    "departure_date", "departure_weekdays", "fiscal_included", "notifications", "fill_to_limit", "vehicle_ids",
+    "identify_mode", "vehicle_targets",
 )
 
 

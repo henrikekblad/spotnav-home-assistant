@@ -2191,13 +2191,15 @@
     "driver": "target_soc",
     "fill_to_limit": false,
     "fiscal_included": [],
+    "identify_mode": "automatic",
     "max_periods": 1,
     "notifications": {
       "available": [],
       "events": [
         "plan_stopped",
         "plan_at_risk",
-        "charge_complete"
+        "charge_complete",
+        "vehicle_identify"
       ],
       "targets": [],
       "url": null
@@ -2210,6 +2212,10 @@
     "target": {
       "target_percent": 80.0,
       "vehicle_id": "vehicle_ev6"
+    },
+    "vehicle_ids": null,
+    "vehicle_targets": {
+      "vehicle_ev6": 80.0
     }
   },
   "site": null,

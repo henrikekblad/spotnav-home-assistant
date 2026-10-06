@@ -50,11 +50,15 @@
       "events": [
         "plan_stopped",
         "plan_at_risk",
-        "charge_complete"
+        "charge_complete",
+        "vehicle_identify"
       ],
       "url": null,
       "available": []
-    }
+    },
+    "vehicle_ids": null,
+    "identify_mode": "automatic",
+    "vehicle_targets": {}
   },
   "fiscal": {
     "vat": {

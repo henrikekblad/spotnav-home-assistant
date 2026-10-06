@@ -81,6 +81,13 @@ DEFAULT_CONSUMPTION_KWH_PER_10KM: Final = 2.0
 DEFAULT_MAX_PERIODS: Final = 1
 DEFAULT_DEPARTURE: Final = time(8, 0)
 
+#: How a charger with more than one vehicle finds out which one is plugged in (`vehicles/identification.py`):
+#: from the cars' own reports and then by asking, only by asking, or not at all.
+IDENTIFY_AUTOMATIC: Final = "automatic"
+IDENTIFY_ASK: Final = "ask"
+IDENTIFY_OFF: Final = "off"
+IDENTIFY_MODES: Final = (IDENTIFY_AUTOMATIC, IDENTIFY_ASK, IDENTIFY_OFF)
+
 SettingsCode = Literal[
     "invalid_driver",
     "invalid_area",
@@ -100,6 +107,7 @@ SettingsCode = Literal[
     "revision_conflict",
     "invalid_energy_baseline",
     "invalid_notifications",
+    "invalid_vehicles",
 ]
 
 
@@ -493,6 +501,14 @@ class AutoSettings:
     #: Which phones hear about which events (`notifications/settings.py`). Not a planning input: a
     #: change of it plans nothing differently.
     notifications: NotificationSettings = field(default_factory=NotificationSettings)
+    #: The vehicles that can charge here (device ids, in a stable order), or `None` for every detected
+    #: vehicle. Read only by vehicle identification; an id no longer detected is kept and ignored.
+    vehicle_ids: tuple[str, ...] | None = None
+    #: How the plugged-in vehicle is found when more than one can charge here (`IDENTIFY_MODES`).
+    identify_mode: str = IDENTIFY_AUTOMATIC
+    #: The target percent each vehicle had when it was last selected here, by vehicle id. The selected
+    #: vehicle's entry is always `target.target_percent` (`validated` keeps it so): the target follows the car.
+    vehicle_targets: tuple[tuple[str, float], ...] = ()
 
     @property
     def execution_paused(self) -> bool:
@@ -587,15 +603,44 @@ class AutoSettings:
             notifications = self.notifications.validated()
         except (NotificationSettingsError, AttributeError) as err:
             _refuse("invalid_notifications", str(err))
+        vehicle_ids = self.vehicle_ids
+        if vehicle_ids is not None:
+            if (
+                not isinstance(vehicle_ids, tuple)
+                or not vehicle_ids
+                or any(not isinstance(item, str) or not item for item in vehicle_ids)
+                or len(set(vehicle_ids)) != len(vehicle_ids)
+            ):
+                _refuse("invalid_vehicles", "vehicle_ids must be one or more different vehicle ids, or absent")
+            vehicle_ids = tuple(sorted(vehicle_ids))
+        if self.identify_mode not in IDENTIFY_MODES:
+            _refuse("invalid_vehicles", f"identify_mode must be one of {IDENTIFY_MODES}")
+        target = self.target.validated()
         return replace(
             self,
             requested_kwh=float(self.requested_kwh),
             overrides=tuple(sorted(self.overrides, key=lambda item: item.area_id)),
             departure_weekdays=tuple(sorted(self.departure_weekdays)),
-            target=self.target.validated(),
+            target=target,
             pause=self.pause.validated(),
             notifications=notifications,
+            vehicle_ids=vehicle_ids,
+            vehicle_targets=_vehicle_targets_with(self.vehicle_targets, target),
         )
+
+    def vehicle_target(self, vehicle_id: str | None) -> float | None:
+        """The target percent remembered for `vehicle_id` here, or `None`."""
+        return next((percent for vid, percent in self.vehicle_targets if vid == vehicle_id), None)
+
+    def with_target_vehicle(self, vehicle_id: str | None) -> AutoSettings:
+        """The same settings planning for `vehicle_id`, with that vehicle's remembered target when it has one.
+
+        A vehicle with none keeps the target as it stands (it becomes that vehicle's). The departure stays
+        the charger's.
+        """
+        remembered = self.vehicle_target(vehicle_id)
+        percent = self.target.target_percent if remembered is None else remembered
+        return replace(self, target=TargetSocIntent(vehicle_id=vehicle_id, target_percent=percent))
 
     def as_dict(self) -> dict[str, Any]:
         stored: dict[str, Any] = {
@@ -622,10 +667,17 @@ class AutoSettings:
             stored["departure_weekdays"] = list(self.departure_weekdays)
         if not self.notifications.is_default:
             # Additive as well: written only once a person chose something.
-            stored["notifications"] = self.notifications.as_dict()
+            stored["notifications"] = self.notifications.as_stored()
         if self.fill_to_limit:
             # Additive too: written only when set.
             stored["fill_to_limit"] = True
+        if self.vehicle_ids is not None:
+            # Additive, as are the two below: written only once chosen.
+            stored["vehicle_ids"] = list(self.vehicle_ids)
+        if self.identify_mode != IDENTIFY_AUTOMATIC:
+            stored["identify_mode"] = self.identify_mode
+        if self.vehicle_targets:
+            stored["vehicle_targets"] = dict(self.vehicle_targets)
         return stored
 
     @classmethod
@@ -639,7 +691,12 @@ class AutoSettings:
             frozenset(cls().as_dict()),
             "unknown_field",
             "a stored settings record",
-            optional=frozenset({"departure_date", "departure_weekdays", "notifications", "fill_to_limit"}),
+            optional=frozenset(
+                {
+                    "departure_date", "departure_weekdays", "notifications", "fill_to_limit", "vehicle_ids",
+                    "identify_mode", "vehicle_targets",
+                }
+            ),
         )
         revision = stored["revision"]
         if isinstance(revision, bool) or not isinstance(revision, int) or revision < 0:
@@ -671,9 +728,15 @@ class AutoSettings:
         notifications = NotificationSettings()
         if "notifications" in stored:
             try:
-                notifications = NotificationSettings.from_dict(stored["notifications"])
+                notifications = NotificationSettings.from_stored(stored["notifications"])
             except NotificationSettingsError:
                 _refuse("invalid_notifications", "stored notification settings are not readable")
+        vehicle_ids = stored.get("vehicle_ids")
+        if vehicle_ids is not None and not isinstance(vehicle_ids, list):
+            _refuse("invalid_vehicles", "stored vehicle ids must be a list")
+        vehicle_targets = stored.get("vehicle_targets", {})
+        if not isinstance(vehicle_targets, dict):
+            _refuse("invalid_target", "stored vehicle targets must be an object")
         return cls(
             revision=revision,
             area_id=stored["area_id"],
@@ -692,7 +755,36 @@ class AutoSettings:
             target=TargetSocIntent.from_stored(stored["target"]),
             strategy=stored["strategy"],
             notifications=notifications,
+            vehicle_ids=None if vehicle_ids is None else tuple(vehicle_ids),
+            identify_mode=stored.get("identify_mode", IDENTIFY_AUTOMATIC),
+            vehicle_targets=tuple(vehicle_targets.items()),
         ).validated()
+
+
+def _vehicle_targets_with(
+    targets: Any, target: TargetSocIntent
+) -> tuple[tuple[str, float], ...]:
+    """`targets` checked and sorted by vehicle id, with the selected vehicle's entry set to its target.
+
+    This is also the migration of a record from before per-vehicle targets: its one target becomes its
+    selected vehicle's.
+    """
+    if not isinstance(targets, tuple):
+        _refuse("invalid_target", "vehicle targets must be pairs of a vehicle id and a percent")
+    found: dict[str, float] = {}
+    for item in targets:
+        if not isinstance(item, tuple) or len(item) != 2:
+            _refuse("invalid_target", "vehicle targets must be pairs of a vehicle id and a percent")
+        vehicle_id, percent = item
+        if not isinstance(vehicle_id, str) or not vehicle_id or vehicle_id in found:
+            _refuse("invalid_target", "a vehicle target needs one non-empty vehicle id")
+        percent = _finite(percent, "invalid_target", "vehicle target")
+        if not 0 <= percent <= 100:
+            _refuse("invalid_target", "a vehicle target must be between 0 and 100")
+        found[vehicle_id] = percent
+    if target.vehicle_id is not None and target.target_percent is not None:
+        found[target.vehicle_id] = float(target.target_percent)
+    return tuple(sorted(found.items()))
 
 
 @dataclass(frozen=True, slots=True)

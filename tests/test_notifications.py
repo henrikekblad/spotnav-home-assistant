@@ -46,9 +46,9 @@ from .world import controller_of, setup_charger
 # ------------------------------------------------------------------ settings
 
 
-def test_the_defaults_are_no_phone_and_the_three_events_that_need_attention() -> None:
+def test_the_defaults_are_no_phone_and_the_events_that_need_attention() -> None:
     assert NotificationSettings() == NotificationSettings(targets=(), events=DEFAULT_EVENTS, url=None)
-    assert DEFAULT_EVENTS == ("plan_stopped", "plan_at_risk", "charge_complete")
+    assert DEFAULT_EVENTS == ("plan_stopped", "plan_at_risk", "charge_complete", "vehicle_identify")
     assert not NotificationSettings().wants("plan_stopped"), "nothing is sent without a phone"
     assert NotificationSettings(targets=("mobile_app_a",)).wants("plan_stopped")
     assert not NotificationSettings(targets=("mobile_app_a",)).wants("plugged_in")
@@ -84,12 +84,25 @@ def test_the_stored_record_carries_notifications_only_once_chosen() -> None:
         "targets": ["mobile_app_a"],
         "events": list(DEFAULT_EVENTS),
         "url": "/lovelace/ev",
+        "event_set": 2,
     }
     assert AutoSettings.from_stored(stored).notifications == chosen.notifications
     stored["notifications"] = {"targets": "nope", "events": []}
     with pytest.raises(AutoSettingsError) as refused:
         AutoSettings.from_stored(stored)
     assert refused.value.code == "invalid_notifications"
+
+
+def test_a_choice_stored_before_the_identification_question_has_it_on_and_a_later_one_keeps_it_off() -> None:
+    before = replace(
+        AutoSettings(), notifications=NotificationSettings(targets=("mobile_app_a",), events=("plan_stopped",))
+    ).validated().as_dict()
+    del before["notifications"]["event_set"]
+    assert AutoSettings.from_stored(before).notifications.events == ("plan_stopped", "vehicle_identify")
+    off = replace(
+        AutoSettings(), notifications=NotificationSettings(targets=("mobile_app_a",), events=("plan_stopped",))
+    ).validated().as_dict()
+    assert AutoSettings.from_stored(off).notifications.events == ("plan_stopped",)
 
 
 def _body(**changes: Any) -> dict[str, Any]:

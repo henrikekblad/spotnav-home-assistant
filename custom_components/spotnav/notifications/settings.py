@@ -32,6 +32,9 @@ EVENT_CHARGE_STARTED: Final = "charge_started"
 EVENT_PLUGGED_IN: Final = "plugged_in"
 EVENT_UNPLUGGED: Final = "unplugged"
 EVENT_PLAN_INSTALLED: Final = "plan_installed"
+#: Which car is plugged in? A question with one button per car, sent only when a charger with more than
+#: one vehicle cannot tell (`vehicles/identification.py`).
+EVENT_VEHICLE_IDENTIFY: Final = "vehicle_identify"
 
 #: Every event a notification can be sent for, in the order a client lists them.
 NOTIFICATION_EVENTS: Final = (
@@ -42,9 +45,16 @@ NOTIFICATION_EVENTS: Final = (
     EVENT_PLUGGED_IN,
     EVENT_UNPLUGGED,
     EVENT_PLAN_INSTALLED,
+    EVENT_VEHICLE_IDENTIFY,
 )
-#: On until a person turns them off: what needs attention, and the end of a charge.
-DEFAULT_EVENTS: Final = (EVENT_PLAN_STOPPED, EVENT_PLAN_AT_RISK, EVENT_CHARGE_COMPLETE)
+#: On until a person turns them off: what needs attention, the end of a charge, and the question of which
+#: car is plugged in (asked only when a charger's identification needs it).
+DEFAULT_EVENTS: Final = (EVENT_PLAN_STOPPED, EVENT_PLAN_AT_RISK, EVENT_CHARGE_COMPLETE, EVENT_VEHICLE_IDENTIFY)
+
+#: The stored record's marker of the event list it was chosen from. A record without it was chosen before
+#: `vehicle_identify` existed, which is then on, as it is by default: nobody turned it off.
+_STORED_EVENT_SET_KEY: Final = "event_set"
+_STORED_EVENT_SET: Final = 2
 
 #: The domain whose services are the targets.
 NOTIFY_DOMAIN: Final = "notify"
@@ -105,8 +115,26 @@ class NotificationSettings:
         )
 
     def as_dict(self) -> dict[str, Any]:
-        """The stored and the wire shape (without the read-only `available`)."""
+        """The wire shape (without the read-only `available`)."""
         return {"targets": list(self.targets), "events": list(self.events), "url": self.url}
+
+    def as_stored(self) -> dict[str, Any]:
+        """The stored shape: the wire shape and the marker of the event list it was chosen from."""
+        return {**self.as_dict(), _STORED_EVENT_SET_KEY: _STORED_EVENT_SET}
+
+    @classmethod
+    def from_stored(cls, raw: Any) -> NotificationSettings:
+        """A stored record. One written before `vehicle_identify` existed has it turned on."""
+        if not isinstance(raw, dict):
+            raise NotificationSettingsError("notifications must be an object")
+        record = dict(raw)
+        marker = record.pop(_STORED_EVENT_SET_KEY, None)
+        if marker is not None and marker != _STORED_EVENT_SET:
+            raise NotificationSettingsError("stored notifications name an event list this release does not know")
+        read = cls.from_dict(record)
+        if marker is None and EVENT_VEHICLE_IDENTIFY not in read.events:
+            read = cls(targets=read.targets, events=(*read.events, EVENT_VEHICLE_IDENTIFY), url=read.url).validated()
+        return read
 
     @classmethod
     def from_dict(cls, raw: Any) -> NotificationSettings:

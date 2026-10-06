@@ -45,6 +45,11 @@ _TEXT: Final[dict[str, dict[str, str]]] = {
         "plugged_in": "The car is plugged in.",
         "unplugged": "The car is unplugged.",
         "plan_installed": "New plan: charging from {time}.",
+        "identify.ask": "Which car is plugged in?",
+        "identify.open": "Open SpotNav",
+        "identify.chosen": "{vehicle} chosen.",
+        "identify.recognised": "Recognised as {vehicle}.",
+        "identify.kept": "{vehicle} kept.",
         "charged": "{kwh} charged",
         "planned": "{kwh} planned",
         "cost": "about {cost}",
@@ -70,6 +75,11 @@ _TEXT: Final[dict[str, dict[str, str]]] = {
         "plugged_in": "Bilen är ansluten.",
         "unplugged": "Bilen är urkopplad.",
         "plan_installed": "Ny plan: laddar från {time}.",
+        "identify.ask": "Vilken bil är ansluten?",
+        "identify.open": "Öppna SpotNav",
+        "identify.chosen": "{vehicle} vald.",
+        "identify.recognised": "Igenkänd som {vehicle}.",
+        "identify.kept": "{vehicle} behålls.",
         "charged": "{kwh} laddat",
         "planned": "{kwh} planerat",
         "cost": "cirka {cost}",
@@ -95,6 +105,11 @@ _TEXT: Final[dict[str, dict[str, str]]] = {
         "plugged_in": "Bilen er tilsluttet.",
         "unplugged": "Bilen er frakoblet.",
         "plan_installed": "Ny plan: lader fra {time}.",
+        "identify.ask": "Hvilken bil er tilsluttet?",
+        "identify.open": "Åbn SpotNav",
+        "identify.chosen": "{vehicle} valgt.",
+        "identify.recognised": "Genkendt som {vehicle}.",
+        "identify.kept": "{vehicle} beholdes.",
         "charged": "{kwh} ladet",
         "planned": "{kwh} planlagt",
         "cost": "cirka {cost}",
@@ -120,6 +135,11 @@ _TEXT: Final[dict[str, dict[str, str]]] = {
         "plugged_in": "Bilen er tilkoblet.",
         "unplugged": "Bilen er frakoblet.",
         "plan_installed": "Ny plan: lader fra {time}.",
+        "identify.ask": "Hvilken bil er tilkoblet?",
+        "identify.open": "Åpne SpotNav",
+        "identify.chosen": "{vehicle} valgt.",
+        "identify.recognised": "Gjenkjent som {vehicle}.",
+        "identify.kept": "{vehicle} beholdes.",
         "charged": "{kwh} ladet",
         "planned": "{kwh} planlagt",
         "cost": "cirka {cost}",
@@ -145,6 +165,11 @@ _TEXT: Final[dict[str, dict[str, str]]] = {
         "plugged_in": "Auto on kytketty.",
         "unplugged": "Auto on irrotettu.",
         "plan_installed": "Uusi suunnitelma: lataus alkaa klo {time}.",
+        "identify.ask": "Mikä auto on kytketty?",
+        "identify.open": "Avaa SpotNav",
+        "identify.chosen": "{vehicle} valittu.",
+        "identify.recognised": "Tunnistettu: {vehicle}.",
+        "identify.kept": "{vehicle} säilytetään.",
         "charged": "{kwh} ladattu",
         "planned": "{kwh} suunniteltu",
         "cost": "noin {cost}",
@@ -235,6 +260,14 @@ def compose(event: str, name: str, facts: dict[str, Any], language: str) -> tupl
         message = text["plan_installed"].format(time=facts.get("time")) + _figures(
             language, text, "planned", kwh, cost, estimate=True
         )
+    elif event == "vehicle_identify":
+        message = text["identify.ask"]
     else:
         message = text[event]
     return title, message
+
+
+def identify_text(language: str, key: str, vehicle: str | None = None) -> str:
+    """One of the identification question's own texts (`ask`, `open`, `chosen`, `recognised`, `kept`)."""
+    text = _TEXT[language if language in _TEXT else "en"]
+    return text[f"identify.{key}"].format(vehicle=vehicle or "")

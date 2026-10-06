@@ -348,6 +348,7 @@ def test_a_complete_stored_record_round_trips_exactly() -> None:
         driver=DRIVER_TARGET_SOC,
         target=TargetSocIntent(vehicle_id="veh-1", target_percent=80.0),
         strategy="solar",
+        vehicle_targets=(("veh-1", 80.0),),
     )
 
     stored = AutoSettings.from_stored(settings.validated().as_dict())
