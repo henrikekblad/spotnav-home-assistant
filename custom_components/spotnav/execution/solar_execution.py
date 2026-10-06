@@ -642,7 +642,8 @@ class SolarExecutionCoordinator:
         self._strategy: str | None = None
         # Coalescing guard: `_on_site_update` fires often, but an evaluation awaits
         # `AutoExecutor`'s lock and `SolarController` is not reentrant, so a trigger arriving mid-
-        # evaluation is dropped; the next site recompute retries.
+        # evaluation is dropped; the next site recompute retries. A re-render another coordinator asks
+        # for (`SiteCapacityController.rerendering`) is no trigger at all.
         self._evaluating = False
         # A stop of solar's charge that did not go out (the charger's control did not take it): tried again
         # every tick until the charger is seen off (`_retry_owed_stop`).
@@ -651,6 +652,30 @@ class SolarExecutionCoordinator:
     @property
     def state(self) -> SolarExecutionState | None:
         return self._state
+
+    def sun_keeps_charge(self) -> bool:
+        """Whether the sun's rules keep the charge that runs now, for a strategy change to `solar` that would
+        otherwise stop it (`AutoExecutor._sun_keeps_charge`). Read without side effects on what this coordinator
+        decides. The rule for a charge that runs decides on the reading the site has now
+        (`SolarController.keeps_running`: the surplus at or above the stop level, the battery-credit back-off
+        counted); running beside the plan (hybrid) its own state must be `on` as well, never `disarming` (a charge it
+        adopted inside a window with no surplus goes there, and would run on the grid for its minimum on time)."""
+        site = self._site
+        controller = self._controller
+        if site is None or not controller.restored or not controller.charge_control_on:
+            return False
+        state = self._state
+        if state is not None and (self._solar is None or state.state != "on"):
+            # Arming, off, or already disarming (a charge it adopted with no surplus behind it): not the sun's to keep.
+            return False
+        # Whatever state it has, the reading at hand decides: a state adopted from a running charge says nothing
+        # about the surplus.
+        solar = SolarController(self._solar_config(site))
+        now = self._now()
+        until, next_s = controller.solar_credit_backoff
+        remaining = None if until is None else (until - dt_util.utcnow()).total_seconds()
+        solar.seed_credit_backoff(now, remaining, next_s)
+        return solar.keeps_running(self._observation(site, now))
 
     def async_start(self) -> None:
         """(Re)subscribe to this charger's site and evaluate once immediately.
@@ -677,7 +702,9 @@ class SolarExecutionCoordinator:
 
     @callback
     def _on_site_update(self) -> None:
-        if self._evaluating:
+        site = self._site
+        if self._evaluating or (site is not None and site.rerendering):
+            # Busy, or a coordinator's re-render of the site (no new reading): the next recompute decides.
             return
         self._evaluating = True
         self._hass.async_create_task(self._async_evaluate_guarded())
@@ -767,10 +794,14 @@ class SolarExecutionCoordinator:
                 and not self._took_over
             ):
                 # Solar itself was driving this charge (never while `held_by_plan`, when a plan window
-                # was running it, nor a charge the charger began by itself that solar took over).
-                if not await self._executor.async_solar_stop():
+                # was running it, nor a charge the charger began by itself that solar took over). One a plan window
+                # open now has taken over is the plan's (`AutoExecutor.async_solar_leave`).
+                if not await self._executor.async_solar_leave():
                     self._stop_owed = True
-                self._record_decision(state="off", action="stop", reason="strategy_left")
+                if self._controller.charge_origin == "plan_window":
+                    self._record_decision(state="off", action="hold", reason="handed_to_plan")
+                else:
+                    self._record_decision(state="off", action="stop", reason="strategy_left")
             elif self._state is not None:
                 self._record_decision(state="off", action="hold", reason="strategy_left")
             self._solar = None
@@ -818,6 +849,10 @@ class SolarExecutionCoordinator:
 
         if self._solar is None:
             self._solar = self._build_controller(site)
+        elif not held_by_plan and self._state is not None and self._state.held_by_plan:
+            # A plan window held the charge until now (its end handed it over, or the strategy left the plan): what
+            # the sun asked for meanwhile was never written, so its next modulation writes again.
+            self._solar.release_request()
         if not held_by_plan:
             if await self._adopt_solar_charge(site, self._solar):
                 # Solar's own charge resumed by load balancing was decided this tick (kept or stopped).
@@ -1308,9 +1343,13 @@ class SolarExecutionCoordinator:
     ) -> None:
         """Append one entry to the decision log: an action (`start`, `stop`, `set_current`, `take_over`)
         always, a `hold` only when its state, reason or plan hold differs from the last entry. `held_by_plan`
-        is a verdict a plan window kept from being carried out."""
+        is a verdict a plan window kept from being carried out: nothing of it reaches the charger, so while the
+        plan holds the charge only a change of the sun's state (or of the hold itself) is an entry."""
         signature = (state, action, reason, held_by_plan)
-        if action == "hold" and signature == self._decision_signature:
+        last = self._decision_signature
+        if held_by_plan and last is not None and last[3] and last[0] == state:
+            return
+        if action == "hold" and signature == last:
             return
         self._decision_log.append(
             {

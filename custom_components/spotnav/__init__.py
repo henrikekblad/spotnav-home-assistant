@@ -231,6 +231,9 @@ async def _async_setup_charger_entry(hass: HomeAssistant, entry: ChargerConfigEn
             hass, entry.entry_id, controller, executor, settings_store
         )
         entry.async_on_unload(solar.async_stop)
+        # A strategy change to `solar` hands a charge the sun keeps over to it instead of stopping it.
+        executor.set_sun_keeps_probe(solar.sun_keeps_charge)
+        entry.async_on_unload(lambda: executor.set_sun_keeps_probe(None))
         # Hybrid window-end handoff: inert for a charger not on `solar`/`hybrid`
         # (the coordinator reports `state=None`).
         controller.set_end_window_guard(

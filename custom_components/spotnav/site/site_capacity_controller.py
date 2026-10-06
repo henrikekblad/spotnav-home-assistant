@@ -72,6 +72,10 @@ from ..const import (
     SOLAR_PRIORITY_CAR_FIRST,
 )
 from .site_history import SAMPLE_INTERVAL_S as HISTORY_SAMPLE_INTERVAL_S, SiteHistory
+from ..execution.charger_connection import (
+    CHARGING as CONNECTION_CHARGING,
+    UNKNOWN as CONNECTION_UNKNOWN,
+)
 from ..execution.controller import (
     ChargingController,
     CurrentRestore,
@@ -273,6 +277,8 @@ class SiteCapacityController:
         self._state_listener_cancel: Callable[[], None] | None = None
         self._controller_listener_cancels: list[Callable[[], None]] = []
         self._listeners: set[Callable[[], None]] = set()
+        # A solar coordinator's re-render is on its way to the listeners (`notify_solar_surplus_changed`).
+        self._rerendering = False
         # The latest active-control apply pass, and whether one was created and has not begun yet (two
         # recomputes in one tick make one pass). A pass only decides and spawns: each charger's step runs as
         # that charger's own task (`_charger_ops`), so a pass never waits for a charger's slow command before
@@ -308,6 +314,9 @@ class SiteCapacityController:
         self._resume_times: dict[str, deque[float]] = {}
         self._resume_backoff_until: dict[str, float] = {}
         self._probe_timer_cancel: Callable[[], None] | None = None
+        # When (`_yield_now`) the probe timer is armed for, and every probe check still due.
+        self._probe_timer_due: float | None = None
+        self._probe_checks_due: set[float] = set()
         # Last logged yield-stepping signature per charger (logged once per change).
         self._logged_yield_stepping: dict[str, tuple[Any, ...]] = {}
         # Clock for `YieldObservation.now`, in seconds. Monotonic so a wall-clock step cannot freeze
@@ -497,10 +506,21 @@ class SiteCapacityController:
         """Re-render this site's listeners now; called by `SolarExecutionCoordinator`.
 
         A solar verdict is applied asynchronously, after this controller's own `_notify()` for the
-        tick, so the sensor would otherwise show the previous snapshot. Re-entry into the
-        coordinator is coalesced by its `_evaluating` guard.
+        tick, so the sensor would otherwise show the previous snapshot. It carries no new reading:
+        while it runs `rerendering` says so, and no solar coordinator evaluates again for it (one
+        charger's re-render would otherwise make the next one's evaluation, and that one's the first's).
         """
-        self._notify()
+        self._rerendering = True
+        try:
+            self._notify()
+        finally:
+            self._rerendering = False
+
+    @property
+    def rerendering(self) -> bool:
+        """Whether the listeners are being told of a solar re-render (`notify_solar_surplus_changed`), not of a
+        recompute."""
+        return self._rerendering
 
     @callback
     def _async_periodic_recompute(self, _now: Any) -> None:
@@ -1527,21 +1547,63 @@ class SiteCapacityController:
         return probe
 
     def _cancel_probe_timer(self) -> None:
+        """Drop the probe timer and every check due (a reset or a shutdown)."""
+        self._probe_checks_due.clear()
+        self._disarm_probe_timer()
+
+    def _disarm_probe_timer(self) -> None:
         if self._probe_timer_cancel is not None:
             self._probe_timer_cancel()
             self._probe_timer_cancel = None
+        self._probe_timer_due = None
 
     def _schedule_probe_check(self, delay_s: float) -> None:
-        """Re-evaluate a running probe when its window ends, whatever else triggers a pass."""
-        self._cancel_probe_timer()
+        """Re-evaluate the running probes `delay_s` from now, whatever else triggers a pass.
+
+        One timer serves every charger's probe, armed for the earliest check due: a check asked for
+        later never moves an earlier one (another charger's window end) out. A check left over from a
+        probe that has ended only runs one more pass."""
+        now = self._yield_now()
+        self._probe_checks_due.add(round(now + delay_s, 1))
+        self._arm_probe_timer(now)
+
+    def _arm_probe_timer(self, now: float) -> None:
+        # A check is over once its timer (one second after it) has had its time.
+        self._probe_checks_due = {due for due in self._probe_checks_due if due + 1.0 >= now}
+        if not self._probe_checks_due:
+            return
+        due = min(self._probe_checks_due)
+        if (
+            self._probe_timer_cancel is not None
+            and self._probe_timer_due is not None
+            and now <= self._probe_timer_due + 1.0
+            and self._probe_timer_due <= due
+        ):
+            return  # an earlier check is armed and still to come
+        self._disarm_probe_timer()
 
         @callback
         def fire(_now: Any) -> None:
             self._probe_timer_cancel = None
-            if not self._closed:
-                self._recompute()
+            self._probe_timer_due = None
+            if self._closed:
+                return
+            fired_at = self._yield_now()
+            self._probe_checks_due = {due for due in self._probe_checks_due if due > fired_at}
+            self._arm_probe_timer(fired_at)
+            self._recompute()
 
-        self._probe_timer_cancel = async_call_later(self.hass, delay_s + 1.0, fire)
+        self._probe_timer_due = due
+        self._probe_timer_cancel = async_call_later(self.hass, max(0.0, due - now) + 1.0, fire)
+
+    def _charger_reports_charging(self, charger_controller: Any) -> bool | None:
+        """Whether the charger's own status says it charges, or `None` when no status says anything (none
+        configured, unavailable, unknown or unmapped). Never inferred from the start we sent: a charger read
+        through its switch alone has no status to say it."""
+        connection, source = charger_controller.connection()
+        if source is None or connection == CONNECTION_UNKNOWN:
+            return None
+        return connection == CONNECTION_CHARGING
 
     def _record_probe_event(
         self,
@@ -1776,6 +1838,9 @@ class SiteCapacityController:
         probe = self._probe_for(charger_entry_id)
         if not probe.may_start(now):
             return False
+        # The status before the start goes out: one that turns to charging while the start is on its way
+        # is the car starting, not a status left over from before.
+        charging_before = self._charger_reports_charging(charger_controller)
         started = await charger_controller.async_battery_probe_start(int(probe_a))
         if not started:
             probe.refused(now, "start_refused")
@@ -1789,7 +1854,14 @@ class SiteCapacityController:
             )
             return True
         damper.record_write(probe_a)
-        probe.start(now, probe_a, {phase: float(currents[phase]) for phase in PHASES}, phases)
+        probe.start(
+            now,
+            probe_a,
+            {phase: float(currents[phase]) for phase in PHASES},
+            phases,
+            dict(zip(phases, delivered_a)),
+            charger_charging=charging_before,
+        )
         self._schedule_probe_check(probe.window_s)
         self._record_probe_event(
             charger_entry_id,
@@ -1841,12 +1913,27 @@ class SiteCapacityController:
                     for phase in PHASES
                 },
                 main_fuse_a=float(main_fuse_a) if main_fuse_a is not None else 0.0,
+                charger_charging=self._charger_reports_charging(charger_controller),
             )
             if verdict.state == "verifying":
+                if verdict.reason != "verifying":
+                    # Waiting for a car that has started: judged again by the end of the longest wait,
+                    # whatever else triggers a pass.
+                    remaining = probe.extension_remaining_s(now)
+                    if remaining is not None:
+                        self._schedule_probe_check(remaining)
+                if verdict.extended:
+                    self._record_probe_event(
+                        charger_entry_id,
+                        decision,
+                        outcome="probe_extended",
+                        detail=verdict.reason,
+                        setpoint=None,
+                        previous_setpoint=damper.last_written_a,
+                    )
                 return
             if verdict.state == "succeeded":
                 probe.succeeded(now)
-                self._cancel_probe_timer()
                 # The car runs at its minimum on a grid the battery holds at the limit; the stepper
                 # starts from nothing and climbs it as it always does.
                 self._yield_steppers.pop(charger_entry_id, None)
@@ -1860,7 +1947,6 @@ class SiteCapacityController:
                 )
                 return
             probe.failed(now, verdict.reason)
-            self._cancel_probe_timer()
             self._record_probe_event(
                 charger_entry_id,
                 decision,

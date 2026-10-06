@@ -24,8 +24,10 @@ from custom_components.spotnav.site.battery_probe import (
     car_minimum_power_w,
     PROBE_BACKOFF_INITIAL_S,
     PROBE_BACKOFF_MAX_S,
+    PROBE_EXTENDED_WINDOW_S,
     within_held_band,
 )
+from custom_components.spotnav.site.site_capacity_controller import START_CREDIT_S
 from custom_components.spotnav.site.regulator_damping import RegulatorDamper
 
 from .test_yield_stepping_wiring import (
@@ -194,6 +196,136 @@ def test_back_off_doubles_to_an_hour_and_a_success_clears_it() -> None:
     probe.stopped()
     assert not probe.may_start(now + PROBE_BACKOFF_INITIAL_S - 1.0)
     assert probe.may_start(now + PROBE_BACKOFF_INITIAL_S)
+
+
+# -- a car that ramps slowly, or a charger whose reading lags (2026-10-06: a Kia EV6 on a Charge Amps HALO
+# started at 6 A drew 0.5 A at 13 s, and was judged at 30 s before it had a chance)
+
+
+def _ramp(probe, now, site=20.0, delivered=0.0, *, charging=False, limit=20.0):
+    return probe.evaluate(
+        now,
+        site_current_a=site if isinstance(site, dict) else {p: site for p in ("L1", "L2", "L3")},
+        limit_a={p: limit for p in ("L1", "L2", "L3")},
+        delivered_a={p: delivered for p in ("L1", "L2", "L3")},
+        main_fuse_a=20.0,
+        charger_charging=charging,
+    )
+
+
+def _ramp_started(probe: BatteryProbe, *, charging: bool = False) -> None:
+    probe.start(
+        0.0,
+        6.0,
+        {"L1": 20.0, "L2": 20.0, "L3": 20.0},
+        ("L1", "L2", "L3"),
+        {"L1": 0.0, "L2": 0.0, "L3": 0.0},
+        charger_charging=charging,
+    )
+
+
+def test_the_extension_lasts_as_long_as_a_start_credit() -> None:
+    assert PROBE_EXTENDED_WINDOW_S == START_CREDIT_S == 90.0
+
+
+@pytest.mark.parametrize(
+    ("delivered", "charging", "evidence"),
+    [
+        (0.4985, False, "car_current_rising"),  # the owner's EV6 at 13 s
+        # The HALO went Finishing, Preparing, Charging after the start (the owner's 10:13 probe).
+        (0.0, True, "charger_reports_charging"),
+    ],
+)
+def test_a_car_that_has_visibly_started_is_given_until_90_s(delivered, charging, evidence) -> None:
+    probe = BatteryProbe()
+    _ramp_started(probe)
+    first = _ramp(probe, 30.0, delivered=delivered, charging=charging)
+    assert (first.state, first.reason, first.extended) == ("verifying", evidence, True)
+    later = _ramp(probe, 40.0, delivered=delivered, charging=charging)
+    assert (later.state, later.extended) == ("verifying", False)
+    # The car reaches its minimum at 50 s, the battery has made room: the probe succeeds then.
+    done = _ramp(probe, 50.0, delivered=5.4, charging=charging)
+    assert (done.state, done.reason) == ("succeeded", "battery_yielded")
+
+
+def test_a_car_that_shows_nothing_still_fails_at_the_window() -> None:
+    probe = BatteryProbe()
+    _ramp_started(probe)
+    assert _ramp(probe, 29.0).state == "verifying"
+    verdict = _ramp(probe, 30.0, delivered=0.1)
+    assert (verdict.state, verdict.reason) == ("failed", "car_not_drawing")
+
+
+def test_a_charging_status_counts_only_once_it_has_turned_to_charging_since_the_start() -> None:
+    probe = BatteryProbe()
+    _ramp_started(probe, charging=True)  # said Charging already when the probe started
+    assert _ramp(probe, 10.0, charging=True).state == "verifying"
+    verdict = _ramp(probe, 30.0, charging=True)
+    assert (verdict.state, verdict.reason) == ("failed", "car_not_drawing")
+    # One that left Charging during the window and came back has changed since the start.
+    probe = BatteryProbe()
+    _ramp_started(probe, charging=True)
+    assert _ramp(probe, 10.0, charging=False).state == "verifying"
+    verdict = _ramp(probe, 30.0, charging=True)
+    assert (verdict.state, verdict.reason) == ("verifying", "charger_reports_charging")
+
+
+def test_a_missing_reading_is_not_waited_for() -> None:
+    probe = BatteryProbe()
+    _ramp_started(probe)
+    verdict = _ramp(probe, 30.0, delivered=None, charging=True)
+    assert (verdict.state, verdict.reason) == ("failed", "car_not_drawing")
+
+
+def test_the_extension_ends_at_90_s_whatever_the_car_shows() -> None:
+    probe = BatteryProbe()
+    _ramp_started(probe)
+    assert _ramp(probe, 30.0, delivered=0.5).state == "verifying"
+    assert _ramp(probe, 89.9, delivered=3.0, charging=True).state == "verifying"
+    verdict = _ramp(probe, 90.0, delivered=3.0, charging=True)
+    assert (verdict.state, verdict.reason) == ("failed", "car_not_drawing")
+
+
+def test_the_extension_ends_when_the_evidence_goes() -> None:
+    probe = BatteryProbe()
+    _ramp_started(probe)
+    assert _ramp(probe, 30.0, charging=True).state == "verifying"
+    # The charger leaves Charging with nothing drawn.
+    verdict = _ramp(probe, 40.0, delivered=0.0)
+    assert (verdict.state, verdict.reason) == ("failed", "car_not_drawing")
+
+
+@pytest.mark.parametrize(
+    ("site", "reason"),
+    [
+        (28.5, "over_fuse_cap"),
+        (27.5, "excess_beyond_car"),
+        ({"L1": 20.0, "L2": None, "L3": 20.0}, "measurement_unusable"),
+        # Past the window the grid must be back within the band on every pass: no waiting above it.
+        ({"L1": 20.0, "L2": 20.6, "L3": 20.0}, "battery_did_not_yield"),
+    ],
+)
+def test_an_overload_during_the_extension_ends_it_at_once(site, reason) -> None:
+    probe = BatteryProbe()
+    _ramp_started(probe)
+    assert _ramp(probe, 30.0, delivered=0.5).state == "verifying"
+    verdict = _ramp(probe, 35.0, site, delivered=2.0)
+    assert (verdict.state, verdict.reason) == ("failed", reason)
+
+
+def test_a_started_car_on_a_grid_above_the_band_at_the_window_is_not_waited_for() -> None:
+    probe = BatteryProbe()
+    _ramp_started(probe)
+    verdict = _ramp(probe, 30.0, 23.0, delivered=3.0, charging=True)
+    assert (verdict.state, verdict.reason) == ("failed", "battery_did_not_yield")
+
+
+def test_a_battery_that_does_not_yield_to_a_slow_car_fails_when_the_car_draws() -> None:
+    probe = BatteryProbe()
+    _ramp_started(probe)
+    assert _ramp(probe, 30.0, 20.4, delivered=0.6).state == "verifying"
+    verdict = _ramp(probe, 50.0, 25.5, delivered=5.4)
+    assert (verdict.state, verdict.reason) == ("failed", "battery_did_not_yield")
 
 
 # -- the owner's sequence
@@ -395,6 +527,151 @@ async def test_a_probe_the_car_never_takes_ends_as_a_failure_not_a_charge(
     hass.states.async_set(f"switch.{prefix}", "on")
     # The car never takes the current: nothing proves the battery yielded.
     yield_clock.advance(31.0)
+    await controller._async_apply_active_control()
+    assert len(turn_off) == 1
+    assert controller.battery_probe_snapshot[charger.entry_id]["last_reason"] == "car_not_drawing"
+
+
+def _connector_status(hass: HomeAssistant, prefix: str, status: str) -> None:
+    hass.states.async_set(f"sensor.{prefix}_connector_1_status_connector", status)
+
+
+async def test_the_owners_ev6_ramping_slowly_is_not_stopped_at_30_s(hass: HomeAssistant, monkeypatch) -> None:
+    (controller, charger, calls, yield_clock, damper_clock, site, prefix, cc, turn_off) = (
+        await _paused_site(hass, monkeypatch, "bfslow")
+    )
+    await controller._async_apply_active_control()
+    assert _values(calls) == ["1.6,2.10"]
+    calls.clear()
+    hass.states.async_set(f"switch.{prefix}", "on")
+    _connector_status(hass, prefix, "Charging")
+    assert cc.connection()[0] == "charging"
+
+    # 13 s in the charger reads half an amp; at 30 s no more. The battery steps back meanwhile.
+    set_charger_delivered_a(hass, prefix, 0.4985)
+    set_site_current_a(hass, site, 19.6)
+    yield_clock.advance(13.0)
+    await controller._async_apply_active_control()
+    yield_clock.advance(18.0)
+    await controller._async_apply_active_control()
+    assert turn_off == [] and calls == []
+    assert controller.battery_probe_snapshot[charger.entry_id]["state"] == "probing"
+
+    # At 50 s the car takes its minimum and the grid holds at the limit: the probe succeeds.
+    set_charger_delivered_a(hass, prefix, 5.4)
+    set_site_current_a(hass, site, 20.0)
+    yield_clock.advance(19.0)
+    await controller._async_apply_active_control()
+    assert turn_off == []
+    snapshot = controller.battery_probe_snapshot[charger.entry_id]
+    assert (snapshot["state"], snapshot["last_outcome"], snapshot["last_reason"]) == (
+        "idle",
+        "succeeded",
+        "battery_yielded",
+    )
+    log = [e for e in controller.regulator_decision_log if e["outcome"].startswith("probe_")]
+    assert [(e["outcome"], e["detail"]) for e in log] == [
+        ("probe_started", "battery_charging_at_the_fuse"),
+        ("probe_extended", "charger_reports_charging"),
+        ("probe_succeeded", "battery_yielded"),
+    ]
+
+
+async def test_a_charger_reading_not_reported_since_the_start_is_no_sign_on_its_own(
+    hass: HomeAssistant, monkeypatch
+) -> None:
+    """A charger that reports only on a change (Easee's streamed observations, an attribute source) says
+    nothing while an idle car draws nothing: its old report is no sign the car started."""
+    from dataclasses import replace
+
+    from custom_components.spotnav.site.site_capacity import DirectPhaseMeasurement
+
+    (controller, charger, calls, yield_clock, damper_clock, site, prefix, cc, turn_off) = (
+        await _paused_site(hass, monkeypatch, "bflag")
+    )
+    await controller._async_apply_active_control()
+    calls.clear()
+    hass.states.async_set(f"switch.{prefix}", "on")
+
+    read = type(controller)._read_charger_measured_current
+
+    def silent(self, wiring):
+        values = read(self, wiring)
+        return DirectPhaseMeasurement(
+            l1=replace(values.l1, age_s=630.0, report_age_s=630.0),
+            l2=replace(values.l2, age_s=630.0, report_age_s=630.0),
+            l3=replace(values.l3, age_s=630.0, report_age_s=630.0),
+        )
+
+    monkeypatch.setattr(type(controller), "_read_charger_measured_current", silent)
+    yield_clock.advance(31.0)
+    await controller._async_apply_active_control()
+    assert len(turn_off) == 1
+    snapshot = controller.battery_probe_snapshot[charger.entry_id]
+    assert (snapshot["last_reason"], snapshot["state"]) == ("car_not_drawing", "backoff")
+
+
+@pytest.mark.parametrize(("site_a", "reason"), [(29.0, "over_fuse_cap"), (21.0, "battery_did_not_yield")])
+async def test_an_overload_while_a_slow_car_is_waited_for_stops_it_at_once(
+    hass: HomeAssistant, monkeypatch, site_a: float, reason: str
+) -> None:
+    (controller, charger, calls, yield_clock, damper_clock, site, prefix, cc, turn_off) = (
+        await _paused_site(hass, monkeypatch, f"bfslowover{int(site_a)}")
+    )
+    await controller._async_apply_active_control()
+    calls.clear()
+    hass.states.async_set(f"switch.{prefix}", "on")
+    _connector_status(hass, prefix, "Charging")
+    set_charger_delivered_a(hass, prefix, 0.5)
+    yield_clock.advance(31.0)
+    await controller._async_apply_active_control()
+    assert turn_off == []
+
+    set_charger_delivered_a(hass, prefix, 2.0)
+    set_site_current_a(hass, site, site_a)
+    yield_clock.advance(4.0)
+    await controller._async_apply_active_control()
+    assert len(turn_off) == 1
+    assert controller.battery_probe_snapshot[charger.entry_id]["last_reason"] == reason
+
+
+async def test_a_slow_car_that_never_reaches_its_minimum_is_stopped_at_90_s(
+    hass: HomeAssistant, monkeypatch
+) -> None:
+    (controller, charger, calls, yield_clock, damper_clock, site, prefix, cc, turn_off) = (
+        await _paused_site(hass, monkeypatch, "bfslowcap")
+    )
+    await controller._async_apply_active_control()
+    calls.clear()
+    hass.states.async_set(f"switch.{prefix}", "on")
+    _connector_status(hass, prefix, "Charging")
+    set_charger_delivered_a(hass, prefix, 2.0)
+    yield_clock.advance(31.0)
+    await controller._async_apply_active_control()
+    yield_clock.advance(58.0)
+    await controller._async_apply_active_control()
+    assert turn_off == []
+    yield_clock.advance(1.0)
+    await controller._async_apply_active_control()
+    assert len(turn_off) == 1
+    snapshot = controller.battery_probe_snapshot[charger.entry_id]
+    assert (snapshot["last_reason"], snapshot["backoff_remaining_s"] > 590.0) == ("car_not_drawing", True)
+
+
+async def test_a_stale_charging_status_that_flickers_unavailable_is_still_no_sign(
+    hass: HomeAssistant, monkeypatch
+) -> None:
+    (controller, charger, calls, yield_clock, damper_clock, site, prefix, cc, turn_off) = (
+        await _paused_site(hass, monkeypatch, "bfflicker")
+    )
+    _connector_status(hass, prefix, "Charging")  # left over from before balancing's pause
+    await controller._async_apply_active_control()
+    hass.states.async_set(f"switch.{prefix}", "on")
+    _connector_status(hass, prefix, "unavailable")  # an OCPP reconnect
+    yield_clock.advance(10.0)
+    await controller._async_apply_active_control()
+    _connector_status(hass, prefix, "Charging")
+    yield_clock.advance(21.0)
     await controller._async_apply_active_control()
     assert len(turn_off) == 1
     assert controller.battery_probe_snapshot[charger.entry_id]["last_reason"] == "car_not_drawing"

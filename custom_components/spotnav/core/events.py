@@ -189,11 +189,15 @@ class PauseChoiceMade(Event):
 
 @dataclass(frozen=True)
 class StrategyChange(Event):
-    """The strategy changed. To `solar` with an Auto plan on the charger: the plan is stopped and cleared."""
+    """The strategy changed. To `solar` with an Auto plan on the charger: the plan is cleared, and its charge is
+    stopped unless the sun keeps it (`sun_keeps`: by the sun's rules for a charge that runs, its surplus carries
+    it), when the charge is handed over to the sun with no stop. (The other way, a plan window that opens while the
+    sun runs a charge takes it over as the plan's at its `WindowStart`, with no command.)"""
 
     kind: ClassVar[str] = "strategy_change"
     strategy: str = "solar"
     plan_applied: bool = False
+    sun_keeps: bool = False
 
 
 @dataclass(frozen=True)
