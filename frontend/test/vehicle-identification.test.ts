@@ -196,10 +196,8 @@ describe("the banner", () => {
     await settle();
     const sent = hass.messages.find((message) => message.type === "spotnav/identify_vehicle");
     expect(sent).toEqual({ type: "spotnav/identify_vehicle", api_version: 1, charger_id: "soc_charger", vehicle_id: NIRO });
-    hass.resolveAt(
-      hass.messages.findIndex((message) => message.type === "spotnav/identify_vehicle"),
-      { api_version: 1, ok: true, error: null, identification: null },
-    );
+    expect(hass.outstanding).toBe(1);
+    hass.resolveNext({ api_version: 1, ok: true, error: null, identification: null });
     await settle();
     expect(hass.messages.filter((message) => message.type === "spotnav/get_dashboard").length).toBeGreaterThan(1);
   });
@@ -243,14 +241,14 @@ describe("the Settings page", () => {
     form.querySelector<HTMLInputElement>(`[data-identify-vehicle='${EV6}']`)!.click();
     form.requestSubmit();
     await settle();
-    const read = hass.messages.findIndex((message) => message.type === "spotnav/get_settings");
-    expect(read).toBeGreaterThan(-1);
-    hass.resolveAt(read, {
+    expect(hass.messages.some((message) => message.type === "spotnav/get_settings")).toBe(true);
+    expect(hass.outstanding).toBe(1);
+    hass.resolveNext({
       api_version: SETTINGS_API_VERSION, ok: true, error: null, settings: payload["settings"],
       pause: { choice: null, admitted_at: null, expires_at: null },
     });
     await settle();
-    const update = hass.messages.find((message) => message.type === "spotnav/update_settings")!;
+    const update = hass.messages.find((message) => message.type === "spotnav/update_settings") as Record<string, any>;
     expect(update["settings"]["identify_mode"]).toBe("ask");
     expect(update["settings"]["vehicle_ids"]).toEqual([NIRO]);
   });
