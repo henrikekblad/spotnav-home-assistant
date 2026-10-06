@@ -272,6 +272,7 @@ describe("the Settings page", () => {
   it("is not shown with one car", async () => {
     const payload = dashboard();
     payload["vehicles"] = payload["vehicles"].slice(0, 1);
+    payload["vehicle_choices"] = payload["vehicle_choices"].slice(0, 1);
     const { element } = await openSettings(payload);
     expect(openDialog(element)!.querySelector("[data-section='identification']")).toBeNull();
   });

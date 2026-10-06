@@ -2479,13 +2479,13 @@ export function createCardView(input: CardViewInput): CardView {
    */
   function identificationSectionBody(): HTMLElement | null {
     const record = model.dashboardSettings;
-    if (record === null || record.identify_mode === undefined || model.vehicles.length < 2) {
+    if (record === null || record.identify_mode === undefined || model.vehicleChoices.length < 2) {
       return null;
     }
     const section = element(doc, "section", C.settingsSection);
     section.dataset["section"] = "identification";
     section.append(element(doc, "h4", C.settingsSectionHeading, translate(model.language, "identify.section")));
-    for (const row of identificationSummary(model.language, record, model.vehicles)) {
+    for (const row of identificationSummary(model.language, record, model.vehicleChoices)) {
       section.append(overviewRow(row.key, row.label, row.value));
     }
     const button = element(doc, "button", `${C.button} ${C.settingsSectionConfigure}`, translate(model.language, "identify.change"));
@@ -2505,7 +2505,7 @@ export function createCardView(input: CardViewInput): CardView {
       return;
     }
     hideForChildDialog();
-    const built = identificationEditorBody(doc, model.language, record, model.vehicles, idPrefix, {
+    const built = identificationEditorBody(doc, model.language, record, model.vehicleChoices, idPrefix, {
       onSave: (choice) => {
         identificationDialog.hide({ restoreFocus: false });
         input.onSaveIdentification?.(choice);

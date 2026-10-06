@@ -245,6 +245,8 @@ export interface CardModel {
   targetVehicleId: string | null;
   /** Which car is plugged in, while a plug-in is identified (`null` otherwise or on an older backend). */
   identification: Identification | null;
+  /** Every detected car the charger's car list can tick; the charger's own `vehicles` on an older backend. */
+  vehicleChoices: Array<{ id: string; name: string | null }>;
   planRelation: PlanRelationKind;
   capabilities: CapabilityItem[];
   contextArea: string | null;
@@ -781,6 +783,10 @@ export function buildModel(input: BuildInput): CardModel {
     vehicles: vehiclesFor(dashboard),
     targetVehicleId: targetVehicleIdFor(dashboard),
     identification: dashboard.identification,
+    vehicleChoices:
+      dashboard.vehicle_choices.length > 0
+        ? dashboard.vehicle_choices
+        : dashboard.vehicles.map((row) => ({ id: row.id, name: row.name })),
     contextArea: market?.area_id ?? market?.area_name ?? null,
     contextCurrency: market?.currency ?? null,
     contextAreaName: market?.area_name ?? null,

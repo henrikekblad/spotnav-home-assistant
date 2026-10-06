@@ -559,6 +559,7 @@ describe("the backend's dashboard strategy_state, site and status fixtures", () 
           "strategy_state",
           "summary",
           "target_vehicle_id",
+          "vehicle_choices",
           "vehicles",
         ].sort(),
       );

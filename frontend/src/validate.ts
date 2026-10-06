@@ -266,6 +266,8 @@ export interface Dashboard {
   charger_priority: ChargerPriority | null;
   /** Which car is plugged in, while a plug-in is identified; `null` otherwise, on an older backend or unreadable. */
   identification: Identification | null;
+  /** Every detected car, at this charger or not: what "the cars at this charger" tick from (empty from an older backend). */
+  vehicle_choices: Array<{ id: string; name: string | null }>;
   /** The running charge's progress as Home Assistant decided it; `null` with no charge, or from an older backend. */
   progress: ChargeBarBlock | null;
 }
@@ -1525,6 +1527,7 @@ export function decodeDashboard(raw: unknown): DecodeResult {
         starting_up: startingUpOrNull(root),
         charger_priority: chargerPriorityOrNull(root),
         identification: identificationOrNull(root),
+        vehicle_choices: vehicleChoicesOf(root),
         progress: chargeBarOrNull(root),
       },
     };
@@ -1577,7 +1580,21 @@ const OPTIONAL_DASHBOARD_KEYS = [
   "charger_priority",
   "progress",
   "identification",
+  "vehicle_choices",
 ] as const;
+
+/** `vehicle_choices`, read leniently: an entry it cannot read is left out. */
+function vehicleChoicesOf(root: Record<string, unknown>): Array<{ id: string; name: string | null }> {
+  const value = root.vehicle_choices;
+  if (!Array.isArray(value)) {
+    return [];
+  }
+  return value.flatMap((entry) =>
+    isRecord(entry) && typeof entry.id === "string" && entry.id !== ""
+      ? [{ id: entry.id, name: typeof entry.name === "string" ? entry.name : null }]
+      : [],
+  );
+}
 
 const IDENTIFICATION_STATES = ["waiting", "asking", "decided"] as const;
 

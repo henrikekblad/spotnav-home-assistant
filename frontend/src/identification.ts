@@ -6,6 +6,9 @@ import { translate, type Language } from "./i18n";
 import type { IdentificationChoice } from "./settings";
 import { IDENTIFY_MODES, type IdentifyMode, type SettingsRecord } from "./types";
 import type { Identification, IdentificationSource, Vehicle } from "./validate";
+
+/** A car the charger's car list can tick: every detected car (`vehicle_choices`). */
+export type CarChoice = { id: string; name: string | null };
 import { VISUAL_CLASSES as C } from "./visual-styles";
 
 function element(doc: Document, tag: string, className?: string, text?: string): HTMLElement {
@@ -192,7 +195,7 @@ export function identificationBanner(doc: Document, language: Language, input: I
 export function identificationSummary(
   language: Language,
   record: SettingsRecord,
-  vehicles: readonly Vehicle[],
+  vehicles: readonly CarChoice[],
 ): Array<{ key: string; label: string; value: string }> {
   const mode = record.identify_mode ?? "automatic";
   const ids = record.vehicle_ids ?? null;
@@ -220,7 +223,7 @@ export function identificationEditorBody(
   doc: Document,
   language: Language,
   record: SettingsRecord,
-  vehicles: readonly Vehicle[],
+  vehicles: readonly CarChoice[],
   idPrefix: string,
   handlers: IdentificationEditorHandlers,
 ): { body: HTMLFormElement; setError: (text: string | null) => void } {
