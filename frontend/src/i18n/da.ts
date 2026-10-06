@@ -39,6 +39,7 @@ export const da: Record<keyof typeof en, string> = {
   "status.startingUp": "Starter op…",
   "status.scheduledNoTime": "Opladning er planlagt.",
   "status.nothingToCharge": "Der er intet at lade lige nu.",
+  "status.waitingForVehicleUpdate": "Venter på, at bilen melder sit nye ladeniveau efter opladningen.",
   "status.pausedShort": "Automatisk opladning er sat på pause.",
   "status.planEnergy": "{kwh} kWh",
   "status.planCost": "{cost}",

@@ -208,6 +208,12 @@ slider up to `room_kwh` when it is present; an older backend has neither field n
 planned instead). The card's slider goes past the room to `min(capacity to the car's limit, max(30 kWh,
 2 x room))`, rounded up to its half-kWh step, with a "full" mark at the room; its last step is "Fill".
 
+**Waiting for the car's new level.** With a target, the planning state `nothing_to_charge` has the reason
+`waiting_for_vehicle_update` when the charge that just ended delivered, by measurement, at least what the
+car's last reading needed and the car has not reported since; the status headline is then
+`waiting_for_vehicle_update` (no params) in place of `nothing_to_charge`. A client that does not know the
+code shows it as any unknown code.
+
 **Best effort before a departure.** When the need cannot be met by the departure, the plan is every
 whole quarter-hour from the first usable one up to the departure (one run, whatever `max_periods` says,
 so the period limit never costs energy), installed and charged like any other: `planning` stays

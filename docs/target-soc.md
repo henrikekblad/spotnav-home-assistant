@@ -38,7 +38,17 @@ fixed number of kWh instead.
   When the reading is older than three minutes, SpotNav estimates the level forward from the
   charger's energy register (set or found automatically on the charger) and marks it as
   estimated. An estimate stops a charge only once it is a margin above the target. A fresh
-  reading always replaces the estimate.
+  reading always replaces the estimate. A reading taken while the register could not be read yet
+  (a restart before the charger's integration is up) is carried forward from the register's first
+  value, and the same value set again by a restart is not taken as a new reading.
+- **After a charge, before the car reports.** Where the level cannot be carried forward (no register
+  then, or one that started again), a target whose charge has ended and delivered, as measured by the
+  charger's register or a smart plug's power, at least what the car's last reading needed is not
+  planned again on that reading. The status says *Waiting for the car to report its new level after
+  the charge*, and SpotNav asks the car's integration once to read it again (the same re-read as the
+  app's refresh, never a wake-up). A newer reading plans at once (even the same value, if the car
+  really did not take the energy), an unplug ends the wait, and with a departure the need is planned
+  again in time to still fit. Energy that was only estimated from the charger's current changes nothing.
 - **To the car's own limit.** A target at or above the car's own charge limit (or 100 % when the car
   states none) is the car's to end: SpotNav keeps the charge on within the planned periods and never
   stops it on a reading or an estimate, and a car that stops taking current there is full, not a fault.

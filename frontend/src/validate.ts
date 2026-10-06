@@ -1281,6 +1281,7 @@ export const STATUS_CODE_TABLE = {
   waiting_for_tomorrow: ["normal", {}],
   no_plan: ["normal", {}],
   nothing_to_charge: ["normal", {}],
+  waiting_for_vehicle_update: ["normal", {}],
   plan_energy: ["normal", { kwh: "number" }],
   plan_cost: ["normal", { amount_minor: "int", currency: "text" }],
   plan_distance: ["normal", { mil: "number" }],

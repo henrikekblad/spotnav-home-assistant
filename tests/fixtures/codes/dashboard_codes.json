@@ -54,7 +54,8 @@
     "target_soc_unknown",
     "unexpected_failure",
     "unpriced",
-    "waiting_for_history"
+    "waiting_for_history",
+    "waiting_for_vehicle_update"
   ],
   "planning_states": [
     "error",
@@ -496,6 +497,10 @@
       "tone": "normal"
     },
     "waiting_for_tomorrow": {
+      "params": [],
+      "tone": "normal"
+    },
+    "waiting_for_vehicle_update": {
       "params": [],
       "tone": "normal"
     }

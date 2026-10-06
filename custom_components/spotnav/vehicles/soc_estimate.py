@@ -24,7 +24,7 @@ from __future__ import annotations
 import logging
 import math
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import datetime, timedelta
 from typing import Any, Final
 
@@ -76,7 +76,8 @@ class SocAnchor:
     """The last real reading and the energy register when it was taken.
 
     `register_kwh` is `None` when the register was unreadable then: such an anchor carries a
-    reading but never an estimate. `read_at` is when the reading was made, not noticed.
+    reading, and an estimate only once the register's first readable value has become its baseline
+    (`resolve_soc`). `read_at` is when the reading was made, not noticed.
     """
 
     soc_percent: float
@@ -171,16 +172,35 @@ def resolve_soc(
     * a stale reading newer than the anchor replaces it only while nothing has been delivered
       since the anchor (a car driven or charged elsewhere while idle);
     * with no anchor a stale reading starts one;
+    * an anchor taken while the register could not be read takes the register's first readable value
+      as its baseline, and the same value set again while the register cannot be read (a restart) does
+      not replace an anchor that has one;
     * where no estimate can be made the raw reading is returned untouched, or `None`.
     """
     if anchor is not None and anchor.vehicle_id != vehicle_id:
         anchor = None
+    if anchor is not None and anchor.register_kwh is None and register_kwh is not None:
+        # Anchored while the register could not be read (a restart before the charger's integration had
+        # its register): its first readable value is the baseline. Energy delivered before it is not
+        # credited, so this can only under-count.
+        anchor = replace(anchor, register_kwh=register_kwh)
     usable = reading is not None and reading.soc_percent is not None
     if usable:
         assert reading is not None and reading.soc_percent is not None
         age = reading.age_s
         read_at = now - timedelta(seconds=max(0.0, age)) if age is not None else now
         newer = anchor is None or (read_at - anchor.read_at).total_seconds() > SAME_READING_S
+        if (
+            newer
+            and anchor is not None
+            and anchor.register_kwh is not None
+            and register_kwh is None
+            and reading.soc_percent == anchor.soc_percent
+        ):
+            # The same value set again while the register cannot be read: what a restart does to every
+            # state (its timestamps are the restart's). Not a new reading, so the anchor that can carry
+            # the charge forward is kept.
+            newer = False
         if is_fresh(reading):
             if newer:
                 anchor = SocAnchor(
@@ -330,6 +350,7 @@ class SocReader:
         self._watch_vehicle: str | None = None
         self._on_reading: Callable[[], None] | None = None
         self._last_notified: float | None = None
+        self._notify_next = False
         self._closed = False
 
     async def async_load(self) -> None:
@@ -351,6 +372,12 @@ class SocReader:
     def set_on_reading(self, callback_: Callable[[], None] | None) -> None:
         """Ask to be told when a reading moved enough to make a new plan worth calculating."""
         self._on_reading = callback_
+
+    def notify_next_reading(self) -> None:
+        """Tell `set_on_reading`'s callback of the next reading that arrives, however little it moved: the
+        planner waits for the car's new level after a charge (`vehicle_update_wait`), and even the same
+        value reported again is the answer it waits for."""
+        self._notify_next = True
 
     def _vehicle_facts(self, vehicle_id: str | None) -> tuple[float | None, float | None]:
         """`(reported capacity kWh, vehicle ceiling %)` for `vehicle_id`, reused for a few minutes."""
@@ -464,8 +491,13 @@ class SocReader:
         if reading is None or reading.soc_percent is None or reading.estimated:
             return
         last = self._last_notified
-        if last is not None and abs(reading.soc_percent - last) < RECALCULATE_DELTA_PERCENT:
+        if (
+            not self._notify_next
+            and last is not None
+            and abs(reading.soc_percent - last) < RECALCULATE_DELTA_PERCENT
+        ):
             return
+        self._notify_next = False
         self._last_notified = reading.soc_percent
         if self._on_reading is not None:
             self._on_reading()

@@ -291,6 +291,17 @@ describe("the status line renders the block and nothing else", () => {
     expect(statusText(other, format("sv"), NOW)).toBe("12,34 EUR");
   });
 
+  it("says a target charge waits for the car to report its new level, in every language", () => {
+    const waiting = block(statusLine("waiting_for_vehicle_update"));
+    expect(statusText(waiting, format("en"), NOW)).toBe("Waiting for the car to report its new level after the charge.");
+    expect(statusText(waiting, format("sv"), NOW)).toBe("Väntar på att bilen rapporterar sin nya laddnivå efter laddningen.");
+    for (const language of ["da", "fi", "nb"] as const) {
+      const text = statusText(waiting, format(language), NOW) ?? "";
+      expect(text.length).toBeGreaterThan(10);
+      expect(text).not.toBe(statusText(waiting, format("en"), NOW));
+    }
+  });
+
   it("words nothing to charge, a pause and load balancing", () => {
     expect(statusText(block(statusLine("nothing_to_charge")), format("sv"), NOW)).toBe("Inget att ladda just nu.");
     expect(statusText(block(statusLine("paused", { until: null })), format("en"), NOW)).toBe("Paused until you resume.");

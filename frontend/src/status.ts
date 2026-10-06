@@ -161,6 +161,7 @@ export const STATUS_WORDING: Readonly<Record<StatusCode, TranslationKey>> = {
   waiting_for_tomorrow: "status.waitingForTomorrow",
   no_plan: "status.noPlan",
   nothing_to_charge: "status.nothingToCharge",
+  waiting_for_vehicle_update: "status.waitingForVehicleUpdate",
   plan_energy: "status.planEnergy",
   plan_cost: "status.planCost",
   plan_distance: "status.planDistance",
