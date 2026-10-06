@@ -302,11 +302,21 @@ describe("the status line renders the block and nothing else", () => {
     }
   });
 
+  it("says a scheduled pause is the schedule's, beside a charge that runs anyway, in five languages", () => {
+    const paused = block(statusLine("paused", { until: "2026-09-22T20:00:00+00:00" }), statusLine("charging_now", { until: null }));
+    const words = (language: "en" | "sv" | "nb" | "da" | "fi") => statusText(paused, format(language), NOW) ?? "";
+    expect(words("sv")).toBe("Schema pausat till 22:00 · Laddar nu.");
+    expect(words("en")).toMatch(/^Schedule paused until 22:00 · /);
+    expect(words("nb")).toMatch(/^Skjema pauset til 22:00 · /);
+    expect(words("da")).toMatch(/^Skema sat på pause til 22\.00 · /);
+    expect(words("fi")).toMatch(/^Aikataulu keskeytetty 22\.00 asti · /);
+  });
+
   it("words nothing to charge, a pause and load balancing", () => {
     expect(statusText(block(statusLine("nothing_to_charge")), format("sv"), NOW)).toBe("Inget att ladda just nu.");
-    expect(statusText(block(statusLine("paused", { until: null })), format("en"), NOW)).toBe("Paused until you resume.");
+    expect(statusText(block(statusLine("paused", { until: null })), format("en"), NOW)).toBe("Schedule paused until you resume.");
     expect(statusText(block(statusLine("paused", { until: "2026-09-22T09:00:00+00:00" })), format("en"), NOW)).toBe(
-      "Paused until 11:00.",
+      "Schedule paused until 11:00.",
     );
     expect(statusText(block(statusLine("load_balancing_limited", { limit_a: 10 })), format("en"), NOW)).toBe(
       "Charging is limited to 10 A by the site's load balancing.",
