@@ -163,7 +163,8 @@ It is best effort and is not a protective device. Turning it off gives back any 
     ends (the charger's status has turned to charging since the start, or its own current has begun
     to rise) is waited for up to 90 seconds from the start, as long as a start is credited: cars ramp
     up over tens of seconds and OCPP meter values lag. A status that already said charging when the
-    probe started, or a reading the charger simply has not sent again, is no such sign. That wait
+    probe started (even after a moment of being unavailable), or a reading the charger simply has not
+    sent again, is no such sign. That wait
     holds only while every phase stays within the band; a reading above it ends the probe at once. A
     car that shows nothing by the end of the window is stopped then, as before. A probe is never started against a
     real overload, and it ends at once on a stale or missing measurement or a phase far above what
