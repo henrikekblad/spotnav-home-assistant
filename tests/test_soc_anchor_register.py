@@ -27,9 +27,10 @@ CAPACITY = 77.0
 RESTART = datetime(2026, 10, 6, 10, 29, 36, tzinfo=timezone.utc)
 
 
-def _reading(value: float | None, age_s: float) -> SocReading:
+def _reading(value: float | None, age_s: float, *, restored: bool = False) -> SocReading:
     return SocReading(
-        soc_percent=value, source="vehicle", entity_id="sensor.ev6_battery", vehicle_id="car", age_s=age_s
+        soc_percent=value, source="vehicle", entity_id="sensor.ev6_battery", vehicle_id="car", age_s=age_s,
+        restored=restored,
     )
 
 
@@ -83,8 +84,9 @@ def test_a_value_the_restart_only_reannounced_keeps_the_anchor_that_has_a_regist
     # Before the restart: 89 % read at 09:00 with the register at 6800.
     kept = SocAnchor(89.0, 6800.0, RESTART - timedelta(hours=1, minutes=30), "vehicle", "car")
     # The restart sets the same 89 % again (fresh by its timestamp) while the register is unknown.
-    restored = _resolve(_reading(89.0, 1.0), kept, None, RESTART + timedelta(seconds=1))
+    restored = _resolve(_reading(89.0, 1.0, restored=True), kept, None, RESTART + timedelta(seconds=1))
     assert restored.anchor == kept
+    assert restored.reading is not None and restored.reading.age_s == pytest.approx(90 * 60.0 + 1.0)
     # The register reads again; 5.5 kWh were delivered since the real reading.
     now = RESTART + timedelta(minutes=46)
     after = _resolve(_reading(89.0, 46 * 60.0), restored.anchor, 6805.5, now)
@@ -92,11 +94,54 @@ def test_a_value_the_restart_only_reannounced_keeps_the_anchor_that_has_a_regist
     assert after.reading.soc_percent == pytest.approx(_expected(89.0, 5.5))
 
 
+def test_a_restored_value_keeps_the_anchor_even_when_the_register_reads_at_once() -> None:
+    kept = SocAnchor(89.0, 6800.0, RESTART - timedelta(hours=1, minutes=30), "vehicle", "car")
+    now = RESTART + timedelta(seconds=30)
+    restored = _resolve(_reading(89.0, 30.0, restored=True), kept, 6805.5, now)
+    assert restored.anchor == kept
+    assert restored.reading is not None and restored.reading.estimated, "not taken as a fresh reading"
+    assert restored.reading.soc_percent == pytest.approx(_expected(89.0, 5.5))
+
+
+def test_the_same_value_outside_the_start_is_a_new_reading() -> None:
+    kept = SocAnchor(89.0, 6800.0, RESTART - timedelta(hours=1, minutes=30), "vehicle", "car")
+    read = _resolve(_reading(89.0, 1.0), kept, 6805.5, RESTART + timedelta(seconds=1))
+    assert read.anchor is not None and read.anchor.register_kwh == 6805.5
+    assert read.reading is not None and read.reading.soc_percent == 89.0 and not read.reading.estimated
+
+
 def test_a_new_value_after_a_restart_is_still_a_new_reading() -> None:
     kept = SocAnchor(80.0, 6800.0, RESTART - timedelta(hours=2), "vehicle", "car")
-    moved = _resolve(_reading(89.0, 1.0), kept, None, RESTART + timedelta(seconds=1))
+    moved = _resolve(_reading(89.0, 1.0, restored=True), kept, None, RESTART + timedelta(seconds=1))
     assert moved.anchor is not None and moved.anchor.soc_percent == 89.0
     assert moved.reading is not None and moved.reading.soc_percent == 89.0
+
+
+# ------------------------------------------------------------------- which register a baseline is from
+
+
+def test_a_baseline_from_another_register_is_taken_again_not_subtracted() -> None:
+    kept = SocAnchor(50.0, 500.0, RESTART, "vehicle", "car", register_entity_id="sensor.ev_meter")
+    now = RESTART + timedelta(hours=1)
+    swapped = resolve_soc(
+        reading=_reading(50.0, 3600.0), anchor=kept, register_kwh=6800.0, capacity_kwh=CAPACITY, now=now,
+        vehicle_id="car", register_entity_id="sensor.lifetime",
+    )
+    assert swapped.anchor is not None
+    assert swapped.anchor.register_kwh == 6800.0 and swapped.anchor.register_entity_id == "sensor.lifetime"
+    assert swapped.reading is not None and swapped.reading.soc_percent == 50.0
+    later = resolve_soc(
+        reading=_reading(50.0, 7200.0), anchor=swapped.anchor, register_kwh=6803.0, capacity_kwh=CAPACITY,
+        now=now + timedelta(hours=1), vehicle_id="car", register_entity_id="sensor.lifetime",
+    )
+    assert later.reading is not None and later.reading.soc_percent == pytest.approx(_expected(50.0, 3.0))
+
+
+def test_the_register_is_stored_with_the_anchor_and_an_older_record_is_baselined_again() -> None:
+    anchor = SocAnchor(50.0, 500.0, RESTART, "vehicle", "car", register_entity_id="sensor.ev_meter")
+    assert SocAnchor.from_dict(anchor.as_dict()) == anchor
+    older = {key: value for key, value in anchor.as_dict().items() if key != "register_entity_id"}
+    assert SocAnchor.from_dict(older) == SocAnchor(50.0, None, RESTART, "vehicle", "car")
 
 
 # ------------------------------------------------------------------- the reader, through Home Assistant
@@ -147,3 +192,17 @@ async def test_the_field_case_through_the_reader(hass: HomeAssistant) -> None:
         assert after is not None and after.estimated
         assert after.soc_percent == pytest.approx(_expected(89.0, 5.5), abs=0.01)
         reader.async_shutdown()
+
+
+async def test_a_state_written_as_home_assistant_started_is_flagged_restored(hass: HomeAssistant) -> None:
+    from custom_components.spotnav.execution.target_stop import RESTORE_WINDOW_S, resolve_soc_reading
+    from custom_components.spotnav.runtime import domain_data
+
+    with freeze_time(RESTART) as frozen:
+        _car(hass, "89")
+        assert not resolve_soc_reading(hass, vehicle_id="car", entity_id=CAR).restored  # type: ignore[union-attr]
+        domain_data(hass).ha_started_at = RESTART - timedelta(seconds=20)
+        assert resolve_soc_reading(hass, vehicle_id="car", entity_id=CAR).restored  # type: ignore[union-attr]
+        frozen.tick(timedelta(seconds=RESTORE_WINDOW_S))
+        _car(hass, "90")
+        assert not resolve_soc_reading(hass, vehicle_id="car", entity_id=CAR).restored  # type: ignore[union-attr]

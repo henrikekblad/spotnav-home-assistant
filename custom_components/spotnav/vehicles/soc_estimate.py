@@ -77,7 +77,9 @@ class SocAnchor:
 
     `register_kwh` is `None` when the register was unreadable then: such an anchor carries a
     reading, and an estimate only once the register's first readable value has become its baseline
-    (`resolve_soc`). `read_at` is when the reading was made, not noticed.
+    (`resolve_soc`). `read_at` is when the reading was made, not noticed. `register_entity_id` names
+    the register `register_kwh` was read from: a baseline from another register (one found again, or
+    chosen by a person) is dropped and taken again, never subtracted across two meters.
     """
 
     soc_percent: float
@@ -85,6 +87,7 @@ class SocAnchor:
     read_at: datetime
     source: SocSource
     vehicle_id: str | None
+    register_entity_id: str | None = None
 
     def as_dict(self) -> dict[str, Any]:
         return {
@@ -93,6 +96,7 @@ class SocAnchor:
             "read_at": self.read_at.isoformat(),
             "source": self.source,
             "vehicle_id": self.vehicle_id,
+            "register_entity_id": self.register_entity_id,
         }
 
     @classmethod
@@ -112,10 +116,17 @@ class SocAnchor:
             return None
         if raw.get("register_kwh") is not None and register is None:
             return None
+        register_entity_id = raw.get("register_entity_id")
+        if register_entity_id is not None and not isinstance(register_entity_id, str):
+            return None
+        if register_entity_id is None:
+            # Stored before the register was named (or with none): which meter the baseline came from is
+            # unknown, so it is taken again from the register read next.
+            register = None
         read_at = dt_util.parse_datetime(read_at_raw) if isinstance(read_at_raw, str) else None
         if read_at is None or read_at.tzinfo is None:
             return None
-        return cls(soc, register, read_at, source, vehicle_id)
+        return cls(soc, register, read_at, source, vehicle_id, register_entity_id)
 
 
 @dataclass(frozen=True, slots=True)
@@ -163,6 +174,7 @@ def resolve_soc(
     capacity_kwh: float | None,
     now: datetime,
     vehicle_id: str | None,
+    register_entity_id: str | None = None,
 ) -> SocResolution:
     """The state of charge to plan and stop against, and the anchor to keep. Pure.
 
@@ -172,39 +184,45 @@ def resolve_soc(
     * a stale reading newer than the anchor replaces it only while nothing has been delivered
       since the anchor (a car driven or charged elsewhere while idle);
     * with no anchor a stale reading starts one;
-    * an anchor taken while the register could not be read takes the register's first readable value
-      as its baseline, and the same value set again while the register cannot be read (a restart) does
-      not replace an anchor that has one;
+    * an anchor's baseline from another register than `register_entity_id` is dropped, and an anchor
+      without a baseline (the register could not be read then, or it was dropped) takes the register's
+      first readable value: energy before it is not credited, so either can only under-count;
+    * a reading Home Assistant set again at its start (`SocReading.restored`) with the anchor's value is
+      the anchor's own reading, not a new one: the anchor and its baseline stay, whatever the register
+      reads, and the reading's age is the anchor's. The same value read at any other time is a new
+      reading as any other;
     * where no estimate can be made the raw reading is returned untouched, or `None`.
     """
     if anchor is not None and anchor.vehicle_id != vehicle_id:
         anchor = None
+    if (
+        anchor is not None
+        and anchor.register_kwh is not None
+        and anchor.register_entity_id != register_entity_id
+    ):
+        # A baseline read from another meter (a register found again, or chosen): never subtracted.
+        anchor = replace(anchor, register_kwh=None)
     if anchor is not None and anchor.register_kwh is None and register_kwh is not None:
         # Anchored while the register could not be read (a restart before the charger's integration had
-        # its register): its first readable value is the baseline. Energy delivered before it is not
-        # credited, so this can only under-count.
-        anchor = replace(anchor, register_kwh=register_kwh)
+        # its register): its first readable value is the baseline.
+        anchor = replace(anchor, register_kwh=register_kwh, register_entity_id=register_entity_id)
     usable = reading is not None and reading.soc_percent is not None
-    if usable:
+    restored = (
+        usable
+        and reading is not None
+        and reading.restored
+        and anchor is not None
+        and reading.soc_percent == anchor.soc_percent
+    )
+    if usable and not restored:
         assert reading is not None and reading.soc_percent is not None
         age = reading.age_s
         read_at = now - timedelta(seconds=max(0.0, age)) if age is not None else now
         newer = anchor is None or (read_at - anchor.read_at).total_seconds() > SAME_READING_S
-        if (
-            newer
-            and anchor is not None
-            and anchor.register_kwh is not None
-            and register_kwh is None
-            and reading.soc_percent == anchor.soc_percent
-        ):
-            # The same value set again while the register cannot be read: what a restart does to every
-            # state (its timestamps are the restart's). Not a new reading, so the anchor that can carry
-            # the charge forward is kept.
-            newer = False
         if is_fresh(reading):
             if newer:
                 anchor = SocAnchor(
-                    reading.soc_percent, register_kwh, read_at, reading.source, vehicle_id
+                    reading.soc_percent, register_kwh, read_at, reading.source, vehicle_id, register_entity_id
                 )
             return SocResolution(reading, anchor)
         if newer:
@@ -216,10 +234,14 @@ def resolve_soc(
             )
             if idle:
                 anchor = SocAnchor(
-                    reading.soc_percent, register_kwh, read_at, reading.source, vehicle_id
+                    reading.soc_percent, register_kwh, read_at, reading.source, vehicle_id, register_entity_id
                 )
     if anchor is None:
         return SocResolution(reading, None)
+    if restored:
+        assert reading is not None
+        # The anchor's own reading, set again by the start: as old as the anchor.
+        reading = replace(reading, age_s=max(0.0, (now - anchor.read_at).total_seconds()))
     estimate = estimate_soc_percent(anchor, register_kwh=register_kwh, capacity_kwh=capacity_kwh)
     delivered_something = (
         estimate is not None
@@ -437,13 +459,15 @@ class SocReader:
 
     def read(self, vehicle_id: str | None) -> SocReading | None:
         """The effective state of charge now: a fresh reading, else the estimate, else the raw one."""
+        register_entity_id = self._register_entity_id()
         resolution = resolve_soc(
             reading=self._raw_reader(vehicle_id),
             anchor=self._anchor,
-            register_kwh=read_energy_register_kwh(self._hass, self._register_entity_id()),
+            register_kwh=read_energy_register_kwh(self._hass, register_entity_id),
             capacity_kwh=self.capacity_kwh(vehicle_id),
             now=self._now(),
             vehicle_id=vehicle_id,
+            register_entity_id=register_entity_id,
         )
         if resolution.anchor != self._anchor:
             self._anchor = resolution.anchor
