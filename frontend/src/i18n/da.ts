@@ -495,7 +495,7 @@ export const da: Record<keyof typeof en, string> = {
   "control.pausedManualStopResume": "Stoppet manuelt – indtil du genoptager automatisk opladning.",
   "control.pausedManualStart": "Lader manuelt – indtil bilen er fuld eller frakobles.",
   "control.pausedManualStartResume": "Lader manuelt – indtil bilen er fuld, eller du genoptager automatisk opladning.",
-  "control.actionPending": "En startkommando afventer laderens bekræftelse.",
+  "control.actionPending": "En start- eller stopkommando afventer laderens bekræftelse.",
   "action.error.unavailable": "Den handling er ikke tilgængelig lige nu.",
   "action.error.failed": "Handlingen kunne ikke udføres. Intet blev ændret.",
   "action.error.reconcileFailed": "Handlingen blev udført, men planen kunne ikke opdateres.",

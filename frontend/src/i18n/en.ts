@@ -495,7 +495,7 @@ export const en = {
     "The charger did not acknowledge the start command. Try again.",
   "control.reconcileFailed": "The last change was saved, but the plan could not be updated.",
   "control.executionError": "The integration reported a problem with the last execution.",
-  "control.actionPending": "A start command is waiting for the charger to acknowledge it.",
+  "control.actionPending": "A start or stop command is waiting for the charger to acknowledge it.",
   "control.pausedUntil": "Schedule paused until {time}.",
   "control.pausedIndefinitely": "Schedule paused until you resume.",
   "control.pausedManualStop": "Stopped manually – until the car is unplugged.",

@@ -60,5 +60,8 @@ async def test_the_cards_action(hass: HomeAssistant) -> None:
     hass.states.async_set("switch.charger_a", "on")
     await async_perform_action(hass, entry.entry_id, action="stop")
     assert _pause(hass, entry) == (PAUSE_MANUAL, MANUAL_STOP)
+    # Resume is offered once the charger reports the Stop, as after a Start.
+    hass.states.async_set("switch.charger_a", "off")
+    await hass.async_block_till_done()
     await async_perform_action(hass, entry.entry_id, action="resume")
     assert _pause(hass, entry) == (None, None)
