@@ -1593,6 +1593,12 @@ class SiteCapacityController:
         self._probe_timer_due = due
         self._probe_timer_cancel = async_call_later(self.hass, max(0.0, due - now) + 1.0, fire)
 
+    def _charger_reports_charging(self, charger_controller: Any) -> bool:
+        """Whether the charger's own status says it charges; never inferred from the start we sent (a
+        charger with only a switch has no status to say it)."""
+        connection, source = charger_controller.connection()
+        return connection == CONNECTION_CHARGING and source is not None
+
     def _record_probe_event(
         self,
         charger_entry_id: str,
@@ -1845,6 +1851,7 @@ class SiteCapacityController:
             {phase: float(currents[phase]) for phase in PHASES},
             phases,
             dict(zip(phases, delivered_a)),
+            charger_charging=self._charger_reports_charging(charger_controller),
         )
         self._schedule_probe_check(probe.window_s)
         self._record_probe_event(
@@ -1888,8 +1895,6 @@ class SiteCapacityController:
                     None if not observing or measured is None or margin is None else measured + margin
                 )
             main_fuse_a = self.config.get(CONF_MAIN_FUSE_A)
-            # Only the charger's own status counts as charging, never the start we sent (a plain switch).
-            connection, connection_source = charger_controller.connection()
             verdict = probe.evaluate(
                 now,
                 site_current_a=site_current_a,
@@ -1899,17 +1904,7 @@ class SiteCapacityController:
                     for phase in PHASES
                 },
                 main_fuse_a=float(main_fuse_a) if main_fuse_a is not None else 0.0,
-                charger_charging=connection == CONNECTION_CHARGING and connection_source is not None,
-                delivered_report_age_s={
-                    phase: None
-                    if delivered is None
-                    else (
-                        delivered.get(phase).report_age_s
-                        if delivered.get(phase).report_age_s is not None
-                        else delivered.get(phase).age_s
-                    )
-                    for phase in PHASES
-                },
+                charger_charging=self._charger_reports_charging(charger_controller),
             )
             if verdict.state == "verifying":
                 if verdict.reason != "verifying":

@@ -202,7 +202,7 @@ def test_back_off_doubles_to_an_hour_and_a_success_clears_it() -> None:
 # started at 6 A drew 0.5 A at 13 s, and was judged at 30 s before it had a chance)
 
 
-def _ramp(probe, now, site=20.0, delivered=0.0, *, charging=False, age=1.0, limit=20.0):
+def _ramp(probe, now, site=20.0, delivered=0.0, *, charging=False, limit=20.0):
     return probe.evaluate(
         now,
         site_current_a=site if isinstance(site, dict) else {p: site for p in ("L1", "L2", "L3")},
@@ -210,12 +210,18 @@ def _ramp(probe, now, site=20.0, delivered=0.0, *, charging=False, age=1.0, limi
         delivered_a={p: delivered for p in ("L1", "L2", "L3")},
         main_fuse_a=20.0,
         charger_charging=charging,
-        delivered_report_age_s={p: age for p in ("L1", "L2", "L3")},
     )
 
 
-def _ramp_started(probe: BatteryProbe) -> None:
-    probe.start(0.0, 6.0, {"L1": 20.0, "L2": 20.0, "L3": 20.0}, ("L1", "L2", "L3"), {"L1": 0.0, "L2": 0.0, "L3": 0.0})
+def _ramp_started(probe: BatteryProbe, *, charging: bool = False) -> None:
+    probe.start(
+        0.0,
+        6.0,
+        {"L1": 20.0, "L2": 20.0, "L3": 20.0},
+        ("L1", "L2", "L3"),
+        {"L1": 0.0, "L2": 0.0, "L3": 0.0},
+        charger_charging=charging,
+    )
 
 
 def test_the_extension_lasts_as_long_as_a_start_credit() -> None:
@@ -223,19 +229,19 @@ def test_the_extension_lasts_as_long_as_a_start_credit() -> None:
 
 
 @pytest.mark.parametrize(
-    ("delivered", "charging", "age", "evidence"),
+    ("delivered", "charging", "evidence"),
     [
-        (0.4985, False, 1.0, "car_current_rising"),  # the owner's EV6 at 13 s
-        (0.0, True, 1.0, "charger_reports_charging"),  # the HALO said Charging
-        (0.0, False, 45.0, "charger_reading_lagging"),  # no reading since the start
+        (0.4985, False, "car_current_rising"),  # the owner's EV6 at 13 s
+        # The HALO went Finishing, Preparing, Charging after the start (the owner's 10:13 probe).
+        (0.0, True, "charger_reports_charging"),
     ],
 )
-def test_a_car_that_has_visibly_started_is_given_until_90_s(delivered, charging, age, evidence) -> None:
+def test_a_car_that_has_visibly_started_is_given_until_90_s(delivered, charging, evidence) -> None:
     probe = BatteryProbe()
     _ramp_started(probe)
-    first = _ramp(probe, 30.0, delivered=delivered, charging=charging, age=age)
+    first = _ramp(probe, 30.0, delivered=delivered, charging=charging)
     assert (first.state, first.reason, first.extended) == ("verifying", evidence, True)
-    later = _ramp(probe, 40.0, delivered=delivered, charging=charging, age=age + 10.0)
+    later = _ramp(probe, 40.0, delivered=delivered, charging=charging)
     assert (later.state, later.extended) == ("verifying", False)
     # The car reaches its minimum at 50 s, the battery has made room: the probe succeeds then.
     done = _ramp(probe, 50.0, delivered=5.4, charging=charging)
@@ -246,8 +252,22 @@ def test_a_car_that_shows_nothing_still_fails_at_the_window() -> None:
     probe = BatteryProbe()
     _ramp_started(probe)
     assert _ramp(probe, 29.0).state == "verifying"
-    verdict = _ramp(probe, 30.0, delivered=0.1, age=2.0)
+    verdict = _ramp(probe, 30.0, delivered=0.1)
     assert (verdict.state, verdict.reason) == ("failed", "car_not_drawing")
+
+
+def test_a_charging_status_counts_only_once_it_has_turned_to_charging_since_the_start() -> None:
+    probe = BatteryProbe()
+    _ramp_started(probe, charging=True)  # said Charging already when the probe started
+    assert _ramp(probe, 10.0, charging=True).state == "verifying"
+    verdict = _ramp(probe, 30.0, charging=True)
+    assert (verdict.state, verdict.reason) == ("failed", "car_not_drawing")
+    # One that left Charging during the window and came back has changed since the start.
+    probe = BatteryProbe()
+    _ramp_started(probe, charging=True)
+    assert _ramp(probe, 10.0, charging=False).state == "verifying"
+    verdict = _ramp(probe, 30.0, charging=True)
+    assert (verdict.state, verdict.reason) == ("verifying", "charger_reports_charging")
 
 
 def test_a_missing_reading_is_not_waited_for() -> None:
@@ -269,9 +289,9 @@ def test_the_extension_ends_at_90_s_whatever_the_car_shows() -> None:
 def test_the_extension_ends_when_the_evidence_goes() -> None:
     probe = BatteryProbe()
     _ramp_started(probe)
-    assert _ramp(probe, 30.0, age=45.0).state == "verifying"  # lagging
-    # The reading arrives: nothing drawn, no charging status.
-    verdict = _ramp(probe, 40.0, delivered=0.0, age=0.5)
+    assert _ramp(probe, 30.0, charging=True).state == "verifying"
+    # The charger leaves Charging with nothing drawn.
+    verdict = _ramp(probe, 40.0, delivered=0.0)
     assert (verdict.state, verdict.reason) == ("failed", "car_not_drawing")
 
 
@@ -557,7 +577,11 @@ async def test_the_owners_ev6_ramping_slowly_is_not_stopped_at_30_s(hass: HomeAs
     ]
 
 
-async def test_a_lagging_charger_reading_is_waited_for_and_then_judged(hass: HomeAssistant, monkeypatch) -> None:
+async def test_a_charger_reading_not_reported_since_the_start_is_no_sign_on_its_own(
+    hass: HomeAssistant, monkeypatch
+) -> None:
+    """A charger that reports only on a change (Easee's streamed observations, an attribute source) says
+    nothing while an idle car draws nothing: its old report is no sign the car started."""
     from dataclasses import replace
 
     from custom_components.spotnav.site.site_capacity import DirectPhaseMeasurement
@@ -571,23 +595,16 @@ async def test_a_lagging_charger_reading_is_waited_for_and_then_judged(hass: Hom
 
     read = type(controller)._read_charger_measured_current
 
-    def lagging(self, wiring):
+    def silent(self, wiring):
         values = read(self, wiring)
         return DirectPhaseMeasurement(
-            l1=replace(values.l1, report_age_s=100.0),
-            l2=replace(values.l2, report_age_s=100.0),
-            l3=replace(values.l3, report_age_s=100.0),
+            l1=replace(values.l1, age_s=630.0, report_age_s=630.0),
+            l2=replace(values.l2, age_s=630.0, report_age_s=630.0),
+            l3=replace(values.l3, age_s=630.0, report_age_s=630.0),
         )
 
-    monkeypatch.setattr(type(controller), "_read_charger_measured_current", lagging)
+    monkeypatch.setattr(type(controller), "_read_charger_measured_current", silent)
     yield_clock.advance(31.0)
-    await controller._async_apply_active_control()
-    assert turn_off == []
-    assert controller.battery_probe_snapshot[charger.entry_id]["state"] == "probing"
-
-    # The reading arrives and shows nothing: the probe fails then, not at 90 s.
-    monkeypatch.setattr(type(controller), "_read_charger_measured_current", read)
-    yield_clock.advance(10.0)
     await controller._async_apply_active_control()
     assert len(turn_off) == 1
     snapshot = controller.battery_probe_snapshot[charger.entry_id]
