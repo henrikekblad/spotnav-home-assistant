@@ -82,8 +82,13 @@ const rows = (element: Element, group: string): HTMLElement[] =>
 const rowText = (element: Element, field: string): string =>
   openDialog(element)?.querySelector(`[data-row="${field}"]`)?.textContent ?? "";
 
-function edit(element: Element, scope: "charger" | "site"): void {
-  openDialog(element)?.querySelector<HTMLButtonElement>(`[data-edit-entities="${scope}"]`)?.click();
+/**
+ * Open a scope's entity dialog from the Settings page. The charger's rows each open their own part (`row`: the
+ * row's key, Start and stop by default); the other parts stay hidden and send nothing.
+ */
+function edit(element: Element, scope: "charger" | "site", row?: string): void {
+  const selector = row === undefined ? `[data-edit-entities="${scope}"]` : `[data-edit-entities="${scope}"][data-edit="${row}"]`;
+  openDialog(element)?.querySelector<HTMLButtonElement>(selector)?.click();
 }
 
 function field(element: Element, name: string): HTMLInputElement {
@@ -325,7 +330,7 @@ describe("the charger's editor", () => {
     const { hass, element } = await mounted({ update: "success_charger" });
     openSettings(element);
     await settle();
-    edit(element, "charger");
+    edit(element, "charger", "current");
     type(element, "current_limit", "number.charger_limit");
     save(element);
     await settle();
@@ -390,7 +395,7 @@ describe("the charger's editor", () => {
     const { hass, element } = await mounted({ update: "conflict" });
     openSettings(element);
     await settle();
-    edit(element, "charger");
+    edit(element, "charger", "current");
     type(element, "current_limit", "number.mine");
     save(element);
     await settle();
@@ -427,7 +432,7 @@ describe("the charger's editor", () => {
     const { hass, element } = await mounted();
     openSettings(element);
     await settle();
-    edit(element, "charger");
+    edit(element, "charger", "current");
     hass.entityHandler = async () => {
       throw Object.assign(new Error("boom: secret detail"), { code: "unknown_error" });
     };
@@ -443,7 +448,7 @@ describe("the charger's editor", () => {
     const { hass, element, payload } = await mounted();
     openSettings(element);
     await settle();
-    edit(element, "charger");
+    edit(element, "charger", "current");
     type(element, "current_limit", "number.half_typed");
     const before = openDialog(element);
     for (let tick = 0; tick < 2; tick += 1) {
@@ -663,7 +668,7 @@ describe("Home Assistant's own picker", () => {
     const { hass, element } = await mounted({ update: "success_charger" });
     openSettings(element);
     await settle();
-    edit(element, "charger");
+    edit(element, "charger", "energy_register");
     const picker = openDialog(element)?.querySelector<FakeSelector>("ha-selector[data-field='charge_control']");
     expect(picker).not.toBeNull();
     expect(picker!.selector).toEqual({ entity: { domain: ["switch"] } });
@@ -834,7 +839,7 @@ describe("an energy meter and the person's None", () => {
     });
     openSettings(element);
     await settle();
-    edit(element, "charger");
+    edit(element, "charger", "energy_register");
     choose(element, "energy", "none");
     save(element);
     await settle();
@@ -846,7 +851,7 @@ describe("an energy meter and the person's None", () => {
     const kept = await mounted({ update: "success_charger", patch: register({ chosen: true, automatic: METER }, false) });
     openSettings(kept.element);
     await settle();
-    edit(kept.element, "charger");
+    edit(kept.element, "charger", "energy_register");
     save(kept.element);
     await settle();
     expect(updates(kept.hass)).toHaveLength(0);
@@ -854,7 +859,7 @@ describe("an energy meter and the person's None", () => {
     const { hass, element } = await mounted({ update: "success_charger", patch: register({ chosen: true, automatic: METER }, false) });
     openSettings(element);
     await settle();
-    edit(element, "charger");
+    edit(element, "charger", "energy_register");
     choose(element, "energy", "meter");
     choose(element, "energy-source", "automatic");
     save(element);
@@ -867,7 +872,7 @@ describe("an energy meter and the person's None", () => {
     const { hass, element } = await mounted({ update: "success_charger", patch: register({ chosen: false, automatic: null }, false) });
     openSettings(element);
     await settle();
-    edit(element, "charger");
+    edit(element, "charger", "energy_register");
     choose(element, "energy", "none");
     save(element);
     await settle();

@@ -468,6 +468,13 @@ function selectorFor(field: EntityFieldEntity): { entity: Record<string, unknown
   return { entity };
 }
 
+/** The fields each part of the charger's dialog owns, when that part is shown alone. */
+const FOCUS_FIELDS: Readonly<Record<string, readonly string[]>> = {
+  "charge-control": ["charge_control"],
+  "current-limit": ["current_limit"],
+  energy: ["energy_register_entity", "power_entity"],
+};
+
 export function entityEditorBody(
   doc: Document,
   language: Language,
@@ -1664,7 +1671,11 @@ export function entityEditorBody(
   // One value, one dialog: the other parts stay in the form (their values unchanged, so nothing of theirs is
   // sent) but out of sight.
   const focus = input.focus;
+  let focusFields: ReadonlySet<string> | null = null;
   if (focus !== undefined && Array.from(body.children).some((child) => (child as HTMLElement).dataset["part"] === focus)) {
+    // A part sends only its own fields: a hidden part's defaults (an energy kind read as a meter clearing the
+    // plug's power entity, say) never reach the request.
+    focusFields = new Set(FOCUS_FIELDS[focus] ?? []);
     for (const child of Array.from(body.children) as HTMLElement[]) {
       if (child !== notice && child.dataset["part"] !== focus && child.dataset["focusWith"] !== focus) {
         child.hidden = true;
@@ -1724,6 +1735,10 @@ export function entityEditorBody(
     const draft: EntityDraft = { ...values };
     for (const clear of clearers) {
       clear(draft);
+    }
+    if (focusFields !== null) {
+      const only = focusFields;
+      return Object.fromEntries(Object.entries(draft).filter(([name]) => only.has(name)));
     }
     return draft;
   }

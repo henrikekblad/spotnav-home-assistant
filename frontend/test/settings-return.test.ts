@@ -121,7 +121,9 @@ describe("a Save that changes something", () => {
   it("returns a charger group's editor to Settings, drawn from the confirmed read", async () => {
     const { hass, element } = await mounted("get_direct", () => json(ENTITY_DIR, "success_charger"));
     await openSettings(element);
-    await openSub(element, "charger");
+    // The charging current's own row: its part of the charger's dialog, alone.
+    openDialog(element)?.querySelector<HTMLButtonElement>("[data-edit='current']")?.click();
+    await settle();
     const input = openDialog(element)?.querySelector<HTMLInputElement>("[data-field='current_limit']") as HTMLInputElement;
     input.value = "number.charger_limit";
     input.dispatchEvent(new Event("input", { bubbles: true }));
