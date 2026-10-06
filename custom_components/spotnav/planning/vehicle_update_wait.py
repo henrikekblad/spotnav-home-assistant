@@ -15,10 +15,12 @@ It waits while all of these hold:
 
 * the reading is a reading (not an estimate, which already counts the energy) with a known age;
 * the charge has ended (not charging, no window of the plan still ahead) and the car is not known unplugged;
-* the charger knows when the car was plugged in, and the measured energy of the sessions of that plug-in
-  that began at or after the reading, for this car (a session that recorded no car only when the charger
-  has this one car), is at least the need worked out from it. Without a known plug-in, energy cannot be
-  told to be this car's, and nothing changes;
+* the charger knows the car is connected and since when (`controller.plugged_in_for_count`: the plug-in it
+  saw, or the first moment it knew of a car connected, so a car found plugged in after a restart counts
+  from then), and the measured energy of the sessions of that plug-in that began at or after the reading
+  and were recorded for this car is at least the need worked out from it. A session recorded for no car
+  or another never counts. Without a known plug-in, energy cannot be told to be this car's, and nothing
+  changes;
 * no departure is near: with one, it waits only until the need, if the reading were true, would just still
   fit at the charger's power (with `DEPARTURE_MARGIN_S` to spare), and that instant is `replan_at`.
 
@@ -82,11 +84,9 @@ def measured_delivery_since(
     read_at: datetime,
     plugged_in_at: datetime,
     vehicle_id: str | None,
-    only_vehicle: bool = False,
 ) -> MeasuredDelivery | None:
-    """The measured energy of the sessions that began at or after both `read_at` and the plug-in, for
-    `vehicle_id` (a session that recorded no vehicle only when `only_vehicle`: the charger has this one
-    car); `None` when there is none."""
+    """The measured energy of the sessions that began at or after both `read_at` and the plug-in and were
+    recorded for `vehicle_id`; `None` when there is none."""
     counted = sorted(
         (
             session
@@ -96,10 +96,8 @@ def measured_delivery_since(
             and session.energy_kwh > 0
             and session.start >= read_at
             and session.start >= plugged_in_at
-            and (
-                (vehicle_id is not None and session.vehicle_id == vehicle_id)
-                or (session.vehicle_id is None and only_vehicle)
-            )
+            and vehicle_id is not None
+            and session.vehicle_id == vehicle_id
         ),
         key=lambda session: session.start,
     )
@@ -126,7 +124,6 @@ def decide_vehicle_update_wait(
     power_kw: float | None,
     vehicle_id: str | None,
     now: datetime,
-    only_vehicle: bool = False,
 ) -> WaitDecision:
     """Whether to wait for the car's new level rather than plan `need_kwh` (wall energy) again."""
     if estimated:
@@ -143,7 +140,7 @@ def decide_vehicle_update_wait(
         return WaitDecision(False, "no_plug_in")
     read_at = now - timedelta(seconds=max(0.0, reading_age_s))
     delivery = measured_delivery_since(
-        sessions, read_at=read_at, plugged_in_at=plugged_in_at, vehicle_id=vehicle_id, only_vehicle=only_vehicle
+        sessions, read_at=read_at, plugged_in_at=plugged_in_at, vehicle_id=vehicle_id
     )
     if delivery is None:
         return WaitDecision(False, "no_measurement")
