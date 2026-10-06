@@ -428,6 +428,12 @@ export interface EntityEditorInput {
   hass: () => unknown;
   appliesText: string | null;
   readOnly?: boolean;
+  /**
+   * One value of the Settings page: only the dialog part of that name is shown (`charge-control`,
+   * `current-limit`, `energy`), the rest kept hidden and unchanged. Without it, or when the part is not
+   * there, the whole dialog shows.
+   */
+  focus?: string;
 }
 
 export interface EntityEditorBody {
@@ -501,6 +507,8 @@ export function entityEditorBody(
   if (scope === "charger" && config.control !== null) {
     const notes = controlNotes(doc, language, config.control, (entityId) => entityNameIn(config, entityId));
     if (notes !== null) {
+      // How the charger is controlled: shown with the current limit when that is shown alone.
+      notes.dataset["focusWith"] = "current-limit";
       body.append(notes);
     }
   }
@@ -1650,6 +1658,17 @@ export function entityEditorBody(
     const checks = siteChecks(doc, language, config.site);
     if (checks !== null) {
       body.append(checks);
+    }
+  }
+
+  // One value, one dialog: the other parts stay in the form (their values unchanged, so nothing of theirs is
+  // sent) but out of sight.
+  const focus = input.focus;
+  if (focus !== undefined && Array.from(body.children).some((child) => (child as HTMLElement).dataset["part"] === focus)) {
+    for (const child of Array.from(body.children) as HTMLElement[]) {
+      if (child !== notice && child.dataset["part"] !== focus && child.dataset["focusWith"] !== focus) {
+        child.hidden = true;
+      }
     }
   }
 

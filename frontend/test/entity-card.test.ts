@@ -155,11 +155,15 @@ describe("the Settings page's charger and site cards", () => {
     // Short status words, never the entity's name or id.
     expect(rowText(element, "start_stop")).toContain(translate("en", "settings.status.active"));
     expect(rowText(element, "start_stop")).not.toContain("Control get_direct");
-    expect(rowText(element, "current")).toContain(translate("en", "settings.value.off"));
+    expect(rowText(element, "current")).toContain(translate("en", "settings.status.notControlled"));
     // Nothing chosen and nothing found: the energy meter is said to be found automatically.
-    expect(rowText(element, "energy_register")).toContain(translate("en", "entity.foundAutomatically"));
-    // One row opens the charger's entity dialog, no sub-heading, no vehicle level among the charger's rows.
-    expect(openDialog(element)?.querySelectorAll("[data-section='entities'] [data-edit-entities]")).toHaveLength(1);
+    expect(rowText(element, "energy_register")).toContain(translate("en", "settings.status.foundAutomatically"));
+    // Each setup row opens its own part of the charger's entity dialog; no sub-heading, no vehicle level.
+    expect(
+      Array.from(openDialog(element)?.querySelectorAll<HTMLElement>("[data-section='entities'] [data-edit-entities]") ?? []).map(
+        (node) => node.dataset["edit"],
+      ),
+    ).toEqual(["start_stop", "current", "energy_register"]);
     expect(openDialog(element)?.querySelector("[data-section='entities'] [data-row='vehicle_soc']")).toBeNull();
     expect(openDialog(element)?.querySelector("[data-section='entities'] h4")?.textContent).toMatch(
       new RegExp(`^${translate("en", "settings.heading.charger")} · `),
@@ -266,7 +270,14 @@ describe("the Settings page's charger and site cards", () => {
     const { element } = await mounted({ dashboard: "cheapest_no_site", get: "get_no_site" });
     openSettings(element);
     await settle();
-    expect(sectionRows(element, "entities")).toHaveLength(3);
+    // With no site, the charger holds its own wiring: two rows more than the three setup rows.
+    expect(sectionRows(element, "entities")).toEqual([
+      "start_stop",
+      "current",
+      "energy_register",
+      "charger_phases",
+      "voltage_between_phases_v",
+    ]);
     const site = openDialog(element)?.querySelector("[data-section='site']");
     expect(site?.textContent).toContain(translate("en", "site.none"));
     expect(site?.querySelector("[data-row]")).toBeNull();
@@ -303,7 +314,8 @@ describe("the charger's editor", () => {
     openSettings(element);
     await settle();
     edit(element, "charger");
-    expect(openDialog(element)?.textContent).toContain(translate("en", "entity.editor.charger"));
+    // Opened from Start and stop: titled by that row, the charge control shown alone.
+    expect(openDialog(element)?.querySelector("h3")?.textContent).toBe(translate("en", "control.startStop"));
     expect(field(element, "charge_control").value).toBe("switch.get_direct_control");
     expect(field(element, "current_limit").value).toBe("");
     expect(openDialog(element)?.querySelector("[data-field='max_age_s']")).toBeNull();
@@ -742,7 +754,7 @@ describe("what is actually in use, and what no longer exists", () => {
     openSettings(element);
     await settle();
     const register = rowText(element, "energy_register");
-    expect(register).toContain(translate("en", "entity.foundAutomatically"));
+    expect(register).toContain(translate("en", "settings.status.foundAutomatically"));
     expect(register).not.toContain(translate("en", "entity.notSet"));
   });
 

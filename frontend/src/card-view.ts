@@ -1900,7 +1900,7 @@ export function createCardView(input: CardViewInput): CardView {
           link.addEventListener("click", () => {
             strategyDialog.hide({ restoreFocus: false });
             vehicleDialog.hide({ restoreFocus: false });
-            input.onOpenEntityEditor?.("site");
+            openEntities("site");
           });
           item.append(link);
         }
@@ -2044,9 +2044,25 @@ export function createCardView(input: CardViewInput): CardView {
     return row!;
   }
 
-  /** A setup row whose value opens a scope's entity dialog: its button also carries `data-edit-entities`. */
-  function entityRow(key: string, label: string, value: string, scope: EntityScope): HTMLElement {
-    const row = overviewRow(key, label, value, () => input.onOpenEntityEditor?.(scope));
+  /**
+   * The part of the next entity dialog to show alone, titled by its row; `null` opens the whole dialog. Set by
+   * every way into the dialog from this view, so a later open never inherits it.
+   */
+  let entityFocus: { scope: EntityScope; part: string; title: string } | null = null;
+
+  function openEntities(scope: EntityScope, focus: { part: string; title: string } | null = null): void {
+    entityFocus = focus === null ? null : { scope, ...focus };
+    input.onOpenEntityEditor?.(scope);
+  }
+
+  /**
+   * A setup row whose value opens a scope's entity dialog (only `part` of it when given): its button also
+   * carries `data-edit-entities`.
+   */
+  function entityRow(key: string, label: string, value: string, scope: EntityScope, part?: string): HTMLElement {
+    const row = overviewRow(key, label, value, () =>
+      openEntities(scope, part === undefined ? null : { part, title: label }),
+    );
     const button = row.querySelector<HTMLButtonElement>("button");
     if (button !== null) {
       button.dataset["editEntities"] = scope;
@@ -2213,7 +2229,6 @@ export function createCardView(input: CardViewInput): CardView {
   function chargerRows(config: EntityConfig): HTMLElement[] {
     const control = config.control;
     const nodes: HTMLElement[] = [];
-    const openEntities = (): void => input.onOpenEntityEditor?.("charger");
     const chargeControl = fieldsOf(config, "charger").find((entry) => entry.field === "charge_control");
     const startStopMissing =
       (chargeControl !== undefined && chargeControl.kind === "entity" && isMissingEntity(chargeControl)) ||
@@ -2224,6 +2239,7 @@ export function createCardView(input: CardViewInput): CardView {
         translate(model.language, "control.startStop"),
         translate(model.language, startStopMissing ? "settings.status.missing" : "settings.status.active"),
         "charger",
+        "charge-control",
       ),
     );
     if (chargeControl !== undefined && chargeControl.kind === "entity" && isMissingEntity(chargeControl)) {
@@ -2232,30 +2248,34 @@ export function createCardView(input: CardViewInput): CardView {
       nodes.push(warning);
     }
     nodes.push(
-      overviewRow("current", translate(model.language, "control.current"), currentWord(config), openEntities),
+      entityRow("current", translate(model.language, "control.current"), currentWord(config), "charger", "current-limit"),
     );
     const energyField = fieldsOf(config, "charger").find((entry) => entry.field === "energy_register_entity");
-    let energy = translate(model.language, "entity.foundAutomatically");
+    let energy = translate(model.language, "settings.status.foundAutomatically");
     if (energyField !== undefined && energyField.kind === "entity") {
       if (energyField.current !== null) {
         energy = translate(model.language, "settings.status.chosen");
       } else if (energyField.none !== null && energyField.none.chosen) {
-        energy = translate(model.language, "entity.energy.none");
+        energy = translate(model.language, "settings.value.none");
       }
     }
-    nodes.push(overviewRow("energy_register", translate(model.language, "entity.field.energyRegister"), energy, openEntities));
+    nodes.push(
+      entityRow("energy_register", translate(model.language, "entity.field.energyRegister"), energy, "charger", "energy"),
+    );
     // Only a charger behind a smart plug has a power sensor; the others get no row.
     const powerField = fieldsOf(config, "charger").find((entry) => entry.field === "power_entity");
     if (powerField !== undefined && powerField.kind === "entity" && powerField.current !== null) {
       nodes.push(
-        overviewRow(
+        entityRow(
           "power_entity",
           translate(model.language, "entity.field.powerEntity"),
           translate(model.language, "settings.status.present"),
-          openEntities,
+          "charger",
+          "energy",
         ),
       );
     }
+    nodes.push(...wiringRows(config));
     nodes.push(...priorityRows());
     for (const conflict of control?.conflicts ?? []) {
       const warning = element(
@@ -2270,17 +2290,22 @@ export function createCardView(input: CardViewInput): CardView {
     return nodes;
   }
 
-  /** How the current is set, in one short word: OCPP, Easee, Active, or Off. */
+  /**
+   * How the current is set, in the app's words: OCPP, Easee, Controlled (a number entity) or Not controlled. A
+   * path that is not enabled is not controlled, as the dashboard's own summary says.
+   */
   function currentWord(config: EntityConfig): string {
     const current = config.control?.current;
     if (current === undefined) {
       return translate(
         model.language,
-        fieldEntityName(config, "charger", "current_limit") === null ? "settings.value.off" : "settings.status.active",
+        fieldEntityName(config, "charger", "current_limit") === null
+          ? "settings.status.notControlled"
+          : "settings.status.controlled",
       );
     }
     if (current.kind === "none" || !current.enabled) {
-      return translate(model.language, "settings.value.off");
+      return translate(model.language, "settings.status.notControlled");
     }
     if (current.kind === "ocpp") {
       return "OCPP";
@@ -2288,7 +2313,54 @@ export function createCardView(input: CardViewInput): CardView {
     if (current.kind === "service") {
       return "Easee";
     }
-    return translate(model.language, "settings.status.active");
+    return translate(model.language, "settings.status.controlled");
+  }
+
+  /**
+   * A charger in no site holds its own wiring: the phases it is wired for and the voltage between phases, each
+   * its own choice (a site holds them for its chargers, in the site's dialog).
+   */
+  function wiringRows(config: EntityConfig): HTMLElement[] {
+    const nodes: HTMLElement[] = [];
+    const choice = (
+      name: "charger_phases" | "voltage_between_phases_v",
+      labelKey: TranslationKey,
+      helpKey: TranslationKey,
+      optionLabel: (value: string) => string,
+      shown: (value: string) => string,
+      fallback: string,
+    ): void => {
+      const field = fieldsOf(config, "charger").find((entry) => entry.field === name);
+      if (field === undefined || field.kind !== "enum" || !field.writable) {
+        return;
+      }
+      const label = translate(model.language, labelKey);
+      const current = field.value ?? fallback;
+      const options: ChoiceOption[] = field.choices.map((value) => ({ value, label: optionLabel(value) }));
+      nodes.push(
+        overviewRow(name, label, shown(current), () =>
+          editSingle(
+            label,
+            options,
+            current,
+            (chosen) => writeValue({ kind: "entity", scope: "charger", draft: { [name]: chosen } }),
+            translate(model.language, helpKey),
+          ),
+        ),
+      );
+    };
+    const phases = (value: string): string =>
+      translate(model.language, value === "1" ? "settings.phases.one" : "settings.phases.three");
+    choice("charger_phases", "entity.field.chargerPhases", "entity.help.chargerPhases", phases, phases, "3");
+    choice(
+      "voltage_between_phases_v",
+      "entity.field.voltageBetweenPhases",
+      "entity.help.voltageBetweenPhases",
+      (value) => translate(model.language, value === "230" ? "entity.voltage.it" : "entity.voltage.tn"),
+      (value) => `${value} V`,
+      "400",
+    );
+    return nodes;
   }
 
   /** The charger's place in its site's order: a choice of three, with what it means above them. */
@@ -2494,7 +2566,6 @@ export function createCardView(input: CardViewInput): CardView {
    */
   function siteRows(config: EntityConfig): HTMLElement[] {
     const nodes: HTMLElement[] = [];
-    const openSite = (): void => input.onOpenEntityEditor?.("site");
     const fuse = fieldsOf(config, "site").find((entry) => entry.field === "main_fuse_a");
     if (fuse !== undefined && fuse.kind === "number" && fuse.value !== null) {
       const label = translate(model.language, "entity.field.mainFuse");
@@ -2511,7 +2582,7 @@ export function createCardView(input: CardViewInput): CardView {
     const mode = storedMode(config);
     if (mode !== null) {
       nodes.push(
-        overviewRow("measurement_mode", translate(model.language, "entity.field.measurementMode"), modeLabel(model.language, mode), openSite),
+        entityRow("measurement_mode", translate(model.language, "entity.field.measurementMode"), modeLabel(model.language, mode), "site"),
       );
     }
     nodes.push(
@@ -3288,6 +3359,7 @@ export function createCardView(input: CardViewInput): CardView {
     if (destroyed) {
       return;
     }
+    const focus = entityFocus !== null && entityFocus.scope === scope ? entityFocus : null;
     issuesDialog.hide({ restoreFocus: false });
     capabilityDialog.hide({ restoreFocus: false });
     pauseDialog.hide({ restoreFocus: false });
@@ -3304,13 +3376,14 @@ export function createCardView(input: CardViewInput): CardView {
         config,
         hass: () => input.hass?.(),
         appliesText: scope === "site" ? (model.site?.appliesToText ?? null) : null,
+        ...(focus === null ? {} : { focus: focus.part }),
       },
       {
         onSave: (draft) => input.onSaveEntities?.(scope, draft),
         onCancel: () => leaveSettingsChild(entityDialog, input.onCancelEntities),
         onOpenSite: () => {
           entityDialog.hide({ restoreFocus: false });
-          input.onOpenEntityEditor?.("site");
+          openEntities("site");
         },
       },
       idPrefix,
@@ -3320,7 +3393,7 @@ export function createCardView(input: CardViewInput): CardView {
       built.setNotice(translate(model.language, notice.sentenceKey), notice.code);
     }
     entityDialog.show({
-      title: translate(model.language, scope === "site" ? "entity.editor.site" : "entity.editor.charger"),
+      title: focus !== null ? focus.title : translate(model.language, scope === "site" ? "entity.editor.site" : "entity.editor.charger"),
       body: built.body,
       opener: settingsGeneral,
     });
