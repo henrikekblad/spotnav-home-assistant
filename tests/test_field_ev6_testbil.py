@@ -12,7 +12,7 @@ from homeassistant.core import HomeAssistant, ServiceCall
 from homeassistant.helpers import device_registry as dr, entity_registry as er
 from pytest_homeassistant_custom_component.common import async_fire_time_changed, async_mock_service, MockConfigEntry
 
-from custom_components.spotnav.planning.auto_settings import PauseIntent, TargetSocIntent
+from custom_components.spotnav.planning.auto_settings import TargetSocIntent
 from custom_components.spotnav.runtime import charger_data, domain_data
 from custom_components.spotnav.vehicles.identification_sources import identification_sources
 
