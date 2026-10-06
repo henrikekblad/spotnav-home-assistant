@@ -208,7 +208,9 @@ starts and stops a charge, how the current is set, where the charging state is r
 write limits, and whether load balancing can change the current during a charge. If the charger's
 own smart mode is on, the card warns because it can fight SpotNav. **Change charger entities** opens
 the editor, where a charger on a site also has its **Charger priority** (first, normal or last; see
-[site and load balancing](site-and-load-balancing.md)).
+[site and load balancing](site-and-load-balancing.md)). Under **Energy**, **None** is kept as your
+choice: SpotNav then reads no energy register and looks for none, and lists one it finds on the charger
+under **To check**.
 
 ### Site
 

@@ -141,6 +141,13 @@ SpotNav writes the current only as the charger's write limits allow (see
 [supported hardware](supported.md)). If the integration ships useful entities disabled, a tick box
 offers to enable them, and it is on by default.
 
+The energy register is looked for again after setup: at every Home Assistant start, and as soon as
+the charger's integration registers or first reports one (a charger that was offline when you added
+it often has none yet). A charger found through another integration then stores it as if you had
+confirmed it; an OCPP connector uses its own automatically, as before. If you cleared a suggested or
+stored register, or chose **None** under **Energy** in the card, SpotNav keeps that and looks for
+nothing; the card then lists the register it finds under **To check**, so you can choose it.
+
 A charge control or current number can belong to only one SpotNav charger. Choosing one that
 another SpotNav charger already uses is refused.
 
