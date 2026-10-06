@@ -40,13 +40,19 @@ fixed number of kWh instead.
   estimated. An estimate stops a charge only once it is a margin above the target. A fresh
   reading always replaces the estimate. A reading taken while the register could not be read yet
   (a restart before the charger's integration is up) is carried forward from the register's first
-  value, and the same value set again by a restart is not taken as a new reading.
+  value. A value written while Home Assistant starts (up to ten minutes after) that equals the last
+  reading is that reading set again, not a new one: the estimate goes on from it. The same value
+  reported at any other time is a new reading. When the register itself changes (found again, or
+  chosen in the card), counting starts again from the new register's first value.
 - **After a charge, before the car reports.** Where the level cannot be carried forward (no register
   then, or one that started again), a target whose charge has ended and delivered, as measured by the
   charger's register or a smart plug's power, at least what the car's last reading needed is not
-  planned again on that reading. The status says *Waiting for the car to report its new level after
+  planned again on that reading. This needs a charger that reports when the car was plugged in, and
+  counts only that plug-in's charges recorded for this car (or, with only one car known, charges that
+  recorded none). The status says *Waiting for the car to report its new level after
   the charge*, and SpotNav asks the car's integration once to read it again (the same re-read as the
-  app's refresh, never a wake-up). A newer reading plans at once (even the same value, if the car
+  app's refresh, never a wake-up). A restart does not end the wait: the value set again as Home
+  Assistant starts is the old reading. A newer reading plans at once (even the same value, if the car
   really did not take the energy), an unplug ends the wait, and with a departure the need is planned
   again in time to still fit. Energy that was only estimated from the charger's current changes nothing.
 - **To the car's own limit.** A target at or above the car's own charge limit (or 100 % when the car
