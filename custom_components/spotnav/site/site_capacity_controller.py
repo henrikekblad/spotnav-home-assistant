@@ -72,7 +72,10 @@ from ..const import (
     SOLAR_PRIORITY_CAR_FIRST,
 )
 from .site_history import SAMPLE_INTERVAL_S as HISTORY_SAMPLE_INTERVAL_S, SiteHistory
-from ..execution.charger_connection import CHARGING as CONNECTION_CHARGING
+from ..execution.charger_connection import (
+    CHARGING as CONNECTION_CHARGING,
+    UNKNOWN as CONNECTION_UNKNOWN,
+)
 from ..execution.controller import (
     ChargingController,
     CurrentRestore,
@@ -1593,11 +1596,14 @@ class SiteCapacityController:
         self._probe_timer_due = due
         self._probe_timer_cancel = async_call_later(self.hass, max(0.0, due - now) + 1.0, fire)
 
-    def _charger_reports_charging(self, charger_controller: Any) -> bool:
-        """Whether the charger's own status says it charges; never inferred from the start we sent (a
-        charger with only a switch has no status to say it)."""
+    def _charger_reports_charging(self, charger_controller: Any) -> bool | None:
+        """Whether the charger's own status says it charges, or `None` when no status says anything (none
+        configured, unavailable, unknown or unmapped). Never inferred from the start we sent: a charger read
+        through its switch alone has no status to say it."""
         connection, source = charger_controller.connection()
-        return connection == CONNECTION_CHARGING and source is not None
+        if source is None or connection == CONNECTION_UNKNOWN:
+            return None
+        return connection == CONNECTION_CHARGING
 
     def _record_probe_event(
         self,

@@ -153,10 +153,11 @@ class BatteryProbe:
         car_phases: Sequence[PhaseName],
         delivered_a: Mapping[PhaseName, float | None] | None = None,
         *,
-        charger_charging: bool = False,
+        charger_charging: bool | None = None,
     ) -> None:
         """A probe was started: the car, on `car_phases`, was given `probe_a` while the grid read
-        `baseline_a`, the charger itself `delivered_a`, and its status said charging or not."""
+        `baseline_a` and the charger itself `delivered_a`; `charger_charging` is what the charger's
+        status said just before the start was sent (`None` when it said nothing readable)."""
         self.state = "probing"
         self._started_at = now
         self._probe_a = probe_a
@@ -164,7 +165,7 @@ class BatteryProbe:
         self._delivered_baseline = {
             phase: value for phase, value in (delivered_a or {}).items() if value is not None
         }
-        self._charging_at_start = charger_charging
+        self._charging_at_start = charger_charging is True
         self._status_left_charging = False
         self._extended = False
         self._car_phases = tuple(car_phases)
@@ -182,19 +183,21 @@ class BatteryProbe:
         limit_a: Mapping[PhaseName, float | None],
         delivered_a: Mapping[PhaseName, float | None],
         main_fuse_a: float,
-        charger_charging: bool = False,
+        charger_charging: bool | None = None,
     ) -> ProbeVerdict:
         """Judge a running probe on fresh readings. Any doubt ends it as a failure: the window is a
         bounded exception to the overload rules, never a reason to look away from a bad reading.
 
         `charger_charging` is the charger's own status saying it charges (never inferred from the start
-        we sent). With it and the charger's reading, a car that has started but not yet reached its
+        we sent): `True` or `False` when it says, `None` when it is unreadable or unknown. With it and the charger's reading, a car that has started but not yet reached its
         minimum when the window ends is waited for (`PROBE_EXTENDED_WINDOW_S`), every check above still
         running on every pass.
         """
         if self._started_at is None:
             return ProbeVerdict("failed", "not_started")
-        if not charger_charging:
+        if charger_charging is False:
+            # Only a status that definitely says something else has left charging; an unreadable one
+            # (a reconnect) says nothing, and a stale Charging after it is still stale.
             self._status_left_charging = True
         phases = tuple(site_current_a)
         if not phases or any(site_current_a.get(phase) is None for phase in phases):
@@ -238,7 +241,7 @@ class BatteryProbe:
         return ProbeVerdict("succeeded", "battery_yielded")
 
     def _car_starting(
-        self, delivered_a: Mapping[PhaseName, float | None], charger_charging: bool
+        self, delivered_a: Mapping[PhaseName, float | None], charger_charging: bool | None
     ) -> str | None:
         """Why a car not yet at its minimum is still worth waiting for, or `None`: the charger's status
         has turned to charging since the start (a status that already said so then, and has not left it,
@@ -246,7 +249,7 @@ class BatteryProbe:
 
         A reading not reported since the start is no sign on its own: a charger that reports only on a
         change says nothing while an idle car draws nothing."""
-        if charger_charging and (not self._charging_at_start or self._status_left_charging):
+        if charger_charging is True and (not self._charging_at_start or self._status_left_charging):
             return "charger_reports_charging"
         for phase in self._car_phases:
             value = delivered_a[phase]
