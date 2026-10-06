@@ -98,6 +98,8 @@ class FakeModel(AITaskEntity):
         self.hold: asyncio.Event | None = None
         self.tasks: list[dict[str, Any]] = []
         self.asked = asyncio.Event()
+        #: A label to answer whatever the pictures show (a model that is sure, rightly or not).
+        self.answer: str | None = None
 
     async def _async_generate_data(self, task: GenDataTask, chat_log: ChatLog) -> GenDataTaskResult:
         attachments = [
@@ -112,7 +114,7 @@ class FakeModel(AITaskEntity):
             raise self.errors.pop(0)
         *references, now = attachments
         labels = re.findall(r"picture \d+: (car_\d+)", task.instructions)
-        answer = next((label for label, item in zip(labels, references) if item["data"] == now["data"]), "none")
+        answer = self.answer or next((label for label, item in zip(labels, references) if item["data"] == now["data"]), "none")
         return GenDataTaskResult(conversation_id=chat_log.conversation_id, data={"vehicle": answer, "confidence": self.confidence})
 
 
@@ -188,7 +190,9 @@ class _DevicesFlow(ConfigFlow):
 
 
 @pytest.fixture
-async def garage(hass: HomeAssistant, freezer: Any, hass_ws_client: Any, hass_admin_user: Any) -> Any:
+async def garage(hass: HomeAssistant, freezer: Any, hass_ws_client: Any, hass_admin_user: Any, tmp_path: Path) -> Any:
+    # The pictures go to this test's own folder, never the shared test configuration (tests run in parallel).
+    hass.config.config_dir = str(tmp_path)
     with mock_config_flow("test", _DevicesFlow):
         yield Garage(World(hass, freezer), hass, hass_ws_client, hass_admin_user)
 
@@ -443,3 +447,123 @@ async def test_without_a_camera_or_an_ai_task_nothing_is_offered(hass: HomeAssis
     from custom_components.spotnav.api.dashboard import _camera_identification
 
     assert _camera_identification(hass, world.entry.entry_id, world.settings) is None
+
+
+# --------------------------------------------------------------------------------- after the review
+
+
+async def test_at_night_the_camera_only_orders_the_buttons_however_sure(garage: Garage) -> None:
+    await garage.start()
+    garage.model.answer = "car_2"
+    garage.car_parks((120, 120, 120))
+    garage.camera.picture = picture((150, 150, 150), ground=(120, 120, 120))
+    await garage.world.plug_in()
+    await garage.settle()
+    assert garage.world.identifier.method == METHOD_ASSUMED, "an infrared picture has no colour to tell cars apart"
+    assert garage.camera_evidence()["used"] is True
+    await garage.world.later(ASK_AFTER_S + 5)
+    assert [a["title"] for a in garage.world.sent()[0]["data"]["actions"]] == ["Tesla", "Kia"]
+
+
+async def test_a_redrawn_frame_makes_older_references_stale_until_taken_again(garage: Garage) -> None:
+    await garage.start()
+    saved = await garage.ws("save_camera_frame", frame={"x": 0.4, "y": 0.0, "w": 0.6, "h": 1.0})
+    assert saved["ok"] is True
+    kia = garage.world.cars["Kia"]
+    block = charger_data(garage.hass, garage.entry_id).camera.block([kia])
+    assert block["references"][kia][0]["stale"] is True
+    garage.car_parks(RED)
+    await garage.world.plug_in()
+    await garage.settle()
+    assert garage.model.tasks == [], "stale pictures compare with nothing"
+    taken = await garage.ws("take_reference_picture", vehicle_id=kia, kind="day")
+    assert taken["references"][0]["stale"] is False
+
+
+async def test_a_cars_own_report_corrects_the_camera_and_a_persons_answer_outranks_both(garage: Garage) -> None:
+    await garage.start()
+    garage.car_parks(WHITE)
+    await garage.world.plug_in()
+    await garage.settle()
+    world = garage.world
+    assert world.settings.target.vehicle_id == world.cars["Tesla"] and world.identifier.method == METHOD_CAMERA
+    world.car_says("Kia", "plug", "on")
+    await world.later(5)
+    assert world.settings.target.vehicle_id == world.cars["Kia"], "the car's own sensor outranks the camera"
+    assert world.identifier.method == METHOD_PLUG_SENSOR
+    world.car_says("Kia", "plug", "off")
+    world.car_says("Tesla", "plug", "on")
+    await world.later(60)
+    assert world.settings.target.vehicle_id == world.cars["Kia"], "one correction, then it holds"
+
+
+async def test_the_camera_car_reporting_itself_unplugged_hands_over_to_the_other(garage: Garage) -> None:
+    await garage.start()
+    garage.car_parks(WHITE)
+    await garage.world.plug_in()
+    await garage.settle()
+    world = garage.world
+    world.car_says("Tesla", "location", "not_home")
+    await world.later(5)
+    assert world.settings.target.vehicle_id == world.cars["Kia"]
+    assert world.identifier.method == "location"
+
+
+async def test_after_a_persons_answer_the_cars_reports_change_nothing(garage: Garage) -> None:
+    await garage.start()
+    garage.car_parks(WHITE)
+    await garage.world.plug_in()
+    await garage.settle()
+    world = garage.world
+    assert await world.identifier.async_answer(world.cars["Tesla"])
+    world.car_says("Kia", "plug", "on")
+    await world.later(5)
+    assert world.settings.target.vehicle_id == world.cars["Tesla"] and world.identifier.method == "answered"
+
+
+async def test_two_taps_at_once_keep_one_whole_picture(garage: Garage, hass: HomeAssistant) -> None:
+    await garage.start(references=False)
+    kia = garage.world.cars["Kia"]
+    garage.car_parks(RED)
+    camera = charger_data(hass, garage.entry_id).camera
+    first, second = await asyncio.gather(camera.async_take_reference(kia, "day"), camera.async_take_reference(kia, "day"))
+    assert first.taken_at <= second.taken_at
+    files = await hass.async_add_executor_job(lambda: sorted(path.name for path in camera.references.folder.iterdir()))
+    assert files == [f"{kia}_day.jpg"], "no half-written file left"
+
+
+async def test_the_app_may_move_the_frame_but_never_choose_the_camera_or_the_ai_task(
+    garage: Garage, hass: HomeAssistant, hass_client_no_auth: Any
+) -> None:
+    from custom_components.spotnav.api.settings import encode_settings
+
+    await garage.start(references=False)
+    client = await hass_client_no_auth()
+
+    async def send(camera: Any) -> tuple[int, dict[str, Any]]:
+        current = garage.world.settings
+        body = {key: value for key, value in encode_settings(current).items() if key != "revision"}
+        body["identify_camera"] = camera
+        response = await client.post(
+            "/api/webhook/webhook-a",
+            json={"version": 1, "action": "settings", "expected_revision": current.revision, "settings": body,
+                  "reads": ["identify_camera"]},
+        )
+        return response.status, await response.json()
+
+    for other in (
+        {"camera_entity_id": "camera.bedroom", "ai_task_entity_id": "ai_task.local", "frame": None},
+        {"camera_entity_id": "camera.norr", "ai_task_entity_id": "ai_task.cloud", "frame": None},
+        {"camera_entity_id": "camera.norr", "ai_task_entity_id": None, "frame": None},
+        None,
+    ):
+        status, answer = await send(other)
+        assert status == 400 and answer["error"] == "invalid_camera", other
+    assert garage.world.settings.identify_camera.camera_entity_id == "camera.norr"
+    moved = {"camera_entity_id": "camera.norr", "ai_task_entity_id": "ai_task.local", "frame": {"x": 0.25, "y": 0.0, "w": 0.75, "h": 1.0}}
+    status, answer = await send(moved)
+    assert status == 200 and answer["settings"]["identify_camera"] == moved
+    response = await client.post(
+        "/api/webhook/webhook-a", json={"version": 1, "action": "camera_snapshot", "camera_entity_id": "camera.norr"}
+    )
+    assert response.status == 400, "the app names no camera"

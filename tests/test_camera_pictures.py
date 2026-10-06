@@ -74,7 +74,8 @@ def test_the_signature_is_taken_from_the_middle_of_the_crop() -> None:
     assert signature is not None and signature[0] > 0.7 and signature[1] < 0.15
 
 
-async def test_reference_pictures_are_kept_privately_replaced_by_kind_and_removed(hass: HomeAssistant) -> None:
+async def test_reference_pictures_are_kept_privately_replaced_by_kind_and_removed(hass: HomeAssistant, tmp_path: Path) -> None:
+    hass.config.config_dir = str(tmp_path)
     store = ReferenceStore(hass, "entry_a")
     assert "/.storage/" in str(store.folder) and "www" not in store.folder.parts
     taken = datetime(2026, 10, 7, 12, 0, tzinfo=timezone.utc)
@@ -92,7 +93,7 @@ async def test_reference_pictures_are_kept_privately_replaced_by_kind_and_remove
     again = ReferenceStore(hass, "entry_a")
     await again.async_load()
     assert again.references("car1") == [day, night], "kept across a restart"
-    assert day.as_wire() == {"kind": "day", "taken_at": "2026-10-07T12:00:00+00:00", "colour": True}
+    assert day.as_wire() == {"kind": "day", "taken_at": "2026-10-07T12:00:00+00:00", "colour": True, "stale": False}
 
     assert await again.async_delete("car1", "night") == 1
     assert not Path(again.path(night)).exists()

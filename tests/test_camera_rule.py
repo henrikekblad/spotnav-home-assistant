@@ -102,6 +102,11 @@ def test_a_high_confidence_answer_between_cars_of_different_colours_decides() ->
     assert camera_verdict("ev6", "high", ["ev6", "tesla"], references) == CameraVerdict(decides="ev6", prefers="ev6")
 
 
+def test_at_night_the_camera_never_decides_alone() -> None:
+    references = {"ev6": [RED], "tesla": [WHITE]}
+    assert camera_verdict("ev6", "high", ["ev6", "tesla"], references, in_colour=False) == CameraVerdict(prefers="ev6")
+
+
 def test_between_similar_cars_the_camera_only_orders_the_buttons() -> None:
     references = {"ev6": [DARK_BLUE, None], "ioniq": [DARK_GREY]}
     assert camera_verdict("ev6", "high", ["ev6", "ioniq"], references) == CameraVerdict(prefers="ev6")
