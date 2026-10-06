@@ -3,9 +3,10 @@
 
     .venv/bin/python tools/replay_bundle.py bundle.json [--json] [--charger NAME_OR_ID]
 
-For each charger the report has the shadow's counts, the disagreements and drift it recorded, whether today's core
-decides the recorded events differently from the recording, and whether it differs from the code that ran. Only
-the pure core is imported (no Home Assistant needed, running or installed).
+For each charger the report has the shadow's counts, its tally per event kind kept across restarts (`coverage`, a
+bundle of version 6 or later), the disagreements and drift it recorded, whether today's core decides the recorded
+events differently from the recording, and whether it differs from the code that ran. Only the pure core is imported
+(no Home Assistant needed, running or installed).
 """
 
 from __future__ import annotations
@@ -67,6 +68,7 @@ def analyse(bundle: dict[str, Any], selector: str | None = None) -> list[dict[st
         result.update(
             shadow=True,
             counts=shadow.get("counts") or {},
+            coverage=shadow.get("coverage") if isinstance(shadow.get("coverage"), dict) else None,
             session=shadow.get("session"),
             disagreements=shadow.get("disagreements") or [],
             drift=shadow.get("drift") or [],
@@ -88,6 +90,29 @@ def _fields(fields: dict[str, Any]) -> str:
     return "; ".join(parts)
 
 
+def _coverage_lines(coverage: dict[str, Any] | None) -> list[str]:
+    """The tally per event kind: how many kinds were seen, which never were, and every kind with a disagreement,
+    drift or error."""
+    if coverage is None:
+        return ["  coverage: not in this bundle (before version 6)"]
+    kinds = coverage.get("kinds") if isinstance(coverage.get("kinds"), dict) else {}
+    seen = [kind for kind, counts in kinds.items() if isinstance(counts, dict) and counts.get("events")]
+    never = [kind for kind in kinds if kind not in seen]
+    lines = [f"  coverage since {coverage.get('since')} ({coverage.get('version')}): {len(seen)} of {len(kinds)} "
+             "event kinds seen"]
+    if never:
+        lines.append("    never seen: " + ", ".join(never))
+    for kind, counts in kinds.items():
+        if isinstance(counts, dict) and any(counts.get(name) for name in ("disagreements", "drift", "errors")):
+            lines.append(f"    {kind}: {counts.get('events')} events, {counts.get('compared')} compared, "
+                         f"{counts.get('disagreements')} disagreements, {counts.get('drift')} drift, "
+                         f"{counts.get('errors')} errors")
+    unattributed = coverage.get("unattributed")
+    if isinstance(unattributed, dict) and any(unattributed.values()):
+        lines.append("    no event kind: " + ", ".join(f"{k} {v}" for k, v in unattributed.items() if v))
+    return lines
+
+
 def _context(item: dict[str, Any]) -> str:
     events = item.get("events") or []
     if events and isinstance(events[-1], dict):
@@ -107,6 +132,7 @@ def render(results: list[dict[str, Any]]) -> str:
             continue
         counts = result["counts"]
         lines.append("  counts: " + (", ".join(f"{k} {v}" for k, v in counts.items()) or "none"))
+        lines.extend(_coverage_lines(result["coverage"]))
         lines.append(f"  recorded events replayed: {result['events']}")
         lines.append(f"  disagreements recorded: {len(result['disagreements'])}")
         for item in result["disagreements"]:
@@ -139,7 +165,7 @@ def render(results: list[dict[str, Any]]) -> str:
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Replay a SpotNav debug bundle's ownership events.")
-    parser.add_argument("bundle", help="the debug bundle JSON file (bundle_version 5)")
+    parser.add_argument("bundle", help="the debug bundle JSON file (bundle_version 5 or later)")
     parser.add_argument("--json", action="store_true", help="machine-readable output")
     parser.add_argument("--charger", help="only the charger with this name or entry id")
     args = parser.parse_args(argv)

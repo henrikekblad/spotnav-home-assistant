@@ -102,3 +102,32 @@ def test_the_command_line_prints_json_and_sets_the_exit_code(tmp_path, capsys) -
     assert tool.main([str(path)]) == 1
     capsys.readouterr()
     assert tool.main([str(tmp_path / "missing.json")]) == 2
+
+
+def _coverage() -> dict:
+    zero = {"events": 0, "compared": 0, "disagreements": 0, "drift": 0, "errors": 0, "first_seen": None, "last_seen": None}
+    kinds = {kind: dict(zero) for kind in ev.EVENT_TYPES}
+    kinds["person_stop"] = {**zero, "events": 12, "compared": 12, "disagreements": 1, "first_seen": AT, "last_seen": AT}
+    kinds["unplug"] = {**zero, "events": 30, "compared": 30, "first_seen": AT, "last_seen": AT}
+    return {"since": "2026-10-01T00:00:00+00:00", "version": "1.12.1", "kinds": kinds,
+            "unattributed": {"events": 0, "compared": 3, "disagreements": 0, "drift": 0, "errors": 0}}
+
+
+def test_a_bundle_from_before_the_coverage_tally_still_replays() -> None:
+    garage = tool.analyse(_bundle())[0]
+    assert garage["coverage"] is None and garage["events"] == 2
+    assert "coverage: not in this bundle" in tool.render([garage])
+
+
+def test_a_version_6_bundle_shows_the_coverage_tally() -> None:
+    bundle = _bundle()
+    bundle["bundle_version"] = 6
+    bundle["chargers"][0]["diagnostics"]["controller"]["ownership_shadow"]["coverage"] = _coverage()
+    garage = tool.analyse(bundle)[0]
+    assert garage["coverage"] == _coverage() and garage["events"] == 2 and garage["differs_from_today"] == []
+    text = tool.render([garage])
+    total = len(ev.EVENT_TYPES)
+    assert f"coverage since 2026-10-01T00:00:00+00:00 (1.12.1): 2 of {total} event kinds seen" in text
+    assert "never seen: " in text and "plug_in" in text.split("never seen: ")[1]
+    assert "person_stop: 12 events, 12 compared, 1 disagreements, 0 drift, 0 errors" in text
+    assert "unplug: 30 events" not in text, "only kinds with something to look at are listed"
