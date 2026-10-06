@@ -72,7 +72,10 @@ from ..const import (
     SOLAR_PRIORITY_CAR_FIRST,
 )
 from .site_history import SAMPLE_INTERVAL_S as HISTORY_SAMPLE_INTERVAL_S, SiteHistory
-from ..execution.charger_connection import CHARGING as CONNECTION_CHARGING
+from ..execution.charger_connection import (
+    CHARGING as CONNECTION_CHARGING,
+    UNKNOWN as CONNECTION_UNKNOWN,
+)
 from ..execution.controller import (
     ChargingController,
     CurrentRestore,
@@ -1593,11 +1596,14 @@ class SiteCapacityController:
         self._probe_timer_due = due
         self._probe_timer_cancel = async_call_later(self.hass, max(0.0, due - now) + 1.0, fire)
 
-    def _charger_reports_charging(self, charger_controller: Any) -> bool:
-        """Whether the charger's own status says it charges; never inferred from the start we sent (a
-        charger with only a switch has no status to say it)."""
+    def _charger_reports_charging(self, charger_controller: Any) -> bool | None:
+        """Whether the charger's own status says it charges, or `None` when no status says anything (none
+        configured, unavailable, unknown or unmapped). Never inferred from the start we sent: a charger read
+        through its switch alone has no status to say it."""
         connection, source = charger_controller.connection()
-        return connection == CONNECTION_CHARGING and source is not None
+        if source is None or connection == CONNECTION_UNKNOWN:
+            return None
+        return connection == CONNECTION_CHARGING
 
     def _record_probe_event(
         self,
@@ -1832,6 +1838,9 @@ class SiteCapacityController:
         probe = self._probe_for(charger_entry_id)
         if not probe.may_start(now):
             return False
+        # The status before the start goes out: one that turns to charging while the start is on its way
+        # is the car starting, not a status left over from before.
+        charging_before = self._charger_reports_charging(charger_controller)
         started = await charger_controller.async_battery_probe_start(int(probe_a))
         if not started:
             probe.refused(now, "start_refused")
@@ -1851,7 +1860,7 @@ class SiteCapacityController:
             {phase: float(currents[phase]) for phase in PHASES},
             phases,
             dict(zip(phases, delivered_a)),
-            charger_charging=self._charger_reports_charging(charger_controller),
+            charger_charging=charging_before,
         )
         self._schedule_probe_check(probe.window_s)
         self._record_probe_event(

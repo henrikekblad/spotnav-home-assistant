@@ -658,6 +658,25 @@ async def test_a_slow_car_that_never_reaches_its_minimum_is_stopped_at_90_s(
     assert (snapshot["last_reason"], snapshot["backoff_remaining_s"] > 590.0) == ("car_not_drawing", True)
 
 
+async def test_a_stale_charging_status_that_flickers_unavailable_is_still_no_sign(
+    hass: HomeAssistant, monkeypatch
+) -> None:
+    (controller, charger, calls, yield_clock, damper_clock, site, prefix, cc, turn_off) = (
+        await _paused_site(hass, monkeypatch, "bfflicker")
+    )
+    _connector_status(hass, prefix, "Charging")  # left over from before balancing's pause
+    await controller._async_apply_active_control()
+    hass.states.async_set(f"switch.{prefix}", "on")
+    _connector_status(hass, prefix, "unavailable")  # an OCPP reconnect
+    yield_clock.advance(10.0)
+    await controller._async_apply_active_control()
+    _connector_status(hass, prefix, "Charging")
+    yield_clock.advance(21.0)
+    await controller._async_apply_active_control()
+    assert len(turn_off) == 1
+    assert controller.battery_probe_snapshot[charger.entry_id]["last_reason"] == "car_not_drawing"
+
+
 # -- no probe where it must not start
 
 
