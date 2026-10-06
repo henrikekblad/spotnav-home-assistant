@@ -276,7 +276,7 @@ async def _async_setup_charger_entry(hass: HomeAssistant, entry: ChargerConfigEn
     _async_start_session_recorder(hass, entry, data, controller)
     # Still no register: take the charger's own as soon as its integration registers or reports one.
     async_watch_for_register(hass, entry, controller)
-    _async_start_notifier(hass, entry, data, controller)
+    await _async_start_notifier(hass, entry, data, controller)
     # A charger the flow was asked to add to the site joins it now that its entry id exists.
     await async_apply_site_join(hass, entry)
     # After the join, so the site's wiring and fuse are known to the defaults.
@@ -327,7 +327,7 @@ def _async_start_session_recorder(
     _async_schedule_history_import(hass, entry, data, controller, session_store)
 
 
-def _async_start_notifier(
+async def _async_start_notifier(
     hass: HomeAssistant, entry: ChargerConfigEntry, data: ChargerData, controller: ChargingController
 ) -> None:
     """The charger's notifier: the chosen events to the chosen phones (`notifications/notifier.py`)."""
@@ -351,6 +351,7 @@ def _async_start_notifier(
         currency=_currency,
         push=data.push,
     )
+    await notifier.async_load()
     entry.async_on_unload(notifier.async_shutdown)
     notifier.async_start(data.preview)
 
@@ -500,6 +501,7 @@ async def async_remove_entry(hass: HomeAssistant, entry: ConfigEntry) -> None:
     await async_remove_auto_state(hass, entry.entry_id)
     await SocReader.async_remove_stored(hass, entry.entry_id)
     await ChargerPush.async_remove_stored(hass, entry.entry_id)
+    await ChargerNotifier.async_remove_stored(hass, entry.entry_id)
     await OwnershipCoverage.async_remove_stored(hass, entry.entry_id)
     session_store = domain_data(hass).session_store
     if session_store is not None:

@@ -22,12 +22,14 @@ of events and their own limits, whether or not any phone is chosen here.
 
 from __future__ import annotations
 
+import json
 import logging
 from collections import deque
 from datetime import datetime, timedelta
 from typing import Any, Callable, Final
 
 from homeassistant.core import callback, CALLBACK_TYPE, HomeAssistant
+from homeassistant.helpers.storage import Store
 from homeassistant.helpers.event import async_track_point_in_utc_time
 from homeassistant.util import dt as dt_util
 
@@ -45,12 +47,16 @@ from ..execution.controller import ChargingController
 from ..planning.auto_controller import AutoSnapshot
 from ..planning.auto_settings import AutoSettingsStore
 from ..sessions.store import SessionStore
+from ..const import DOMAIN
 from .messages import compose, EVENT_TEST, language_of, Money
 from .push import ChargerPush
 from .settings import EVENT_CHARGE_COMPLETE, EVENT_PLAN_STOPPED, NOTIFY_DOMAIN
 from .unexpected_stop import ExpectationFacts, UnexpectedStopDetector
 
 _LOGGER = logging.getLogger(__name__)
+
+_STORE_VERSION: Final = 1
+_STORE_KEY_PREFIX: Final = f"{DOMAIN}.notified_plan"
 
 #: The same event for the same charger is not sent again within this long.
 REPEAT_S: Final = 15 * 60.0
@@ -77,6 +83,21 @@ _TRACKED: Final = (
 
 def _local_time(moment: datetime | None) -> str | None:
     return None if moment is None else dt_util.as_local(moment).strftime("%H:%M")
+
+
+def plan_fingerprint(plan: Any) -> str | None:
+    """What a person sees of a plan: its periods, the energy planned (to 0.1 kWh) and the target vehicle.
+
+    Not the plan's Auto identity, which also changes with the settings revision and price identity
+    without the plan itself changing.
+    """
+    if plan is None:
+        return None
+    periods = plan.periods or [{"start": plan.start, "end": plan.end}]
+    energy = None if plan.energy_kwh is None else round(plan.energy_kwh, 1)
+    return json.dumps(
+        [[[item["start"], item["end"]] for item in periods], energy, plan.vehicle_id], separators=(",", ":")
+    )
 
 
 class ChargerNotifier:
@@ -113,6 +134,26 @@ class ChargerNotifier:
         self._last_sent: dict[str, datetime] = {}
         self._sent_times: deque[datetime] = deque()
         self._unsubscribe: list[CALLBACK_TYPE] = []
+        # The fingerprint of the plan last told about, kept across restarts (see `plan_fingerprint`).
+        self._plan_store: Store[dict[str, Any]] = Store(hass, _STORE_VERSION, f"{_STORE_KEY_PREFIX}.{entry_id}")
+        self._notified_plan: str | None = None
+
+    async def async_load(self) -> None:
+        """Read the last told plan's fingerprint, before `async_start`."""
+        raw = await self._plan_store.async_load()
+        fingerprint = raw.get("fingerprint") if isinstance(raw, dict) else None
+        self._notified_plan = fingerprint if isinstance(fingerprint, str) else None
+
+    @staticmethod
+    async def async_remove_stored(hass: HomeAssistant, entry_id: str) -> None:
+        """The charger is gone for good: forget the plan it last told about."""
+        await Store(hass, _STORE_VERSION, f"{_STORE_KEY_PREFIX}.{entry_id}").async_remove()
+
+    def _remember_plan(self, fingerprint: str | None) -> None:
+        if fingerprint is None or fingerprint == self._notified_plan:
+            return
+        self._notified_plan = fingerprint
+        self._hass.async_create_task(self._plan_store.async_save({"fingerprint": fingerprint}), eager_start=True)
 
     @callback
     def async_start(self, preview: Any = None) -> None:
@@ -243,9 +284,15 @@ class ChargerNotifier:
             if written is not None and 0 <= (now - written).total_seconds() < QUIET_AFTER_WRITE_S:
                 # A person just changed this charger's settings and sees the plan that followed.
                 return
+        fingerprint = plan_fingerprint(self._controller.plan) if event == EVENT_PLAN_INSTALLED else None
+        if fingerprint is not None and fingerprint == self._notified_plan:
+            # The same plan as the one last told about (Home Assistant restarted, or it was calculated
+            # again to the same result): nothing new for a person.
+            return
         if self._push is not None:
             # The paired app's wake-up, with its own events and limits, whatever phones are chosen here.
-            self._push.async_event(event, now)
+            if self._push.async_event(event, now):
+                self._remember_plan(fingerprint)
         notifications = self._store.settings(self._entry_id).notifications
         if not notifications.wants(event):
             return
@@ -274,6 +321,7 @@ class ChargerNotifier:
             return
         self._last_sent[repeat_key] = now
         self._sent_times.append(now)
+        self._remember_plan(fingerprint)
         title, message = compose(
             event, self._name(), self._facts_for(event, attributes), language_of(self._hass.config.language)
         )

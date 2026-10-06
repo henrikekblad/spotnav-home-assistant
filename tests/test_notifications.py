@@ -542,3 +542,81 @@ async def test_a_websocket_write_quiets_the_plan_too(hass: HomeAssistant, freeze
     await controller.async_install(_window_now(amps=12))
     await hass.async_block_till_done()
     assert _installs(calls) == []
+
+
+# ------------------------------------------------------------------ the same plan is not told again
+
+
+def _plan_at(hour: int = 1, amps: int = 10, **changes: Any) -> ChargingPlan:
+    # A fixed day a while ahead, so two calls minutes apart still describe the same plan.
+    base = datetime(2100, 1, 1, tzinfo=timezone.utc) + timedelta(hours=hour)
+    start, end = base, base + timedelta(hours=2)
+    return ChargingPlan(
+        start=start.isoformat(),
+        end=end.isoformat(),
+        amps=amps,
+        energy_kwh=changes.pop("energy_kwh", 12.0),
+        periods=[{"start": start.isoformat(), "end": end.isoformat()}],
+        **changes,
+    )
+
+
+async def _restart(hass: HomeAssistant, freezer: Any, entry: MockConfigEntry) -> Any:
+    assert await hass.config_entries.async_reload(entry.entry_id)
+    await hass.async_block_till_done()
+    await _later(hass, freezer, 120)
+    return controller_of(hass, entry.entry_id)
+
+
+async def test_a_restart_with_the_same_plan_is_not_a_new_plan(hass: HomeAssistant, freezer: Any) -> None:
+    entry, calls, controller = await _quiet_charger(hass, freezer)
+    await controller.async_install(_plan_at())
+    await hass.async_block_till_done()
+    assert len(_installs(calls)) == 1
+    controller = await _restart(hass, freezer, entry)
+    # Calculated again after the restart: another amperage and identity, the same periods and energy.
+    await controller.async_install(_plan_at(amps=16, auto_identity="a" * 32))
+    await hass.async_block_till_done()
+    assert len(_installs(calls)) == 1
+
+
+@pytest.mark.parametrize(
+    "changed",
+    [
+        {"hour": 3},
+        {"energy_kwh": 20.0},
+        {"vehicle_id": "other_car"},
+    ],
+)
+async def test_a_restart_with_a_changed_plan_is_a_new_plan(
+    hass: HomeAssistant, freezer: Any, changed: dict[str, Any]
+) -> None:
+    entry, calls, controller = await _quiet_charger(hass, freezer)
+    await controller.async_install(_plan_at())
+    await hass.async_block_till_done()
+    controller = await _restart(hass, freezer, entry)
+    await controller.async_install(_plan_at(amps=16, **changed))
+    await hass.async_block_till_done()
+    assert len(_installs(calls)) == 2
+
+
+async def test_the_told_plan_is_kept_across_a_reload(hass: HomeAssistant, freezer: Any, hass_storage: dict) -> None:
+    entry, calls, controller = await _quiet_charger(hass, freezer)
+    key = f"spotnav.notified_plan.{entry.entry_id}"
+    assert key not in hass_storage
+    await controller.async_install(_plan_at())
+    await hass.async_block_till_done()
+    fingerprint = hass_storage[key]["data"]["fingerprint"]
+    assert fingerprint
+    await _restart(hass, freezer, entry)
+    assert entry.runtime_data.notifier._notified_plan == fingerprint
+
+
+async def test_a_plan_that_was_not_told_is_not_remembered(hass: HomeAssistant, freezer: Any, hass_storage: dict) -> None:
+    entry, calls, controller = await _quiet_charger(hass, freezer)
+    await _write_amps(hass, entry.entry_id)
+    await _later(hass, freezer, 5)
+    await controller.async_install(_plan_at())
+    await hass.async_block_till_done()
+    assert _installs(calls) == []
+    assert f"spotnav.notified_plan.{entry.entry_id}" not in hass_storage
