@@ -798,6 +798,7 @@ export const nb: Record<keyof typeof en, string> = {
   "notifications.dialogTitle": "Varsler",
   "notifications.intro": "SpotNav sender de valgte hendelsene til Home Assistant-appen på de valgte telefonene. Et trykk åpner dette dashbordet.",
   "notifications.noPhones": "Ingen telefon med Home Assistant-appen er logget inn i denne Home Assistant.",
+  "notifications.noRecipients": "Ingen mottakere valgt – denne laderen sender ingen varsler.",
   "notifications.missing": "{name} (ikke funnet)",
   "notifications.event.planStopped": "Ladingen stoppet eller startet ikke som planlagt",
   "notifications.event.planAtRisk": "Ladingen blir ikke ferdig til avreise",

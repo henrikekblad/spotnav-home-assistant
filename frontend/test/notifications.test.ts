@@ -6,8 +6,8 @@ import { join } from "node:path";
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { translate } from "../src/i18n";
-import { notificationsSummary } from "../src/notifications";
+import { LANGUAGES, translate } from "../src/i18n";
+import { noRecipientsHint, notificationsSummary } from "../src/notifications";
 import { decodeSettingsRecord, encodeBody, notificationsReplacement, NOTIFICATION_EVENTS } from "../src/settings";
 import { SETTINGS_API_VERSION, type NotificationsRecord, type SettingsRecord } from "../src/types";
 import { FakeHass, mountCard } from "./helpers";
@@ -224,5 +224,41 @@ describe("the Notifications section", () => {
     const { element } = await mounted(payload);
     openSettings(element);
     expect(openDialog(element)!.querySelector("[data-section='notifications']")).toBeNull();
+  });
+});
+
+describe("the hint for events on and no recipients", () => {
+  it("is given only when events are on and no phone is chosen", () => {
+    const text = translate("en", "notifications.noRecipients");
+    expect(text).toBe("No recipients chosen \u2013 this charger sends no notifications.");
+    expect(noRecipientsHint("en", notifications())).toBe(text);
+    expect(noRecipientsHint("en", notifications({ targets: ["mobile_app_ipad"] }))).toBeNull();
+    expect(noRecipientsHint("en", notifications({ events: [] }))).toBeNull();
+    expect(translate("sv", "notifications.noRecipients")).toBe(
+      "Inga mottagare valda \u2013 den h\u00e4r laddaren skickar inga notiser.",
+    );
+    for (const language of LANGUAGES) {
+      expect(translate(language, "notifications.noRecipients").length).toBeGreaterThan(10);
+    }
+  });
+
+  it("shows in the Notifications section and its dialog, and not once a phone is chosen", async () => {
+    const hint = translate("en", "notifications.noRecipients");
+    const { element } = await mounted(withNotifications(notifications()));
+    openSettings(element);
+    const section = openDialog(element)!.querySelector<HTMLElement>("[data-section='notifications']")!;
+    expect(section.querySelector("[data-notice='notifications_no_targets']")?.textContent).toBe(hint);
+    section.querySelector<HTMLButtonElement>("[data-edit-notifications]")!.click();
+    expect(openDialog(element)!.querySelector("[data-notice='notifications_no_targets']")?.textContent).toBe(hint);
+
+    const chosen = await mounted(withNotifications(notifications({ targets: ["mobile_app_pixel_8"] })));
+    openSettings(chosen.element);
+    expect(openDialog(chosen.element)!.querySelector("[data-notice='notifications_no_targets']")).toBeNull();
+  });
+
+  it("is not given when no event is on", async () => {
+    const { element } = await mounted(withNotifications(notifications({ events: [] })));
+    openSettings(element);
+    expect(openDialog(element)!.querySelector("[data-notice='notifications_no_targets']")).toBeNull();
   });
 });
