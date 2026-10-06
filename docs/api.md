@@ -185,7 +185,7 @@ reads. Its main blocks: `charger` (identity, availability and `capabilities`), `
 `settings` (the canonical record with `revision`), `fiscal`, `market`, `prices` (the price
 intervals), `plan` and `planning` (proposal, installed plan, and why), `control` (the immediate
 action and the automatic action, with pause choices), `live`, `status` (typed status lines), `strategy`
-and `strategy_state`, `vehicles` and `soc`, `site`, `charging_phases`, `phase_detection`, `charge_progress`.
+and `strategy_state`, `vehicles` and `soc`, `site`, `charging_phases`, `phase_detection`, `charge_progress`, `progress`.
 Example documents are in `tests/fixtures/dashboard/`.
 
 **A person's own pause.** A Start or Stop pauses automatic execution for the plug-in session: the
@@ -321,6 +321,40 @@ per charger integration (an OCPP connector's status, Easee's `status`, Zaptec's 
 Wallbox's `status_description`, and the others with a status sensor); a value not listed is `unknown`, never
 a guess, and a charger that is only a switch is `charging` while the switch is on and `unknown` otherwise.
 A client shows nothing for `unknown` and ignores a state it does not know.
+
+The additive `progress` block says how far a running charge has come and when it ends, decided once in Home
+Assistant so the card and the app draw the same bar; `null` while no charge runs (`live.charging` false),
+while `starting_up` is on, and for a `connection` of `disconnected`, `finished` or `error`:
+
+    {"basis": "target" | "energy" | "vehicle_limit" | "open", "percent": 0-100 | null,
+     "ends_at": ISO | null, "power_kw": kW | null, "power_source": "measured" | "planned" | null,
+     "moving": bool, "start_soc_percent": % | null, "started_at": ISO | null, "delivered_kwh": kWh | null}
+
+The plan drives the charge when an installed period holds now and no pause stands; then the driver counts:
+`target` is the car's level as a share of the target (rounded, never above the car's own limit), the end
+from `soc.need_kwh`; Fill is `vehicle_limit`, the level as a share of the car's limit (else 100 %), the end
+from `soc.room_kwh`; a fixed amount is `energy`, `plan.delivered_kwh` over the whole amount (`delivered_kwh +
+remaining_kwh`, else the requested amount), with no block without `delivered_kwh`. Any other running charge
+(a person's Start, a charge under a scheduled pause, one the charger began itself, a solar charge outside
+the periods) counts to the car's own limit as `vehicle_limit`, its end from the battery's room; with no
+level it is `open` (no `percent`, no `ends_at`). `percent` is rounded down. `ends_at` (UTC) is laid along
+the installed periods while the plan drives and never falls after the last one, else a straight line from
+now; it is `null` for solar and hybrid unless a person started the charge, while the charge stands still,
+with nothing left, or with no power known. `moving` is true while current flows: the connection is
+`charging` (or `unknown`), the car is not seen asking for no current, and a measured current or power is
+not near zero. `power_kw` (only while moving) is measured when the charger measures it (`power_source:
+measured`), else what SpotNav assigned now, the installed schedule's power or current, the proposal's power
+or the settings' current (`planned`). `start_soc_percent`, `started_at` and `delivered_kwh` come from the
+open charge session: the car's level when it opened, when that was, and the energy measured since (`null`
+for a session whose energy is an estimate). An older backend has no block; a client then shows none.
+
+`live.measured_current_a` is the current the charger draws now (its highest phase), `null` where nothing
+measures it: an OCPP connector's current import; the measured-current sensors of Easee (`current`), Zaptec,
+go-e (API v2 and MQTT), Peblar, NRGkick, Charge Amps, Lektrico and the Tesla Wall Connector when the charger
+was set up with them; else, for a charger in a site, the per-phase measurement the site reads for it (an
+Easee's terminal attributes, or any three current entities). A charger behind a smart plug has no current,
+but its power sensor is the measured `power_kw`. Wallbox, Ohme, myenergi, Alfen, ABB, SmartEVSE, Webasto
+Next and the others with no current sensor in their integration have only the planned power.
 
 The additive `starting_up` block, `{active, until, waiting_for}`, says the integration loaded a moment ago and
 a source is still awaited: a configured solar forecast that has not loaded (`forecast`, only for the hybrid

@@ -67,7 +67,10 @@ _FIELDS: Final = frozenset(
 #: Written only when set: an imported session's `source`, the market's `area_id`, and (only for a record
 #: without intervals) the cost it was stored with.
 _OPTIONAL_FIELDS: Final = frozenset(
-    {"source", "area_id", "intervals", "legacy_priced_kwh", "legacy_cost_minor", "legacy_reference_cost_minor"}
+    {
+        "source", "area_id", "intervals", "legacy_priced_kwh", "legacy_cost_minor", "legacy_reference_cost_minor",
+        "start_soc_percent",
+    }
 )
 #: What a record written before intervals existed carried instead.
 _PRE_INTERVAL_FIELDS: Final = frozenset({"priced_kwh", "cost_minor", "reference_cost_minor"})
@@ -130,6 +133,8 @@ class ChargeSession:
     intervals: tuple[Slice, ...] = ()
     #: The market the prices are from (for the fiscal settings of that market).
     area_id: str | None = None
+    #: Open sessions only: the car's level when the charge began (the dashboard's `progress` block).
+    start_soc_percent: float | None = None
 
     @property
     def cost_basis(self) -> str:
@@ -213,6 +218,8 @@ class ChargeSession:
             record["source"] = self.source
         if self.area_id is not None:
             record["area_id"] = self.area_id
+        if self.start_soc_percent is not None:
+            record["start_soc_percent"] = self.start_soc_percent
         return record
 
     @classmethod
@@ -225,8 +232,11 @@ class ChargeSession:
             return None
         source = raw.get("source")
         area_id = raw.get("area_id")
-        if (source is not None and source not in IMPORT_SOURCES) or (
-            area_id is not None and not isinstance(area_id, str)
+        start_soc = raw.get("start_soc_percent")
+        if (
+            (source is not None and source not in IMPORT_SOURCES)
+            or (area_id is not None and not isinstance(area_id, str))
+            or (start_soc is not None and _number(start_soc) is None)
         ):
             return None
         # The cost the record was written with: only a record that has no intervals has one.
@@ -304,6 +314,7 @@ class ChargeSession:
             source=source,
             intervals=tuple(intervals),
             area_id=area_id,
+            start_soc_percent=None if start_soc is None else _number(start_soc),
         )
 
     def public(self, zone: tzinfo | None = None) -> dict[str, Any]:

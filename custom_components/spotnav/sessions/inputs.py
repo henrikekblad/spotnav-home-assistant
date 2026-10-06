@@ -23,7 +23,7 @@ from ..planning.auto_settings import STRATEGY_HYBRID, STRATEGY_SOLAR
 from ..planning.grid_voltage import voltage_between_phases_v
 from ..planning.planner import FiscalChoice, power_kw
 from ..pricing.price_repository import PriceRepository
-from ..runtime import domain_data
+from ..runtime import charger_data, domain_data
 from ..planning.phases import charger_wiring, charging_phases
 from ..site.phase_detection import async_detect_phases
 from ..vehicles.vehicle_discovery import resolve_target_vehicle
@@ -87,6 +87,19 @@ def session_facts(hass: HomeAssistant, controller: ChargingController) -> Sessio
         vehicle_name=vehicle_name,
         solar_share=solar_share_of(hass, charger_id, strategy),
     )
+
+
+def soc_percent_now(hass: HomeAssistant, charger_id: str) -> float | None:
+    """The planned car's level now as the `soc` block states it (a fresh reading, else the estimate), or
+    `None`: read once when a session opens, so the running charge's bar can say where it began."""
+    data = charger_data(hass, charger_id)
+    store = domain_data(hass).auto_store
+    reader = None if data is None else data.soc_reader
+    if reader is None or store is None:
+        return None
+    vehicle_id, _ = resolve_target_vehicle(hass, store.settings(charger_id).target.vehicle_id)
+    reading = reader.read(vehicle_id)
+    return None if reading is None else reading.soc_percent
 
 
 @dataclass(frozen=True, slots=True)

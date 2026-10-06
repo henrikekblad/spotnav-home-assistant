@@ -126,6 +126,7 @@ import {
   type SettingsRecord,
 } from "./types";
 import { decodeDashboard, type Dashboard, type Soc, type Vehicle } from "./validate";
+import { OUTCOME_POLL_MS, outcomeSettled, outcomeWatchFor, type OutcomeWatch } from "./charge-bar";
 import { parseCardConfig, type CardConfig } from "./view";
 import { browserStore, initialChartCollapsed, readChartCollapsed, writeChartCollapsed } from "./chart-preference";
 import { VISUAL_CLASSES, VISUAL_STYLES } from "./visual-styles";
@@ -194,6 +195,9 @@ export class SpotnavCard extends HTMLElement {
   private config: CardConfig | null = null;
   private cardState: CardState = { kind: "unconfigured" };
   private timer: number | null = null;
+  /** After a Start or Stop: the outcome awaited, and the quicker reads until it shows (`charge-bar.ts`). */
+  private outcomeWatch: OutcomeWatch | null = null;
+  private outcomeTimer: number | null = null;
   private connected = false;
   private assigned = false;
   private generation = 0;
@@ -251,6 +255,7 @@ export class SpotnavCard extends HTMLElement {
   }
 
   setConfig(config: unknown): void {
+    this.stopOutcomeWatch();
     this.config = parseCardConfig(config);
     this.chartCollapsed = null;
     this.generation += 1;
@@ -384,6 +389,41 @@ export class SpotnavCard extends HTMLElement {
       window.clearInterval(this.timer);
       this.timer = null;
     }
+    this.stopOutcomeWatch();
+  }
+
+  /**
+   * While a Start or Stop has not shown yet, read every `OUTCOME_POLL_MS`; once `live.charging` reads as
+   * asked, or after `OUTCOME_WINDOW_MS`, only the ordinary cycle remains.
+   */
+  private followOutcome(): void {
+    const watch = this.outcomeWatch;
+    if (watch === null) {
+      return;
+    }
+    const dashboard = this.cardState.kind === "ready" ? this.cardState.dashboard : null;
+    if (!this.connected || outcomeSettled(watch, dashboard, Date.now())) {
+      this.stopOutcomeWatch();
+      return;
+    }
+    if (this.outcomeTimer === null) {
+      this.outcomeTimer = window.setInterval(() => {
+        const current = this.outcomeWatch;
+        if (current === null || outcomeSettled(current, null, Date.now())) {
+          this.stopOutcomeWatch();
+          return;
+        }
+        void this.refresh();
+      }, OUTCOME_POLL_MS);
+    }
+  }
+
+  private stopOutcomeWatch(): void {
+    this.outcomeWatch = null;
+    if (this.outcomeTimer !== null) {
+      window.clearInterval(this.outcomeTimer);
+      this.outcomeTimer = null;
+    }
   }
 
   /**
@@ -474,7 +514,10 @@ export class SpotnavCard extends HTMLElement {
       if (result.ok) {
         confirmed = true;
         this.deferredRefresh = false;
+        this.stopOutcomeWatch();
+        this.outcomeWatch = outcomeWatchFor(action, Date.now());
         await this.refresh({ purpose: "confirm" });
+        this.followOutcome();
         return;
       }
       this.view?.setActionError({ sentenceKey: actionErrorKey(result.error), code: result.error });
@@ -1953,6 +1996,7 @@ export class SpotnavCard extends HTMLElement {
     }
     this.cardState = next;
     this.render();
+    this.followOutcome();
   }
 
   private accepts(charger: string, generation: number, attempt: number): boolean {

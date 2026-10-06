@@ -124,7 +124,7 @@
   "generated_at": "2026-09-22T06:00:00+00:00",
   "live": {
     "charging": false,
-    "measured_current_a": null,
+    "measured_current_a": 0.0,
     "requested_current_a": null,
     "schedule_active": true,
     "setpoint_current_a": null
@@ -2171,6 +2171,7 @@
     "unpriced_slots": 0,
     "waiting_for_tomorrow": false
   },
+  "progress": null,
   "sessions_summary": {
     "last_month": {
       "average_price_minor_per_kwh": null,

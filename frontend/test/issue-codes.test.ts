@@ -164,10 +164,10 @@ describe("every status code the backend composes is decoded and worded", () => {
     expect(say("start", "resume")).toContain("full or you resume automatic charging");
     expect(say("stop", "unplug", "sv")).toBe("Stoppad manuellt – tills bilen kopplas ur.");
     expect(say("start", "unplug", "sv")).toBe("Laddar manuellt – tills bilen är full eller kopplas ur.");
-    // Any other pause reads as it always did.
+    // Any other pause is the schedule's: it says so, so a charge running beside it does not read as paused.
     expect(
       lineText({ code: "paused", params: { until: null, choice: "until_resumed", action: null, ends: null } } as StatusLine, FORMAT, NOW),
-    ).toBe("Paused until you resume.");
+    ).toBe("Schedule paused until you resume.");
   });
 
   it.each(STATUS_CODES)("%s has a wording in every language", (code) => {
@@ -189,7 +189,12 @@ describe("every status code the backend composes is decoded and worded", () => {
       for (const language of LANGUAGES) {
         const worded = lineText(empty, { ...FORMAT, language }, NOW);
         expect(worded, `${language} ${code}`).not.toMatch(/\{\w+\}/u);
-        expect(worded, `${language} ${code}`).not.toContain(code);
+        // A raw code is never shown; a one-word code ("paused") may still be a word of the sentence.
+        if (code.includes("_")) {
+          expect(worded, `${language} ${code}`).not.toContain(code);
+        } else {
+          expect(worded, `${language} ${code}`).not.toBe(code);
+        }
       }
     }
   });

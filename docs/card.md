@@ -81,7 +81,7 @@ serious each is. Examples:
 | Charging is scheduled from 02:00. / Planned from 02:00. | The installed plan, or a plan that is proposed. |
 | A new charging proposal is ready. | A newer proposal exists and is not installed yet. |
 | Charging now; scheduled until 05:30. | A charge is running inside a planned period. |
-| Automatic charging is paused. / Paused until 07:00. | A pause is in effect. |
+| Automatic charging is paused. / Schedule paused until 07:00. | A pause of the schedule is in effect (a charge may still run beside it). |
 | Stopped manually – until the car is unplugged. / Charging manually – until the car is full or unplugged. | You pressed Stop or Start: automatic charging is paused for this plug-in. A Stop given with no car plugged in reads *until the next plug-in ends*; on a charger that cannot tell when a car is plugged in, *until you resume automatic charging*. |
 | Stopped at 80 % (estimated, reading 40 min old) | The target was reached; shows the level the charge stopped at and how old or estimated it was. |
 | Charging is limited to 10 A by the site's load balancing. | Active load balancing has lowered the current. |

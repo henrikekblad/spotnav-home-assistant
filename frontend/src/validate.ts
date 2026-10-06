@@ -264,6 +264,28 @@ export interface Dashboard {
   starting_up: StartingUp | null;
   /** The charger's place in its site's allocation order; `null` without a site or when unreadable. */
   charger_priority: ChargerPriority | null;
+  /** The running charge's progress as Home Assistant decided it; `null` with no charge, or from an older backend. */
+  progress: ChargeBarBlock | null;
+}
+
+export const CHARGE_BAR_BASES = ["target", "energy", "vehicle_limit", "open"] as const;
+export type ChargeBarBasis = (typeof CHARGE_BAR_BASES)[number];
+
+/**
+ * The `progress` block (`api/charge_bar.py`): the share done (`percent`, `null` for the open bar), the
+ * expected end, the power the charge runs at, and whether current flows (`moving`). Read leniently: a
+ * key it does not know is ignored.
+ */
+export interface ChargeBarBlock {
+  basis: ChargeBarBasis;
+  percent: number | null;
+  ends_at_ms: number | null;
+  power_kw: number | null;
+  power_source: string | null;
+  moving: boolean;
+  start_soc_percent: number | null;
+  started_at_ms: number | null;
+  delivered_kwh: number | null;
 }
 
 /** The `charger_priority` block: the selected priority, the choices and whether it can be written. */
@@ -1471,6 +1493,7 @@ export function decodeDashboard(raw: unknown): DecodeResult {
         connection: connectionOrNull(root),
         starting_up: startingUpOrNull(root),
         charger_priority: chargerPriorityOrNull(root),
+        progress: chargeBarOrNull(root),
       },
     };
   } catch {
@@ -1515,7 +1538,49 @@ const DASHBOARD_KEYS = [
  * is accepted and never read (the card's History view asks `spotnav/get_sessions`). `charger_priority`
  * is read tolerantly for the settings overview; the card edits it in the entity configuration.
  */
-const OPTIONAL_DASHBOARD_KEYS = ["sessions_summary", "connection", "starting_up", "charger_priority"] as const;
+const OPTIONAL_DASHBOARD_KEYS = ["sessions_summary", "connection", "starting_up", "charger_priority", "progress"] as const;
+
+/**
+ * The `progress` block, or `null` when it is missing, null or unreadable: the card then draws no bar and
+ * shows the connection line as before. Independent like `connection`; extra keys are ignored.
+ */
+function chargeBarOrNull(root: Record<string, unknown>): ChargeBarBlock | null {
+  const value = root.progress;
+  if (!isRecord(value)) {
+    return null;
+  }
+  try {
+    const basis = text(value, "basis");
+    if (!(CHARGE_BAR_BASES as readonly string[]).includes(basis)) {
+      return null;
+    }
+    const percent = numberOrNull(value, "percent");
+    if (percent !== null && (!Number.isInteger(percent) || percent < 0 || percent > 100)) {
+      return null;
+    }
+    if ((basis === "open") !== (percent === null)) {
+      return null;
+    }
+    const moment = (key: string): number | null => (required(value, key) === null ? null : instantMs(value[key]));
+    const positive = (key: string): number | null => {
+      const number = numberOrNull(value, key);
+      return number === null || number < 0 ? null : number;
+    };
+    return {
+      basis: basis as ChargeBarBasis,
+      percent,
+      ends_at_ms: moment("ends_at"),
+      power_kw: positive("power_kw"),
+      power_source: textOrNull(value, "power_source"),
+      moving: booleanValue(value, "moving"),
+      start_soc_percent: positive("start_soc_percent"),
+      started_at_ms: moment("started_at"),
+      delivered_kwh: positive("delivered_kwh"),
+    };
+  } catch {
+    return null;
+  }
+}
 
 /**
  * The `connection`, or `null` when the block is missing or unreadable. Independent like `charge_progress`:
