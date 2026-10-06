@@ -652,6 +652,26 @@ class SolarExecutionCoordinator:
     def state(self) -> SolarExecutionState | None:
         return self._state
 
+    def sun_keeps_charge(self) -> bool:
+        """Whether the sun's rules keep the charge that runs now, for a strategy change to `solar` that would
+        otherwise stop it (`AutoExecutor._sun_keeps_charge`). Read without side effects on what this coordinator
+        decides. Running beside the plan (hybrid) the sun has its own state: `on` or `disarming` keeps it, as at a
+        window's end (the hybrid hand-off). Off `cheapest` it has none yet: the rule for a charge that runs decides on
+        the reading the site has now (`SolarController.keeps_running`), and the battery-credit back-off counts."""
+        site = self._site
+        controller = self._controller
+        if site is None or not controller.restored or not controller.charge_control_on:
+            return False
+        state = self._state
+        if state is not None:
+            return self._solar is not None and state.state in ("on", "disarming")
+        solar = SolarController(self._solar_config(site))
+        now = self._now()
+        until, next_s = controller.solar_credit_backoff
+        remaining = None if until is None else (until - dt_util.utcnow()).total_seconds()
+        solar.seed_credit_backoff(now, remaining, next_s)
+        return solar.keeps_running(self._observation(site, now))
+
     def async_start(self) -> None:
         """(Re)subscribe to this charger's site and evaluate once immediately.
 
@@ -767,10 +787,14 @@ class SolarExecutionCoordinator:
                 and not self._took_over
             ):
                 # Solar itself was driving this charge (never while `held_by_plan`, when a plan window
-                # was running it, nor a charge the charger began by itself that solar took over).
-                if not await self._executor.async_solar_stop():
+                # was running it, nor a charge the charger began by itself that solar took over). One a plan window
+                # open now has taken over is the plan's (`AutoExecutor.async_solar_leave`).
+                if not await self._executor.async_solar_leave():
                     self._stop_owed = True
-                self._record_decision(state="off", action="stop", reason="strategy_left")
+                if self._controller.charge_origin == "plan_window":
+                    self._record_decision(state="off", action="hold", reason="handed_to_plan")
+                else:
+                    self._record_decision(state="off", action="stop", reason="strategy_left")
             elif self._state is not None:
                 self._record_decision(state="off", action="hold", reason="strategy_left")
             self._solar = None
@@ -818,6 +842,10 @@ class SolarExecutionCoordinator:
 
         if self._solar is None:
             self._solar = self._build_controller(site)
+        elif not held_by_plan and self._state is not None and self._state.held_by_plan:
+            # A plan window held the charge until now (its end handed it over, or the strategy left the plan): what
+            # the sun asked for meanwhile was never written, so its next modulation writes again.
+            self._solar.release_request()
         if not held_by_plan:
             if await self._adopt_solar_charge(site, self._solar):
                 # Solar's own charge resumed by load balancing was decided this tick (kept or stopped).

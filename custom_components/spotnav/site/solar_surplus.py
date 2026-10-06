@@ -525,6 +525,27 @@ class SolarController:
         self._verify_until = None
         self._credited_start = False
 
+    def keeps_running(self, observation: SolarObservation) -> bool:
+        """Whether, on this observation, the rule for a charge that runs keeps one going: the surplus (the car's own
+        draw counted in, a charging battery under `car_first` as `observe` counts it) at or above the stop level.
+        No usable reading, or no reading of the charger's own current, keeps nothing. Changes no state but the
+        diagnostics this observation refreshes."""
+        cfg = self._config
+        assert cfg.stop_a is not None
+        if self._charger_measurement_missing(observation):
+            return False
+        available_a = self._refresh_breakdown(observation)
+        return available_a is not None and available_a >= cfg.stop_a
+
+    def release_request(self) -> None:
+        """What this controller decided was not carried out (a plan window held the charge, which it now hands
+        over): the current it last asked for was never written, and a start it decided never went out, so there
+        is nothing to verify. Its next modulation writes what the surplus carries, whatever the charger was given
+        meanwhile."""
+        self._last_requested_a = None
+        self._verify_until = None
+        self._credited_start = False
+
     def take_over(self, observation: SolarObservation, *, wait_for_reading: bool = False) -> SolarVerdict:
         """Decide at once, on this observation, a charge the charger began by itself (at plug-in, say)
         while this controller runs none (module docstring). It never had a surplus, so there is no cloud

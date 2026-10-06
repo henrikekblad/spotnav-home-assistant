@@ -19,6 +19,7 @@ from custom_components.spotnav.planning.auto_settings import (
     TargetSocIntent,
 )
 from custom_components.spotnav.const import (
+    CONF_CHARGE_CONTROL,
     CONF_MEASURED_CURRENT_SOURCE,
     CONF_MODE,
     DOMAIN,
@@ -225,6 +226,8 @@ async def solar_setup(
     strategy: str = STRATEGY_SOLAR,
     battery_entity: str | None = None,
     ocpp_target: tuple[str, int] | None = None,
+    charger_config: dict[str, Any] | None = None,
+    phase: str | None = None,
 ) -> tuple[object, object, object, SolarExecutionCoordinator, SecondsClock, list, list]:
     """One charger, set up *before* its site -- the common real/test ordering
     (`SolarExecutionCoordinator.async_start`'s own docstring) -- with its strategy already
@@ -245,19 +248,24 @@ async def solar_setup(
     `battery_entity` wires a home battery's aggregate power (positive = charging) into the site.
     `ocpp_target` (charge point id, connector) gives the charger an OCPP connector, whose status and
     current-import sensors the test then sets (`sensor.<cpid>_connector_<n>_status_connector`).
+    `charger_config` stores a detected charger's own data (an Easee's paths and status sensor, say) in place
+    of the plain switch, and `phase` wires the charger to that one phase instead of all three.
     """
     prefix = f"{entry_id}_charger"
     hass.states.async_set(f"switch.{prefix}", "on" if charging_at_setup else "off")
 
+    extra: dict[str, Any] | None = None if ocpp_target is None else {CONF_MODE: MODE_OCPP}
+    if charger_config is not None:
+        extra = {**charger_config, **(extra or {})}
     charger = make_entry(
         hass,
         entry_id=prefix,
-        charge_control=f"switch.{prefix}",
+        charge_control=f"switch.{prefix}" if charger_config is None else charger_config[CONF_CHARGE_CONTROL],
         current_limit=None,
         webhook_id=f"webhook-{entry_id}",
         title="Solar charger",
         ocpp_target=ocpp_target,
-        extra=None if ocpp_target is None else {CONF_MODE: MODE_OCPP},
+        extra=extra,
     )
     assert await hass.config_entries.async_setup(charger.entry_id)
     await hass.async_block_till_done()
@@ -301,8 +309,8 @@ async def solar_setup(
         charger_entry_ids=[charger.entry_id],
         phase_wiring={
             charger.entry_id: {
-                "phases": 3,
-                "phase": None,
+                "phases": 3 if phase is None else 1,
+                "phase": phase,
                 "min_current_a": 6.0,
                 CONF_MEASURED_CURRENT_SOURCE: source_to_dict(
                     PhaseMeasurementSource(

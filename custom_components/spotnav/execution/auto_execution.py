@@ -570,6 +570,25 @@ class AutoExecutor:
         # a person's Start, Stop, pause and resume, and the sun's commands.
         shadow = getattr(controller, "ownership_shadow", None)
         self._shadow: OwnershipShadow | NullShadow = shadow if isinstance(shadow, OwnershipShadow) else NullShadow()
+        # Whether the sun's rules keep the charge that runs now (`SolarExecutionCoordinator.sun_keeps_charge`): a
+        # strategy change to `solar` hands it over instead of stopping it. Set at setup; none answers "no".
+        self._sun_keeps: Callable[[], bool] | None = None
+
+    def set_sun_keeps_probe(self, probe: Callable[[], bool] | None) -> None:
+        """Set (or clear) the probe a strategy change to `solar` asks whether the sun keeps the running charge. A
+        setter, as the solar coordinator is built after this boundary."""
+        self._sun_keeps = probe
+
+    def _sun_keeps_charge(self) -> bool:
+        """Whether the sun keeps the charge that runs now; `False` (stop once, as ever) when nothing can say."""
+        probe = self._sun_keeps
+        if probe is None or pause_blocks_execution(self._store.settings(self._entry_id)):
+            return False
+        try:
+            return bool(probe()) and self._controller.charge_control_on
+        except Exception as err:  # noqa: BLE001 - an unreadable answer is a stop, as before the hand-over
+            _LOGGER.warning("Asking whether the sun keeps the charge failed: %s", type(err).__name__)
+            return False
 
     def automatic_allowed(self, kind: str) -> bool:
         """Whether an automatic decision of this kind (`controller.AUTOMATIC_*`) may act now, by the
@@ -835,11 +854,22 @@ class AutoExecutor:
             if self.current(attempt):
                 self._pending = None
             if settings.strategy == STRATEGY_SOLAR and applied is not None:
+                # A charge the sun's rules keep is handed over to the sun with no stop (the plan's window, or the
+                # sun carrying it past one); anything else is stopped once, as ever.
+                sun_keeps = self._sun_keeps_charge()
+                event = core_events.StrategyChange(strategy=STRATEGY_SOLAR, plan_applied=True, sun_keeps=sun_keeps)
                 token = self._shadow.begin()
-                outcome = CommandOutcome(False)
+                stop = not sun_keeps
+                verdict = self._shadow.verdict(event)
+                if verdict is not None:
+                    stop = self._shadow.choose("strategy", stop, ("stop", "strategy") in verdict)
+                stopped: CommandOutcome | None = CommandOutcome(False) if stop else None
                 try:
-                    await self._controller.async_stop(clear_schedule=True, urgent=False)
-                    outcome = self._shadow_stop_outcome()
+                    if stop:
+                        await self._controller.async_stop(clear_schedule=True, urgent=False)
+                        stopped = self._shadow_stop_outcome()
+                    else:
+                        await self._controller.async_hand_charge_to_sun()
                 except Exception as err:  # noqa: BLE001 - reported, never hidden
                     _LOGGER.warning(
                         "Clearing the plan for solar strategy failed: %s", type(err).__name__
@@ -848,12 +878,7 @@ class AutoExecutor:
                     await self._notify_change()
                     return applied
                 finally:
-                    self._shadow.end(
-                        token,
-                        core_events.StrategyChange(strategy=STRATEGY_SOLAR, plan_applied=True),
-                        legacy=("stop",),
-                        outcome=outcome,
-                    )
+                    self._shadow.end(token, event, legacy=("stop",) if stop else (), outcome=stopped)
                 self._applied = None
                 self._last_error = None
                 await self._notify_change()
@@ -1918,6 +1943,23 @@ class AutoExecutor:
                 self._shadow.end(token, core_events.SolarStop(), legacy=legacy, outcome=outcome)
             await self._notify_change()
             return True
+
+    async def async_solar_leave(self) -> bool:
+        """The strategy left `solar` and `hybrid` while the sun drives a charge: the sun's stop, as ever
+        (`async_solar_stop`), unless a plan window open now has taken the charge over already (its window start
+        found it running and made it the plan's, with no command): that charge is not the sun's to stop. Returns
+        `False` only when the stop did not go out."""
+        async with self._lock:
+            settings = self._store.settings(self._entry_id)
+            controller = self._controller
+            if (
+                settings.strategy not in (STRATEGY_SOLAR, STRATEGY_HYBRID)
+                and controller.charge_origin == "plan_window"
+                and controller.charge_control_on
+                and controller.plan_window_active_now
+            ):
+                return True
+        return await self.async_solar_stop()
 
     async def async_solar_take_over_stop(self) -> bool:
         """The stop of a charge the charger began by itself that solar found nothing to keep on
