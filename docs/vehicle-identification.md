@@ -92,6 +92,8 @@ question as a banner with one button per car, and the SpotNav app will show it t
   is kept across the restart; a plug-in that was still undecided is identified again from the restart (the
   question follows after three minutes, as for a plug-in). A button of a question that is gone takes it off
   the phone.
+- **Byt bil** (in the card and the app, for every Home Assistant user) changes the car at any time while a car is
+  plugged in: it answers an open question, or corrects a car already decided, and counts as an answer.
 - A person's answer holds for the car's stay. It is written after any automatic switch still being saved, and
   written again if another settings change got there first: it is the newest choice and is never dropped.
 - The text names no number plate, place or person, because notifications pass through Google's and Apple's
