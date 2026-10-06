@@ -44,10 +44,12 @@ connected never starts identification, so the choice stays yours.
    costs its 12 V battery and part of the account's daily limit.
 2. It then weighs what each car says:
    - **A car's plug sensor turned on** from five minutes before the plug-in. That car was plugged in.
-   - **A fresh "not plugged in"** report from a car means that car is not here. "Fresh" means written at least
-     a minute after the plug-in. An older report, or a car that simply says nothing new, rules nothing out.
+   - **A car whose plug sensor went to "not plugged in"** around or after the plug-in is not here. A sensor
+     that only says "not plugged in" again rules nothing out: cloud integrations write their cached value
+     again on every poll (Kia's cache can say "not plugged in" for hours after the car was plugged in), and
+     SpotNav's own re-read makes them write it too.
    - **A fresh position away from home** means that car is not here. "Fresh" means reported after the plug-in,
-     or at most two minutes before it. An older position may be the car's last report on its way home (many
+     or at most two minutes before it, and not just written again by SpotNav's own re-read. An older position may be the car's last report on its way home (many
      cloud integrations report every half hour), so it rules nothing out and SpotNav asks instead.
    - **A car already identified at another SpotNav charger** that is connected is not here. A car decided there
      counts at once, even while that charger's settings are still being saved, so two chargers never take the
@@ -114,8 +116,11 @@ The charge history records how the car of each session was decided:
 | `only_candidate` | only one car can charge here |
 | `assumed` | nobody answered and nothing decided it, so the car that was already chosen was kept |
 
-The diagnostics show the method and the timings only. They never include car names, plates, places or
-entities.
+The dashboard's `identification` block and the diagnostics show what each car was judged by: its plug sensor
+and position entities, the plug's state with when it changed and when it was last written, home or away (never
+where), and the verdict. A field report can show from it exactly which entity and state decided. The charge
+port door of a Kia (`ev_charge_port`, and its switch) is never taken for a plug: it says the port's door is
+open, not that a cable is in.
 
 ## For developers
 

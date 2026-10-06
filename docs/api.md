@@ -422,7 +422,10 @@ being identified, else:
 `state` is `waiting` (looking at the cars' own reports), `asking` (the question is open: a client shows it with
 one button per candidate, in the given order) or `decided`. `method` is how the car was decided so far:
 `plug_sensor`, `location`, `answered`, `manual`, or `assumed` (nothing decided it yet, or nobody answered).
-`likely` marks a car whose own plug sensor says it was plugged in. A vehicle row in `vehicles` carries the
+`likely` marks a car whose own plug sensor says it was plugged in. The additive `evidence` lists, per car, what it was judged by at the
+last look: `{"vehicle_id", "plug": {"entity_id", "state", "changed", "reported"} | null, "location": {"entity_id",
+"home", "reported"} | null, "verdict": "plugged_in" | "likely" | "not_plugged_in" | "away" | "elsewhere" | null}`
+(the diagnostics carry the same). A vehicle row in `vehicles` carries the
 additive `identification`: `{"plug": source, "location": source}`, each source `{"entity_id", "name", "chosen",
 "candidates": [{"entity_id", "name"}]}`; `entity_id` `null` with `chosen` false is nothing found, or several to
 choose from, and with `chosen` true it is the person's "none".

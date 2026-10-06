@@ -10,9 +10,11 @@ ask deadline, at most once a minute per car (the refresh limiter `vehicle_refres
 
 * strong +: the car's own plug sensor went on from five minutes before the plug-in;
 * weak +: it is on but went on earlier, or the tracker says home;
-* strong -: a "not plugged" report written a minute or more after the plug-in, a position away from home reported
-  after the plug-in or at most two minutes before it (an older one may be the drive home), or the car identified
-  at another SpotNav charger that is connected (a car just decided there counts at once).
+* strong -: the car's plug sensor went to "not plugged" around or after the plug-in (one that only says it again
+  says nothing: a cloud cache is re-written on every poll), a position away from home reported after the plug-in
+  or at most two minutes before it and not the echo of SpotNav's own re-read (an older one may be the drive
+  home), or the car identified at another SpotNav charger that is connected (a car just decided there counts at
+  once).
 
 **Automatic** (`decide`): exactly one strong + is the car; else the only one not excluded is; two strong +
 is a conflict and asks at once; otherwise it asks after `ASK_AFTER_S` and keeps listening until
@@ -69,8 +71,9 @@ LISTEN_FOR_S: Final = 1800.0
 QUESTION_FOR_S: Final = 12 * 3600.0
 #: A plug sensor that went on this long before the plug-in still counts as this plug-in.
 PLUG_WINDOW_BEFORE_S: Final = 300.0
-#: An "unplugged" report written this long after the plug-in is fresh.
-FRESH_REPORT_AFTER_S: Final = 60.0
+#: A position written this soon after SpotNav asked Home Assistant to re-read the car is the echo of that re-read
+#: (a cloud cache written again), not a report from the car.
+REFRESH_ECHO_S: Final = 120.0
 #: A position reported this long before the plug-in, or after it, is fresh. An older one may be the car's last
 #: report on its way home (a cloud poll every half hour), so it excludes nothing and the question is asked.
 POSITION_MARGIN_BEFORE_S: Final = 120.0
@@ -124,6 +127,8 @@ class Candidate:
     location: State | None = None
     #: The car is identified at another SpotNav charger that is connected.
     elsewhere: bool = False
+    #: When SpotNav last asked Home Assistant to re-read this car's entities (`REFRESH_ECHO_S`).
+    refreshed_at: datetime | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -135,9 +140,14 @@ class Evidence:
     negative: str | None
 
 
-def _fresh(state: State, t0: datetime) -> bool:
-    """Reported after the plug-in, or just before it: never a report from the drive home."""
-    return state.last_reported >= t0 - timedelta(seconds=POSITION_MARGIN_BEFORE_S)
+def _fresh(state: State, t0: datetime, refreshed_at: datetime | None) -> bool:
+    """Reported after the plug-in, or just before it (never a report from the drive home), and not the echo of
+    SpotNav's own re-read: a cloud cache written again moves `last_reported` without the car saying anything."""
+    reported = state.last_reported
+    if reported < t0 - timedelta(seconds=POSITION_MARGIN_BEFORE_S):
+        return False
+    echo = refreshed_at is not None and refreshed_at <= reported <= refreshed_at + timedelta(seconds=REFRESH_ECHO_S)
+    return not echo or state.last_changed >= t0 - timedelta(seconds=POSITION_MARGIN_BEFORE_S)
 
 
 def judge(candidate: Candidate, t0: datetime, now: datetime) -> Evidence:
@@ -150,12 +160,14 @@ def judge(candidate: Candidate, t0: datetime, now: datetime) -> Evidence:
         recent = plug.last_changed >= t0 - timedelta(seconds=PLUG_WINDOW_BEFORE_S)
         positive = STRONG if recent else WEAK
     elif plug is not None and reading is False and negative is None:
-        # Only a report written after the plug-in says "not here"; silence or an older report says nothing.
-        if plug.last_reported >= t0 + timedelta(seconds=FRESH_REPORT_AFTER_S):
+        # Only a car that went unplugged around or after the plug-in is not here. An "unplugged" that is only
+        # written again says nothing: a cloud integration re-writes its cache (Kia's says "unplugged" for hours
+        # after the car was plugged in), on its own poll or on SpotNav's re-read, and `last_reported` moves.
+        if plug.last_changed >= t0 - timedelta(seconds=POSITION_MARGIN_BEFORE_S):
             negative = METHOD_PLUG_SENSOR
     location = candidate.location
     at_home = location_reading(location)
-    if location is not None and at_home is False and _fresh(location, t0):
+    if location is not None and at_home is False and _fresh(location, t0, candidate.refreshed_at):
         negative = negative or METHOD_LOCATION
     elif at_home is True and positive is None:
         positive = WEAK
@@ -197,6 +209,39 @@ def buttons(cars: Sequence[str]) -> tuple[list[str], bool]:
     return list(cars[: MAX_BUTTONS - 1]), True
 
 
+def _evidence_record(candidate: Candidate, evidence: Evidence) -> dict[str, Any]:
+    """One car's entities and what they said: the plug (state, when it changed and was last written), the position
+    (home or away only), and the verdict: `plugged_in`, `likely`, `not_plugged_in`, `away`, `elsewhere` or `None`."""
+    plug, location = candidate.plug, candidate.location
+    if candidate.elsewhere:
+        verdict: str | None = "elsewhere"
+    elif evidence.negative == METHOD_PLUG_SENSOR:
+        verdict = "not_plugged_in"
+    elif evidence.negative == METHOD_LOCATION:
+        verdict = "away"
+    elif evidence.positive == STRONG:
+        verdict = "plugged_in"
+    elif evidence.positive == WEAK:
+        verdict = "likely"
+    else:
+        verdict = None
+    return {
+        "vehicle_id": candidate.vehicle_id,
+        "plug": None if plug is None else {
+            "entity_id": plug.entity_id,
+            "state": plug.state,
+            "changed": plug.last_changed.isoformat(),
+            "reported": plug.last_reported.isoformat(),
+        },
+        "location": None if location is None else {
+            "entity_id": location.entity_id,
+            "home": location_reading(location),
+            "reported": location.last_reported.isoformat(),
+        },
+        "verdict": verdict,
+    }
+
+
 # --------------------------------------------------------------------------- the runtime
 
 
@@ -223,6 +268,8 @@ class _Session:
     recheck_from: datetime | None = None
     recheck_until: datetime | None = None
     replugged_at: datetime | None = None
+    #: Each car's entities and what they said at the last evaluation (`_evidence_record`).
+    evidence: list[dict[str, Any]] = field(default_factory=list)
 
 
 class VehicleIdentifier:
@@ -255,6 +302,8 @@ class VehicleIdentifier:
         self._switches = 0
         self._switch_lock = asyncio.Lock()
         self._unplug_cancel: CALLBACK_TYPE | None = None
+        # When SpotNav last asked Home Assistant to re-read each car (its echo is no report).
+        self._refreshed_at: dict[str, datetime] = {}
         # What was decided at this plug-in, kept across a restart (`_STORE_KEY_PREFIX`): a restart with the car
         # still plugged in is no new plug-in, and a decided car is not asked about again.
         self._memory: Store[dict[str, Any]] = Store(hass, _STORE_VERSION, f"{_STORE_KEY_PREFIX}.{entry_id}")
@@ -351,6 +400,7 @@ class VehicleIdentifier:
                 {"vehicle_id": car, "name": session.names.get(car, car), "likely": car in session.likely}
                 for car in session.order
             ],
+            "evidence": list(session.evidence),
         }
 
     def diagnostics(self) -> dict[str, Any]:
@@ -362,6 +412,9 @@ class VehicleIdentifier:
             "since": None if session is None else session.t0.isoformat(),
             "candidates": 0 if session is None else len(session.cars),
             "asked_phones": 0 if session is None else len(session.phones),
+            # The entities each car was judged by, their states and when they changed and were written: what a
+            # field report needs. A position says only home or away, never where.
+            "evidence": [] if session is None else list(session.evidence),
         }
 
     # ------------------------------------------------------------------ observing
@@ -529,7 +582,7 @@ class VehicleIdentifier:
             plug = None if plug_id is None else self._hass.states.get(plug_id)
             location = None if location_id is None else self._hass.states.get(location_id)
             if car == decided:
-                gone = (plug is not None and plug_reading(plug) is False and plug.last_reported >= since) or (
+                gone = (plug is not None and plug_reading(plug) is False and plug.last_changed >= since) or (
                     location is not None and location_reading(location) is False and location.last_reported >= since
                 )
                 if gone:
@@ -562,6 +615,7 @@ class VehicleIdentifier:
             if not entities or limiter.retry_after_s(car) is not None:
                 continue
             limiter.note_refresh(car)
+            self._refreshed_at[car] = dt_util.utcnow()
             self._hass.async_create_task(self._async_update(entities), eager_start=False)
 
     async def _async_update(self, entities: list[str]) -> None:
@@ -576,6 +630,7 @@ class VehicleIdentifier:
 
     def _evidence(self, session: _Session, now: datetime) -> list[Evidence]:
         found = []
+        record = []
         for car in session.cars:
             plug_id, location_id = self._sources(car)
             candidate = Candidate(
@@ -583,8 +638,13 @@ class VehicleIdentifier:
                 plug=None if plug_id is None else self._hass.states.get(plug_id),
                 location=None if location_id is None else self._hass.states.get(location_id),
                 elsewhere=self._elsewhere(car),
+                refreshed_at=self._refreshed_at.get(car),
             )
-            found.append(judge(candidate, session.t0, now))
+            evidence = judge(candidate, session.t0, now)
+            found.append(evidence)
+            record.append(_evidence_record(candidate, evidence))
+        # What a field report needs to see why a car was decided: each car's entities, what they said, and when.
+        session.evidence = record
         return found
 
     def _elsewhere(self, car: str) -> bool:

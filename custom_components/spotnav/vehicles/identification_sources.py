@@ -6,8 +6,9 @@ identification (`identification.py`), never written and never used to wake a car
 
 * **Plug.** Ranked by kind, best first: a `binary_sensor` with device class `plug`; one with device class
   `connectivity` (or none) whose key names a cable, a plug or a charger connection; a text `sensor` (no unit)
-  whose key names a plug, a connector or a connection. A lock, a door, a flap, a lid, the car's own online
-  state and a charging sensor are never one. Exactly one of the best kind found is detected; several are a
+  whose key names a plug, a connector or a connection. A lock or latch and the charge port's door, flap or lid
+  are never one; the car's own online state and a charging sensor are not, unless the key names the cable
+  ("charging cable"). Exactly one of the best kind found is detected; several are a
   choice a person makes.
 * **Location.** The device's `device_tracker`: exactly one is detected, several are a choice.
 * **A person's choice** is a discovery decision (`DECISION_DOMAIN_VEHICLE_IDENTIFICATION`) per vehicle:
@@ -35,9 +36,14 @@ SOURCES: Final = (SOURCE_PLUG, SOURCE_LOCATION)
 CHOICE_NONE: Final = "none"
 
 # Never a plug signal, whatever the device class: a lock, a door or flap, the car's online state, charging.
+# Never a plug signal, whatever the key or device class: a lock or latch, and the charge port's door, flap or lid
+# (Kia's `ev_charge_port` is the port door, open while charging or not; its `switch` opens it).
 _PLUG_EXCLUDED_PHRASES: Final = (
-    "lock", "locked", "door", "flap", "lid", "cover", "online", "cloud", "internet", "charging", "window",
+    "lock", "locked", "latch", "door", "flap", "lid", "cover", "window", "port",
 )
+# Not a plug signal unless the key also names the cable or plug ("charging cable" is one, "charging" is not):
+# the car's online state and a charging-in-progress sensor.
+_PLUG_SOFT_EXCLUDED_PHRASES: Final = ("online", "cloud", "internet", "charging")
 # A connectivity (or class-less) binary sensor counts when its key says it is the cable or plug.
 _PLUG_PHRASES: Final = ("plug", "plugged", "cable", "gun", "connector", "coupler", "inlet")
 _PLUG_FRAGMENTS: Final = ("chargerconnected", "chargercable", "conncharge", "plugged", "chargecable")
@@ -98,6 +104,9 @@ def _plug_rank(entry: er.RegistryEntry, state: State) -> int | None:
     """0 for the best plug signal, higher for weaker ones, `None` for none."""
     key: EntityKey = entity_key(entry)
     if key.has_any(_PLUG_EXCLUDED_PHRASES):
+        return None
+    names_plug = key.has_any(_PLUG_PHRASES) or key.contains_any(_PLUG_FRAGMENTS)
+    if key.has_any(_PLUG_SOFT_EXCLUDED_PHRASES) and not names_plug:
         return None
     device_class = state.attributes.get("device_class")
     if entry.domain == "binary_sensor":
