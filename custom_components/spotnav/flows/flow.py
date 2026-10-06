@@ -40,6 +40,7 @@ from ..const import (
     CONF_ENERGY_REGISTER_ENTITY,
     CONF_POWER_ENTITY,
     CONF_ENERGY_REGISTER_IS_SESSION,
+    CONF_ENERGY_REGISTER_NONE,
     CONF_ENTRY_TYPE,
     CONF_MAIN_FUSE_A,
     CONF_MEASURED_CURRENT_SOURCE,
@@ -873,6 +874,8 @@ class SpotNavChargingConfigFlow(ChargerWiringSteps, config_entries.ConfigFlow, d
             energy, is_session = detected.session_energy_register, True
         state_entity = user_input.get(FIELD_CHARGING_STATE_ENTITY) or ""
         profile = profile_for(detected.platform)
+        # A suggested lifetime register cleared is a choice: it is not detected again later.
+        chose_none = not energy and bool(detected.energy_register) and not detected.external_controller
         data: dict[str, Any] = {
             CONF_ENTRY_TYPE: ENTRY_TYPE_CHARGER,
             CONF_MODE: MODE_DETECTED,
@@ -897,6 +900,8 @@ class SpotNavChargingConfigFlow(ChargerWiringSteps, config_entries.ConfigFlow, d
             CONF_CHARGER_CURRENT_ENTITIES: list(detected.current_entities),
             CONF_WEBHOOK_ID: secrets.token_urlsafe(32),
         }
+        if chose_none:
+            data[CONF_ENERGY_REGISTER_NONE] = True
         if user_input.get("enable_disabled_entities"):
             registry = er.async_get(self.hass)
             for entity_id in detected.disabled_useful:

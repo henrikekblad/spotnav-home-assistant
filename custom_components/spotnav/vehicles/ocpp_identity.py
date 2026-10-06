@@ -160,13 +160,34 @@ def energy_register_target_from_registry(hass: HomeAssistant, entity_id: str) ->
     return energy_register_target_from_entity_id(entity_id)
 
 
+def _classes_allow_register(hass: HomeAssistant, entity_id: str) -> bool:
+    """Whether nothing known about the entity says it is not a cumulative energy meter.
+
+    The key already says what the entity is; classes that are missing (an offline charger's entities
+    are registered without them, and have no state) are no reason to refuse it. A device or state class
+    that is there and names something else is.
+    """
+    entry = er.async_get(hass).async_get(entity_id)
+    state = hass.states.get(entity_id)
+    attributes = state.attributes if state is not None else {}
+    device_class = attributes.get("device_class") or (
+        (entry.device_class or entry.original_device_class) if entry is not None else None
+    )
+    state_class = attributes.get("state_class") or (
+        (entry.capabilities or {}).get("state_class") if entry is not None else None
+    )
+    return device_class in (None, "energy") and state_class in (None, "total_increasing")
+
+
 def energy_register_entity_for(hass: HomeAssistant, target: OcppConnectorTarget) -> str | None:
     """The target's energy-import-register sensor entity id, or `None` if none is exposed.
 
     Matches each OCPP entity's registry identity against `target`; never constructs an entity id.
     """
     for entity_id in ocpp_entity_ids(hass):
-        if energy_register_target_from_registry(hass, entity_id) == target:
+        if energy_register_target_from_registry(hass, entity_id) == target and _classes_allow_register(
+            hass, entity_id
+        ):
             return entity_id
     return None
 

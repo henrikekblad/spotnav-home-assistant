@@ -259,6 +259,36 @@ export function siteChecks(doc: Document, language: Language, site: EntitySite):
 }
 
 /**
+ * What the charger's own settings want said, under the same "To check" heading as the site's: an energy
+ * meter SpotNav finds on the charger while "None" is chosen for the energy, so it can be chosen. `null`
+ * when there is nothing.
+ */
+export function chargerChecks(doc: Document, language: Language, config: EntityConfig): HTMLElement | null {
+  const register = config.fields.find((entry) => entry.field === "energy_register_entity");
+  if (register === undefined || register.kind !== "entity" || register.none === null || !register.none.chosen) {
+    return null;
+  }
+  const automatic = register.none.automatic;
+  if (automatic === null) {
+    return null;
+  }
+  const section = element(doc, "fieldset", C.siteFieldset);
+  section.dataset["notices"] = "charger";
+  section.append(element(doc, "legend", C.siteLegend, translate(language, "entity.checks.title")));
+  const list = element(doc, "ul", C.entityChecks);
+  const item = element(
+    doc,
+    "li",
+    undefined,
+    translate(language, "entity.checks.energyRegister", { name: automatic.friendlyName }),
+  );
+  item.dataset["notice"] = "energy_register_available";
+  list.append(item);
+  section.append(list);
+  return section;
+}
+
+/**
  * Read-only rows of one group, by label and friendly name (or "not set"). The button that opens
  * the editor is the caller's, since only it knows whether the reader may edit.
  */
@@ -1085,7 +1115,24 @@ export function entityEditorBody(
     const hasRegister = managed.has("energy_register_entity");
     const hasPlug = managed.has("power_entity");
     const registerField = config.fields.find((entry) => entry.field === "energy_register_entity");
-    const found = registerField !== undefined && registerField.kind === "entity" && automaticEntity(registerField) !== null;
+    // "None" chosen: no register, and none looked up or detected. The draft holds the picked entity;
+    // "None" is only said by the radio, on save.
+    const registerNoneChosen =
+      registerField !== undefined && registerField.kind === "entity" && registerField.none !== null && registerField.none.chosen;
+    if (values["energy_register_entity"] === NONE_VALUE) {
+      values["energy_register_entity"] = "";
+    }
+    const found =
+      !registerNoneChosen &&
+      registerField !== undefined &&
+      registerField.kind === "entity" &&
+      automaticEntity(registerField) !== null;
+    // Without a register found or stored, "None" is what is already so, and it is not sent: a register
+    // detected later is then taken.
+    const impliedRegisterNone =
+      !registerNoneChosen &&
+      (registerField === undefined ||
+        (registerField.kind === "entity" && registerField.current === null && automaticEntity(registerField) === null));
     const energyKind = (): string =>
       isSet("energy_register_entity") || found ? "meter" : hasPlug && isSet("power_entity") ? "power" : "none";
     let energy = energyKind();
@@ -1149,7 +1196,9 @@ export function entityEditorBody(
       });
       group.showNote(energyMixed);
       clearers.push((draft) => {
-        if (energy !== "meter" || (registerGroup !== null && registerKind === "automatic")) {
+        if (energy === "none" && hasRegister && !impliedRegisterNone) {
+          draft["energy_register_entity"] = NONE_VALUE;
+        } else if (energy !== "meter" || (registerGroup !== null && registerKind === "automatic")) {
           draft["energy_register_entity"] = "";
         }
         if (energy !== "power") {
@@ -1610,6 +1659,14 @@ export function entityEditorBody(
     errorNodes.set("charger_priority", { node: priorityError, input: priority.fieldset });
     priority.fieldset.append(priorityError);
     body.append(priority.fieldset);
+  }
+
+  // The charger's own notes, after its fields.
+  if (scope === "charger") {
+    const checks = chargerChecks(doc, language, config);
+    if (checks !== null) {
+      body.append(checks);
+    }
   }
 
   // The site's other notes, after the measurement fields.

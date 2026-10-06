@@ -265,11 +265,24 @@ def _detect_current(
 
 
 def _is_energy_register(
-    hass: HomeAssistant, entry: er.RegistryEntry, state_classes: tuple[str, ...] = ("total_increasing",)
+    hass: HomeAssistant,
+    entry: er.RegistryEntry,
+    state_classes: tuple[str, ...] = ("total_increasing",),
+    *,
+    named: bool = False,
 ) -> bool:
+    """Whether a sensor is a cumulative energy meter, by its device and state class.
+
+    `named` is for a sensor the platform profile names as its lifetime register: its key already says
+    what it is, so missing classes are no reason to refuse it (an integration whose charger was offline
+    registers it without classes and without a state). A class that is there and says otherwise still
+    refuses it.
+    """
     state = hass.states.get(entry.entity_id)
     device_class = (state.attributes.get("device_class") if state else None) or entry.device_class or entry.original_device_class
     state_class = (state.attributes.get("state_class") if state else None) or (entry.capabilities or {}).get("state_class")
+    if named:
+        return device_class in (None, "energy") and (state_class is None or state_class in state_classes)
     return device_class == "energy" and state_class in state_classes
 
 
@@ -306,7 +319,7 @@ def _detect_energy(hass: HomeAssistant, found: DetectedCharger, matcher: EntityM
             e
             for e in matcher.find("sensor", profile.energy_keys)
             if _register_owner(profile, e) == "lifetime"
-            and _is_energy_register(hass, e, profile.energy_state_classes)
+            and _is_energy_register(hass, e, profile.energy_state_classes, named=True)
         ),
         None,
     )
@@ -372,6 +385,25 @@ def _is_current_sensor(hass: HomeAssistant, entry: er.RegistryEntry) -> bool:
     state = hass.states.get(entry.entity_id)
     stated = state.attributes.get("unit_of_measurement") if state is not None else None
     return not (stated or entry.unit_of_measurement or device_class)
+
+
+def lifetime_energy_register(hass: HomeAssistant, device_id: str | None) -> str | None:
+    """The device's lifetime energy register as detection finds it, or `None` (a per-session register is
+    never this answer: it is offered only knowingly, in the flow). Reads the registries and states only.
+    """
+    if not device_id:
+        return None
+    device = dr.async_get(hass).async_get(device_id)
+    if device is None:
+        return None
+    all_entries = er.async_entries_for_device(er.async_get(hass), device_id, include_disabled_entities=True)
+    profile = profile_for(_device_platform(hass, device, all_entries))
+    if profile is None or profile.role != ROLE_CHARGER:
+        return None
+    entries = [entry for entry in all_entries if entry.platform == profile.platform]
+    found = DetectedCharger(device_id=device_id, device_name="", platform=profile.platform, role=profile.role)
+    _detect_energy(hass, found, EntityMatcher(hass, entries, profile))
+    return found.energy_register
 
 
 def detect_charger(hass: HomeAssistant, device_id: str) -> DetectedCharger | None:

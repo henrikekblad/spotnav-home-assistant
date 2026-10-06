@@ -283,6 +283,7 @@ export const fi: Record<keyof typeof en, string> = {
   "entity.warning.batteryImportLimit": "Kaksi rajaa yhdelle sulakkeelle: akun verkkoonoton raja ({integration}) on {battery} A vaihetta kohti, SpotNavin {spotnav} A. Aseta ne samaan arvoon.",
   "entity.detect.title": "Löytyi Home Assistantista",
   "entity.checks.title": "Tarkistettavaa",
+  "entity.checks.energyRegister": "Laturilla on energiamittari, {name}, mutta Energia on asetettu tilaan Ei mitään. Valitse Energiamittari (kWh), niin ladattu energia lasketaan ja auton taso arvioidaan sen avulla.",
   "entity.detect.intro": "Nämä tunnistettiin asetuksistasi. Mikään ei muutu ennen kuin painat Käytä.",
   "entity.site.intro": "Kohteen mittaus. {applies}",
   "entity.detect.meters": "Sähkömittarit",

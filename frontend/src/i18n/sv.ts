@@ -283,6 +283,7 @@ export const sv: Record<keyof typeof en, string> = {
   "entity.warning.batteryImportLimit": "Två gränser på en säkring: batteriets gräns för nätimport ({integration}) är {battery} A per fas, SpotNavs är {spotnav} A. Ställ in dem på samma värde.",
   "entity.detect.title": "Hittat i Home Assistant",
   "entity.checks.title": "Att kontrollera",
+  "entity.checks.energyRegister": "Laddaren har en energiräknare, {name}, men Energi är satt till Ingen. Välj Energiräknare (kWh) för att räkna den laddade energin och uppskatta bilens nivå med den.",
   "entity.detect.intro": "De här känns igen i din installation. Inget ändras förrän du trycker på Använd.",
   "entity.site.intro": "Mätning för anläggningen. {applies}",
   "entity.detect.meters": "Elmätare",
