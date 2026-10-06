@@ -39,7 +39,7 @@ from custom_components.spotnav.notifications.unexpected_stop import (
     UnexpectedStopDetector,
 )
 from custom_components.spotnav.planning.auto_settings import AutoSettings, AutoSettingsError
-from custom_components.spotnav.runtime import domain_data, executor_for
+from custom_components.spotnav.runtime import charger_data, domain_data, executor_for
 
 from .world import controller_of, setup_charger
 
@@ -434,3 +434,111 @@ async def test_the_app_keeps_notifications_it_does_not_read_and_edits_them_when_
     assert domain_data(hass).auto_store.settings(entry.entry_id).notifications == NotificationSettings(
         events=("plugged_in",)
     )
+
+
+# ------------------------------------------------------------------ a plan a person's own settings write caused
+
+
+def _installs(calls: list[Any]) -> list[Any]:
+    return [call for call in calls if call.data["message"].startswith("New plan")]
+
+
+async def _quiet_charger(hass: HomeAssistant, freezer: Any) -> tuple[Any, list[Any], Any]:
+    hass.config.language = "en"
+    entry, calls = await _charger(
+        hass, events=("plan_installed", "plan_at_risk", "plan_stopped")
+    )
+    await _later(hass, freezer, 120)  # the set-up's own writes are long past
+    return entry, calls, controller_of(hass, entry.entry_id)
+
+
+async def _write_amps(hass: HomeAssistant, entry_id: str, amps: int = 12) -> None:
+    store = domain_data(hass).auto_store
+    await store.async_update(entry_id, mutate=lambda settings: replace(settings, amps=amps))
+
+
+async def test_a_plan_after_a_settings_write_is_not_announced(hass: HomeAssistant, freezer: Any) -> None:
+    entry, calls, controller = await _quiet_charger(hass, freezer)
+    await _write_amps(hass, entry.entry_id)
+    await _later(hass, freezer, 5)
+    await controller.async_install(_window_now(amps=12))
+    await hass.async_block_till_done()
+    assert _installs(calls) == []
+
+
+async def test_a_plan_from_new_prices_is_announced(hass: HomeAssistant, freezer: Any) -> None:
+    entry, calls, controller = await _quiet_charger(hass, freezer)
+    await controller.async_install(_window_now(amps=12))
+    await hass.async_block_till_done()
+    assert len(_installs(calls)) == 1
+
+
+async def test_a_write_a_minute_ago_does_not_silence_the_next_plan(hass: HomeAssistant, freezer: Any) -> None:
+    entry, calls, controller = await _quiet_charger(hass, freezer)
+    await _write_amps(hass, entry.entry_id)
+    await _later(hass, freezer, 61)
+    await controller.async_install(_window_now(amps=12))
+    await hass.async_block_till_done()
+    assert len(_installs(calls)) == 1
+
+
+async def test_a_problem_right_after_a_write_is_still_told(hass: HomeAssistant, freezer: Any) -> None:
+    entry, calls, controller = await _quiet_charger(hass, freezer)
+    await _write_amps(hass, entry.entry_id)
+    notifier = charger_data(hass, entry.entry_id).notifier
+    assert notifier is not None
+    notifier._maybe_send("plan_at_risk", {"departure_time": "07:00", "requested_kwh": 40.0}, dt_util.utcnow())
+    await hass.async_block_till_done()
+    assert len(calls) == 1
+
+
+async def test_an_entity_write_quiets_the_plan_too(hass: HomeAssistant, freezer: Any) -> None:
+    from .world import call, entity_id
+
+    entry, calls, controller = await _quiet_charger(hass, freezer)
+    # The notification choice alone does not move the entities' displayed revision; a write that does, first.
+    await charger_data(hass, entry.entry_id).preview.async_apply_settings(
+        mutate=lambda settings: replace(settings, amps=11), expected_revision=None
+    )
+    await _later(hass, freezer, 120)
+    amps = entity_id(hass, entry.entry_id, "charging_current", "number")
+    await call(hass, "number", "set_value", {"entity_id": amps, "value": 12})
+    await controller.async_install(_window_now(amps=12))
+    await hass.async_block_till_done()
+    assert _installs(calls) == []
+
+
+async def test_a_webhook_write_quiets_the_plan_too(
+    hass: HomeAssistant, freezer: Any, hass_client_no_auth
+) -> None:
+    entry, calls, controller = await _quiet_charger(hass, freezer)
+    client = await hass_client_no_auth()
+    _, dashboard = await _post(client, {"action": "dashboard", "api_version": 1})
+    settings = dashboard["settings"]
+    body = {key: value for key, value in settings.items() if key != "revision"}
+    status, answer = await _post(
+        client, {"action": "settings", "expected_revision": settings["revision"], "settings": {**body, "amps": 12}}
+    )
+    assert status == 200 and answer["ok"] is True
+    await controller.async_install(_window_now(amps=12))
+    await hass.async_block_till_done()
+    assert _installs(calls) == []
+
+
+async def test_a_websocket_write_quiets_the_plan_too(hass: HomeAssistant, freezer: Any, hass_ws_client) -> None:
+    from .messages import update_settings_message
+    from .world import admin, ws_call
+
+    entry, calls, controller = await _quiet_charger(hass, freezer)
+    client = await admin(hass, hass_ws_client)
+    current = domain_data(hass).auto_store.settings(entry.entry_id)
+    body = {
+        key: value
+        for key, value in encode_settings(current).items()
+        if key not in ("revision", "fiscal_included")
+    }
+    frame = await ws_call(client, update_settings_message(entry.entry_id, current.revision, {**body, "amps": 12}))
+    assert frame["result"]["ok"] is True, frame
+    await controller.async_install(_window_now(amps=12))
+    await hass.async_block_till_done()
+    assert _installs(calls) == []
