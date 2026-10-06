@@ -158,6 +158,8 @@ async def test_a_button_from_a_question_that_is_gone_clears_it(world: World, mon
     old = world.sent()[-1]
     await world.unplug()
     await world.later(130)
+    clear = {"message": "clear_notification", "data": {"tag": old["data"]["tag"]}}
+    before = world.sent().count(clear)
     await world.tap(old, 0)
     assert world.settings.target.vehicle_id == world.cars["Kia"]
-    assert world.sent()[-1] == {"message": "clear_notification", "data": {"tag": old["data"]["tag"]}}
+    assert world.sent().count(clear) == before + 1, "a stale button takes the question off the phones"
