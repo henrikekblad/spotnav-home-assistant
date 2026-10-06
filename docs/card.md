@@ -192,7 +192,7 @@ Shown when more than one car is detected: **Identification** (**Automatic**, **A
 **Cars at this charger**, changed with **Change**. While SpotNav cannot tell which car was plugged in, the card
 shows "Which car is plugged in?" with one button per car, the likeliest first; one tap is the answer, the
 same as on the phones. The car line says how the car was decided ("identified by the car's charging cable",
-"chosen manually", "assumed", ...). With two or more cars at the charger it ends in ⇄ and tapping it opens
+"selected manually", "assumed", ...). With two or more cars at the charger it ends in ⇄ and tapping it opens
 **Change car**, for anyone signed in: with a car plugged in it corrects that car; with none it sets the plan's car
 for the next plug-in (an administrator's settings write). See
 [Which car is plugged in?](vehicle-identification.md).
