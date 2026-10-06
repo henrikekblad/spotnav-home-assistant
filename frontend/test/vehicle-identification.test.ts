@@ -302,3 +302,86 @@ describe("the Settings page", () => {
     });
   });
 });
+
+function decided(method: string, evidence: Array<Record<string, unknown>> = []): Record<string, any> {
+  const payload = dashboard(false);
+  payload["identification"] = {
+    state: "decided",
+    method,
+    vehicle_id: EV6,
+    since: "2026-10-06T17:00:00+00:00",
+    candidates: [
+      { vehicle_id: EV6, name: "EV6", likely: method === "plug_sensor" },
+      { vehicle_id: NIRO, name: "Niro", likely: false },
+    ],
+    evidence,
+  };
+  return payload;
+}
+
+const carLine = (element: Element): HTMLElement | null =>
+  shadow(element).querySelector<HTMLElement>("[data-vehicle-line]");
+const changeCar = (element: Element): HTMLButtonElement | null =>
+  shadow(element).querySelector<HTMLButtonElement>("[data-change-car]");
+
+describe("the owner's wording", () => {
+  it("says inkopplad, Bilar vid laddaren and Laddmål in Swedish, and Charge target in English", () => {
+    expect(translate("sv", "identify.question")).toBe("Vilken bil är inkopplad?");
+    expect(translate("sv", "identify.vehicles.label")).toBe("Bilar vid laddaren");
+    expect(translate("sv", "settings.soc.target")).toBe("Laddmål");
+    expect(translate("en", "settings.soc.target")).toBe("Charge target");
+  });
+});
+
+describe("the car line", () => {
+  it.each([
+    ["plug_sensor", "identifierad via bilens laddkabel"],
+    ["location", "identifierad via position"],
+    ["answered", "ditt svar"],
+    ["manual", "ditt val"],
+    ["assumed", "antagen"],
+  ])("says how the car was decided (%s)", async (method, words) => {
+    const { element } = await mounted(decided(method), "sv");
+    expect(carLine(element)?.textContent).toContain(words);
+  });
+
+  it("says it is identifying while the question is open, and nothing without identification", async () => {
+    expect(carLine((await mounted(dashboard(true), "sv")).element)?.textContent).toContain("identifierar…");
+    document.body.innerHTML = "";
+    expect(carLine((await mounted(dashboard(false), "sv")).element)?.textContent).not.toContain("identifier");
+  });
+});
+
+describe("Byt bil", () => {
+  it("is offered to every signed-in user, and corrects the car through the question's own answer", async () => {
+    const evidence = [
+      { vehicle_id: EV6, plug: null, location: null, verdict: "plugged_in" },
+      { vehicle_id: NIRO, plug: null, location: null, verdict: null },
+    ];
+    const { hass, element } = await mounted(decided("plug_sensor", evidence), "sv", false);
+    expect(changeCar(element)?.textContent).toBe("Byt bil");
+    changeCar(element)!.click();
+    await settle();
+    const dialog = openDialog(element)!;
+    expect(dialog.textContent).toContain("Laddkabeln säger inkopplad");
+    const radios = Array.from(dialog.querySelectorAll<HTMLInputElement>("input[data-identify-choice]"));
+    expect(radios.map((radio) => [radio.value, radio.checked])).toEqual([[EV6, true], [NIRO, false]]);
+    radios[1]!.click();
+    dialog.querySelector<HTMLFormElement>("form")!.requestSubmit();
+    await settle();
+    expect(hass.messages.find((message) => message.type === "spotnav/identify_vehicle")).toMatchObject({
+      vehicle_id: NIRO,
+    });
+  });
+
+  it("is not offered without a decision or question to correct", async () => {
+    expect(changeCar((await mounted(dashboard(false))).element)).toBeNull();
+  });
+});
+
+describe("the banner's icon", () => {
+  it("carries the question mark", async () => {
+    const { element } = await mounted(dashboard(true));
+    expect(banner(element)?.querySelector("[data-icon='question']")).not.toBeNull();
+  });
+});
