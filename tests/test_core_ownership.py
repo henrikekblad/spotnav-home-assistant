@@ -265,6 +265,14 @@ def test_a_strategy_change_to_solar_stops_an_auto_plan() -> None:
     assert kinds(commands) == []
 
 
+def test_a_strategy_change_to_solar_hands_the_plans_charge_to_the_sun_that_keeps_it() -> None:
+    """The hand-over plan → sun: no stop, and the charge is the sun's."""
+    session, commands = run(
+        ChargeSession(owner="plan"), ev.StrategyChange(strategy="solar", plan_applied=True, sun_keeps=True)
+    )
+    assert kinds(commands) == [] and session.owner == "solar"
+
+
 # ---------------------------------------------------------------------------------------------- C7 and R5
 
 

@@ -28,6 +28,9 @@ The rules are today's, as the manual-pause specs and their three review rounds s
 * A window's end stops only the plan's own charge (`window_end_spared`): a person's Start, a Charge-now start
   and the sun's charge go on, and so does one load balancing holds back for them; the last window's end then
   ends the plan with no stop and no top-off (I3, decided in today's code and here together).
+* A strategy change hands a running charge over instead of stopping it: to `solar`, the plan's charge goes to the
+  sun when the sun's rules keep it (`sun_keeps`), else it is stopped once. The other way, a plan window that opens
+  while the sun runs a charge takes it over at its start, with no command.
 """
 
 from __future__ import annotations
@@ -471,6 +474,9 @@ def _pause_choice(session: ChargeSession, event: PauseChoiceMade, now: datetime)
 
 def _strategy_change(session: ChargeSession, event: StrategyChange, now: datetime) -> Decision:
     if event.strategy == "solar" and event.plan_applied:
+        if event.sun_keeps:
+            # The hand-over plan → sun: the plan is cleared with no stop, and the charge is the sun's from now.
+            return session.with_changes(owner=OWNER_SOLAR), ()
         return _stop(session, REASON_STRATEGY, clear_schedule=True)
     return session, ()
 
