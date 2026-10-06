@@ -24,8 +24,10 @@ from custom_components.spotnav.site.battery_probe import (
     car_minimum_power_w,
     PROBE_BACKOFF_INITIAL_S,
     PROBE_BACKOFF_MAX_S,
+    PROBE_EXTENDED_WINDOW_S,
     within_held_band,
 )
+from custom_components.spotnav.site.site_capacity_controller import START_CREDIT_S
 from custom_components.spotnav.site.regulator_damping import RegulatorDamper
 
 from .test_yield_stepping_wiring import (
@@ -194,6 +196,116 @@ def test_back_off_doubles_to_an_hour_and_a_success_clears_it() -> None:
     probe.stopped()
     assert not probe.may_start(now + PROBE_BACKOFF_INITIAL_S - 1.0)
     assert probe.may_start(now + PROBE_BACKOFF_INITIAL_S)
+
+
+# -- a car that ramps slowly, or a charger whose reading lags (2026-10-06: a Kia EV6 on a Charge Amps HALO
+# started at 6 A drew 0.5 A at 13 s, and was judged at 30 s before it had a chance)
+
+
+def _ramp(probe, now, site=20.0, delivered=0.0, *, charging=False, age=1.0, limit=20.0):
+    return probe.evaluate(
+        now,
+        site_current_a=site if isinstance(site, dict) else {p: site for p in ("L1", "L2", "L3")},
+        limit_a={p: limit for p in ("L1", "L2", "L3")},
+        delivered_a={p: delivered for p in ("L1", "L2", "L3")},
+        main_fuse_a=20.0,
+        charger_charging=charging,
+        delivered_report_age_s={p: age for p in ("L1", "L2", "L3")},
+    )
+
+
+def _ramp_started(probe: BatteryProbe) -> None:
+    probe.start(0.0, 6.0, {"L1": 20.0, "L2": 20.0, "L3": 20.0}, ("L1", "L2", "L3"), {"L1": 0.0, "L2": 0.0, "L3": 0.0})
+
+
+def test_the_extension_lasts_as_long_as_a_start_credit() -> None:
+    assert PROBE_EXTENDED_WINDOW_S == START_CREDIT_S == 90.0
+
+
+@pytest.mark.parametrize(
+    ("delivered", "charging", "age", "evidence"),
+    [
+        (0.4985, False, 1.0, "car_current_rising"),  # the owner's EV6 at 13 s
+        (0.0, True, 1.0, "charger_reports_charging"),  # the HALO said Charging
+        (0.0, False, 45.0, "charger_reading_lagging"),  # no reading since the start
+    ],
+)
+def test_a_car_that_has_visibly_started_is_given_until_90_s(delivered, charging, age, evidence) -> None:
+    probe = BatteryProbe()
+    _ramp_started(probe)
+    first = _ramp(probe, 30.0, delivered=delivered, charging=charging, age=age)
+    assert (first.state, first.reason, first.extended) == ("verifying", evidence, True)
+    later = _ramp(probe, 40.0, delivered=delivered, charging=charging, age=age + 10.0)
+    assert (later.state, later.extended) == ("verifying", False)
+    # The car reaches its minimum at 50 s, the battery has made room: the probe succeeds then.
+    done = _ramp(probe, 50.0, delivered=5.4, charging=charging)
+    assert (done.state, done.reason) == ("succeeded", "battery_yielded")
+
+
+def test_a_car_that_shows_nothing_still_fails_at_the_window() -> None:
+    probe = BatteryProbe()
+    _ramp_started(probe)
+    assert _ramp(probe, 29.0).state == "verifying"
+    verdict = _ramp(probe, 30.0, delivered=0.1, age=2.0)
+    assert (verdict.state, verdict.reason) == ("failed", "car_not_drawing")
+
+
+def test_a_missing_reading_is_not_waited_for() -> None:
+    probe = BatteryProbe()
+    _ramp_started(probe)
+    verdict = _ramp(probe, 30.0, delivered=None, charging=True)
+    assert (verdict.state, verdict.reason) == ("failed", "car_not_drawing")
+
+
+def test_the_extension_ends_at_90_s_whatever_the_car_shows() -> None:
+    probe = BatteryProbe()
+    _ramp_started(probe)
+    assert _ramp(probe, 30.0, delivered=0.5).state == "verifying"
+    assert _ramp(probe, 89.9, delivered=3.0, charging=True).state == "verifying"
+    verdict = _ramp(probe, 90.0, delivered=3.0, charging=True)
+    assert (verdict.state, verdict.reason) == ("failed", "car_not_drawing")
+
+
+def test_the_extension_ends_when_the_evidence_goes() -> None:
+    probe = BatteryProbe()
+    _ramp_started(probe)
+    assert _ramp(probe, 30.0, age=45.0).state == "verifying"  # lagging
+    # The reading arrives: nothing drawn, no charging status.
+    verdict = _ramp(probe, 40.0, delivered=0.0, age=0.5)
+    assert (verdict.state, verdict.reason) == ("failed", "car_not_drawing")
+
+
+@pytest.mark.parametrize(
+    ("site", "reason"),
+    [
+        (28.5, "over_fuse_cap"),
+        (27.5, "excess_beyond_car"),
+        ({"L1": 20.0, "L2": None, "L3": 20.0}, "measurement_unusable"),
+        # Past the window the grid must be back within the band on every pass: no waiting above it.
+        ({"L1": 20.0, "L2": 20.6, "L3": 20.0}, "battery_did_not_yield"),
+    ],
+)
+def test_an_overload_during_the_extension_ends_it_at_once(site, reason) -> None:
+    probe = BatteryProbe()
+    _ramp_started(probe)
+    assert _ramp(probe, 30.0, delivered=0.5).state == "verifying"
+    verdict = _ramp(probe, 35.0, site, delivered=2.0)
+    assert (verdict.state, verdict.reason) == ("failed", reason)
+
+
+def test_a_started_car_on_a_grid_above_the_band_at_the_window_is_not_waited_for() -> None:
+    probe = BatteryProbe()
+    _ramp_started(probe)
+    verdict = _ramp(probe, 30.0, 23.0, delivered=3.0, charging=True)
+    assert (verdict.state, verdict.reason) == ("failed", "battery_did_not_yield")
+
+
+def test_a_battery_that_does_not_yield_to_a_slow_car_fails_when_the_car_draws() -> None:
+    probe = BatteryProbe()
+    _ramp_started(probe)
+    assert _ramp(probe, 30.0, 20.4, delivered=0.6).state == "verifying"
+    verdict = _ramp(probe, 50.0, 25.5, delivered=5.4)
+    assert (verdict.state, verdict.reason) == ("failed", "battery_did_not_yield")
 
 
 # -- the owner's sequence
