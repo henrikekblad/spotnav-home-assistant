@@ -66,6 +66,7 @@ import { vehicleSummary } from "./vehicle-settings";
 import { issueText } from "./status";
 import { historyBody, type HistoryState, type HistoryUi } from "./history";
 import { connectionLabel, vehicleChoicesFor, vehicleLineFor } from "./vehicle-line";
+import type { ChargeBarFacts } from "./charge-bar";
 import {
   fiscalRows,
   planSummaryParts,
@@ -792,6 +793,35 @@ export function graphDescription(
   return parts.join(" ");
 }
 
+/**
+ * The slim bar under the status line and its one line of words. The track is a `progressbar` whose
+ * value is the share done (none for the open bar); the stripes drift only while `data-moving` is true,
+ * and the stylesheet stops every motion when the system asks for less.
+ */
+export function chargeBarElement(doc: Document, bar: ChargeBarFacts): HTMLElement {
+  const block = element(doc, "div", C.chargeBar);
+  block.dataset["basis"] = bar.basis;
+  block.dataset["moving"] = String(bar.moving);
+  const track = element(doc, "div", C.chargeBarTrack);
+  track.setAttribute("role", "progressbar");
+  track.setAttribute("aria-label", bar.label);
+  track.setAttribute("aria-valuemin", "0");
+  track.setAttribute("aria-valuemax", "100");
+  if (bar.percent !== null) {
+    track.setAttribute("aria-valuenow", String(bar.percent));
+  }
+  track.setAttribute("aria-valuetext", bar.text);
+  const fill = element(doc, "div", C.chargeBarFill);
+  if (bar.percent !== null) {
+    fill.style.width = `${bar.percent}%`;
+  }
+  track.append(fill);
+  const words = element(doc, "p", C.chargeBarLine, bar.text);
+  words.setAttribute("aria-hidden", "true");
+  block.append(track, words);
+  return block;
+}
+
 export function createCardView(input: CardViewInput): CardView {
   const { model, idPrefix } = input;
   const doc = input.mount.ownerDocument;
@@ -807,7 +837,8 @@ export function createCardView(input: CardViewInput): CardView {
   header.append(brandMark(doc, idPrefix));
   const vehicleLine = vehicleLineFor(model.language, model.soc, model.dashboardSettings);
   let vehicleButton: HTMLButtonElement | null = null;
-  const connectionText = connectionLabel(model.language, model.connection);
+  // While the charge bar shows, it already says the charge runs: the connection line steps aside.
+  const connectionText = model.chargeBar === null ? connectionLabel(model.language, model.connection) : null;
   const connectionClass = (): string =>
     model.connection?.state === "error" ? `${C.connectionLine} ${C.connectionError}` : C.connectionLine;
   if (vehicleLine !== null) {
@@ -1092,6 +1123,9 @@ export function createCardView(input: CardViewInput): CardView {
 
   if (model.status !== null) {
     card.append(element(doc, "p", C.status, model.status));
+  }
+  if (model.chargeBar !== null) {
+    card.append(chargeBarElement(doc, model.chargeBar));
   }
   if (model.statusNote !== null) {
     card.append(element(doc, "p", `${C.status} ${C.muted}`, model.statusNote));

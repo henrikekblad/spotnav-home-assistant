@@ -141,6 +141,10 @@ export const VISUAL_CLASSES = {
   bannerNotice: "spotnav-banner-notice",
   bannerCount: "spotnav-banner-count",
   status: "spotnav-status",
+  chargeBar: "spotnav-charge-bar",
+  chargeBarTrack: "spotnav-charge-bar-track",
+  chargeBarFill: "spotnav-charge-bar-fill",
+  chargeBarLine: "spotnav-charge-bar-line",
   graphSurface: "spotnav-graph",
   viewport: "spotnav-chart-viewport",
   svg: "spotnav-svg",
@@ -962,6 +966,69 @@ export const VISUAL_STYLES = `
   .${VISUAL_CLASSES.status} {
     margin: 8px 0 0;
     overflow-wrap: break-word;
+  }
+  /* The running charge: a slim track in the muted colour, the share done in the accent, faint diagonal
+     stripes on it that drift slowly while current flows and stand still otherwise. The open bar (no
+     share known) is a short stretch gliding along the track, or the whole track softly when still. */
+  .${VISUAL_CLASSES.chargeBar} {
+    margin: 6px 0 0;
+    min-width: 0;
+  }
+  .${VISUAL_CLASSES.chargeBarTrack} {
+    position: relative;
+    height: 0.375rem; /* 6 px at the default size */
+    border-radius: 0.1875rem;
+    overflow: hidden;
+    background: var(--spotnav-charge-bar-track, var(--divider-color, rgba(127, 127, 127, 0.3)));
+  }
+  .${VISUAL_CLASSES.chargeBarFill} {
+    position: absolute;
+    inset: 0 auto 0 0;
+    max-width: 100%;
+    border-radius: 0.1875rem;
+    background-color: var(--spotnav-charge-bar-fill, var(--primary-color, #03a9f4));
+    background-image: linear-gradient(
+      135deg,
+      rgba(255, 255, 255, 0.25) 0 20%,
+      transparent 20% 50%,
+      rgba(255, 255, 255, 0.25) 50% 70%,
+      transparent 70% 100%
+    );
+    background-size: 10px 10px;
+  }
+  .${VISUAL_CLASSES.chargeBar}[data-moving="true"] .${VISUAL_CLASSES.chargeBarFill} {
+    animation: spotnav-charge-bar-drift 1.4s linear infinite;
+  }
+  .${VISUAL_CLASSES.chargeBar}[data-basis="open"] .${VISUAL_CLASSES.chargeBarFill} {
+    width: 100%;
+    opacity: 0.5;
+  }
+  .${VISUAL_CLASSES.chargeBar}[data-basis="open"][data-moving="true"] .${VISUAL_CLASSES.chargeBarFill} {
+    width: 33.333%;
+    opacity: 1;
+    animation: spotnav-charge-bar-glide 2.4s linear infinite;
+  }
+  .${VISUAL_CLASSES.chargeBarLine} {
+    margin: 4px 0 0;
+    font-size: 0.85rem;
+    color: var(--secondary-text-color, #727272);
+    overflow-wrap: break-word;
+  }
+  @keyframes spotnav-charge-bar-drift {
+    from {
+      background-position: 0 0;
+    }
+    to {
+      background-position: 10px 0;
+    }
+  }
+  @keyframes spotnav-charge-bar-glide {
+    from {
+      transform: translateX(-100%);
+    }
+    to {
+      transform: translateX(300%);
+    }
   }
   .${VISUAL_CLASSES.muted} {
     color: var(--secondary-text-color, #727272);
@@ -1869,6 +1936,12 @@ export const VISUAL_STYLES = `
     * {
       transition: none !important;
       animation: none !important;
+    }
+    /* Nothing glides: the open bar stands as the whole track, softly. */
+    .${VISUAL_CLASSES.chargeBar}[data-basis="open"] .${VISUAL_CLASSES.chargeBarFill} {
+      width: 100%;
+      opacity: 0.5;
+      animation: none;
     }
   }
 `;

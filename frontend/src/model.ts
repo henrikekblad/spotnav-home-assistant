@@ -22,6 +22,7 @@ import {
   formatNumber,
   type FormatContext,
 } from "./format";
+import { chargeBarFor, type ChargeBarFacts } from "./charge-bar";
 import { issuesOf, statusNote, statusText, type Issue } from "./status";
 import { chargeCeiling, effectiveTarget } from "./target-need";
 import { pluralForm, translate, type Language, type TranslationKey } from "./i18n";
@@ -191,6 +192,8 @@ export interface CardModel {
   status: string | null;
   /** The "suggested from your location and charger" note: its own muted line under the status. */
   statusNote: string | null;
+  /** The running charge's bar under the status line, from the backend's `progress`; `null` with none. */
+  chargeBar: ChargeBarFacts | null;
   issues: Issue[];
   severity: Severity | null;
   chart: ChartSeries;
@@ -700,6 +703,7 @@ export function buildModel(input: BuildInput): CardModel {
     dashboardFiscal: dashboard.fiscal,
     status: statusText(status, format, input.nowMs),
     statusNote: statusNote(status, format, input.nowMs),
+    chargeBar: chargeBarFor(dashboard.progress, format, input.nowMs),
     issues,
     severity: status === null || status.tone === "normal" || issues.length === 0 ? null : status.tone,
     chart,
