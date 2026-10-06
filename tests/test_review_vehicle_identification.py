@@ -8,17 +8,21 @@ from typing import Any
 
 import pytest
 from homeassistant.core import HomeAssistant
-from homeassistant.util import dt as dt_util
 
 from custom_components.spotnav.planning.auto_settings import TargetSocIntent
 from custom_components.spotnav.runtime import charger_data, domain_data
 from custom_components.spotnav.vehicles import vehicle_properties
 from custom_components.spotnav.vehicles.identification import ASK_AFTER_S
 
-from .test_vehicle_identification import World, world  # noqa: F401  (fixture)
+from .test_vehicle_identification import World
 from .world import setup_charger
 
 pytestmark = pytest.mark.usefixtures("offline_relay")
+
+
+@pytest.fixture
+async def world(hass: HomeAssistant, freezer: Any) -> World:
+    return World(hass, freezer)
 
 
 async def _second_charger(world: World) -> tuple[Any, dict[str, bool | None]]:

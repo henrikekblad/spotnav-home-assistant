@@ -79,7 +79,7 @@ def test_unplugged_is_strong_only_when_the_car_said_so_after_the_plug_in() -> No
 
 def test_an_unplugged_report_from_before_the_plug_in_never_excludes_whatever_the_integration() -> None:
     quiet = Candidate(
-        "b", plug=state("binary_sensor.b", "off", changed=T0 - timedelta(hours=5)), plug_platform="teslemetry"
+        "b", plug=state("binary_sensor.b", "off", changed=T0 - timedelta(hours=5))
     )
     assert judge(quiet, T0, T0 + timedelta(minutes=29)).negative is None, "silence is not a report"
 
