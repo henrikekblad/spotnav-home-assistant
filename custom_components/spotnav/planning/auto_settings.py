@@ -1089,10 +1089,12 @@ class AutoSettingsStore:
         # When each charger's settings last changed by a write, for what must stay quiet right after one.
         self._written_at: dict[str, datetime] = {}
         # Told of every committed settings change (`add_write_listener`), after the save.
-        self._write_listeners: list[Callable[[str, AutoSettings], None]] = []
+        self._write_listeners: list[Callable[[str, AutoSettings, AutoSettings], None]] = []
 
-    def add_write_listener(self, listener: Callable[[str, AutoSettings], None]) -> Callable[[], None]:
-        """`listener(entry_id, settings)` after every committed settings change; answers its remover.
+    def add_write_listener(
+        self, listener: Callable[[str, AutoSettings, AutoSettings], None]
+    ) -> Callable[[], None]:
+        """`listener(entry_id, before, after)` after every committed settings change; answers its remover.
 
         Called on the event loop with the committed record, outside the store's lock: it may schedule a write
         but must not await one.
@@ -1255,7 +1257,7 @@ class AutoSettingsStore:
             await self._async_commit(entry_id, entry)
         if mutate is not None:
             for listener in list(self._write_listeners):
-                listener(entry_id, updated)
+                listener(entry_id, current, updated)
         return updated
 
     async def async_seed(

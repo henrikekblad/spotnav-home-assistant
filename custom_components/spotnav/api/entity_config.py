@@ -488,6 +488,7 @@ async def async_update_vehicle(
     )
     if after.target_percent != before.target_percent:
         # The car's target is the same at every charger: those planning for it take it (and recalculate).
+        vehicle_target.note_target(hass, vehicle_id, after.target_percent)
         await vehicle_target.async_spread(hass, vehicle_id)
     if after != before:
         await _recalculate_planners_for(hass, vehicle_id)
