@@ -181,7 +181,6 @@ const OPTIONAL_RECORD_KEYS = [
   "fill_to_limit",
   "vehicle_ids",
   "identify_mode",
-  "vehicle_targets",
 ] as const;
 /** Every weekday, Monday (1) to Sunday (7): what a record without `departure_weekdays` means. */
 export const ALL_WEEKDAYS: readonly number[] = [1, 2, 3, 4, 5, 6, 7];
@@ -277,19 +276,6 @@ function vehicleIds(source: Record<string, unknown>): string[] | null {
   return ids.length === 0 || new Set(ids).size !== ids.length ? bad() : ids;
 }
 
-/** `vehicle_targets`: vehicle id to a percent in `0..100`. */
-function vehicleTargets(source: Record<string, unknown>): Record<string, number> {
-  const map = record(source["vehicle_targets"]);
-  const targets: Record<string, number> = {};
-  for (const [vehicleId, percent] of Object.entries(map)) {
-    if (typeof percent !== "number" || !Number.isFinite(percent) || percent < 0 || percent > 100) {
-      return bad();
-    }
-    targets[vehicleId] = percent;
-  }
-  return targets;
-}
-
 /**
  * One canonical settings record: twelve keys, each with the type the contract promises.
  *
@@ -339,7 +325,6 @@ export function decodeSettingsRecord(raw: unknown): SettingsRecord {
       : {}),
     ...(present.includes("vehicle_ids") ? { vehicle_ids: vehicleIds(source) } : {}),
     ...(present.includes("identify_mode") ? { identify_mode: oneOf(source, "identify_mode", IDENTIFY_MODES) } : {}),
-    ...(present.includes("vehicle_targets") ? { vehicle_targets: vehicleTargets(source) } : {}),
   };
 }
 
@@ -479,7 +464,6 @@ export function encodeBody(record: SettingsRecord): SettingsBody {
       ? {}
       : { vehicle_ids: record.vehicle_ids === null ? null : [...record.vehicle_ids] }),
     ...(record.identify_mode === undefined ? {} : { identify_mode: record.identify_mode }),
-    ...(record.vehicle_targets === undefined ? {} : { vehicle_targets: { ...record.vehicle_targets } }),
   };
 }
 

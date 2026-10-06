@@ -576,7 +576,7 @@ export class SpotnavCard extends HTMLElement {
         values: formFromRecord(record),
         energyReadOnly: manualEnergyReadOnly(record),
         fillSupported: record.fill_to_limit !== undefined,
-        vehicleTargets: record.vehicle_targets ?? {},
+        vehicleTargets: this.vehicleTargets(),
         phases: record.phases,
         limitedBy: this.phasesLimitedBy(),
         currentRange: this.currentRange(),
@@ -903,6 +903,17 @@ export class SpotnavCard extends HTMLElement {
     return this.cardState.kind === "ready" ? (this.cardState.dashboard.charging_phases?.limited_by ?? null) : null;
   }
 
+  /** Each car's own target (the same at every charger), from the dashboard's vehicle rows. */
+  private vehicleTargets(): Record<string, number> {
+    const targets: Record<string, number> = {};
+    for (const row of this.vehicleFacts()) {
+      if (typeof row.target_percent === "number") {
+        targets[row.id] = row.target_percent;
+      }
+    }
+    return targets;
+  }
+
   private vehicleFacts(): readonly Vehicle[] {
     return this.cardState.kind === "ready" ? vehiclesFor(this.cardState.dashboard) : [];
   }
@@ -1051,7 +1062,7 @@ export class SpotnavCard extends HTMLElement {
         values: formFromRecord(record),
         energyReadOnly: manualEnergyReadOnly(record),
         fillSupported: record.fill_to_limit !== undefined,
-        vehicleTargets: record.vehicle_targets ?? {},
+        vehicleTargets: this.vehicleTargets(),
         phases: record.phases,
         limitedBy: this.phasesLimitedBy(),
         currentRange: this.currentRange(),
@@ -1124,7 +1135,8 @@ export class SpotnavCard extends HTMLElement {
   private async answerIdentification(vehicleId: string): Promise<void> {
     const hass = this.hassObject;
     const config = this.config;
-    if (!this.connected || hass === null || config === null || config.charger === "" || !this.isAdmin) {
+    // Any signed-in user may answer: the question goes to the household's phones as well.
+    if (!this.connected || hass === null || config === null || config.charger === "") {
       return;
     }
     const generation = this.generation;

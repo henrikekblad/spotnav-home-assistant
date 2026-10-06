@@ -698,6 +698,7 @@ describe("the backend's v7 vehicles", () => {
           plug: { entity_id: null, name: null, chosen: false, candidates: [] },
           location: { entity_id: null, name: null, chosen: false, candidates: [] },
         },
+        target_percent: 80,
       },
       {
         id: "vehicle_niro",
@@ -714,6 +715,7 @@ describe("the backend's v7 vehicles", () => {
           plug: { entity_id: null, name: null, chosen: false, candidates: [] },
           location: { entity_id: null, name: null, chosen: false, candidates: [] },
         },
+        target_percent: null,
       },
     ]);
   });

@@ -168,12 +168,11 @@ export interface SettingsBody {
   notifications?: NotificationsBody;
   /**
    * Which car is plugged in (added after the first release of the contract: absent on an older backend, and
-   * then never sent): the vehicles that can charge here (`null` for every detected one), how the plugged-in one
-   * is found, and the target percent each vehicle keeps here.
+   * then never sent): the vehicles that can charge here (`null` for every detected one; it also limits what the
+   * charger plans for), and how the plugged-in one is found. A car's target is the car's own (`Vehicle`).
    */
   vehicle_ids?: string[] | null;
   identify_mode?: IdentifyMode;
-  vehicle_targets?: Record<string, number>;
 }
 
 /** How a charger with more than one vehicle finds out which one is plugged in. */

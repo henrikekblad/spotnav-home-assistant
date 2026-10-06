@@ -329,6 +329,8 @@ export interface Vehicle {
   suggested_onboard_phases: 1 | null;
   /** The car's plug sensor and tracker for identification; absent on an older backend. */
   identification?: VehicleSources;
+  /** The car's own target percent, the same at every charger (`null`: never set); absent on an older backend. */
+  target_percent?: number | null;
 }
 
 export interface Soc {
@@ -1790,7 +1792,7 @@ const CAPACITY_SOURCES = ["reported", "stored"] as const;
 
 export function decodeVehicle(raw: unknown): Vehicle {
   const source = record(raw);
-  const optional = Object.prototype.hasOwnProperty.call(source, "identification") ? ["identification"] : [];
+  const optional = ["identification", "target_percent"].filter((key) => Object.prototype.hasOwnProperty.call(source, key));
   exactKeys(source, [
     ...optional,
     "id",
@@ -1821,6 +1823,9 @@ export function decodeVehicle(raw: unknown): Vehicle {
     onboard_phases: phaseCount(source, "onboard_phases"),
     suggested_onboard_phases: required(source, "suggested_onboard_phases") === null ? null : suggestedPhase(source),
     ...vehicleSourcesOrAbsent(source),
+    ...(Object.prototype.hasOwnProperty.call(source, "target_percent")
+      ? { target_percent: boundedOrNull(source, "target_percent", 0, 100) }
+      : {}),
   };
 }
 

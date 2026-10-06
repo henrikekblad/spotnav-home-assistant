@@ -33,7 +33,7 @@ export interface SettingsEditorForm {
   energyReadOnly: boolean;
   /** Whether the record has `fill_to_limit`, so the kWh slider's last step can be "Fill". */
   fillSupported?: boolean;
-  /** The target percent each car keeps at this charger: choosing a car in the target mode shows its own. */
+  /** Each car's own target (the same at every charger): choosing a car in the target mode shows its own. */
   vehicleTargets?: Readonly<Record<string, number>>;
   /**
    * The phases a charge uses (the record's `phases`, which the server fills in as the effective count): it

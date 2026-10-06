@@ -1108,7 +1108,7 @@ export function createCardView(input: CardViewInput): CardView {
     card.append(suggestion);
   }
 
-  // Which car is plugged in: the open question, answered with one tap (administrators), else the current
+  // Which car is plugged in: the open question, answered with one tap (by anyone signed in), else the current
   // car is kept. The phones are asked the same; the first answer wins.
   const identification = model.identification;
   if (identification !== null && identification.state === "asking") {
@@ -1117,7 +1117,7 @@ export function createCardView(input: CardViewInput): CardView {
       identificationBanner(doc, model.language, {
         block: identification,
         currentName: current?.name ?? null,
-        canAnswer: input.isAdmin,
+        canAnswer: true,
         onAnswer: (vehicleId) => input.onAnswerIdentification?.(vehicleId),
       }),
     );

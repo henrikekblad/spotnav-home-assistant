@@ -34,7 +34,7 @@ export interface IdentificationBannerInput {
   block: Identification;
   /** The name of the car kept when nobody answers; `null` when none is chosen. */
   currentName: string | null;
-  /** Only an administrator's answer is accepted: a reader sees the question without buttons. */
+  /** Whether the buttons are offered (any signed-in user may answer). */
   canAnswer: boolean;
   onAnswer: (vehicleId: string) => void;
 }
