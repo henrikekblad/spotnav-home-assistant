@@ -179,6 +179,15 @@ class StartCredit:
     others_a: Mapping[str, Mapping[PhaseName, float]]
     seq: int
 
+#: How many resumes of a charge balancing paused (`_async_maybe_resume_paused_charge`) may go out in any
+#: `RESUME_WINDOW_S`, and how long (seconds) no resume goes out once one more would be due within it. A load that
+#: comes and goes would otherwise cycle the relays as often as the dwell allows; with two resumes in ten minutes the
+#: charger is paused at most three times in them, as Peblar allows (`PAUSE_WINDOW_S`, three pauses), like the battery
+#: probe's own back-off. The charge's next window, a person's Start or solar still start it as before.
+RESUME_LIMIT = 2
+RESUME_WINDOW_S = 600.0
+RESUME_BACKOFF_S = 900.0
+
 #: How long (seconds) shutdown and turning active control off wait for the apply passes and the chargers'
 #: operations they cancel to end.
 RETIRE_TIMEOUT_S = 5.0
@@ -294,6 +303,10 @@ class SiteCapacityController:
         self._battery_probes: dict[str, BatteryProbe] = {}
         # When a paused charge first had headroom for its minimum again (for the resume's dwell).
         self._resume_ready_since: dict[str, float] = {}
+        # When each charger's paused charge was last resumed (within `RESUME_WINDOW_S`), and until when no resume
+        # goes out after it was resumed `RESUME_LIMIT` times in it.
+        self._resume_times: dict[str, deque[float]] = {}
+        self._resume_backoff_until: dict[str, float] = {}
         self._probe_timer_cancel: Callable[[], None] | None = None
         # Last logged yield-stepping signature per charger (logged once per change).
         self._logged_yield_stepping: dict[str, tuple[Any, ...]] = {}
@@ -1629,11 +1642,14 @@ class SiteCapacityController:
         dwell_s = float(self.config.get(CONF_REGULATOR_DWELL_S, DEFAULT_REGULATOR_DWELL_S))
         if now - since < dwell_s:
             return False
+        if self._resume_backed_off(charger_entry_id, decision, now, previous_setpoint):
+            return False
         amps = int(min(float(requested), min(margins)))
         started = await charger_controller.async_battery_probe_start(amps, capped=True)
         if not started:
             return False
         self._resume_ready_since.pop(charger_entry_id, None)
+        self._resume_times.setdefault(charger_entry_id, deque()).append(now)
         damper.record_write(float(amps))
         self._record_probe_event(
             charger_entry_id,
@@ -1644,6 +1660,52 @@ class SiteCapacityController:
             previous_setpoint=previous_setpoint,
         )
         return True
+
+    def _resumes_in_window(self, charger_entry_id: str, now: float) -> int:
+        times = self._resume_times.get(charger_entry_id)
+        if not times:
+            return 0
+        while times and now - times[0] >= RESUME_WINDOW_S:
+            times.popleft()
+        return len(times)
+
+    def _resume_backed_off(
+        self, charger_entry_id: str, decision: RegulatorDecision, now: float, previous_setpoint: float | None
+    ) -> bool:
+        """Whether a resume due now is held back: `RESUME_LIMIT` resumes went out within `RESUME_WINDOW_S`, so none
+        goes out for `RESUME_BACKOFF_S` (said once in the decision log, and in `balancing_resume_snapshot`)."""
+        until = self._resume_backoff_until.get(charger_entry_id)
+        if until is not None:
+            if now < until:
+                return True
+            del self._resume_backoff_until[charger_entry_id]
+            self._resume_times.pop(charger_entry_id, None)
+            return False
+        if self._resumes_in_window(charger_entry_id, now) < RESUME_LIMIT:
+            return False
+        self._resume_backoff_until[charger_entry_id] = now + RESUME_BACKOFF_S
+        self._record_probe_event(
+            charger_entry_id,
+            decision,
+            outcome="held",
+            detail="resume_backed_off",
+            setpoint=None,
+            previous_setpoint=previous_setpoint,
+        )
+        return True
+
+    def balancing_resume_snapshot(self) -> dict[str, dict[str, Any]]:
+        """Per charger the resumes of a balancing pause within `RESUME_WINDOW_S` and the back-off left (seconds, or
+        `None`), for the site sensor and the diagnostics."""
+        now = self._yield_now()
+        snapshot: dict[str, dict[str, Any]] = {}
+        for charger_entry_id in list(self.config.get(CONF_CHARGER_ENTRY_IDS) or []):
+            until = self._resume_backoff_until.get(charger_entry_id)
+            snapshot[charger_entry_id] = {
+                "resumes_in_window": self._resumes_in_window(charger_entry_id, now),
+                "backoff_remaining_s": None if until is None or until <= now else round(until - now, 1),
+            }
+        return snapshot
 
     async def _async_maybe_start_battery_probe(
         self,
@@ -1858,6 +1920,8 @@ class SiteCapacityController:
         self._yield_steppers.clear()
         self._battery_probes.clear()
         self._resume_ready_since.clear()
+        self._resume_times.clear()
+        self._resume_backoff_until.clear()
         self._start_credits.clear()
         self._credited_a.clear()
         self._cancel_probe_timer()

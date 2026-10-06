@@ -319,9 +319,13 @@ async def test_probe_resume_cycles_are_bounded(hass: HomeAssistant, monkeypatch)
         halo.reads(0.0)
         _site_a(hass, halo.site, 1.6, 0.85, 4.44)
         await hass.async_block_till_done()
+        resumes = len(halo.turn_on)
         for _ in range(3):
             halo.advance(31.0)
             await halo.tick()
+        if len(halo.turn_on) == resumes:
+            # Not resumed: the charger stays off (it comes back on only when it is started).
+            continue
         halo.switch("on")
         halo.reads(6.0)
         _site_a(hass, halo.site, 7.6, 6.85, 10.44)
@@ -367,3 +371,48 @@ async def test_a_stop_under_a_persons_stop_that_sends_nothing_is_not_counted_tow
     assert len(stops) == 1
     assert controller._person_hold_stop_times == []
     await controller.async_shutdown()
+
+
+async def test_the_resume_back_off_is_shown_and_ends(hass: HomeAssistant, monkeypatch) -> None:
+    """After `RESUME_LIMIT` resumes in `RESUME_WINDOW_S` none goes out for `RESUME_BACKOFF_S`, the site says so,
+    and the charge is resumed again once it is over (still wanted, room for the minimum)."""
+    from custom_components.spotnav.site.site_capacity_controller import RESUME_BACKOFF_S, RESUME_LIMIT
+
+    halo = await _halo(hass, monkeypatch, "probe_backoff")
+    await halo.start()
+    halo.switch("on")
+    halo.reads(13.0)
+    _site_a(hass, halo.site, 14.63, 13.92, 19.36)
+    await hass.async_block_till_done()
+    await halo.tick()
+    for _ in range(RESUME_LIMIT + 1):
+        _site_a(hass, halo.site, 30.0, 13.92, 19.36)
+        await halo.tick()
+        halo.switch("off")
+        halo.reads(0.0)
+        _site_a(hass, halo.site, 1.6, 0.85, 4.44)
+        await hass.async_block_till_done()
+        resumes = len(halo.turn_on)
+        for _ in range(3):
+            halo.advance(31.0)
+            await halo.tick()
+        if len(halo.turn_on) == resumes:
+            break
+        halo.switch("on")
+        halo.reads(6.0)
+        _site_a(hass, halo.site, 7.6, 6.85, 10.44)
+        await hass.async_block_till_done()
+        await halo.tick()
+    starts = len(halo.turn_on)
+    assert starts == 1 + RESUME_LIMIT
+    state = halo.controller.balancing_resume_snapshot()[halo.cc.entry_id]
+    assert state["resumes_in_window"] == RESUME_LIMIT and state["backoff_remaining_s"] > 0, state
+    assert any(entry["detail"] == "resume_backed_off" for entry in halo.log())
+    halo.advance(RESUME_BACKOFF_S - 100.0)
+    await halo.tick()
+    assert len(halo.turn_on) == starts, "not before the back-off is over"
+    for _ in range(3):
+        halo.advance(61.0)
+        await halo.tick()
+    assert len(halo.turn_on) == starts + 1, "resumed once the back-off is over"
+    assert halo.controller.balancing_resume_snapshot()[halo.cc.entry_id]["backoff_remaining_s"] is None

@@ -172,6 +172,8 @@ def _site_diagnostics(hass: HomeAssistant, entry: ConfigEntry) -> dict[str, Any]
         # The battery-on-the-fuse probe per charger: state, last outcome and why, back-off left.
         "battery_probe": {} if controller is None else controller.battery_probe_snapshot,
         "start_credit": {} if controller is None else controller.start_credit_snapshot(),
+        # The resumes of a balancing pause per charger, and the back-off left after too many in ten minutes.
+        "balancing_resume": {} if controller is None else controller.balancing_resume_snapshot(),
         # How often each measurement entity reports (median of its recent `last_reported` gaps, `None`
         # until enough are seen), and which ones hold load balancing for reporting too seldom.
         "report_cadence": None
