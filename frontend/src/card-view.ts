@@ -1479,6 +1479,38 @@ export function createCardView(input: CardViewInput): CardView {
   const axisName = (key: TranslationKey): string => translate(model.language, key);
   const changeWord = translate(model.language, "bar.change");
 
+  /**
+   * The Charging cell's word and name while the Start or Stop it sent is in flight ([sent]), or its
+   * rendered ones again (`null`). The rendered ones are kept on the cell the first time it changes.
+   */
+  function underWay(button: HTMLButtonElement, sent: "start" | "stop" | null): void {
+    const valueNode = button.querySelector(`.${C.settingsValue}`);
+    if (valueNode === null) {
+      return;
+    }
+    if (sent === null) {
+      const word = button.dataset["renderedValue"];
+      const name = button.dataset["renderedLabel"];
+      if (word !== undefined && name !== undefined) {
+        valueNode.textContent = word;
+        button.setAttribute("aria-label", name);
+        delete button.dataset["renderedValue"];
+        delete button.dataset["renderedLabel"];
+      }
+      return;
+    }
+    if (button.dataset["renderedValue"] === undefined) {
+      button.dataset["renderedValue"] = valueNode.textContent ?? "";
+      button.dataset["renderedLabel"] = button.getAttribute("aria-label") ?? "";
+    }
+    const stopping = sent === "stop";
+    valueNode.textContent = axisName(stopping ? "bar.stopping" : "bar.starting");
+    button.setAttribute(
+      "aria-label",
+      `${axisName("bar.charging")}: ${axisName(stopping ? "bar.state.charging" : "bar.state.notCharging")}. ${axisName("bar.waitingForCharger")}`,
+    );
+  }
+
   function cell(
     cellClass: string,
     id: string,
@@ -1551,18 +1583,20 @@ export function createCardView(input: CardViewInput): CardView {
     }
     bar.append(actionButton);
   }
-  if (immediateLabelKey === null && model.control.immediate.pending) {
-    // The backend is waiting for the charger to acknowledge a start: the cell stays where it was,
-    // greyed and busy, instead of vanishing until the answer arrives.
+  const pendingAction = model.control.pendingAction;
+  if (immediateLabelKey === null && pendingAction !== null) {
+    // Home Assistant awaits the charger's report of a Start or Stop: the cell stays where it was,
+    // greyed and busy, naming what is under way instead of vanishing until the answer arrives.
+    const stopping = pendingAction === "stopping";
     actionButton = cell(
       `${C.actionButton}`,
       "charging",
-      axisName("bar.chargeNow"),
-      playIcon(doc),
-      axisName("bar.waiting"),
-      `${axisName("bar.charging")}: ${axisName("bar.state.notCharging")}. ${axisName("bar.waiting")}. ${axisName("control.actionPending")}`,
+      axisName(stopping ? "bar.chargingNow" : "bar.chargeNow"),
+      stopping ? stopIcon(doc) : playIcon(doc),
+      axisName(stopping ? "bar.stopping" : "bar.starting"),
+      `${axisName("bar.charging")}: ${axisName(stopping ? "bar.state.charging" : "bar.state.notCharging")}. ${axisName("bar.waitingForCharger")}`,
     );
-    actionButton.dataset["action"] = "start";
+    actionButton.dataset["action"] = stopping ? "stop" : "start";
     actionButton.disabled = true;
     actionButton.dataset["renderedDisabled"] = "true";
     actionButton.dataset["waiting"] = "true";
@@ -1597,6 +1631,24 @@ export function createCardView(input: CardViewInput): CardView {
         input.onAction("resume", null);
       }
     });
+    bar.append(plannerButton);
+  }
+  const heldAutomatic = model.control.heldAutomatic;
+  if (automaticLabelKey === null && heldAutomatic !== null) {
+    // While a Start or Stop awaits the charger, the schedule cell keeps the caption it last had,
+    // disabled, rather than vanishing and coming back once the charger reports.
+    const paused = heldAutomatic === "resume";
+    plannerButton = cell(
+      C.plannerButton,
+      "schedule",
+      axisName(paused ? "bar.schedulePaused" : "bar.scheduleActive"),
+      paused ? playIcon(doc) : pauseIcon(doc),
+      axisName(paused ? "action.resumeShort" : "action.pauseAutomaticShort"),
+      `${axisName("bar.schedule")}: ${axisName(paused ? "bar.state.schedulePaused" : "bar.state.scheduleActive")}. ${axisName("bar.waitingForCharger")}`,
+    );
+    plannerButton.dataset["action"] = heldAutomatic;
+    plannerButton.disabled = true;
+    plannerButton.dataset["renderedDisabled"] = "true";
     bar.append(plannerButton);
   }
   if (model.strategy.selected !== null) {
@@ -3100,6 +3152,11 @@ export function createCardView(input: CardViewInput): CardView {
       for (const button of [actionButton, plannerButton]) {
         if (button === null) {
           continue;
+        }
+        if (button === actionButton) {
+          // A Start or Stop just sent says at once what is under way, as the cell will while Home
+          // Assistant awaits the charger's report; a refused one gets its own word back.
+          underWay(button, pending && button === pressed && (action === "start" || action === "stop") ? action : null);
         }
         button.disabled = pending || button.dataset["renderedDisabled"] === "true";
         const busy = (pending && button === pressed) || button.dataset["waiting"] === "true";
