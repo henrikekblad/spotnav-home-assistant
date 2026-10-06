@@ -459,3 +459,80 @@ async def test_the_session_records_how_the_car_was_decided(world: World, hass: H
     await world.tap(world.sent()[0], 1)
     facts = session_facts(hass, controller)
     assert facts.vehicle_id == world.cars["Tesla"] and facts.vehicle_decided_by == METHOD_ANSWERED
+
+
+async def test_a_person_chooses_a_cars_sources_over_both_transports(
+    world: World, hass: HomeAssistant, hass_ws_client, hass_admin_user, hass_client_no_auth
+) -> None:
+    from pytest_homeassistant_custom_component.common import CLIENT_ID
+
+    await world.start()
+    refresh = await hass.auth.async_create_refresh_token(hass_admin_user, CLIENT_ID)
+    socket = await hass_ws_client(hass, hass.auth.async_create_access_token(refresh))
+    kia = world.cars["Kia"]
+    answer = await ws_call(
+        socket,
+        {"type": "spotnav/choose_vehicle_identification", "api_version": 1, "charger_id": world.entry.entry_id,
+         "vehicle_id": kia, "source": "location", "entity_id": "none"},
+    )
+    result = answer["result"]
+    assert result["ok"] is True
+    assert result["identification"]["location"] == {
+        "entity_id": None, "name": None, "chosen": True,
+        "candidates": [{"entity_id": world.trackers["Kia"], "name": "kia location"}],
+    }
+    refused = await ws_call(
+        socket,
+        {"type": "spotnav/choose_vehicle_identification", "api_version": 1, "charger_id": world.entry.entry_id,
+         "vehicle_id": kia, "source": "plug", "entity_id": "binary_sensor.someone_elses"},
+    )
+    assert refused["result"] == {"api_version": 1, "ok": False, "error": "spotnav_invalid_value"}
+    client = await hass_client_no_auth()
+    response = await client.post(
+        "/api/webhook/webhook-a",
+        json={"version": 1, "action": "choose_vehicle_identification", "vehicle_id": kia, "source": "location",
+              "entity_id": None},
+    )
+    body = await response.json()
+    assert response.status == 200 and body["identification"]["location"]["entity_id"] == world.trackers["Kia"]
+
+
+async def test_the_diagnostics_say_how_and_when_but_name_nothing(world: World) -> None:
+    await world.start()
+    await world.plug_in()
+    await world.later(ASK_AFTER_S + 5)
+    diagnostics = world.identifier.diagnostics()
+    assert diagnostics["method"] == METHOD_ASSUMED and diagnostics["state"] == "asking"
+    assert diagnostics["candidates"] == 2 and diagnostics["asked_phones"] == 1
+    text = repr(diagnostics)
+    for name, vehicle in world.cars.items():
+        assert name not in text and vehicle not in text
+
+
+async def test_the_app_is_woken_for_the_question(world: World) -> None:
+    await world.start()
+    push = charger_data(world.hass, world.entry.entry_id).push
+    events: list[str] = []
+    push.async_event = lambda event, now: events.append(event)  # type: ignore[method-assign]
+    await world.plug_in()
+    await world.later(ASK_AFTER_S + 5)
+    assert events.count("vehicle_identify") == 1
+
+
+def test_a_session_keeps_how_its_car_was_decided() -> None:
+    from custom_components.spotnav.sessions.model import ChargeSession
+
+    session = ChargeSession(
+        id="s", charger_id="c", start=T0, end=T0 + timedelta(hours=1), energy_kwh=5.0, energy_source="register",
+        priced_kwh=0.0, cost_minor=None, reference_cost_minor=None, currency=None, major_unit=None,
+        minor_unit=None, started_by="plan_window", strategy="cheapest", vehicle_id="a", vehicle_name="Kia",
+        solar_kwh=0.0, solar_known_kwh=0.0, last_register_kwh=None, last_sample_at=None,
+        vehicle_decided_by=METHOD_ANSWERED,
+    )
+    stored = session.as_dict()
+    assert stored["vehicle_decided_by"] == "answered"
+    assert ChargeSession.from_dict(stored).vehicle_decided_by == "answered"
+    assert session.public()["vehicle_decided_by"] == "answered"
+    plain = replace(session, vehicle_decided_by=None).as_dict()
+    assert "vehicle_decided_by" not in plain and ChargeSession.from_dict(plain).vehicle_decided_by is None
+    assert ChargeSession.from_dict({**stored, "vehicle_decided_by": "camera"}) is None
