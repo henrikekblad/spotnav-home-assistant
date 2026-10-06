@@ -172,8 +172,12 @@ class World:
                 notifications=NotificationSettings(targets=phones),
                 identify_mode=mode,
                 target=TargetSocIntent(vehicle_id=kia, target_percent=80.0),
-                vehicle_targets=((self.cars["Tesla"], 60.0),),
             ),
+        )
+        from custom_components.spotnav.vehicles import vehicle_properties
+
+        await vehicle_properties.async_update_vehicle_properties(
+            hass, domain_data(hass).decision_store, self.cars["Tesla"], {vehicle_properties.KEY_TARGET: 60.0}
         )
         await self.observe()
         self.freezer.move_to(self.t0 - timedelta(seconds=1))
@@ -428,6 +432,31 @@ async def test_the_card_shows_the_question_and_answers_it(
     assert world.settings.target.vehicle_id == world.cars["Tesla"]
     assert world.identifier.method == METHOD_ANSWERED
     assert world.sent()[-1]["message"] == "Tesla chosen."
+
+
+async def test_any_signed_in_user_may_answer_in_the_card(
+    world: World, hass: HomeAssistant, hass_ws_client, hass_read_only_user
+) -> None:
+    from pytest_homeassistant_custom_component.common import CLIENT_ID
+
+    await world.start()
+    await world.plug_in()
+    await world.later(ASK_AFTER_S + 5)
+    refresh = await hass.auth.async_create_refresh_token(hass_read_only_user, CLIENT_ID)
+    socket = await hass_ws_client(hass, hass.auth.async_create_access_token(refresh))
+    answer = await ws_call(
+        socket,
+        {"type": "spotnav/identify_vehicle", "api_version": 1, "charger_id": world.entry.entry_id,
+         "vehicle_id": world.cars["Tesla"]},
+    )
+    assert answer["result"]["ok"] is True
+    assert world.settings.target.vehicle_id == world.cars["Tesla"]
+    refused = await ws_call(
+        socket,
+        {"type": "spotnav/choose_vehicle_identification", "api_version": 1, "charger_id": world.entry.entry_id,
+         "vehicle_id": world.cars["Kia"], "source": "location", "entity_id": "none"},
+    )
+    assert refused["result"]["error"] == "spotnav_not_admin", "the settings stay an administrator's"
 
 
 async def test_the_app_answers_through_the_webhook(world: World, hass: HomeAssistant, hass_client_no_auth) -> None:
