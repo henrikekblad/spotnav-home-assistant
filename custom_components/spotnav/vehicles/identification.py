@@ -19,7 +19,13 @@ ask deadline, at most once a minute per car (the refresh limiter `vehicle_refres
 **Automatic** (`decide`): exactly one strong + is the car; else the only one not excluded is; two strong +
 is a conflict and asks at once; otherwise it asks after `ASK_AFTER_S` and keeps listening until
 `LISTEN_FOR_S` after the plug-in, switching on decisive evidence unless a person answered. At most one
-automatic decision per plug-in. **Always ask** asks at the plug-in, the buttons ordered by evidence, and
+automatic decision per plug-in.
+
+**The camera** (optional, `camera_rule.py`, `camera_identification.py`): while nothing has decided and two or
+more cars are left, the charger's camera is asked once (one retry after an error) before the question. Its
+answer decides alone only at high confidence between cars that differ in colour, each with a reference picture;
+otherwise it puts the car it names first among the question's buttons. A query that takes longer than
+`camera_rule.QUERY_TIMEOUT_S` is ignored. **Always ask** asks at the plug-in, the buttons ordered by evidence, and
 never switches by itself. **Off** does nothing.
 
 **The question** goes to the charger's notification phones (event `vehicle_identify`) with one button per
@@ -56,6 +62,7 @@ from homeassistant.util import dt as dt_util
 
 from ..const import DOMAIN
 from ..planning.auto_settings import AutoSettings, AutoSettingsError, AutoSettingsStore, IDENTIFY_ASK, IDENTIFY_OFF
+from .camera_rule import camera_verdict, may_query, QUERY_TIMEOUT_S
 from .identification_sources import identification_sources, location_reading, plug_reading
 from . import vehicle_properties
 from .vehicle_discovery import resolve_target_vehicle
@@ -96,11 +103,16 @@ METHOD_LOCATION: Final = "location"
 METHOD_ONLY_CANDIDATE: Final = "only_candidate"
 #: Nobody answered and nothing decided it: the car that was already chosen is assumed.
 METHOD_ASSUMED: Final = "assumed"
+#: The charger's camera recognised the car (high confidence, among cars that differ in colour).
+METHOD_CAMERA: Final = "camera"
 METHODS: Final = (
     METHOD_MANUAL, METHOD_ANSWERED, METHOD_PLUG_SENSOR, METHOD_LOCATION, METHOD_ONLY_CANDIDATE, METHOD_ASSUMED,
+    METHOD_CAMERA,
 )
 #: Methods that say which car it is, so another charger may exclude it.
-_CONFIRMING: Final = (METHOD_MANUAL, METHOD_ANSWERED, METHOD_PLUG_SENSOR, METHOD_LOCATION, METHOD_ONLY_CANDIDATE)
+_CONFIRMING: Final = (
+    METHOD_MANUAL, METHOD_ANSWERED, METHOD_PLUG_SENSOR, METHOD_LOCATION, METHOD_ONLY_CANDIDATE, METHOD_CAMERA,
+)
 
 STATE_WAITING: Final = "waiting"
 STATE_ASKING: Final = "asking"
@@ -191,13 +203,17 @@ def decide(evidence: Sequence[Evidence]) -> tuple[str | None, str | None, bool]:
     return None, None, False
 
 
-def ordered(evidence: Sequence[Evidence], current: str | None) -> list[str]:
-    """The cars, likeliest first: by evidence, then the current car, then as given."""
+def ordered(evidence: Sequence[Evidence], current: str | None, camera: str | None = None) -> list[str]:
+    """The cars, likeliest first: by evidence (the car the camera names after a car whose own plug sensor says
+    it was plugged in, before every other), then the current car, then as given."""
 
-    def rank(pair: tuple[int, Evidence]) -> tuple[int, int, int]:
+    def rank(pair: tuple[int, Evidence]) -> tuple[float, int, int]:
         index, item = pair
+        kind: float
         if item.negative is not None:
             kind = 3
+        elif item.vehicle_id == camera and item.positive != STRONG:
+            kind = 0.5
         else:
             kind = {STRONG: 0, WEAK: 1}.get(item.positive or "", 2)
         return kind, 0 if item.vehicle_id == current else 1, index
@@ -273,6 +289,16 @@ class _Session:
     replugged_at: datetime | None = None
     #: Each car's entities and what they said at the last evaluation (`_evidence_record`).
     evidence: list[dict[str, Any]] = field(default_factory=list)
+    #: The camera's queries at this plug-in, whether the last one failed with an error, the one running, the car
+    #: its answer puts first, and its evidence entry (`{"camera": {entity_id, answer, confidence, used}}`).
+    camera_attempts: int = 0
+    camera_failed: bool = False
+    camera_task: asyncio.Task[None] | None = None
+    camera_pick: str | None = None
+    camera_record: dict[str, Any] | None = None
+
+    def all_evidence(self) -> list[dict[str, Any]]:
+        return [*self.evidence, *([] if self.camera_record is None else [{"camera": self.camera_record}])]
 
 
 class VehicleIdentifier:
@@ -286,8 +312,11 @@ class VehicleIdentifier:
         controller: Any,
         store: AutoSettingsStore,
         notifier: Any = None,
+        camera: Any = None,
     ) -> None:
         self._hass = hass
+        #: The charger's camera (`camera_identification.CameraIdentification`), `None` without one.
+        self._camera = camera
         self._entry_id = entry_id
         self._controller = controller
         self._store = store
@@ -424,7 +453,7 @@ class VehicleIdentifier:
                 {"vehicle_id": car, "name": session.names.get(car, car), "likely": car in session.likely}
                 for car in session.order
             ],
-            "evidence": list(session.evidence),
+            "evidence": session.all_evidence(),
         }
 
     def diagnostics(self) -> dict[str, Any]:
@@ -439,7 +468,7 @@ class VehicleIdentifier:
             "asked_phones": 0 if session is None else len(session.phones),
             # The entities each car was judged by, their states and when they changed and were written: what a
             # field report needs. A position says only home or away, never where.
-            "evidence": [] if session is None else list(session.evidence),
+            "evidence": [] if session is None else session.all_evidence(),
         }
 
     # ------------------------------------------------------------------ observing
@@ -627,6 +656,8 @@ class VehicleIdentifier:
         if session is not None:
             for remove in session.unsubscribe:
                 remove()
+            if session.camera_task is not None and not session.camera_task.done():
+                session.camera_task.cancel()
 
     def _sources(self, car: str) -> tuple[str | None, str | None]:
         plug, location = identification_sources(self._hass, car)
@@ -697,7 +728,7 @@ class VehicleIdentifier:
             return
         evidence = self._evidence(session, dt_util.utcnow())
         if session.state == STATE_WAITING:
-            session.order = ordered(evidence, self._current_vehicle())
+            session.order = ordered(evidence, self._current_vehicle(), session.camera_pick)
         session.likely = frozenset(item.vehicle_id for item in evidence if item.positive == STRONG and not item.negative)
         if session.mode == IDENTIFY_ASK:
             return
@@ -706,6 +737,76 @@ class VehicleIdentifier:
             self._settle(car, method, "recognised")
         elif conflict:
             self._ask()
+        else:
+            self._maybe_ask_camera(session, evidence)
+
+    # ------------------------------------------------------------------ the camera
+
+    def _maybe_ask_camera(self, session: _Session, evidence: Sequence[Evidence]) -> None:
+        """Ask the camera, when it may be asked now (`camera_rule.may_query`) and has something to compare."""
+        camera = self._camera
+        if camera is None or (session.camera_task is not None and not session.camera_task.done()):
+            return
+        remaining = tuple(item.vehicle_id for item in evidence if item.negative is None)
+        if not may_query(
+            attempts=session.camera_attempts,
+            failed=session.camera_failed,
+            waiting=session.state == STATE_WAITING and session.listening,
+            remaining=len(remaining),
+            elapsed_s=(dt_util.utcnow() - session.t0).total_seconds(),
+            window_s=ASK_AFTER_S,
+        ):
+            return
+        if not camera.ready_for(remaining):
+            return
+        session.camera_attempts += 1
+        session.camera_task = self._hass.async_create_background_task(
+            self._async_ask_camera(session, remaining), f"spotnav camera identification {self._entry_id}"
+        )
+
+    async def _async_ask_camera(self, session: _Session, candidates: tuple[str, ...]) -> None:
+        camera = self._camera
+        settings = camera.settings()
+        entity_id = None if settings is None else settings.camera_entity_id
+        try:
+            async with asyncio.timeout(QUERY_TIMEOUT_S):
+                answer = await camera.async_ask(candidates)
+        except TimeoutError:
+            _LOGGER.debug("SpotNav's camera query took too long; the question is asked as without one")
+            session.camera_failed = False
+            session.camera_record = {"entity_id": entity_id, "answer": None, "confidence": None, "used": False}
+            return
+        except Exception as err:  # noqa: BLE001 - a failing camera or model is no evidence
+            _LOGGER.debug("SpotNav's camera query failed: %s", type(err).__name__)
+            session.camera_failed = True
+            session.camera_record = {"entity_id": entity_id, "answer": None, "confidence": None, "used": False}
+            if self._session is session:
+                # Once more, if it still may (`camera_rule.QUERY_ATTEMPTS`).
+                self._hass.loop.call_soon(self._evaluate)
+            return
+        session.camera_failed = False
+        self._apply_camera(session, entity_id, answer.vehicle_id, answer.confidence)
+
+    @callback
+    def _apply_camera(self, session: _Session, entity_id: str | None, answer: str | None, confidence: str | None) -> None:
+        """The camera's answer, applied only while nothing has decided and no one has answered."""
+        record = {"entity_id": entity_id, "answer": answer or "none", "confidence": confidence, "used": False}
+        session.camera_record = record
+        if self._session is not session or session.state != STATE_WAITING or not session.listening:
+            return
+        if self._connected is False:
+            return
+        evidence = self._evidence(session, dt_util.utcnow())
+        remaining = [item.vehicle_id for item in evidence if item.negative is None]
+        verdict = camera_verdict(answer, confidence, remaining, self._camera.reference_signatures(remaining))
+        if verdict.prefers is None:
+            return
+        record["used"] = True
+        if verdict.decides is not None:
+            self._settle(verdict.decides, METHOD_CAMERA, "recognised")
+            return
+        session.camera_pick = verdict.prefers
+        session.order = ordered(evidence, self._current_vehicle(), session.camera_pick)
 
     @callback
     def _ask_deadline(self, _now: datetime) -> None:
