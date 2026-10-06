@@ -21,7 +21,8 @@ administrators) also carries the whole installation as one debug bundle (`bundle
 - `solar_decision_log` in the site's diagnostics, per charger: what solar and hybrid decided, the
   last 200 (time, strategy, state from and to, action, reason, the current asked for, the surplus,
   export, battery, grid and car power and the priority). Only changes and actions are kept, never an
-  unchanged tick.
+  unchanged tick. While a plan's period holds the charge (hybrid), nothing the sun decides reaches the
+  charger, so only a change of its state is kept.
 - `client`, added by the card to the file it saves: the card version and bundle hash this browser runs
   and a short user agent, next to the backend's `versions.card_bundle_hash` (the file) and
   `card_bundle_hash_served` (the one browsers are handed). When they differ, the file says so in

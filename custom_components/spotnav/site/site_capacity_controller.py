@@ -273,6 +273,8 @@ class SiteCapacityController:
         self._state_listener_cancel: Callable[[], None] | None = None
         self._controller_listener_cancels: list[Callable[[], None]] = []
         self._listeners: set[Callable[[], None]] = set()
+        # A solar coordinator's re-render is on its way to the listeners (`notify_solar_surplus_changed`).
+        self._rerendering = False
         # The latest active-control apply pass, and whether one was created and has not begun yet (two
         # recomputes in one tick make one pass). A pass only decides and spawns: each charger's step runs as
         # that charger's own task (`_charger_ops`), so a pass never waits for a charger's slow command before
@@ -497,10 +499,21 @@ class SiteCapacityController:
         """Re-render this site's listeners now; called by `SolarExecutionCoordinator`.
 
         A solar verdict is applied asynchronously, after this controller's own `_notify()` for the
-        tick, so the sensor would otherwise show the previous snapshot. Re-entry into the
-        coordinator is coalesced by its `_evaluating` guard.
+        tick, so the sensor would otherwise show the previous snapshot. It carries no new reading:
+        while it runs `rerendering` says so, and no solar coordinator evaluates again for it (one
+        charger's re-render would otherwise make the next one's evaluation, and that one's the first's).
         """
-        self._notify()
+        self._rerendering = True
+        try:
+            self._notify()
+        finally:
+            self._rerendering = False
+
+    @property
+    def rerendering(self) -> bool:
+        """Whether the listeners are being told of a solar re-render (`notify_solar_surplus_changed`), not of a
+        recompute."""
+        return self._rerendering
 
     @callback
     def _async_periodic_recompute(self, _now: Any) -> None:

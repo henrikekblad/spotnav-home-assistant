@@ -636,6 +636,8 @@ class ChargingController:
         self._seen_charging: bool | None = None
         # Whether the last `_stop_locked` sent nothing because a stop of ours still settled.
         self._stop_settled = False
+        # The plan whose end was last left to the car (`async_end_plan_need_met`), so that is said once per plan.
+        self._left_to_car: ChargingPlan | None = None
         # A stop command on its way to the charger: the regulator writes no current meanwhile, since on
         # some chargers (Easee) a current written while the stop lands lifts it again.
         self._stop_in_flight = False
@@ -1457,6 +1459,23 @@ class ChargingController:
             finally:
                 self._shadow.end(token, core_events.PlanDropped())
 
+    async def async_hand_charge_to_sun(self) -> None:
+        """The strategy left the plan for the sun while a charge runs that the sun's rules keep (the execution
+        boundary decided it, under its lock, in its strategy change's feed): the plan is cleared with no stop, and
+        the running charge is the sun's from now, as if it had started it. Its next evaluation modulates it."""
+        async with self._lock:
+            self.plan = None
+            self._plan_charge = False
+            self._charge_origin = "solar"
+            self._hold.spotnav_started()
+            self._clear_top_off()
+            self._cancel_timers()
+            self._async_disarm_target_listener()
+            self._async_disarm_probe_listener()
+            _LOGGER.info("SpotNav charger %s: the strategy changed; the sun takes the running charge over", self.entry_id)
+            await self._async_save_quietly()
+            self._notify()
+
     def _open_window_end(self) -> datetime | None:
         """The end of the plan's window open now (a top-off's deadline while one runs), or `None`."""
         plan = self.plan
@@ -1601,11 +1620,14 @@ class ChargingController:
             if self.plan is None:
                 return False
             if self.charges_to_vehicle_limit():
-                # The car ends this charge itself when it is full: no count or estimate of ours ends it.
-                _LOGGER.info(
-                    "SpotNav charger %s: the plan charges to the car's own limit, leaving its end to the car",
-                    self.entry_id,
-                )
+                # The car ends this charge itself when it is full: no count or estimate of ours ends it. Said
+                # once per plan: every calculation while the need reads met asks again.
+                if self._left_to_car is not self.plan:
+                    self._left_to_car = self.plan
+                    _LOGGER.info(
+                        "SpotNav charger %s: the plan charges to the car's own limit, leaving its end to the car",
+                        self.entry_id,
+                    )
                 return False
             if self.plan.target_soc_percent is not None:
                 # The target's own stop, with its record, or nothing.

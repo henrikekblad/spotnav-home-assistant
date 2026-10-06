@@ -158,6 +158,12 @@ cannot, and for a direct site without the total it says the meter's total grid p
   the car ended at, outlast a restart and a switch to another strategy and back. A charge something
   else turned off is an ordinary stop. A charger that is not charging draws nothing, whatever its
   current sensor still shows.
+- Switching strategy while a charge runs hands it over rather than stopping it. To **Solar**: when the
+  sun's rules would keep the charge going (the surplus covers the charger's minimum, as for a charge
+  that runs), the sun takes it over and sets its current from the surplus; otherwise it is stopped
+  once. To a strategy with a plan, inside one of its periods: the plan keeps the charge. Outside the
+  plan's periods with no sun to carry it, the charge is stopped once, and the status names the next
+  period.
 - **Solar priority** (a site setting): *car first* uses surplus before the house battery;
   *battery first* leaves the surplus to the battery and charges the car from what it does not
   take. A house battery power sensor can be set on the site.

@@ -58,7 +58,12 @@ it, waiting for that boundary, with a window open then: a best-effort plan endin
 departure's plan begins) stops nothing and records no end (`continued` on `window_end` and `final_window_end`;
 `ChargingController._successor_continues`): the boundary installs the next plan at once, and its re-arm keeps the
 charge. Installed first, the next plan cancels the end's timer and keeps the charge the same way, so the order of
-the two does not matter; one that is not installed after all leaves the end as it always was.
+the two does not matter; one that is not installed after all leaves the end as it always was. A strategy change
+hands a running charge over instead of stopping it: to `solar`, the plan's charge goes to the sun with no stop when
+the sun's rules keep it (`sun_keeps` on `strategy_change`: running beside the plan, its own state `on` or
+`disarming`; off `cheapest`, the surplus at or above the charger's stop level on the reading at hand), and is
+stopped once otherwise. The other way, a plan window open when the sun runs a charge takes it over at its start
+(`window_start`, no command), and the sun leaving it does not stop it.
 
 ```mermaid
 stateDiagram-v2
@@ -77,6 +82,7 @@ stateDiagram-v2
         plan --> none: window_end, target, need_met, rearm, stray, stop went out, charger_reported_off
         person --> none: person_stop, balancing_pause (stop went out), charger_reported_off
         solar --> none: solar_stop (stop went out), charger_reported_off
+        plan --> solar: strategy_change (to solar, the sun keeps it)
         top_off --> none: top_off_end, charger_reported_off
     }
     state "person intent" as I {
