@@ -413,8 +413,9 @@ not know. Example answers of `spotnav/get_sessions` are in `tests/fixtures/sessi
 ### Vehicle identification
 
 At a charger more than one vehicle can charge at, SpotNav finds out which one was plugged in
-([how](vehicle-identification.md)). The additive root block `identification` is `null` unless a plug-in is
-being identified, else:
+([how](vehicle-identification.md)). The additive root block `identification` is `null` while no car is plugged in or
+fewer than two cars can charge here; otherwise it is present, also with identification off or after a restart
+(then `state` is `decided`, `method` what stands, `since` `null` and `evidence` empty):
 
 ```json
 {"state": "asking", "method": "assumed", "vehicle_id": "<the target vehicle now>",

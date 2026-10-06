@@ -392,8 +392,23 @@ class VehicleIdentifier:
     def dashboard(self) -> dict[str, Any] | None:
         """The dashboard's `identification` block: `None` unless a plugged-in car is being identified."""
         session = self._session
-        if session is None or self._connected is False:
+        if self._connected is not True:
             return None
+        if session is None:
+            # Nothing is being identified (identification off, a car chosen just before the plug-in, a decision
+            # kept across a restart): with two or more cars at the charger the car can still be changed, so the
+            # block says what stands.
+            cars = self._candidates(self._settings())
+            if len(cars) < 2:
+                return None
+            return {
+                "state": STATE_DECIDED,
+                "method": self._method or METHOD_MANUAL,
+                "vehicle_id": self._planned_vehicle(),
+                "since": None,
+                "candidates": [{"vehicle_id": car, "name": name, "likely": False} for car, name in cars],
+                "evidence": [],
+            }
         return {
             "state": session.state,
             "method": self._method,
