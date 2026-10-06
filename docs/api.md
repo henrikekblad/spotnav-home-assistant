@@ -431,12 +431,16 @@ additive `identification`: `{"plug": source, "location": source}`, each source `
 choose from, and with `chosen` true it is the person's "none".
 
 `spotnav/identify_vehicle` (any signed-in user: the question goes to the household's phones) and the webhook action
-`identify_vehicle` take `vehicle_id`, one of
-the candidates, and answer `{"api_version": 1, "ok", "error", "identification"}` with the block after the answer.
-It is the person's answer: it wins over every automatic result, retires the question on every phone, and writes
-the settings as any vehicle choice does. Refusals: `spotnav_not_identifying` (nothing is being identified),
-`spotnav_invalid_value` (not a candidate), `spotnav_unknown_charger`,
-`spotnav_unsupported_api_version`; over the webhook HTTP 400 with the same code.
+`identify_vehicle` take `vehicle_id`, one of this charger's cars (`vehicle_ids`, every detected car when `null`), and
+answer `{"api_version": 1, "ok", "error", "identification"}` with the block after the answer. They are taken whenever
+a car is plugged in: an answer while the question is open, or a correction of a car already decided (also where
+nothing was identified: identification off, one car, a decision from before a restart). Either way it is recorded
+as `answered` and holds like an answer for the car's stay (a replug within two minutes keeps it, unless the
+answered car itself reports unplugged or away), wins over every automatic result, replaces an open question on
+every phone silently, and writes the settings as any vehicle choice does. Refusals: `spotnav_not_identifying` (no
+car is plugged in), `spotnav_invalid_value` (not one of this charger's cars), `spotnav_unknown_charger`,
+`spotnav_unsupported_api_version`; over the webhook HTTP 400 with the same code. The settings that steer
+identification (`vehicle_ids`, `identify_mode`, a car's sources) stay an administrator's.
 
 `spotnav/choose_vehicle_identification` (administrators) and the webhook action of the same name take
 `vehicle_id`, `source` (`plug` or `location`) and `entity_id`: one of the source's candidates, `"none"` (the car

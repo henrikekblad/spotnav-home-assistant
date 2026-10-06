@@ -111,6 +111,9 @@ MAX_BUTTONS: Final = 3
 ACTION_PREFIX: Final = "SPOTNAV_ID_"
 EVENT_ACTION: Final = "mobile_app_notification_action"
 EVENT_CLEARED: Final = "mobile_app_notification_cleared"
+#: Why a person's choice cannot be taken (`answer_refusal`).
+REFUSED_NOT_PLUGGED_IN: Final = "not_plugged_in"
+REFUSED_NOT_HERE: Final = "not_here"
 _STORE_VERSION: Final = 1
 _STORE_KEY_PREFIX: Final = f"{DOMAIN}.identification"
 
@@ -790,12 +793,33 @@ class VehicleIdentifier:
 
     # ------------------------------------------------------------------ answers
 
+    def answer_refusal(self, vehicle_id: Any) -> str | None:
+        """Why a person's choice of `vehicle_id` cannot be taken now: `REFUSED_NOT_PLUGGED_IN` without a car
+        plugged in, `REFUSED_NOT_HERE` for a car that cannot charge at this charger, else `None`."""
+        if self._connected is not True:
+            return REFUSED_NOT_PLUGGED_IN
+        cars = [car for car, _ in self._candidates(self._settings())]
+        if not isinstance(vehicle_id, str) or vehicle_id not in cars:
+            return REFUSED_NOT_HERE
+        return None
+
     async def async_answer(self, vehicle_id: Any) -> bool:
-        """A person's answer from the card or the app: `False` when nothing is being identified or the car is not
-        one of the candidates."""
-        session = self._session
-        if session is None or not isinstance(vehicle_id, str) or vehicle_id not in session.cars:
+        """A person's answer from a phone, the card or the app, or a correction of a car already decided: taken
+        whenever a car is plugged in and it is one of this charger's cars (`answer_refusal`), as `answered`, and it
+        holds for the car's stay like an answer to the question. An open question is replaced silently."""
+        if self.answer_refusal(vehicle_id) is not None:
             return False
+        session = self._session
+        if session is None or vehicle_id not in session.cars:
+            # Nothing was being identified (identification off, one car known, decided before a restart): the
+            # correction is the plug-in's decision, kept as an answer would be.
+            settings = self._settings()
+            cars = self._candidates(settings)
+            self._close()
+            self._session = _Session(
+                t0=dt_util.utcnow(), mode=settings.identify_mode, cars=tuple(car for car, _ in cars),
+                names=dict(cars), order=[car for car, _ in cars], state=STATE_DECIDED, listening=False,
+            )
         switch = self._settle(vehicle_id, METHOD_ANSWERED, "chosen")
         if switch is not None:
             await switch

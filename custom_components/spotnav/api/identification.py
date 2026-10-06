@@ -1,10 +1,11 @@
 """Answering "which car is plugged in?" and choosing a car's identification sources, over both transports.
 
 * `spotnav/identify_vehicle` (WebSocket, any signed-in user) and the webhook action `identify_vehicle`:
-  `{vehicle_id}` answers the charger's open question (`vehicles/identification.py`). The answer is
+  `{vehicle_id}` answers the charger's open question, or corrects the car already decided, whenever a car is
+  plugged in (`vehicles/identification.py`): recorded as `answered`, it holds like an answer. The answer is
   `{"api_version": 1, "ok", "error", "identification"}`, `identification` being the dashboard block after the
-  answer. Refusals: `spotnav_not_identifying` (no plug-in is being identified), `spotnav_invalid_value` (not one
-  of the candidates), `spotnav_unknown_charger`, `spotnav_unsupported_api_version`.
+  answer. Refusals: `spotnav_not_identifying` (no car is plugged in), `spotnav_invalid_value` (not one of this
+  charger's cars), `spotnav_unknown_charger`, `spotnav_unsupported_api_version`.
 * `spotnav/choose_vehicle_identification` (WebSocket, administrators) and the webhook action of the same name:
   `{vehicle_id, source: "plug" | "location", entity_id}` with `entity_id` one of the source's candidates,
   `"none"` (the car has no such source) or `null` (back to automatic). The answer carries `identification`, the
@@ -24,6 +25,7 @@ from homeassistant.components import websocket_api
 from homeassistant.core import callback, HomeAssistant
 
 from ..runtime import charger_data, ChargerConfigEntry
+from ..vehicles.identification import REFUSED_NOT_PLUGGED_IN
 from ..vehicles.identification_sources import async_choose_source, sources_block
 from .common import ERROR_NOT_ADMIN, is_admin, lookup_charger, send_unsupported_version
 
@@ -50,9 +52,10 @@ async def async_identify_vehicle(hass: HomeAssistant, entry_id: str, vehicle_id:
     """A person's answer to the charger's question: the dashboard block after it, or a refusal by code."""
     data = charger_data(hass, entry_id)
     identifier = None if data is None else data.identifier
-    if identifier is None or identifier.dashboard() is None:
+    refusal = REFUSED_NOT_PLUGGED_IN if identifier is None else identifier.answer_refusal(vehicle_id)
+    if refusal == REFUSED_NOT_PLUGGED_IN:
         raise IdentificationRefusal(ERROR_NOT_IDENTIFYING)
-    if not await identifier.async_answer(vehicle_id):
+    if refusal is not None or identifier is None or not await identifier.async_answer(vehicle_id):
         raise IdentificationRefusal(ERROR_INVALID_VALUE)
     return _envelope(identification=identifier.dashboard())
 
