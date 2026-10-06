@@ -18,6 +18,9 @@ car is detected) and, per car, the car's own dialog. Only an administrator can c
   - **Automatic** (the default). SpotNav uses the cars' own reports, and asks only if they cannot decide.
   - **Always ask.** SpotNav asks at every plug-in and never switches the car by itself.
   - **Off.** The car stays the one you chose.
+- **Camera, Frame and AI task** (under the charger, shown when Home Assistant has a camera and an AI Task
+  entity): see [The camera](#the-camera). Off until you choose a camera.
+- **Per car: Reference picture**: see [The camera](#the-camera).
 - **Per car: Plug sensor and Location.** These are the car's own "plugged in" sensor and its tracker, as
   SpotNav found them. If a car has more than one, you choose. You can also choose **None**, or go back to
   **Automatic**. SpotNav only reads these entities, and only for identification. They are never used as a
@@ -59,6 +62,7 @@ connected never starts identification, so the choice stays yours.
    once. Otherwise it waits three minutes and then asks. It keeps listening for 30 minutes after the
    plug-in, and if a car's own report settles it before anyone answers, SpotNav switches to that car. It
    switches automatically at most once per plug-in.
+   With a [camera](#the-camera), SpotNav also asks the camera while the cars' own reports have not decided.
 4. In **Always ask** mode, SpotNav asks at once. The cars are ordered by what they report, and SpotNav
    never switches by itself.
 
@@ -116,6 +120,7 @@ The charge history records how the car of each session was decided:
 | `location` | every other car was away from home, or was identified at another charger |
 | `answered` | a person answered the question, on a phone, in the card or in the app |
 | `manual` | a person chose the car in the settings (also with identification **Off**, or just before the plug-in) |
+| `camera` | the charger's camera recognised the car, sure, among cars of different colours |
 | `only_candidate` | only one car can charge here |
 | `assumed` | nobody answered and nothing decided it, so the car that was already chosen was kept |
 
@@ -125,7 +130,50 @@ where), and the verdict. A field report can show from it exactly which entity an
 port door of a Kia (`ev_charge_port`, and its switch) is never taken for a plug: it says the port's door is
 open, not that a cable is in.
 
+## The camera
+
+A camera that sees the parking spot can help, through Home Assistant's AI Task (for example a local vision model
+in Ollama). Describing the cars in words does not work: similar cars (the same colour, a similar body) are
+mixed up, and at night an infrared picture has no colour. Comparing the picture with a picture of each car taken
+by the same camera at the same spot works, day and night. So SpotNav compares pictures.
+
+**Setting it up** (Settings → Charger, an administrator):
+
+1. **Camera**: the camera that sees the parking spot.
+2. **Frame**: SpotNav fetches a fresh picture and you drag a frame around the parking spot (a corner or the whole
+   frame, with a finger or the mouse), check the preview of what is inside, and save. Only what is inside the
+   frame is compared: no other cars, no street, and a dual-lens camera's seam stays out. Without a frame the whole
+   picture is used.
+3. **AI task**: the AI Task entity that compares the pictures, or Home Assistant's default one. It must take
+   pictures (attachments).
+4. **Per car, Reference picture**: with that car parked at the charger, tap **Take reference picture now**.
+   **Take night picture** adds a picture in the dark, for the camera's infrared. A new picture replaces the old one
+   of its kind, and **Delete** removes the car's pictures. A car without a reference picture is never recognised by
+   the camera. A picture is cropped with the frame as it is when the picture is taken, so draw the frame first.
+
+**At a plug-in**, in **Automatic** mode, when two or more cars are left after the cars' own reports: SpotNav takes
+one picture, crops it with the frame and asks the AI Task which reference car is the one in the picture,
+comparing shape, roof line, windows and lights rather than colour. The answer is one car or none, and how sure
+the model is.
+
+- The camera **decides on its own** only when the model is sure ("high") and the car it names has a clearly
+  different colour from every other car left, judged from the daylight reference pictures when they were taken.
+  Every car left must have a reference picture.
+- Otherwise, for example between two dark blue cars, the camera **only puts its car first** on the question's
+  buttons. The question is asked as usual, after three minutes.
+- **Your answer always wins.** The camera is asked only while nobody has answered and nothing has decided, and
+  an answer that comes later is not used.
+- The camera is asked **once per plug-in**, and once more only after an error. A model that takes longer than
+  30 seconds is ignored and SpotNav asks as without a camera. When a car's plug sensor or position decides,
+  the camera is not asked at all. **Always ask** and **Off** never ask the camera.
+
+**Privacy.** The pictures stay in Home Assistant: the reference pictures are kept in Home Assistant's private
+storage (`.storage/spotnav_camera/`, never `www/` or a media folder) and are removed with the charger. They are
+sent only to the AI Task entity you chose. With a local model they never leave your home; with a cloud AI Task
+they go to that service. The question names the cars only as "car 1", "car 2". No picture is ever put in a
+notification.
+
 ## For developers
 
-The settings fields, the dashboard's `identification` block, the vehicle row's sources and the
-`identify_vehicle` / `choose_vehicle_identification` commands are described in [Apps and API](api.md).
+The settings fields, the dashboard's `identification` and `camera_identification` blocks, the vehicle row's
+sources and the identification and camera commands are described in [Apps and API](api.md).
