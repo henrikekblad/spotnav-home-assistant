@@ -283,6 +283,7 @@ export const nb: Record<keyof typeof en, string> = {
   "entity.warning.batteryImportLimit": "To grenser på én sikring: batteriets grense for nettimport ({integration}) er {battery} A per fase, SpotNavs er {spotnav} A. Sett dem til samme verdi.",
   "entity.detect.title": "Funnet i Home Assistant",
   "entity.checks.title": "Å kontrollere",
+  "entity.checks.energyRegister": "Laderen har en energiteller, {name}, men Energi er satt til Ingen. Velg Energiteller (kWh) for å telle den ladede energien og anslå bilens nivå med den.",
   "entity.detect.intro": "Disse ble gjenkjent i oppsettet ditt. Ingenting endres før du trykker på Bruk.",
   "entity.site.intro": "Måling for anlegget. {applies}",
   "entity.detect.meters": "Strømmålere",

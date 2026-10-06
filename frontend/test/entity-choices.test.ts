@@ -660,12 +660,13 @@ describe("the charger's energy register: automatic or chosen, under the meter", 
     expect(document.querySelector("[data-help='energy_register_entity']")).not.toBeNull();
   });
 
-  it("shows a stored register's picker directly (the backend names no automatic one then), and None above clears it", () => {
+  it("shows a stored register's picker directly (the backend names no automatic one then), and None above clears it as a choice", () => {
     const { sent } = open(withRegister("sensor.my_kwh"), "charger");
     expect(document.querySelector("[data-part='energy-source']")).toBeNull();
     expect(checked("energy")).toBe("meter");
     pick("energy", "none");
-    expect(changes(sent())).toEqual({ energy_register_entity: "" });
+    // Not "": the register is not detected again for a person who cleared it.
+    expect(changes(sent())).toEqual({ energy_register_entity: "none" });
   });
 });
 

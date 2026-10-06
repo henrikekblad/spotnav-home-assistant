@@ -779,6 +779,96 @@ describe("what is actually in use, and what no longer exists", () => {
   });
 });
 
+describe("an energy meter and the person's None", () => {
+  const METER = { entity_id: "sensor.halo_energy", friendly_name: "HALO energy" };
+  const register = (none: { chosen: boolean; automatic: typeof METER | null }, automaticInUse: boolean) =>
+    (answer: Record<string, unknown>): Record<string, unknown> => {
+      const config = answer["config"] as { fields: Array<Record<string, unknown>> };
+      const fields = config.fields.map((entry) =>
+        entry["field"] === "energy_register_entity"
+          ? {
+              ...entry,
+              current: null,
+              effective: automaticInUse ? { ...METER, source: "automatic" } : null,
+              none: { allowed: true, ...none },
+            }
+          : entry,
+      );
+      return { ...answer, config: { ...config, fields } };
+    };
+
+  it("says None on the overview and lists the meter it found under To check in the charger's editor", async () => {
+    const { element } = await mounted({ patch: register({ chosen: true, automatic: METER }, false) });
+    openSettings(element);
+    await settle();
+    expect(rowText(element, "energy_register")).toContain(translate("en", "entity.energy.none"));
+    edit(element, "charger");
+    const dialog = openDialog(element);
+    expect(dialog?.querySelector<HTMLInputElement>("[data-part='energy'] input:checked")?.dataset["choice"]).toBe("none");
+    const checks = dialog?.querySelector("[data-notices='charger']");
+    expect(checks?.tagName).toBe("FIELDSET");
+    expect(checks?.querySelector("legend")?.textContent).toBe(translate("en", "entity.checks.title"));
+    expect(checks?.querySelector("[data-notice='energy_register_available']")?.textContent).toBe(
+      translate("en", "entity.checks.energyRegister", { name: "HALO energy" }),
+    );
+  });
+
+  it("has nothing to check while the meter is in use", async () => {
+    const { element } = await mounted({ patch: register({ chosen: false, automatic: METER }, true) });
+    openSettings(element);
+    await settle();
+    edit(element, "charger");
+    expect(openDialog(element)?.querySelector("[data-notices='charger']")).toBeNull();
+  });
+
+  it("sends None when it replaces the meter SpotNav found", async () => {
+    const { hass, element } = await mounted({
+      update: "success_charger",
+      patch: register({ chosen: false, automatic: METER }, true),
+    });
+    openSettings(element);
+    await settle();
+    edit(element, "charger");
+    choose(element, "energy", "none");
+    save(element);
+    await settle();
+    expect(updates(hass)[0]?.["changes"]).toEqual({ energy_register_entity: "none" });
+    expect(updates(hass)[0]?.["expected"]).toEqual({ energy_register_entity: "" });
+  });
+
+  it("sends the automatic meter back, and nothing when None stays chosen", async () => {
+    const kept = await mounted({ update: "success_charger", patch: register({ chosen: true, automatic: METER }, false) });
+    openSettings(kept.element);
+    await settle();
+    edit(kept.element, "charger");
+    save(kept.element);
+    await settle();
+    expect(updates(kept.hass)).toHaveLength(0);
+
+    const { hass, element } = await mounted({ update: "success_charger", patch: register({ chosen: true, automatic: METER }, false) });
+    openSettings(element);
+    await settle();
+    edit(element, "charger");
+    choose(element, "energy", "meter");
+    choose(element, "energy-source", "automatic");
+    save(element);
+    await settle();
+    expect(updates(hass)[0]?.["changes"]).toEqual({ energy_register_entity: "" });
+    expect(updates(hass)[0]?.["expected"]).toEqual({ energy_register_entity: "none" });
+  });
+
+  it("does not send None when there is no meter to opt out of", async () => {
+    const { hass, element } = await mounted({ update: "success_charger", patch: register({ chosen: false, automatic: null }, false) });
+    openSettings(element);
+    await settle();
+    edit(element, "charger");
+    choose(element, "energy", "none");
+    save(element);
+    await settle();
+    expect(updates(hass)).toHaveLength(0);
+  });
+});
+
 describe("the site's estimate, warnings, sign options and detected meters", () => {
   it("says in the site editor that the current is estimated, and names the slow and self-balancing sources", async () => {
     const { element } = await mounted({ get: "get_detected" });

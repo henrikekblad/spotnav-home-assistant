@@ -2051,6 +2051,8 @@ export function createCardView(input: CardViewInput): CardView {
     if (energyField !== undefined && energyField.kind === "entity") {
       if (energyField.current !== null) {
         energy = energyField.current.friendlyName;
+      } else if (energyField.none !== null && energyField.none.chosen) {
+        energy = translate(model.language, "entity.energy.none");
       } else {
         const automatic = automaticEntity(energyField);
         if (automatic !== null) {

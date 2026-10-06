@@ -284,6 +284,7 @@ export const en = {
   "entity.warning.batteryImportLimit": "Two limits on one fuse: the battery's grid import limit ({integration}) is {battery} A per phase, SpotNav's is {spotnav} A. Set them to the same value.",
   "entity.detect.title": "Found in Home Assistant",
   "entity.checks.title": "To check",
+  "entity.checks.energyRegister": "The charger has an energy meter, {name}, but Energy is set to None. Choose Energy meter (kWh) to count the charged energy and estimate the car's level with it.",
   "entity.detect.intro": "These were recognised in your setup. Nothing changes until you press Use.",
   "entity.site.intro": "Measurement for the site. {applies}",
   "entity.detect.meters": "Grid meters",
