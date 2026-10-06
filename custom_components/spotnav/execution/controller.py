@@ -2835,6 +2835,14 @@ class ChargingController:
                 # A charge balancing already holds back (paused by an earlier pass, the charger not seen off yet or
                 # already off): a repeat pause is the same pause, and that charge stays the one to resume.
                 held = (self._paused_by_balancing, self._paused_charge)
+                # A charge nobody owns while a stop of ours is unanswered is that stopped charge, its owner already
+                # cleared (the window's end, a new plan): not one the charger began by itself, nor still wanted.
+                stop_sent_at = self._stop_sent_at
+                owner_cleared = (
+                    paused_charge == (None, False)
+                    and stop_sent_at is not None
+                    and (dt_util.utcnow() - stop_sent_at).total_seconds() < STOP_ACK_S
+                )
                 session = self._session_generation
                 token = self._shadow.begin()
                 outcome = CommandOutcome(False)
@@ -2845,12 +2853,14 @@ class ChargingController:
                     outcome = self._shadow_stop_outcome(True)
                     # Set after the stop (which clears it): this stop is the balancing pause itself. A safety stop
                     # of a person's charge is remembered the same way, so the regulator gives it back when there
-                    # is room. Never for a plug-in that ended while the stop was on its way.
+                    # is room. Never for a plug-in that ended while the stop was on its way, nor for a charge whose
+                    # owner was cleared (`owner_cleared`): a repeat pause after the window's end or a new plan.
                     if held[0] and self._session_generation == session:
                         self._paused_by_balancing, self._paused_charge = held
                     elif (
                         was_on
                         and (code == "pause" or paused_charge[0] == "manual")
+                        and not owner_cleared
                         and self._session_generation == session
                     ):
                         self._held_for_safety = code != "pause"
