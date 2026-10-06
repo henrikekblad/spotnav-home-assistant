@@ -49,12 +49,15 @@ const settingsAnswer = (settings: Record<string, unknown>) => ({
   pause: PAUSE,
 });
 
-async function openSettings(language = "en", admin = true, body: Record<string, any> = payload()) {
+async function openSettings(
+  language = "en",
+  admin = true,
+  body: Record<string, any> = payload(),
+  entities: Record<string, any> = read("entity_config", "v1", "get_direct.json"),
+) {
   const hass = new FakeHass();
   hass.entityHandler = async (message) =>
-    message["type"] === "spotnav/get_entity_config"
-      ? read("entity_config", "v1", "get_direct.json")
-      : new Promise<unknown>(() => undefined);
+    message["type"] === "spotnav/get_entity_config" ? entities : new Promise<unknown>(() => undefined);
   const element = mountCard({ type: "custom:spotnav-card", charger: "entry_a" }, hass);
   const snapshot = hass.snapshot("snapshot", language);
   snapshot.user = { is_admin: admin };
@@ -240,5 +243,154 @@ describe("the setup rows", () => {
     const { element } = await openSettings();
     await tap(element, "[data-edit='start_stop']");
     expect(dialog(element).querySelector("[data-entity-editor='charger']")).not.toBeNull();
+  });
+});
+
+/** The entity config with the charger's current path set as the backend states it. */
+function withCurrent(kind: string, enabled: boolean): Record<string, any> {
+  const config = read("entity_config", "v1", "get_direct.json");
+  config["config"]["control"]["current"] = {
+    kind,
+    enabled,
+    entity_id: kind === "number" ? "number.charger_limit" : null,
+    service: kind === "service" ? "easee.set_charger_dynamic_limit" : null,
+  };
+  return config;
+}
+
+/** The parts of the open entity dialog a reader can see. */
+const visibleParts = (element: Element): string[] =>
+  Array.from(dialog(element).querySelectorAll<HTMLElement>("form[data-entity-editor] > [data-part]"))
+    .filter((node) => !node.hidden)
+    .map((node) => node.dataset["part"]!);
+
+describe("the app's status words", () => {
+  it("says how the current is set as the app does: OCPP, Easee, Controlled, Not controlled", async () => {
+    const cases: Array<[string, boolean, string]> = [
+      ["ocpp", true, "OCPP"],
+      ["service", true, "Easee"],
+      ["number", true, "Styrs"],
+      ["none", false, "Styrs inte"],
+      // Not enabled is not controlled, whatever the path (the dashboard summary's own rule).
+      ["ocpp", false, "Styrs inte"],
+    ];
+    for (const [kind, enabled, word] of cases) {
+      document.body.innerHTML = "";
+      const { element } = await openSettings("sv", true, payload(), withCurrent(kind, enabled));
+      expect(dialog(element).querySelector("[data-row='current'] button")?.textContent, `${kind} ${enabled}`).toBe(word);
+    }
+    expect(["en", "da", "nb", "fi"].map((l) => translate(l as "en", "settings.status.notControlled"))).toEqual([
+      "Not controlled",
+      "Styres ikke",
+      "Styres ikke",
+      "Ei ohjata",
+    ]);
+    expect(["en", "da", "nb", "fi"].map((l) => translate(l as "en", "settings.status.controlled"))).toEqual([
+      "Controlled",
+      "Styres",
+      "Styres",
+      "Ohjataan",
+    ]);
+  });
+
+  it("says a found energy register as the app does", async () => {
+    const { element } = await openSettings("sv");
+    expect(dialog(element).querySelector("[data-row='energy_register'] button")?.textContent).toBe("Hittad automatiskt");
+  });
+
+  it("says a car's plug sensor and position in status words, never the entity's name, and opens the source choice", async () => {
+    const body = payload();
+    body.vehicles[0].identification = {
+      plug: { entity_id: "binary_sensor.ev6_plug", name: "EV6 Plugged in", chosen: false, candidates: [{ entity_id: "binary_sensor.ev6_plug", name: "EV6 Plugged in" }] },
+      location: {
+        entity_id: null,
+        name: null,
+        chosen: false,
+        candidates: [
+          { entity_id: "device_tracker.a", name: "A" },
+          { entity_id: "device_tracker.b", name: "B" },
+        ],
+      },
+    };
+    body.vehicles[1].identification = {
+      plug: { entity_id: null, name: null, chosen: true, candidates: [] },
+      location: { entity_id: null, name: null, chosen: false, candidates: [] },
+    };
+    const { element } = await openSettings("sv", true, body);
+    const value = (car: string, row: string) =>
+      dialog(element).querySelector(`[data-vehicle='${car}'] [data-row='${row}'] button`)?.textContent;
+    expect(value("vehicle_ev6", "plug")).toBe("Finns");
+    expect(value("vehicle_ev6", "location")).toBe("Välj en");
+    expect(value("vehicle_niro", "plug")).toBe("Ingen");
+    expect(value("vehicle_niro", "location")).toBe("Saknas");
+    expect(dialog(element).textContent).not.toContain("EV6 Plugged in");
+    await tap(element, "[data-vehicle='vehicle_ev6'] [data-edit='plug']");
+    expect(dialog(element).querySelector("form[data-value-editor='single'] [data-value-option='binary_sensor.ev6_plug']")).not.toBeNull();
+  });
+});
+
+describe("the car's charge limit", () => {
+  it("shows the limit the car reports, read-only: the card has no request that writes it", async () => {
+    const body = payload();
+    body.vehicles[0].max_percent = 90;
+    const { element } = await openSettings("sv", true, body);
+    const row = dialog(element).querySelector<HTMLElement>("[data-vehicle='vehicle_ev6'] [data-row='charge_limit']")!;
+    expect(row.textContent).toBe("Laddgräns90 %");
+    expect(row.querySelector("button")).toBeNull();
+    expect(dialog(element).querySelector("[data-vehicle='vehicle_niro'] [data-row='charge_limit']")).toBeNull();
+    expect(["en", "da", "nb", "fi"].map((l) => translate(l as "en", "settings.vehicle.limit"))).toEqual([
+      "Charge limit",
+      "Ladegrænse",
+      "Ladegrense",
+      "Latausraja",
+    ]);
+  });
+});
+
+describe("one setup value, one dialog", () => {
+  it("opens only the charge control for Start and stop, titled by its row", async () => {
+    const { element } = await openSettings();
+    await tap(element, "[data-edit='start_stop']");
+    expect(visibleParts(element)).toEqual(["charge-control"]);
+    expect(dialog(element).querySelector("h3")?.textContent).toBe(translate("en", "control.startStop"));
+  });
+
+  it("opens only the current limit, with None, for the charging current", async () => {
+    const { element } = await openSettings();
+    await tap(element, "[data-edit='current']");
+    expect(visibleParts(element)).toEqual(["current-limit"]);
+    expect(dialog(element).textContent).toContain(translate("en", "entity.limit.none"));
+  });
+
+  it("opens only the energy choice for the energy register", async () => {
+    const { element } = await openSettings();
+    await tap(element, "[data-edit='energy_register']");
+    expect(visibleParts(element)).toEqual(["energy"]);
+  });
+
+  it("still opens the whole site dialog for the measurement", async () => {
+    const { element } = await openSettings();
+    await tap(element, "[data-edit='measurement_mode']");
+    expect(dialog(element).querySelector("form[data-entity-editor='site']")).not.toBeNull();
+    expect(dialog(element).querySelectorAll("form[data-entity-editor] > [data-part][hidden]")).toHaveLength(0);
+  });
+
+  it("gives a charger in no site its wiring and voltage as their own choices", async () => {
+    const body = payload();
+    body.site = null;
+    const { hass, element } = await openSettings("en", true, body, read("entity_config", "v1", "get_no_site.json"));
+    const charger = dialog(element).querySelector<HTMLElement>("[data-section='entities']")!;
+    expect(charger.querySelector("[data-row='charger_phases'] button")).not.toBeNull();
+    expect(charger.querySelector("[data-row='voltage_between_phases_v'] button")).not.toBeNull();
+    await tap(element, "[data-edit='charger_phases']");
+    const form = dialog(element).querySelector<HTMLFormElement>("form[data-value-editor='single']")!;
+    const other = Array.from(form.querySelectorAll<HTMLInputElement>("[data-value-option]")).find((radio) => !radio.checked)!;
+    other.click();
+    hass.entityHandler = async () => read("entity_config", "v1", "get_no_site.json");
+    form.requestSubmit();
+    await settle();
+    const update = hass.entityMessages.find((message) => message["type"] === "spotnav/update_entity_config") as Record<string, any>;
+    expect(Object.keys(update["changes"])).toEqual(["charger_phases"]);
+    expect(update["changes"]["charger_phases"]).toBe(other.dataset["valueOption"]);
   });
 });
