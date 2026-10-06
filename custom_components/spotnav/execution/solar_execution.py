@@ -656,16 +656,20 @@ class SolarExecutionCoordinator:
     def sun_keeps_charge(self) -> bool:
         """Whether the sun's rules keep the charge that runs now, for a strategy change to `solar` that would
         otherwise stop it (`AutoExecutor._sun_keeps_charge`). Read without side effects on what this coordinator
-        decides. Running beside the plan (hybrid) the sun has its own state: `on` or `disarming` keeps it, as at a
-        window's end (the hybrid hand-off). Off `cheapest` it has none yet: the rule for a charge that runs decides on
-        the reading the site has now (`SolarController.keeps_running`), and the battery-credit back-off counts."""
+        decides. The rule for a charge that runs decides on the reading the site has now
+        (`SolarController.keeps_running`: the surplus at or above the stop level, the battery-credit back-off
+        counted); running beside the plan (hybrid) its own state must be `on` as well, never `disarming` (a charge it
+        adopted inside a window with no surplus goes there, and would run on the grid for its minimum on time)."""
         site = self._site
         controller = self._controller
         if site is None or not controller.restored or not controller.charge_control_on:
             return False
         state = self._state
-        if state is not None:
-            return self._solar is not None and state.state in ("on", "disarming")
+        if state is not None and (self._solar is None or state.state != "on"):
+            # Arming, off, or already disarming (a charge it adopted with no surplus behind it): not the sun's to keep.
+            return False
+        # Whatever state it has, the reading at hand decides: a state adopted from a running charge says nothing
+        # about the surplus.
         solar = SolarController(self._solar_config(site))
         now = self._now()
         until, next_s = controller.solar_credit_backoff

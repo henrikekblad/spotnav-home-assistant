@@ -60,9 +60,9 @@ departure's plan begins) stops nothing and records no end (`continued` on `windo
 charge. Installed first, the next plan cancels the end's timer and keeps the charge the same way, so the order of
 the two does not matter; one that is not installed after all leaves the end as it always was. A strategy change
 hands a running charge over instead of stopping it: to `solar`, the plan's charge goes to the sun with no stop when
-the sun's rules keep it (`sun_keeps` on `strategy_change`: running beside the plan, its own state `on` or
-`disarming`; off `cheapest`, the surplus at or above the charger's stop level on the reading at hand), and is
-stopped once otherwise. The other way, a plan window open when the sun runs a charge takes it over at its start
+the sun's rules keep it (`sun_keeps` on `strategy_change`: the surplus at or above the charger's stop level on the
+reading at hand, and, running beside the plan, its own state `on`, never `disarming`), and is stopped once
+otherwise. The other way, a plan window open when the sun runs a charge takes it over at its start
 (`window_start`, no command), and the sun leaving it does not stop it.
 
 ```mermaid
