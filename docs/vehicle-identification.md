@@ -9,7 +9,8 @@ nothing is asked.
 
 ## Settings
 
-All of these are in the card under **Settings → Vehicles**. Only an administrator can change them.
+All of these are in the card's **Settings**: the section **Which car is plugged in?** (shown when more than one
+car is detected) and, per car, the car's own dialog. Only an administrator can change them.
 
 - **Vehicles at this charger.** These are the cars that can charge here. By default every car SpotNav detects
   is included. At least one must be ticked.
