@@ -10,6 +10,7 @@ answer from the charger's state again: Stop once more while it still charges.
 
 from __future__ import annotations
 
+from dataclasses import replace
 from typing import Any
 
 import pytest
@@ -24,6 +25,7 @@ from custom_components.spotnav.execution.auto_execution import (
     AutoControlCommitted,
     AutoControlRefused,
 )
+from custom_components.spotnav.planning.auto_settings import PauseIntent
 from tests.harness import Session
 from tests.relay import serve
 from tests.test_manual_start_ack import RecordedStateListeners
@@ -231,3 +233,74 @@ async def test_a_stop_while_a_start_awaits_its_report_ends_that_wait(
     assert executor.manual_start_pending is False and executor.manual_stop_pending is False
     assert state_reports.armed == [] and pause_appointments.armed == [], "no watch is left behind"
     assert executor.immediate_decision().action == "start", "the charger reads off: the truthful offer"
+
+
+async def test_resume_right_after_a_stop_is_admitted_and_ends_the_wait(
+    session: Session, state_reports: RecordedStateListeners, pause_appointments: Any
+) -> None:
+    """The person stops and changes their mind: Resume is admitted at once; only the offer waited."""
+    await charging_in_auto(session)
+    executor = executor_of(session)
+    await preview_of(session).async_manual_action("stop")
+    assert executor.manual_stop_pending is True
+
+    decision = await preview_of(session).async_manual_action("resume")
+
+    assert decision.action == "resume"
+    assert not executor.pause_intent.manual
+    assert executor.manual_stop_pending is False
+    assert state_reports.armed == [] and pause_appointments.armed == []
+
+
+async def test_a_stop_while_a_start_awaits_its_report_is_admitted_and_sent(
+    session: Session, state_reports: RecordedStateListeners, pause_appointments: Any
+) -> None:
+    """A person's Stop is admitted whatever is pending, and goes out though the control still reads off."""
+    serve(session.transport)
+    await session.set_auto()
+    async_mock_service(session.hass, "switch", "turn_on")
+    turn_off = async_mock_service(session.hass, "switch", "turn_off")
+    await preview_of(session).async_manual_action("start")
+    assert executor_of(session).manual_start_pending is True
+
+    decision = await preview_of(session).async_manual_action("stop")
+
+    assert decision.action == "stop"
+    assert len(turn_off) == 1, "the Start on its way would otherwise land after a Stop that sent nothing"
+
+
+async def test_follow_after_a_stop_does_not_leave_stopping_beside_a_running_charge(
+    session: Session, state_reports: RecordedStateListeners, pause_appointments: Any
+) -> None:
+    await charging_in_auto(session)
+    executor = executor_of(session)
+    await preview_of(session).async_manual_action("stop")
+    assert executor.manual_stop_pending is True
+
+    await executor.async_manual_follow()
+
+    assert not executor.pause_intent.manual
+    assert executor.manual_stop_pending is False, "Follow hands the charger back: the Stop's wait is over"
+    assert executor.immediate_decision().reason is None
+
+
+async def test_a_charge_reported_after_the_stop_pause_ended_ends_the_wait(
+    session: Session, state_reports: RecordedStateListeners, pause_appointments: Any
+) -> None:
+    """A charge reported while the person's Stop pause holds is the Stop not yet answered; once that pause
+    is gone (here cleared behind the boundary's back), it is a charge something else started."""
+    await charging_in_auto(session)
+    executor = executor_of(session)
+    await preview_of(session).async_manual_action("stop")
+    state_reports.report(session.hass, session.charge_control, "on")
+    await session.hass.async_block_till_done()
+    assert executor.manual_stop_pending is True, "still the Stop's wait"
+
+    await executor._store.async_update(  # noqa: SLF001 - the pause ended by a path the test does not drive
+        executor._entry_id, mutate=lambda current: replace(current, pause=PauseIntent())  # noqa: SLF001
+    )
+    state_reports.report(session.hass, session.charge_control, "on")
+    await session.hass.async_block_till_done()
+
+    assert executor.manual_stop_pending is False
+    assert state_reports.armed == [] and pause_appointments.armed == []
