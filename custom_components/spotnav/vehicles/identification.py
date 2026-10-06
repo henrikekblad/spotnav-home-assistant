@@ -825,9 +825,13 @@ class VehicleIdentifier:
         if self.answer_refusal(vehicle_id) is not None:
             return False
         session = self._session
+        retire_on: tuple[str, ...] = ()
         if session is None or vehicle_id not in session.cars:
-            # Nothing was being identified (identification off, one car known, decided before a restart): the
-            # correction is the plug-in's decision, kept as an answer would be.
+            # Nothing was being identified (identification off, one car known, decided before a restart), or the
+            # car came after the question did: the correction is the plug-in's decision, kept as an answer would
+            # be. An open question goes off the phones it was sent to, as for any answer.
+            if session is not None and session.state == STATE_ASKING:
+                retire_on = session.phones
             settings = self._settings()
             cars = self._candidates(settings)
             self._close()
@@ -835,6 +839,9 @@ class VehicleIdentifier:
                 t0=dt_util.utcnow(), mode=settings.identify_mode, cars=tuple(car for car, _ in cars),
                 names=dict(cars), order=[car for car, _ in cars], state=STATE_DECIDED, listening=False,
             )
+            if retire_on and self._notifier is not None:
+                name = self._session.names.get(vehicle_id, vehicle_id)
+                self._notifier.retire_vehicle_question(self.tag, retire_on, "chosen", name)
         switch = self._settle(vehicle_id, METHOD_ANSWERED, "chosen")
         if switch is not None:
             await switch
