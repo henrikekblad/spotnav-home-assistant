@@ -2321,6 +2321,16 @@
     }
   },
   "target_vehicle_id": "vehicle_ev6",
+  "vehicle_choices": [
+    {
+      "id": "vehicle_ev6",
+      "name": "EV6"
+    },
+    {
+      "id": "vehicle_niro",
+      "name": "Niro"
+    }
+  ],
   "vehicles": [
     {
       "capacity_kwh": 77.0,

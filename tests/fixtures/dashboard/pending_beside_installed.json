@@ -2277,5 +2277,6 @@
     "waiting_for": []
   },
   "charger_priority": null,
-  "identification": null
+  "identification": null,
+  "vehicle_choices": []
 }

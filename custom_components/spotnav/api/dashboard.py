@@ -450,6 +450,9 @@ class CapturedDashboard:
     entity_names: tuple[tuple[str, str], ...] = ()
     #: Which car is plugged in, while a plug-in is being identified (`vehicles/identification.py`), else `None`.
     identification: dict[str, Any] | None = None
+    #: Every detected car, `(id, name)`, whether or not it is one of this charger's (`vehicle_ids`): what the
+    #: settings tick from. `vehicles` lists only the charger's.
+    vehicle_choices: tuple[tuple[str, str], ...] = ()
     #: A smart plug's measured power now, in kW (`ChargingController.measured_power_w`).
     measured_power_kw: float | None = None
     #: The charger's voltage between phases (`grid_voltage.voltage_between_phases_v`).
@@ -1077,6 +1080,7 @@ def capture_dashboard(
         notify_available=available_targets(hass),
         entity_names=_status_entity_names(hass, site),
         identification=_identification(hass, entry_id),
+        vehicle_choices=tuple((choice.id, choice.name) for choice in resolve_target_vehicle(hass, None)[1]),
         measured_power_kw=_measured_power_kw(controller),
         voltage_between_phases_v=voltage_between_phases_v(hass, entry_id),
         session=capture_session(hass, entry_id),
@@ -1689,6 +1693,7 @@ def serialize_dashboard(
         "starting_up": serialize_starting_up(capture.starting_up),
         "charger_priority": serialize_charger_priority(capture.charger_priority, can_act=can_act),
         "identification": capture.identification,
+        "vehicle_choices": [{"id": vehicle_id, "name": name} for vehicle_id, name in capture.vehicle_choices],
     }
 
 

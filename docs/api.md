@@ -94,7 +94,10 @@ The record also carries two fields for [vehicle identification](vehicle-identifi
 (the vehicles that can charge at this charger: `null` for every detected vehicle, the default, or a non-empty list
 of different vehicle ids) and `identify_mode` (`"automatic"`, the default, `"ask"` or `"off"`). `vehicle_ids` also
 limits what the charger plans for: the dashboard's `vehicles`, `target_vehicle_id`, the `soc` block's choices and
-the planner's car only name those vehicles (the only one of them is the target when none is chosen). A
+the planner's car only name those vehicles (the only one of them is the target when none is chosen). The
+additive root `vehicle_choices` (`[{"id", "name"}]`, by name) lists every detected car whether or not it is one of
+this charger's: the list a client ticks `vehicle_ids` from, so a car left out can be ticked again (every car
+ticked is `null`). A
 replacement may leave either out, and then the stored value is kept; a bad list or mode is refused with
 `invalid_vehicles`. Both are withheld from the webhook like the fields above (ask with
 `"reads": ["vehicle_ids", "identify_mode"]`), so an older app never sees them, and its replacements keep them.

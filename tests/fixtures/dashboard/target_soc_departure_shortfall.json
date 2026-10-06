@@ -2318,6 +2318,12 @@
     }
   },
   "target_vehicle_id": "<id>",
+  "vehicle_choices": [
+    {
+      "id": "<id>",
+      "name": "EV6"
+    }
+  ],
   "vehicles": [
     {
       "capacity_kwh": 15.6,

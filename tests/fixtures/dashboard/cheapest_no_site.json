@@ -2290,5 +2290,6 @@
     "vehicles": {}
   },
   "target_vehicle_id": null,
+  "vehicle_choices": [],
   "vehicles": []
 }

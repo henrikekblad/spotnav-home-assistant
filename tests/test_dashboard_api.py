@@ -128,6 +128,7 @@ DASHBOARD_SECTIONS = [
     "starting_up",
     "charger_priority",
     "identification",
+    "vehicle_choices",
 ]
 
 #: One chart row, exactly.
