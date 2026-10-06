@@ -19,6 +19,8 @@ public face, so nothing here serializes `as_dict()` or accepts `from_stored()` p
   vehicle is found): left out, the stored values are kept. The target follows the vehicle: it is the car's
   own (`vehicle_properties`), and a body that switches `target.vehicle_id` and leaves `target.target_percent`
   as it was gets the new vehicle's target (`vehicles/vehicle_target.py`).
+* And `identify_camera` (`null`, or the camera, AI Task entity and frame that help tell which car is plugged in,
+  `vehicles/camera_settings.py`): left out, the stored value is kept; a bad value is `invalid_camera`.
 * One read-only fact, `fiscal_included`: the fiscal components (`vat`, `tax`, `transfer`) the selected area's
   published price already contains (contract v2's `included`). They are locked as "included in the price" and
   nothing is added for them, whatever the overrides say. A body may echo it; it is never stored.
@@ -66,6 +68,7 @@ from ..notifications.targets import available_targets, encoded_available
 from ..planning.phases import effective_phases
 from ..runtime import controller_for, domain_data, preview_for
 from ..vehicles import vehicle_properties
+from ..vehicles.camera_settings import CameraSettings, CameraSettingsError
 from .common import ERROR_CHARGER_UNLOADED, lookup_charger, send_unsupported_version
 
 
@@ -93,6 +96,7 @@ SETTINGS_KEYS: Final = frozenset(
         "notifications",
         "vehicle_ids",
         "identify_mode",
+        "identify_camera",
     }
 )
 
@@ -101,7 +105,7 @@ SETTINGS_KEYS: Final = frozenset(
 OPTIONAL_SETTINGS_KEYS: Final = frozenset(
     {
         "departure_date", "departure_weekdays", "phases", "notifications", "fill_to_limit", "vehicle_ids",
-        "identify_mode",
+        "identify_mode", "identify_camera",
     }
 )
 
@@ -356,6 +360,7 @@ def encode_settings(
         "notifications": encode_notifications(settings.notifications, available),
         "vehicle_ids": None if settings.vehicle_ids is None else list(settings.vehicle_ids),
         "identify_mode": settings.identify_mode,
+        "identify_camera": None if settings.identify_camera is None else settings.identify_camera.as_dict(),
     }
 
 
@@ -366,6 +371,15 @@ def vehicle_ids_from_wire(value: Any) -> tuple[str, ...] | None:
     if not isinstance(value, list) or not value or any(not isinstance(item, str) or not item for item in value):
         _refuse("invalid_vehicles", "vehicle_ids must be null or a non-empty list of vehicle ids")
     return tuple(value)
+
+
+def camera_from_wire(value: Any) -> CameraSettings | None:
+    """`null` (no camera) or `{camera_entity_id, ai_task_entity_id, frame}`, or a refusal (`invalid_camera`)."""
+    try:
+        return CameraSettings.from_wire(value)
+    except CameraSettingsError as err:
+        _refuse("invalid_camera", str(err))
+    return None
 
 
 def _enum(value: Any, allowed: tuple[str, ...], code: SettingsCode) -> Any:
@@ -425,6 +439,7 @@ def decode_settings(raw: Any) -> AutoSettings:
             if "identify_mode" in stored
             else IDENTIFY_AUTOMATIC
         ),
+        identify_camera=camera_from_wire(stored.get("identify_camera")),
     ).validated()
 
 
@@ -438,6 +453,7 @@ def replacement_mutator(
     keep_vehicle_ids: bool = False,
     keep_identify_mode: bool = False,
     keep_identification: bool = False,
+    keep_identify_camera: bool = False,
     vehicle_target: Callable[[str | None], float | None] | None = None,
 ) -> Callable[[AutoSettings], AutoSettings]:
     """A full replacement expressed as the store's own mutation hook.
@@ -446,12 +462,14 @@ def replacement_mutator(
     carry-through, so an edit never clears, admits or re-times a pause (including an expired but
     uncleared one). The store owns the revision increment and the final validation.
 
-    `keep_identification` keeps both identification fields (`vehicle_ids`, `identify_mode`). Whatever the body
+    `keep_identification` keeps the identification fields (`vehicle_ids`, `identify_mode`, `identify_camera`).
+    Whatever the body
     says, a switch of the target vehicle that leaves the percent as it was takes the new vehicle's own target
     (`vehicle_target`, the car's property): the target follows the car.
     """
     keep_vehicle_ids = keep_vehicle_ids or keep_identification
     keep_identify_mode = keep_identify_mode or keep_identification
+    keep_identify_camera = keep_identify_camera or keep_identification
 
     def mutate(current: AutoSettings) -> AutoSettings:
         kept: dict[str, Any] = {}
@@ -469,6 +487,8 @@ def replacement_mutator(
             kept["vehicle_ids"] = current.vehicle_ids
         if keep_identify_mode:
             kept["identify_mode"] = current.identify_mode
+        if keep_identify_camera:
+            kept["identify_camera"] = current.identify_camera
         updated = replace(replacement, pause=current.pause, **kept)
         chosen = updated.target
         remembered = None if vehicle_target is None else vehicle_target(chosen.vehicle_id)
@@ -673,6 +693,7 @@ async def async_update_settings(
         keep_fill_to_limit=isinstance(replacement, Mapping) and "fill_to_limit" not in replacement,
         keep_vehicle_ids=isinstance(replacement, Mapping) and "vehicle_ids" not in replacement,
         keep_identify_mode=isinstance(replacement, Mapping) and "identify_mode" not in replacement,
+        keep_identify_camera=isinstance(replacement, Mapping) and "identify_camera" not in replacement,
         vehicle_target=lambda vehicle_id: vehicle_properties.stored_properties(hass, vehicle_id).target_percent,
     )
     _refuse_amps_above_charger_range(hass, entry_id, decoded)

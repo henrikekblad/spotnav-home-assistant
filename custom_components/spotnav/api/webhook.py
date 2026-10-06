@@ -72,7 +72,7 @@ _last_rejected_warning: float | None = None
 #: replacement without one keeps the stored value (`fiscal_included` is read-only and never stored).
 APP_UNREAD_SETTINGS: Final = (
     "departure_date", "departure_weekdays", "fiscal_included", "notifications", "fill_to_limit", "vehicle_ids",
-    "identify_mode",
+    "identify_mode", "identify_camera",
 )
 
 

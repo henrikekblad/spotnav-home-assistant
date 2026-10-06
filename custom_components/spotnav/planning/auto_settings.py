@@ -29,6 +29,7 @@ from homeassistant.util import dt as dt_util
 from ..const import DOMAIN
 from ..notifications.settings import NotificationSettings, NotificationSettingsError
 from ..runtime import domain_data
+from ..vehicles.camera_settings import CameraSettings, CameraSettingsError
 
 
 _LOGGER = logging.getLogger(__name__)
@@ -108,6 +109,7 @@ SettingsCode = Literal[
     "invalid_energy_baseline",
     "invalid_notifications",
     "invalid_vehicles",
+    "invalid_camera",
 ]
 
 
@@ -506,6 +508,8 @@ class AutoSettings:
     vehicle_ids: tuple[str, ...] | None = None
     #: How the plugged-in vehicle is found when more than one can charge here (`IDENTIFY_MODES`).
     identify_mode: str = IDENTIFY_AUTOMATIC
+    #: The camera that helps tell which car is plugged in (`vehicles/camera_settings.py`), or `None`: no camera.
+    identify_camera: CameraSettings | None = None
 
     @property
     def execution_paused(self) -> bool:
@@ -612,6 +616,12 @@ class AutoSettings:
             vehicle_ids = tuple(sorted(vehicle_ids))
         if self.identify_mode not in IDENTIFY_MODES:
             _refuse("invalid_vehicles", f"identify_mode must be one of {IDENTIFY_MODES}")
+        identify_camera = self.identify_camera
+        if identify_camera is not None:
+            try:
+                identify_camera = identify_camera.validated()
+            except (CameraSettingsError, AttributeError) as err:
+                _refuse("invalid_camera", str(err))
         target = self.target.validated()
         return replace(
             self,
@@ -622,6 +632,7 @@ class AutoSettings:
             pause=self.pause.validated(),
             notifications=notifications,
             vehicle_ids=vehicle_ids,
+            identify_camera=identify_camera,
         )
 
     def with_target_vehicle(self, vehicle_id: str | None, remembered: float | None) -> AutoSettings:
@@ -668,6 +679,8 @@ class AutoSettings:
             stored["vehicle_ids"] = list(self.vehicle_ids)
         if self.identify_mode != IDENTIFY_AUTOMATIC:
             stored["identify_mode"] = self.identify_mode
+        if self.identify_camera is not None:
+            stored["identify_camera"] = self.identify_camera.as_dict()
         return stored
 
     @classmethod
@@ -684,7 +697,7 @@ class AutoSettings:
             optional=frozenset(
                 {
                     "departure_date", "departure_weekdays", "notifications", "fill_to_limit", "vehicle_ids",
-                    "identify_mode",
+                    "identify_mode", "identify_camera",
                 }
             ),
         )
@@ -724,6 +737,12 @@ class AutoSettings:
         vehicle_ids = stored.get("vehicle_ids")
         if vehicle_ids is not None and not isinstance(vehicle_ids, list):
             _refuse("invalid_vehicles", "stored vehicle ids must be a list")
+        try:
+            identify_camera = CameraSettings.from_wire(stored.get("identify_camera"))
+        except CameraSettingsError:
+            # Only the camera is lost (it is chosen again), never the rest of the record.
+            _LOGGER.warning("SpotNav could not read a charger's stored camera; it is no longer used")
+            identify_camera = None
         return cls(
             revision=revision,
             area_id=stored["area_id"],
@@ -744,6 +763,7 @@ class AutoSettings:
             notifications=notifications,
             vehicle_ids=None if vehicle_ids is None else tuple(vehicle_ids),
             identify_mode=stored.get("identify_mode", IDENTIFY_AUTOMATIC),
+            identify_camera=identify_camera,
         ).validated()
 
 
