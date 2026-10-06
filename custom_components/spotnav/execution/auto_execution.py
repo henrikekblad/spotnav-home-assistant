@@ -838,7 +838,7 @@ class AutoExecutor:
                 token = self._shadow.begin()
                 outcome = CommandOutcome(False)
                 try:
-                    await self._controller.async_stop(clear_schedule=True)
+                    await self._controller.async_stop(clear_schedule=True, urgent=False)
                     outcome = self._shadow_stop_outcome()
                 except Exception as err:  # noqa: BLE001 - reported, never hidden
                     _LOGGER.warning(
@@ -1908,7 +1908,7 @@ class AutoExecutor:
                 legacy.append("stop")
                 outcome = CommandOutcome(False)
                 try:
-                    await self._controller.async_stop()
+                    await self._controller.async_stop(urgent=False)
                 except Exception as err:  # noqa: BLE001 - solar keeps the stop pending and retries
                     _LOGGER.warning("Solar's stop did not go out: %s", getattr(err, "code", type(err).__name__))
                     await self._notify_change()
@@ -1950,7 +1950,7 @@ class AutoExecutor:
                     return False
                 legacy.append("stop")
                 outcome = CommandOutcome(False)
-                await controller.async_stop()
+                await controller.async_stop(urgent=False)
                 outcome = self._shadow_stop_outcome()
             finally:
                 if facts is None:

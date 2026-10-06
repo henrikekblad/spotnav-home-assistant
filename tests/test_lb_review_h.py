@@ -353,3 +353,17 @@ async def test_a_rise_another_chargers_own_reading_shows_is_not_credited_to_a_la
     assert t.cc["a"].entry_id not in snap
     assert not snap.get(t.cc["b"].entry_id, {}).get("credited_a"), snap
 
+
+
+async def test_a_stop_under_a_persons_stop_that_sends_nothing_is_not_counted_toward_the_give_up(
+    hass: HomeAssistant,
+) -> None:
+    """A stop of ours still settles: the stop under a person's Stop sends nothing, and is no attempt the charger
+    could have ignored."""
+    controller, _starts, stops = await _charging(hass)
+    await controller._regulated_stop("pause")
+    async with controller._lock:
+        await controller._person_hold_stop_locked()
+    assert len(stops) == 1
+    assert controller._person_hold_stop_times == []
+    await controller.async_shutdown()
