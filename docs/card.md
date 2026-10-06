@@ -192,7 +192,7 @@ Shown when more than one car is detected: **Identification** (**Automatic**, **A
 **Cars at this charger**, changed with **Change**. While SpotNav cannot tell which car was plugged in, the card
 shows "Which car is plugged in?" with one button per car, the likeliest first; one tap is the answer, the
 same as on the phones. The car line says how the car was decided ("identified by the car's charging cable",
-"your answer", "assumed", ...), and **Change car** next to it lets anyone signed in correct it. See
+"chosen manually", "assumed", ...), and **Change car** next to it lets anyone signed in correct it. See
 [Which car is plugged in?](vehicle-identification.md).
 
 Saving each value asks Home Assistant to confirm it; the card never shows a value the integration
