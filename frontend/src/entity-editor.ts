@@ -48,6 +48,7 @@ import {
   type VehicleSoc,
   vehicleChoice,
 } from "./entity-config";
+import { sourceChoice, sourceSelect } from "./identification";
 import { formatFixed, formatNumber } from "./format";
 import { measurementProblemText, meterUnavailableText, negativeCurrentText } from "./status";
 import {
@@ -1854,6 +1855,26 @@ export function vehicleEditorBody(
       row.consumption_kwh_per_10km,
       { min: CONSUMPTION_MIN_KWH_PER_10KM, max: CONSUMPTION_MAX_KWH_PER_10KM },
     );
+  }
+
+  if (row !== null && row.identification !== undefined) {
+    // Which of the car's own entities tell that it is plugged in, and where it is: automatic, one of them, or none.
+    const sources = row.identification;
+    const group = element(doc, "fieldset", C.siteFieldset);
+    group.dataset["part"] = "identification";
+    group.append(element(doc, "p", C.entityHelp, translate(language, "identify.source.help")));
+    for (const kind of ["plug", "location"] as const) {
+      values[kind] = sourceChoice(sources[kind]);
+      const block = sourceSelect(doc, language, kind, sources[kind], `${idPrefix}-vehicle-${kind}`, (value) => {
+        values[kind] = value;
+      });
+      const select = block.querySelector("select");
+      if (select !== null) {
+        controls.push(select);
+      }
+      group.append(block);
+    }
+    body.append(group);
   }
 
   if (row !== null) {

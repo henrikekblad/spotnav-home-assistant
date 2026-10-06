@@ -20,6 +20,7 @@
 import {
   SpotnavApiError,
   UNSUPPORTED_API_VERSION,
+  chooseVehicleIdentification,
   getDashboard,
   getCardInfo,
   getDebugBundle,
@@ -29,6 +30,7 @@ import {
   findRegion,
   getMarketOptions,
   getSettings,
+  identifyVehicle,
   listChargers,
   performAction,
   setVehicleSoc,
@@ -62,6 +64,7 @@ import { decodeDebugAnswer, saveDebugBundle } from "./debug-download";
 import { cardOutdated, clientBlock, decodeCardInfo, ownCardBundleHash, servedHashFromBundle } from "./card-identity";
 import { saveTextFile } from "./download";
 import { ensureHaSelector } from "./entity-editor";
+import { sourceChoice } from "./identification";
 import { decodeCsv, decodeSessions, type SessionsAnswer } from "./history";
 import {
   SETTINGS_EDITOR_KINDS,
@@ -75,6 +78,8 @@ import {
   settingsErrorKey,
   strategyReplacement,
   notificationsReplacement,
+  identificationReplacement,
+  type IdentificationChoice,
   type NotificationsChoice,
   vehicleReplacement,
   type ReplacementCheck,
@@ -1109,6 +1114,39 @@ export class SpotnavCard extends HTMLElement {
    * Choose the vehicle the charger plans for: the same dialog-free write as the strategy, changing only
    * `target.vehicle_id` of a freshly read record under its revision.
    */
+  /**
+   * The banner's answer to "which car is plugged in?" (`spotnav/identify_vehicle`): the backend switches the car
+   * when it differs, retires the question on every phone, and the dashboard is read again. A refusal (the
+   * question was answered elsewhere meanwhile) is shown by that read, not here.
+   */
+  private async answerIdentification(vehicleId: string): Promise<void> {
+    const hass = this.hassObject;
+    const config = this.config;
+    if (!this.connected || hass === null || config === null || config.charger === "" || !this.isAdmin) {
+      return;
+    }
+    const generation = this.generation;
+    try {
+      await identifyVehicle(hass, config.charger, vehicleId);
+    } catch {
+      // Not answered: the question stays until the next read says otherwise.
+    }
+    if (generation === this.generation && this.connected) {
+      await this.refresh({ purpose: "confirm" });
+    }
+  }
+
+  private async saveIdentification(choice: IdentificationChoice): Promise<void> {
+    this.reopenOverview = true;
+    await this.writeFreshSettings((record) => identificationReplacement(record, choice));
+    if (this.reopenOverview) {
+      this.reopenOverview = false;
+      if (this.connected && this.view !== null && !this.view.anyDialogOpen()) {
+        this.view.openSettingsOverview();
+      }
+    }
+  }
+
   private async selectVehicle(vehicleId: string): Promise<void> {
     await this.writeFreshSettings((record) => vehicleReplacement(record, vehicleId));
   }
@@ -1605,7 +1643,16 @@ export class SpotnavCard extends HTMLElement {
         ? []
         : vehicleSocChanges(read.vehicles, { [vehicleId]: draft["soc"] }).filter((request) => request.vehicleId === vehicleId);
     const propertiesChanged = Object.keys(changes).length > 0;
-    if (socRequests.length === 0 && !propertiesChanged) {
+    // The car's identification sources: a changed choice is one request each (`""` is back to automatic).
+    const sourceRequests: Array<{ vehicleId: string; source: "plug" | "location"; entityId: string | null }> = [];
+    for (const kind of ["plug", "location"] as const) {
+      const chosen = draft[kind];
+      const current = row?.identification?.[kind];
+      if (chosen !== undefined && current !== undefined && chosen !== sourceChoice(current)) {
+        sourceRequests.push({ vehicleId, source: kind, entityId: chosen === "" ? null : chosen });
+      }
+    }
+    if (socRequests.length === 0 && !propertiesChanged && sourceRequests.length === 0) {
       view.closeEntityEditor();
       view.openSettingsOverview();
       return;
@@ -1650,6 +1697,16 @@ export class SpotnavCard extends HTMLElement {
             return;
           }
           refuse(notice.sentenceKey, notice.code, answer.fieldErrors);
+          return;
+        }
+      }
+      for (const request of sourceRequests) {
+        const answer = (await chooseVehicleIdentification(hass, config.charger, request)) as { ok?: unknown; error?: unknown };
+        if (generation !== this.generation || !this.connected) {
+          return;
+        }
+        if (answer === null || typeof answer !== "object" || answer.ok !== true) {
+          refuse("entity.error.generic", typeof answer?.error === "string" ? answer.error : null);
           return;
         }
       }
@@ -2132,6 +2189,12 @@ export class SpotnavCard extends HTMLElement {
         },
         onAnswerOnboardPhases: (vehicleId, phases) => {
           void this.answerOnboardPhases(vehicleId, phases);
+        },
+        onAnswerIdentification: (vehicleId) => {
+          void this.answerIdentification(vehicleId);
+        },
+        onSaveIdentification: (choice) => {
+          void this.saveIdentification(choice);
         },
         onDialogsClosed: () => {
           if (this.renderPending) {

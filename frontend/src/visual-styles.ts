@@ -732,6 +732,17 @@ export const VISUAL_STYLES = `
     opacity: 0.55;
     cursor: default;
   }
+  /** "Which car is plugged in?": a question that decides the plan, so it stands out from the status. */
+  .spotnav-suggestion[data-banner="identify"] {
+    padding: 8px 10px;
+    border-left: 3px solid var(--primary-color, #03a9f4);
+    border-radius: 4px;
+    background: var(--secondary-background-color, transparent);
+  }
+  .spotnav-suggestion[data-banner="identify"] .spotnav-choice-button[data-likely="true"] {
+    border-color: var(--primary-color, #03a9f4);
+    font-weight: 500;
+  }
   .spotnav-strategy-reason {
     font-size: 0.8em;
     color: var(--secondary-text-color, #727272);

@@ -3,6 +3,7 @@
 // page only reports the press; the card owns the requests and every refusal.
 
 import { formatFixed } from "./format";
+import { sourceText } from "./identification";
 import { translate, type Language } from "./i18n";
 import type { Vehicle } from "./validate";
 import { VISUAL_CLASSES as C, summaryValueClass } from "./visual-styles";
@@ -69,6 +70,11 @@ export function vehicleSummary(doc: Document, language: Language, input: Vehicle
       translate(language, "settings.vehicle.onboardLegend"),
       translate(language, row.onboard_phases === 1 ? "settings.vehicle.onboardOne" : "settings.vehicle.onboardThree"),
     );
+  }
+  if (row.identification !== undefined) {
+    // What tells which car is plugged in: read only for that, never to start or stop a charge.
+    valueRow("plug", translate(language, "identify.source.plug"), sourceText(language, row.identification.plug));
+    valueRow("location", translate(language, "identify.source.location"), sourceText(language, row.identification.location));
   }
   const button = element(doc, "button", `${C.button} ${C.settingsSectionConfigure}`, translate(language, "settings.vehicle.change"));
   (button as HTMLButtonElement).type = "button";

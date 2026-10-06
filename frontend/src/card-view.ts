@@ -20,6 +20,7 @@ import {
 import { applyFocus, chartHeightForWidth, renderChart, type ChartLabels } from "./chart-render";
 import { stripBarPlacement, stripBars, stripNowPosition, stripTicks } from "./chart-strip";
 import { createDialog, type DialogHandle } from "./dialog";
+import { identificationBanner, identificationEditorBody, identificationSummary } from "./identification";
 import { notificationsEditorBody, notificationsSummary } from "./notifications";
 import { clock, formatFixed, formatNumber, hasZone, percentAmount, pricePerKwh, wallTimeRepeats, weekdayDate } from "./format";
 import { pluralForm, translate, type Language, type TranslationKey } from "./i18n";
@@ -69,6 +70,7 @@ import { connectionLabel, vehicleChoicesFor, vehicleLineFor } from "./vehicle-li
 import {
   fiscalRows,
   planSummaryParts,
+  type IdentificationChoice,
   type NotificationsChoice,
   type SettingsEditorKind,
   type SettingsFormValues,
@@ -183,6 +185,13 @@ export interface CardViewInput {
   onSaveVehicle?: (vehicleId: string, draft: EntityDraft) => void;
   /** The one-tap answer to "set its onboard charger to 1-phase?": `1` accepts, `3` keeps it as it was. */
   onAnswerOnboardPhases?: (vehicleId: string, phases: 1 | 3) => void;
+  /** The one-tap answer to "which car is plugged in?". */
+  onAnswerIdentification?: (vehicleId: string) => void;
+  /**
+   * The identification dialog's Save (the mode and the cars at this charger). The view has already closed the
+   * dialog; the card owns the write, every outcome and the return to Settings.
+   */
+  onSaveIdentification?: (choice: IdentificationChoice) => void;
 }
 
 export type EntityViewState =
@@ -974,6 +983,14 @@ export function createCardView(input: CardViewInput): CardView {
     onClose: notifyDialogsChanged,
     onDismiss: () => leaveSettingsChild(notificationsDialog),
   });
+  const identificationDialog: DialogHandle = createDialog({
+    owner: input.mount,
+    idPrefix: `${idPrefix}-identification`,
+    labels,
+    background: () => card,
+    onClose: notifyDialogsChanged,
+    onDismiss: () => leaveSettingsChild(identificationDialog),
+  });
 
   /**
    * The one way out of a dialog opened from the Settings page (Cancel, close, Escape, backdrop).
@@ -1001,7 +1018,8 @@ export function createCardView(input: CardViewInput): CardView {
       entityDialog.isOpen() ||
       settingsOverviewDialog.isOpen() ||
       historyDialog.isOpen() ||
-      notificationsDialog.isOpen()
+      notificationsDialog.isOpen() ||
+      identificationDialog.isOpen()
     );
   }
 
@@ -1088,6 +1106,21 @@ export function createCardView(input: CardViewInput): CardView {
     }
     suggestion.append(answers);
     card.append(suggestion);
+  }
+
+  // Which car is plugged in: the open question, answered with one tap (administrators), else the current
+  // car is kept. The phones are asked the same; the first answer wins.
+  const identification = model.identification;
+  if (identification !== null && identification.state === "asking") {
+    const current = identification.candidates.find((item) => item.vehicle_id === identification.vehicle_id);
+    card.append(
+      identificationBanner(doc, model.language, {
+        block: identification,
+        currentName: current?.name ?? null,
+        canAnswer: input.isAdmin,
+        onAnswer: (vehicleId) => input.onAnswerIdentification?.(vehicleId),
+      }),
+    );
   }
 
   if (model.status !== null) {
@@ -1870,6 +1903,10 @@ export function createCardView(input: CardViewInput): CardView {
     vehicleListSlot = element(doc, "div");
     vehicleListSlot.dataset["slot"] = "vehicles";
     body.append(vehicleListSlot);
+    const identifying = identificationSectionBody();
+    if (identifying !== null) {
+      body.append(identifying);
+    }
 
     entitySlot = element(doc, "section", C.settingsSection);
     entitySlot.dataset["section"] = "entities";
@@ -2300,6 +2337,53 @@ export function createCardView(input: CardViewInput): CardView {
     });
     section.append(button);
     return section;
+  }
+
+  /**
+   * Which car is plugged in: the mode and the cars at this charger, from the dashboard's settings record, and
+   * the Change button (administrators). Only for a charger more than one car can charge at, on a backend that
+   * has the fields.
+   */
+  function identificationSectionBody(): HTMLElement | null {
+    const record = model.dashboardSettings;
+    if (record === null || record.identify_mode === undefined || model.vehicles.length < 2) {
+      return null;
+    }
+    const section = element(doc, "section", C.settingsSection);
+    section.dataset["section"] = "identification";
+    section.append(element(doc, "h4", C.settingsSectionHeading, translate(model.language, "identify.section")));
+    for (const row of identificationSummary(model.language, record, model.vehicles)) {
+      section.append(overviewRow(row.key, row.label, row.value));
+    }
+    const button = element(doc, "button", `${C.button} ${C.settingsSectionConfigure}`, translate(model.language, "identify.change"));
+    button.type = "button";
+    button.dataset["editIdentification"] = "true";
+    button.disabled = !input.isAdmin;
+    button.addEventListener("click", () => {
+      openIdentificationEditor();
+    });
+    section.append(button);
+    return section;
+  }
+
+  function openIdentificationEditor(): void {
+    const record = model.dashboardSettings;
+    if (destroyed || record === null || !input.isAdmin) {
+      return;
+    }
+    hideForChildDialog();
+    const built = identificationEditorBody(doc, model.language, record, model.vehicles, idPrefix, {
+      onSave: (choice) => {
+        identificationDialog.hide({ restoreFocus: false });
+        input.onSaveIdentification?.(choice);
+      },
+      onCancel: () => leaveSettingsChild(identificationDialog),
+    });
+    identificationDialog.show({
+      title: translate(model.language, "identify.section"),
+      body: built.body,
+      opener: settingsGeneral,
+    });
   }
 
   function openNotificationsEditor(): void {
@@ -3184,6 +3268,7 @@ export function createCardView(input: CardViewInput): CardView {
       settingsOverviewDialog.destroy();
       historyDialog.destroy();
       notificationsDialog.destroy();
+      identificationDialog.destroy();
       card.remove();
     },
   };
