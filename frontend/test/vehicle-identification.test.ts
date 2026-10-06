@@ -323,7 +323,7 @@ function decided(method: string, evidence: Array<Record<string, unknown>> = []):
 const carLine = (element: Element): HTMLElement | null =>
   shadow(element).querySelector<HTMLElement>("[data-vehicle-line]");
 const changeCar = (element: Element): HTMLButtonElement | null =>
-  shadow(element).querySelector<HTMLButtonElement>("[data-change-car]");
+  shadow(element).querySelector<HTMLButtonElement>("button[data-vehicle-line]");
 
 describe("the owner's wording", () => {
   it("says inkopplad, Bilar vid laddaren and Laddmål in Swedish, and Charge target in English", () => {
@@ -362,13 +362,23 @@ describe("the car line", () => {
 });
 
 describe("Byt bil", () => {
+  it("is labelled in every language", () => {
+    const words = { en: "Change car – EV6", sv: "Byt bil – EV6", da: "Skift bil – EV6", nb: "Bytt bil – EV6", fi: "Vaihda auto – EV6" };
+    for (const [language, text] of Object.entries(words)) {
+      expect(translate(language as "en", "identify.changeCarAria", { name: "EV6" })).toBe(text);
+    }
+  });
+
   it("is offered to every signed-in user, and corrects the car through the question's own answer", async () => {
     const evidence = [
       { vehicle_id: EV6, plug: null, location: null, verdict: "plugged_in" },
       { vehicle_id: NIRO, plug: null, location: null, verdict: null },
     ];
     const { hass, element } = await mounted(decided("plug_sensor", evidence), "sv", false);
-    expect(changeCar(element)?.textContent).toBe("Byt bil");
+    expect(changeCar(element)?.getAttribute("aria-label")).toBe("Byt bil – EV6");
+    expect(changeCar(element)?.querySelector("[data-icon='swap']")).not.toBeNull();
+    expect(changeCar(element)?.lastElementChild?.getAttribute("data-icon")).toBe("swap");
+    expect(shadow(element).querySelector("[data-change-car]")).toBeNull();
     changeCar(element)!.click();
     await settle();
     const dialog = openDialog(element)!;
