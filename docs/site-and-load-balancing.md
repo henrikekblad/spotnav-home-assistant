@@ -159,10 +159,16 @@ It is best effort and is not a protective device. Turning it off gives back any 
     at its minimum current as a probe and watches the grid for up to 30 seconds (the damper's dwell
     if shorter): if every phase is back within the band the battery gave way and the car goes on
     from there; if not, the car is stopped again and no new probe is tried for 10 minutes, doubling
-    to an hour. A probe is never started against a real overload, and it ends at once on a stale or
-    missing measurement or a phase far above what the car's minimum can explain. A charge a person
-    stopped is never restarted this way. The outcome is in the site's diagnostics under
-    `battery_probe` and in the decision log (`probe_started`, `probe_succeeded`, `probe_failed`).
+    to an hour. A car that has visibly started but does not yet draw its minimum when the window
+    ends (the charger's status says it is charging, its own current has begun to rise, or it has not
+    reported since the start) is waited for up to 90 seconds from the start, as long as a start is
+    credited: cars ramp up over tens of seconds and OCPP meter values lag. That wait holds only while
+    every phase stays within the band; a reading above it ends the probe at once. A car that shows
+    nothing by the end of the window is stopped then, as before. A probe is never started against a
+    real overload, and it ends at once on a stale or missing measurement or a phase far above what
+    the car's minimum can explain. A charge a person stopped is never restarted this way. The
+    outcome is in the site's diagnostics under `battery_probe` and in the decision log
+    (`probe_started`, `probe_extended`, `probe_succeeded`, `probe_failed`).
   - **A short overload is not a reset.** While yield stepping is verified, one sample above the
     ceiling (and at most 4 A above it) steps the car back once instead of to the minimum. A second
     sample in a row, a larger excess, or two such samples within two minutes still stops at the
