@@ -12,7 +12,9 @@ up the amps the car takes. Two things follow, both only under `car_first` with y
 * The *probe*: with the car held at 0 A while the plan wants it charging, the car is started at its
   minimum current and the grid is watched for a short window. If every phase is back within the band
   by the end of it the battery gave way; otherwise the car is stopped again and the probe is not
-  repeated for a back-off that doubles up to an hour.
+  repeated for a back-off that doubles up to an hour. A car that has visibly started but not yet
+  reached its minimum by the end of the window (it ramps slowly, or the charger's reading lags) is
+  waited for up to `PROBE_EXTENDED_WINDOW_S`, only while every phase stays within the band.
 
 This module is pure (no Home Assistant import, no I/O, no clock of its own): time arrives as seconds
 from the caller's clock. It decides nothing about writing; `SiteCapacityController` does that.
@@ -48,6 +50,18 @@ PROBE_EXCESS_TOLERANCE_A: Final = 1.0
 
 #: The car counts as not drawing, so a probe may start, below this current (A) on every phase.
 PROBE_IDLE_BELOW_A: Final = 1.0
+
+#: How long (seconds from the start) a probe may wait for a car that has visibly started but does not
+#: yet deliver `PROBE_FOLLOW_RATIO` of the probe current when the window ends: a car ramps up over tens of
+#: seconds after a start and an OCPP charger's reading lags behind the draw. The same bound as a start's
+#: credit (`site_capacity_controller.START_CREDIT_S`), which covers the same lag on the regulator's side.
+#: The wait is granted pass by pass, only while every phase is within `HELD_BAND_A` of its limit (what a
+#: probe that succeeded may hold indefinitely), so it never keeps the site above the band past the window.
+PROBE_EXTENDED_WINDOW_S: Final = 90.0
+
+#: A rise (A) in the charger's own reading on a phase the car uses, since the probe started, that shows the
+#: car has begun to draw; below it the reading is an idle charger's flicker.
+PROBE_RISE_A: Final = 0.2
 
 #: The car counts as drawing when it delivers at least this fraction of the probe current on every
 #: phase it uses (a car delivers about 89 to 98 % of what it is given).
@@ -92,6 +106,8 @@ class ProbeVerdict:
 
     state: Literal["verifying", "succeeded", "failed"]
     reason: str
+    #: This verdict is the first to wait past the window for a car that has started (`reason` says why).
+    extended: bool = False
 
 
 class BatteryProbe:
@@ -103,6 +119,8 @@ class BatteryProbe:
         self._started_at: float | None = None
         self._probe_a: float = 0.0
         self._baseline: dict[PhaseName, float] = {}
+        self._delivered_baseline: dict[PhaseName, float] = {}
+        self._extended = False
         self._car_phases: tuple[PhaseName, ...] = ()
         self._backoff_until: float | None = None
         self._next_backoff_s = PROBE_BACKOFF_INITIAL_S
@@ -131,13 +149,18 @@ class BatteryProbe:
         probe_a: float,
         baseline_a: Mapping[PhaseName, float],
         car_phases: Sequence[PhaseName],
+        delivered_a: Mapping[PhaseName, float | None] | None = None,
     ) -> None:
         """A probe was started: the car, on `car_phases`, was given `probe_a` while the grid read
-        `baseline_a`."""
+        `baseline_a` and the charger itself `delivered_a`."""
         self.state = "probing"
         self._started_at = now
         self._probe_a = probe_a
         self._baseline = dict(baseline_a)
+        self._delivered_baseline = {
+            phase: value for phase, value in (delivered_a or {}).items() if value is not None
+        }
+        self._extended = False
         self._car_phases = tuple(car_phases)
         self.count += 1
 
@@ -153,9 +176,16 @@ class BatteryProbe:
         limit_a: Mapping[PhaseName, float | None],
         delivered_a: Mapping[PhaseName, float | None],
         main_fuse_a: float,
+        charger_charging: bool = False,
+        delivered_report_age_s: Mapping[PhaseName, float | None] | None = None,
     ) -> ProbeVerdict:
         """Judge a running probe on fresh readings. Any doubt ends it as a failure: the window is a
         bounded exception to the overload rules, never a reason to look away from a bad reading.
+
+        `charger_charging` is the charger's own status saying it charges (never inferred from the start
+        we sent); `delivered_report_age_s` is how long ago the charger last reported each phase's
+        reading. With them a car that has started but not yet reached its minimum when the window ends
+        is waited for (`PROBE_EXTENDED_WINDOW_S`), every check above still running on every pass.
         """
         if self._started_at is None:
             return ProbeVerdict("failed", "not_started")
@@ -173,21 +203,65 @@ class BatteryProbe:
                 return ProbeVerdict("failed", "measurement_unusable")
             if site_current_a[phase] > baseline + self._probe_a + PROBE_EXCESS_TOLERANCE_A:  # type: ignore[operator]
                 return ProbeVerdict("failed", "excess_beyond_car")
-        if now - self._started_at < self._window_s:
+        elapsed = now - self._started_at
+        if elapsed < self._window_s:
             return ProbeVerdict("verifying", "verifying")
-        if any(
-            delivered_a.get(phase) is None
-            or delivered_a[phase] < PROBE_FOLLOW_RATIO * self._probe_a  # type: ignore[operator]
-            for phase in self._car_phases
-        ):
+        if any(delivered_a.get(phase) is None for phase in self._car_phases):
             return ProbeVerdict("failed", "car_not_drawing")
+        drawing = all(
+            delivered_a[phase] >= PROBE_FOLLOW_RATIO * self._probe_a  # type: ignore[operator]
+            for phase in self._car_phases
+        )
+        evidence = None
+        if not drawing:
+            evidence = self._car_starting(
+                elapsed, delivered_a, charger_charging, delivered_report_age_s or {}
+            )
+            if evidence is None or elapsed >= PROBE_EXTENDED_WINDOW_S:
+                return ProbeVerdict("failed", "car_not_drawing")
+        # Drawing, or waited for: either way past the window every phase must be within the band now.
         for phase in phases:
             limit = limit_a.get(phase)
             if limit is None:
                 return ProbeVerdict("failed", "measurement_unusable")
             if site_current_a[phase] > limit + HELD_BAND_A:  # type: ignore[operator]
                 return ProbeVerdict("failed", "battery_did_not_yield")
+        if evidence is not None:
+            first = not self._extended
+            self._extended = True
+            return ProbeVerdict("verifying", evidence, extended=first)
         return ProbeVerdict("succeeded", "battery_yielded")
+
+    def _car_starting(
+        self,
+        elapsed: float,
+        delivered_a: Mapping[PhaseName, float | None],
+        charger_charging: bool,
+        report_age_s: Mapping[PhaseName, float | None],
+    ) -> str | None:
+        """Why a car not yet at its minimum is still worth waiting for, or `None`: the charger says it
+        charges, its reading has risen on a phase the car uses, or it has not reported since the start."""
+        if charger_charging:
+            return "charger_reports_charging"
+        for phase in self._car_phases:
+            value = delivered_a[phase]
+            baseline = self._delivered_baseline.get(phase)
+            if value is not None and (
+                value >= PROBE_IDLE_BELOW_A
+                or (baseline is not None and value - baseline >= PROBE_RISE_A)
+            ):
+                return "car_current_rising"
+        for phase in self._car_phases:
+            age = report_age_s.get(phase)
+            if age is not None and age > elapsed:
+                return "charger_reading_lagging"
+        return None
+
+    def extension_remaining_s(self, now: float) -> float | None:
+        """Seconds left of the longest wait for a starting car, or `None` with no probe running."""
+        if self._started_at is None:
+            return None
+        return max(0.0, self._started_at + PROBE_EXTENDED_WINDOW_S - now)
 
     def succeeded(self, now: float) -> None:
         self._finish(now, "succeeded", "battery_yielded")

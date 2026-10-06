@@ -72,6 +72,7 @@ from ..const import (
     SOLAR_PRIORITY_CAR_FIRST,
 )
 from .site_history import SAMPLE_INTERVAL_S as HISTORY_SAMPLE_INTERVAL_S, SiteHistory
+from ..execution.charger_connection import CHARGING as CONNECTION_CHARGING
 from ..execution.controller import (
     ChargingController,
     CurrentRestore,
@@ -1802,7 +1803,13 @@ class SiteCapacityController:
             )
             return True
         damper.record_write(probe_a)
-        probe.start(now, probe_a, {phase: float(currents[phase]) for phase in PHASES}, phases)
+        probe.start(
+            now,
+            probe_a,
+            {phase: float(currents[phase]) for phase in PHASES},
+            phases,
+            dict(zip(phases, delivered_a)),
+        )
         self._schedule_probe_check(probe.window_s)
         self._record_probe_event(
             charger_entry_id,
@@ -1845,6 +1852,8 @@ class SiteCapacityController:
                     None if not observing or measured is None or margin is None else measured + margin
                 )
             main_fuse_a = self.config.get(CONF_MAIN_FUSE_A)
+            # Only the charger's own status counts as charging, never the start we sent (a plain switch).
+            connection, connection_source = charger_controller.connection()
             verdict = probe.evaluate(
                 now,
                 site_current_a=site_current_a,
@@ -1854,8 +1863,34 @@ class SiteCapacityController:
                     for phase in PHASES
                 },
                 main_fuse_a=float(main_fuse_a) if main_fuse_a is not None else 0.0,
+                charger_charging=connection == CONNECTION_CHARGING and connection_source is not None,
+                delivered_report_age_s={
+                    phase: None
+                    if delivered is None
+                    else (
+                        delivered.get(phase).report_age_s
+                        if delivered.get(phase).report_age_s is not None
+                        else delivered.get(phase).age_s
+                    )
+                    for phase in PHASES
+                },
             )
             if verdict.state == "verifying":
+                if verdict.reason != "verifying":
+                    # Waiting for a car that has started: judged again by the end of the longest wait,
+                    # whatever else triggers a pass.
+                    remaining = probe.extension_remaining_s(now)
+                    if remaining is not None:
+                        self._schedule_probe_check(remaining)
+                if verdict.extended:
+                    self._record_probe_event(
+                        charger_entry_id,
+                        decision,
+                        outcome="probe_extended",
+                        detail=verdict.reason,
+                        setpoint=None,
+                        previous_setpoint=damper.last_written_a,
+                    )
                 return
             if verdict.state == "succeeded":
                 probe.succeeded(now)
