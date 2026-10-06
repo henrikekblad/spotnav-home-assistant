@@ -60,6 +60,8 @@ HOURLY_LIMIT: Final = 12
 DEFAULT_URL: Final = "/"
 #: `plan_stopped`'s reason when SpotNav gave up stopping a charger under a person's Stop.
 REASON_CHARGER_IGNORES_STOP: Final = "charger_ignores_stop"
+#: A new plan calculated this soon after a settings write for the charger is not announced.
+QUIET_AFTER_WRITE_S: Final = 60.0
 #: A completed charge's session is the open one, or one that closed this recently.
 _SESSION_RECENT_S: Final = 600.0
 
@@ -236,6 +238,11 @@ class ChargerNotifier:
     # ------------------------------------------------------------------ sending
 
     def _maybe_send(self, event: str, attributes: dict[str, Any], now: datetime) -> None:
+        if event == EVENT_PLAN_INSTALLED:
+            written = self._store.last_settings_write(self._entry_id)
+            if written is not None and 0 <= (now - written).total_seconds() < QUIET_AFTER_WRITE_S:
+                # A person just changed this charger's settings and sees the plan that followed.
+                return
         if self._push is not None:
             # The paired app's wake-up, with its own events and limits, whatever phones are chosen here.
             self._push.async_event(event, now)

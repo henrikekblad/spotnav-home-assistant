@@ -19,6 +19,8 @@ has its own choice, so the driver of each car can follow their own charger.
 | Car plugged in / Car unplugged | no | for a charger that can say whether a car is connected |
 | New plan | no | a plan different from the one before is installed, with its start, energy and estimated cost |
 
+A new plan that SpotNav calculates within a minute after someone changed that charger's settings (in the app, the card or a SpotNav entity) is not told, nor does it wake the app, because the person already sees it; problems are never held back this way.
+
 With no phone ticked nothing is sent. A phone that is later removed from Home Assistant stays in the
 list, marked as not found, and is skipped.
 

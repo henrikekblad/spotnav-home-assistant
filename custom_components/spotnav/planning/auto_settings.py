@@ -1034,6 +1034,12 @@ class AutoSettingsStore:
         # In memory but not yet in the file (`async_hold_unsaved`): the next save of any change, or
         # `async_flush`, writes it.
         self._unsaved = False
+        # When each charger's settings last changed by a write, for what must stay quiet right after one.
+        self._written_at: dict[str, datetime] = {}
+
+    def last_settings_write(self, entry_id: str) -> datetime | None:
+        """When this charger's settings were last changed by a write (any client), or `None`."""
+        return self._written_at.get(entry_id)
 
     async def async_load(self) -> None:
         """Read the file once. Bad content is ignored, never fatal.
@@ -1157,6 +1163,7 @@ class AutoSettingsStore:
             else:
                 updated = mutate(current).validated()
                 updated = replace(updated, revision=current.revision + 1)
+                self._written_at[entry_id] = dt_util.utcnow()
             existing = self._entries.get(entry_id)
             # A fresh record, never a mutated one (see `_async_commit`).
             entry = _Entry(
@@ -1278,6 +1285,7 @@ class AutoSettingsStore:
         async with self._lock:
             current = self.settings(entry_id)
             updated = replace(mutate(current).validated(), revision=current.revision + 1)
+            self._written_at[entry_id] = dt_util.utcnow()
             existing = self._entries.get(entry_id)
             entry = _Entry(
                 settings=updated,
