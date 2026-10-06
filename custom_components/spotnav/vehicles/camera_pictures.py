@@ -17,6 +17,7 @@ import io
 import logging
 import os
 import re
+import secrets
 import shutil
 from dataclasses import dataclass
 from datetime import datetime
@@ -156,9 +157,15 @@ class Reference:
             "signature": None if self.signature is None else list(self.signature),
         }
 
-    def as_wire(self) -> dict[str, Any]:
-        """What a client sees: the kind, when it was taken and whether it has colour (never the picture)."""
-        return {"kind": self.kind, "taken_at": self.taken_at.isoformat(), "colour": self.signature is not None}
+    def as_wire(self, *, stale: bool = False) -> dict[str, Any]:
+        """What a client sees: the kind, when it was taken, whether it has colour, and whether it was cropped with
+        another frame than the one drawn now (`stale`: not used until it is taken again). Never the picture."""
+        return {
+            "kind": self.kind,
+            "taken_at": self.taken_at.isoformat(),
+            "colour": self.signature is not None,
+            "stale": stale,
+        }
 
     @classmethod
     def from_stored(cls, raw: Any) -> Reference | None:
@@ -192,7 +199,8 @@ def valid_vehicle_id(value: Any) -> bool:
 def _write(path: Path, data: bytes) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     os.chmod(path.parent, 0o700)
-    temporary = path.with_suffix(".tmp")
+    # A name of its own: two pictures of one kind written at once never share a half-written file.
+    temporary = path.with_name(f"{path.stem}.{secrets.token_hex(6)}.tmp")
     temporary.write_bytes(data)
     os.chmod(temporary, 0o600)
     os.replace(temporary, path)
@@ -215,6 +223,8 @@ class ReferenceStore:
         self._references: dict[tuple[str, str], Reference] = {}
 
     async def async_load(self) -> None:
+        # A crop left behind by a query that never finished (a power cut, a crash) goes now.
+        await self._hass.async_add_executor_job(shutil.rmtree, self.folder / "tmp", True)
         raw = await self._store.async_load()
         items = raw.get("references") if isinstance(raw, dict) else None
         self._references = {}
