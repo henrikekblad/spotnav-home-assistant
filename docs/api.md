@@ -196,6 +196,15 @@ beside it is `resume` (a `stop` with another choice replaces it). The `paused` s
 `action` and `ends` (`unplug`, `next_plug_in`, or `resume` on a charger that cannot tell when a car is
 plugged in); both are null for every other pause. Every other pause record keeps its three keys.
 
+**A Start or Stop on its way.** After a person's Start, until the charger reports charging, and after a
+person's Stop, until it reports it has stopped (or, for either, at most 30 seconds), `control` offers
+nothing on either axis: `immediate_action` and `automatic_action` are `none` with the reason
+`action_pending` (an automatic axis already showing a pause the person chose for a span keeps it). A client
+shows *Starting…* or *Stopping…* meanwhile. The command itself was sent at once, and a further `stop` is
+still accepted while a Stop is pending. When the 30 seconds pass without the report the axes answer from
+the charger's state again: Stop is offered again while it still charges; an unanswered Start is also
+reported as `action_failed`. A Stop that failed is never pending (`pause_stop_failed`, Stop again).
+
 **Battery room.** The `soc` block's additive `room_kwh` is the wall energy the battery still has room for,
 to the car's own charge limit (else 100 %): `capacity_kwh x (ceiling - value) / 100 / efficiency`, `null`
 without a level or a battery size. A manual amount is planned at most that much; when it is capped the
