@@ -75,7 +75,7 @@ _TEXT: Final[dict[str, dict[str, str]]] = {
         "plugged_in": "Bilen är ansluten.",
         "unplugged": "Bilen är urkopplad.",
         "plan_installed": "Ny plan: laddar från {time}.",
-        "identify.ask": "Vilken bil är ansluten?",
+        "identify.ask": "Vilken bil är inkopplad?",
         "identify.open": "Öppna SpotNav",
         "identify.chosen": "{vehicle} vald.",
         "identify.recognised": "{vehicle} vald automatiskt.",

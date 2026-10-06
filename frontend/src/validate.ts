@@ -277,6 +277,8 @@ export interface Identification {
   vehicle_id: string | null;
   since: string | null;
   candidates: Array<{ vehicle_id: string; name: string; likely: boolean }>;
+  /** What each car was judged by at the last look; only the verdict is read here (empty from an older backend). */
+  evidence: Array<{ vehicle_id: string; verdict: string | null }>;
 }
 
 /** One of a car's identification sources: what is read (`null`: none, or not chosen yet) and what can be chosen. */
@@ -1602,6 +1604,13 @@ function identificationOrNull(root: Record<string, unknown>): Identification | n
         }
         return { vehicle_id: text(item, "vehicle_id"), name: text(item, "name"), likely: item.likely };
       }),
+      evidence: Array.isArray(value.evidence)
+        ? value.evidence.flatMap((entry) =>
+            isRecord(entry) && typeof entry.vehicle_id === "string"
+              ? [{ vehicle_id: entry.vehicle_id, verdict: typeof entry.verdict === "string" ? entry.verdict : null }]
+              : [],
+          )
+        : [],
     };
   } catch {
     return null;

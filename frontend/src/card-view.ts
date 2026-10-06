@@ -20,7 +20,13 @@ import {
 import { applyFocus, chartHeightForWidth, renderChart, type ChartLabels } from "./chart-render";
 import { stripBarPlacement, stripBars, stripNowPosition, stripTicks } from "./chart-strip";
 import { createDialog, type DialogHandle } from "./dialog";
-import { identificationBanner, identificationEditorBody, identificationSummary } from "./identification";
+import {
+  changeCarBody,
+  identificationBanner,
+  identificationEditorBody,
+  identificationSummary,
+  methodWords,
+} from "./identification";
 import { noRecipientsNote, notificationsEditorBody, notificationsSummary } from "./notifications";
 import { clock, formatFixed, formatNumber, hasZone, percentAmount, pricePerKwh, wallTimeRepeats, weekdayDate } from "./format";
 import { pluralForm, translate, type Language, type TranslationKey } from "./i18n";
@@ -875,6 +881,11 @@ export function createCardView(input: CardViewInput): CardView {
     if (vehicleLine.age !== null) {
       parts.push({ cls: C.vehicleLineAge, text: vehicleLine.age });
     }
+    // How the car was decided at this plug-in: "identified by the car's charging cable", "your answer" ...
+    const decidedBy = methodWords(model.language, model.identification);
+    if (decidedBy !== null) {
+      parts.push({ cls: C.vehicleLineAge, text: decidedBy });
+    }
     if (connectionText !== null) {
       parts.push({ cls: connectionClass(), text: connectionText, connection: true });
     }
@@ -890,6 +901,16 @@ export function createCardView(input: CardViewInput): CardView {
       openVehicleChoice();
     });
     identity.append(vehicleButton);
+    if (model.identification !== null) {
+      // "Byt bil": for every signed-in user, the question's answer or a correction of the car decided.
+      const change = element(doc, "button", C.button, translate(model.language, "identify.changeCar")) as HTMLButtonElement;
+      change.type = "button";
+      change.dataset["changeCar"] = "true";
+      change.addEventListener("click", () => {
+        openChangeCar(change);
+      });
+      identity.append(change);
+    }
     header.append(identity);
   } else if (connectionText !== null) {
     // No vehicle: the status alone under the name.
@@ -1853,6 +1874,26 @@ export function createCardView(input: CardViewInput): CardView {
       body,
       opener: vehicleButton,
     });
+  }
+
+  function openChangeCar(opener: HTMLElement): void {
+    if (destroyed) {
+      return;
+    }
+    hideForChildDialog();
+    const body = changeCarBody(doc, model.language, {
+      block: model.identification,
+      vehicles: model.vehicles,
+      currentId: model.identification?.vehicle_id ?? model.soc?.vehicle_id ?? model.targetVehicleId,
+      chargerName: model.chargerName,
+      idPrefix,
+      onChoose: (vehicleId) => {
+        vehicleDialog.hide({ restoreFocus: false });
+        input.onAnswerIdentification?.(vehicleId);
+      },
+      onCancel: () => vehicleDialog.hide(),
+    });
+    vehicleDialog.show({ title: translate(model.language, "identify.changeCar"), body, opener });
   }
 
   function openStrategy(): void {
