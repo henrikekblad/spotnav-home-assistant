@@ -170,28 +170,32 @@ class ChargerPush:
         }
 
     @callback
-    def async_event(self, event: str, now: datetime) -> None:
-        """An event happened: wake the app if it asked for this one and the limits allow."""
+    def async_event(self, event: str, now: datetime) -> bool:
+        """An event happened: wake the app if it asked for this one and the limits allow.
+
+        Returns whether the app is being woken for it (or already is, for another event).
+        """
         registration = self._registration
         if registration is None or event not in registration.events:
-            return
+            return False
         if self._in_flight:
             # The app's check reads every event at once; a wake-up under way covers this one.
             _LOGGER.debug("SpotNav charger %s: a wake-up is already under way", self._entry_id)
-            return
+            return True
         last = self._last_sent.get(event)
         if last is not None and (now - last).total_seconds() < REPEAT_S:
             _LOGGER.debug("SpotNav charger %s: %s not woken for again so soon", self._entry_id, event)
-            return
+            return False
         while self._sent_times and (now - self._sent_times[0]).total_seconds() >= 3600:
             self._sent_times.popleft()
         if len(self._sent_times) >= HOURLY_LIMIT:
             _LOGGER.debug("SpotNav charger %s: hourly wake-up limit reached", self._entry_id)
-            return
+            return False
         self._last_sent[event] = now
         self._sent_times.append(now)
         self._in_flight = True
         self._hass.async_create_task(self._async_wake(registration.push_ref), eager_start=True)
+        return True
 
     async def _async_wake(self, push_ref: str) -> None:
         try:
