@@ -650,3 +650,79 @@ async def test_unplugging_still_clears_the_question(world: World) -> None:
     await world.unplug()
     await world.later(UNPLUG_DEBOUNCE_S + 1)
     assert world.sent()[-1] == {"message": "clear_notification", "data": {"tag": tag}}
+
+
+async def _identify(world: World, hass: HomeAssistant, hass_ws_client: Any, user: Any, car: str) -> dict[str, Any]:
+    from pytest_homeassistant_custom_component.common import CLIENT_ID
+
+    refresh = await hass.auth.async_create_refresh_token(user, CLIENT_ID)
+    socket = await hass_ws_client(hass, hass.auth.async_create_access_token(refresh))
+    answer = await ws_call(
+        socket,
+        {"type": "spotnav/identify_vehicle", "api_version": 1, "charger_id": world.entry.entry_id, "vehicle_id": car},
+    )
+    await hass.async_block_till_done()
+    return answer["result"]
+
+
+async def test_any_user_corrects_a_decided_car_and_the_correction_holds(
+    world: World, hass: HomeAssistant, hass_ws_client, hass_read_only_user
+) -> None:
+    await world.start()
+    await world.plug_in()
+    world.car_says("Tesla", "plug", "on")
+    await world.later(5)
+    assert world.settings.target.vehicle_id == world.cars["Tesla"] and world.identifier.method == METHOD_PLUG_SENSOR
+    result = await _identify(world, hass, hass_ws_client, hass_read_only_user, world.cars["Kia"])
+    assert result["ok"] is True and result["identification"]["method"] == METHOD_ANSWERED
+    assert world.settings.target.vehicle_id == world.cars["Kia"]
+    assert not any(call.get("data", {}).get("actions") for call in world.sent()), "nothing asked"
+    await world.unplug()
+    await world.later(20)
+    world.connected = True
+    await world.observe()
+    world.car_says("Tesla", "plug", "off")
+    world.car_says("Tesla", "plug", "on")
+    await world.later(60)
+    assert world.settings.target.vehicle_id == world.cars["Kia"], "a correction holds like an answer"
+
+
+async def test_a_correction_works_where_nothing_was_identified_while_a_car_is_plugged_in(
+    world: World, hass: HomeAssistant, hass_ws_client, hass_read_only_user
+) -> None:
+    await world.start(mode="off")
+    await world.plug_in()
+    assert world.identifier.dashboard() is None
+    result = await _identify(world, hass, hass_ws_client, hass_read_only_user, world.cars["Tesla"])
+    assert result["ok"] is True
+    assert world.settings.target.vehicle_id == world.cars["Tesla"] and world.identifier.method == METHOD_ANSWERED
+
+
+async def test_a_correction_needs_a_car_plugged_in_and_one_of_the_chargers_cars(
+    world: World, hass: HomeAssistant, hass_ws_client, hass_read_only_user
+) -> None:
+    await world.start()
+    result = await _identify(world, hass, hass_ws_client, hass_read_only_user, world.cars["Tesla"])
+    assert result == {"api_version": 1, "ok": False, "error": "spotnav_not_identifying"}
+    store = domain_data(hass).auto_store
+    await store.async_update(
+        world.entry.entry_id,
+        mutate=lambda settings: replace(settings, vehicle_ids=(world.cars["Kia"], world.cars["Volvo"])
+                                         if "Volvo" in world.cars else (world.cars["Kia"],)),
+    )
+    await world.plug_in()
+    result = await _identify(world, hass, hass_ws_client, hass_read_only_user, world.cars["Tesla"])
+    assert result["error"] == "spotnav_invalid_value", "not one of the cars at this charger"
+    assert world.settings.target.vehicle_id == world.cars["Kia"]
+
+
+async def test_a_correction_while_the_question_is_out_replaces_it_silently(
+    world: World, hass: HomeAssistant, hass_ws_client, hass_read_only_user
+) -> None:
+    await world.start()
+    await world.plug_in()
+    await world.later(ASK_AFTER_S + 5)
+    question = world.sent()[0]
+    result = await _identify(world, hass, hass_ws_client, hass_read_only_user, world.cars["Tesla"])
+    assert result["ok"] is True
+    _silent_retirement(world.sent()[-1], question, "Tesla chosen.")
