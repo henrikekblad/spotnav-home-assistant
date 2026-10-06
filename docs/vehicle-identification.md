@@ -25,8 +25,11 @@ car is detected) and, per car, the car's own dialog. Only an administrator can c
 
 The **target** belongs to the car: each car has one target percent, the same at every charger. Changing it at
 one charger changes it at every charger planning for that car, and when the car at a charger changes, its own
-target comes with it. The **departure** belongs to the charger and stays as it is. A charger set up before this
-feature gives its target to the car it was planning for, unless that car already has one.
+target comes with it. When two chargers change one car's target in quick succession, the later change wins
+everywhere; a change of anything else at a charger (a departure, the current) never moves a target. The
+**departure** belongs to the charger and stays as it is. A car with no target of its own takes, when SpotNav
+starts, the highest target any charger planned it to before this feature (it is never left short), and every
+charger planning for it is aligned once.
 
 **Vehicles at this charger** also limit what the charger plans for: only those cars are offered as the target
 vehicle in the card and the app, and with one car ticked that car is planned for.
@@ -42,11 +45,13 @@ connected never starts identification, so the choice stays yours.
 2. It then weighs what each car says:
    - **A car's plug sensor turned on** from five minutes before the plug-in. That car was plugged in.
    - **A fresh "not plugged in"** report from a car means that car is not here. "Fresh" means written at least
-     a minute after the plug-in. For integrations that stream the car's state (Teslemetry, Tessie, MySkoda,
-     Mercedes, BMW CarData, Rivian), a car that still says "not plugged in" a few minutes later also counts.
-   - **A fresh position away from home** means that car is not here. "Fresh" means the tracker was written
-     within the last two hours, or after the plug-in.
-   - **A car already identified at another SpotNav charger** that is connected is not here.
+     a minute after the plug-in. An older report, or a car that simply says nothing new, rules nothing out.
+   - **A fresh position away from home** means that car is not here. "Fresh" means reported after the plug-in,
+     or at most two minutes before it. An older position may be the car's last report on its way home (many
+     cloud integrations report every half hour), so it rules nothing out and SpotNav asks instead.
+   - **A car already identified at another SpotNav charger** that is connected is not here. A car decided there
+     counts at once, even while that charger's settings are still being saved, so two chargers never take the
+     same car.
 3. In **Automatic** mode, SpotNav picks a car without asking in two cases: exactly one car says it was
    plugged in, or every other car is ruled out. If two cars both say they were plugged in, SpotNav asks at
    once. Otherwise it waits three minutes and then asks. It keeps listening for 30 minutes after the
@@ -72,8 +77,11 @@ question as a banner with one button per car, and the SpotNav app will show it t
   with "Tesla chosen." or "Recognised as Tesla." The replacement does not alert again.
 - **No answer keeps the current car.** If the notification is swiped away on Android, the current car is
   kept too, and nothing switches it later.
-- Unplugging the car takes the question off the phones. After twelve hours an unanswered question is taken
-  off as well.
+- Unplugging the car for more than two minutes takes the question off the phones. A shorter unplug (a reseated
+  cable, a connector that flaps) is the same plug-in: what was decided or answered holds, and it still counts
+  toward the one automatic switch. After twelve hours an unanswered question is taken off as well.
+- A person's answer holds for the car's stay. It is written after any automatic switch still being saved, and
+  written again if another settings change got there first: it is the newest choice and is never dropped.
 - The text names no number plate, place or person, because notifications pass through Google's and Apple's
   push services. It names the charger and the cars.
 - Each button carries a random code that only the asked phones received, so another app cannot answer for

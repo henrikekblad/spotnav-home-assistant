@@ -105,8 +105,10 @@ size: a vehicle row in `vehicles` carries the additive `target_percent` (0-100, 
 `expected` may name it). The settings record's `target.target_percent` is its planned car's: a replacement that
 sets it sets the car's, and every other charger planning for that car takes it by a settings write of its own
 (its revision moves). A replacement that changes `target.vehicle_id` but leaves `target.target_percent` as it was
-gets the new car's target, when it has one. At set-up, a charger's target stored before this release becomes its
-selected car's, unless the car already has one. Nothing is withheld for it: the released app reads a vehicle row
+gets the new car's target, when it has one. Only a write that changes the target moves the car's; when two
+chargers change it in quick succession the later change wins at every charger. At set-up, a car with no target of
+its own takes the highest target any charger planned it to before this release, and every charger planning for it
+is aligned once. Nothing is withheld for it: the released app reads a vehicle row
 key by key and ignores keys it does not know (as it does the dashboard's root blocks).
 
 **Instant notifications.** `push_register` takes `push_ref`, the opaque reference the SpotNav relay
