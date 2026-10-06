@@ -837,6 +837,7 @@ export const fi: Record<keyof typeof en, string> = {
   "reference.takeNight": "Ota yökuva",
   "reference.delete": "Poista",
   "reference.intro": "Ota kuva, kun {name} on pysäköity laturille. Ota yökuva, kun on pimeää.",
+  "reference.stale": "Otettu toisella rajauksella – ota uudelleen",
   "reference.help": "Kamera ei tunnista autoa, jolla ei ole vertailukuvaa.",
   "identify.changeCar": "Vaihda auto",
   "identify.changeCarPrompt": "Mikä auto on kytketty laturiin {charger}?",

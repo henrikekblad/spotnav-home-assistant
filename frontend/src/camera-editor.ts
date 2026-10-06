@@ -294,6 +294,16 @@ export function frameEditor(
 
 // ------------------------------------------------------------------------------------------------ reference pictures
 
+/** The line under a car's "Reference picture" row when a picture was cropped with another frame, else `null`. */
+export function staleText(language: Language, pictures: readonly ReferencePicture[]): string | null {
+  const stale = pictures.filter((picture) => picture.stale);
+  if (stale.length === 0) {
+    return null;
+  }
+  const kinds = stale.map((picture) => translate(language, picture.kind === "day" ? "reference.day" : "reference.night"));
+  return `${kinds.join(", ")}: ${translate(language, "reference.stale")}`;
+}
+
 /** The words a car's "Reference picture" row shows: which pictures it has. */
 export function referenceText(language: Language, pictures: readonly ReferencePicture[]): string {
   const kinds = pictures.map((picture) => translate(language, picture.kind === "day" ? "reference.day" : "reference.night"));
@@ -339,6 +349,10 @@ export function referenceEditor(
       C.settingRowHelp,
       `${translate(language, picture.kind === "day" ? "reference.day" : "reference.night")} · ${input.formatTaken(picture.taken_at)}`,
     );
+    if (picture.stale) {
+      figure.dataset["stale"] = "true";
+      caption.append(doc.createElement("br"), doc.createTextNode(translate(language, "reference.stale")));
+    }
     figure.append(image, caption);
     thumbs.append(figure);
     void input.thumbnail(picture.kind).then((thumbnail) => {

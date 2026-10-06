@@ -837,6 +837,7 @@ export const da: Record<keyof typeof en, string> = {
   "reference.takeNight": "Tag natbillede",
   "reference.delete": "Slet",
   "reference.intro": "Tag billedet, mens {name} holder parkeret ved laderen. Tag natbilledet, når det er mørkt.",
+  "reference.stale": "Taget med en anden ramme – tag det igen",
   "reference.help": "En bil uden referencebillede genkendes ikke af kameraet.",
   "identify.changeCar": "Skift bil",
   "identify.changeCarPrompt": "Hvilken bil er tilsluttet {charger}?",

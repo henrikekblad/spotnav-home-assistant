@@ -79,7 +79,7 @@ import {
 } from "./value-editors";
 import type { FiscalComponentName, ValueWrite } from "./value-writes";
 import type { IdentifyMode, SettingsRecord } from "./types";
-import { frameEditor, isWholePicture, referenceEditor, referenceText, type CameraPicture } from "./camera-editor";
+import { frameEditor, isWholePicture, referenceEditor, referenceText, staleText, type CameraPicture } from "./camera-editor";
 import { issueText } from "./status";
 import { historyBody, type HistoryState, type HistoryUi } from "./history";
 import { connectionLabel, vehicleLineFor } from "./vehicle-line";
@@ -2576,6 +2576,7 @@ export function createCardView(input: CardViewInput): CardView {
     };
     return {
       text: referenceText(model.language, pictures),
+      stale: staleText(model.language, pictures),
       kinds: pictures.map((picture) => picture.kind),
       thumbnail,
       ...(input.isAdmin

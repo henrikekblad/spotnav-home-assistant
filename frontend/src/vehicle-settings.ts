@@ -23,6 +23,8 @@ export interface VehicleEdits {
 /** A car's reference pictures for the camera: the words, the kinds it has, their thumbnails, and its editor. */
 export interface VehicleReference {
   text: string;
+  /** The line under the row when a picture was taken with another frame. */
+  stale?: string | null;
   kinds: ReadonlyArray<"day" | "night">;
   thumbnail: (kind: "day" | "night") => Promise<{ url: string } | null>;
   onTap?: () => void;
@@ -136,7 +138,13 @@ export function vehicleSummary(doc: Document, language: Language, input: Vehicle
     if (row.identification === undefined) {
       card.append(element(doc, "hr", C.settingsDivider));
     }
-    valueRow("reference", translate(language, "reference.label"), reference.text, reference.onTap);
+    valueRow(
+      "reference",
+      translate(language, "reference.label"),
+      reference.text,
+      reference.onTap,
+      reference.stale ?? undefined,
+    );
     if (reference.kinds.length > 0) {
       const thumbs = element(doc, "div", C.referenceThumbs);
       thumbs.dataset["referenceThumbs"] = row.id;

@@ -850,6 +850,7 @@ export const en = {
   "reference.takeNight": "Take night picture",
   "reference.delete": "Delete",
   "reference.intro": "Take the picture while {name} is parked at the charger. Take the night picture when it is dark.",
+  "reference.stale": "Taken with another frame – take it again",
   "reference.help": "A car without a reference picture is not recognised by the camera.",
   "identify.changeCar": "Change car",
   "identify.changeCarPrompt": "Which car is plugged in at {charger}?",

@@ -837,6 +837,7 @@ export const nb: Record<keyof typeof en, string> = {
   "reference.takeNight": "Ta nattbilde",
   "reference.delete": "Slett",
   "reference.intro": "Ta bildet mens {name} står parkert ved laderen. Ta nattbildet når det er mørkt.",
+  "reference.stale": "Tatt med en annen ramme – ta det på nytt",
   "reference.help": "En bil uten referansebilde blir ikke gjenkjent av kameraet.",
   "identify.changeCar": "Bytt bil",
   "identify.changeCarPrompt": "Hvilken bil er tilkoblet {charger}?",
