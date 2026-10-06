@@ -150,6 +150,11 @@ by the same camera at the same spot works, day and night. So SpotNav compares pi
    **Take night picture** adds a picture in the dark, for the camera's infrared. A new picture replaces the old one
    of its kind, and **Delete** removes the car's pictures. A car without a reference picture is never recognised by
    the camera. A picture is cropped with the frame as it is when the picture is taken, so draw the frame first.
+   When the frame is drawn again, the pictures taken with the earlier frame are marked "taken with another frame –
+   take it again" and are not used until they are taken again.
+
+Choosing the camera and the AI task is an administrator's, in the card. The SpotNav app can draw the frame and
+take, show and delete reference pictures for the camera chosen here, but cannot choose another camera or AI task.
 
 **At a plug-in**, in **Automatic** mode, when two or more cars are left after the cars' own reports: SpotNav takes
 one picture, crops it with the frame and asks the AI Task which reference car is the one in the picture,
@@ -158,7 +163,12 @@ the model is.
 
 - The camera **decides on its own** only when the model is sure ("high") and the car it names has a clearly
   different colour from every other car left, judged from the daylight reference pictures when they were taken.
-  Every car left must have a reference picture.
+  Every car left must have a reference picture. At night (an infrared picture has no colour) it never decides
+  on its own.
+- **A car's own report outranks the camera.** If, after the camera decided, a car's plug sensor or position
+  settles it within the 30 minutes SpotNav listens, SpotNav switches to that car (recorded as decided by the plug
+  sensor or the position). If the camera's car reports that it is not plugged in or away and nothing else
+  settles it, SpotNav asks.
 - Otherwise, for example between two dark blue cars, the camera **only puts its car first** on the question's
   buttons. The question is asked as usual, after three minutes.
 - **Your answer always wins.** The camera is asked only while nobody has answered and nothing has decided, and
@@ -167,11 +177,11 @@ the model is.
   30 seconds is ignored and SpotNav asks as without a camera. When a car's plug sensor or position decides,
   the camera is not asked at all. **Always ask** and **Off** never ask the camera.
 
-**Privacy.** The pictures stay in Home Assistant: the reference pictures are kept in Home Assistant's private
-storage (`.storage/spotnav_camera/`, never `www/` or a media folder) and are removed with the charger. They are
-sent only to the AI Task entity you chose. With a local model they never leave your home; with a cloud AI Task
-they go to that service. The question names the cars only as "car 1", "car 2". No picture is ever put in a
-notification.
+**Privacy.** The reference pictures are kept in Home Assistant's private storage (`.storage/spotnav_camera/`,
+never `www/` or a media folder), so they are part of Home Assistant's backups, and they are removed with the
+charger. Pictures go to the AI Task entity you chose (with a local model they never leave your home; with a cloud
+AI Task they go to that service) and, for the frame editor and the thumbnails, to the card and the paired SpotNav
+app. The question names the cars only as "car 1", "car 2". No picture is ever put in a notification.
 
 ## For developers
 
