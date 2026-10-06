@@ -139,9 +139,9 @@ async def test_an_overload_the_adapter_cannot_lower_in_time_stops_the_charge_and
         assert len(charger.writes) == 1, "nothing was written faster than the 90 s policy allows"
         assert len(charger.stops) == 1, "the fuse could not be protected by a write, so the charge was stopped"
         assert controller.charging is False
-        # The damper still says what the charger really carries (the 16 A it was already at), not the
-        # 14 A the regulator wanted and the charger never received.
-        assert site_controller._dampers[entry.entry_id].last_written_a == 16.0
+        # The damper says what the charger really carries: nothing, it was stopped. Neither the 14 A the
+        # regulator wanted and the charger never received, nor the 16 A it had before the stop.
+        assert site_controller._dampers[entry.entry_id].last_written_a == 0.0
 
 
 def _decision(amps: float) -> RegulatorDecision:

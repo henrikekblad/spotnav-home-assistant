@@ -2797,6 +2797,9 @@ class ChargingController:
                 # lock: a person's Stop that lands first is never remembered as a charge to resume.
                 was_on = self._control_on
                 paused_charge = (self._charge_origin, self._plan_charge)
+                # A charge balancing already holds back (paused by an earlier pass, the charger not seen off yet or
+                # already off): a repeat pause is the same pause, and that charge stays the one to resume.
+                held = (self._paused_by_balancing, self._paused_charge)
                 session = self._session_generation
                 token = self._shadow.begin()
                 outcome = CommandOutcome(False)
@@ -2807,7 +2810,9 @@ class ChargingController:
                     # Set after the stop (which clears it): this stop is the balancing pause itself. A safety stop
                     # of a person's charge is remembered the same way, so the regulator gives it back when there
                     # is room. Never for a plug-in that ended while the stop was on its way.
-                    if (
+                    if held[0] and self._session_generation == session:
+                        self._paused_by_balancing, self._paused_charge = held
+                    elif (
                         was_on
                         and (code == "pause" or paused_charge[0] == "manual")
                         and self._session_generation == session

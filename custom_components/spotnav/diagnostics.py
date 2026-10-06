@@ -171,6 +171,7 @@ def _site_diagnostics(hass: HomeAssistant, entry: ConfigEntry) -> dict[str, Any]
         "solar_decision_log": _solar_decision_logs(hass, entry),
         # The battery-on-the-fuse probe per charger: state, last outcome and why, back-off left.
         "battery_probe": {} if controller is None else controller.battery_probe_snapshot,
+        "start_credit": {} if controller is None else controller.start_credit_snapshot(),
         # How often each measurement entity reports (median of its recent `last_reported` gaps, `None`
         # until enough are seen), and which ones hold load balancing for reporting too seldom.
         "report_cadence": None
