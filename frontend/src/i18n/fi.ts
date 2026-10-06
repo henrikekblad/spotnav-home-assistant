@@ -495,7 +495,7 @@ export const fi: Record<keyof typeof en, string> = {
   "control.pausedManualStopResume": "Pysäytetty käsin – kunnes jatkat automaattista latausta.",
   "control.pausedManualStart": "Ladataan käsin – kunnes auto on täynnä tai irrotetaan.",
   "control.pausedManualStartResume": "Ladataan käsin – kunnes auto on täynnä tai jatkat automaattista latausta.",
-  "control.actionPending": "Aloituskomento odottaa laturin vahvistusta.",
+  "control.actionPending": "Aloitus- tai lopetuskomento odottaa laturin vahvistusta.",
   "action.error.unavailable": "Tämä toiminto ei ole juuri nyt käytettävissä.",
   "action.error.failed": "Toimintoa ei voitu suorittaa. Mikään ei muuttunut.",
   "action.error.reconcileFailed": "Toiminto suoritettiin, mutta suunnitelmaa ei voitu päivittää.",

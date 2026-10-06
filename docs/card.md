@@ -66,8 +66,9 @@ A row of four cells sits under the plan. Each shows a state and opens or does on
 | **Strategy** | The chosen strategy | Opens **Charging strategy**: **Cheapest**, **Solar** and **Hybrid**, see [charging strategies](strategies.md). A strategy that cannot work on this installation is listed with the reason, for example that Solar requires a site that can measure the solar surplus. |
 | **Plan** | Energy, deadline and current, for example `20 kWh · No deadline · 16 A` | Opens the plan settings, see [Plan](#plan-settings). |
 
-Start and Stop are disabled for a user who is not an administrator, and while a start is waiting
-for the charger to acknowledge it.
+Start and Stop are disabled for a user who is not an administrator, and while a start or a stop is
+waiting for the charger to acknowledge it (at most 30 seconds): the cell then says **Starting…** or
+**Stopping…**.
 
 ## Status lines
 

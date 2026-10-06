@@ -495,7 +495,7 @@ export const sv: Record<keyof typeof en, string> = {
   "control.pausedManualStopResume": "Stoppad manuellt – tills du återupptar automatisk laddning.",
   "control.pausedManualStart": "Laddar manuellt – tills bilen är full eller kopplas ur.",
   "control.pausedManualStartResume": "Laddar manuellt – tills bilen är full eller du återupptar automatisk laddning.",
-  "control.actionPending": "Ett startkommando väntar på att laddaren ska bekräfta.",
+  "control.actionPending": "Ett start- eller stoppkommando väntar på att laddaren ska bekräfta.",
   "action.error.unavailable": "Den åtgärden är inte tillgänglig just nu.",
   "action.error.failed": "Åtgärden kunde inte utföras. Inget ändrades.",
   "action.error.reconcileFailed": "Åtgärden utfördes, men planen kunde inte uppdateras.",
