@@ -40,7 +40,7 @@ READ_AT = datetime(2026, 10, 6, 10, 29, 36, tzinfo=timezone.utc)
 NEED_KWH = 4.0 * CAPACITY / 100.0 / CHARGE_EFFICIENCY  # 89 % to 93 % of 77 kWh: 3.42 kWh from the wall
 
 
-def _delivered(start: datetime, kwh: float = 5.5, *, source: str = SOURCE_REGISTER, vehicle_id: str | None = None):
+def _delivered(start: datetime, kwh: float = 5.5, *, source: str = SOURCE_REGISTER, vehicle_id: str | None = "car"):
     charge = session(start, hours=0.5, energy=kwh, source=source, charger_id="soc_charger")
     charge.vehicle_id = vehicle_id
     return charge
@@ -105,6 +105,17 @@ def test_a_charge_before_this_plug_in_or_for_another_car_does_not_count() -> Non
     assert same_car.wait
 
 
+def test_a_charge_that_recorded_no_car_counts_only_when_this_is_the_only_car() -> None:
+    unrecorded = [_delivered(READ_AT + timedelta(minutes=15), vehicle_id=None)]
+    assert _decide(unrecorded).reason == "no_measurement"
+    assert _decide(unrecorded, only_vehicle=True).wait
+
+
+def test_without_a_known_plug_in_nothing_changes() -> None:
+    decision = _decide([_delivered(READ_AT + timedelta(minutes=15))], plugged_in_at=None)
+    assert not decision.wait and decision.reason == "no_plug_in"
+
+
 def test_while_charging_a_window_ahead_an_unplug_or_an_estimate_nothing_changes() -> None:
     sessions = [_delivered(READ_AT + timedelta(minutes=15))]
     assert _decide(sessions, charging=True).reason == "charging"
@@ -131,7 +142,9 @@ def test_a_departure_waits_only_until_the_need_would_just_still_fit() -> None:
 def test_the_delivery_names_the_last_charge() -> None:
     first = _delivered(READ_AT + timedelta(minutes=15), kwh=2.0)
     second = _delivered(READ_AT + timedelta(minutes=55), kwh=2.0)
-    delivery = measured_delivery_since([second, first], read_at=READ_AT, plugged_in_at=None, vehicle_id="car")
+    delivery = measured_delivery_since(
+        [second, first], read_at=READ_AT, plugged_in_at=READ_AT - timedelta(hours=1), vehicle_id="car"
+    )
     assert delivery is not None and delivery.kwh == 4.0
     assert delivery.first_start == first.start and delivery.last_session_id == second.id
 
@@ -148,6 +161,8 @@ async def _charged(hass: HomeAssistant, transport: Any, frozen: Any, **settings:
     charger, car_id, soc_entity = await charger_and_car(hass, soc_percent="89", **settings)
     controller = controller_of(hass, charger.entry_id)
     controller.energy_register_entity_id = None
+    # The car was plugged in an hour before its last reading (a charger that reports the connection).
+    controller._plugged_in_at = dt_util.utcnow() - timedelta(hours=1)
     if settings.get("driver") != DRIVER_MANUAL_KWH:
         await go_auto(hass, charger.entry_id, target=TargetSocIntent(vehicle_id=car_id, target_percent=93))
     preview = preview_for(hass, charger.entry_id)
