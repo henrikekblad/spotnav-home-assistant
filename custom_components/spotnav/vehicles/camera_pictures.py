@@ -239,6 +239,9 @@ class ReferenceStore:
             and (camera_entity_id is None or self._references[(vehicle_id, kind)].camera_entity_id == camera_entity_id)
         ]
 
+    def all(self) -> list[Reference]:
+        return list(self._references.values())
+
     def path(self, reference: Reference) -> Path:
         return self.folder / reference.file_name
 

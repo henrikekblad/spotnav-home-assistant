@@ -208,6 +208,11 @@ async def test_between_cars_of_different_colours_a_sure_answer_decides_without_a
     await world.later(ASK_AFTER_S + 30)
     assert world.sent() == [], "nothing to ask"
     assert len(garage.model.tasks) == 1
+    diagnostics = world.identifier.diagnostics()
+    assert diagnostics["evidence"][-1]["camera"]["used"] is True
+    assert diagnostics["camera"]["settings"]["camera_entity_id"] == "camera.norr"
+    assert [item["kind"] for item in diagnostics["camera"]["references"]] == ["day", "day"]
+    assert "data" not in str(diagnostics["camera"]), "never a picture"
 
 
 async def test_the_model_gets_the_crop_and_the_references_and_no_name_and_the_crop_is_deleted(

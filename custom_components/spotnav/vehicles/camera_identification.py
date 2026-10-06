@@ -158,6 +158,18 @@ class CameraIdentification:
             },
         }
 
+    def diagnostics(self) -> dict[str, Any]:
+        """The camera, the AI Task entity, the frame and which reference pictures each car has: never a picture."""
+        settings = self.settings()
+        return {
+            "settings": None if settings is None else settings.as_dict(),
+            "references": [
+                {**item.as_wire(), "camera_entity_id": item.camera_entity_id}
+                for car in sorted({reference.vehicle_id for reference in self.references.all()})
+                for item in self.references.references(car)
+            ],
+        }
+
     # ------------------------------------------------------------------ pictures
 
     async def async_snapshot(self, camera_entity_id: str | None = None) -> Snapshot:

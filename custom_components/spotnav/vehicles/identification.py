@@ -469,6 +469,8 @@ class VehicleIdentifier:
             # The entities each car was judged by, their states and when they changed and were written: what a
             # field report needs. A position says only home or away, never where.
             "evidence": [] if session is None else session.all_evidence(),
+            # The camera, its frame and which cars have reference pictures (never a picture).
+            "camera": None if self._camera is None else self._camera.diagnostics(),
         }
 
     # ------------------------------------------------------------------ observing
