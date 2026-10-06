@@ -10,9 +10,9 @@ ask deadline, at most once a minute per car (the refresh limiter `vehicle_refres
 
 * strong +: the car's own plug sensor went on from five minutes before the plug-in;
 * weak +: it is on but went on earlier, or the tracker says home;
-* strong -: a fresh "not plugged" report (written a minute or more after the plug-in, or, for a car that streams
-  its state, still not plugged after its report time), a fresh position away from home (the tracker written
-  within two hours, or after the plug-in), or the car identified at another SpotNav charger that is connected.
+* strong -: a "not plugged" report written a minute or more after the plug-in, a position away from home reported
+  after the plug-in or at most two minutes before it (an older one may be the drive home), or the car identified
+  at another SpotNav charger that is connected (a car just decided there counts at once).
 
 **Automatic** (`decide`): exactly one strong + is the car; else the only one not excluded is; two strong +
 is a conflict and asks at once; otherwise it asks after `ASK_AFTER_S` and keeps listening until
@@ -24,7 +24,8 @@ never switches by itself. **Off** does nothing.
 car (at most three: with more, the two likeliest and "Open SpotNav"); the action ids carry an unguessable
 nonce, and the first valid answer wins. A choice in the card or the app is an answer, and so is a person
 changing the vehicle in the settings meanwhile. Once answered or decided the question is replaced on every
-phone; unplugging clears it. Nobody answering, or the question dismissed, keeps the current car.
+phone; unplugging for longer than `UNPLUG_DEBOUNCE_S` clears it (a shorter unplug is the same plug-in, so what
+was decided or answered holds). Nobody answering, or the question dismissed, keeps the current car.
 
 A switch is a normal settings write (`AutoSettings.with_target_vehicle`: the car's own target),
 so the plan recalculates as after any other write. Nothing here starts, stops or owns a charge.
@@ -43,7 +44,6 @@ from datetime import datetime, timedelta
 from typing import Any, Final
 
 from homeassistant.core import callback, CALLBACK_TYPE, Event, HomeAssistant, State
-from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers.event import (
     async_track_point_in_utc_time,
     async_track_state_change_event,
@@ -52,7 +52,7 @@ from homeassistant.helpers.event import (
 from homeassistant.util import dt as dt_util
 
 from ..const import DOMAIN
-from ..planning.auto_settings import AutoSettings, AutoSettingsStore, IDENTIFY_ASK, IDENTIFY_OFF
+from ..planning.auto_settings import AutoSettings, AutoSettingsError, AutoSettingsStore, IDENTIFY_ASK, IDENTIFY_OFF
 from .identification_sources import identification_sources, location_reading, plug_reading
 from . import vehicle_properties
 from .vehicle_discovery import resolve_target_vehicle
@@ -70,24 +70,18 @@ QUESTION_FOR_S: Final = 12 * 3600.0
 PLUG_WINDOW_BEFORE_S: Final = 300.0
 #: An "unplugged" report written this long after the plug-in is fresh.
 FRESH_REPORT_AFTER_S: Final = 60.0
-#: A tracker written within this long is fresh.
-TRACKER_FRESH_S: Final = 7200.0
+#: A position reported this long before the plug-in, or after it, is fresh. An older one may be the car's last
+#: report on its way home (a cloud poll every half hour), so it excludes nothing and the question is asked.
+POSITION_MARGIN_BEFORE_S: Final = 120.0
+#: An unplug shorter than this is the same plug-in (a reseated cable, a flapping connector): what was decided,
+#: or answered by a person, holds, and it still counts toward the one automatic switch.
+UNPLUG_DEBOUNCE_S: Final = 120.0
+#: A person's answer that meets a revision conflict is written again this many times: it is the newest intent.
+ANSWER_RETRIES: Final = 3
 #: Looked at again this often while listening: a poll that rewrites an unchanged value fires no state change.
 REEVALUATE_S: Final = 60.0
 #: A person who chose the car this soon before the plug-in has answered already.
 RECENT_CHOICE_S: Final = 600.0
-#: Integrations that push or stream the car's plug state (`plans/research_integrations`): seconds after the
-#: plug-in by which a car plugged in here has said so. A car that still says "unplugged" then is not here.
-#: A polled integration is never in this table: its report may simply be late.
-PUSH_REPORT_S: Final = {
-    "teslemetry": 120.0,
-    "tessie": 120.0,
-    "myskoda": 180.0,
-    "mbapi2020": 180.0,
-    "cardata": 180.0,
-    "rivian": 180.0,
-}
-
 STRONG: Final = "strong"
 WEAK: Final = "weak"
 
@@ -124,8 +118,6 @@ class Candidate:
 
     vehicle_id: str
     plug: State | None = None
-    #: The integration the plug sensor belongs to (its registry platform), for `PUSH_REPORT_S`.
-    plug_platform: str | None = None
     location: State | None = None
     #: The car is identified at another SpotNav charger that is connected.
     elsewhere: bool = False
@@ -140,9 +132,9 @@ class Evidence:
     negative: str | None
 
 
-def _fresh(state: State, t0: datetime, now: datetime) -> bool:
-    reported = state.last_reported
-    return reported >= t0 or (now - reported).total_seconds() <= TRACKER_FRESH_S
+def _fresh(state: State, t0: datetime) -> bool:
+    """Reported after the plug-in, or just before it: never a report from the drive home."""
+    return state.last_reported >= t0 - timedelta(seconds=POSITION_MARGIN_BEFORE_S)
 
 
 def judge(candidate: Candidate, t0: datetime, now: datetime) -> Evidence:
@@ -155,14 +147,12 @@ def judge(candidate: Candidate, t0: datetime, now: datetime) -> Evidence:
         recent = plug.last_changed >= t0 - timedelta(seconds=PLUG_WINDOW_BEFORE_S)
         positive = STRONG if recent else WEAK
     elif plug is not None and reading is False and negative is None:
-        report_s = PUSH_REPORT_S.get(candidate.plug_platform or "")
-        if plug.last_reported >= t0 + timedelta(seconds=FRESH_REPORT_AFTER_S) or (
-            report_s is not None and now >= t0 + timedelta(seconds=report_s) and plug.last_changed < t0
-        ):
+        # Only a report written after the plug-in says "not here"; silence or an older report says nothing.
+        if plug.last_reported >= t0 + timedelta(seconds=FRESH_REPORT_AFTER_S):
             negative = METHOD_PLUG_SENSOR
     location = candidate.location
     at_home = location_reading(location)
-    if location is not None and at_home is False and _fresh(location, t0, now):
+    if location is not None and at_home is False and _fresh(location, t0):
         negative = negative or METHOD_LOCATION
     elif at_home is True and positive is None:
         positive = WEAK
@@ -249,6 +239,12 @@ class VehicleIdentifier:
         self._expected_vehicle: str | None = None
         self._manual_at: datetime | None = None
         self._unsubscribe: list[CALLBACK_TYPE] = []
+        # The car last decided (by the evidence or a person), and the switches still being written: until they
+        # land, that car is the one this charger has, for its own decisions and for the other chargers'.
+        self._wanted: str | None = None
+        self._switches = 0
+        self._switch_lock = asyncio.Lock()
+        self._unplug_cancel: CALLBACK_TYPE | None = None
 
     # ------------------------------------------------------------------ lifecycle
 
@@ -284,22 +280,23 @@ class VehicleIdentifier:
         return f"spotnav_{self._entry_id}_identify"
 
     def claims(self, vehicle_id: str) -> bool:
-        """Whether this charger has a car plugged in that is known to be `vehicle_id`."""
+        """Whether this charger has a car plugged in that is known to be `vehicle_id` (a car just decided counts
+        at once, while its switch is still being written)."""
         return (
             self._connected is True
             and self._method in _CONFIRMING
-            and self._current_vehicle() == vehicle_id
+            and self._planned_vehicle() == vehicle_id
         )
 
     def dashboard(self) -> dict[str, Any] | None:
-        """The dashboard's `identification` block: `None` unless a plug-in is being identified."""
+        """The dashboard's `identification` block: `None` unless a plugged-in car is being identified."""
         session = self._session
-        if session is None:
+        if session is None or self._connected is False:
             return None
         return {
             "state": session.state,
             "method": self._method,
-            "vehicle_id": self._current_vehicle(),
+            "vehicle_id": self._planned_vehicle(),
             "since": session.t0.isoformat(),
             "candidates": [
                 {"vehicle_id": car, "name": session.names.get(car, car), "likely": car in session.likely}
@@ -326,6 +323,10 @@ class VehicleIdentifier:
     def _current_vehicle(self) -> str | None:
         settings = self._settings()
         return resolve_target_vehicle(self._hass, settings.target.vehicle_id, settings.vehicle_ids)[0]
+
+    def _planned_vehicle(self) -> str | None:
+        """The car decided last while its switch is still being written, else the one the settings name."""
+        return self._wanted if self._switches > 0 else self._current_vehicle()
 
     @callback
     def _observe(self, *_: Any) -> None:
@@ -372,6 +373,11 @@ class VehicleIdentifier:
 
     @callback
     def _plugged_in(self, now: datetime) -> None:
+        if self._unplug_cancel is not None and self._session is not None:
+            # Back within the debounce: the same plug-in, with what was decided or answered.
+            self._unplug_cancel()
+            self._unplug_cancel = None
+            return
         self._close()
         settings = self._settings()
         cars = self._candidates(settings)
@@ -417,12 +423,25 @@ class VehicleIdentifier:
 
     @callback
     def _unplugged(self) -> None:
+        if self._session is None or self._unplug_cancel is not None:
+            return
+        self._unplug_cancel = async_track_point_in_utc_time(
+            self._hass, self._unplug_settled, dt_util.utcnow() + timedelta(seconds=UNPLUG_DEBOUNCE_S)
+        )
+
+    @callback
+    def _unplug_settled(self, _now: datetime) -> None:
+        """Unplugged for longer than a flap: the plug-in is over."""
+        self._unplug_cancel = None
         session = self._session
         if session is not None and session.state == STATE_ASKING and self._notifier is not None:
             self._notifier.clear_vehicle_question(self.tag, session.phones)
         self._close()
 
     def _close(self) -> None:
+        if self._unplug_cancel is not None:
+            self._unplug_cancel()
+            self._unplug_cancel = None
         session = self._session
         self._session = None
         if session is not None:
@@ -454,15 +473,12 @@ class VehicleIdentifier:
     # ------------------------------------------------------------------ deciding
 
     def _evidence(self, session: _Session, now: datetime) -> list[Evidence]:
-        registry = er.async_get(self._hass)
         found = []
         for car in session.cars:
             plug_id, location_id = self._sources(car)
-            entry = None if plug_id is None else registry.async_get(plug_id)
             candidate = Candidate(
                 car,
                 plug=None if plug_id is None else self._hass.states.get(plug_id),
-                plug_platform=None if entry is None else entry.platform,
                 location=None if location_id is None else self._hass.states.get(location_id),
                 elsewhere=self._elsewhere(car),
             )
@@ -481,7 +497,7 @@ class VehicleIdentifier:
     @callback
     def _evaluate(self) -> None:
         session = self._session
-        if session is None or not session.listening or session.state == STATE_DECIDED:
+        if session is None or not session.listening or session.state == STATE_DECIDED or self._connected is False:
             return
         evidence = self._evidence(session, dt_util.utcnow())
         if session.state == STATE_WAITING:
@@ -547,35 +563,53 @@ class VehicleIdentifier:
         session.listening = False
         session.nonce = None
         self._method = method
+        person = method in (METHOD_ANSWERED, METHOD_MANUAL)
         switch = None
-        if car != self._current_vehicle():
-            switch = self._hass.async_create_task(self._async_switch(car), eager_start=True)
+        if car != self._planned_vehicle():
+            self._wanted = car
+            self._switches += 1
+            switch = self._hass.async_create_task(self._async_switch(car, person=person), eager_start=True)
         if was_asking and self._notifier is not None:
             self._notifier.retire_vehicle_question(self.tag, session.phones, wording, session.names.get(car, car))
         return switch
 
-    async def _async_switch(self, car: str) -> None:
-        """Plan for `car`: a settings write at the revision read now, as a person's choice would be."""
-        settings = self._settings()
-        if settings.target.vehicle_id == car:
-            return
-        self._expected_vehicle = car
+    async def _async_switch(self, car: str, *, person: bool) -> None:
+        """Plan for `car`: a settings write at the revision read now, one switch at a time.
 
-        remembered = vehicle_properties.stored_properties(self._hass, car).target_percent
-
-        def mutate(current: AutoSettings) -> AutoSettings:
-            return current.with_target_vehicle(car, remembered)
-
+        A switch a newer decision has replaced is not written. An automatic switch that meets a revision
+        conflict yields to the write that came first; a person's answer is the newest intent and is written
+        again on the record that now stands.
+        """
         try:
-            if self._preview is not None:
-                await self._preview.async_apply_settings(mutate=mutate, expected_revision=settings.revision)
-            else:
-                await self._store.async_update(
-                    self._entry_id, mutate=mutate, expected_revision=settings.revision, confirm=True
-                )
+            async with self._switch_lock:
+                for _attempt in range(ANSWER_RETRIES + 1 if person else 1):
+                    if self._wanted != car:
+                        return
+                    settings = self._settings()
+                    if settings.target.vehicle_id == car:
+                        return
+                    self._expected_vehicle = car
+                    remembered = vehicle_properties.stored_properties(self._hass, car).target_percent
+
+                    def mutate(current: AutoSettings, remembered: float | None = remembered) -> AutoSettings:
+                        return current.with_target_vehicle(car, remembered)
+
+                    try:
+                        if self._preview is not None:
+                            await self._preview.async_apply_settings(mutate=mutate, expected_revision=settings.revision)
+                        else:
+                            await self._store.async_update(
+                                self._entry_id, mutate=mutate, expected_revision=settings.revision, confirm=True
+                            )
+                        return
+                    except AutoSettingsError as err:
+                        if err.code != "revision_conflict":
+                            raise
+                        self._expected_vehicle = self._settings().target.vehicle_id
         except Exception as err:  # noqa: BLE001 - a refused switch keeps the car that stands
             _LOGGER.warning("SpotNav could not switch the charger's vehicle: %s", getattr(err, "code", type(err).__name__))
         finally:
+            self._switches -= 1
             self._expected_vehicle = self._settings().target.vehicle_id
 
     # ------------------------------------------------------------------ answers
