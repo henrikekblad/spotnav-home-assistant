@@ -454,6 +454,7 @@ def replacement_mutator(
     keep_identify_mode: bool = False,
     keep_identification: bool = False,
     keep_identify_camera: bool = False,
+    keep_camera_choice: bool = False,
     vehicle_target: Callable[[str | None], float | None] | None = None,
 ) -> Callable[[AutoSettings], AutoSettings]:
     """A full replacement expressed as the store's own mutation hook.
@@ -462,6 +463,7 @@ def replacement_mutator(
     carry-through, so an edit never clears, admits or re-times a pause (including an expired but
     uncleared one). The store owns the revision increment and the final validation.
 
+    `keep_camera_choice` (the paired app) keeps the stored camera and AI Task entity and takes only the frame.
     `keep_identification` keeps the identification fields (`vehicle_ids`, `identify_mode`, `identify_camera`).
     Whatever the body
     says, a switch of the target vehicle that leaves the percent as it was takes the new vehicle's own target
@@ -489,6 +491,13 @@ def replacement_mutator(
             kept["identify_mode"] = current.identify_mode
         if keep_identify_camera:
             kept["identify_camera"] = current.identify_camera
+        elif keep_camera_choice:
+            # The paired app may move the frame, never choose the camera or the AI Task entity (an administrator's).
+            chosen_camera = current.identify_camera
+            sent = replacement.identify_camera
+            kept["identify_camera"] = (
+                None if chosen_camera is None else replace(chosen_camera, frame=None if sent is None else sent.frame)
+            )
         updated = replace(replacement, pause=current.pause, **kept)
         chosen = updated.target
         remembered = None if vehicle_target is None else vehicle_target(chosen.vehicle_id)
@@ -649,6 +658,19 @@ def _refuse_amps_above_charger_range(hass: HomeAssistant, entry_id: str, decoded
         raise AutoSettingsError("invalid_amps", "amps is above the charger's own maximum current")
 
 
+def _refuse_camera_choice(stored: CameraSettings | None, sent: CameraSettings | None) -> None:
+    """The paired app may echo the camera and move its frame; choosing the camera or the AI Task entity (where the
+    pictures go) is an administrator's, in the card."""
+    same = (stored is None and sent is None) or (
+        stored is not None
+        and sent is not None
+        and stored.camera_entity_id == sent.camera_entity_id
+        and stored.ai_task_entity_id == sent.ai_task_entity_id
+    )
+    if not same:
+        _refuse("invalid_camera", "the camera and the AI Task entity are chosen by an administrator")
+
+
 async def async_get_settings(hass: HomeAssistant, entry_id: Any) -> AutoSettings:
     """One charger's canonical settings, or a stable-code refusal.
 
@@ -669,6 +691,7 @@ async def async_update_settings(
     *,
     expected_revision: Any,
     replacement: Any,
+    from_app: bool = False,
 ) -> AutoSettings:
     """Replace one charger's settings, at a revision the caller names, through its controller.
 
@@ -685,6 +708,8 @@ async def async_update_settings(
         raise SettingsRefusal(ERROR_SETTINGS_UNAVAILABLE)
     revision = expected_revision_from(expected_revision)
     decoded = decode_settings(replacement)
+    if from_app and isinstance(replacement, Mapping) and "identify_camera" in replacement:
+        _refuse_camera_choice(store.settings(entry_id).identify_camera, decoded.identify_camera)
     mutate = replacement_mutator(
         decoded,
         keep_departure_date=isinstance(replacement, Mapping) and "departure_date" not in replacement,
@@ -694,6 +719,7 @@ async def async_update_settings(
         keep_vehicle_ids=isinstance(replacement, Mapping) and "vehicle_ids" not in replacement,
         keep_identify_mode=isinstance(replacement, Mapping) and "identify_mode" not in replacement,
         keep_identify_camera=isinstance(replacement, Mapping) and "identify_camera" not in replacement,
+        keep_camera_choice=from_app,
         vehicle_target=lambda vehicle_id: vehicle_properties.stored_properties(hass, vehicle_id).target_percent,
     )
     _refuse_amps_above_charger_range(hass, entry_id, decoded)

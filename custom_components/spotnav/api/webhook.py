@@ -238,6 +238,7 @@ async def _settings(hass: HomeAssistant, entry: ChargerConfigEntry, payload: dic
             entry.entry_id,
             expected_revision=payload.get("expected_revision"),
             replacement=payload.get("settings"),
+            from_app=True,
         )
     except SettingsRefusal as refusal:
         return web.json_response(_for_app({**settings_failure(refusal.code, None), "action": action}, payload), status=400)

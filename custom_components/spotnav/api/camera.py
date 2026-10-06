@@ -4,8 +4,8 @@ Every command is an administrator's (WebSocket) or the paired app's (webhook, bo
 `api_version` 1, and answers `{"api_version": 1, "ok", "error", ...}`. Pictures travel as
 `{"content_type": "image/jpeg", "data": <base64>, "width", "height"}`; nothing is image-processed by a client.
 
-* `spotnav/camera_snapshot` / webhook `camera_snapshot`: `{camera_entity_id?}` (default the chosen camera) ->
-  `picture`, the camera's whole picture now, for drawing the frame on.
+* `spotnav/camera_snapshot` / webhook `camera_snapshot`: `{camera_entity_id?}` (default the chosen camera; the
+  webhook takes none and answers only the chosen camera's) -> `picture`, its whole picture now, for the frame.
 * `spotnav/save_camera_frame` / `save_camera_frame`: `{frame: {x, y, w, h} | null}` -> `identify_camera`, the
   settings' camera after the write (the rest of the settings untouched; `null` is the whole picture).
 * `spotnav/take_reference_picture` / `take_reference_picture`: `{vehicle_id, kind: "day" | "night"}` ->
@@ -102,10 +102,7 @@ def _kind(value: Any, *, allow_all: bool = False) -> str | None:
 
 
 def _references(camera: CameraIdentification, vehicle_id: str) -> list[dict[str, Any]]:
-    settings = camera.settings()
-    if settings is None:
-        return []
-    return [item.as_wire() for item in camera.references.references(vehicle_id, settings.camera_entity_id)]
+    return camera.wire_references(vehicle_id)
 
 
 async def async_camera_snapshot(hass: HomeAssistant, entry_id: str, payload: dict[str, Any]) -> dict[str, Any]:
@@ -233,6 +230,9 @@ def _websocket_handler(name: str, command: Command, fields: tuple[str, ...]) -> 
 def _webhook_handler(name: str, command: Command) -> Callable[..., Awaitable[web.Response]]:
     async def handler(hass: HomeAssistant, entry: ChargerConfigEntry, payload: dict[str, Any]) -> web.Response:
         try:
+            if name == "camera_snapshot" and payload.get("camera_entity_id") is not None:
+                # The app sees only the chosen camera: another camera in the house is an administrator's to preview.
+                raise CameraRefusal(ERROR_INVALID_VALUE)
             answer = await command(hass, entry.entry_id, payload)
         except CameraRefusal as refusal:
             return web.json_response({**_failure(refusal.code), "action": name}, status=400)
