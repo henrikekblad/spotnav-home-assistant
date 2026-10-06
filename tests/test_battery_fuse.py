@@ -688,6 +688,10 @@ async def test_an_ocpp_charger_below_the_floor_is_paused_and_nothing_claims_it_w
     cc = controller_of(hass, charger.entry_id)
     assert cc.adapter.is_ocpp
     turn_off = async_mock_service(hass, "switch", "turn_off")
+    # The charger answered the setup's own passes long ago: off, and charging again.
+    hass.states.async_set(f"switch.{prefix}", "off")
+    hass.states.async_set(f"switch.{prefix}", "on")
+    await hass.async_block_till_done()
 
     result = await cc.async_apply_regulated_current(5, must_lower=True)
 

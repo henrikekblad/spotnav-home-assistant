@@ -238,6 +238,11 @@ _AMPERE_UNITS = ("a", "amp", "amps", "ampere", "amperes")
 #: How long a charge still running after a stop of ours is taken as that stop on its way, not as a charge
 #: the charger began by itself (`ChargingController.self_started_charge`).
 STOP_ACK_S: Final = 120.0
+#: How long a stop sent is taken as the one on its way for any other off decision (`_stop_settling`): another path
+#: deciding the same (a re-arm right after the last window's end, the regulator's next pass) sends nothing more, as
+#: a charger that has ended the transaction rejects a second stop. Shorter than the retry of a stop that did not go
+#: out (`STOP_RETRY_S`) and the person's hold's gap (`PERSON_HOLD_STOP_GAP_S`), so neither changes.
+STOP_SETTLE_S: Final = 15.0
 
 #: Why a top-off ends (`_async_end_top_off`): the car stopped drawing by itself, its deadline came, the
 #: car was unplugged, or the charge was turned off by other means.
@@ -625,6 +630,10 @@ class ChargingController:
         # When this controller last sent a stop, until the charger is seen to stop: a charge still
         # running then is one being stopped, not one the charger began by itself.
         self._stop_sent_at: datetime | None = None
+        # When the last stop went out, while it settles (`_stop_settling`): cleared by a start of ours sent after it
+        # and by the charger seen charging again after it was seen not to. `_seen_charging` is the last report.
+        self._stop_settle_since: datetime | None = None
+        self._seen_charging: bool | None = None
         # A stop command on its way to the charger: the regulator writes no current meanwhile, since on
         # some chargers (Easee) a current written while the stop lands lifts it again.
         self._stop_in_flight = False
@@ -1128,6 +1137,7 @@ class ChargingController:
         A charger that forgets its current limit on plug-in or reboot is told it again.
         """
         self._tick_charge_clock()
+        self._observe_charging_again()
         self._maybe_resend_current(event)
         self._maybe_write_after_start(event)
         self._observe_connection()
@@ -1145,6 +1155,22 @@ class ChargingController:
                 self._notify()
         finally:
             self._shadow_report_end(report)
+
+    def _observe_charging_again(self) -> None:
+        """A charger seen charging after it was seen not to: a stop sent before is no longer the one on its way."""
+        charging = self.charging
+        if charging and self._seen_charging is False:
+            self._stop_settle_since = None
+        self._seen_charging = charging
+
+    def _stop_settling(self) -> bool:
+        """Whether a stop of ours went out less than `STOP_SETTLE_S` ago and nothing has started the charge since
+        (a start of ours, the charger seen charging again): another stop now is the same off decision."""
+        since = self._stop_settle_since
+        if since is None:
+            return False
+        elapsed = (dt_util.utcnow() - since).total_seconds()
+        return 0 <= elapsed < STOP_SETTLE_S
 
     def _remember_paused_charge(self, origin: str | None, plan_charge: bool) -> None:
         """Load balancing holds a charge back (paused it, or refused its start below the floor): remember
@@ -2631,6 +2657,9 @@ class ChargingController:
             self._start_cause = (("manual" if manual else cause or "other"), sent_at)
             try:
                 executed = await self.adapter.async_start(explicit_amps)
+                if executed:
+                    # A start went out after any stop before it: a stop from now on is a new decision.
+                    self._stop_settle_since = None
             except BaseException:
                 # The command failed outright: whatever it was to begin is not ours, nor anybody's.
                 if reserved:
@@ -2797,6 +2826,9 @@ class ChargingController:
                 # lock: a person's Stop that lands first is never remembered as a charge to resume.
                 was_on = self._control_on
                 paused_charge = (self._charge_origin, self._plan_charge)
+                # A charge balancing already holds back (paused by an earlier pass, the charger not seen off yet or
+                # already off): a repeat pause is the same pause, and that charge stays the one to resume.
+                held = (self._paused_by_balancing, self._paused_charge)
                 session = self._session_generation
                 token = self._shadow.begin()
                 outcome = CommandOutcome(False)
@@ -2807,7 +2839,9 @@ class ChargingController:
                     # Set after the stop (which clears it): this stop is the balancing pause itself. A safety stop
                     # of a person's charge is remembered the same way, so the regulator gives it back when there
                     # is room. Never for a plug-in that ended while the stop was on its way.
-                    if (
+                    if held[0] and self._session_generation == session:
+                        self._paused_by_balancing, self._paused_charge = held
+                    elif (
                         was_on
                         and (code == "pause" or paused_charge[0] == "manual")
                         and self._session_generation == session
@@ -3086,7 +3120,16 @@ class ChargingController:
         origin = self._charge_origin
         # For the ownership shadow: a stop that sends nothing because the control says nothing keeps the owner.
         self._shadow_unobserved = not self._stop_needed and self._control_observation is None
-        if self._stop_needed:
+        if self._stop_needed and self._stop_settling():
+            # A stop of ours is on its way and the charger has not answered it: this off decision is that stop's.
+            # Sent again it meets no transaction, and the charger rejects it.
+            _LOGGER.debug(
+                "SpotNav charger %s: a stop is already on its way; not sent again", self.entry_id
+            )
+            self._cancel_stop_retry()
+            self._plan_charge = False
+            self._charge_origin = None
+        elif self._stop_needed:
             was_sent_at = self._stop_sent_at
             self._stop_sent_at = dt_util.utcnow()
             self._stop_in_flight = True
@@ -3120,6 +3163,8 @@ class ChargingController:
                     EXECUTION_STOP_NOT_EXECUTED, "the stop command was not executed"
                 ) from failure
             self._cancel_stop_retry()
+            self._stop_settle_since = self._stop_sent_at
+            self._seen_charging = self.charging
             self._plan_charge = False
             self._charge_origin = None
         elif self._control_observation is not None:

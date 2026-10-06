@@ -101,6 +101,24 @@ It is best effort and is not a protective device. Turning it off gives back any 
   on its own, one at a time per charger, and a lower current decided meanwhile goes out as soon as the
   one on its way returns. A stop waits for a current change already on its way, so the change cannot
   undo it.
+- **Right after a start** a charger's own current often reads nothing for a while (OCPP meter values
+  come every so often) while the site meter already shows the car. For up to 90 seconds after a start
+  (SpotNav's own, or the charger seen charging), and only while the charger's own reading still shows
+  it drawing nothing, the car is credited with what the site's current rose by since the start, never
+  more than the charger was given. So the car is not taken for house load and paused by its own start.
+  The site's current itself is never changed: a phase over the fuse with the credit applied is still
+  lowered, or paused, at once. Once the charger's own reading shows the car, it counts alone. A start
+  the charger has not answered yet asks for its current, not for nothing. The credit is in the
+  decision log (`start_credit_a`) and the site's diagnostics.
+- **A charge load balancing paused** (no room for the car's minimum current) is started again once
+  every phase it uses has room for the minimum and one amp more for the dwell time (60 s), while the
+  charge is still wanted: the plan's window is open, the sun's charge or a person's Start. It goes on as
+  the charge it was (a plan's charge stays the plan's). A stopped charger is not paused again, so the
+  charge it holds back is not forgotten. A person's Stop, the window's end or a new plan with no window
+  open ends it.
+- A stop already sent is not sent again by another path for the same decision (a re-arm right after
+  the last window's end, the regulator's next pass) for 15 seconds, unless the charger reports charging
+  again or SpotNav starts it meanwhile: a charger that has ended the transaction rejects a second stop.
 - A person's charge that load balancing stopped for safety (the current could not be lowered in time)
   is started again when there is room, no sooner than five minutes after that stop, and only within
   the same plug-in.

@@ -792,7 +792,10 @@ def _command_result(session: ChargeSession, event: CommandResult, now: datetime)
         return _no_balancing(s), ()
     s = _no_balancing(s).with_changes(owner=OWNER_NONE)
     if pending is not None and event.reason == REASON_BALANCING:
-        if pending.was_on and (pending.code == "pause" or pending.owner_before == OWNER_PERSON):
+        if session.balancing_paused:
+            # A repeat pause of a charge balancing already holds back (`_regulated_stop`): still that charge.
+            s = s.with_changes(balancing_paused=True, paused_origin=session.paused_origin)
+        elif pending.was_on and (pending.code == "pause" or pending.owner_before == OWNER_PERSON):
             # Load balancing holds the charge back (a safety stop of a person's charge too, P3): its regulator
             # gives it back what it was.
             origin = pending.owner_before if pending.owner_before in SPOTNAV_OWNERS else None

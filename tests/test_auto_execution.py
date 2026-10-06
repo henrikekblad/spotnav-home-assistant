@@ -64,6 +64,7 @@ from custom_components.spotnav.const import (
     CONF_WEBHOOK_ID,
 )
 from custom_components.spotnav.execution.controller import (
+    STOP_SETTLE_S,
     EXECUTION_RESCHEDULE_FAILED,
     EXECUTION_ROLLBACK_FAILED,
     EXECUTION_STORAGE_FAILED,
@@ -506,13 +507,18 @@ async def test_a_charging_window_is_not_shortened_and_the_change_waits_for_its_b
 
 
 async def test_pause_stops_only_an_auto_plan_and_resume_applies_once(
-    session: Session, install_spy: list[ChargingPlan]
+    session: Session, install_spy: list[ChargingPlan], monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """Pausing is about our own automation: it stops its plan and applies nothing more."""
     serve(session.transport)
     await session.set_auto()
     assert len(install_spy) == 1
     session.hass.states.async_set(session.charge_control, "on")
+    await session.hass.async_block_till_done()
+    # The charger never answers the hold's stop of that charge; the pause comes after that stop has settled
+    # (a stop still on its way is not sent twice, `STOP_SETTLE_S`).
+    later = session.clock() + timedelta(seconds=STOP_SETTLE_S + 1)
+    monkeypatch.setattr(dt_util, "utcnow", lambda *_args, **_kwargs: later)
     offs = len(session.off_calls)
 
     paused = await session.preview.async_pause()
