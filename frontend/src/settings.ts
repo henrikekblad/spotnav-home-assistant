@@ -23,6 +23,8 @@ import {
   SETTINGS_STRATEGY_HYBRID,
   SETTINGS_STRATEGY_SOLAR,
   type AreaOverride,
+  type CameraFrame,
+  type CameraSettings,
   type NotificationsRecord,
   type PauseObservation,
   type SettingsAnswer,
@@ -181,6 +183,7 @@ const OPTIONAL_RECORD_KEYS = [
   "fill_to_limit",
   "vehicle_ids",
   "identify_mode",
+  "identify_camera",
 ] as const;
 /** Every weekday, Monday (1) to Sunday (7): what a record without `departure_weekdays` means. */
 export const ALL_WEEKDAYS: readonly number[] = [1, 2, 3, 4, 5, 6, 7];
@@ -267,6 +270,33 @@ function decodeTarget(source: Record<string, unknown>): SettingsRecord["target"]
   };
 }
 
+/** A frame: four fractions, inside the picture. */
+function decodeFrame(raw: unknown): CameraFrame {
+  const source = record(raw);
+  exactKeys(source, ["x", "y", "w", "h"]);
+  const [x, y, w, h] = (["x", "y", "w", "h"] as const).map((key) => {
+    const value = finite(source, key);
+    return value < 0 || value > 1 ? bad() : value;
+  }) as [number, number, number, number];
+  return x + w > 1.000001 || y + h > 1.000001 ? bad() : { x, y, w, h };
+}
+
+/** `identify_camera`: `null`, or the camera, its AI Task entity and its frame. */
+function decodeCamera(raw: unknown): CameraSettings | null {
+  if (raw === null) {
+    return null;
+  }
+  const source = record(raw);
+  exactKeys(source, ["camera_entity_id", "ai_task_entity_id", "frame"]);
+  const camera = text(source, "camera_entity_id");
+  const aiTask = textOrNull(source, "ai_task_entity_id");
+  return {
+    camera_entity_id: camera.startsWith("camera.") ? camera : bad(),
+    ai_task_entity_id: aiTask === null || aiTask.startsWith("ai_task.") ? aiTask : bad(),
+    frame: source["frame"] === null ? null : decodeFrame(source["frame"]),
+  };
+}
+
 /** `vehicle_ids`: `null`, or one or more different vehicle ids. */
 function vehicleIds(source: Record<string, unknown>): string[] | null {
   if (source["vehicle_ids"] === null) {
@@ -325,6 +355,7 @@ export function decodeSettingsRecord(raw: unknown): SettingsRecord {
       : {}),
     ...(present.includes("vehicle_ids") ? { vehicle_ids: vehicleIds(source) } : {}),
     ...(present.includes("identify_mode") ? { identify_mode: oneOf(source, "identify_mode", IDENTIFY_MODES) } : {}),
+    ...(present.includes("identify_camera") ? { identify_camera: decodeCamera(source["identify_camera"]) } : {}),
   };
 }
 
@@ -464,7 +495,40 @@ export function encodeBody(record: SettingsRecord): SettingsBody {
       ? {}
       : { vehicle_ids: record.vehicle_ids === null ? null : [...record.vehicle_ids] }),
     ...(record.identify_mode === undefined ? {} : { identify_mode: record.identify_mode }),
+    ...(record.identify_camera === undefined ? {} : { identify_camera: copyCamera(record.identify_camera) }),
   };
+}
+
+function copyCamera(camera: CameraSettings | null): CameraSettings | null {
+  return camera === null ? null : { ...camera, frame: camera.frame === null ? null : { ...camera.frame } };
+}
+
+/** What the camera rows choose: the camera (`null`: none) and the AI Task entity (`null`: the default). */
+export interface CameraChoice {
+  cameraEntityId: string | null;
+  aiTaskEntityId: string | null;
+}
+
+/**
+ * What a camera or AI task choice would send: the accepted record unchanged, plus `identify_camera`. The frame
+ * stays with its camera: another camera starts with the whole picture. A record from a backend without the
+ * field cannot take it.
+ */
+export function cameraReplacement(record: SettingsRecord, choice: CameraChoice): ReplacementCheck {
+  const current = record.identify_camera;
+  if (current === undefined) {
+    return { ok: false, errorKey: "settings.error.version" };
+  }
+  const camera: CameraSettings | null =
+    choice.cameraEntityId === null
+      ? null
+      : {
+          camera_entity_id: choice.cameraEntityId,
+          ai_task_entity_id: choice.aiTaskEntityId,
+          frame: current !== null && current.camera_entity_id === choice.cameraEntityId ? current.frame : null,
+        };
+  const changed = JSON.stringify(camera) !== JSON.stringify(current);
+  return { ok: true, body: { ...encodeBody(record), identify_camera: camera }, changed };
 }
 
 /**
