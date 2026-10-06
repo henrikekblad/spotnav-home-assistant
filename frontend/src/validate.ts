@@ -1586,7 +1586,9 @@ function identificationOrNull(root: Record<string, unknown>): Identification | n
     return null;
   }
   try {
-    exactKeys(value, ["state", "method", "vehicle_id", "since", "candidates"]);
+    // `evidence` (each car's entities and what they said) is for a field report: accepted, not read.
+    const optional = Object.prototype.hasOwnProperty.call(value, "evidence") ? ["evidence"] : [];
+    exactKeys(value, ["state", "method", "vehicle_id", "since", "candidates", ...optional]);
     return {
       state: oneOfValues(text(value, "state"), IDENTIFICATION_STATES),
       method: textOrNull(value, "method"),
