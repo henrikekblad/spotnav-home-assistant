@@ -36,6 +36,7 @@ from custom_components.spotnav.vehicles.identification import (
     METHOD_ONLY_CANDIDATE,
     METHOD_PLUG_SENSOR,
     ordered,
+    UNPLUG_DEBOUNCE_S,
 )
 
 from .world import add_car, setup_charger, vehicle_entity, ws_call
@@ -76,19 +77,22 @@ def test_unplugged_is_strong_only_when_the_car_said_so_after_the_plug_in() -> No
     assert judge(too_soon, T0, T0 + timedelta(minutes=1)).negative is None
 
 
-def test_a_streaming_car_that_stays_unplugged_past_its_report_time_is_not_here() -> None:
+def test_an_unplugged_report_from_before_the_plug_in_never_excludes_whatever_the_integration() -> None:
     quiet = Candidate(
         "b", plug=state("binary_sensor.b", "off", changed=T0 - timedelta(hours=5)), plug_platform="teslemetry"
     )
-    assert judge(quiet, T0, T0 + timedelta(seconds=30)).negative is None
-    assert judge(quiet, T0, T0 + timedelta(minutes=3)).negative == METHOD_PLUG_SENSOR
-    polled = replace(quiet, plug_platform="kia_uvo")
-    assert judge(polled, T0, T0 + timedelta(minutes=29)).negative is None, "a cloud poll may simply be late"
+    assert judge(quiet, T0, T0 + timedelta(minutes=29)).negative is None, "silence is not a report"
 
 
-def test_a_fresh_position_away_from_home_excludes_and_an_old_one_does_not() -> None:
-    away = Candidate("b", location=state("device_tracker.b", "not_home", changed=T0 - timedelta(minutes=50)))
+def test_only_a_position_reported_around_the_plug_in_excludes() -> None:
+    away = Candidate("b", location=state("device_tracker.b", "not_home", changed=T0 - timedelta(seconds=90)))
     assert judge(away, T0, T0 + timedelta(minutes=1)) == Evidence("b", None, METHOD_LOCATION)
+    after = Candidate(
+        "b", location=state("device_tracker.b", "Work", changed=T0 - timedelta(hours=3), reported=T0 + timedelta(minutes=4))
+    )
+    assert judge(after, T0, T0 + timedelta(minutes=5)).negative == METHOD_LOCATION
+    driving_home = Candidate("b", location=state("device_tracker.b", "not_home", changed=T0 - timedelta(minutes=20)))
+    assert judge(driving_home, T0, T0 + timedelta(minutes=1)).negative is None, "its last position on the way home"
     old = Candidate("b", location=state("device_tracker.b", "Work", changed=T0 - timedelta(hours=3)))
     assert judge(old, T0, T0 + timedelta(minutes=1)).negative is None
     home = Candidate("b", location=state("device_tracker.b", "home", changed=T0 - timedelta(hours=9)))
@@ -193,7 +197,8 @@ class World:
         await self.hass.async_block_till_done()
 
     async def plug_in(self) -> None:
-        self.freezer.move_to(self.t0)
+        if dt_util.utcnow() < self.t0:
+            self.freezer.move_to(self.t0)
         self.connected = True
         await self.observe()
 
@@ -348,6 +353,7 @@ async def test_off_and_a_single_vehicle_identify_nothing(world: World, hass: Hom
     assert world.sent() == [] and world.identifier.dashboard() is None
     assert world.identifier.method == METHOD_MANUAL
     await world.unplug()
+    await world.later(UNPLUG_DEBOUNCE_S + 1)
     store = domain_data(hass).auto_store
     await store.async_update(
         world.entry.entry_id,
@@ -377,8 +383,39 @@ async def test_unplugging_before_an_answer_clears_the_question(world: World) -> 
     await world.later(ASK_AFTER_S + 5)
     tag = world.sent()[0]["data"]["tag"]
     await world.unplug()
+    assert world.identifier.dashboard() is None, "nothing to answer while no car is plugged in"
+    await world.later(UNPLUG_DEBOUNCE_S - 30)
+    assert world.sent()[-1]["message"] != "clear_notification", "a flapping connector is the same plug-in"
+    await world.later(60)
     assert world.sent()[-1] == {"message": "clear_notification", "data": {"tag": tag}}
-    assert world.identifier.dashboard() is None
+
+
+async def test_a_short_unplug_is_the_same_plug_in_and_its_one_automatic_switch(world: World) -> None:
+    await world.start()
+    await world.plug_in()
+    world.car_says("Tesla", "plug", "on")
+    await world.later(5)
+    assert world.settings.target.vehicle_id == world.cars["Tesla"]
+    await world.unplug()
+    await world.later(30)
+    await world.plug_in()
+    world.car_says("Tesla", "plug", "off")
+    world.car_says("Kia", "plug", "on")
+    await world.later(60)
+    assert world.settings.target.vehicle_id == world.cars["Tesla"], "at most one automatic switch per plug-in"
+
+
+async def test_a_switch_mid_charge_changes_the_plan_never_the_charger(world: World, hass: HomeAssistant) -> None:
+    await world.start()
+    hass.states.async_set("switch.charger_a", "on", {"stamp": 0})
+    await hass.async_block_till_done()
+    await world.plug_in()
+    await world.later(10)
+    on, off = len(world.switch_on), len(world.switch_off)
+    world.car_says("Tesla", "plug", "on")
+    await world.later(60)
+    assert world.settings.target.vehicle_id == world.cars["Tesla"]
+    assert (len(world.switch_on), len(world.switch_off)) == (on, off), "no start or stop for a change of car"
 
 
 async def test_choosing_the_car_in_the_settings_meanwhile_is_the_answer(world: World) -> None:
