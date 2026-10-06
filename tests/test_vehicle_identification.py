@@ -568,16 +568,18 @@ async def test_a_person_chooses_a_cars_sources_over_both_transports(
     assert response.status == 200 and body["identification"]["location"]["entity_id"] == world.trackers["Kia"]
 
 
-async def test_the_diagnostics_say_how_and_when_but_name_nothing(world: World) -> None:
+async def test_the_diagnostics_say_how_when_and_by_which_entity_but_never_where(world: World) -> None:
     await world.start()
+    world.car_says("Kia", "location", "Work")
     await world.plug_in()
     await world.later(ASK_AFTER_S + 5)
     diagnostics = world.identifier.diagnostics()
-    assert diagnostics["method"] == METHOD_ASSUMED and diagnostics["state"] == "asking"
-    assert diagnostics["candidates"] == 2 and diagnostics["asked_phones"] == 1
-    text = repr(diagnostics)
-    for name, vehicle in world.cars.items():
-        assert name not in text and vehicle not in text
+    assert diagnostics["candidates"] == 2
+    evidence = {item["vehicle_id"]: item for item in diagnostics["evidence"]}
+    kia = evidence[world.cars["Kia"]]
+    assert kia["plug"]["entity_id"] == world.plugs["Kia"] and kia["plug"]["state"] == "off"
+    assert kia["location"] == {"entity_id": world.trackers["Kia"], "home": False, "reported": kia["location"]["reported"]}
+    assert "Work" not in repr(diagnostics), "a position is home or away, never a place"
 
 
 async def test_the_app_is_woken_for_the_question(world: World) -> None:

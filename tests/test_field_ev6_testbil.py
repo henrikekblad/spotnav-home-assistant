@@ -70,7 +70,7 @@ class Field:
             for entity_id in call.data["entity_id"]:
                 state = hass.states.get(entity_id)
                 if state is not None:
-                    hass.states.async_set(entity_id, state.state, state.attributes, force_update=True)
+                    hass.states.async_set(entity_id, state.state, state.attributes)
                     self.echoed.append(entity_id)
 
         hass.services.async_register("homeassistant", "update_entity", refresh)
@@ -167,12 +167,14 @@ async def test_a_field_report_shows_which_entity_and_state_each_car_was_judged_b
     assert evidence[field.testbil]["verdict"] == "plugged_in"
     assert evidence[field.testbil]["plug"]["entity_id"] == field.testbil_plug
     assert evidence[field.testbil]["plug"]["state"] == "on"
+    # The Kia's cache, written again by the re-read at the plug-in: "off" since the start, "reported" just now.
     assert evidence[field.ev6]["plug"] == {
         "entity_id": field.ev6_plug, "state": "off",
-        "changed": HA_START.isoformat(), "reported": HA_START.isoformat(),
+        "changed": HA_START.isoformat(), "reported": PLUG_IN.isoformat(),
     }
+    assert evidence[field.ev6]["verdict"] == "likely", "home, and an unplugged that is only re-written says nothing"
     assert evidence[field.ev6]["location"] == {
-        "entity_id": "device_tracker.ev6_location", "home": True, "reported": HA_START.isoformat(),
+        "entity_id": "device_tracker.ev6_location", "home": True, "reported": PLUG_IN.isoformat(),
     }
     diagnostics = field.identifier.diagnostics()
     assert diagnostics["evidence"] == block["evidence"]

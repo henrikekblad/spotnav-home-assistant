@@ -180,6 +180,15 @@ describe("the dashboard", () => {
     expect(plain.ok && plain.value.identification).toBeNull();
   });
 
+  it("accepts the evidence a field report carries beside the question", () => {
+    const payload = dashboard(true);
+    payload["identification"]["evidence"] = [
+      { vehicle_id: NIRO, plug: null, location: null, verdict: null },
+    ];
+    const decoded = decodeDashboard(payload);
+    expect(decoded.ok && decoded.value.identification?.state).toBe("asking");
+  });
+
   it("hides only the question when its block cannot be read", () => {
     const payload = dashboard(true);
     payload["identification"] = { state: "asking" };
