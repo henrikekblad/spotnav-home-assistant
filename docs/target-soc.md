@@ -43,7 +43,7 @@ fixed number of kWh instead.
   value. When the car's sensor only comes back (its integration reloaded or loaded late) with the
   value of the last reading, and the charger saw the car plugged in all the while, that is the last
   reading set again and the estimate goes on from it. Otherwise (Home Assistant restarted, the car was
-  unplugged, or the charger cannot say) the value is a new reading and the energy delivered before it
+  unplugged, or the charger could not say for a while) the value is a new reading and the energy delivered before it
   is no longer counted: when in doubt SpotNav may charge again, never leave the car short. When the
   register itself changes (found again, or chosen in the card), counting starts again from the new
   register's first value.
@@ -51,8 +51,9 @@ fixed number of kWh instead.
   then, or one that started again), a target whose charge has ended and delivered, as measured by the
   charger's register or a smart plug's power, at least what the car's last reading needed is not
   planned again on that reading. This needs a charger that reports the car connected, and counts only
-  that plug-in's charges recorded for this car; a car found connected after Home Assistant restarted
-  counts from the restart, since another may have been plugged in meanwhile. The status says *Waiting for the car to report its new level after
+  that plug-in's charges recorded for this car; a car found connected after Home Assistant restarted,
+  or after the charger could not say for a while (offline), counts from then, since another may have
+  been plugged in meanwhile. The status says *Waiting for the car to report its new level after
   the charge*, and SpotNav asks the car's integration once to read it again (the same re-read as the
   app's refresh, never a wake-up). A newer reading plans at once (even the same value, if the car
   really did not take the energy), an unplug ends the wait, and with a departure the need is planned
