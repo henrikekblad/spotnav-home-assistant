@@ -115,3 +115,19 @@ async def async_refresh_vehicle(hass: HomeAssistant, vehicle_id: object) -> int:
     # A count only: no entity id, no reading.
     _LOGGER.debug("Asked Home Assistant to re-read a vehicle (%d entities)", len(entity_ids))
     return len(entity_ids)
+
+
+async def async_ask_vehicle_update(hass: HomeAssistant, vehicle_id: str) -> bool:
+    """`async_refresh_vehicle` asked on SpotNav's own behalf (a target waiting for the car's new level after
+    a charge): within the same interval, and never an error. Returns whether the re-read was asked."""
+    try:
+        await async_refresh_vehicle(hass, vehicle_id)
+    except VehicleRefreshLimited:
+        _LOGGER.debug("Not asking a vehicle to re-read: it was asked too recently")
+        return False
+    except ValueError:
+        return False
+    except Exception as err:  # noqa: BLE001 - another integration's failure is not ours to raise
+        _LOGGER.debug("Asking a vehicle to re-read failed: %s", type(err).__name__)
+        return False
+    return True

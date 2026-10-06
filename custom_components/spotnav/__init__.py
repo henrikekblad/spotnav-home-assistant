@@ -86,6 +86,7 @@ from .site.site_join import (
 from .site.site_capacity_controller import SiteCapacityController
 from .vehicles.discovery_decisions import async_setup_decisions
 from .vehicles.soc_estimate import SocReader
+from .vehicles.vehicle_refresh import async_ask_vehicle_update
 from .vehicles.vehicle_discovery import resolve_target_vehicle, vehicle_soc_entity_id
 from .vehicles.vehicle_properties import consumption_kwh_per_10km, stored_capacity_kwh
 
@@ -393,6 +394,15 @@ async def _async_setup_auto_preview(
     def _live_vehicle_facts(vehicle_id: str) -> LiveVehicleFacts | None:
         return live_vehicle_facts(hass, data.soc_reader, vehicle_id)
 
+    def _vehicle_update(vehicle_id: str, ask: bool) -> None:
+        # A target waits for the car's new level: hear of the next reading, and ask the car's integration
+        # to read it again once per charge (`refresh_vehicle`'s own call and interval, never a wake-up).
+        data.soc_reader.notify_next_reading()
+        if ask:
+            entry.async_create_background_task(
+                hass, async_ask_vehicle_update(hass, vehicle_id), f"{entry_id} vehicle refresh"
+            )
+
     def _consumption(vehicle_id: str) -> float | None:
         return consumption_kwh_per_10km(hass, resolve_target_vehicle(hass, vehicle_id or None)[0])
 
@@ -409,6 +419,7 @@ async def _async_setup_auto_preview(
         vehicle_reader=_live_vehicle_facts,
         consumption_reader=_consumption,
         observation=observation,
+        vehicle_update=_vehicle_update,
     )
     entry.async_on_unload(preview.async_shutdown)
     await preview.async_start()

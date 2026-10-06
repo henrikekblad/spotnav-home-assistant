@@ -252,6 +252,12 @@ CASES: list[tuple[str, StatusFacts, str, list[dict[str, Any]]]] = [
         [{"code": "nothing_to_charge", "params": {}}],
     ),
     (
+        "a target charge that delivered the need waits for the car to report its new level",
+        base(planning=planning("nothing_to_charge", "waiting_for_vehicle_update")),
+        "normal",
+        [{"code": "waiting_for_vehicle_update", "params": {}}],
+    ),
+    (
         "a period installed with no settings record",
         base(has_settings=False, installed_periods=((at(1), at(2)),)),
         "normal",

@@ -350,6 +350,7 @@ class SocReader:
         self._watch_vehicle: str | None = None
         self._on_reading: Callable[[], None] | None = None
         self._last_notified: float | None = None
+        self._notify_next = False
         self._closed = False
 
     async def async_load(self) -> None:
@@ -371,6 +372,12 @@ class SocReader:
     def set_on_reading(self, callback_: Callable[[], None] | None) -> None:
         """Ask to be told when a reading moved enough to make a new plan worth calculating."""
         self._on_reading = callback_
+
+    def notify_next_reading(self) -> None:
+        """Tell `set_on_reading`'s callback of the next reading that arrives, however little it moved: the
+        planner waits for the car's new level after a charge (`vehicle_update_wait`), and even the same
+        value reported again is the answer it waits for."""
+        self._notify_next = True
 
     def _vehicle_facts(self, vehicle_id: str | None) -> tuple[float | None, float | None]:
         """`(reported capacity kWh, vehicle ceiling %)` for `vehicle_id`, reused for a few minutes."""
@@ -484,8 +491,13 @@ class SocReader:
         if reading is None or reading.soc_percent is None or reading.estimated:
             return
         last = self._last_notified
-        if last is not None and abs(reading.soc_percent - last) < RECALCULATE_DELTA_PERCENT:
+        if (
+            not self._notify_next
+            and last is not None
+            and abs(reading.soc_percent - last) < RECALCULATE_DELTA_PERCENT
+        ):
             return
+        self._notify_next = False
         self._last_notified = reading.soc_percent
         if self._on_reading is not None:
             self._on_reading()

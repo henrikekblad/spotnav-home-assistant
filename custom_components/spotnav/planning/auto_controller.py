@@ -22,7 +22,7 @@ from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers.event import async_track_state_change_event
 from homeassistant.util import dt as dt_util
 
-from . import history_wait, price_wait
+from . import history_wait, price_wait, vehicle_update_wait
 from ..execution import hybrid_execution
 from ..execution.auto_execution import (
     ACTION_RESUME,
@@ -305,6 +305,11 @@ AutoReason = Literal[
     #: remainder is charged at once at unknown prices. A notice, not an alarm.
     "charging_without_prices",
     "already_at_target",
+    #: `nothing_to_charge`, `target_soc` only: the charge that just ended delivered, by measurement, at least
+    #: what the car's last reading needed, and that reading is older than the charge; nothing is planned
+    #: until the car reports its new level, it is unplugged, or a departure leaves only the time the need
+    #: would take (`vehicle_update_wait`).
+    "waiting_for_vehicle_update",
     #: `nothing_to_charge`, strategy `hybrid`: the forecast sun is credited with the whole remaining need,
     #: so nothing is bought from the grid (the hybrid line says how much the sun is expected to give).
     "solar_covers_need",
@@ -569,6 +574,7 @@ class AutoPlannerController:
         consumption_reader: Callable[[str], float | None] | None = None,
         observation: MarketObservation | None = None,
         now: Callable[[], datetime] | None = None,
+        vehicle_update: Callable[[str, bool], None] | None = None,
     ) -> None:
         self._hass = hass
         self._entry_id = entry_id
@@ -581,6 +587,11 @@ class AutoPlannerController:
         self._vehicle_reader = vehicle_reader
         # The planned vehicle's consumption; `None` means the default.
         self._consumption_reader = consumption_reader
+        # Told while a target waits for the car's new level (`_vehicle_update_wait`): the vehicle, and
+        # whether to ask the car for a reading (once per charge). `None` asks nothing.
+        self._vehicle_update = vehicle_update
+        # The last charge the car was asked about, so it is asked once.
+        self._update_asked_for: str | None = None
         self._now: Callable[[], datetime] = now if now is not None else dt_util.utcnow
         # The one appointment kept with the clock: the latest safe start of a plan waiting for prices,
         # made through the manager's scheduler so tests can drive time.
@@ -1594,10 +1605,88 @@ class AutoPlannerController:
                 settings, "nothing_to_charge", "already_at_target", calculated_at,
                 entry=entry, price_snapshot=price_snapshot,
             )
+        if wall_kwh is not None and facts is not None:
+            waiting = self._vehicle_update_wait(settings, facts, wall_kwh, calculated_at, entry, price_snapshot)
+            if waiting is not None:
+                return waiting
         kwh = wall_kwh if wall_kwh is not None else settings.requested_kwh
         # Always trustworthy: live state of charge already reflects everything delivered.
         return _EnergyResolution(
             kwh=kwh, delivered_energy_trustworthy=True, soc_percent=live_soc, capacity_kwh=capacity
+        )
+
+    def _vehicle_update_wait(
+        self,
+        settings: AutoSettings,
+        facts: LiveVehicleFacts,
+        need_kwh: float,
+        calculated_at: datetime,
+        entry: AreaEntry,
+        price_snapshot: Any,
+    ) -> AutoSnapshot | None:
+        """`nothing_to_charge`/`waiting_for_vehicle_update` when the charge just ended delivered, by
+        measurement, at least the need worked out from a reading older than it (`vehicle_update_wait`), else
+        `None` (plan as before). While it waits the car is asked for a reading once per charge, a newer
+        reading plans again at once, and with a departure the plan is made again when the need would only
+        just still fit."""
+        if self._executor is None:
+            return None
+        store = domain_data(self._hass).session_store
+        if store is None:
+            return None
+        sessions = [*store.closed_raw(self._entry_id)]
+        open_session = store.open_raw(self._entry_id)
+        if open_session is not None:
+            sessions.append(open_session)
+        controller = self._executor.controller
+        plan = controller.plan
+        try:
+            window_ahead = plan is not None and any(end > calculated_at for _start, end in plan.windows)
+        except (TypeError, ValueError):
+            window_ahead = True
+        departure_at = self._departure_instant(settings, calculated_at, entry)
+        power = None
+        if settings.amps:
+            power = power_kw(
+                settings.amps,
+                effective_phases(self._hass, self._entry_id),
+                voltage_between_phases_v(self._hass, self._entry_id),
+            )
+        decision = vehicle_update_wait.decide_vehicle_update_wait(
+            need_kwh=need_kwh,
+            reading_age_s=facts.soc_age_s,
+            estimated=facts.soc_estimated,
+            sessions=sessions,
+            plugged_in_at=controller.plugged_in_at,
+            connected=controller.adapter.vehicle_connected(),
+            charging=controller.charging,
+            window_ahead=window_ahead,
+            departure_at=departure_at,
+            power_kw=power,
+            vehicle_id=facts.vehicle_id or None,
+            now=calculated_at,
+        )
+        if not decision.wait or decision.delivery is None:
+            return None
+        if decision.replan_at is not None:
+            self._arm_wake(decision.replan_at)
+        charge = decision.delivery.last_session_id
+        ask = charge != self._update_asked_for
+        if ask:
+            self._update_asked_for = charge
+            _LOGGER.info(
+                "SpotNav charger %s: %.2f kWh measured since the car last reported %.0f %%, at least the "
+                "%.2f kWh it needed; waiting for its new level before planning again",
+                self._entry_id, decision.delivery.kwh, facts.soc_percent or 0.0, need_kwh,
+            )
+        if self._vehicle_update is not None and facts.vehicle_id:
+            self._vehicle_update(facts.vehicle_id, ask)
+        if settings.strategy == STRATEGY_HYBRID:
+            # As for a reached target: no grid energy and no sun is wanted for a need already delivered.
+            hybrid_execution.record_satisfied_state(self._hass, self._entry_id)
+        return self._fresh_snapshot(
+            settings, "nothing_to_charge", "waiting_for_vehicle_update", calculated_at,
+            entry=entry, price_snapshot=price_snapshot,
         )
 
     def _capped_by_room(self, settings: AutoSettings, resolution: _EnergyResolution) -> _EnergyResolution:
