@@ -636,11 +636,6 @@ export function checkTargetPercent(text: string): FormCheck<number> {
   return decimal(text, TARGET_PERCENT_MIN, TARGET_PERCENT_MAX);
 }
 
-export function checkCapacity(text: string): FormCheck<number> {
-  const check = decimal(text, CAPACITY_MIN_KWH, CAPACITY_MAX_KWH);
-  return check.ok ? { ok: true, value: Math.round(check.value * 10) / 10 } : check;
-}
-
 export function checkEnergy(text: string): FormCheck<number> {
   return decimal(text, ENERGY_MIN_KWH, ENERGY_MAX_KWH);
 }
@@ -848,9 +843,6 @@ export const AMPS_MAX = 80;
 export const CONSUMPTION_MIN_KWH_PER_10KM = 0.1;
 export const CONSUMPTION_MAX_KWH_PER_10KM = 50;
 
-export function checkConsumption(text: string): FormCheck<number> {
-  return decimal(text, CONSUMPTION_MIN_KWH_PER_10KM, CONSUMPTION_MAX_KWH_PER_10KM);
-}
 /**
  * What one focused Save would send: the whole replacement, or the input that stops it.
  *

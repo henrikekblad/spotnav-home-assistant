@@ -4,7 +4,7 @@
 
 import { translate, type Language } from "./i18n";
 import type { IdentificationChoice } from "./settings";
-import { IDENTIFY_MODES, type IdentifyMode, type SettingsRecord } from "./types";
+import type { SettingsRecord } from "./types";
 import type { Identification, IdentificationSource } from "./validate";
 
 /** A car the charger's car list can tick: every detected car (`vehicle_choices`). */
@@ -26,11 +26,6 @@ const MODE_KEYS = {
   automatic: "identify.mode.automatic",
   ask: "identify.mode.ask",
   off: "identify.mode.off",
-} as const;
-const MODE_HELP_KEYS = {
-  automatic: "identify.mode.automaticHelp",
-  ask: "identify.mode.askHelp",
-  off: "identify.mode.offHelp",
 } as const;
 
 /** The question mark the banner (and the app's) opens with. */
@@ -218,95 +213,6 @@ export interface IdentificationEditorHandlers {
   onCancel: () => void;
 }
 
-/** The dialog: the mode (one radio each, with what it does) and a checkbox per car. */
-export function identificationEditorBody(
-  doc: Document,
-  language: Language,
-  record: SettingsRecord,
-  vehicles: readonly CarChoice[],
-  idPrefix: string,
-  handlers: IdentificationEditorHandlers,
-): { body: HTMLFormElement; setError: (text: string | null) => void } {
-  let mode: IdentifyMode = record.identify_mode ?? "automatic";
-  const allIds = vehicles.map((row) => row.id);
-  const stored = record.vehicle_ids ?? null;
-  const ticked = new Set(stored === null ? allIds : allIds.filter((id) => stored.includes(id)));
-
-  const body = element(doc, "form") as HTMLFormElement;
-  body.noValidate = true;
-  body.dataset["identificationEditor"] = "true";
-
-  const modes = element(doc, "fieldset", C.siteFieldset);
-  modes.dataset["part"] = "mode";
-  modes.append(element(doc, "legend", C.siteLegend, translate(language, "identify.mode.label")));
-  for (const value of IDENTIFY_MODES) {
-    const label = element(doc, "label", C.siteChoice);
-    const radio = doc.createElement("input");
-    radio.type = "radio";
-    radio.name = `${idPrefix}-identify-mode`;
-    radio.value = value;
-    radio.checked = mode === value;
-    radio.dataset["identifyMode"] = value;
-    radio.addEventListener("change", () => {
-      if (radio.checked) {
-        mode = value;
-      }
-    });
-    label.append(radio, doc.createTextNode(translate(language, MODE_KEYS[value])));
-    modes.append(label, element(doc, "p", C.entityHelp, translate(language, MODE_HELP_KEYS[value])));
-  }
-  body.append(modes);
-
-  const cars = element(doc, "fieldset", C.siteFieldset);
-  cars.dataset["part"] = "vehicles";
-  cars.append(element(doc, "legend", C.siteLegend, translate(language, "identify.vehicles.label")));
-  for (const row of vehicles) {
-    const label = element(doc, "label", C.siteChoice);
-    const box = doc.createElement("input");
-    box.type = "checkbox";
-    box.checked = ticked.has(row.id);
-    box.dataset["identifyVehicle"] = row.id;
-    box.addEventListener("change", () => {
-      if (box.checked) {
-        ticked.add(row.id);
-      } else {
-        ticked.delete(row.id);
-      }
-    });
-    label.append(box, doc.createTextNode(row.name ?? row.id));
-    cars.append(label);
-  }
-  const error = element(doc, "p", C.settingsError);
-  error.hidden = true;
-  error.setAttribute("role", "alert");
-  cars.append(error);
-  body.append(cars);
-
-  const actions = element(doc, "div", C.settingsActions);
-  const save = element(doc, "button", `${C.button} ${C.settingsSave}`, translate(language, "settings.save")) as HTMLButtonElement;
-  save.type = "submit";
-  const cancel = element(doc, "button", C.button, translate(language, "settings.cancel")) as HTMLButtonElement;
-  cancel.type = "button";
-  actions.append(save, cancel);
-  body.append(actions);
-  const setError = (text: string | null): void => {
-    error.hidden = text === null;
-    error.textContent = text ?? "";
-  };
-  body.addEventListener("submit", (event) => {
-    event.preventDefault();
-    if (ticked.size === 0) {
-      setError(translate(language, "identify.error.noVehicle"));
-      return;
-    }
-    handlers.onSave({ mode, vehicleIds: allIds.filter((id) => ticked.has(id)), allVehicleIds: allIds });
-  });
-  cancel.addEventListener("click", () => {
-    handlers.onCancel();
-  });
-  return { body, setError };
-}
-
 /** A source as a summary row says it: the entity's name, "None", "Choose one" or "None found". */
 export function sourceText(language: Language, source: IdentificationSource): string {
   if (source.entity_id !== null) {
@@ -324,39 +230,4 @@ export function sourceChoice(source: IdentificationSource): string {
     return "";
   }
   return source.entity_id ?? "none";
-}
-
-/** The select for one source: automatic, each candidate, and none. */
-export function sourceSelect(
-  doc: Document,
-  language: Language,
-  kind: "plug" | "location",
-  source: IdentificationSource,
-  id: string,
-  onChange: (value: string) => void,
-): HTMLElement {
-  const block = element(doc, "div", C.settingsField);
-  block.dataset["part"] = kind;
-  const label = element(doc, "label", C.settingsLabel, translate(language, kind === "plug" ? "identify.source.plug" : "identify.source.location"));
-  label.setAttribute("for", id);
-  const select = doc.createElement("select");
-  select.id = id;
-  select.className = C.settingsInput;
-  const option = (value: string, text: string): void => {
-    const node = doc.createElement("option");
-    node.value = value;
-    node.textContent = text;
-    select.append(node);
-  };
-  option("", translate(language, "identify.source.automatic"));
-  for (const candidate of source.candidates) {
-    option(candidate.entity_id, candidate.name ?? candidate.entity_id);
-  }
-  option("none", translate(language, "identify.source.none"));
-  select.value = sourceChoice(source);
-  select.addEventListener("change", () => {
-    onChange(select.value);
-  });
-  block.append(label, select);
-  return block;
 }
