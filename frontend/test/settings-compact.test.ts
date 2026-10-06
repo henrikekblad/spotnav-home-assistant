@@ -394,3 +394,28 @@ describe("one setup value, one dialog", () => {
     expect(update["changes"]["charger_phases"]).toBe(other.dataset["valueOption"]);
   });
 });
+
+describe("a value saved while the plan could not be updated", () => {
+  it("returns to Settings and says so there, as the warning it is", async () => {
+    const { hass, element } = await openSettings();
+    await tap(element, "[data-edit='identify_mode']");
+    dialog(element).querySelector<HTMLInputElement>("[data-value-option='ask']")!.click();
+    await submit(element);
+    const record = payload()["settings"];
+    hass.resolveNext(settingsAnswer(record));
+    await settle();
+    hass.resolveNext({
+      api_version: SETTINGS_API_VERSION,
+      ok: false,
+      error: "spotnav_settings_reconcile_failed",
+      settings: { ...record, identify_mode: "ask", revision: (record.revision ?? 0) + 1 },
+      pause: PAUSE,
+    });
+    await settle();
+    hass.resolveNext(payload());
+    await settle();
+    expect(dialog(element).querySelector("form[data-value-editor]")).toBeNull();
+    expect(dialog(element).querySelector("[data-section='entities']")).not.toBeNull();
+    expect(dialog(element).textContent).toContain(translate("en", "settings.error.reconcileFailed"));
+  });
+});

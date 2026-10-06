@@ -247,6 +247,8 @@ export class SpotnavCard extends HTMLElement {
   private history: SessionsAnswer | null = null;
   private entitySaving = false;
   private reopenOverview = false;
+  /** A warning a value's save leaves for the Settings page it returns to (the plan was not updated). */
+  private overviewWarning: { sentenceKey: TranslationKey; code: string | null } | null = null;
   private confirmReadFailed = false;
   private deferredRefresh = false;
   private readonly idPrefix: string;
@@ -1756,6 +1758,7 @@ export class SpotnavCard extends HTMLElement {
     }
     const generation = this.generation;
     const current = (): boolean => this.connected && generation === this.generation;
+    this.overviewWarning = null;
     try {
       const failure = await this.performValueWrite(hass, config.charger, write);
       if (!current()) {
@@ -1911,7 +1914,12 @@ export class SpotnavCard extends HTMLElement {
           return decoded.failure === "unsupported" ? "settings.error.version" : "settings.error.generic";
         }
         const answer = decoded.value;
-        if (answer.ok || answer.code === SETTINGS_RECONCILE_FAILED) {
+        if (answer.ok) {
+          return null;
+        }
+        if (answer.code === SETTINGS_RECONCILE_FAILED) {
+          // Saved, but the plan was not updated: a warning the Settings page says once it is back.
+          this.overviewWarning = { sentenceKey: "settings.error.reconcileFailed", code: answer.code };
           return null;
         }
         return settingsErrorKey(answer.code);
@@ -2154,6 +2162,11 @@ export class SpotnavCard extends HTMLElement {
           void this.exportHistory();
         },
         onSettingsOverviewOpened: () => {
+          const warning = this.overviewWarning;
+          if (warning !== null) {
+            this.overviewWarning = null;
+            this.view?.setOverviewNotice(warning);
+          }
           void this.loadEntityConfig();
           void this.loadCardInfo();
         },
