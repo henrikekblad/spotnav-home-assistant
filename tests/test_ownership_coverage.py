@@ -20,6 +20,7 @@ from pytest_homeassistant_custom_component.common import async_fire_time_changed
 from custom_components.spotnav import core as core_package
 from custom_components.spotnav.core import events as ev
 from custom_components.spotnav.core.session import ChargeSession
+from custom_components.spotnav.diagnostics import async_get_config_entry_diagnostics
 from custom_components.spotnav.execution.ownership_coverage import (
     COVERAGE_FIELDS,
     OwnershipCoverage,
@@ -28,6 +29,10 @@ from custom_components.spotnav.execution.ownership_coverage import (
     store_key,
 )
 from custom_components.spotnav.execution.ownership_shadow import CommandOutcome, OwnershipShadow
+
+from .pause_world import pause_world
+from .relay import FakeScheduler
+from .world import controller_of, setup_charger
 
 T0 = datetime(2026, 10, 4, 22, 0, tzinfo=timezone.utc)
 
@@ -205,3 +210,53 @@ async def test_a_new_tally_names_the_version_that_started_it(hass: HomeAssistant
     coverage = OwnershipCoverage(store=Store(hass, STORE_VERSION, store_key("entry_z")), now=lambda: T0)
     await coverage.async_load("1.12.1")
     assert coverage.as_dict()["version"] == "1.12.1" and coverage.as_dict()["since"] == T0.isoformat()
+
+
+async def test_the_tally_survives_a_restart(hass: HomeAssistant, timers: FakeScheduler) -> None:
+    world = await pause_world(hass, timers)
+    await world.plug.set(False)
+    before = world.controller.ownership_shadow.diagnostics()["coverage"]
+    assert before["kinds"]["restart"]["events"] == 1 and before["kinds"]["unplug"]["events"] >= 1
+    assert before["version"]
+    restarted = await world.restart()
+    after = restarted.controller.ownership_shadow.diagnostics()["coverage"]
+    assert after["since"] == before["since"] and after["version"] == before["version"]
+    assert after["kinds"]["restart"]["events"] == 2
+    assert after["kinds"]["restart"]["first_seen"] == before["kinds"]["restart"]["first_seen"]
+    for kind, counts in before["kinds"].items():
+        assert after["kinds"][kind]["events"] >= counts["events"], kind
+    await restarted.shutdown()
+
+
+async def test_the_tally_survives_home_assistants_own_stop(hass: HomeAssistant, timers: FakeScheduler) -> None:
+    world = await pause_world(hass, timers)
+    restarted = await world.ha_restart()
+    assert restarted.controller.ownership_shadow.diagnostics()["coverage"]["kinds"]["restart"]["events"] == 2
+    await restarted.shutdown()
+
+
+async def test_removing_the_entry_removes_the_tally(hass: HomeAssistant, hass_storage: dict[str, Any]) -> None:
+    entry = await setup_charger(hass, entry_id="cover_a")
+    assert controller_of(hass, entry.entry_id).ownership_shadow.coverage.as_dict()["kinds"]["restart"]["events"] == 1
+    assert await hass.config_entries.async_unload(entry.entry_id)
+    await hass.async_block_till_done()
+    assert hass_storage[store_key(entry.entry_id)]["data"]["kinds"]["restart"]["events"] == 1
+    await hass.config_entries.async_remove(entry.entry_id)
+    await hass.async_block_till_done()
+    assert store_key(entry.entry_id) not in hass_storage
+
+
+# ---------------------------------------------------------------------------------------------- read out
+
+
+async def test_diagnostics_carry_the_tally_beside_the_shadow(hass: HomeAssistant) -> None:
+    entry = await setup_charger(hass, entry_id="cover_b")
+    diagnostics = await async_get_config_entry_diagnostics(hass, entry)
+    shadow = diagnostics["controller"]["ownership_shadow"]
+    assert {"counts", "session", "disagreements", "drift", "events"} <= set(shadow)
+    coverage = shadow["coverage"]
+    assert set(coverage) == {"since", "version", "kinds", "unattributed"}
+    assert set(coverage["kinds"]) == set(ev.EVENT_TYPES)
+    assert coverage["kinds"]["restart"]["events"] == 1
+    assert coverage["version"]
+    json.dumps(diagnostics)

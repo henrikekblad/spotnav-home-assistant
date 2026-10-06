@@ -101,6 +101,7 @@ from .window_hold import HOLD, OVERRIDE, WindowHold
 from ..core import events as core_events
 from ..core.session import ChargeSession, OWNER_CHARGER_SELF, OWNER_NONE, SessionError
 from . import ownership_shadow as ownership_shadow_module
+from .ownership_coverage import OwnershipCoverage, STORE_VERSION as COVERAGE_STORE_VERSION, store_key as coverage_key
 from .ownership_shadow import (
     CommandOutcome,
     FIELD_OWNER,
@@ -814,6 +815,9 @@ class ChargingController:
             drives=self._core_drives,
             writer=self._take_core_owner,
             persist=self._persist_session,
+            # What the core has seen per event kind, kept across restarts in a store of its own (read back at the
+            # restore, removed with the entry).
+            coverage=OwnershipCoverage(store=Store(hass, COVERAGE_STORE_VERSION, coverage_key(entry_id))),
         )
         self._shadow.today_fields = lambda: f"origin={self._charge_origin} plan_charge={self._plan_charge}"
 
@@ -937,6 +941,7 @@ class ChargingController:
         self._saved_memory = self._memory_signature()
         stored, migrate = self._stored_session(saved)
         keys_newer = self._restore_order(saved) if stored is not None else False
+        await self._shadow.coverage.async_load(await self._integration_version())
         # The core's session is what was read back: its own record when it drives and one was read, else today's;
         # today's keys where they are newer than the record (written after its last change).
         self._shadow.restart(
@@ -3342,6 +3347,7 @@ class ChargingController:
         # for the lock (`_shut_down` is set before it, and no decision saves once it is).
         if self._cancel_session_save() or self._core_drives:
             await self._async_save_session()
+        await self._shadow.coverage.async_flush()
         self._cancel_stop_retry()
         self._cancel_person_hold_retry()
         # A top-off's deadline stays stored: the next start resumes it or ends it.
@@ -3701,9 +3707,20 @@ class ChargingController:
 
     async def async_flush_session(self) -> None:
         """Home Assistant stops (`__init__._async_stop`): it unloads no entry, so `async_shutdown` never runs. A change of
-        the core's session still waiting for its debounced save is saved now."""
+        the core's session still waiting for its debounced save is saved now, and the core's coverage tally."""
         self._cancel_session_save()
         await self._async_save_session()
+        await self._shadow.coverage.async_flush()
+
+    async def _integration_version(self) -> str | None:
+        """This integration's version, which names a coverage tally begun now (`None` when it cannot be read)."""
+        from ..card_asset import async_manifest_version
+
+        try:
+            version = await async_manifest_version(self.hass)
+        except Exception:  # noqa: BLE001 - the tally only names it
+            return None
+        return None if version is None else str(version)
 
     def _cancel_session_save(self) -> bool:
         """Forget a change of the core's session still waiting to be saved; whether one was waiting."""
