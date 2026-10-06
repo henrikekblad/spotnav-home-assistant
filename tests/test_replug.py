@@ -641,10 +641,12 @@ async def test_replug_after_the_last_window_is_held_for_the_next_plan_at_once(
         plan = car.controller.plan
         assert plan is not None and not car.executor.window_charging_now()
         await car.unplug()
-        # The car was away through the whole plan; the departure has passed.
-        frozen.move_to(dt_util.parse_datetime("2026-09-22T10:30:00+00:00"))
-        async_fire_time_changed(hass, dt_util.utcnow())
-        await hass.async_block_till_done()
+        # The car was away through the whole plan; the departure has passed. The clock steps through the
+        # plan's start and end before 10:30, as it really passes: one jump fires the overdue timers out of order.
+        for when in (plan.windows[0][0], plan.windows[-1][1], dt_util.parse_datetime("2026-09-22T10:30:00+00:00")):
+            frozen.move_to(when)
+            async_fire_time_changed(hass, dt_util.utcnow())
+            await hass.async_block_till_done()
         stops = _turn_offs(calls)
 
         await car.plug.set(True, control="on")  # back, and the car starts by itself

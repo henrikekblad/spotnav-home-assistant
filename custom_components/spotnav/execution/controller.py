@@ -3256,10 +3256,13 @@ class ChargingController:
         # whether the charge is still running, so the flag survives until it can be seen.
         plan_charge = self._plan_charge
         origin = self._charge_origin
+        # A person's or a safety stop (`urgent`) also goes out while a Start of ours is unanswered: the control
+        # still reads off, and the start would land after a stop that sent nothing.
+        needed = self._stop_needed or (urgent and self._shadow_start_pending())
         # For the ownership shadow: a stop that sends nothing because the control says nothing keeps the owner.
-        self._shadow_unobserved = not self._stop_needed and self._control_observation is None
+        self._shadow_unobserved = not needed and self._control_observation is None
         self._stop_settled = False
-        if self._stop_needed and not urgent and self._stop_settling():
+        if needed and not urgent and self._stop_settling():
             # A stop of ours is on its way and the charger has not answered it: this off decision is that stop's.
             # Sent again it meets no transaction, and the charger rejects it.
             _LOGGER.debug(
@@ -3269,7 +3272,7 @@ class ChargingController:
             self._cancel_stop_retry()
             self._plan_charge = False
             self._charge_origin = None
-        elif self._stop_needed:
+        elif needed:
             was_sent_at = self._stop_sent_at
             self._stop_sent_at = dt_util.utcnow()
             self._stop_in_flight = True

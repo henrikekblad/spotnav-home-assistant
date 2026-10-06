@@ -1369,9 +1369,14 @@ class AutoExecutor:
         )
 
     def _on_stop_state_changed(self) -> None:
-        """The charge control reported: a report of no charge answers the pending Stop."""
-        if self._shutdown or not self._stop_pending or self._controller.charging:
+        """The charge control reported: a report of no charge answers the pending Stop, and so does a charge
+        reported once the person's Stop pause no longer holds (something since handed the charger back)."""
+        if self._shutdown or not self._stop_pending:
             return
+        if self._controller.charging:
+            intent = self.pause_intent
+            if intent.manual and intent.action == MANUAL_STOP:
+                return
         self._end_stop_pending()
         self._hass.async_create_task(self._notify_change())
 
@@ -1412,6 +1417,8 @@ class AutoExecutor:
         async with self._lock:
             self.begin_attempt()
             self._pending = None
+            # Following the plan hands the charger back: a Stop's wait is not what is outstanding any more.
+            self._end_stop_pending()
             if self.pause_intent.manual:
                 await self._end_manual_pause_locked("follow")
                 if self._controller.plan is None:
@@ -1510,6 +1517,7 @@ class AutoExecutor:
             self._shadow.cancel(token)
             raise
         self._arm_pause_expiry(None)
+        self._end_stop_pending()
         self._sync_manual_watch()
         self._shadow.end(token, core_events.Resume(reason=core_events.RESUME_PERSON))
         self.begin_attempt()
@@ -1584,9 +1592,12 @@ class AutoExecutor:
             # object.
             facts = self.control_facts()
             axes = decide_axes(facts)
-            if action == ACTION_STOP and choice is None and facts.stop_pending:
-                # A person's Stop is never refused for a Stop already on its way: only the offer waits.
+            if action == ACTION_STOP and choice is None and facts.action_pending:
+                # A person's Stop is never refused for a Start or Stop on its way: only the offer waits.
                 admitted = ControlDecision(ACTION_STOP, None, facts.pause_choices)
+            elif action == ACTION_RESUME and choice is None and facts.stop_pending and facts.pause.manual:
+                # Nor is their Resume of the pause that Stop took: it ends the Stop's wait.
+                admitted = ControlDecision(ACTION_RESUME, None, ())
             elif action in IMMEDIATE_ACTIONS and choice is None:
                 immediate = axes.immediate
                 if not immediate.admits(action):
@@ -1754,6 +1765,8 @@ class AutoExecutor:
                 mutate=lambda current: replace(current, pause=PauseIntent()) if current.pause == intent else current,
             )
             self._arm_pause_expiry(None)
+            # The person's pause is over (Follow, the car's end, an unplug or a plug-in): so is their Stop's wait.
+            self._end_stop_pending()
             if self._last_error == EXECUTION_PAUSE_STOP_FAILED:
                 self._last_error = None
             self._sync_manual_watch()

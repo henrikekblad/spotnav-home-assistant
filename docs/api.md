@@ -200,8 +200,9 @@ plugged in); both are null for every other pause. Every other pause record keeps
 person's Stop, until it reports it has stopped (or, for either, at most 30 seconds), `control` offers
 nothing on either axis: `immediate_action` and `automatic_action` are `none` with the reason
 `action_pending` (an automatic axis already showing a pause the person chose for a span keeps it). A client
-shows *Starting…* or *Stopping…* meanwhile. The command itself was sent at once, and a further `stop` is
-still accepted while a Stop is pending. When the 30 seconds pass without the report the axes answer from
+shows *Starting…* or *Stopping…* meanwhile. Only the offer waits: the command itself was sent at once, a
+`stop` is accepted (and sent) whatever is pending, and a `resume` of the pause a pending Stop took is accepted
+too and ends the wait, as Follow does. When the 30 seconds pass without the report the axes answer from
 the charger's state again: Stop is offered again while it still charges; an unanswered Start is also
 reported as `action_failed`. A Stop that failed is never pending (`pause_stop_failed`, Stop again).
 
