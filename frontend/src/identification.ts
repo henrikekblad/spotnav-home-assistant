@@ -213,15 +213,16 @@ export interface IdentificationEditorHandlers {
   onCancel: () => void;
 }
 
-/** A source as a summary row says it: the entity's name, "None", "Choose one" or "None found". */
+/** A source as a summary row says it, in status words: "Present", "None", "Choose one" or "Missing". */
 export function sourceText(language: Language, source: IdentificationSource): string {
+  // In the app's words: the entity is there or not; its name is in the source's own choice.
   if (source.entity_id !== null) {
-    return source.name ?? source.entity_id;
+    return translate(language, "settings.status.present");
   }
   if (source.chosen) {
     return translate(language, "identify.source.none");
   }
-  return translate(language, source.candidates.length > 1 ? "identify.source.choose" : "identify.source.notFound");
+  return translate(language, source.candidates.length > 1 ? "identify.source.choose" : "settings.status.missing");
 }
 
 /** A source's choice as the vehicle dialog's select holds it: `""` automatic, `"none"`, or an entity id. */

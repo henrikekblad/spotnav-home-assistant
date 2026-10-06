@@ -236,11 +236,12 @@ describe("the banner", () => {
 });
 
 describe("the Settings page", () => {
-  it("names each car's plug sensor and location", async () => {
+  it("says whether each car has a plug sensor and a location, in status words", async () => {
     const { element } = await openSettings(dashboard());
     const dialog = openDialog(element)!;
     const ev6 = dialog.querySelector<HTMLElement>(`[data-section='vehicle'][data-vehicle='${EV6}']`)!;
-    expect(ev6.querySelector("[data-row='plug']")?.textContent).toContain("EV6 plugged in");
+    expect(ev6.querySelector("[data-row='plug']")?.textContent).toContain(translate("en", "settings.status.present"));
+    expect(ev6.querySelector("[data-row='plug']")?.textContent).not.toContain("EV6 plugged in");
     expect(ev6.querySelector("[data-row='location']")?.textContent).toContain(translate("en", "identify.source.choose"));
   });
 

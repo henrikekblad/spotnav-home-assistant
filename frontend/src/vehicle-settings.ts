@@ -71,15 +71,6 @@ export function vehicleSummary(doc: Document, language: Language, input: Vehicle
   const notSet = translate(language, "entity.notSet");
   valueRow("charge_level", translate(language, "settings.vehicle.charge"), input.charge, edits.sensor);
   if (input.properties) {
-    if (row.target_percent !== undefined) {
-      valueRow(
-        "target",
-        translate(language, "settings.soc.target"),
-        row.target_percent === null ? notSet : `${formatNumber(language, row.target_percent, 0)} %`,
-        edits.target,
-        translate(language, "settings.vehicle.targetHelp"),
-      );
-    }
     const reported = row.capacity_source === "reported" && row.capacity_kwh !== null;
     valueRow(
       "capacity",
@@ -102,6 +93,20 @@ export function vehicleSummary(doc: Document, language: Language, input: Vehicle
       translate(language, row.onboard_phases === 1 ? "settings.vehicle.onboardOne" : "settings.vehicle.onboardThree"),
       edits.onboard,
     );
+    // The car's own charge limit, as the car reports it. Read-only here: the card has no request that writes it.
+    if (row.max_percent !== null) {
+      valueRow("charge_limit", translate(language, "settings.vehicle.limit"), `${formatNumber(language, row.max_percent, 0)} %`);
+    }
+    // The car's own target, the same at every charger, after its limit as in the app.
+    if (row.target_percent !== undefined) {
+      valueRow(
+        "target",
+        translate(language, "settings.soc.target"),
+        row.target_percent === null ? notSet : `${formatNumber(language, row.target_percent, 0)} %`,
+        edits.target,
+        translate(language, "settings.vehicle.targetHelp"),
+      );
+    }
   }
   if (row.identification !== undefined) {
     // What tells which car is plugged in: read only for that, never to start or stop a charge.
