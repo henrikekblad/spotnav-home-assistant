@@ -15,14 +15,12 @@ from __future__ import annotations
 
 import math
 from dataclasses import dataclass
-from datetime import timedelta
 from typing import Final, Literal
 
 from homeassistant.core import HomeAssistant, State
 from homeassistant.helpers import entity_registry as er
 from homeassistant.util import dt as dt_util
 
-from ..runtime import domain_data
 from ..vehicles.vehicle_discovery import (
     _device_entities,
     _percent_battery_sensor_entity_ids,
@@ -36,10 +34,6 @@ SocSource = Literal["vehicle", "charger"]
 #: How old a reading may be and still count as the state of charge rather than something to
 #: estimate forward from.
 SOC_FRESH_MAX_AGE_S: Final = 180.0
-
-#: A state written no later than this after Home Assistant started was set again by the start (its
-#: integration's first answer, or the state restored), not read anew (`SocReading.restored`).
-RESTORE_WINDOW_S: Final = 600.0
 
 #: How far above the target an *estimated* state of charge must be before a charge is stopped on
 #: the estimate alone.
@@ -64,8 +58,10 @@ class SocReading:
     #: `True` when `soc_percent` is an estimate carried forward from the last fresh reading by
     #: delivered energy (`soc_estimate.resolve_soc`); `age_s` is then the age of that reading.
     estimated: bool = False
-    #: `True` when the state was last written as Home Assistant started (`RESTORE_WINDOW_S`): equal to the
-    #: kept anchor's value, it is that reading set again, not a new one (`soc_estimate.resolve_soc`).
+    #: `True` when this state is the entity coming back (from `unavailable`, `unknown` or absent: a reload or
+    #: a late load of its integration) rather than an update of a value it had: equal to the kept anchor's
+    #: value, and with the car shown to have stayed plugged in, it is that reading set again
+    #: (`soc_estimate.SocReader`, `resolve_soc`).
     restored: bool = False
 
 
@@ -166,14 +162,7 @@ def _reading_for_entity(
         entity_id=entity_id,
         vehicle_id=vehicle_id,
         age_s=(dt_util.utcnow() - state.last_updated).total_seconds(),
-        restored=_written_at_start(hass, state),
     )
-
-
-def _written_at_start(hass: HomeAssistant, state: State) -> bool:
-    """Whether `state` was last written while Home Assistant was starting (`RESTORE_WINDOW_S`)."""
-    started = domain_data(hass).ha_started_at
-    return started is not None and state.last_updated <= started + timedelta(seconds=RESTORE_WINDOW_S)
 
 
 def decide_target_stop(

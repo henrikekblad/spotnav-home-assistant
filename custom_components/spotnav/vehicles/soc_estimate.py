@@ -175,6 +175,7 @@ def resolve_soc(
     now: datetime,
     vehicle_id: str | None,
     register_entity_id: str | None = None,
+    plugged_in_throughout: bool = False,
 ) -> SocResolution:
     """The state of charge to plan and stop against, and the anchor to keep. Pure.
 
@@ -187,10 +188,12 @@ def resolve_soc(
     * an anchor's baseline from another register than `register_entity_id` is dropped, and an anchor
       without a baseline (the register could not be read then, or it was dropped) takes the register's
       first readable value: energy before it is not credited, so either can only under-count;
-    * a reading Home Assistant set again at its start (`SocReading.restored`) with the anchor's value is
-      the anchor's own reading, not a new one: the anchor and its baseline stay, whatever the register
-      reads, and the reading's age is the anchor's. The same value read at any other time is a new
-      reading as any other;
+    * a reading that is the car's entity coming back (`SocReading.restored`: a reload or late load of its
+      integration) with the anchor's value, while the car is shown to have stayed plugged in through the
+      gap (`plugged_in_throughout`), is the anchor's own reading, not a new one: the anchor and its baseline
+      stay, whatever the register reads, and the reading's age is the anchor's. Without that continuity (a
+      restart of Home Assistant, an unplug, a connection not known) it is a new reading as any other: when
+      in doubt the delivered energy is forgotten (a second charge), never invented (a car left short);
     * where no estimate can be made the raw reading is returned untouched, or `None`.
     """
     if anchor is not None and anchor.vehicle_id != vehicle_id:
@@ -211,6 +214,7 @@ def resolve_soc(
         usable
         and reading is not None
         and reading.restored
+        and plugged_in_throughout
         and anchor is not None
         and reading.soc_percent == anchor.soc_percent
     )
@@ -356,6 +360,7 @@ class SocReader:
         charge_control: Callable[[], str | None],
         remembered_capacity: Callable[[str | None], float | None],
         now: Callable[[], datetime] | None = None,
+        plugged_in_since: Callable[[], datetime | None] | None = None,
     ) -> None:
         self._hass = hass
         self._entry_id = entry_id
@@ -364,6 +369,12 @@ class SocReader:
         self._register_entity_id = register_entity_id
         self._charge_control = charge_control
         self._remembered_capacity = remembered_capacity
+        # Since when the charger has itself seen the car plugged in without a gap (`None`: not shown).
+        self._plugged_in_since = plugged_in_since
+        # Per source entity: the instant of the state with which it came back (from `unavailable`,
+        # `unknown` or absent) and since when it had been gone, until it updates a value it had.
+        self._comebacks: dict[str, tuple[datetime, datetime | None]] = {}
+        self._gone_at: dict[str, datetime] = {}
         self._store: Store[dict[str, Any]] = Store(hass, _STORE_VERSION, f"{_STORE_KEY_PREFIX}.{entry_id}")
         self._anchor: SocAnchor | None = None
         self._facts_cache: dict[str, tuple[datetime, float | None, float | None]] = {}
@@ -460,19 +471,58 @@ class SocReader:
     def read(self, vehicle_id: str | None) -> SocReading | None:
         """The effective state of charge now: a fresh reading, else the estimate, else the raw one."""
         register_entity_id = self._register_entity_id()
+        reading, throughout = self._with_comeback(self._raw_reader(vehicle_id))
         resolution = resolve_soc(
-            reading=self._raw_reader(vehicle_id),
+            reading=reading,
             anchor=self._anchor,
             register_kwh=read_energy_register_kwh(self._hass, register_entity_id),
             capacity_kwh=self.capacity_kwh(vehicle_id),
             now=self._now(),
             vehicle_id=vehicle_id,
             register_entity_id=register_entity_id,
+            plugged_in_throughout=throughout,
         )
         if resolution.anchor != self._anchor:
             self._anchor = resolution.anchor
             self._save()
         return resolution.reading
+
+    def _with_comeback(self, reading: SocReading | None) -> tuple[SocReading | None, bool]:
+        """`reading` flagged `restored` when its state is its entity coming back, and whether the charger saw
+        the car plugged in since before the entity went away (`resolve_soc`'s `plugged_in_throughout`).
+
+        The first state seen after SpotNav set up (a restart, a reload) has no gap the charger watched across,
+        so it is never shown continuous: a new reading, as an unplug or an unknown connection makes it."""
+        if reading is None or reading.entity_id is None:
+            return reading, False
+        comeback = self._comebacks.get(reading.entity_id)
+        state = self._hass.states.get(reading.entity_id)
+        if comeback is None or state is None or state.last_updated != comeback[0]:
+            return reading, False
+        gone_since = comeback[1]
+        since = None if self._plugged_in_since is None else self._plugged_in_since()
+        throughout = since is not None and gone_since is not None and since <= gone_since
+        return replace(reading, restored=True), throughout
+
+    @callback
+    def _note_source_state(self, event: Event[EventStateChangedData]) -> None:
+        """Remember when a source entity went away and the state it came back with."""
+        entity_id = event.data["entity_id"]
+        old, new = event.data["old_state"], event.data["new_state"]
+        gone = (STATE_UNAVAILABLE, STATE_UNKNOWN)
+        if new is None or new.state in gone:
+            if old is not None and old.state not in gone:
+                self._gone_at[entity_id] = new.last_updated if new is not None else self._now()
+            self._comebacks.pop(entity_id, None)
+            return
+        if old is None or old.state in gone:
+            gone_since = self._gone_at.pop(entity_id, None)
+            if old is not None and gone_since is None:
+                gone_since = old.last_updated
+            self._comebacks[entity_id] = (new.last_updated, gone_since)
+        else:
+            # An update of a value it had (the same value with a new poll included): a reading.
+            self._comebacks.pop(entity_id, None)
 
     def _save(self) -> None:
         if self._closed:
@@ -510,7 +560,8 @@ class SocReader:
         self._watched = ()
 
     @callback
-    def _on_source_changed(self, _event: Event[EventStateChangedData]) -> None:
+    def _on_source_changed(self, event: Event[EventStateChangedData]) -> None:
+        self._note_source_state(event)
         reading = self.read(self._watch_vehicle)
         if reading is None or reading.soc_percent is None or reading.estimated:
             return

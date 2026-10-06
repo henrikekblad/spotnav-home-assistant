@@ -1653,14 +1653,12 @@ class AutoPlannerController:
                 voltage_between_phases_v(self._hass, self._entry_id),
             )
         vehicle_id = facts.vehicle_id or None
-        _resolved, candidates = resolve_target_vehicle(self._hass, settings.target.vehicle_id or None)
-        only_vehicle = vehicle_id is not None and [item.id for item in candidates] == [vehicle_id]
         decision = vehicle_update_wait.decide_vehicle_update_wait(
             need_kwh=need_kwh,
             reading_age_s=facts.soc_age_s,
             estimated=facts.soc_estimated,
             sessions=sessions,
-            plugged_in_at=controller.plugged_in_at,
+            plugged_in_at=controller.plugged_in_for_count,
             connected=controller.adapter.vehicle_connected(),
             charging=controller.charging,
             window_ahead=window_ahead,
@@ -1668,7 +1666,6 @@ class AutoPlannerController:
             power_kw=power,
             vehicle_id=vehicle_id,
             now=calculated_at,
-            only_vehicle=only_vehicle,
         )
         if not decision.wait or decision.delivery is None:
             return None

@@ -1,7 +1,10 @@
 """Adversarial review of a435aa6: the restart rule and the same-value rule in `resolve_soc`.
 
-A value Home Assistant set again at its start is flagged `restored` by the reader (`target_stop`), and the
-register an anchor's baseline came from is named, so these cases pass that in as the reader does.
+A value whose entity came back (a reload or late load of its integration) is flagged `restored` by the
+reader, kept only while the charger saw the car plugged in throughout (`plugged_in_throughout`), and the
+register an anchor's baseline came from is named; these cases pass that in as the reader does. The first
+case was a Home Assistant restart; a restart never shows the car stayed plugged in (re-review), so it is
+now the same sequence after a reload of the car's integration.
 """
 
 from __future__ import annotations
@@ -23,9 +26,9 @@ def _reading(value: float, age_s: float, *, restored: bool = False) -> SocReadin
     )
 
 
-def _resolve(reading, anchor, register, now, register_entity_id=None):
+def _resolve(reading, anchor, register, now, register_entity_id=None, *, throughout=False):
     return resolve_soc(reading=reading, anchor=anchor, register_kwh=register, capacity_kwh=CAPACITY, now=now,
-                       vehicle_id="car", register_entity_id=register_entity_id)
+                       vehicle_id="car", register_entity_id=register_entity_id, plugged_in_throughout=throughout)
 
 
 def _expected(soc: float, kwh: float) -> float:
@@ -37,11 +40,11 @@ def test_restart_rule_lost_when_register_reads_while_restored_value_is_still_fre
     anchor = SocAnchor(60.0, 1000.0, T0, "vehicle", "car")
     restart = T0 + timedelta(hours=2, minutes=30)
     # The restart re-announces 60 % (last_updated = restart), the register has no state yet: anchor kept.
-    first = _resolve(_reading(60.0, 2.0, restored=True), anchor, None, restart + timedelta(seconds=2))
+    first = _resolve(_reading(60.0, 2.0, restored=True), anchor, None, restart + timedelta(seconds=2), throughout=True)
     assert first.anchor == anchor
     # 60 s later the register reads 1010 while the restored value is still "fresh" (< 180 s).
     now = restart + timedelta(seconds=60)
-    second = _resolve(_reading(60.0, 60.0, restored=True), first.anchor, 1010.0, now)
+    second = _resolve(_reading(60.0, 60.0, restored=True), first.anchor, 1010.0, now, throughout=True)
     # The 10 kWh must still be carried forward; instead the anchor is re-taken at 60 % / 1010 kWh.
     later = _resolve(_reading(60.0, 3600.0), second.anchor, 1010.0, restart + timedelta(hours=1))
     assert later.reading is not None and later.reading.soc_percent == pytest.approx(_expected(60.0, 10.0))

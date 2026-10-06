@@ -34,12 +34,15 @@ def test_wait_ends_on_restart_and_the_same_need_is_planned_again() -> None:
     # The field case without a register: 5.5 kWh measured 10:45-11:15 after the 10:29 reading -> waits.
     charge = _session(NOW - timedelta(hours=1, minutes=15), 16.0, "car_b")
     assert _decide(91 * 60.0, [charge], NOW - timedelta(hours=2)).wait
-    # HA restarts at 11:58: the car entity's value is set again, last_updated = restart, age 120 s. The
-    # reader flags it `restored`; equal to the kept anchor, it is the anchor's reading, with its age.
+    # 11:58 (re-review: a reload of the car's integration; after a Home Assistant restart the car is not
+    # shown to have stayed plugged in, and counts as a new plug-in): the value comes back, age 120 s. The
+    # reader flags it `restored`; equal to the kept anchor, with the car plugged in throughout, it is the
+    # anchor's reading, with its age.
     anchor = SocAnchor(89.0, None, NOW - timedelta(minutes=91), "vehicle", "car_b")
     restored = SocReading(89.0, "vehicle", "sensor.ev", "car_b", 120.0, restored=True)
     seen = resolve_soc(
-        reading=restored, anchor=anchor, register_kwh=None, capacity_kwh=77.0, now=NOW, vehicle_id="car_b"
+        reading=restored, anchor=anchor, register_kwh=None, capacity_kwh=77.0, now=NOW, vehicle_id="car_b",
+        plugged_in_throughout=True,
     )
     assert seen.anchor == anchor and seen.reading is not None and not seen.reading.estimated
     assert seen.reading.age_s == 91 * 60.0
