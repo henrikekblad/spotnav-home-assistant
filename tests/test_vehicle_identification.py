@@ -286,7 +286,7 @@ async def test_with_nothing_to_go_on_it_asks_after_three_minutes_and_the_first_a
     assert world.identifier.method == METHOD_ANSWERED
     for phone in ("mobile_app_pixel", "mobile_app_iphone"):
         retired = world.sent(phone)[-1]
-        assert retired["message"] == "Tesla chosen."
+        assert retired["message"] == "Tesla selected."
         assert retired["data"]["tag"] == question["data"]["tag"] and "actions" not in retired["data"]
 
     await world.tap(question, 0)
@@ -306,7 +306,7 @@ async def test_decisive_evidence_after_the_question_switches_once_and_retires_it
     await world.later(5)
     assert world.settings.target.vehicle_id == world.cars["Tesla"]
     assert world.identifier.method == METHOD_PLUG_SENSOR
-    assert world.sent()[-1]["message"] == "Tesla chosen automatically."
+    assert world.sent()[-1]["message"] == "Tesla selected automatically."
     world.car_says("Tesla", "plug", "off")
     world.car_says("Volvo", "plug", "on")
     await world.later(60)
@@ -438,7 +438,7 @@ async def test_choosing_the_car_in_the_settings_meanwhile_is_the_answer(world: W
     )
     await world.hass.async_block_till_done()
     assert world.identifier.method == METHOD_MANUAL
-    assert world.sent()[-1]["message"] == "Tesla chosen."
+    assert world.sent()[-1]["message"] == "Tesla selected."
     world.car_says("Kia", "plug", "on")
     await world.later(60)
     assert world.settings.target.vehicle_id == tesla
@@ -477,7 +477,7 @@ async def test_the_card_shows_the_question_and_answers_it(
     assert answer["result"]["ok"] is True
     assert world.settings.target.vehicle_id == world.cars["Tesla"]
     assert world.identifier.method == METHOD_ANSWERED
-    assert world.sent()[-1]["message"] == "Tesla chosen."
+    assert world.sent()[-1]["message"] == "Tesla selected."
 
 
 async def test_any_signed_in_user_may_answer_in_the_card(
@@ -729,7 +729,7 @@ async def test_a_correction_while_the_question_is_out_replaces_it_silently(
     question = world.sent()[0]
     result = await _identify(world, hass, hass_ws_client, hass_read_only_user, world.cars["Tesla"])
     assert result["ok"] is True
-    _silent_retirement(world.sent()[-1], question, "Tesla chosen.")
+    _silent_retirement(world.sent()[-1], question, "Tesla selected.")
 
 
 async def test_no_block_with_one_car_at_the_charger_or_no_car_plugged_in(world: World, hass: HomeAssistant) -> None:

@@ -336,7 +336,7 @@ describe("the owner's wording", () => {
 
 describe("the car line", () => {
   it("says chosen manually for an answer and a choice, in every language", () => {
-    const words = { en: "chosen manually", sv: "vald manuellt", da: "valgt manuelt", nb: "valgt manuelt", fi: "valittu käsin" };
+    const words = { en: "selected manually", sv: "vald manuellt", da: "valgt manuelt", nb: "valgt manuelt", fi: "valittu käsin" };
     for (const [language, text] of Object.entries(words)) {
       expect(translate(language as "en", "vehicleLine.method.answered")).toBe(text);
       expect(translate(language as "en", "vehicleLine.method.manual")).toBe(text);
