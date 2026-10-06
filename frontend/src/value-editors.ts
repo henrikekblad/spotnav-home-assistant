@@ -130,7 +130,7 @@ export function settingRow(doc: Document, input: SettingRowInput): HTMLElement[]
 
 // ------------------------------------------------------------------------------------------------ editors
 
-interface EditorShell {
+export interface EditorShell {
   form: HTMLFormElement;
   /** Where the editor puts its own parts: above the error line and the actions. */
   body: HTMLElement;
@@ -140,7 +140,8 @@ interface EditorShell {
   submit: (attempt: () => Promise<string | null>) => void;
 }
 
-function shell(doc: Document, language: Language, kind: string, handlers: EditorHandlers, positive?: string): EditorShell {
+/** The frame every value editor shares: its parts, an error line, and Save (or `positive`) beside Cancel. */
+export function shell(doc: Document, language: Language, kind: string, handlers: EditorHandlers, positive?: string): EditorShell {
   const form = element(doc, "form") as HTMLFormElement;
   form.noValidate = true;
   form.dataset["valueEditor"] = kind;

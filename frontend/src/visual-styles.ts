@@ -61,6 +61,14 @@ export const VISUAL_CLASSES = {
   settingRowEditable: "spotnav-setting-row-editable",
   settingRowHelp: "spotnav-setting-row-help",
   settingRowSuggestion: "spotnav-setting-row-suggestion",
+  cameraStage: "spotnav-camera-stage",
+  cameraImage: "spotnav-camera-image",
+  cameraFrame: "spotnav-camera-frame",
+  cameraHandle: "spotnav-camera-handle",
+  cameraPreview: "spotnav-camera-preview",
+  cameraTools: "spotnav-camera-tools",
+  referenceThumbs: "spotnav-reference-thumbs",
+  referenceThumb: "spotnav-reference-thumb",
   settingsDivider: "spotnav-settings-divider",
   settingsSectionValue: "spotnav-settings-section-value",
   settingsSectionConfigure: "spotnav-settings-section-configure",
@@ -1394,6 +1402,80 @@ export const VISUAL_STYLES = `
     cursor: pointer;
     color: var(--primary-color, #03a9f4);
     text-align: left;
+  }
+  /*
+   * The camera's frame editor: the picture at the dialog's width, the frame over it (the rest dimmed), a corner
+   * handle with a 44 px target in each corner, and the crop's preview below. Pointer events serve touch and
+   * mouse alike, so the browser must not scroll or zoom under a finger on the picture.
+   */
+  .${VISUAL_CLASSES.cameraStage} {
+    position: relative;
+    max-width: 100%;
+    margin: 4px 0 8px;
+    overflow: hidden;
+    line-height: 0;
+    touch-action: none;
+    user-select: none;
+    -webkit-user-select: none;
+  }
+  .${VISUAL_CLASSES.cameraImage} {
+    display: block;
+    width: 100%;
+    height: auto;
+    pointer-events: none;
+  }
+  .${VISUAL_CLASSES.cameraFrame} {
+    position: absolute;
+    box-sizing: border-box;
+    border: 2px solid var(--primary-color, #03a9f4);
+    box-shadow: 0 0 0 9999px rgba(0, 0, 0, 0.45);
+    cursor: move;
+    touch-action: none;
+  }
+  .${VISUAL_CLASSES.cameraFrame}:focus-visible {
+    outline: 2px solid var(--primary-color, #03a9f4);
+    outline-offset: 2px;
+  }
+  .${VISUAL_CLASSES.cameraHandle} {
+    position: absolute;
+    box-sizing: border-box;
+    min-width: 44px;
+    min-height: 44px;
+    margin: -22px;
+    background: radial-gradient(circle, var(--primary-color, #03a9f4) 0 7px, transparent 8px);
+    touch-action: none;
+  }
+  .${VISUAL_CLASSES.cameraHandle}[data-corner="nw"] { left: 0; top: 0; cursor: nwse-resize; }
+  .${VISUAL_CLASSES.cameraHandle}[data-corner="ne"] { right: 0; top: 0; cursor: nesw-resize; }
+  .${VISUAL_CLASSES.cameraHandle}[data-corner="sw"] { left: 0; bottom: 0; cursor: nesw-resize; }
+  .${VISUAL_CLASSES.cameraHandle}[data-corner="se"] { right: 0; bottom: 0; cursor: nwse-resize; }
+  .${VISUAL_CLASSES.cameraPreview} {
+    max-width: 100%;
+    margin: 4px 0 8px;
+    border-radius: 4px;
+    background-color: var(--secondary-background-color, #f5f5f5);
+    background-repeat: no-repeat;
+  }
+  .${VISUAL_CLASSES.cameraTools} {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin: 4px 0 8px;
+  }
+  .${VISUAL_CLASSES.referenceThumbs} {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    gap: 6px;
+    min-width: 0;
+    margin: 0 0 4px;
+  }
+  .${VISUAL_CLASSES.referenceThumb} {
+    display: block;
+    max-width: 45%;
+    max-height: 4.5em;
+    border-radius: 4px;
+    object-fit: cover;
   }
   .${VISUAL_CLASSES.settingsSectionValue} {
     font-variant-numeric: tabular-nums;
