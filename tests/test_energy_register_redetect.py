@@ -14,16 +14,20 @@ from typing import Any
 
 import pytest
 from homeassistant.core import HomeAssistant
+from homeassistant.data_entry_flow import FlowResultType
 from homeassistant.helpers import entity_registry as er
 from pytest_homeassistant_custom_component.common import async_mock_service, MockConfigEntry
 
 from custom_components.spotnav.const import (
+    CONF_CHARGE_CONTROL,
+    CONF_CURRENT_LIMIT,
     CONF_ENERGY_REGISTER_ENTITY,
     CONF_ENERGY_REGISTER_NONE,
     CONF_ENTRY_TYPE,
     CONF_MODE,
     DOMAIN,
     ENTRY_TYPE_CHARGER,
+    MODE_DETECTED,
     MODE_OCPP,
 )
 from custom_components.spotnav.flows.charger_detection import detect_charger
@@ -35,7 +39,8 @@ from tests.helpers import make_entry, make_ocpp_config_entry
 
 from .charger_helpers import detected_config
 from .charger_shapes import E, register_shape, SHAPES
-from .world import controller_of, CPID, ocpp_entity, station_device
+from .messages import field, get_message, register, update_entity_config_message
+from .world import admin, controller_of, CPID, ocpp_entity, station_device, ws_call
 
 REGISTER_KEY = "energy_active_import_register"
 PEBLAR_REGISTER = "sensor.peblar_energy_total"
@@ -285,3 +290,158 @@ async def test_an_ocpp_chargers_none_switches_the_automatic_register_off(
     entry, _ = await _ocpp_charger(hass, ocpp_owner, **{CONF_ENERGY_REGISTER_NONE: True})
 
     assert controller_of(hass, entry.entry_id).energy_register_entity_id is None
+
+
+# ------------------------------------------------------------------ where "none" is chosen
+
+
+async def test_the_cards_none_is_stored_and_shown_and_automatic_takes_it_back(
+    hass: HomeAssistant, ocpp_owner: MockConfigEntry, hass_ws_client
+) -> None:
+    device_id = station_device(hass, ocpp_owner, CPID)
+    energy = ocpp_entity(
+        hass, owner=ocpp_owner, device_id=device_id, cpid=CPID, domain="sensor", key=REGISTER_KEY, connector=1,
+        state="10.0", attributes={"device_class": "energy", "state_class": "total_increasing", "unit_of_measurement": "kWh"},
+    )
+    entry, _ = await _ocpp_charger(hass, ocpp_owner)
+    client = await admin(hass, hass_ws_client)
+
+    register = field((await ws_call(client, get_message(entry.entry_id)))["result"], "energy_register_entity")
+    assert register["effective"]["entity_id"] == energy and register["effective"]["source"] == "automatic"
+    assert register["none"]["chosen"] is False
+    assert register["none"]["automatic"]["entity_id"] == energy
+
+    answer = await ws_call(
+        client,
+        update_entity_config_message(
+            entry.entry_id, scope="charger", expected={"energy_register_entity": ""},
+            changes={"energy_register_entity": "none"},
+        ),
+    )
+    assert answer["result"]["ok"] is True
+    await hass.async_block_till_done()
+    entry = hass.config_entries.async_get_entry(entry.entry_id)
+    assert entry.data[CONF_ENERGY_REGISTER_ENTITY] == ""
+    assert entry.data[CONF_ENERGY_REGISTER_NONE] is True
+    assert controller_of(hass, entry.entry_id).energy_register_entity_id is None
+    register = field((await ws_call(client, get_message(entry.entry_id)))["result"], "energy_register_entity")
+    assert register["effective"] is None
+    assert register["none"] == {
+        "allowed": True,
+        "chosen": True,
+        "automatic": {"entity_id": energy, "friendly_name": register["none"]["automatic"]["friendly_name"]},
+    }
+
+    answer = await ws_call(
+        client,
+        update_entity_config_message(
+            entry.entry_id, scope="charger", expected={"energy_register_entity": "none"},
+            changes={"energy_register_entity": ""},
+        ),
+    )
+    assert answer["result"]["ok"] is True
+    await hass.async_block_till_done()
+    entry = hass.config_entries.async_get_entry(entry.entry_id)
+    assert CONF_ENERGY_REGISTER_NONE not in entry.data
+    assert controller_of(hass, entry.entry_id).energy_register_entity_id == energy
+
+
+async def test_choosing_an_entity_in_the_card_ends_none(hass: HomeAssistant, hass_ws_client) -> None:
+    other = register(hass, "sensor", "other_meter", "Other meter", device_class="energy")
+    entry = await _detected_charger(hass, register_shape(hass, _peblar(register=None)), **{CONF_ENERGY_REGISTER_NONE: True})
+    client = await admin(hass, hass_ws_client)
+
+    answer = await ws_call(
+        client,
+        update_entity_config_message(
+            entry.entry_id, scope="charger", expected={"energy_register_entity": "none"},
+            changes={"energy_register_entity": other},
+        ),
+    )
+
+    assert answer["result"]["ok"] is True
+    entry = hass.config_entries.async_get_entry(entry.entry_id)
+    assert entry.data[CONF_ENERGY_REGISTER_ENTITY] == other
+    assert CONF_ENERGY_REGISTER_NONE not in entry.data
+
+
+async def test_clearing_a_detected_register_in_the_options_flow_is_kept_as_none(hass: HomeAssistant) -> None:
+    entry = await _detected_charger(hass, register_shape(hass, _peblar()))
+    assert entry.data[CONF_ENERGY_REGISTER_ENTITY] == PEBLAR_REGISTER
+
+    result = await hass.config_entries.options.async_init(entry.entry_id)
+    result = await hass.config_entries.options.async_configure(
+        result["flow_id"],
+        {
+            CONF_CHARGE_CONTROL: entry.data[CONF_CHARGE_CONTROL],
+            CONF_CURRENT_LIMIT: entry.data[CONF_CURRENT_LIMIT],
+        },
+    )
+    await hass.async_block_till_done()
+
+    assert result["type"] == FlowResultType.CREATE_ENTRY
+    entry = hass.config_entries.async_get_entry(entry.entry_id)
+    assert entry.data[CONF_ENERGY_REGISTER_ENTITY] == ""
+    assert entry.data[CONF_ENERGY_REGISTER_NONE] is True
+    assert controller_of(hass, entry.entry_id).energy_register_entity_id is None
+
+
+async def test_saving_the_options_of_a_charger_that_never_had_a_register_chooses_nothing(
+    hass: HomeAssistant,
+) -> None:
+    entry = await _detected_charger(hass, register_shape(hass, _peblar(register=None)))
+
+    result = await hass.config_entries.options.async_init(entry.entry_id)
+    await hass.config_entries.options.async_configure(
+        result["flow_id"],
+        {
+            CONF_CHARGE_CONTROL: entry.data[CONF_CHARGE_CONTROL],
+            CONF_CURRENT_LIMIT: entry.data[CONF_CURRENT_LIMIT],
+        },
+    )
+    await hass.async_block_till_done()
+
+    assert CONF_ENERGY_REGISTER_NONE not in hass.config_entries.async_get_entry(entry.entry_id).data
+
+
+async def test_clearing_the_suggested_register_when_adding_a_charger_is_kept_as_none(hass: HomeAssistant) -> None:
+    ids = register_shape(hass, _peblar())
+    result = await hass.config_entries.flow.async_init(DOMAIN, context={"source": "user"})
+    result = await hass.config_entries.flow.async_configure(result["flow_id"], {CONF_ENTRY_TYPE: ENTRY_TYPE_CHARGER})
+    result = await hass.config_entries.flow.async_configure(result["flow_id"], {CONF_MODE: MODE_DETECTED})
+    result = await hass.config_entries.flow.async_configure(result["flow_id"], {"device": ids["device_id"]})
+    assert result["step_id"] == "detected_entities"
+
+    result = await hass.config_entries.flow.async_configure(
+        result["flow_id"],
+        {
+            CONF_CHARGE_CONTROL: "switch.peblar_charge",
+            CONF_CURRENT_LIMIT: "number.peblar_charge_current_limit",
+            "charging_state_entity": "sensor.peblar_cp_state",
+        },
+    )
+
+    assert result["type"] == FlowResultType.CREATE_ENTRY
+    assert result["data"][CONF_ENERGY_REGISTER_ENTITY] == ""
+    assert result["data"][CONF_ENERGY_REGISTER_NONE] is True
+
+
+async def test_a_device_without_a_register_at_setup_is_not_a_choice(hass: HomeAssistant) -> None:
+    ids = register_shape(hass, _peblar(register=None))
+    result = await hass.config_entries.flow.async_init(DOMAIN, context={"source": "user"})
+    result = await hass.config_entries.flow.async_configure(result["flow_id"], {CONF_ENTRY_TYPE: ENTRY_TYPE_CHARGER})
+    result = await hass.config_entries.flow.async_configure(result["flow_id"], {CONF_MODE: MODE_DETECTED})
+    result = await hass.config_entries.flow.async_configure(result["flow_id"], {"device": ids["device_id"]})
+
+    result = await hass.config_entries.flow.async_configure(
+        result["flow_id"],
+        {
+            CONF_CHARGE_CONTROL: "switch.peblar_charge",
+            CONF_CURRENT_LIMIT: "number.peblar_charge_current_limit",
+            "charging_state_entity": "sensor.peblar_cp_state",
+        },
+    )
+
+    assert result["type"] == FlowResultType.CREATE_ENTRY
+    assert CONF_ENERGY_REGISTER_NONE not in result["data"]
+

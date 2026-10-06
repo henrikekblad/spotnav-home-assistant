@@ -54,6 +54,7 @@ from ..const import (
     CONF_CURRENT_CONTROL,
     CONF_CURRENT_LIMIT,
     CONF_CURRENT_LIMIT_NONE,
+    CONF_ENERGY_REGISTER_NONE,
     CONF_DERIVED_ENTITIES,
     CONF_DIRECT_ENTITIES,
     CONF_ENERGY_REGISTER_ENTITY,
@@ -127,7 +128,8 @@ FIELD_CHARGE_CONTROL: Final = "charge_control"
 FIELD_CURRENT_LIMIT: Final = "current_limit"
 FIELD_ENERGY_REGISTER: Final = "energy_register_entity"
 FIELD_POWER_ENTITY: Final = "power_entity"
-#: The value `current_limit` takes for "SpotNav sets no current and looks nothing up" (`CONF_CURRENT_LIMIT_NONE`).
+#: The value `current_limit` takes for "SpotNav sets no current and looks nothing up" (`CONF_CURRENT_LIMIT_NONE`),
+#: and `energy_register_entity` for "no energy register, and none looked up or detected" (`CONF_ENERGY_REGISTER_NONE`).
 #: An entity id always has a dot, so it cannot be mistaken for one.
 CURRENT_LIMIT_NONE: Final = "none"
 #: Read-only here; see the module docstring.
@@ -411,7 +413,10 @@ def _charger_effective(hass: HomeAssistant, entry: ConfigEntry, values: dict[str
         )
 
     register = values[FIELD_ENERGY_REGISTER]
-    if register:
+    if register == CURRENT_LIMIT_NONE:
+        # Chosen: nothing is read and nothing is looked up.
+        effective[FIELD_ENERGY_REGISTER] = None
+    elif register:
         effective[FIELD_ENERGY_REGISTER] = _effective_value(hass, register, SOURCE_CONFIGURED)
     else:
         effective[FIELD_ENERGY_REGISTER] = _effective_value(
@@ -520,6 +525,21 @@ def _automatic_current_limit(hass: HomeAssistant, entry: ConfigEntry) -> dict[st
     return {"entity_id": entity_id, "friendly_name": state.name if state is not None else entity_id}
 
 
+def _automatic_energy_register(hass: HomeAssistant, entry: ConfigEntry) -> dict[str, str] | None:
+    """The `{entity_id, friendly_name}` of the lifetime register detection finds for this charger now
+    (`energy_register.detected_register`), or `None`. Independent of any choice made, so a register
+    found after "None" was chosen can be chosen again.
+    """
+    from ..energy_register import detected_register  # noqa: PLC0415 - the flows import this module
+
+    controller = controller_for(hass, entry.entry_id)
+    entity_id = detected_register(hass, dict(entry.data), ocpp_target=getattr(controller, "ocpp_target", None))
+    if not entity_id:
+        return None
+    state = hass.states.get(entity_id)
+    return {"entity_id": entity_id, "friendly_name": state.name if state is not None else entity_id}
+
+
 def current_limit_none_allowed(entry: ConfigEntry) -> bool:
     """Whether SpotNav can do without a current limit: not while the current is set through that
     number (`CURRENT_CONTROL_NUMBER`), which then is the actuator.
@@ -555,7 +575,7 @@ def _voltage_descriptor(scope: Scope, value: str) -> dict[str, Any]:
 
 def current_charger_values(entry: ConfigEntry) -> dict[str, str]:
     """The writable charger fields' stored values, `""` for "not configured" (as `entry.data`), except
-    `current_limit`, which is `CURRENT_LIMIT_NONE` once the person chose "None".
+    `current_limit` and `energy_register_entity`, which are `CURRENT_LIMIT_NONE` once the person chose "None".
     """
     return {
         FIELD_CHARGE_CONTROL: entry.data.get(CONF_CHARGE_CONTROL) or "",
@@ -564,7 +584,11 @@ def current_charger_values(entry: ConfigEntry) -> dict[str, str]:
             if entry.data.get(CONF_CURRENT_LIMIT_NONE)
             else entry.data.get(CONF_CURRENT_LIMIT) or ""
         ),
-        FIELD_ENERGY_REGISTER: entry.data.get(CONF_ENERGY_REGISTER_ENTITY) or "",
+        FIELD_ENERGY_REGISTER: (
+            CURRENT_LIMIT_NONE
+            if entry.data.get(CONF_ENERGY_REGISTER_NONE)
+            else entry.data.get(CONF_ENERGY_REGISTER_ENTITY) or ""
+        ),
         FIELD_POWER_ENTITY: entry.data.get(CONF_POWER_ENTITY) or "",
         FIELD_VOLTAGE_BETWEEN_PHASES: _voltage_text(entry),
         FIELD_CHARGER_PHASES: str(charger_phases_from_entry(entry.data) or 3),
@@ -597,6 +621,10 @@ def charger_field_errors(
             and value != current_charger_values(entry)[FIELD_CHARGE_CONTROL]
         ):
             errors.append(FieldError(field, ERR_NOT_WRITABLE))
+            continue
+        if field == FIELD_ENERGY_REGISTER and value == CURRENT_LIMIT_NONE:
+            # Always allowed: a charger without a register only counts less.
+            resolved[field] = ""
             continue
         if field == FIELD_CURRENT_LIMIT and value == CURRENT_LIMIT_NONE:
             if current_limit_none_allowed(entry) or current_charger_values(entry)[field] == CURRENT_LIMIT_NONE:
@@ -713,8 +741,14 @@ def charger_field_descriptors(hass: HomeAssistant, entry: ConfigEntry) -> list[d
             scope="charger",
             required=False,
             writable=True,
-            current_entity_id=values[FIELD_ENERGY_REGISTER] or None,
+            current_entity_id=None if values[FIELD_ENERGY_REGISTER] == CURRENT_LIMIT_NONE else values[FIELD_ENERGY_REGISTER] or None,
             effective=effective[FIELD_ENERGY_REGISTER],
+            none_choice={
+                "allowed": True,
+                "chosen": values[FIELD_ENERGY_REGISTER] == CURRENT_LIMIT_NONE,
+                # What detection finds, also while "None" is chosen, so it can be chosen again.
+                "automatic": _automatic_energy_register(hass, entry),
+            },
         ),
         _entity_field_descriptor(
             hass,
@@ -1114,7 +1148,8 @@ def _entity_field_descriptor(
         "allowed_device_classes": list(_ENTITY_DEVICE_CLASSES.get(field, ())),
     }
     if none_choice is not None:
-        # Additive, `current_limit` only: whether "None" is offered and whether it is the stored choice.
+        # Additive, `current_limit` and `energy_register_entity` only: whether "None" is offered and
+        # whether it is the stored choice.
         descriptor["none"] = none_choice
     return descriptor
 

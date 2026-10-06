@@ -25,6 +25,7 @@ from ..const import (
     CONF_DERIVED_ENTITIES,
     CONF_DIRECT_ENTITIES,
     CONF_ENERGY_REGISTER_ENTITY,
+    CONF_ENERGY_REGISTER_NONE,
     CONF_IDLE_POWER_W,
     CONF_POWER_ENTITY,
     DEFAULT_IDLE_POWER_W,
@@ -235,6 +236,15 @@ class SpotNavChargingOptionsFlow(config_entries.OptionsFlow):
                 if updated_data[CONF_CURRENT_LIMIT] or updated_data[CONF_CURRENT_CONTROL]:
                     # Setting a current again ends the card's "None".
                     updated_data.pop(CONF_CURRENT_LIMIT_NONE, None)
+                if updated_data[CONF_ENERGY_REGISTER_ENTITY]:
+                    updated_data.pop(CONF_ENERGY_REGISTER_NONE, None)
+                elif (
+                    self._entry.data.get(CONF_ENERGY_REGISTER_ENTITY)
+                    and self._entry.data.get(CONF_MODE) != MODE_OCPP
+                ):
+                    # A register cleared is a choice: it is not detected again (`energy_register.py`). An OCPP
+                    # connector's cleared override goes back to its automatic register instead.
+                    updated_data[CONF_ENERGY_REGISTER_NONE] = True
                 for key in (CONF_POWER_ENTITY, CONF_IDLE_POWER_W):
                     # Stored only while set, so a charger without them keeps exactly its old data.
                     if user_input.get(key):

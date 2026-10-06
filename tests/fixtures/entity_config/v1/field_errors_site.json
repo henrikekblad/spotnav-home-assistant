@@ -94,6 +94,11 @@
         "effective": null,
         "field": "energy_register_entity",
         "kind": "entity",
+        "none": {
+          "allowed": true,
+          "automatic": null,
+          "chosen": false
+        },
         "required": false,
         "scope": "charger",
         "writable": true
