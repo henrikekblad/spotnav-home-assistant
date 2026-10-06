@@ -393,7 +393,8 @@ def _charger_effective(hass: HomeAssistant, entry: ConfigEntry, values: dict[str
     (`ChargingController.energy_register_entity_id`, `.ocpp_controls`). Read-only.
 
     * `current_limit`: the configured entity while it exists, else the OCPP 0.12 session limit.
-    * `energy_register_entity`: the configured one, else the controller's auto-resolved register.
+    * `energy_register_entity`: the configured one, else the controller's auto-resolved register; none for a
+      smart plug, whose energy comes from its power entity.
     """
     controller = controller_for(hass, entry.entry_id)
     effective: dict[str, dict[str, str] | None] = {
@@ -413,8 +414,13 @@ def _charger_effective(hass: HomeAssistant, entry: ConfigEntry, values: dict[str
         )
 
     register = values[FIELD_ENERGY_REGISTER]
+    power = values[FIELD_POWER_ENTITY]
     if register == CURRENT_LIMIT_NONE:
         # Chosen: nothing is read and nothing is looked up.
+        effective[FIELD_ENERGY_REGISTER] = None
+    elif power and not register:
+        # A smart plug's energy comes from its power: the register the controller resolves is SpotNav's own
+        # sensor integrating that power, not a meter found automatically.
         effective[FIELD_ENERGY_REGISTER] = None
     elif register:
         effective[FIELD_ENERGY_REGISTER] = _effective_value(hass, register, SOURCE_CONFIGURED)
@@ -422,7 +428,6 @@ def _charger_effective(hass: HomeAssistant, entry: ConfigEntry, values: dict[str
         effective[FIELD_ENERGY_REGISTER] = _effective_value(
             hass, getattr(controller, "energy_register_entity_id", None), SOURCE_AUTOMATIC
         )
-    power = values[FIELD_POWER_ENTITY]
     effective[FIELD_POWER_ENTITY] = _effective_value(hass, power, SOURCE_CONFIGURED) if power else None
     return effective
 
