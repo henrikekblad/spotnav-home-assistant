@@ -811,6 +811,7 @@ export const en = {
   "notifications.dialogTitle": "Notifications",
   "notifications.intro": "SpotNav sends the chosen events to the Home Assistant app on the chosen phones. A tap opens this dashboard.",
   "notifications.noPhones": "No phone with the Home Assistant app is signed in to this Home Assistant.",
+  "notifications.noRecipients": "No recipients chosen – this charger sends no notifications.",
   "notifications.missing": "{name} (not found)",
   "notifications.event.planStopped": "Charging stopped or did not start as planned",
   "notifications.event.planAtRisk": "The charge will not be ready by the departure",
