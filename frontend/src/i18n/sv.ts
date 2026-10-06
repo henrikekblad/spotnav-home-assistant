@@ -798,6 +798,7 @@ export const sv: Record<keyof typeof en, string> = {
   "notifications.dialogTitle": "Aviseringar",
   "notifications.intro": "SpotNav skickar de valda händelserna till Home Assistant-appen på de valda telefonerna. Ett tryck öppnar den här instrumentpanelen.",
   "notifications.noPhones": "Ingen telefon med Home Assistant-appen är inloggad i den här Home Assistant.",
+  "notifications.noRecipients": "Inga mottagare valda – den här laddaren skickar inga notiser.",
   "notifications.missing": "{name} (hittas inte)",
   "notifications.event.planStopped": "Laddningen stannade eller startade inte enligt planen",
   "notifications.event.planAtRisk": "Laddningen hinner inte bli klar till avresan",

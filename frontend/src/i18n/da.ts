@@ -798,6 +798,7 @@ export const da: Record<keyof typeof en, string> = {
   "notifications.dialogTitle": "Notifikationer",
   "notifications.intro": "SpotNav sender de valgte hændelser til Home Assistant-appen på de valgte telefoner. Et tryk åbner dette dashboard.",
   "notifications.noPhones": "Ingen telefon med Home Assistant-appen er logget ind i denne Home Assistant.",
+  "notifications.noRecipients": "Ingen modtagere valgt – denne oplader sender ingen notifikationer.",
   "notifications.missing": "{name} (ikke fundet)",
   "notifications.event.planStopped": "Opladningen stoppede eller startede ikke som planlagt",
   "notifications.event.planAtRisk": "Opladningen bliver ikke færdig til afgangen",

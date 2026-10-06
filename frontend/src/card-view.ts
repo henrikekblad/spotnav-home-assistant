@@ -20,7 +20,7 @@ import {
 import { applyFocus, chartHeightForWidth, renderChart, type ChartLabels } from "./chart-render";
 import { stripBarPlacement, stripBars, stripNowPosition, stripTicks } from "./chart-strip";
 import { createDialog, type DialogHandle } from "./dialog";
-import { notificationsEditorBody, notificationsSummary } from "./notifications";
+import { noRecipientsNote, notificationsEditorBody, notificationsSummary } from "./notifications";
 import { clock, formatFixed, formatNumber, hasZone, percentAmount, pricePerKwh, wallTimeRepeats, weekdayDate } from "./format";
 import { pluralForm, translate, type Language, type TranslationKey } from "./i18n";
 import {
@@ -2378,6 +2378,10 @@ export function createCardView(input: CardViewInput): CardView {
     );
     for (const row of notificationsSummary(model.language, record)) {
       section.append(overviewRow(row.key, row.label, row.value));
+    }
+    const missing = noRecipientsNote(doc, model.language, record);
+    if (missing !== null) {
+      section.append(missing);
     }
     const button = element(doc, "button", `${C.button} ${C.settingsSectionConfigure}`, translate(model.language, "notifications.change"));
     button.type = "button";

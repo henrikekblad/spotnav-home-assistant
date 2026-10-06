@@ -798,6 +798,7 @@ export const fi: Record<keyof typeof en, string> = {
   "notifications.dialogTitle": "Ilmoitukset",
   "notifications.intro": "SpotNav lähettää valitut tapahtumat Home Assistant -sovellukseen valituissa puhelimissa. Napautus avaa tämän kojelaudan.",
   "notifications.noPhones": "Yksikään puhelin, jossa on Home Assistant -sovellus, ei ole kirjautunut tähän Home Assistantiin.",
+  "notifications.noRecipients": "Vastaanottajia ei ole valittu – tämä laturi ei lähetä ilmoituksia.",
   "notifications.missing": "{name} (ei löydy)",
   "notifications.event.planStopped": "Lataus pysähtyi tai ei alkanut suunnitellusti",
   "notifications.event.planAtRisk": "Lataus ei valmistu lähtöön mennessä",
