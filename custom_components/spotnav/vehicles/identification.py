@@ -398,12 +398,18 @@ class VehicleIdentifier:
             # Nothing is being identified (identification off, a car chosen just before the plug-in, a decision
             # kept across a restart): with two or more cars at the charger the car can still be changed, so the
             # block says what stands.
-            cars = self._candidates(self._settings())
+            settings = self._settings()
+            cars = self._candidates(settings)
             if len(cars) < 2:
                 return None
+            method = self._method or METHOD_MANUAL
+            if settings.identify_mode == IDENTIFY_OFF and method == METHOD_MANUAL:
+                # Identification off: nothing chose the car at this plug-in (no question, no detection), so the
+                # block names no method; a person's correction still says it was answered.
+                method = None
             return {
                 "state": STATE_DECIDED,
-                "method": self._method or METHOD_MANUAL,
+                "method": method,
                 "vehicle_id": self._planned_vehicle(),
                 "since": None,
                 "candidates": [{"vehicle_id": car, "name": name, "likely": False} for car, name in cars],
@@ -422,7 +428,8 @@ class VehicleIdentifier:
         }
 
     def diagnostics(self) -> dict[str, Any]:
-        """Method and timings only: no car names, plates, places or entities."""
+        """Method, timings and the evidence the car was judged by: entity ids and states, never car names, plates,
+        positions or zone names (a position says only home or away)."""
         session = self._session
         return {
             "method": self._method,

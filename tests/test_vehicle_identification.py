@@ -353,9 +353,10 @@ async def test_off_and_a_single_vehicle_identify_nothing(world: World, hass: Hom
     assert world.sent() == []
     assert world.identifier.method == METHOD_MANUAL
     block = world.identifier.dashboard()
-    assert block is not None and block["state"] == "decided" and block["method"] == METHOD_MANUAL, (
+    assert block is not None and block["state"] == "decided", (
         "two cars at the charger: the car can be changed even with identification off"
     )
+    assert block["method"] is None, "nothing chose the car at this plug-in: no method, not 'chosen manually'"
     await world.unplug()
     await world.later(UNPLUG_DEBOUNCE_S + 1)
     store = domain_data(hass).auto_store
