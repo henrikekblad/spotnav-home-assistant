@@ -24,7 +24,7 @@ from __future__ import annotations
 import logging
 import math
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import datetime, timedelta
 from typing import Any, Final
 
@@ -76,7 +76,8 @@ class SocAnchor:
     """The last real reading and the energy register when it was taken.
 
     `register_kwh` is `None` when the register was unreadable then: such an anchor carries a
-    reading but never an estimate. `read_at` is when the reading was made, not noticed.
+    reading, and an estimate only once the register's first readable value has become its baseline
+    (`resolve_soc`). `read_at` is when the reading was made, not noticed.
     """
 
     soc_percent: float
@@ -171,16 +172,35 @@ def resolve_soc(
     * a stale reading newer than the anchor replaces it only while nothing has been delivered
       since the anchor (a car driven or charged elsewhere while idle);
     * with no anchor a stale reading starts one;
+    * an anchor taken while the register could not be read takes the register's first readable value
+      as its baseline, and the same value set again while the register cannot be read (a restart) does
+      not replace an anchor that has one;
     * where no estimate can be made the raw reading is returned untouched, or `None`.
     """
     if anchor is not None and anchor.vehicle_id != vehicle_id:
         anchor = None
+    if anchor is not None and anchor.register_kwh is None and register_kwh is not None:
+        # Anchored while the register could not be read (a restart before the charger's integration had
+        # its register): its first readable value is the baseline. Energy delivered before it is not
+        # credited, so this can only under-count.
+        anchor = replace(anchor, register_kwh=register_kwh)
     usable = reading is not None and reading.soc_percent is not None
     if usable:
         assert reading is not None and reading.soc_percent is not None
         age = reading.age_s
         read_at = now - timedelta(seconds=max(0.0, age)) if age is not None else now
         newer = anchor is None or (read_at - anchor.read_at).total_seconds() > SAME_READING_S
+        if (
+            newer
+            and anchor is not None
+            and anchor.register_kwh is not None
+            and register_kwh is None
+            and reading.soc_percent == anchor.soc_percent
+        ):
+            # The same value set again while the register cannot be read: what a restart does to every
+            # state (its timestamps are the restart's). Not a new reading, so the anchor that can carry
+            # the charge forward is kept.
+            newer = False
         if is_fresh(reading):
             if newer:
                 anchor = SocAnchor(
