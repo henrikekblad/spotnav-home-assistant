@@ -95,10 +95,6 @@ class SpotNavData:
     log_buffer: SpotNavLogBuffer | None = None
     #: When the integration loaded; the start-up grace (`startup.py`) counts from here.
     started_at: datetime = field(default_factory=dt_util.utcnow)
-    #: When Home Assistant itself was starting as the integration loaded, else `None` (loaded into a running
-    #: Home Assistant). A state written no later than `target_stop.RESTORE_WINDOW_S` after it was set by
-    #: the start, not read anew (`SocReading.restored`).
-    ha_started_at: datetime | None = None
 
 
 DATA_KEY: HassKey[SpotNavData] = HassKey(DOMAIN)
