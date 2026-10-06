@@ -573,6 +573,8 @@ class AutoExecutor:
         # Whether the sun's rules keep the charge that runs now (`SolarExecutionCoordinator.sun_keeps_charge`): a
         # strategy change to `solar` hands it over instead of stopping it. Set at setup; none answers "no".
         self._sun_keeps: Callable[[], bool] | None = None
+        # The plan whose met need was left to the car (it charges to the car's own limit): asked once per plan.
+        self._left_to_car: Any = None
 
     def set_sun_keeps_probe(self, probe: Callable[[], bool] | None) -> None:
         """Set (or clear) the probe a strategy change to `solar` asks whether the sun keeps the running charge. A
@@ -895,6 +897,11 @@ class AutoExecutor:
                 # The need is met (the target reached, or the energy delivered) before the plan ran
                 # out: its windows still ahead would buy what nobody needs. Not when only the room
                 # left in the battery says so: the car ends that charge itself when it is full.
+                plan = self._controller.plan
+                if plan is not None and plan is self._left_to_car and self._controller.charges_to_vehicle_limit():
+                    # Decided for this plan already: the car ends it, and every calculation while the need
+                    # reads met (each site or state-of-charge update, under hybrid) changes nothing.
+                    return None
                 try:
                     await self._controller.async_end_plan_need_met()
                 except Exception as err:  # noqa: BLE001 - reported, the next calculation retries
@@ -902,6 +909,8 @@ class AutoExecutor:
                         "Clearing a plan whose need is met failed: %s", type(err).__name__
                     )
                     return applied
+                plan = self._controller.plan
+                self._left_to_car = plan if plan is not None and self._controller.charges_to_vehicle_limit() else None
                 self._applied = applied
                 await self._notify_change()
                 return None

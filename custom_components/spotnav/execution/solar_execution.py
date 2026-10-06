@@ -642,7 +642,8 @@ class SolarExecutionCoordinator:
         self._strategy: str | None = None
         # Coalescing guard: `_on_site_update` fires often, but an evaluation awaits
         # `AutoExecutor`'s lock and `SolarController` is not reentrant, so a trigger arriving mid-
-        # evaluation is dropped; the next site recompute retries.
+        # evaluation is dropped; the next site recompute retries. A re-render another coordinator asks
+        # for (`SiteCapacityController.rerendering`) is no trigger at all.
         self._evaluating = False
         # A stop of solar's charge that did not go out (the charger's control did not take it): tried again
         # every tick until the charger is seen off (`_retry_owed_stop`).
@@ -697,7 +698,9 @@ class SolarExecutionCoordinator:
 
     @callback
     def _on_site_update(self) -> None:
-        if self._evaluating:
+        site = self._site
+        if self._evaluating or (site is not None and site.rerendering):
+            # Busy, or a coordinator's re-render of the site (no new reading): the next recompute decides.
             return
         self._evaluating = True
         self._hass.async_create_task(self._async_evaluate_guarded())

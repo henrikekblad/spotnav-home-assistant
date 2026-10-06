@@ -636,6 +636,8 @@ class ChargingController:
         self._seen_charging: bool | None = None
         # Whether the last `_stop_locked` sent nothing because a stop of ours still settled.
         self._stop_settled = False
+        # The plan whose end was last left to the car (`async_end_plan_need_met`), so that is said once per plan.
+        self._left_to_car: ChargingPlan | None = None
         # A stop command on its way to the charger: the regulator writes no current meanwhile, since on
         # some chargers (Easee) a current written while the stop lands lifts it again.
         self._stop_in_flight = False
@@ -1618,11 +1620,14 @@ class ChargingController:
             if self.plan is None:
                 return False
             if self.charges_to_vehicle_limit():
-                # The car ends this charge itself when it is full: no count or estimate of ours ends it.
-                _LOGGER.info(
-                    "SpotNav charger %s: the plan charges to the car's own limit, leaving its end to the car",
-                    self.entry_id,
-                )
+                # The car ends this charge itself when it is full: no count or estimate of ours ends it. Said
+                # once per plan: every calculation while the need reads met asks again.
+                if self._left_to_car is not self.plan:
+                    self._left_to_car = self.plan
+                    _LOGGER.info(
+                        "SpotNav charger %s: the plan charges to the car's own limit, leaving its end to the car",
+                        self.entry_id,
+                    )
                 return False
             if self.plan.target_soc_percent is not None:
                 # The target's own stop, with its record, or nothing.
