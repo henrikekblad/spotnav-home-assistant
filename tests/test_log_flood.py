@@ -8,20 +8,24 @@ a second while the plan held the charge, none of which reached the charger.
 
 from __future__ import annotations
 
+from datetime import timedelta
 import logging
 from typing import Any
 
 import pytest
 from freezegun import freeze_time
 from homeassistant.core import HomeAssistant
+from homeassistant.util import dt as dt_util
 from pytest_homeassistant_custom_component.common import async_mock_service
 
+from custom_components.spotnav.execution.controller import ChargingPlan
+from custom_components.spotnav.planning.auto_settings import STRATEGY_HYBRID
 from custom_components.spotnav.runtime import preview_for
 from tests.relay import serve as serve_prices
 from tests.test_dashboard_api import NOW
 
 from .test_solar_charger_priority import _two_charger_site
-from .world import charger_and_car, controller_of, set_site_power_w, tick_site
+from .world import charger_and_car, controller_of, set_charger_delivered_a, set_site_power_w, solar_setup, tick_site
 
 pytestmark = pytest.mark.usefixtures("offline_relay")
 
@@ -89,3 +93,40 @@ async def test_a_solar_reevaluation_does_not_make_the_other_charger_reevaluate(h
     await tick_site(hass, site)
 
     assert counts == {"a": 1, "b": 1}
+
+
+async def test_while_the_plan_holds_the_charge_the_suns_decision_log_records_only_changes(
+    hass: HomeAssistant,
+) -> None:
+    charger, site_entry, controller, coordinator, clock, turn_on_calls, turn_off_calls = await solar_setup(
+        hass, strategy=STRATEGY_HYBRID
+    )
+    site = controller_of(hass, site_entry.entry_id)
+    now = dt_util.utcnow()
+    await controller.async_install(
+        ChargingPlan(
+            start=(now - timedelta(minutes=1)).isoformat(),
+            end=(now + timedelta(minutes=30)).isoformat(),
+            amps=16,
+            phases=3,
+            auto_identity="held",
+        )
+    )
+    hass.states.async_set(f"switch.{charger.entry_id}", "on")
+    set_charger_delivered_a(hass, charger.entry_id, 6.0)
+    await hass.async_block_till_done()
+    assert controller.plan_window_active_now
+    requested = controller.requested_current_a
+    turn_on_calls.clear()
+
+    # The surplus moves every reading: the sun, on beside the plan, would ask for 7 to 13 A.
+    for tick in range(80):
+        clock.value = 5.0 * tick
+        set_site_power_w(hass, "solar_site", -(333.0 + (tick % 5) * 333.0))
+        await tick_site(hass, site)
+    assert coordinator.state is not None and coordinator.state.state == "on" and coordinator.state.held_by_plan
+
+    held = [entry for entry in coordinator.decision_log if entry["held_by_plan"]]
+    assert [entry["to"] for entry in held] == ["off", "arming", "on"], held
+    assert controller.requested_current_a == requested, "nothing the sun decided reached the charger"
+    assert turn_on_calls == [] and turn_off_calls == []

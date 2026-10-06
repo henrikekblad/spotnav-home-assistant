@@ -1339,9 +1339,13 @@ class SolarExecutionCoordinator:
     ) -> None:
         """Append one entry to the decision log: an action (`start`, `stop`, `set_current`, `take_over`)
         always, a `hold` only when its state, reason or plan hold differs from the last entry. `held_by_plan`
-        is a verdict a plan window kept from being carried out."""
+        is a verdict a plan window kept from being carried out: nothing of it reaches the charger, so while the
+        plan holds the charge only a change of the sun's state (or of the hold itself) is an entry."""
         signature = (state, action, reason, held_by_plan)
-        if action == "hold" and signature == self._decision_signature:
+        last = self._decision_signature
+        if held_by_plan and last is not None and last[3] and last[0] == state:
+            return
+        if action == "hold" and signature == last:
             return
         self._decision_log.append(
             {
