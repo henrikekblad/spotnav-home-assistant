@@ -22,6 +22,7 @@ import {
   formatNumber,
   type FormatContext,
 } from "./format";
+import { chargeBarFor, type ChargeBarFacts } from "./charge-bar";
 import { issuesOf, statusNote, statusText, type Issue } from "./status";
 import { chargeCeiling, effectiveTarget } from "./target-need";
 import { pluralForm, translate, type Language, type TranslationKey } from "./i18n";
@@ -147,7 +148,22 @@ export interface ControlFacts {
   notice: string | null;
   noticeCode: string | null;
   canAct: boolean;
+  /**
+   * What is under way while either axis says `action_pending`: the Start or Stop this card sent, or,
+   * without one, what the charger's state calls for (not charging, so starting). `null` otherwise.
+   */
+  pendingAction: PendingAction | null;
+  /**
+   * The automatic action last shown (`pause` or `resume`), kept on a disabled cell while an action is
+   * pending and the automatic axis offers nothing; `null` otherwise.
+   */
+  heldAutomatic: string | null;
 }
+
+export type PendingAction = "starting" | "stopping";
+
+/** The Start or Stop a card sent, for naming what is under way. */
+export type SentAction = "start" | "stop";
 
 export interface StrategyRowFacts {
   id: string;
@@ -192,6 +208,8 @@ export interface CardModel {
   status: string | null;
   /** The "suggested from your location and charger" note: its own muted line under the status. */
   statusNote: string | null;
+  /** The running charge's bar under the status line, from the backend's `progress`; `null` with none. */
+  chargeBar: ChargeBarFacts | null;
   issues: Issue[];
   severity: Severity | null;
   chart: ChartSeries;
@@ -404,8 +422,29 @@ function axisFactsFor(
  * the immediate axis's reason wins when it has one, then the automatic axis's. Each axis still carries
  * its own reason.
  */
-function controlFactsFor(dashboard: Dashboard, language: Language): ControlFacts {
+/** Whether either axis says a Start or Stop awaits the charger's report (`action_pending`). */
+export function actionPending(control: Dashboard["control"]): boolean {
+  return control.immediate_action_reason === "action_pending" || control.automatic_action_reason === "action_pending";
+}
+
+function controlFactsFor(
+  dashboard: Dashboard,
+  language: Language,
+  sent: SentAction | null,
+  shownAutomatic: string | null,
+): ControlFacts {
   const control = dashboard.control;
+  const pending = actionPending(control);
+  // The command sent wins; without one the charger's own state says which way it is going.
+  const pendingAction: PendingAction | null = !pending
+    ? null
+    : (sent ?? (dashboard.live.charging === true ? "stop" : "start")) === "stop"
+      ? "stopping"
+      : "starting";
+  const heldAutomatic =
+    pending && control.automatic_action === "none" && shownAutomatic !== null && AUTOMATIC_LABELS[shownAutomatic] !== undefined
+      ? shownAutomatic
+      : null;
   const reason = control.immediate_action_reason ?? control.automatic_action_reason;
   const notice = controlNotice(language, reason, control.execution_error);
   return {
@@ -428,6 +467,8 @@ function controlFactsFor(dashboard: Dashboard, language: Language): ControlFacts
     notice: notice.text,
     noticeCode: notice.code,
     canAct: control.can_act,
+    pendingAction,
+    heldAutomatic,
   };
 }
 
@@ -660,6 +701,10 @@ export interface BuildInput {
   dashboard: Dashboard;
   language: Language;
   nowMs: number;
+  /** The Start or Stop this card last sent while it may still await the charger's report. */
+  sentAction?: SentAction | null;
+  /** The automatic action the card last showed (`pause` or `resume`), kept while an action is pending. */
+  shownAutomatic?: string | null;
 }
 
 export function buildModel(input: BuildInput): CardModel {
@@ -703,6 +748,7 @@ export function buildModel(input: BuildInput): CardModel {
     dashboardFiscal: dashboard.fiscal,
     status: statusText(status, format, input.nowMs),
     statusNote: statusNote(status, format, input.nowMs),
+    chargeBar: chargeBarFor(dashboard.progress, format, input.nowMs),
     issues,
     severity: status === null || status.tone === "normal" || issues.length === 0 ? null : status.tone,
     chart,
@@ -723,7 +769,7 @@ export function buildModel(input: BuildInput): CardModel {
     ),
     planRelation: planRelationOf(dashboard),
     capabilities: capabilitiesFor(dashboard),
-    control: controlFactsFor(dashboard, language),
+    control: controlFactsFor(dashboard, language, input.sentAction ?? null, input.shownAutomatic ?? null),
     advisory: advisoryFor(dashboard, language),
     strategy: strategyFactsFor(dashboard, language),
     site: siteFactsFor(dashboard.site, language),

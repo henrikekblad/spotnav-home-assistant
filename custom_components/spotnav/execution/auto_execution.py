@@ -108,8 +108,8 @@ ACTION_NONE: Final = "none"
 ACTION_PAUSE: Final = "pause"
 IMMEDIATE_ACTIONS: Final = (ACTION_START, ACTION_STOP)
 
-#: How long a manual Start stays "just sent" before the boundary stops waiting for the charger to
-#: report charging.
+#: How long a person's Start (or Stop) stays "just sent" before the boundary stops waiting for the charger
+#: to report charging (or no longer charging).
 MANUAL_START_ACK_TIMEOUT: Final = timedelta(seconds=30)
 #: How long (seconds) after a person's pause could not be saved the settings file is written again.
 PAUSE_SAVE_RETRY_S: Final = 60.0
@@ -121,8 +121,8 @@ MANUAL_WATCH_INTERVAL: Final = timedelta(seconds=30)
 #: Stable reasons a control description carries when there is no action.
 CONTROL_NO_SETTINGS: Final = "no_settings"
 CONTROL_PAUSE_UNSETTLED: Final = "pause_unsettled"
-#: A manual Start was accepted and the charger has not yet reported charging: we do not
-#: know yet, so no second Start.
+#: A person's Start was accepted and the charger has not yet reported charging, or their Stop and it has
+#: not yet reported it stopped: we do not know yet, so nothing is offered.
 CONTROL_ACTION_PENDING: Final = "action_pending"
 
 #: Stable codes for an action that is not admissible now, or failed before any effect. (A
@@ -174,6 +174,13 @@ class ControlFacts:
     pause_choices: tuple[PauseChoice, ...]
     #: A manual Start was accepted and the charger has not yet reported charging.
     start_pending: bool = False
+    #: A person's Stop was sent and the charger has not yet reported it stopped (charging false).
+    stop_pending: bool = False
+
+    @property
+    def action_pending(self) -> bool:
+        """Whether a person's Start or Stop awaits the charger's report."""
+        return self.start_pending or self.stop_pending
 
 
 @dataclass(frozen=True, slots=True)
@@ -236,12 +243,12 @@ def decide_immediate(facts: ControlFacts) -> ImmediateDecision:
     pauses Auto for the plug-in session (`AutoExecutor._manual_start_locked`, `_immediate_stop_locked`).
 
     * no settings record: nothing to command yet;
-    * a Start still awaiting the charger's report: nothing, with `action_pending`;
+    * a Start or Stop still awaiting the charger's report: nothing, with `action_pending`;
     * otherwise the reported state: charging means `stop`, else `start`.
     """
     if not facts.has_settings:
         return ImmediateDecision(ACTION_NONE, CONTROL_NO_SETTINGS)
-    if facts.start_pending:
+    if facts.action_pending:
         return ImmediateDecision(ACTION_NONE, CONTROL_ACTION_PENDING)
     if facts.charging:
         return ImmediateDecision(ACTION_STOP, None)
@@ -271,18 +278,18 @@ def decide_automatic(facts: ControlFacts) -> AutomaticDecision:
     * no settings record: nothing is configurable yet;
     * a manual pause (a person's Start or Stop): only `resume` is offered, whatever else happened (the
       person's own Stop is the retry of a stop that failed, on the immediate axis), except nothing while
-      the person's Start awaits the charger's report;
+      the person's Start or Stop awaits the charger's report;
     * a failed pause stop: re-sending the same choice is the documented retry;
     * a pause whose clearing write failed: still persisted, nothing to resume; the code says why;
     * any other stored pause: only an explicit `resume` is offered;
-    * a manual Start awaiting acknowledgement: nothing, with `action_pending`;
+    * a manual Start or Stop awaiting acknowledgement: nothing, with `action_pending`;
     * otherwise `pause` with the choices it can honour, including for an idle charger (a pause is a
       stored intent that blocks the next application).
     """
     if not facts.has_settings:
         return AutomaticDecision(ACTION_NONE, CONTROL_NO_SETTINGS, ())
     if facts.pause.manual:
-        if facts.start_pending:
+        if facts.action_pending:
             return AutomaticDecision(ACTION_NONE, CONTROL_ACTION_PENDING, ())
         return AutomaticDecision(ACTION_RESUME, None, ())
     if facts.pause.admitted:
@@ -293,7 +300,7 @@ def decide_automatic(facts: ControlFacts) -> AutomaticDecision:
         if facts.paused:
             return AutomaticDecision(ACTION_RESUME, None, ())
         return AutomaticDecision(ACTION_NONE, CONTROL_PAUSE_UNSETTLED, ())
-    if facts.start_pending:
+    if facts.action_pending:
         return AutomaticDecision(ACTION_NONE, CONTROL_ACTION_PENDING, ())
     return AutomaticDecision(ACTION_PAUSE, None, facts.pause_choices)
 
@@ -551,6 +558,11 @@ class AutoExecutor:
         self._start_ack_timed_out = False
         self._cancel_start_listener: Callable[[], None] | None = None
         self._cancel_start_timeout: Callable[[], None] | None = None
+        # A person's Stop sent and not yet answered by the charger reporting it stopped: like the Start's, it
+        # changes only what is offered (never the Stop itself), and its own listener and bound end it.
+        self._stop_pending = False
+        self._cancel_stop_listener: Callable[[], None] | None = None
+        self._cancel_stop_timeout: Callable[[], None] | None = None
         # Set by `attach_preview`: how applied/pending state is published beside an unchanged proposal.
         self._change_hook: Callable[[], Awaitable[Any]] | None = None
         # Every automatic decision of the controller (its window timers, the hold, a stray charge, a
@@ -661,6 +673,11 @@ class AutoExecutor:
     def manual_start_pending(self) -> bool:
         """A manual Start was accepted and the charger has not reported charging yet."""
         return self._start_pending
+
+    @property
+    def manual_stop_pending(self) -> bool:
+        """Whether a person's Stop was sent and the charger has not yet reported it stopped."""
+        return self._stop_pending
 
     @property
     def last_error(self) -> str | None:
@@ -813,6 +830,7 @@ class AutoExecutor:
             self._start_pending = False
             self._start_ack_timed_out = False
             self._disarm_start_ack()
+            self._end_stop_pending()
             self._sync_manual_watch()
             if self._controller._connection_observer == self._on_connection:  # noqa: SLF001 - our own hook
                 self._controller.set_connection_observer(None)
@@ -1157,6 +1175,8 @@ class AutoExecutor:
     async def _manual_start_body(self, amps: int | None, note: dict[str, Any]) -> None:
         if self._controller.adapter.vehicle_connected() is False:
             raise AutoControlRefused(EXECUTION_VEHICLE_NOT_CONNECTED, "no car is plugged in")
+        # A Start supersedes a Stop still awaiting its report: what is pending now is this command's.
+        self._end_stop_pending()
         self.begin_attempt()
         self._pending = None
         save_error: Exception | None = None
@@ -1317,6 +1337,70 @@ class AutoExecutor:
             self._cancel_start_timeout = None
             cancel()
 
+    def _supersede_start_pending(self) -> None:
+        """A person's Stop replaces a Start still awaiting its report. A listener kept for an earlier
+        timed-out Start's recovery stays; only the bound of the superseded one goes."""
+        if not self._start_pending:
+            return
+        self._start_pending = False
+        if self._start_ack_timed_out:
+            if self._cancel_start_timeout is not None:
+                cancel = self._cancel_start_timeout
+                self._cancel_start_timeout = None
+                cancel()
+        else:
+            self._disarm_start_ack()
+
+    def _note_manual_stop_sent(self) -> None:
+        """Remember that a person's Stop was sent and the charger has not yet reported it stopped.
+
+        Only what is offered changes while it stands (`action_pending` on both axes); the Stop itself was
+        already sent. A charger that already reports no charge has answered. Otherwise a state listener and
+        one bound (`MANUAL_START_ACK_TIMEOUT`) are armed; whichever comes first ends it, with no error: on
+        the bound the axes answer from the charger's state again, a Stop once more while it still charges.
+        """
+        self._end_stop_pending()
+        if self._shutdown or not self._controller.charging:
+            return
+        self._stop_pending = True
+        self._cancel_stop_listener = self._controller.add_charge_state_listener(self._on_stop_state_changed)
+        self._cancel_stop_timeout = async_track_point_in_time(
+            self._hass, self._on_stop_ack_timeout, self._now() + MANUAL_START_ACK_TIMEOUT
+        )
+
+    def _on_stop_state_changed(self) -> None:
+        """The charge control reported: a report of no charge answers the pending Stop, and so does a charge
+        reported once the person's Stop pause no longer holds (something since handed the charger back)."""
+        if self._shutdown or not self._stop_pending:
+            return
+        if self._controller.charging:
+            intent = self.pause_intent
+            if intent.manual and intent.action == MANUAL_STOP:
+                return
+        self._end_stop_pending()
+        self._hass.async_create_task(self._notify_change())
+
+    @callback
+    def _on_stop_ack_timeout(self, _now: datetime) -> None:
+        """The charger did not report the Stop in time: stop waiting, and offer what its state says."""
+        self._cancel_stop_timeout = None
+        if not self._stop_pending or self._shutdown:
+            return
+        self._end_stop_pending()
+        self._hass.async_create_task(self._notify_change())
+
+    def _end_stop_pending(self) -> None:
+        """Drop a pending Stop with its listener and bound, each exactly once."""
+        self._stop_pending = False
+        if self._cancel_stop_listener is not None:
+            cancel = self._cancel_stop_listener
+            self._cancel_stop_listener = None
+            cancel()
+        if self._cancel_stop_timeout is not None:
+            cancel = self._cancel_stop_timeout
+            self._cancel_stop_timeout = None
+            cancel()
+
     async def async_manual_stop(self) -> None:
         """A person stopping a charge: it pauses Auto, schedule and strategy, for the plug-in session."""
         async with self._lock:
@@ -1333,6 +1417,8 @@ class AutoExecutor:
         async with self._lock:
             self.begin_attempt()
             self._pending = None
+            # Following the plan hands the charger back: a Stop's wait is not what is outstanding any more.
+            self._end_stop_pending()
             if self.pause_intent.manual:
                 await self._end_manual_pause_locked("follow")
                 if self._controller.plan is None:
@@ -1431,6 +1517,7 @@ class AutoExecutor:
             self._shadow.cancel(token)
             raise
         self._arm_pause_expiry(None)
+        self._end_stop_pending()
         self._sync_manual_watch()
         self._shadow.end(token, core_events.Resume(reason=core_events.RESUME_PERSON))
         self.begin_attempt()
@@ -1462,6 +1549,7 @@ class AutoExecutor:
             last_error=self._last_error,
             pause_choices=self.pause_choices(),
             start_pending=self._start_pending,
+            stop_pending=self._stop_pending,
         )
 
     def control_axes(self) -> ControlAxes:
@@ -1504,7 +1592,13 @@ class AutoExecutor:
             # object.
             facts = self.control_facts()
             axes = decide_axes(facts)
-            if action in IMMEDIATE_ACTIONS and choice is None:
+            if action == ACTION_STOP and choice is None and facts.action_pending:
+                # A person's Stop is never refused for a Start or Stop on its way: only the offer waits.
+                admitted = ControlDecision(ACTION_STOP, None, facts.pause_choices)
+            elif action == ACTION_RESUME and choice is None and facts.stop_pending and facts.pause.manual:
+                # Nor is their Resume of the pause that Stop took: it ends the Stop's wait.
+                admitted = ControlDecision(ACTION_RESUME, None, ())
+            elif action in IMMEDIATE_ACTIONS and choice is None:
                 immediate = axes.immediate
                 if not immediate.admits(action):
                     raise AutoControlRefused(
@@ -1605,6 +1699,7 @@ class AutoExecutor:
         self._pending = None
         # The person acted: a charger SpotNav gave up stopping under their earlier Stop is watched afresh.
         self._controller.reset_person_hold()
+        self._supersede_start_pending()
         before = self._store.settings(self._entry_id).pause
         scope: str | None = None
         if not before.admitted or before.manual:
@@ -1634,9 +1729,11 @@ class AutoExecutor:
         finally:
             self._manual_write_in_flight = False
         if stop_error is not None:
+            self._end_stop_pending()
             self._last_error = EXECUTION_PAUSE_STOP_FAILED
             await self._notify_change()
             raise stop_error
+        self._note_manual_stop_sent()
         self._applied = None
         if self._last_error == EXECUTION_PAUSE_STOP_FAILED:
             self._last_error = None
@@ -1668,6 +1765,8 @@ class AutoExecutor:
                 mutate=lambda current: replace(current, pause=PauseIntent()) if current.pause == intent else current,
             )
             self._arm_pause_expiry(None)
+            # The person's pause is over (Follow, the car's end, an unplug or a plug-in): so is their Stop's wait.
+            self._end_stop_pending()
             if self._last_error == EXECUTION_PAUSE_STOP_FAILED:
                 self._last_error = None
             self._sync_manual_watch()

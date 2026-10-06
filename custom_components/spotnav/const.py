@@ -49,6 +49,9 @@ CONF_CHARGER_CURRENT_ENTITIES = "charger_current_entities"
 CONF_CHARGER_PHASES = "charger_phases"
 # Whether the energy register is a per-session one (it resets), chosen knowingly.
 CONF_ENERGY_REGISTER_IS_SESSION = "energy_register_is_session"
+#: A person chose "no energy register" (the card's None, or a suggested or stored register cleared): nothing
+#: is looked up or detected for this charger until an entity or Automatic is chosen again.
+CONF_ENERGY_REGISTER_NONE = "energy_register_none"
 
 # OCPP control identity (charge point id and connector number), derived once from the Charge
 # Control entity (`ocpp_identity.resolve_target`) and persisted, so a renamed entity cannot

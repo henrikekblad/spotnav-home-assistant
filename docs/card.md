@@ -66,8 +66,9 @@ A row of four cells sits under the plan. Each shows a state and opens or does on
 | **Strategy** | The chosen strategy | Opens **Charging strategy**: **Cheapest**, **Solar** and **Hybrid**, see [charging strategies](strategies.md). A strategy that cannot work on this installation is listed with the reason, for example that Solar requires a site that can measure the solar surplus. |
 | **Plan** | Energy, deadline and current, for example `20 kWh · No deadline · 16 A` | Opens the plan settings, see [Plan](#plan-settings). |
 
-Start and Stop are disabled for a user who is not an administrator, and while a start is waiting
-for the charger to acknowledge it.
+Start and Stop are disabled for a user who is not an administrator, and while a start or a stop is
+waiting for the charger to acknowledge it (at most 30 seconds): the cell then says **Starting…** or
+**Stopping…**.
 
 ## Status lines
 
@@ -81,7 +82,7 @@ serious each is. Examples:
 | Charging is scheduled from 02:00. / Planned from 02:00. | The installed plan, or a plan that is proposed. |
 | A new charging proposal is ready. | A newer proposal exists and is not installed yet. |
 | Charging now; scheduled until 05:30. | A charge is running inside a planned period. |
-| Automatic charging is paused. / Paused until 07:00. | A pause is in effect. |
+| Automatic charging is paused. / Schedule paused until 07:00. | A pause of the schedule is in effect (a charge may still run beside it). |
 | Stopped manually – until the car is unplugged. / Charging manually – until the car is full or unplugged. | You pressed Stop or Start: automatic charging is paused for this plug-in. A Stop given with no car plugged in reads *until the next plug-in ends*; on a charger that cannot tell when a car is plugged in, *until you resume automatic charging*. |
 | Stopped at 80 % (estimated, reading 40 min old) | The target was reached; shows the level the charge stopped at and how old or estimated it was. |
 | Charging is limited to 10 A by the site's load balancing. | Active load balancing has lowered the current. |
@@ -218,7 +219,9 @@ starts and stops a charge, how the current is set, where the charging state is r
 write limits, and whether load balancing can change the current during a charge. If the charger's
 own smart mode is on, the card warns because it can fight SpotNav. **Change charger entities** opens
 the editor, where a charger on a site also has its **Charger priority** (first, normal or last; see
-[site and load balancing](site-and-load-balancing.md)).
+[site and load balancing](site-and-load-balancing.md)). Under **Energy**, **None** is kept as your
+choice: SpotNav then reads no energy register and looks for none, and lists one it finds on the charger
+under **To check**.
 
 ### Site
 

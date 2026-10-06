@@ -127,6 +127,14 @@ one a disagreement comes of is kept after all), so a charger that reports every 
 plug-in and a person's actions out of the ring. `core/replay.py` feeds a bundle's events to the core again
 (`python -m custom_components.spotnav.core.replay bundle.json`).
 
+The counts and rings start again at every restart. Beside them, `ownership_shadow.coverage` (bundle version 6) is a
+tally per event kind that is kept across restarts (`execution/ownership_coverage.py`, its own small store per
+charger, written at most once every five minutes, at a shutdown and at Home Assistant's final write): for every kind
+in `core/events.py` (zero until seen) the events decided, the comparisons, disagreements, drifts and failures, and
+when one was first and last seen, since `since` under the integration's `version` then. Drift and a failure to line
+up are counted under the event whose feed found them; what belongs to no event is `unattributed`. It says when the
+core has seen every kind live often enough to take over; only removing the charger resets it.
+
 ## Step 2: the core drives, behind an option
 
 A charger whose entry data says `core_ownership: true` (`const.CONF_CORE_OWNERSHIP`; no card or flow sets it, and it

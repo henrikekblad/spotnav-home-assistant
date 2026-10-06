@@ -58,6 +58,11 @@ class SocReading:
     #: `True` when `soc_percent` is an estimate carried forward from the last fresh reading by
     #: delivered energy (`soc_estimate.resolve_soc`); `age_s` is then the age of that reading.
     estimated: bool = False
+    #: `True` when this state is the entity coming back (from `unavailable`, `unknown` or absent: a reload or
+    #: a late load of its integration) rather than an update of a value it had: equal to the kept anchor's
+    #: value, and with the car shown to have stayed plugged in, it is that reading set again
+    #: (`soc_estimate.SocReader`, `resolve_soc`).
+    restored: bool = False
 
 
 @dataclass(frozen=True, slots=True)

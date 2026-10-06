@@ -10,6 +10,7 @@ from homeassistant.core import HomeAssistant
 
 from custom_components.spotnav.planning.planner import FiscalChoice
 from custom_components.spotnav.sessions.model import (
+    ChargeSession,
     SOURCE_ESTIMATED,
     SOURCE_INTEGRATED,
     SOURCE_REGISTER,
@@ -436,3 +437,30 @@ async def test_removing_a_charger_removes_its_sessions(hass: HomeAssistant, stor
     await store.async_remove_charger(CHARGER)
 
     assert store.closed(CHARGER) == () and len(store.closed("other")) == 1
+
+
+async def test_a_session_keeps_the_level_it_began_at_while_open_only(
+    hass: HomeAssistant, store: SessionStore
+) -> None:
+    clock = datetime.fromisoformat("2026-09-22T05:00:00+00:00")
+    facts = SessionFacts(
+        charging=True, connected=True, register_kwh=100.0, register_integrated=False, estimate_kw=None,
+        strategy="cheapest", vehicle_id="car", vehicle_name="Car", solar_share=None,
+    )
+    recorder = SessionRecorder(
+        hass, "entry_x", store, facts=lambda: facts, prices=lambda now: None, consume_cause=lambda: None,
+        now=lambda: clock, start_soc=lambda: 52.5,
+    )
+    recorder.evaluate(clock)
+    opened = recorder.session
+    assert opened is not None and opened.start_soc_percent == 52.5
+    # Stored and read back while open.
+    assert ChargeSession.from_dict(opened.as_dict()).start_soc_percent == 52.5  # type: ignore[union-attr]
+    facts = SessionFacts(
+        charging=False, connected=False, register_kwh=110.0, register_integrated=False, estimate_kw=None,
+        strategy="cheapest", vehicle_id="car", vehicle_name="Car", solar_share=None,
+    )
+    recorder.evaluate(clock + timedelta(hours=1))
+    closed = store.closed_raw("entry_x")
+    assert closed and closed[-1].start_soc_percent is None
+    assert "start_soc_percent" not in closed[-1].as_dict()

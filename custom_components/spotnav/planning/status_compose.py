@@ -45,7 +45,9 @@ Precedence (first match wins the headline; "add" rows append a fact line)
      waits for the next window) >
      waiting_for_history > waiting_for_publication > buying_before_publication > auto_planned (+energy +cost +distance) >
      auto_installed > proposal_pending (+energy +cost +distance) > waiting_for_tomorrow > no_plan
-   `nothing_to_charge` takes no_plan's place when the plan says there is nothing to charge.
+   `nothing_to_charge` takes no_plan's place when the plan says there is nothing to charge, and
+   waiting_for_vehicle_update takes it when that is because a target's charge delivered what the car's
+   last reading needed and the car has not reported its new level yet.
    Nothing matched (a plan that exists but says nothing) leaves `lines` empty: idle.
 5. Target facts, right after the headline (never in a blocking block):
      target_reached{soc_percent, basis: reading|estimate, reading_age_s} while the stop record is
@@ -121,6 +123,7 @@ QUIET_PLANNING_REASONS: Final = frozenset(
         "buying_before_publication",
         "charging_without_prices",
         "already_at_target",
+        "waiting_for_vehicle_update",
         "solar_covers_need",
         "shutdown",
         "solar_running",
@@ -166,6 +169,9 @@ STATUS_CODES: Final[dict[str, tuple[str, tuple[str, ...]]]] = {
     "waiting_for_tomorrow": (TONE_NORMAL, ()),
     "no_plan": (TONE_NORMAL, ()),
     "nothing_to_charge": (TONE_NORMAL, ()),
+    # A target's charge delivered, by measurement, what the car's last reading needed, and the car has not
+    # reported since: nothing is planned until it does (or is unplugged, or a departure needs the time).
+    "waiting_for_vehicle_update": (TONE_NORMAL, ()),
     "plan_energy": (TONE_NORMAL, ("kwh",)),
     "plan_cost": (TONE_NORMAL, ("amount_minor", "currency")),
     "plan_distance": (TONE_NORMAL, ("mil",)),
@@ -700,6 +706,8 @@ def _plan_headline(facts: StatusFacts) -> list[dict[str, Any]]:
         return [_line("waiting_for_tomorrow")]
     if not proposed and not installed:
         if planning is not None and planning.state == "nothing_to_charge":
+            if planning.reason == "waiting_for_vehicle_update":
+                return [_line("waiting_for_vehicle_update")]
             return [_line("nothing_to_charge")]
         return [_line("no_plan")]
     return []

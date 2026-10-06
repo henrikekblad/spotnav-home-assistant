@@ -20,7 +20,9 @@ is a feed of its own; while another task's feed is open, today's state is mid-wa
 called drift then (`skipped`). A plug-in or an unplug ends a manual pause in the core at once, while today's
 execution boundary writes that a moment later: the core's intent is kept until the boundary's own `check`.
 The shadow never raises into the real path: every failure is caught and counted (`errors`). The events it saw are
-kept (`EVENT_RING`, no entity ids, no secrets), so a debug bundle's are replayable (`core/replay.py`).
+kept (`EVENT_RING`, no entity ids, no secrets), so a debug bundle's are replayable (`core/replay.py`). What it decided,
+compared, disagreed on, found drift at and failed on is also tallied per event kind, across restarts
+(`ownership_coverage.py`).
 """
 
 from __future__ import annotations
@@ -35,6 +37,8 @@ import logging
 from typing import Any, Final
 
 from homeassistant.util import dt as dt_util
+
+from .ownership_coverage import OwnershipCoverage
 
 from ..core.events import CommandResult, Event
 from ..core.ownership import Command, decide, ORIGIN_OWNER
@@ -101,6 +105,9 @@ class ShadowToken:
     outermost: bool
     ok: bool = True
     lined_up: bool = True
+    #: Whether lining up found drift, or failed: counted under the kind of the event this feed ends with.
+    drift: bool = False
+    failed: bool = False
     #: When the core drives: the event decided at `begin` (its facts known up front), the session it was decided
     #: from, and the commands it asked for. `end` then only feeds back the result.
     early: Event | None = None
@@ -186,6 +193,7 @@ class OwnershipShadow:
         drives: bool = False,
         writer: Callable[[ChargeSession], bool] | None = None,
         persist: Callable[[ChargeSession], None] | None = None,
+        coverage: OwnershipCoverage | None = None,
     ) -> None:
         SHADOWS.add(self)
         self._legacy = legacy
@@ -197,6 +205,8 @@ class OwnershipShadow:
         # caller: a decision that leaves the stored record as it was writes nothing).
         self._persist = persist
         self._now = now if now is not None else dt_util.utcnow
+        # What it has seen per event kind, cumulative (kept across restarts when the controller gives it a store).
+        self.coverage = coverage if coverage is not None else OwnershipCoverage(now=self._now)
         self.session = ChargeSession()
         # Open feeds per asyncio task (`None`: a callback outside any task), and the tokens themselves.
         self._open: dict[object, int] = {}
@@ -262,12 +272,12 @@ class OwnershipShadow:
             token = ShadowToken(key, True, lined_up=False)
         else:
             try:
-                if line_up:
-                    self._line_up()
+                drifted = self._line_up() if line_up else False
             except Exception:  # noqa: BLE001 - the shadow never raises into the real path
-                self._error("begin")
-                return ShadowToken(key, True, ok=False)
-            token = ShadowToken(key, True)
+                # Counted under the kind of the event the feed ends with (`end`), or none (`cancel`).
+                self._error("begin", cover=False)
+                return ShadowToken(key, True, ok=False, failed=True)
+            token = ShadowToken(key, True, drift=drifted)
         self._stack.setdefault(key, []).append(token)
         if early is not None and self.drives:
             self._decide_early(token, early)
@@ -279,7 +289,7 @@ class OwnershipShadow:
             self.session, token.early_commands = decide(self.session, event, self._now())
             token.early = event
         except Exception:  # noqa: BLE001 - decided at `end` as ever
-            self._error("begin_early")
+            self._error("begin_early", event.kind)
         return token.early_commands
 
     def _close(self, token: ShadowToken) -> None:
@@ -307,6 +317,7 @@ class OwnershipShadow:
             self.end(token, token.early)
             return
         self._close(token)
+        self._cover_token(token, None)
         if self._queue and self._idle():
             try:
                 self._drain()
@@ -333,6 +344,7 @@ class OwnershipShadow:
         report itself ends, and a report that lands while a start awaits its command is decided after the start.
         The commands of a queued feed are compared with what today's code decided for it."""
         self._close(token)
+        self._cover_token(token, event.kind)
         item = _Feed(token, event, tuple(sorted(legacy)), outcome, fields, defer_intent)
         try:
             if self._open.get(token.key, 0) or self._others_open(token.key):
@@ -342,11 +354,11 @@ class OwnershipShadow:
             record, core_kinds = self._decide(item)
             self._drain()
             if token.outermost and token.ok and token.lined_up:
-                self._compare(record, event.kind, core_kinds, item.legacy, fields)
+                self._compare(record, event.kind, core_kinds, item.legacy, fields, kind=event.kind)
             else:
                 record["unchecked"] = True
         except Exception:  # noqa: BLE001 - the shadow never raises into the real path
-            self._error(event.kind)
+            self._error(event.kind, event.kind)
         finally:
             self._quiet = None
         self._persisted()
@@ -383,7 +395,7 @@ class OwnershipShadow:
                 self.session = today
             self._intent_deferred = False
         except Exception:  # noqa: BLE001 - the shadow never raises into the real path
-            self._error("restart")
+            self._error("restart", event.kind)
             return
         self.end(self.begin(line_up=not from_store), event)
 
@@ -402,7 +414,8 @@ class OwnershipShadow:
 
     # ------------------------------------------------------------------ inside
 
-    def _line_up(self) -> None:
+    def _line_up(self) -> bool:
+        """Line the core's session up with today's state; whether it found drift."""
         today = self._legacy()
         if self._intent_deferred:
             # The boundary has not written the plug-in's or the unplug's effect on the intent yet.
@@ -425,6 +438,7 @@ class OwnershipShadow:
             self._tell("drift", record)
         # Today's state is the truth the core decides from; only the core's own pending command is its.
         self.session = replace(today, pending=self.session.pending)
+        return bool(moved)
 
     def _drain(self) -> None:
         held = self._quiet
@@ -463,6 +477,7 @@ class OwnershipShadow:
             session, _ = decide(session, result, now)
         self.session = session
         self._count("events")
+        self._cover(item.event.kind, "events")
         TOTALS[f"event:{item.event.kind}"] = TOTALS.get(f"event:{item.event.kind}", 0) + 1
         record: dict[str, Any] = {
             "at": now.isoformat(),
@@ -515,11 +530,14 @@ class OwnershipShadow:
         fields: tuple[str, ...],
         *,
         settle: bool = False,
+        kind: str | None = None,
     ) -> None:
+        """`kind`: the event kind the comparison follows (`None`: a comparison of no event's own)."""
         today = self._legacy()
         if self._intent_deferred and not settle:
             fields = tuple(name for name in fields if name not in INTENT)
         self._count("compared")
+        self._cover(kind, "compared")
         differs = {
             name: {"core": _field(self.session, name), "today": _field(today, name)}
             for name in fields
@@ -533,6 +551,7 @@ class OwnershipShadow:
             return
         self._keep_quiet(record)
         self._disagree(where, differs, core_kinds, legacy)
+        self._cover(kind, "disagreements")
         if self.drives:
             # The core's state is the truth (today's owner fields are cleared one-way, `_write_back`).
             return
@@ -616,7 +635,7 @@ class OwnershipShadow:
             else:
                 _session, commands = self.preview(event)
         except Exception:  # noqa: BLE001 - today's decision stands
-            self._error("verdict")
+            self._error("verdict", event.kind)
             return None
         return frozenset(
             (command.kind, str(getattr(command, "reason", getattr(command, "code", ""))))
@@ -636,8 +655,25 @@ class OwnershipShadow:
         self.counts[name] += 1
         TOTALS[name] = TOTALS.get(name, 0) + 1
 
-    def _error(self, where: str) -> None:
+    def _cover(self, kind: str | None, field: str) -> None:
+        try:
+            self.coverage.add(kind, field)
+        except Exception:  # noqa: BLE001 - the tally never breaks the shadow
+            _LOGGER.debug("SpotNav ownership coverage failed", exc_info=True)
+
+    def _cover_token(self, token: ShadowToken, kind: str | None) -> None:
+        """What lining the feed up met, under the kind of the event it ends with (`None`: it ended with none)."""
+        if token.drift:
+            self._cover(kind, "drift")
+        if token.failed:
+            self._cover(kind, "errors")
+
+    def _error(self, where: str, kind: str | None = None, *, cover: bool = True) -> None:
+        """A failure at `where`, counted under the event `kind` it met (`None`: no event's), unless counted later
+        (`cover=False`: lining a feed up, counted at its end)."""
         self._count("errors")
+        if cover:
+            self._cover(kind, "errors")
         _LOGGER.debug("SpotNav ownership shadow failed at %s", where, exc_info=True)
         self._tell("error", {"where": where})
 
@@ -651,7 +687,8 @@ class OwnershipShadow:
     # ------------------------------------------------------------------ reading
 
     def diagnostics(self) -> dict[str, Any]:
-        """For diagnostics and the debug bundle: the counts, the session, the rings."""
+        """For diagnostics and the debug bundle: the counts, the session, the rings, and the cumulative tally per
+        event kind (`coverage`)."""
         return {
             "drives": self.drives,
             "counts": dict(self.counts),
@@ -659,6 +696,7 @@ class OwnershipShadow:
             "disagreements": list(self.disagreements),
             "drift": list(self.drift),
             "events": list(self.events),
+            "coverage": self.coverage.as_dict(),
         }
 
 

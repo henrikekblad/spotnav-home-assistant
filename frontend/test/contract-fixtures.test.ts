@@ -547,6 +547,7 @@ describe("the backend's dashboard strategy_state, site and status fixtures", () 
           "plan",
           "planning",
           "prices",
+          "progress",
           "sessions_summary",
           "settings",
           "site",

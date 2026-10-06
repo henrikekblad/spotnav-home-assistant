@@ -43,6 +43,7 @@ from .model import (
     STARTED_SOLAR,
 )
 from .store import SessionStore
+from ..util import finite_number
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -111,6 +112,7 @@ class SessionRecorder:
         consume_cause: Callable[[], str | None],
         subscribe: Callable[[Callable[[], None]], Callable[[], None]] | None = None,
         now: Callable[[], datetime] = dt_util.utcnow,
+        start_soc: Callable[[], float | None] | None = None,
     ) -> None:
         self._hass = hass
         self._charger_id = charger_id
@@ -120,6 +122,7 @@ class SessionRecorder:
         self._consume_cause = consume_cause
         self._subscribe = subscribe
         self._now = now
+        self._start_soc = start_soc
         self._was_charging = False
         self._session: ChargeSession | None = None
         self._idle_since: datetime | None = None
@@ -234,6 +237,7 @@ class SessionRecorder:
             solar_known_kwh=0.0,
             last_register_kwh=facts.register_kwh,
             last_sample_at=now,
+            start_soc_percent=None if self._start_soc is None else finite_number(self._start_soc()),
         )
         self._session = session
         self._idle_since = self._idle_seen_at = self._resumed_at = None
@@ -283,6 +287,8 @@ class SessionRecorder:
         session.end = min(max(ended, session.start), now)
         session.last_register_kwh = None
         session.last_sample_at = None
+        # The level at the start serves the running charge's bar only; a closed record keeps its old shape.
+        session.start_soc_percent = None
         seconds = (session.end - session.start).total_seconds()
         if (session.estimated and seconds < MIN_ESTIMATED_S) or (
             not session.estimated and session.energy_kwh < MIN_ENERGY_KWH

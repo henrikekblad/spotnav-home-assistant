@@ -42,6 +42,7 @@ from ..const import (
     CONF_CURRENT_LIMIT_NONE,
     CONF_CURRENT_LIMIT,
     CONF_ENERGY_REGISTER_ENTITY,
+    CONF_ENERGY_REGISTER_NONE,
     CONF_IDLE_POWER_W,
     CONF_MODE,
     CONF_OCPP_CHARGE_POINT_ID,
@@ -100,6 +101,7 @@ from .window_hold import HOLD, OVERRIDE, WindowHold
 from ..core import events as core_events
 from ..core.session import ChargeSession, OWNER_CHARGER_SELF, OWNER_NONE, SessionError
 from . import ownership_shadow as ownership_shadow_module
+from .ownership_coverage import OwnershipCoverage, STORE_VERSION as COVERAGE_STORE_VERSION, store_key as coverage_key
 from .ownership_shadow import (
     CommandOutcome,
     FIELD_OWNER,
@@ -571,6 +573,13 @@ class ChargingController:
         #: When a vehicle was last seen plugged in (known unplugged, then known plugged in). Persisted: a
         #: charge counted per plug-in must not start counting again after a restart.
         self._plugged_in_at: datetime | None = None
+        # Whether this controller saw that plug-in itself (a change from known unplugged), and when it first
+        # knew of a car connected without seeing it arrive (the first connection known after a restart, or
+        # one that became known later): what `plugged_in_since` and `plugged_in_for_count` answer from.
+        self._plug_in_seen = False
+        self._first_known_connected_at: datetime | None = None
+        # The connection went unknown while a car was known connected (`_observe_connection`).
+        self._connection_gap = False
         # Who is told about a plug-in or an unplug (`set_connection_handler`); it answers whether it
         # takes care of starting an open window itself (Auto replans first).
         self._connection_handler: Callable[[str], bool] | None = None
@@ -680,8 +689,13 @@ class ChargingController:
         # connector's cumulative `Energy.Active.Import.Register` sensor, found through the
         # registries and the entity's key (`ocpp_identity.energy_register_entity_for`), never by
         # constructing an entity id.
+        # A person's "none" (`CONF_ENERGY_REGISTER_NONE`) switches the automatic lookup off.
         self.energy_register_entity_id: str | None = config.get(CONF_ENERGY_REGISTER_ENTITY) or None
-        if self.energy_register_entity_id is None and self.ocpp_target is not None:
+        if (
+            self.energy_register_entity_id is None
+            and self.ocpp_target is not None
+            and not config.get(CONF_ENERGY_REGISTER_NONE)
+        ):
             self.energy_register_entity_id = energy_register_entity_for(hass, self.ocpp_target)
         # A charger behind a smart plug: its power sensor. With no energy register of its own, SpotNav's
         # integrated-energy sensor (`sensor.py`) stands in for one once it exists.
@@ -808,6 +822,9 @@ class ChargingController:
             drives=self._core_drives,
             writer=self._take_core_owner,
             persist=self._persist_session,
+            # What the core has seen per event kind, kept across restarts in a store of its own (read back at the
+            # restore, removed with the entry).
+            coverage=OwnershipCoverage(store=Store(hass, COVERAGE_STORE_VERSION, coverage_key(entry_id))),
         )
         self._shadow.today_fields = lambda: f"origin={self._charge_origin} plan_charge={self._plan_charge}"
 
@@ -931,6 +948,7 @@ class ChargingController:
         self._saved_memory = self._memory_signature()
         stored, migrate = self._stored_session(saved)
         keys_newer = self._restore_order(saved) if stored is not None else False
+        await self._shadow.coverage.async_load(await self._integration_version())
         # The core's session is what was read back: its own record when it drives and one was read, else today's;
         # today's keys where they are newer than the record (written after its last change).
         self._shadow.restart(
@@ -965,6 +983,20 @@ class ChargingController:
         its state is unusable (see `_validate_current_limit_state`).
         """
         return self._current_limit_entity_value()
+
+    @callback
+    def use_found_energy_register(self, entity_id: str) -> None:
+        """A lifetime register found after setup (`energy_register.async_watch_for_register`) is this
+        charger's register from now on. Whatever counts with it starts from its first reading: a session
+        or a requested-energy count begun without a register is never credited with energy from before.
+        """
+        if self.energy_register_entity_id == entity_id:
+            return
+        self.energy_register_entity_id = entity_id
+        self.adapter.energy_entity_id = entity_id
+        if self.plan is not None and self.plan.target_soc_percent is not None:
+            # The stopping estimate moves with the register: watch it beside the reading.
+            self._async_arm_target_listener()
 
     @callback
     def set_integrated_energy_entity(self, entity_id: str) -> None:
@@ -1129,6 +1161,26 @@ class ChargingController:
             idle_power_w=self.idle_power_w,
         )
 
+    def measured_current_a(self) -> float | None:
+        """The current the charger itself measures now, in A (its highest phase), or `None`.
+
+        An OCPP connector's current-import main state for the connector the target names; else the
+        adapter's measured-current sensors (`charger_profiles.current_sensor_keys`). Read-only; a
+        setpoint is never a measurement.
+        """
+        target = self.ocpp_target
+        if target is not None:
+            return connector_current(
+                self.hass.states.get(connector_entity_id(target.devid, target.connector_id, "current_import"))
+            )
+        if self.adapter.is_ocpp:
+            return None
+        return self.adapter.measured_current_a()
+
+    def measured_power_w(self) -> float | None:
+        """The power a smart plug's power sensor measures now, in W, or `None` without one."""
+        return read_power_w(self.hass, self.power_entity_id)
+
     @callback
     def charge_progress_changed(self) -> None:
         """The observation's grace period expired: tell the readers."""
@@ -1216,8 +1268,20 @@ class ChargingController:
         """
         connected = self.adapter.vehicle_connected()
         if connected is None:
+            if self._known_connected is True:
+                # Nobody watches the connection now (a charger offline, a cloud outage): a car may leave and
+                # another arrive unseen. The plug-in stays known for everything else, but not as one watched
+                # throughout (`plugged_in_since`), and a car connected after it counts as one found connected
+                # (`plugged_in_for_count`), as after a restart.
+                self._plug_in_seen = False
+                self._first_known_connected_at = None
+                self._connection_gap = True
             return
         previous = self._known_connected
+        if self._connection_gap:
+            self._connection_gap = False
+            if connected and previous is True:
+                self._first_known_connected_at = dt_util.utcnow()
         if previous == connected:
             return
         token = self._shadow.begin(
@@ -1236,6 +1300,10 @@ class ChargingController:
     def _connection_changed(self, previous: bool | None, connected: bool) -> None:
         """`_observe_connection` once the charger stated a connection other than the last one."""
         self._known_connected = connected
+        if connected and previous is None and self._first_known_connected_at is None:
+            self._first_known_connected_at = dt_util.utcnow()
+        elif not connected:
+            self._first_known_connected_at = None
         if connected is False or previous is False:
             self._session_generation += 1
             # A safety stop's hold belongs to the plug-in it was made in.
@@ -1260,6 +1328,7 @@ class ChargingController:
         self._car_ended_soc = None
         if connected:
             self._plugged_in_at = dt_util.utcnow()
+            self._plug_in_seen = True
         if connected or had_car_ended:
             self.hass.async_create_task(self._async_save_connection())
         _LOGGER.debug("SpotNav charger %s: vehicle %s", self.entry_id, event)
@@ -1314,6 +1383,25 @@ class ChargingController:
     def plugged_in_at(self) -> datetime | None:
         """When a vehicle was last seen plugged in, or `None` when no plug-in has been seen."""
         return self._plugged_in_at
+
+    @property
+    def plugged_in_since(self) -> datetime | None:
+        """Since when this controller has itself seen the car plugged in, without a gap: the plug-in it saw
+        (a change from known unplugged) while the car is known connected still; `None` otherwise (a plug-in
+        from before a restart, a reload or a stretch where the connection was not known, whose car may have
+        been swapped meanwhile, or no car)."""
+        if self._plug_in_seen and self._known_connected is True:
+            return self._plugged_in_at
+        return None
+
+    @property
+    def plugged_in_for_count(self) -> datetime | None:
+        """The plug-in a car's charges are counted from while it is connected: the one this controller saw,
+        else the first moment it knew of a car connected (a car found plugged in after a restart counts as a
+        new plug-in, since another may have left meanwhile); `None` with no car known connected."""
+        if self._known_connected is not True:
+            return None
+        return self.plugged_in_since or self._first_known_connected_at
 
     @property
     def known_connected(self) -> bool | None:
@@ -2213,6 +2301,9 @@ class ChargingController:
         )
         self._last_connected = first
         self._known_connected = self._last_connected
+        if first:
+            # Found connected at start: not a plug-in this controller saw.
+            self._first_known_connected_at = dt_util.utcnow()
         if self._known_connected is not None:
             # The first connection known since the restart: a car gone meanwhile ended its plug-in.
             try:
@@ -3165,10 +3256,13 @@ class ChargingController:
         # whether the charge is still running, so the flag survives until it can be seen.
         plan_charge = self._plan_charge
         origin = self._charge_origin
+        # A person's or a safety stop (`urgent`) also goes out while a Start of ours is unanswered: the control
+        # still reads off, and the start would land after a stop that sent nothing.
+        needed = self._stop_needed or (urgent and self._shadow_start_pending())
         # For the ownership shadow: a stop that sends nothing because the control says nothing keeps the owner.
-        self._shadow_unobserved = not self._stop_needed and self._control_observation is None
+        self._shadow_unobserved = not needed and self._control_observation is None
         self._stop_settled = False
-        if self._stop_needed and not urgent and self._stop_settling():
+        if needed and not urgent and self._stop_settling():
             # A stop of ours is on its way and the charger has not answered it: this off decision is that stop's.
             # Sent again it meets no transaction, and the charger rejects it.
             _LOGGER.debug(
@@ -3178,7 +3272,7 @@ class ChargingController:
             self._cancel_stop_retry()
             self._plan_charge = False
             self._charge_origin = None
-        elif self._stop_needed:
+        elif needed:
             was_sent_at = self._stop_sent_at
             self._stop_sent_at = dt_util.utcnow()
             self._stop_in_flight = True
@@ -3322,6 +3416,7 @@ class ChargingController:
         # for the lock (`_shut_down` is set before it, and no decision saves once it is).
         if self._cancel_session_save() or self._core_drives:
             await self._async_save_session()
+        await self._shadow.coverage.async_flush()
         self._cancel_stop_retry()
         self._cancel_person_hold_retry()
         # A top-off's deadline stays stored: the next start resumes it or ends it.
@@ -3681,9 +3776,20 @@ class ChargingController:
 
     async def async_flush_session(self) -> None:
         """Home Assistant stops (`__init__._async_stop`): it unloads no entry, so `async_shutdown` never runs. A change of
-        the core's session still waiting for its debounced save is saved now."""
+        the core's session still waiting for its debounced save is saved now, and the core's coverage tally."""
         self._cancel_session_save()
         await self._async_save_session()
+        await self._shadow.coverage.async_flush()
+
+    async def _integration_version(self) -> str | None:
+        """This integration's version, which names a coverage tally begun now (`None` when it cannot be read)."""
+        from ..card_asset import async_manifest_version
+
+        try:
+            version = await async_manifest_version(self.hass)
+        except Exception:  # noqa: BLE001 - the tally only names it
+            return None
+        return None if version is None else str(version)
 
     def _cancel_session_save(self) -> bool:
         """Forget a change of the core's session still waiting to be saved; whether one was waiting."""

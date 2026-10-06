@@ -2140,6 +2140,17 @@
     "unpriced_slots": 0,
     "waiting_for_tomorrow": false
   },
+  "progress": {
+    "basis": "open",
+    "delivered_kwh": null,
+    "ends_at": null,
+    "moving": true,
+    "percent": null,
+    "power_kw": 2.3,
+    "power_source": "planned",
+    "start_soc_percent": null,
+    "started_at": "2026-09-22T06:00:00+00:00"
+  },
   "sessions_summary": {
     "last_month": {
       "average_price_minor_per_kwh": null,

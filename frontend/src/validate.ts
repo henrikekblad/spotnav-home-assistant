@@ -266,6 +266,8 @@ export interface Dashboard {
   charger_priority: ChargerPriority | null;
   /** Which car is plugged in, while a plug-in is identified; `null` otherwise, on an older backend or unreadable. */
   identification: Identification | null;
+  /** The running charge's progress as Home Assistant decided it; `null` with no charge, or from an older backend. */
+  progress: ChargeBarBlock | null;
 }
 
 /** The `identification` block: the open question (or how it was settled) and the candidates, likeliest first. */
@@ -289,6 +291,26 @@ export interface IdentificationSource {
 export interface VehicleSources {
   plug: IdentificationSource;
   location: IdentificationSource;
+}
+
+export const CHARGE_BAR_BASES = ["target", "energy", "vehicle_limit", "open"] as const;
+export type ChargeBarBasis = (typeof CHARGE_BAR_BASES)[number];
+
+/**
+ * The `progress` block (`api/charge_bar.py`): the share done (`percent`, `null` for the open bar), the
+ * expected end, the power the charge runs at, and whether current flows (`moving`). Read leniently: a
+ * key it does not know is ignored.
+ */
+export interface ChargeBarBlock {
+  basis: ChargeBarBasis;
+  percent: number | null;
+  ends_at_ms: number | null;
+  power_kw: number | null;
+  power_source: string | null;
+  moving: boolean;
+  start_soc_percent: number | null;
+  started_at_ms: number | null;
+  delivered_kwh: number | null;
 }
 
 /** The `charger_priority` block: the selected priority, the choices and whether it can be written. */
@@ -1310,6 +1332,7 @@ export const STATUS_CODE_TABLE = {
   waiting_for_tomorrow: ["normal", {}],
   no_plan: ["normal", {}],
   nothing_to_charge: ["normal", {}],
+  waiting_for_vehicle_update: ["normal", {}],
   plan_energy: ["normal", { kwh: "number" }],
   plan_cost: ["normal", { amount_minor: "int", currency: "text" }],
   plan_distance: ["normal", { mil: "number" }],
@@ -1500,6 +1523,7 @@ export function decodeDashboard(raw: unknown): DecodeResult {
         starting_up: startingUpOrNull(root),
         charger_priority: chargerPriorityOrNull(root),
         identification: identificationOrNull(root),
+        progress: chargeBarOrNull(root),
       },
     };
   } catch {
@@ -1549,6 +1573,7 @@ const OPTIONAL_DASHBOARD_KEYS = [
   "connection",
   "starting_up",
   "charger_priority",
+  "progress",
   "identification",
 ] as const;
 
@@ -1575,6 +1600,48 @@ function identificationOrNull(root: Record<string, unknown>): Identification | n
         }
         return { vehicle_id: text(item, "vehicle_id"), name: text(item, "name"), likely: item.likely };
       }),
+    };
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * The `progress` block, or `null` when it is missing, null or unreadable: the card then draws no bar and
+ * shows the connection line as before. Independent like `connection`; extra keys are ignored.
+ */
+function chargeBarOrNull(root: Record<string, unknown>): ChargeBarBlock | null {
+  const value = root.progress;
+  if (!isRecord(value)) {
+    return null;
+  }
+  try {
+    const basis = text(value, "basis");
+    if (!(CHARGE_BAR_BASES as readonly string[]).includes(basis)) {
+      return null;
+    }
+    const percent = numberOrNull(value, "percent");
+    if (percent !== null && (!Number.isInteger(percent) || percent < 0 || percent > 100)) {
+      return null;
+    }
+    if ((basis === "open") !== (percent === null)) {
+      return null;
+    }
+    const moment = (key: string): number | null => (required(value, key) === null ? null : instantMs(value[key]));
+    const positive = (key: string): number | null => {
+      const number = numberOrNull(value, key);
+      return number === null || number < 0 ? null : number;
+    };
+    return {
+      basis: basis as ChargeBarBasis,
+      percent,
+      ends_at_ms: moment("ends_at"),
+      power_kw: positive("power_kw"),
+      power_source: textOrNull(value, "power_source"),
+      moving: booleanValue(value, "moving"),
+      start_soc_percent: positive("start_soc_percent"),
+      started_at_ms: moment("started_at"),
+      delivered_kwh: positive("delivered_kwh"),
     };
   } catch {
     return null;

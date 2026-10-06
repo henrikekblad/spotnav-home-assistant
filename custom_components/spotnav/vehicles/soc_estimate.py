@@ -24,11 +24,11 @@ from __future__ import annotations
 import logging
 import math
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import datetime, timedelta
 from typing import Any, Final
 
-from homeassistant.const import STATE_UNAVAILABLE, STATE_UNKNOWN
+from homeassistant.const import EVENT_STATE_CHANGED, STATE_UNAVAILABLE, STATE_UNKNOWN
 from homeassistant.core import callback, Event, EventStateChangedData, HomeAssistant
 from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers.event import async_track_state_change_event
@@ -44,7 +44,13 @@ from ..execution.target_stop import (
 )
 from ..planning.planner import resolve_target_energy, TargetEnergyRequest
 from ..util import finite_number
-from .vehicle_discovery import _device_name, discover_vehicles, vehicle_soc_entity_id
+from .vehicle_discovery import (
+    _device_name,
+    charger_vehicle_ids,
+    discover_vehicles,
+    resolve_target_vehicle,
+    vehicle_soc_entity_id,
+)
 
 
 _LOGGER = logging.getLogger(__name__)
@@ -76,7 +82,10 @@ class SocAnchor:
     """The last real reading and the energy register when it was taken.
 
     `register_kwh` is `None` when the register was unreadable then: such an anchor carries a
-    reading but never an estimate. `read_at` is when the reading was made, not noticed.
+    reading, and an estimate only once the register's first readable value has become its baseline
+    (`resolve_soc`). `read_at` is when the reading was made, not noticed. `register_entity_id` names
+    the register `register_kwh` was read from: a baseline from another register (one found again, or
+    chosen by a person) is dropped and taken again, never subtracted across two meters.
     """
 
     soc_percent: float
@@ -84,6 +93,7 @@ class SocAnchor:
     read_at: datetime
     source: SocSource
     vehicle_id: str | None
+    register_entity_id: str | None = None
 
     def as_dict(self) -> dict[str, Any]:
         return {
@@ -92,6 +102,7 @@ class SocAnchor:
             "read_at": self.read_at.isoformat(),
             "source": self.source,
             "vehicle_id": self.vehicle_id,
+            "register_entity_id": self.register_entity_id,
         }
 
     @classmethod
@@ -111,10 +122,17 @@ class SocAnchor:
             return None
         if raw.get("register_kwh") is not None and register is None:
             return None
+        register_entity_id = raw.get("register_entity_id")
+        if register_entity_id is not None and not isinstance(register_entity_id, str):
+            return None
+        if register_entity_id is None:
+            # Stored before the register was named (or with none): which meter the baseline came from is
+            # unknown, so it is taken again from the register read next.
+            register = None
         read_at = dt_util.parse_datetime(read_at_raw) if isinstance(read_at_raw, str) else None
         if read_at is None or read_at.tzinfo is None:
             return None
-        return cls(soc, register, read_at, source, vehicle_id)
+        return cls(soc, register, read_at, source, vehicle_id, register_entity_id)
 
 
 @dataclass(frozen=True, slots=True)
@@ -162,6 +180,8 @@ def resolve_soc(
     capacity_kwh: float | None,
     now: datetime,
     vehicle_id: str | None,
+    register_entity_id: str | None = None,
+    plugged_in_throughout: bool = False,
 ) -> SocResolution:
     """The state of charge to plan and stop against, and the anchor to keep. Pure.
 
@@ -171,12 +191,40 @@ def resolve_soc(
     * a stale reading newer than the anchor replaces it only while nothing has been delivered
       since the anchor (a car driven or charged elsewhere while idle);
     * with no anchor a stale reading starts one;
+    * an anchor's baseline from another register than `register_entity_id` is dropped, and an anchor
+      without a baseline (the register could not be read then, or it was dropped) takes the register's
+      first readable value: energy before it is not credited, so either can only under-count;
+    * a reading that is the car's entity coming back (`SocReading.restored`: a reload or late load of its
+      integration) with the anchor's value, while the car is shown to have stayed plugged in through the
+      gap (`plugged_in_throughout`), is the anchor's own reading, not a new one: the anchor and its baseline
+      stay, whatever the register reads, and the reading's age is the anchor's. Without that continuity (a
+      restart of Home Assistant, an unplug, a connection not known) it is a new reading as any other: when
+      in doubt the delivered energy is forgotten (a second charge), never invented (a car left short);
     * where no estimate can be made the raw reading is returned untouched, or `None`.
     """
     if anchor is not None and anchor.vehicle_id != vehicle_id:
         anchor = None
+    if (
+        anchor is not None
+        and anchor.register_kwh is not None
+        and anchor.register_entity_id != register_entity_id
+    ):
+        # A baseline read from another meter (a register found again, or chosen): never subtracted.
+        anchor = replace(anchor, register_kwh=None)
+    if anchor is not None and anchor.register_kwh is None and register_kwh is not None:
+        # Anchored while the register could not be read (a restart before the charger's integration had
+        # its register): its first readable value is the baseline.
+        anchor = replace(anchor, register_kwh=register_kwh, register_entity_id=register_entity_id)
     usable = reading is not None and reading.soc_percent is not None
-    if usable:
+    restored = (
+        usable
+        and reading is not None
+        and reading.restored
+        and plugged_in_throughout
+        and anchor is not None
+        and reading.soc_percent == anchor.soc_percent
+    )
+    if usable and not restored:
         assert reading is not None and reading.soc_percent is not None
         age = reading.age_s
         read_at = now - timedelta(seconds=max(0.0, age)) if age is not None else now
@@ -184,7 +232,7 @@ def resolve_soc(
         if is_fresh(reading):
             if newer:
                 anchor = SocAnchor(
-                    reading.soc_percent, register_kwh, read_at, reading.source, vehicle_id
+                    reading.soc_percent, register_kwh, read_at, reading.source, vehicle_id, register_entity_id
                 )
             return SocResolution(reading, anchor)
         if newer:
@@ -196,10 +244,14 @@ def resolve_soc(
             )
             if idle:
                 anchor = SocAnchor(
-                    reading.soc_percent, register_kwh, read_at, reading.source, vehicle_id
+                    reading.soc_percent, register_kwh, read_at, reading.source, vehicle_id, register_entity_id
                 )
     if anchor is None:
         return SocResolution(reading, None)
+    if restored:
+        assert reading is not None
+        # The anchor's own reading, set again by the start: as old as the anchor.
+        reading = replace(reading, age_s=max(0.0, (now - anchor.read_at).total_seconds()))
     estimate = estimate_soc_percent(anchor, register_kwh=register_kwh, capacity_kwh=capacity_kwh)
     delivered_something = (
         estimate is not None
@@ -314,6 +366,7 @@ class SocReader:
         charge_control: Callable[[], str | None],
         remembered_capacity: Callable[[str | None], float | None],
         now: Callable[[], datetime] | None = None,
+        plugged_in_since: Callable[[], datetime | None] | None = None,
     ) -> None:
         self._hass = hass
         self._entry_id = entry_id
@@ -322,6 +375,12 @@ class SocReader:
         self._register_entity_id = register_entity_id
         self._charge_control = charge_control
         self._remembered_capacity = remembered_capacity
+        # Since when the charger has itself seen the car plugged in without a gap (`None`: not shown).
+        self._plugged_in_since = plugged_in_since
+        # Per source entity: the instant of the state with which it came back (from `unavailable`,
+        # `unknown` or absent) and since when it had been gone, until it updates a value it had.
+        self._comebacks: dict[str, tuple[datetime, datetime | None]] = {}
+        self._gone_at: dict[str, datetime] = {}
         self._store: Store[dict[str, Any]] = Store(hass, _STORE_VERSION, f"{_STORE_KEY_PREFIX}.{entry_id}")
         self._anchor: SocAnchor | None = None
         self._facts_cache: dict[str, tuple[datetime, float | None, float | None]] = {}
@@ -330,6 +389,11 @@ class SocReader:
         self._watch_vehicle: str | None = None
         self._on_reading: Callable[[], None] | None = None
         self._last_notified: float | None = None
+        self._notify_next = False
+        # While a calculation lacks a level: the stored vehicle it was for, and the listener for a battery
+        # sensor's state anywhere (one with no state yet resolves to nothing `ensure_watch` could watch).
+        self._awaited_vehicle: str | None = None
+        self._arrival_cancel: Callable[[], None] | None = None
         self._closed = False
 
     async def async_load(self) -> None:
@@ -347,10 +411,46 @@ class SocReader:
     def async_shutdown(self) -> None:
         self._closed = True
         self._drop_watch()
+        self._drop_arrival()
+
+    def await_reading(self, stored_vehicle_id: str | None) -> None:
+        """A calculation found no usable level: tell `set_on_reading`'s callback of the first one that
+        arrives, whatever it is (the same value as the last one heard included). At start-up the car's
+        sensor may get its first state only after the planner ran; until then it resolves to nothing to
+        watch, so any battery sensor's state is listened for and the vehicle resolved again on each."""
+        if self._closed:
+            return
+        self._notify_next = True
+        self._awaited_vehicle = stored_vehicle_id
+        if self._arrival_cancel is None:
+            self._arrival_cancel = self._hass.bus.async_listen(
+                EVENT_STATE_CHANGED, self._on_any_battery_state, event_filter=_battery_state
+            )
+
+    def _drop_arrival(self) -> None:
+        if self._arrival_cancel is not None:
+            self._arrival_cancel()
+        self._arrival_cancel = None
+
+    @callback
+    def _on_any_battery_state(self, _event: Event[EventStateChangedData]) -> None:
+        vehicle_id, _ = resolve_target_vehicle(
+            self._hass, self._awaited_vehicle, charger_vehicle_ids(self._hass, self._entry_id)
+        )
+        self.ensure_watch(vehicle_id)
+        reading = self.read(vehicle_id)
+        if reading is not None and reading.soc_percent is not None:
+            self._tell(reading)
 
     def set_on_reading(self, callback_: Callable[[], None] | None) -> None:
         """Ask to be told when a reading moved enough to make a new plan worth calculating."""
         self._on_reading = callback_
+
+    def notify_next_reading(self) -> None:
+        """Tell `set_on_reading`'s callback of the next reading that arrives, however little it moved: the
+        planner waits for the car's new level after a charge (`vehicle_update_wait`), and even the same
+        value reported again is the answer it waits for."""
+        self._notify_next = True
 
     def _vehicle_facts(self, vehicle_id: str | None) -> tuple[float | None, float | None]:
         """`(reported capacity kWh, vehicle ceiling %)` for `vehicle_id`, reused for a few minutes."""
@@ -410,18 +510,59 @@ class SocReader:
 
     def read(self, vehicle_id: str | None) -> SocReading | None:
         """The effective state of charge now: a fresh reading, else the estimate, else the raw one."""
+        register_entity_id = self._register_entity_id()
+        reading, throughout = self._with_comeback(self._raw_reader(vehicle_id))
         resolution = resolve_soc(
-            reading=self._raw_reader(vehicle_id),
+            reading=reading,
             anchor=self._anchor,
-            register_kwh=read_energy_register_kwh(self._hass, self._register_entity_id()),
+            register_kwh=read_energy_register_kwh(self._hass, register_entity_id),
             capacity_kwh=self.capacity_kwh(vehicle_id),
             now=self._now(),
             vehicle_id=vehicle_id,
+            register_entity_id=register_entity_id,
+            plugged_in_throughout=throughout,
         )
         if resolution.anchor != self._anchor:
             self._anchor = resolution.anchor
             self._save()
         return resolution.reading
+
+    def _with_comeback(self, reading: SocReading | None) -> tuple[SocReading | None, bool]:
+        """`reading` flagged `restored` when its state is its entity coming back, and whether the charger saw
+        the car plugged in since before the entity went away (`resolve_soc`'s `plugged_in_throughout`).
+
+        The first state seen after SpotNav set up (a restart, a reload) has no gap the charger watched across,
+        so it is never shown continuous: a new reading, as an unplug or an unknown connection makes it."""
+        if reading is None or reading.entity_id is None:
+            return reading, False
+        comeback = self._comebacks.get(reading.entity_id)
+        state = self._hass.states.get(reading.entity_id)
+        if comeback is None or state is None or state.last_updated != comeback[0]:
+            return reading, False
+        gone_since = comeback[1]
+        since = None if self._plugged_in_since is None else self._plugged_in_since()
+        throughout = since is not None and gone_since is not None and since <= gone_since
+        return replace(reading, restored=True), throughout
+
+    @callback
+    def _note_source_state(self, event: Event[EventStateChangedData]) -> None:
+        """Remember when a source entity went away and the state it came back with."""
+        entity_id = event.data["entity_id"]
+        old, new = event.data["old_state"], event.data["new_state"]
+        gone = (STATE_UNAVAILABLE, STATE_UNKNOWN)
+        if new is None or new.state in gone:
+            if old is not None and old.state not in gone:
+                self._gone_at[entity_id] = new.last_updated if new is not None else self._now()
+            self._comebacks.pop(entity_id, None)
+            return
+        if old is None or old.state in gone:
+            gone_since = self._gone_at.pop(entity_id, None)
+            if old is not None and gone_since is None:
+                gone_since = old.last_updated
+            self._comebacks[entity_id] = (new.last_updated, gone_since)
+        else:
+            # An update of a value it had (the same value with a new poll included): a reading.
+            self._comebacks.pop(entity_id, None)
 
     def _save(self) -> None:
         if self._closed:
@@ -459,13 +600,36 @@ class SocReader:
         self._watched = ()
 
     @callback
-    def _on_source_changed(self, _event: Event[EventStateChangedData]) -> None:
+    def _on_source_changed(self, event: Event[EventStateChangedData]) -> None:
+        self._note_source_state(event)
         reading = self.read(self._watch_vehicle)
         if reading is None or reading.soc_percent is None or reading.estimated:
             return
+        self._tell(reading)
+
+    def _tell(self, reading: SocReading) -> None:
+        """Ask for a new calculation on `reading`: always while one lacked a level, else when it moved."""
+        assert reading.soc_percent is not None
         last = self._last_notified
-        if last is not None and abs(reading.soc_percent - last) < RECALCULATE_DELTA_PERCENT:
+        if (
+            not self._notify_next
+            and last is not None
+            and abs(reading.soc_percent - last) < RECALCULATE_DELTA_PERCENT
+        ):
             return
+        self._notify_next = False
+        self._drop_arrival()
         self._last_notified = reading.soc_percent
         if self._on_reading is not None:
             self._on_reading()
+
+
+@callback
+def _battery_state(event_data: EventStateChangedData) -> bool:
+    """A sensor state that could be a state of charge (`await_reading`'s filter, run for every state)."""
+    new = event_data["new_state"]
+    return (
+        new is not None
+        and new.domain == "sensor"
+        and new.attributes.get("device_class") == "battery"
+    )

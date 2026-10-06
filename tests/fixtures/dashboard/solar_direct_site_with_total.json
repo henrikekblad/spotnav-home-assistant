@@ -102,7 +102,7 @@
   "identification": null,
   "live": {
     "charging": false,
-    "measured_current_a": null,
+    "measured_current_a": 0.0,
     "requested_current_a": null,
     "schedule_active": false,
     "setpoint_current_a": null
@@ -193,6 +193,7 @@
     "unpriced_slots": 0,
     "waiting_for_tomorrow": null
   },
+  "progress": null,
   "sessions_summary": {
     "last_month": {
       "average_price_minor_per_kwh": null,

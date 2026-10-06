@@ -31,7 +31,7 @@ async def test_bundle_has_every_section(hass: HomeAssistant) -> None:
     charger, site = await setup_charger_and_site(hass)
     bundle = await async_build_debug_bundle(hass)
 
-    assert bundle["bundle_version"] == 5
+    assert bundle["bundle_version"] == 6
     for key in ("versions", "related_integrations", "price_data", "sites", "chargers", "log"):
         assert key in bundle
     versions = bundle["versions"]
@@ -46,9 +46,10 @@ async def test_bundle_has_every_section(hass: HomeAssistant) -> None:
     assert "dashboard" in section and "status" in section
     assert "plan" in section["dashboard"] and "strategy" in section["dashboard"]
     assert "commands" in section["diagnostics"]["controller"]["adapter"]
-    # Version 5: the ownership core's shadow, replayable as it is.
+    # Version 5: the ownership core's shadow, replayable as it is; version 6: its cumulative tally per event kind.
     shadow = section["diagnostics"]["controller"]["ownership_shadow"]
     assert shadow["counts"]["disagreements"] == 0 and shadow["events"]
+    assert shadow["coverage"]["kinds"]["restart"]["events"] >= 1 and shadow["coverage"]["version"]
     assert replay_bundle(json.loads(json.dumps(bundle)))[charger.entry_id].mismatches == ()
     # Each fact once: the price data at the top only, the rest inside the entry's diagnostics or dashboard.
     for gone in ("plan_and_auto", "command_log"):

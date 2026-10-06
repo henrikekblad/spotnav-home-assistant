@@ -208,7 +208,7 @@ reads. Its main blocks: `charger` (identity, availability and `capabilities`), `
 `settings` (the canonical record with `revision`), `fiscal`, `market`, `prices` (the price
 intervals), `plan` and `planning` (proposal, installed plan, and why), `control` (the immediate
 action and the automatic action, with pause choices), `live`, `status` (typed status lines), `strategy`
-and `strategy_state`, `vehicles` and `soc`, `site`, `charging_phases`, `phase_detection`, `charge_progress`.
+and `strategy_state`, `vehicles` and `soc`, `site`, `charging_phases`, `phase_detection`, `charge_progress`, `progress`.
 Example documents are in `tests/fixtures/dashboard/`.
 
 **A person's own pause.** A Start or Stop pauses automatic execution for the plug-in session: the
@@ -218,6 +218,16 @@ and `scope` (`plug_in`, the plug-in the car is in, or `next_plug_in` for a Stop 
 beside it is `resume` (a `stop` with another choice replaces it). The `paused` status line carries
 `action` and `ends` (`unplug`, `next_plug_in`, or `resume` on a charger that cannot tell when a car is
 plugged in); both are null for every other pause. Every other pause record keeps its three keys.
+
+**A Start or Stop on its way.** After a person's Start, until the charger reports charging, and after a
+person's Stop, until it reports it has stopped (or, for either, at most 30 seconds), `control` offers
+nothing on either axis: `immediate_action` and `automatic_action` are `none` with the reason
+`action_pending` (an automatic axis already showing a pause the person chose for a span keeps it). A client
+shows *Starting…* or *Stopping…* meanwhile. Only the offer waits: the command itself was sent at once, a
+`stop` is accepted (and sent) whatever is pending, and a `resume` of the pause a pending Stop took is accepted
+too and ends the wait, as Follow does. When the 30 seconds pass without the report the axes answer from
+the charger's state again: Stop is offered again while it still charges; an unanswered Start is also
+reported as `action_failed`. A Stop that failed is never pending (`pause_stop_failed`, Stop again).
 
 **Battery room.** The `soc` block's additive `room_kwh` is the wall energy the battery still has room for,
 to the car's own charge limit (else 100 %): `capacity_kwh x (ceiling - value) / 100 / efficiency`, `null`
@@ -230,6 +240,12 @@ slider up to `room_kwh` when it is present; an older backend has neither field n
 `need_limited_by_room`, and, while no room is known, the notice `fill_room_unknown` (`kwh`, the stored amount
 planned instead). The card's slider goes past the room to `min(capacity to the car's limit, max(30 kWh,
 2 x room))`, rounded up to its half-kWh step, with a "full" mark at the room; its last step is "Fill".
+
+**Waiting for the car's new level.** With a target, the planning state `nothing_to_charge` has the reason
+`waiting_for_vehicle_update` when the charge that just ended delivered, by measurement, at least what the
+car's last reading needed and the car has not reported since; the status headline is then
+`waiting_for_vehicle_update` (no params) in place of `nothing_to_charge`. A client that does not know the
+code shows it as any unknown code.
 
 **Best effort before a departure.** When the need cannot be met by the departure, the plan is every
 whole quarter-hour from the first usable one up to the departure (one run, whatever `max_periods` says,
@@ -317,6 +333,12 @@ entity carrying each phase as an attribute (`name` is its friendly name), or
 While it is set the `direct_L{n}` fields report no `current`, and a write that leaves them out keeps it.
 A write that names any of them replaces it, so all three are then required (`required` on each missing one).
 
+A charger's `energy_register_entity` field in `get_entity_config` carries the additive `none`, as
+`current_limit` does: `{"allowed": true, "chosen": bool, "automatic": {"entity_id", "friendly_name"} | null}`,
+`automatic` being the lifetime register detection finds now, also while "None" is chosen.
+`update_entity_config` takes `"none"` for it (no register, and none looked up or detected again) and `""`
+for the one SpotNav finds itself; while "None" is chosen the field reads back as `"none"`.
+
 A site's `warnings` in `get_entity_config` carry the additive `limits_a` (`null`, or for
 `battery_import_limit_differs` `{"battery": A, "spotnav": A}` per phase). That warning says a home battery
 integration's own grid import limit and SpotNav's (the main fuse minus the safety margin) differ by more
@@ -332,6 +354,40 @@ per charger integration (an OCPP connector's status, Easee's `status`, Zaptec's 
 Wallbox's `status_description`, and the others with a status sensor); a value not listed is `unknown`, never
 a guess, and a charger that is only a switch is `charging` while the switch is on and `unknown` otherwise.
 A client shows nothing for `unknown` and ignores a state it does not know.
+
+The additive `progress` block says how far a running charge has come and when it ends, decided once in Home
+Assistant so the card and the app draw the same bar; `null` while no charge runs (`live.charging` false),
+while `starting_up` is on, and for a `connection` of `disconnected`, `finished` or `error`:
+
+    {"basis": "target" | "energy" | "vehicle_limit" | "open", "percent": 0-100 | null,
+     "ends_at": ISO | null, "power_kw": kW | null, "power_source": "measured" | "planned" | null,
+     "moving": bool, "start_soc_percent": % | null, "started_at": ISO | null, "delivered_kwh": kWh | null}
+
+The plan drives the charge when an installed period holds now and no pause stands; then the driver counts:
+`target` is the car's level as a share of the target (rounded, never above the car's own limit), the end
+from `soc.need_kwh`; Fill is `vehicle_limit`, the level as a share of the car's limit (else 100 %), the end
+from `soc.room_kwh`; a fixed amount is `energy`, `plan.delivered_kwh` over the whole amount (`delivered_kwh +
+remaining_kwh`, else the requested amount), with no block without `delivered_kwh`. Any other running charge
+(a person's Start, a charge under a scheduled pause, one the charger began itself, a solar charge outside
+the periods) counts to the car's own limit as `vehicle_limit`, its end from the battery's room; with no
+level it is `open` (no `percent`, no `ends_at`). `percent` is rounded down. `ends_at` (UTC) is laid along
+the installed periods while the plan drives and never falls after the last one, else a straight line from
+now; it is `null` for solar and hybrid unless a person started the charge, while the charge stands still,
+with nothing left, or with no power known. `moving` is true while current flows: the connection is
+`charging` (or `unknown`), the car is not seen asking for no current, and a measured current or power is
+not near zero. `power_kw` (only while moving) is measured when the charger measures it (`power_source:
+measured`), else what SpotNav assigned now, the installed schedule's power or current, the proposal's power
+or the settings' current (`planned`). `start_soc_percent`, `started_at` and `delivered_kwh` come from the
+open charge session: the car's level when it opened, when that was, and the energy measured since (`null`
+for a session whose energy is an estimate). An older backend has no block; a client then shows none.
+
+`live.measured_current_a` is the current the charger draws now (its highest phase), `null` where nothing
+measures it: an OCPP connector's current import; the measured-current sensors of Easee (`current`), Zaptec,
+go-e (API v2 and MQTT), Peblar, NRGkick, Charge Amps, Lektrico and the Tesla Wall Connector when the charger
+was set up with them; else, for a charger in a site, the per-phase measurement the site reads for it (an
+Easee's terminal attributes, or any three current entities). A charger behind a smart plug has no current,
+but its power sensor is the measured `power_kw`. Wallbox, Ohme, myenergi, Alfen, ABB, SmartEVSE, Webasto
+Next and the others with no current sensor in their integration have only the planned power.
 
 The additive `starting_up` block, `{active, until, waiting_for}`, says the integration loaded a moment ago and
 a source is still awaited: a configured solar forecast that has not loaded (`forecast`, only for the hybrid

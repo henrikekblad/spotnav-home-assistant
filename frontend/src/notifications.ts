@@ -46,6 +46,27 @@ function targetName(language: Language, record: NotificationsRecord, service: st
   return found !== undefined ? found.name : translate(language, "notifications.missing", { name: service });
 }
 
+/**
+ * The hint for a charger whose events are on but whose phones are none: it sends nothing. `null` otherwise.
+ * Display only; it never copies another charger's choice.
+ */
+export function noRecipientsHint(language: Language, record: NotificationsRecord): string | null {
+  return record.events.length > 0 && record.targets.length === 0
+    ? translate(language, "notifications.noRecipients")
+    : null;
+}
+
+/** The hint as a paragraph, or `null` when there is nothing to say. */
+export function noRecipientsNote(doc: Document, language: Language, record: NotificationsRecord): HTMLElement | null {
+  const hint = noRecipientsHint(language, record);
+  if (hint === null) {
+    return null;
+  }
+  const note = element(doc, "p", C.settingsNote, hint);
+  note.dataset["notice"] = "notifications_no_targets";
+  return note;
+}
+
 /** The two summary rows: the chosen phones, and how many events are on. */
 export function notificationsSummary(
   language: Language,
@@ -92,6 +113,10 @@ export function notificationsEditorBody(
   body.noValidate = true;
   body.dataset["notificationsEditor"] = "true";
   body.append(element(doc, "p", C.siteApplies, translate(language, "notifications.intro")));
+  const missing = noRecipientsNote(doc, language, record);
+  if (missing !== null) {
+    body.append(missing);
+  }
 
   const phones = element(doc, "fieldset", C.siteFieldset);
   phones.dataset["part"] = "targets";

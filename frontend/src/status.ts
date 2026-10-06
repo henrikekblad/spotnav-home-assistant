@@ -161,6 +161,7 @@ export const STATUS_WORDING: Readonly<Record<StatusCode, TranslationKey>> = {
   waiting_for_tomorrow: "status.waitingForTomorrow",
   no_plan: "status.noPlan",
   nothing_to_charge: "status.nothingToCharge",
+  waiting_for_vehicle_update: "status.waitingForVehicleUpdate",
   plan_energy: "status.planEnergy",
   plan_cost: "status.planCost",
   plan_distance: "status.planDistance",
@@ -344,7 +345,8 @@ function num(value: StatusParam | undefined): number | null {
   return typeof value === "number" ? value : null;
 }
 
-function moment(format: FormatContext, instantMs: number, nowMs: number): string {
+/** A time today, else its weekday and date with the time, in the market's zone. */
+export function momentText(format: FormatContext, instantMs: number, nowMs: number): string {
   const time = clock(format, instantMs);
   if (localDayKey(instantMs, format.timeZone) === localDayKey(nowMs, format.timeZone)) {
     return time;
@@ -386,7 +388,7 @@ export function lineText(line: StatusLine, format: FormatContext, nowMs: number)
       if (until === null) {
         return say("control.pausedIndefinitely");
       }
-      return zoned ? say("control.pausedUntil", { time: moment(format, until, nowMs) }) : say("status.pausedShort");
+      return zoned ? say("control.pausedUntil", { time: momentText(format, until, nowMs) }) : say("status.pausedShort");
     }
     case "charging_now": {
       const until = ms(p["until"]);
@@ -433,7 +435,7 @@ export function lineText(line: StatusLine, format: FormatContext, nowMs: number)
       const at = ms(p["installs_at"]);
       return at === null || !zoned
         ? say("status.proposalPending")
-        : say("status.proposalPendingAt", { time: moment(format, at, nowMs) });
+        : say("status.proposalPendingAt", { time: momentText(format, at, nowMs) });
     }
     case "held_until_window": {
       const time = ms(p["time"]);

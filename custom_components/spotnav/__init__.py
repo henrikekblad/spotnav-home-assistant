@@ -39,6 +39,7 @@ from .const import (
     PLATFORMS,
     SITE_PLATFORMS,
 )
+from .energy_register import async_store_detected_register, async_watch_for_register
 from .entity_renames import async_setup_entity_renames
 from .log_buffer import attach_log_buffer
 from .execution.auto_execution import AutoExecutor, pause_blocks_execution
@@ -73,9 +74,10 @@ from .runtime import (
 from .services import async_register_services
 from .notifications.notifier import ChargerNotifier
 from .notifications.push import ChargerPush
+from .execution.ownership_coverage import OwnershipCoverage
 from .vehicles.identification import VehicleIdentifier
 from .vehicles.vehicle_target import async_adopt as async_adopt_vehicle_target, async_setup_vehicle_targets
-from .sessions.inputs import current_fiscal, price_book_for, session_facts
+from .sessions.inputs import current_fiscal, price_book_for, session_facts, soc_percent_now
 from .sessions.history_import import HistoryImporter, START_DELAY_S as HISTORY_IMPORT_DELAY_S
 from .sessions.recorder import SessionRecorder
 from .sessions.store import SessionStore
@@ -88,6 +90,7 @@ from .site.site_join import (
 from .site.site_capacity_controller import SiteCapacityController
 from .vehicles.discovery_decisions import async_setup_decisions
 from .vehicles.soc_estimate import SocReader
+from .vehicles.vehicle_refresh import async_ask_vehicle_update
 from .vehicles.vehicle_discovery import charger_vehicle_ids, resolve_target_vehicle, vehicle_soc_entity_id
 from .vehicles.vehicle_properties import consumption_kwh_per_10km, stored_capacity_kwh
 
@@ -196,6 +199,9 @@ async def _async_setup_charger_entry(hass: HomeAssistant, entry: ChargerConfigEn
             entity_id=vehicle_soc_entity_id(hass, vehicle_id),
         )
 
+    # A detected charger stored without its lifetime register gets the one detection finds now, before
+    # the controller reads its config (`energy_register.py`).
+    async_store_detected_register(hass, entry)
     # The one state-of-charge source both the planner and the stop decision read.
     soc_reader = SocReader(
         hass,
@@ -204,6 +210,7 @@ async def _async_setup_charger_entry(hass: HomeAssistant, entry: ChargerConfigEn
         register_entity_id=lambda: controller.energy_register_entity_id,
         charge_control=lambda: controller.charge_control,
         remembered_capacity=lambda vehicle_id: stored_capacity_kwh(hass, vehicle_id),
+        plugged_in_since=lambda: controller.plugged_in_since,
     )
     await soc_reader.async_load()
     entry.async_on_unload(soc_reader.async_shutdown)
@@ -273,6 +280,8 @@ async def _async_setup_charger_entry(hass: HomeAssistant, entry: ChargerConfigEn
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
     # After the platforms, so a smart plug's integrated-energy sensor already stands in for the register.
     _async_start_session_recorder(hass, entry, data, controller)
+    # Still no register: take the charger's own as soon as its integration registers or reports one.
+    async_watch_for_register(hass, entry, controller)
     _async_start_notifier(hass, entry, data, controller)
     _async_start_identifier(hass, entry, data, controller)
     # A charger the flow was asked to add to the site joins it now that its entry id exists.
@@ -320,6 +329,7 @@ def _async_start_session_recorder(
         prices=lambda now: price_book_for(hass, entry.entry_id, now),
         consume_cause=controller.consume_start_cause,
         subscribe=controller.add_charge_state_listener,
+        start_soc=lambda: soc_percent_now(hass, entry.entry_id),
     )
     entry.async_on_unload(recorder.async_shutdown)
     recorder.async_start()
@@ -410,6 +420,15 @@ async def _async_setup_auto_preview(
     def _live_vehicle_facts(vehicle_id: str) -> LiveVehicleFacts | None:
         return live_vehicle_facts(hass, data.soc_reader, vehicle_id, charger_vehicle_ids(hass, entry_id))
 
+    def _vehicle_update(vehicle_id: str, ask: bool) -> None:
+        # A target waits for the car's new level: hear of the next reading, and ask the car's integration
+        # to read it again once per charge (`refresh_vehicle`'s own call and interval, never a wake-up).
+        data.soc_reader.notify_next_reading()
+        if ask:
+            entry.async_create_background_task(
+                hass, async_ask_vehicle_update(hass, vehicle_id), f"{entry_id} vehicle refresh"
+            )
+
     def _consumption(vehicle_id: str) -> float | None:
         return consumption_kwh_per_10km(
             hass, resolve_target_vehicle(hass, vehicle_id or None, charger_vehicle_ids(hass, entry_id))[0]
@@ -428,6 +447,7 @@ async def _async_setup_auto_preview(
         vehicle_reader=_live_vehicle_facts,
         consumption_reader=_consumption,
         observation=observation,
+        vehicle_update=_vehicle_update,
     )
     entry.async_on_unload(preview.async_shutdown)
     await preview.async_start()
@@ -505,6 +525,7 @@ async def async_remove_entry(hass: HomeAssistant, entry: ConfigEntry) -> None:
     await async_remove_auto_state(hass, entry.entry_id)
     await SocReader.async_remove_stored(hass, entry.entry_id)
     await ChargerPush.async_remove_stored(hass, entry.entry_id)
+    await OwnershipCoverage.async_remove_stored(hass, entry.entry_id)
     session_store = domain_data(hass).session_store
     if session_store is not None:
         await session_store.async_remove_charger(entry.entry_id)

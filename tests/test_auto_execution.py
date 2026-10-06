@@ -53,6 +53,7 @@ from custom_components.spotnav.execution.auto_execution import (
 from custom_components.spotnav.planning.auto_settings import (
     DRIVER_TARGET_SOC,
     AreaAutoSettings,
+    PAUSE_MANUAL,
     PAUSE_NEXT_PERIOD,
     PAUSE_UNTIL_RESUMED,
     PauseIntent,
@@ -1638,6 +1639,17 @@ def test_the_two_axes_are_independent_and_each_answers_its_own_question() -> Non
     # Even a charger that looks like it is charging: a Start nobody has acknowledged is not a state
     # anybody may pause, so the pending rule is one rule on both axes rather than a gap in one of them.
     assert decide_automatic(_facts(charging=True, start_pending=True)).action == ACTION_NONE
+
+    # A person's Stop awaiting the charger's report is the same rule: nothing offered on either axis,
+    # under the person's own pause as without one, though the charger still reports the charge.
+    manual_stop = PauseIntent(choice=PAUSE_MANUAL, action="stop", scope="plug_in")
+    for pause in (manual_stop, PauseIntent()):
+        stopping = _facts(charging=True, stop_pending=True, pause=pause)
+        assert decide_immediate(stopping) == ImmediateDecision(ACTION_NONE, CONTROL_ACTION_PENDING)
+        assert decide_automatic(stopping) == AutomaticDecision(ACTION_NONE, CONTROL_ACTION_PENDING, ())
+    # Once it is no longer pending the charger's own state answers: Stop again while it still charges.
+    assert decide_immediate(_facts(charging=True, pause=manual_stop)) == ImmediateDecision(ACTION_STOP, None)
+    assert decide_automatic(_facts(charging=True, pause=manual_stop)).action == ACTION_RESUME
 
     # No settings is nothing to act on, on either axis.
     assert decide_immediate(_facts(has_settings=False)).reason == CONTROL_NO_SETTINGS

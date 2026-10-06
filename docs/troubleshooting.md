@@ -12,7 +12,7 @@ decisions. The webhook id and OCPP charge point id are redacted, and no webhook 
 included, so the file is safe to attach to a public bug report.
 
 The site entry's file (and the card's **Download debug info** in Settings, Support, for
-administrators) also carries the whole installation as one debug bundle (`bundle_version` 5):
+administrators) also carries the whole installation as one debug bundle (`bundle_version` 6):
 
 - `history_60min` per site: the last hour, one sample a minute kept in memory (nothing is read from
   the recorder). Each sample has the grid's total power, the site's current per phase, the house
@@ -28,11 +28,17 @@ administrators) also carries the whole installation as one debug bundle (`bundle
   `card_bundle_hash_served` (the one browsers are handed). When they differ, the file says so in
   `client.note`, and the card's Support section says it too: the browser or the Companion app runs an
   older card. Reload the page; in the Companion app, force-stop the app and open it again.
+- `ownership_shadow.coverage` in each charger's controller diagnostics: per event kind of the
+  charge-ownership core (every kind, zero until seen), how many events it decided, compared,
+  disagreed on, found drift at and failed on, and when it first and last saw one. Unlike the rest of
+  `ownership_shadow` it is kept across restarts, from `since` (under the integration's `version`
+  then) until the charger is removed.
 
 To check a saved bundle's charge-ownership recording offline, run
 `.venv/bin/python tools/replay_bundle.py bundle.json` in the integration's repository (no Home
 Assistant needed; `--charger <name or id>` picks one charger, `--json` gives machine output). For
-each charger it prints the shadow's counts and the recorded disagreements and drift, replays the
+each charger it prints the shadow's counts, its coverage per event kind (version 6 and later), and
+the recorded disagreements and drift, replays the
 recorded events through today's pure core, and says whether the core now decides differently from
 the recording or from the code that ran. A charger without the `ownership_shadow` block (a bundle
 from before version 5) is reported as having nothing to replay. The exit code is 1 when a replay differs.

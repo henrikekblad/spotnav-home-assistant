@@ -21,7 +21,7 @@ import { applyFocus, chartHeightForWidth, renderChart, type ChartLabels } from "
 import { stripBarPlacement, stripBars, stripNowPosition, stripTicks } from "./chart-strip";
 import { createDialog, type DialogHandle } from "./dialog";
 import { identificationBanner, identificationEditorBody, identificationSummary } from "./identification";
-import { notificationsEditorBody, notificationsSummary } from "./notifications";
+import { noRecipientsNote, notificationsEditorBody, notificationsSummary } from "./notifications";
 import { clock, formatFixed, formatNumber, hasZone, percentAmount, pricePerKwh, wallTimeRepeats, weekdayDate } from "./format";
 import { pluralForm, translate, type Language, type TranslationKey } from "./i18n";
 import {
@@ -67,6 +67,7 @@ import { vehicleSummary } from "./vehicle-settings";
 import { issueText } from "./status";
 import { historyBody, type HistoryState, type HistoryUi } from "./history";
 import { connectionLabel, vehicleChoicesFor, vehicleLineFor } from "./vehicle-line";
+import type { ChargeBarFacts } from "./charge-bar";
 import {
   fiscalRows,
   planSummaryParts,
@@ -801,6 +802,35 @@ export function graphDescription(
   return parts.join(" ");
 }
 
+/**
+ * The slim bar under the status line and its one line of words. The track is a `progressbar` whose
+ * value is the share done (none for the open bar); the stripes drift only while `data-moving` is true,
+ * and the stylesheet stops every motion when the system asks for less.
+ */
+export function chargeBarElement(doc: Document, bar: ChargeBarFacts): HTMLElement {
+  const block = element(doc, "div", C.chargeBar);
+  block.dataset["basis"] = bar.basis;
+  block.dataset["moving"] = String(bar.moving);
+  const track = element(doc, "div", C.chargeBarTrack);
+  track.setAttribute("role", "progressbar");
+  track.setAttribute("aria-label", bar.label);
+  track.setAttribute("aria-valuemin", "0");
+  track.setAttribute("aria-valuemax", "100");
+  if (bar.percent !== null) {
+    track.setAttribute("aria-valuenow", String(bar.percent));
+  }
+  track.setAttribute("aria-valuetext", bar.text);
+  const fill = element(doc, "div", C.chargeBarFill);
+  if (bar.percent !== null) {
+    fill.style.width = `${bar.percent}%`;
+  }
+  track.append(fill);
+  const words = element(doc, "p", C.chargeBarLine, bar.text);
+  words.setAttribute("aria-hidden", "true");
+  block.append(track, words);
+  return block;
+}
+
 export function createCardView(input: CardViewInput): CardView {
   const { model, idPrefix } = input;
   const doc = input.mount.ownerDocument;
@@ -816,7 +846,8 @@ export function createCardView(input: CardViewInput): CardView {
   header.append(brandMark(doc, idPrefix));
   const vehicleLine = vehicleLineFor(model.language, model.soc, model.dashboardSettings);
   let vehicleButton: HTMLButtonElement | null = null;
-  const connectionText = connectionLabel(model.language, model.connection);
+  // While the charge bar shows, it already says the charge runs: the connection line steps aside.
+  const connectionText = model.chargeBar === null ? connectionLabel(model.language, model.connection) : null;
   const connectionClass = (): string =>
     model.connection?.state === "error" ? `${C.connectionLine} ${C.connectionError}` : C.connectionLine;
   if (vehicleLine !== null) {
@@ -1125,6 +1156,9 @@ export function createCardView(input: CardViewInput): CardView {
 
   if (model.status !== null) {
     card.append(element(doc, "p", C.status, model.status));
+  }
+  if (model.chargeBar !== null) {
+    card.append(chargeBarElement(doc, model.chargeBar));
   }
   if (model.statusNote !== null) {
     card.append(element(doc, "p", `${C.status} ${C.muted}`, model.statusNote));
@@ -1478,6 +1512,38 @@ export function createCardView(input: CardViewInput): CardView {
   const axisName = (key: TranslationKey): string => translate(model.language, key);
   const changeWord = translate(model.language, "bar.change");
 
+  /**
+   * The Charging cell's word and name while the Start or Stop it sent is in flight ([sent]), or its
+   * rendered ones again (`null`). The rendered ones are kept on the cell the first time it changes.
+   */
+  function underWay(button: HTMLButtonElement, sent: "start" | "stop" | null): void {
+    const valueNode = button.querySelector(`.${C.settingsValue}`);
+    if (valueNode === null) {
+      return;
+    }
+    if (sent === null) {
+      const word = button.dataset["renderedValue"];
+      const name = button.dataset["renderedLabel"];
+      if (word !== undefined && name !== undefined) {
+        valueNode.textContent = word;
+        button.setAttribute("aria-label", name);
+        delete button.dataset["renderedValue"];
+        delete button.dataset["renderedLabel"];
+      }
+      return;
+    }
+    if (button.dataset["renderedValue"] === undefined) {
+      button.dataset["renderedValue"] = valueNode.textContent ?? "";
+      button.dataset["renderedLabel"] = button.getAttribute("aria-label") ?? "";
+    }
+    const stopping = sent === "stop";
+    valueNode.textContent = axisName(stopping ? "bar.stopping" : "bar.starting");
+    button.setAttribute(
+      "aria-label",
+      `${axisName("bar.charging")}: ${axisName(stopping ? "bar.state.charging" : "bar.state.notCharging")}. ${axisName("bar.waitingForCharger")}`,
+    );
+  }
+
   function cell(
     cellClass: string,
     id: string,
@@ -1550,18 +1616,20 @@ export function createCardView(input: CardViewInput): CardView {
     }
     bar.append(actionButton);
   }
-  if (immediateLabelKey === null && model.control.immediate.pending) {
-    // The backend is waiting for the charger to acknowledge a start: the cell stays where it was,
-    // greyed and busy, instead of vanishing until the answer arrives.
+  const pendingAction = model.control.pendingAction;
+  if (immediateLabelKey === null && pendingAction !== null) {
+    // Home Assistant awaits the charger's report of a Start or Stop: the cell stays where it was,
+    // greyed and busy, naming what is under way instead of vanishing until the answer arrives.
+    const stopping = pendingAction === "stopping";
     actionButton = cell(
       `${C.actionButton}`,
       "charging",
-      axisName("bar.chargeNow"),
-      playIcon(doc),
-      axisName("bar.waiting"),
-      `${axisName("bar.charging")}: ${axisName("bar.state.notCharging")}. ${axisName("bar.waiting")}. ${axisName("control.actionPending")}`,
+      axisName(stopping ? "bar.chargingNow" : "bar.chargeNow"),
+      stopping ? stopIcon(doc) : playIcon(doc),
+      axisName(stopping ? "bar.stopping" : "bar.starting"),
+      `${axisName("bar.charging")}: ${axisName(stopping ? "bar.state.charging" : "bar.state.notCharging")}. ${axisName("bar.waitingForCharger")}`,
     );
-    actionButton.dataset["action"] = "start";
+    actionButton.dataset["action"] = stopping ? "stop" : "start";
     actionButton.disabled = true;
     actionButton.dataset["renderedDisabled"] = "true";
     actionButton.dataset["waiting"] = "true";
@@ -1596,6 +1664,24 @@ export function createCardView(input: CardViewInput): CardView {
         input.onAction("resume", null);
       }
     });
+    bar.append(plannerButton);
+  }
+  const heldAutomatic = model.control.heldAutomatic;
+  if (automaticLabelKey === null && heldAutomatic !== null) {
+    // While a Start or Stop awaits the charger, the schedule cell keeps the caption it last had,
+    // disabled, rather than vanishing and coming back once the charger reports.
+    const paused = heldAutomatic === "resume";
+    plannerButton = cell(
+      C.plannerButton,
+      "schedule",
+      axisName(paused ? "bar.schedulePaused" : "bar.scheduleActive"),
+      paused ? playIcon(doc) : pauseIcon(doc),
+      axisName(paused ? "action.resumeShort" : "action.pauseAutomaticShort"),
+      `${axisName("bar.schedule")}: ${axisName(paused ? "bar.state.schedulePaused" : "bar.state.scheduleActive")}. ${axisName("bar.waitingForCharger")}`,
+    );
+    plannerButton.dataset["action"] = heldAutomatic;
+    plannerButton.disabled = true;
+    plannerButton.dataset["renderedDisabled"] = "true";
     bar.append(plannerButton);
   }
   if (model.strategy.selected !== null) {
@@ -2088,6 +2174,8 @@ export function createCardView(input: CardViewInput): CardView {
     if (energyField !== undefined && energyField.kind === "entity") {
       if (energyField.current !== null) {
         energy = energyField.current.friendlyName;
+      } else if (energyField.none !== null && energyField.none.chosen) {
+        energy = translate(model.language, "entity.energy.none");
       } else {
         const automatic = automaticEntity(energyField);
         if (automatic !== null) {
@@ -2327,6 +2415,10 @@ export function createCardView(input: CardViewInput): CardView {
     );
     for (const row of notificationsSummary(model.language, record)) {
       section.append(overviewRow(row.key, row.label, row.value));
+    }
+    const missing = noRecipientsNote(doc, model.language, record);
+    if (missing !== null) {
+      section.append(missing);
     }
     const button = element(doc, "button", `${C.button} ${C.settingsSectionConfigure}`, translate(model.language, "notifications.change"));
     button.type = "button";
@@ -3148,6 +3240,11 @@ export function createCardView(input: CardViewInput): CardView {
       for (const button of [actionButton, plannerButton]) {
         if (button === null) {
           continue;
+        }
+        if (button === actionButton) {
+          // A Start or Stop just sent says at once what is under way, as the cell will while Home
+          // Assistant awaits the charger's report; a refused one gets its own word back.
+          underWay(button, pending && button === pressed && (action === "start" || action === "stop") ? action : null);
         }
         button.disabled = pending || button.dataset["renderedDisabled"] === "true";
         const busy = (pending && button === pressed) || button.dataset["waiting"] === "true";
