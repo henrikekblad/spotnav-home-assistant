@@ -247,6 +247,9 @@ export interface CardModel {
   identification: Identification | null;
   /** Every detected car the charger's car list can tick; the charger's own `vehicles` on an older backend. */
   vehicleChoices: Array<{ id: string; name: string | null }>;
+  /** The cars that can charge at this charger (`vehicleChoices` within `vehicle_ids`): two or more make the car
+   * line Byt bil. */
+  chargerCars: Array<{ id: string; name: string | null }>;
   planRelation: PlanRelationKind;
   capabilities: CapabilityItem[];
   contextArea: string | null;
@@ -605,6 +608,15 @@ export function socFor(dashboard: Dashboard): Soc | null {
   return dashboard.soc;
 }
 
+/** The cars that can charge at this charger: every detected car within `vehicle_ids` (all when `null`). */
+export function chargerCarsOf(dashboard: Dashboard): Array<{ id: string; name: string | null }> {
+  if (dashboard.vehicle_choices.length === 0) {
+    return dashboard.vehicles.map((row) => ({ id: row.id, name: row.name }));
+  }
+  const allowed = dashboard.settings?.vehicle_ids ?? null;
+  return dashboard.vehicle_choices.filter((choice) => allowed === null || allowed.includes(choice.id));
+}
+
 export function vehiclesFor(dashboard: Dashboard): Vehicle[] {
   return dashboard.vehicles;
 }
@@ -787,6 +799,7 @@ export function buildModel(input: BuildInput): CardModel {
       dashboard.vehicle_choices.length > 0
         ? dashboard.vehicle_choices
         : dashboard.vehicles.map((row) => ({ id: row.id, name: row.name })),
+    chargerCars: chargerCarsOf(dashboard),
     contextArea: market?.area_id ?? market?.area_name ?? null,
     contextCurrency: market?.currency ?? null,
     contextAreaName: market?.area_name ?? null,

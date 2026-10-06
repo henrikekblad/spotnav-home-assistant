@@ -872,7 +872,7 @@ export function createCardView(input: CardViewInput): CardView {
     }
     // The car line is Byt bil, for every user, wherever the car at this plug-in can be changed (identification
     // runs and more than one car can charge here); elsewhere it only states the car.
-    const changeable = model.identification !== null && model.identification.candidates.length >= 2;
+    const changeable = model.chargerCars.length >= 2;
     const lineName = vehicleLine.name ?? translate(model.language, "settings.vehicle.unnamed");
     const changeLabel = translate(model.language, "identify.changeCarAria", { name: lineName });
     vehicleButton = element(doc, changeable ? "button" : "div", C.vehicleLine);
@@ -1834,7 +1834,7 @@ export function createCardView(input: CardViewInput): CardView {
     hideForChildDialog();
     const body = changeCarBody(doc, model.language, {
       block: model.identification,
-      vehicles: model.vehicles,
+      vehicles: model.chargerCars,
       currentId: model.identification?.vehicle_id ?? model.soc?.vehicle_id ?? model.targetVehicleId,
       chargerName: model.chargerName,
       idPrefix,

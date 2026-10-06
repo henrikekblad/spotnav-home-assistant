@@ -5,7 +5,7 @@
 import { translate, type Language } from "./i18n";
 import type { IdentificationChoice } from "./settings";
 import { IDENTIFY_MODES, type IdentifyMode, type SettingsRecord } from "./types";
-import type { Identification, IdentificationSource, Vehicle } from "./validate";
+import type { Identification, IdentificationSource } from "./validate";
 
 /** A car the charger's car list can tick: every detected car (`vehicle_choices`). */
 export type CarChoice = { id: string; name: string | null };
@@ -90,7 +90,7 @@ const HINT_KEYS = {
 
 export interface ChangeCarInput {
   block: Identification | null;
-  vehicles: readonly Vehicle[];
+  vehicles: readonly CarChoice[];
   currentId: string | null;
   chargerName: string | null;
   idPrefix: string;

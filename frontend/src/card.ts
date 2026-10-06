@@ -79,6 +79,7 @@ import {
   strategyReplacement,
   notificationsReplacement,
   identificationReplacement,
+  vehicleReplacement,
   type IdentificationChoice,
   type NotificationsChoice,
   type ReplacementCheck,
@@ -1221,14 +1222,31 @@ export class SpotnavCard extends HTMLElement {
       return;
     }
     const generation = this.generation;
+    const dashboard = this.cardState.kind === "ready" ? this.cardState.dashboard : null;
+    if (dashboard?.connection?.state === "disconnected") {
+      // No car plugged in: the choice is the plan's car for the next plug-in.
+      await this.selectVehicle(vehicleId);
+      return;
+    }
+    let notPluggedIn = false;
     try {
-      await identifyVehicle(hass, config.charger, vehicleId);
+      const answer = (await identifyVehicle(hass, config.charger, vehicleId)) as { ok?: unknown; error?: unknown } | null;
+      notPluggedIn = answer !== null && answer.ok === false && answer.error === "spotnav_not_identifying";
     } catch {
       // Not answered: the question stays until the next read says otherwise.
+    }
+    if (notPluggedIn && generation === this.generation && this.connected) {
+      await this.selectVehicle(vehicleId);
+      return;
     }
     if (generation === this.generation && this.connected) {
       await this.refresh({ purpose: "confirm" });
     }
+  }
+
+  /** The plan's car, written into the settings (an administrator's write): what Byt bil does with no car plugged in. */
+  private async selectVehicle(vehicleId: string): Promise<void> {
+    await this.writeFreshSettings((record) => vehicleReplacement(record, vehicleId));
   }
 
   private async saveIdentification(choice: IdentificationChoice): Promise<void> {

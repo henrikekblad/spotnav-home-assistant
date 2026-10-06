@@ -79,7 +79,10 @@ afterEach(() => {
 
 describe("the vehicle line", () => {
   it("shows the planned vehicle and its charge under the charger name", async () => {
-    const { element } = await mounted(withSoc({ value: 92, vehicle_name: "e-Outback" }, { driver: "manual_kwh" }));
+    // One car at this charger: the line only states it (with two it is Byt bil, `vehicle-identification.test`).
+    const { element } = await mounted(
+      withSoc({ value: 92, vehicle_name: "e-Outback" }, { driver: "manual_kwh", vehicle_ids: ["vehicle_ev6"] }),
+    );
     const button = line(element)!;
     expect(button.textContent).toBe("e-Outback· 92 %");
     expect(button.querySelector("svg")).not.toBeNull();
@@ -132,7 +135,10 @@ describe("the vehicle line", () => {
   });
 
   it("is in the card's language", async () => {
-    const { element } = await mounted(withSoc({ value: 62, age_s: 7200 }, { driver: "manual_kwh" }), "sv");
+    const { element } = await mounted(
+      withSoc({ value: 62, age_s: 7200 }, { driver: "manual_kwh", vehicle_ids: ["vehicle_ev6"] }),
+      "sv",
+    );
     expect(line(element)!.getAttribute("aria-label")).toBe("EV6, 62 %, för 2 h sedan");
     expect(line(element)!.textContent).toContain("för 2 h sedan");
   });
