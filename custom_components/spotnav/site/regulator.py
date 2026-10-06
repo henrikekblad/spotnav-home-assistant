@@ -25,12 +25,13 @@ action" (never just because a computed value was small).
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from typing import Literal, Mapping, Sequence
 
 from .site_capacity import (
     allocation_order,
     ChargerRequest,
+    DirectPhaseMeasurement,
     PhaseName,
     PhaseUnusableReason,
     PhaseValue,
@@ -451,6 +452,29 @@ def decide_charging_current(
     return RegulatorDecision(proposed, reason, limiting_phase, basis)
 
 
+def _raises_on_credit(
+    decision: RegulatorDecision,
+    request: ChargerRequest,
+    own: DirectPhaseMeasurement | None,
+    phases: Sequence[PhaseName],
+    tolerance_a: float,
+) -> bool:
+    """Whether `decision` goes above the credited draw on a phase where the request's reading is a credit (more
+    than the charger's own reading `own`) by more than `tolerance_a`."""
+    proposed = decision.proposed_current_a
+    credited = request.measured_current_a
+    if proposed is None or credited is None:
+        return False
+    for phase in phases:
+        value = credited.get(phase).value
+        own_value = None if own is None else own.get(phase).value
+        if value is None or (own_value is not None and value <= own_value):
+            continue
+        if proposed > value + tolerance_a:
+            return True
+    return False
+
+
 def allocate_regulator_decisions(
     *,
     site_result: SiteCapacityResult,
@@ -460,6 +484,8 @@ def allocate_regulator_decisions(
     max_age_s: float,
     zero_margin_w: float = DEFAULT_ZERO_MARGIN_W,
     help_margin_factor: float = DEFAULT_HELP_MARGIN_FACTOR,
+    own_measured_current_a: Mapping[str, DirectPhaseMeasurement | None] | None = None,
+    credit_raise_tolerance_a: float = 1.0,
 ) -> dict[str, RegulatorDecision]:
     """One decision per charger, computed sequentially so chargers sharing a phase
     are never offered the same headroom.
@@ -468,6 +494,11 @@ def allocate_regulator_decisions(
     headroom starts at `site_result.measured_margin_a` and shrinks by
     `proposed - measured` after each decision. A `None` decision blocks its
     phases for the rest of the cycle; later chargers sharing one are refused.
+
+    `own_measured_current_a` is each charger's own reading where its request carries a credited one (a start the
+    site meter shows before the charger does). A credited reading may keep a charger from a pause or a lowering,
+    never raise it: a decision that goes more than `credit_raise_tolerance_a` above the credited draw on a credited
+    phase rests on the credit for an increase, and the decision on the charger's own reading is taken instead.
     """
     remaining: dict[PhaseName, float | None] = dict(site_result.measured_margin_a)
     remaining_signed: dict[PhaseName, float | None] = dict(site_result.phase_signed_margin_a)
@@ -496,6 +527,24 @@ def allocate_regulator_decisions(
             headroom_by_phase=remaining,
             signed_headroom_by_phase=remaining_signed,
         )
+        own = (own_measured_current_a or {}).get(request.charger_entry_id, request.measured_current_a)
+        if (
+            own is not request.measured_current_a
+            and phases_used is not None
+            and _raises_on_credit(decision, request, own, phases_used, credit_raise_tolerance_a)
+        ):
+            request = replace(request, measured_current_a=own)
+            decision = decide_charging_current(
+                site_result=site_result,
+                request=request,
+                voltage_by_phase=voltage_by_phase,
+                confirmed_direction_by_phase=confirmed_direction_by_phase,
+                max_age_s=max_age_s,
+                zero_margin_w=zero_margin_w,
+                help_margin_factor=help_margin_factor,
+                headroom_by_phase=remaining,
+                signed_headroom_by_phase=remaining_signed,
+            )
         decisions[request.charger_entry_id] = decision
 
         if phases_used is None:
