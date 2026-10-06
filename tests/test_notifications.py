@@ -612,11 +612,17 @@ async def test_the_told_plan_is_kept_across_a_reload(hass: HomeAssistant, freeze
     assert entry.runtime_data.notifier._notified_plan == fingerprint
 
 
-async def test_a_plan_that_was_not_told_is_not_remembered(hass: HomeAssistant, freezer: Any, hass_storage: dict) -> None:
+async def test_a_plan_quiet_after_a_persons_own_change_is_remembered_and_not_told_after_a_restart(
+    hass: HomeAssistant, freezer: Any, hass_storage: dict
+) -> None:
     entry, calls, controller = await _quiet_charger(hass, freezer)
     await _write_amps(hass, entry.entry_id)
     await _later(hass, freezer, 5)
     await controller.async_install(_plan_at())
     await hass.async_block_till_done()
     assert _installs(calls) == []
-    assert f"spotnav.notified_plan.{entry.entry_id}" not in hass_storage
+    assert hass_storage[f"spotnav.notified_plan.{entry.entry_id}"]["data"]["fingerprint"]
+    controller = await _restart(hass, freezer, entry)
+    await controller.async_install(_plan_at(amps=16, auto_identity="a" * 32))
+    await hass.async_block_till_done()
+    assert _installs(calls) == []

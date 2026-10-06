@@ -279,12 +279,14 @@ class ChargerNotifier:
     # ------------------------------------------------------------------ sending
 
     def _maybe_send(self, event: str, attributes: dict[str, Any], now: datetime) -> None:
+        fingerprint = plan_fingerprint(self._controller.plan) if event == EVENT_PLAN_INSTALLED else None
         if event == EVENT_PLAN_INSTALLED:
             written = self._store.last_settings_write(self._entry_id)
             if written is not None and 0 <= (now - written).total_seconds() < QUIET_AFTER_WRITE_S:
-                # A person just changed this charger's settings and sees the plan that followed.
+                # A person just changed this charger's settings and sees the plan that followed: not
+                # told, but known, so the same plan after a restart is not told either.
+                self._remember_plan(fingerprint)
                 return
-        fingerprint = plan_fingerprint(self._controller.plan) if event == EVENT_PLAN_INSTALLED else None
         if fingerprint is not None and fingerprint == self._notified_plan:
             # The same plan as the one last told about (Home Assistant restarted, or it was calculated
             # again to the same result): nothing new for a person.
