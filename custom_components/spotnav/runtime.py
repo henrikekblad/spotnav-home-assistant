@@ -47,6 +47,7 @@ if TYPE_CHECKING:
     from .sessions.store import SessionStore
     from .notifications.notifier import ChargerNotifier
     from .notifications.push import ChargerPush
+    from .vehicles.identification import VehicleIdentifier
 
 
 @dataclass
@@ -64,6 +65,8 @@ class ChargerData:
     sessions: SessionRecorder | None = None
     history_import: HistoryImporter | None = None
     notifier: ChargerNotifier | None = None
+    #: Which car is plugged in, at a charger more than one vehicle can charge at.
+    identifier: VehicleIdentifier | None = None
     #: The paired app's instant-notification registration (`notifications/push.py`).
     push: ChargerPush | None = None
 

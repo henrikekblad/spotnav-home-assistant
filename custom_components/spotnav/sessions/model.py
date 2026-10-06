@@ -64,11 +64,16 @@ _FIELDS: Final = frozenset(
         "solar_known_kwh", "last_register_kwh", "last_sample_at",
     }
 )
-#: Written only when set: an imported session's `source`, the market's `area_id`, and (only for a record
-#: without intervals) the cost it was stored with.
+#: Written only when set: an imported session's `source`, the market's `area_id`, how the vehicle was decided
+#: at a charger more than one can charge at, and (only for a record without intervals) the cost it was stored with.
 _OPTIONAL_FIELDS: Final = frozenset(
-    {"source", "area_id", "intervals", "legacy_priced_kwh", "legacy_cost_minor", "legacy_reference_cost_minor"}
+    {
+        "source", "area_id", "intervals", "legacy_priced_kwh", "legacy_cost_minor", "legacy_reference_cost_minor",
+        "vehicle_decided_by",
+    }
 )
+#: How the session's vehicle was decided (`vehicles/identification.py`'s `METHODS`).
+VEHICLE_DECIDED_BY: Final = ("manual", "answered", "plug_sensor", "location", "only_candidate", "assumed")
 #: What a record written before intervals existed carried instead.
 _PRE_INTERVAL_FIELDS: Final = frozenset({"priced_kwh", "cost_minor", "reference_cost_minor"})
 
@@ -130,6 +135,9 @@ class ChargeSession:
     intervals: tuple[Slice, ...] = ()
     #: The market the prices are from (for the fiscal settings of that market).
     area_id: str | None = None
+    #: How the vehicle was decided (`VEHICLE_DECIDED_BY`), `None` where nothing decided it (one vehicle known, a
+    #: charger that cannot say when a car is plugged in, an imported or older record).
+    vehicle_decided_by: str | None = None
 
     @property
     def cost_basis(self) -> str:
@@ -213,6 +221,8 @@ class ChargeSession:
             record["source"] = self.source
         if self.area_id is not None:
             record["area_id"] = self.area_id
+        if self.vehicle_decided_by is not None:
+            record["vehicle_decided_by"] = self.vehicle_decided_by
         return record
 
     @classmethod
@@ -225,8 +235,11 @@ class ChargeSession:
             return None
         source = raw.get("source")
         area_id = raw.get("area_id")
-        if (source is not None and source not in IMPORT_SOURCES) or (
-            area_id is not None and not isinstance(area_id, str)
+        decided_by = raw.get("vehicle_decided_by")
+        if (
+            (source is not None and source not in IMPORT_SOURCES)
+            or (area_id is not None and not isinstance(area_id, str))
+            or (decided_by is not None and decided_by not in VEHICLE_DECIDED_BY)
         ):
             return None
         # The cost the record was written with: only a record that has no intervals has one.
@@ -304,6 +317,7 @@ class ChargeSession:
             source=source,
             intervals=tuple(intervals),
             area_id=area_id,
+            vehicle_decided_by=decided_by,
         )
 
     def public(self, zone: tzinfo | None = None) -> dict[str, Any]:
@@ -332,6 +346,7 @@ class ChargeSession:
             "cost_basis": self.cost_basis,
             "strategy": self.strategy,
             "vehicle": self.vehicle_name,
+            "vehicle_decided_by": self.vehicle_decided_by,
             "solar_share": None if self.solar_share is None else round(self.solar_share, 3),
             "reference_cost": None if reference is None else round(reference / 100, 4),
             "savings": None if savings is None else round(savings / 100, 4),

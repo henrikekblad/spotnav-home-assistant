@@ -21,6 +21,7 @@ from homeassistant.helpers.start import async_at_started
 from .api.dashboard import async_setup_dashboard_api
 from .api.debug import async_setup_debug_api
 from .api.entity_config import async_setup_entity_config_api
+from .api.identification import async_setup_identification_api
 from .api.manual_action import async_setup_manual_action_api
 from .api.market import async_setup_market_api
 from .api.region import async_setup_region_api
@@ -72,6 +73,7 @@ from .runtime import (
 from .services import async_register_services
 from .notifications.notifier import ChargerNotifier
 from .notifications.push import ChargerPush
+from .vehicles.identification import VehicleIdentifier
 from .sessions.inputs import current_fiscal, price_book_for, session_facts
 from .sessions.history_import import HistoryImporter, START_DELAY_S as HISTORY_IMPORT_DELAY_S
 from .sessions.recorder import SessionRecorder
@@ -127,6 +129,7 @@ async def async_setup(hass: HomeAssistant, config: dict[str, Any]) -> bool:
     async_setup_manual_action_api(hass)
     async_setup_site_settings_api(hass)
     async_setup_entity_config_api(hass)
+    async_setup_identification_api(hass)
     async_setup_debug_api(hass)
     # Static route for the bundled card asset, versioned by the manifest.
     await async_setup_card_asset(hass)
@@ -265,6 +268,7 @@ async def _async_setup_charger_entry(hass: HomeAssistant, entry: ChargerConfigEn
     # After the platforms, so a smart plug's integrated-energy sensor already stands in for the register.
     _async_start_session_recorder(hass, entry, data, controller)
     _async_start_notifier(hass, entry, data, controller)
+    _async_start_identifier(hass, entry, data, controller)
     # A charger the flow was asked to add to the site joins it now that its entry id exists.
     await async_apply_site_join(hass, entry)
     # After the join, so the site's wiring and fuse are known to the defaults.
@@ -340,6 +344,20 @@ def _async_start_notifier(
     )
     entry.async_on_unload(notifier.async_shutdown)
     notifier.async_start(data.preview)
+
+
+def _async_start_identifier(
+    hass: HomeAssistant, entry: ChargerConfigEntry, data: ChargerData, controller: ChargingController
+) -> None:
+    """Which car is plugged in, when more than one can charge here (`vehicles/identification.py`)."""
+    store = domain_data(hass).auto_store
+    if store is None:
+        return
+    identifier = data.identifier = VehicleIdentifier(
+        hass, entry.entry_id, controller=controller, store=store, notifier=data.notifier
+    )
+    entry.async_on_unload(identifier.async_shutdown)
+    identifier.async_start(data.preview)
 
 
 def _async_schedule_history_import(

@@ -23,7 +23,7 @@ from ..planning.auto_settings import STRATEGY_HYBRID, STRATEGY_SOLAR
 from ..planning.grid_voltage import voltage_between_phases_v
 from ..planning.planner import FiscalChoice, power_kw
 from ..pricing.price_repository import PriceRepository
-from ..runtime import domain_data
+from ..runtime import charger_data, domain_data
 from ..planning.phases import charger_wiring, charging_phases
 from ..site.phase_detection import async_detect_phases
 from ..vehicles.vehicle_discovery import resolve_target_vehicle
@@ -76,6 +76,8 @@ def session_facts(hass: HomeAssistant, controller: ChargingController) -> Sessio
         vehicle_id, candidates = resolve_target_vehicle(hass, settings.target.vehicle_id)
         vehicle_name = next((item.name for item in candidates if item.id == vehicle_id), None)
     strategy = None if settings is None else settings.strategy
+    data = charger_data(hass, charger_id)
+    identifier = None if data is None else data.identifier
     return SessionFacts(
         charging=controller.charging,
         connected=adapter.vehicle_connected(),
@@ -86,6 +88,7 @@ def session_facts(hass: HomeAssistant, controller: ChargingController) -> Sessio
         vehicle_id=vehicle_id,
         vehicle_name=vehicle_name,
         solar_share=solar_share_of(hass, charger_id, strategy),
+        vehicle_decided_by=None if identifier is None else identifier.method,
     )
 
 

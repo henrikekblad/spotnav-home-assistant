@@ -73,6 +73,13 @@ def _history_import(hass: HomeAssistant, entry_id: str) -> dict[str, Any] | None
     return None if importer is None else importer.diagnostics()
 
 
+def _identification(hass: HomeAssistant, entry_id: str) -> dict[str, Any] | None:
+    """Vehicle identification: how the car was decided and when, never a name, plate, place or entity."""
+    data = charger_data(hass, entry_id)
+    identifier = None if data is None else data.identifier
+    return None if identifier is None else identifier.diagnostics()
+
+
 def _push(hass: HomeAssistant, entry_id: str) -> dict[str, Any] | None:
     data = charger_data(hass, entry_id)
     push = None if data is None else data.push
@@ -93,6 +100,7 @@ def _charger_diagnostics(hass: HomeAssistant, entry: ConfigEntry) -> dict[str, A
         # The paired app's instant notifications: registered or not, the events, the last wake-up's
         # result and time. Never the relay ref.
         "push": _push(hass, entry.entry_id),
+        "vehicle_identification": _identification(hass, entry.entry_id),
         "controller": None
         if controller is None
         else {
