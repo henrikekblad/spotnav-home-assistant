@@ -28,7 +28,7 @@ from dataclasses import dataclass, replace
 from datetime import datetime, timedelta
 from typing import Any, Final
 
-from homeassistant.const import STATE_UNAVAILABLE, STATE_UNKNOWN
+from homeassistant.const import EVENT_STATE_CHANGED, STATE_UNAVAILABLE, STATE_UNKNOWN
 from homeassistant.core import callback, Event, EventStateChangedData, HomeAssistant
 from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers.event import async_track_state_change_event
@@ -44,7 +44,7 @@ from ..execution.target_stop import (
 )
 from ..planning.planner import resolve_target_energy, TargetEnergyRequest
 from ..util import finite_number
-from .vehicle_discovery import _device_name, discover_vehicles, vehicle_soc_entity_id
+from .vehicle_discovery import _device_name, discover_vehicles, resolve_target_vehicle, vehicle_soc_entity_id
 
 
 _LOGGER = logging.getLogger(__name__)
@@ -384,6 +384,10 @@ class SocReader:
         self._on_reading: Callable[[], None] | None = None
         self._last_notified: float | None = None
         self._notify_next = False
+        # While a calculation lacks a level: the stored vehicle it was for, and the listener for a battery
+        # sensor's state anywhere (one with no state yet resolves to nothing `ensure_watch` could watch).
+        self._awaited_vehicle: str | None = None
+        self._arrival_cancel: Callable[[], None] | None = None
         self._closed = False
 
     async def async_load(self) -> None:
@@ -401,6 +405,34 @@ class SocReader:
     def async_shutdown(self) -> None:
         self._closed = True
         self._drop_watch()
+        self._drop_arrival()
+
+    def await_reading(self, stored_vehicle_id: str | None) -> None:
+        """A calculation found no usable level: tell `set_on_reading`'s callback of the first one that
+        arrives, whatever it is (the same value as the last one heard included). At start-up the car's
+        sensor may get its first state only after the planner ran; until then it resolves to nothing to
+        watch, so any battery sensor's state is listened for and the vehicle resolved again on each."""
+        if self._closed:
+            return
+        self._notify_next = True
+        self._awaited_vehicle = stored_vehicle_id
+        if self._arrival_cancel is None:
+            self._arrival_cancel = self._hass.bus.async_listen(
+                EVENT_STATE_CHANGED, self._on_any_battery_state, event_filter=_battery_state
+            )
+
+    def _drop_arrival(self) -> None:
+        if self._arrival_cancel is not None:
+            self._arrival_cancel()
+        self._arrival_cancel = None
+
+    @callback
+    def _on_any_battery_state(self, _event: Event[EventStateChangedData]) -> None:
+        vehicle_id, _ = resolve_target_vehicle(self._hass, self._awaited_vehicle)
+        self.ensure_watch(vehicle_id)
+        reading = self.read(vehicle_id)
+        if reading is not None and reading.soc_percent is not None:
+            self._tell(reading)
 
     def set_on_reading(self, callback_: Callable[[], None] | None) -> None:
         """Ask to be told when a reading moved enough to make a new plan worth calculating."""
@@ -565,6 +597,11 @@ class SocReader:
         reading = self.read(self._watch_vehicle)
         if reading is None or reading.soc_percent is None or reading.estimated:
             return
+        self._tell(reading)
+
+    def _tell(self, reading: SocReading) -> None:
+        """Ask for a new calculation on `reading`: always while one lacked a level, else when it moved."""
+        assert reading.soc_percent is not None
         last = self._last_notified
         if (
             not self._notify_next
@@ -573,6 +610,18 @@ class SocReader:
         ):
             return
         self._notify_next = False
+        self._drop_arrival()
         self._last_notified = reading.soc_percent
         if self._on_reading is not None:
             self._on_reading()
+
+
+@callback
+def _battery_state(event_data: EventStateChangedData) -> bool:
+    """A sensor state that could be a state of charge (`await_reading`'s filter, run for every state)."""
+    new = event_data["new_state"]
+    return (
+        new is not None
+        and new.domain == "sensor"
+        and new.attributes.get("device_class") == "battery"
+    )

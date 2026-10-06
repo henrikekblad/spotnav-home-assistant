@@ -358,6 +358,9 @@ def live_vehicle_facts(
     vehicle_id, _ = resolve_target_vehicle(hass, stored_vehicle_id or None)
     soc_source.ensure_watch(vehicle_id)
     reading = soc_source.read(vehicle_id)
+    if reading is None or reading.soc_percent is None:
+        # Planned without a level: the first one that arrives plans again (`SocReader.await_reading`).
+        soc_source.await_reading(stored_vehicle_id or None)
     return LiveVehicleFacts(
         vehicle_id=vehicle_id or "",
         soc_percent=None if reading is None else reading.soc_percent,
