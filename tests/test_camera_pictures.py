@@ -52,12 +52,14 @@ def test_a_camera_that_sends_another_format_gives_a_jpeg() -> None:
     assert max(picture_size(thumbnail_jpeg(picture(1000, 500, (1, 2, 3))))) == 240
 
 
-def test_a_coloured_car_has_a_signature_and_an_infrared_picture_has_none() -> None:
-    red = colour_signature(picture(200, 100, (180, 30, 30)))
-    white = colour_signature(picture(200, 100, (230, 230, 225)))
-    assert red is not None and red[0] > 0.6 and red[1] < 0.2
-    assert white is None or distinct_cars([red], [white]), "white is far from red, if it counts as coloured at all"
-    assert colour_signature(picture(200, 100, (120, 120, 120))) is None, "grey, as an infrared night picture"
+def test_a_daylight_picture_has_a_signature_and_a_night_or_infrared_one_has_none() -> None:
+    red = colour_signature(picture(200, 100, (60, 70, 60), spot=(180, 30, 30)))
+    white = colour_signature(picture(200, 100, (60, 70, 60), spot=(235, 235, 230)))
+    assert red is not None and white is not None and distinct_cars([red], [white]), "a white car is a colour too"
+    assert colour_signature(picture(200, 100, (120, 120, 120), spot=(200, 200, 200))) is None, (
+        "grey all over, as an infrared picture"
+    )
+    assert colour_signature(picture(200, 100, (60, 70, 60), spot=(180, 30, 30)), "night") is None
     blue = colour_signature(picture(200, 100, (25, 30, 70)))
     grey_blue = colour_signature(picture(200, 100, (38, 40, 52)))
     assert blue is not None and grey_blue is not None and not distinct_cars([blue], [grey_blue])

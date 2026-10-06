@@ -29,7 +29,7 @@ from homeassistant.util import dt as dt_util
 from PIL import Image, ImageOps
 
 from ..const import DOMAIN
-from .camera_rule import PICTURE_KINDS, Signature
+from .camera_rule import PICTURE_DAY, PICTURE_KINDS, Signature
 from .camera_settings import crop_box, Frame
 
 _LOGGER = logging.getLogger(__name__)
@@ -43,7 +43,7 @@ JPEG_QUALITY: Final = 85
 #: the ground around it.
 SIGNATURE_MIDDLE: Final = 0.6
 #: A picture whose pixels differ this little between red, green and blue on average has no colour (infrared).
-GREY_SPREAD: Final = 0.04
+GREY_SPREAD: Final = 0.015
 _SIGNATURE_PIXELS: Final = 24
 _VEHICLE_ID: Final = re.compile(r"^[A-Za-z0-9_-]{1,64}$")
 _STORE_VERSION: Final = 1
@@ -93,27 +93,39 @@ def thumbnail_jpeg(data: bytes, side: int = THUMBNAIL_SIDE) -> bytes:
     return _jpeg(image)
 
 
-def colour_signature(data: bytes) -> Signature:
-    """The average colour of the middle of a cropped picture (red, green, blue, each 0-1, two decimals), or
-    `None` when the picture has no colour (an infrared night picture)."""
+def colour_signature(data: bytes, kind: str = PICTURE_DAY) -> Signature:
+    """The average colour of the middle of a cropped picture (red, green, blue, each 0-1, two decimals), or `None`
+    for a picture whose colour says nothing: a night picture, or one without any colour at all (an infrared
+    picture is grey all over; a daylight picture of a white or black car still has some colour around it)."""
+    if kind != PICTURE_DAY:
+        return None
     image = _open(data)
+    whole = image.resize((_SIGNATURE_PIXELS, _SIGNATURE_PIXELS))
+    if _spread(_pixels(whole)) < GREY_SPREAD:
+        return None
     width, height = image.size
     margin_x = width * (1 - SIGNATURE_MIDDLE) / 2
     margin_y = height * (1 - SIGNATURE_MIDDLE) / 2
     middle = image.crop(
         (int(margin_x), int(margin_y), max(int(width - margin_x), int(margin_x) + 1), max(int(height - margin_y), int(margin_y) + 1))
     ).resize((_SIGNATURE_PIXELS, _SIGNATURE_PIXELS))
-    raw = middle.tobytes()
-    pixels = [(raw[index], raw[index + 1], raw[index + 2]) for index in range(0, len(raw), 3)]
+    pixels = _pixels(middle)
     count = len(pixels)
-    spread = sum(max(pixel) - min(pixel) for pixel in pixels) / count / 255
-    if spread < GREY_SPREAD:
-        return None
     return (
         round(sum(pixel[0] for pixel in pixels) / count / 255, 2),
         round(sum(pixel[1] for pixel in pixels) / count / 255, 2),
         round(sum(pixel[2] for pixel in pixels) / count / 255, 2),
     )
+
+
+def _pixels(image: Image.Image) -> list[tuple[int, int, int]]:
+    raw = image.tobytes()
+    return [(raw[index], raw[index + 1], raw[index + 2]) for index in range(0, len(raw), 3)]
+
+
+def _spread(pixels: list[tuple[int, int, int]]) -> float:
+    """How far red, green and blue lie apart, on average over the pixels (0: grey all over)."""
+    return sum(max(pixel) - min(pixel) for pixel in pixels) / len(pixels) / 255
 
 
 # --------------------------------------------------------------------------- the stored reference pictures
