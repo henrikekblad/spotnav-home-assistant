@@ -120,6 +120,8 @@ class BatteryProbe:
         self._probe_a: float = 0.0
         self._baseline: dict[PhaseName, float] = {}
         self._delivered_baseline: dict[PhaseName, float] = {}
+        self._charging_at_start = False
+        self._status_left_charging = False
         self._extended = False
         self._car_phases: tuple[PhaseName, ...] = ()
         self._backoff_until: float | None = None
@@ -150,9 +152,11 @@ class BatteryProbe:
         baseline_a: Mapping[PhaseName, float],
         car_phases: Sequence[PhaseName],
         delivered_a: Mapping[PhaseName, float | None] | None = None,
+        *,
+        charger_charging: bool = False,
     ) -> None:
         """A probe was started: the car, on `car_phases`, was given `probe_a` while the grid read
-        `baseline_a` and the charger itself `delivered_a`."""
+        `baseline_a`, the charger itself `delivered_a`, and its status said charging or not."""
         self.state = "probing"
         self._started_at = now
         self._probe_a = probe_a
@@ -160,6 +164,8 @@ class BatteryProbe:
         self._delivered_baseline = {
             phase: value for phase, value in (delivered_a or {}).items() if value is not None
         }
+        self._charging_at_start = charger_charging
+        self._status_left_charging = False
         self._extended = False
         self._car_phases = tuple(car_phases)
         self.count += 1
@@ -177,18 +183,19 @@ class BatteryProbe:
         delivered_a: Mapping[PhaseName, float | None],
         main_fuse_a: float,
         charger_charging: bool = False,
-        delivered_report_age_s: Mapping[PhaseName, float | None] | None = None,
     ) -> ProbeVerdict:
         """Judge a running probe on fresh readings. Any doubt ends it as a failure: the window is a
         bounded exception to the overload rules, never a reason to look away from a bad reading.
 
         `charger_charging` is the charger's own status saying it charges (never inferred from the start
-        we sent); `delivered_report_age_s` is how long ago the charger last reported each phase's
-        reading. With them a car that has started but not yet reached its minimum when the window ends
-        is waited for (`PROBE_EXTENDED_WINDOW_S`), every check above still running on every pass.
+        we sent). With it and the charger's reading, a car that has started but not yet reached its
+        minimum when the window ends is waited for (`PROBE_EXTENDED_WINDOW_S`), every check above still
+        running on every pass.
         """
         if self._started_at is None:
             return ProbeVerdict("failed", "not_started")
+        if not charger_charging:
+            self._status_left_charging = True
         phases = tuple(site_current_a)
         if not phases or any(site_current_a.get(phase) is None for phase in phases):
             return ProbeVerdict("failed", "measurement_unusable")
@@ -214,9 +221,7 @@ class BatteryProbe:
         )
         evidence = None
         if not drawing:
-            evidence = self._car_starting(
-                elapsed, delivered_a, charger_charging, delivered_report_age_s or {}
-            )
+            evidence = self._car_starting(delivered_a, charger_charging)
             if evidence is None or elapsed >= PROBE_EXTENDED_WINDOW_S:
                 return ProbeVerdict("failed", "car_not_drawing")
         # Drawing, or waited for: either way past the window every phase must be within the band now.
@@ -233,15 +238,15 @@ class BatteryProbe:
         return ProbeVerdict("succeeded", "battery_yielded")
 
     def _car_starting(
-        self,
-        elapsed: float,
-        delivered_a: Mapping[PhaseName, float | None],
-        charger_charging: bool,
-        report_age_s: Mapping[PhaseName, float | None],
+        self, delivered_a: Mapping[PhaseName, float | None], charger_charging: bool
     ) -> str | None:
-        """Why a car not yet at its minimum is still worth waiting for, or `None`: the charger says it
-        charges, its reading has risen on a phase the car uses, or it has not reported since the start."""
-        if charger_charging:
+        """Why a car not yet at its minimum is still worth waiting for, or `None`: the charger's status
+        has turned to charging since the start (a status that already said so then, and has not left it,
+        is no sign), or its reading has risen on a phase the car uses.
+
+        A reading not reported since the start is no sign on its own: a charger that reports only on a
+        change says nothing while an idle car draws nothing."""
+        if charger_charging and (not self._charging_at_start or self._status_left_charging):
             return "charger_reports_charging"
         for phase in self._car_phases:
             value = delivered_a[phase]
@@ -251,10 +256,6 @@ class BatteryProbe:
                 or (baseline is not None and value - baseline >= PROBE_RISE_A)
             ):
                 return "car_current_rising"
-        for phase in self._car_phases:
-            age = report_age_s.get(phase)
-            if age is not None and age > elapsed:
-                return "charger_reading_lagging"
         return None
 
     def extension_remaining_s(self, now: float) -> float | None:

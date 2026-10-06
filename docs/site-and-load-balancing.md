@@ -160,11 +160,12 @@ It is best effort and is not a protective device. Turning it off gives back any 
     if shorter): if every phase is back within the band the battery gave way and the car goes on
     from there; if not, the car is stopped again and no new probe is tried for 10 minutes, doubling
     to an hour. A car that has visibly started but does not yet draw its minimum when the window
-    ends (the charger's status says it is charging, its own current has begun to rise, or it has not
-    reported since the start) is waited for up to 90 seconds from the start, as long as a start is
-    credited: cars ramp up over tens of seconds and OCPP meter values lag. That wait holds only while
-    every phase stays within the band; a reading above it ends the probe at once. A car that shows
-    nothing by the end of the window is stopped then, as before. A probe is never started against a
+    ends (the charger's status has turned to charging since the start, or its own current has begun
+    to rise) is waited for up to 90 seconds from the start, as long as a start is credited: cars ramp
+    up over tens of seconds and OCPP meter values lag. A status that already said charging when the
+    probe started, or a reading the charger simply has not sent again, is no such sign. That wait
+    holds only while every phase stays within the band; a reading above it ends the probe at once. A
+    car that shows nothing by the end of the window is stopped then, as before. A probe is never started against a
     real overload, and it ends at once on a stale or missing measurement or a phase far above what
     the car's minimum can explain. A charge a person stopped is never restarted this way. The
     outcome is in the site's diagnostics under `battery_probe` and in the decision log
