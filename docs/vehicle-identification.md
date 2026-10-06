@@ -76,7 +76,8 @@ question as a banner with one button per car, and the SpotNav app will show it t
   card; changing the identification settings stays an administrator's. Choosing the car in the card's or app's
   settings at the same time also counts as an answer. A person's answer always beats what the cars report.
 - When the question is answered, or a car's report settles it, the notification on every phone is replaced
-  with "Tesla chosen." or "Recognised as Tesla." The replacement does not alert again.
+  with "Tesla chosen." or "Tesla chosen automatically." The replacement is silent: it does not alert again on
+  Android, and iOS delivers it passively, without a sound or a banner.
 - **No answer keeps the current car.** If the notification is swiped away on Android, the current car is
   kept too, and nothing switches it later.
 - Unplugging the car for more than two minutes takes the question off the phones. A shorter unplug is looked at

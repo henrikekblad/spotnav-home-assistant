@@ -448,7 +448,8 @@ message "Which car is plugged in?" in Home Assistant's language, and `data.actio
 `{"action": "SPOTNAV_ID_<charger id>_<nonce>_<index>", "title": "<car name>"}` per car (at most three; with more, the two
 likeliest and `{"action": "URI", "title": "Open SpotNav", "uri": <url>}`). The nonce is 128 random bits, new for
 each question; a `mobile_app_notification_action` event with a matching action is the answer, and the first one
-wins. A button of a question that is gone (answered, unplugged, a restart) takes the question off the phones.
+wins. A retired question is replaced on every phone by the same tag without actions, silently (`alert_once: true`,
+`push: {"interruption-level": "passive"}`); unplugging sends `clear_notification`. A button of a question that is gone (answered, unplugged, a restart) takes the question off the phones.
 Each session in the history carries the additive `vehicle_decided_by` (`null` where nothing decided it).
 
 ### History by month

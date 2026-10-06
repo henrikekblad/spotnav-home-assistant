@@ -346,7 +346,8 @@ class ChargerNotifier:
 
     def retire_vehicle_question(self, tag: str, targets: tuple[str, ...], wording: str, vehicle: str) -> None:
         """Replace the question on every phone it went to: `chosen`, `recognised` or `kept`, without buttons and
-        without a second alert."""
+        silently: the same tag replaces it, `alert_once` keeps Android quiet and the passive interruption level
+        (iOS 15 and later) delivers it without a sound or a banner."""
         if not targets:
             return
         language = language_of(self._hass.config.language)
@@ -354,7 +355,7 @@ class ChargerNotifier:
         payload = {
             "title": title,
             "message": identify_text(language, wording, vehicle),
-            "data": {**self._identify_data(tag), "alert_once": True},
+            "data": {**self._identify_data(tag), "alert_once": True, "push": {"interruption-level": "passive"}},
         }
         for target in targets:
             self._hass.async_create_task(self._async_send(target, payload), eager_start=True)
