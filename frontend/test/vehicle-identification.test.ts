@@ -112,28 +112,24 @@ describe("the settings fields", () => {
       ...read("dashboard", "target_soc_two_vehicles.json")["settings"],
       vehicle_ids: [EV6, NIRO],
       identify_mode: "ask",
-      vehicle_targets: { [EV6]: 80, [NIRO]: 60 },
     });
     expect(record.vehicle_ids).toEqual([EV6, NIRO]);
     expect(record.identify_mode).toBe("ask");
-    expect(record.vehicle_targets).toEqual({ [EV6]: 80, [NIRO]: 60 });
     const body = encodeBody(record);
     expect(body.vehicle_ids).toEqual([EV6, NIRO]);
     expect(body.identify_mode).toBe("ask");
-    expect(body.vehicle_targets).toEqual({ [EV6]: 80, [NIRO]: 60 });
     const older = { ...read("dashboard", "target_soc_two_vehicles.json")["settings"] };
     delete older["vehicle_ids"];
     delete older["identify_mode"];
-    delete older["vehicle_targets"];
     const plain = encodeBody(decodeSettingsRecord(older));
-    expect("vehicle_ids" in plain || "identify_mode" in plain || "vehicle_targets" in plain).toBe(false);
+    expect("vehicle_ids" in plain || "identify_mode" in plain).toBe(false);
   });
 
   it("refuses a mode, a list or a target this card cannot copy", () => {
     const base = read("dashboard", "target_soc_two_vehicles.json")["settings"];
     expect(() => decodeSettingsRecord({ ...base, identify_mode: "sometimes" })).toThrow();
     expect(() => decodeSettingsRecord({ ...base, vehicle_ids: [] })).toThrow();
-    expect(() => decodeSettingsRecord({ ...base, vehicle_targets: { [EV6]: 120 } })).toThrow();
+    expect(() => decodeSettingsRecord({ ...base, vehicle_targets: { [EV6]: 80 } })).toThrow();
   });
 
   it("knows the question as a notification event", () => {
@@ -162,6 +158,14 @@ describe("the settings fields", () => {
 });
 
 describe("the dashboard", () => {
+  it("reads each car's own target", () => {
+    const payload = dashboard();
+    payload["vehicles"][0]["target_percent"] = 80;
+    payload["vehicles"][1]["target_percent"] = null;
+    const decoded = decodeDashboard(payload);
+    expect(decoded.ok && decoded.value.vehicles.map((row) => row.target_percent)).toEqual([80, null]);
+  });
+
   it("reads the open question and each car's sources, and an older backend without them", () => {
     const decoded = decodeDashboard(dashboard(true));
     expect(decoded.ok).toBe(true);
@@ -202,16 +206,19 @@ describe("the banner", () => {
     expect(hass.messages.filter((message) => message.type === "spotnav/get_dashboard").length).toBeGreaterThan(1);
   });
 
-  it("is worded in every language and shown without buttons to a reader who may not answer", async () => {
+  it("is worded in every language, and any signed-in user may answer it", async () => {
     for (const language of LANGUAGES) {
       document.body.innerHTML = "";
       const { element } = await mounted(dashboard(true), language);
       expect(banner(element)?.textContent, language).toContain(translate(language, "identify.question"));
     }
     document.body.innerHTML = "";
-    const { element } = await mounted(dashboard(true), "en", false);
-    expect(banner(element)).not.toBeNull();
-    expect(banner(element)!.querySelectorAll("button")).toHaveLength(0);
+    const { hass, element } = await mounted(dashboard(true), "en", false);
+    const buttons = banner(element)!.querySelectorAll<HTMLButtonElement>("button");
+    expect(buttons).toHaveLength(2);
+    buttons[1]!.click();
+    await settle();
+    expect(hass.messages.find((message) => message.type === "spotnav/identify_vehicle")).toMatchObject({ vehicle_id: EV6 });
   });
 
   it("is not shown while nothing is asked", async () => {

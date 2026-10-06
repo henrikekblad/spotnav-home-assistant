@@ -203,8 +203,11 @@ describe("the Plan popover's target editor", () => {
   });
 
   it("shows the target the chosen car keeps here, and sends it with the car", async () => {
-    const record = { ...aRecord(), vehicle_ids: null, identify_mode: "automatic" as const, vehicle_targets: { vehicle_ev6: 80, vehicle_niro: 65 } };
-    const { hass, element } = await openPlan(twoVehicles(), record);
+    const payload = twoVehicles();
+    payload["vehicles"][0]["target_percent"] = 80;
+    payload["vehicles"][1]["target_percent"] = 65;
+    const record = { ...aRecord(), vehicle_ids: null, identify_mode: "automatic" as const };
+    const { hass, element } = await openPlan(payload, record);
     const select = q<HTMLSelectElement>(element, "select[data-soc='vehicle-choice']")!;
     select.value = "vehicle_niro";
     select.dispatchEvent(new Event("change"));
