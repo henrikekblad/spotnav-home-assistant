@@ -1161,6 +1161,26 @@ class ChargingController:
             idle_power_w=self.idle_power_w,
         )
 
+    def measured_current_a(self) -> float | None:
+        """The current the charger itself measures now, in A (its highest phase), or `None`.
+
+        An OCPP connector's current-import main state for the connector the target names; else the
+        adapter's measured-current sensors (`charger_profiles.current_sensor_keys`). Read-only; a
+        setpoint is never a measurement.
+        """
+        target = self.ocpp_target
+        if target is not None:
+            return connector_current(
+                self.hass.states.get(connector_entity_id(target.devid, target.connector_id, "current_import"))
+            )
+        if self.adapter.is_ocpp:
+            return None
+        return self.adapter.measured_current_a()
+
+    def measured_power_w(self) -> float | None:
+        """The power a smart plug's power sensor measures now, in W, or `None` without one."""
+        return read_power_w(self.hass, self.power_entity_id)
+
     @callback
     def charge_progress_changed(self) -> None:
         """The observation's grace period expired: tell the readers."""

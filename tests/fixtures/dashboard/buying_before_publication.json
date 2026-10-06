@@ -1178,6 +1178,7 @@
     "unpriced_slots": 0,
     "waiting_for_tomorrow": true
   },
+  "progress": null,
   "sessions_summary": {
     "last_month": {
       "average_price_minor_per_kwh": null,

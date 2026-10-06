@@ -60,7 +60,11 @@ from ..execution.auto_execution import (
 from ..execution.charger_entities import charge_control_problem
 from ..startup import NOT_STARTING, StartupState, startup_state
 from ..execution.charger_connection import CONNECTION_STATES, UNKNOWN as CONNECTION_UNKNOWN
-from ..execution.charge_progress import ChargeProgress, NOT_OBSERVED
+from ..execution.charge_progress import (
+    ChargeProgress,
+    NOT_OBSERVED,
+    STATE_VEHICLE_NOT_REQUESTING_CURRENT,
+)
 from ..execution.target_stop import charge_ceiling_percent
 from ..execution.controller import (
     ChargingController,
@@ -79,6 +83,7 @@ from ..planning.auto_settings import (
     STRATEGY_CHEAPEST,
 )
 from ..planning.hybrid_forecast import async_forecast_capable_domains
+from ..planning.grid_voltage import voltage_between_phases_v
 from ..planning.phases import charging_phases, ChargingPhases, onboard_suggestion
 from ..planning.planner import chart_intervals, ChartInterval
 from ..sessions.inputs import sessions_block
@@ -119,6 +124,7 @@ from ..vehicles.charger_inventory import charger_entries
 from ..vehicles.duplicate_chargers import duplicates_of
 from ..vehicles.soc_estimate import battery_room_kwh, CHARGE_EFFICIENCY, target_need_kwh
 from ..vehicles.vehicle_discovery import discover_vehicles, resolve_target_vehicle
+from .charge_bar import charge_bar, ProgressFacts
 from .common import (
     ERROR_CHARGER_REQUIRED,
     ERROR_CHARGER_UNLOADED,
@@ -223,7 +229,8 @@ class CapturedCharger:
 class CapturedLive:
     """The charger's own live facts, read once.
 
-    `measured_current_a` is `None`: there is no charger-level measurement, and a setpoint is not one.
+    `measured_current_a` is the current the charger measures now (`measured_current_of`), `None` where
+    nothing measures it; a setpoint is never one.
     """
 
     charging: bool
@@ -436,6 +443,60 @@ class CapturedDashboard:
     notify_available: tuple[tuple[str, str], ...] = ()
     #: Friendly names of the entities a status line names (`entity_id -> name`), where they have one.
     entity_names: tuple[tuple[str, str], ...] = ()
+    #: A smart plug's measured power now, in kW (`ChargingController.measured_power_w`).
+    measured_power_kw: float | None = None
+    #: The charger's voltage between phases (`grid_voltage.voltage_between_phases_v`).
+    voltage_between_phases_v: float = 400.0
+    #: The open charge session, `None` while none runs.
+    session: CapturedSession | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class CapturedSession:
+    """The open charge session as the `progress` block states it."""
+
+    started_at: datetime
+    start_soc_percent: float | None
+    #: The energy measured since it began; `None` for a session whose energy is an estimate.
+    delivered_kwh: float | None
+
+
+def capture_session(hass: HomeAssistant, entry_id: str) -> CapturedSession | None:
+    data = charger_data(hass, entry_id)
+    recorder = None if data is None else data.sessions
+    session = None if recorder is None else recorder.session
+    if session is None:
+        return None
+    return CapturedSession(
+        started_at=session.start,
+        start_soc_percent=finite_number(session.start_soc_percent),
+        delivered_kwh=None if session.estimated else finite_number(session.energy_kwh),
+    )
+
+
+def measured_current_of(hass: HomeAssistant, entry_id: str, controller: ChargingController | None) -> float | None:
+    """The current this charger draws now, in A (its highest phase), or `None` where nothing measures it.
+
+    The charger's own measurement first (an OCPP connector's current import, or the measured-current
+    sensors its integration has), else the per-phase measurement its site is wired to read for it.
+    """
+    if controller is not None:
+        own = finite_number(controller.measured_current_a())
+        if own is not None:
+            return max(own, 0.0)
+    site = site_binding(hass, entry_id)
+    site_controller = None if site is None else site_controller_for(hass, site.entry_id)
+    if site_controller is None:
+        return None
+    measurement = site_controller.charger_measured_current(entry_id)
+    if measurement is None:
+        return None
+    values = [
+        value.value
+        for value in (measurement.l1, measurement.l2, measurement.l3)
+        if value.problem is None and finite_number(value.value) is not None
+    ]
+    return max(0.0, *values) if values else None
 
 
 def capture_target(controller: ChargingController | None) -> CapturedTarget | None:
@@ -950,7 +1011,7 @@ def capture_dashboard(
             schedule_active=bool(controller is not None and controller.plan is not None),
             requested_current_a=None if controller is None else controller.requested_current_a,
             setpoint_current_a=None if controller is None else controller.setpoint_current_a,
-            measured_current_a=None,
+            measured_current_a=measured_current_of(hass, entry_id, controller),
             held_by_charger=bool(controller is not None and controller.held_by_charger),
             charger_disabled=bool(controller is not None and controller.charger_disabled),
             ignores_person_stop=bool(controller is not None and controller.ignores_person_stop),
@@ -1003,7 +1064,15 @@ def capture_dashboard(
         charger_priority=capture_charger_priority(hass, entry),
         notify_available=available_targets(hass),
         entity_names=_status_entity_names(hass, site),
+        measured_power_kw=_measured_power_kw(controller),
+        voltage_between_phases_v=voltage_between_phases_v(hass, entry_id),
+        session=capture_session(hass, entry_id),
     )
+
+
+def _measured_power_kw(controller: ChargingController | None) -> float | None:
+    watts = None if controller is None else finite_number(controller.measured_power_w())
+    return None if watts is None else watts / 1000.0
 
 
 def _status_entity_names(hass: HomeAssistant, site: CapturedSite | None) -> tuple[tuple[str, str], ...]:
@@ -1578,6 +1647,7 @@ def serialize_dashboard(
         "prices": serialize_prices(capture),
         "plan": serialize_plan(capture),
         "live": serialize_live(capture),
+        "progress": serialize_progress(capture),
         "strategy": serialize_strategy(capture),
         "strategy_options": list(capture.strategy_options),
         "strategy_state": serialize_strategy_state(capture),
@@ -1600,6 +1670,66 @@ def serialize_dashboard(
         "starting_up": serialize_starting_up(capture.starting_up),
         "charger_priority": serialize_charger_priority(capture.charger_priority, can_act=can_act),
     }
+
+
+def progress_facts(capture: CapturedDashboard) -> ProgressFacts:
+    """The captured moment as the facts `charge_bar.charge_bar` decides the bar from."""
+    settings = capture.settings
+    soc = capture.soc
+    pause = None if settings is None else settings.pause
+    paused = capture.execution.paused is True
+    proposal = _proposal_section(capture)
+    installed = _installed_section(capture)
+    need = _need_progress(capture.snapshot)
+    session = capture.session
+    target = None if soc is None else soc.target_percent
+    if target is None and settings is not None:
+        target = settings.target.target_percent
+    requested = None if proposal is None else proposal["requested_kwh"]
+    if requested is None and settings is not None:
+        requested = finite_number(settings.requested_kwh)
+    return ProgressFacts(
+        now=capture.generated_at,
+        charging=capture.live.charging,
+        starting_up=capture.starting_up.active,
+        connection=serialize_connection(capture.connection)["state"],
+        vehicle_not_requesting=capture.charge_progress.state == STATE_VEHICLE_NOT_REQUESTING_CURRENT,
+        strategy=None if settings is None else strategy_of(settings),
+        paused=paused,
+        person_started=paused and pause is not None and pause.manual and pause.action == "start",
+        installed_periods=_installed_spans(capture),
+        driver=None if settings is None else settings.driver,
+        fill_to_limit=bool(settings is not None and settings.fill_to_limit),
+        soc_percent=None if soc is None else finite_number(soc.value),
+        target_percent=finite_number(target),
+        vehicle_max_percent=None if soc is None else finite_number(soc.vehicle_max_percent),
+        need_kwh=None if soc is None else finite_number(soc.need_kwh),
+        room_kwh=None if soc is None else finite_number(soc.room_kwh),
+        capacity_kwh=None if soc is None else finite_number(soc.capacity_kwh),
+        plan_delivered_kwh=need["delivered_kwh"],
+        plan_remaining_kwh=need["remaining_kwh"],
+        requested_kwh=requested,
+        measured_power_kw=capture.measured_power_kw,
+        measured_current_a=finite_number(capture.live.measured_current_a),
+        phases=_effective_phases(capture),
+        voltage_between_phases_v=capture.voltage_between_phases_v,
+        assigned_current_a=finite_number(capture.live.requested_current_a),
+        installed_power_kw=None if installed is None else installed["power_kw"],
+        installed_amps=None if installed is None else finite_number(installed["amps"]),
+        installed_phases=None if installed is None else installed["phases"],
+        proposal_power_kw=None if proposal is None else proposal["power_kw"],
+        settings_amps=None if settings is None else finite_number(settings.amps),
+        session_started_at=None if session is None else session.started_at,
+        session_start_soc_percent=None if session is None else session.start_soc_percent,
+        session_delivered_kwh=None if session is None else session.delivered_kwh,
+    )
+
+
+def serialize_progress(capture: CapturedDashboard) -> dict[str, Any] | None:
+    """The additive `progress` block (`charge_bar.py`): how far the running charge has come and when it
+    ends, decided once for the card and the app; `null` while no charge runs.
+    """
+    return charge_bar(progress_facts(capture))
 
 
 def serialize_starting_up(state: StartupState) -> dict[str, Any]:

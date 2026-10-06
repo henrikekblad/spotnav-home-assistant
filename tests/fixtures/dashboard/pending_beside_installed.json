@@ -2127,6 +2127,7 @@
     "setpoint_current_a": null,
     "measured_current_a": null
   },
+  "progress": null,
   "strategy": {
     "selected": "cheapest",
     "available": [

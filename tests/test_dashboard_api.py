@@ -106,6 +106,7 @@ DASHBOARD_SECTIONS = [
     "prices",
     "plan",
     "live",
+    "progress",
     "strategy",
     "strategy_options",
     "strategy_state",
