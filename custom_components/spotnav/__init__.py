@@ -74,7 +74,7 @@ from .services import async_register_services
 from .notifications.notifier import ChargerNotifier
 from .notifications.push import ChargerPush
 from .execution.ownership_coverage import OwnershipCoverage
-from .sessions.inputs import current_fiscal, price_book_for, session_facts
+from .sessions.inputs import current_fiscal, price_book_for, session_facts, soc_percent_now
 from .sessions.history_import import HistoryImporter, START_DELAY_S as HISTORY_IMPORT_DELAY_S
 from .sessions.recorder import SessionRecorder
 from .sessions.store import SessionStore
@@ -320,6 +320,7 @@ def _async_start_session_recorder(
         prices=lambda now: price_book_for(hass, entry.entry_id, now),
         consume_cause=controller.consume_start_cause,
         subscribe=controller.add_charge_state_listener,
+        start_soc=lambda: soc_percent_now(hass, entry.entry_id),
     )
     entry.async_on_unload(recorder.async_shutdown)
     recorder.async_start()
