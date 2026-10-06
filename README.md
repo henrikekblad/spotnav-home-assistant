@@ -77,6 +77,7 @@ match and choose **Approve**. No Home Assistant password or token is stored on t
 - [Charging strategies](docs/strategies.md): cheapest, solar and hybrid.
 - [Prices](docs/prices.md): sources, taxes and fees, and the relay's published files.
 - [Target state of charge](docs/target-soc.md): vehicles, estimates and stopping at a target.
+- [Which car is plugged in?](docs/vehicle-identification.md): several cars at one charger.
 - [Site and load balancing](docs/site-and-load-balancing.md): main fuse, measurement sources,
   active control.
 - [Home batteries](docs/home-battery.md): the "charging from the grid" signal for Predbat,

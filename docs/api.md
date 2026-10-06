@@ -48,6 +48,8 @@ charger executed whose pause could not be saved answers `{"ok": true, "action": 
 | `update_site_settings` | Change solar priority or forecast sources of the charger's site. |
 | `update_charger_priority` | Change this charger's priority on its site: `{"priority", "expected"}` (see below). |
 | `push_register` | The app's instant notifications: `{"push_ref", "events"}`, or `{"push_ref": null}` to stop (see below). |
+| `identify_vehicle` | Answer "which car is plugged in?": `{"vehicle_id"}` (see [vehicle identification](#vehicle-identification)). |
+| `choose_vehicle_identification` | Choose a car's plug or location source: `{"vehicle_id", "source", "entity_id"}` (see [vehicle identification](#vehicle-identification)). |
 
 **Withheld settings fields.** The settings record has a `departure_weekdays` (an optional list of
 weekday numbers, 1 Monday to 7 Sunday, at least one, default all seven: the days a daily departure
@@ -68,8 +70,9 @@ area's override says. It is withheld from the webhook like the two fields above 
 
 The record also carries `notifications` (see [Notifications](notifications.md)): `targets` (notify
 service names such as `mobile_app_pixel_8`, at most ten), `events` (any of `plan_stopped`,
-`plan_at_risk`, `charge_complete`, `charge_started`, `plugged_in`, `unplugged`, `plan_installed`;
-default the first three), `url` (a Home Assistant path a tap opens, or `null` for the default
+`plan_at_risk`, `charge_complete`, `charge_started`, `plugged_in`, `unplugged`, `plan_installed`,
+`vehicle_identify`; default `plan_stopped`, `plan_at_risk`, `charge_complete` and `vehicle_identify`; a choice
+stored before `vehicle_identify` existed has it on), `url` (a Home Assistant path a tap opens, or `null` for the default
 dashboard) and a read-only `available` (`[{"service", "name"}]`, the Companion app's notify services
 that exist now, named after their phones). A replacement may leave the field out, and then the stored
 choice is kept; `available` may be echoed and is ignored; a bad value is refused with
@@ -86,6 +89,18 @@ chose an amount, and that clears it. Setting the requested-energy number entity 
 is not a boolean is refused with `invalid_energy`. It is withheld from the webhook like the fields above
 (ask with `"reads": ["fill_to_limit"]`), so an older app neither sees it nor is offered a record it would
 refuse.
+
+The record also carries three fields for [vehicle identification](vehicle-identification.md): `vehicle_ids`
+(the vehicles that can charge at this charger: `null` for every detected vehicle, the default, or a non-empty list
+of different vehicle ids), `identify_mode` (`"automatic"`, the default, `"ask"` or `"off"`) and `vehicle_targets`
+(an object of vehicle id to target percent, 0-100, `{}` by default). The target follows the vehicle: the selected
+vehicle's entry is always `target.target_percent` (a body whose map disagrees has the map entry set to it), and a
+replacement that changes `target.vehicle_id` but leaves `target.target_percent` as it was gets the new vehicle's
+remembered target, when it has one. A record stored before these fields reads its target as its selected vehicle's.
+A replacement may leave any of the three out, and then the stored value is kept; a bad list or mode is refused with
+`invalid_vehicles`, a bad map with `invalid_target`. All three are withheld from the webhook like the fields above
+(ask with `"reads": ["vehicle_ids", "identify_mode", "vehicle_targets"]`), so an older app never sees them, and its
+replacements keep them.
 
 **Instant notifications.** `push_register` takes `push_ref`, the opaque reference the SpotNav relay
 gave the app for its Firebase token (base64url text, at most 512 characters), or `null` to stop, and an
@@ -134,6 +149,7 @@ config entry id. Reading is open to every authenticated user; writes require an 
 | `spotnav/update_site_settings` | Solar priority, forecast sources, active load balancing. |
 | `spotnav/get_debug_bundle` | The redacted installation-wide debug bundle (administrators only). |
 | `spotnav/get_card_info` | Which card the integration serves, for any signed-in user: `{"api_version": 1, "ok": true, "error": null, "spotnav_version", "card_bundle_hash"}`. The card compares the hash with the one in the URL it was loaded from. Not a dashboard field, so an older card is never handed a key it does not know. |
+| `spotnav/identify_vehicle`, `spotnav/choose_vehicle_identification` | Answer "which car is plugged in?", and choose a car's plug or location source (see [vehicle identification](#vehicle-identification)). |
 | `spotnav/get_sessions` | A charger's charge sessions: summaries per month and day and the latest sessions, the same for one chosen `month`, or with `format: "csv"` and optional `from` and `to` dates (or a `month`) the sessions of that range as CSV text. |
 
 Rules that hold across them:
@@ -325,6 +341,45 @@ The additive `sessions_summary` block holds this month's and last month's charge
 `savings`). Cost is in the major unit, prices in the minor unit per kWh; `savings` compares with
 the day's average price and is an estimate (`savings_estimate: true`). A client ignores keys it does
 not know. Example answers of `spotnav/get_sessions` are in `tests/fixtures/sessions/`.
+
+### Vehicle identification
+
+At a charger more than one vehicle can charge at, SpotNav finds out which one was plugged in
+([how](vehicle-identification.md)). The additive root block `identification` is `null` unless a plug-in is
+being identified, else:
+
+```json
+{"state": "asking", "method": "assumed", "vehicle_id": "<the target vehicle now>",
+ "since": "2026-10-06T17:00:00+00:00",
+ "candidates": [{"vehicle_id": "...", "name": "Kia", "likely": false}, {"vehicle_id": "...", "name": "Tesla", "likely": true}]}
+```
+
+`state` is `waiting` (looking at the cars' own reports), `asking` (the question is open: a client shows it with
+one button per candidate, in the given order) or `decided`. `method` is how the car was decided so far:
+`plug_sensor`, `location`, `answered`, `manual`, or `assumed` (nothing decided it yet, or nobody answered).
+`likely` marks a car whose own plug sensor says it was plugged in. A vehicle row in `vehicles` carries the
+additive `identification`: `{"plug": source, "location": source}`, each source `{"entity_id", "name", "chosen",
+"candidates": [{"entity_id", "name"}]}`; `entity_id` `null` with `chosen` false is nothing found, or several to
+choose from, and with `chosen` true it is the person's "none".
+
+`spotnav/identify_vehicle` (administrators) and the webhook action `identify_vehicle` take `vehicle_id`, one of
+the candidates, and answer `{"api_version": 1, "ok", "error", "identification"}` with the block after the answer.
+It is the person's answer: it wins over every automatic result, retires the question on every phone, and writes
+the settings as any vehicle choice does. Refusals: `spotnav_not_identifying` (nothing is being identified),
+`spotnav_invalid_value` (not a candidate), `spotnav_not_admin`, `spotnav_unknown_charger`,
+`spotnav_unsupported_api_version`; over the webhook HTTP 400 with the same code.
+
+`spotnav/choose_vehicle_identification` (administrators) and the webhook action of the same name take
+`vehicle_id`, `source` (`plug` or `location`) and `entity_id`: one of the source's candidates, `"none"` (the car
+has no such source) or `null` (back to automatic). The answer carries `identification`, the vehicle row's block
+after the write; a value that is not one of these is `spotnav_invalid_value`.
+
+The phones' question is the notification event `vehicle_identify`: tag `spotnav_<charger id>_identify`, the
+message "Which car is plugged in?" in Home Assistant's language, and `data.actions` with one
+`{"action": "SPOTNAV_ID_<nonce>_<index>", "title": "<car name>"}` per car (at most three; with more, the two
+likeliest and `{"action": "URI", "title": "Open SpotNav", "uri": <url>}`). The nonce is 128 random bits, new for
+each question; a `mobile_app_notification_action` event with a matching action is the answer, and the first one
+wins. Each session in the history carries the additive `vehicle_decided_by` (`null` where nothing decided it).
 
 ### History by month
 

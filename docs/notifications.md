@@ -18,6 +18,7 @@ has its own choice, so the driver of each car can follow their own charger.
 | Charging started | no | the charger starts charging, for whatever reason |
 | Car plugged in / Car unplugged | no | for a charger that can say whether a car is connected |
 | New plan | no | a plan different from the one before is installed, with its start, energy and estimated cost |
+| Which car is plugged in? | yes | at a charger more than one car can charge at, when SpotNav cannot tell which car was plugged in: a question with one button per car ([vehicle identification](vehicle-identification.md)) |
 
 A new plan that SpotNav calculates within a minute after someone changed that charger's settings (in the app, the card or a SpotNav entity) is not told, nor does it wake the app, because the person already sees it; problems are never held back this way.
 
