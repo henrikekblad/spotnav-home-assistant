@@ -139,3 +139,15 @@ async def test_a_vehicle_row_states_the_cars_target(hass: HomeAssistant) -> None
         for row in dashboard_api.serialize_dashboard(dashboard_api.capture_dashboard(hass, a), can_act=True)["vehicles"]
     }
     assert rows[kia]["target_percent"] == 80.0 and rows[tesla]["target_percent"] is None
+
+
+async def test_every_detected_car_stays_choosable_for_the_cars_at_a_charger(hass: HomeAssistant) -> None:
+    a, _b, kia, tesla = await _world(hass)
+    preview = preview_for(hass, a.entry_id)
+    await preview.async_apply_settings(mutate=lambda s: replace(s, vehicle_ids=(tesla,)))
+    await hass.async_block_till_done()
+    payload = dashboard_api.serialize_dashboard(dashboard_api.capture_dashboard(hass, a), can_act=True)
+    assert [row["id"] for row in payload["vehicles"]] == [tesla], "planning sees the charger's cars"
+    assert payload["vehicle_choices"] == [{"id": kia, "name": "Kia"}, {"id": tesla, "name": "Tesla"}], (
+        "the settings can tick a car again"
+    )

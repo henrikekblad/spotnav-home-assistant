@@ -385,3 +385,33 @@ describe("the banner's icon", () => {
     expect(banner(element)?.querySelector("[data-icon='question']")).not.toBeNull();
   });
 });
+
+describe("the cars at this charger", () => {
+  it("lists every detected car, so an unticked one can be ticked again", async () => {
+    const payload = dashboard();
+    payload["settings"]["vehicle_ids"] = [NIRO];
+    payload["vehicles"] = payload["vehicles"].filter((row: Record<string, unknown>) => row["id"] === NIRO);
+    payload["vehicle_choices"] = [
+      { id: EV6, name: "EV6" },
+      { id: NIRO, name: "Niro" },
+    ];
+    const { hass, element } = await openSettings(payload);
+    const section = openDialog(element)!.querySelector<HTMLElement>("[data-section='identification']")!;
+    expect(section.textContent).toContain("Niro");
+    section.querySelector<HTMLButtonElement>("[data-edit-identification]")!.click();
+    await settle();
+    const form = openDialog(element)!.querySelector<HTMLFormElement>("[data-identification-editor]")!;
+    const boxes = Array.from(form.querySelectorAll<HTMLInputElement>("[data-identify-vehicle]"));
+    expect(boxes.map((box) => [box.dataset["identifyVehicle"], box.checked])).toEqual([[EV6, false], [NIRO, true]]);
+    boxes[0]!.click();
+    form.requestSubmit();
+    await settle();
+    hass.resolveNext({
+      api_version: SETTINGS_API_VERSION, ok: true, error: null, settings: payload["settings"],
+      pause: { choice: null, admitted_at: null, expires_at: null },
+    });
+    await settle();
+    const update = hass.messages.find((message) => message.type === "spotnav/update_settings") as Record<string, any>;
+    expect(update["settings"]["vehicle_ids"]).toBeNull();
+  });
+});
