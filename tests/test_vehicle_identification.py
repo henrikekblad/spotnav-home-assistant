@@ -306,7 +306,7 @@ async def test_decisive_evidence_after_the_question_switches_once_and_retires_it
     await world.later(5)
     assert world.settings.target.vehicle_id == world.cars["Tesla"]
     assert world.identifier.method == METHOD_PLUG_SENSOR
-    assert world.sent()[-1]["message"] == "Recognised as Tesla."
+    assert world.sent()[-1]["message"] == "Tesla chosen automatically."
     world.car_says("Tesla", "plug", "off")
     world.car_says("Volvo", "plug", "on")
     await world.later(60)
@@ -609,3 +609,44 @@ def test_a_session_keeps_how_its_car_was_decided() -> None:
     plain = replace(session, vehicle_decided_by=None).as_dict()
     assert "vehicle_decided_by" not in plain and ChargeSession.from_dict(plain).vehicle_decided_by is None
     assert ChargeSession.from_dict({**stored, "vehicle_decided_by": "camera"}) is None
+
+
+def _silent_retirement(payload: dict[str, Any], question: dict[str, Any], message: str) -> None:
+    assert payload["message"] == message
+    data = payload["data"]
+    assert data["tag"] == question["data"]["tag"], "it replaces the question"
+    assert "actions" not in data
+    assert data["alert_once"] is True, "Android: no second alert"
+    assert data["push"] == {"interruption-level": "passive"}, "iOS: delivered silently"
+
+
+async def test_an_answered_question_is_replaced_silently_on_every_phone(world: World) -> None:
+    await world.start(phones=("mobile_app_pixel", "mobile_app_iphone"))
+    world.hass.config.language = "sv"
+    await world.plug_in()
+    await world.later(ASK_AFTER_S + 5)
+    question = world.sent()[0]
+    await world.tap(question, 1)
+    for phone in ("mobile_app_pixel", "mobile_app_iphone"):
+        _silent_retirement(world.sent(phone)[-1], question, "Tesla vald.")
+
+
+async def test_a_question_settled_by_the_cars_is_replaced_silently(world: World) -> None:
+    await world.start()
+    world.hass.config.language = "sv"
+    await world.plug_in()
+    await world.later(ASK_AFTER_S + 5)
+    question = world.sent()[0]
+    world.car_says("Tesla", "plug", "on")
+    await world.later(5)
+    _silent_retirement(world.sent()[-1], question, "Tesla vald automatiskt.")
+
+
+async def test_unplugging_still_clears_the_question(world: World) -> None:
+    await world.start()
+    await world.plug_in()
+    await world.later(ASK_AFTER_S + 5)
+    tag = world.sent()[0]["data"]["tag"]
+    await world.unplug()
+    await world.later(UNPLUG_DEBOUNCE_S + 1)
+    assert world.sent()[-1] == {"message": "clear_notification", "data": {"tag": tag}}
