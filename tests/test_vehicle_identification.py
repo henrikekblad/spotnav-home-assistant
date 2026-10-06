@@ -350,8 +350,12 @@ async def test_off_and_a_single_vehicle_identify_nothing(world: World, hass: Hom
     await world.start(mode="off")
     await world.plug_in()
     await world.later(ASK_AFTER_S + 60)
-    assert world.sent() == [] and world.identifier.dashboard() is None
+    assert world.sent() == []
     assert world.identifier.method == METHOD_MANUAL
+    block = world.identifier.dashboard()
+    assert block is not None and block["state"] == "decided" and block["method"] == METHOD_MANUAL, (
+        "two cars at the charger: the car can be changed even with identification off"
+    )
     await world.unplug()
     await world.later(UNPLUG_DEBOUNCE_S + 1)
     store = domain_data(hass).auto_store
@@ -692,7 +696,7 @@ async def test_a_correction_works_where_nothing_was_identified_while_a_car_is_pl
 ) -> None:
     await world.start(mode="off")
     await world.plug_in()
-    assert world.identifier.dashboard() is None
+    assert world.identifier.dashboard()["state"] == "decided"
     result = await _identify(world, hass, hass_ws_client, hass_read_only_user, world.cars["Tesla"])
     assert result["ok"] is True
     assert world.settings.target.vehicle_id == world.cars["Tesla"] and world.identifier.method == METHOD_ANSWERED
@@ -726,3 +730,14 @@ async def test_a_correction_while_the_question_is_out_replaces_it_silently(
     result = await _identify(world, hass, hass_ws_client, hass_read_only_user, world.cars["Tesla"])
     assert result["ok"] is True
     _silent_retirement(world.sent()[-1], question, "Tesla chosen.")
+
+
+async def test_no_block_with_one_car_at_the_charger_or_no_car_plugged_in(world: World, hass: HomeAssistant) -> None:
+    await world.start(mode="off")
+    assert world.identifier.dashboard() is None, "no car plugged in"
+    store = domain_data(hass).auto_store
+    await store.async_update(
+        world.entry.entry_id, mutate=lambda settings: replace(settings, vehicle_ids=(world.cars["Kia"],))
+    )
+    await world.plug_in()
+    assert world.identifier.dashboard() is None, "one car at the charger"

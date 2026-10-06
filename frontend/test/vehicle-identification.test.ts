@@ -393,8 +393,62 @@ describe("Byt bil", () => {
     });
   });
 
-  it("is not offered without a decision or question to correct", async () => {
-    expect(changeCar((await mounted(dashboard(false))).element)).toBeNull();
+  it("is not offered with one car at the charger", async () => {
+    const payload = dashboard(false);
+    payload["settings"]["vehicle_ids"] = [EV6];
+    expect(changeCar((await mounted(payload)).element)).toBeNull();
+  });
+
+  it("is offered with two cars at the charger and no identification, and answers through it when a car is in", async () => {
+    const payload = dashboard(false);
+    payload["connection"] = { state: "connected", source: null };
+    const { hass, element } = await mounted(payload, "sv", false);
+    expect(changeCar(element)?.querySelector("[data-icon='swap']")).not.toBeNull();
+    changeCar(element)!.click();
+    await settle();
+    const dialog = openDialog(element)!;
+    const radios = Array.from(dialog.querySelectorAll<HTMLInputElement>("input[data-identify-choice]"));
+    expect(radios.map((radio) => radio.value)).toEqual([EV6, NIRO]);
+    radios[1]!.click();
+    dialog.querySelector<HTMLFormElement>("form")!.requestSubmit();
+    await settle();
+    expect(hass.messages.find((message) => message.type === "spotnav/identify_vehicle")).toMatchObject({ vehicle_id: NIRO });
+  });
+
+  it("falls back to the plan's car in the settings when no car is plugged in", async () => {
+    const payload = dashboard(false);
+    payload["connection"] = { state: "connected", source: null };
+    const { hass, element } = await mounted(payload, "sv");
+    changeCar(element)!.click();
+    await settle();
+    const dialog = openDialog(element)!;
+    dialog.querySelectorAll<HTMLInputElement>("input[data-identify-choice]")[1]!.click();
+    dialog.querySelector<HTMLFormElement>("form")!.requestSubmit();
+    await settle();
+    hass.resolveNext({ api_version: 1, ok: false, error: "spotnav_not_identifying" });
+    await settle();
+    expect(hass.messages.some((message) => message.type === "spotnav/get_settings")).toBe(true);
+    hass.resolveNext({
+      api_version: SETTINGS_API_VERSION, ok: true, error: null, settings: payload["settings"],
+      pause: { choice: null, admitted_at: null, expires_at: null },
+    });
+    await settle();
+    const update = hass.messages.find((message) => message.type === "spotnav/update_settings") as Record<string, any>;
+    expect(update["settings"]["target"]["vehicle_id"]).toBe(NIRO);
+  });
+
+  it("writes the plan's car straight away when the charger says no car is connected", async () => {
+    const payload = dashboard(false);
+    payload["connection"] = { state: "disconnected", source: null };
+    const { hass, element } = await mounted(payload, "sv");
+    changeCar(element)!.click();
+    await settle();
+    const dialog = openDialog(element)!;
+    dialog.querySelectorAll<HTMLInputElement>("input[data-identify-choice]")[1]!.click();
+    dialog.querySelector<HTMLFormElement>("form")!.requestSubmit();
+    await settle();
+    expect(hass.messages.some((message) => message.type === "spotnav/identify_vehicle")).toBe(false);
+    expect(hass.messages.some((message) => message.type === "spotnav/get_settings")).toBe(true);
   });
 });
 

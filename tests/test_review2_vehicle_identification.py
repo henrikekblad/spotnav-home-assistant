@@ -147,7 +147,11 @@ async def test_a_restart_after_a_person_answered_keeps_the_answer(world: World, 
     await _restart(world, monkeypatch)
     await world.later(ASK_AFTER_S + 5)
     assert world.identifier.method == "answered"
-    assert world.identifier.dashboard() is None or world.identifier.dashboard()["state"] == "decided"
+    block = world.identifier.dashboard()
+    assert block is not None, "the car can still be changed after a restart"
+    assert block["state"] == "decided" and block["method"] == "answered"
+    assert block["vehicle_id"] == world.cars["Tesla"]
+    assert {item["vehicle_id"] for item in block["candidates"]} == set(world.cars.values())
     assert len(world.sent()) == sent, "nothing asked again"
 
 

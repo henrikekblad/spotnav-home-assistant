@@ -214,11 +214,13 @@ describe("the charger status in the header line", () => {
   });
 });
 
-describe("the vehicle line without identification", () => {
+describe("the vehicle line with one car at the charger", () => {
   it("is no button and has no swap icon: there is nothing to change at this charger", async () => {
     for (const admin of [true, false]) {
       document.body.innerHTML = "";
-      const { element } = await mounted(twoVehicles(), "en", admin);
+      const payload = twoVehicles();
+      payload["settings"]["vehicle_ids"] = ["vehicle_ev6"];
+      const { element } = await mounted(payload, "en", admin);
       expect(line(element)?.tagName).not.toBe("BUTTON");
       expect(line(element)?.querySelector("[data-icon='swap']")).toBeNull();
       line(element)!.click();
