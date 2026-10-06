@@ -335,11 +335,19 @@ describe("the owner's wording", () => {
 });
 
 describe("the car line", () => {
+  it("says chosen manually for an answer and a choice, in every language", () => {
+    const words = { en: "chosen manually", sv: "vald manuellt", da: "valgt manuelt", nb: "valgt manuelt", fi: "valittu käsin" };
+    for (const [language, text] of Object.entries(words)) {
+      expect(translate(language as "en", "vehicleLine.method.answered")).toBe(text);
+      expect(translate(language as "en", "vehicleLine.method.manual")).toBe(text);
+    }
+  });
+
   it.each([
     ["plug_sensor", "identifierad via bilens laddkabel"],
     ["location", "identifierad via position"],
-    ["answered", "ditt svar"],
-    ["manual", "ditt val"],
+    ["answered", "vald manuellt"],
+    ["manual", "vald manuellt"],
     ["assumed", "antagen"],
   ])("says how the car was decided (%s)", async (method, words) => {
     const { element } = await mounted(decided(method), "sv");
