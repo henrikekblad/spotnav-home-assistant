@@ -118,6 +118,10 @@
     "vehicle_full"
   ],
   "status_codes": {
+    "asking_vehicle": {
+      "params": [],
+      "tone": "normal"
+    },
     "auto_installed": {
       "params": [
         "start"
@@ -230,6 +234,10 @@
       "tone": "normal"
     },
     "hybrid_unknown": {
+      "params": [],
+      "tone": "normal"
+    },
+    "identifying_vehicle": {
       "params": [],
       "tone": "normal"
     },

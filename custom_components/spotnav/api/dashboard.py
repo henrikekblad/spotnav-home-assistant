@@ -2178,6 +2178,7 @@ def status_facts(capture: CapturedDashboard) -> StatusFacts:
         site_measurement=None if site is None else _measurement_facts(site.measurement_problem, names),
         duplicate_chargers=capture.duplicates,
         starting_up=capture.starting_up.active,
+        identification=None if capture.identification is None else _text(capture.identification.get("state")),
         load_balancing_capable=bool(capture.charger.capability_map().get("load_balancing")),
         load_balancing=None
         if site is None

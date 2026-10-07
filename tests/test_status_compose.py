@@ -1098,6 +1098,39 @@ CASES: list[tuple[str, StatusFacts, str, list[dict[str, Any]]]] = [
         ],
     ),
     (
+        "identifying the car: its line goes ahead of the plan",
+        base(relation_applied=True, proposal=proposal(), identification="waiting"),
+        "normal",
+        [{"code": "identifying_vehicle", "params": {}}, *PLANNED],
+    ),
+    (
+        "asking which car: its line goes ahead of a pause",
+        base(paused=True, identification="asking"),
+        "normal",
+        [
+            {"code": "asking_vehicle", "params": {}},
+            {"code": "paused", "params": {"until": None, "choice": None, "action": None, "ends": None}},
+        ],
+    ),
+    (
+        "a decided car says nothing",
+        base(relation_applied=True, proposal=proposal(), identification="decided"),
+        "normal",
+        PLANNED,
+    ),
+    (
+        "a blocking block stays alone while the car is identified",
+        base(identification="asking", planning=planning("incomplete_settings", "settings_missing")),
+        "notice",
+        [{"code": "settings_incomplete", "params": {"reason": "settings_missing", "missing": []}}],
+    ),
+    (
+        "starting up stays alone while the car is identified",
+        base(starting_up=True, identification="waiting"),
+        "normal",
+        [{"code": "starting_up", "params": {}}],
+    ),
+    (
         "blocking beats a pause and a charge",
         base(paused=True, charging=True, planning=planning("incomplete_settings", "settings_missing")),
         "notice",
