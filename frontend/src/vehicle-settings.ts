@@ -40,6 +40,8 @@ export interface VehicleSummaryInput {
   edits: VehicleEdits;
   /** With a camera chosen: the car's reference pictures. */
   reference?: VehicleReference | undefined;
+  /** With two or more cars: the cars' tabs, shown under the section's "Car" heading in place of the name. */
+  tabs?: HTMLElement;
 }
 
 function element(doc: Document, tag: string, className?: string, text?: string): HTMLElement {
@@ -59,13 +61,12 @@ export function vehicleSummary(doc: Document, language: Language, input: Vehicle
   card.dataset["section"] = "vehicle";
   card.dataset["vehicle"] = row.id;
   card.dataset["planned"] = String(input.planned);
-  card.append(
-    sectionHeading(doc, "car", translate(language, "settings.heading.car"), row.name ?? translate(language, "settings.vehicle.unnamed")),
-  );
-  if (input.planned) {
-    const mark = element(doc, "p", C.settingsNote, translate(language, "settings.vehicle.plannedHere"));
-    mark.dataset["vehicleMark"] = "planned";
-    card.append(mark);
+  if (input.tabs !== undefined) {
+    card.append(sectionHeading(doc, "car", translate(language, "settings.heading.car")), input.tabs);
+  } else {
+    card.append(
+      sectionHeading(doc, "car", translate(language, "settings.heading.car"), row.name ?? translate(language, "settings.vehicle.unnamed")),
+    );
   }
   const valueRow = (key: string, label: string, value: string, tap?: () => void, help?: string): void => {
     card.append(
@@ -116,7 +117,6 @@ export function vehicleSummary(doc: Document, language: Language, input: Vehicle
         translate(language, "settings.soc.target"),
         row.target_percent === null ? notSet : `${formatNumber(language, row.target_percent, 0)} %`,
         edits.target,
-        translate(language, "settings.vehicle.targetHelp"),
       );
     }
   }

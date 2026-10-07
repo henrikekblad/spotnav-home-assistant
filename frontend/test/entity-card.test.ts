@@ -180,7 +180,7 @@ describe("the Settings page's charger and site cards", () => {
     openSettings(element);
     await settle();
     const site = openDialog(element)?.querySelector<HTMLElement>("[data-section='site']");
-    expect(site?.textContent).toContain(translate("en", "site.applies.one"));
+    expect(site?.textContent).not.toContain(translate("en", "site.applies.one"));
     expect(sectionRows(element, "site")).toEqual(["main_fuse_a", "measurement_mode", "battery", "active-control"]);
     expect(rowText(element, "main_fuse_a")).toContain("25 A");
     expect(rowText(element, "measurement_mode")).toContain(translate("en", "entity.mode.direct"));

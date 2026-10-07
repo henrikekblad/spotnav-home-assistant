@@ -68,6 +68,8 @@ export const VISUAL_CLASSES = {
   cameraPreview: "spotnav-camera-preview",
   cameraTools: "spotnav-camera-tools",
   referenceThumbs: "spotnav-reference-thumbs",
+  vehicleTabs: "spotnav-vehicle-tabs",
+  vehicleTab: "spotnav-vehicle-tab",
   referenceThumb: "spotnav-reference-thumb",
   settingsDivider: "spotnav-settings-divider",
   settingsSectionValue: "spotnav-settings-section-value",
@@ -1461,6 +1463,34 @@ export const VISUAL_STYLES = `
     flex-wrap: wrap;
     gap: 8px;
     margin: 4px 0 8px;
+  }
+  /* The cars' tabs in the Car section's header: compact text tabs ("EV6 | Testbil"), the open one in the accent. */
+  .${VISUAL_CLASSES.vehicleTabs} {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    min-width: 0;
+    margin: 0 0 4px;
+  }
+  .${VISUAL_CLASSES.vehicleTab} {
+    min-height: 44px;
+    padding: 0 10px;
+    font: inherit;
+    color: var(--secondary-text-color, #727272);
+    background: none;
+    border: 0;
+    cursor: pointer;
+    overflow-wrap: break-word;
+  }
+  .${VISUAL_CLASSES.vehicleTab} + .${VISUAL_CLASSES.vehicleTab} {
+    border-left: 1px solid var(--divider-color, #e0e0e0);
+  }
+  .${VISUAL_CLASSES.vehicleTab}:first-child {
+    padding-left: 0;
+  }
+  .${VISUAL_CLASSES.vehicleTab}[aria-selected="true"] {
+    color: var(--primary-color, #03a9f4);
+    font-weight: 600;
   }
   .${VISUAL_CLASSES.referenceThumbs} {
     display: flex;

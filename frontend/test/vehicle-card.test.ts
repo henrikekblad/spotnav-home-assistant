@@ -256,8 +256,11 @@ const entityConfig = (): Record<string, any> => {
   const { api_version, ok, error, field_errors, config } = vehicleAnswer("success");
   return { api_version, ok, error, field_errors, config };
 };
-/** A vehicle's summary card on the Settings page. */
-const block = (element: Element, id: string) => dlg(element).querySelector<HTMLElement>(`[data-section='vehicle'][data-vehicle='${id}']`)!;
+/** A vehicle's rows on the Settings page: its tab opened first, when the cars have tabs. */
+const block = (element: Element, id: string) => {
+  dlg(element).querySelector<HTMLButtonElement>(`[data-vehicle-tab='${id}'][aria-selected='false']`)?.click();
+  return dlg(element).querySelector<HTMLElement>(`[data-section='vehicle'][data-vehicle='${id}']`)!;
+};
 /** Tap one of a vehicle's values: its own editor replaces the Settings page. */
 async function editValue(element: Element, id: string, row: string): Promise<void> {
   block(element, id).querySelector<HTMLButtonElement>(`[data-edit='${row}']`)!.click();
@@ -289,21 +292,24 @@ describe("the Settings page's vehicles", () => {
     expect(dlg(swedish.element).textContent).toContain("Kortinställningar · Wallbox");
   });
 
-  it("summarises every vehicle in its own section, marks the one this charger plans for and edits nothing inline", async () => {
+  it("shows one Car section with a tab per car, the planned car's first, and edits nothing inline", async () => {
     const { element } = await openSettings(twoVehicles());
     const ids = Array.from(dlg(element).querySelectorAll<HTMLElement>("[data-section='vehicle']")).map((node) => node.dataset["vehicle"]);
-    expect(ids).toEqual(["vehicle_ev6", "vehicle_niro"]);
-    expect(block(element, "vehicle_ev6").querySelector("h4")?.textContent).toBe("Car · EV6");
+    expect(ids).toEqual(["vehicle_ev6"]);
+    const tabs = Array.from(dlg(element).querySelectorAll<HTMLElement>("[role='tab']"));
+    expect(tabs.map((tab) => [tab.textContent, tab.getAttribute("aria-selected")])).toEqual([["EV6", "true"], ["Niro", "false"]]);
+    expect(block(element, "vehicle_ev6").querySelector("h4")?.textContent).toBe("Car");
     expect(block(element, "vehicle_ev6").querySelector("h4 svg")?.getAttribute("data-icon")).toBe("car");
-    expect(block(element, "vehicle_niro").querySelector("h4")?.textContent).toBe("Car · Niro");
+    expect(block(element, "vehicle_niro").querySelector("h4")?.textContent).toBe("Car");
+    expect(dlg(element).querySelector("[data-vehicle-tab='vehicle_niro']")?.getAttribute("aria-selected")).toBe("true");
     expect(block(element, "vehicle_ev6").querySelector("[data-row='capacity']")?.textContent).toContain("77.0 kWh");
     expect(block(element, "vehicle_ev6").querySelector("[data-row='consumption']")?.textContent).toContain("2.0 kWh/10 km");
     expect(block(element, "vehicle_niro").querySelector("[data-row='capacity']")?.textContent).toContain("64.8 kWh");
     expect(block(element, "vehicle_niro").querySelector("[data-row='consumption']")?.textContent).toContain("1.7 kWh/10 km");
     expect(block(element, "vehicle_ev6").dataset["planned"]).toBe("true");
     expect(block(element, "vehicle_niro").dataset["planned"]).toBe("false");
-    expect(block(element, "vehicle_ev6").querySelector("[data-vehicle-mark='planned']")).not.toBeNull();
-    expect(block(element, "vehicle_niro").querySelector("[data-vehicle-mark='planned']")).toBeNull();
+    expect(dlg(element).querySelector("[data-vehicle-mark]")).toBeNull();
+    expect(dlg(element).textContent).not.toContain(translate("en", "settings.vehicle.plannedHere"));
     // No input, no Save and no Change button on the page: each value is its own button.
     expect(dlg(element).querySelector("[data-section='vehicle'] input")).toBeNull();
     expect(dlg(element).querySelector("[data-edit-vehicle]")).toBeNull();
@@ -355,7 +361,7 @@ describe("the Settings page's vehicles", () => {
 
   it("offers no editor to a non-administrator, and says why", async () => {
     const { element } = await openSettings(twoVehicles(), { admin: false, entities: null });
-    expect(dlg(element).querySelectorAll("[data-section='vehicle'] button")).toHaveLength(0);
+    expect(dlg(element).querySelectorAll("[data-section='vehicle'] button:not([role='tab'])")).toHaveLength(0);
     expect(dlg(element).textContent).toContain(translate("en", "settings.readOnly"));
   });
 

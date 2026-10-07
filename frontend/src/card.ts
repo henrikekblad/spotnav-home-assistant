@@ -45,6 +45,7 @@ import {
   createCardView,
   type ActionId,
   type CameraPictureRequest,
+  type OverviewPlaceHolder,
   type CardView,
   type FailureSentence,
 } from "./card-view";
@@ -252,6 +253,8 @@ export class SpotnavCard extends HTMLElement {
   private history: SessionsAnswer | null = null;
   private entitySaving = false;
   private reopenOverview = false;
+  /** Where Settings was left for a value's editor: it reopens there, across the re-render a save causes. */
+  private readonly overviewPlace: OverviewPlaceHolder = { place: null };
   /** A warning a value's save leaves for the Settings page it returns to (the plan was not updated). */
   private overviewWarning: { sentenceKey: TranslationKey; code: string | null } | null = null;
   private confirmReadFailed = false;
@@ -2248,6 +2251,7 @@ export class SpotnavCard extends HTMLElement {
         },
         onWriteValue: (write) => this.writeValue(write),
         onCameraPicture: (request) => this.cameraPicture(request),
+        overviewPlace: this.overviewPlace,
         onEditFiscal: (component) => {
           void this.editFiscal(component);
         },

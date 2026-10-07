@@ -79,6 +79,12 @@ async function openSettings(payload: Record<string, unknown>, language = "en") {
   return { hass, element };
 }
 
+/** A car's section on the Settings page, its tab opened first when the cars have tabs. */
+function carSection(page: HTMLElement, id: string): HTMLElement {
+  page.querySelector<HTMLButtonElement>(`[data-vehicle-tab='${id}'][aria-selected='false']`)?.click();
+  return page.querySelector<HTMLElement>(`[data-section='vehicle'][data-vehicle='${id}']`)!;
+}
+
 function openDialog(element: Element): HTMLElement | null {
   const dialogs = Array.from(shadow(element).querySelectorAll<HTMLElement>("[role='dialog']"));
   return dialogs.find((dialog) => dialog.closest("[hidden]") === null) ?? null;
@@ -176,7 +182,8 @@ describe("the Settings rows", () => {
     expect(section.querySelector("[data-row='identify_camera']")?.textContent).toContain("Norr");
     expect(section.querySelector("[data-row='identify_frame']")?.textContent).toContain(translate("en", "camera.frame.drawn"));
     expect(section.querySelector("[data-row='identify_ai_task']")?.textContent).toContain(translate("en", "camera.aiTask.default"));
-    expect(section.querySelector("[data-help='identify_camera']")?.textContent).toBe(translate("en", "camera.help"));
+    // The privacy note is in the camera's editor, not under the rows.
+    expect(section.querySelector("[data-help='identify_camera']")).toBeNull();
   });
 
   it("offer only the camera while none is chosen, and nothing where Home Assistant offers none", async () => {
@@ -289,21 +296,20 @@ describe("the frame editor", () => {
 describe("a car's reference pictures", () => {
   it("are listed with their thumbnails in the car's section", async () => {
     const { hass, element } = await openSettings(dashboard());
-    const ev6 = openDialog(element)!.querySelector<HTMLElement>(`[data-section='vehicle'][data-vehicle='${EV6}']`)!;
+    const ev6 = carSection(openDialog(element)!, EV6);
     expect(ev6.querySelector("[data-row='reference']")?.textContent).toContain("Day, Night");
     const thumbs = ev6.querySelectorAll<HTMLImageElement>("[data-reference-thumbs] img");
     expect(thumbs).toHaveLength(2);
     expect(thumbs[0]!.hidden).toBe(false);
     expect(hass.cameraMessages.filter((message) => message.type === "spotnav/reference_picture")).toHaveLength(2);
-    const niro = openDialog(element)!.querySelector<HTMLElement>(`[data-section='vehicle'][data-vehicle='${NIRO}']`)!;
+    const niro = carSection(openDialog(element)!, NIRO);
     expect(niro.querySelector("[data-row='reference']")?.textContent).toContain(translate("en", "reference.none"));
   });
 
   it("are taken now, at night, and deleted from the car's own editor", async () => {
     const { hass, element } = await openSettings(dashboard());
     const open = async (): Promise<HTMLFormElement> => {
-      openDialog(element)!
-        .querySelector<HTMLElement>(`[data-section='vehicle'][data-vehicle='${EV6}']`)!
+      carSection(openDialog(element)!, EV6)
         .querySelector<HTMLButtonElement>("[data-edit='reference']")!
         .click();
       await settle();
@@ -337,9 +343,9 @@ describe("a car's reference pictures", () => {
     const payload = dashboard();
     payload["camera_identification"]["references"][EV6][0]["stale"] = true;
     const { element } = await openSettings(payload, "sv");
-    const ev6 = openDialog(element)!.querySelector<HTMLElement>(`[data-section='vehicle'][data-vehicle='${EV6}']`)!;
+    const ev6 = carSection(openDialog(element)!, EV6);
     expect(ev6.querySelector("[data-row='reference']")?.textContent).toContain("Dag, Natt");
-    expect(ev6.querySelector("[data-help='reference']")?.textContent).toBe("Dag: Tagen med en annan ruta – ta om");
+    expect(ev6.querySelector("[data-help='reference']")?.textContent).toBe("Dagbild: tagen innan beskärningen ändrades – ta en ny.");
     ev6.querySelector<HTMLButtonElement>("[data-edit='reference']")!.click();
     await settle();
     const form = openDialog(element)!.querySelector<HTMLFormElement>("form[data-value-editor='reference']")!;
@@ -350,8 +356,7 @@ describe("a car's reference pictures", () => {
     const { hass, element } = await openSettings(dashboard());
     hass.cameraHandler = async (message) =>
       message["type"] === "spotnav/take_reference_picture" ? { api_version: 1, ok: false, error: "spotnav_no_picture" } : picture(240, 90);
-    openDialog(element)!
-      .querySelector<HTMLElement>(`[data-section='vehicle'][data-vehicle='${NIRO}']`)!
+    carSection(openDialog(element)!, NIRO)
       .querySelector<HTMLButtonElement>("[data-edit='reference']")!
       .click();
     await settle();
@@ -366,7 +371,12 @@ describe("a car's reference pictures", () => {
     expect(translate("sv", "reference.take")).toBe("Ta referensbild nu");
     expect(translate("sv", "reference.takeNight")).toBe("Ta nattbild");
     expect(translate("sv", "reference.delete")).toBe("Ta bort");
-    expect(translate("sv", "camera.frame.label")).toBe("Ruta");
+    expect(translate("sv", "camera.frame.label")).toBe("Beskär bild laddplats");
+    expect(translate("sv", "camera.frame.drawn")).toBe("Beskuren");
+    expect(translate("en", "camera.frame.label")).toBe("Crop parking spot");
+    for (const language of LANGUAGES) {
+      expect(translate(language, "camera.frame.intro").toLowerCase()).not.toMatch(/\bruta\b|\bframe\b/);
+    }
     expect(translate("sv", "camera.aiTask.label")).toBe("AI-uppgift");
     expect(translate("sv", "camera.label")).toBe("Kamera");
     const keys: TranslationKey[] = ["camera.label", "camera.frame.intro", "reference.intro", "vehicleLine.method.camera"];
