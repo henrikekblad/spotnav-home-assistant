@@ -444,6 +444,7 @@ async def test_solar_surplus_attribute_present_and_disabled_for_a_cheapest_charg
         "requested_a": None,
         "available_w": None,
         "available_a": None,
+        "start_a": None,
         "net_grid_w": None,
         "car_w": None,
         "battery_w": None,

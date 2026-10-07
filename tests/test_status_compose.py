@@ -302,6 +302,45 @@ CASES: list[tuple[str, StatusFacts, str, list[dict[str, Any]]]] = [
         [{"code": "solar_no_reading_waiting", "params": {}}],
     ),
     (
+        "solar off with no car while the surplus covers the start minimum: plug the car in",
+        base(strategy="solar", solar=SolarFacts("off", "no_car", available_a=7.2, available_w=4968.0, start_a=6.0)),
+        "normal",
+        [{"code": "solar_no_car_surplus", "params": {"surplus_kw": 4.97}}],
+    ),
+    (
+        "solar off with no car, the surplus exactly at the start minimum",
+        base(strategy="solar", solar=SolarFacts("off", "no_car", available_a=6.0, available_w=1380.0, start_a=6.0)),
+        "normal",
+        [{"code": "solar_no_car_surplus", "params": {"surplus_kw": 1.38}}],
+    ),
+    (
+        "solar off with no car and too little surplus to start: no car, not waiting for sun",
+        base(strategy="solar", solar=SolarFacts("off", "no_car", available_a=3.0, available_w=690.0, start_a=6.0)),
+        "normal",
+        [{"code": "solar_no_car", "params": {}}],
+    ),
+    (
+        "solar off with no car and no surplus reckoned yet",
+        base(strategy="solar", solar=SolarFacts("off", "no_car")),
+        "normal",
+        [{"code": "solar_no_car", "params": {}}],
+    ),
+    (
+        "solar off with no car and no basis: the last surplus is not trusted",
+        base(
+            strategy="solar",
+            solar=SolarFacts(
+                "off", "no_car", available_a=9.0, available_w=6210.0, start_a=6.0,
+                basis_problem="grid_power_unreadable", basis_entity="sensor.grid",
+            ),
+        ),
+        "notice",
+        [
+            {"code": "solar_no_car", "params": {}},
+            {"code": "solar_no_grid_power", "params": {"entity": "sensor.grid", "entity_name": "sensor.grid"}},
+        ],
+    ),
+    (
         "solar off, watching for sun",
         base(strategy="solar", solar=SolarFacts("off", "off_no_surplus")),
         "normal",

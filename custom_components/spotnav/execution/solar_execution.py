@@ -247,6 +247,8 @@ class SolarExecutionState:
     #: Who writes the sun's current to the charger: `active_control` (the site's damped write), `solar` (its own
     #: write, where active control does not write this charger) or `none` (its current cannot be set).
     solar_current_writer: str | None = None
+    #: The start minimum a charge starts at (`SolarConfig.start_a`), `None` without a controller.
+    start_a: float | None = None
 
 
 def solar_execution_state(hass: HomeAssistant, charger_entry_id: str) -> SolarExecutionState | None:
@@ -1516,6 +1518,7 @@ class SolarExecutionCoordinator:
             basis=basis if basis is not None else SolarBasis(),
             retry_at=self._retry_at(),
             solar_current_writer=self.current_writer(site),
+            start_a=None if self._solar is None else self._solar.config.start_a,
         )
 
     def _retry_at(self) -> datetime | None:

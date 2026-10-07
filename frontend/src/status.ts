@@ -174,6 +174,8 @@ export const STATUS_WORDING: Readonly<Record<StatusCode, TranslationKey>> = {
   solar_no_reading_waiting: "strategy.status.solar.noReadingWaiting",
   solar_waiting_for_sun: "strategy.status.solar.waitingForSun",
   solar_vehicle_full: "strategy.status.solar.vehicleFull",
+  solar_no_car: "strategy.status.solar.noCar",
+  solar_no_car_surplus: "strategy.status.solar.noCarSurplus",
   solar_car_stopped: "strategy.status.solar.carStopped",
   solar_no_grid_power: "strategy.status.solar.noGridPower",
   solar_battery_unreadable: "strategy.status.solar.batteryUnreadable",
@@ -463,6 +465,12 @@ export function lineText(line: StatusLine, format: FormatContext, nowMs: number)
       return time === null || !zoned
         ? say("strategy.status.solar.carStoppedNoTime")
         : say("strategy.status.solar.carStopped", { time: clock(format, time) });
+    }
+    case "solar_no_car_surplus": {
+      const kw = num(p["surplus_kw"]);
+      return kw === null
+        ? say("strategy.status.solar.noCarSurplus")
+        : say("strategy.status.solar.noCarSurplusKw", { kw: formatNumber(language, kw, 1) });
     }
     case "solar_charging": {
       const amps = num(p["requested_a"]);

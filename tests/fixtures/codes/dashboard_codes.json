@@ -420,6 +420,16 @@
       "params": [],
       "tone": "normal"
     },
+    "solar_no_car": {
+      "params": [],
+      "tone": "normal"
+    },
+    "solar_no_car_surplus": {
+      "params": [
+        "surplus_kw"
+      ],
+      "tone": "normal"
+    },
     "solar_no_grid_power": {
       "params": [
         "entity",

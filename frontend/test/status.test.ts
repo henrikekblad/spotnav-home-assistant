@@ -375,6 +375,29 @@ describe("the status line renders the block and nothing else", () => {
     expect(statusText(hybrid, format("en"), NOW)).toBe("Hybrid · 20 kWh from grid 12:15–15:15, 4 kWh expected from sun");
   });
 
+  it("says an empty charger on solar has no car, or the surplus there is for one", () => {
+    expect(statusText(block(statusLine("solar_no_car")), format("sv"), NOW)).toBe("Sol · ingen bil inkopplad");
+    expect(statusText(block(statusLine("solar_no_car_surplus", { surplus_kw: 4.23 })), format("sv"), NOW)).toBe(
+      "Sol · överskott finns (4,2 kW)",
+    );
+    expect(statusText(block(statusLine("solar_no_car")), format("en"), NOW)).toBe("Solar · no car plugged in");
+    expect(statusText(block(statusLine("solar_no_car_surplus", { surplus_kw: 4.23 })), format("en"), NOW)).toBe(
+      "Solar · surplus available (4.2 kW)",
+    );
+    expect(statusText(block(statusLine("solar_no_car_surplus", { surplus_kw: null })), format("sv"), NOW)).toBe(
+      "Sol · överskott finns",
+    );
+    for (const language of ["sv", "en", "da", "nb", "fi"] as const) {
+      for (const line of [statusLine("solar_no_car"), statusLine("solar_no_car_surplus", { surplus_kw: null })]) {
+        const text = statusText(block(line), format(language), NOW) ?? "";
+        expect(text).not.toBe("");
+        expect(text).not.toContain("{");
+      }
+      const shown = statusText(block(statusLine("solar_no_car_surplus", { surplus_kw: 4.23 })), format(language), NOW) ?? "";
+      expect(shown).toMatch(/\(4[.,]2 kW\)$/);
+    }
+  });
+
   it("shows the price wait after a strategy headline", () => {
     const waiting = block(
       statusLine("hybrid_grid", { grid_kwh: 20, credit_kwh: 4, window_start: null, window_end: null }),
