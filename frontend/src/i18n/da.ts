@@ -37,6 +37,8 @@ export const da: Record<keyof typeof en, string> = {
   "status.toppingOff": "Lader, indtil bilen er fuld (højst til {time}).",
   "status.toppingOffOpen": "Lader, indtil bilen er fuld.",
   "status.startingUp": "Starter op…",
+  "status.identifyingVehicle": "Identificerer bilen…",
+  "status.askingVehicle": "Venter på svar: hvilken bil er tilsluttet?",
   "status.scheduledNoTime": "Opladning er planlagt.",
   "status.nothingToCharge": "Der er intet at lade lige nu.",
   "status.waitingForVehicleUpdate": "Venter på, at bilen melder sit nye ladeniveau efter opladningen.",

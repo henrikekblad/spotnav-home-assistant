@@ -38,6 +38,8 @@ export const en = {
   "status.toppingOff": "Charging until the car is full (at most until {time}).",
   "status.toppingOffOpen": "Charging until the car is full.",
   "status.startingUp": "Starting up…",
+  "status.identifyingVehicle": "Identifying the car…",
+  "status.askingVehicle": "Waiting for an answer: which car is plugged in?",
   "status.scheduledNoTime": "Charging is scheduled.",
   "status.nothingToCharge": "Nothing to charge right now.",
   "status.waitingForVehicleUpdate": "Waiting for the car to report its new level after the charge.",

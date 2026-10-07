@@ -37,6 +37,8 @@ export const fi: Record<keyof typeof en, string> = {
   "status.toppingOff": "Ladataan, kunnes auto on täynnä (enintään klo {time} asti).",
   "status.toppingOffOpen": "Ladataan, kunnes auto on täynnä.",
   "status.startingUp": "Käynnistyy…",
+  "status.identifyingVehicle": "Tunnistetaan autoa…",
+  "status.askingVehicle": "Odotetaan vastausta: mikä auto on kytketty?",
   "status.scheduledNoTime": "Lataus on aikataulutettu.",
   "status.nothingToCharge": "Ei mitään ladattavaa juuri nyt.",
   "status.waitingForVehicleUpdate": "Odotetaan, että auto ilmoittaa uuden varaustasonsa latauksen jälkeen.",

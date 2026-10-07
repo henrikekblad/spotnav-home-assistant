@@ -37,6 +37,8 @@ export const sv: Record<keyof typeof en, string> = {
   "status.toppingOff": "Laddar tills bilen är full (som längst till {time}).",
   "status.toppingOffOpen": "Laddar tills bilen är full.",
   "status.startingUp": "Startar upp…",
+  "status.identifyingVehicle": "Identifierar bilen…",
+  "status.askingVehicle": "Väntar på svar: vilken bil är inkopplad?",
   "status.scheduledNoTime": "Laddning är schemalagd.",
   "status.nothingToCharge": "Inget att ladda just nu.",
   "status.waitingForVehicleUpdate": "Väntar på att bilen rapporterar sin nya laddnivå efter laddningen.",
