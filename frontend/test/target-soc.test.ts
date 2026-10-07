@@ -328,6 +328,28 @@ describe("the Plan popover in target mode", () => {
     expect(body["target"]["vehicle_id"]).toBe("car-2");
   });
 
+  it("offers no empty vehicle once one is chosen, and only a placeholder that cannot be picked before", async () => {
+    const chosen = fixture();
+    Object.assign(chosen["soc"], { vehicles: [{ id: "car-1", name: "EV6" }, { id: "car-2", name: "Niro" }] });
+    const first = await openPlan(chosen, aRecord());
+    const picked = q<HTMLSelectElement>(first.element, "select[data-soc='vehicle-choice']")!;
+    expect([...picked.options].map((option) => option.value)).toEqual(["car-1", "car-2"]);
+
+    const unknown = fixture();
+    Object.assign(unknown["soc"], {
+      vehicle_id: null,
+      vehicle_name: null,
+      vehicles: [{ id: "car-1", name: "EV6" }, { id: "car-2", name: "Niro" }],
+      missing: ["vehicle"],
+    });
+    const second = await openPlan(unknown, aRecord({ driver: "manual_kwh", target: { vehicle_id: null, target_percent: null } }));
+    q<HTMLButtonElement>(second.element, "[data-row='charge_by'] button")!.click();
+    const open = q<HTMLSelectElement>(second.element, "select[data-soc='vehicle-choice']")!;
+    const placeholder = [...open.options].find((option) => option.value === "")!;
+    expect(placeholder.disabled).toBe(true);
+    expect(open.value).toBe("");
+  });
+
   it("reapplies only the fields the reader moved onto a newer record after a conflict", async () => {
     const payload = fixture();
     const { hass, element } = await openPlan(payload, aRecord());
