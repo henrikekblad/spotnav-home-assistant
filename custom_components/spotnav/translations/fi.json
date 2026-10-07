@@ -1,0 +1,784 @@
+{
+  "title": "SpotNav",
+  "config": {
+    "flow_title": "{device} haluaa muodostaa yhteyden · koodi {code}",
+    "step": {
+      "pairing": {
+        "menu_options": {
+          "pair_approve": "Hyväksy",
+          "pair_deny": "Hylkää"
+        },
+        "title": "Puhelin haluaa muodostaa yhteyden",
+        "description": "Laite, joka kutsuu itseään nimellä **{device}**, pyytää yhteyttä ja näyttää koodin **{code}**. Hyväksy vain, jos sama koodi näkyy sen näytöllä. Hyväksyminen luovuttaa tämän Home Assistantin laturit; koodi on vain vertailua varten."
+      },
+      "pair_approve": {
+        "title": "Hyväksy"
+      },
+      "pair_deny": {
+        "title": "Hylkää"
+      },
+      "user": {
+        "title": "Mitä haluat lisätä?",
+        "description": "Laturi liittää yhden fyysisen latauspisteen SpotNaviin. Kohde on valinnainen: se hallitsee kaikkien saman sähköliittymän laturien kuormaa pääsulakkeen alapuolella.",
+        "data": {
+          "entry_type": "Lisättävä"
+        }
+      },
+      "charger_type": {
+        "title": "Valitse laturin tyyppi",
+        "description": "Automaattinen löytää laturin ohjaimet sen laitteesta: OCPP-laturit ja tuetut integraatiot (Easee, Wallbox, Zaptec, go-e, Peblar ja muita). Manuaalinen antaa sinun valita itse minkä tahansa latauksen ohjauskytkimen.",
+        "data": {
+          "mode": "Laturin tyyppi"
+        }
+      },
+      "resolve_vehicle": {
+        "title": "Ratkaise tunnistettu ajoneuvo",
+        "description": "Yksi näistä laitteista näyttää ajoneuvolta mutta ilmoittaa useamman kuin yhden akkulukeman, joten SpotNav ei arvaa, mikä niistä on varaustaso. Valitse ratkaistava laite -- tai valitse merkinnän tyyppi uudelleen, jos et tunnista täältä mitään.",
+        "data": {
+          "device_id": "Laite"
+        }
+      },
+      "resolve_vehicle_soc": {
+        "title": "Mikä lukema on varaustaso?",
+        "description": "Valitse, mikä laitteen {name} akkulukemista on sen todellinen varaustaso -- tai ilmoita, ettei laite ole lataamasi ajoneuvo, jolloin SpotNav lakkaa raportoimasta sitä.",
+        "data": {
+          "soc_entity_id": "Varaustaso"
+        }
+      },
+      "ocpp_entities": {
+        "title": "Vahvista laturin ohjaimet",
+        "description": "Vain valitun OCPP-laturin yhteensopivat entiteetit näytetään.",
+        "data": {
+          "charge_control": "Latauksen ohjaus",
+          "current_limit": "Virtarajan asetus (valinnainen)",
+          "energy_register_entity": "Energiamittari (kumulatiivinen)",
+          "current_control": "Miten SpotNav asettaa virran"
+        },
+        "data_description": {
+          "charge_control": "Kytkin, joka käynnistää ja pysäyttää latauksen tässä liittimessä.",
+          "current_limit": "Laturin oma virta-asetus; SpotNav lukee vain sen arvon ja alueen.",
+          "energy_register_entity": "Liittimen kokonaisenergia-anturi; se löytyy automaattisesti, joten jätä se ennalleen.",
+          "current_control": "Pidä valintana \"Älä aseta virtaa\", ellei laturin tiedetä hyväksyvän valittua tapaa."
+        }
+      },
+      "generic": {
+        "title": "Valitse laturin ohjaimet",
+        "data": {
+          "charge_control": "Latauksen ohjaus",
+          "current_limit": "Latausvirta (valinnainen)",
+          "energy_register_entity": "Energiamittari (kumulatiivinen)",
+          "power_entity": "Tehoanturi, älypistoke (valinnainen)"
+        },
+        "data_description": {
+          "energy_register_entity": "Laturin kokonaisenergia-anturi, jolla lasketaan jo toimitettu energia. Valinnainen.",
+          "power_entity": "Yksinkertainen laturi älypistokkeen takana: pistokkeen tehoanturi (W tai kW). SpotNav laskee energian siitä ja huomaa, kun auto ei enää ota virtaa. Pistokkeen on kestettävä laturin jatkuva virta. Valinnainen."
+        }
+      },
+      "site": {
+        "title": "Kohde",
+        "description": "Kohde pitää laturiensa yhteenlasketun virran pääsulakkeen alapuolella. Aktiivisen ohjauksen voi kytkeä päälle ja pois myöhemmin; se toimii parhaan kyvyn mukaan, eikä se ole suojalaite. Pääsulakkeen koko on annettava erikseen -- sitä ei koskaan arvata mitatusta kuormasta. {charger_hint}",
+        "data": {
+          "name": "Kohteen nimi",
+          "main_fuse_a": "Pääsulakkeen koko (A)",
+          "safety_margin_a": "Turvamarginaali (A)",
+          "measurement_mode": "Mittaustapa",
+          "charger_entry_ids": "Kohteen kapasiteettia jakavat laturit",
+          "voltage_between_phases_v": "Vaiheiden välinen jännite"
+        }
+      },
+      "site_detected": {
+        "title": "Sähkömittari löytyi",
+        "description": "SpotNav löysi nämä sähkömittarit. Mitään ei oteta käyttöön ennen kuin vahvistat; valitse \"Valitse manuaalisesti\", jos haluat valita entiteetit itse.",
+        "data": {
+          "choice": "Löydetty mittari",
+          "enable_disabled": "Ota käyttöön tämän mittarin tarvitsemat entiteetit, jotka ovat pois käytöstä"
+        }
+      },
+      "site_current_suggestions": {
+        "title": "Ehdotukset kohteen virran lähteeksi",
+        "description": "Nämä ovat vain ehdotuksia, jotka perustuvat Home Assistantissa jo oleviin entiteetteihin -- mitään ei oteta käyttöön ennen kuin vahvistat. Valitse \"Valitse manuaalisesti\", jos haluat valita entiteetit itse, tai \"Ohita toistaiseksi\", jos haluat määrittää tämän myöhemmin kohteen asetuksista.",
+        "data": {
+          "choice": "Ehdotettu lähde"
+        }
+      },
+      "site_details": {
+        "title": "Mittausentiteetit",
+        "description": "Valitse sähkömittarin anturit. Mikä tahansa anturi kelpaa; sen yksikkö tarkistetaan, kun jatkat (virta A tai mA, teho W tai kW, jännite V, loisteho var tai kvar, näennäisteho VA tai kVA). Vain valittuun mittaustapaan sopivat kentät näytetään. Sen jälkeen määritetään kunkin liitetyn laturin vaihekytkentä, laturi kerrallaan.{charger_hint}",
+        "data": {
+          "direct_L1": "L1-verkkovirta",
+          "direct_L2": "L2-verkkovirta",
+          "direct_L3": "L3-verkkovirta",
+          "site_current_signed": "Verkkovirralla on etumerkki (vienti on negatiivinen)",
+          "grid_power_inverted": "Verkon teho on positiivinen viennissä (käännä se)",
+          "derived_L1_power_export": "L1-vientiteho (valinnainen, kun otto ja vienti ovat erikseen)",
+          "derived_L1_reactive_power": "L1-loisteho (valinnainen)",
+          "derived_L1_apparent_power": "L1-näennäisteho (valinnainen)",
+          "derived_L1_current": "L1-virta (valinnainen)",
+          "derived_L2_power_export": "L2-vientiteho (valinnainen, kun otto ja vienti ovat erikseen)",
+          "derived_L2_reactive_power": "L2-loisteho (valinnainen)",
+          "derived_L2_apparent_power": "L2-näennäisteho (valinnainen)",
+          "derived_L2_current": "L2-virta (valinnainen)",
+          "derived_L3_power_export": "L3-vientiteho (valinnainen, kun otto ja vienti ovat erikseen)",
+          "derived_L3_reactive_power": "L3-loisteho (valinnainen)",
+          "derived_L3_apparent_power": "L3-näennäisteho (valinnainen)",
+          "derived_L3_current": "L3-virta (valinnainen)",
+          "derived_L1_power": "L1-teho",
+          "derived_L1_voltage": "L1-jännite",
+          "derived_L2_power": "L2-teho",
+          "derived_L2_voltage": "L2-jännite",
+          "derived_L3_power": "L3-teho",
+          "derived_L3_voltage": "L3-jännite"
+        }
+      },
+      "charger_manual_source": {
+        "title": "Laturin mitattu virta",
+        "description": "Valitse yksi tämän laturin omaan laitteeseen kuuluva entiteetti ja anna sen attribuutin nimi, joka sisältää kunkin vaiheen virran. Vain tähän laturiin rekisteröidyt entiteetit näytetään. Valitse attribuuttien ilmoittama yksikkö -- \"A\" tai \"mA\" -- erikseen: entiteetin oma yksikkö kuvaa sen tila-arvoa, ei välttämättä muita sen sisältämiä attribuutteja.",
+        "data": {
+          "entity_id": "Entiteetti (vain tämän laturin oma laite)",
+          "attribute_L1": "L1-attribuutin nimi",
+          "attribute_L2": "L2-attribuutin nimi",
+          "attribute_L3": "L3-attribuutin nimi",
+          "unit": "Attribuuttien yksikkö",
+          "confirm_unverified": "Mitään ei voitu tarkistaa -- tallenna silti"
+        }
+      },
+      "site_manual_source": {
+        "title": "Kohteen virta yhdestä entiteetistä",
+        "description": "Valitse yksi entiteetti, jonka omat vaihekohtaiset attribuutit sisältävät koko kohteen virran, ja anna kunkin vaiheen attribuutin nimi. Kohteen latureihin kuuluvia entiteettejä ei koskaan näytetä -- laturin oma anturi ei voi olla myös koko kohteen summa. Valitse attribuuttien ilmoittama yksikkö -- \"A\" tai \"mA\" -- erikseen: entiteetin oma yksikkö kuvaa sen tila-arvoa, ei välttämättä muita sen sisältämiä attribuutteja.",
+        "data": {
+          "entity_id": "Entiteetti (mikä tahansa paitsi tämän kohteen laturit)",
+          "attribute_L1": "L1-attribuutin nimi",
+          "attribute_L2": "L2-attribuutin nimi",
+          "attribute_L3": "L3-attribuutin nimi",
+          "unit": "Attribuuttien yksikkö",
+          "confirm_unverified": "Mitään ei voitu tarkistaa -- tallenna silti"
+        }
+      },
+      "detect_device": {
+        "title": "Valitse laturin laite",
+        "description": "Valitse laturin laite. SpotNav löytää sen ohjaimet kyseisen integraation omista entiteeteistä; mitään ei oteta käyttöön ennen kuin vahvistat seuraavan vaiheen.",
+        "data": {
+          "device": "Laturi"
+        }
+      },
+      "own_mode": {
+        "title": "Kytke laturin oma ohjaus pois",
+        "description": "Laturissa on päällä oma älykäs, aurinko- tai kuormanhallintatila: {modes}. Kaksi ohjausta samassa laturissa toimii toisiaan vastaan. Kytke se pois laturin omasta integraatiosta tai sovelluksesta ja jatka sitten.",
+        "data": {
+          "continue_anyway": "Jatka silti (hyväksyn, että ne voivat toimia toisiaan vastaan)"
+        }
+      },
+      "detected_entities": {
+        "title": "Vahvista laite {device}",
+        "description": "{warning}Löydetty laturin laitteesta. Muuta tai tyhjennä kaikki, mikä on väärin. \"Aseta laturin virta\" on pois päältä, ellet valitse sitä: SpotNav kirjoittaa virran silloin vain laturin kirjoitusrajojen sallimissa puitteissa.{disabled}",
+        "data": {
+          "charge_control": "Latauksen ohjaus",
+          "current_limit": "Latausvirran asetus (valinnainen)",
+          "current_control": "Aseta laturin virta",
+          "energy_register_entity": "Energialaskuri (valinnainen)",
+          "energy_register_is_session": "Käytä latauskohtaista energialaskuria (nollautuu joka latauksella)",
+          "charging_state_entity": "Tila-anturi, joka kertoo latauksen olevan käynnissä (valinnainen)",
+          "enable_disabled_entities": "Ota käyttöön hyödylliset entiteetit, jotka ovat pois käytöstä"
+        }
+      },
+      "ocpp_confirm": {
+        "title": "Laturi löytyi",
+        "description": "Laturin ohjaimet löytyivät. Jatka lisätäksesi sen tai rastita ruutu muuttaaksesi näitä valintoja.\n\n{summary}",
+        "data": {
+          "adjust": "Muuta näitä valintoja"
+        }
+      },
+      "site_confirm": {
+        "title": "Kohde löytyi",
+        "description": "SpotNav löysi kohteelle seuraavat tiedot. Jatka luodaksesi sen tai rastita ruutu muuttaaksesi näitä valintoja.\n\n{summary}{charger_hint}",
+        "data": {
+          "adjust": "Muuta näitä valintoja"
+        }
+      },
+      "join_site": {
+        "title": "Lisää kohteeseen",
+        "description": "Lisätäänkö tämä laturi kohteeseen {site}?\n\n{summary}",
+        "data": {
+          "join": "Lisää se kohteeseen"
+        }
+      },
+      "site_charger_wiring": {
+        "title": "Kytkentä: {charger}",
+        "description": "Valitse yksivaiheiselle laturille kytketty vaihe erikseen -- tuntemattomalle vaiheelle ei voi koskaan laskea turvallista suositusta. Laturin oma mitattu virta on valinnainen: valitse löydetty ehdotus, anna yksi entiteetti vaihekohtaisine attribuutteineen, anna kolme erillistä entiteettiä (yksi vaihetta kohti, kuten Charge Amps -integraatio tarjoaa) tai jätä valinnaksi \"Ohita toistaiseksi\" ja määritä se myöhemmin.",
+        "data": {
+          "phases": "Vaiheiden määrä",
+          "phase": "Kytketty vaihe (yksivaiheiset laturit)",
+          "measured_source": "Mitatun virran lähde (valinnainen)"
+        }
+      },
+      "charger_manual_entities": {
+        "title": "Laturin mitattu virta, yksi entiteetti vaihetta kohti",
+        "description": "Valitse anturi, joka sisältää kunkin vaiheen virran. Vain tämän laturin omaan laitteeseen rekisteröidyt entiteetit näytetään, ja jokaisen on ilmoitettava ampeereja (A tai mA).",
+        "data": {
+          "entity_L1": "L1-virta",
+          "entity_L2": "L2-virta",
+          "entity_L3": "L3-virta"
+        }
+      },
+      "charger_installation": {
+        "title": "Laturin vaiheet, vaiheiden välinen jännite",
+        "description": "Laturin entiteetit eivät kerro, monellako vaiheella se lataa. Valitse yksi tai kolme vaihetta: suunnitelmat lasketaan sen mukaan. Jos verkko on suurelta osin IT-verkkoa (kuten Norjassa), ilmoita myös vaiheiden välinen jännite; IT-verkossa 230 V, muuten 400 V.",
+        "data": {
+          "charger_phases": "Laturin vaiheet",
+          "voltage_between_phases_v": "Vaiheiden välinen jännite"
+        }
+      }
+    },
+    "abort": {
+      "already_configured": "Tämä laturi tai kohde on jo määritetty.",
+      "pairing_approved": "Hyväksytty. Puhelimella on nyt tämän Home Assistantin laturit.",
+      "pairing_denied": "Hylätty. Puhelimelle ilmoitettiin, eikä mitään luovutettu.",
+      "pairing_request_expired": "Pariliitospyyntö on vanhentunut. Aloita uudelleen puhelimessa.",
+      "no_supported_charger": "Tuettua laturia ei löytynyt. Määritä ensin laturin oma integraatio tai valitse Manuaalinen.",
+      "no_charge_control": "Tälle laitteelle ei löytynyt käytössä olevaa OCPP-latauksen ohjauskytkintä.",
+      "no_pending_site": "Kohteen tietoja ei lähetetty ennen kuin laturin manuaalinen syöttö avattiin, joten mitään ei tallennettu.",
+      "no_ambiguous_vehicles": "Yksikään tunnistettu ajoneuvo ei tarvitse ratkaisua juuri nyt.",
+      "vehicle_resolved": "Ajoneuvo ratkaistu. Sen varaustaso luetaan valitsemastasi lukemasta.",
+      "vehicle_dismissed": "Ajoneuvo ohitettu. SpotNav ei raportoi sitä, ennen kuin ohitus perutaan.",
+      "not_a_charger": "Laite ei ole sähköauton laturi (vaan lämmittimen tai pistorasian ohjain).",
+      "charger_not_recognised": "SpotNav ei tunne tätä integraatiota. Valitse sen sijaan Manuaalinen.",
+      "charger_not_controllable": "SpotNav ei voi käynnistää tai pysäyttää tätä laturia. Sitä voi vain lukea."
+    },
+    "error": {
+      "safety_margin_at_or_above_fuse": "Turvamarginaalin on oltava pääsulaketta pienempi, muuten latureille ei jää virtaa.",
+      "charge_control_in_use": "Toinen SpotNav-laturi käyttää jo tätä latauksen ohjausta.",
+      "current_limit_in_use": "Toinen SpotNav-laturi käyttää jo tätä latausvirran ohjausta.",
+      "duplicate_charger": "{other} ja tämä laturi ovat sama fyysinen laturi. Kaksi SpotNav-laturia yhdessä laturissa lähettää sille ristiriitaisia komentoja, joten säilytä vain yksi: poista toinen kohdasta Asetukset → Laitteet ja palvelut → SpotNav. SpotNav ei koskaan poista kumpaakaan puolestasi.",
+      "charger_already_in_another_site": "Yksi näistä latureista kuuluu jo toiseen kohteeseen.",
+      "manual_source_entity_invalid": "Valitse anturientiteetti, joka on olemassa Home Assistantissa.",
+      "manual_source_entity_wrong_device": "Entiteettiä ei ole rekisteröity tämän laturin omaan laitteeseen, joten se ei voi olla tämän laturin mitattu virta.",
+      "site_manual_source_entity_on_charger_device": "Entiteetti kuuluu yhdelle kohteen latureista, joten se ei voi olla kohteen oma kokonaisvirta.",
+      "manual_source_attributes_required": "Anna tämän vaiheen attribuutin nimi.",
+      "manual_source_unverified": "Mikään tämän entiteetin tiedoista ei nyt vastaa näitä attribuuttien nimiä, eikä myöskään mikään viimeisten {lookback_days} päivän historiassa -- laturi voi olla aivan uusi, tai nimessä on kirjoitusvirhe. Rastita \"tallenna silti\", jos haluat tallentaa sen joka tapauksessa.",
+      "device_not_found": "Laitetta ei ole olemassa.",
+      "own_mode_active": "Laturin oma ohjaus on yhä päällä. Kytke se pois tai valitse jatkaa silti.",
+      "control_path_unknown": "SpotNav ei voi päätellä, miten lataus käynnistetään ja pysäytetään tällä entiteetillä. Valitse laturin kytkin tai valitsin, jossa on selkeät käynnistys- ja pysäytysvaihtoehdot.",
+      "current_limit_required": "Valitse latausvirran asetus, jonka kautta virta asetetaan.",
+      "current_control_unsupported": "Tämä tapa asettaa virta ei sovi tälle laturille.",
+      "charger_no_answer": "Laturi ei vastannut, joten SpotNav ei voi päätellä, miten sen virta asetetaan. Odota, kunnes laturi on yhteydessä, ja lähetä uudelleen, tai valitse itse.",
+      "unit_expected_current": "Tämän anturin on ilmoitettava virta yksikössä A tai mA.",
+      "unit_expected_power": "Tämän anturin on ilmoitettava teho yksikössä W tai kW.",
+      "unit_expected_voltage": "Tämän anturin on ilmoitettava jännite yksikössä V.",
+      "unit_expected_reactive_power": "Tämän anturin on ilmoitettava loisteho yksikössä var tai kvar.",
+      "unit_expected_apparent_power": "Tämän anturin on ilmoitettava näennäisteho yksikössä VA tai kVA.",
+      "manual_entities_duplicate": "Jokainen vaihe tarvitsee oman entiteettinsä."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Laturin ohjaimet",
+        "data": {
+          "charge_control": "Latauksen ohjaus",
+          "current_limit": "Latausvirta (valinnainen)",
+          "current_control": "Aseta laturin virta",
+          "energy_register_entity": "Energiamittari (kumulatiivinen, valinnainen)",
+          "power_entity": "Tehoanturi, älypistoke (valinnainen)",
+          "idle_power_w": "Ei ota virtaa, kun teho alle (W)"
+        },
+        "data_description": {
+          "idle_power_w": "Jos teho pysyy tämän alapuolella viisi minuuttia suunnitellun latauksen aikana, SpotNav toteaa, ettei auto ota virtaa. Oletus 100 W."
+        }
+      },
+      "site_init": {
+        "title": "Kohteen kapasiteettiasetukset",
+        "description": "Kuormanhallinta pääsulakkeen alapuolella. Aktiivinen ohjaus pienentää laturin virtaa tarvittaessa; se toimii parhaan kyvyn mukaan, eikä se ole suojalaite. Akun tehoanturi on valinnainen ja syöttää vain diagnostista arviota -- ei koskaan turvallista latauksen rajaa.",
+        "data": {
+          "name": "Kohteen nimi",
+          "site_enabled": "Kohteen laskenta käytössä",
+          "active_control_enabled": "Aktiivinen ohjaus käytössä (otetaan käyttöön erikseen, vain johdettu mittaustapa)",
+          "main_fuse_a": "Pääsulakkeen koko (A)",
+          "safety_margin_a": "Turvamarginaali (A)",
+          "max_age_s": "Mittauksen enimmäisikä (sekuntia)",
+          "regulator_deadband_a": "Aktiivinen ohjaus: ohita muutokset, jotka ovat pienempiä kuin (A)",
+          "regulator_dwell_s": "Aktiivinen ohjaus: kuinka kauan muutoksen on pysyttävä (sekuntia)",
+          "yield_stepping_enabled": "Joustovarmistettu porrastus käytössä (otetaan käyttöön erikseen, kohteelle, jossa on joustava kuorma, esim. kotiakku)",
+          "yield_ceiling_a": "Joustoporrastus: ehdoton yläraja, jota ei koskaan ylitetä (A, oltava pääsulaketta suurempi)",
+          "solar_priority": "Aurinkoylijäämän etusija (auto vai kotiakku ensin)",
+          "battery_aggregate_power_entity": "Kotiakun latausteho (valinnainen, vain diagnostiikkaan)",
+          "change_measurement": "Muuta mittausta ja vaihekytkentää",
+          "measurement_mode": "Mittaustapa",
+          "charger_entry_ids": "Kohteen kapasiteettia jakavat laturit",
+          "solar_forecast_entries": "Aurinkoennusteen lähteet (valinnainen, hybridistrategian käyttöön)",
+          "voltage_between_phases_v": "Vaiheiden välinen jännite"
+        }
+      },
+      "site_current_suggestions": {
+        "title": "Ehdotukset kohteen virran lähteeksi",
+        "description": "Nämä ovat vain ehdotuksia, jotka perustuvat Home Assistantissa jo oleviin entiteetteihin -- mitään ei oteta käyttöön ennen kuin vahvistat. Valitse \"Valitse manuaalisesti\", jos haluat valita entiteetit itse, tai \"Ohita toistaiseksi\", jos haluat määrittää tämän myöhemmin kohteen asetuksista.",
+        "data": {
+          "choice": "Ehdotettu lähde"
+        }
+      },
+      "site_details": {
+        "title": "Mittausentiteetit",
+        "description": "{reason}Valitse sähkömittarin anturit. Mikä tahansa anturi kelpaa; sen yksikkö tarkistetaan, kun jatkat (virta A tai mA, teho W tai kW, jännite V, loisteho var tai kvar, näennäisteho VA tai kVA). Vain valittuun mittaustapaan sopivat kentät näytetään. Sen jälkeen määritetään kunkin liitetyn laturin vaihekytkentä, laturi kerrallaan.",
+        "data": {
+          "direct_L1": "L1-verkkovirta",
+          "direct_L2": "L2-verkkovirta",
+          "direct_L3": "L3-verkkovirta",
+          "site_current_signed": "Verkkovirralla on etumerkki (vienti on negatiivinen)",
+          "grid_power_inverted": "Verkon teho on positiivinen viennissä (käännä se)",
+          "derived_L1_power_export": "L1-vientiteho (valinnainen, kun otto ja vienti ovat erikseen)",
+          "derived_L1_reactive_power": "L1-loisteho (valinnainen)",
+          "derived_L1_apparent_power": "L1-näennäisteho (valinnainen)",
+          "derived_L1_current": "L1-virta (valinnainen)",
+          "derived_L2_power_export": "L2-vientiteho (valinnainen, kun otto ja vienti ovat erikseen)",
+          "derived_L2_reactive_power": "L2-loisteho (valinnainen)",
+          "derived_L2_apparent_power": "L2-näennäisteho (valinnainen)",
+          "derived_L2_current": "L2-virta (valinnainen)",
+          "derived_L3_power_export": "L3-vientiteho (valinnainen, kun otto ja vienti ovat erikseen)",
+          "derived_L3_reactive_power": "L3-loisteho (valinnainen)",
+          "derived_L3_apparent_power": "L3-näennäisteho (valinnainen)",
+          "derived_L3_current": "L3-virta (valinnainen)",
+          "derived_L1_power": "L1-teho",
+          "derived_L1_voltage": "L1-jännite",
+          "derived_L2_power": "L2-teho",
+          "derived_L2_voltage": "L2-jännite",
+          "derived_L3_power": "L3-teho",
+          "derived_L3_voltage": "L3-jännite"
+        }
+      },
+      "charger_manual_source": {
+        "title": "Laturin mitattu virta",
+        "description": "Valitse yksi tämän laturin omaan laitteeseen kuuluva entiteetti ja anna sen attribuutin nimi, joka sisältää kunkin vaiheen virran. Vain tähän laturiin rekisteröidyt entiteetit näytetään. Valitse attribuuttien ilmoittama yksikkö -- \"A\" tai \"mA\" -- erikseen: entiteetin oma yksikkö kuvaa sen tila-arvoa, ei välttämättä muita sen sisältämiä attribuutteja.",
+        "data": {
+          "entity_id": "Entiteetti (vain tämän laturin oma laite)",
+          "attribute_L1": "L1-attribuutin nimi",
+          "attribute_L2": "L2-attribuutin nimi",
+          "attribute_L3": "L3-attribuutin nimi",
+          "unit": "Attribuuttien yksikkö",
+          "confirm_unverified": "Mitään ei voitu tarkistaa -- tallenna silti"
+        }
+      },
+      "site_manual_source": {
+        "title": "Kohteen virta yhdestä entiteetistä",
+        "description": "Valitse yksi entiteetti, jonka omat vaihekohtaiset attribuutit sisältävät koko kohteen virran, ja anna kunkin vaiheen attribuutin nimi. Kohteen latureihin kuuluvia entiteettejä ei koskaan näytetä -- laturin oma anturi ei voi olla myös koko kohteen summa. Valitse attribuuttien ilmoittama yksikkö -- \"A\" tai \"mA\" -- erikseen: entiteetin oma yksikkö kuvaa sen tila-arvoa, ei välttämättä muita sen sisältämiä attribuutteja.",
+        "data": {
+          "entity_id": "Entiteetti (mikä tahansa paitsi tämän kohteen laturit)",
+          "attribute_L1": "L1-attribuutin nimi",
+          "attribute_L2": "L2-attribuutin nimi",
+          "attribute_L3": "L3-attribuutin nimi",
+          "unit": "Attribuuttien yksikkö",
+          "confirm_unverified": "Mitään ei voitu tarkistaa -- tallenna silti"
+        }
+      },
+      "site_charger_wiring": {
+        "title": "Kytkentä: {charger}",
+        "description": "Valitse yksivaiheiselle laturille kytketty vaihe erikseen -- tuntemattomalle vaiheelle ei voi koskaan laskea turvallista suositusta. Laturin oma mitattu virta on valinnainen: valitse löydetty ehdotus, anna yksi entiteetti vaihekohtaisine attribuutteineen, anna kolme erillistä entiteettiä (yksi vaihetta kohti, kuten Charge Amps -integraatio tarjoaa) tai jätä valinnaksi \"Ohita toistaiseksi\" ja määritä se myöhemmin.",
+        "data": {
+          "phases": "Vaiheiden määrä",
+          "phase": "Kytketty vaihe (yksivaiheiset laturit)",
+          "measured_source": "Mitatun virran lähde (valinnainen)"
+        }
+      },
+      "charger_manual_entities": {
+        "title": "Laturin mitattu virta, yksi entiteetti vaihetta kohti",
+        "description": "Valitse anturi, joka sisältää kunkin vaiheen virran. Vain tämän laturin omaan laitteeseen rekisteröidyt entiteetit näytetään, ja jokaisen on ilmoitettava ampeereja (A tai mA).",
+        "data": {
+          "entity_L1": "L1-virta",
+          "entity_L2": "L2-virta",
+          "entity_L3": "L3-virta"
+        }
+      }
+    },
+    "abort": {
+      "no_pending_site": "Kohteen tietoja ei lähetetty ennen kuin laturin manuaalinen syöttö avattiin, joten mitään ei tallennettu."
+    },
+    "error": {
+      "safety_margin_at_or_above_fuse": "Turvamarginaalin on oltava pääsulaketta pienempi, muuten latureille ei jää virtaa.",
+      "charge_control_in_use": "Toinen SpotNav-laturi käyttää jo tätä latauksen ohjausta.",
+      "current_limit_in_use": "Toinen SpotNav-laturi käyttää jo tätä latausvirran ohjausta.",
+      "duplicate_charger": "{other} ja tämä laturi ovat sama fyysinen laturi. Kaksi SpotNav-laturia yhdessä laturissa lähettää sille ristiriitaisia komentoja, joten säilytä vain yksi: poista toinen kohdasta Asetukset → Laitteet ja palvelut → SpotNav. SpotNav ei koskaan poista kumpaakaan puolestasi.",
+      "charger_already_in_another_site": "Yksi näistä latureista kuuluu jo toiseen kohteeseen.",
+      "manual_source_entity_invalid": "Valitse anturientiteetti, joka on olemassa Home Assistantissa.",
+      "manual_source_entity_wrong_device": "Entiteettiä ei ole rekisteröity tämän laturin omaan laitteeseen, joten se ei voi olla tämän laturin mitattu virta.",
+      "site_manual_source_entity_on_charger_device": "Entiteetti kuuluu yhdelle kohteen latureista, joten se ei voi olla kohteen oma kokonaisvirta.",
+      "manual_source_attributes_required": "Anna tämän vaiheen attribuutin nimi.",
+      "manual_source_unverified": "Mikään tämän entiteetin tiedoista ei nyt vastaa näitä attribuuttien nimiä, eikä myöskään mikään viimeisten {lookback_days} päivän historiassa -- laturi voi olla aivan uusi, tai nimessä on kirjoitusvirhe. Rastita \"tallenna silti\", jos haluat tallentaa sen joka tapauksessa.",
+      "yield_ceiling_below_fuse": "Joustoporrastuksen ylärajan on oltava pääsulakkeen kokoa suurempi.",
+      "yield_ceiling_above_limit": "Ylärajan on oltava alle 1,25 × pääsulake: se on kuorma, joka gG-sulakkeen on kestettävä tunnin palamatta, ja koeaskel saa lähestyä sitä mutta ei koskaan saavuttaa sitä.",
+      "unit_expected_current": "Tämän anturin on ilmoitettava virta yksikössä A tai mA.",
+      "unit_expected_power": "Tämän anturin on ilmoitettava teho yksikössä W tai kW.",
+      "unit_expected_voltage": "Tämän anturin on ilmoitettava jännite yksikössä V.",
+      "unit_expected_reactive_power": "Tämän anturin on ilmoitettava loisteho yksikössä var tai kvar.",
+      "unit_expected_apparent_power": "Tämän anturin on ilmoitettava näennäisteho yksikössä VA tai kVA.",
+      "manual_entities_duplicate": "Jokainen vaihe tarvitsee oman entiteettinsä."
+    }
+  },
+  "selector": {
+    "mode": {
+      "options": {
+        "generic": "Manuaalinen",
+        "detected": "Automaattinen (suositeltu)"
+      }
+    },
+    "entry_type": {
+      "options": {
+        "charger": "Latauslaite",
+        "site": "Kohde (kuormanhallinta)",
+        "resolve_vehicle": "Ratkaise tunnistettu ajoneuvo"
+      }
+    },
+    "measurement_mode": {
+      "options": {
+        "direct_phase_current": "Suora vaihekohtainen verkkovirta (suositeltu)",
+        "derived_phase_current": "Johdettu tehosta ja jännitteestä (tarkempi mittarin virran, näennäis- tai loistehon kanssa; muuten virta arvioidaan)"
+      }
+    },
+    "solar_priority": {
+      "options": {
+        "car_first": "Auto ensin",
+        "battery_first": "Kotiakku ensin"
+      }
+    },
+    "voltage_between_phases": {
+      "options": {
+        "400": "400 V (TN-verkko, tavallinen)",
+        "230": "230 V (IT-verkko, yleinen Norjassa)"
+      }
+    },
+    "charger_phases": {
+      "options": {
+        "1": "Yksi vaihe",
+        "3": "Kolme vaihetta"
+      }
+    }
+  },
+  "entity": {
+    "binary_sensor": {
+      "schedule_active": {
+        "name": "Aikataulu aktiivinen"
+      },
+      "grid_charging": {
+        "name": "Lataus verkosta"
+      },
+      "grid_charging_site": {
+        "name": "Lataus verkosta"
+      }
+    },
+    "button": {
+      "start": {
+        "name": "Aloita lataus"
+      },
+      "stop": {
+        "name": "Pysäytä lataus"
+      },
+      "follow": {
+        "name": "Noudata latausaikataulua"
+      },
+      "cancel": {
+        "name": "Peruuta aikataulu"
+      },
+      "recalculate_auto": {
+        "name": "Laske automaattinen ehdotus uudelleen"
+      },
+      "pause_auto": {
+        "name": "Keskeytä automaattinen hintasuunnittelu"
+      },
+      "resume_auto": {
+        "name": "Jatka automaattista hintasuunnittelua"
+      },
+      "clear_departure_date": {
+        "name": "Tyhjennä lähtöpäivä"
+      }
+    },
+    "sensor": {
+      "instance_connection": {
+        "name": "Sovelluksen pariliitos (kaikki laturit)"
+      },
+      "connection": {
+        "name": "Sovellusyhteys"
+      },
+      "plan_start": {
+        "name": "Aikataulutettu alku"
+      },
+      "plan_end": {
+        "name": "Aikataulutettu loppu"
+      },
+      "site_state": {
+        "name": "Kapasiteetin tila"
+      },
+      "charger_proposed_current": {
+        "name": "Ehdotettu virta – {charger}"
+      },
+      "auto_plan_state": {
+        "name": "Automaattisen suunnitelman tila",
+        "state": {
+          "incomplete_settings": "Asetukset puutteelliset",
+          "waiting_for_prices": "Odotetaan hintoja",
+          "waiting_for_publication": "Odotetaan huomisen hintoja",
+          "price_data_stale": "Hintatiedot vanhentuneet",
+          "proposal_ready": "Ehdotus valmis",
+          "proposal_unpriced": "Ehdotus lataa ilman hintoja",
+          "nothing_to_charge": "Ei mitään ladattavaa",
+          "planning_unavailable": "Suunnittelu ei käytettävissä",
+          "error": "Virhe"
+        }
+      },
+      "auto_execution_state": {
+        "name": "Automaattisen suorituksen tila",
+        "state": {
+          "not_applied": "Ei otettu käyttöön",
+          "scheduled": "Aikataulutettu",
+          "active": "Ladataan nyt",
+          "paused": "Tauolla",
+          "complete": "Valmis",
+          "apply_pending": "Odotetaan latausikkunan vaihtumista",
+          "execution_error": "Suoritusvirhe"
+        }
+      },
+      "auto_next_start": {
+        "name": "Seuraavan suunnitellun latauksen alku"
+      },
+      "auto_next_end": {
+        "name": "Seuraavan suunnitellun latauksen loppu"
+      },
+      "auto_periods": {
+        "name": "Suunnitellut latausjaksot"
+      },
+      "auto_cost": {
+        "name": "Suunniteltu kustannus"
+      },
+      "auto_energy": {
+        "name": "Suunniteltu energia"
+      },
+      "auto_settings_revision": {
+        "name": "Automaattisten asetusten versio"
+      },
+      "integrated_energy": {
+        "name": "Energia tehosta"
+      },
+      "sessions_energy_this_month": {
+        "name": "Ladattu energia tässä kuussa"
+      },
+      "sessions_cost_this_month": {
+        "name": "Latauskustannus tässä kuussa"
+      },
+      "sessions_energy_last_month": {
+        "name": "Ladattu energia viime kuussa"
+      },
+      "sessions_cost_last_month": {
+        "name": "Latauskustannus viime kuussa"
+      },
+      "sessions_last_energy": {
+        "name": "Viimeisimmän latauksen energia"
+      },
+      "sessions_last_cost": {
+        "name": "Viimeisimmän latauksen kustannus"
+      }
+    },
+    "select": {
+      "price_area": {
+        "name": "Hinta-alue"
+      },
+      "fiscal_vat_policy": {
+        "name": "ALV-käytäntö",
+        "state": {
+          "off": "Pois",
+          "suggested": "Käytä alueen ehdotusta",
+          "manual": "Käytä omaa arvoa"
+        }
+      },
+      "fiscal_tax_policy": {
+        "name": "Sähköveron käytäntö",
+        "state": {
+          "off": "Pois",
+          "suggested": "Käytä alueen ehdotusta",
+          "manual": "Käytä omaa arvoa"
+        }
+      },
+      "fiscal_transfer_policy": {
+        "name": "Siirtomaksun käytäntö",
+        "state": {
+          "off": "Pois",
+          "suggested": "Käytä alueen ehdotusta",
+          "manual": "Käytä omaa arvoa"
+        }
+      },
+      "auto_strategy": {
+        "name": "Latausstrategia",
+        "state": {
+          "cheapest": "Halvimmat tunnit",
+          "solar": "Aurinkoylijäämä",
+          "hybrid": "Halvimmat tunnit, verkkoenergiaa säästetään odotetun auringon varalle"
+        }
+      }
+    },
+    "number": {
+      "charging_current": {
+        "name": "Latausvirta"
+      },
+      "requested_energy": {
+        "name": "Ladattava energia"
+      },
+      "maximum_periods": {
+        "name": "Latausjaksoja enintään"
+      },
+      "vat_rate": {
+        "name": "ALV"
+      },
+      "energy_tax": {
+        "name": "Sähkövero"
+      },
+      "transfer_fee": {
+        "name": "Siirtomaksu"
+      }
+    },
+    "date": {
+      "departure_date": {
+        "name": "Lähtöpäivä"
+      }
+    },
+    "switch": {
+      "departure_enabled": {
+        "name": "Lähdön määräaika"
+      }
+    },
+    "time": {
+      "departure_time": {
+        "name": "Lähtöaika"
+      }
+    },
+    "event": {
+      "charger_events": {
+        "name": "Laturin tapahtumat",
+        "state_attributes": {
+          "event_type": {
+            "state": {
+              "charge_started": "Lataus alkoi",
+              "charge_finished": "Lataus päättyi",
+              "plugged_in": "Kytketty",
+              "unplugged": "Irrotettu",
+              "plan_installed": "Suunnitelma otettu käyttöön",
+              "plan_at_risk": "Suunnitelma vaarassa"
+            }
+          }
+        }
+      }
+    }
+  },
+  "issues": {
+    "vehicle_soc_needs_decision": {
+      "title": "Ajoneuvon varaustaso vaatii päätöksen",
+      "fix_flow": {
+        "abort": {
+          "no_longer_needs_decision": "Tämä laite ei enää vaadi päätöstä."
+        },
+        "step": {
+          "pick": {
+            "title": "Mikä lukema on varaustaso?",
+            "description": "**{device}** ilmoittaa useamman kuin yhden akkulukeman, joten SpotNav ei arvaa, mikä niistä on varaustaso. Valitse oikea lukema tai ilmoita, ettei tämä ole ajoneuvo, jolloin sitä ei enää raportoida.",
+            "data": {
+              "choice": "Lukema"
+            }
+          }
+        }
+      }
+    },
+    "vehicle_charge_limit_needs_decision": {
+      "title": "Ajoneuvon latausraja vaatii päätöksen",
+      "fix_flow": {
+        "abort": {
+          "no_longer_needs_decision": "Tämä laite ei enää vaadi päätöstä."
+        },
+        "step": {
+          "pick": {
+            "title": "Minkä rajan muutos asettaa?",
+            "description": "**{device}** ilmoittaa useamman kuin yhden latausrajan, joten SpotNav ei arvaa, mikä niistä muutoksen pitäisi asettaa. Valitse raja, jota tämän ajoneuvon muutokset käyttävät. Se kirjoitetaan ajoneuvon oman integraation kautta ja tulee voimaan, kun integraatio seuraavan kerran lukee sen.",
+            "data": {
+              "choice": "Latausraja"
+            }
+          }
+        }
+      }
+    },
+    "duplicate_charger": {
+      "title": "Kaksi SpotNav-laturia on sama laturi",
+      "description": "**{charger}** ja **{other}** ovat sama fyysinen laturi: niillä on yhteinen laite, mitattu virta, OCPP-liitin tai Easee-laite. Kaksi SpotNav-laturia yhdessä laturissa lähettää sille ristiriitaisia komentoja. Poista toinen niistä: Asetukset → Laitteet ja palvelut → SpotNav → merkinnän valikko → Poista. SpotNav ei koskaan poista kumpaakaan puolestasi."
+    },
+    "site_without_chargers": {
+      "title": "Lisää laturi kohteeseen",
+      "description": "Kohteessa **{site}** ei ole vielä laturia. Lisää laturi: Asetukset → Laitteet ja palvelut → SpotNav → Lisää merkintä → Latauslaite; se tarjoutuu liittymään tähän kohteeseen."
+    }
+  },
+  "exceptions": {
+    "invalid_driver": {
+      "message": "Tätä energialähdettä ei tueta."
+    },
+    "invalid_area": {
+      "message": "Valitse ensin markkina: arvo kuuluu tiettyyn markkinaan."
+    },
+    "invalid_phases": {
+      "message": "Vaiheita on oltava 1 tai 3."
+    },
+    "invalid_amps": {
+      "message": "Virran on oltava kokonainen määrä ampeereja."
+    },
+    "invalid_energy": {
+      "message": "Energian on oltava positiivinen määrä kilowattitunteja (kWh)."
+    },
+    "invalid_periods": {
+      "message": "Jaksojen määrän on oltava kokonaisluku väliltä 1–8."
+    },
+    "invalid_departure": {
+      "message": "Lähtöajan on oltava paikallinen kellonaika."
+    },
+    "invalid_fiscal": {
+      "message": "Tätä vero- tai maksuarvoa ei voi tallentaa sellaisenaan."
+    },
+    "invalid_target": {
+      "message": "Tavoitetietue on puutteellinen."
+    },
+    "invalid_number": {
+      "message": "Arvon on oltava kelvollinen luku."
+    },
+    "unknown_field": {
+      "message": "Tietueessa on kenttä, jota tämä versio ei tunne."
+    },
+    "missing_field": {
+      "message": "Tietueesta puuttuu pakollinen kenttä."
+    },
+    "invalid_proposal": {
+      "message": "Tallennettua ehdotusta ei voi käyttää."
+    },
+    "invalid_pause": {
+      "message": "Taukoasetuksen on oltava päällä tai pois."
+    },
+    "revision_conflict": {
+      "message": "Asetuksia muutettiin muualla, joten arvoa ei kirjoitettu. Yritä uudelleen."
+    },
+    "not_auto_mode": {
+      "message": "Automaattinen hintasuunnittelu ei ole tämän laturin suunnittelutila."
+    },
+    "unknown_test_charger": {
+      "message": "Yhdelläkään ladatulla SpotNav-laturilla ei ole tätä asetusmerkintää tai entiteetin tunnusta."
+    },
+    "no_push_registered": {
+      "message": "Yhdelläkään SpotNav-laturilla ei ole sovelluksen pikailmoituksia päällä, joten testi-ilmoitusta ei lähetetty. Ilmoituksiin valituille Companion-puhelimille lähetettiin silti testiviesti."
+    },
+    "stop_not_executed": {
+      "message": "Laturi ei ottanut pysäytystä vastaan: sen ohjaus ei ole käytettävissä. Yritä uudelleen, kun laturi on taas tavoitettavissa."
+    },
+    "storage_failed": {
+      "message": "Lataussuunnitelmaa ei voitu tallentaa."
+    },
+    "reschedule_failed": {
+      "message": "Lataussuunnitelmaa ei voitu ottaa käyttöön; edellinen on yhä voimassa."
+    },
+    "rollback_failed": {
+      "message": "Lataussuunnitelmaa ei voitu ottaa käyttöön, eikä edellistä voitu palauttaa."
+    },
+    "vehicle_not_connected": {
+      "message": "Autoa ei ole kytketty, joten käynnistettävää ei ole."
+    },
+    "reconcile_failed": {
+      "message": "Laturi otti komennon vastaan, mutta automaattista latausta ei voitu päivittää vastaamaan sitä. Tarkista laturin tila."
+    }
+  }
+}

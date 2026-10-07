@@ -1,15 +1,19 @@
 // The five languages, the fallback rule, plural selection and placeholder substitution.
 //
+// The words are in `<lang>.json`, one file per language. English is the source of truth for the key
+// set: every other language is typed against it here, so a missing key is a compile error, and the
+// i18n tests reject an extra one (a JSON file is not an object literal, so the type cannot).
+//
 // Everything here is pure: `hass.language` is read elsewhere, as a state-snapshot field, and only
 // its *value* reaches this module. Numbers, weekdays and plural categories come from `Intl`; nothing
 // is hand-formatted, and nothing is selected by `count === 1` alone, because a plural category is a
 // language's own rule and not arithmetic.
 
-import { da } from "./da";
-import { en } from "./en";
-import { fi } from "./fi";
-import { nb } from "./nb";
-import { sv } from "./sv";
+import da from "./da.json";
+import en from "./en.json";
+import fi from "./fi.json";
+import nb from "./nb.json";
+import sv from "./sv.json";
 
 export type TranslationKey = keyof typeof en;
 export type Translation = Record<TranslationKey, string>;

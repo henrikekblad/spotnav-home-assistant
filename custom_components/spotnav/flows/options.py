@@ -70,6 +70,7 @@ from ..runtime import site_controller_for
 from ..site.site_capacity_controller import SiteCapacityController, SiteControllerClosed
 from ..site.site_membership import site_membership_errors
 from ..vehicles.choices import entity_option, flow_language
+from ..texts import table
 from ..vehicles.discovery import async_discover_site_current_sources, DiscoveryCandidate
 from ..vehicles.ocpp_identity import apply_target, discover_controls, resolve_target
 from ..execution.charger_entities import control_path_for_entity
@@ -284,20 +285,6 @@ class SpotNavChargingOptionsFlow(config_entries.OptionsFlow):
 
 
 CHANGE_MEASUREMENT = "change_measurement"
-
-_DETAILS_REASON_TEXT: dict[str, dict[str, str]] = {
-    "en": {
-        "mode": "The measurement mode changed, so the measurement needs to be set up. ",
-        "chargers": "The chargers changed, so their phase wiring needs to be set up. ",
-        "measurement": "The stored measurement is incomplete, so it needs to be set up. ",
-    },
-    "sv": {
-        "mode": "M\u00e4tl\u00e4get \u00e4ndrades, s\u00e5 m\u00e4tningen beh\u00f6ver st\u00e4llas in. ",
-        "chargers": "Laddarna \u00e4ndrades, s\u00e5 deras fasinkoppling beh\u00f6ver st\u00e4llas in. ",
-        "measurement": "Den sparade m\u00e4tningen \u00e4r ofullst\u00e4ndig, s\u00e5 den beh\u00f6ver st\u00e4llas in. ",
-    },
-}
-
 
 class SiteCapacityOptionsFlow(ChargerWiringSteps, config_entries.OptionsFlow):
     """Edit every structural choice a site was created with.
@@ -673,7 +660,7 @@ class SiteCapacityOptionsFlow(ChargerWiringSteps, config_entries.OptionsFlow):
 
     def _details_placeholders(self) -> dict[str, str]:
         return {
-            "reason": _DETAILS_REASON_TEXT[flow_language(self.hass)].get(self._details_reason or "", "")
+            "reason": table(flow_language(self.hass), "measurement_reason").get(self._details_reason or "", "")
         }
 
     def _stored_wiring(self, charger_entry_id: str) -> dict[str, Any]:

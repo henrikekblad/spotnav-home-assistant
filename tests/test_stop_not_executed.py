@@ -184,7 +184,7 @@ async def test_a_stop_not_executed_reaches_a_person_as_a_translated_error(hass: 
 
     assert raised.value.translation_key == EXECUTION_STOP_NOT_EXECUTED
     root = Path(__file__).parents[1] / "custom_components" / "spotnav" / "translations"
-    for language in ("en", "sv"):
+    for language in ("en", "sv", "da", "nb", "fi"):
         exceptions = json.loads((root / f"{language}.json").read_text())["exceptions"]
         for code in ("stop_not_executed", "storage_failed", "reschedule_failed", "rollback_failed"):
             assert exceptions[code]["message"]

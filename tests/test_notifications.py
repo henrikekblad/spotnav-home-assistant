@@ -19,13 +19,8 @@ from pytest_homeassistant_custom_component.common import (
 from custom_components.spotnav.api.settings import decode_settings, encode_settings
 from custom_components.spotnav.api.webhook import _for_app, APP_UNREAD_SETTINGS
 from custom_components.spotnav.execution.controller import ChargingPlan
-from custom_components.spotnav.notifications.messages import (
-    _TEXT,
-    compose,
-    language_of,
-    LANGUAGES,
-    Money,
-)
+from custom_components.spotnav.notifications.messages import compose, Money, NAMESPACE
+from custom_components.spotnav.texts import language_of, languages, read_files
 from custom_components.spotnav.notifications.settings import (
     DEFAULT_EVENTS,
     NOTIFICATION_EVENTS,
@@ -206,9 +201,10 @@ def test_a_new_window_starts_afresh() -> None:
 
 
 def test_every_language_has_every_text() -> None:
-    assert set(_TEXT) == set(LANGUAGES) == {"en", "sv", "da", "nb", "fi"}
-    for language in LANGUAGES:
-        assert set(_TEXT[language]) == set(_TEXT["en"]), language
+    files = read_files()
+    assert set(languages()) == {"en", "sv", "da", "nb", "fi"}
+    for language in languages():
+        assert set(files[language][NAMESPACE]) == set(files["en"][NAMESPACE]), language
 
 
 def test_home_assistants_language_picks_one_of_the_five() -> None:
@@ -235,7 +231,7 @@ def test_messages_are_short_and_carry_the_charger_energy_and_money() -> None:
     assert compose("plan_at_risk", "G", {"time": "07:00"}, "sv")[1] == (
         "Laddningen hinner inte bli klar till avresan 07:00."
     )
-    for language in LANGUAGES:
+    for language in languages():
         for event in NOTIFICATION_EVENTS:
             assert len(compose(event, "G", {"reason": "not_started", "time": "07:00"}, language)[1]) < 120
 

@@ -3,7 +3,7 @@
 import { describe, expect, it } from "vitest";
 
 import { LANGUAGES, TRANSLATIONS, placeholders, pluralForm, periodHeadingKey, resolveLanguage, translate } from "../src/i18n";
-import { en } from "../src/i18n/en";
+import en from "../src/i18n/en.json";
 
 const keys = Object.keys(en) as Array<keyof typeof en>;
 

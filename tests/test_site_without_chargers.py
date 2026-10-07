@@ -8,7 +8,7 @@ from homeassistant.helpers import entity_registry as er, issue_registry as ir
 
 from custom_components.spotnav.const import CONF_ENTRY_TYPE, DOMAIN, ENTRY_TYPE_SITE
 from custom_components.spotnav.repairs import async_sync_resolution_repairs
-from custom_components.spotnav.setup_hints import ADD_CHARGER_HINT
+from custom_components.spotnav.setup_hints import add_charger_hint
 
 from .helpers import make_site_entry
 from .world import setup_charger, setup_site
@@ -26,8 +26,8 @@ async def _site_step(hass: HomeAssistant):
 
 
 def test_the_hint_is_the_sentence_the_pages_say() -> None:
-    assert ADD_CHARGER_HINT["en"] == HINT
-    assert ADD_CHARGER_HINT["sv"].startswith("Lägg till en laddare: Inställningar → Enheter och tjänster → SpotNav")
+    assert add_charger_hint("en") == HINT
+    assert add_charger_hint("sv").startswith("Lägg till en laddare: Inställningar → Enheter och tjänster → SpotNav")
 
 
 async def test_the_site_step_says_how_to_add_a_charger_only_while_there_is_none(hass: HomeAssistant) -> None:
