@@ -133,14 +133,24 @@ that also has the meter's **total grid power** (see
 charger's own measured current and a house battery power sensor. The card says when a site
 cannot, and for a direct site without the total it says the meter's total grid power is needed.
 
+- Following the surplus works without active load balancing, on a direct site too and on a
+  single-phase charger whose phase is not set. Where active load balancing writes the charger's
+  current (a derived site with it turned on), it applies the sun's current through its own damped
+  write. Anywhere else SpotNav writes the sun's current itself: never above the charging current
+  set in Auto (so never more than a plain start at that current would draw), only when it changes,
+  at most once every 20 seconds, never to a paused charger and never while a stop is on its way.
+  The site's `solar_surplus` attribute and diagnostics say which writes it (`solar_current_writer`:
+  `active_control`, `solar`, or `none` for a charger whose current cannot be set).
 - The surplus is computed from the site's energy balance (grid, house battery and the car's
   own draw), never from export alone, so that the car's draw does not count as surplus.
 - Charging starts after the surplus has held for a while and stops after it has faded, to
   avoid rapid switching. With no usable measurement it stops rather than guesses.
 - A charge starts at the minimum current and stays there for two minutes while the car's own draw
-  shows the surplus is real; only then does the current follow the surplus. Under *car first* a
-  start that counted a charging house battery is stopped at once if the battery then turns to feed
-  the car, and a charging battery is not counted again for ten minutes (twice as long after each
+  shows the surplus is real; only then does the current follow the surplus, by a single amp only once
+  the surplus has stayed there for ten seconds. Under *car first* a start that counted a charging house
+  battery is stopped at once if the battery then turns to feed the car (judged when the charger's reading
+  shows the car drawing at least 70 % of its current, or when the shortfall has lasted 30 seconds, so a
+  charger reading that lags the battery's is not taken for it), and a charging battery is not counted again for ten minutes (twice as long after each
   such start, up to four hours). A discharging battery never counts as surplus.
 - A charge the charger begins by itself (at plug-in, say) is decided on the first reading: with a
   surplus for the minimum current it is kept as a solar charge at the minimum and checked like a start,
@@ -157,7 +167,8 @@ cannot, and for a direct site without the total it says the meter's total grid p
   charge that has fallen, or a higher charge limit or target ends the wait at once. The wait, and what
   the car ended at, outlast a restart and a switch to another strategy and back. A charge something
   else turned off is an ordinary stop. A charger that is not charging draws nothing, whatever its
-  current sensor still shows.
+  current sensor still shows. A charger that says no car is plugged in is never started by the sun and
+  holds no share of the surplus; a charge the sun ran there simply ends, with no stop sent.
 - Switching strategy while a charge runs hands it over rather than stopping it. To **Solar**: when the
   sun's rules would keep the charge going (the surplus covers the charger's minimum, as for a charge
   that runs), the sun takes it over and sets its current from the surplus; otherwise it is stopped
