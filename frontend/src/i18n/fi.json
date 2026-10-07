@@ -597,6 +597,7 @@
   "settings.current.powerUnknown": "Nimellisteho tuntematon",
   "bar.plan": "Suunnitelma",
   "settings.plan.title": "Latausuunnitelma",
+  "settings.plan.titleFor": "Latausuunnitelma: {name}",
   "settings.plan.intro": "Kuinka paljon ladataan, milloin lataus on oltava valmis ja kuinka suurta virtaa suunnitelma saa pyytää. Nämä ovat suunnitteluarvoja, eivät komentoja latauslaitteelle.",
   "settings.plan.aria": "Suunnitelma: {value}",
   "entity.vehicle.automatic": "Automaattinen tunnistus",

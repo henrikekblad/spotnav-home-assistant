@@ -597,6 +597,7 @@
   "settings.current.powerUnknown": "Nennleistung unbekannt",
   "bar.plan": "Plan",
   "settings.plan.title": "Ladeplan",
+  "settings.plan.titleFor": "Ladeplan für {name}",
   "settings.plan.intro": "Wie viel geladen werden soll, wann es fertig sein muss und welchen Strom der Ladeplan anfordern darf. Das sind Planungswerte, keine Befehle an die Ladestation.",
   "settings.plan.aria": "Plan: {value}",
   "entity.vehicle.automatic": "Automatische Erkennung",

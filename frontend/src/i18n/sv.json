@@ -597,6 +597,7 @@
   "settings.current.powerUnknown": "Nominell effekt okänd",
   "bar.plan": "Plan",
   "settings.plan.title": "Laddplan",
+  "settings.plan.titleFor": "Laddplan för {name}",
   "settings.plan.intro": "Hur mycket som ska laddas, när det ska vara klart och vilken ström planen får begära. Det är planeringsvärden, inte kommandon till laddaren.",
   "settings.plan.aria": "Plan: {value}",
   "entity.vehicle.automatic": "Automatisk avkänning",

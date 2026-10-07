@@ -597,6 +597,7 @@
   "settings.current.powerUnknown": "Nominal power unknown",
   "bar.plan": "Plan",
   "settings.plan.title": "Charging plan",
+  "settings.plan.titleFor": "Charging plan for {name}",
   "settings.plan.intro": "How much to charge, when it must be finished and the current the plan may ask for. These are planning values, not commands to the charger.",
   "settings.plan.aria": "Plan: {value}",
   "entity.vehicle.automatic": "Automatic detection",
