@@ -447,6 +447,8 @@ export const sv: Record<keyof typeof en, string> = {
   "strategy.status.solar.noReadingWaiting": "Sol · ingen användbar mätning ännu",
   "strategy.status.solar.waitingForSun": "Sol · väntar på sol",
   "strategy.status.solar.vehicleFull": "Sol · bilen är fulladdad",
+  "strategy.status.solar.noCar": "Sol · ingen bil inkopplad",
+  "strategy.status.solar.noCarSurplus": "Sol · överskott finns – koppla in bilen",
   "strategy.status.solar.carStopped": "Sol · bilen slutade ladda; försöker igen kl. {time}",
   "strategy.status.solar.carStoppedNoTime": "Sol · bilen slutade ladda",
   "strategy.status.solar.unknown": "Sol · status okänd",

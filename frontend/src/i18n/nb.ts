@@ -447,6 +447,8 @@ export const nb: Record<keyof typeof en, string> = {
   "strategy.status.solar.noReadingWaiting": "Sol · ingen brukbar måling ennå",
   "strategy.status.solar.waitingForSun": "Sol · venter på sol",
   "strategy.status.solar.vehicleFull": "Sol · bilen er fulladet",
+  "strategy.status.solar.noCar": "Sol · ingen bil tilkoblet",
+  "strategy.status.solar.noCarSurplus": "Sol · overskudd tilgjengelig – koble til bilen",
   "strategy.status.solar.carStopped": "Sol · bilen sluttet å lade; prøver igjen kl. {time}",
   "strategy.status.solar.carStoppedNoTime": "Sol · bilen sluttet å lade",
   "strategy.status.solar.unknown": "Sol · status ukjent",

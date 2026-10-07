@@ -447,6 +447,8 @@ export const da: Record<keyof typeof en, string> = {
   "strategy.status.solar.noReadingWaiting": "Sol · ingen brugbar måling endnu",
   "strategy.status.solar.waitingForSun": "Sol · venter på sol",
   "strategy.status.solar.vehicleFull": "Sol · bilen er fuldt opladet",
+  "strategy.status.solar.noCar": "Sol · ingen bil tilsluttet",
+  "strategy.status.solar.noCarSurplus": "Sol · overskud til rådighed – tilslut bilen",
   "strategy.status.solar.carStopped": "Sol · bilen stoppede opladningen; prøver igen kl. {time}",
   "strategy.status.solar.carStoppedNoTime": "Sol · bilen stoppede opladningen",
   "strategy.status.solar.unknown": "Sol · status ukendt",

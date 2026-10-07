@@ -1141,6 +1141,20 @@ describe("the status block", () => {
     expect(withStatus(status)).toEqual({ ok: false, failure: "malformed" });
   });
 
+  it("accepts the no-car lines, with or without the surplus", () => {
+    for (const status of [
+      { tone: "normal", lines: [line("solar_no_car", {})] },
+      { tone: "normal", lines: [line("solar_no_car_surplus", { surplus_kw: 4.2 })] },
+      { tone: "normal", lines: [line("solar_no_car_surplus", { surplus_kw: null })] },
+    ]) {
+      expect((withStatus(status) as { ok: boolean }).ok).toBe(true);
+    }
+    expect(withStatus({ tone: "normal", lines: [line("solar_no_car_surplus", { surplus_kw: "4" })] })).toEqual({
+      ok: false,
+      failure: "malformed",
+    });
+  });
+
   it("accepts an empty block: idle", () => {
     expect((withStatus({ tone: "normal", lines: [] }) as { ok: boolean }).ok).toBe(true);
   });
