@@ -92,7 +92,12 @@ describe("the level now and the car's limit on the plan's target slider", () => 
 
   it("put the limit where the car stops, its whole percent, and keep both on the track", () => {
     expect(targetTicks(-3, 80.6)).toEqual({ now: 0, limit: 0.8 });
-    expect(targetTicks(104, 120)).toEqual({ now: 1, limit: 1 });
+    expect(targetTicks(104, 99.5)).toEqual({ now: 1, limit: 0.99 });
+  });
+
+  it("have no limit tick for a car that charges to 100 %", () => {
+    expect(targetTicks(45, 100)).toEqual({ now: 0.45, limit: null });
+    expect(targetTicks(45, 120)).toEqual({ now: 0.45, limit: null });
   });
 
   it("leave out what is not known", () => {

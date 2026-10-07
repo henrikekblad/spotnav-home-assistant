@@ -88,13 +88,15 @@ export function floorSegment(
 
 /**
  * The level now and the car's own limit as ticks on the 0..100 % target slider, as fractions of the track: the
- * limit at the whole percent the car stops at. `null` for what is not known.
+ * limit at the whole percent the car stops at, and only below 100 % (the end of the track says that already).
+ * `null` for what is not known or not marked.
  */
 export function targetTicks(now: number | null, limit: number | null): { now: number | null; limit: number | null } {
   const at = (percent: number): number => Math.min(1, Math.max(0, percent / 100));
+  const ceiling = limit === null || !Number.isFinite(limit) ? 100 : chargeCeiling(limit);
   return {
     now: now === null || !Number.isFinite(now) ? null : at(now),
-    limit: limit === null || !Number.isFinite(limit) ? null : at(chargeCeiling(limit)),
+    limit: ceiling < 100 ? at(ceiling) : null,
   };
 }
 
