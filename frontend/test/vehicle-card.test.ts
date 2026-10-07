@@ -202,7 +202,7 @@ describe("the Plan popover's target editor", () => {
   it("offers a picker with more than one vehicle, and only the resolved vehicle's charge is stated", async () => {
     const { hass, element } = await openPlan(twoVehicles());
     const select = q<HTMLSelectElement>(element, "select[data-soc='vehicle-choice']")!;
-    expect(Array.from(select.options).map((option) => option.textContent)).toEqual(["Not chosen", "EV6", "Niro"]);
+    expect(Array.from(select.options).map((option) => option.textContent)).toEqual(["EV6", "Niro"]);
     expect(select.value).toBe("vehicle_ev6");
     select.value = "vehicle_niro";
     select.dispatchEvent(new Event("change"));
