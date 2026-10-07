@@ -7,7 +7,7 @@ import en from "../src/i18n/en.json";
 
 const keys = Object.keys(en) as Array<keyof typeof en>;
 
-describe("the five languages", () => {
+describe("every language", () => {
   it("carry exactly the English key set, none empty", () => {
     for (const language of LANGUAGES) {
       const translation = TRANSLATIONS[language];

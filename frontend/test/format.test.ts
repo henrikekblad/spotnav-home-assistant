@@ -46,10 +46,11 @@ describe("one stored energy amount", () => {
     expect(new Set([41.6, 42.0, 42.1].map((value) => energyAmount("en", value))).size).toBe(3);
   });
 
-  it("states the amount in every one of the five languages' own conventions", () => {
+  it("states the amount in every language's own conventions", () => {
     // Both marks come from `Intl`, not from a table in this module: `sv`, `nb` and `fi` group with a
-    // no-break space and `da` with a period, and every language but `en` writes a comma as the decimal
-    // mark. Asserting all five is what keeps a hand-cut formatter from creeping back in.
+    // no-break space, `fr` with a narrow one, `da`, `de` and `nl` with a period, and `es` not at all
+    // below five digits; every language but `en` writes a comma as the decimal mark. Asserting them all
+    // is what keeps a hand-cut formatter from creeping back in.
     const grouped: Record<Language, string> = {
       da: "1.000 kWh",
       en: "1,000 kWh",

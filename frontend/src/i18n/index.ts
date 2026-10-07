@@ -1,4 +1,4 @@
-// The five languages, the fallback rule, plural selection and placeholder substitution.
+// The languages, the fallback rule, plural selection and placeholder substitution.
 //
 // The words are in `<lang>.json`, one file per language. English is the source of truth for the key
 // set: every other language is typed against it here, so a missing key is a compile error, and the

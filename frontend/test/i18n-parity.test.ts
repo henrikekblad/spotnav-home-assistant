@@ -1,4 +1,4 @@
-// The five locales, as a set: exact key parity, and the compact row's labels actually localized.
+// The locales, as a set: exact key parity, and the compact row's labels actually localized.
 //
 // The types already enforce parity at compile time (`Translation` is `Record<TranslationKey, string>`),
 // and this is the runtime half: it fails loudly if a shipped locale is edited outside the type system,
@@ -48,7 +48,7 @@ describe("the shipped locales", () => {
         expect(text).not.toContain("{unit}");
       }
     }
-    // And they are translations rather than the English text copied five times.
+    // And they are translations rather than the English text copied into every file.
     const reset = LANGUAGES.map((language) => translate(language, "market.resetToSuggestion"));
     expect(new Set(reset).size).toBeGreaterThanOrEqual(4);
   });
