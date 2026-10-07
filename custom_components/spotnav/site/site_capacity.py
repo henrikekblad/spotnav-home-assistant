@@ -101,6 +101,19 @@ ChargerState = Literal[
 
 ControllerState = SiteState | ChargerState
 
+# What the site is doing, in words a person reads (`site_activity`): `observing` is the healthy state, in
+# which the site measures and, with active load balancing on, also balances. Additive beside the state,
+# whose value stays as it is.
+SiteActivity = Literal["measuring", "balancing", "not_measuring"]
+SITE_ACTIVITIES: tuple[SiteActivity, ...] = ("measuring", "balancing", "not_measuring")
+
+
+def site_activity(state: str, active_control_enabled: bool) -> SiteActivity:
+    """`measuring` or `balancing` (active load balancing on) while the site is `observing`, else `not_measuring`."""
+    if state != "observing":
+        return "not_measuring"
+    return "balancing" if active_control_enabled else "measuring"
+
 Confidence = Literal["high", "low", "guarded", "none"]
 # "guarded": a phase was accepted on a `confirmed_unchanged` reading. "none": no
 # proposal was made.

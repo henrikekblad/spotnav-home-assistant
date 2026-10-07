@@ -502,13 +502,44 @@
         "name": "Aikataulutettu loppu"
       },
       "site_state": {
-        "name": "Kapasiteetin tila"
+        "name": "Kapasiteetin tila",
+        "state": {
+          "disabled": "Pois käytöstä",
+          "not_configured": "Ei määritetty",
+          "missing_measurements": "Mittaus puuttuu",
+          "stale_measurements": "Mittaus vanhentunut",
+          "invalid_measurements": "Virheellinen mittaus",
+          "observing": "Mittaa"
+        },
+        "state_attributes": {
+          "site_activity": {
+            "name": "Toiminta",
+            "state": {
+              "measuring": "Mittaa, aktiivinen kuormanhallinta pois",
+              "balancing": "Mittaa, aktiivinen kuormanhallinta päällä",
+              "not_measuring": "Ei mittaa"
+            }
+          }
+        }
       },
       "solar_surplus": {
         "name": "Aurinkoylijäämä"
       },
       "charger_proposed_current": {
-        "name": "Ehdotettu virta – {charger}"
+        "name": "Ehdotettu virta – {charger}",
+        "state_attributes": {
+          "state": {
+            "name": "Tila",
+            "state": {
+              "invalid_measurements": "Virheellinen mittaus",
+              "requested_current_unknown": "Pyydetty virta tuntematon",
+              "capacity_available": "Mahtuu",
+              "capacity_limited": "Rajoitettu",
+              "below_minimum_current": "Alle vähimmäisvirran",
+              "not_requesting": "Ei lataa"
+            }
+          }
+        }
       },
       "auto_plan_state": {
         "name": "Automaattisen suunnitelman tila",

@@ -42,6 +42,7 @@ from .execution.power_energy import fresh_power_w, integrated_energy_unique_id, 
 from .runtime import controller_for
 from .sessions.sensors import session_entities
 from .vehicles.choices import flow_language
+from .site.site_capacity import site_activity
 from .site.site_capacity_controller import SiteCapacityController
 from .site.solar_surplus import SiteSurplus
 from .vehicles.charger_inventory import (
@@ -393,6 +394,9 @@ class SiteStateEntity(_BuiltOnChangeSiteSensor):
         return {
             **attributes,
             "reason": result.reason,
+            # The state in a person's words: `measuring`, `balancing` (active load balancing on) or
+            # `not_measuring`; the state itself stays `observing` when healthy.
+            "site_activity": site_activity(result.state, self.controller.active_control_enabled),
             "measurement_mode": result.measurement_mode,
             "confidence": result.confidence,
             "limiting_phase": result.limiting_phase,
