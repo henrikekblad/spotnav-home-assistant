@@ -158,7 +158,7 @@
   "entity.error.read": "No se han podido leer las entidades.",
   "entity.field.chargeControl": "Control de carga",
   "entity.field.currentLimit": "Límite de corriente",
-  "entity.field.energyRegister": "Registro de energía",
+  "entity.field.energyRegister": "Contador de energía",
   "entity.field.powerEntity": "Sensor de potencia (enchufe inteligente)",
   "entity.field.vehicleSoc": "Nivel de carga del vehículo",
   "entity.field.mainFuse": "Fusible general",

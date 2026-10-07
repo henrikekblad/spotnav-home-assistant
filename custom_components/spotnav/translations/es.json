@@ -175,8 +175,8 @@
           "charge_control": "Control de carga",
           "current_limit": "Número de corriente de carga (opcional)",
           "current_control": "Fijar la corriente del cargador",
-          "energy_register_entity": "Registro de energía (opcional)",
-          "energy_register_is_session": "Usar el registro de energía por sesión (se reinicia en cada sesión)",
+          "energy_register_entity": "Contador de energía (opcional)",
+          "energy_register_is_session": "Usar el contador de energía por sesión (se reinicia en cada sesión)",
           "charging_state_entity": "Sensor de estado que indica que está cargando (opcional)",
           "enable_disabled_entities": "Activar las entidades útiles que están desactivadas"
         }
