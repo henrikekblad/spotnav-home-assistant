@@ -87,7 +87,9 @@ serious each is. Examples:
 | Stopped at 80 % (estimated, reading 40 min old) | The target was reached; shows the level the charge stopped at and how old or estimated it was. |
 | Charging is limited to 10 A by the site's load balancing. | Active load balancing has lowered the current. |
 | The home battery charges from the grid and shares the main fuse: the car gets 11 A. / House consumption limits the car to 11 A. | The same, with the cause when SpotNav knows it. |
+| Charging to the minimum level (30 %) | The car is below its [minimum charge level](target-soc.md#minimum-charge-level), so SpotNav charges at once at the set current; the strategy takes over at the floor. |
 | Solar · charging 9 A from surplus | The solar strategy's state: waiting for sun, surplus found and starting soon, surplus fading, charging, or no usable reading. |
+| Solar · surplus available (4.2 kW) / Solar · no car plugged in | Solar with no car plugged in: the surplus is enough to start a charge (plug the car in now), or it is not. |
 | Hybrid · 12 kWh from grid, 8 kWh expected from sun | The hybrid plan's split; with no forecast source it says it plans like Cheapest. |
 | The energy meter cannot be read: 6.5 kWh remains, from its last reading. / No energy meter: 3 kWh remains, counted from this charger's recorded charges. | The requested energy is counted without the charger's energy register, see [counting the requested energy](strategies.md#cheapest). |
 | Charging was started, but the vehicle is not requesting current. | The connector reports the car is not asking for current. It is an observation only: check the car's charging settings or reconnect the cable. |
@@ -205,7 +207,8 @@ under its heading; the car planned for is open first, and tapping another tab sh
   plugged in at a charger more than one car can charge at. Each is **Automatic**, one of the car's entities,
   or **None**. They are read only for that.
 - **Reference picture** (with a camera chosen for the charger): the car's day and night pictures for the
-  camera, with a thumbnail cropped as it is compared. See [the camera](vehicle-identification.md#the-camera).
+  camera, shown as two equal tiles, **Day** and **Night**, each cropped as it is compared (or *No picture*).
+  Tapping either opens the reference editor. See [the camera](vehicle-identification.md#the-camera).
 
 ### Which car is plugged in?
 
@@ -316,12 +319,14 @@ just **Charging plan**.
 - **Planned current**: the current the plan may ask for, in whole amperes, with the nominal power
   it means for the phases the charge uses (read-only, see below). It is a planning value, not a command
   to the charger.
-- With a target SoC: the **Target charge level** slider, the vehicle (when there are several), the
-  level now and how old it is or that it is estimated, the vehicle's charge limit when known, and
-  the **Energy needed**. When the car has a minimum charge level, the slider's track is darker from 0 to it,
-  with **min 30 %** under that part. Ticks on the track mark the level now (**now**, **≈ now** when
-  estimated) and the car's charge limit (**limit**, only below 100 %); a word that would touch
-  another drops to a second line.
+- With a target SoC: the **Charge target** slider, the vehicle (when there are several), and one line with
+  the car's reading: the level now (with ≈ when it is estimated), the car's charge limit when known and how
+  old the reading is, for example *Now 75 % · Charge limit 80 % · 8 min ago*. Under the slider is the
+  **Energy needed**; a target that is already met says *No charging needed now*, and a target at the car's own
+  limit says *Charging to the vehicle's limit, 80 %* once, with no 0.0 kWh row. When the car has a minimum
+  charge level, the slider's track is darker from 0 to it, with **min 30 %** under that part. Ticks on the
+  track mark the level now (**now**, **≈ now** when estimated) and the car's charge limit (**limit**, only
+  below 100 %); a word that would touch another drops to a second line.
 
 If two clients change the settings at the same moment, the card says they changed elsewhere and
 offers **Use the server values** or **Apply my change again**; nothing is overwritten silently.
