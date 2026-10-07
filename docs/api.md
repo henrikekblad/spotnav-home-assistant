@@ -125,12 +125,19 @@ key by key and ignores keys it does not know (as it does the dashboard's root bl
 **Instant notifications.** `push_register` takes `push_ref`, the opaque reference the SpotNav relay
 gave the app for its Firebase token (base64url text, at most 512 characters), or `null` to stop, and an
 optional `events` (the notification event ids above; default `plan_stopped`, `plan_at_risk`,
-`charge_complete`). It is stored per charger and kept across restarts; the answer is `{"ok": true,
+`charge_complete`, `vehicle_identify`). It is stored per charger and kept across restarts; the answer is `{"ok": true,
 "action": "push_register"}`, a bad body HTTP 400 `{"ok": false, "error": "invalid_push_register",
 "action": "push_register"}`. When one of those events happens, Home Assistant posts `{"v": 1,
 "push_ref"}` to the relay's `/v1/push/wake` (10 s, never retried, the same event not again within 15
 minutes, at most twelve an hour), and the relay sends the app an empty wake-up; the app then reads
-this charger as usual. Nothing about the charge goes to the relay. A relay answer of 404
+this charger as usual. Nothing about the charge goes to the relay. The question which car is plugged in
+(`vehicle_identify`) has its own rules, since the app posts its own notification for it: every new question
+wakes the app, and so does the question's end however it ends (answered on a phone, in the card or in the app,
+decided by the cars or by a change of the target vehicle, swiped, unanswered after twelve hours, or the car
+unplugged for longer than two minutes), so the app can take its notification down. Neither is held back by the
+15-minute repeat rule or the hourly limit, though both count towards the limit; a plug-in asks at most once, so
+a question wakes at most twice. One that comes while a wake-up is under way sends one more after it. Both are
+the same empty wake-up: the app tells them apart by reading `identification`. A relay answer of 404
 `unknown_ref` drops the reference. This is independent of the Companion phones chosen in
 `notifications`. Examples are in `tests/fixtures/webhook/push_register_*.json`.
 
