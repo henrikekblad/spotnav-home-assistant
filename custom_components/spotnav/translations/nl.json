@@ -476,7 +476,7 @@
         "name": "Schema annuleren"
       },
       "recalculate_auto": {
-        "name": "Auto-voorstel opnieuw berekenen"
+        "name": "Voorstel van automatische prijsplanning opnieuw berekenen"
       },
       "pause_auto": {
         "name": "Automatische prijsplanning pauzeren"
