@@ -138,9 +138,10 @@ START_CAUSE_TTL_S = 300.0
 HYBRID_LOG_TOKEN = "HYBRID"
 
 #: Who owns a charge a plan window's end leaves alone (`_window_end_spared_owner`): a person's Start, a start
-#: with no cause (Charge now on a charger without Auto) and the sun's. Never `plan_window`, nor a charge the
-#: charger began by itself (no origin), which the window's end stops as it always did.
-WINDOW_END_SPARED_ORIGINS: Final = frozenset({"manual", "other", "solar"})
+#: with no cause (Charge now on a charger without Auto), the sun's and the car's minimum charge level's
+#: (`min_soc_floor.py`). Never `plan_window`, nor a charge the charger began by itself (no origin), which the
+#: window's end stops as it always did.
+WINDOW_END_SPARED_ORIGINS: Final = frozenset({"manual", "other", "solar", "min_soc"})
 
 #: What a connection handler is told (`set_connection_handler`): a vehicle was plugged in, or unplugged.
 CONNECTION_PLUGGED_IN = "plugged_in"
@@ -524,6 +525,7 @@ _CORE_OWNER_ORIGIN: Final = {
     "person": ("manual", False),
     "solar": ("solar", False),
     "charge_now": ("other", False),
+    "min_soc": ("min_soc", False),
 }
 
 
@@ -2574,6 +2576,29 @@ class ChargingController:
         """What the charge load balancing holds back was (`manual` for a person's), or `None`."""
         return None if self._paused_charge is None else self._paused_charge[0]
 
+    def balancing_holds(self, origin: str) -> bool:
+        """Whether load balancing holds a charge of `origin` back, to give it back when there is room."""
+        return self._paused_by_balancing and self._paused_charge is not None and self._paused_charge[0] == origin
+
+    async def async_take_min_soc_charge(self, origin: str) -> None:
+        """The car reached its minimum charge level and the strategy takes the floor's charge over with no command
+        (the execution boundary decided it, in its feed): a plan window open now (`plan_window`) or the sun
+        (`solar`), which decides it on its next reading."""
+        async with self._lock:
+            if self._charge_origin != "min_soc":
+                return
+            self._charge_origin = origin
+            self._plan_charge = origin == "plan_window"
+            _LOGGER.info("SpotNav charger %s: the car is at its minimum charge level; %s takes the charge over", self.entry_id, origin)
+            await self._async_save_quietly()
+            self._notify()
+
+    async def async_clear_plan_keep_charge(self) -> None:
+        """Clear the plan without touching the charger: the strategy left it while a charge that is not the plan's
+        runs (the car's minimum charge level's)."""
+        async with self._lock:
+            await self._end_plan_locked()
+
     def forget_balancing_pause(self) -> None:
         """The wish to charge is gone (Auto paused by a person, say): balancing's pause is not a charge
         to resume any more."""
@@ -3459,7 +3484,7 @@ class ChargingController:
 
     @property
     def charge_origin(self) -> str | None:
-        """Who started the running charge (`manual`, `solar`, `plan_window`, `other`), or `None`."""
+        """Who started the running charge (`manual`, `solar`, `plan_window`, `other`, `min_soc`), or `None`."""
         return self._charge_origin
 
     @property

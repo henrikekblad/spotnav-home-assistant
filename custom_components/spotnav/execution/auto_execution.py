@@ -55,6 +55,7 @@ from ..planning.phases import effective_phases
 from .controller import (
     AUTOMATIC_BALANCING_RESUME,
     AUTOMATIC_PERSON_RESUME,
+    AUTOMATIC_START,
     AUTOMATIC_STOP,
     ChargingController,
     ChargingExecutionError,
@@ -62,6 +63,8 @@ from .controller import (
 )
 from .manual_pause import ManualChargeWatch
 from ..core import events as core_events
+from ..core.ownership import REASON_MIN_SOC
+from .min_soc_floor import ORIGIN_MIN_SOC
 from .ownership_shadow import CommandOutcome, INTENT, NullShadow, OwnershipShadow
 
 
@@ -875,11 +878,13 @@ class AutoExecutor:
                 self._pending = None
             if settings.strategy == STRATEGY_SOLAR and applied is not None:
                 # A charge the sun's rules keep is handed over to the sun with no stop (the plan's window, or the
-                # sun carrying it past one); anything else is stopped once, as ever.
-                sun_keeps = self._sun_keeps_charge()
+                # sun carrying it past one); anything else is stopped once, as ever. The floor's charge is not the
+                # plan's: the plan is cleared and it goes on.
+                floors = self._controller.charge_origin == ORIGIN_MIN_SOC
+                sun_keeps = False if floors else self._sun_keeps_charge()
                 event = core_events.StrategyChange(strategy=STRATEGY_SOLAR, plan_applied=True, sun_keeps=sun_keeps)
                 token = self._shadow.begin()
-                stop = not sun_keeps
+                stop = not sun_keeps and not floors
                 verdict = self._shadow.verdict(event)
                 if verdict is not None:
                     stop = self._shadow.choose("strategy", stop, ("stop", "strategy") in verdict)
@@ -888,6 +893,8 @@ class AutoExecutor:
                     if stop:
                         await self._controller.async_stop(clear_schedule=True, urgent=False)
                         stopped = self._shadow_stop_outcome()
+                    elif floors:
+                        await self._controller.async_clear_plan_keep_charge()
                     else:
                         await self._controller.async_hand_charge_to_sun()
                 except Exception as err:  # noqa: BLE001 - reported, never hidden
@@ -2035,7 +2042,8 @@ class AutoExecutor:
             outcome: CommandOutcome | None = None
             try:
                 verdict = self._shadow.verdict(core_events.SolarStop())
-                allowed = self.automatic_allowed(AUTOMATIC_STOP)
+                # Never the floor's charge (`min_soc_floor.py`): it is not the sun's to stop.
+                allowed = self.automatic_allowed(AUTOMATIC_STOP) and self._controller.charge_origin != ORIGIN_MIN_SOC
                 if not allowed if verdict is None else not self._shadow.choose("solar_stop", allowed, ("stop", "solar") in verdict):
                     return True
                 legacy.append("stop")
@@ -2066,6 +2074,9 @@ class AutoExecutor:
                 and controller.charge_control_on
                 and controller.plan_window_active_now
             ):
+                return True
+            if controller.charge_origin == ORIGIN_MIN_SOC:
+                # The floor's charge: not the sun's to stop.
                 return True
         return await self.async_solar_stop()
 
@@ -2136,7 +2147,7 @@ class AutoExecutor:
             settings = self._store.settings(self._entry_id)
             if pause_blocks_execution(settings) or settings.strategy not in (
                 STRATEGY_SOLAR, STRATEGY_HYBRID
-            ):
+            ) or self._controller.charge_origin == ORIGIN_MIN_SOC:
                 return
             await self._controller.async_set_requested_current(amps)
 
@@ -2149,9 +2160,88 @@ class AutoExecutor:
             settings = self._store.settings(self._entry_id)
             if pause_blocks_execution(settings) or settings.strategy not in (
                 STRATEGY_SOLAR, STRATEGY_HYBRID
-            ):
+            ) or self._controller.charge_origin == ORIGIN_MIN_SOC:
                 return None
             return await self._controller.async_write_solar_current(amps, cap_a=cap_a)
+
+    async def async_min_soc_start(self, amps: int | None) -> bool:
+        """The car's known state of charge is below its minimum charge level (`min_soc_floor.py`): one start at
+        once, at the full current set, through the same lock and `ChargingController.async_start` as every other
+        start, under any strategy, taking over a charge the plan or the sun runs. Never while a pause holds Auto
+        (a person's pause or Stop wins), never a charge a person started, and not again while the floor's charge
+        runs or load balancing holds it back. Returns whether the start went out."""
+        async with self._lock:
+            if self._shutdown:
+                return False
+            controller = self._controller
+            connected = controller.adapter.vehicle_connected()
+            event = core_events.MinSocStart(connected=connected)
+            token = self._shadow.begin()
+            legacy: list[str] = []
+            outcome: CommandOutcome | None = None
+            started = False
+            try:
+                verdict = self._shadow.verdict(event)
+                refused = (
+                    connected is False
+                    or not self.automatic_allowed(AUTOMATIC_START)
+                    or controller.charge_origin in ("manual", ORIGIN_MIN_SOC)
+                    or controller.balancing_holds(ORIGIN_MIN_SOC)
+                )
+                if refused if verdict is None else not self._shadow.choose(
+                    "min_soc_start", not refused, ("start", REASON_MIN_SOC) in verdict
+                ):
+                    return False
+                legacy.append("start")
+                outcome = CommandOutcome(False)
+                started = await controller.async_start(amps, cause=ORIGIN_MIN_SOC)
+                outcome = CommandOutcome(started, balancing_held=not started and controller.paused_by_balancing)
+            finally:
+                self._shadow.end(token, event, legacy=legacy, outcome=outcome)
+            await self._notify_change()
+            return started
+
+    async def async_min_soc_end(self) -> bool:
+        """The floor's charge is over (the car reached its minimum charge level, its level is no longer known, the
+        floor was turned off, or a pause holds Auto): the strategy takes it from here. A plan window open now takes it
+        over, or the sun (solar, hybrid), with no command; else it is stopped once. Under a pause it is stopped.
+        Returns whether the floor's charge ended (handed over, or its stop went out)."""
+        async with self._lock:
+            controller = self._controller
+            if self._shutdown or controller.charge_origin != ORIGIN_MIN_SOC:
+                return False
+            settings = self._store.settings(self._entry_id)
+            paused = pause_blocks_execution(settings)
+            if not paused and controller.plan is not None and controller.plan_window_active_now:
+                handed = core_events.HAND_TO_PLAN
+            elif not paused and settings.strategy in (STRATEGY_SOLAR, STRATEGY_HYBRID):
+                handed = core_events.HAND_TO_SOLAR
+            else:
+                handed = core_events.HAND_TO_NOBODY
+            event = core_events.MinSocEnd(handed_to=handed)
+            token = self._shadow.begin()
+            legacy: list[str] = []
+            outcome: CommandOutcome | None = None
+            ended = False
+            try:
+                verdict = self._shadow.verdict(event)
+                if handed:
+                    await controller.async_take_min_soc_charge("plan_window" if handed == core_events.HAND_TO_PLAN else "solar")
+                    ended = True
+                else:
+                    stop = self.automatic_allowed(AUTOMATIC_STOP)
+                    if verdict is not None:
+                        stop = self._shadow.choose("min_soc_end", stop, ("stop", REASON_MIN_SOC) in verdict)
+                    if stop:
+                        legacy.append("stop")
+                        outcome = CommandOutcome(False)
+                        await controller.async_stop(urgent=False)
+                        outcome = self._shadow_stop_outcome()
+                        ended = outcome.executed
+            finally:
+                self._shadow.end(token, event, legacy=legacy, outcome=outcome)
+            await self._notify_change()
+            return ended
 
     async def async_note_reconcile_failed(self) -> None:
         """Record a post-commit reconcile failure in the execution vocabulary."""
