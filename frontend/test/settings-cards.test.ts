@@ -99,12 +99,12 @@ afterEach(() => {
 });
 
 describe("the Solar section", () => {
-  it("summarises the priority and the forecast sources in words, marked as applying to every charger on the site", async () => {
+  it("summarises the priority and the forecast sources in words, saying nothing of the one charger it applies to", async () => {
     const { element } = await open(dashboard(withSources(["forecast_solar:roof", "forecast_solar:garage"])));
     const card = solarCard(element)!;
     expect(card.querySelector("h4")?.textContent).toBe(translate("en", "settings.section.solar"));
     expect(card.querySelector("h4 svg")?.getAttribute("data-icon")).toBe("solar");
-    expect(card.textContent).toContain(translate("en", "site.applies.one"));
+    expect(card.textContent).not.toContain(translate("en", "site.applies.one"));
     expect(card.querySelector("[data-row='solar_priority']")?.textContent).toContain(translate("en", "site.solarPriority.carFirst"));
     expect(card.querySelector("[data-row='solar_forecast']")?.textContent).toContain("Roof, Garage");
     // Each value is its own button, and nothing on the page saves by itself.

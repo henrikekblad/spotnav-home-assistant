@@ -21,6 +21,7 @@ from homeassistant.helpers.start import async_at_started
 from .api.dashboard import async_setup_dashboard_api
 from .api.debug import async_setup_debug_api
 from .api.entity_config import async_setup_entity_config_api
+from .api.camera import async_setup_camera_api
 from .api.identification import async_setup_identification_api
 from .api.manual_action import async_setup_manual_action_api
 from .api.market import async_setup_market_api
@@ -75,6 +76,8 @@ from .services import async_register_services
 from .notifications.notifier import ChargerNotifier
 from .notifications.push import ChargerPush
 from .execution.ownership_coverage import OwnershipCoverage
+from .vehicles.camera_identification import CameraIdentification
+from .vehicles.camera_pictures import ReferenceStore
 from .vehicles.identification import VehicleIdentifier
 from .vehicles.vehicle_target import async_adopt as async_adopt_vehicle_target, async_setup_vehicle_targets
 from .sessions.inputs import current_fiscal, price_book_for, session_facts, soc_percent_now
@@ -136,6 +139,7 @@ async def async_setup(hass: HomeAssistant, config: dict[str, Any]) -> bool:
     async_setup_site_settings_api(hass)
     async_setup_entity_config_api(hass)
     async_setup_identification_api(hass)
+    async_setup_camera_api(hass)
     async_setup_debug_api(hass)
     # Static route for the bundled card asset, versioned by the manifest.
     await async_setup_card_asset(hass)
@@ -372,8 +376,10 @@ async def _async_start_identifier(
     store = domain_data(hass).auto_store
     if store is None:
         return
+    camera = data.camera = CameraIdentification(hass, entry.entry_id, store)
+    await camera.async_load()
     identifier = data.identifier = VehicleIdentifier(
-        hass, entry.entry_id, controller=controller, store=store, notifier=data.notifier
+        hass, entry.entry_id, controller=controller, store=store, notifier=data.notifier, camera=camera
     )
     entry.async_on_unload(identifier.async_shutdown)
     await identifier.async_load()
@@ -528,6 +534,7 @@ async def async_remove_entry(hass: HomeAssistant, entry: ConfigEntry) -> None:
     await SocReader.async_remove_stored(hass, entry.entry_id)
     await ChargerPush.async_remove_stored(hass, entry.entry_id)
     await VehicleIdentifier.async_remove_stored(hass, entry.entry_id)
+    await ReferenceStore.async_remove_stored(hass, entry.entry_id)
     await ChargerNotifier.async_remove_stored(hass, entry.entry_id)
     await OwnershipCoverage.async_remove_stored(hass, entry.entry_id)
     session_store = domain_data(hass).session_store

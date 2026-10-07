@@ -357,6 +357,24 @@ export async function chooseVehicleIdentification(
   });
 }
 
+/** The camera commands' own version. */
+export const CAMERA_API_VERSION = 1;
+
+/** One camera command (`spotnav/<command>`, administrators only); the answer is decoded by the caller. */
+export async function cameraCommand(
+  hass: HomeAssistantLike,
+  chargerId: string,
+  command: "camera_snapshot" | "save_camera_frame" | "take_reference_picture" | "delete_reference_picture" | "reference_picture",
+  fields: Record<string, unknown> = {},
+): Promise<unknown> {
+  return await call<unknown>(hass, {
+    type: `spotnav/${command}`,
+    api_version: CAMERA_API_VERSION,
+    charger_id: chargerId,
+    ...fields,
+  });
+}
+
 export async function updateVehicle(
   hass: HomeAssistantLike,
   chargerId: string,

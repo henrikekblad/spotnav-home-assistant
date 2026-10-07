@@ -173,6 +173,27 @@ export interface SettingsBody {
    */
   vehicle_ids?: string[] | null;
   identify_mode?: IdentifyMode;
+  /**
+   * The camera that helps tell which car is plugged in (added after the first release of the contract: absent on
+   * an older backend, and then never sent): `null` for none.
+   */
+  identify_camera?: CameraSettings | null;
+}
+
+/** The parking spot in the camera's picture, as fractions of its width and height (0-1). */
+export interface CameraFrame {
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+}
+
+/** A charger's camera for identification: the camera, the AI Task entity (`null`: the default) and the frame. */
+export interface CameraSettings {
+  camera_entity_id: string;
+  ai_task_entity_id: string | null;
+  /** `null`: the whole picture. */
+  frame: CameraFrame | null;
 }
 
 /** How a charger with more than one vehicle finds out which one is plugged in. */

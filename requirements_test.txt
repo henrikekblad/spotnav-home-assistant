@@ -1,2 +1,7 @@
 pytest-homeassistant-custom-component==0.13.365
 hypothesis==6.168.3
+# Home Assistant's camera and AI Task (camera identification tests): what their own manifests require.
+PyTurboJPEG==1.8.3
+gazetteer-matcher==1.1.0
+hassil==3.12.0
+home-assistant-intents==2026.8.28

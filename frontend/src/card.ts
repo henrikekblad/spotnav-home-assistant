@@ -20,6 +20,7 @@
 import {
   SpotnavApiError,
   UNSUPPORTED_API_VERSION,
+  cameraCommand,
   chooseVehicleIdentification,
   getDashboard,
   getCardInfo,
@@ -43,6 +44,8 @@ import {
   brandMark,
   createCardView,
   type ActionId,
+  type CameraPictureRequest,
+  type OverviewPlaceHolder,
   type CardView,
   type FailureSentence,
 } from "./card-view";
@@ -64,6 +67,7 @@ import { cardOutdated, clientBlock, decodeCardInfo, ownCardBundleHash, servedHas
 import { saveTextFile } from "./download";
 import { ensureHaSelector } from "./entity-editor";
 import type { FiscalComponentName, ValueWrite } from "./value-writes";
+import { cameraErrorKey, decodePicture, type CameraPicture, type ReferenceAnswer } from "./camera-editor";
 import { decodeCsv, decodeSessions, type SessionsAnswer } from "./history";
 import {
   SETTINGS_EDITOR_KINDS,
@@ -127,7 +131,7 @@ import {
   type MarketOptionsV1,
   type SettingsRecord,
 } from "./types";
-import { decodeDashboard, type Dashboard, type Soc, type Vehicle } from "./validate";
+import { decodeDashboard, referencePictures, type Dashboard, type Soc, type Vehicle } from "./validate";
 import { OUTCOME_POLL_MS, outcomeSettled, outcomeWatchFor, type OutcomeWatch } from "./charge-bar";
 import { parseCardConfig, type CardConfig } from "./view";
 import { browserStore, initialChartCollapsed, readChartCollapsed, writeChartCollapsed } from "./chart-preference";
@@ -242,11 +246,21 @@ export class SpotnavCard extends HTMLElement {
   private siteOperation = 0;
   private activeControlBusy = false;
   private entityConfig: EntityConfig | null = null;
+  /** Reference picture thumbnails fetched or being fetched, by car, kind and when the picture was taken. */
+  private readonly thumbnails = new Map<string, Promise<{ picture: CameraPicture } | { code: string | null }>>();
   private entityOperation = 0;
   private historyOperation = 0;
   private history: SessionsAnswer | null = null;
   private entitySaving = false;
   private reopenOverview = false;
+  /**
+   * Saves whose confirming read is still on its way: Settings is reopened only once it is in, from that read's
+   * dashboard. A render meanwhile (the periodic read answered while an editor was open, applied when it closed)
+   * must not reopen it from the dashboard from before the save, which would then hold the old value.
+   */
+  private confirmingReturn = 0;
+  /** Where Settings was left for a value's editor: it reopens there, across the re-render a save causes. */
+  private readonly overviewPlace: OverviewPlaceHolder = { place: null };
   /** A warning a value's save leaves for the Settings page it returns to (the plan was not updated). */
   private overviewWarning: { sentenceKey: TranslationKey; code: string | null } | null = null;
   private confirmReadFailed = false;
@@ -933,7 +947,12 @@ export class SpotnavCard extends HTMLElement {
 
   private async adoptThenOverview(record: SettingsRecord, notice: FailureSentence | null): Promise<void> {
     this.reopenOverview = true;
-    await this.adoptSettings(record, notice, "market");
+    this.confirmingReturn += 1;
+    try {
+      await this.adoptSettings(record, notice, "market");
+    } finally {
+      this.confirmingReturn -= 1;
+    }
     if (this.reopenOverview) {
       this.reopenOverview = false;
       if (this.connected && this.view !== null && !this.view.anyDialogOpen()) {
@@ -1625,12 +1644,17 @@ export class SpotnavCard extends HTMLElement {
 
   private async returnToSettingsAfterEntitySave(view: CardView, config: EntityConfig | null): Promise<void> {
     this.reopenOverview = true;
+    this.confirmingReturn += 1;
     view.closeEntityEditor();
     if (config !== null) {
       view.setEntityState({ kind: "ready", config });
     }
     this.confirmReadFailed = false;
-    await this.refresh({ purpose: "confirm", confirm: SETTINGS_CONFIRM_NOTICE });
+    try {
+      await this.refresh({ purpose: "confirm", confirm: SETTINGS_CONFIRM_NOTICE });
+    } finally {
+      this.confirmingReturn -= 1;
+    }
     if (this.reopenOverview) {
       this.reopenOverview = false;
       if (this.connected && this.view !== null && !this.view.anyDialogOpen()) {
@@ -1771,17 +1795,102 @@ export class SpotnavCard extends HTMLElement {
       const code = error instanceof SpotnavApiError ? error.code : null;
       return say(settingsErrorKey(code));
     }
-    this.view?.closeValueEditor();
+    await this.closeEditorAndConfirm();
+    return null;
+  }
+
+  /** The value editor closes, the dashboard is read once, and Settings opens again from that read. */
+  private async closeEditorAndConfirm(): Promise<void> {
     this.reopenOverview = true;
+    this.confirmingReturn += 1;
+    this.view?.closeValueEditor();
     this.confirmReadFailed = false;
-    await this.refresh({ purpose: "confirm", confirm: SETTINGS_CONFIRM_NOTICE });
+    try {
+      await this.refresh({ purpose: "confirm", confirm: SETTINGS_CONFIRM_NOTICE });
+    } finally {
+      this.confirmingReturn -= 1;
+    }
     if (this.reopenOverview) {
       this.reopenOverview = false;
       if (this.connected && this.view !== null && !this.view.anyDialogOpen()) {
         this.view.openSettingsOverview();
       }
     }
-    return null;
+  }
+
+  /**
+   * One slot of a car's reference editor: take that kind's picture now, or delete it. Answers the car's pictures
+   * after it, which the editor shows in place (it stays open), or the sentence for that slot.
+   */
+  private async referencePicture(
+    vehicleId: string,
+    kind: "day" | "night",
+    action: "take" | "delete",
+  ): Promise<ReferenceAnswer> {
+    const hass = this.hassObject;
+    const config = this.config;
+    const say = (key: TranslationKey): string => translate(this.languageOrFallback, key);
+    if (!this.connected || hass === null || config === null || config.charger === "") {
+      return { message: say("settings.error.generic") };
+    }
+    if (!this.isAdmin) {
+      return { message: say("settings.error.readOnly") };
+    }
+    try {
+      const answer = (await cameraCommand(
+        hass,
+        config.charger,
+        action === "take" ? "take_reference_picture" : "delete_reference_picture",
+        { vehicle_id: vehicleId, kind },
+      )) as { ok?: unknown; error?: unknown; references?: unknown } | null;
+      if (answer === null || answer.ok !== true) {
+        return { message: say(cameraErrorKey(typeof answer?.error === "string" ? answer.error : null)) };
+      }
+      return { pictures: Array.isArray(answer.references) ? referencePictures(answer.references) : [] };
+    } catch (error) {
+      return { message: say(cameraErrorKey(error instanceof SpotnavApiError ? error.code : null)) };
+    }
+  }
+
+  /**
+   * A picture for the Settings page: the camera's picture now (for the frame editor), or a car's reference
+   * thumbnail (fetched once per picture).
+   */
+  private async cameraPicture(request: CameraPictureRequest): Promise<{ picture: CameraPicture } | { code: string | null }> {
+    const hass = this.hassObject;
+    const config = this.config;
+    if (!this.connected || hass === null || config === null || config.charger === "" || !this.isAdmin) {
+      return { code: null };
+    }
+    const key = request.kind === "reference" ? `${request.vehicleId}/${request.pictureKind}/${request.takenAt}` : null;
+    const cached = key === null ? undefined : this.thumbnails.get(key);
+    if (cached !== undefined) {
+      return await cached;
+    }
+    const fetched = (async (): Promise<{ picture: CameraPicture } | { code: string | null }> => {
+      try {
+        return decodePicture(
+          request.kind === "snapshot"
+            ? await cameraCommand(hass, config.charger, "camera_snapshot")
+            : await cameraCommand(hass, config.charger, "reference_picture", {
+                vehicle_id: request.vehicleId,
+                kind: request.pictureKind,
+              }),
+        );
+      } catch (error) {
+        return { code: error instanceof SpotnavApiError ? error.code : null };
+      }
+    })();
+    if (key !== null) {
+      this.thumbnails.set(key, fetched);
+      // A failed fetch is not kept: the next paint asks again.
+      void fetched.then((answer) => {
+        if (!("picture" in answer)) {
+          this.thumbnails.delete(key);
+        }
+      });
+    }
+    return await fetched;
   }
 
   /** The request itself: `null` when it took, else the sentence key that says why not. */
@@ -1825,6 +1934,15 @@ export class SpotnavCard extends HTMLElement {
         }
         const refused = decoded.value.fieldErrors[0];
         return refused === undefined ? entityErrorKey(decoded.value.code) : fieldErrorKey(refused.code);
+      }
+      case "cameraFrame": {
+        const answer = (await cameraCommand(hass, charger, "save_camera_frame", { frame: write.frame })) as {
+          ok?: unknown;
+          error?: unknown;
+        } | null;
+        return answer !== null && answer.ok === true
+          ? null
+          : cameraErrorKey(typeof answer?.error === "string" ? answer.error : null);
       }
       case "vehicleSource": {
         const answer = (await chooseVehicleIdentification(hass, charger, {
@@ -2187,6 +2305,12 @@ export class SpotnavCard extends HTMLElement {
           void this.answerIdentification(vehicleId);
         },
         onWriteValue: (write) => this.writeValue(write),
+        onCameraPicture: (request) => this.cameraPicture(request),
+        onReferencePicture: (vehicleId, kind, action) => this.referencePicture(vehicleId, kind, action),
+        onReferencesChanged: () => {
+          void this.closeEditorAndConfirm();
+        },
+        overviewPlace: this.overviewPlace,
         onEditFiscal: (component) => {
           void this.editFiscal(component);
         },
@@ -2196,7 +2320,7 @@ export class SpotnavCard extends HTMLElement {
           }
         },
       });
-      if (this.reopenOverview) {
+      if (this.reopenOverview && this.confirmingReturn === 0) {
         this.reopenOverview = false;
         this.view.openSettingsOverview();
       }

@@ -74,6 +74,12 @@ async function mounted(payload: Record<string, unknown>, language = "en", admin 
   return { hass, element };
 }
 
+/** A car's section on the Settings page, its tab opened first when the cars have tabs. */
+function carSection(page: HTMLElement, id: string): HTMLElement {
+  page.querySelector<HTMLButtonElement>(`[data-vehicle-tab='${id}'][aria-selected='false']`)?.click();
+  return page.querySelector<HTMLElement>(`[data-section='vehicle'][data-vehicle='${id}']`)!;
+}
+
 function openDialog(element: Element): HTMLElement | null {
   const dialogs = Array.from(shadow(element).querySelectorAll<HTMLElement>("[role='dialog']"));
   return dialogs.find((dialog) => dialog.closest("[hidden]") === null) ?? null;
@@ -239,7 +245,7 @@ describe("the Settings page", () => {
   it("says whether each car has a plug sensor and a location, in status words", async () => {
     const { element } = await openSettings(dashboard());
     const dialog = openDialog(element)!;
-    const ev6 = dialog.querySelector<HTMLElement>(`[data-section='vehicle'][data-vehicle='${EV6}']`)!;
+    const ev6 = carSection(dialog, EV6);
     expect(ev6.querySelector("[data-row='plug']")?.textContent).toContain(translate("en", "settings.status.present"));
     expect(ev6.querySelector("[data-row='plug']")?.textContent).not.toContain("EV6 plugged in");
     expect(ev6.querySelector("[data-row='location']")?.textContent).toContain(translate("en", "identify.source.choose"));
@@ -279,8 +285,7 @@ describe("the Settings page", () => {
 
   it("chooses a car's location source in its own editor", async () => {
     const { hass, element } = await openSettings(dashboard());
-    openDialog(element)!
-      .querySelector<HTMLElement>(`[data-section='vehicle'][data-vehicle='${EV6}']`)!
+    carSection(openDialog(element)!, EV6)
       .querySelector<HTMLButtonElement>("[data-edit='location']")!
       .click();
     await settle();

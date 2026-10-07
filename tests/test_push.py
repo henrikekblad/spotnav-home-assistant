@@ -3,6 +3,7 @@ events send to the relay (mocked), what a 404 does, the diagnostics, and the hid
 
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 import os
@@ -347,6 +348,97 @@ async def test_diagnostics_say_registered_but_never_carry_the_ref(hass: HomeAssi
     assert diagnostics["push"]["registered"] is True
     assert diagnostics["push"]["events"] == list(DEFAULT_EVENTS)
     assert REF not in json.dumps(diagnostics, default=str)
+
+
+# ------------------------------------------------------------------ the question which car is plugged in
+
+
+def _counting(push: Any) -> list[str]:
+    sent: list[str] = []
+
+    async def _fake_send(ref: str, kind: str) -> str:
+        sent.append(kind)
+        return "sent"
+
+    push._async_send = _fake_send  # type: ignore[method-assign]
+    return sent
+
+
+async def test_every_new_question_wakes_whatever_the_repeat_rule_and_the_hourly_limit(hass: HomeAssistant) -> None:
+    entry = await _charger(hass)
+    push = charger_data(hass, entry.entry_id).push
+    sent = _counting(push)
+    await _register(hass, entry.entry_id, events=NOTIFICATION_EVENTS)
+    now = dt_util.utcnow()
+    for minute in range(HOURLY_LIMIT + 2):
+        assert push.async_question(now + timedelta(minutes=minute)) is True
+        await hass.async_block_till_done()
+    assert len(sent) == HOURLY_LIMIT + 2, "a new plug-in's question always wakes"
+    assert push.async_event("plan_stopped", now + timedelta(minutes=30)) is False, "but counts against the limit"
+
+
+async def test_a_settled_question_wakes_once_and_only_after_a_question(hass: HomeAssistant) -> None:
+    entry = await _charger(hass)
+    push = charger_data(hass, entry.entry_id).push
+    sent = _counting(push)
+    await _register(hass, entry.entry_id, events=NOTIFICATION_EVENTS)
+    now = dt_util.utcnow()
+    assert push.async_question_settled(now) is False, "no question was open"
+    push.async_question(now)
+    await hass.async_block_till_done()
+    assert push.async_question_settled(now + timedelta(seconds=5)) is True, "not swallowed by the repeat rule"
+    await hass.async_block_till_done()
+    assert push.async_question_settled(now + timedelta(seconds=6)) is False, "once per question"
+    assert sent == ["wake", "wake"]
+
+
+async def test_the_question_wakes_only_an_app_that_chose_it_but_its_end_is_still_known(hass: HomeAssistant) -> None:
+    entry = await _charger(hass)
+    push = charger_data(hass, entry.entry_id).push
+    sent = _counting(push)
+    now = dt_util.utcnow()
+    assert push.async_question(now) is False, "no app registered"
+    await _register(hass, entry.entry_id)
+    assert push.async_question_settled(now) is True, "registered meanwhile: the app's own check may have asked"
+    await hass.async_block_till_done()
+    await _register(hass, entry.entry_id, events=("plan_stopped",))
+    push.async_question(now)
+    assert push.async_question_settled(now) is False
+    await hass.async_block_till_done()
+    assert sent == ["wake"]
+
+
+async def test_a_question_settled_during_a_wake_up_wakes_again_after_it(hass: HomeAssistant) -> None:
+    entry = await _charger(hass)
+    push = charger_data(hass, entry.entry_id).push
+    release = asyncio.Event()
+    sent: list[str] = []
+
+    async def _slow_send(ref: str, kind: str) -> str:
+        sent.append(kind)
+        await release.wait()
+        return "sent"
+
+    push._async_send = _slow_send  # type: ignore[method-assign]
+    await _register(hass, entry.entry_id)
+    now = dt_util.utcnow()
+    push.async_question(now)
+    assert push.async_question_settled(now) is True
+    assert sent == ["wake"], "one request at a time"
+    release.set()
+    await hass.async_block_till_done()
+    assert sent == ["wake", "wake"], "the app's check under way may have read the question still open"
+
+
+async def test_the_question_wake_carries_no_event_name(hass: HomeAssistant, relay: FakeRelay) -> None:
+    entry = await _charger(hass)
+    await _register(hass, entry.entry_id)
+    push = charger_data(hass, entry.entry_id).push
+    push.async_question(dt_util.utcnow())
+    await hass.async_block_till_done()
+    push.async_question_settled(dt_util.utcnow())
+    await hass.async_block_till_done()
+    assert relay.requests == [(WAKE_URL, {"v": 1, "push_ref": REF})] * 2
 
 
 # ------------------------------------------------------------------ the hidden test service

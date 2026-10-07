@@ -33,6 +33,9 @@ export class FakeHass implements HomeAssistantLike {
    */
   readonly cardInfoMessages: Record<string, unknown>[] = [];
   cardInfoHandler: ((message: Record<string, unknown>) => Promise<unknown>) | null = null;
+  /** The camera commands (`spotnav/camera_snapshot`, `*_reference_picture`, `save_camera_frame`), on their own line too. */
+  readonly cameraMessages: Record<string, unknown>[] = [];
+  cameraHandler: ((message: Record<string, unknown>) => Promise<unknown>) | null = null;
 
   callWS<T>(message: Record<string, unknown>): Promise<T> {
     return this.callWSFor(this, message);
@@ -43,6 +46,10 @@ export class FakeHass implements HomeAssistantLike {
     if (message["type"] === "spotnav/get_entity_config" || message["type"] === "spotnav/update_entity_config" || message["type"] === "spotnav/choose_vehicle_soc" || message["type"] === "spotnav/update_vehicle") {
       this.entityMessages.push(message);
       return (this.entityHandler === null ? new Promise<unknown>(() => undefined) : this.entityHandler(message)) as Promise<T>;
+    }
+    if (typeof message["type"] === "string" && /^spotnav\/(camera_snapshot|save_camera_frame|\w+_reference_picture|reference_picture)$/.test(message["type"])) {
+      this.cameraMessages.push(message);
+      return (this.cameraHandler === null ? new Promise<unknown>(() => undefined) : this.cameraHandler(message)) as Promise<T>;
     }
     if (message["type"] === "spotnav/get_card_info") {
       this.cardInfoMessages.push(message);

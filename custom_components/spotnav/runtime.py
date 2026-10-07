@@ -48,6 +48,7 @@ if TYPE_CHECKING:
     from .notifications.notifier import ChargerNotifier
     from .notifications.push import ChargerPush
     from .vehicles.identification import VehicleIdentifier
+    from .vehicles.camera_identification import CameraIdentification
 
 
 @dataclass
@@ -67,6 +68,8 @@ class ChargerData:
     notifier: ChargerNotifier | None = None
     #: Which car is plugged in, at a charger more than one vehicle can charge at.
     identifier: VehicleIdentifier | None = None
+    #: The charger's camera for identification: its reference pictures and the AI Task query.
+    camera: CameraIdentification | None = None
     #: The paired app's instant-notification registration (`notifications/push.py`).
     push: ChargerPush | None = None
 

@@ -270,6 +270,43 @@ export interface Dashboard {
   vehicle_choices: Array<{ id: string; name: string | null }>;
   /** The running charge's progress as Home Assistant decided it; `null` with no charge, or from an older backend. */
   progress: ChargeBarBlock | null;
+  /**
+   * The camera for identification: what can be chosen and each car's reference pictures. `null` where Home
+   * Assistant offers no camera and AI Task entity, from an older backend, or unreadable.
+   */
+  camera_identification: CameraIdentification | null;
+}
+
+/** A camera or AI Task entity that can be chosen. */
+export interface EntityChoice {
+  entity_id: string;
+  name: string;
+  /** An AI Task entity's model, when Home Assistant names one (`null` otherwise, and for a camera). */
+  model: string | null;
+}
+
+/** One of a car's reference pictures, as listed (never the picture itself). */
+export interface ReferencePicture {
+  kind: "day" | "night";
+  taken_at: string;
+  colour: boolean;
+}
+
+/** A car's reference pictures as Home Assistant lists them; an entry that is not one is left out. */
+export function referencePictures(list: readonly unknown[]): ReferencePicture[] {
+  return list.flatMap((entry) => {
+    if (!isRecord(entry) || (entry.kind !== "day" && entry.kind !== "night") || typeof entry.taken_at !== "string") {
+      return [];
+    }
+    return [{ kind: entry.kind, taken_at: entry.taken_at, colour: entry.colour === true }];
+  });
+}
+
+export interface CameraIdentification {
+  cameras: EntityChoice[];
+  ai_tasks: EntityChoice[];
+  /** Per car at this charger, its reference pictures from the chosen camera, day first. */
+  references: Record<string, ReferencePicture[]>;
 }
 
 /** The `identification` block: the open question (or how it was settled) and the candidates, likeliest first. */
@@ -1313,6 +1350,8 @@ type StatusParamKind = "text" | "textOrNull" | "instant" | "instantOrNull" | "nu
  */
 export const STATUS_CODE_TABLE = {
   starting_up: ["normal", {}],
+  identifying_vehicle: ["normal", {}],
+  asking_vehicle: ["normal", {}],
   charger_unavailable: ["blocking", { problem: "textOrNull", entity: "textOrNull" }],
   charger_ignores_stop: ["blocking", {}],
   price_data_invalid: ["blocking", { reason: "textOrNull" }],
@@ -1529,6 +1568,7 @@ export function decodeDashboard(raw: unknown): DecodeResult {
         identification: identificationOrNull(root),
         vehicle_choices: vehicleChoicesOf(root),
         progress: chargeBarOrNull(root),
+        camera_identification: cameraIdentificationOrNull(root),
       },
     };
   } catch {
@@ -1581,7 +1621,34 @@ const OPTIONAL_DASHBOARD_KEYS = [
   "progress",
   "identification",
   "vehicle_choices",
+  "camera_identification",
 ] as const;
+
+/** The `camera_identification` block, or `null` when it is missing or unreadable: the camera rows are hidden. */
+function cameraIdentificationOrNull(root: Record<string, unknown>): CameraIdentification | null {
+  const value = root.camera_identification;
+  if (!isRecord(value)) {
+    return null;
+  }
+  try {
+    const choices = (key: string): EntityChoice[] =>
+      arrayValue(value, key).map((entry) => {
+        const item = record(entry);
+        return {
+          entity_id: text(item, "entity_id"),
+          name: text(item, "name"),
+          model: typeof item.model === "string" && item.model !== "" ? item.model : null,
+        };
+      });
+    const references: Record<string, ReferencePicture[]> = {};
+    for (const [vehicleId, pictures] of Object.entries(record(value.references))) {
+      references[vehicleId] = referencePictures(Array.isArray(pictures) ? pictures : bad());
+    }
+    return { cameras: choices("cameras"), ai_tasks: choices("ai_tasks"), references };
+  } catch {
+    return null;
+  }
+}
 
 /** `vehicle_choices`, read leniently: an entry it cannot read is left out. */
 function vehicleChoicesOf(root: Record<string, unknown>): Array<{ id: string; name: string | null }> {

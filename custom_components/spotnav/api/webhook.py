@@ -40,6 +40,7 @@ from ..vehicles.vehicle_refresh import async_refresh_vehicle, VehicleRefreshLimi
 from .common import ERROR_UNSUPPORTED_VERSION
 from .dashboard import async_webhook_dashboard, DashboardFailure
 from .entity_config import async_webhook_update_charger_priority, async_webhook_update_vehicle
+from .camera import WEBHOOK_ACTIONS as CAMERA_ACTIONS
 from .identification import webhook_choose_vehicle_identification, webhook_identify_vehicle
 from .sessions import SESSIONS_API_VERSION, sessions_answer, SessionsRefusal
 from .settings import (
@@ -72,21 +73,38 @@ _last_rejected_warning: float | None = None
 #: replacement without one keeps the stored value (`fiscal_included` is read-only and never stored).
 APP_UNREAD_SETTINGS: Final = (
     "departure_date", "departure_weekdays", "fiscal_included", "notifications", "fill_to_limit", "vehicle_ids",
-    "identify_mode",
+    "identify_mode", "identify_camera",
 )
 
 
-def _for_app(body: dict[str, Any], payload: dict[str, Any]) -> dict[str, Any]:
-    """`body` with the fields the app cannot read yet taken out of its settings record.
+#: Status lines an app released before them words as "see Home Assistant" in place of the real status: left out of
+#: the webhook's status block unless the request reads `APP_READS_IDENTIFICATION_STATUS`.
+APP_UNREAD_STATUS_CODES: Final = ("identifying_vehicle", "asking_vehicle")
+APP_READS_IDENTIFICATION_STATUS: Final = "identification_status"
 
-    A request opts in per field with a top-level `reads` list; anything else in it, or a `reads`
-    that is not a list, is ignored.
+
+def _for_app(body: dict[str, Any], payload: dict[str, Any]) -> dict[str, Any]:
+    """`body` with what the app cannot read yet taken out: fields of its settings record, and status lines.
+
+    A request opts in per field with a top-level `reads` list (`identification_status` for the identification's
+    status lines); anything else in it, or a `reads` that is not a list, is ignored.
     """
+    reads = payload.get("reads")
+    opted_in = {name for name in reads if isinstance(name, str)} if isinstance(reads, list) else set()
+    status = body.get("status")
+    if (
+        APP_READS_IDENTIFICATION_STATUS not in opted_in
+        and isinstance(status, dict)
+        and isinstance(status.get("lines"), list)
+    ):
+        lines = [
+            line for line in status["lines"]
+            if not (isinstance(line, dict) and line.get("code") in APP_UNREAD_STATUS_CODES)
+        ]
+        body = {**body, "status": {**status, "lines": lines}}
     settings = body.get("settings")
     if not isinstance(settings, dict):
         return body
-    reads = payload.get("reads")
-    opted_in = {name for name in reads if isinstance(name, str)} if isinstance(reads, list) else set()
     withheld = set(APP_UNREAD_SETTINGS) - opted_in
     return {**body, "settings": {key: value for key, value in settings.items() if key not in withheld}}
 
@@ -237,6 +255,7 @@ async def _settings(hass: HomeAssistant, entry: ChargerConfigEntry, payload: dic
             entry.entry_id,
             expected_revision=payload.get("expected_revision"),
             replacement=payload.get("settings"),
+            from_app=True,
         )
     except SettingsRefusal as refusal:
         return web.json_response(_for_app({**settings_failure(refusal.code, None), "action": action}, payload), status=400)
@@ -303,6 +322,7 @@ ACTIONS: Final[dict[str, Handler]] = {
     "push_register": _push_register,
     "identify_vehicle": webhook_identify_vehicle,
     "choose_vehicle_identification": webhook_choose_vehicle_identification,
+    **CAMERA_ACTIONS,
 }
 
 

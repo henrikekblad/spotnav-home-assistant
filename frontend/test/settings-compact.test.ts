@@ -105,7 +105,7 @@ describe("the page", () => {
     expect(headings).toEqual(
       expect.arrayContaining([
         ["price", "Elpris"],
-        ["car", "Bil · EV6"],
+        ["car", "Bil"],
         ["charger", "Laddare · HALO Charger"],
         ["site", "Anläggning · My Home"],
         ["solar", "Sol"],
@@ -317,12 +317,15 @@ describe("the app's status words", () => {
       location: { entity_id: null, name: null, chosen: false, candidates: [] },
     };
     const { element } = await openSettings("sv", true, body);
-    const value = (car: string, row: string) =>
-      dialog(element).querySelector(`[data-vehicle='${car}'] [data-row='${row}'] button`)?.textContent;
+    const value = (car: string, row: string) => {
+      dialog(element).querySelector<HTMLButtonElement>(`[data-vehicle-tab='${car}'][aria-selected='false']`)?.click();
+      return dialog(element).querySelector(`[data-vehicle='${car}'] [data-row='${row}'] button`)?.textContent;
+    };
     expect(value("vehicle_ev6", "plug")).toBe("Finns");
     expect(value("vehicle_ev6", "location")).toBe("Välj en");
     expect(value("vehicle_niro", "plug")).toBe("Ingen");
     expect(value("vehicle_niro", "location")).toBe("Saknas");
+    dialog(element).querySelector<HTMLButtonElement>("[data-vehicle-tab='vehicle_ev6']")!.click();
     expect(dialog(element).textContent).not.toContain("EV6 Plugged in");
     await tap(element, "[data-vehicle='vehicle_ev6'] [data-edit='plug']");
     expect(dialog(element).querySelector("form[data-value-editor='single'] [data-value-option='binary_sensor.ev6_plug']")).not.toBeNull();
@@ -337,6 +340,7 @@ describe("the car's charge limit", () => {
     const row = dialog(element).querySelector<HTMLElement>("[data-vehicle='vehicle_ev6'] [data-row='charge_limit']")!;
     expect(row.textContent).toBe("Laddgräns90 %");
     expect(row.querySelector("button")).toBeNull();
+    dialog(element).querySelector<HTMLButtonElement>("[data-vehicle-tab='vehicle_niro']")!.click();
     expect(dialog(element).querySelector("[data-vehicle='vehicle_niro'] [data-row='charge_limit']")).toBeNull();
     expect(["en", "da", "nb", "fi"].map((l) => translate(l as "en", "settings.vehicle.limit"))).toEqual([
       "Charge limit",

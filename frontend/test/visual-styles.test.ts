@@ -153,8 +153,9 @@ describe("accessibility and theming", () => {
       new RegExp(`\\.${VISUAL_CLASSES.settingsUnit} \\{[^}]*white-space: nowrap`, "s"),
     );
     // Grids of their own: the market value row, the action bar's two (three columns narrow, six in the
-    // wide container query) and the entity editor's meter line (one column narrow, auto columns wide).
-    expect(VISUAL_STYLES.match(/grid-template-columns:/g)?.length).toBe(5);
+    // wide container query), the entity editor's meter line (one column narrow, auto columns wide) and the
+    // reference editor's day and night slots.
+    expect(VISUAL_STYLES.match(/grid-template-columns:/g)?.length).toBe(6);
     const valueBlock =
       VISUAL_STYLES.match(new RegExp(`\\.${VISUAL_CLASSES.marketValue} \\{[^}]*\}`, "s"))?.[0] ?? "";
     expect(valueBlock).toContain("minmax(0, 1fr)");
@@ -230,6 +231,16 @@ describe("the compact dialog header and the fiscal row", () => {
     expect(close).toContain("min-width: 44px");
     expect(close).toContain("min-height: 44px");
     expect(close).not.toContain("align-self: flex-end");
+  });
+
+  it("makes the close a discreet icon: no box, no border, a muted colour, its hit area kept", () => {
+    const close = rule(VISUAL_CLASSES.dialogClose);
+    expect(close).toContain("background: none");
+    expect(close).toContain("border: 0");
+    expect(close).toContain("color: var(--secondary-text-color, #727272)");
+    expect(close).toContain("min-width: 44px");
+    expect(close).not.toContain("border-radius: 8px");
+    expect(close).not.toContain("1px solid");
   });
 
   it("lays a fiscal row out so a long name and a 320 px card still fit", () => {

@@ -1,7 +1,7 @@
 {
   "domain": "spotnav",
   "name": "SpotNav",
-  "after_dependencies": ["ocpp", "recorder"],
+  "after_dependencies": ["ai_task", "camera", "media_source", "ocpp", "recorder"],
   "codeowners": ["@henrikekblad"],
   "config_flow": true,
   "dependencies": ["webhook", "websocket_api", "repairs", "http", "frontend"],

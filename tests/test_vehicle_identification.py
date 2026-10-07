@@ -52,51 +52,71 @@ def state(entity_id: str, value: str, *, changed: datetime, reported: datetime |
     )
 
 
+def seen(vehicle_id: str, *, plug: State | None = None, location: State | None = None) -> Candidate:
+    """A candidate whose entities' every change and report SpotNav saw happen."""
+    return Candidate(
+        vehicle_id, plug=plug, location=location,
+        plug_changed=None if plug is None else plug.last_changed,
+        location_changed=None if location is None else location.last_changed,
+        location_reported=None if location is None else location.last_reported,
+    )
+
+
 # --------------------------------------------------------------------------------- the judgement
 
 
 def test_a_plug_that_went_on_around_the_plug_in_is_strong_and_one_on_long_before_is_weak() -> None:
-    fresh = Candidate("a", plug=state("binary_sensor.a", "on", changed=T0 + timedelta(seconds=40)))
+    fresh = seen("a", plug=state("binary_sensor.a", "on", changed=T0 + timedelta(seconds=40)))
     assert judge(fresh, T0, T0 + timedelta(minutes=1)) == Evidence("a", positive="strong", negative=None)
-    early = Candidate("a", plug=state("binary_sensor.a", "on", changed=T0 - timedelta(minutes=4)))
+    early = seen("a", plug=state("binary_sensor.a", "on", changed=T0 - timedelta(minutes=4)))
     assert judge(early, T0, T0 + timedelta(minutes=1)).positive == "strong", "within five minutes before"
-    old = Candidate("a", plug=state("binary_sensor.a", "on", changed=T0 - timedelta(hours=2)))
+    old = seen("a", plug=state("binary_sensor.a", "on", changed=T0 - timedelta(hours=2)))
     assert judge(old, T0, T0 + timedelta(minutes=1)) == Evidence("a", positive="weak", negative=None)
 
 
 def test_unplugged_is_strong_only_when_the_car_went_unplugged_around_the_plug_in() -> None:
-    went = Candidate(
+    went = seen(
         "b", plug=state("binary_sensor.b", "off", changed=T0 + timedelta(minutes=2))
     )
     assert judge(went, T0, T0 + timedelta(minutes=2)) == Evidence("b", None, METHOD_PLUG_SENSOR)
-    rewritten = Candidate(
+    rewritten = seen(
         "b", plug=state("binary_sensor.b", "off", changed=T0 - timedelta(hours=5), reported=T0 + timedelta(minutes=2))
     )
     assert judge(rewritten, T0, T0 + timedelta(minutes=2)).negative is None, "a cloud cache written again says nothing"
-    stale = Candidate("b", plug=state("binary_sensor.b", "off", changed=T0 - timedelta(hours=5)))
+    stale = seen("b", plug=state("binary_sensor.b", "off", changed=T0 - timedelta(hours=5)))
     assert judge(stale, T0, T0 + timedelta(minutes=20)) == Evidence("b", None, None), "an old report says nothing"
 
 
 def test_an_unplugged_report_from_before_the_plug_in_never_excludes_whatever_the_integration() -> None:
-    quiet = Candidate(
+    quiet = seen(
         "b", plug=state("binary_sensor.b", "off", changed=T0 - timedelta(hours=5))
     )
     assert judge(quiet, T0, T0 + timedelta(minutes=29)).negative is None, "silence is not a report"
 
 
 def test_only_a_position_reported_around_the_plug_in_excludes() -> None:
-    away = Candidate("b", location=state("device_tracker.b", "not_home", changed=T0 - timedelta(seconds=90)))
+    away = seen("b", location=state("device_tracker.b", "not_home", changed=T0 - timedelta(seconds=90)))
     assert judge(away, T0, T0 + timedelta(minutes=1)) == Evidence("b", None, METHOD_LOCATION)
-    after = Candidate(
+    after = seen(
         "b", location=state("device_tracker.b", "Work", changed=T0 - timedelta(hours=3), reported=T0 + timedelta(minutes=4))
     )
     assert judge(after, T0, T0 + timedelta(minutes=5)).negative == METHOD_LOCATION
-    driving_home = Candidate("b", location=state("device_tracker.b", "not_home", changed=T0 - timedelta(minutes=20)))
+    driving_home = seen("b", location=state("device_tracker.b", "not_home", changed=T0 - timedelta(minutes=20)))
     assert judge(driving_home, T0, T0 + timedelta(minutes=1)).negative is None, "its last position on the way home"
-    old = Candidate("b", location=state("device_tracker.b", "Work", changed=T0 - timedelta(hours=3)))
+    old = seen("b", location=state("device_tracker.b", "Work", changed=T0 - timedelta(hours=3)))
     assert judge(old, T0, T0 + timedelta(minutes=1)).negative is None
-    home = Candidate("b", location=state("device_tracker.b", "home", changed=T0 - timedelta(hours=9)))
+    home = seen("b", location=state("device_tracker.b", "home", changed=T0 - timedelta(hours=9)))
     assert judge(home, T0, T0 + timedelta(minutes=1)) == Evidence("b", positive="weak", negative=None)
+
+
+def test_a_state_whose_change_was_not_seen_happen_is_no_change() -> None:
+    """Written at Home Assistant's start, or re-created: the state's own times are new, but nothing changed."""
+    plugged = Candidate("a", plug=state("binary_sensor.a", "on", changed=T0 - timedelta(minutes=4, seconds=30)))
+    assert judge(plugged, T0, T0 + timedelta(minutes=1)) == Evidence("a", positive="weak", negative=None)
+    unplugged = Candidate("b", plug=state("binary_sensor.b", "off", changed=T0 - timedelta(seconds=30)))
+    assert judge(unplugged, T0, T0 + timedelta(minutes=1)).negative is None
+    away = Candidate("b", location=state("device_tracker.b", "not_home", changed=T0 - timedelta(seconds=30)))
+    assert judge(away, T0, T0 + timedelta(minutes=1)).negative is None
 
 
 def test_a_car_identified_at_another_charger_is_not_here() -> None:
@@ -590,11 +610,11 @@ async def test_the_diagnostics_say_how_when_and_by_which_entity_but_never_where(
 async def test_the_app_is_woken_for_the_question(world: World) -> None:
     await world.start()
     push = charger_data(world.hass, world.entry.entry_id).push
-    events: list[str] = []
-    push.async_event = lambda event, now: events.append(event)  # type: ignore[method-assign]
+    questions: list[Any] = []
+    push.async_question = questions.append  # type: ignore[method-assign]
     await world.plug_in()
     await world.later(ASK_AFTER_S + 5)
-    assert events.count("vehicle_identify") == 1
+    assert len(questions) == 1
 
 
 def test_a_session_keeps_how_its_car_was_decided() -> None:

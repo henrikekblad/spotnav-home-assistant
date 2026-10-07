@@ -62,6 +62,7 @@ const METHOD_WORDS = {
   answered: "vehicleLine.method.answered",
   manual: "vehicleLine.method.manual",
   assumed: "vehicleLine.method.assumed",
+  camera: "vehicleLine.method.camera",
 } as const;
 
 /** How the car on the car line was decided, in words, or `null` when nothing was identified. */

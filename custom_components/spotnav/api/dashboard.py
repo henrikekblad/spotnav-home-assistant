@@ -453,6 +453,9 @@ class CapturedDashboard:
     #: Every detected car, `(id, name)`, whether or not it is one of this charger's (`vehicle_ids`): what the
     #: settings tick from. `vehicles` lists only the charger's.
     vehicle_choices: tuple[tuple[str, str], ...] = ()
+    #: The camera for identification: what to choose from and each car's reference pictures
+    #: (`camera_identification.CameraIdentification.block`); `None` when nothing is offered or chosen.
+    camera_identification: dict[str, Any] | None = None
     #: A smart plug's measured power now, in kW (`ChargingController.measured_power_w`).
     measured_power_kw: float | None = None
     #: The charger's voltage between phases (`grid_voltage.voltage_between_phases_v`).
@@ -1080,6 +1083,7 @@ def capture_dashboard(
         notify_available=available_targets(hass),
         entity_names=_status_entity_names(hass, site),
         identification=_identification(hass, entry_id),
+        camera_identification=_camera_identification(hass, entry_id, settings),
         vehicle_choices=tuple((choice.id, choice.name) for choice in resolve_target_vehicle(hass, None)[1]),
         measured_power_kw=_measured_power_kw(controller),
         voltage_between_phases_v=voltage_between_phases_v(hass, entry_id),
@@ -1091,6 +1095,15 @@ def _identification(hass: HomeAssistant, entry_id: str) -> dict[str, Any] | None
     data = charger_data(hass, entry_id)
     identifier = None if data is None else data.identifier
     return None if identifier is None else identifier.dashboard()
+
+
+def _camera_identification(hass: HomeAssistant, entry_id: str, settings: AutoSettings | None) -> dict[str, Any] | None:
+    data = charger_data(hass, entry_id)
+    camera = None if data is None else data.camera
+    if camera is None or settings is None:
+        return None
+    _, choices = resolve_target_vehicle(hass, settings.target.vehicle_id, settings.vehicle_ids)
+    return camera.block([choice.id for choice in choices])
 
 
 def _measured_power_kw(controller: ChargingController | None) -> float | None:
@@ -1694,6 +1707,12 @@ def serialize_dashboard(
         "charger_priority": serialize_charger_priority(capture.charger_priority, can_act=can_act),
         "identification": capture.identification,
         "vehicle_choices": [{"id": vehicle_id, "name": name} for vehicle_id, name in capture.vehicle_choices],
+        # Additive, and only where a camera is offered or chosen: an older client never meets it.
+        **(
+            {}
+            if capture.camera_identification is None
+            else {"camera_identification": capture.camera_identification}
+        ),
     }
 
 
@@ -2159,6 +2178,7 @@ def status_facts(capture: CapturedDashboard) -> StatusFacts:
         site_measurement=None if site is None else _measurement_facts(site.measurement_problem, names),
         duplicate_chargers=capture.duplicates,
         starting_up=capture.starting_up.active,
+        identification=None if capture.identification is None else _text(capture.identification.get("state")),
         load_balancing_capable=bool(capture.charger.capability_map().get("load_balancing")),
         load_balancing=None
         if site is None

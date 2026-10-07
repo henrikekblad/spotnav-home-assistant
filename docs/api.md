@@ -102,6 +102,14 @@ replacement may leave either out, and then the stored value is kept; a bad list 
 `invalid_vehicles`. Both are withheld from the webhook like the fields above (ask with
 `"reads": ["vehicle_ids", "identify_mode"]`), so an older app never sees them, and its replacements keep them.
 
+The record also carries `identify_camera`, the charger's [camera for identification](vehicle-identification.md#the-camera):
+`null` (the default: no camera) or `{"camera_entity_id": "camera.…", "ai_task_entity_id": "ai_task.…" | null, "frame":
+{"x", "y", "w", "h"} | null}`. `ai_task_entity_id` `null` is Home Assistant's default AI Task entity; `frame` is the
+parking spot as fractions of the picture (its top left corner and its size, each 0-1, at least 0.05 each way,
+inside the picture; four decimals are kept), `null` for the whole picture. A replacement may leave it out, and
+then it is kept; anything else is refused with `invalid_camera`. It is withheld from the webhook like the fields
+above (ask with `"reads": ["identify_camera"]`).
+
 **A car's target is the car's, at every charger.** The target percent is a vehicle property, beside its battery
 size: a vehicle row in `vehicles` carries the additive `target_percent` (0-100, `null` when never set), and
 `update_vehicle` writes it (`changes: {"target_percent": 85}`, `null` clears; anything else is `invalid_target`;
@@ -117,12 +125,19 @@ key by key and ignores keys it does not know (as it does the dashboard's root bl
 **Instant notifications.** `push_register` takes `push_ref`, the opaque reference the SpotNav relay
 gave the app for its Firebase token (base64url text, at most 512 characters), or `null` to stop, and an
 optional `events` (the notification event ids above; default `plan_stopped`, `plan_at_risk`,
-`charge_complete`). It is stored per charger and kept across restarts; the answer is `{"ok": true,
+`charge_complete`, `vehicle_identify`). It is stored per charger and kept across restarts; the answer is `{"ok": true,
 "action": "push_register"}`, a bad body HTTP 400 `{"ok": false, "error": "invalid_push_register",
 "action": "push_register"}`. When one of those events happens, Home Assistant posts `{"v": 1,
 "push_ref"}` to the relay's `/v1/push/wake` (10 s, never retried, the same event not again within 15
 minutes, at most twelve an hour), and the relay sends the app an empty wake-up; the app then reads
-this charger as usual. Nothing about the charge goes to the relay. A relay answer of 404
+this charger as usual. Nothing about the charge goes to the relay. The question which car is plugged in
+(`vehicle_identify`) has its own rules, since the app posts its own notification for it: every new question
+wakes the app, and so does the question's end however it ends (answered on a phone, in the card or in the app,
+decided by the cars or by a change of the target vehicle, swiped, unanswered after twelve hours, or the car
+unplugged for longer than two minutes), so the app can take its notification down. Neither is held back by the
+15-minute repeat rule or the hourly limit, though both count towards the limit; a plug-in asks at most once, so
+a question wakes at most twice. One that comes while a wake-up is under way sends one more after it. Both are
+the same empty wake-up: the app tells them apart by reading `identification`. A relay answer of 404
 `unknown_ref` drops the reference. This is independent of the Companion phones chosen in
 `notifications`. Examples are in `tests/fixtures/webhook/push_register_*.json`.
 
@@ -425,11 +440,21 @@ fewer than two cars can charge here; otherwise it is present, also with identifi
 
 `state` is `waiting` (looking at the cars' own reports), `asking` (the question is open: a client shows it with
 one button per candidate, in the given order) or `decided`. `method` is how the car was decided so far:
-`plug_sensor`, `location`, `answered`, `manual`, or `assumed` (nothing decided it yet, or nobody answered).
+`plug_sensor`, `location`, `answered`, `manual`, `camera` (the charger's camera recognised it), or `assumed`
+(nothing decided it yet, or nobody answered); a client shows a method it does not know as none.
+While `state` is `waiting` the status block leads with the line `identifying_vehicle`, and while it is `asking` with
+`asking_vehicle` (both tone `normal`, no params), ahead of every other line of a block that is not blocking and not
+`starting_up`; neither is sent once the car is decided. The card ships with the integration and knows both. A
+released SpotNav app words a code it does not know as "see Home Assistant", so the webhook leaves both lines out of
+its status block unless the request asks for them (`"reads": ["identification_status"]`), the way the settings
+fields above are withheld.
 `likely` marks a car whose own plug sensor says it was plugged in. The additive `evidence` lists, per car, what it was judged by at the
 last look: `{"vehicle_id", "plug": {"entity_id", "state", "changed", "reported"} | null, "location": {"entity_id",
 "home", "reported"} | null, "verdict": "plugged_in" | "likely" | "not_plugged_in" | "away" | "elsewhere" | null}`
-(the diagnostics carry the same). A vehicle row in `vehicles` carries the
+(the diagnostics carry the same). When the charger's camera was asked, the list ends with one entry without a
+`vehicle_id`: `{"camera": {"entity_id", "answer": <vehicle id> | "none" | null, "confidence": "high" | "medium" |
+"low" | null, "used": <bool>}}` (`answer` `null`: the camera or the model failed or took too long; `used`: the answer
+decided the car or ordered the candidates). A client that reads the list by `vehicle_id` skips it. A vehicle row in `vehicles` carries the
 additive `identification`: `{"plug": source, "location": source}`, each source `{"entity_id", "name", "chosen",
 "candidates": [{"entity_id", "name"}]}`; `entity_id` `null` with `chosen` false is nothing found, or several to
 choose from, and with `chosen` true it is the person's "none".
@@ -459,6 +484,58 @@ each question; a `mobile_app_notification_action` event with a matching action i
 wins. A retired question is replaced on every phone by the same tag without actions, silently (`alert_once: true`,
 `push: {"interruption-level": "passive"}`); unplugging sends `clear_notification`. A button of a question that is gone (answered, unplugged, a restart) takes the question off the phones.
 Each session in the history carries the additive `vehicle_decided_by` (`null` where nothing decided it).
+The charger's diagnostics (and the debug bundle) carry `vehicle_identification.history`, the last ten plug-ins with
+their evidence, camera query, question, answer and corrections ([fields](vehicle-identification.md#for-field-reports)).
+It is a support aid, not an API: its fields may change.
+
+#### The camera
+
+The additive root block `camera_identification` is present only where Home Assistant has a camera and an AI Task
+entity that takes attachments, or a camera is chosen (`settings.identify_camera`); otherwise the key is absent:
+
+```json
+{"cameras": [{"entity_id": "camera.norr", "name": "Norr"}],
+ "ai_tasks": [{"entity_id": "ai_task.ollama", "name": "Ollama AI Task", "model": "qwen3-vl:4b-instruct"}],
+ "references": {"<vehicle id>": [{"kind": "day", "taken_at": "2026-10-07T12:00:00+00:00", "colour": true}]}}
+```
+
+An AI Task entry's `model` is the model its config subentry names (`null` when it names none): several entities
+often share one name, and a client tells them apart by it, or else by the entity id. `references` lists, for each
+of this charger's cars, its reference pictures from the chosen camera (`day` first;
+`colour` says whether the picture has a colour signature, which a night or infrared picture has not); never the
+pictures themselves. A reference picture is kept whole and cropped with the frame drawn now whenever it is compared
+or shown, so drawing the frame again never makes it useless. (A `stale` field an earlier build of this branch sent
+is gone: absent means usable.) The camera and the AI Task entity are chosen with a settings replacement
+(`identify_camera`); the frame and the pictures with these commands, each an administrator's over the WebSocket
+(`spotnav/<name>`, `api_version: 1`, `charger_id`) and the paired app's over the webhook (the action `<name>`, bound to
+its charger). Every answer is `{"api_version": 1, "ok", "error", ...}`; a picture is `{"content_type": "image/jpeg",
+"data": <base64>, "width", "height"}`. The client does no image processing: Home Assistant crops and scales.
+
+| Name | Takes | Answers |
+| --- | --- | --- |
+| `camera_snapshot` | `camera_entity_id` (optional, WebSocket only; default the chosen camera) | `picture`: the camera's whole picture now, to draw the frame on |
+| `save_camera_frame` | `frame`: `{x, y, w, h}` or `null` | `identify_camera`: the settings' camera after the write (nothing else in the settings changes) |
+| `take_reference_picture` | `vehicle_id` (one of this charger's cars), `kind`: `day` or `night` | `vehicle_id`, `references`: that car's pictures after it |
+| `delete_reference_picture` | `vehicle_id`, `kind`: `day`, `night` or `null` (all of the car's) | `vehicle_id`, `references` |
+| `reference_picture` | `vehicle_id`, `kind` | `vehicle_id`, `kind`, `picture`: a thumbnail (at most 240 px) |
+
+Refusals: `spotnav_no_camera` (no camera chosen, or it is not there), `spotnav_no_picture` (the camera gave none),
+`spotnav_invalid_value` (not one of this charger's cars, an unknown kind or a bad frame, no such picture),
+`spotnav_not_admin` (WebSocket), `spotnav_unknown_charger`, `spotnav_unsupported_api_version`; over the webhook HTTP
+400 with the same code. A reference picture is the camera's whole picture (at most 1600 px on its long side); its
+thumbnail and what the model is shown are cropped with the frame drawn now.
+
+**The paired app sees only the chosen camera.** Over the webhook `camera_snapshot` takes no `camera_entity_id` (one
+given is `spotnav_invalid_value`) and answers the chosen camera's picture (`spotnav_no_camera` with none chosen),
+and a `settings` replacement may echo `identify_camera` and move its `frame`, but a different `camera_entity_id` or
+`ai_task_entity_id`, or `null` while a camera is chosen (or a camera while none is), is refused with
+`invalid_camera`: choosing the camera and the AI Task entity, where the pictures go, is an administrator's.
+
+At a plug-in the camera is asked through `ai_task.generate_data` with a structured answer (`vehicle`: `car_1` …
+`car_n` or `none`; `confidence`: `high`, `medium` or `low`) and the pictures as attachments: each candidate's
+reference pictures, then the crop of the picture now. The attachments are `media-source://spotnav/<token>` ids that
+SpotNav's media source resolves to a local file only while that one call runs (the crop is a temporary file,
+deleted after the call); browsing SpotNav's media source shows nothing.
 
 ### History by month
 

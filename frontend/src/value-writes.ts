@@ -5,7 +5,7 @@
 import type { VehicleChanges } from "./api";
 import type { EntityDraft, EntityScope } from "./entity-config";
 import type { ReplacementCheck } from "./settings";
-import type { SettingsRecord } from "./types";
+import type { CameraFrame, SettingsRecord } from "./types";
 import type { Vehicle } from "./validate";
 
 export type FiscalComponentName = "vat" | "tax" | "transfer";
@@ -32,5 +32,7 @@ export type ValueWrite =
   | { kind: "solar"; priority?: string; forecast?: string[] }
   /** A settings replacement built from a freshly read record (`spotnav/update_settings`). */
   | { kind: "settings"; build: (record: SettingsRecord) => ReplacementCheck }
+  /** The camera's frame (`spotnav/save_camera_frame`; `null` is the whole picture). */
+  | { kind: "cameraFrame"; frame: CameraFrame | null }
   /** One fee of the selected area: a figure, or `null` for off. */
   | { kind: "fiscal"; component: FiscalComponentName; value: number | null };

@@ -370,7 +370,8 @@ class ChargerNotifier:
         """
         now = dt_util.utcnow()
         if self._push is not None:
-            self._push.async_event(EVENT_VEHICLE_IDENTIFY, now)
+            # Every new question wakes the paired app, which asks on its own (`ChargerPush.async_question`).
+            self._push.async_question(now)
         notifications = self._store.settings(self._entry_id).notifications
         if not notifications.wants(EVENT_VEHICLE_IDENTIFY):
             return ()
@@ -393,6 +394,11 @@ class ChargerNotifier:
         for target in targets:
             self._hass.async_create_task(self._async_send(target, payload), eager_start=True)
         return targets
+
+    def vehicle_question_settled(self) -> None:
+        """The open question ended, however it ended: wake the paired app so it takes its own question down."""
+        if self._push is not None:
+            self._push.async_question_settled(dt_util.utcnow())
 
     def retire_vehicle_question(self, tag: str, targets: tuple[str, ...], wording: str, vehicle: str) -> None:
         """Replace the question on every phone it went to: `chosen`, `recognised` or `kept`, without buttons and

@@ -83,6 +83,10 @@ Precedence (first match wins the headline; "add" rows append a fact line)
    charger), load_balancing_limited, load_balancing_unavailable. Tone `notice` if any is present;
    otherwise `normal`. A proposal waiting for a window boundary is the normal line proposal_pending.
 
+0. While a plug-in's car is being identified (`identification` `waiting` or `asking`, two or more cars at the
+   charger), identifying_vehicle or asking_vehicle goes ahead of every other line of a block that is not
+   blocking and not starting_up; it is gone once the car is decided. Tone normal, no params.
+
 Rules chosen where the card and the app differ
 ----------------------------------------------
 * Charging inside an installed period is `charging_now{until}`; charging outside any period is
@@ -136,6 +140,10 @@ STATUS_CODES: Final[dict[str, tuple[str, tuple[str, ...]]]] = {
     # `control_disabled`), with its `entity`; both are `None` for any other reason.
     # The first minutes after start: what is not yet known is not answered with a fallback. Alone.
     "starting_up": (TONE_NORMAL, ()),
+    # A plug-in's car is being identified: SpotNav looks at what the cars report (`waiting`), or the question
+    # "which car is plugged in?" is open (`asking`). Ahead of the other lines until the car is decided.
+    "identifying_vehicle": (TONE_NORMAL, ()),
+    "asking_vehicle": (TONE_NORMAL, ()),
     "charger_unavailable": (TONE_BLOCKING, ("problem", "entity")),
     # Under a person's Stop the charger kept charging after the stops SpotNav sent; no more are sent.
     "charger_ignores_stop": (TONE_BLOCKING, ()),
@@ -440,6 +448,8 @@ class StatusFacts:
     duplicate_chargers: tuple[str, ...] = ()
     #: Right after the integration loaded and a source is still awaited (`startup.py`).
     starting_up: bool = False
+    #: The identification block's `state` (`waiting`, `asking`, `decided`), `None` without one.
+    identification: str | None = None
 
 
 def _line(code: str, **params: Any) -> dict[str, Any]:
@@ -913,6 +923,10 @@ def compose_status(facts: StatusFacts) -> dict[str, Any]:
         return {"tone": tone, "lines": blocking}
 
     lines: list[dict[str, Any]] = []
+    if facts.identification == "waiting":
+        lines.append(_line("identifying_vehicle"))
+    elif facts.identification == "asking":
+        lines.append(_line("asking_vehicle"))
     if facts.paused:
         lines.append(_paused_line(facts))
         if facts.charging:

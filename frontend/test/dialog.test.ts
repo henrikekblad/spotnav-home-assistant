@@ -346,6 +346,22 @@ describe("the compact header", () => {
     handle.destroy();
   });
 
+  it("draws the close as a small discreet cross icon, named in the reader's language", () => {
+    const mounted = mountPoint("header-icon");
+    const handle = dialogFor(mounted.root, "header-icon-dialog", "Stäng");
+    handle.show({ title: "Titel", body: document.createElement("p") });
+    const close = handle.element.querySelector<HTMLButtonElement>(`.${VISUAL_CLASSES.dialogClose}`)!;
+    expect(close.textContent).toBe("");
+    const icon = close.querySelector("svg")!;
+    expect(icon.getAttribute("width")).toBe("20");
+    expect(icon.getAttribute("height")).toBe("20");
+    expect(icon.getAttribute("aria-hidden")).toBe("true");
+    expect(icon.querySelector("path")?.getAttribute("fill")).toBe("currentColor");
+    expect(close.getAttribute("aria-label")).toBe("Stäng");
+    expect(close.title).toBe("Stäng");
+    handle.destroy();
+  });
+
   it("keeps the close control first in the tab order and reachable by keyboard", () => {
     const mounted = mountPoint("header-tab");
     const handle = dialogFor(mounted.root, "header-tab-dialog", "Stäng");

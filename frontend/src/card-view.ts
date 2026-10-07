@@ -64,8 +64,8 @@ import {
   type MarketEditorForm,
 } from "./market-editor";
 import { settingsEditorBody, settingsTrigger, type SettingsEditorForm } from "./settings-editor";
-import type { Vehicle } from "./validate";
-import { vehicleSummary, type VehicleEdits } from "./vehicle-settings";
+import type { ReferencePicture, Vehicle } from "./validate";
+import { vehicleSummary, type VehicleEdits, type VehicleReference } from "./vehicle-settings";
 import {
   multiEditor,
   numberEditor,
@@ -78,7 +78,17 @@ import {
   type NumberEditorInput,
 } from "./value-editors";
 import type { FiscalComponentName, ValueWrite } from "./value-writes";
-import type { IdentifyMode } from "./types";
+import type { IdentifyMode, SettingsRecord } from "./types";
+import {
+  entityLabels,
+  frameEditor,
+  isWholePicture,
+  referenceEditor,
+  referenceText,
+  type CameraPicture,
+  type PictureKind,
+  type ReferenceAnswer,
+} from "./camera-editor";
 import { issueText } from "./status";
 import { historyBody, type HistoryState, type HistoryUi } from "./history";
 import { connectionLabel, vehicleLineFor } from "./vehicle-line";
@@ -89,6 +99,7 @@ import {
   CONSUMPTION_MAX_KWH_PER_10KM,
   CONSUMPTION_MIN_KWH_PER_10KM,
   fiscalRows,
+  cameraReplacement,
   identificationReplacement,
   notificationsReplacement,
   planSummaryParts,
@@ -96,6 +107,26 @@ import {
   type SettingsFormValues,
 } from "./settings";
 import { VISUAL_CLASSES as C } from "./visual-styles";
+
+/** What the camera's editors ask the card for. */
+export type CameraPictureRequest =
+  | { kind: "snapshot" }
+  | { kind: "reference"; vehicleId: string; pictureKind: "day" | "night"; takenAt: string };
+
+/**
+ * Where the reader was on the Settings page when a value's editor (or another dialog) opened over it: the page's
+ * scroll position and the row that opened it. Kept by the card across a re-render, so the page comes back there.
+ */
+export interface OverviewPlace {
+  scrollTop: number;
+  edit: string | null;
+}
+
+export interface OverviewPlaceHolder {
+  place: OverviewPlace | null;
+  /** The car whose tab is open on the Settings page (with two or more cars). */
+  vehicle?: string | null;
+}
 
 export interface CardViewInput {
   model: CardModel;
@@ -192,6 +223,14 @@ export interface CardViewInput {
   onAnswerIdentification?: (vehicleId: string) => void;
   /** One value of the Settings page: the card writes it and answers `null`, or the sentence to show. */
   onWriteValue?: (write: ValueWrite) => Promise<string | null>;
+  /** Where Settings was left for a child dialog: the page returns there (owned by the card, kept across renders). */
+  overviewPlace?: OverviewPlaceHolder;
+  /** A picture for the camera's editors: the camera's picture now, or a car's reference thumbnail. */
+  onCameraPicture?: (request: CameraPictureRequest) => Promise<{ picture: CameraPicture } | { code: string | null }>;
+  /** A slot of a car's reference editor: take or delete that kind's picture; the editor stays open. */
+  onReferencePicture?: (vehicleId: string, kind: PictureKind, action: "take" | "delete") => Promise<ReferenceAnswer>;
+  /** The reference editor closed after a picture was taken or deleted: the card reads the dashboard again. */
+  onReferencesChanged?: () => void;
   /** A fee's row: the card reads the area's suggestion and opens its editor (`openFiscalEditor`). */
   onEditFiscal?: (component: FiscalComponentName) => void;
 }
@@ -1043,8 +1082,10 @@ export function createCardView(input: CardViewInput): CardView {
     labels,
     background: () => card,
     onClose: notifyDialogsChanged,
-    onDismiss: () => leaveSettingsChild(valueDialog),
+    onDismiss: () => (valueLeave ?? (() => leaveSettingsChild(valueDialog)))(),
   });
+  /** How the open value editor is left by Escape, the backdrop or the cross, when it is not as Cancel. */
+  let valueLeave: (() => void) | null = null;
 
   /**
    * The one way out of a dialog opened from the Settings page (Cancel, close, Escape, backdrop).
@@ -2079,7 +2120,10 @@ export function createCardView(input: CardViewInput): CardView {
   }
 
   /** One value's own editor in the value dialog: Settings steps aside, and comes back on Cancel or a save. */
-  function openValueEditor(title: string, build: (handlers: EditorHandlers) => HTMLFormElement): void {
+  function openValueEditor(
+    title: string,
+    build: (handlers: EditorHandlers) => HTMLFormElement | { form: HTMLFormElement; close: () => void },
+  ): void {
     if (destroyed || !input.isAdmin) {
       return;
     }
@@ -2093,7 +2137,9 @@ export function createCardView(input: CardViewInput): CardView {
       },
       onCancel: () => leaveSettingsChild(valueDialog),
     };
-    valueDialog.show({ title, body: build(handlers), opener: settingsGeneral });
+    const built = build(handlers);
+    valueLeave = "close" in built ? built.close : null;
+    valueDialog.show({ title, body: "close" in built ? built.form : built, opener: settingsGeneral });
   }
 
   function writeValue(write: ValueWrite): Promise<string | null> {
@@ -2384,7 +2430,6 @@ export function createCardView(input: CardViewInput): CardView {
         editSingle(label, options, priority, (chosen) =>
           writeValue({ kind: "entity", scope: "charger", draft: { charger_priority: chosen } }), help),
       ),
-      rowHelp("charger_priority", help),
     ];
   }
 
@@ -2441,7 +2486,173 @@ export function createCardView(input: CardViewInput): CardView {
         ),
       ),
     );
+    nodes.push(...cameraRows(record));
     return nodes;
+  }
+
+  /**
+   * The camera that helps tell the cars apart (shown where Home Assistant offers a camera and an AI Task entity):
+   * the camera, then with one chosen its frame (the frame editor) and its AI task.
+   */
+  function cameraRows(record: SettingsRecord): HTMLElement[] {
+    const block = model.cameraIdentification;
+    const chosen = record.identify_camera;
+    if (block === null || chosen === undefined) {
+      return [];
+    }
+    const say = (key: TranslationKey): string => translate(model.language, key);
+    const cameraLabels = entityLabels(block.cameras);
+    const aiLabels = entityLabels(block.ai_tasks);
+    // A row names the entity, with what tells it apart when another has its name ("Ollama AI Task · qwen3-vl").
+    const nameIn = (labels: ReturnType<typeof entityLabels>, id: string): string => {
+      const label = labels.get(id);
+      return label === undefined ? id : label.detail === null ? label.name : `${label.name} · ${label.detail}`;
+    };
+    const optionsOf = (labels: ReturnType<typeof entityLabels>, list: ReadonlyArray<{ entity_id: string }>): ChoiceOption[] =>
+      list.map((item) => {
+        const label = labels.get(item.entity_id);
+        return {
+          value: item.entity_id,
+          label: label?.name ?? item.entity_id,
+          ...(label?.detail == null ? {} : { help: label.detail }),
+        };
+      });
+    const cameraLabel = say("camera.label");
+    const nodes: HTMLElement[] = [];
+    nodes.push(
+      overviewRow(
+        "identify_camera",
+        cameraLabel,
+        chosen === null ? say("camera.none") : nameIn(cameraLabels, chosen.camera_entity_id),
+        () =>
+          editSingle(
+            cameraLabel,
+            [
+              ...optionsOf(cameraLabels, block.cameras),
+              { value: "", label: say("camera.none") },
+            ],
+            chosen?.camera_entity_id ?? "",
+            (value) =>
+              writeValue({
+                kind: "settings",
+                build: (fresh) =>
+                  cameraReplacement(fresh, {
+                    cameraEntityId: value === "" ? null : value,
+                    aiTaskEntityId: fresh.identify_camera?.ai_task_entity_id ?? null,
+                  }),
+              }),
+            `${say("camera.intro")} ${say("camera.help")}`,
+          ),
+      ),
+    );
+    if (chosen !== null) {
+      const frameLabel = say("camera.frame.label");
+      nodes.push(
+        overviewRow(
+          "identify_frame",
+          frameLabel,
+          say(isWholePicture(chosen.frame) ? "camera.frame.whole" : "camera.frame.drawn"),
+          () =>
+            openValueEditor(frameLabel, (handlers) =>
+              frameEditor(
+                doc,
+                model.language,
+                {
+                  load: () => input.onCameraPicture?.({ kind: "snapshot" }) ?? Promise.resolve({ code: null }),
+                  frame: chosen.frame,
+                  idPrefix,
+                },
+                (frame) => writeValue({ kind: "cameraFrame", frame }),
+                handlers,
+              ),
+            ),
+        ),
+      );
+      const aiLabel = say("camera.aiTask.label");
+      nodes.push(
+        overviewRow(
+          "identify_ai_task",
+          aiLabel,
+          chosen.ai_task_entity_id === null ? say("camera.aiTask.default") : nameIn(aiLabels, chosen.ai_task_entity_id),
+          () =>
+            editSingle(
+              aiLabel,
+              [
+                { value: "", label: say("camera.aiTask.default") },
+                ...optionsOf(aiLabels, block.ai_tasks),
+              ],
+              chosen.ai_task_entity_id ?? "",
+              (value) =>
+                writeValue({
+                  kind: "settings",
+                  build: (fresh) =>
+                    cameraReplacement(fresh, {
+                      cameraEntityId: fresh.identify_camera?.camera_entity_id ?? chosen.camera_entity_id,
+                      aiTaskEntityId: value === "" ? null : value,
+                    }),
+                }),
+              say("camera.aiTask.intro"),
+            ),
+        ),
+      );
+    }
+    return nodes;
+  }
+
+  /** A car's reference pictures from the chosen camera, when a camera is chosen and the car is this charger's. */
+  function vehicleReference(row: Vehicle): VehicleReference | undefined {
+    const block = model.cameraIdentification;
+    const chosen = model.dashboardSettings?.identify_camera;
+    const pictures = block?.references[row.id];
+    if (block === null || chosen === undefined || chosen === null || pictures === undefined) {
+      return undefined;
+    }
+    const carName = row.name ?? translate(model.language, "settings.vehicle.unnamed");
+    const thumbnailOf = (picture: ReferencePicture): Promise<CameraPicture | null> => {
+      if (input.onCameraPicture === undefined) {
+        return Promise.resolve(null);
+      }
+      return input
+        .onCameraPicture({ kind: "reference", vehicleId: row.id, pictureKind: picture.kind, takenAt: picture.taken_at })
+        .then((answer) => ("picture" in answer ? answer.picture : null));
+    };
+    const thumbnail = (kind: PictureKind): Promise<CameraPicture | null> => {
+      const picture = pictures.find((item) => item.kind === kind);
+      return picture === undefined ? Promise.resolve(null) : thumbnailOf(picture);
+    };
+    const formatTaken = (iso: string): string => {
+      const instant = Date.parse(iso);
+      return Number.isFinite(instant) && hasZone(model.format)
+        ? `${weekdayDate(model.format, instant)} ${clock(model.format, instant)}`
+        : iso.slice(0, 16).replace("T", " ");
+    };
+    return {
+      text: referenceText(model.language, pictures),
+      kinds: pictures.map((picture) => picture.kind),
+      thumbnail,
+      ...(input.isAdmin
+        ? {
+            onTap: () =>
+              openValueEditor(translate(model.language, "reference.title", { name: carName }), (handlers) =>
+                referenceEditor(doc, model.language, {
+                  pictures,
+                  thumbnail: thumbnailOf,
+                  act: (kind, action) =>
+                    input.onReferencePicture?.(row.id, kind, action) ??
+                    Promise.resolve({ message: translate(model.language, "settings.error.generic") }),
+                  formatTaken,
+                  onClose: (changed) => {
+                    if (changed && input.onReferencesChanged !== undefined) {
+                      input.onReferencesChanged();
+                    } else {
+                      handlers.onCancel();
+                    }
+                  },
+                }),
+              ),
+          }
+        : {}),
+    };
   }
 
   /** A car's editors: each property its own number or choice, written as the vehicle dialog wrote it. */
@@ -2604,6 +2815,67 @@ export function createCardView(input: CardViewInput): CardView {
     return nodes;
   }
 
+  /** Where the open car's tab is kept when the card keeps nothing across renders. */
+  const localTabs: { vehicle?: string | null } = {};
+
+  /** The cars' tabs: compact text tabs, the open one marked; a tap opens that car's rows. */
+  function vehicleTabs(cars: readonly Vehicle[], openId: string, holder: { vehicle?: string | null }): HTMLElement {
+    const list = element(doc, "div", C.vehicleTabs);
+    list.setAttribute("role", "tablist");
+    list.setAttribute("aria-label", translate(model.language, "settings.heading.car"));
+    for (const car of cars) {
+      const tab = element(
+        doc,
+        "button",
+        C.vehicleTab,
+        car.name ?? translate(model.language, "settings.vehicle.unnamed"),
+      ) as HTMLButtonElement;
+      tab.type = "button";
+      tab.setAttribute("role", "tab");
+      tab.setAttribute("aria-selected", String(car.id === openId));
+      tab.tabIndex = car.id === openId ? 0 : -1;
+      tab.dataset["vehicleTab"] = car.id;
+      tab.addEventListener("click", () => {
+        holder.vehicle = car.id;
+        paintEntities();
+        vehicleListSlot?.querySelector<HTMLButtonElement>(`[data-vehicle-tab="${car.id}"]`)?.focus();
+      });
+      tab.addEventListener("keydown", (event) => {
+        const step = event.key === "ArrowRight" ? 1 : event.key === "ArrowLeft" ? -1 : 0;
+        if (step === 0) {
+          return;
+        }
+        const index = cars.findIndex((item) => item.id === car.id);
+        const next = cars[(index + step + cars.length) % cars.length];
+        if (next !== undefined) {
+          event.preventDefault();
+          holder.vehicle = next.id;
+          paintEntities();
+          vehicleListSlot?.querySelector<HTMLButtonElement>(`[data-vehicle-tab="${next.id}"]`)?.focus();
+        }
+      });
+      list.append(tab);
+    }
+    return list;
+  }
+
+  /** The charger's section: its heading, its setup rows and the identification rows. */
+  function paintEntitySlot(state: EntityViewState, slot: HTMLElement): void {
+    slot.replaceChildren(
+      sectionHeading(doc, "charger", translate(model.language, "settings.heading.charger"), model.chargerName),
+    );
+    const line = unreadableLine(state);
+    if (line !== null) {
+      slot.append(line);
+    }
+    if (state.kind === "ready") {
+      slot.append(...chargerRows(state.config));
+    } else if (model.chargerPriority !== null) {
+      slot.append(...priorityRows());
+    }
+    slot.append(...identificationRows());
+  }
+
   function paintEntities(): void {
     const state = entityState;
     if (vehicleListSlot !== null) {
@@ -2639,7 +2911,19 @@ export function createCardView(input: CardViewInput): CardView {
                 suggested_onboard_phases: null,
               }))
           : [];
-      for (const row of [...vehicleRows, ...extra]) {
+      // With two or more cars: one "Car" section, a tab per car in its header, the open car's rows below.
+      const cars = [...vehicleRows, ...extra];
+      const holder = input.overviewPlace ?? localTabs;
+      const remembered = holder.vehicle ?? null;
+      const open =
+        cars.find((row) => row.id === remembered) ??
+        cars.find((row) => row.id === model.targetVehicleId) ??
+        cars[0];
+      const tabs = cars.length > 1 && open !== undefined ? vehicleTabs(cars, open.id, holder) : undefined;
+      for (const row of cars) {
+        if (tabs !== undefined && row !== open) {
+          continue;
+        }
         vehicleListSlot.append(
           vehicleSummary(doc, model.language, {
             row,
@@ -2647,6 +2931,8 @@ export function createCardView(input: CardViewInput): CardView {
             planned: row.id === model.targetVehicleId,
             charge: chargeFor(row),
             edits: input.isAdmin ? vehicleEdits(row, state.kind === "ready" ? state.config : null) : {},
+            reference: vehicleReference(row),
+            ...(tabs === undefined ? {} : { tabs }),
           }),
         );
       }
@@ -2657,19 +2943,16 @@ export function createCardView(input: CardViewInput): CardView {
       }
     }
     if (entitySlot !== null) {
-      entitySlot.replaceChildren(
-        sectionHeading(doc, "charger", translate(model.language, "settings.heading.charger"), model.chargerName),
-      );
-      const line = unreadableLine(state);
-      if (line !== null) {
-        entitySlot.append(line);
+      // A row of this slot that has focus (the one an editor returned to) keeps it across the repaint.
+      const root = entitySlot.getRootNode() as Document | ShadowRoot;
+      const focused = root.activeElement as HTMLElement | null;
+      const focusedEdit = focused !== null && entitySlot.contains(focused) ? (focused.dataset["edit"] ?? null) : null;
+      paintEntitySlot(state, entitySlot);
+      if (focusedEdit !== null) {
+        Array.from(entitySlot.querySelectorAll<HTMLElement>("[data-edit]"))
+          .find((node) => node.dataset["edit"] === focusedEdit)
+          ?.focus({ preventScroll: true });
       }
-      if (state.kind === "ready") {
-        entitySlot.append(...chargerRows(state.config));
-      } else if (model.chargerPriority !== null) {
-        entitySlot.append(...priorityRows());
-      }
-      entitySlot.append(...identificationRows());
     }
     if (siteEntitySlot !== null) {
       siteEntitySlot.replaceChildren();
@@ -2699,7 +2982,10 @@ export function createCardView(input: CardViewInput): CardView {
       return siteSection;
     }
     siteSection.append(sectionHeading(doc, "site", translate(model.language, "settings.heading.site"), site.name));
-    siteSection.append(element(doc, "p", C.siteApplies, site.appliesToText));
+    // With one charger the site is that charger's: nothing to say about which chargers it applies to.
+    if (site.chargerCount > 1) {
+      siteSection.append(element(doc, "p", C.siteApplies, site.appliesToText));
+    }
     siteEntitySlot = element(doc, "div");
     siteEntitySlot.dataset["slot"] = "site-entities";
     siteSection.append(siteEntitySlot);
@@ -2722,7 +3008,9 @@ export function createCardView(input: CardViewInput): CardView {
     const section = element(doc, "section", C.settingsSection);
     section.dataset["section"] = "solar";
     section.append(sectionHeading(doc, "solar", translate(model.language, "settings.section.solar")));
-    section.append(element(doc, "p", C.siteApplies, site.appliesToText));
+    if (site.chargerCount > 1) {
+      section.append(element(doc, "p", C.siteApplies, site.appliesToText));
+    }
     const writable = site.writable;
     const priorityLabel = translate(model.language, "site.solarPriority.title");
     const priorities: ChoiceOption[] = [
@@ -2925,6 +3213,20 @@ export function createCardView(input: CardViewInput): CardView {
       body: settingsOverviewBody(),
       opener: settingsGeneral,
     });
+    // Back from a value's editor: the page where it was, scrolled as it was, the row that opened it focused.
+    const place = input.overviewPlace?.place ?? null;
+    if (input.overviewPlace !== undefined) {
+      input.overviewPlace.place = null;
+    }
+    if (place !== null) {
+      const panel = overviewPanel();
+      const row =
+        place.edit === null
+          ? null
+          : (Array.from(panel.querySelectorAll<HTMLElement>("[data-edit]")).find((node) => node.dataset["edit"] === place.edit) ?? null);
+      row?.focus({ preventScroll: true });
+      panel.scrollTop = place.scrollTop;
+    }
     input.onSettingsOverviewOpened?.();
   }
 
@@ -3006,6 +3308,10 @@ export function createCardView(input: CardViewInput): CardView {
     openHistory();
   });
   settingsGeneral.addEventListener("click", () => {
+    // Opened afresh: from the top.
+    if (input.overviewPlace !== undefined) {
+      input.overviewPlace.place = null;
+    }
     openSettingsOverview();
   });
 
@@ -3401,7 +3707,20 @@ export function createCardView(input: CardViewInput): CardView {
     });
   }
 
+  /** The scrolling panel of the Settings page. */
+  function overviewPanel(): HTMLElement {
+    return settingsOverviewDialog.element.querySelector<HTMLElement>(`.${C.dialog}`) ?? settingsOverviewDialog.element;
+  }
+
   function hideForChildDialog(): void {
+    if (settingsOverviewDialog.isOpen() && input.overviewPlace !== undefined) {
+      const panel = overviewPanel();
+      const active = (panel.getRootNode() as Document | ShadowRoot).activeElement as HTMLElement | null;
+      input.overviewPlace.place = {
+        scrollTop: panel.scrollTop,
+        edit: active !== null && panel.contains(active) ? (active.dataset["edit"] ?? null) : null,
+      };
+    }
     issuesDialog.hide({ restoreFocus: false });
     capabilityDialog.hide({ restoreFocus: false });
     pauseDialog.hide({ restoreFocus: false });

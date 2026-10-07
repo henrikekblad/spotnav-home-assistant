@@ -61,6 +61,26 @@ export const VISUAL_CLASSES = {
   settingRowEditable: "spotnav-setting-row-editable",
   settingRowHelp: "spotnav-setting-row-help",
   settingRowSuggestion: "spotnav-setting-row-suggestion",
+  cameraStage: "spotnav-camera-stage",
+  cameraImage: "spotnav-camera-image",
+  cameraFrame: "spotnav-camera-frame",
+  cameraHandle: "spotnav-camera-handle",
+  cameraPreview: "spotnav-camera-preview",
+  cameraTools: "spotnav-camera-tools",
+  referenceThumbs: "spotnav-reference-thumbs",
+  vehicleTabs: "spotnav-vehicle-tabs",
+  vehicleTab: "spotnav-vehicle-tab",
+  referenceThumb: "spotnav-reference-thumb",
+  referenceSlots: "spotnav-reference-slots",
+  referenceSlot: "spotnav-reference-slot",
+  referenceSlotTitle: "spotnav-reference-slot-title",
+  referenceSlotPicture: "spotnav-reference-slot-picture",
+  referenceSlotImage: "spotnav-reference-slot-image",
+  referenceSlotEmpty: "spotnav-reference-slot-empty",
+  referenceSlotStatus: "spotnav-reference-slot-status",
+  referenceSlotError: "spotnav-reference-slot-error",
+  referenceSlotTools: "spotnav-reference-slot-tools",
+  referenceDelete: "spotnav-reference-delete",
   settingsDivider: "spotnav-settings-divider",
   settingsSectionValue: "spotnav-settings-section-value",
   settingsSectionConfigure: "spotnav-settings-section-configure",
@@ -1395,6 +1415,190 @@ export const VISUAL_STYLES = `
     color: var(--primary-color, #03a9f4);
     text-align: left;
   }
+  /*
+   * The camera's frame editor: the picture at the dialog's width, the frame over it (the rest dimmed), a corner
+   * handle with a 44 px target in each corner, and the crop's preview below. Pointer events serve touch and
+   * mouse alike, so the browser must not scroll or zoom under a finger on the picture.
+   */
+  .${VISUAL_CLASSES.cameraStage} {
+    position: relative;
+    max-width: 100%;
+    margin: 4px 0 8px;
+    overflow: hidden;
+    line-height: 0;
+    touch-action: none;
+    user-select: none;
+    -webkit-user-select: none;
+  }
+  .${VISUAL_CLASSES.cameraImage} {
+    display: block;
+    width: 100%;
+    height: auto;
+    pointer-events: none;
+  }
+  .${VISUAL_CLASSES.cameraFrame} {
+    position: absolute;
+    box-sizing: border-box;
+    border: 2px solid var(--primary-color, #03a9f4);
+    box-shadow: 0 0 0 9999px rgba(0, 0, 0, 0.45);
+    cursor: move;
+    touch-action: none;
+  }
+  .${VISUAL_CLASSES.cameraFrame}:focus-visible {
+    outline: 2px solid var(--primary-color, #03a9f4);
+    outline-offset: 2px;
+  }
+  .${VISUAL_CLASSES.cameraHandle} {
+    position: absolute;
+    box-sizing: border-box;
+    min-width: 44px;
+    min-height: 44px;
+    margin: -22px;
+    background: radial-gradient(circle, var(--primary-color, #03a9f4) 0 7px, transparent 8px);
+    touch-action: none;
+  }
+  .${VISUAL_CLASSES.cameraHandle}[data-corner="nw"] { left: 0; top: 0; cursor: nwse-resize; }
+  .${VISUAL_CLASSES.cameraHandle}[data-corner="ne"] { right: 0; top: 0; cursor: nesw-resize; }
+  .${VISUAL_CLASSES.cameraHandle}[data-corner="sw"] { left: 0; bottom: 0; cursor: nesw-resize; }
+  .${VISUAL_CLASSES.cameraHandle}[data-corner="se"] { right: 0; bottom: 0; cursor: nwse-resize; }
+  .${VISUAL_CLASSES.cameraPreview} {
+    max-width: 100%;
+    margin: 4px 0 8px;
+    border-radius: 4px;
+    background-color: var(--secondary-background-color, #f5f5f5);
+    background-repeat: no-repeat;
+  }
+  .${VISUAL_CLASSES.cameraTools} {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin: 4px 0 8px;
+  }
+  /* The cars' tabs in the Car section's header: compact text tabs ("EV6 | Testbil"), the open one in the accent. */
+  .${VISUAL_CLASSES.vehicleTabs} {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    min-width: 0;
+    margin: 0 0 4px;
+  }
+  .${VISUAL_CLASSES.vehicleTab} {
+    min-height: 44px;
+    padding: 0 10px;
+    font: inherit;
+    color: var(--secondary-text-color, #727272);
+    background: none;
+    border: 0;
+    cursor: pointer;
+    overflow-wrap: break-word;
+  }
+  .${VISUAL_CLASSES.vehicleTab} + .${VISUAL_CLASSES.vehicleTab} {
+    border-left: 1px solid var(--divider-color, #e0e0e0);
+  }
+  .${VISUAL_CLASSES.vehicleTab}:first-child {
+    padding-left: 0;
+  }
+  .${VISUAL_CLASSES.vehicleTab}[aria-selected="true"] {
+    color: var(--primary-color, #03a9f4);
+    font-weight: 600;
+  }
+  .${VISUAL_CLASSES.referenceThumbs} {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    gap: 6px;
+    min-width: 0;
+    margin: 0 0 4px;
+  }
+  .${VISUAL_CLASSES.referenceThumb} {
+    display: block;
+    max-width: 45%;
+    max-height: 4.5em;
+    border-radius: 4px;
+    object-fit: cover;
+  }
+  /* A car's reference pictures: two equal slots, day and night, each its picture, its button and a quiet Delete. */
+  .${VISUAL_CLASSES.referenceSlots} {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 12px;
+    margin: 8px 0;
+  }
+  .${VISUAL_CLASSES.referenceSlot} {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    min-width: 0;
+  }
+  .${VISUAL_CLASSES.referenceSlotTitle} {
+    margin: 0;
+    font-size: 0.95rem;
+    font-weight: 600;
+  }
+  .${VISUAL_CLASSES.referenceSlotPicture} {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    aspect-ratio: 16 / 9;
+    overflow: hidden;
+    border-radius: 6px;
+    background: var(--secondary-background-color, #f2f2f2);
+  }
+  .${VISUAL_CLASSES.referenceSlot}[data-state="empty"] .${VISUAL_CLASSES.referenceSlotPicture},
+  .${VISUAL_CLASSES.referenceSlot}[data-state="busy"] .${VISUAL_CLASSES.referenceSlotPicture} {
+    border: 1px dashed var(--divider-color, #e0e0e0);
+  }
+  .${VISUAL_CLASSES.referenceSlot}[data-state="busy"] .${VISUAL_CLASSES.referenceSlotPicture} {
+    opacity: 0.5;
+  }
+  .${VISUAL_CLASSES.referenceSlotImage} {
+    display: block;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+  }
+  .${VISUAL_CLASSES.referenceSlotImage}[hidden],
+  .${VISUAL_CLASSES.referenceSlotEmpty}[hidden] {
+    display: none;
+  }
+  .${VISUAL_CLASSES.referenceSlotEmpty} {
+    color: var(--secondary-text-color, #727272);
+    font-size: 0.85rem;
+  }
+  .${VISUAL_CLASSES.referenceSlot} > p {
+    margin: 0;
+  }
+  .${VISUAL_CLASSES.referenceSlotStatus} {
+    color: var(--secondary-text-color, #727272);
+    font-size: 0.85rem;
+  }
+  .${VISUAL_CLASSES.referenceSlotStatus}.${VISUAL_CLASSES.referenceSlotError} {
+    color: var(--error-color, #db4437);
+  }
+  .${VISUAL_CLASSES.referenceSlotTools} {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 4px 12px;
+  }
+  .${VISUAL_CLASSES.referenceDelete} {
+    min-height: 36px;
+    padding: 0 4px;
+    font: inherit;
+    font-size: 0.85rem;
+    color: var(--secondary-text-color, #727272);
+    background: none;
+    border: 0;
+    text-decoration: underline;
+    cursor: pointer;
+  }
+  .${VISUAL_CLASSES.referenceDelete}[hidden] {
+    display: none;
+  }
+  .${VISUAL_CLASSES.referenceDelete}:disabled {
+    cursor: default;
+    opacity: 0.5;
+  }
   .${VISUAL_CLASSES.settingsSectionValue} {
     font-variant-numeric: tabular-nums;
   }
@@ -1653,16 +1857,30 @@ export const VISUAL_STYLES = `
     font-weight: 600;
     overflow-wrap: break-word;
   }
+  /*
+   * The close is a discreet cross: a 20 px icon in the muted text colour, no box and no border, in the header's
+   * top-right corner beside the title. Its 44x44 tap target stays, pulled into the dialog's padding so the cross
+   * lines up with the title rather than pushing it down.
+   */
   .${VISUAL_CLASSES.dialogClose} {
     flex: none;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
     min-width: 44px;
     min-height: 44px;
+    margin: -12px -12px -12px 0;
+    padding: 0;
     font: inherit;
-    color: var(--primary-text-color, #212121);
-    background: var(--secondary-background-color, transparent);
-    border: 1px solid var(--divider-color, #e0e0e0);
-    border-radius: 8px;
+    line-height: 0;
+    color: var(--secondary-text-color, #727272);
+    background: none;
+    border: 0;
+    border-radius: 50%;
     cursor: pointer;
+  }
+  .${VISUAL_CLASSES.dialogClose}:hover {
+    color: var(--primary-text-color, #212121);
   }
   .${VISUAL_CLASSES.dialogIntro} {
     margin: 0;

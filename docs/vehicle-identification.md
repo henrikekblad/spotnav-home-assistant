@@ -18,6 +18,9 @@ car is detected) and, per car, the car's own dialog. Only an administrator can c
   - **Automatic** (the default). SpotNav uses the cars' own reports, and asks only if they cannot decide.
   - **Always ask.** SpotNav asks at every plug-in and never switches the car by itself.
   - **Off.** The car stays the one you chose.
+- **Camera, Crop parking spot and AI task** (under the charger, shown when Home Assistant has a camera and an AI Task
+  entity): see [The camera](#the-camera). Off until you choose a camera.
+- **Per car: Reference picture**: see [The camera](#the-camera).
 - **Per car: Plug sensor and Location.** These are the car's own "plugged in" sensor and its tracker, as
   SpotNav found them. If a car has more than one, you choose. You can also choose **None**, or go back to
   **Automatic**. SpotNav only reads these entities, and only for identification. They are never used as a
@@ -59,8 +62,13 @@ connected never starts identification, so the choice stays yours.
    once. Otherwise it waits three minutes and then asks. It keeps listening for 30 minutes after the
    plug-in, and if a car's own report settles it before anyone answers, SpotNav switches to that car. It
    switches automatically at most once per plug-in.
+   With a [camera](#the-camera), SpotNav also asks the camera while the cars' own reports have not decided.
 4. In **Always ask** mode, SpotNav asks at once. The cars are ordered by what they report, and SpotNav
    never switches by itself.
+
+While SpotNav identifies the car, the card's and the app's status line leads with **Identifying the car…**, and
+while the question is open with **Waiting for an answer: which car is plugged in?**. The line is gone as soon as
+the car is decided (by the cars' reports, the camera, an answer, or a swiped question).
 
 A car's plug sensor may report late, depending on the integration. Many cloud integrations report within
 seconds to ten minutes, but some only every 30 minutes or more. If the report comes late, SpotNav asks.
@@ -116,6 +124,7 @@ The charge history records how the car of each session was decided:
 | `location` | every other car was away from home, or was identified at another charger |
 | `answered` | a person answered the question, on a phone, in the card or in the app |
 | `manual` | a person chose the car in the settings (also with identification **Off**, or just before the plug-in) |
+| `camera` | the charger's camera recognised the car, sure, among cars of different colours |
 | `only_candidate` | only one car can charge here |
 | `assumed` | nobody answered and nothing decided it, so the car that was already chosen was kept |
 
@@ -125,7 +134,109 @@ where), and the verdict. A field report can show from it exactly which entity an
 port door of a Kia (`ev_charge_port`, and its switch) is never taken for a plug: it says the port's door is
 open, not that a cable is in.
 
+## The camera
+
+A camera that sees the parking spot can help, through Home Assistant's AI Task (for example a local vision model
+in Ollama). Describing the cars in words does not work: similar cars (the same colour, a similar body) are
+mixed up, and at night an infrared picture has no colour. Comparing the picture with a picture of each car taken
+by the same camera at the same spot works, day and night. So SpotNav compares pictures.
+
+**Setting it up** (Settings → Charger, an administrator):
+
+1. **Camera**: the camera that sees the parking spot.
+2. **Crop parking spot**: SpotNav fetches a fresh picture and you drag a selection around the parking spot (a
+   corner or the whole selection, with a finger or the mouse), check the preview of what is inside, and save. Only what is inside the
+   frame is compared: no other cars, no street, and a dual-lens camera's seam stays out. Without a frame the whole
+   picture is used.
+3. **AI task**: the AI Task entity that compares the pictures, or Home Assistant's default one. When several have
+   one name (three "Ollama AI Task"), the card shows each one's model, or else its entity id. It must take
+   pictures (attachments). See [Which model?](#which-model).
+4. **Per car, Reference picture**: the dialog has a **Day** and a **Night** slot. With that car parked at the
+   charger, tap **Take day picture**; in the dark, **Take night picture** adds one for the camera's infrared. Over a
+   picture the button is **Retake**, and **Delete** under it removes only that picture. The slot updates in place
+   and the dialog stays open until you close it (the × in the card, **Close** in the app). A car without a reference picture is never recognised by the
+   camera. The picture is kept whole, and it is cropped with the selection drawn at the time it is compared,
+   so you can change the crop at any time without taking the pictures again; its thumbnail shows it cropped as it
+   is compared.
+
+Choosing the camera and the AI task is an administrator's, in the card. The SpotNav app can draw the frame and
+take, show and delete reference pictures for the camera chosen here, but cannot choose another camera or AI task.
+
+**At a plug-in**, in **Automatic** mode, when two or more cars are left after the cars' own reports: SpotNav takes
+one picture, crops it with the frame and asks the AI Task which reference car is the one in the picture,
+comparing shape, roof line, windows and lights rather than colour. The answer is one car or none, and how sure
+the model is.
+
+- The camera **decides on its own** only when all of this holds:
+  - the model is sure ("high");
+  - it is daytime: the picture now has colour, and that colour is closest to the reference colour of the car the
+    model named (a model that names the red car for a picture of a white one does not decide);
+  - every car left has a reference picture (a car without one may be the one standing there);
+  - the car it names has a **clearly different colour** from every other car left, judged from the daylight
+    reference pictures.
+
+  The last rule is the one people meet most. A model compares shapes, but two cars of one colour (two dark blue
+  cars, a dark blue and a dark grey one) look much alike in a small, cropped camera picture, and a model can be
+  sure and still wrong. So between such cars the camera never decides alone. "Similar colour" is measured on the
+  reference pictures' average colour: black and white, or red and silver, are clearly different; dark blue and
+  dark grey are not. A white or grey car on grey ground can show almost no colour at all, and then it counts as
+  similar too.
+- At night it never decides on its own: an infrared picture is grey, or evenly tinted purple or pink by a camera
+  without an infrared filter.
+- In every other case the camera **only puts its car first** on the question's buttons, and the question is asked
+  as usual, after three minutes.
+- **A car's own report outranks the camera.** If, after the camera decided, a car's plug sensor or position
+  settles it within the 30 minutes SpotNav listens, SpotNav switches to that car (recorded as decided by the plug
+  sensor or the position). If the camera's car reports that it is not plugged in or away and nothing else
+  settles it, SpotNav asks.
+- **Your answer always wins.** The camera is asked only while nobody has answered and nothing has decided, and
+  an answer that comes later is not used.
+- The camera is asked **once per plug-in**, and once more only after an error. A model that takes longer than
+  two minutes (loading the model included) is ignored and SpotNav asks as without a camera. When a car's plug sensor or position decides,
+  the camera is not asked at all. **Always ask** and **Off** never ask the camera.
+
+### Which model?
+
+The AI Task needs a model that looks at pictures (a vision model). A local 7B vision model, for example
+`qwen2.5vl:7b` in Ollama, compares the pictures well enough and answers in about 20 seconds on an ordinary
+home server (a little more when the model must first be loaded). Smaller models (4B) were seen to pick a reference picture by its place in the list rather than by what it
+shows, and to be sure about it: they are not recommended. A model that takes longer than two minutes is ignored, so a
+large model on a slow machine only costs time. The [history](#for-field-reports) shows each query's answer, how sure
+the model was and how long it took, so you can see how a model does at your charger.
+
+**Privacy.** The reference pictures are kept in Home Assistant's private storage (`.storage/spotnav_camera/`,
+never `www/` or a media folder), so they are part of Home Assistant's backups, and they are removed with the
+charger. Pictures go to the AI Task entity you chose (with a local model they never leave your home; with a cloud
+AI Task they go to that service) and, for the frame editor and the thumbnails, to the card and the paired SpotNav
+app. The question names the cars only as "car 1", "car 2". No picture is ever put in a notification.
+
+## For field reports
+
+When a car was identified wrongly, or a question came that should not have, the diagnostics tell why. Home
+Assistant's **Download diagnostics** for the charger, and the card's **Download debug info**, carry the block
+`vehicle_identification` with a `history` of the last ten plug-ins at the charger, oldest first. It is kept across
+restarts. For each plug-in:
+
+- when the car was plugged in, which cars could be the one (by id, never by name), and each car's evidence: its
+  plug sensor and tracker, their states and when they changed and were last reported, home or away (never where),
+  and the verdict;
+- the camera, when it was asked: its answer and how sure the model was, whether the answer was used, how long the
+  query took (`latency_s`), the AI Task entity and its model, an error (`timeout`, `no_snapshot`, `no_reference`,
+  `ai_task_error`), and `camera_reason`, why it did or did not decide on its own: `decided`, `similar_colour` (with
+  `colour_distance`, the reference colours' distance; 0.25 or more is clearly different), `night`,
+  `missing_reference`, `confidence_low`, `answer_none` (no car, or none of the cars), `colour_mismatch` (the colour
+  now is not nearest the named car's), or `late` (it answered after a person or the cars had decided);
+- `skipped` with a reason when nothing was identified: `off`, `only_candidate`, or `recent_choice` with `chosen_at`
+  (the car was chosen shortly before the plug-in);
+- the question: when it was sent and to how many phones, and when it was answered;
+- the car it ended with and how it was decided (as in the charge history). `assumed` says why the car that was
+  already chosen was kept: `swiped` (the notification was swiped away), `unanswered` (nobody answered in twelve
+  hours) or `unplugged` (unplugged before anything decided);
+- later corrections: a person's change with **Byt bil**, or a car's own report that overruled the camera.
+
+No picture and no position is ever in it.
+
 ## For developers
 
-The settings fields, the dashboard's `identification` block, the vehicle row's sources and the
-`identify_vehicle` / `choose_vehicle_identification` commands are described in [Apps and API](api.md).
+The settings fields, the dashboard's `identification` and `camera_identification` blocks, the vehicle row's
+sources and the identification and camera commands are described in [Apps and API](api.md).

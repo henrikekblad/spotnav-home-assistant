@@ -17,6 +17,20 @@ const block = (...lines: Array<ReturnType<typeof statusLine>>): Status =>
   ({ tone: "normal", lines }) as unknown as Status;
 
 describe("the status line renders the block and nothing else", () => {
+  it("says the car is being identified, or the question waits for an answer, ahead of the plan", () => {
+    const planned = statusLine("auto_installed", { start: "2026-09-22T22:00:00+00:00" });
+    const identifying = block(statusLine("identifying_vehicle"), planned);
+    expect(statusText(identifying, format("sv"), NOW)).toMatch(/^Identifierar bilen… · /);
+    expect(statusText(identifying, format("en"), NOW)).toMatch(/^Identifying the car… · /);
+    const asking = block(statusLine("asking_vehicle"), planned);
+    expect(statusText(asking, format("sv"), NOW)).toMatch(/^Väntar på svar: vilken bil är inkopplad\? · /);
+    expect(statusText(asking, format("en"), NOW)).toMatch(/^Waiting for an answer: which car is plugged in\? · /);
+    for (const language of ["da", "nb", "fi"] as const) {
+      expect(statusText(block(statusLine("identifying_vehicle")), format(language), NOW)).toMatch(/…$/);
+      expect(statusText(block(statusLine("asking_vehicle")), format(language), NOW)).toMatch(/\?$/);
+    }
+  });
+
   it("says a charger kept charging after SpotNav's stops, in every language", () => {
     const status = block(statusLine("charger_ignores_stop"));
     expect(statusText(status, format("en"), NOW)).toContain("keeps charging although it was stopped");
