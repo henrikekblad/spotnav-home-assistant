@@ -4,6 +4,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import * as ha from "./ha.mjs";
+import * as demo from "./demo.mjs";
 import { Browser, sleep } from "./browser.mjs";
 
 const REPO = process.env.REPO_ROOT || path.resolve(import.meta.dirname, "../../..");
@@ -22,7 +23,7 @@ const tokens = await ha.login();
 const api = new ha.Api(tokens);
 await ha.promoteHttp(api);
 await ha.setLocation(api);
-for (const demo of ["ocpp", "sigen", "kia_uvo"]) {
+for (const demo of ["ocpp", "sigen", "kia_uvo", "demo_vision"]) {
   if ((await api.entries(demo)).length === 0) await api.flow(demo);
 }
 // A clean slate for the integration under test, so a re-run against a live instance starts the same way.
@@ -125,6 +126,12 @@ await cancelDialog();
 // The charger itself, added for real so that the site and the card have something to work with.
 const garage = await api.flow("spotnav", [{ entry_type: "charger" }, { mode: "detected" }, { device: deviceId("Garage charger Connector 1") }, {}, { charger_phases: "3" }]);
 if (garage.type !== "create_entry") throw new Error("could not add the demo charger: " + JSON.stringify(garage).slice(0, 300));
+// Two cars can charge there: the camera with a reference picture of each, and "Family car" identified by its
+// charging cable at the plug-in SpotNav sees when the charger is added.
+const garageId = (await api.entries("spotnav")).find((e) => e.title.startsWith("Garage")).entry_id;
+step("camera and the first car");
+await demo.setupCamera(api, garageId);
+await demo.decideFamilyCar(api, garageId);
 
 // ------------------------------------------------------------------------------------------------ site
 
@@ -195,7 +202,14 @@ const CARD_DIALOG = `(() => { const D = window.__docs; const c = ${CARD}; const 
 const cardReady = `!!${b.finder("spotnav-card")} && !!${CARD}.shadowRoot.querySelector(".spotnav-bar-cell")`;
 const openCard = () => b.gotoReady(ha.BASE + "/spotnav-demo/charging", cardReady);
 const cardButton = (label) => b.click("button", label);
-async function closeCardDialog() { await b.click("button", "^(Cancel|Close)$"); await sleep(500); }
+/** Close the card's topmost dialog with its own Cancel, Close or × (a dialog opened over another is closed alone). */
+async function closeCardDialog() {
+  const closed = await b.eval(`(() => { const D = window.__docs; const d = ${CARD_DIALOG}; if (!d) return false;
+    const re = /^(Cancel|Close)$/i; const button = [...d.querySelectorAll("button")].filter(D.visible)
+      .find((e) => re.test(D.text(e)) || re.test(e.getAttribute("aria-label") || "")); if (!button) return false; button.click(); return true; })()`);
+  if (!closed) await b.click("button", "^(Cancel|Close)$");
+  await sleep(600);
+}
 async function cardShot(name, expr, pad = 0) { await shot(name, expr, pad, { blur: false }); }
 
 // Saving the plan settings is what confirms the first-run suggestions and lets the plan be installed.
@@ -228,6 +242,10 @@ if (new Date().getDate() < 12) {
 await cardShot("card-history", CARD_DIALOG);
 await closeCardDialog();
 
+// The car is unplugged now so that the plug-in for the identification pictures, after the next shots, is a new
+// one (SpotNav takes a shorter unplug for the same plug-in).
+const unpluggedAt = await demo.unplug(api);
+
 step("card picker");
 await b.gotoReady(ha.BASE + "/spotnav-demo/charging?edit=1", `!!${b.finder("ha-button", "^Add card$")}`);
 await b.click("ha-button", "^Add card$");
@@ -240,20 +258,30 @@ await sleep(3000);
 await shot("card-picker", DIALOG);
 await b.send("Input.dispatchKeyEvent", { type: "keyDown", key: "Escape", code: "Escape" });
 
-step("card dialogs");
+step("card settings");
 await openCard();
 await cardButton("^Card settings$");
+await sleep(1500);
+// The Settings page in its compact style: a section per subject, a value per row, each opening its own editor.
+const SECTION = (name) => `(() => { const D = window.__docs; const c = ${CARD}; return [...c.shadowRoot.querySelectorAll("section[data-section=${name}]")].find(D.visible) || null; })()`;
+const ROW = (key) => `${CARD}.shadowRoot.querySelector("[data-edit=${key}]")`;
+async function tapRow(key) {
+  await b.eval(`${ROW(key)}.click()`);
+  await sleep(2500);
+}
+await cardShot("card-settings", CARD_DIALOG);
+await cardShot("card-settings-price", SECTION("market"), 8);
+// The car section has a tab per car; the open one is the car the charger plans for ("Family car").
+await b.eval(`${CARD}.shadowRoot.querySelector('[data-vehicle-tab="${(await demo.dashboard(api, garageId)).target_vehicle_id}"]')?.click()`);
 await sleep(800);
-const HOME_SECTION = `(() => { const D = window.__docs; const c = ${CARD}; return [...c.shadowRoot.querySelectorAll("section.spotnav-settings-section")].find((e) => D.visible(e) && /Active load balancing/.test(D.text(e))) || null; })()`;
-await shot("card-settings-site", HOME_SECTION, 8);
-await cardButton("Edit price area and taxes");
-await sleep(800);
-await cardShot("card-settings-price", CARD_DIALOG);
+await cardShot("card-settings-vehicle", SECTION("vehicle"), 8);
+await cardShot("card-settings-charger", SECTION("entities"), 8);
+await cardShot("card-settings-site", SECTION("site"), 8);
+await tapRow("identify_frame");
+await cardShot("card-camera-frame", CARD_DIALOG);
 await closeCardDialog();
-await cardButton("Change vehicle");
-await sleep(800);
-await b.click("input[type=radio]", "", 0).catch(() => {});
-await cardShot("card-settings-vehicle", CARD_DIALOG);
+await tapRow("reference");
+await cardShot("card-reference-picture", CARD_DIALOG);
 await closeCardDialog();
 await closeCardDialog();
 await openCard();
@@ -263,6 +291,25 @@ await b.click("label, input[type=radio]", "Target SoC").catch(() => {});
 await sleep(600);
 await cardShot("card-settings-plan", CARD_DIALOG);
 await closeCardDialog();
+
+// ------------------------------------------------------------------------------------------------ identification
+
+step("which car is plugged in");
+// A plug-in nothing has decided yet: the status line leads with "Identifying the car…".
+await demo.plugIn(api, garageId, unpluggedAt);
+await openCard();
+await sleep(1000);
+await cardShot("card-identifying", CARD, 0);
+// "City car" reports its cable plugged in: the car line says how it was identified, with ⇄ to change it.
+await demo.decideCityCar(api, garageId);
+await openCard();
+await sleep(1000);
+await cardShot("card-identified", CARD, 0);
+// A quick replug with both cars saying they are plugged in: the question, one button per car.
+await demo.askBetweenBoth(api, garageId);
+await openCard();
+await sleep(1000);
+await cardShot("card-identify-question", CARD, 0);
 
 await b.close();
 console.log(`\nwritten: ${done.length}  skipped: ${skipped.length}  failed: ${failed.length}`);
