@@ -18,7 +18,7 @@ car is detected) and, per car, the car's own dialog. Only an administrator can c
   - **Automatic** (the default). SpotNav uses the cars' own reports, and asks only if they cannot decide.
   - **Always ask.** SpotNav asks at every plug-in and never switches the car by itself.
   - **Off.** The car stays the one you chose.
-- **Camera, Frame and AI task** (under the charger, shown when Home Assistant has a camera and an AI Task
+- **Camera, Crop parking spot and AI task** (under the charger, shown when Home Assistant has a camera and an AI Task
   entity): see [The camera](#the-camera). Off until you choose a camera.
 - **Per car: Reference picture**: see [The camera](#the-camera).
 - **Per car: Plug sensor and Location.** These are the car's own "plugged in" sensor and its tracker, as
@@ -140,18 +140,19 @@ by the same camera at the same spot works, day and night. So SpotNav compares pi
 **Setting it up** (Settings → Charger, an administrator):
 
 1. **Camera**: the camera that sees the parking spot.
-2. **Frame**: SpotNav fetches a fresh picture and you drag a frame around the parking spot (a corner or the whole
-   frame, with a finger or the mouse), check the preview of what is inside, and save. Only what is inside the
+2. **Crop parking spot**: SpotNav fetches a fresh picture and you drag a selection around the parking spot (a
+   corner or the whole selection, with a finger or the mouse), check the preview of what is inside, and save. Only what is inside the
    frame is compared: no other cars, no street, and a dual-lens camera's seam stays out. Without a frame the whole
    picture is used.
-3. **AI task**: the AI Task entity that compares the pictures, or Home Assistant's default one. It must take
+3. **AI task**: the AI Task entity that compares the pictures, or Home Assistant's default one. When several have
+   one name (three "Ollama AI Task"), the card shows each one's model, or else its entity id. It must take
    pictures (attachments).
 4. **Per car, Reference picture**: with that car parked at the charger, tap **Take reference picture now**.
    **Take night picture** adds a picture in the dark, for the camera's infrared. A new picture replaces the old one
    of its kind, and **Delete** removes the car's pictures. A car without a reference picture is never recognised by
    the camera. A picture is cropped with the frame as it is when the picture is taken, so draw the frame first.
-   When the frame is drawn again, the pictures taken with the earlier frame are marked "taken with another frame –
-   take it again" and are not used until they are taken again (a frame over the whole picture is the same as no
+   When the crop is changed, the pictures taken before are marked "Day picture: taken before the crop was changed –
+   take a new one" and are not used until they are taken again (a frame over the whole picture is the same as no
    frame).
 
 Choosing the camera and the AI task is an administrator's, in the card. The SpotNav app can draw the frame and
