@@ -785,6 +785,7 @@
   "settings.status.foundAutomatically": "Automatisch gevonden",
   "settings.vehicle.limit": "Laadlimiet",
   "settings.vehicle.limitHelp": "Geschreven via de integratie van de auto; gaat in zodra de auto hem de volgende keer leest",
+  "settings.vehicle.limitSlider": "Laadlimiet, procent",
   "settings.vehicle.limitTooSoon": "De limiet is minder dan een minuut geleden ingesteld. Probeer het zo opnieuw.",
   "settings.vehicle.limitFailed": "Kon de limiet niet instellen",
   "settings.vehicle.targetHelp": "Volgt de auto naar elke laadpaal",

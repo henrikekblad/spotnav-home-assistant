@@ -785,6 +785,7 @@
   "settings.status.foundAutomatically": "Automatisch gefunden",
   "settings.vehicle.limit": "Ladegrenze",
   "settings.vehicle.limitHelp": "Wird über die Integration des Autos geschrieben; wirkt, sobald das Auto sie das nächste Mal liest",
+  "settings.vehicle.limitSlider": "Ladegrenze, Prozent",
   "settings.vehicle.limitTooSoon": "Die Ladegrenze wurde vor weniger als einer Minute gesetzt. Versuche es gleich noch einmal.",
   "settings.vehicle.limitFailed": "Ladegrenze konnte nicht gesetzt werden",
   "settings.vehicle.targetHelp": "Folgt dem Auto zu jeder Ladestation",

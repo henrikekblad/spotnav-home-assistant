@@ -785,6 +785,7 @@
   "settings.status.foundAutomatically": "Funnet automatisk",
   "settings.vehicle.limit": "Ladegrense",
   "settings.vehicle.limitHelp": "Skrives via bilens integrasjon; gjelder når bilen leser den neste gang",
+  "settings.vehicle.limitSlider": "Ladegrense, prosent",
   "settings.vehicle.limitTooSoon": "Ladegrensen ble endret for under ett minutt siden. Prøv igjen om litt.",
   "settings.vehicle.limitFailed": "Kunne ikke angi ladegrensen",
   "settings.vehicle.targetHelp": "Følger bilen til alle ladere",

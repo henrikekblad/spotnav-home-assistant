@@ -1,9 +1,27 @@
-// The car's two percent sliders, as numbers only: the charge target (0..100, whole percent) and the minimum
-// charge level (Off, then 10..80 in fives), which never goes past the target, as the backend's
-// `effective_floor` caps it. Also where the minimum's shaded segment sits on the plan's target slider.
+// The car's percent sliders, as numbers only: the charge target (0..100, whole percent), the minimum charge level
+// (Off, then 10..80 in fives), which never goes past the target, as the backend's `effective_floor` caps it, and the
+// car's own charge limit (the range and step its integration takes). Also where the minimum's shaded segment sits
+// on the plan's target slider.
 
+import { CHARGE_LIMIT_MAX_PERCENT, CHARGE_LIMIT_MIN_PERCENT } from "./settings";
 import { chargeCeiling } from "./target-need";
-import { MIN_PERCENT_HIGH, MIN_PERCENT_LOW, MIN_PERCENT_STEP } from "./validate";
+import { MIN_PERCENT_HIGH, MIN_PERCENT_LOW, MIN_PERCENT_STEP, type ChargeLimitRange } from "./validate";
+
+/** The car's own limit with no range from its integration: whole percent, 1..100; the write refuses the rest. */
+export const LIMIT_FALLBACK: ChargeLimitRange = { min: CHARGE_LIMIT_MIN_PERCENT, max: CHARGE_LIMIT_MAX_PERCENT, step: 1 };
+
+/** The charge limit slider's range and step: the car's limit's own, else the fallback. */
+export function limitStops(range: ChargeLimitRange | null | undefined): ChargeLimitRange {
+  return range ?? LIMIT_FALLBACK;
+}
+
+/** The stop a limit opens at: its own, or the nearest one inside the range (never past the last whole step). */
+export function limitOpening(current: number, range: ChargeLimitRange): number {
+  const last = Math.floor((range.max - range.min) / range.step + 1e-9);
+  const index = Math.min(last, Math.max(0, Math.round((current - range.min) / range.step)));
+  // Rounded to keep 0.1-steps from drifting into binary noise.
+  return Math.round((range.min + index * range.step) * 1e6) / 1e6;
+}
 
 /** The backend's target for a car with none stored (`planner.DEFAULT_TARGET_SOC_PERCENT`). */
 export const DEFAULT_TARGET_PERCENT = 80;

@@ -65,7 +65,7 @@ import {
 } from "./market-editor";
 import { settingsEditorBody, settingsTrigger, type SettingsEditorForm } from "./settings-editor";
 import { type ReferencePicture, type Vehicle } from "./validate";
-import { floorEditor, targetEditor } from "./percent-editors";
+import { floorEditor, limitEditor, targetEditor } from "./percent-editors";
 import { defaultTargetPercent } from "./percent-slider";
 import { vehicleSummary, type VehicleEdits, type VehicleReference } from "./vehicle-settings";
 import {
@@ -98,8 +98,6 @@ import type { ChargeBarFacts } from "./charge-bar";
 import {
   CAPACITY_MAX_KWH,
   CAPACITY_MIN_KWH,
-  CHARGE_LIMIT_MAX_PERCENT,
-  CHARGE_LIMIT_MIN_PERCENT,
   CONSUMPTION_MAX_KWH_PER_10KM,
   CONSUMPTION_MIN_KWH_PER_10KM,
   fiscalRows,
@@ -2768,22 +2766,17 @@ export function createCardView(input: CardViewInput): CardView {
       );
     const limit = row.max_percent;
     if (limit !== null && model.setChargeLimit) {
-      // The app's editor: whole percent, 1-100; the car's integration may take a narrower range and refuses the rest.
+      // A slider over what the car's integration takes (1-100 in whole percent when it says nothing).
+      const range = row.charge_limit_range;
       edits.chargeLimit = () =>
-        editNumber(
-          translate(model.language, "settings.vehicle.limit"),
-          {
-            help: translate(model.language, "settings.vehicle.limitHelp"),
-            unit: "%",
-            current: limit,
-            min: CHARGE_LIMIT_MIN_PERCENT,
-            max: CHARGE_LIMIT_MAX_PERCENT,
-            decimals: 0,
-          },
-          async (value) =>
-            value === null || value === limit
-              ? null
-              : await writeValue({ kind: "chargeLimit", vehicleId: row.id, percent: value }),
+        openValueEditor(translate(model.language, "settings.vehicle.limit"), (handlers) =>
+          limitEditor(
+            doc,
+            model.language,
+            { current: limit, range, help: translate(model.language, "settings.vehicle.limitHelp"), idPrefix },
+            (value) => writeValue({ kind: "chargeLimit", vehicleId: row.id, percent: value }),
+            handlers,
+          ),
         );
     }
     edits.onboard = () =>

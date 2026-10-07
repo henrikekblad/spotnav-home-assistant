@@ -785,6 +785,7 @@
   "settings.status.foundAutomatically": "Trouvé automatiquement",
   "settings.vehicle.limit": "Limite de charge",
   "settings.vehicle.limitHelp": "Écrite via l'intégration de la voiture ; elle prend effet lorsque la voiture la lit à nouveau",
+  "settings.vehicle.limitSlider": "Limite de charge, pourcentage",
   "settings.vehicle.limitTooSoon": "La limite a été réglée il y a moins d'une minute. Réessayez dans un instant.",
   "settings.vehicle.limitFailed": "Impossible de régler la limite",
   "settings.vehicle.targetHelp": "Suit la voiture sur toutes les bornes",

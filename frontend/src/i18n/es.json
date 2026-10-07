@@ -785,6 +785,7 @@
   "settings.status.foundAutomatically": "Encontrado automáticamente",
   "settings.vehicle.limit": "Límite de carga",
   "settings.vehicle.limitHelp": "Se escribe a través de la integración del coche; surte efecto la próxima vez que el coche lo lea",
+  "settings.vehicle.limitSlider": "Límite de carga, porcentaje",
   "settings.vehicle.limitTooSoon": "El límite se ha fijado hace menos de un minuto. Vuelve a intentarlo en breve.",
   "settings.vehicle.limitFailed": "No se ha podido fijar el límite",
   "settings.vehicle.targetHelp": "Acompaña al coche en todos los cargadores",
