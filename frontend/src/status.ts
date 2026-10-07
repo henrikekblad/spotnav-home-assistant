@@ -466,6 +466,12 @@ export function lineText(line: StatusLine, format: FormatContext, nowMs: number)
         ? say("strategy.status.solar.carStoppedNoTime")
         : say("strategy.status.solar.carStopped", { time: clock(format, time) });
     }
+    case "solar_no_car_surplus": {
+      const kw = num(p["surplus_kw"]);
+      return kw === null
+        ? say("strategy.status.solar.noCarSurplus")
+        : say("strategy.status.solar.noCarSurplusKw", { kw: formatNumber(language, kw, 1) });
+    }
     case "solar_charging": {
       const amps = num(p["requested_a"]);
       return amps === null
