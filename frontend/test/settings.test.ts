@@ -20,7 +20,6 @@ import {
   checkCurrent,
   checkDeadlineTime,
   checkEnergy,
-  checkMaxPeriods,
   checkDepartureDate,
   decodeSettingsAnswer,
   departureDays,
@@ -104,7 +103,6 @@ function form(overrides: Partial<SettingsFormValues> = {}): SettingsFormValues {
     deadlineTime: "06:30",
     departureDate: "",
     departureWeekdays: "1234567",
-    maxPeriods: "4",
     current: "10",
     driver: "manual_kwh",
     targetPercent: "",
@@ -224,6 +222,7 @@ describe("the settings-v2 decoder", () => {
     ["phases as a string", (record: Json) => (record.phases = "3")],
     ["fractional amps", (record: Json) => (record.amps = 10.5)],
     ["fractional periods", (record: Json) => (record.max_periods = 2.5)],
+    ["nine periods", (record: Json) => (record.max_periods = 9)],
     ["NaN energy", (record: Json) => (record.requested_kwh = Number.NaN)],
     ["infinite energy", (record: Json) => (record.requested_kwh = Number.POSITIVE_INFINITY)],
     ["string energy", (record: Json) => (record.requested_kwh = "20")],
@@ -338,7 +337,7 @@ describe("the pure replacement builders", () => {
 
   it.each([
     ["energy", "requested_kwh"],
-    ["deadline", "departure_enabled,departure_time,max_periods"],
+    ["deadline", "departure_enabled,departure_time"],
     ["current", "amps"],
   ] as const)("lets a %s Save change only its own fields", (kind, ownedList) => {
     const record = aRecord();
@@ -349,7 +348,6 @@ describe("the pure replacement builders", () => {
       deadlineEnabled: false,
       deadlineTime: "05:15",
       departureDate: "",
-      maxPeriods: "8",
       current: "16",
     });
 
@@ -377,7 +375,8 @@ describe("the pure replacement builders", () => {
     if (kind === "deadline") {
       expect(check.body.departure_enabled).toBe(false);
       expect(check.body.departure_time).toBe("05:15");
-      expect(check.body.max_periods).toBe(8);
+      // The charge periods are a charger setting: a deadline Save keeps them.
+      expect(check.body.max_periods).toBe(record.max_periods);
     }
   });
 
@@ -387,7 +386,7 @@ describe("the pure replacement builders", () => {
       const record = aRecord({
         target: { vehicle_id: "car-1", target_percent: 80.5 },
       });
-      const check = replacementFor(kind, record, form({ energy: "30", maxPeriods: "5", current: "16" }));
+      const check = replacementFor(kind, record, form({ energy: "30", current: "16" }));
 
       expect(check.ok).toBe(true);
       if (!check.ok) {
@@ -432,7 +431,6 @@ describe("the pure replacement builders", () => {
     expect(replacementFor("energy", record, form())).toMatchObject({ ok: true, changed: false });
     expect(replacementFor("deadline", record, form())).toMatchObject({ ok: true, changed: false });
     expect(replacementFor("current", record, form())).toMatchObject({ ok: true, changed: false });
-    expect(replacementFor("deadline", record, form({ maxPeriods: "5" }))).toMatchObject({ ok: true, changed: true });
     expect(replacementFor("deadline", record, form({ deadlineEnabled: false }))).toMatchObject({
       ok: true,
       changed: true,
@@ -463,10 +461,6 @@ describe("the pure replacement builders", () => {
       ["empty time", () => checkDeadlineTime("")],
       ["short time", () => checkDeadlineTime("6:30")],
       ["impossible time", () => checkDeadlineTime("24:00")],
-      ["empty periods", () => checkMaxPeriods("")],
-      ["fractional periods", () => checkMaxPeriods("2.5")],
-      ["zero periods", () => checkMaxPeriods("0")],
-      ["too many periods", () => checkMaxPeriods("9")],
       ["empty current", () => checkCurrent("")],
       ["fractional current", () => checkCurrent("10.5")],
       ["zero current", () => checkCurrent("0")],
@@ -480,8 +474,6 @@ describe("the pure replacement builders", () => {
     expect(checkEnergy("12,5")).toEqual({ ok: true, value: 12.5 });
     expect(checkEnergy("0.1")).toEqual({ ok: true, value: 0.1 });
     expect(checkEnergy("1000")).toEqual({ ok: true, value: 1000 });
-    expect(checkMaxPeriods("1")).toEqual({ ok: true, value: 1 });
-    expect(checkMaxPeriods("8")).toEqual({ ok: true, value: 8 });
     expect(checkCurrent("1")).toEqual({ ok: true, value: 1 });
     expect(checkCurrent(String(AMPS_MAX))).toEqual({ ok: true, value: AMPS_MAX });
     expect(checkDeadlineTime(" 06:30 ")).toEqual({ ok: true, value: "06:30" });
@@ -495,7 +487,6 @@ describe("the pure replacement builders", () => {
       deadlineTime: "06:30",
       departureDate: "",
       departureWeekdays: "1234567",
-      maxPeriods: "4",
       current: "10",
       driver: "manual_kwh",
       targetPercent: "",
@@ -725,7 +716,7 @@ describe("a Save with a departure date", () => {
 
   it("does not re-judge a stored date that has gone by when the reader did not move it", () => {
     const record = aRecord({ departure_date: "2026-09-20" });
-    const check = replacementFor("deadline", record, form({ departureDate: "2026-09-20", maxPeriods: "5" }), null, null, days);
+    const check = replacementFor("deadline", record, form({ departureDate: "2026-09-20", deadlineTime: "07:00" }), null, null, days);
     expect(check.ok && check.body.departure_date).toBe("2026-09-20");
   });
 

@@ -29,7 +29,7 @@ from .entity import (
 )
 from .execution.controller import ChargingController
 from .planning.auto_controller import component_included
-from .planning.auto_settings import AutoSettingsError
+from .planning.auto_settings import AutoSettingsError, MAX_PERIODS, MIN_PERIODS
 from .planning.strategy_options import strategy_options_for
 from .pricing.price_repository import CatalogueSnapshot
 from .runtime import ChargerConfigEntry
@@ -52,6 +52,7 @@ async def async_setup_entry(
     entities: list[Any] = [
         AutoAreaSelect(entry, controller, auto),
         AutoStrategySelect(entry, controller, auto),
+        AutoPeriodsSelect(entry, controller, auto),
     ]
     entities.extend(
         AutoFiscalPolicySelect(entry, controller, auto, component)
@@ -162,6 +163,36 @@ class AutoStrategySelect(SpotNavAutoEntity, SelectEntity):
 
     async def async_select_option(self, option: str) -> None:
         await self.async_write_settings(lambda settings: replace(settings, strategy=option))
+
+
+#: The charge-periods select's options: automatic, or a hard cap of 1 to 8.
+PERIODS_AUTO_OPTION = "auto"
+PERIODS_OPTIONS = [PERIODS_AUTO_OPTION, *(str(count) for count in range(MIN_PERIODS, MAX_PERIODS + 1))]
+
+
+class AutoPeriodsSelect(SpotNavAutoEntity, SelectEntity):
+    """How the plan splits into charge periods: `auto` (the planner weighs a start cost per period), or at most
+    that many periods."""
+
+    _attr_entity_category = EntityCategory.CONFIG
+    _attr_translation_key = "charge_periods"
+    _attr_options = PERIODS_OPTIONS
+
+    def __init__(
+        self, entry: ConfigEntry, controller: ChargingController, auto: AutoSurface
+    ) -> None:
+        super().__init__(entry, controller, auto, key="charge_periods")
+
+    @property
+    def current_option(self) -> str | None:
+        settings = self.settings
+        if settings is None:
+            return None
+        return PERIODS_AUTO_OPTION if settings.max_periods is None else str(settings.max_periods)
+
+    async def async_select_option(self, option: str) -> None:
+        count = None if option == PERIODS_AUTO_OPTION else int(option)
+        await self.async_write_settings(lambda settings: replace(settings, max_periods=count))
 
 
 class AutoFiscalPolicySelect(SpotNavAutoEntity, SelectEntity):

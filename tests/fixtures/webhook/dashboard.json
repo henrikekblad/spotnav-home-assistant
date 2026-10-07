@@ -2191,7 +2191,7 @@
     "departure_enabled": false,
     "departure_time": "08:00",
     "driver": "manual_kwh",
-    "max_periods": 1,
+    "max_periods": 8,
     "overrides": [],
     "phases": 3,
     "requested_kwh": 20.0,

@@ -2193,9 +2193,9 @@
     "driver": "target_soc",
     "fill_to_limit": false,
     "fiscal_included": [],
-    "identify_mode": "automatic",
     "identify_camera": null,
-    "max_periods": 1,
+    "identify_mode": "automatic",
+    "max_periods": null,
     "notifications": {
       "available": [],
       "events": [
@@ -2329,6 +2329,7 @@
     {
       "capacity_kwh": 15.6,
       "capacity_source": "stored",
+      "charge_limit_range": null,
       "consumption_kwh_per_10km": 2.0,
       "id": "<id>",
       "identification": {
@@ -2346,6 +2347,7 @@
         }
       },
       "max_percent": null,
+      "min_percent": null,
       "name": "EV6",
       "onboard_phases": 3,
       "soc_entity_id": "sensor.ev6_battery",

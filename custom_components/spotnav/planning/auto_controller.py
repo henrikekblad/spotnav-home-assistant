@@ -54,6 +54,8 @@ from ..vehicles.soc_estimate import (
     target_need_kwh,
 )
 from ..vehicles.vehicle_discovery import resolve_target_vehicle
+from ..vehicles.vehicle_properties import stored_properties
+from ..execution.min_soc_floor import effective_floor, known_soc
 from .auto_settings import (
     AutoSettings,
     AutoSettingsError,
@@ -346,6 +348,8 @@ class LiveVehicleFacts:
     soc_source: str | None = None
     soc_age_s: float | None = None
     soc_estimated: bool = False
+    #: The car's minimum charge level (`vehicle_properties`), `None` when off.
+    min_percent: float | None = None
 
 
 def live_vehicle_facts(
@@ -369,6 +373,7 @@ def live_vehicle_facts(
         soc_source=None if reading is None else reading.source,
         soc_age_s=None if reading is None else reading.age_s,
         soc_estimated=bool(reading is not None and reading.estimated),
+        min_percent=stored_properties(hass, vehicle_id).min_percent,
     )
 
 
@@ -1586,10 +1591,11 @@ class AutoPlannerController:
         capacity = None
         if facts is not None and facts.reported_capacity_kwh is not None:
             capacity = facts.reported_capacity_kwh
+        planned_from = self._planned_from_floor(settings, facts, live_soc, calculated_at)
         # Energy the wall must deliver: battery need divided by charging efficiency
         # (`soc_estimate.CHARGE_EFFICIENCY`).
         reason, wall_kwh = target_need_kwh(
-            soc_percent=live_soc,
+            soc_percent=planned_from,
             capacity_kwh=capacity,
             target_percent=settings.target.target_percent,
             vehicle_max_percent=None if facts is None else facts.max_percent,
@@ -1617,6 +1623,28 @@ class AutoPlannerController:
         return _EnergyResolution(
             kwh=kwh, delivered_energy_trustworthy=True, soc_percent=live_soc, capacity_kwh=capacity
         )
+
+    def _planned_from_floor(
+        self, settings: AutoSettings, facts: LiveVehicleFacts | None, live_soc: float, calculated_at: datetime
+    ) -> float:
+        """The level a target's plan starts from: the car's own, or its minimum charge level while the car is known
+        to be below it (`min_soc_floor.py` charges it there at once), so the plan is for the rest of the need."""
+        if facts is None or facts.min_percent is None:
+            return live_soc
+        floor = effective_floor(
+            facts.min_percent, target_percent=settings.target.target_percent, vehicle_max_percent=facts.max_percent
+        )
+        controller = None if self._executor is None else self._executor.controller
+        known = known_soc(
+            soc_percent=live_soc,
+            estimated=facts.soc_estimated,
+            age_s=facts.soc_age_s,
+            plugged_in_at=None if controller is None else controller.plugged_in_for_count,
+            now=calculated_at,
+        )
+        if floor is None or known is None or known >= floor:
+            return live_soc
+        return floor
 
     def _vehicle_update_wait(
         self,

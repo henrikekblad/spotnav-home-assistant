@@ -155,6 +155,7 @@ describe("the Settings page's charger and site cards", () => {
       "current",
       "energy_register",
       "charger_priority",
+      "charge_periods",
     ]);
     expect(rowText(element, "start_stop")).toContain(translate("en", "control.startStop"));
     // Short status words, never the entity's name or id.
@@ -258,7 +259,7 @@ describe("the Settings page's charger and site cards", () => {
       });
       openSettings(hidden.element);
       await settle();
-      expect(sectionRows(hidden.element, "entities")).toEqual(["start_stop", "current", "energy_register"]);
+      expect(sectionRows(hidden.element, "entities")).toEqual(["start_stop", "current", "energy_register", "charge_periods"]);
     }
     document.body.innerHTML = "";
     const absent = await mounted({
@@ -268,7 +269,7 @@ describe("the Settings page's charger and site cards", () => {
     });
     openSettings(absent.element);
     await settle();
-    expect(sectionRows(absent.element, "entities")).toEqual(["start_stop", "current", "energy_register"]);
+    expect(sectionRows(absent.element, "entities")).toEqual(["start_stop", "current", "energy_register", "charge_periods"]);
   });
 
   it("shows only the charger's card and no site rows when the charger has no site", async () => {
@@ -282,6 +283,7 @@ describe("the Settings page's charger and site cards", () => {
       "energy_register",
       "charger_phases",
       "voltage_between_phases_v",
+      "charge_periods",
     ]);
     const site = openDialog(element)?.querySelector("[data-section='site']");
     expect(site?.textContent).toContain(translate("en", "site.none"));

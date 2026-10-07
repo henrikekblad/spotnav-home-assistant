@@ -22,6 +22,7 @@ import {
   UNSUPPORTED_API_VERSION,
   cameraCommand,
   chooseVehicleIdentification,
+  setChargeLimit,
   getDashboard,
   getCardInfo,
   getDebugBundle,
@@ -113,6 +114,7 @@ import {
   buildModel,
   currentRangeFor,
   socFor,
+  plannedCarNameFor,
   vehiclesFor,
   siteFactsFor,
   actionPending,
@@ -675,6 +677,7 @@ export class SpotnavCard extends HTMLElement {
         conflict: null,
         soc: this.socFacts(),
         vehicles: this.vehicleFacts(),
+        plannedVehicleName: this.plannedCarName(),
         days: this.departureDays(),
       });
     } catch (error) {
@@ -1011,6 +1014,11 @@ export class SpotnavCard extends HTMLElement {
     return targets;
   }
 
+  /** The car the charger plans for, by name, for the Plan popover's title in energy mode. */
+  private plannedCarName(): string | null {
+    return this.cardState.kind === "ready" ? plannedCarNameFor(this.cardState.dashboard) : null;
+  }
+
   private vehicleFacts(): readonly Vehicle[] {
     return this.cardState.kind === "ready" ? vehiclesFor(this.cardState.dashboard) : [];
   }
@@ -1166,6 +1174,7 @@ export class SpotnavCard extends HTMLElement {
         conflict: null,
         soc: this.socFacts(),
         vehicles: this.vehicleFacts(),
+        plannedVehicleName: this.plannedCarName(),
         days: this.departureDays(),
       });
     } catch (error) {
@@ -1943,6 +1952,16 @@ export class SpotnavCard extends HTMLElement {
         return answer !== null && answer.ok === true
           ? null
           : cameraErrorKey(typeof answer?.error === "string" ? answer.error : null);
+      }
+      case "chargeLimit": {
+        const answer = (await setChargeLimit(hass, charger, { vehicleId: write.vehicleId, percent: write.percent })) as {
+          ok?: unknown;
+          error?: unknown;
+        } | null;
+        if (answer !== null && answer.ok === true) {
+          return null;
+        }
+        return answer?.error === "spotnav_too_soon" ? "settings.vehicle.limitTooSoon" : "settings.vehicle.limitFailed";
       }
       case "vehicleSource": {
         const answer = (await chooseVehicleIdentification(hass, charger, {

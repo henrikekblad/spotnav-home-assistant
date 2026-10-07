@@ -40,6 +40,7 @@ if TYPE_CHECKING:
     from .site.site_capacity_controller import SiteCapacityController
     from .vehicles.soc_estimate import SocReader
     from .execution.solar_execution import SolarExecutionCoordinator
+    from .execution.min_soc_floor import MinSocFloor
     from .vehicles.vehicle_charge_limit import VehicleChargeLimitLimiter
     from .vehicles.vehicle_refresh import VehicleRefreshLimiter
     from .sessions.history_import import HistoryImporter
@@ -72,6 +73,8 @@ class ChargerData:
     camera: CameraIdentification | None = None
     #: The paired app's instant-notification registration (`notifications/push.py`).
     push: ChargerPush | None = None
+    #: The car's minimum charge level at this charger (`execution/min_soc_floor.py`).
+    min_soc: MinSocFloor | None = None
 
 
 @dataclass

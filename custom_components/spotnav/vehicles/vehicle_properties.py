@@ -10,8 +10,12 @@ keyed by device id). This module is the one writer of that domain and holds the 
   of this and the charger's wiring (`planning/phases.py`).
 * Target: the charge level (0-100 %) the car is charged to at every charger, else none. A charger's
   settings carry its planned car's (`vehicle_target.py` keeps the two the same).
+* Minimum charge level: the floor (10-80 %, in steps of 5) the car is never left below at any charger, else
+  none (off). Read where it applies, from the car a charger plans for (`execution/min_soc_floor.py`), so it
+  follows the car with no copy in a charger's settings.
 
-Payload: `{"capacity_kwh": 77.4, "consumption_kwh_per_10km": 1.9, "onboard_phases": 1, "target_percent": 80}`,
+Payload: `{"capacity_kwh": 77.4, "consumption_kwh_per_10km": 1.9, "onboard_phases": 1, "target_percent": 80,
+"min_percent": 30}`,
 every key optional; an empty payload is no record.
 """
 
@@ -35,7 +39,13 @@ KEY_CAPACITY: Final = "capacity_kwh"
 KEY_CONSUMPTION: Final = "consumption_kwh_per_10km"
 KEY_ONBOARD_PHASES: Final = "onboard_phases"
 KEY_TARGET: Final = "target_percent"
-PROPERTY_KEYS: Final = (KEY_CAPACITY, KEY_CONSUMPTION, KEY_ONBOARD_PHASES, KEY_TARGET)
+KEY_MIN: Final = "min_percent"
+PROPERTY_KEYS: Final = (KEY_CAPACITY, KEY_CONSUMPTION, KEY_ONBOARD_PHASES, KEY_TARGET, KEY_MIN)
+
+#: The minimum charge level's range and step (percent).
+MIN_PERCENT_LOW: Final = 10
+MIN_PERCENT_HIGH: Final = 80
+MIN_PERCENT_STEP: Final = 5
 
 #: What a vehicle with no stored onboard charger is taken to have.
 DEFAULT_ONBOARD_PHASES: Final = 3
@@ -44,6 +54,7 @@ ERR_INVALID_CAPACITY: Final = "invalid_capacity"
 ERR_INVALID_CONSUMPTION: Final = "invalid_consumption"
 ERR_INVALID_ONBOARD_PHASES: Final = "invalid_onboard_phases"
 ERR_INVALID_TARGET: Final = "invalid_target"
+ERR_INVALID_MIN: Final = "invalid_min_percent"
 ERR_UNKNOWN_FIELD: Final = "unknown_field"
 
 CapacitySource = Literal["reported", "stored"]
@@ -57,6 +68,7 @@ class VehicleProperties:
     consumption_kwh_per_10km: float | None = None
     onboard_phases: int | None = None
     target_percent: float | None = None
+    min_percent: int | None = None
 
     @property
     def phases(self) -> int:
@@ -86,6 +98,17 @@ def valid_target(value: Any) -> bool:
     return number is not None and not isinstance(value, bool) and 0.0 <= number <= 100.0
 
 
+def valid_min_percent(value: Any) -> bool:
+    """A minimum charge level: 10 to 80 percent, in whole steps of 5 (a boolean is not one)."""
+    number = finite_number(value)
+    return (
+        number is not None
+        and not isinstance(value, bool)
+        and MIN_PERCENT_LOW <= number <= MIN_PERCENT_HIGH
+        and number % MIN_PERCENT_STEP == 0
+    )
+
+
 def validate_changes(changes: Any) -> dict[str, str]:
     """`{field: code}` for everything wrong with a `changes` object; empty when it can be written.
 
@@ -107,6 +130,9 @@ def validate_changes(changes: Any) -> dict[str, str]:
         elif key == KEY_TARGET:
             if value is not None and not valid_target(value):
                 errors[key] = ERR_INVALID_TARGET
+        elif key == KEY_MIN:
+            if value is not None and not valid_min_percent(value):
+                errors[key] = ERR_INVALID_MIN
         else:
             errors[str(key)] = ERR_UNKNOWN_FIELD
     return errors
@@ -122,11 +148,13 @@ def stored_properties(hass: HomeAssistant, vehicle_id: object) -> VehiclePropert
     consumption = payload.get(KEY_CONSUMPTION)
     onboard = payload.get(KEY_ONBOARD_PHASES)
     target = payload.get(KEY_TARGET)
+    floor = payload.get(KEY_MIN)
     return VehicleProperties(
         capacity_kwh=float(capacity) if valid_capacity(capacity) else None,
         consumption_kwh_per_10km=float(consumption) if valid_consumption(consumption) else None,
         onboard_phases=onboard if valid_onboard_phases(onboard) else None,
         target_percent=float(target) if valid_target(target) else None,
+        min_percent=int(floor) if valid_min_percent(floor) else None,
     )
 
 
@@ -176,10 +204,12 @@ async def async_update_vehicle_properties(
         payload[KEY_ONBOARD_PHASES] = current.onboard_phases
     if current.target_percent is not None:
         payload[KEY_TARGET] = current.target_percent
+    if current.min_percent is not None:
+        payload[KEY_MIN] = current.min_percent
     for key, value in changes.items():
         if value is None:
             payload.pop(key, None)
-        elif key == KEY_ONBOARD_PHASES:
+        elif key in (KEY_ONBOARD_PHASES, KEY_MIN):
             payload[key] = int(value)
         else:
             payload[key] = float(value)

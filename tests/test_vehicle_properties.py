@@ -300,6 +300,8 @@ async def test_the_dashboard_states_every_vehicle_the_target_vehicle_and_the_for
             "location": {"entity_id": None, "name": None, "chosen": False, "candidates": []},
         },
         "target_percent": 80.0,
+        "min_percent": None,
+        "charge_limit_range": None,
     }
     assert rows["Niro"]["soc_percent"] == 55.0
     assert rows["Niro"]["capacity_source"] == "stored" and rows["Niro"]["capacity_kwh"] == 64.8
@@ -398,3 +400,44 @@ async def test_the_update_vehicle_fixtures_are_the_commands_own_output(
         _write_or_compare(FIXTURE_DIR / name, payload)
     if os.environ.get("SPOTNAV_WRITE_FIXTURES") != "1":
         assert sorted(p.name for p in FIXTURE_DIR.glob("*.json")) == sorted(produced)
+
+
+# ------------------------------------------------------------------ the minimum charge level
+
+
+def test_the_minimum_charge_level_is_10_to_80_percent_in_steps_of_five() -> None:
+    for good in (10, 15, 30, 80, 45.0):
+        assert vehicle_properties.valid_min_percent(good), good
+    for bad in (0, 5, 85, 100, 12, 32.5, True, "30", None, float("nan")):
+        assert not vehicle_properties.valid_min_percent(bad), bad
+    assert vehicle_properties.validate_changes({"min_percent": 30}) == {}
+    assert vehicle_properties.validate_changes({"min_percent": None}) == {}
+    assert vehicle_properties.validate_changes({"min_percent": 33}) == {"min_percent": "invalid_min_percent"}
+
+
+async def test_the_minimum_charge_level_is_the_cars_own_and_null_turns_it_off(
+    hass: HomeAssistant, hass_ws_client
+) -> None:
+    charger, _ = await setup_charger_and_site(hass)
+    car = add_car(hass, "Volvo")
+    client = await admin(hass, hass_ws_client)
+    rows = {v["id"]: v for v in dashboard(hass, charger)["vehicles"]}
+    assert rows[car]["min_percent"] is None
+
+    result = (await ws_call(client, update_message(charger.entry_id, car, {"min_percent": 30})))["result"]
+
+    assert result["ok"] is True and result["vehicle"]["min_percent"] == 30
+    assert stored(hass, car) == {"min_percent": 30}
+    assert vehicle_properties.stored_properties(hass, car).min_percent == 30
+    rows = {v["id"]: v for v in dashboard(hass, charger)["vehicles"]}
+    assert rows[car]["min_percent"] == 30
+
+    stale = (
+        await ws_call(client, update_message(charger.entry_id, car, {"min_percent": 40}, {"min_percent": 20}))
+    )["result"]
+    assert stale["error"] == "spotnav_conflict" and stored(hass, car) == {"min_percent": 30}
+    refused = (await ws_call(client, update_message(charger.entry_id, car, {"min_percent": 90})))["result"]
+    assert [(e["field"], e["code"]) for e in refused["field_errors"]] == [("min_percent", "invalid_min_percent")]
+
+    cleared = (await ws_call(client, update_message(charger.entry_id, car, {"min_percent": None})))["result"]
+    assert cleared["vehicle"]["min_percent"] is None and stored(hass, car) is None

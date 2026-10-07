@@ -1,0 +1,110 @@
+{
+  "notifications": {
+    "title": "SpotNav · {name}",
+    "stopped.not_started": "Ladingen startet ikke som planlagt.",
+    "stopped.stopped": "Ladingen stoppet i et planlagt vindu.",
+    "stopped.charger_unavailable": "Laderen er ikke tilgjengelig i et planlagt vindu.",
+    "stopped.vehicle_not_requesting": "Bilen tar ikke imot strøm i et planlagt vindu.",
+    "stopped.held_by_charger": "Laderens egen tidsplan holder den planlagte ladingen tilbake.",
+    "stopped.charger_ignores_stop": "Laderen fortsetter å lade selv om den ble stoppet. Stopp den ved laderen eller koble fra bilen.",
+    "stopped.charger_disabled": "Laderen er slått av, så den planlagte ladingen kan ikke starte.",
+    "at_risk": "Ladingen blir ikke ferdig til avreise.",
+    "at_risk.time": "Ladingen blir ikke ferdig til avreise kl. {time}.",
+    "complete.target": "Ladingen er ferdig: målet {percent} er nådd.",
+    "complete.energy": "Ladingen er ferdig: den ønskede energien er levert.",
+    "complete.plan_done": "Den planlagte ladingen er fullført.",
+    "complete.vehicle_full": "Ladingen er ferdig: bilen er full.",
+    "started": "Ladingen har startet.",
+    "test": "Testvarsel fra SpotNav: varslene når frem til denne telefonen.",
+    "started.until": "Ladingen har startet, til {time}.",
+    "plugged_in": "Bilen er tilkoblet.",
+    "unplugged": "Bilen er frakoblet.",
+    "plan_installed": "Ny plan: lader fra {time}.",
+    "identify.ask": "Hvilken bil er tilkoblet?",
+    "identify.open": "Åpne SpotNav",
+    "identify.chosen": "{vehicle} valgt.",
+    "identify.recognised": "{vehicle} valgt automatisk.",
+    "identify.kept": "{vehicle} beholdes.",
+    "charged": "{kwh} ladet",
+    "planned": "{kwh} planlagt",
+    "cost": "cirka {cost}"
+  },
+  "add_charger": {
+    "hint": "Legg til en lader: Innstillinger → Enheter og tjenester → SpotNav → Legg til oppføring → Lader; den tilbyr å bli med i dette anlegget."
+  },
+  "resolve_vehicle": {
+    "device": "{name} -- {count} mulige batterisensorer",
+    "dismiss": "Dette er ikke et kjøretøy (slutt å rapportere det)"
+  },
+  "charger_detected": {
+    "external": "En annen styring (evcc eller openWB) er installert og kan allerede styre denne laderen. Ingenting foreslås: velg bare det du er sikker på at SpotNav skal styre.",
+    "external_installed": "evcc eller openWB er installert i Home Assistant og kan allerede styre denne laderen. Slå den av for denne laderen, ellers motarbeider SpotNav og den hverandre.",
+    "disabled": "Deaktivert som standard, men nyttige (de aktiveres hvis du lar boksen nedenfor være avkrysset):",
+    "balanced": "Perific balanserer installasjonen til denne laderen via Zaptecs sky og stiller inn den samme tilgjengelige strømmen som SpotNav ville gjort. Ingen strøm foreslås: SpotNav bare starter og stopper laderen.",
+    "controller": "{name} styrer også ladere; slå den av for denne laderen, ellers motarbeider {name} og SpotNav hverandre.",
+    "cloud": "Hvis laderen er koblet til Tibber (eller en annen app) for smartlading, slå det av: Home Assistant kan ikke se det, og det motarbeider SpotNav."
+  },
+  "measurement_reason": {
+    "mode": "Målemetoden er endret, så målingen må settes opp. ",
+    "chargers": "Laderne er endret, så fasekoblingen deres må settes opp. ",
+    "measurement": "Den lagrede målingen er ufullstendig, så den må settes opp. "
+  },
+  "site_form": {
+    "default_name": "Anlegg"
+  },
+  "site_confirm": {
+    "meter": "Strømmåler",
+    "power_current_calculated": "effekt per fase, strøm beregnes",
+    "power_current": "effekt og strøm per fase",
+    "current": "strøm per fase",
+    "current_entity": "én entitet med strømmen per fase",
+    "join_wiring": "**Fasekobling:** 3 faser, målt strøm fra {source}",
+    "join_unknown": "SpotNav kan ikke avgjøre hvordan denne laderen er koblet, så den legges ikke til automatisk. Legg den til fra anleggets innstillinger.",
+    "reactive_found": "**Reaktiv effekt:** funnet",
+    "reactive_missing": "**Reaktiv effekt:** ikke funnet (strømmen anslås med effektfaktor 0,9)",
+    "battery": "**Hjemmebatteri:** {name} (lading positiv)",
+    "no_battery": "**Hjemmebatteri:** ingen",
+    "charger": "**Lader:** {name} – {phases} faser, målt strøm fra {source}",
+    "label_power": "{name} – effekt per fase (strøm beregnes)",
+    "label_power_current": "{name} – effekt og strøm per fase",
+    "label_current": "{name} – strøm per fase",
+    "ocpp_control": "**Ladestyring:** {name}",
+    "ocpp_current_number": "**Strømmen stilles inn via:** laderens nummerentitet for strøm ({name})",
+    "ocpp_current_config": "**Strømmen stilles inn via:** OCPP ChangeConfiguration",
+    "ocpp_energy": "**Energiteller:** {name} (funnet automatisk)",
+    "ocpp_energy_none": "ingen funnet"
+  },
+  "candidate_reason": {
+    "attributes_device_class_and_unit_match": "enhetsklasse for strøm og en støttet måleenhet",
+    "attributes_unit_match_only": "en støttet måleenhet for strøm",
+    "attributes_historical_match": "data per fase sett i historikken, ikke målt akkurat nå",
+    "attributes_profile_match": "laderintegrasjonens egne attributter for fasestrøm",
+    "separate_entities_device_class_and_unit_match": "enhetsklasse for strøm og en støttet måleenhet",
+    "separate_entities_device_class_match_only": "bare enhetsklasse for strøm",
+    "separate_entities_unit_match_only": "bare en støttet måleenhet for strøm",
+    "separate_entities_name_match_only": "bare navnemønster",
+    "separate_entities_profile_match": "laderintegrasjonens egne sensorer for fasestrøm",
+    "possible_inverter_output_not_confirmed_as_grid_input": "ser ut som utgang fra vekselretter/sol, ikke bekreftet som inngang fra nettet"
+  },
+  "candidate_confidence": {
+    "high": "høy sikkerhet",
+    "medium": "middels sikkerhet",
+    "low": "lav sikkerhet"
+  },
+  "candidate_representation": {
+    "separate_entities": "tre entiteter",
+    "attributes": "attributter"
+  },
+  "choice": {
+    "manual": "Velg manuelt",
+    "manual_separate_entities": "Velg manuelt (tre separate entiteter, én per fase)",
+    "manual_attributes": "Angi én entitet + dens faseattributter manuelt",
+    "skip": "Hopp over (sett opp senere)"
+  },
+  "current_control": {
+    "none": "Ikke still inn noen strøm",
+    "change_configuration": "ChangeConfiguration (AssignedCurrent)",
+    "number": "Laderens nummerentitet for strøm, innenfor skrivegrensene",
+    "easee_dynamic_limit": "Easees dynamiske strømgrense (begrenset skrivefrekvens)"
+  }
+}

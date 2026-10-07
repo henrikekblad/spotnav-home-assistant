@@ -28,6 +28,10 @@ The rules are today's, as the manual-pause specs and their three review rounds s
 * A window's end stops only the plan's own charge (`window_end_spared`): a person's Start, a Charge-now start
   and the sun's charge go on, and so does one load balancing holds back for them; the last window's end then
   ends the plan with no stop and no top-off (I3, decided in today's code and here together).
+* The car's minimum charge level (`min_soc_start`, `min_soc_end`): below it SpotNav charges at once as an owner of its
+  own, through any plan, window or sun, but never through a pause a person chose or their Stop, and never takes a
+  person's own charge. A window's end, a re-arm, the hold, the sun's stop and a strategy change leave it alone. At
+  the floor a plan window open now or the sun takes it over with no command, or it is stopped once.
 * A strategy change hands a running charge over instead of stopping it: to `solar`, the plan's charge goes to the
   sun when the sun's rules keep it (`sun_keeps`), else it is stopped once. The other way, a plan window that opens
   while the sun runs a charge takes it over at its start, with no command.
@@ -52,6 +56,10 @@ from .events import (
     DirectStop,
     Event,
     FinalWindowEnd,
+    HAND_TO_PLAN,
+    HAND_TO_SOLAR,
+    MinSocEnd,
+    MinSocStart,
     NeedMet,
     PauseChoiceMade,
     PersonStart,
@@ -87,6 +95,7 @@ from .session import (
     MANUAL_STOP,
     OWNER_CHARGE_NOW,
     OWNER_CHARGER_SELF,
+    OWNER_MIN_SOC,
     OWNER_NONE,
     OWNER_PERSON,
     OWNER_PLAN,
@@ -133,6 +142,7 @@ REASON_STRATEGY: Final = "strategy"
 REASON_TARGET: Final = "target"
 REASON_NEED_MET: Final = "need_met"
 REASON_TOP_OFF_END: Final = "top_off_end"
+REASON_MIN_SOC: Final = "min_soc"
 
 #: Who owns a charge a start of this reason began, when no pending command says (a result that came back after
 #: a later command replaced the pending one).
@@ -141,11 +151,13 @@ _START_OWNER: Final = {
     REASON_CLAIM: OWNER_PLAN,
     REASON_PERSON: OWNER_PERSON,
     REASON_SOLAR: OWNER_SOLAR,
+    REASON_MIN_SOC: OWNER_MIN_SOC,
 }
 
 #: Who owns a charge a plan window's end leaves running (`controller.WINDOW_END_SPARED_ORIGINS`): a person, a
-#: Charge-now start and the sun. Never the plan, its top-off, or a charge the charger began by itself.
-WINDOW_END_SPARED: Final = frozenset({OWNER_PERSON, OWNER_CHARGE_NOW, OWNER_SOLAR})
+#: Charge-now start, the sun and the car's minimum charge level. Never the plan, its top-off, or a charge the charger
+#: began by itself.
+WINDOW_END_SPARED: Final = frozenset({OWNER_PERSON, OWNER_CHARGE_NOW, OWNER_SOLAR, OWNER_MIN_SOC})
 
 #: Today's `charge_origin` values, as owners (`None`: nobody's).
 ORIGIN_OWNER: Final = {
@@ -153,6 +165,7 @@ ORIGIN_OWNER: Final = {
     "solar": OWNER_SOLAR,
     "plan_window": OWNER_PLAN,
     "other": OWNER_CHARGE_NOW,
+    "min_soc": OWNER_MIN_SOC,
 }
 
 
@@ -473,6 +486,9 @@ def _pause_choice(session: ChargeSession, event: PauseChoiceMade, now: datetime)
 
 
 def _strategy_change(session: ChargeSession, event: StrategyChange, now: datetime) -> Decision:
+    if session.owner == OWNER_MIN_SOC:
+        # The floor's charge is not the plan's: the plan is cleared with no stop, and the floor keeps it.
+        return session, ()
     if event.strategy == "solar" and event.plan_applied:
         if event.sun_keeps:
             # The hand-over plan → sun: the plan is cleared with no stop, and the charge is the sun's from now.
@@ -496,10 +512,34 @@ def _solar_stop(session: ChargeSession, event: SolarStop, now: datetime) -> Deci
         ):
             return session, ()
         return _stop(session, REASON_TAKE_OVER)
-    if not automatic_allowed(session, GATE_STOP):
-        # Never a charge a person started under their manual pause; nothing is left for the sun to do.
+    if not automatic_allowed(session, GATE_STOP) or session.owner == OWNER_MIN_SOC:
+        # Never a charge a person started under their manual pause, nor the floor's: nothing is left for the sun.
         return session, ()
     return _stop(session, REASON_SOLAR)
+
+
+def _min_soc_start(session: ChargeSession, event: MinSocStart, now: datetime) -> Decision:
+    if event.connected is False or not automatic_allowed(session, GATE_START):
+        # No car, or a person's pause or Stop (or their Start) holds Auto: the person decided.
+        return session, ()
+    if session.owner in (OWNER_MIN_SOC, OWNER_PERSON):
+        return session, ()
+    if session.balancing_paused and session.paused_origin == OWNER_MIN_SOC:
+        # Load balancing holds the floor's charge back already: its regulator gives it back.
+        return session, ()
+    return _start(session, REASON_MIN_SOC, OWNER_MIN_SOC)
+
+
+def _min_soc_end(session: ChargeSession, event: MinSocEnd, now: datetime) -> Decision:
+    if session.owner != OWNER_MIN_SOC:
+        return session, ()
+    if event.handed_to == HAND_TO_PLAN:
+        return session.with_changes(owner=OWNER_PLAN), ()
+    if event.handed_to == HAND_TO_SOLAR:
+        return session.with_changes(owner=OWNER_SOLAR), ()
+    if not automatic_allowed(session, GATE_STOP):
+        return session, ()
+    return _stop(session, REASON_MIN_SOC)
 
 
 def _person_hold(session: ChargeSession, now: datetime, *, control_on: bool, start_pending: bool) -> Decision:
@@ -840,6 +880,8 @@ _HANDLERS: Final[dict[type[Event], Callable[[ChargeSession, Event, datetime], De
     StrategyChange: _strategy_change,  # type: ignore[dict-item]
     SolarStart: _solar_start,  # type: ignore[dict-item]
     SolarStop: _solar_stop,  # type: ignore[dict-item]
+    MinSocStart: _min_soc_start,  # type: ignore[dict-item]
+    MinSocEnd: _min_soc_end,  # type: ignore[dict-item]
     ChargerReportedOn: _reported_on,  # type: ignore[dict-item]
     ChargerReportedOff: _reported_off,  # type: ignore[dict-item]
     CarEnded: _car_ended,  # type: ignore[dict-item]

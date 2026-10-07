@@ -1,8 +1,4 @@
-// Finnish. Typed against the English key set, so a missing key is a compile error.
-
-import type { en } from "./en";
-
-export const fi: Record<keyof typeof en, string> = {
+{
   "card.title": "SpotNav",
   "state.loading": "Luetaan lataussuunnitelmaa…",
   "state.unconfigured": "Valitse yksi SpotNav-laturi kortin muokkaimessa.",
@@ -99,6 +95,7 @@ export const fi: Record<keyof typeof en, string> = {
   "status.fillRoomUnknown": "Auton varaustaso tai akun koko on tuntematon, joten ladataan {kwh} kWh täyttämisen sijaan.",
   "status.needLimitedByRoom": "Enintään {kwh} kWh: auto on lähes täynnä.",
   "status.chargingToVehicleLimit": "Ladataan, kunnes auto lopettaa itse omaan latausrajaansa ({percent} %).",
+  "status.minSocCharging": "Ladataan alimpaan tasoon ({percent} %)",
   "issue.needKept": "Energiamittaria ei voi lukea: {kwh} kWh jäljellä sen viimeisimmän lukeman mukaan.",
   "issue.needFromSessions": "Ei energiamittaria: {kwh} kWh jäljellä laturin tallennettujen latausten perusteella.",
   "status.siteMeasurement.stale.other": "{phases}: arvot ovat yli {seconds} s vanhoja.",
@@ -168,8 +165,7 @@ export const fi: Record<keyof typeof en, string> = {
   "entity.field.safetyMargin": "Turvamarginaali",
   "entity.field.measurementMode": "Mittaustapa",
   "entity.field.voltageBetweenPhases": "Vaiheiden välinen jännite",
-  "entity.field.chargerPriority":
-    "Laturin prioriteetti",
+  "entity.field.chargerPriority": "Laturin prioriteetti",
   "entity.field.batteryPower": "Akun teho",
   "entity.field.maxAge": "Mittauksen enimmäisikä",
   "entity.mode.direct": "Vaihevirrat mitataan suoraan",
@@ -204,16 +200,12 @@ export const fi: Record<keyof typeof en, string> = {
   "entity.help.safetyMargin": "Ampeereina se virta, jonka SpotNav pitää vapaana pääsulakkeen alapuolella. Lataus pysyy sulakkeen ja marginaalin erotuksen alla, joten marginaalin on oltava sulaketta pienempi.",
   "entity.help.measurementMode": "Ilmoittaako mittarisi kunkin vaiheen virran suoraan vai laskeeko SpotNav sen tehosta ja jännitteestä.",
   "entity.help.voltageBetweenPhases": "Sähköasennuksesi kahden vaiheen välinen jännite. Kolmivaiheinen latausteho lasketaan siitä.",
-  "entity.help.chargerPriority":
-    "Kun useampi latauspiste jakaa kohteen sulakkeen, Ensin-asetuksen laturi saa virtaa ennen muita ja Viimeksi-asetuksen laturi sen, mikä jää jäljelle.",
+  "entity.help.chargerPriority": "Kun useampi latauspiste jakaa kohteen sulakkeen, Ensin-asetuksen laturi saa virtaa ennen muita ja Viimeksi-asetuksen laturi sen, mikä jää jäljelle.",
   "entity.voltage.tn": "400 V (TN-verkko, tavallinen)",
   "entity.voltage.it": "230 V (IT-verkko, yleinen Norjassa)",
-  "entity.priority.first":
-    "Ensin",
-  "entity.priority.normal":
-    "Normaali",
-  "entity.priority.last":
-    "Viimeksi",
+  "entity.priority.first": "Ensin",
+  "entity.priority.normal": "Normaali",
+  "entity.priority.last": "Viimeksi",
   "entity.help.batteryPower": "Kotiakun tehon anturi, jotta SpotNav voi ottaa akun huomioon.",
   "entity.help.maxAge": "Kuinka vanha mittaus saa olla sekunteina, ennen kuin SpotNav lakkaa luottamasta siihen.",
   "entity.help.phaseDirect": "Anturi, joka mittaa tämän vaiheen virran ampeereina.",
@@ -320,12 +312,9 @@ export const fi: Record<keyof typeof en, string> = {
   "site.activeControl.on": "Päällä",
   "site.activeControl.off": "Pois",
   "site.activeControl.available": "Käytettävissä",
-  "site.activeControl.reason.duplicateMembership":
-    "Ei käytettävissä: tämä laturi kuuluu useampaan kuin yhteen kohteeseen.",
-  "site.activeControl.reason.noCommandableCharger":
-    "Ei käytettävissä: yksikään kohteen laturi ei ota vastaan virtakomentoa.",
-  "site.activeControl.reason.measurement":
-    "Ei käytettävissä: kohteen oma tehomittaus ei ole kunnossa.",
+  "site.activeControl.reason.duplicateMembership": "Ei käytettävissä: tämä laturi kuuluu useampaan kuin yhteen kohteeseen.",
+  "site.activeControl.reason.noCommandableCharger": "Ei käytettävissä: yksikään kohteen laturi ei ota vastaan virtakomentoa.",
+  "site.activeControl.reason.measurement": "Ei käytettävissä: kohteen oma tehomittaus ei ole kunnossa.",
   "site.activeControl.note": "Toimii parhaan kyvyn mukaan, ei ole suojalaite. Kun kytket pois, laturi saa takaisin sen virran, jota oli laskettu.",
   "site.activeControl.pending": "Tallennetaan…",
   "site.activeControl.error.unavailable": "Kuormanhallintaa ei voi ottaa käyttöön juuri nyt: kohdetta ei voi ohjata aktiivisesti tällä hetkellä. Mitään ei muutettu.",
@@ -353,8 +342,7 @@ export const fi: Record<keyof typeof en, string> = {
   "issue.count.one": "{count} kohta tarkistettavana",
   "issue.count.other": "{count} kohtaa tarkistettavana",
   "graph.title": "Lataussuunnitelma",
-  "graph.description":
-    "Hintakaavio välillä {from}–{to}, yksikössä {unit} / kWh. {count} jaksoa, {days} päivää. Valittu: {selected}.",
+  "graph.description": "Hintakaavio välillä {from}–{to}, yksikössä {unit} / kWh. {count} jaksoa, {days} päivää. Valittu: {selected}.",
   "graph.descriptionNoSelection": "Ei valintaa.",
   "graph.descriptionNow": "Nykyinen jakso: {now}.",
   "graph.legend.today": "Tänään",
@@ -379,8 +367,7 @@ export const fi: Record<keyof typeof en, string> = {
   "graph.hint": "Selaa jaksoja nuolinäppäimillä.",
   "graph.toggle.show": "Näytä hintakaavio",
   "graph.toggle.hide": "Piilota hintakaavio",
-  "graph.keyboardInstructions":
-    "Hintakaavio. Nuolinäppäimet siirtyvät jaksosta toiseen, Home ja End hyppäävät päihin, Escape tyhjentää valinnan.",
+  "graph.keyboardInstructions": "Hintakaavio. Nuolinäppäimet siirtyvät jaksosta toiseen, Home ja End hyppäävät päihin, Escape tyhjentää valinnan.",
   "plan.proposal.one": "Halvin latausjakso ({count})",
   "plan.proposal.other": "Halvimmat latausjaksot ({count})",
   "plan.installed.one": "Aikataulutettu latausjakso ({count})",
@@ -394,8 +381,7 @@ export const fi: Record<keyof typeof en, string> = {
   "plan.activeNow": "Nyt",
   "plan.missing": "tuntematon",
   "cap.title": "Mitä laturi osaa",
-  "cap.intro":
-    "Perustuu siihen, mitä integraatio raportoi tälle laturille. Sitä, mikä ei ole täällä käytettävissä, kortti ei voi kytkeä päälle.",
+  "cap.intro": "Perustuu siihen, mitä integraatio raportoi tälle laturille. Sitä, mikä ei ole täällä käytettävissä, kortti ei voi kytkeä päälle.",
   "cap.autoPrice": "Automaattinen hintaohjaus",
   "cap.currentLimit": "Dynaaminen virran rajoitus",
   "cap.loadBalancing": "Kuormanhallinta",
@@ -447,6 +433,9 @@ export const fi: Record<keyof typeof en, string> = {
   "strategy.status.solar.noReadingWaiting": "Aurinko · ei vielä käyttökelpoista mittausta",
   "strategy.status.solar.waitingForSun": "Aurinko · odottaa aurinkoa",
   "strategy.status.solar.vehicleFull": "Aurinko · auto on täynnä",
+  "strategy.status.solar.noCar": "Aurinko · autoa ei ole kytketty",
+  "strategy.status.solar.noCarSurplus": "Aurinko · ylijäämää on",
+  "strategy.status.solar.noCarSurplusKw": "Aurinko · ylijäämää on ({kw} kW)",
   "strategy.status.solar.carStopped": "Aurinko · auto lopetti latauksen; yritetään uudelleen klo {time}",
   "strategy.status.solar.carStoppedNoTime": "Aurinko · auto lopetti latauksen",
   "strategy.status.solar.unknown": "Aurinko · tila tuntematon",
@@ -465,10 +454,8 @@ export const fi: Record<keyof typeof en, string> = {
   "strategy.status.hybrid.noPriceData": "Hybridi · odottaa hintatietoja",
   "strategy.status.hybrid.satisfied": "Hybridi · lataustarve on jo täytetty",
   "strategy.status.hybrid.unknown": "Hybridi · suunnittelee",
-  "advisory.vehicleNotRequestingCurrent":
-    "Lataus aloitettiin, mutta ajoneuvo ei pyydä virtaa. Tarkista ajoneuvon latausasetukset tai kytke kaapeli uudelleen.",
-  "advisory.powerBelowThreshold":
-    "Lataus käynnistettiin, mutta latauslaite ei ota juuri lainkaan tehoa. Auto voi olla valmis tai ei lataa: tarkista ajoneuvon latausasetukset tai kytke kaapeli uudelleen.",
+  "advisory.vehicleNotRequestingCurrent": "Lataus aloitettiin, mutta ajoneuvo ei pyydä virtaa. Tarkista ajoneuvon latausasetukset tai kytke kaapeli uudelleen.",
+  "advisory.powerBelowThreshold": "Lataus käynnistettiin, mutta latauslaite ei ota juuri lainkaan tehoa. Auto voi olla valmis tai ei lataa: tarkista ajoneuvon latausasetukset tai kytke kaapeli uudelleen.",
   "control.noSettings": "Tällä laturilla ei ole vielä asetuksia, joten aloitettavaa tai pysäytettävää ei ole.",
   "control.pauseUnsettled": "Tauko on tallennettu, mutta se ei ole vielä voimassa. Mitään ei sovelleta.",
   "control.pauseClearFailed": "Tauko on päättynyt, mutta sitä ei voitu poistaa, joten mitään ei sovelleta.",
@@ -487,8 +474,7 @@ export const fi: Record<keyof typeof en, string> = {
   "action.error.unavailable": "Tämä toiminto ei ole juuri nyt käytettävissä.",
   "action.error.failed": "Toimintoa ei voitu suorittaa. Mikään ei muuttunut.",
   "action.error.reconcileFailed": "Toiminto suoritettiin, mutta suunnitelmaa ei voitu päivittää.",
-  "action.error.confirmationFailed":
-    "Toiminto hyväksyttiin, mutta sen nykyistä tilaa ei voitu vahvistaa.",
+  "action.error.confirmationFailed": "Toiminto hyväksyttiin, mutta sen nykyistä tilaa ei voitu vahvistaa.",
   "action.error.invalidPause": "Tämä taukovaihtoehto ei ole juuri nyt käytettävissä tälle laturille.",
   "action.error.notConnected": "Autoa ei ole kytketty, joten käynnistettävää ei ole.",
   "action.error.charger": "Määritettyä laturia ei tavoitettu.",
@@ -501,14 +487,11 @@ export const fi: Record<keyof typeof en, string> = {
   "context.currency": "Valuutta",
   "market.unset": "Ei asetettu",
   "market.title": "Alue ja verot",
-  "market.intro":
-    "Miltä markkinalta laturi ostaa sähkönsä, ja mitkä verot hintoihin lisätään.",
+  "market.intro": "Miltä markkinalta laturi ostaa sähkönsä, ja mitkä verot hintoihin lisätään.",
   "market.loading": "Luetaan alueluetteloa…",
-  "market.readOnly":
-    "Vain ylläpitäjät voivat muuttaa aluetta ja veroja. Voit lukea ne tästä.",
+  "market.readOnly": "Vain ylläpitäjät voivat muuttaa aluetta ja veroja. Voit lukea ne tästä.",
   "market.area.label": "Alue",
-  "market.area.description":
-    "Alue määrää, mitä hintoja käytetään ja mitä veroja ehdotetaan.",
+  "market.area.description": "Alue määrää, mitä hintoja käytetään ja mitä veroja ehdotetaan.",
   "market.included": "Sisältyy hintaan",
   "market.includedNote": "Julkaistu hinta sisältää jo nämä, joten mitään ei lisätä.",
   "market.source": "Hintojen lähde:",
@@ -534,152 +517,87 @@ export const fi: Record<keyof typeof en, string> = {
   "market.suggestion.label": "Ehdotettu: {value} {unit}",
   "market.suggestion.none": "Alueelle ei julkaista ehdotettua arvoa.",
   "market.error.read": "Alueluetteloa ei voitu lukea.",
-  "market.error.version":
-    "Tämä kortti ja integraatio puhuvat eri markkinaversioita.",
+  "market.error.version": "Tämä kortti ja integraatio puhuvat eri markkinaversioita.",
   "market.error.areaRequired": "Valitse alue ennen tallennusta.",
   "market.error.areaUnknown": "Se alue ei ole julkaistu vaihtoehto.",
   "market.error.noSuggestion": "Alue ei julkaise ehdotettua arvoa tälle.",
   "market.state.loading": "Alueluetteloa luetaan yhä.",
-  "market.state.staleOffline":
-    "Tämä on viimeisin Home Assistantin vastaanottama alueluettelo; releeseen ei ole saatu yhteyttä sen jälkeen.",
-  "market.state.staleInvalid":
-    "Tämä on viimeisin Home Assistantin vastaanottama alueluettelo; releen uudempaa luetteloa ei voitu lukea.",
-  "market.state.offline":
-    "Releeseen ei saatu yhteyttä, joten alueita ei luetella juuri nyt.",
-  "market.state.invalid":
-    "Releen alueluetteloa ei voitu lukea, joten alueita ei luetella juuri nyt.",
-  "settings.energy.aria":
-    "Energia: {value}",
-  "settings.deadline.aria":
-    "Määräaika: {value}",
-  "settings.current.aria":
-    "Virta: {value}",
-  "settings.energy.unset":
-    "Ei asetettu",
-  "settings.deadline.none":
-    "Ei määräaikaa",
-  "settings.current.unset":
-    "Ei asetettu",
-  "settings.energy.title":
-    "Latausenergia",
-  "settings.energy.intro":
-    "Kuinka paljon energiaa latauksen pitää tuottaa. Suunnitelma muuttaa sen jaksoiksi.",
-  "settings.energy.label":
-    "Toivottu energia",
-  "settings.energy.targetSoc":
-    "Tämä laturi suunnittelee lataustason tavoitteesta, joten manuaalista energiaa ei voi muuttaa tässä.",
-  "settings.deadline.title":
-    "Määräaika ja latausjaksot",
-  "settings.deadline.intro":
-    "Milloin lataus on viimeistään valmis ja kuinka monta jaksoa se saa käyttää.",
-  "settings.deadline.enabled":
-    "Valmis määräaikaan mennessä",
-  "settings.deadline.time":
-    "Lähtöaika",
-  "settings.deadline.date":
-    "Lähtö",
-  "settings.deadline.dateDaily":
-    "Joka päivä",
-  "settings.deadline.dateOn":
-    "Tietty päivämäärä",
-  "settings.deadline.dateHelp":
-    "Suunnitelma voi odottaa tunteja, jotka ovat yleensä halvempia. Lähtö pidetään aina.",
-  "settings.deadline.datePast":
-    "Päivämäärä on mennyt ohi, joten suunnitelma toimii joka päivä, kunnes valitset uuden päivämäärän. Tallennus tyhjentää sen.",
-  "settings.deadline.weekdays":
-    "Viikonpäivät",
-  "settings.deadline.weekdaysHelp":
-    "Pois jätettynä päivänä ei ole lähtöä: suunnitelma ulottuu seuraavaan valitsemaasi päivään.",
-  "settings.deadline.today":
-    "tänään",
-  "settings.deadline.tomorrow":
-    "huomenna",
-  "settings.deadline.periods":
-    "Latausjaksoja enint.",
-  "settings.deadline.periodsValue.one": "{count} jakso",
-  "settings.deadline.periodsValue.other": "{count} jaksoa",
-  "settings.current.title":
-    "Suunniteltu virta",
-  "settings.current.intro":
-    "Virta, jota suunnitelma saa pyytää. Se on suunnitteluarvo, ei komento laturille.",
-  "settings.current.label":
-    "Suunniteltu virta",
-  "settings.loading":
-    "Luetaan nykyisiä asetuksia…",
-  "settings.section.support":
-    "Tuki",
-  "debug.intro":
-    "Tallentaa yhden tiedoston, jossa on versiot, tila ja viimeisimmät lokirivit vikailmoitusta varten. Salaisuudet ja tarkka sijaintisi jätetään pois.",
-  "debug.download":
-    "Lataa vianetsintätiedot",
-  "debug.preparing":
-    "Valmistellaan…",
-  "debug.error.notAdmin":
-    "Vain ylläpitäjät voivat ladata vianetsintätiedot.",
-  "debug.error.failed":
-    "Vianetsintätietoja ei voitu hakea.",
-  "debug.cardOutdated":
-    "Tämän selaimen tai sovelluksen kortti on vanhempi kuin SpotNav. Lataa sivu uudelleen; Home Assistantin Companion-sovelluksessa pakota sovellus pysähtymään ja avaa se uudelleen.",
-  "settings.readOnly":
-    "Vain ylläpitäjät voivat muuttaa asetuksia. Voit lukea ne tässä.",
-  "settings.save":
-    "Tallenna",
-  "settings.cancel":
-    "Peruuta",
-  "settings.reload":
-    "Käytä palvelimen arvoja",
-  "settings.reapply":
-    "Käytä muutostani uudelleen",
-  "settings.conflict.title":
-    "Muutettu muualla",
-  "settings.conflict.intro":
-    "Näitä asetuksia muutettiin sen jälkeen, kun tämä valintaikkuna avattiin. Mitään ei tallennettu, ja arvosi ovat edelleen tässä.",
-  "settings.error.required":
-    "Täytä tämä ennen tallentamista.",
-  "settings.error.invalidNumber":
-    "Se ei ole luku.",
-  "settings.error.outOfRange":
-    "Arvo on sallitun alueen ulkopuolella.",
-  "settings.error.invalidDate":
-    "Valitse kelvollinen päivämäärä.",
-  "settings.error.dateRange":
-    "Valitse päivämäärä tästä päivästä enintään 7 päivän päähän.",
-  "settings.error.weekdays":
-    "Valitse vähintään yksi viikonpäivä.",
-  "settings.error.invalidTime":
-    "Käytä aikaa kuten 06:30.",
-  "settings.error.read":
-    "Asetuksia ei voitu lukea.",
-  "settings.error.refused":
-    "Asetukset hylättiin. Mikään ei muuttunut.",
-  "settings.error.notCommitted":
-    "Asetuksia ei tallennettu. Mikään ei muuttunut.",
-  "settings.error.reconcileFailed":
-    "Asetukset tallennettiin, mutta suunnitelmaa ei voitu päivittää.",
-  "settings.error.confirmationFailed":
-    "Asetukset tallennettiin, mutta nykyistä tilaa ei voitu vahvistaa.",
-  "settings.error.version":
-    "Kortti ja integraatio käyttävät eri asetusversioita.",
-  "settings.error.unavailable":
-    "Asetukset eivät ole juuri nyt käytettävissä.",
-  "settings.error.charger":
-    "Määritettyä laturia ei tavoitettu.",
-  "settings.error.generic":
-    "Asetuksia ei voitu muuttaa. Mikään ei muuttunut.",
-  "settings.error.invalid":
-    "Asetukset hylättiin virheellisinä. Mikään ei muuttunut.",
-  "settings.error.readOnly":
-    "Vain ylläpitäjät voivat muuttaa asetuksia.",
-  "settings.energy.slider":
-    "Energialiukusäädin, {min}–{max} kWh puolen kWh:n askelin",
-  "settings.current.slider":
-    "Virran liukusäädin, {min}–{max} A kokonaisina ampeereina",
-  "settings.current.power":
-    "Nimellisteho ≈ {power} kW",
-  "settings.current.powerUnknown":
-    "Nimellisteho tuntematon",
+  "market.state.staleOffline": "Tämä on viimeisin Home Assistantin vastaanottama alueluettelo; releeseen ei ole saatu yhteyttä sen jälkeen.",
+  "market.state.staleInvalid": "Tämä on viimeisin Home Assistantin vastaanottama alueluettelo; releen uudempaa luetteloa ei voitu lukea.",
+  "market.state.offline": "Releeseen ei saatu yhteyttä, joten alueita ei luetella juuri nyt.",
+  "market.state.invalid": "Releen alueluetteloa ei voitu lukea, joten alueita ei luetella juuri nyt.",
+  "settings.energy.aria": "Energia: {value}",
+  "settings.deadline.aria": "Määräaika: {value}",
+  "settings.current.aria": "Virta: {value}",
+  "settings.energy.unset": "Ei asetettu",
+  "settings.deadline.none": "Ei määräaikaa",
+  "settings.current.unset": "Ei asetettu",
+  "settings.energy.title": "Latausenergia",
+  "settings.energy.intro": "Kuinka paljon energiaa latauksen pitää tuottaa. Suunnitelma muuttaa sen jaksoiksi.",
+  "settings.energy.label": "Toivottu energia",
+  "settings.energy.targetSoc": "Tämä laturi suunnittelee lataustason tavoitteesta, joten manuaalista energiaa ei voi muuttaa tässä.",
+  "settings.deadline.title": "Määräaika",
+  "settings.deadline.intro": "Milloin lataus on viimeistään valmis.",
+  "settings.deadline.enabled": "Valmis määräaikaan mennessä",
+  "settings.deadline.time": "Lähtöaika",
+  "settings.deadline.date": "Lähtö",
+  "settings.deadline.dateDaily": "Joka päivä",
+  "settings.deadline.dateOn": "Tietty päivämäärä",
+  "settings.deadline.dateHelp": "Suunnitelma voi odottaa tunteja, jotka ovat yleensä halvempia. Lähtö pidetään aina.",
+  "settings.deadline.datePast": "Päivämäärä on mennyt ohi, joten suunnitelma toimii joka päivä, kunnes valitset uuden päivämäärän. Tallennus tyhjentää sen.",
+  "settings.deadline.weekdays": "Viikonpäivät",
+  "settings.deadline.weekdaysHelp": "Pois jätettynä päivänä ei ole lähtöä: suunnitelma ulottuu seuraavaan valitsemaasi päivään.",
+  "settings.deadline.today": "tänään",
+  "settings.deadline.tomorrow": "huomenna",
+  "settings.periods.label": "Latausjaksot",
+  "settings.periods.help": "Miten lataus saa jakautua. Luku on suurin jaksojen määrä, jonka se saa käyttää.",
+  "settings.periods.auto": "Automaattinen",
+  "settings.periods.autoHelp": "Halvimmat tunnit, jaettuna vain kun säästö on uuden käynnistyksen arvoinen. Jokainen jakso on vähintään 30 minuuttia.",
+  "settings.periods.value.one": "{count} jakso",
+  "settings.periods.value.other": "{count} jaksoa",
+  "settings.current.title": "Suunniteltu virta",
+  "settings.current.intro": "Virta, jota suunnitelma saa pyytää. Se on suunnitteluarvo, ei komento laturille.",
+  "settings.current.label": "Suunniteltu virta",
+  "settings.loading": "Luetaan nykyisiä asetuksia…",
+  "settings.section.support": "Tuki",
+  "debug.intro": "Tallentaa yhden tiedoston, jossa on versiot, tila ja viimeisimmät lokirivit vikailmoitusta varten. Salaisuudet ja tarkka sijaintisi jätetään pois.",
+  "debug.download": "Lataa vianetsintätiedot",
+  "debug.preparing": "Valmistellaan…",
+  "debug.error.notAdmin": "Vain ylläpitäjät voivat ladata vianetsintätiedot.",
+  "debug.error.failed": "Vianetsintätietoja ei voitu hakea.",
+  "debug.cardOutdated": "Tämän selaimen tai sovelluksen kortti on vanhempi kuin SpotNav. Lataa sivu uudelleen; Home Assistantin Companion-sovelluksessa pakota sovellus pysähtymään ja avaa se uudelleen.",
+  "settings.readOnly": "Vain ylläpitäjät voivat muuttaa asetuksia. Voit lukea ne tässä.",
+  "settings.save": "Tallenna",
+  "settings.cancel": "Peruuta",
+  "settings.reload": "Käytä palvelimen arvoja",
+  "settings.reapply": "Käytä muutostani uudelleen",
+  "settings.conflict.title": "Muutettu muualla",
+  "settings.conflict.intro": "Näitä asetuksia muutettiin sen jälkeen, kun tämä valintaikkuna avattiin. Mitään ei tallennettu, ja arvosi ovat edelleen tässä.",
+  "settings.error.required": "Täytä tämä ennen tallentamista.",
+  "settings.error.invalidNumber": "Se ei ole luku.",
+  "settings.error.outOfRange": "Arvo on sallitun alueen ulkopuolella.",
+  "settings.error.invalidDate": "Valitse kelvollinen päivämäärä.",
+  "settings.error.dateRange": "Valitse päivämäärä tästä päivästä enintään 7 päivän päähän.",
+  "settings.error.weekdays": "Valitse vähintään yksi viikonpäivä.",
+  "settings.error.invalidTime": "Käytä aikaa kuten 06:30.",
+  "settings.error.read": "Asetuksia ei voitu lukea.",
+  "settings.error.refused": "Asetukset hylättiin. Mikään ei muuttunut.",
+  "settings.error.notCommitted": "Asetuksia ei tallennettu. Mikään ei muuttunut.",
+  "settings.error.reconcileFailed": "Asetukset tallennettiin, mutta suunnitelmaa ei voitu päivittää.",
+  "settings.error.confirmationFailed": "Asetukset tallennettiin, mutta nykyistä tilaa ei voitu vahvistaa.",
+  "settings.error.version": "Kortti ja integraatio käyttävät eri asetusversioita.",
+  "settings.error.unavailable": "Asetukset eivät ole juuri nyt käytettävissä.",
+  "settings.error.charger": "Määritettyä laturia ei tavoitettu.",
+  "settings.error.generic": "Asetuksia ei voitu muuttaa. Mikään ei muuttunut.",
+  "settings.error.invalid": "Asetukset hylättiin virheellisinä. Mikään ei muuttunut.",
+  "settings.error.readOnly": "Vain ylläpitäjät voivat muuttaa asetuksia.",
+  "settings.energy.slider": "Energialiukusäädin, {min}–{max} kWh puolen kWh:n askelin",
+  "settings.current.slider": "Virran liukusäädin, {min}–{max} A kokonaisina ampeereina",
+  "settings.current.power": "Nimellisteho ≈ {power} kW",
+  "settings.current.powerUnknown": "Nimellisteho tuntematon",
   "bar.plan": "Suunnitelma",
   "settings.plan.title": "Latausuunnitelma",
+  "settings.plan.titleFor": "Latausuunnitelma: {name}",
   "settings.plan.intro": "Kuinka paljon ladataan, milloin lataus on oltava valmis ja kuinka suurta virtaa suunnitelma saa pyytää. Nämä ovat suunnitteluarvoja, eivät komentoja latauslaitteelle.",
   "settings.plan.aria": "Suunnitelma: {value}",
   "entity.vehicle.automatic": "Automaattinen tunnistus",
@@ -687,14 +605,17 @@ export const fi: Record<keyof typeof en, string> = {
   "entity.error.field.unknownVehicle": "Ajoneuvoa ei enää ole.",
   "issue.targetSocUnknown": "Lataustason tavoitetta ei voi suunnitella: ajoneuvon lataustaso tai akun kapasiteetti ei ole tiedossa. Avaa Suunnitelma valitaksesi anturin tai antaaksesi kapasiteetin.",
   "settings.plan.mode.legend": "Lataa perusteella",
-  "settings.plan.mode.energy": "Energia (kWh)",
-  "settings.plan.mode.soc": "Tavoite-SoC (%)",
+  "settings.plan.mode.energy": "Energia · kWh",
+  "settings.plan.mode.soc": "Tavoite-SoC · %",
   "settings.soc.target": "Lataustavoite",
   "settings.soc.slider": "Lataustavoite, prosenttia",
+  "settings.soc.floorMark": "väh. {percent} %",
+  "settings.soc.markNow": "nyt",
+  "settings.soc.markNowEstimated": "≈ nyt",
+  "settings.soc.markLimit": "raja",
   "settings.soc.vehicle": "Ajoneuvo",
   "settings.soc.vehicleUnknown": "Ei valittu",
   "settings.soc.estimated": "arvioitu",
-  "settings.soc.estimatedFrom": "arvioitu, luettu viimeksi {age}",
   "settings.soc.unknown": "Tuntematon",
   "settings.soc.need": "Tarvittava energia",
   "settings.soc.capacityMissing": "Akun kapasiteetti puuttuu — anna se Asetuksissa",
@@ -706,7 +627,7 @@ export const fi: Record<keyof typeof en, string> = {
   "settings.soc.age.day": "{count} pv sitten",
   "settings.overview.titleNamed": "Kortin asetukset · {name}",
   "settings.soc.factNow": "Nyt {value}",
-  "settings.soc.factLimit": "Auton latausraja {value}",
+  "settings.soc.factLimit": "Latausraja {value}",
   "settings.soc.noNeed": "Latausta ei tarvita nyt",
   "settings.soc.toLimit": "Ladataan auton rajaan, {value}",
   "settings.energy.fullMark": "täynnä",
@@ -714,8 +635,6 @@ export const fi: Record<keyof typeof en, string> = {
   "settings.energy.roomHelp": "Akun täyttämiseen tarvitaan {kwh} kWh{limit}.",
   "settings.energy.fillHelp": "Lataa, kunnes akku on täynnä{limit}, nyt {kwh} kWh.",
   "settings.energy.limitSuffix": " (auton latausrajaan {percent} %)",
-  "settings.carEndsCharge": "Auto lopettaa latauksen itse, kun se on täynnä tai saavuttaa latausrajansa ({percent} %).",
-  "settings.soc.readAge": "Luettu {age}",
   "settings.soc.needAfterVehicle": "Tarve lasketaan, kun ajoneuvon valinta on tallennettu.",
   "vehicleLine.aria": "{name}, {summary}",
   "vehicleLine.estimateTitle": "Arvio lukemien välillä, luettu {age}",
@@ -869,6 +788,17 @@ export const fi: Record<keyof typeof en, string> = {
   "settings.status.notControlled": "Ei ohjata",
   "settings.status.foundAutomatically": "Löydetty automaattisesti",
   "settings.vehicle.limit": "Latausraja",
+  "settings.vehicle.limitHelp": "Kirjoitetaan auton integraation kautta; tulee voimaan, kun auto seuraavan kerran lukee sen",
+  "settings.vehicle.limitSlider": "Latausraja, prosenttia",
+  "settings.vehicle.limitTooSoon": "Latausrajaa muutettiin alle minuutti sitten. Yritä hetken päästä uudelleen.",
+  "settings.vehicle.limitFailed": "Latausrajaa ei voitu asettaa",
   "settings.vehicle.targetHelp": "Seuraa autoa kaikille latureille",
-  "settings.vehicle.sourcesHelp": "Luetaan vain sen näkemiseksi, mikä auto on kytketty.",
-};
+  "settings.vehicle.targetDefault": "(oletus)",
+  "settings.vehicle.minimum": "Alin varaustaso",
+  "settings.vehicle.minimumOff": "Pois",
+  "settings.vehicle.minimumCap": "lataustavoite {percent} %",
+  "settings.vehicle.minimumSlider": "Alin varaustaso, pois tai prosenttia",
+  "settings.vehicle.minimumNeedsSoc": "tarvitsee auton varaustason",
+  "settings.vehicle.minimumHelp": "Tämän tason alapuolella SpotNav lataa heti täydellä virralla strategiasta riippumatta. Valitsemasi tauko tai pysäytys menee edelle. Tarvitsee auton varaustason.",
+  "settings.vehicle.sourcesHelp": "Luetaan vain sen näkemiseksi, mikä auto on kytketty."
+}

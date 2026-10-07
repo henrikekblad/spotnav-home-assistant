@@ -22,6 +22,7 @@ from .api.dashboard import async_setup_dashboard_api
 from .api.debug import async_setup_debug_api
 from .api.entity_config import async_setup_entity_config_api
 from .api.camera import async_setup_camera_api
+from .api.charge_limit import async_setup_charge_limit_api
 from .api.identification import async_setup_identification_api
 from .api.manual_action import async_setup_manual_action_api
 from .api.market import async_setup_market_api
@@ -45,6 +46,7 @@ from .entity_renames import async_setup_entity_renames
 from .log_buffer import attach_log_buffer
 from .execution.auto_execution import AutoExecutor, pause_blocks_execution
 from .execution.controller import ChargingController
+from .execution.min_soc_floor import FloorInputs, MinSocFloor
 from .execution.solar_execution import (
     async_rebind_solar_execution,
     async_setup_solar_execution,
@@ -91,11 +93,12 @@ from .site.site_join import (
     prune_missing_members,
 )
 from .site.site_capacity_controller import SiteCapacityController
+from .texts import async_load as async_load_texts
 from .vehicles.discovery_decisions import async_setup_decisions
 from .vehicles.soc_estimate import SocReader
 from .vehicles.vehicle_refresh import async_ask_vehicle_update
 from .vehicles.vehicle_discovery import charger_vehicle_ids, resolve_target_vehicle, vehicle_soc_entity_id
-from .vehicles.vehicle_properties import consumption_kwh_per_10km, stored_capacity_kwh
+from .vehicles.vehicle_properties import consumption_kwh_per_10km, stored_capacity_kwh, stored_properties
 
 
 _LOGGER = logging.getLogger(__name__)
@@ -108,6 +111,8 @@ async def async_setup(hass: HomeAssistant, config: dict[str, Any]) -> bool:
     repeatedly.
     """
     data = domain_data(hass)
+    # SpotNav's own words (`i18n/<lang>.json`), read once off the event loop.
+    await async_load_texts(hass)
     # Keep SpotNav's own recent log records for the debug bundle; changes no log level.
     data.log_buffer = attach_log_buffer()
     await async_setup_decisions(hass)
@@ -139,6 +144,7 @@ async def async_setup(hass: HomeAssistant, config: dict[str, Any]) -> bool:
     async_setup_site_settings_api(hass)
     async_setup_entity_config_api(hass)
     async_setup_identification_api(hass)
+    async_setup_charge_limit_api(hass)
     async_setup_camera_api(hass)
     async_setup_debug_api(hass)
     # Static route for the bundled card asset, versioned by the manifest.
@@ -466,6 +472,33 @@ async def _async_setup_auto_preview(
             entry.async_create_task(hass, preview.async_recalculate(), f"{entry_id} recalculate")
 
     data.soc_reader.set_on_reading(_soc_moved)
+
+    def _floor_inputs() -> FloorInputs | None:
+        # The car the charger plans for, read as the planner reads it, with no side effect on the planner's wait.
+        settings = settings_store.settings(entry_id)
+        vehicle_id, _ = resolve_target_vehicle(hass, settings.target.vehicle_id, charger_vehicle_ids(hass, entry_id))
+        if vehicle_id is None:
+            return None
+        floor = stored_properties(hass, vehicle_id).min_percent
+        if floor is None:
+            return FloorInputs(min_percent=None, target_percent=None, vehicle_max_percent=None, soc_percent=None)
+        data.soc_reader.ensure_watch(vehicle_id)
+        reading = data.soc_reader.read(vehicle_id)
+        return FloorInputs(
+            min_percent=floor,
+            target_percent=settings.target.target_percent if settings.driver == DRIVER_TARGET_SOC else None,
+            vehicle_max_percent=data.soc_reader.vehicle_max_percent(vehicle_id),
+            soc_percent=None if reading is None else reading.soc_percent,
+            soc_estimated=bool(reading is not None and reading.estimated),
+            soc_age_s=None if reading is None else reading.age_s,
+        )
+
+    # The car's minimum charge level: decided again at every change of the charger, every calculation (a new
+    # reading plans again) and every half minute.
+    floor = data.min_soc = MinSocFloor(hass, entry_id, data.executor, settings_store, _floor_inputs)
+    floor.async_start()
+    entry.async_on_unload(floor.async_stop)
+    entry.async_on_unload(preview.add_listener(floor.async_poke))
 
     def _on_connection(event: str) -> bool:
         # A plug-in or an unplug: plan again (the need counted afresh for a new plug-in), and let Auto

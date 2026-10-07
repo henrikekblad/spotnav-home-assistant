@@ -67,10 +67,11 @@ export const VISUAL_CLASSES = {
   cameraHandle: "spotnav-camera-handle",
   cameraPreview: "spotnav-camera-preview",
   cameraTools: "spotnav-camera-tools",
-  referenceThumbs: "spotnav-reference-thumbs",
+  referenceTiles: "spotnav-reference-tiles",
   vehicleTabs: "spotnav-vehicle-tabs",
   vehicleTab: "spotnav-vehicle-tab",
-  referenceThumb: "spotnav-reference-thumb",
+  referenceTile: "spotnav-reference-tile",
+  referenceTileLabel: "spotnav-reference-tile-label",
   referenceSlots: "spotnav-reference-slots",
   referenceSlot: "spotnav-reference-slot",
   referenceSlotTitle: "spotnav-reference-slot-title",
@@ -140,6 +141,7 @@ export const VISUAL_CLASSES = {
   settingsReapply: "spotnav-settings-reapply",
   settingsReadOnly: "spotnav-settings-readonly",
   settingsNote: "spotnav-settings-note",
+  settingsFact: "spotnav-settings-fact",
   capacityBlock: "spotnav-capacity-block",
   socLink: "spotnav-soc-link",
   settingsConflict: "spotnav-settings-conflict",
@@ -147,6 +149,12 @@ export const VISUAL_CLASSES = {
   settingsUnit: "spotnav-settings-unit",
   settingsTrack: "spotnav-settings-track",
   settingsFullMark: "spotnav-settings-full-mark",
+  settingsFloorMark: "spotnav-settings-floor-mark",
+  settingsFloorSegment: "spotnav-settings-floor-segment",
+  sliderBlocked: "spotnav-slider-blocked",
+  sliderEnds: "spotnav-slider-ends",
+  valueAmount: "spotnav-value-amount",
+  valueDefault: "spotnav-value-default",
   settingsHead: "spotnav-settings-head",
   settingsAmount: "spotnav-settings-amount",
   settingsPower: "spotnav-settings-power",
@@ -381,21 +389,24 @@ export const VISUAL_STYLES = `
   }
   /*
    * The energy slider's track with its "full" mark: a thin line across the track at the battery's room
-   * (\`--spotnav-mark\`, 0..1 of the track, inset by half a thumb at each end) and its word under it.
+   * (\`--spotnav-mark\`, 0..1 of the track, inset by half a thumb at each end) and its word under it. The
+   * plan's target slider marks the level now and the car's limit the same way; a word that would touch
+   * another goes a line lower (\`--spotnav-mark-level\`, the track as deep as \`--spotnav-mark-lines\`), and
+   * one at an end is moved inside the track (\`--spotnav-mark-shift\`) while its line stays at the tick.
    */
   .spotnav-settings-track {
     position: relative;
     min-width: 0;
   }
   .spotnav-settings-track:has(> .spotnav-settings-full-mark:not([hidden])) {
-    padding-bottom: 0.4rem;
+    padding-bottom: calc(0.4rem + (var(--spotnav-mark-lines, 1) - 1) * 0.825em);
   }
   .spotnav-settings-full-mark {
     position: absolute;
     top: 0;
     left: calc(8px + (100% - 16px) * var(--spotnav-mark, 0));
-    transform: translateX(-50%);
-    padding-top: 1.125rem;
+    transform: translateX(calc(-50% + var(--spotnav-mark-shift, 0px)));
+    padding-top: calc(1.125rem + var(--spotnav-mark-level, 0) * 1.1em);
     font-size: 0.75em;
     line-height: 1;
     white-space: nowrap;
@@ -407,13 +418,71 @@ export const VISUAL_STYLES = `
     position: absolute;
     /* Across the 1.25rem slider's track, centred on it. */
     top: 0.125rem;
-    left: 50%;
+    left: calc(50% - var(--spotnav-mark-shift, 0px));
     height: 1rem;
     transform: translateX(-50%);
     border-left: 2px solid var(--primary-text-color, #212121);
   }
   .spotnav-settings-full-mark[hidden] {
     display: none;
+  }
+  /*
+   * The minimum charge level on the plan's target slider: the track from 0 to it in a darker tone of the
+   * fill, and "min 30 %" under the middle of that part (no line across the track, unlike the "full" mark).
+   */
+  .spotnav-settings-floor-segment {
+    position: absolute;
+    top: 0.4375rem;
+    left: 8px;
+    width: calc((100% - 16px) * var(--spotnav-mark, 0));
+    height: 0.375rem;
+    border-radius: 0.1875rem 0 0 0.1875rem;
+    background: color-mix(in srgb, var(--primary-color, #03a9f4) 55%, #000);
+    pointer-events: none;
+  }
+  .spotnav-settings-floor-segment[hidden] {
+    display: none;
+  }
+  .spotnav-settings-floor-mark::before {
+    display: none;
+  }
+  /*
+   * The minimum's own slider: past the car's target it cannot go, so that part of the track is hatched
+   * (from \`--spotnav-from\`, 0..1 of the track) and the target is marked where it starts.
+   */
+  .spotnav-slider-blocked {
+    position: absolute;
+    top: 0.4375rem;
+    left: calc(8px + (100% - 16px) * var(--spotnav-from, 1));
+    right: 8px;
+    height: 0.375rem;
+    border-radius: 0 0.1875rem 0.1875rem 0;
+    background: repeating-linear-gradient(
+      135deg,
+      var(--card-background-color, #fff) 0 3px,
+      var(--secondary-text-color, #727272) 3px 6px
+    );
+    pointer-events: none;
+  }
+  .spotnav-slider-ends {
+    display: flex;
+    justify-content: space-between;
+    padding: 0 2px;
+    font-size: 0.75em;
+    color: var(--secondary-text-color, #727272);
+  }
+  /* A percent editor's value, large above its slider; "(default)" muted after a target none stored. */
+  .spotnav-value-amount {
+    margin: 8px 0 4px;
+    font-size: 1.75em;
+    font-weight: 500;
+    font-variant-numeric: tabular-nums;
+    color: var(--primary-color, #03a9f4);
+  }
+  .spotnav-value-default {
+    font-size: 0.5em;
+    font-weight: 400;
+    color: var(--secondary-text-color, #727272);
   }
   .spotnav-settings-unit {
     white-space: nowrap;
@@ -442,6 +511,10 @@ export const VISUAL_STYLES = `
    * The help line right under a slider (what fills the battery, the car ends the charge) sits on it. Only
    * that note: the others follow a fieldset, a date or a checkbox row and keep their space above.
    */
+  /* The plan's info line under the vehicle: it breaks between its parts, never inside one. */
+  .spotnav-settings-fact {
+    white-space: nowrap;
+  }
   .spotnav-settings-field:has(> .spotnav-settings-track) + .spotnav-settings-note {
     margin: 0;
   }
@@ -1502,27 +1575,41 @@ export const VISUAL_STYLES = `
     color: var(--primary-color, #03a9f4);
     font-weight: 600;
   }
-  .${VISUAL_CLASSES.referenceThumbs} {
-    display: flex;
-    flex-wrap: wrap;
-    justify-content: flex-end;
-    gap: 6px;
-    min-width: 0;
-    margin: 0 0 4px;
+  /* A car's reference pictures under its row: two equal tiles, day and night, each the editor's slot picture. */
+  .${VISUAL_CLASSES.referenceTiles} {
+    margin: 0 0 8px;
   }
-  .${VISUAL_CLASSES.referenceThumb} {
-    display: block;
-    max-width: 45%;
-    max-height: 4.5em;
-    border-radius: 4px;
-    object-fit: cover;
+  .${VISUAL_CLASSES.referenceTile} {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    min-width: 0;
+    padding: 0;
+    font: inherit;
+    color: inherit;
+    text-align: start;
+    background: none;
+    border: 0;
+  }
+  button.${VISUAL_CLASSES.referenceTile} {
+    cursor: pointer;
+  }
+  .${VISUAL_CLASSES.referenceTileLabel} {
+    color: var(--secondary-text-color, #727272);
+    font-size: 0.85rem;
+  }
+  .${VISUAL_CLASSES.referenceTile}[data-state="empty"] .${VISUAL_CLASSES.referenceSlotPicture} {
+    border: 1px dashed var(--divider-color, #e0e0e0);
   }
   /* A car's reference pictures: two equal slots, day and night, each its picture, its button and a quiet Delete. */
   .${VISUAL_CLASSES.referenceSlots} {
+    margin: 8px 0;
+  }
+  .${VISUAL_CLASSES.referenceSlots},
+  .${VISUAL_CLASSES.referenceTiles} {
     display: grid;
     grid-template-columns: repeat(2, minmax(0, 1fr));
     gap: 12px;
-    margin: 8px 0;
   }
   .${VISUAL_CLASSES.referenceSlot} {
     display: flex;

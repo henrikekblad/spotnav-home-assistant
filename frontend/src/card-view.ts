@@ -9,6 +9,7 @@
 // max/min/current overlay (facts the model lacks are omitted, not shown as "unknown"), the action
 // bar, and the header's History and Settings actions.
 
+import { chargePeriodsLabel, chargePeriodsOptions, chargePeriodsReplacement, chargePeriodsValue } from "./charge-periods";
 import { chartNowAt, nextIntervalBoundary, type ChartMark, type ChartNow } from "./chart";
 import {
   createChartInteraction,
@@ -64,7 +65,9 @@ import {
   type MarketEditorForm,
 } from "./market-editor";
 import { settingsEditorBody, settingsTrigger, type SettingsEditorForm } from "./settings-editor";
-import type { ReferencePicture, Vehicle } from "./validate";
+import { type ReferencePicture, type Vehicle } from "./validate";
+import { floorEditor, limitEditor, targetEditor } from "./percent-editors";
+import { defaultTargetPercent } from "./percent-slider";
 import { vehicleSummary, type VehicleEdits, type VehicleReference } from "./vehicle-settings";
 import {
   multiEditor,
@@ -2433,6 +2436,26 @@ export function createCardView(input: CardViewInput): CardView {
     ];
   }
 
+  /** The charge periods, an administrator's charger setting: automatic, or at most 1 to 8 (`charge-periods.ts`). */
+  function chargePeriodsRows(): HTMLElement[] {
+    const record = model.dashboardSettings;
+    if (record === null || !input.isAdmin) {
+      return [];
+    }
+    const label = translate(model.language, "settings.periods.label");
+    return [
+      overviewRow("charge_periods", label, chargePeriodsLabel(model.language, record.max_periods), () =>
+        editSingle(
+          label,
+          chargePeriodsOptions(model.language),
+          chargePeriodsValue(record),
+          (chosen) => writeValue({ kind: "settings", build: (fresh) => chargePeriodsReplacement(fresh, chosen) }),
+          translate(model.language, "settings.periods.help"),
+        ),
+      ),
+    ];
+  }
+
   /**
    * Which car is plugged in, for a charger more than one car can charge at: the cars at this charger (at least
    * one) and how the plugged-in one is found, each in its own editor. Absent on a backend without the fields.
@@ -2662,7 +2685,9 @@ export function createCardView(input: CardViewInput): CardView {
      * One property's Save, under compare-and-set on what the row showed; after a conflict the next Save expects
      * what the answer says is stored now (the editor says it changed elsewhere and keeps what was typed).
      */
-    const propertyWrite = <K extends "capacity_kwh" | "consumption_kwh_per_10km" | "onboard_phases" | "target_percent">(
+    const propertyWrite = <
+      K extends "capacity_kwh" | "consumption_kwh_per_10km" | "onboard_phases" | "target_percent" | "min_percent",
+    >(
       field: K,
     ): ((value: Vehicle[K]) => Promise<string | null>) => {
       let expected: Vehicle[K] = row[field];
@@ -2695,21 +2720,44 @@ export function createCardView(input: CardViewInput): CardView {
             : undefined,
         );
     }
+    // The target is set with a slider; a car with none stored opens at the target it is planned with.
+    const plannedTarget = row.target_percent ?? defaultTargetPercent(row.max_percent);
     if (row.target_percent !== undefined) {
       const current = row.target_percent;
+      const save = propertyWrite("target_percent");
       edits.target = () =>
-        editNumber(
-          translate(model.language, "settings.soc.target"),
-          {
-            help: translate(model.language, "settings.vehicle.targetHelp"),
-            unit: "%",
-            current,
-            min: 0,
-            max: 100,
-            decimals: 0,
-            noneLabel: translate(model.language, "entity.notSet"),
-          },
-          propertyWrite("target_percent"),
+        openValueEditor(translate(model.language, "settings.soc.target"), (handlers) =>
+          targetEditor(
+            doc,
+            model.language,
+            {
+              current,
+              fallback: plannedTarget,
+              help: translate(model.language, "settings.vehicle.targetHelp"),
+              idPrefix,
+            },
+            save,
+            handlers,
+          ),
+        );
+    }
+    if (row.min_percent !== undefined) {
+      const current = row.min_percent;
+      const save = propertyWrite("min_percent");
+      edits.minimum = () =>
+        openValueEditor(translate(model.language, "settings.vehicle.minimum"), (handlers) =>
+          floorEditor(
+            doc,
+            model.language,
+            {
+              current,
+              target: plannedTarget,
+              help: translate(model.language, "settings.vehicle.minimumHelp"),
+              idPrefix,
+            },
+            save,
+            handlers,
+          ),
         );
     }
     edits.capacity = () =>
@@ -2737,6 +2785,21 @@ export function createCardView(input: CardViewInput): CardView {
         },
         propertyWrite("consumption_kwh_per_10km"),
       );
+    const limit = row.max_percent;
+    if (limit !== null && model.setChargeLimit) {
+      // A slider over what the car's integration takes (1-100 in whole percent when it says nothing).
+      const range = row.charge_limit_range;
+      edits.chargeLimit = () =>
+        openValueEditor(translate(model.language, "settings.vehicle.limit"), (handlers) =>
+          limitEditor(
+            doc,
+            model.language,
+            { current: limit, range, help: translate(model.language, "settings.vehicle.limitHelp"), idPrefix },
+            (value) => writeValue({ kind: "chargeLimit", vehicleId: row.id, percent: value }),
+            handlers,
+          ),
+        );
+    }
     edits.onboard = () =>
       editSingle(
         translate(model.language, "settings.vehicle.onboardLegend"),
@@ -2873,6 +2936,7 @@ export function createCardView(input: CardViewInput): CardView {
     } else if (model.chargerPriority !== null) {
       slot.append(...priorityRows());
     }
+    slot.append(...chargePeriodsRows());
     slot.append(...identificationRows());
   }
 
@@ -3327,9 +3391,17 @@ export function createCardView(input: CardViewInput): CardView {
   let settingsReapplyButton: HTMLButtonElement | null = null;
   let settingsPending = false;
   let settingsBodyReader: (() => SettingsFormValues) | null = null;
+  /** The car the Plan popover is about, as its body last said ("Charging plan for EV6"); `null` for none. */
+  let settingsVehicleName: string | null = null;
 
   function settingsTitleKey(kind: SettingsEditorKind): TranslationKey {
     return `settings.${kind}.title` as TranslationKey;
+  }
+
+  function settingsTitle(kind: SettingsEditorKind): string {
+    return kind === "plan" && settingsVehicleName !== null
+      ? translate(model.language, "settings.plan.titleFor", { name: settingsVehicleName })
+      : translate(model.language, settingsTitleKey(kind));
   }
 
   function settingsTriggerFor(kind: SettingsEditorKind): HTMLElement | null {
@@ -3375,6 +3447,8 @@ export function createCardView(input: CardViewInput): CardView {
     if (form === null || destroyed) {
       return;
     }
+    settingsVehicleName = null;
+    let building = true;
     const built = settingsEditorBody(
       doc,
       model.language,
@@ -3384,15 +3458,23 @@ export function createCardView(input: CardViewInput): CardView {
         onCancel: () => closeSettingsEditor(),
         onReload: () => input.onReloadSettings(form.kind),
         onReapply: (values) => input.onReapplySettings(form.kind, values),
+        // The title follows the Vehicle select and the mode at once, before anything is saved.
+        onVehicleName: (name) => {
+          settingsVehicleName = name;
+          if (!building && settingsForm === form && settingsDialog.isOpen()) {
+            settingsDialog.setTitle(settingsTitle(form.kind));
+          }
+        },
       },
       `${idPrefix}-settings-${form.kind}`,
     );
+    building = false;
     settingsBody = built.body;
     settingsBodyReader = built.values;
     settingsSaveButton = built.body.querySelector<HTMLButtonElement>(`.${C.settingsSave}`);
     settingsReapplyButton = built.body.querySelector<HTMLButtonElement>(`.${C.settingsReapply}`);
     settingsDialog.show({
-      title: translate(model.language, settingsTitleKey(form.kind)),
+      title: settingsTitle(form.kind),
       body: built.body,
       opener: settingsTriggerFor(form.kind),
     });

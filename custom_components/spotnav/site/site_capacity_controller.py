@@ -2338,6 +2338,8 @@ class SiteCapacityController:
                 "requested_a": state.requested_a if state else None,
                 "available_w": state.available_w if state else None,
                 "available_a": state.available_a if state else None,
+                # The start minimum a solar charge starts at (`SolarConfig.start_a`).
+                "start_a": state.start_a if state else None,
                 "net_grid_w": state.net_grid_w if state else None,
                 "car_w": state.car_w if state else None,
                 "battery_w": state.battery_w if state else None,

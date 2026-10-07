@@ -1,0 +1,110 @@
+{
+  "notifications": {
+    "title": "SpotNav · {name}",
+    "stopped.not_started": "Het laden is niet gestart zoals gepland.",
+    "stopped.stopped": "Het laden is gestopt tijdens een gepland venster.",
+    "stopped.charger_unavailable": "De laadpaal is niet beschikbaar tijdens een gepland venster.",
+    "stopped.vehicle_not_requesting": "De auto neemt geen stroom af tijdens een gepland venster.",
+    "stopped.held_by_charger": "Het eigen schema van de laadpaal houdt het geplande laden tegen.",
+    "stopped.charger_ignores_stop": "De laadpaal blijft laden hoewel hij is gestopt. Stop hem bij de laadpaal of koppel de auto los.",
+    "stopped.charger_disabled": "De laadpaal is uitgeschakeld, dus het geplande laden kan niet starten.",
+    "at_risk": "Het laden is niet klaar voor vertrek.",
+    "at_risk.time": "Het laden is niet klaar voor het vertrek om {time}.",
+    "complete.target": "Laden voltooid: het doel van {percent} is bereikt.",
+    "complete.energy": "Laden voltooid: de gevraagde energie is geleverd.",
+    "complete.plan_done": "Het geplande laden is klaar.",
+    "complete.vehicle_full": "Laden voltooid: de auto is vol.",
+    "started": "Laden gestart.",
+    "test": "Testmelding van SpotNav: meldingen komen aan op deze telefoon.",
+    "started.until": "Laden gestart, tot {time}.",
+    "plugged_in": "De auto is aangesloten.",
+    "unplugged": "De auto is losgekoppeld.",
+    "plan_installed": "Nieuw plan: laden vanaf {time}.",
+    "identify.ask": "Welke auto is aangesloten?",
+    "identify.open": "SpotNav openen",
+    "identify.chosen": "{vehicle} gekozen.",
+    "identify.recognised": "{vehicle} automatisch gekozen.",
+    "identify.kept": "{vehicle} behouden.",
+    "charged": "{kwh} geladen",
+    "planned": "{kwh} gepland",
+    "cost": "ongeveer {cost}"
+  },
+  "add_charger": {
+    "hint": "Voeg een laadpaal toe: Instellingen → Apparaten & diensten → SpotNav → Item toevoegen → Laadpaal; je krijgt dan de vraag of hij aan deze locatie moet worden toegevoegd."
+  },
+  "resolve_vehicle": {
+    "device": "{name} -- {count} mogelijke batterijsensoren",
+    "dismiss": "Dit is geen auto (niet meer melden)"
+  },
+  "charger_detected": {
+    "external": "Er is een andere regelaar (evcc of openWB) geïnstalleerd die deze laadpaal mogelijk al aanstuurt. Er wordt niets voorgesteld: kies alleen wat SpotNav volgens jou zeker moet aansturen.",
+    "external_installed": "evcc of openWB is geïnstalleerd in Home Assistant en stuurt deze laadpaal mogelijk al aan. Zet het uit voor deze laadpaal, anders werken SpotNav en het elkaar tegen.",
+    "disabled": "Standaard uitgeschakeld, en nuttig (ze worden ingeschakeld als je het vakje hieronder aangevinkt laat):",
+    "balanced": "Perific verdeelt de belasting van de installatie van deze laadpaal via de cloud van Zaptec en stelt dezelfde beschikbare stroom in die SpotNav zou instellen. Er wordt geen stroom voorgesteld: SpotNav start en stopt de laadpaal alleen.",
+    "controller": "{name} stuurt ook laadpalen aan; zet het uit voor deze laadpaal, anders werken SpotNav en {name} elkaar tegen.",
+    "cloud": "Als de laadpaal voor slim laden is gekoppeld aan Tibber (of een andere app), zet dat dan uit: Home Assistant ziet het niet, en het werkt SpotNav tegen."
+  },
+  "measurement_reason": {
+    "mode": "De meetmethode is gewijzigd, dus de meting moet worden ingesteld. ",
+    "chargers": "De laadpalen zijn gewijzigd, dus hun fase-aansluiting moet worden ingesteld. ",
+    "measurement": "De opgeslagen meting is onvolledig, dus die moet worden ingesteld. "
+  },
+  "site_form": {
+    "default_name": "Locatie"
+  },
+  "site_confirm": {
+    "meter": "Netmeter",
+    "power_current_calculated": "vermogen per fase, stroom berekend",
+    "power_current": "vermogen en stroom per fase",
+    "current": "stroom per fase",
+    "current_entity": "één entiteit met de stroom per fase",
+    "join_wiring": "**Fase-aansluiting:** 3 fasen, gemeten stroom van {source}",
+    "join_unknown": "SpotNav kan niet bepalen hoe deze laadpaal is aangesloten, dus hij wordt niet automatisch toegevoegd. Voeg hem toe via de instellingen van de locatie.",
+    "reactive_found": "**Blindvermogen:** gevonden",
+    "reactive_missing": "**Blindvermogen:** niet gevonden (stroom geschat met arbeidsfactor 0,9)",
+    "battery": "**Thuisbatterij:** {name} (laden positief)",
+    "no_battery": "**Thuisbatterij:** geen",
+    "charger": "**Laadpaal:** {name} – {phases} fasen, gemeten stroom van {source}",
+    "label_power": "{name} – vermogen per fase (stroom berekend)",
+    "label_power_current": "{name} – vermogen en stroom per fase",
+    "label_current": "{name} – stroom per fase",
+    "ocpp_control": "**Laadbediening:** {name}",
+    "ocpp_current_number": "**Stroom ingesteld via:** de stroomentiteit van de laadpaal ({name})",
+    "ocpp_current_config": "**Stroom ingesteld via:** OCPP ChangeConfiguration",
+    "ocpp_energy": "**Energiemeter:** {name} (automatisch gevonden)",
+    "ocpp_energy_none": "geen gevonden"
+  },
+  "candidate_reason": {
+    "attributes_device_class_and_unit_match": "apparaatklasse stroom en een ondersteunde eenheid",
+    "attributes_unit_match_only": "een ondersteunde stroomeenheid",
+    "attributes_historical_match": "gegevens per fase gezien in de geschiedenis, nu niet gemeten",
+    "attributes_profile_match": "de eigen stroomattributen per fase van de laadpaalintegratie",
+    "separate_entities_device_class_and_unit_match": "apparaatklasse stroom en een ondersteunde eenheid",
+    "separate_entities_device_class_match_only": "alleen apparaatklasse stroom",
+    "separate_entities_unit_match_only": "alleen een ondersteunde stroomeenheid",
+    "separate_entities_name_match_only": "alleen naampatroon",
+    "separate_entities_profile_match": "de eigen stroomsensoren per fase van de laadpaalintegratie",
+    "possible_inverter_output_not_confirmed_as_grid_input": "lijkt op uitvoer van omvormer/zonnepanelen, niet bevestigd als netaansluiting"
+  },
+  "candidate_confidence": {
+    "high": "hoge zekerheid",
+    "medium": "gemiddelde zekerheid",
+    "low": "lage zekerheid"
+  },
+  "candidate_representation": {
+    "separate_entities": "drie entiteiten",
+    "attributes": "attributen"
+  },
+  "choice": {
+    "manual": "Handmatig kiezen",
+    "manual_separate_entities": "Handmatig kiezen (drie aparte entiteiten, één per fase)",
+    "manual_attributes": "Handmatig één entiteit + de fase-attributen invoeren",
+    "skip": "Nu overslaan (later instellen)"
+  },
+  "current_control": {
+    "none": "Geen stroom instellen",
+    "change_configuration": "ChangeConfiguration (AssignedCurrent)",
+    "number": "De stroomentiteit van de laadpaal, binnen de schrijflimieten",
+    "easee_dynamic_limit": "Dynamische stroomlimiet van Easee (beperkt aantal wijzigingen)"
+  }
+}

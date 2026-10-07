@@ -1,0 +1,829 @@
+{
+  "title": "SpotNav",
+  "config": {
+    "flow_title": "{device} möchte sich verbinden · Code {code}",
+    "step": {
+      "pairing": {
+        "menu_options": {
+          "pair_approve": "Zulassen",
+          "pair_deny": "Ablehnen"
+        },
+        "title": "Ein Telefon möchte sich verbinden",
+        "description": "Ein Gerät, das sich **{device}** nennt, möchte sich verbinden und zeigt den Code **{code}**. Lass es nur zu, wenn derselbe Code auf seinem Bildschirm steht. Beim Zulassen werden die Ladestationen dieser Instanz übergeben; der Code dient nur zum Vergleichen."
+      },
+      "pair_approve": {
+        "title": "Zulassen"
+      },
+      "pair_deny": {
+        "title": "Ablehnen"
+      },
+      "user": {
+        "title": "Was möchtest du hinzufügen?",
+        "description": "Eine Ladestation verbindet einen physischen Ladepunkt mit SpotNav. Ein Standort ist optional: Er verteilt die Last aller Ladestationen an einem Netzanschluss unter der Hauptsicherung.",
+        "data": {
+          "entry_type": "Was hinzufügen"
+        }
+      },
+      "charger_type": {
+        "title": "Art der Ladestation wählen",
+        "description": "Automatisch findet die Steuerungen der Ladestation über ihr Gerät: OCPP-Ladestationen und unterstützte Integrationen (Easee, Wallbox, Zaptec, go-e, Peblar und weitere). Manuell lässt dich jeden Ladeschalter selbst wählen.",
+        "data": {
+          "mode": "Art der Ladestation"
+        }
+      },
+      "resolve_vehicle": {
+        "title": "Erkanntes Fahrzeug klären",
+        "description": "Eines dieser Geräte sieht wie ein Fahrzeug aus, meldet aber mehr als einen Batteriestand, daher rät SpotNav nicht, welcher der Ladestand ist. Wähle das zu klärende Gerät -- oder wähle die Art des Eintrags erneut, wenn du hier nichts wiedererkennst.",
+        "data": {
+          "device_id": "Gerät"
+        }
+      },
+      "resolve_vehicle_soc": {
+        "title": "Welcher Wert ist der Ladestand?",
+        "description": "Wähle, welcher Batteriewert von {name} der tatsächliche Ladestand ist -- oder gib an, dass das Gerät kein Fahrzeug ist, das du lädst, damit SpotNav es nicht mehr meldet.",
+        "data": {
+          "soc_entity_id": "Ladestand"
+        }
+      },
+      "ocpp_entities": {
+        "title": "Steuerungen der Ladestation bestätigen",
+        "description": "Es werden nur passende Entitäten der gewählten OCPP-Ladestation angezeigt.",
+        "data": {
+          "charge_control": "Ladesteuerung",
+          "current_limit": "Zahl für die Stromgrenze (optional)",
+          "energy_register_entity": "Energiezähler (gesamt)",
+          "current_control": "Wie SpotNav den Strom setzt"
+        },
+        "data_description": {
+          "charge_control": "Der Schalter, der das Laden an diesem Anschluss startet und stoppt.",
+          "current_limit": "Die eigene Strom-Zahl der Ladestation; SpotNav liest nur ihren Wert und Bereich.",
+          "energy_register_entity": "Der Gesamtenergiesensor des Anschlusses; er wird automatisch gefunden, lass ihn also so.",
+          "current_control": "Lass „Keinen Strom setzen“ eingestellt, außer die Ladestation nimmt die gewählte Methode bekanntermaßen an."
+        }
+      },
+      "generic": {
+        "title": "Steuerungen der Ladestation wählen",
+        "data": {
+          "charge_control": "Ladesteuerung",
+          "current_limit": "Ladestrom (optional)",
+          "energy_register_entity": "Energiezähler (gesamt)",
+          "power_entity": "Leistungssensor, smarte Steckdose (optional)"
+        },
+        "data_description": {
+          "energy_register_entity": "Der Gesamtenergiesensor der Ladestation, um bereits geladene Energie zu zählen. Optional.",
+          "power_entity": "Eine einfache Ladestation an einer smarten Steckdose: der Leistungssensor der Steckdose (W oder kW). SpotNav zählt daraus die Energie und erkennt, wenn das Auto keinen Strom mehr zieht. Die Steckdose muss für den Dauerstrom der Ladestation ausgelegt sein. Optional."
+        }
+      },
+      "site": {
+        "title": "Standort",
+        "description": "Der Standort hält den gemeinsamen Strom seiner Ladestationen unter der Hauptsicherung. Die aktive Regelung lässt sich später ein- und ausschalten; sie arbeitet nach bestem Bemühen und ist keine Schutzeinrichtung. Die Hauptsicherung muss ausdrücklich eingegeben werden -- sie wird nie aus der gemessenen Last geschätzt. {charger_hint}",
+        "data": {
+          "name": "Name des Standorts",
+          "main_fuse_a": "Hauptsicherung (A)",
+          "safety_margin_a": "Sicherheitsreserve (A)",
+          "measurement_mode": "Messquelle",
+          "charger_entry_ids": "Ladestationen, die sich die Kapazität dieses Standorts teilen",
+          "voltage_between_phases_v": "Spannung zwischen den Phasen"
+        }
+      },
+      "site_detected": {
+        "title": "Netzzähler gefunden",
+        "description": "SpotNav hat diese Netzzähler gefunden. Nichts wird übernommen, bevor du bestätigst; wähle „manuell“, um Entitäten selbst auszuwählen.",
+        "data": {
+          "choice": "Erkannter Zähler",
+          "enable_disabled": "Die deaktivierten Entitäten aktivieren, die dieser Zähler braucht"
+        }
+      },
+      "site_current_suggestions": {
+        "title": "Vorschläge für die Stromquelle des Standorts",
+        "description": "Das sind nur Vorschläge, basierend auf Entitäten, die schon in Home Assistant sind -- nichts wird übernommen, bevor du bestätigst. Wähle „manuell“, um Entitäten selbst auszuwählen, oder „überspringen“, um das später in den Optionen des Standorts einzurichten.",
+        "data": {
+          "choice": "Vorgeschlagene Quelle"
+        }
+      },
+      "site_details": {
+        "title": "Messentitäten",
+        "description": "Wähle die Sensoren des Netzzählers. Jeder Sensor wird angenommen; seine Einheit wird beim Fortfahren geprüft (Strom in A oder mA, Leistung in W oder kW, Spannung in V, Blindleistung in var oder kvar, Scheinleistung in VA oder kVA). Es werden nur die Felder der gewählten Messquelle angezeigt. Danach folgt die Phasenbelegung jeder zugehörigen Ladestation, eine nach der anderen.{charger_hint}",
+        "data": {
+          "direct_L1": "Netzstrom L1",
+          "direct_L2": "Netzstrom L2",
+          "direct_L3": "Netzstrom L3",
+          "site_current_signed": "Der Netzstrom hat ein Vorzeichen (Einspeisung ist negativ)",
+          "grid_power_inverted": "Die Netzleistung ist bei Einspeisung positiv (umkehren)",
+          "derived_L1_power_export": "Einspeiseleistung L1 (optional, wenn Bezug und Einspeisung getrennt sind)",
+          "derived_L1_reactive_power": "Blindleistung L1 (optional)",
+          "derived_L1_apparent_power": "Scheinleistung L1 (optional)",
+          "derived_L1_current": "Strom L1 (optional)",
+          "derived_L2_power_export": "Einspeiseleistung L2 (optional, wenn Bezug und Einspeisung getrennt sind)",
+          "derived_L2_reactive_power": "Blindleistung L2 (optional)",
+          "derived_L2_apparent_power": "Scheinleistung L2 (optional)",
+          "derived_L2_current": "Strom L2 (optional)",
+          "derived_L3_power_export": "Einspeiseleistung L3 (optional, wenn Bezug und Einspeisung getrennt sind)",
+          "derived_L3_reactive_power": "Blindleistung L3 (optional)",
+          "derived_L3_apparent_power": "Scheinleistung L3 (optional)",
+          "derived_L3_current": "Strom L3 (optional)",
+          "derived_L1_power": "Leistung L1",
+          "derived_L1_voltage": "Spannung L1",
+          "derived_L2_power": "Leistung L2",
+          "derived_L2_voltage": "Spannung L2",
+          "derived_L3_power": "Leistung L3",
+          "derived_L3_voltage": "Spannung L3"
+        }
+      },
+      "charger_manual_source": {
+        "title": "Gemessener Strom der Ladestation",
+        "description": "Wähle eine Entität des eigenen Geräts dieser Ladestation und nenne das Attribut, das den Strom jeder Phase enthält. Es werden nur Entitäten dieser Ladestation angeboten. Wähle die Einheit dieser Attribute -- „A“ oder „mA“ -- ausdrücklich: Die Einheit einer Entität beschreibt ihren Zustandswert, nicht unbedingt andere Attribute, die sie mitführt.",
+        "data": {
+          "entity_id": "Entität (nur das eigene Gerät dieser Ladestation)",
+          "attribute_L1": "Attributname L1",
+          "attribute_L2": "Attributname L2",
+          "attribute_L3": "Attributname L3",
+          "unit": "Einheit dieser Attribute",
+          "confirm_unverified": "Nichts konnte geprüft werden -- trotzdem speichern"
+        }
+      },
+      "site_manual_source": {
+        "title": "Strom des Standorts aus einer Entität",
+        "description": "Wähle eine Entität, die den Strom des ganzen Standorts als eigene Attribute pro Phase führt, und nenne das Attribut für jede Phase. Entitäten einer Ladestation dieses Standorts werden nie angeboten -- der eigene Sensor einer Ladestation kann nicht zugleich die Summe des ganzen Standorts sein. Wähle die Einheit dieser Attribute -- „A“ oder „mA“ -- ausdrücklich: Die Einheit einer Entität beschreibt ihren Zustandswert, nicht unbedingt andere Attribute, die sie mitführt.",
+        "data": {
+          "entity_id": "Entität (alles außer den Ladestationen dieses Standorts)",
+          "attribute_L1": "Attributname L1",
+          "attribute_L2": "Attributname L2",
+          "attribute_L3": "Attributname L3",
+          "unit": "Einheit dieser Attribute",
+          "confirm_unverified": "Nichts konnte geprüft werden -- trotzdem speichern"
+        }
+      },
+      "detect_device": {
+        "title": "Gerät der Ladestation wählen",
+        "description": "Wähle das Gerät der Ladestation. SpotNav findet ihre Steuerungen über die Entitäten dieser Integration; nichts wird übernommen, bevor du den nächsten Schritt bestätigst.",
+        "data": {
+          "device": "Ladestation"
+        }
+      },
+      "own_mode": {
+        "title": "Eigene Steuerung der Ladestation abschalten",
+        "description": "Bei dieser Ladestation ist ein eigener Smart-, Solar- oder Lastmanagement-Modus eingeschaltet: {modes}. Zwei Regler an einer Ladestation arbeiten gegeneinander. Schalte ihn in der Integration oder App der Ladestation ab und fahre dann fort.",
+        "data": {
+          "continue_anyway": "Trotzdem fortfahren (ich nehme in Kauf, dass sie gegeneinander arbeiten)"
+        }
+      },
+      "detected_entities": {
+        "title": "{device} bestätigen",
+        "description": "{warning}Über das Gerät der Ladestation gefunden. Ändere oder leere alles, was falsch ist. „Ladestrom der Ladestation setzen“ ist aus, sofern du es nicht wählst: SpotNav schreibt den Strom dann nur so, wie es die Schreibgrenzen der Ladestation erlauben.{disabled}",
+        "data": {
+          "charge_control": "Ladesteuerung",
+          "current_limit": "Zahl für den Ladestrom (optional)",
+          "current_control": "Ladestrom der Ladestation setzen",
+          "energy_register_entity": "Energiezähler (optional)",
+          "energy_register_is_session": "Den Energiezähler pro Ladevorgang verwenden (er wird bei jedem Ladevorgang zurückgesetzt)",
+          "charging_state_entity": "Statussensor, der das Laden anzeigt (optional)",
+          "enable_disabled_entities": "Die nützlichen deaktivierten Entitäten aktivieren"
+        }
+      },
+      "ocpp_confirm": {
+        "title": "Ladestation gefunden",
+        "description": "Die Steuerungen dieser Ladestation wurden gefunden. Fahre fort, um sie hinzuzufügen, oder hake das Kästchen an, um die Auswahl zu ändern.\n\n{summary}",
+        "data": {
+          "adjust": "Diese Auswahl ändern"
+        }
+      },
+      "site_confirm": {
+        "title": "Standort gefunden",
+        "description": "Das hat SpotNav für diesen Standort gefunden. Fahre fort, um ihn anzulegen, oder hake das Kästchen an, um die Auswahl zu ändern.\n\n{summary}{charger_hint}",
+        "data": {
+          "adjust": "Diese Auswahl ändern"
+        }
+      },
+      "join_site": {
+        "title": "Zum Standort hinzufügen",
+        "description": "Diese Ladestation zum Standort {site} hinzufügen?\n\n{summary}",
+        "data": {
+          "join": "Zum Standort hinzufügen"
+        }
+      },
+      "site_charger_wiring": {
+        "title": "Anschluss von {charger}",
+        "description": "Wähle bei einer einphasigen Ladestation die angeschlossene Phase ausdrücklich -- bei unbekannter Phase lässt sich nie eine sichere Empfehlung für sie berechnen. Der eigene gemessene Strom der Ladestation ist optional: Wähle einen gefundenen Vorschlag, gib eine Entität mit Attributen pro Phase ein, gib drei separate Entitäten ein (eine pro Phase, wie bei der Charge-Amps-Integration) oder lass „überspringen“ stehen, um es später einzurichten.",
+        "data": {
+          "phases": "Anzahl der Phasen",
+          "phase": "Angeschlossene Phase (einphasige Ladestationen)",
+          "measured_source": "Quelle des gemessenen Stroms (optional)"
+        }
+      },
+      "charger_manual_entities": {
+        "title": "Gemessener Strom der Ladestation, eine Entität pro Phase",
+        "description": "Wähle den Sensor mit dem Strom jeder Phase. Es werden nur Entitäten des eigenen Geräts dieser Ladestation angeboten, und jede muss Ampere melden (A oder mA).",
+        "data": {
+          "entity_L1": "Strom L1",
+          "entity_L2": "Strom L2",
+          "entity_L3": "Strom L3"
+        }
+      },
+      "charger_installation": {
+        "title": "Phasen der Ladestation, Spannung zwischen den Phasen",
+        "description": "Die Entitäten der Ladestation verraten nicht, auf wie vielen Phasen sie lädt. Wähle eine oder drei Phasen: Die Ladepläne werden danach berechnet. Wo das Netz meist ein IT-Netz ist (wie in Norwegen), gib auch die Spannung zwischen den Phasen an; 230 V im IT-Netz, sonst 400 V.",
+        "data": {
+          "charger_phases": "Phasen der Ladestation",
+          "voltage_between_phases_v": "Spannung zwischen den Phasen"
+        }
+      }
+    },
+    "abort": {
+      "already_configured": "Diese Ladestation oder dieser Standort ist bereits eingerichtet.",
+      "pairing_approved": "Zugelassen. Das Telefon verwaltet jetzt die Ladestationen dieser Instanz.",
+      "pairing_denied": "Abgelehnt. Das Telefon wurde informiert, und nichts wurde übergeben.",
+      "pairing_request_expired": "Diese Kopplungsanfrage ist abgelaufen. Starte sie auf dem Telefon neu.",
+      "no_supported_charger": "Es wurde keine unterstützte Ladestation gefunden. Richte zuerst die eigene Integration der Ladestation ein oder wähle Manuell.",
+      "no_charge_control": "Für dieses Gerät wurde kein aktivierter OCPP-Ladeschalter gefunden.",
+      "no_pending_site": "Die Angaben dieses Standorts wurden nicht übermittelt, bevor die manuelle Ladestation geöffnet wurde, daher wurde nichts gespeichert.",
+      "no_ambiguous_vehicles": "Im Moment muss kein erkanntes Fahrzeug geklärt werden.",
+      "vehicle_resolved": "Fahrzeug geklärt. Sein Ladestand wird aus dem gewählten Wert gelesen.",
+      "vehicle_dismissed": "Fahrzeug ausgeblendet. SpotNav meldet es nicht mehr, bis es wieder eingeblendet wird.",
+      "not_a_charger": "Dieses Gerät ist keine Ladestation für E-Autos (sondern eine Heizungs- oder Steckdosensteuerung).",
+      "charger_not_recognised": "SpotNav kennt diese Integration nicht. Wähle stattdessen Manuell.",
+      "charger_not_controllable": "SpotNav kann diese Ladestation nicht starten oder stoppen. Sie lässt sich nur auslesen."
+    },
+    "error": {
+      "safety_margin_at_or_above_fuse": "Die Sicherheitsreserve muss kleiner als die Hauptsicherung sein, sonst bleibt kein Strom für die Ladestationen.",
+      "charge_control_in_use": "Diese Ladesteuerung wird bereits von einer anderen SpotNav-Ladestation verwendet.",
+      "current_limit_in_use": "Diese Ladestromsteuerung wird bereits von einer anderen SpotNav-Ladestation verwendet.",
+      "duplicate_charger": "{other} und diese Ladestation sind dieselbe physische Ladestation. Zwei SpotNav-Ladestationen an einer Ladestation senden ihr widersprüchliche Befehle, also behalte nur eine: Entferne die andere unter Einstellungen → Geräte & Dienste → SpotNav. SpotNav entfernt nie selbst eine.",
+      "charger_already_in_another_site": "Eine dieser Ladestationen gehört bereits zu einem anderen Standort.",
+      "manual_source_entity_invalid": "Wähle eine Sensor-Entität, die in Home Assistant existiert.",
+      "manual_source_entity_wrong_device": "Diese Entität gehört nicht zum eigenen Gerät dieser Ladestation und kann daher nicht ihr gemessener Strom sein.",
+      "site_manual_source_entity_on_charger_device": "Diese Entität gehört zu einer Ladestation dieses Standorts und kann daher nicht der Gesamtstrom des Standorts sein.",
+      "manual_source_attributes_required": "Gib den Attributnamen für diese Phase ein.",
+      "manual_source_unverified": "Auf dieser Entität passt derzeit nichts zu diesen Attributnamen, und auch nichts in den letzten {lookback_days} Tagen des Verlaufs -- vielleicht ist die Ladestation ganz neu, oder es ist ein Tippfehler. Hake „trotzdem speichern“ an, um es dennoch zu speichern.",
+      "device_not_found": "Dieses Gerät existiert nicht.",
+      "own_mode_active": "Die eigene Steuerung der Ladestation ist noch an. Schalte sie ab oder wähle, trotzdem fortzufahren.",
+      "control_path_unknown": "SpotNav kann nicht erkennen, wie mit dieser Entität ein Ladevorgang gestartet und gestoppt wird. Wähle den Schalter der Ladestation oder eine Auswahl mit eindeutigen Start- und Stopp-Optionen.",
+      "current_limit_required": "Wähle die Ladestrom-Zahl, über die er gesetzt werden soll.",
+      "current_control_unsupported": "Diese Art, den Strom zu setzen, passt nicht zu dieser Ladestation.",
+      "charger_no_answer": "Die Ladestation hat nicht geantwortet, daher kann SpotNav nicht erkennen, wie ihr Strom gesetzt wird. Warte, bis sie verbunden ist, und sende erneut, oder wähle selbst.",
+      "unit_expected_current": "Dieser Sensor muss Strom in A oder mA melden.",
+      "unit_expected_power": "Dieser Sensor muss Leistung in W oder kW melden.",
+      "unit_expected_voltage": "Dieser Sensor muss Spannung in V melden.",
+      "unit_expected_reactive_power": "Dieser Sensor muss Blindleistung in var oder kvar melden.",
+      "unit_expected_apparent_power": "Dieser Sensor muss Scheinleistung in VA oder kVA melden.",
+      "manual_entities_duplicate": "Jede Phase braucht eine eigene Entität."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Steuerungen der Ladestation",
+        "data": {
+          "charge_control": "Ladesteuerung",
+          "current_limit": "Ladestrom (optional)",
+          "current_control": "Ladestrom der Ladestation setzen",
+          "energy_register_entity": "Energiezähler (gesamt, optional)",
+          "power_entity": "Leistungssensor, smarte Steckdose (optional)",
+          "idle_power_w": "Zieht keinen Strom unter (W)"
+        },
+        "data_description": {
+          "idle_power_w": "Liegt die Leistung während eines geplanten Ladevorgangs fünf Minuten darunter, meldet SpotNav, dass das Auto keinen Strom zieht. Standard 100 W."
+        }
+      },
+      "site_init": {
+        "title": "Kapazitätseinstellungen des Standorts",
+        "description": "Lastmanagement unter der Hauptsicherung. Die aktive Regelung senkt den Strom einer Ladestation bei Bedarf; sie arbeitet nach bestem Bemühen und ist keine Schutzeinrichtung. Der Leistungssensor der Batterie ist optional und speist nur eine Diagnoseschätzung -- nie eine sichere Ladegrenze.",
+        "data": {
+          "name": "Name des Standorts",
+          "site_enabled": "Standortberechnung aktiviert",
+          "active_control_enabled": "Aktive Regelung aktiviert (optional, nur abgeleiteter Modus)",
+          "main_fuse_a": "Hauptsicherung (A)",
+          "safety_margin_a": "Sicherheitsreserve (A)",
+          "max_age_s": "Maximales Alter der Messung (Sekunden)",
+          "regulator_deadband_a": "Aktive Regelung: Änderungen kleiner als (A) ignorieren",
+          "regulator_dwell_s": "Aktive Regelung: wie lange eine Änderung anhalten muss (Sekunden)",
+          "yield_stepping_enabled": "Schrittweise Erhöhung mit Prüfung des Nachgebens aktiviert (optional, für einen Standort mit einer nachgebenden Last, z. B. einer Hausbatterie)",
+          "yield_ceiling_a": "Schrittweise Erhöhung: feste Obergrenze, nie überschritten (A, muss größer als die Hauptsicherung sein)",
+          "solar_priority": "Priorität für Solarüberschuss (zuerst Auto oder Hausbatterie)",
+          "battery_aggregate_power_entity": "Ladeleistung der Hausbatterie (optional, nur Diagnose)",
+          "change_measurement": "Messung und Phasenbelegung ändern",
+          "measurement_mode": "Messquelle",
+          "charger_entry_ids": "Ladestationen, die sich die Kapazität dieses Standorts teilen",
+          "solar_forecast_entries": "Quellen für die Solarprognose (optional, für die Hybrid-Strategie)",
+          "voltage_between_phases_v": "Spannung zwischen den Phasen"
+        }
+      },
+      "site_current_suggestions": {
+        "title": "Vorschläge für die Stromquelle des Standorts",
+        "description": "Das sind nur Vorschläge, basierend auf Entitäten, die schon in Home Assistant sind -- nichts wird übernommen, bevor du bestätigst. Wähle „manuell“, um Entitäten selbst auszuwählen, oder „überspringen“, um das später in den Optionen des Standorts einzurichten.",
+        "data": {
+          "choice": "Vorgeschlagene Quelle"
+        }
+      },
+      "site_details": {
+        "title": "Messentitäten",
+        "description": "{reason}Wähle die Sensoren des Netzzählers. Jeder Sensor wird angenommen; seine Einheit wird beim Fortfahren geprüft (Strom in A oder mA, Leistung in W oder kW, Spannung in V, Blindleistung in var oder kvar, Scheinleistung in VA oder kVA). Es werden nur die Felder der gewählten Messquelle angezeigt. Danach folgt die Phasenbelegung jeder zugehörigen Ladestation, eine nach der anderen.",
+        "data": {
+          "direct_L1": "Netzstrom L1",
+          "direct_L2": "Netzstrom L2",
+          "direct_L3": "Netzstrom L3",
+          "site_current_signed": "Der Netzstrom hat ein Vorzeichen (Einspeisung ist negativ)",
+          "grid_power_inverted": "Die Netzleistung ist bei Einspeisung positiv (umkehren)",
+          "derived_L1_power_export": "Einspeiseleistung L1 (optional, wenn Bezug und Einspeisung getrennt sind)",
+          "derived_L1_reactive_power": "Blindleistung L1 (optional)",
+          "derived_L1_apparent_power": "Scheinleistung L1 (optional)",
+          "derived_L1_current": "Strom L1 (optional)",
+          "derived_L2_power_export": "Einspeiseleistung L2 (optional, wenn Bezug und Einspeisung getrennt sind)",
+          "derived_L2_reactive_power": "Blindleistung L2 (optional)",
+          "derived_L2_apparent_power": "Scheinleistung L2 (optional)",
+          "derived_L2_current": "Strom L2 (optional)",
+          "derived_L3_power_export": "Einspeiseleistung L3 (optional, wenn Bezug und Einspeisung getrennt sind)",
+          "derived_L3_reactive_power": "Blindleistung L3 (optional)",
+          "derived_L3_apparent_power": "Scheinleistung L3 (optional)",
+          "derived_L3_current": "Strom L3 (optional)",
+          "derived_L1_power": "Leistung L1",
+          "derived_L1_voltage": "Spannung L1",
+          "derived_L2_power": "Leistung L2",
+          "derived_L2_voltage": "Spannung L2",
+          "derived_L3_power": "Leistung L3",
+          "derived_L3_voltage": "Spannung L3"
+        }
+      },
+      "charger_manual_source": {
+        "title": "Gemessener Strom der Ladestation",
+        "description": "Wähle eine Entität des eigenen Geräts dieser Ladestation und nenne das Attribut, das den Strom jeder Phase enthält. Es werden nur Entitäten dieser Ladestation angeboten. Wähle die Einheit dieser Attribute -- „A“ oder „mA“ -- ausdrücklich: Die Einheit einer Entität beschreibt ihren Zustandswert, nicht unbedingt andere Attribute, die sie mitführt.",
+        "data": {
+          "entity_id": "Entität (nur das eigene Gerät dieser Ladestation)",
+          "attribute_L1": "Attributname L1",
+          "attribute_L2": "Attributname L2",
+          "attribute_L3": "Attributname L3",
+          "unit": "Einheit dieser Attribute",
+          "confirm_unverified": "Nichts konnte geprüft werden -- trotzdem speichern"
+        }
+      },
+      "site_manual_source": {
+        "title": "Strom des Standorts aus einer Entität",
+        "description": "Wähle eine Entität, die den Strom des ganzen Standorts als eigene Attribute pro Phase führt, und nenne das Attribut für jede Phase. Entitäten einer Ladestation dieses Standorts werden nie angeboten -- der eigene Sensor einer Ladestation kann nicht zugleich die Summe des ganzen Standorts sein. Wähle die Einheit dieser Attribute -- „A“ oder „mA“ -- ausdrücklich: Die Einheit einer Entität beschreibt ihren Zustandswert, nicht unbedingt andere Attribute, die sie mitführt.",
+        "data": {
+          "entity_id": "Entität (alles außer den Ladestationen dieses Standorts)",
+          "attribute_L1": "Attributname L1",
+          "attribute_L2": "Attributname L2",
+          "attribute_L3": "Attributname L3",
+          "unit": "Einheit dieser Attribute",
+          "confirm_unverified": "Nichts konnte geprüft werden -- trotzdem speichern"
+        }
+      },
+      "site_charger_wiring": {
+        "title": "Anschluss von {charger}",
+        "description": "Wähle bei einer einphasigen Ladestation die angeschlossene Phase ausdrücklich -- bei unbekannter Phase lässt sich nie eine sichere Empfehlung für sie berechnen. Der eigene gemessene Strom der Ladestation ist optional: Wähle einen gefundenen Vorschlag, gib eine Entität mit Attributen pro Phase ein, gib drei separate Entitäten ein (eine pro Phase, wie bei der Charge-Amps-Integration) oder lass „überspringen“ stehen, um es später einzurichten.",
+        "data": {
+          "phases": "Anzahl der Phasen",
+          "phase": "Angeschlossene Phase (einphasige Ladestationen)",
+          "measured_source": "Quelle des gemessenen Stroms (optional)"
+        }
+      },
+      "charger_manual_entities": {
+        "title": "Gemessener Strom der Ladestation, eine Entität pro Phase",
+        "description": "Wähle den Sensor mit dem Strom jeder Phase. Es werden nur Entitäten des eigenen Geräts dieser Ladestation angeboten, und jede muss Ampere melden (A oder mA).",
+        "data": {
+          "entity_L1": "Strom L1",
+          "entity_L2": "Strom L2",
+          "entity_L3": "Strom L3"
+        }
+      }
+    },
+    "abort": {
+      "no_pending_site": "Die Angaben dieses Standorts wurden nicht übermittelt, bevor die manuelle Ladestation geöffnet wurde, daher wurde nichts gespeichert."
+    },
+    "error": {
+      "safety_margin_at_or_above_fuse": "Die Sicherheitsreserve muss kleiner als die Hauptsicherung sein, sonst bleibt kein Strom für die Ladestationen.",
+      "charge_control_in_use": "Diese Ladesteuerung wird bereits von einer anderen SpotNav-Ladestation verwendet.",
+      "current_limit_in_use": "Diese Ladestromsteuerung wird bereits von einer anderen SpotNav-Ladestation verwendet.",
+      "duplicate_charger": "{other} und diese Ladestation sind dieselbe physische Ladestation. Zwei SpotNav-Ladestationen an einer Ladestation senden ihr widersprüchliche Befehle, also behalte nur eine: Entferne die andere unter Einstellungen → Geräte & Dienste → SpotNav. SpotNav entfernt nie selbst eine.",
+      "charger_already_in_another_site": "Eine dieser Ladestationen gehört bereits zu einem anderen Standort.",
+      "manual_source_entity_invalid": "Wähle eine Sensor-Entität, die in Home Assistant existiert.",
+      "manual_source_entity_wrong_device": "Diese Entität gehört nicht zum eigenen Gerät dieser Ladestation und kann daher nicht ihr gemessener Strom sein.",
+      "site_manual_source_entity_on_charger_device": "Diese Entität gehört zu einer Ladestation dieses Standorts und kann daher nicht der Gesamtstrom des Standorts sein.",
+      "manual_source_attributes_required": "Gib den Attributnamen für diese Phase ein.",
+      "manual_source_unverified": "Auf dieser Entität passt derzeit nichts zu diesen Attributnamen, und auch nichts in den letzten {lookback_days} Tagen des Verlaufs -- vielleicht ist die Ladestation ganz neu, oder es ist ein Tippfehler. Hake „trotzdem speichern“ an, um es dennoch zu speichern.",
+      "yield_ceiling_below_fuse": "Die Obergrenze der schrittweisen Erhöhung muss größer als die Hauptsicherung sein.",
+      "yield_ceiling_above_limit": "Die Obergrenze muss unter dem 1,25-Fachen der Hauptsicherung liegen: Diese Last muss eine gG-Sicherung eine Stunde lang tragen, ohne auszulösen, und ein Prüfschritt darf sich ihr nähern, sie aber nie erreichen.",
+      "unit_expected_current": "Dieser Sensor muss Strom in A oder mA melden.",
+      "unit_expected_power": "Dieser Sensor muss Leistung in W oder kW melden.",
+      "unit_expected_voltage": "Dieser Sensor muss Spannung in V melden.",
+      "unit_expected_reactive_power": "Dieser Sensor muss Blindleistung in var oder kvar melden.",
+      "unit_expected_apparent_power": "Dieser Sensor muss Scheinleistung in VA oder kVA melden.",
+      "manual_entities_duplicate": "Jede Phase braucht eine eigene Entität."
+    }
+  },
+  "selector": {
+    "mode": {
+      "options": {
+        "generic": "Manuell",
+        "detected": "Automatisch (empfohlen)"
+      }
+    },
+    "entry_type": {
+      "options": {
+        "charger": "Eine Ladestation",
+        "site": "Einen Standort (Lastmanagement)",
+        "resolve_vehicle": "Ein erkanntes Fahrzeug klären"
+      }
+    },
+    "measurement_mode": {
+      "options": {
+        "direct_phase_current": "Direkter Netzstrom pro Phase (bevorzugt)",
+        "derived_phase_current": "Aus Leistung und Spannung abgeleitet (genauer mit Strom, Schein- oder Blindleistung des Zählers; sonst wird der Strom geschätzt)"
+      }
+    },
+    "solar_priority": {
+      "options": {
+        "car_first": "Zuerst das Auto",
+        "battery_first": "Zuerst die Hausbatterie"
+      }
+    },
+    "voltage_between_phases": {
+      "options": {
+        "400": "400 V (TN-Netz, das übliche)",
+        "230": "230 V (IT-Netz, verbreitet in Norwegen)"
+      }
+    },
+    "charger_phases": {
+      "options": {
+        "1": "Eine Phase",
+        "3": "Drei Phasen"
+      }
+    }
+  },
+  "entity": {
+    "binary_sensor": {
+      "schedule_active": {
+        "name": "Zeitplan aktiv"
+      },
+      "grid_charging": {
+        "name": "Laden aus dem Netz"
+      },
+      "grid_charging_site": {
+        "name": "Laden aus dem Netz"
+      }
+    },
+    "button": {
+      "start": {
+        "name": "Laden starten"
+      },
+      "stop": {
+        "name": "Laden stoppen"
+      },
+      "follow": {
+        "name": "Ladezeitplan folgen"
+      },
+      "cancel": {
+        "name": "Zeitplan abbrechen"
+      },
+      "recalculate_auto": {
+        "name": "Vorschlag der automatischen Preisplanung neu berechnen"
+      },
+      "pause_auto": {
+        "name": "Automatische Preisplanung pausieren"
+      },
+      "resume_auto": {
+        "name": "Automatische Preisplanung fortsetzen"
+      },
+      "clear_departure_date": {
+        "name": "Abfahrtsdatum löschen"
+      }
+    },
+    "sensor": {
+      "instance_connection": {
+        "name": "App-Kopplung (alle Ladestationen)"
+      },
+      "connection": {
+        "name": "App-Verbindung"
+      },
+      "plan_start": {
+        "name": "Geplanter Start"
+      },
+      "plan_end": {
+        "name": "Geplantes Ende"
+      },
+      "site_state": {
+        "name": "Kapazitätsstatus",
+        "state": {
+          "disabled": "Deaktiviert",
+          "not_configured": "Nicht eingerichtet",
+          "missing_measurements": "Messung fehlt",
+          "stale_measurements": "Messung veraltet",
+          "invalid_measurements": "Messung ungültig",
+          "observing": "Misst"
+        },
+        "state_attributes": {
+          "site_activity": {
+            "name": "Aktivität",
+            "state": {
+              "measuring": "Misst, aktives Lastmanagement aus",
+              "balancing": "Misst, aktives Lastmanagement an",
+              "not_measuring": "Misst nicht"
+            }
+          }
+        }
+      },
+      "solar_surplus": {
+        "name": "Solarüberschuss"
+      },
+      "charger_proposed_current": {
+        "name": "Vorgeschlagener Strom – {charger}",
+        "state_attributes": {
+          "state": {
+            "name": "Status",
+            "state": {
+              "invalid_measurements": "Messung ungültig",
+              "requested_current_unknown": "Angeforderter Strom unbekannt",
+              "capacity_available": "Passt",
+              "capacity_limited": "Begrenzt",
+              "below_minimum_current": "Unter dem Mindeststrom",
+              "not_requesting": "Lädt nicht"
+            }
+          }
+        }
+      },
+      "auto_plan_state": {
+        "name": "Status der automatischen Preisplanung",
+        "state": {
+          "incomplete_settings": "Einstellungen unvollständig",
+          "waiting_for_prices": "Warten auf Preise",
+          "waiting_for_publication": "Warten auf die Preise für morgen",
+          "price_data_stale": "Preisdaten veraltet",
+          "proposal_ready": "Vorschlag bereit",
+          "proposal_unpriced": "Vorschlag lädt ohne Preise",
+          "nothing_to_charge": "Nichts zu laden",
+          "planning_unavailable": "Planung nicht verfügbar",
+          "error": "Fehler"
+        }
+      },
+      "auto_execution_state": {
+        "name": "Ausführungsstatus der automatischen Preisplanung",
+        "state": {
+          "not_applied": "Nicht angewendet",
+          "scheduled": "Geplant",
+          "active": "Lädt gerade",
+          "paused": "Pausiert",
+          "complete": "Abgeschlossen",
+          "apply_pending": "Warten auf das Ende des Zeitfensters",
+          "execution_error": "Ausführungsfehler"
+        }
+      },
+      "auto_next_start": {
+        "name": "Nächster geplanter Ladebeginn"
+      },
+      "auto_next_end": {
+        "name": "Nächstes geplantes Ladeende"
+      },
+      "auto_periods": {
+        "name": "Geplante Ladezeiträume"
+      },
+      "auto_cost": {
+        "name": "Geplante Kosten"
+      },
+      "auto_energy": {
+        "name": "Geplante Energie"
+      },
+      "auto_settings_revision": {
+        "name": "Revision der Einstellungen der automatischen Preisplanung"
+      },
+      "integrated_energy": {
+        "name": "Energie aus Leistung"
+      },
+      "sessions_energy_this_month": {
+        "name": "Geladene Energie diesen Monat"
+      },
+      "sessions_cost_this_month": {
+        "name": "Ladekosten diesen Monat"
+      },
+      "sessions_energy_last_month": {
+        "name": "Geladene Energie letzten Monat"
+      },
+      "sessions_cost_last_month": {
+        "name": "Ladekosten letzten Monat"
+      },
+      "sessions_last_energy": {
+        "name": "Energie des letzten Ladevorgangs"
+      },
+      "sessions_last_cost": {
+        "name": "Kosten des letzten Ladevorgangs"
+      }
+    },
+    "select": {
+      "price_area": {
+        "name": "Preiszone"
+      },
+      "fiscal_vat_policy": {
+        "name": "MwSt.-Regel",
+        "state": {
+          "off": "Aus",
+          "suggested": "Vorschlag der Preiszone verwenden",
+          "manual": "Eigenen Wert verwenden"
+        }
+      },
+      "fiscal_tax_policy": {
+        "name": "Stromsteuer-Regel",
+        "state": {
+          "off": "Aus",
+          "suggested": "Vorschlag der Preiszone verwenden",
+          "manual": "Eigenen Wert verwenden"
+        }
+      },
+      "fiscal_transfer_policy": {
+        "name": "Netzentgelt-Regel",
+        "state": {
+          "off": "Aus",
+          "suggested": "Vorschlag der Preiszone verwenden",
+          "manual": "Eigenen Wert verwenden"
+        }
+      },
+      "auto_strategy": {
+        "name": "Ladestrategie",
+        "state": {
+          "cheapest": "Günstigste Stunden",
+          "solar": "Solarüberschuss",
+          "hybrid": "Günstigste Stunden, Netzstrom für erwartete Sonne zurückhalten"
+        }
+      },
+      "charge_periods": {
+        "name": "Ladezeiträume",
+        "state": {
+          "auto": "Automatisch",
+          "1": "1 Zeitraum",
+          "2": "2 Zeiträume",
+          "3": "3 Zeiträume",
+          "4": "4 Zeiträume",
+          "5": "5 Zeiträume",
+          "6": "6 Zeiträume",
+          "7": "7 Zeiträume",
+          "8": "8 Zeiträume"
+        }
+      }
+    },
+    "number": {
+      "charging_current": {
+        "name": "Ladestrom"
+      },
+      "requested_energy": {
+        "name": "Zu ladende Energie"
+      },
+      "vat_rate": {
+        "name": "MwSt."
+      },
+      "energy_tax": {
+        "name": "Stromsteuer"
+      },
+      "transfer_fee": {
+        "name": "Netzentgelt"
+      }
+    },
+    "date": {
+      "departure_date": {
+        "name": "Abfahrtsdatum"
+      }
+    },
+    "switch": {
+      "departure_enabled": {
+        "name": "Abfahrtszeit einhalten"
+      }
+    },
+    "time": {
+      "departure_time": {
+        "name": "Abfahrtszeit"
+      }
+    },
+    "event": {
+      "charger_events": {
+        "name": "Ereignisse der Ladestation",
+        "state_attributes": {
+          "event_type": {
+            "state": {
+              "charge_started": "Laden gestartet",
+              "charge_finished": "Laden beendet",
+              "plugged_in": "Angeschlossen",
+              "unplugged": "Abgesteckt",
+              "plan_installed": "Ladeplan übernommen",
+              "plan_at_risk": "Ladeplan gefährdet"
+            }
+          }
+        }
+      }
+    }
+  },
+  "issues": {
+    "vehicle_soc_needs_decision": {
+      "title": "Der Ladestand eines Fahrzeugs braucht eine Entscheidung",
+      "fix_flow": {
+        "abort": {
+          "no_longer_needs_decision": "Dieses Gerät braucht keine Entscheidung mehr."
+        },
+        "step": {
+          "pick": {
+            "title": "Welcher Wert ist der Ladestand?",
+            "description": "**{device}** meldet mehr als einen Batteriewert, daher rät SpotNav nicht, welcher der Ladestand ist. Wähle den richtigen Wert oder gib an, dass dies kein Fahrzeug ist, damit es nicht mehr gemeldet wird.",
+            "data": {
+              "choice": "Wert"
+            }
+          }
+        }
+      }
+    },
+    "vehicle_charge_limit_needs_decision": {
+      "title": "Die Ladegrenze eines Fahrzeugs braucht eine Entscheidung",
+      "fix_flow": {
+        "abort": {
+          "no_longer_needs_decision": "Dieses Gerät braucht keine Entscheidung mehr."
+        },
+        "step": {
+          "pick": {
+            "title": "Welche Grenze soll eine Änderung setzen?",
+            "description": "**{device}** meldet mehr als eine Ladegrenze, daher rät SpotNav nicht, welche eine Änderung setzen soll. Wähle die Grenze, die für Änderungen an diesem Fahrzeug gelten soll. Sie wird über die eigene Integration des Fahrzeugs geschrieben und wirkt, sobald diese Integration sie das nächste Mal liest.",
+            "data": {
+              "choice": "Ladegrenze"
+            }
+          }
+        }
+      }
+    },
+    "duplicate_charger": {
+      "title": "Zwei SpotNav-Ladestationen sind dieselbe Ladestation",
+      "description": "**{charger}** und **{other}** sind dieselbe physische Ladestation: Sie teilen sich ein Gerät, einen gemessenen Strom, einen OCPP-Anschluss oder ein Easee-Gerät. Zwei SpotNav-Ladestationen an einer Ladestation senden ihr widersprüchliche Befehle. Entferne eine davon: Einstellungen → Geräte & Dienste → SpotNav → Menü des Eintrags → Löschen. SpotNav entfernt nie selbst eine."
+    },
+    "site_without_chargers": {
+      "title": "Eine Ladestation zum Standort hinzufügen",
+      "description": "Der Standort **{site}** hat noch keine Ladestation. Ladestation hinzufügen: Einstellungen → Geräte & Dienste → SpotNav → Eintrag hinzufügen → Ladestation; sie bietet dann an, diesem Standort beizutreten."
+    }
+  },
+  "exceptions": {
+    "invalid_driver": {
+      "message": "Diese Energiequelle wird nicht unterstützt."
+    },
+    "invalid_area": {
+      "message": "Wähle zuerst einen Markt: Dieser Wert gehört zu einem."
+    },
+    "invalid_phases": {
+      "message": "Die Phasen müssen 1 oder 3 sein."
+    },
+    "invalid_amps": {
+      "message": "Der Strom muss eine ganze Zahl in Ampere sein."
+    },
+    "invalid_energy": {
+      "message": "Die Energie muss eine positive Zahl in kWh sein."
+    },
+    "invalid_periods": {
+      "message": "Die Anzahl der Zeiträume muss eine ganze Zahl von 1 bis 8 sein."
+    },
+    "invalid_departure": {
+      "message": "Die Abfahrt muss eine lokale Uhrzeit sein."
+    },
+    "invalid_fiscal": {
+      "message": "Dieser Steuerwert kann so nicht gespeichert werden."
+    },
+    "invalid_target": {
+      "message": "Der Zieldatensatz ist unvollständig."
+    },
+    "invalid_number": {
+      "message": "Dieser Wert muss eine gültige Zahl sein."
+    },
+    "unknown_field": {
+      "message": "Dieser Datensatz enthält ein Feld, das diese Version nicht kennt."
+    },
+    "missing_field": {
+      "message": "In diesem Datensatz fehlt ein Pflichtfeld."
+    },
+    "invalid_proposal": {
+      "message": "Dieser gespeicherte Vorschlag kann nicht verwendet werden."
+    },
+    "invalid_pause": {
+      "message": "Die Pause kann nur an oder aus sein."
+    },
+    "revision_conflict": {
+      "message": "Diese Einstellungen wurden woanders geändert, daher wurde der Wert nicht geschrieben. Versuche es erneut."
+    },
+    "not_auto_mode": {
+      "message": "Automatische Preisplanung ist nicht der Planungsmodus dieser Ladestation."
+    },
+    "unknown_test_charger": {
+      "message": "Keine geladene SpotNav-Ladestation hat diesen Konfigurationseintrag oder diese Entitäts-ID."
+    },
+    "no_push_registered": {
+      "message": "Bei keiner SpotNav-Ladestation sind die Sofortbenachrichtigungen der App eingeschaltet, daher wurde kein Test-Push gesendet. An alle für Benachrichtigungen gewählten Companion-Telefone wurde trotzdem eine Testnachricht gesendet."
+    },
+    "stop_not_executed": {
+      "message": "Die Ladestation hat den Stopp nicht angenommen: Ihre Steuerung ist nicht verfügbar. Versuche es erneut, wenn die Ladestation wieder da ist."
+    },
+    "storage_failed": {
+      "message": "Der Ladeplan konnte nicht gespeichert werden."
+    },
+    "reschedule_failed": {
+      "message": "Der Ladeplan konnte nicht aktiviert werden; der vorherige bleibt bestehen."
+    },
+    "rollback_failed": {
+      "message": "Der Ladeplan konnte nicht aktiviert und der vorherige nicht wiederhergestellt werden."
+    },
+    "vehicle_not_connected": {
+      "message": "Es ist kein Auto angeschlossen, daher gibt es nichts zu starten."
+    },
+    "reconcile_failed": {
+      "message": "Die Ladestation hat den Befehl angenommen, aber das automatische Laden konnte nicht angepasst werden. Prüfe den Status der Ladestation."
+    }
+  }
+}

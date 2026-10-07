@@ -124,6 +124,7 @@ from ..vehicles.charger_inventory import charger_entries
 from ..vehicles.duplicate_chargers import duplicates_of
 from ..vehicles.soc_estimate import battery_room_kwh, CHARGE_EFFICIENCY, target_need_kwh
 from ..vehicles.identification_sources import sources_block
+from ..vehicles.vehicle_charge_limit import charge_limit_range
 from ..vehicles.vehicle_discovery import discover_vehicles, resolve_target_vehicle
 from .charge_bar import charge_bar, ProgressFacts
 from .common import (
@@ -255,6 +256,8 @@ class CapturedLive:
     #: While the car finishes a charge to its own limit past the plan's last window, that top-off's
     #: deadline (`ChargingController.top_off_until`).
     top_off_until: datetime | None = None
+    #: The car's minimum charge level while its own charge runs (`min_soc_floor.py`), else `None`.
+    min_soc_percent: float | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -372,6 +375,10 @@ class CapturedVehicle:
     identification: dict[str, Any] | None = None
     #: The target percent the car is charged to at every charger (`vehicle_properties`), `None` when never set.
     target_percent: float | None = None
+    #: The car's minimum charge level (`vehicle_properties`), `None` when off.
+    min_percent: int | None = None
+    #: What the car's own limit can be written to (`vehicle_charge_limit.charge_limit_range`), `None` when unknown.
+    charge_limit_range: dict[str, float] | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -715,6 +722,8 @@ def capture_vehicles(
                 suggested_onboard_phases=onboard_suggestion(hass, choice.id),
                 identification=sources_block(hass, choice.id),
                 target_percent=own.target_percent,
+                min_percent=own.min_percent,
+                charge_limit_range=charge_limit_range(hass, choice.id),
             )
         )
     return tuple(rows), target_id
@@ -1038,6 +1047,7 @@ def capture_dashboard(
             reports_plug_in=bool(controller is not None and controller.reports_plug_in),
             charging_to_vehicle_limit=bool(controller is not None and controller.charging_to_vehicle_limit),
             top_off_until=None if controller is None else controller.top_off_until,
+            min_soc_percent=_min_soc_percent(hass, entry_id),
         ),
         execution=CapturedExecution(
             state=EXECUTION_NOT_APPLIED if executor is None else executor.execution_state(),
@@ -2020,9 +2030,18 @@ def serialize_soc(soc: CapturedSoc | None) -> dict[str, Any] | None:
     }
 
 
+def _min_soc_percent(hass: HomeAssistant, entry_id: str) -> float | None:
+    """The car's minimum charge level while its own charge runs at this charger, else `None`."""
+    data = charger_data(hass, entry_id)
+    floor = None if data is None else data.min_soc
+    return None if floor is None else floor.charging_percent
+
+
 def serialize_vehicle(vehicle: CapturedVehicle) -> dict[str, Any]:
     """One entry of the root `vehicles`: `capacity_source` is `reported` (by the vehicle, not editable),
-    `stored` (a person's answer) or `null` (missing).
+    `stored` (a person's answer) or `null` (missing). `min_percent` is the car's minimum charge level, `null` when
+    off. `charge_limit_range` is `{"min", "max", "step"}`, the percents the car's own limit can be written to, `null`
+    when there is none to write or its range is unknown.
     """
     return {
         "id": vehicle.id,
@@ -2037,6 +2056,8 @@ def serialize_vehicle(vehicle: CapturedVehicle) -> dict[str, Any]:
         "suggested_onboard_phases": vehicle.suggested_onboard_phases,
         "identification": vehicle.identification,
         "target_percent": finite_number(vehicle.target_percent),
+        "min_percent": vehicle.min_percent,
+        "charge_limit_range": vehicle.charge_limit_range,
     }
 
 
@@ -2118,6 +2139,9 @@ def status_facts(capture: CapturedDashboard) -> StatusFacts:
             charger_current_entity_name=names.get(_text(basis.get("charger_current_entity")) or ""),
             site_incomplete_phases=tuple(str(phase) for phase in basis.get("site_incomplete_phases") or ()),
             retry_at=_instant(basis.get("retry_at")),
+            available_a=finite_number(basis.get("available_a")),
+            available_w=finite_number(basis.get("available_w")),
+            start_a=finite_number(basis.get("start_a")),
         )
     elif state is not None and strategy == STRATEGY_HYBRID:
         hybrid = HybridFacts(
@@ -2155,6 +2179,7 @@ def status_facts(capture: CapturedDashboard) -> StatusFacts:
             _charge_ceiling(capture.soc) if capture.live.charging_to_vehicle_limit else None
         ),
         top_off_until=None if capture.live.top_off_until is None else _utc(capture.live.top_off_until),
+        min_soc_percent=capture.live.min_soc_percent,
         paused=capture.execution.paused is True,
         pause_until=None if pause is None else _utc(pause.expires_at),
         pause_choice=None if pause is None else pause.choice,

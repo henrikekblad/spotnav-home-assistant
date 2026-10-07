@@ -190,14 +190,13 @@ describe("the Plan cell", () => {
 describe("the Plan popover in target mode", () => {
   it("stands on the target with the estimate, its age, the need and the vehicle", async () => {
     const { element } = await openPlan(fixture(), aRecord({ target: { vehicle_id: "<id>", target_percent: 80 } }));
-    expect(q<HTMLInputElement>(element, "input[data-mode='target_soc']")?.checked).toBe(true);
-    expect(q<HTMLInputElement>(element, "input[data-mode='manual_kwh']")?.checked).toBe(false);
+    expect(q(element, "[data-row='charge_by']")?.dataset["mode"]).toBe("target_soc");
     expect(q(element, "[data-part='energy']")?.hidden).toBe(true);
     expect(q<HTMLInputElement>(element, "[data-part='soc'] input[type='range']")?.value).toBe("80");
-    expect(q(element, "[data-soc='facts']")?.textContent).toBe("Now 75.1 %");
-    // The age belongs to the reading the estimate was built from, said as one phrase.
-    expect(q(element, "[data-soc='reading']")?.textContent).toBe("Estimated, last read 2 h ago");
-    expect(q(element, "[data-soc='reading']")?.dataset["estimated"]).toBe("true");
+    // One line: an estimate marked "≈", as on the slider's tick, and the age of the reading it was built from.
+    expect(q(element, "[data-soc='facts']")?.textContent).toBe("Now ≈ 75.1 % · 2 h ago");
+    expect(q(element, "[data-soc='facts']")?.dataset["estimated"]).toBe("true");
+    expect(q(element, "[data-soc='reading']")).toBeNull();
     expect(rowText(element, "need")).toContain("4.2 kWh");
     expect(rowText(element, "vehicle")).toContain("EV6");
     // The Plan popover no longer links to Settings.
@@ -211,9 +210,19 @@ describe("the Plan popover in target mode", () => {
     const payload = fixture();
     Object.assign(payload["soc"], { estimated: false, age_s: 30 });
     const { element } = await openPlan(payload, aRecord({ target: { vehicle_id: "<id>", target_percent: 80 } }), "sv");
-    expect(q(element, "[data-soc='facts']")?.textContent).toBe("Nu 75,1 %");
     // A fresh reading has no age to state, and is not called an estimate.
-    expect(q(element, "[data-soc='reading']")?.hidden).toBe(true);
+    expect(q(element, "[data-soc='facts']")?.textContent).toBe("Nu 75,1 %");
+    expect(q(element, "[data-soc='facts']")?.dataset["estimated"]).toBe("false");
+  });
+
+  it("states an older reading's age and the car's limit on the same line", async () => {
+    const payload = fixture();
+    Object.assign(payload["soc"], { estimated: false, age_s: 480, vehicle_max_percent: 80 });
+    const record = aRecord({ target: { vehicle_id: "<id>", target_percent: 80 } });
+    const { element } = await openPlan(payload, record);
+    expect(q(element, "[data-soc='facts']")?.textContent).toBe("Now 75.1 % · Charge limit 80 % · 8 min ago");
+    const sv = await openPlan(payload, record, "sv");
+    expect(q(sv.element, "[data-soc='facts']")?.textContent).toBe("Nu 75,1 % · Laddgräns 80 % · för 8 min sedan");
   });
 
   it("does not ask for the battery capacity in the plan: one sentence, no link", async () => {
@@ -240,11 +249,12 @@ describe("the Plan popover in target mode", () => {
     expect(q(element, "[data-soc='settings-link']")).toBeNull();
   });
 
-  it("offers the target only when a source exists: a null block disables it and explains why", async () => {
+  it("offers the target only when a source exists: a null block leaves out the Charge by row and explains why", async () => {
     const payload = fixture("cheapest_no_site");
     const { element } = await openPlan(payload, aRecord({ driver: "manual_kwh", target: { vehicle_id: null, target_percent: null } }));
-    expect(q<HTMLInputElement>(element, "input[data-mode='target_soc']")?.disabled).toBe(true);
-    expect(q<HTMLInputElement>(element, "input[data-mode='manual_kwh']")?.checked).toBe(true);
+    // Only energy is possible: no Charge by row, as in the app.
+    expect(q(element, "[data-row='charge_by']")).toBeNull();
+    expect(q(element, "[data-part='energy']")?.hidden).toBe(false);
     expect(q(element, "[data-soc='need-sensor']")).not.toBeNull();
     expect(q(element, "[data-part='soc']")).toBeNull();
   });
@@ -255,10 +265,7 @@ describe("the Plan popover in target mode", () => {
       payload,
       aRecord({ driver: "manual_kwh", target: { vehicle_id: "car-1", target_percent: null } }),
     );
-    const target = q<HTMLInputElement>(element, "input[data-mode='target_soc']")!;
-    expect(target.disabled).toBe(false);
-    target.checked = true;
-    target.dispatchEvent(new Event("change"));
+    q<HTMLButtonElement>(element, "[data-row='charge_by'] button")!.click();
     expect(q(element, "[data-part='energy']")?.hidden).toBe(true);
     expect(q(element, "[data-part='soc'] input[type='number']")).toBeNull();
     const slider = q<HTMLInputElement>(element, "[data-part='soc'] input[type='range']")!;
@@ -284,10 +291,7 @@ describe("the Plan popover in target mode", () => {
       target: { vehicle_id: null, target_percent: null },
     });
     const { hass, element } = await openPlan(payload, record);
-    const target = q<HTMLInputElement>(element, "input[data-mode='target_soc']")!;
-    expect(target.disabled).toBe(false);
-    target.checked = true;
-    target.dispatchEvent(new Event("change"));
+    q<HTMLButtonElement>(element, "[data-row='charge_by'] button")!.click();
     saveButton(element)!.click();
     await settle();
     const body = updates(hass)[0]!["settings"] as Record<string, any>;
@@ -315,16 +319,35 @@ describe("the Plan popover in target mode", () => {
       target: { vehicle_id: null, target_percent: null },
     });
     const { hass, element } = await openPlan(payload, record);
-    const target = q<HTMLInputElement>(element, "input[data-mode='target_soc']")!;
-    expect(target.disabled).toBe(false);
-    target.checked = true;
-    target.dispatchEvent(new Event("change"));
+    q<HTMLButtonElement>(element, "[data-row='charge_by'] button")!.click();
     const select = q<HTMLSelectElement>(element, "select[data-soc='vehicle-choice']")!;
     select.value = "car-2";
     saveButton(element)!.click();
     await settle();
     const body = updates(hass)[0]!["settings"] as Record<string, any>;
     expect(body["target"]["vehicle_id"]).toBe("car-2");
+  });
+
+  it("offers no empty vehicle once one is chosen, and only a placeholder that cannot be picked before", async () => {
+    const chosen = fixture();
+    Object.assign(chosen["soc"], { vehicles: [{ id: "car-1", name: "EV6" }, { id: "car-2", name: "Niro" }] });
+    const first = await openPlan(chosen, aRecord());
+    const picked = q<HTMLSelectElement>(first.element, "select[data-soc='vehicle-choice']")!;
+    expect([...picked.options].map((option) => option.value)).toEqual(["car-1", "car-2"]);
+
+    const unknown = fixture();
+    Object.assign(unknown["soc"], {
+      vehicle_id: null,
+      vehicle_name: null,
+      vehicles: [{ id: "car-1", name: "EV6" }, { id: "car-2", name: "Niro" }],
+      missing: ["vehicle"],
+    });
+    const second = await openPlan(unknown, aRecord({ driver: "manual_kwh", target: { vehicle_id: null, target_percent: null } }));
+    q<HTMLButtonElement>(second.element, "[data-row='charge_by'] button")!.click();
+    const open = q<HTMLSelectElement>(second.element, "select[data-soc='vehicle-choice']")!;
+    const placeholder = [...open.options].find((option) => option.value === "")!;
+    expect(placeholder.disabled).toBe(true);
+    expect(open.value).toBe("");
   });
 
   it("reapplies only the fields the reader moved onto a newer record after a conflict", async () => {
@@ -413,31 +436,31 @@ describe("the phase count", () => {
 });
 
 // The kWh slider's room, "full" mark and "Fill" step are kwh-fill.test.ts's.
-describe("the target slider at its top: the car ends the charge", () => {
-  it("says the car ends a charge to its own limit under the target slider", async () => {
+describe("the target slider at its top", () => {
+  const verdict = (element: Element) => q(element, "[data-soc='verdict']")!;
+  const drag = (element: Element, value: number): void => {
+    const slider = q<HTMLInputElement>(element, "[data-part='soc'] input[type='range']")!;
+    slider.value = String(value);
+    slider.dispatchEvent(new Event("input"));
+  };
+
+  it("says the limit once, as the verdict, from a target at the car's own limit", async () => {
     const payload = fixture();
     Object.assign(payload["soc"], { vehicle_max_percent: 80 });
-    const { element } = await openPlan(payload, aRecord({ target: { vehicle_id: "<id>", target_percent: 70 } }), "sv");
-    const note = q(element, "[data-soc='car-ends']")!;
-    expect(note.hidden).toBe(true);
-    const slider = q<HTMLInputElement>(element, "[data-part='soc'] input[type='range']")!;
-    slider.value = "80";
-    slider.dispatchEvent(new Event("input"));
+    const { element } = await openPlan(payload, aRecord({ target: { vehicle_id: "<id>", target_percent: 79 } }), "sv");
+    expect(verdict(element).hidden).toBe(true);
+    drag(element, 80);
     expect(targetText(element)).toBe("80 %");
-    expect(note.hidden).toBe(false);
-    expect(note.textContent).toBe("Bilen avslutar själv laddningen när den är full eller når sin laddgräns (80 %).");
+    expect(verdict(element).textContent).toBe("Laddar till bilens gräns, 80 %");
+    expect(q(element, "[data-soc='car-ends']")).toBeNull();
   });
 
-  it("names 100 % when the car states no limit, and only at 100 %", async () => {
-    const payload = fixture();
-    const { element } = await openPlan(payload, aRecord({ target: { vehicle_id: "<id>", target_percent: 99 } }));
-    const note = q(element, "[data-soc='car-ends']")!;
-    expect(note.hidden).toBe(true);
-    const slider = q<HTMLInputElement>(element, "[data-part='soc'] input[type='range']")!;
-    slider.value = "100";
-    slider.dispatchEvent(new Event("input"));
-    expect(note.hidden).toBe(false);
-    expect(note.textContent).toBe("The car ends the charge itself when it is full or reaches its charge limit (100 %).");
+  it("adds no note at 100 % when the car states no limit", async () => {
+    const { element } = await openPlan(fixture(), aRecord({ target: { vehicle_id: "<id>", target_percent: 99 } }));
+    drag(element, 100);
+    expect(verdict(element).hidden).toBe(true);
+    expect(q(element, "[data-soc='car-ends']")).toBeNull();
+    expect(rowText(element, "need")).toContain("kWh");
   });
 });
 

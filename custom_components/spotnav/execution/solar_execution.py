@@ -57,6 +57,8 @@
 * A charger that says no car is plugged in (`_car_unplugged`) is never armed or started, and a charge the sun
   runs there goes `off` with no stop sent (`SolarController.car_absent`): nothing is charging, and it takes no
   share of the site's surplus. A charger that cannot say keeps the rules above.
+* The site's own surplus (`site_solar_surplus`, its `Solar surplus` sensor) is reckoned on the same readings
+  for every car on the site at once, whatever the chargers' strategies and with no charger at all.
 * A charger that is not charging draws nothing, whatever its measured current still reads: a sensor keeps
   its last value when a charge ends, and that leftover is not the car's draw (`_build_observation`'s
   `charger_idle`).
@@ -74,6 +76,8 @@ from typing import Any, Final
 
 from homeassistant.core import callback, HomeAssistant
 from homeassistant.util import dt as dt_util
+
+from .min_soc_floor import ORIGIN_MIN_SOC
 
 from ..const import (
     CONF_ACTIVE_CONTROL_ENABLED,
@@ -95,7 +99,7 @@ from ..const import (
 from ..planning.phases import effective_phases
 from ..planning.grid_voltage import stored_voltage_between_phases_v
 from ..planning.auto_settings import AutoSettingsStore, STRATEGY_HYBRID, STRATEGY_SOLAR
-from ..runtime import charger_data, preview_for, site_controller_for
+from ..runtime import charger_data, controller_for, preview_for, site_controller_for
 from ..site.measurement_problem import UNHEALTHY_STATES
 from ..site.measurement_source import grid_power_source_from_dict, source_from_dict
 from ..site.site_capacity import PhaseName, PHASES, charger_order_key
@@ -108,7 +112,10 @@ from ..site.solar_surplus import (
     SolarObservation,
     SolarShareMember,
     SolarVerdict,
+    SiteSurplus,
+    car_draw_w,
     priority_adjust_w,
+    site_surplus,
     surplus_breakdown,
 )
 from .auto_execution import AutoExecutor, pause_blocks_execution
@@ -247,6 +254,8 @@ class SolarExecutionState:
     #: Who writes the sun's current to the charger: `active_control` (the site's damped write), `solar` (its own
     #: write, where active control does not write this charger) or `none` (its current cannot be set).
     solar_current_writer: str | None = None
+    #: The start minimum a charge starts at (`SolarConfig.start_a`), `None` without a controller.
+    start_a: float | None = None
 
 
 def solar_execution_state(hass: HomeAssistant, charger_entry_id: str) -> SolarExecutionState | None:
@@ -482,11 +491,7 @@ def _build_observation(
             known = [value for value in voltage_v.values() if value is not None]
             voltage_v = {**voltage_v, STAND_IN_PHASE: sum(known) / len(known) if known else None}
 
-    battery_reading = site.battery_aggregate_power()
-    battery_configured = battery_reading is not None
-    battery_w: float | None = None
-    if battery_reading is not None and site.solar_accepts(battery_reading, site.battery_entity_ids()):
-        battery_w = battery_reading.value
+    battery_w, battery_configured = _battery_reading(site)
 
     return SolarObservation(
         now=now,
@@ -497,6 +502,71 @@ def _build_observation(
         car_phases=car_phases,
         battery_configured=battery_configured,
         phase_cap_a=phase_cap_a,
+    )
+
+
+def _battery_reading(site: SiteCapacityController) -> tuple[float | None, bool]:
+    """The battery's power (positive = charging), usable only when live by solar's age limit, and whether an
+    aggregate entity is configured at all."""
+    battery_reading = site.battery_aggregate_power()
+    if battery_reading is None:
+        return None, False
+    if site.solar_accepts(battery_reading, site.battery_entity_ids()):
+        return battery_reading.value, True
+    return None, True
+
+
+def _site_net_grid_w(site: SiteCapacityController) -> float | None:
+    """The site's net grid power (positive = import) on solar's basis: a direct site's total grid power (unknown
+    unless fresh), a derived site's signed power summed over every phase, each live (`_liveness_gated`)."""
+    if site.config.get("measurement_mode") == MEASUREMENT_MODE_DIRECT:
+        return site.grid_total_reading()[0]
+    result = site.result
+    phases = [
+        _liveness_gated(result.phase_liveness, result.phase_signed_active_power_diagnostic_w, phase)
+        for phase in PHASES
+    ]
+    if any(value is None for value in phases):
+        return None
+    return sum(phases)  # type: ignore[arg-type]
+
+
+def _charger_idle(controller: ChargingController) -> bool:
+    """Whether the charger is not charging: no Start on its way, and neither its charging state nor its
+    connection says charging. Its measured current then is a leftover (`_build_observation`)."""
+    if controller.start_pending or controller.charging:
+        return False
+    return controller.connection()[0] != CHARGING
+
+
+def site_solar_surplus(hass: HomeAssistant, site: SiteCapacityController) -> SiteSurplus | None:
+    """What a car could take from the sun at the site now (`site_surplus`), whatever its chargers' strategies:
+    the net grid power and the battery as solar reads them, and what every member charger draws (an idle one
+    nothing, one whose draw cannot be read nothing either). `None` without a usable grid reading or with a
+    configured battery that cannot be read."""
+    net_grid_w = _site_net_grid_w(site)
+    if net_grid_w is None:
+        return None
+    battery_w, battery_configured = _battery_reading(site)
+    car_w = 0.0
+    for charger_entry_id in site.config.get(CONF_CHARGER_ENTRY_IDS) or []:
+        controller = controller_for(hass, charger_entry_id)
+        if controller is None:
+            continue
+        observation = _build_observation(
+            site,
+            charger_entry_id,
+            now=0.0,
+            effective_phases=effective_phases(hass, charger_entry_id),
+            charger_idle=_charger_idle(controller),
+        )
+        car_w += car_draw_w(observation) or 0.0
+    return site_surplus(
+        net_grid_w=net_grid_w,
+        car_w=car_w,
+        battery_w=battery_w,
+        battery_configured=battery_configured,
+        priority=site.config.get(CONF_SOLAR_PRIORITY, DEFAULT_SOLAR_PRIORITY),
     )
 
 
@@ -862,6 +932,9 @@ class SolarExecutionCoordinator:
         if settings.strategy == STRATEGY_HYBRID:
             self._log_hybrid_satisfied(False)
         held_by_plan = settings.strategy == STRATEGY_HYBRID and self._controller.plan_window_active_now
+        # The car's minimum charge level runs the charge (`min_soc_floor.py`): the sun observes and acts on nothing,
+        # as beside a plan window, until the floor hands the charge over.
+        held_by_floor = self._controller.charge_origin == ORIGIN_MIN_SOC
         if pause_blocks_execution(settings):
             # Auto is paused (a person's Start or Stop pauses it for the plug-in): the sun neither starts,
             # stops nor modulates the charger, and takes over nothing. Fresh afterwards: the start delay runs
@@ -877,11 +950,11 @@ class SolarExecutionCoordinator:
 
         if self._solar is None:
             self._solar = self._build_controller(site)
-        elif not held_by_plan and self._state is not None and self._state.held_by_plan:
+        elif not (held_by_plan or held_by_floor) and self._state is not None and self._state.held_by_plan:
             # A plan window held the charge until now (its end handed it over, or the strategy left the plan): what
             # the sun asked for meanwhile was never written, so its next modulation writes again.
             self._solar.release_request()
-        if not held_by_plan:
+        if not (held_by_plan or held_by_floor):
             if await self._adopt_solar_charge(site, self._solar):
                 # Solar's own charge resumed by load balancing was decided this tick (kept or stopped).
                 if settings.strategy == STRATEGY_HYBRID:
@@ -922,18 +995,21 @@ class SolarExecutionCoordinator:
         if verdict.action in ("start", "stop") or verdict.state == "off":
             # Solar's own start, or no charge of solar's any more.
             self._took_over = False
-        if held_by_plan:
+        if held_by_plan or held_by_floor:
             # Arbitration: the state machine saw this observation (its timers keep ticking) but its
-            # verdict is not carried out while a plan window owns the charger.
+            # verdict is not carried out while a plan window or the car's minimum charge level owns the charger.
             pass
         else:
             verdict = await self._apply_verdict(verdict)
             await self._write_own_current(site)
         self._update_state(
-            verdict, site, held_by_plan=held_by_plan, basis=solar_basis(site, self._charger_entry_id, observation)
+            verdict,
+            site,
+            held_by_plan=held_by_plan or held_by_floor,
+            basis=solar_basis(site, self._charger_entry_id, observation),
         )
         self._log_transition(verdict)
-        self._record_verdict(verdict, held_by_plan=held_by_plan)
+        self._record_verdict(verdict, held_by_plan=held_by_plan or held_by_floor)
         self._log_hybrid_handoff(held_by_plan)
         if settings.strategy == STRATEGY_HYBRID:
             await self._async_recalculate_hybrid_preview()
@@ -967,12 +1043,8 @@ class SolarExecutionCoordinator:
         return controller.connection()[0] == DISCONNECTED or controller.adapter.vehicle_connected() is False
 
     def _charger_idle(self) -> bool:
-        """Whether the charger is not charging: no Start on its way, and neither its charging state nor its
-        connection says charging. Its measured current then is a leftover (`_build_observation`)."""
-        controller = self._controller
-        if controller.start_pending or controller.charging:
-            return False
-        return controller.connection()[0] != CHARGING
+        """Whether this charger is not charging (module-level `_charger_idle`)."""
+        return _charger_idle(self._controller)
 
     def _watch_charge(self, solar: SolarController, now: float) -> SolarVerdict | None:
         """The charger's own state against solar's: the verdict that ends a charge solar runs which ended
@@ -1516,6 +1588,7 @@ class SolarExecutionCoordinator:
             basis=basis if basis is not None else SolarBasis(),
             retry_at=self._retry_at(),
             solar_current_writer=self.current_writer(site),
+            start_a=None if self._solar is None else self._solar.config.start_a,
         )
 
     def _retry_at(self) -> datetime | None:
@@ -1580,9 +1653,16 @@ class SolarExecutionCoordinator:
         if self._born_at is None:
             self._born_at = self._now()
         signature: tuple[Any, ...] = (verdict.state, verdict.action, verdict.reason)
-        if signature == self._logged:
+        # No car: a charger reports no current of its own while it has none to measure (an OCPP connector's
+        # current while `Available`). Not said, and not remembered as said: once a car is plugged in with the
+        # measurement still missing, it is.
+        warn_missing = (
+            verdict.reason == "charger_measurement_missing"
+            and not self._warned_missing
+            and not self._car_unplugged()
+        )
+        if signature == self._logged and not warn_missing:
             return
-        warn_missing = verdict.reason == "charger_measurement_missing" and not self._warned_missing
         if warn_missing and self._now() - self._born_at < MEASUREMENT_WARNING_GRACE_S:
             # Still starting up: say nothing and remember nothing, so the next tick after the grace
             # warns if the measurement is still missing.

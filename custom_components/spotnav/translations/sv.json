@@ -502,10 +502,44 @@
         "name": "Schemalagt slut"
       },
       "site_state": {
-        "name": "Kapacitetsstatus"
+        "name": "Kapacitetsstatus",
+        "state": {
+          "disabled": "Avstängd",
+          "not_configured": "Inte konfigurerad",
+          "missing_measurements": "Mätvärde saknas",
+          "stale_measurements": "Mätvärde inaktuellt",
+          "invalid_measurements": "Ogiltigt mätvärde",
+          "observing": "Mäter"
+        },
+        "state_attributes": {
+          "site_activity": {
+            "name": "Aktivitet",
+            "state": {
+              "measuring": "Mäter, aktiv lastbalansering av",
+              "balancing": "Mäter, aktiv lastbalansering på",
+              "not_measuring": "Mäter inte"
+            }
+          }
+        }
+      },
+      "solar_surplus": {
+        "name": "Solöverskott"
       },
       "charger_proposed_current": {
-        "name": "Föreslagen ström – {charger}"
+        "name": "Föreslagen ström – {charger}",
+        "state_attributes": {
+          "state": {
+            "name": "Status",
+            "state": {
+              "invalid_measurements": "Ogiltigt mätvärde",
+              "requested_current_unknown": "Begärd ström okänd",
+              "capacity_available": "Ryms",
+              "capacity_limited": "Begränsad",
+              "below_minimum_current": "Under minsta ström",
+              "not_requesting": "Laddar inte"
+            }
+          }
+        }
       },
       "auto_plan_state": {
         "name": "Auto-planens tillstånd",
@@ -608,6 +642,20 @@
           "solar": "Solöverskott",
           "hybrid": "Billigaste timmarna, minus väntad sol"
         }
+      },
+      "charge_periods": {
+        "name": "Laddperioder",
+        "state": {
+          "auto": "Automatiskt",
+          "1": "1 period",
+          "2": "2 perioder",
+          "3": "3 perioder",
+          "4": "4 perioder",
+          "5": "5 perioder",
+          "6": "6 perioder",
+          "7": "7 perioder",
+          "8": "8 perioder"
+        }
       }
     },
     "number": {
@@ -616,9 +664,6 @@
       },
       "requested_energy": {
         "name": "Energi att ladda"
-      },
-      "maximum_periods": {
-        "name": "Högsta antal laddperioder"
       },
       "vat_rate": {
         "name": "Moms"

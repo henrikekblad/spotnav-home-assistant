@@ -1,7 +1,7 @@
 """Every field a flow shows has a label in every language, so no form shows a raw key.
 
 The forms are driven through Home Assistant's own flow manager with `async_show_form` observed; every
-schema that is shown must have, for each of its fields, a `data` label under its step in `en` and `sv`.
+schema that is shown must have, for each of its fields, a `data` label under its step in every language.
 """
 
 from __future__ import annotations
@@ -21,7 +21,7 @@ from custom_components.spotnav.const import DOMAIN
 from .helpers import create_ocpp_charger_device, make_entry, make_ocpp_config_entry, make_site_entry
 
 TRANSLATIONS = Path(__file__).parents[1] / "custom_components" / "spotnav" / "translations"
-LANGUAGES = ("en", "sv")
+LANGUAGES = ("en", "sv", "da", "nb", "fi", "de", "nl", "fr", "es")
 
 
 @pytest.fixture
@@ -60,7 +60,7 @@ def _assert_labelled(seen: dict[tuple[str, str], set[str]]) -> None:
 
 
 def test_both_languages_label_the_same_fields() -> None:
-    en, sv = (_labels(language) for language in LANGUAGES)
+    en, sv = (_labels(language) for language in ("en", "sv"))
     for kind in ("config", "options"):
         assert {s: sorted(v.get("data", {})) for s, v in en[kind]["step"].items()} == {
             s: sorted(v.get("data", {})) for s, v in sv[kind]["step"].items()

@@ -1,0 +1,829 @@
+{
+  "title": "SpotNav",
+  "config": {
+    "flow_title": "{device} veut se connecter · code {code}",
+    "step": {
+      "pairing": {
+        "menu_options": {
+          "pair_approve": "Approuver",
+          "pair_deny": "Refuser"
+        },
+        "title": "Un téléphone veut se connecter",
+        "description": "Un appareil se présentant comme **{device}** demande à se connecter et affiche le code **{code}**. N'approuvez que si le même code est affiché sur son écran. Approuver lui donne accès aux bornes de cette instance ; le code sert uniquement à la comparaison."
+      },
+      "pair_approve": {
+        "title": "Approuver"
+      },
+      "pair_deny": {
+        "title": "Refuser"
+      },
+      "user": {
+        "title": "Que voulez-vous ajouter ?",
+        "description": "Une borne relie un point de charge physique à SpotNav. Un site est facultatif : il équilibre la charge de toutes les bornes d'un même raccordement électrique sous le fusible principal.",
+        "data": {
+          "entry_type": "Élément à ajouter"
+        }
+      },
+      "charger_type": {
+        "title": "Choisir le type de borne",
+        "description": "Automatique trouve les commandes de la borne à partir de son appareil : bornes OCPP et intégrations prises en charge (Easee, Wallbox, Zaptec, go-e, Peblar et d'autres). Manuel vous permet de choisir vous-même n'importe quel interrupteur de commande de charge.",
+        "data": {
+          "mode": "Type de borne"
+        }
+      },
+      "resolve_vehicle": {
+        "title": "Identifier un véhicule détecté",
+        "description": "L'un de ces appareils ressemble à un véhicule mais indique plusieurs niveaux de batterie, SpotNav ne devinera donc pas lequel est le niveau de charge. Choisissez l'appareil à identifier -- ou choisissez à nouveau le type d'entrée si vous ne reconnaissez rien ici.",
+        "data": {
+          "device_id": "Appareil"
+        }
+      },
+      "resolve_vehicle_soc": {
+        "title": "Quelle valeur est le niveau de charge ?",
+        "description": "Choisissez laquelle des valeurs de batterie de {name} est son vrai niveau de charge -- ou indiquez que l'appareil n'est pas un véhicule que vous chargez, pour que SpotNav cesse de le signaler.",
+        "data": {
+          "soc_entity_id": "Niveau de charge"
+        }
+      },
+      "ocpp_entities": {
+        "title": "Confirmer les commandes de la borne",
+        "description": "Seules les entités compatibles appartenant à la borne OCPP sélectionnée sont affichées.",
+        "data": {
+          "charge_control": "Commande de charge",
+          "current_limit": "Entité de limite de courant (facultatif)",
+          "energy_register_entity": "Compteur d'énergie (cumulé)",
+          "current_control": "Comment SpotNav règle le courant"
+        },
+        "data_description": {
+          "charge_control": "L'interrupteur qui démarre et arrête la charge sur ce connecteur.",
+          "current_limit": "L'entité de courant propre à la borne ; SpotNav lit uniquement sa valeur et sa plage.",
+          "energy_register_entity": "Le capteur d'énergie totale du connecteur ; il est trouvé automatiquement, laissez-le tel quel.",
+          "current_control": "Laissez sur « Ne pas régler de courant », sauf si la borne est connue pour accepter la méthode choisie."
+        }
+      },
+      "generic": {
+        "title": "Choisir les commandes de la borne",
+        "data": {
+          "charge_control": "Commande de charge",
+          "current_limit": "Courant de charge (facultatif)",
+          "energy_register_entity": "Compteur d'énergie (cumulé)",
+          "power_entity": "Capteur de puissance, prise connectée (facultatif)"
+        },
+        "data_description": {
+          "energy_register_entity": "Le capteur d'énergie totale de la borne, utilisé pour compter l'énergie déjà fournie. Facultatif.",
+          "power_entity": "Une borne simple derrière une prise connectée : le capteur de puissance de la prise (W ou kW). SpotNav en déduit l'énergie et voit quand la voiture a cessé de consommer. La prise doit supporter le courant continu de la borne. Facultatif."
+        }
+      },
+      "site": {
+        "title": "Site",
+        "description": "Le site maintient le courant total de ses bornes sous le fusible principal. Le contrôle actif peut être activé et désactivé plus tard ; il fonctionne au mieux et n'est pas un dispositif de protection. Le calibre du fusible principal doit être saisi explicitement -- il n'est jamais déduit de la charge mesurée. {charger_hint}",
+        "data": {
+          "name": "Nom du site",
+          "main_fuse_a": "Calibre du fusible principal (A)",
+          "safety_margin_a": "Marge de sécurité (A)",
+          "measurement_mode": "Source de mesure",
+          "charger_entry_ids": "Bornes partageant la capacité de ce site",
+          "voltage_between_phases_v": "Tension entre phases"
+        }
+      },
+      "site_detected": {
+        "title": "Compteur réseau trouvé",
+        "description": "SpotNav a trouvé ces compteurs réseau. Rien n'est appliqué tant que vous ne confirmez pas ; choisissez « manuel » pour sélectionner vous-même les entités.",
+        "data": {
+          "choice": "Compteur détecté",
+          "enable_disabled": "Activer les entités désactivées dont ce compteur a besoin"
+        }
+      },
+      "site_current_suggestions": {
+        "title": "Suggestions de source de courant du site",
+        "description": "Ce ne sont que des suggestions, basées sur les entités déjà présentes dans Home Assistant -- rien n'est appliqué tant que vous ne confirmez pas. Choisissez « manuel » pour sélectionner vous-même les entités, ou « ignorer » pour configurer cela plus tard via les options du site.",
+        "data": {
+          "choice": "Source suggérée"
+        }
+      },
+      "site_details": {
+        "title": "Entités de mesure",
+        "description": "Choisissez les capteurs du compteur réseau. Tout capteur est accepté ; son unité est vérifiée lorsque vous continuez (courant en A ou mA, puissance en W ou kW, tension en V, puissance réactive en var ou kvar, puissance apparente en VA ou kVA). Seuls les champs correspondant à la source de mesure choisie sont affichés. Le câblage des phases de chaque borne associée suit, une borne à la fois.{charger_hint}",
+        "data": {
+          "direct_L1": "Courant réseau L1",
+          "direct_L2": "Courant réseau L2",
+          "direct_L3": "Courant réseau L3",
+          "site_current_signed": "Le courant réseau est signé (l'export est négatif)",
+          "grid_power_inverted": "La puissance réseau est positive en export (l'inverser)",
+          "derived_L1_power_export": "Puissance d'export L1 (facultatif, si import et export sont séparés)",
+          "derived_L1_reactive_power": "Puissance réactive L1 (facultatif)",
+          "derived_L1_apparent_power": "Puissance apparente L1 (facultatif)",
+          "derived_L1_current": "Courant L1 (facultatif)",
+          "derived_L2_power_export": "Puissance d'export L2 (facultatif, si import et export sont séparés)",
+          "derived_L2_reactive_power": "Puissance réactive L2 (facultatif)",
+          "derived_L2_apparent_power": "Puissance apparente L2 (facultatif)",
+          "derived_L2_current": "Courant L2 (facultatif)",
+          "derived_L3_power_export": "Puissance d'export L3 (facultatif, si import et export sont séparés)",
+          "derived_L3_reactive_power": "Puissance réactive L3 (facultatif)",
+          "derived_L3_apparent_power": "Puissance apparente L3 (facultatif)",
+          "derived_L3_current": "Courant L3 (facultatif)",
+          "derived_L1_power": "Puissance L1",
+          "derived_L1_voltage": "Tension L1",
+          "derived_L2_power": "Puissance L2",
+          "derived_L2_voltage": "Tension L2",
+          "derived_L3_power": "Puissance L3",
+          "derived_L3_voltage": "Tension L3"
+        }
+      },
+      "charger_manual_source": {
+        "title": "Courant mesuré de la borne",
+        "description": "Choisissez une entité appartenant à l'appareil propre de cette borne et indiquez l'attribut qui contient le courant de chaque phase. Seules les entités enregistrées sur cette borne sont proposées. Choisissez explicitement l'unité de ces attributs -- « A » ou « mA » : l'unité propre d'une entité décrit la valeur de son état, pas forcément les autres attributs qu'elle porte.",
+        "data": {
+          "entity_id": "Entité (uniquement l'appareil propre de cette borne)",
+          "attribute_L1": "Nom de l'attribut L1",
+          "attribute_L2": "Nom de l'attribut L2",
+          "attribute_L3": "Nom de l'attribut L3",
+          "unit": "Unité de ces attributs",
+          "confirm_unverified": "Rien n'a pu être vérifié -- enregistrer quand même"
+        }
+      },
+      "site_manual_source": {
+        "title": "Courant du site depuis une entité",
+        "description": "Choisissez une entité qui porte le courant de tout le site dans ses propres attributs par phase, et indiquez l'attribut de chaque phase. Les entités appartenant à l'une des bornes de ce site ne sont jamais proposées -- le capteur propre d'une borne ne peut pas être aussi le total de tout le site. Choisissez explicitement l'unité de ces attributs -- « A » ou « mA » : l'unité propre d'une entité décrit la valeur de son état, pas forcément les autres attributs qu'elle porte.",
+        "data": {
+          "entity_id": "Entité (tout sauf les bornes de ce site)",
+          "attribute_L1": "Nom de l'attribut L1",
+          "attribute_L2": "Nom de l'attribut L2",
+          "attribute_L3": "Nom de l'attribut L3",
+          "unit": "Unité de ces attributs",
+          "confirm_unverified": "Rien n'a pu être vérifié -- enregistrer quand même"
+        }
+      },
+      "detect_device": {
+        "title": "Choisir l'appareil de la borne",
+        "description": "Choisissez l'appareil de la borne. SpotNav trouve ses commandes parmi les entités de cette intégration ; rien n'est appliqué tant que vous ne confirmez pas l'étape suivante.",
+        "data": {
+          "device": "Borne"
+        }
+      },
+      "own_mode": {
+        "title": "Désactiver le pilotage propre de la borne",
+        "description": "Cette borne a son propre mode intelligent, solaire ou d'équilibrage de charge activé : {modes}. Deux contrôleurs sur une même borne entrent en conflit. Désactivez-le dans l'intégration ou l'application propre à la borne, puis continuez.",
+        "data": {
+          "continue_anyway": "Continuer quand même (j'accepte qu'ils puissent entrer en conflit)"
+        }
+      },
+      "detected_entities": {
+        "title": "Confirmer {device}",
+        "description": "{warning}Trouvé à partir de l'appareil de la borne. Modifiez ou effacez ce qui est incorrect. « Régler le courant de la borne » est désactivé sauf si vous le choisissez : SpotNav écrit alors le courant uniquement dans la mesure où les limites d'écriture de la borne le permettent.{disabled}",
+        "data": {
+          "charge_control": "Commande de charge",
+          "current_limit": "Entité de courant de charge (facultatif)",
+          "current_control": "Régler le courant de la borne",
+          "energy_register_entity": "Compteur d'énergie (facultatif)",
+          "energy_register_is_session": "Utiliser le compteur d'énergie par session (remis à zéro à chaque session)",
+          "charging_state_entity": "Capteur d'état qui indique la charge en cours (facultatif)",
+          "enable_disabled_entities": "Activer les entités utiles qui sont désactivées"
+        }
+      },
+      "ocpp_confirm": {
+        "title": "Borne trouvée",
+        "description": "Les commandes de cette borne ont été trouvées. Continuez pour l'ajouter, ou cochez la case pour modifier ces choix.\n\n{summary}",
+        "data": {
+          "adjust": "Modifier ces choix"
+        }
+      },
+      "site_confirm": {
+        "title": "Site trouvé",
+        "description": "Voici ce que SpotNav a trouvé pour ce site. Continuez pour le créer, ou cochez la case pour modifier ces choix.\n\n{summary}{charger_hint}",
+        "data": {
+          "adjust": "Modifier ces choix"
+        }
+      },
+      "join_site": {
+        "title": "Ajouter au site",
+        "description": "Ajouter cette borne au site {site} ?\n\n{summary}",
+        "data": {
+          "join": "L'ajouter au site"
+        }
+      },
+      "site_charger_wiring": {
+        "title": "Câblage de {charger}",
+        "description": "Pour une borne monophasée, choisissez explicitement la phase raccordée -- avec une phase inconnue, aucune recommandation sûre ne peut jamais être calculée. Le courant mesuré propre à la borne est facultatif : choisissez une suggestion détectée, saisissez une entité avec des attributs par phase, saisissez trois entités séparées (une par phase, comme le fournit l'intégration Charge Amps), ou laissez « ignorer » pour le configurer plus tard.",
+        "data": {
+          "phases": "Nombre de phases",
+          "phase": "Phase raccordée (bornes monophasées)",
+          "measured_source": "Source du courant mesuré (facultatif)"
+        }
+      },
+      "charger_manual_entities": {
+        "title": "Courant mesuré de la borne, une entité par phase",
+        "description": "Choisissez le capteur qui contient le courant de chaque phase. Seules les entités enregistrées sur l'appareil propre de cette borne sont proposées, et chacune doit indiquer des ampères (A ou mA).",
+        "data": {
+          "entity_L1": "Courant L1",
+          "entity_L2": "Courant L2",
+          "entity_L3": "Courant L3"
+        }
+      },
+      "charger_installation": {
+        "title": "Phases de la borne, tension entre phases",
+        "description": "Les entités de la borne n'indiquent pas sur combien de phases elle charge. Choisissez une phase ou trois : les plans en dépendent. Là où une grande partie du réseau est en IT (comme en Norvège), indiquez aussi la tension entre phases ; 230 V sur un réseau IT, 400 V sinon.",
+        "data": {
+          "charger_phases": "Phases de la borne",
+          "voltage_between_phases_v": "Tension entre phases"
+        }
+      }
+    },
+    "abort": {
+      "already_configured": "Cette borne ou ce site est déjà configuré.",
+      "pairing_approved": "Approuvé. Le téléphone a maintenant accès aux bornes de cette instance.",
+      "pairing_denied": "Refusé. Le téléphone en a été informé et rien n'a été transmis.",
+      "pairing_request_expired": "Cette demande d'appairage a expiré. Recommencez sur le téléphone.",
+      "no_supported_charger": "Aucune borne prise en charge n'a été trouvée. Configurez d'abord l'intégration propre à la borne, ou choisissez Manuel.",
+      "no_charge_control": "Aucun interrupteur de commande de charge OCPP activé n'a été trouvé pour cet appareil.",
+      "no_pending_site": "Les informations de ce site n'avaient pas été envoyées avant l'ouverture de l'entrée manuelle de borne, rien n'a donc été enregistré.",
+      "no_ambiguous_vehicles": "Aucun véhicule détecté n'a besoin d'être identifié pour le moment.",
+      "vehicle_resolved": "Véhicule identifié. Son niveau de charge sera lu depuis la valeur que vous avez choisie.",
+      "vehicle_dismissed": "Véhicule écarté. SpotNav cessera de le signaler jusqu'à ce qu'il soit rétabli.",
+      "not_a_charger": "Cet appareil n'est pas une borne de recharge (c'est un contrôleur de chauffage ou de prise).",
+      "charger_not_recognised": "SpotNav ne connaît pas cette intégration. Choisissez plutôt Manuel.",
+      "charger_not_controllable": "SpotNav ne peut pas démarrer ni arrêter cette borne. Elle peut seulement être lue."
+    },
+    "error": {
+      "safety_margin_at_or_above_fuse": "La marge de sécurité doit être inférieure au fusible principal, sinon il ne reste aucun courant pour les bornes.",
+      "charge_control_in_use": "Cette commande de charge est déjà utilisée par une autre borne SpotNav.",
+      "current_limit_in_use": "Cette commande de courant de charge est déjà utilisée par une autre borne SpotNav.",
+      "duplicate_charger": "{other} et cette borne sont la même borne physique. Deux bornes SpotNav sur une même borne lui envoient des ordres contradictoires, n'en gardez donc qu'une : supprimez l'autre dans Paramètres → Appareils et services → SpotNav. SpotNav n'en supprime jamais une à votre place.",
+      "charger_already_in_another_site": "L'une de ces bornes est déjà attribuée à un autre site.",
+      "manual_source_entity_invalid": "Choisissez une entité capteur qui existe dans Home Assistant.",
+      "manual_source_entity_wrong_device": "Cette entité n'est pas enregistrée sur l'appareil propre de cette borne, elle ne peut donc pas être le courant mesuré de cette borne.",
+      "site_manual_source_entity_on_charger_device": "Cette entité appartient à l'une des bornes de ce site, elle ne peut donc pas être le courant total propre au site.",
+      "manual_source_attributes_required": "Saisissez le nom de l'attribut pour cette phase.",
+      "manual_source_unverified": "Rien sur cette entité ne correspond actuellement à ces noms d'attributs, ni dans les {lookback_days} derniers jours d'historique -- il s'agit peut-être d'une borne toute neuve, ou d'une faute de frappe. Cochez « enregistrer quand même » pour l'enregistrer malgré tout.",
+      "device_not_found": "Cet appareil n'existe pas.",
+      "own_mode_active": "Le pilotage propre de la borne est toujours activé. Désactivez-le, ou choisissez de continuer quand même.",
+      "control_path_unknown": "SpotNav ne sait pas comment démarrer et arrêter une charge avec cette entité. Choisissez l'interrupteur de la borne, ou un sélecteur avec des options claires de démarrage et d'arrêt.",
+      "current_limit_required": "Choisissez l'entité de courant de charge par laquelle le régler.",
+      "current_control_unsupported": "Cette façon de régler le courant ne convient pas à cette borne.",
+      "charger_no_answer": "La borne n'a pas répondu, SpotNav ne peut donc pas savoir comment son courant est réglé. Attendez qu'elle soit connectée et renvoyez, ou choisissez vous-même.",
+      "unit_expected_current": "Ce capteur doit indiquer un courant en A ou mA.",
+      "unit_expected_power": "Ce capteur doit indiquer une puissance en W ou kW.",
+      "unit_expected_voltage": "Ce capteur doit indiquer une tension en V.",
+      "unit_expected_reactive_power": "Ce capteur doit indiquer une puissance réactive en var ou kvar.",
+      "unit_expected_apparent_power": "Ce capteur doit indiquer une puissance apparente en VA ou kVA.",
+      "manual_entities_duplicate": "Chaque phase doit avoir sa propre entité."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Commandes de la borne",
+        "data": {
+          "charge_control": "Commande de charge",
+          "current_limit": "Courant de charge (facultatif)",
+          "current_control": "Régler le courant de la borne",
+          "energy_register_entity": "Compteur d'énergie (cumulé, facultatif)",
+          "power_entity": "Capteur de puissance, prise connectée (facultatif)",
+          "idle_power_w": "Ne consomme pas en dessous de (W)"
+        },
+        "data_description": {
+          "idle_power_w": "En dessous de cette puissance pendant cinq minutes lors d'une charge planifiée, SpotNav considère que la voiture ne consomme pas. Par défaut 100 W."
+        }
+      },
+      "site_init": {
+        "title": "Paramètres de capacité du site",
+        "description": "Équilibrage de charge sous le fusible principal. Le contrôle actif réduit le courant d'une borne si nécessaire ; il fonctionne au mieux et n'est pas un dispositif de protection. Le capteur de puissance de la batterie est facultatif et ne sert qu'à une estimation de diagnostic -- jamais à une limite de charge sûre.",
+        "data": {
+          "name": "Nom du site",
+          "site_enabled": "Calcul du site activé",
+          "active_control_enabled": "Contrôle actif activé (sur option, mode dérivé uniquement)",
+          "main_fuse_a": "Calibre du fusible principal (A)",
+          "safety_margin_a": "Marge de sécurité (A)",
+          "max_age_s": "Âge maximal des mesures (secondes)",
+          "regulator_deadband_a": "Contrôle actif : ignorer les variations inférieures à (A)",
+          "regulator_dwell_s": "Contrôle actif : durée pendant laquelle une variation doit se maintenir (secondes)",
+          "yield_stepping_enabled": "Paliers vérifiés par cession activés (sur option, pour un site avec une charge qui cède, p. ex. une batterie domestique)",
+          "yield_ceiling_a": "Paliers par cession : plafond strict, jamais dépassé (A, doit être supérieur au fusible principal)",
+          "solar_priority": "Priorité du surplus solaire (voiture ou batterie domestique d'abord)",
+          "battery_aggregate_power_entity": "Puissance de charge de la batterie domestique (facultatif, diagnostic uniquement)",
+          "change_measurement": "Modifier la mesure et le câblage des phases",
+          "measurement_mode": "Source de mesure",
+          "charger_entry_ids": "Bornes partageant la capacité de ce site",
+          "solar_forecast_entries": "Sources de prévision solaire (facultatif, utilisées par la stratégie hybride)",
+          "voltage_between_phases_v": "Tension entre phases"
+        }
+      },
+      "site_current_suggestions": {
+        "title": "Suggestions de source de courant du site",
+        "description": "Ce ne sont que des suggestions, basées sur les entités déjà présentes dans Home Assistant -- rien n'est appliqué tant que vous ne confirmez pas. Choisissez « manuel » pour sélectionner vous-même les entités, ou « ignorer » pour configurer cela plus tard via les options du site.",
+        "data": {
+          "choice": "Source suggérée"
+        }
+      },
+      "site_details": {
+        "title": "Entités de mesure",
+        "description": "{reason}Choisissez les capteurs du compteur réseau. Tout capteur est accepté ; son unité est vérifiée lorsque vous continuez (courant en A ou mA, puissance en W ou kW, tension en V, puissance réactive en var ou kvar, puissance apparente en VA ou kVA). Seuls les champs correspondant à la source de mesure choisie sont affichés. Le câblage des phases de chaque borne associée suit, une borne à la fois.",
+        "data": {
+          "direct_L1": "Courant réseau L1",
+          "direct_L2": "Courant réseau L2",
+          "direct_L3": "Courant réseau L3",
+          "site_current_signed": "Le courant réseau est signé (l'export est négatif)",
+          "grid_power_inverted": "La puissance réseau est positive en export (l'inverser)",
+          "derived_L1_power_export": "Puissance d'export L1 (facultatif, si import et export sont séparés)",
+          "derived_L1_reactive_power": "Puissance réactive L1 (facultatif)",
+          "derived_L1_apparent_power": "Puissance apparente L1 (facultatif)",
+          "derived_L1_current": "Courant L1 (facultatif)",
+          "derived_L2_power_export": "Puissance d'export L2 (facultatif, si import et export sont séparés)",
+          "derived_L2_reactive_power": "Puissance réactive L2 (facultatif)",
+          "derived_L2_apparent_power": "Puissance apparente L2 (facultatif)",
+          "derived_L2_current": "Courant L2 (facultatif)",
+          "derived_L3_power_export": "Puissance d'export L3 (facultatif, si import et export sont séparés)",
+          "derived_L3_reactive_power": "Puissance réactive L3 (facultatif)",
+          "derived_L3_apparent_power": "Puissance apparente L3 (facultatif)",
+          "derived_L3_current": "Courant L3 (facultatif)",
+          "derived_L1_power": "Puissance L1",
+          "derived_L1_voltage": "Tension L1",
+          "derived_L2_power": "Puissance L2",
+          "derived_L2_voltage": "Tension L2",
+          "derived_L3_power": "Puissance L3",
+          "derived_L3_voltage": "Tension L3"
+        }
+      },
+      "charger_manual_source": {
+        "title": "Courant mesuré de la borne",
+        "description": "Choisissez une entité appartenant à l'appareil propre de cette borne et indiquez l'attribut qui contient le courant de chaque phase. Seules les entités enregistrées sur cette borne sont proposées. Choisissez explicitement l'unité de ces attributs -- « A » ou « mA » : l'unité propre d'une entité décrit la valeur de son état, pas forcément les autres attributs qu'elle porte.",
+        "data": {
+          "entity_id": "Entité (uniquement l'appareil propre de cette borne)",
+          "attribute_L1": "Nom de l'attribut L1",
+          "attribute_L2": "Nom de l'attribut L2",
+          "attribute_L3": "Nom de l'attribut L3",
+          "unit": "Unité de ces attributs",
+          "confirm_unverified": "Rien n'a pu être vérifié -- enregistrer quand même"
+        }
+      },
+      "site_manual_source": {
+        "title": "Courant du site depuis une entité",
+        "description": "Choisissez une entité qui porte le courant de tout le site dans ses propres attributs par phase, et indiquez l'attribut de chaque phase. Les entités appartenant à l'une des bornes de ce site ne sont jamais proposées -- le capteur propre d'une borne ne peut pas être aussi le total de tout le site. Choisissez explicitement l'unité de ces attributs -- « A » ou « mA » : l'unité propre d'une entité décrit la valeur de son état, pas forcément les autres attributs qu'elle porte.",
+        "data": {
+          "entity_id": "Entité (tout sauf les bornes de ce site)",
+          "attribute_L1": "Nom de l'attribut L1",
+          "attribute_L2": "Nom de l'attribut L2",
+          "attribute_L3": "Nom de l'attribut L3",
+          "unit": "Unité de ces attributs",
+          "confirm_unverified": "Rien n'a pu être vérifié -- enregistrer quand même"
+        }
+      },
+      "site_charger_wiring": {
+        "title": "Câblage de {charger}",
+        "description": "Pour une borne monophasée, choisissez explicitement la phase raccordée -- avec une phase inconnue, aucune recommandation sûre ne peut jamais être calculée. Le courant mesuré propre à la borne est facultatif : choisissez une suggestion détectée, saisissez une entité avec des attributs par phase, saisissez trois entités séparées (une par phase, comme le fournit l'intégration Charge Amps), ou laissez « ignorer » pour le configurer plus tard.",
+        "data": {
+          "phases": "Nombre de phases",
+          "phase": "Phase raccordée (bornes monophasées)",
+          "measured_source": "Source du courant mesuré (facultatif)"
+        }
+      },
+      "charger_manual_entities": {
+        "title": "Courant mesuré de la borne, une entité par phase",
+        "description": "Choisissez le capteur qui contient le courant de chaque phase. Seules les entités enregistrées sur l'appareil propre de cette borne sont proposées, et chacune doit indiquer des ampères (A ou mA).",
+        "data": {
+          "entity_L1": "Courant L1",
+          "entity_L2": "Courant L2",
+          "entity_L3": "Courant L3"
+        }
+      }
+    },
+    "abort": {
+      "no_pending_site": "Les informations de ce site n'avaient pas été envoyées avant l'ouverture de l'entrée manuelle de borne, rien n'a donc été enregistré."
+    },
+    "error": {
+      "safety_margin_at_or_above_fuse": "La marge de sécurité doit être inférieure au fusible principal, sinon il ne reste aucun courant pour les bornes.",
+      "charge_control_in_use": "Cette commande de charge est déjà utilisée par une autre borne SpotNav.",
+      "current_limit_in_use": "Cette commande de courant de charge est déjà utilisée par une autre borne SpotNav.",
+      "duplicate_charger": "{other} et cette borne sont la même borne physique. Deux bornes SpotNav sur une même borne lui envoient des ordres contradictoires, n'en gardez donc qu'une : supprimez l'autre dans Paramètres → Appareils et services → SpotNav. SpotNav n'en supprime jamais une à votre place.",
+      "charger_already_in_another_site": "L'une de ces bornes est déjà attribuée à un autre site.",
+      "manual_source_entity_invalid": "Choisissez une entité capteur qui existe dans Home Assistant.",
+      "manual_source_entity_wrong_device": "Cette entité n'est pas enregistrée sur l'appareil propre de cette borne, elle ne peut donc pas être le courant mesuré de cette borne.",
+      "site_manual_source_entity_on_charger_device": "Cette entité appartient à l'une des bornes de ce site, elle ne peut donc pas être le courant total propre au site.",
+      "manual_source_attributes_required": "Saisissez le nom de l'attribut pour cette phase.",
+      "manual_source_unverified": "Rien sur cette entité ne correspond actuellement à ces noms d'attributs, ni dans les {lookback_days} derniers jours d'historique -- il s'agit peut-être d'une borne toute neuve, ou d'une faute de frappe. Cochez « enregistrer quand même » pour l'enregistrer malgré tout.",
+      "yield_ceiling_below_fuse": "Le plafond des paliers par cession doit être supérieur au calibre du fusible principal.",
+      "yield_ceiling_above_limit": "Le plafond doit être inférieur à 1,25 fois le fusible principal : c'est la charge qu'un fusible gG doit supporter pendant une heure sans fondre, et un palier de test peut s'en approcher sans jamais l'atteindre.",
+      "unit_expected_current": "Ce capteur doit indiquer un courant en A ou mA.",
+      "unit_expected_power": "Ce capteur doit indiquer une puissance en W ou kW.",
+      "unit_expected_voltage": "Ce capteur doit indiquer une tension en V.",
+      "unit_expected_reactive_power": "Ce capteur doit indiquer une puissance réactive en var ou kvar.",
+      "unit_expected_apparent_power": "Ce capteur doit indiquer une puissance apparente en VA ou kVA.",
+      "manual_entities_duplicate": "Chaque phase doit avoir sa propre entité."
+    }
+  },
+  "selector": {
+    "mode": {
+      "options": {
+        "generic": "Manuel",
+        "detected": "Automatique (recommandé)"
+      }
+    },
+    "entry_type": {
+      "options": {
+        "charger": "Une borne",
+        "site": "Un site (équilibrage de charge)",
+        "resolve_vehicle": "Identifier un véhicule détecté"
+      }
+    },
+    "measurement_mode": {
+      "options": {
+        "direct_phase_current": "Courant réseau direct par phase (recommandé)",
+        "derived_phase_current": "Déduit de la puissance et de la tension (plus exact avec le courant, la puissance apparente ou réactive du compteur ; sinon le courant est estimé)"
+      }
+    },
+    "solar_priority": {
+      "options": {
+        "car_first": "Voiture d'abord",
+        "battery_first": "Batterie domestique d'abord"
+      }
+    },
+    "voltage_between_phases": {
+      "options": {
+        "400": "400 V (réseau TN, le plus courant)",
+        "230": "230 V (réseau IT, courant en Norvège)"
+      }
+    },
+    "charger_phases": {
+      "options": {
+        "1": "Une phase",
+        "3": "Trois phases"
+      }
+    }
+  },
+  "entity": {
+    "binary_sensor": {
+      "schedule_active": {
+        "name": "Programmation active"
+      },
+      "grid_charging": {
+        "name": "Charge depuis le réseau"
+      },
+      "grid_charging_site": {
+        "name": "Charge depuis le réseau"
+      }
+    },
+    "button": {
+      "start": {
+        "name": "Démarrer la charge"
+      },
+      "stop": {
+        "name": "Arrêter la charge"
+      },
+      "follow": {
+        "name": "Suivre la programmation de charge"
+      },
+      "cancel": {
+        "name": "Annuler la programmation"
+      },
+      "recalculate_auto": {
+        "name": "Recalculer la proposition Auto"
+      },
+      "pause_auto": {
+        "name": "Mettre en pause la planification Auto selon le prix"
+      },
+      "resume_auto": {
+        "name": "Reprendre la planification Auto selon le prix"
+      },
+      "clear_departure_date": {
+        "name": "Effacer la date de départ"
+      }
+    },
+    "sensor": {
+      "instance_connection": {
+        "name": "Appairage de l'application (toutes les bornes)"
+      },
+      "connection": {
+        "name": "Connexion de l'application"
+      },
+      "plan_start": {
+        "name": "Début programmé"
+      },
+      "plan_end": {
+        "name": "Fin programmée"
+      },
+      "site_state": {
+        "name": "État de la capacité",
+        "state": {
+          "disabled": "Désactivé",
+          "not_configured": "Non configuré",
+          "missing_measurements": "Mesure manquante",
+          "stale_measurements": "Mesure périmée",
+          "invalid_measurements": "Mesure non valide",
+          "observing": "Mesure en cours"
+        },
+        "state_attributes": {
+          "site_activity": {
+            "name": "Activité",
+            "state": {
+              "measuring": "Mesure en cours, équilibrage de charge actif désactivé",
+              "balancing": "Mesure en cours, équilibrage de charge actif activé",
+              "not_measuring": "Pas de mesure"
+            }
+          }
+        }
+      },
+      "solar_surplus": {
+        "name": "Surplus solaire"
+      },
+      "charger_proposed_current": {
+        "name": "Courant proposé – {charger}",
+        "state_attributes": {
+          "state": {
+            "name": "État",
+            "state": {
+              "invalid_measurements": "Mesure non valide",
+              "requested_current_unknown": "Courant demandé inconnu",
+              "capacity_available": "Suffisant",
+              "capacity_limited": "Limité",
+              "below_minimum_current": "Sous le courant minimum",
+              "not_requesting": "Pas en charge"
+            }
+          }
+        }
+      },
+      "auto_plan_state": {
+        "name": "État du plan Auto",
+        "state": {
+          "incomplete_settings": "Paramètres incomplets",
+          "waiting_for_prices": "En attente des prix",
+          "waiting_for_publication": "En attente des prix de demain",
+          "price_data_stale": "Données de prix périmées",
+          "proposal_ready": "Proposition prête",
+          "proposal_unpriced": "La proposition charge sans prix",
+          "nothing_to_charge": "Rien à charger",
+          "planning_unavailable": "Planification indisponible",
+          "error": "Erreur"
+        }
+      },
+      "auto_execution_state": {
+        "name": "État d'exécution Auto",
+        "state": {
+          "not_applied": "Non appliqué",
+          "scheduled": "Programmé",
+          "active": "Charge en cours",
+          "paused": "En pause",
+          "complete": "Terminé",
+          "apply_pending": "En attente de la limite de la plage",
+          "execution_error": "Erreur d'exécution"
+        }
+      },
+      "auto_next_start": {
+        "name": "Prochain début de charge planifié"
+      },
+      "auto_next_end": {
+        "name": "Prochaine fin de charge planifiée"
+      },
+      "auto_periods": {
+        "name": "Périodes de charge planifiées"
+      },
+      "auto_cost": {
+        "name": "Coût planifié"
+      },
+      "auto_energy": {
+        "name": "Énergie planifiée"
+      },
+      "auto_settings_revision": {
+        "name": "Révision des paramètres Auto"
+      },
+      "integrated_energy": {
+        "name": "Énergie d'après la puissance"
+      },
+      "sessions_energy_this_month": {
+        "name": "Énergie chargée ce mois-ci"
+      },
+      "sessions_cost_this_month": {
+        "name": "Coût de charge ce mois-ci"
+      },
+      "sessions_energy_last_month": {
+        "name": "Énergie chargée le mois dernier"
+      },
+      "sessions_cost_last_month": {
+        "name": "Coût de charge le mois dernier"
+      },
+      "sessions_last_energy": {
+        "name": "Énergie de la dernière recharge"
+      },
+      "sessions_last_cost": {
+        "name": "Coût de la dernière recharge"
+      }
+    },
+    "select": {
+      "price_area": {
+        "name": "Zone de prix"
+      },
+      "fiscal_vat_policy": {
+        "name": "Règle de TVA",
+        "state": {
+          "off": "Désactivé",
+          "suggested": "Utiliser la suggestion de la zone",
+          "manual": "Utiliser une valeur manuelle"
+        }
+      },
+      "fiscal_tax_policy": {
+        "name": "Règle de taxe sur l'électricité",
+        "state": {
+          "off": "Désactivé",
+          "suggested": "Utiliser la suggestion de la zone",
+          "manual": "Utiliser une valeur manuelle"
+        }
+      },
+      "fiscal_transfer_policy": {
+        "name": "Règle des frais de réseau",
+        "state": {
+          "off": "Désactivé",
+          "suggested": "Utiliser la suggestion de la zone",
+          "manual": "Utiliser une valeur manuelle"
+        }
+      },
+      "auto_strategy": {
+        "name": "Stratégie de charge",
+        "state": {
+          "cheapest": "Heures les moins chères",
+          "solar": "Surplus solaire",
+          "hybrid": "Heures les moins chères, en réservant de l'énergie réseau pour le soleil attendu"
+        }
+      },
+      "charge_periods": {
+        "name": "Périodes de charge",
+        "state": {
+          "auto": "Automatique",
+          "1": "1 période",
+          "2": "2 périodes",
+          "3": "3 périodes",
+          "4": "4 périodes",
+          "5": "5 périodes",
+          "6": "6 périodes",
+          "7": "7 périodes",
+          "8": "8 périodes"
+        }
+      }
+    },
+    "number": {
+      "charging_current": {
+        "name": "Courant de charge"
+      },
+      "requested_energy": {
+        "name": "Énergie à charger"
+      },
+      "vat_rate": {
+        "name": "TVA"
+      },
+      "energy_tax": {
+        "name": "Taxe sur l'électricité"
+      },
+      "transfer_fee": {
+        "name": "Frais de réseau"
+      }
+    },
+    "date": {
+      "departure_date": {
+        "name": "Date de départ"
+      }
+    },
+    "switch": {
+      "departure_enabled": {
+        "name": "Échéance de départ"
+      }
+    },
+    "time": {
+      "departure_time": {
+        "name": "Heure de départ"
+      }
+    },
+    "event": {
+      "charger_events": {
+        "name": "Événements de la borne",
+        "state_attributes": {
+          "event_type": {
+            "state": {
+              "charge_started": "Charge démarrée",
+              "charge_finished": "Charge terminée",
+              "plugged_in": "Branchée",
+              "unplugged": "Débranchée",
+              "plan_installed": "Plan installé",
+              "plan_at_risk": "Plan compromis"
+            }
+          }
+        }
+      }
+    }
+  },
+  "issues": {
+    "vehicle_soc_needs_decision": {
+      "title": "Le niveau de charge d'un véhicule nécessite une décision",
+      "fix_flow": {
+        "abort": {
+          "no_longer_needs_decision": "Cet appareil ne nécessite plus de décision."
+        },
+        "step": {
+          "pick": {
+            "title": "Quelle valeur est le niveau de charge ?",
+            "description": "**{device}** indique plusieurs valeurs de batterie, SpotNav ne devinera donc pas laquelle est le niveau de charge. Choisissez la bonne valeur, ou indiquez qu'il ne s'agit pas d'un véhicule, ce qui arrête son signalement.",
+            "data": {
+              "choice": "Valeur"
+            }
+          }
+        }
+      }
+    },
+    "vehicle_charge_limit_needs_decision": {
+      "title": "La limite de charge d'un véhicule nécessite une décision",
+      "fix_flow": {
+        "abort": {
+          "no_longer_needs_decision": "Cet appareil ne nécessite plus de décision."
+        },
+        "step": {
+          "pick": {
+            "title": "Quelle limite une modification doit-elle régler ?",
+            "description": "**{device}** indique plusieurs limites de charge, SpotNav ne devinera donc pas laquelle une modification doit régler. Choisissez la limite que les modifications de ce véhicule doivent utiliser. Elle est écrite via l'intégration propre au véhicule et prend effet lorsque cette intégration la lit à nouveau.",
+            "data": {
+              "choice": "Limite de charge"
+            }
+          }
+        }
+      }
+    },
+    "duplicate_charger": {
+      "title": "Deux bornes SpotNav sont la même borne",
+      "description": "**{charger}** et **{other}** sont la même borne physique : elles partagent un appareil, un courant mesuré, un connecteur OCPP ou un appareil Easee. Deux bornes SpotNav sur une même borne lui envoient des ordres contradictoires. Supprimez l'une d'elles : Paramètres → Appareils et services → SpotNav → menu de l'entrée → Supprimer. SpotNav n'en supprime jamais une à votre place."
+    },
+    "site_without_chargers": {
+      "title": "Ajouter une borne au site",
+      "description": "Le site **{site}** n'a pas encore de borne. Ajoutez une borne : Paramètres → Appareils et services → SpotNav → Ajouter une entrée → Borne ; elle proposera de rejoindre ce site."
+    }
+  },
+  "exceptions": {
+    "invalid_driver": {
+      "message": "Cette source d'énergie n'est pas prise en charge."
+    },
+    "invalid_area": {
+      "message": "Sélectionnez d'abord un marché : cette valeur en dépend."
+    },
+    "invalid_phases": {
+      "message": "Le nombre de phases doit être 1 ou 3."
+    },
+    "invalid_amps": {
+      "message": "Le courant doit être un nombre entier d'ampères."
+    },
+    "invalid_energy": {
+      "message": "L'énergie doit être un nombre positif de kWh."
+    },
+    "invalid_periods": {
+      "message": "Le nombre de périodes doit être un nombre entier de 1 à 8."
+    },
+    "invalid_departure": {
+      "message": "Le départ doit être une heure locale."
+    },
+    "invalid_fiscal": {
+      "message": "Cette valeur fiscale ne peut pas être enregistrée telle quelle."
+    },
+    "invalid_target": {
+      "message": "L'enregistrement de l'objectif est incomplet."
+    },
+    "invalid_number": {
+      "message": "Cette valeur doit être un nombre valide."
+    },
+    "unknown_field": {
+      "message": "Cet enregistrement contient un champ que cette version ne connaît pas."
+    },
+    "missing_field": {
+      "message": "Il manque à cet enregistrement un champ obligatoire."
+    },
+    "invalid_proposal": {
+      "message": "Cette proposition enregistrée ne peut pas être utilisée."
+    },
+    "invalid_pause": {
+      "message": "L'indicateur de pause doit être activé ou désactivé."
+    },
+    "revision_conflict": {
+      "message": "Ces paramètres ont été modifiés ailleurs, la valeur n'a donc pas été écrite. Réessayez."
+    },
+    "not_auto_mode": {
+      "message": "Le prix Auto n'est pas le mode de planification de cette borne."
+    },
+    "unknown_test_charger": {
+      "message": "Aucune borne SpotNav chargée n'a cette entrée de configuration ou cet identifiant d'entité."
+    },
+    "no_push_registered": {
+      "message": "Aucune borne SpotNav n'a activé les notifications instantanées de l'application, aucun push de test n'a donc été envoyé. Les téléphones Companion choisis pour les notifications ont tout de même reçu un message de test."
+    },
+    "stop_not_executed": {
+      "message": "La borne n'a pas exécuté l'arrêt : sa commande est indisponible. Réessayez quand la borne sera de nouveau disponible."
+    },
+    "storage_failed": {
+      "message": "Le plan de charge n'a pas pu être enregistré."
+    },
+    "reschedule_failed": {
+      "message": "Le plan de charge n'a pas pu être activé ; le précédent reste en place."
+    },
+    "rollback_failed": {
+      "message": "Le plan de charge n'a pas pu être activé, et le précédent n'a pas pu être rétabli."
+    },
+    "vehicle_not_connected": {
+      "message": "Aucune voiture n'est branchée, il n'y a donc rien à démarrer."
+    },
+    "reconcile_failed": {
+      "message": "La borne a accepté l'ordre, mais la charge automatique n'a pas pu être mise à jour en conséquence. Vérifiez l'état de la borne."
+    }
+  }
+}

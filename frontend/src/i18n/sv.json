@@ -1,8 +1,4 @@
-// Swedish. Typed against the English key set, so a missing or renamed key is a compile error.
-
-import type { en } from "./en";
-
-export const sv: Record<keyof typeof en, string> = {
+{
   "card.title": "SpotNav",
   "state.loading": "Läser laddplanen…",
   "state.unconfigured": "Välj en SpotNav-laddare i kortets redigerare.",
@@ -99,6 +95,7 @@ export const sv: Record<keyof typeof en, string> = {
   "status.fillRoomUnknown": "Bilens nivå eller batteristorlek är okänd, så {kwh} kWh laddas i stället för att fylla.",
   "status.needLimitedByRoom": "Begränsat till {kwh} kWh: bilen är nästan full.",
   "status.chargingToVehicleLimit": "Laddar tills bilen stoppar vid sin egen laddgräns ({percent} %).",
+  "status.minSocCharging": "Laddar till lägsta nivå ({percent} %)",
   "issue.needKept": "Energimätaren kan inte läsas: {kwh} kWh återstår enligt dess senaste värde.",
   "issue.needFromSessions": "Ingen energimätare: {kwh} kWh återstår, räknat från laddarens sparade laddningar.",
   "status.siteMeasurement.stale.other": "{phases} är äldre än {seconds} s.",
@@ -168,8 +165,7 @@ export const sv: Record<keyof typeof en, string> = {
   "entity.field.safetyMargin": "Säkerhetsmarginal",
   "entity.field.measurementMode": "Mätsätt",
   "entity.field.voltageBetweenPhases": "Spänning mellan faser",
-  "entity.field.chargerPriority":
-    "Laddarens prioritet",
+  "entity.field.chargerPriority": "Laddarens prioritet",
   "entity.field.batteryPower": "Batteriets effekt",
   "entity.field.maxAge": "Högsta mätvärdesålder",
   "entity.mode.direct": "Fasströmmar mäts direkt",
@@ -204,16 +200,12 @@ export const sv: Record<keyof typeof en, string> = {
   "entity.help.safetyMargin": "Strömmen i ampere som SpotNav håller fri under huvudsäkringen. Laddningen hålls under säkringen minus marginalen, som därför måste vara lägre än säkringen.",
   "entity.help.measurementMode": "Om din mätare anger varje fas ström direkt, eller om SpotNav räknar ut den från effekt och spänning.",
   "entity.help.voltageBetweenPhases": "Spänningen mellan två faser i din elanläggning. Trefasig laddeffekt räknas ut från den.",
-  "entity.help.chargerPriority":
-    "När flera laddare delar anläggningens säkring får en laddare med Först tilldelad ström före de andra, och en med Sist får det som blir över.",
+  "entity.help.chargerPriority": "När flera laddare delar anläggningens säkring får en laddare med Först tilldelad ström före de andra, och en med Sist får det som blir över.",
   "entity.voltage.tn": "400 V (TN-nät, det vanliga)",
   "entity.voltage.it": "230 V (IT-nät, vanligt i Norge)",
-  "entity.priority.first":
-    "Först",
-  "entity.priority.normal":
-    "Normal",
-  "entity.priority.last":
-    "Sist",
+  "entity.priority.first": "Först",
+  "entity.priority.normal": "Normal",
+  "entity.priority.last": "Sist",
   "entity.help.batteryPower": "En sensor för hemmabatteriets effekt, så att SpotNav kan ta hänsyn till batteriet.",
   "entity.help.maxAge": "Hur gammal en mätning får vara, i sekunder, innan SpotNav slutar lita på den.",
   "entity.help.phaseDirect": "Sensorn som mäter strömmen på den här fasen, i ampere.",
@@ -320,12 +312,9 @@ export const sv: Record<keyof typeof en, string> = {
   "site.activeControl.on": "På",
   "site.activeControl.off": "Av",
   "site.activeControl.available": "Tillgänglig",
-  "site.activeControl.reason.duplicateMembership":
-    "Inte tillgänglig: den här laddaren tillhör mer än en anläggning.",
-  "site.activeControl.reason.noCommandableCharger":
-    "Inte tillgänglig: ingen laddare på anläggningen tar emot ett strömkommando.",
-  "site.activeControl.reason.measurement":
-    "Inte tillgänglig: anläggningens egen effektmätning är inte i gott skick.",
+  "site.activeControl.reason.duplicateMembership": "Inte tillgänglig: den här laddaren tillhör mer än en anläggning.",
+  "site.activeControl.reason.noCommandableCharger": "Inte tillgänglig: ingen laddare på anläggningen tar emot ett strömkommando.",
+  "site.activeControl.reason.measurement": "Inte tillgänglig: anläggningens egen effektmätning är inte i gott skick.",
   "site.activeControl.note": "Görs efter bästa förmåga och är ingen skyddsanordning. När den slås av får laddaren tillbaka den ström som sänkts.",
   "site.activeControl.pending": "Sparar…",
   "site.activeControl.error.unavailable": "Lastbalanseringen kan inte slås på just nu: anläggningen går inte att styra aktivt för tillfället. Inget ändrades.",
@@ -353,8 +342,7 @@ export const sv: Record<keyof typeof en, string> = {
   "issue.count.one": "{count} punkt att granska",
   "issue.count.other": "{count} punkter att granska",
   "graph.title": "Laddplan",
-  "graph.description":
-    "Prisgraf från {from} till {to}, i {unit} per kWh. {count} intervall över {days} dagar. Vald: {selected}.",
+  "graph.description": "Prisgraf från {from} till {to}, i {unit} per kWh. {count} intervall över {days} dagar. Vald: {selected}.",
   "graph.descriptionNoSelection": "Inget valt.",
   "graph.descriptionNow": "Aktuellt intervall: {now}.",
   "graph.legend.today": "Idag",
@@ -379,8 +367,7 @@ export const sv: Record<keyof typeof en, string> = {
   "graph.hint": "Använd piltangenterna för att stega genom intervallen.",
   "graph.toggle.show": "Visa prisgrafen",
   "graph.toggle.hide": "Dölj prisgrafen",
-  "graph.keyboardInstructions":
-    "Prisgraf. Piltangenterna flyttar mellan intervall, Home och End hoppar till ändarna, Escape rensar valet.",
+  "graph.keyboardInstructions": "Prisgraf. Piltangenterna flyttar mellan intervall, Home och End hoppar till ändarna, Escape rensar valet.",
   "plan.proposal.one": "Billigaste laddperioden ({count})",
   "plan.proposal.other": "Billigaste laddperioderna ({count})",
   "plan.installed.one": "Schemalagd laddperiod ({count})",
@@ -394,8 +381,7 @@ export const sv: Record<keyof typeof en, string> = {
   "plan.activeNow": "Nu",
   "plan.missing": "okänt",
   "cap.title": "Vad laddaren kan",
-  "cap.intro":
-    "Hämtat från vad integrationen rapporterar för den här laddaren. Det som inte är tillgängligt här kan kortet inte slå på.",
+  "cap.intro": "Hämtat från vad integrationen rapporterar för den här laddaren. Det som inte är tillgängligt här kan kortet inte slå på.",
   "cap.autoPrice": "Automatisk prisplanering",
   "cap.currentLimit": "Dynamisk strömbegränsning",
   "cap.loadBalancing": "Lastbalansering",
@@ -447,6 +433,9 @@ export const sv: Record<keyof typeof en, string> = {
   "strategy.status.solar.noReadingWaiting": "Sol · ingen användbar mätning ännu",
   "strategy.status.solar.waitingForSun": "Sol · väntar på sol",
   "strategy.status.solar.vehicleFull": "Sol · bilen är fulladdad",
+  "strategy.status.solar.noCar": "Sol · ingen bil inkopplad",
+  "strategy.status.solar.noCarSurplus": "Sol · överskott finns",
+  "strategy.status.solar.noCarSurplusKw": "Sol · överskott finns ({kw} kW)",
   "strategy.status.solar.carStopped": "Sol · bilen slutade ladda; försöker igen kl. {time}",
   "strategy.status.solar.carStoppedNoTime": "Sol · bilen slutade ladda",
   "strategy.status.solar.unknown": "Sol · status okänd",
@@ -465,10 +454,8 @@ export const sv: Record<keyof typeof en, string> = {
   "strategy.status.hybrid.noPriceData": "Hybrid · väntar på prisuppgifter",
   "strategy.status.hybrid.satisfied": "Hybrid · laddbehovet är redan uppfyllt",
   "strategy.status.hybrid.unknown": "Hybrid · planerar",
-  "advisory.vehicleNotRequestingCurrent":
-    "Laddningen startades, men fordonet begär ingen ström. Kontrollera fordonets laddningsinställningar eller anslut kabeln igen.",
-  "advisory.powerBelowThreshold":
-    "Laddningen startades, men laddaren drar nästan ingen effekt. Bilen kan vara klar eller inte ladda: kontrollera fordonets laddningsinställningar eller anslut kabeln igen.",
+  "advisory.vehicleNotRequestingCurrent": "Laddningen startades, men fordonet begär ingen ström. Kontrollera fordonets laddningsinställningar eller anslut kabeln igen.",
+  "advisory.powerBelowThreshold": "Laddningen startades, men laddaren drar nästan ingen effekt. Bilen kan vara klar eller inte ladda: kontrollera fordonets laddningsinställningar eller anslut kabeln igen.",
   "control.noSettings": "Den här laddaren har inga inställningar ännu, så det finns inget att starta eller stoppa.",
   "control.pauseUnsettled": "En paus är sparad men har inte börjat gälla ännu. Inget tillämpas.",
   "control.pauseClearFailed": "En paus har löpt ut men kunde inte rensas, så inget tillämpas.",
@@ -487,8 +474,7 @@ export const sv: Record<keyof typeof en, string> = {
   "action.error.unavailable": "Den åtgärden är inte tillgänglig just nu.",
   "action.error.failed": "Åtgärden kunde inte utföras. Inget ändrades.",
   "action.error.reconcileFailed": "Åtgärden utfördes, men planen kunde inte uppdateras.",
-  "action.error.confirmationFailed":
-    "Åtgärden togs emot, men dess aktuella tillstånd kunde inte bekräftas.",
+  "action.error.confirmationFailed": "Åtgärden togs emot, men dess aktuella tillstånd kunde inte bekräftas.",
   "action.error.invalidPause": "Det pausvalet är inte tillgängligt för den här laddaren just nu.",
   "action.error.notConnected": "Ingen bil är inkopplad, så det finns inget att starta.",
   "action.error.charger": "Den konfigurerade laddaren kunde inte nås.",
@@ -501,14 +487,11 @@ export const sv: Record<keyof typeof en, string> = {
   "context.currency": "Valuta",
   "market.unset": "Inte angett",
   "market.title": "Område och skatter",
-  "market.intro":
-    "Vilken marknad laddaren köper el från, och de skatter som läggs på priserna.",
+  "market.intro": "Vilken marknad laddaren köper el från, och de skatter som läggs på priserna.",
   "market.loading": "Läser områdeslistan…",
-  "market.readOnly":
-    "Endast administratörer kan ändra område och skatter. Du kan läsa dem här.",
+  "market.readOnly": "Endast administratörer kan ändra område och skatter. Du kan läsa dem här.",
   "market.area.label": "Område",
-  "market.area.description":
-    "Området avgör vilka priser som används och vilka skatter som föreslås.",
+  "market.area.description": "Området avgör vilka priser som används och vilka skatter som föreslås.",
   "market.included": "Ingår i priset",
   "market.includedNote": "Det publicerade priset innehåller redan detta, så inget läggs till.",
   "market.source": "Priskälla:",
@@ -534,152 +517,87 @@ export const sv: Record<keyof typeof en, string> = {
   "market.suggestion.label": "Föreslaget: {value} {unit}",
   "market.suggestion.none": "Inget föreslaget värde publiceras för området.",
   "market.error.read": "Områdeslistan gick inte att läsa.",
-  "market.error.version":
-    "Det här kortet och integrationen talar olika marknadsversioner.",
+  "market.error.version": "Det här kortet och integrationen talar olika marknadsversioner.",
   "market.error.areaRequired": "Välj ett område innan du sparar.",
   "market.error.areaUnknown": "Det området är inte ett av de publicerade valen.",
   "market.error.noSuggestion": "Området publicerar inget föreslaget värde för det.",
   "market.state.loading": "Områdeslistan läses fortfarande.",
-  "market.state.staleOffline":
-    "Det här är den senaste områdeslistan Home Assistant tog emot; reläet har inte gått att nå sedan dess.",
-  "market.state.staleInvalid":
-    "Det här är den senaste områdeslistan Home Assistant tog emot; reläets nyare lista gick inte att läsa.",
-  "market.state.offline":
-    "Reläet gick inte att nå, så inga områden listas just nu.",
-  "market.state.invalid":
-    "Reläets områdeslista gick inte att läsa, så inga områden listas just nu.",
-  "settings.energy.aria":
-    "Energi: {value}",
-  "settings.deadline.aria":
-    "Sluttid: {value}",
-  "settings.current.aria":
-    "Ström: {value}",
-  "settings.energy.unset":
-    "Ej angivet",
-  "settings.deadline.none":
-    "Ingen sluttid",
-  "settings.current.unset":
-    "Ej angivet",
-  "settings.energy.title":
-    "Laddenergi",
-  "settings.energy.intro":
-    "Hur mycket energi laddningen ska ge. Planen gör om det till perioder.",
-  "settings.energy.label":
-    "Önskad energi",
-  "settings.energy.targetSoc":
-    "Den här laddaren planerar från ett målvärde för laddningsnivån, så den manuella energin går inte att ändra här.",
-  "settings.deadline.title":
-    "Sluttid och laddperioder",
-  "settings.deadline.intro":
-    "När laddningen senast ska vara klar, och hur många perioder den får använda.",
-  "settings.deadline.enabled":
-    "Klar senast en tid",
-  "settings.deadline.time":
-    "Avresetid",
-  "settings.deadline.date":
-    "Avresa",
-  "settings.deadline.dateDaily":
-    "Varje dag",
-  "settings.deadline.dateOn":
-    "Ett visst datum",
-  "settings.deadline.dateHelp":
-    "Planen kan vänta på timmar som brukar vara billigare. Avresan hålls alltid.",
-  "settings.deadline.datePast":
-    "Datumet har passerat, så planen körs varje dag tills du väljer ett nytt datum. Sparar du rensas det.",
-  "settings.deadline.weekdays":
-    "Veckodagar",
-  "settings.deadline.weekdaysHelp":
-    "En dag du utelämnar har ingen avresa: planen löper till nästa dag du valt.",
-  "settings.deadline.today":
-    "idag",
-  "settings.deadline.tomorrow":
-    "imorgon",
-  "settings.deadline.periods":
-    "Max laddperioder",
-  "settings.deadline.periodsValue.one": "{count} period",
-  "settings.deadline.periodsValue.other": "{count} perioder",
-  "settings.current.title":
-    "Planerad ström",
-  "settings.current.intro":
-    "Strömmen planen får begära. Det är ett planeringsvärde, inte ett kommando till laddaren.",
-  "settings.current.label":
-    "Planerad ström",
-  "settings.loading":
-    "Läser in de aktuella inställningarna…",
-  "settings.section.support":
-    "Support",
-  "debug.intro":
-    "Sparar en fil med versioner, status och de senaste loggraderna för en felanmälan. Hemligheter och din exakta plats lämnas utanför.",
-  "debug.download":
-    "Ladda ner felsökningsinfo",
-  "debug.preparing":
-    "Förbereder…",
-  "debug.error.notAdmin":
-    "Bara administratörer kan ladda ner felsökningsinfo.",
-  "debug.error.failed":
-    "Felsökningsinfon kunde inte hämtas.",
-  "debug.cardOutdated":
-    "Kortet i den här webbläsaren eller appen är äldre än SpotNav. Ladda om sidan; i Home Assistants Companion-app: tvångsstoppa appen och öppna den igen.",
-  "settings.readOnly":
-    "Bara administratörer kan ändra inställningar. Du kan läsa dem här.",
-  "settings.save":
-    "Spara",
-  "settings.cancel":
-    "Avbryt",
-  "settings.reload":
-    "Använd serverns värden",
-  "settings.reapply":
-    "Använd min ändring igen",
-  "settings.conflict.title":
-    "Ändrat någon annanstans",
-  "settings.conflict.intro":
-    "Inställningarna ändrades efter att den här dialogen öppnades. Inget sparades, och dina värden finns kvar.",
-  "settings.error.required":
-    "Fyll i detta innan du sparar.",
-  "settings.error.invalidNumber":
-    "Det är inte ett tal.",
-  "settings.error.outOfRange":
-    "Värdet ligger utanför tillåtet intervall.",
-  "settings.error.invalidDate":
-    "Välj ett giltigt datum.",
-  "settings.error.dateRange":
-    "Välj ett datum från idag och upp till 7 dagar fram.",
-  "settings.error.weekdays":
-    "Välj minst en veckodag.",
-  "settings.error.invalidTime":
-    "Använd en tid som 06:30.",
-  "settings.error.read":
-    "Inställningarna kunde inte läsas.",
-  "settings.error.refused":
-    "Inställningarna avvisades. Inget ändrades.",
-  "settings.error.notCommitted":
-    "Inställningarna sparades inte. Inget ändrades.",
-  "settings.error.reconcileFailed":
-    "Inställningarna sparades, men planen kunde inte uppdateras.",
-  "settings.error.confirmationFailed":
-    "Inställningarna sparades, men det aktuella tillståndet kunde inte bekräftas.",
-  "settings.error.version":
-    "Kortet och integrationen talar olika inställningsversioner.",
-  "settings.error.unavailable":
-    "Inställningar är inte tillgängliga just nu.",
-  "settings.error.charger":
-    "Den konfigurerade laddaren kunde inte nås.",
-  "settings.error.generic":
-    "Inställningarna kunde inte ändras. Inget ändrades.",
-  "settings.error.invalid":
-    "Inställningarna avvisades som ogiltiga. Inget ändrades.",
-  "settings.error.readOnly":
-    "Bara administratörer kan ändra inställningar.",
-  "settings.energy.slider":
-    "Energireglage, {min} till {max} kWh i halvkWh-steg",
-  "settings.current.slider":
-    "Strömreglage, {min} till {max} A i hela ampere",
-  "settings.current.power":
-    "Nominell effekt ≈ {power} kW",
-  "settings.current.powerUnknown":
-    "Nominell effekt okänd",
+  "market.state.staleOffline": "Det här är den senaste områdeslistan Home Assistant tog emot; reläet har inte gått att nå sedan dess.",
+  "market.state.staleInvalid": "Det här är den senaste områdeslistan Home Assistant tog emot; reläets nyare lista gick inte att läsa.",
+  "market.state.offline": "Reläet gick inte att nå, så inga områden listas just nu.",
+  "market.state.invalid": "Reläets områdeslista gick inte att läsa, så inga områden listas just nu.",
+  "settings.energy.aria": "Energi: {value}",
+  "settings.deadline.aria": "Sluttid: {value}",
+  "settings.current.aria": "Ström: {value}",
+  "settings.energy.unset": "Ej angivet",
+  "settings.deadline.none": "Ingen sluttid",
+  "settings.current.unset": "Ej angivet",
+  "settings.energy.title": "Laddenergi",
+  "settings.energy.intro": "Hur mycket energi laddningen ska ge. Planen gör om det till perioder.",
+  "settings.energy.label": "Önskad energi",
+  "settings.energy.targetSoc": "Den här laddaren planerar från ett målvärde för laddningsnivån, så den manuella energin går inte att ändra här.",
+  "settings.deadline.title": "Sluttid",
+  "settings.deadline.intro": "När laddningen senast ska vara klar.",
+  "settings.deadline.enabled": "Klar senast en tid",
+  "settings.deadline.time": "Avresetid",
+  "settings.deadline.date": "Avresa",
+  "settings.deadline.dateDaily": "Varje dag",
+  "settings.deadline.dateOn": "Ett visst datum",
+  "settings.deadline.dateHelp": "Planen kan vänta på timmar som brukar vara billigare. Avresan hålls alltid.",
+  "settings.deadline.datePast": "Datumet har passerat, så planen körs varje dag tills du väljer ett nytt datum. Sparar du rensas det.",
+  "settings.deadline.weekdays": "Veckodagar",
+  "settings.deadline.weekdaysHelp": "En dag du utelämnar har ingen avresa: planen löper till nästa dag du valt.",
+  "settings.deadline.today": "idag",
+  "settings.deadline.tomorrow": "imorgon",
+  "settings.periods.label": "Laddperioder",
+  "settings.periods.help": "Hur laddningen får delas upp. Ett antal är det högsta antalet perioder den får använda.",
+  "settings.periods.auto": "Automatiskt",
+  "settings.periods.autoHelp": "De billigaste tiderna, uppdelade bara där besparingen är värd en start till. Varje period är minst 30 minuter.",
+  "settings.periods.value.one": "{count} period",
+  "settings.periods.value.other": "{count} perioder",
+  "settings.current.title": "Planerad ström",
+  "settings.current.intro": "Strömmen planen får begära. Det är ett planeringsvärde, inte ett kommando till laddaren.",
+  "settings.current.label": "Planerad ström",
+  "settings.loading": "Läser in de aktuella inställningarna…",
+  "settings.section.support": "Support",
+  "debug.intro": "Sparar en fil med versioner, status och de senaste loggraderna för en felanmälan. Hemligheter och din exakta plats lämnas utanför.",
+  "debug.download": "Ladda ner felsökningsinfo",
+  "debug.preparing": "Förbereder…",
+  "debug.error.notAdmin": "Bara administratörer kan ladda ner felsökningsinfo.",
+  "debug.error.failed": "Felsökningsinfon kunde inte hämtas.",
+  "debug.cardOutdated": "Kortet i den här webbläsaren eller appen är äldre än SpotNav. Ladda om sidan; i Home Assistants Companion-app: tvångsstoppa appen och öppna den igen.",
+  "settings.readOnly": "Bara administratörer kan ändra inställningar. Du kan läsa dem här.",
+  "settings.save": "Spara",
+  "settings.cancel": "Avbryt",
+  "settings.reload": "Använd serverns värden",
+  "settings.reapply": "Använd min ändring igen",
+  "settings.conflict.title": "Ändrat någon annanstans",
+  "settings.conflict.intro": "Inställningarna ändrades efter att den här dialogen öppnades. Inget sparades, och dina värden finns kvar.",
+  "settings.error.required": "Fyll i detta innan du sparar.",
+  "settings.error.invalidNumber": "Det är inte ett tal.",
+  "settings.error.outOfRange": "Värdet ligger utanför tillåtet intervall.",
+  "settings.error.invalidDate": "Välj ett giltigt datum.",
+  "settings.error.dateRange": "Välj ett datum från idag och upp till 7 dagar fram.",
+  "settings.error.weekdays": "Välj minst en veckodag.",
+  "settings.error.invalidTime": "Använd en tid som 06:30.",
+  "settings.error.read": "Inställningarna kunde inte läsas.",
+  "settings.error.refused": "Inställningarna avvisades. Inget ändrades.",
+  "settings.error.notCommitted": "Inställningarna sparades inte. Inget ändrades.",
+  "settings.error.reconcileFailed": "Inställningarna sparades, men planen kunde inte uppdateras.",
+  "settings.error.confirmationFailed": "Inställningarna sparades, men det aktuella tillståndet kunde inte bekräftas.",
+  "settings.error.version": "Kortet och integrationen talar olika inställningsversioner.",
+  "settings.error.unavailable": "Inställningar är inte tillgängliga just nu.",
+  "settings.error.charger": "Den konfigurerade laddaren kunde inte nås.",
+  "settings.error.generic": "Inställningarna kunde inte ändras. Inget ändrades.",
+  "settings.error.invalid": "Inställningarna avvisades som ogiltiga. Inget ändrades.",
+  "settings.error.readOnly": "Bara administratörer kan ändra inställningar.",
+  "settings.energy.slider": "Energireglage, {min} till {max} kWh i halvkWh-steg",
+  "settings.current.slider": "Strömreglage, {min} till {max} A i hela ampere",
+  "settings.current.power": "Nominell effekt ≈ {power} kW",
+  "settings.current.powerUnknown": "Nominell effekt okänd",
   "bar.plan": "Plan",
   "settings.plan.title": "Laddplan",
+  "settings.plan.titleFor": "Laddplan för {name}",
   "settings.plan.intro": "Hur mycket som ska laddas, när det ska vara klart och vilken ström planen får begära. Det är planeringsvärden, inte kommandon till laddaren.",
   "settings.plan.aria": "Plan: {value}",
   "entity.vehicle.automatic": "Automatisk avkänning",
@@ -687,14 +605,17 @@ export const sv: Record<keyof typeof en, string> = {
   "entity.error.field.unknownVehicle": "Fordonet finns inte längre.",
   "issue.targetSocUnknown": "Målnivån kan inte planeras: fordonets laddnivå eller batterikapacitet är okänd. Öppna Plan för att välja sensor eller ange kapaciteten.",
   "settings.plan.mode.legend": "Ladda efter",
-  "settings.plan.mode.energy": "Energi (kWh)",
-  "settings.plan.mode.soc": "Laddmål (%)",
+  "settings.plan.mode.energy": "Energi · kWh",
+  "settings.plan.mode.soc": "Laddmål · %",
   "settings.soc.target": "Laddmål",
   "settings.soc.slider": "Laddmål, procent",
+  "settings.soc.floorMark": "min {percent} %",
+  "settings.soc.markNow": "nu",
+  "settings.soc.markNowEstimated": "≈ nu",
+  "settings.soc.markLimit": "gräns",
   "settings.soc.vehicle": "Fordon",
   "settings.soc.vehicleUnknown": "Inte valt",
   "settings.soc.estimated": "uppskattad",
-  "settings.soc.estimatedFrom": "uppskattad, senast avläst {age}",
   "settings.soc.unknown": "Okänd",
   "settings.soc.need": "Energi som behövs",
   "settings.soc.capacityMissing": "Batterikapacitet saknas — ange den i Inställningar",
@@ -706,7 +627,7 @@ export const sv: Record<keyof typeof en, string> = {
   "settings.soc.age.day": "för {count} d sedan",
   "settings.overview.titleNamed": "Kortinställningar · {name}",
   "settings.soc.factNow": "Nu {value}",
-  "settings.soc.factLimit": "Bilens laddgräns {value}",
+  "settings.soc.factLimit": "Laddgräns {value}",
   "settings.soc.noNeed": "Ingen laddning behövs nu",
   "settings.soc.toLimit": "Laddar till bilens gräns, {value}",
   "settings.energy.fullMark": "fullt",
@@ -714,8 +635,6 @@ export const sv: Record<keyof typeof en, string> = {
   "settings.energy.roomHelp": "Det behövs {kwh} kWh för att fylla batteriet{limit}.",
   "settings.energy.fillHelp": "Laddar tills batteriet är fullt{limit}, nu {kwh} kWh.",
   "settings.energy.limitSuffix": " (till bilens laddgräns {percent} %)",
-  "settings.carEndsCharge": "Bilen avslutar själv laddningen när den är full eller når sin laddgräns ({percent} %).",
-  "settings.soc.readAge": "Avläst {age}",
   "settings.soc.needAfterVehicle": "Behovet räknas när fordonsvalet är sparat.",
   "vehicleLine.aria": "{name}, {summary}",
   "vehicleLine.estimateTitle": "Uppskattad mellan avläsningarna, avläst {age}",
@@ -869,6 +788,17 @@ export const sv: Record<keyof typeof en, string> = {
   "settings.status.notControlled": "Styrs inte",
   "settings.status.foundAutomatically": "Hittad automatiskt",
   "settings.vehicle.limit": "Laddgräns",
+  "settings.vehicle.limitHelp": "Skrivs via bilens integration; gäller när bilen läser av den nästa gång",
+  "settings.vehicle.limitSlider": "Laddgräns, procent",
+  "settings.vehicle.limitTooSoon": "Laddgränsen ändrades för mindre än en minut sedan. Försök igen strax.",
+  "settings.vehicle.limitFailed": "Kunde inte ange laddgränsen",
   "settings.vehicle.targetHelp": "Följer bilen till alla laddare",
-  "settings.vehicle.sourcesHelp": "Läses bara för att se vilken bil som är inkopplad.",
-};
+  "settings.vehicle.targetDefault": "(standard)",
+  "settings.vehicle.minimum": "Lägsta laddnivå",
+  "settings.vehicle.minimumOff": "Av",
+  "settings.vehicle.minimumCap": "laddmål {percent} %",
+  "settings.vehicle.minimumSlider": "Lägsta laddnivå, av eller procent",
+  "settings.vehicle.minimumNeedsSoc": "behöver bilens laddnivå",
+  "settings.vehicle.minimumHelp": "Under den här nivån laddar SpotNav direkt med full ström, oavsett strategi. En paus eller ett stopp du väljer går före. Behöver bilens laddnivå.",
+  "settings.vehicle.sourcesHelp": "Läses bara för att se vilken bil som är inkopplad."
+}

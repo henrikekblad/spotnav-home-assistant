@@ -24,6 +24,8 @@ export type ValueWrite =
     }
   /** A vehicle's charge-level sensor (`spotnav/choose_vehicle_soc`; `null` is automatic). */
   | { kind: "vehicleSoc"; vehicleId: string; entityId: string | null }
+  /** A car's own charge limit (`spotnav/write_charge_limit`), written through the car's integration. */
+  | { kind: "chargeLimit"; vehicleId: string; percent: number }
   /** A vehicle's plug or location source (`spotnav/choose_vehicle_identification`). */
   | { kind: "vehicleSource"; vehicleId: string; source: "plug" | "location"; entityId: string | null }
   /** One field of the charger's or the site's entity configuration (`spotnav/update_entity_config`). */

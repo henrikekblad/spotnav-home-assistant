@@ -2,8 +2,9 @@
 
 Prices are normalized onto a 15-minute grid of absolute instants, converted to the
 area's major unit, taxed (energy tax and transfer fee in the minor unit, then VAT over
-the sum), and exactly the needed whole slots are chosen, in at most the configured
-number of contiguous runs, for the lowest total cost. A need the departure leaves no time
+the sum), and exactly the needed whole slots are chosen for the lowest total cost: in at most the
+configured number of contiguous runs, or, with automatic periods, weighing a start cost per run and
+keeping every run at least half an hour long. A need the departure leaves no time
 for is planned as best effort: every whole slot up to the departure, marked
 [PlanResult.short_of_deadline]. Every failure is a named
 [PlanResult.reason]. A slot nobody has published is never filled from another day: the
@@ -39,6 +40,20 @@ MAX_DEPARTURE_DAYS_AHEAD: Final = 7
 #: Bounds on the number of contiguous runs.
 MIN_PERIODS: Final = 1
 MAX_PERIODS: Final = 8
+
+#: `max_periods` for automatic periods: no cap, a start cost per run and a shortest run instead.
+AUTO_PERIODS: Final = None
+
+#: What one more start costs under automatic periods, as energy at the window's mean effective price.
+#: Each start costs something real (the car wakes, contactors close, the onboard charger ramps up, a cold
+#: battery is heated again, one more cloud command can fail); a quarter of a kWh is the order of that loss.
+#: Relative to the price level, so it means the same in every currency and market. At 11 kW (2.77 kWh a
+#: quarter-hour) it bridges a gap quarter-hour up to about 9 % dearer than the slot it replaces, at 3.7 kW
+#: up to about 27 %; a peak of twice the price, or of more than one dear quarter-hour, is never bridged.
+START_COST_KWH: Final = 0.25
+
+#: The shortest run under automatic periods, in quarter-hours (30 minutes); a need smaller than that is one run.
+SHORTEST_BLOCK_SLOTS: Final = 2
 
 #: Target-SoC slider bounds and its starting value.
 DEFAULT_TARGET_SOC_PERCENT: Final = 80
@@ -335,7 +350,8 @@ class PlanRequest:
     requested_kwh: float
     consumption_kwh_per_10km: float
     fiscal: FiscalChoice = FiscalChoice()
-    max_periods: int = MIN_PERIODS
+    #: A hard cap on the runs (1 to 8), or `AUTO_PERIODS` (`None`): a start cost per run and a shortest run.
+    max_periods: int | None = MIN_PERIODS
     departure: time | None = None
     #: The local date the departure falls on, or `None` for the next occurrence of `departure`. With a
     #: date the deadline is that wall time on that date and the horizon reaches it (up to 7 days), so
@@ -355,7 +371,7 @@ class PlanRequest:
             _refuse("invalid_amps", "amps must be a positive whole number")
         if self.voltage_between_phases_v not in (230.0, 400.0):
             _refuse("invalid_voltage", "the voltage between phases must be 230 or 400")
-        if not MIN_PERIODS <= _as_int(self.max_periods) <= MAX_PERIODS:
+        if self.max_periods is not AUTO_PERIODS and not MIN_PERIODS <= _as_int(self.max_periods) <= MAX_PERIODS:
             _refuse("invalid_periods", f"max_periods must be between {MIN_PERIODS} and {MAX_PERIODS}")
         _positive(self.requested_kwh, "invalid_energy", "requested_kwh")
         _positive(self.consumption_kwh_per_10km, "invalid_consumption", "consumption_kwh_per_10km")
@@ -402,7 +418,7 @@ class PlanRequest:
             requested_kwh=float(self.requested_kwh),
             consumption_kwh_per_10km=float(self.consumption_kwh_per_10km),
             fiscal=self.fiscal.validated(),
-            max_periods=_as_int(self.max_periods),
+            max_periods=None if self.max_periods is AUTO_PERIODS else _as_int(self.max_periods),
             departure=self.departure,
             departure_date=self.departure_date,
             window_end=self.window_end,
@@ -944,6 +960,101 @@ def _choose(
     candidates: list[PlanningSlot],
     needed: int,
     per_slot: float,
+    period_cap: int | None,
+    fiscal: FiscalChoice,
+    latest_end_inclusive: datetime | None,
+) -> tuple[int, ...] | None:
+    """Which slots to charge in: exactly `needed` of them, at most `period_cap` runs, or automatic periods."""
+    if period_cap is AUTO_PERIODS:
+        return _choose_auto(candidates, needed, per_slot, fiscal, latest_end_inclusive)
+    return _choose_capped(candidates, needed, per_slot, period_cap, fiscal, latest_end_inclusive)
+
+
+def start_cost_minor(candidates: list[PlanningSlot], fiscal: FiscalChoice) -> float:
+    """What one start costs under automatic periods, in the area's minor unit (`START_COST_KWH`).
+
+    The mean is of the magnitudes, so a window of negative prices never makes a start pay.
+    """
+    if not candidates:
+        return 0.0
+    level = sum(abs(effective_minor_per_kwh(slot.local_major_per_kwh, fiscal)) for slot in candidates)
+    return START_COST_KWH * level / len(candidates)
+
+
+@dataclass(frozen=True, slots=True)
+class _AutoState:
+    """One state of the automatic search: chosen count, the open run's length (capped at the shortest
+    run, 0 when no run is open), the runs started and their cost."""
+
+    selected: int
+    length: int
+    runs: int
+    cost: float
+    slots: tuple[int, ...]
+
+
+def _choose_auto(
+    candidates: list[PlanningSlot],
+    needed: int,
+    per_slot: float,
+    fiscal: FiscalChoice,
+    latest_end_inclusive: datetime | None,
+) -> tuple[int, ...] | None:
+    """Automatic periods: exactly `needed` slots for the lowest cost plus `start_cost_minor` per run, every
+    run at least `SHORTEST_BLOCK_SLOTS` long (or the whole need, when that is smaller).
+
+    The same dynamic program as `_choose_capped` without a cap on the runs, so the state is the chosen count
+    and the open run's length. One contiguous run is always a candidate, so this finds a plan whenever a
+    cap of one would. Ties: the objective is compared to a millionth of the minor unit (sums of the same
+    prices in another order differ in the last bit), then the latest slots win, as for a number.
+    """
+    shortest = min(SHORTEST_BLOCK_SLOTS, needed)
+    start_cost = start_cost_minor(candidates, fiscal)
+
+    def rank(state: _AutoState) -> tuple[float, tuple[int, ...]]:
+        return round(state.cost + start_cost * state.runs, 6), tuple(-index for index in reversed(state.slots))
+
+    states: dict[tuple[int, int], _AutoState] = {(0, 0): _AutoState(0, 0, 0, 0.0, ())}
+    for index, slot in enumerate(candidates):
+        next_states: dict[tuple[int, int], _AutoState] = {}
+        slot_cost = per_slot * effective_minor_per_kwh(slot.local_major_per_kwh, fiscal)
+
+        def keep(state: _AutoState) -> None:
+            key = (state.selected, state.length)
+            existing = next_states.get(key)  # noqa: B023 - only called within this iteration
+            if existing is None or rank(state) < rank(existing):
+                next_states[key] = state  # noqa: B023
+
+        ends_inside_the_window = latest_end_inclusive is None or slot.end <= latest_end_inclusive
+        for state in states.values():
+            if state.length == 0 or state.length >= shortest:
+                # A run may end only once it is long enough.
+                keep(_AutoState(state.selected, 0, state.runs, state.cost, state.slots))
+            if ends_inside_the_window and state.selected < needed:
+                keep(
+                    _AutoState(
+                        selected=state.selected + 1,
+                        length=min(state.length + 1, shortest),
+                        runs=state.runs + (1 if state.length == 0 else 0),
+                        cost=state.cost + slot_cost,
+                        slots=state.slots + (index,),
+                    )
+                )
+        states = next_states
+
+    best: _AutoState | None = None
+    for state in states.values():
+        if state.selected != needed or 0 < state.length < shortest:
+            continue
+        if best is None or rank(state) < rank(best):
+            best = state
+    return None if best is None else best.slots
+
+
+def _choose_capped(
+    candidates: list[PlanningSlot],
+    needed: int,
+    per_slot: float,
     period_cap: int,
     fiscal: FiscalChoice,
     latest_end_inclusive: datetime | None,
@@ -1000,11 +1111,12 @@ def cheapest_slots(
     candidates: list[PlanningSlot],
     needed: int,
     per_slot: float,
-    period_cap: int,
+    period_cap: int | None,
     fiscal: FiscalChoice,
     latest_end_inclusive: datetime | None,
 ) -> tuple[PlanningSlot, ...] | None:
-    """The cheapest `needed` of these slots in at most `period_cap` runs, or `None` when none fit.
+    """The cheapest `needed` of these slots in at most `period_cap` runs (or automatic periods, `None`), or
+    `None` when none fit.
 
     The planner's own search over candidates the caller supplies, for readers that must price a
     hypothetical window the same way a real one is priced (see `planning/history_wait.py`).

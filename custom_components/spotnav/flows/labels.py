@@ -13,20 +13,9 @@ from ..const import (
     CURRENT_CONTROL_EASEE,
     CURRENT_CONTROL_NUMBER,
 )
+from ..texts import table
 from ..vehicles.choices import entity_option, flow_language
-from ..vehicles.discovery import (
-    DiscoveryCandidate,
-    REASON_ATTRIBUTES_DEVICE_CLASS_AND_UNIT_MATCH,
-    REASON_ATTRIBUTES_HISTORICAL_MATCH,
-    REASON_ATTRIBUTES_PROFILE_MATCH,
-    REASON_ATTRIBUTES_UNIT_MATCH_ONLY,
-    REASON_POSSIBLE_INVERTER_OUTPUT,
-    REASON_SEPARATE_ENTITIES_DEVICE_CLASS_AND_UNIT_MATCH,
-    REASON_SEPARATE_ENTITIES_DEVICE_CLASS_MATCH_ONLY,
-    REASON_SEPARATE_ENTITIES_NAME_MATCH_ONLY,
-    REASON_SEPARATE_ENTITIES_PROFILE_MATCH,
-    REASON_SEPARATE_ENTITIES_UNIT_MATCH_ONLY,
-)
+from ..vehicles.discovery import DiscoveryCandidate
 
 
 _LOGGER = logging.getLogger(__name__)
@@ -93,87 +82,10 @@ MANUAL_ENTITY_KEY = "entity_{phase}"
 MANUAL_ATTRIBUTE_KEY = "attribute_{phase}"
 
 
-# Short localized text for a candidate's reason code, shown in its dropdown label (the raw code
-# stays in diagnostics/logs).
-_REASON_TEXT: dict[str, dict[str, str]] = {
-    "en": {
-        REASON_ATTRIBUTES_DEVICE_CLASS_AND_UNIT_MATCH: "current device class and a supported unit",
-        REASON_ATTRIBUTES_UNIT_MATCH_ONLY: "a supported current unit",
-        REASON_ATTRIBUTES_HISTORICAL_MATCH: (
-            "per-phase data seen in history, not measured right now"
-        ),
-        REASON_ATTRIBUTES_PROFILE_MATCH: "the charger integration's own per-phase current attributes",
-        REASON_SEPARATE_ENTITIES_DEVICE_CLASS_AND_UNIT_MATCH: "current device class and a supported unit",
-        REASON_SEPARATE_ENTITIES_DEVICE_CLASS_MATCH_ONLY: "current device class only",
-        REASON_SEPARATE_ENTITIES_UNIT_MATCH_ONLY: "a supported current unit only",
-        REASON_SEPARATE_ENTITIES_NAME_MATCH_ONLY: "name pattern only",
-        REASON_SEPARATE_ENTITIES_PROFILE_MATCH: "the charger integration's own per-phase current sensors",
-        REASON_POSSIBLE_INVERTER_OUTPUT: "looks like inverter/solar output, not confirmed as grid input",
-    },
-    "sv": {
-        REASON_ATTRIBUTES_DEVICE_CLASS_AND_UNIT_MATCH: "strömtyp och en stödd enhet",
-        REASON_ATTRIBUTES_UNIT_MATCH_ONLY: "en stödd strömenhet",
-        REASON_ATTRIBUTES_HISTORICAL_MATCH: (
-            "fasdata endast sedd i historiken, inte mätt just nu"
-        ),
-        REASON_ATTRIBUTES_PROFILE_MATCH: "laddarintegrationens egna fasströmsattribut",
-        REASON_SEPARATE_ENTITIES_DEVICE_CLASS_AND_UNIT_MATCH: "strömtyp och en stödd enhet",
-        REASON_SEPARATE_ENTITIES_DEVICE_CLASS_MATCH_ONLY: "endast strömtyp",
-        REASON_SEPARATE_ENTITIES_UNIT_MATCH_ONLY: "endast en stödd strömenhet",
-        REASON_SEPARATE_ENTITIES_NAME_MATCH_ONLY: "endast namnmönster",
-        REASON_SEPARATE_ENTITIES_PROFILE_MATCH: "laddarintegrationens egna fasströmssensorer",
-        REASON_POSSIBLE_INVERTER_OUTPUT: "ser ut som växelriktar-/solutdata, ej bekräftad som nätingång",
-    },
-}
-
-
-_CONFIDENCE_TEXT: dict[str, dict[str, str]] = {
-    "en": {"high": "high confidence", "medium": "medium confidence", "low": "low confidence"},
-    "sv": {"high": "hög tillförlitlighet", "medium": "medel tillförlitlighet", "low": "låg tillförlitlighet"},
-}
-
-
-_REPRESENTATION_TEXT: dict[str, dict[str, str]] = {
-    "en": {"separate_entities": "three entities", "attributes": "attributes"},
-    "sv": {"separate_entities": "tre entiteter", "attributes": "attribut"},
-}
-
-
-_CHOICE_TEXT: dict[str, dict[str, str]] = {
-    "en": {
-        # A charger's measured current has one manual shape, so its label stays generic.
-        "manual": "Choose manually",
-        # The site's current offers both shapes, so both labels name theirs.
-        "manual_separate_entities": "Choose manually (three separate entities, one per phase)",
-        "manual_attributes": "Enter one entity + its phase attributes manually",
-        "skip": "Skip for now (configure later)",
-    },
-    "sv": {
-        "manual": "Välj manuellt",
-        "manual_separate_entities": "Välj manuellt (tre separata entiteter, en per fas)",
-        "manual_attributes": "Ange en entitet + dess fasattribut manuellt",
-        "skip": "Hoppa över (konfigurera senare)",
-    },
-}
-
-
-# The answers `CONF_CURRENT_CONTROL` can be given, as the dropdown the OCPP step and options flow
-# offer. Labels are built in code (a select selector's options are); the field keeps its
-# translation key.
-_CURRENT_CONTROL_TEXT: dict[str, dict[str, str]] = {
-    "en": {
-        "none": "Do not set a current",
-        "change_configuration": "ChangeConfiguration (AssignedCurrent)",
-        "number": "The charger's current number, within its write limits",
-        "easee_dynamic_limit": "Easee dynamic current limit (rate limited)",
-    },
-    "sv": {
-        "none": "Sätt ingen ström",
-        "change_configuration": "Ändra via ChangeConfiguration (AssignedCurrent)",
-        "number": "Laddarens strömnummer, inom dess skrivgränser",
-        "easee_dynamic_limit": "Easee dynamisk strömgräns (med begränsad skrivfrekvens)",
-    },
-}
+# The labels below are SpotNav's own words (`i18n/<lang>.json`): a candidate's reason code, its
+# confidence and representation (the raw code stays in diagnostics/logs), the fixed choices and the
+# `CONF_CURRENT_CONTROL` answers (a select selector's options are built in code; the field keeps its
+# translation key).
 
 
 def display_number(value: float) -> float | int:
@@ -193,7 +105,7 @@ def current_control_selector(
     `kinds` are the ways to set a current that apply: OCPP's `ChangeConfiguration` for an OCPP
     charger, the number and Easee's service for a detected one. "Do not set a current" is always first.
     """
-    text = _CURRENT_CONTROL_TEXT[flow_language(hass)]
+    text = table(flow_language(hass), "current_control")
     allowed = (CURRENT_CONTROL_CHANGE_CONFIGURATION, CURRENT_CONTROL_NUMBER, CURRENT_CONTROL_EASEE)
     return selector.SelectSelector(
         selector.SelectSelectorConfig(
@@ -217,7 +129,7 @@ def choice_option(hass, text_key: str, *, value: str | None = None) -> Any:
     entity plus attributes for a charger).
     """
     return selector.SelectOptionDict(
-        value=value or text_key, label=_CHOICE_TEXT[flow_language(hass)][text_key]
+        value=value or text_key, label=table(flow_language(hass), "choice")[text_key]
     )
 
 
@@ -258,9 +170,9 @@ def _candidate_label(hass, candidate: DiscoveryCandidate) -> str:
         name = first_state.name if first_state else first_id
         entity_part = ", ".join(sorted(entity_ids.values()))
         phase_part = ", ".join(f"{phase}={eid}" for phase, eid in sorted(entity_ids.items()))
-    representation = _REPRESENTATION_TEXT[lang][mapping.kind]
-    confidence_text = _CONFIDENCE_TEXT[lang][candidate.confidence]
-    reason_text = _REASON_TEXT[lang].get(candidate.reason_code, candidate.reason_code)
+    representation = table(lang, "candidate_representation")[mapping.kind]
+    confidence_text = table(lang, "candidate_confidence")[candidate.confidence]
+    reason_text = table(lang, "candidate_reason").get(candidate.reason_code, candidate.reason_code)
     return f"{name} ({entity_part}) — {representation}, {phase_part} — {confidence_text}: {reason_text}"
 
 

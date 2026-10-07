@@ -502,10 +502,44 @@
         "name": "Scheduled end"
       },
       "site_state": {
-        "name": "Capacity state"
+        "name": "Capacity state",
+        "state": {
+          "disabled": "Disabled",
+          "not_configured": "Not set up",
+          "missing_measurements": "Measurement missing",
+          "stale_measurements": "Measurement stale",
+          "invalid_measurements": "Measurement invalid",
+          "observing": "Measuring"
+        },
+        "state_attributes": {
+          "site_activity": {
+            "name": "Activity",
+            "state": {
+              "measuring": "Measuring, active load balancing off",
+              "balancing": "Measuring, active load balancing on",
+              "not_measuring": "Not measuring"
+            }
+          }
+        }
+      },
+      "solar_surplus": {
+        "name": "Solar surplus"
       },
       "charger_proposed_current": {
-        "name": "Proposed current – {charger}"
+        "name": "Proposed current – {charger}",
+        "state_attributes": {
+          "state": {
+            "name": "State",
+            "state": {
+              "invalid_measurements": "Measurement invalid",
+              "requested_current_unknown": "Requested current unknown",
+              "capacity_available": "Fits",
+              "capacity_limited": "Limited",
+              "below_minimum_current": "Below the minimum current",
+              "not_requesting": "Not charging"
+            }
+          }
+        }
       },
       "auto_plan_state": {
         "name": "Auto plan state",
@@ -608,6 +642,20 @@
           "solar": "Solar surplus",
           "hybrid": "Cheapest hours, holding back grid energy for expected sun"
         }
+      },
+      "charge_periods": {
+        "name": "Charge periods",
+        "state": {
+          "auto": "Automatic",
+          "1": "1 period",
+          "2": "2 periods",
+          "3": "3 periods",
+          "4": "4 periods",
+          "5": "5 periods",
+          "6": "6 periods",
+          "7": "7 periods",
+          "8": "8 periods"
+        }
       }
     },
     "number": {
@@ -616,9 +664,6 @@
       },
       "requested_energy": {
         "name": "Energy to charge"
-      },
-      "maximum_periods": {
-        "name": "Maximum charging periods"
       },
       "vat_rate": {
         "name": "VAT"

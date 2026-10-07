@@ -1,8 +1,11 @@
-// The five locales, as a set: exact key parity, and the compact row's labels actually localized.
+// The locales, as a set: exact key parity, and the compact row's labels actually localized.
 //
 // The types already enforce parity at compile time (`Translation` is `Record<TranslationKey, string>`),
 // and this is the runtime half: it fails loudly if a shipped locale is edited outside the type system,
 // and it proves the compact fiscal row's own labels exist in every language rather than only in English.
+
+import { readdirSync } from "node:fs";
+import { resolve } from "node:path";
 
 import { describe, expect, it } from "vitest";
 
@@ -18,6 +21,14 @@ const ROW_KEYS: TranslationKey[] = [
 ];
 
 describe("the shipped locales", () => {
+  it("are every JSON file in src/i18n, so a new language file cannot be left unwired", () => {
+    const folder = resolve(__dirname, "../src/i18n");
+    const files = readdirSync(folder)
+      .filter((name) => name.endsWith(".json"))
+      .map((name) => name.slice(0, -".json".length));
+    expect([...files].sort()).toEqual([...LANGUAGES].sort());
+  });
+
   it("hold exactly the same keys, in every language", () => {
     const english = Object.keys(TRANSLATIONS.en).sort();
     expect(english.length).toBeGreaterThan(0);
@@ -37,7 +48,7 @@ describe("the shipped locales", () => {
         expect(text).not.toContain("{unit}");
       }
     }
-    // And they are translations rather than the English text copied five times.
+    // And they are translations rather than the English text copied into every file.
     const reset = LANGUAGES.map((language) => translate(language, "market.resetToSuggestion"));
     expect(new Set(reset).size).toBeGreaterThanOrEqual(4);
   });

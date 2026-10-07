@@ -6,8 +6,8 @@ work on this installation is listed as unavailable with the reason.
 ## What every strategy shares
 
 The plan is calculated from the charger's settings: price area, current in amps, the
-energy to charge (or a [target state of charge](target-soc.md)), the maximum number of charging
-periods, and an optional departure time. The card marks what is missing.
+energy to charge (or a [target state of charge](target-soc.md)), the charger's **Charge periods**
+(automatic by default, see [Cheapest](#cheapest)), and an optional departure time. The card marks what is missing.
 
 - **Automatic execution.** Home Assistant installs the plan and starts and stops the charger at
   the planned times. It survives restarts. **Pause** suspends automatic execution until the next
@@ -47,8 +47,25 @@ periods, and an optional departure time. The card marks what is missing.
 
 ## Cheapest
 
-Buys the required energy in the cheapest quarter-hours before the departure time, within the
-maximum number of periods. With no departure time the plan covers the priced horizon.
+Buys the required energy in the cheapest quarter-hours before the departure time. With no departure
+time the plan covers the priced horizon.
+
+**How the charge is split into periods.** The charger setting **Charge periods** is **Automatic** by
+default. Every start costs something: the car wakes, the contactors close, the onboard charger ramps
+up, a cold battery is warmed again, and one more command to the charger or the car can fail. So the
+planner counts a start cost for each period, a quarter of a kWh at the average price of the window it
+plans in (so it means the same in every currency and at every price level), and picks the plan that is
+cheapest with those starts counted. Each period is at least half an hour; a need of only one
+quarter-hour is one quarter-hour.
+
+- Two cheap stretches split by a quarter-hour that costs only a little more become one period: at
+  11 kW that is up to about 9 % dearer than the quarter-hour it replaces, at 3.7 kW about 27 %.
+- A clearly expensive peak in between is never bridged: the charge stops for it and starts again.
+
+Choose **1 period** to **8 periods** instead and the planner keeps to at most that many periods, with
+no start cost and no shortest period: exactly the cheapest quarter-hours that fit, as before. One
+period charges in one block. Hybrid's grid part follows the same rule; solar charging starts and stops
+with the sun as before.
 
 **Equal prices charge late.** When several quarter-hours cost exactly the same (a flat price, or a
 fixed price that does not change through the day), SpotNav picks the latest ones before the
@@ -168,7 +185,9 @@ cannot, and for a direct site without the total it says the meter's total grid p
   the car ended at, outlast a restart and a switch to another strategy and back. A charge something
   else turned off is an ordinary stop. A charger that is not charging draws nothing, whatever its
   current sensor still shows. A charger that says no car is plugged in is never started by the sun and
-  holds no share of the surplus; a charge the sun ran there simply ends, with no stop sent.
+  holds no share of the surplus; a charge the sun ran there simply ends, with no stop sent. Its status
+  says *Solar · surplus available (4.2 kW)* while the surplus would start a charge (the same
+  minimum a start waits for), else *Solar · no car plugged in*. Hybrid keeps showing its plan.
 - Switching strategy while a charge runs hands it over rather than stopping it. To **Solar**: when the
   sun's rules would keep the charge going (the surplus covers the charger's minimum, as for a charge
   that runs), the sun takes it over and sets its current from the surplus; otherwise it is stopped
@@ -181,6 +200,17 @@ cannot, and for a direct site without the total it says the meter's total grid p
 - Several chargers on one site share the surplus by their
   [charger priority](site-and-load-balancing.md#charger-priority): the first in the order is
   offered it all, the next only what the first cannot use.
+- Every site has a **Solar surplus** sensor (in W) on its device: the power a car could
+  take from the sun there right now, on the same basis solar charges on. It is the export to the grid,
+  plus a charging house battery under *car first*, plus what the site's chargers already draw (a charger
+  that is not charging draws nothing), less any import; a discharging battery never counts, and the
+  sensor never goes below zero. It is worked out from the site's own readings whatever strategy its
+  chargers use, also on a site with no charger. It is *unknown* without a usable grid reading (the same
+  freshness rules as solar: a stale or missing total or phase) or with a house battery sensor that
+  cannot be read. The attributes `export_w`, `battery_w` (the battery power counted, negative while it
+  discharges), `car_w` and `priority` show the parts. To keep the recorder small it is written when it
+  moves 50 W or more, at most every 5 seconds, and a smaller change every 10 seconds; going unknown or
+  back, or a change of priority, is written at once.
 
 ## Hybrid
 

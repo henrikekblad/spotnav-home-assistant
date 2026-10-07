@@ -44,12 +44,22 @@ charger executed whose pause could not be saved answers `{"ok": true, "action": 
 | `resume` | Clear a pause. |
 | `refresh_vehicle` | Re-read the vehicle's Home Assistant entities (`vehicle_id`); never wakes the car. |
 | `set_charge_limit` | Write the vehicle's charge-limit entity (`vehicle_id`, `percent`). |
-| `update_vehicle` | Change a vehicle's capacity, consumption or onboard charger, with `expected` values. |
+| `update_vehicle` | Change a vehicle's capacity, consumption, onboard charger, target or minimum charge level, with `expected` values. |
 | `update_site_settings` | Change solar priority or forecast sources of the charger's site. |
 | `update_charger_priority` | Change this charger's priority on its site: `{"priority", "expected"}` (see below). |
 | `push_register` | The app's instant notifications: `{"push_ref", "events"}`, or `{"push_ref": null}` to stop (see below). |
 | `identify_vehicle` | Answer "which car is plugged in?": `{"vehicle_id"}` (see [vehicle identification](#vehicle-identification)). |
 | `choose_vehicle_identification` | Choose a car's plug or location source: `{"vehicle_id", "source", "entity_id"}` (see [vehicle identification](#vehicle-identification)). |
+
+**Charge periods.** `max_periods` is `null` for automatic periods (the default: the planner counts a start
+cost of a quarter of a kWh at the window's average price for each period and keeps each period at least half an
+hour; see [strategies](strategies.md#cheapest)), or a whole number from 1 to 8, the most periods a plan may use.
+Anything else is refused with `invalid_periods`. A record stored before automatic periods existed is read as
+automatic once, and saved that way at its next write; a number set after that stays. The released app refuses
+`null` here, so the webhook answers `8` in its place unless the request asks for it (`"reads": ["auto_periods"]`),
+and a webhook replacement without that `reads` that says `8` while the stored value is automatic keeps automatic
+(any other number is stored). The select entity **Charge periods** (`auto`, `1` to `8`) replaces the earlier
+number entity, which is removed.
 
 **Withheld settings fields.** The settings record has a `departure_weekdays` (an optional list of
 weekday numbers, 1 Monday to 7 Sunday, at least one, default all seven: the days a daily departure
@@ -122,6 +132,24 @@ its own takes the highest target any charger planned it to before this release, 
 is aligned once. Nothing is withheld for it: the released app reads a vehicle row
 key by key and ignores keys it does not know (as it does the dashboard's root blocks).
 
+**A car's minimum charge level.** A vehicle row carries the additive `min_percent` (10-80 in steps of 5, `null`
+when off), the car's [minimum charge level](target-soc.md#minimum-charge-level), and `update_vehicle` writes it
+(`changes: {"min_percent": 30}`, `null` turns it off; anything else is `invalid_min_percent`; `expected` may name
+it). While the car's known level is below it SpotNav charges at once and the status headline is
+`min_soc_charging` (`percent`: the floor that applies, capped at the target and the car's own limit; tone `normal`).
+A released app words a code it does not know as "see Home Assistant", so the webhook leaves `min_percent` out of
+every vehicle row (the dashboard's `vehicles` and `update_vehicle`'s `vehicle`) and says `charging_now` (`until`
+`null`) in place of `min_soc_charging` unless the request asks for them (`"reads": ["min_soc"]`). An app offers the
+setting only for a row that carries `min_percent`.
+
+**A car's charge limit range.** A vehicle row carries the additive `charge_limit_range`: `{"min", "max", "step"}`,
+the percents `set_charge_limit` (and `spotnav/write_charge_limit`) can write to the car's own limit, or `null` when
+there is no limit to write or its range is unknown. For a `number` limit these are the entity's own `min`, `max` and
+`step` (a step of 1 when it states none; a range from 0 starts at its first step above it, since a limit is never 0 %);
+for a percent `select`, its lowest and highest option and the smallest gap between two neighbours. A value outside
+`min`..`max` is refused as before. Nothing is withheld for it: the released app reads a vehicle row key by key and
+ignores keys it does not know. A client with no range offers 1-100 in whole percent and lets the write refuse the rest.
+
 **Instant notifications.** `push_register` takes `push_ref`, the opaque reference the SpotNav relay
 gave the app for its Firebase token (base64url text, at most 512 characters), or `null` to stop, and an
 optional `events` (the notification event ids above; default `plan_stopped`, `plan_at_risk`,
@@ -172,7 +200,8 @@ config entry id. Reading is open to every authenticated user; writes require an 
 | `spotnav/find_region` | A Great Britain postcode to its price region (`GB-A` … `GB-P`): `{"postcode": "SW1A 1AA"}` answers `region` (one), `regions` (the relay-listed ones) and `reason` (`null`, `invalid_postcode`, `not_found`, `unavailable`). Home Assistant asks Octopus Energy's public lookup directly; the postcode never reaches the relay and is neither stored nor logged. |
 | `spotnav/get_entity_config`, `spotnav/update_entity_config` | The entities a charger and its site use. |
 | `spotnav/choose_vehicle_soc` | Choose (or clear) a vehicle's state-of-charge sensor. |
-| `spotnav/update_vehicle` | A vehicle's battery capacity, consumption and onboard charger. |
+| `spotnav/update_vehicle` | A vehicle's battery capacity, consumption, onboard charger, target and minimum charge level. |
+| `spotnav/write_charge_limit` | Write a car's own charge limit (`vehicle_id`, `percent`), the webhook's `set_charge_limit` over the WebSocket: same entity, range checks and one write a minute per car. Answers `{"api_version": 1, "ok", "error", "retry_after_s"}`; refusals `spotnav_invalid_value` (not a car with a writable limit, or a percent it cannot take), `spotnav_too_soon` (with `retry_after_s`), `spotnav_charge_limit_failed` (the car's integration failed the write). |
 | `spotnav/update_site_settings` | Solar priority, forecast sources, active load balancing. |
 | `spotnav/get_debug_bundle` | The redacted installation-wide debug bundle (administrators only). |
 | `spotnav/get_card_info` | Which card the integration serves, for any signed-in user: `{"api_version": 1, "ok": true, "error": null, "spotnav_version", "card_bundle_hash"}`. The card compares the hash with the one in the URL it was loaded from. Not a dashboard field, so an older card is never handed a key it does not know. |
@@ -268,7 +297,7 @@ car's last reading needed and the car has not reported since; the status headlin
 code shows it as any unknown code.
 
 **Best effort before a departure.** When the need cannot be met by the departure, the plan is every
-whole quarter-hour from the first usable one up to the departure (one run, whatever `max_periods` says,
+whole quarter-hour from the first usable one up to the departure (one run, automatic or whatever number `max_periods` says,
 so the period limit never costs energy), installed and charged like any other: `planning` stays
 `proposal_ready` (or `proposal_unpriced`) and the status carries the notice `departure_shortfall` (`kwh`,
 the planned energy; `requested_kwh`, the need; `soc_percent`, what a target reaches by the departure,
@@ -339,6 +368,23 @@ sensors reading `unavailable`/`unknown` together: every phase at once, or a know
 (SolaX, Huawei, SolarEdge, Fronius, ...), which go unavailable when the inverter is in standby at night.
 The site sensor's `solar_surplus` rows carry the same facts as `basis_problem`, `basis_entity`,
 `charger_current`, `charger_current_entity` and `site_incomplete_phases`.
+
+**A solar charger with no car.** In place of `solar_waiting_for_sun`, a solar charger whose charger says no car
+is plugged in says `solar_no_car_surplus` (`surplus_kw`: the surplus the sun's rules reckon for it, in kW, `null`
+when not known; the card and the app show it with one decimal, "Solar · surplus available (4.2 kW)") while that surplus covers the start minimum a charge would start at, and
+`solar_no_car` otherwise or while solar has no full basis (both tone `normal`, no notification). Hybrid shows its
+plan's line on an empty charger, as before. A released SpotNav app words a code it does not know as "see Home
+Assistant", so the webhook says `solar_waiting_for_sun` in place of either line unless the request asks for them
+(`"reads": ["solar_no_car_status"]`). The site sensor's `solar_surplus` rows carry the additive `start_a`.
+
+**The site's sensors.** The site state sensor (*Capacity state*) keeps its states; the healthy one, `observing`,
+is named **Measuring**. Its additive attribute `site_activity` says what the site is doing in a word: `measuring`
+(healthy, active load balancing off), `balancing` (healthy, active load balancing on) or `not_measuring` (any other
+state); the site's diagnostics carry the same. A charger's allocation (`state` on its *Proposed current* sensor and
+in the diagnostics' `result`) has the additive `not_requesting` (reason `no_current_requested`, no limiting phase)
+for a charger that asks for no current, which used to read `below_minimum_current`; a reader that does not know it
+treats it as any unknown state. Every site has the sensor *Solar surplus* (W, `null`/unknown without a usable basis)
+with the attributes `export_w`, `battery_w`, `car_w` and `priority`; see [Solar](strategies.md#solar).
 
 A site's `warnings` in `get_entity_config` carry the additive `unavailable_entities` (a list) and
 `inverter` (bool): for `measurement_unhealthy`, the meter's sensors unavailable together as above; empty
@@ -532,8 +578,8 @@ and a `settings` replacement may echo `identify_camera` and move its `frame`, bu
 `invalid_camera`: choosing the camera and the AI Task entity, where the pictures go, is an administrator's.
 
 At a plug-in the camera is asked through `ai_task.generate_data` with a structured answer (`vehicle`: `car_1` …
-`car_n` or `none`; `confidence`: `high`, `medium` or `low`) and the pictures as attachments: each candidate's
-reference pictures, then the crop of the picture now. The attachments are `media-source://spotnav/<token>` ids that
+`car_n` or `none`; `confidence`: `high`, `medium` or `low`) and the pictures as attachments:
+the crop of the picture now first (picture 1), then each candidate's reference pictures. The attachments are `media-source://spotnav/<token>` ids that
 SpotNav's media source resolves to a local file only while that one call runs (the crop is a temporary file,
 deleted after the call); browsing SpotNav's media source shows nothing.
 

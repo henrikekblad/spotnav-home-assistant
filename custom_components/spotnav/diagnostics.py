@@ -26,7 +26,7 @@ from .const import (
 from .pricing.price_repository import catalogue_summary, day_summary, index_summary
 from .runtime import charger_data, controller_for, domain_data, executor_for, preview_for, site_controller_for
 from .site.regulator import RegulatorDecision
-from .site.site_capacity import ChargerAllocation, SiteCapacityResult
+from .site.site_capacity import ChargerAllocation, site_activity, SiteCapacityResult
 from .vehicles.capability import SiteCapabilitySnapshot
 
 
@@ -146,6 +146,10 @@ def _site_diagnostics(hass: HomeAssistant, entry: ConfigEntry) -> dict[str, Any]
         "config": async_redact_data(dict(entry.data), TO_REDACT),
         "price_data": _price_data(hass),
         "result": None if controller is None else _result_to_dict(controller.result),
+        # `observing` in words: `measuring`, `balancing` (active load balancing on) or `not_measuring`.
+        "site_activity": None
+        if controller is None
+        else site_activity(controller.result.state, controller.active_control_enabled),
         "capability": None
         if controller is None
         else _capability_to_dict(controller.capability_snapshot),

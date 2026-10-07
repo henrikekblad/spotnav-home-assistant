@@ -457,6 +457,7 @@
   "vehicle": {
     "capacity_kwh": 64.8,
     "capacity_source": "stored",
+    "charge_limit_range": null,
     "consumption_kwh_per_10km": 1.7,
     "id": "vehicle_niro",
     "identification": {
@@ -474,6 +475,7 @@
       }
     },
     "max_percent": null,
+    "min_percent": null,
     "name": "Niro",
     "onboard_phases": 3,
     "soc_entity_id": "sensor.niro_battery",

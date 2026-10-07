@@ -33,7 +33,8 @@ Precedence (first match wins the headline; "add" rows append a fact line)
    place of solar_no_reading_*; then solar_charger_current_missing (it runs blind, at the minimum current)
    and solar_site_incomplete (the phases it runs without, on the total grid power) follow. A charge the
    car ended by itself is solar_vehicle_full (at its own limit) or solar_car_stopped{time} (tried again
-   at `time`) in place of solar_waiting_for_sun. When planning
+   at `time`) in place of solar_waiting_for_sun, and so is an empty charger: solar_no_car_surplus while the surplus
+   would start a car (`start_a`), else solar_no_car. When planning
    is waiting on prices (waiting_for_history, waiting_for_publication, buying_before_publication)
    that plan line follows the strategy headline (normal tone, params as in 4), so the wait is
    never hidden by the strategy.
@@ -83,6 +84,9 @@ Precedence (first match wins the headline; "add" rows append a fact line)
    charger), load_balancing_limited, load_balancing_unavailable. Tone `notice` if any is present;
    otherwise `normal`. A proposal waiting for a window boundary is the normal line proposal_pending.
 
+0b. While the car's minimum charge level charges it (`min_soc_percent`, its floor), min_soc_charging{percent}
+   is the headline in place of the strategy's and the plan's (3 and 4), after the identification line; the plan's
+   figures and notices follow. A pause wins: never while one holds.
 0. While a plug-in's car is being identified (`identification` `waiting` or `asking`, two or more cars at the
    charger), identifying_vehicle or asking_vehicle goes ahead of every other line of a block that is not
    blocking and not starting_up; it is gone once the car is decided. Tone normal, no params.
@@ -157,6 +161,8 @@ STATUS_CODES: Final[dict[str, tuple[str, tuple[str, ...]]]] = {
     "planning_unavailable": (TONE_BLOCKING, ("reason",)),
     "planning_error": (TONE_BLOCKING, ("reason",)),
     "paused": (TONE_NORMAL, ("until", "choice", "action", "ends")),
+    # The car's known state of charge is below its minimum charge level (`percent`): SpotNav charges at once.
+    "min_soc_charging": (TONE_NORMAL, ("percent",)),
     "charging_now": (TONE_NORMAL, ("until",)),
     # The plan's last window ended with the car still drawing on a charge to its own limit: it goes on
     # until the car stops by itself, at most until `until` (an hour past the window, never past the
@@ -189,6 +195,11 @@ STATUS_CODES: Final[dict[str, tuple[str, tuple[str, ...]]]] = {
     "solar_no_reading_stopped": (TONE_NORMAL, ()),
     "solar_no_reading_waiting": (TONE_NORMAL, ()),
     "solar_waiting_for_sun": (TONE_NORMAL, ()),
+    # The charger says no car is plugged in (`SolarController.car_absent`), in place of solar_waiting_for_sun:
+    # with the surplus this moment enough to start a charge (`start_a`), solar_no_car_surplus (worded with
+    # the surplus in `surplus_kw`, null when not known), else solar_no_car.
+    "solar_no_car": (TONE_NORMAL, ()),
+    "solar_no_car_surplus": (TONE_NORMAL, ("surplus_kw",)),
     # The car ended the charge by itself at its own limit: the sun starts nothing until it is plugged in
     # again (or its state of charge falls, or its limit or the target rises).
     "solar_vehicle_full": (TONE_NORMAL, ()),
@@ -333,6 +344,11 @@ class SolarFacts:
     site_incomplete_phases: tuple[str, ...] = ()
     #: When a car that stopped charging by itself (`car_stopped`) is tried again.
     retry_at: datetime | None = None
+    #: The surplus the controller reckons for this charger, and the start minimum a charge starts at
+    #: (`SolarController`'s `available_a`/`available_w`, `SolarConfig.start_a`); `None` when not known.
+    available_a: float | None = None
+    available_w: float | None = None
+    start_a: float | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -450,6 +466,8 @@ class StatusFacts:
     starting_up: bool = False
     #: The identification block's `state` (`waiting`, `asking`, `decided`), `None` without one.
     identification: str | None = None
+    #: The car's minimum charge level while its own charge runs (`min_soc_floor.py`), else `None`.
+    min_soc_percent: float | None = None
 
 
 def _line(code: str, **params: Any) -> dict[str, Any]:
@@ -619,8 +637,24 @@ def _solar_line(solar: SolarFacts) -> dict[str, Any]:
             return _line("solar_no_reading_stopped")
         if solar.reason == "no_basis_off":
             return _line("solar_no_reading_waiting")
+        if solar.reason == "no_car":
+            return _no_car_line(solar)
         return _line("solar_waiting_for_sun")
     return _line("solar_unknown")
+
+
+def _no_car_line(solar: SolarFacts) -> dict[str, Any]:
+    """No car plugged in: whether the surplus this moment would start one, by the same start minimum arming uses.
+    A surplus reckoned without a full basis is the last one known, not this moment's, and says nothing."""
+    if (
+        solar.basis_problem is None
+        and solar.available_a is not None
+        and solar.start_a is not None
+        and solar.available_a >= solar.start_a
+    ):
+        surplus_kw = None if solar.available_w is None else round(solar.available_w / 1000.0, 2)
+        return _line("solar_no_car_surplus", surplus_kw=surplus_kw)
+    return _line("solar_no_car")
 
 
 def _hybrid_line(hybrid: HybridFacts, proposal: ProposalFacts | None) -> dict[str, Any]:
@@ -931,6 +965,8 @@ def compose_status(facts: StatusFacts) -> dict[str, Any]:
         lines.append(_paused_line(facts))
         if facts.charging:
             lines.append(_line("charging_now", until=None))
+    elif facts.min_soc_percent is not None:
+        lines.append(_line("min_soc_charging", percent=round(facts.min_soc_percent)))
     elif facts.solar is not None:
         lines.extend(_solar_lines(facts.solar, charging=facts.charging))
         lines.extend(_price_wait_lines(facts))

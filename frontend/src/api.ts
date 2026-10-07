@@ -312,12 +312,15 @@ export interface VehicleChanges {
     onboard_phases?: 1 | 3 | null;
     /** The car's own target (the same at every charger); `null` clears it. */
     target_percent?: number | null;
+    /** The car's minimum charge level (10-80, steps of 5); `null` turns it off. */
+    min_percent?: number | null;
   };
   expected: {
     capacity_kwh?: number | null;
     consumption_kwh_per_10km?: number | null;
     onboard_phases?: 1 | 3 | null;
     target_percent?: number | null;
+    min_percent?: number | null;
   };
 }
 
@@ -354,6 +357,24 @@ export async function chooseVehicleIdentification(
     vehicle_id: request.vehicleId,
     source: request.source,
     entity_id: request.entityId,
+  });
+}
+
+/** `spotnav/write_charge_limit`'s own version. */
+export const CHARGE_LIMIT_API_VERSION = 1;
+
+/** Write a car's own charge limit (administrators only); the answer is decoded by the caller. */
+export async function setChargeLimit(
+  hass: HomeAssistantLike,
+  chargerId: string,
+  request: { vehicleId: string; percent: number },
+): Promise<unknown> {
+  return await call<unknown>(hass, {
+    type: "spotnav/write_charge_limit",
+    api_version: CHARGE_LIMIT_API_VERSION,
+    charger_id: chargerId,
+    vehicle_id: request.vehicleId,
+    percent: request.percent,
   });
 }
 

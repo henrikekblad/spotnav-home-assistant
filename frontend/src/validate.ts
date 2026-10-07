@@ -394,6 +394,17 @@ export interface Vehicle {
   identification?: VehicleSources;
   /** The car's own target percent, the same at every charger (`null`: never set); absent on an older backend. */
   target_percent?: number | null;
+  /** The car's minimum charge level, 10-80 in steps of 5 (`null`: off); absent on an older backend. */
+  min_percent?: number | null;
+  /** What the car's own limit can be written to (`null`: unknown); absent on an older backend. */
+  charge_limit_range?: ChargeLimitRange | null;
+}
+
+/** The percents a car's own charge limit takes: `min`..`max` in steps of `step`. */
+export interface ChargeLimitRange {
+  min: number;
+  max: number;
+  step: number;
 }
 
 export interface Soc {
@@ -1386,6 +1397,8 @@ export const STATUS_CODE_TABLE = {
   solar_no_reading_waiting: ["normal", {}],
   solar_waiting_for_sun: ["normal", {}],
   solar_vehicle_full: ["normal", {}],
+  solar_no_car: ["normal", {}],
+  solar_no_car_surplus: ["normal", { surplus_kw: "numberOrNull" }],
   solar_car_stopped: ["normal", { time: "instantOrNull" }],
   solar_no_grid_power: ["notice", { entity: "textOrNull", entity_name: "textOrNull" }],
   solar_battery_unreadable: ["notice", { entity: "textOrNull", entity_name: "textOrNull" }],
@@ -1416,6 +1429,7 @@ export const STATUS_CODE_TABLE = {
   filling_to_limit: ["normal", { kwh: "number" }],
   fill_room_unknown: ["notice", { kwh: "number" }],
   charging_to_vehicle_limit: ["normal", { percent: "number" }],
+  min_soc_charging: ["normal", { percent: "number" }],
   remaining_need_estimated: ["notice", { kwh: "number", basis: "text" }],
   site_measurement_problem: [
     "notice",
@@ -1954,7 +1968,9 @@ const CAPACITY_SOURCES = ["reported", "stored"] as const;
 
 export function decodeVehicle(raw: unknown): Vehicle {
   const source = record(raw);
-  const optional = ["identification", "target_percent"].filter((key) => Object.prototype.hasOwnProperty.call(source, key));
+  const optional = ["identification", "target_percent", "min_percent", "charge_limit_range"].filter((key) =>
+    Object.prototype.hasOwnProperty.call(source, key),
+  );
   exactKeys(source, [
     ...optional,
     "id",
@@ -1988,8 +2004,36 @@ export function decodeVehicle(raw: unknown): Vehicle {
     ...(Object.prototype.hasOwnProperty.call(source, "target_percent")
       ? { target_percent: boundedOrNull(source, "target_percent", 0, 100) }
       : {}),
+    ...(Object.prototype.hasOwnProperty.call(source, "min_percent") ? { min_percent: minimumLevel(source) } : {}),
+    ...(Object.prototype.hasOwnProperty.call(source, "charge_limit_range")
+      ? { charge_limit_range: chargeLimitRange(source["charge_limit_range"]) }
+      : {}),
   };
 }
+
+/** `null`, or `{min, max, step}` with `0 < min < max <= 100` and a positive step. */
+function chargeLimitRange(raw: unknown): ChargeLimitRange | null {
+  if (raw === null) {
+    return null;
+  }
+  const source = record(raw);
+  exactKeys(source, ["min", "max", "step"]);
+  const min = boundedOrNull(source, "min", 0, 100, true);
+  const max = boundedOrNull(source, "max", 0, 100, true);
+  const step = boundedOrNull(source, "step", 0, 100, true);
+  return min === null || max === null || step === null || min >= max ? bad() : { min, max, step };
+}
+
+/** A minimum charge level: `null` (off), or 10 to 80 in whole steps of 5. */
+function minimumLevel(source: Record<string, unknown>): number | null {
+  const value = boundedOrNull(source, "min_percent", MIN_PERCENT_LOW, MIN_PERCENT_HIGH);
+  return value === null || value % MIN_PERCENT_STEP === 0 ? value : bad();
+}
+
+/** The minimum charge level's range and step, as the backend validates it (`vehicle_properties`). */
+export const MIN_PERCENT_LOW = 10;
+export const MIN_PERCENT_HIGH = 80;
+export const MIN_PERCENT_STEP = 5;
 
 function phaseCount(source: Record<string, unknown>, key: string): 1 | 3 {
   const value = source[key];

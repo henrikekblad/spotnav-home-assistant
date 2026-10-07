@@ -26,7 +26,7 @@ charging losses.
 Several vehicles can be detected, and you choose which one the charger plans for, in the card's
 vehicle settings. Chargers do not report which car is plugged in, so at a charger more than one car can
 charge at SpotNav reads the cars' own plug sensors and positions and asks you when they cannot tell: see
-[Which car is plugged in?](vehicle-identification.md). Each car keeps its own target at the charger. Without
+[Which car is plugged in?](vehicle-identification.md). Each car has its own charge target, the same at every charger. Without
 a vehicle integration, charge a fixed number of kWh instead.
 
 ## How it behaves
@@ -73,10 +73,35 @@ a vehicle integration, charge a fixed number of kWh instead.
 - A reached target overshoots slightly: the reading that crossed it describes where the car was
   a moment ago. The card shows the level the charge stopped at and how old or estimated it was.
 
+## Minimum charge level
+
+Each car can have a minimum charge level, **Minimum charge level** in the card's car settings (off by default, 10-80 %
+in steps of 5, set with a slider that stops at the car's charge target). It is the car's own, like its target: the car the charger plans for brings its floor with it to
+every charger. While the car's known level is below it, SpotNav charges at once at the full current set (your
+amps, capped by load balancing as any charge), whatever the strategy: cheapest periods, the sun and hybrid do not
+hold it back, and a charge the plan or the sun runs is taken over at full current. The status says *Charging to the
+minimum level (30 %)* while it runs.
+
+- **A person's pause or Stop wins.** A pause you chose, or a Stop, holds the minimum level too: you decided. A
+  charge you started is yours.
+- **At the floor the strategy takes over**, with no stop and start: a planned period open now goes on with the
+  charge, the sun (solar, hybrid) keeps it while its surplus does, and otherwise the charge stops. With a target,
+  the plan is made for the rest of the need, from the minimum level to the target. A floor charge that ended at the
+  floor starts again only when the level is a couple of percent below it, so a reading that wobbles never cycles
+  the charger.
+- **It needs the car's level.** A fresh reading, an estimate carried forward from the charger's energy register,
+  or a reading the car reported while plugged in counts. With none of these (no level sensor, or only a reading
+  from before the plug-in) the minimum level does nothing, and the setting says it needs the car's charge level.
+- It never charges past the target or the car's own charge limit: a minimum above either is capped there.
+- No notification of its own: *Charging started* and *Charge complete* are sent as for any charge.
+
 ## Vehicle charge limit
 
 If the vehicle's own integration exposes a charge-limit entity, SpotNav shows the limit in the
-card's plan settings and plans up to it. The app can also set it; the card only shows it.
+card's plan settings and plans up to it. An administrator can set it in the card (**Charge limit** in the car's
+settings) and any paired SpotNav app can too: the editor is a slider over the range and step the car's
+integration takes (50 to 100 % in steps of 10 on a Kia, for example; 1 to 100 % when it does not say). SpotNav
+writes at most once a minute per car, and the car takes the new limit when its integration next reads it.
 
 The limit is a number, or a percent picker (a select with options
 from 50 to 100); the AC limit is preferred over the DC limit, and discharge (V2L), minimum,

@@ -1,0 +1,829 @@
+{
+  "title": "SpotNav",
+  "config": {
+    "flow_title": "{device} vil forbinde · kode {code}",
+    "step": {
+      "pairing": {
+        "menu_options": {
+          "pair_approve": "Godkend",
+          "pair_deny": "Afvis"
+        },
+        "title": "En telefon vil forbinde",
+        "description": "En enhed, der kalder sig **{device}**, beder om at forbinde og viser koden **{code}**. Godkend kun, hvis den samme kode står på dens skærm. Godkender du, får den adgang til denne instans' ladere; koden bruges kun til at sammenligne."
+      },
+      "pair_approve": {
+        "title": "Godkend"
+      },
+      "pair_deny": {
+        "title": "Afvis"
+      },
+      "user": {
+        "title": "Hvad vil du tilføje?",
+        "description": "En lader forbinder ét fysisk ladepunkt med SpotNav. Et anlæg er valgfrit: det balancerer lasten for alle ladere på én eltilslutning under hovedsikringen.",
+        "data": {
+          "entry_type": "Hvad skal tilføjes"
+        }
+      },
+      "charger_type": {
+        "title": "Vælg ladertype",
+        "description": "Automatisk finder laderens styring ud fra dens enhed: OCPP-ladere og understøttede integrationer (Easee, Wallbox, Zaptec, go-e, Peblar m.fl.). Manuel lader dig selv vælge en hvilken som helst kontakt til ladestyring.",
+        "data": {
+          "mode": "Ladertype"
+        }
+      },
+      "resolve_vehicle": {
+        "title": "Afklar et fundet køretøj",
+        "description": "En af disse enheder ligner et køretøj, men rapporterer mere end ét batteriniveau, så SpotNav gætter ikke på, hvilket der er ladeniveauet. Vælg den enhed, der skal afklares -- eller vælg posttypen igen, hvis du ikke genkender noget her.",
+        "data": {
+          "device_id": "Enhed"
+        }
+      },
+      "resolve_vehicle_soc": {
+        "title": "Hvilken aflæsning er ladeniveauet?",
+        "description": "Vælg, hvilken af {name}s batteriaflæsninger der er det faktiske ladeniveau -- eller angiv, at enheden ikke er et køretøj, du lader, så SpotNav holder op med at rapportere den.",
+        "data": {
+          "soc_entity_id": "Ladeniveau"
+        }
+      },
+      "ocpp_entities": {
+        "title": "Bekræft laderens styring",
+        "description": "Kun kompatible entiteter, der hører til den valgte OCPP-lader, vises.",
+        "data": {
+          "charge_control": "Ladestyring",
+          "current_limit": "Tal-entitet for strømgrænse (valgfrit)",
+          "energy_register_entity": "Energitæller (samlet)",
+          "current_control": "Sådan indstiller SpotNav strømmen"
+        },
+        "data_description": {
+          "charge_control": "Kontakten, der starter og stopper opladningen på dette stik.",
+          "current_limit": "Laderens egen tal-entitet for strøm; SpotNav læser kun dens værdi og interval.",
+          "energy_register_entity": "Stikkets sensor for samlet energi; den findes automatisk, så lad den være.",
+          "current_control": "Behold \"Indstil ikke en strøm\", medmindre laderen vides at acceptere den valgte metode."
+        }
+      },
+      "generic": {
+        "title": "Vælg laderens styring",
+        "data": {
+          "charge_control": "Ladestyring",
+          "current_limit": "Ladestrøm (valgfrit)",
+          "energy_register_entity": "Energitæller (samlet)",
+          "power_entity": "Effektsensor, smart stik (valgfrit)"
+        },
+        "data_description": {
+          "energy_register_entity": "Laderens sensor for samlet energi, bruges til at tælle energi, der allerede er leveret. Valgfrit.",
+          "power_entity": "En simpel lader bag et smart stik: stikkets effektsensor (W eller kW). SpotNav tæller energien fra den og kan se, når bilen er holdt op med at trække strøm. Stikket skal være dimensioneret til laderens kontinuerlige strøm. Valgfrit."
+        }
+      },
+      "site": {
+        "title": "Anlæg",
+        "description": "Anlægget holder sine laderes samlede strøm under hovedsikringen. Aktiv styring kan slås til og fra senere; den er bedste indsats, ikke en beskyttelsesanordning. Hovedsikringens størrelse skal angives udtrykkeligt -- den gættes aldrig ud fra målt last. {charger_hint}",
+        "data": {
+          "name": "Anlæggets navn",
+          "main_fuse_a": "Hovedsikring (A)",
+          "safety_margin_a": "Sikkerhedsmargin (A)",
+          "measurement_mode": "Målemetode",
+          "charger_entry_ids": "Ladere, der deler anlæggets kapacitet",
+          "voltage_between_phases_v": "Spænding mellem faser"
+        }
+      },
+      "site_detected": {
+        "title": "Elmåler fundet",
+        "description": "SpotNav fandt disse elmålere. Intet anvendes, før du bekræfter; vælg \"manuelt\" for selv at vælge entiteter.",
+        "data": {
+          "choice": "Fundet måler",
+          "enable_disabled": "Aktivér de deaktiverede entiteter, som måleren har brug for"
+        }
+      },
+      "site_current_suggestions": {
+        "title": "Forslag til kilde for anlæggets strøm",
+        "description": "Dette er kun forslag ud fra entiteter, der allerede findes i Home Assistant -- intet anvendes, før du bekræfter. Vælg \"manuelt\" for selv at vælge entiteter, eller \"spring over\" for at sætte det op senere i anlæggets indstillinger.",
+        "data": {
+          "choice": "Foreslået kilde"
+        }
+      },
+      "site_details": {
+        "title": "Måleentiteter",
+        "description": "Vælg elmålerens sensorer. Alle sensorer accepteres; enheden kontrolleres, når du fortsætter (strøm i A eller mA, effekt i W eller kW, spænding i V, reaktiv effekt i var eller kvar, tilsyneladende effekt i VA eller kVA). Kun felter, der passer til den valgte målemetode, vises. Derefter følger fasetilslutningen for hver tilknyttet lader, én lader ad gangen.{charger_hint}",
+        "data": {
+          "direct_L1": "Netstrøm L1",
+          "direct_L2": "Netstrøm L2",
+          "direct_L3": "Netstrøm L3",
+          "site_current_signed": "Netstrømmen har fortegn (eksport er negativ)",
+          "grid_power_inverted": "Nettets effekt er positiv ved eksport (vend fortegnet)",
+          "derived_L1_power_export": "Eksporteffekt L1 (valgfrit, når import og eksport er adskilt)",
+          "derived_L1_reactive_power": "Reaktiv effekt L1 (valgfrit)",
+          "derived_L1_apparent_power": "Tilsyneladende effekt L1 (valgfrit)",
+          "derived_L1_current": "Strøm L1 (valgfrit)",
+          "derived_L2_power_export": "Eksporteffekt L2 (valgfrit, når import og eksport er adskilt)",
+          "derived_L2_reactive_power": "Reaktiv effekt L2 (valgfrit)",
+          "derived_L2_apparent_power": "Tilsyneladende effekt L2 (valgfrit)",
+          "derived_L2_current": "Strøm L2 (valgfrit)",
+          "derived_L3_power_export": "Eksporteffekt L3 (valgfrit, når import og eksport er adskilt)",
+          "derived_L3_reactive_power": "Reaktiv effekt L3 (valgfrit)",
+          "derived_L3_apparent_power": "Tilsyneladende effekt L3 (valgfrit)",
+          "derived_L3_current": "Strøm L3 (valgfrit)",
+          "derived_L1_power": "Effekt L1",
+          "derived_L1_voltage": "Spænding L1",
+          "derived_L2_power": "Effekt L2",
+          "derived_L2_voltage": "Spænding L2",
+          "derived_L3_power": "Effekt L3",
+          "derived_L3_voltage": "Spænding L3"
+        }
+      },
+      "charger_manual_source": {
+        "title": "Laderens målte strøm",
+        "description": "Vælg én entitet, der hører til laderens egen enhed, og angiv den attribut på den, der indeholder hver fases strøm. Kun entiteter registreret på denne lader tilbydes. Vælg udtrykkeligt den enhed, attributterne angiver -- \"A\" eller \"mA\": en entitets egen enhed beskriver dens tilstandsværdi, ikke nødvendigvis andre attributter, den også har.",
+        "data": {
+          "entity_id": "Entitet (kun laderens egen enhed)",
+          "attribute_L1": "Attributnavn for L1",
+          "attribute_L2": "Attributnavn for L2",
+          "attribute_L3": "Attributnavn for L3",
+          "unit": "Attributternes enhed",
+          "confirm_unverified": "Intet kunne kontrolleres -- gem alligevel"
+        }
+      },
+      "site_manual_source": {
+        "title": "Anlæggets strøm fra én entitet",
+        "description": "Vælg én entitet, der har hele anlæggets strøm som egne attributter pr. fase, og angiv den attribut, der indeholder hver fase. Entiteter, der hører til en af anlæggets ladere, tilbydes aldrig -- en laders egen sensor kan ikke samtidig være hele anlæggets total. Vælg udtrykkeligt den enhed, attributterne angiver -- \"A\" eller \"mA\": en entitets egen enhed beskriver dens tilstandsværdi, ikke nødvendigvis andre attributter, den også har.",
+        "data": {
+          "entity_id": "Entitet (alt undtagen anlæggets ladere)",
+          "attribute_L1": "Attributnavn for L1",
+          "attribute_L2": "Attributnavn for L2",
+          "attribute_L3": "Attributnavn for L3",
+          "unit": "Attributternes enhed",
+          "confirm_unverified": "Intet kunne kontrolleres -- gem alligevel"
+        }
+      },
+      "detect_device": {
+        "title": "Vælg laderens enhed",
+        "description": "Vælg laderens enhed. SpotNav finder dens styring blandt integrationens egne entiteter; intet anvendes, før du bekræfter næste trin.",
+        "data": {
+          "device": "Lader"
+        }
+      },
+      "own_mode": {
+        "title": "Slå laderens egen styring fra",
+        "description": "Denne lader har sin egen smart-, sol- eller lastbalanceringstilstand slået til: {modes}. To styringer på én lader modarbejder hinanden. Slå den fra i laderens egen integration eller app, og fortsæt så.",
+        "data": {
+          "continue_anyway": "Fortsæt alligevel (jeg accepterer, at de kan modarbejde hinanden)"
+        }
+      },
+      "detected_entities": {
+        "title": "Bekræft {device}",
+        "description": "{warning}Fundet ud fra laderens enhed. Ret eller ryd det, der er forkert. \"Indstil laderens strøm\" er slået fra, medmindre du vælger det: SpotNav skriver så kun strømmen, så vidt laderens skrivegrænser tillader.{disabled}",
+        "data": {
+          "charge_control": "Ladestyring",
+          "current_limit": "Tal-entitet for ladestrøm (valgfrit)",
+          "current_control": "Indstil laderens strøm",
+          "energy_register_entity": "Energitæller (valgfrit)",
+          "energy_register_is_session": "Brug energitælleren pr. opladning (den nulstilles ved hver opladning)",
+          "charging_state_entity": "Statussensor, der viser, at den lader (valgfrit)",
+          "enable_disabled_entities": "Aktivér de nyttige entiteter, der er deaktiveret"
+        }
+      },
+      "ocpp_confirm": {
+        "title": "Lader fundet",
+        "description": "Laderens styring blev fundet. Fortsæt for at tilføje den, eller sæt flueben for at ændre valgene.\n\n{summary}",
+        "data": {
+          "adjust": "Ændr disse valg"
+        }
+      },
+      "site_confirm": {
+        "title": "Anlæg fundet",
+        "description": "Her er, hvad SpotNav fandt for dette anlæg. Fortsæt for at oprette det, eller sæt flueben for at ændre valgene.\n\n{summary}{charger_hint}",
+        "data": {
+          "adjust": "Ændr disse valg"
+        }
+      },
+      "join_site": {
+        "title": "Tilføj til anlæg",
+        "description": "Tilføj denne lader til anlægget {site}?\n\n{summary}",
+        "data": {
+          "join": "Tilføj den til anlægget"
+        }
+      },
+      "site_charger_wiring": {
+        "title": "Tilslutning for {charger}",
+        "description": "For en enfaset lader skal du udtrykkeligt vælge den tilsluttede fase -- med en ukendt fase kan der aldrig beregnes en sikker anbefaling for den. Laderens egen målte strøm er valgfri: vælg et fundet forslag, angiv én entitet med attributter pr. fase, angiv tre separate entiteter (én pr. fase, som Charge Amps-integrationen leverer), eller behold \"spring over\" for at sætte det op senere.",
+        "data": {
+          "phases": "Antal faser",
+          "phase": "Tilsluttet fase (enfasede ladere)",
+          "measured_source": "Kilde til målt strøm (valgfrit)"
+        }
+      },
+      "charger_manual_entities": {
+        "title": "Laderens målte strøm, én entitet pr. fase",
+        "description": "Vælg sensoren med hver fases strøm. Kun entiteter registreret på laderens egen enhed tilbydes, og hver skal angive ampere (A eller mA).",
+        "data": {
+          "entity_L1": "Strøm L1",
+          "entity_L2": "Strøm L2",
+          "entity_L3": "Strøm L3"
+        }
+      },
+      "charger_installation": {
+        "title": "Laderens faser, spænding mellem faser",
+        "description": "Laderens entiteter siger ikke, hvor mange faser den lader på. Vælg én eller tre faser: planerne beregnes ud fra det. Hvor en stor del af nettet er IT (som i Norge), angiv også spændingen mellem faser; 230 V på et IT-net, ellers 400 V.",
+        "data": {
+          "charger_phases": "Laderens faser",
+          "voltage_between_phases_v": "Spænding mellem faser"
+        }
+      }
+    },
+    "abort": {
+      "already_configured": "Denne lader eller dette anlæg er allerede sat op.",
+      "pairing_approved": "Godkendt. Telefonen har nu adgang til denne instans' ladere.",
+      "pairing_denied": "Afvist. Telefonen har fået besked, og intet blev overdraget.",
+      "pairing_request_expired": "Parringsanmodningen er udløbet. Start forfra på telefonen.",
+      "no_supported_charger": "Der blev ikke fundet nogen understøttet lader. Sæt laderens egen integration op først, eller vælg Manuel.",
+      "no_charge_control": "Der blev ikke fundet nogen aktiveret OCPP-kontakt til ladestyring for denne enhed.",
+      "no_pending_site": "Anlæggets oplysninger blev ikke sendt, før den manuelle laderpost blev åbnet, så intet blev gemt.",
+      "no_ambiguous_vehicles": "Intet fundet køretøj skal afklares lige nu.",
+      "vehicle_resolved": "Køretøjet er afklaret. Dets ladeniveau læses fra den aflæsning, du valgte.",
+      "vehicle_dismissed": "Køretøjet er afvist. SpotNav holder op med at rapportere det, indtil afvisningen fortrydes.",
+      "not_a_charger": "Den enhed er ikke en elbillader (men en styring til varmeapparat eller stikkontakt).",
+      "charger_not_recognised": "SpotNav kender ikke denne integration. Vælg Manuel i stedet.",
+      "charger_not_controllable": "SpotNav kan ikke starte eller stoppe denne lader. Den kan kun aflæses."
+    },
+    "error": {
+      "safety_margin_at_or_above_fuse": "Sikkerhedsmarginen skal være lavere end hovedsikringen, ellers er der ingen strøm tilbage til laderne.",
+      "charge_control_in_use": "Denne ladestyring bruges allerede af en anden SpotNav-lader.",
+      "current_limit_in_use": "Denne styring af ladestrøm bruges allerede af en anden SpotNav-lader.",
+      "duplicate_charger": "{other} og denne lader er den samme fysiske lader. To SpotNav-ladere på én lader sender modstridende kommandoer, så behold kun én: fjern den anden under Indstillinger → Enheder og tjenester → SpotNav. SpotNav fjerner aldrig en for dig.",
+      "charger_already_in_another_site": "En af disse ladere er allerede tilknyttet et andet anlæg.",
+      "manual_source_entity_invalid": "Vælg en sensorentitet, der findes i Home Assistant.",
+      "manual_source_entity_wrong_device": "Den entitet er ikke registreret på laderens egen enhed, så den kan ikke være laderens målte strøm.",
+      "site_manual_source_entity_on_charger_device": "Den entitet hører til en af anlæggets ladere, så den kan ikke være anlæggets egen samlede strøm.",
+      "manual_source_attributes_required": "Angiv attributnavnet for denne fase.",
+      "manual_source_unverified": "Intet på denne entitet passer lige nu til de attributnavne, og intet i historikken for de seneste {lookback_days} dage gør heller -- det kan være en helt ny lader eller en tastefejl. Sæt flueben ved \"gem alligevel\" for at gemme den alligevel.",
+      "device_not_found": "Den enhed findes ikke.",
+      "own_mode_active": "Laderens egen styring er stadig slået til. Slå den fra, eller vælg at fortsætte alligevel.",
+      "control_path_unknown": "SpotNav kan ikke afgøre, hvordan en opladning startes og stoppes med den entitet. Vælg laderens kontakt, eller en vælger med tydelige start- og stopvalg.",
+      "current_limit_required": "Vælg den tal-entitet for ladestrøm, som strømmen skal indstilles med.",
+      "current_control_unsupported": "Denne måde at indstille strømmen på passer ikke til denne lader.",
+      "charger_no_answer": "Laderen svarede ikke, så SpotNav kan ikke afgøre, hvordan dens strøm indstilles. Vent, til den er forbundet, og send igen, eller vælg selv.",
+      "unit_expected_current": "Denne sensor skal angive strøm i A eller mA.",
+      "unit_expected_power": "Denne sensor skal angive effekt i W eller kW.",
+      "unit_expected_voltage": "Denne sensor skal angive spænding i V.",
+      "unit_expected_reactive_power": "Denne sensor skal angive reaktiv effekt i var eller kvar.",
+      "unit_expected_apparent_power": "Denne sensor skal angive tilsyneladende effekt i VA eller kVA.",
+      "manual_entities_duplicate": "Hver fase skal have sin egen entitet."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Laderens styring",
+        "data": {
+          "charge_control": "Ladestyring",
+          "current_limit": "Ladestrøm (valgfrit)",
+          "current_control": "Indstil laderens strøm",
+          "energy_register_entity": "Energitæller (samlet, valgfrit)",
+          "power_entity": "Effektsensor, smart stik (valgfrit)",
+          "idle_power_w": "Trækker ikke strøm under (W)"
+        },
+        "data_description": {
+          "idle_power_w": "Er effekten under denne værdi i fem minutter under en planlagt opladning, melder SpotNav, at bilen ikke trækker strøm. Standard 100 W."
+        }
+      },
+      "site_init": {
+        "title": "Indstillinger for anlæggets kapacitet",
+        "description": "Lastbalancering under hovedsikringen. Aktiv styring sænker en laders strøm, når det er nødvendigt; den er bedste indsats, ikke en beskyttelsesanordning. Sensoren for batteriets effekt er valgfri og bruges kun til et diagnostisk skøn -- aldrig til en sikker ladegrænse.",
+        "data": {
+          "name": "Anlæggets navn",
+          "site_enabled": "Anlægsberegning slået til",
+          "active_control_enabled": "Aktiv styring slået til (tilvalg, kun beregnet målemetode)",
+          "main_fuse_a": "Hovedsikring (A)",
+          "safety_margin_a": "Sikkerhedsmargin (A)",
+          "max_age_s": "Højeste måleralder (sekunder)",
+          "regulator_deadband_a": "Aktiv styring: ignorér ændringer mindre end (A)",
+          "regulator_dwell_s": "Aktiv styring: hvor længe en ændring skal holde (sekunder)",
+          "yield_stepping_enabled": "Trinvis øgning med bekræftet eftergivelse slået til (tilvalg, for et anlæg med en last, der giver efter, f.eks. et hjemmebatteri)",
+          "yield_ceiling_a": "Trinvis øgning: absolut loft, overskrides aldrig (A, skal være større end hovedsikringen)",
+          "solar_priority": "Prioritet for soloverskud (bilen eller hjemmebatteriet først)",
+          "battery_aggregate_power_entity": "Hjemmebatteriets ladeeffekt (valgfrit, kun diagnostik)",
+          "change_measurement": "Ændr måling og fasetilslutning",
+          "measurement_mode": "Målemetode",
+          "charger_entry_ids": "Ladere, der deler anlæggets kapacitet",
+          "solar_forecast_entries": "Kilder til solprognose (valgfrit, bruges af hybridstrategien)",
+          "voltage_between_phases_v": "Spænding mellem faser"
+        }
+      },
+      "site_current_suggestions": {
+        "title": "Forslag til kilde for anlæggets strøm",
+        "description": "Dette er kun forslag ud fra entiteter, der allerede findes i Home Assistant -- intet anvendes, før du bekræfter. Vælg \"manuelt\" for selv at vælge entiteter, eller \"spring over\" for at sætte det op senere i anlæggets indstillinger.",
+        "data": {
+          "choice": "Foreslået kilde"
+        }
+      },
+      "site_details": {
+        "title": "Måleentiteter",
+        "description": "{reason}Vælg elmålerens sensorer. Alle sensorer accepteres; enheden kontrolleres, når du fortsætter (strøm i A eller mA, effekt i W eller kW, spænding i V, reaktiv effekt i var eller kvar, tilsyneladende effekt i VA eller kVA). Kun felter, der passer til den valgte målemetode, vises. Derefter følger fasetilslutningen for hver tilknyttet lader, én lader ad gangen.",
+        "data": {
+          "direct_L1": "Netstrøm L1",
+          "direct_L2": "Netstrøm L2",
+          "direct_L3": "Netstrøm L3",
+          "site_current_signed": "Netstrømmen har fortegn (eksport er negativ)",
+          "grid_power_inverted": "Nettets effekt er positiv ved eksport (vend fortegnet)",
+          "derived_L1_power_export": "Eksporteffekt L1 (valgfrit, når import og eksport er adskilt)",
+          "derived_L1_reactive_power": "Reaktiv effekt L1 (valgfrit)",
+          "derived_L1_apparent_power": "Tilsyneladende effekt L1 (valgfrit)",
+          "derived_L1_current": "Strøm L1 (valgfrit)",
+          "derived_L2_power_export": "Eksporteffekt L2 (valgfrit, når import og eksport er adskilt)",
+          "derived_L2_reactive_power": "Reaktiv effekt L2 (valgfrit)",
+          "derived_L2_apparent_power": "Tilsyneladende effekt L2 (valgfrit)",
+          "derived_L2_current": "Strøm L2 (valgfrit)",
+          "derived_L3_power_export": "Eksporteffekt L3 (valgfrit, når import og eksport er adskilt)",
+          "derived_L3_reactive_power": "Reaktiv effekt L3 (valgfrit)",
+          "derived_L3_apparent_power": "Tilsyneladende effekt L3 (valgfrit)",
+          "derived_L3_current": "Strøm L3 (valgfrit)",
+          "derived_L1_power": "Effekt L1",
+          "derived_L1_voltage": "Spænding L1",
+          "derived_L2_power": "Effekt L2",
+          "derived_L2_voltage": "Spænding L2",
+          "derived_L3_power": "Effekt L3",
+          "derived_L3_voltage": "Spænding L3"
+        }
+      },
+      "charger_manual_source": {
+        "title": "Laderens målte strøm",
+        "description": "Vælg én entitet, der hører til laderens egen enhed, og angiv den attribut på den, der indeholder hver fases strøm. Kun entiteter registreret på denne lader tilbydes. Vælg udtrykkeligt den enhed, attributterne angiver -- \"A\" eller \"mA\": en entitets egen enhed beskriver dens tilstandsværdi, ikke nødvendigvis andre attributter, den også har.",
+        "data": {
+          "entity_id": "Entitet (kun laderens egen enhed)",
+          "attribute_L1": "Attributnavn for L1",
+          "attribute_L2": "Attributnavn for L2",
+          "attribute_L3": "Attributnavn for L3",
+          "unit": "Attributternes enhed",
+          "confirm_unverified": "Intet kunne kontrolleres -- gem alligevel"
+        }
+      },
+      "site_manual_source": {
+        "title": "Anlæggets strøm fra én entitet",
+        "description": "Vælg én entitet, der har hele anlæggets strøm som egne attributter pr. fase, og angiv den attribut, der indeholder hver fase. Entiteter, der hører til en af anlæggets ladere, tilbydes aldrig -- en laders egen sensor kan ikke samtidig være hele anlæggets total. Vælg udtrykkeligt den enhed, attributterne angiver -- \"A\" eller \"mA\": en entitets egen enhed beskriver dens tilstandsværdi, ikke nødvendigvis andre attributter, den også har.",
+        "data": {
+          "entity_id": "Entitet (alt undtagen anlæggets ladere)",
+          "attribute_L1": "Attributnavn for L1",
+          "attribute_L2": "Attributnavn for L2",
+          "attribute_L3": "Attributnavn for L3",
+          "unit": "Attributternes enhed",
+          "confirm_unverified": "Intet kunne kontrolleres -- gem alligevel"
+        }
+      },
+      "site_charger_wiring": {
+        "title": "Tilslutning for {charger}",
+        "description": "For en enfaset lader skal du udtrykkeligt vælge den tilsluttede fase -- med en ukendt fase kan der aldrig beregnes en sikker anbefaling for den. Laderens egen målte strøm er valgfri: vælg et fundet forslag, angiv én entitet med attributter pr. fase, angiv tre separate entiteter (én pr. fase, som Charge Amps-integrationen leverer), eller behold \"spring over\" for at sætte det op senere.",
+        "data": {
+          "phases": "Antal faser",
+          "phase": "Tilsluttet fase (enfasede ladere)",
+          "measured_source": "Kilde til målt strøm (valgfrit)"
+        }
+      },
+      "charger_manual_entities": {
+        "title": "Laderens målte strøm, én entitet pr. fase",
+        "description": "Vælg sensoren med hver fases strøm. Kun entiteter registreret på laderens egen enhed tilbydes, og hver skal angive ampere (A eller mA).",
+        "data": {
+          "entity_L1": "Strøm L1",
+          "entity_L2": "Strøm L2",
+          "entity_L3": "Strøm L3"
+        }
+      }
+    },
+    "abort": {
+      "no_pending_site": "Anlæggets oplysninger blev ikke sendt, før den manuelle laderpost blev åbnet, så intet blev gemt."
+    },
+    "error": {
+      "safety_margin_at_or_above_fuse": "Sikkerhedsmarginen skal være lavere end hovedsikringen, ellers er der ingen strøm tilbage til laderne.",
+      "charge_control_in_use": "Denne ladestyring bruges allerede af en anden SpotNav-lader.",
+      "current_limit_in_use": "Denne styring af ladestrøm bruges allerede af en anden SpotNav-lader.",
+      "duplicate_charger": "{other} og denne lader er den samme fysiske lader. To SpotNav-ladere på én lader sender modstridende kommandoer, så behold kun én: fjern den anden under Indstillinger → Enheder og tjenester → SpotNav. SpotNav fjerner aldrig en for dig.",
+      "charger_already_in_another_site": "En af disse ladere er allerede tilknyttet et andet anlæg.",
+      "manual_source_entity_invalid": "Vælg en sensorentitet, der findes i Home Assistant.",
+      "manual_source_entity_wrong_device": "Den entitet er ikke registreret på laderens egen enhed, så den kan ikke være laderens målte strøm.",
+      "site_manual_source_entity_on_charger_device": "Den entitet hører til en af anlæggets ladere, så den kan ikke være anlæggets egen samlede strøm.",
+      "manual_source_attributes_required": "Angiv attributnavnet for denne fase.",
+      "manual_source_unverified": "Intet på denne entitet passer lige nu til de attributnavne, og intet i historikken for de seneste {lookback_days} dage gør heller -- det kan være en helt ny lader eller en tastefejl. Sæt flueben ved \"gem alligevel\" for at gemme den alligevel.",
+      "yield_ceiling_below_fuse": "Loftet for trinvis øgning skal være større end hovedsikringen.",
+      "yield_ceiling_above_limit": "Loftet skal være under 1,25 gange hovedsikringen: det er den last, en gG-sikring skal kunne bære i en time uden at springe, og et prøvetrin må nærme sig den, men aldrig nå den.",
+      "unit_expected_current": "Denne sensor skal angive strøm i A eller mA.",
+      "unit_expected_power": "Denne sensor skal angive effekt i W eller kW.",
+      "unit_expected_voltage": "Denne sensor skal angive spænding i V.",
+      "unit_expected_reactive_power": "Denne sensor skal angive reaktiv effekt i var eller kvar.",
+      "unit_expected_apparent_power": "Denne sensor skal angive tilsyneladende effekt i VA eller kVA.",
+      "manual_entities_duplicate": "Hver fase skal have sin egen entitet."
+    }
+  },
+  "selector": {
+    "mode": {
+      "options": {
+        "generic": "Manuel",
+        "detected": "Automatisk (anbefalet)"
+      }
+    },
+    "entry_type": {
+      "options": {
+        "charger": "En lader",
+        "site": "Et anlæg (lastbalancering)",
+        "resolve_vehicle": "Afklar et fundet køretøj"
+      }
+    },
+    "measurement_mode": {
+      "options": {
+        "direct_phase_current": "Netstrøm målt direkte pr. fase (foretrukket)",
+        "derived_phase_current": "Beregnet ud fra effekt og spænding (mere nøjagtig med målerens strøm, tilsyneladende eller reaktive effekt; ellers anslås strømmen)"
+      }
+    },
+    "solar_priority": {
+      "options": {
+        "car_first": "Bilen først",
+        "battery_first": "Hjemmebatteriet først"
+      }
+    },
+    "voltage_between_phases": {
+      "options": {
+        "400": "400 V (TN-net, det sædvanlige)",
+        "230": "230 V (IT-net, almindeligt i Norge)"
+      }
+    },
+    "charger_phases": {
+      "options": {
+        "1": "Én fase",
+        "3": "Tre faser"
+      }
+    }
+  },
+  "entity": {
+    "binary_sensor": {
+      "schedule_active": {
+        "name": "Tidsplan aktiv"
+      },
+      "grid_charging": {
+        "name": "Lader fra elnettet"
+      },
+      "grid_charging_site": {
+        "name": "Lader fra elnettet"
+      }
+    },
+    "button": {
+      "start": {
+        "name": "Start opladning"
+      },
+      "stop": {
+        "name": "Stop opladning"
+      },
+      "follow": {
+        "name": "Følg tidsplanen for opladning"
+      },
+      "cancel": {
+        "name": "Annuller tidsplan"
+      },
+      "recalculate_auto": {
+        "name": "Genberegn Auto-forslag"
+      },
+      "pause_auto": {
+        "name": "Sæt Auto-prisplanlægning på pause"
+      },
+      "resume_auto": {
+        "name": "Genoptag Auto-prisplanlægning"
+      },
+      "clear_departure_date": {
+        "name": "Ryd afgangsdato"
+      }
+    },
+    "sensor": {
+      "instance_connection": {
+        "name": "App-parring (alle ladere)"
+      },
+      "connection": {
+        "name": "App-forbindelse"
+      },
+      "plan_start": {
+        "name": "Planlagt start"
+      },
+      "plan_end": {
+        "name": "Planlagt slut"
+      },
+      "site_state": {
+        "name": "Kapacitetstilstand",
+        "state": {
+          "disabled": "Deaktiveret",
+          "not_configured": "Ikke sat op",
+          "missing_measurements": "Måling mangler",
+          "stale_measurements": "Måling forældet",
+          "invalid_measurements": "Ugyldig måling",
+          "observing": "Måler"
+        },
+        "state_attributes": {
+          "site_activity": {
+            "name": "Aktivitet",
+            "state": {
+              "measuring": "Måler, aktiv lastbalancering fra",
+              "balancing": "Måler, aktiv lastbalancering til",
+              "not_measuring": "Måler ikke"
+            }
+          }
+        }
+      },
+      "solar_surplus": {
+        "name": "Soloverskud"
+      },
+      "charger_proposed_current": {
+        "name": "Foreslået strøm – {charger}",
+        "state_attributes": {
+          "state": {
+            "name": "Tilstand",
+            "state": {
+              "invalid_measurements": "Ugyldig måling",
+              "requested_current_unknown": "Ønsket strøm ukendt",
+              "capacity_available": "Der er plads",
+              "capacity_limited": "Begrænset",
+              "below_minimum_current": "Under mindste strøm",
+              "not_requesting": "Lader ikke"
+            }
+          }
+        }
+      },
+      "auto_plan_state": {
+        "name": "Auto-planens tilstand",
+        "state": {
+          "incomplete_settings": "Indstillinger ufuldstændige",
+          "waiting_for_prices": "Venter på priser",
+          "waiting_for_publication": "Venter på morgendagens priser",
+          "price_data_stale": "Prisdata forældede",
+          "proposal_ready": "Forslag klar",
+          "proposal_unpriced": "Forslaget lader uden priser",
+          "nothing_to_charge": "Intet at lade",
+          "planning_unavailable": "Planlægning ikke tilgængelig",
+          "error": "Fejl"
+        }
+      },
+      "auto_execution_state": {
+        "name": "Auto-udførelsens tilstand",
+        "state": {
+          "not_applied": "Ikke anvendt",
+          "scheduled": "Planlagt",
+          "active": "Lader nu",
+          "paused": "På pause",
+          "complete": "Færdig",
+          "apply_pending": "Venter på vinduets grænse",
+          "execution_error": "Udførelsesfejl"
+        }
+      },
+      "auto_next_start": {
+        "name": "Næste planlagte ladestart"
+      },
+      "auto_next_end": {
+        "name": "Næste planlagte ladeslut"
+      },
+      "auto_periods": {
+        "name": "Planlagte ladeperioder"
+      },
+      "auto_cost": {
+        "name": "Planlagt omkostning"
+      },
+      "auto_energy": {
+        "name": "Planlagt energi"
+      },
+      "auto_settings_revision": {
+        "name": "Revision af Auto-indstillinger"
+      },
+      "integrated_energy": {
+        "name": "Energi fra effekt"
+      },
+      "sessions_energy_this_month": {
+        "name": "Ladet energi denne måned"
+      },
+      "sessions_cost_this_month": {
+        "name": "Ladeomkostning denne måned"
+      },
+      "sessions_energy_last_month": {
+        "name": "Ladet energi sidste måned"
+      },
+      "sessions_cost_last_month": {
+        "name": "Ladeomkostning sidste måned"
+      },
+      "sessions_last_energy": {
+        "name": "Seneste opladnings energi"
+      },
+      "sessions_last_cost": {
+        "name": "Seneste opladnings omkostning"
+      }
+    },
+    "select": {
+      "price_area": {
+        "name": "Prisområde"
+      },
+      "fiscal_vat_policy": {
+        "name": "Momsvalg",
+        "state": {
+          "off": "Fra",
+          "suggested": "Brug områdets forslag",
+          "manual": "Brug en manuel værdi"
+        }
+      },
+      "fiscal_tax_policy": {
+        "name": "Elafgiftsvalg",
+        "state": {
+          "off": "Fra",
+          "suggested": "Brug områdets forslag",
+          "manual": "Brug en manuel værdi"
+        }
+      },
+      "fiscal_transfer_policy": {
+        "name": "Nettarifvalg",
+        "state": {
+          "off": "Fra",
+          "suggested": "Brug områdets forslag",
+          "manual": "Brug en manuel værdi"
+        }
+      },
+      "auto_strategy": {
+        "name": "Opladningsstrategi",
+        "state": {
+          "cheapest": "Billigste timer",
+          "solar": "Soloverskud",
+          "hybrid": "Billigste timer, holder netenergi tilbage til forventet sol"
+        }
+      },
+      "charge_periods": {
+        "name": "Ladeperioder",
+        "state": {
+          "auto": "Automatisk",
+          "1": "1 periode",
+          "2": "2 perioder",
+          "3": "3 perioder",
+          "4": "4 perioder",
+          "5": "5 perioder",
+          "6": "6 perioder",
+          "7": "7 perioder",
+          "8": "8 perioder"
+        }
+      }
+    },
+    "number": {
+      "charging_current": {
+        "name": "Ladestrøm"
+      },
+      "requested_energy": {
+        "name": "Energi der skal lades"
+      },
+      "vat_rate": {
+        "name": "Moms"
+      },
+      "energy_tax": {
+        "name": "Elafgift"
+      },
+      "transfer_fee": {
+        "name": "Nettarif"
+      }
+    },
+    "date": {
+      "departure_date": {
+        "name": "Afgangsdato"
+      }
+    },
+    "switch": {
+      "departure_enabled": {
+        "name": "Frist for afgang"
+      }
+    },
+    "time": {
+      "departure_time": {
+        "name": "Afgangstid"
+      }
+    },
+    "event": {
+      "charger_events": {
+        "name": "Laderhændelser",
+        "state_attributes": {
+          "event_type": {
+            "state": {
+              "charge_started": "Opladning startet",
+              "charge_finished": "Opladning afsluttet",
+              "plugged_in": "Tilsluttet",
+              "unplugged": "Frakoblet",
+              "plan_installed": "Plan installeret",
+              "plan_at_risk": "Plan i fare"
+            }
+          }
+        }
+      }
+    }
+  },
+  "issues": {
+    "vehicle_soc_needs_decision": {
+      "title": "Et køretøjs ladeniveau kræver en beslutning",
+      "fix_flow": {
+        "abort": {
+          "no_longer_needs_decision": "Denne enhed kræver ikke længere en beslutning."
+        },
+        "step": {
+          "pick": {
+            "title": "Hvilken aflæsning er ladeniveauet?",
+            "description": "**{device}** rapporterer mere end én batteriaflæsning, så SpotNav gætter ikke på, hvilken der er ladeniveauet. Vælg den rigtige aflæsning, eller angiv, at dette ikke er et køretøj, så det ikke længere rapporteres.",
+            "data": {
+              "choice": "Aflæsning"
+            }
+          }
+        }
+      }
+    },
+    "vehicle_charge_limit_needs_decision": {
+      "title": "Et køretøjs ladegrænse kræver en beslutning",
+      "fix_flow": {
+        "abort": {
+          "no_longer_needs_decision": "Denne enhed kræver ikke længere en beslutning."
+        },
+        "step": {
+          "pick": {
+            "title": "Hvilken grænse skal en ændring sætte?",
+            "description": "**{device}** rapporterer mere end én ladegrænse, så SpotNav gætter ikke på, hvilken en ændring skal sætte. Vælg den grænse, ændringer for dette køretøj skal bruge. Den skrives via køretøjets egen integration og træder i kraft, næste gang integrationen læser den.",
+            "data": {
+              "choice": "Ladegrænse"
+            }
+          }
+        }
+      }
+    },
+    "duplicate_charger": {
+      "title": "To SpotNav-ladere er den samme lader",
+      "description": "**{charger}** og **{other}** er den samme fysiske lader: de deler en enhed, en målt strøm, et OCPP-stik eller en Easee-enhed. To SpotNav-ladere på én lader sender modstridende kommandoer. Fjern en af dem: Indstillinger → Enheder og tjenester → SpotNav → postens menu → Slet. SpotNav fjerner aldrig en for dig."
+    },
+    "site_without_chargers": {
+      "title": "Tilføj en lader til anlægget",
+      "description": "Anlægget **{site}** har endnu ingen lader. Tilføj en lader: Indstillinger → Enheder og tjenester → SpotNav → Tilføj post → Lader; den tilbyder at blive en del af dette anlæg."
+    }
+  },
+  "exceptions": {
+    "invalid_driver": {
+      "message": "Den energikilde understøttes ikke."
+    },
+    "invalid_area": {
+      "message": "Vælg først et marked: den værdi hører til et."
+    },
+    "invalid_phases": {
+      "message": "Faserne skal være 1 eller 3."
+    },
+    "invalid_amps": {
+      "message": "Strømmen skal være et helt antal ampere."
+    },
+    "invalid_energy": {
+      "message": "Energien skal være et positivt antal kWh."
+    },
+    "invalid_periods": {
+      "message": "Antallet af perioder skal være et helt tal fra 1 til 8."
+    },
+    "invalid_departure": {
+      "message": "Afgangen skal være et lokalt klokkeslæt."
+    },
+    "invalid_fiscal": {
+      "message": "Den afgiftsværdi kan ikke gemmes, som den er."
+    },
+    "invalid_target": {
+      "message": "Målposten er ufuldstændig."
+    },
+    "invalid_number": {
+      "message": "Værdien skal være et gyldigt tal."
+    },
+    "unknown_field": {
+      "message": "Denne post indeholder et felt, som denne version ikke kender."
+    },
+    "missing_field": {
+      "message": "Denne post mangler et felt, den skal have."
+    },
+    "invalid_proposal": {
+      "message": "Det gemte forslag kan ikke bruges."
+    },
+    "invalid_pause": {
+      "message": "Pausemarkeringen skal være til eller fra."
+    },
+    "revision_conflict": {
+      "message": "Indstillingerne blev ændret et andet sted, så værdien blev ikke skrevet. Prøv igen."
+    },
+    "not_auto_mode": {
+      "message": "Auto-prisplanlægning er ikke planlægningstilstanden for denne lader."
+    },
+    "unknown_test_charger": {
+      "message": "Ingen indlæst SpotNav-lader har den konfigurationspost eller det entitets-id."
+    },
+    "no_push_registered": {
+      "message": "Ingen SpotNav-lader har appens øjeblikkelige notifikationer slået til, så der blev ikke sendt nogen testnotifikation. Companion-telefoner, der er valgt til notifikationer, fik stadig en testbesked."
+    },
+    "stop_not_executed": {
+      "message": "Laderen modtog ikke stoppet: dens styring er ikke tilgængelig. Prøv igen, når laderen er tilbage."
+    },
+    "storage_failed": {
+      "message": "Ladeplanen kunne ikke gemmes."
+    },
+    "reschedule_failed": {
+      "message": "Ladeplanen kunne ikke aktiveres; den tidligere gælder stadig."
+    },
+    "rollback_failed": {
+      "message": "Ladeplanen kunne ikke aktiveres, og den tidligere kunne heller ikke gendannes."
+    },
+    "vehicle_not_connected": {
+      "message": "Der er ingen bil tilsluttet, så der er intet at starte."
+    },
+    "reconcile_failed": {
+      "message": "Laderen modtog kommandoen, men den automatiske opladning kunne ikke opdateres til at passe. Kontrollér laderens status."
+    }
+  }
+}

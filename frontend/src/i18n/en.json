@@ -1,9 +1,4 @@
-// English is the source of truth for the key set; the other four languages are typed against it.
-//
-// A backend *code* is a mapping input, never the prose: an unknown code gets a generic sentence and
-// may appear only as a subdued technical detail in the dialog.
-
-export const en = {
+{
   "card.title": "SpotNav",
   "state.loading": "Reading the charging plan…",
   "state.unconfigured": "Choose one SpotNav charger in this card's editor.",
@@ -100,6 +95,7 @@ export const en = {
   "status.fillRoomUnknown": "The car's level or battery size is unknown, so {kwh} kWh is charged instead of filling.",
   "status.needLimitedByRoom": "Limited to {kwh} kWh: the car is almost full.",
   "status.chargingToVehicleLimit": "Charging until the car stops at its own limit ({percent} %).",
+  "status.minSocCharging": "Charging to the minimum level ({percent} %)",
   "issue.needKept": "The energy meter cannot be read: {kwh} kWh remains, from its last reading.",
   "issue.needFromSessions": "No energy meter: {kwh} kWh remains, counted from this charger's recorded charges.",
   "status.siteMeasurement.stale.other": "{phases} are older than {seconds} s.",
@@ -169,8 +165,7 @@ export const en = {
   "entity.field.safetyMargin": "Safety margin",
   "entity.field.measurementMode": "Measurement mode",
   "entity.field.voltageBetweenPhases": "Voltage between phases",
-  "entity.field.chargerPriority":
-    "Charger priority",
+  "entity.field.chargerPriority": "Charger priority",
   "entity.field.batteryPower": "Battery power",
   "entity.field.maxAge": "Maximum measurement age",
   "entity.mode.direct": "Phase currents measured directly",
@@ -205,16 +200,12 @@ export const en = {
   "entity.help.safetyMargin": "The current in amperes that SpotNav keeps free below the main fuse. Charging stays under the fuse minus this margin, so it must be below the fuse.",
   "entity.help.measurementMode": "Whether your meter reports each phase's current directly, or SpotNav works it out from power and voltage.",
   "entity.help.voltageBetweenPhases": "The voltage between two phases of your electrical installation. Three-phase charging power is figured from it.",
-  "entity.help.chargerPriority":
-    "When several chargers share the site's fuse, a charger set to First is served before the others and one set to Last gets what is left.",
+  "entity.help.chargerPriority": "When several chargers share the site's fuse, a charger set to First is served before the others and one set to Last gets what is left.",
   "entity.voltage.tn": "400 V (TN network, the usual one)",
   "entity.voltage.it": "230 V (IT network, common in Norway)",
-  "entity.priority.first":
-    "First",
-  "entity.priority.normal":
-    "Normal",
-  "entity.priority.last":
-    "Last",
+  "entity.priority.first": "First",
+  "entity.priority.normal": "Normal",
+  "entity.priority.last": "Last",
   "entity.help.batteryPower": "A sensor for the home battery's power, so SpotNav can take the battery into account.",
   "entity.help.maxAge": "How old a measurement may be, in seconds, before SpotNav stops trusting it.",
   "entity.help.phaseDirect": "The sensor that measures the current on this phase, in amperes.",
@@ -270,7 +261,7 @@ export const en = {
   "entity.energy.meter": "Energy meter (kWh)",
   "entity.energy.power": "Power (W) — SpotNav calculates the energy",
   "entity.energy.none": "None",
-  "entity.notice.estimated": "The current is estimated from power (uppskattad), assuming a power factor of {pf} or better. The estimate is never below the real current at that power factor or better, and understates it below that. Add the meter's current, apparent power or reactive power for an exact value.",
+  "entity.notice.estimated": "The current is estimated from power, assuming a power factor of {pf} or better. The estimate is never below the real current at that power factor or better, and understates it below that. Add the meter's current, apparent power or reactive power for an exact value.",
   "entity.notice.estimatedShort": "Estimated",
   "entity.warning.updateInterval": "{integration} updates every {seconds} s, slower than the maximum measurement age.",
   "entity.warning.updateIntervalOption": "Lower it with \"{option}\" in that integration.",
@@ -321,12 +312,9 @@ export const en = {
   "site.activeControl.on": "On",
   "site.activeControl.off": "Off",
   "site.activeControl.available": "Available",
-  "site.activeControl.reason.duplicateMembership":
-    "Not available: this charger is claimed by more than one site.",
-  "site.activeControl.reason.noCommandableCharger":
-    "Not available: no charger on this site accepts a current command.",
-  "site.activeControl.reason.measurement":
-    "Not available: this site's own power measurement is not healthy.",
+  "site.activeControl.reason.duplicateMembership": "Not available: this charger is claimed by more than one site.",
+  "site.activeControl.reason.noCommandableCharger": "Not available: no charger on this site accepts a current command.",
+  "site.activeControl.reason.measurement": "Not available: this site's own power measurement is not healthy.",
   "site.activeControl.note": "Best effort, not a protective device. Turning it off gives any current it had lowered back.",
   "site.activeControl.pending": "Saving…",
   "site.activeControl.error.unavailable": "Load balancing cannot be turned on right now: the site cannot be actively controlled at the moment. Nothing was changed.",
@@ -357,6 +345,9 @@ export const en = {
   "strategy.status.solar.noReadingWaiting": "Solar · no usable reading yet",
   "strategy.status.solar.waitingForSun": "Solar · waiting for sun",
   "strategy.status.solar.vehicleFull": "Solar · the car is full",
+  "strategy.status.solar.noCar": "Solar · no car plugged in",
+  "strategy.status.solar.noCarSurplus": "Solar · surplus available",
+  "strategy.status.solar.noCarSurplusKw": "Solar · surplus available ({kw} kW)",
   "strategy.status.solar.carStopped": "Solar · the car stopped charging; trying again at {time}",
   "strategy.status.solar.carStoppedNoTime": "Solar · the car stopped charging",
   "strategy.status.solar.unknown": "Solar · status unknown",
@@ -380,8 +371,7 @@ export const en = {
   "issue.count.one": "{count} item to review",
   "issue.count.other": "{count} items to review",
   "graph.title": "Charging plan",
-  "graph.description":
-    "Price graph from {from} to {to}, in {unit} per kWh. {count} intervals over {days} days. Selected: {selected}.",
+  "graph.description": "Price graph from {from} to {to}, in {unit} per kWh. {count} intervals over {days} days. Selected: {selected}.",
   "graph.descriptionNoSelection": "Nothing selected.",
   "graph.descriptionNow": "Current interval: {now}.",
   "graph.legend.today": "Today",
@@ -406,8 +396,7 @@ export const en = {
   "graph.hint": "Use the arrow keys to step through the intervals.",
   "graph.toggle.show": "Show price chart",
   "graph.toggle.hide": "Hide price chart",
-  "graph.keyboardInstructions":
-    "Price graph. Arrow keys move from interval to interval, Home and End jump to the ends, Escape clears the selection.",
+  "graph.keyboardInstructions": "Price graph. Arrow keys move from interval to interval, Home and End jump to the ends, Escape clears the selection.",
   "plan.proposal.one": "Cheapest charging period ({count})",
   "plan.proposal.other": "Cheapest charging periods ({count})",
   "plan.installed.one": "Scheduled charging period ({count})",
@@ -421,8 +410,7 @@ export const en = {
   "plan.activeNow": "Now",
   "plan.missing": "unknown",
   "cap.title": "What this charger can do",
-  "cap.intro":
-    "Taken from what the integration reports for this charger. An item that is unavailable here cannot be switched on by this card.",
+  "cap.intro": "Taken from what the integration reports for this charger. An item that is unavailable here cannot be switched on by this card.",
   "cap.autoPrice": "Automatic price planning",
   "cap.currentLimit": "Dynamic current limit",
   "cap.loadBalancing": "Load balancing",
@@ -437,8 +425,7 @@ export const en = {
   "action.pauseAutomaticShort": "Pause",
   "action.resumeShort": "Resume",
   "pause.sheetTitle": "Pause automatic charging",
-  "pause.intro":
-    "Choose how long the pause lasts. Only the timed choices end by themselves.",
+  "pause.intro": "Choose how long the pause lasts. Only the timed choices end by themselves.",
   "pause.nextPeriod": "Until the next planned period",
   "pause.untilTomorrow": "Until tomorrow",
   "pause.untilResumed": "Until I resume",
@@ -460,27 +447,20 @@ export const en = {
   "bar.state.schedulePaused": "paused",
   "bar.change": "change",
   "strategy.dialogTitle": "Charging strategy",
-  "strategy.intro":
-    "What the plan optimizes. A strategy that is unavailable here cannot be selected yet.",
+  "strategy.intro": "What the plan optimizes. A strategy that is unavailable here cannot be selected yet.",
   "strategy.cheapest": "Cheapest",
   "strategy.solar": "Solar",
   "strategy.hybrid": "Hybrid",
   "strategy.reason.solar": "Requires solar-surplus measurement",
   "strategy.reason.hybrid": "Requires solar and price control",
   "strategy.reason.totalPower": "Solar needs the meter's total grid power",
-  "advisory.vehicleNotRequestingCurrent":
-    "Charging was started, but the vehicle is not requesting current. Check the vehicle's charging settings or reconnect the cable.",
-  "advisory.powerBelowThreshold":
-    "Charging was started, but the charger draws almost no power. The car may be finished or not charging: check the vehicle's charging settings or reconnect the cable.",
+  "advisory.vehicleNotRequestingCurrent": "Charging was started, but the vehicle is not requesting current. Check the vehicle's charging settings or reconnect the cable.",
+  "advisory.powerBelowThreshold": "Charging was started, but the charger draws almost no power. The car may be finished or not charging: check the vehicle's charging settings or reconnect the cable.",
   "control.noSettings": "This charger has no settings yet, so there is nothing to start or stop.",
-  "control.pauseUnsettled":
-    "A pause is stored but has not taken effect yet. Nothing is being applied.",
-  "control.pauseClearFailed":
-    "A pause has elapsed but could not be cleared, so nothing is being applied.",
-  "control.pauseStopFailed":
-    "The charger could not be stopped when the pause was admitted. Try Stop again.",
-  "control.startNotAcknowledged":
-    "The charger did not acknowledge the start command. Try again.",
+  "control.pauseUnsettled": "A pause is stored but has not taken effect yet. Nothing is being applied.",
+  "control.pauseClearFailed": "A pause has elapsed but could not be cleared, so nothing is being applied.",
+  "control.pauseStopFailed": "The charger could not be stopped when the pause was admitted. Try Stop again.",
+  "control.startNotAcknowledged": "The charger did not acknowledge the start command. Try again.",
   "control.reconcileFailed": "The last change was saved, but the plan could not be updated.",
   "control.executionError": "The integration reported a problem with the last execution.",
   "control.actionPending": "A start or stop command is waiting for the charger to acknowledge it.",
@@ -493,16 +473,13 @@ export const en = {
   "control.pausedManualStartResume": "Charging manually – until the car is full or you resume automatic charging.",
   "action.error.unavailable": "That action is not available right now.",
   "action.error.failed": "The action could not be carried out. Nothing changed.",
-  "action.error.reconcileFailed":
-    "The action was carried out, but the plan could not be updated.",
-  "action.error.confirmationFailed":
-    "The action was accepted, but its current state could not be confirmed.",
+  "action.error.reconcileFailed": "The action was carried out, but the plan could not be updated.",
+  "action.error.confirmationFailed": "The action was accepted, but its current state could not be confirmed.",
   "action.error.invalidPause": "That pause choice is not available for this charger right now.",
   "action.error.notConnected": "No car is plugged in, so there is nothing to start.",
   "action.error.charger": "The configured charger could not be reached.",
   "action.error.version": "This card and the integration speak different action versions.",
-  "action.error.generic":
-    "The action failed. Check the connection to Home Assistant and try again.",
+  "action.error.generic": "The action failed. Check the connection to Home Assistant and try again.",
   "dialog.close": "Close",
   "dialog.issues": "What needs attention",
   "dialog.issuesIntro": "Everything the integration reported for this charger, in the order it was reported.",
@@ -510,14 +487,11 @@ export const en = {
   "context.currency": "Currency",
   "market.unset": "Not set",
   "market.title": "Area and taxes",
-  "market.intro":
-    "Which market this charger buys from, and the taxes that are added to its prices.",
+  "market.intro": "Which market this charger buys from, and the taxes that are added to its prices.",
   "market.loading": "Reading the area list…",
-  "market.readOnly":
-    "Only administrators can change the area and its taxes. You can read them here.",
+  "market.readOnly": "Only administrators can change the area and its taxes. You can read them here.",
   "market.area.label": "Area",
-  "market.area.description":
-    "The area decides which prices are used, and which taxes are suggested.",
+  "market.area.description": "The area decides which prices are used, and which taxes are suggested.",
   "market.included": "Included in the price",
   "market.includedNote": "The published price already includes these, so nothing is added.",
   "market.source": "Price source:",
@@ -534,165 +508,96 @@ export const en = {
   "market.vat.label": "VAT",
   "market.vat.description": "Value added tax, as a percentage.",
   "market.tax.label": "Energy tax",
-  "market.tax.description":
-    "Energy tax, in the area's smallest currency unit.",
+  "market.tax.description": "Energy tax, in the area's smallest currency unit.",
   "market.transfer.label": "Grid transfer",
-  "market.transfer.description":
-    "Grid transfer, in the area's smallest currency unit.",
+  "market.transfer.description": "Grid transfer, in the area's smallest currency unit.",
   "market.enabled.aria": "{component}: enabled",
   "market.resetToSuggestion": "Reset to suggestion",
   "market.value.aria": "{component}: my own value",
   "market.suggestion.label": "Suggested: {value} {unit}",
-  "market.suggestion.none":
-    "No suggested value is published for this area.",
+  "market.suggestion.none": "No suggested value is published for this area.",
   "market.error.read": "The area list could not be read.",
-  "market.error.version":
-    "This card and the integration speak different market versions.",
+  "market.error.version": "This card and the integration speak different market versions.",
   "market.error.areaRequired": "Choose an area before saving.",
   "market.error.areaUnknown": "That area is not one of the published choices.",
-  "market.error.noSuggestion":
-    "This area publishes no suggested value for that.",
+  "market.error.noSuggestion": "This area publishes no suggested value for that.",
   "market.state.loading": "The area list is still being read.",
-  "market.state.staleOffline":
-    "This is the last area list Home Assistant received; the relay could not be reached since.",
-  "market.state.staleInvalid":
-    "This is the last area list Home Assistant received; the relay's newer list could not be read.",
-  "market.state.offline":
-    "The relay could not be reached, so no areas are listed right now.",
-  "market.state.invalid":
-    "The relay's area list could not be read, so no areas are listed right now.",
-  "settings.energy.aria":
-    "Energy: {value}",
-  "settings.deadline.aria":
-    "Deadline: {value}",
-  "settings.current.aria":
-    "Current: {value}",
-  "settings.energy.unset":
-    "Not set",
-  "settings.deadline.none":
-    "No deadline",
-  "settings.current.unset":
-    "Not set",
-  "settings.energy.title":
-    "Charging energy",
-  "settings.energy.intro":
-    "How much energy this charge should deliver. The plan turns it into periods.",
-  "settings.energy.label":
-    "Requested energy",
-  "settings.energy.targetSoc":
-    "This charger plans from a target state of charge, so the manual energy is not editable here.",
-  "settings.deadline.title":
-    "Deadline and charging periods",
-  "settings.deadline.intro":
-    "When the charge must be finished, and how many periods it may use.",
-  "settings.deadline.enabled":
-    "Finish by a deadline",
-  "settings.deadline.time":
-    "Departure time",
-  "settings.deadline.date":
-    "Departure",
-  "settings.deadline.dateDaily":
-    "Every day",
-  "settings.deadline.dateOn":
-    "On a date",
-  "settings.deadline.dateHelp":
-    "The plan may wait for hours that are usually cheaper. The departure is always kept.",
-  "settings.deadline.datePast":
-    "This date has gone by, so the plan runs every day until you choose a new date. Saving clears it.",
-  "settings.deadline.weekdays":
-    "Weekdays",
-  "settings.deadline.weekdaysHelp":
-    "On a day you leave out there is no departure: the plan runs to the next day you choose.",
-  "settings.deadline.today":
-    "today",
-  "settings.deadline.tomorrow":
-    "tomorrow",
-  "settings.deadline.periods":
-    "Max charging periods",
-  "settings.deadline.periodsValue.one": "{count} period",
-  "settings.deadline.periodsValue.other": "{count} periods",
-  "settings.current.title":
-    "Planned current",
-  "settings.current.intro":
-    "The current the plan may ask for. It is a planning value, not a command to the charger.",
-  "settings.current.label":
-    "Planned current",
-  "settings.loading":
-    "Reading the current settings…",
-  "settings.section.support":
-    "Support",
-  "debug.intro":
-    "Saves one file with versions, status and the latest log lines for a bug report. Secrets and your exact location are left out.",
-  "debug.download":
-    "Download debug info",
-  "debug.preparing":
-    "Preparing…",
-  "debug.error.notAdmin":
-    "Only administrators can download debug info.",
-  "debug.error.failed":
-    "The debug info could not be fetched.",
-  "debug.cardOutdated":
-    "The card in this browser or app is older than SpotNav. Reload the page; in the Home Assistant Companion app, force-stop the app and open it again.",
-  "settings.readOnly":
-    "Only administrators can change settings. You can read them here.",
-  "settings.save":
-    "Save",
-  "settings.cancel":
-    "Cancel",
-  "settings.reload":
-    "Use the server values",
-  "settings.reapply":
-    "Apply my change again",
-  "settings.conflict.title":
-    "Changed elsewhere",
-  "settings.conflict.intro":
-    "These settings changed after this dialog was opened. Nothing was saved, and your values are still here.",
-  "settings.error.required":
-    "Fill this in before saving.",
-  "settings.error.invalidNumber":
-    "That is not a number.",
-  "settings.error.outOfRange":
-    "That value is outside the allowed range.",
-  "settings.error.invalidDate":
-    "Choose a valid date.",
-  "settings.error.dateRange":
-    "Choose a date from today up to 7 days ahead.",
-  "settings.error.weekdays":
-    "Choose at least one weekday.",
-  "settings.error.invalidTime":
-    "Use a time like 06:30.",
-  "settings.error.read":
-    "The settings could not be read.",
-  "settings.error.refused":
-    "Those settings were refused. Nothing changed.",
-  "settings.error.notCommitted":
-    "The settings were not saved. Nothing changed.",
-  "settings.error.reconcileFailed":
-    "The settings were saved, but the plan could not be updated.",
-  "settings.error.confirmationFailed":
-    "The settings were saved, but the current state could not be confirmed.",
-  "settings.error.version":
-    "This card and the integration speak different settings versions.",
-  "settings.error.unavailable":
-    "Settings are not available right now.",
-  "settings.error.charger":
-    "The configured charger could not be reached.",
-  "settings.error.generic":
-    "The settings could not be changed. Nothing changed.",
-  "settings.error.invalid":
-    "The settings were refused as invalid. Nothing changed.",
-  "settings.error.readOnly":
-    "Only administrators can change settings.",
-  "settings.energy.slider":
-    "Energy slider, {min} to {max} kWh in half-kWh steps",
-  "settings.current.slider":
-    "Current slider, {min} to {max} A in whole amperes",
-  "settings.current.power":
-    "Nominal power ≈ {power} kW",
-  "settings.current.powerUnknown":
-    "Nominal power unknown",
+  "market.state.staleOffline": "This is the last area list Home Assistant received; the relay could not be reached since.",
+  "market.state.staleInvalid": "This is the last area list Home Assistant received; the relay's newer list could not be read.",
+  "market.state.offline": "The relay could not be reached, so no areas are listed right now.",
+  "market.state.invalid": "The relay's area list could not be read, so no areas are listed right now.",
+  "settings.energy.aria": "Energy: {value}",
+  "settings.deadline.aria": "Deadline: {value}",
+  "settings.current.aria": "Current: {value}",
+  "settings.energy.unset": "Not set",
+  "settings.deadline.none": "No deadline",
+  "settings.current.unset": "Not set",
+  "settings.energy.title": "Charging energy",
+  "settings.energy.intro": "How much energy this charge should deliver. The plan turns it into periods.",
+  "settings.energy.label": "Requested energy",
+  "settings.energy.targetSoc": "This charger plans from a target state of charge, so the manual energy is not editable here.",
+  "settings.deadline.title": "Deadline",
+  "settings.deadline.intro": "When the charge must be finished.",
+  "settings.deadline.enabled": "Finish by a deadline",
+  "settings.deadline.time": "Departure time",
+  "settings.deadline.date": "Departure",
+  "settings.deadline.dateDaily": "Every day",
+  "settings.deadline.dateOn": "On a date",
+  "settings.deadline.dateHelp": "The plan may wait for hours that are usually cheaper. The departure is always kept.",
+  "settings.deadline.datePast": "This date has gone by, so the plan runs every day until you choose a new date. Saving clears it.",
+  "settings.deadline.weekdays": "Weekdays",
+  "settings.deadline.weekdaysHelp": "On a day you leave out there is no departure: the plan runs to the next day you choose.",
+  "settings.deadline.today": "today",
+  "settings.deadline.tomorrow": "tomorrow",
+  "settings.periods.label": "Charge periods",
+  "settings.periods.help": "How the charge may be split. A number is the most periods it may use.",
+  "settings.periods.auto": "Automatic",
+  "settings.periods.autoHelp": "The cheapest hours, split only where the saving is worth another start. Each period is at least 30 minutes.",
+  "settings.periods.value.one": "{count} period",
+  "settings.periods.value.other": "{count} periods",
+  "settings.current.title": "Planned current",
+  "settings.current.intro": "The current the plan may ask for. It is a planning value, not a command to the charger.",
+  "settings.current.label": "Planned current",
+  "settings.loading": "Reading the current settings…",
+  "settings.section.support": "Support",
+  "debug.intro": "Saves one file with versions, status and the latest log lines for a bug report. Secrets and your exact location are left out.",
+  "debug.download": "Download debug info",
+  "debug.preparing": "Preparing…",
+  "debug.error.notAdmin": "Only administrators can download debug info.",
+  "debug.error.failed": "The debug info could not be fetched.",
+  "debug.cardOutdated": "The card in this browser or app is older than SpotNav. Reload the page; in the Home Assistant Companion app, force-stop the app and open it again.",
+  "settings.readOnly": "Only administrators can change settings. You can read them here.",
+  "settings.save": "Save",
+  "settings.cancel": "Cancel",
+  "settings.reload": "Use the server values",
+  "settings.reapply": "Apply my change again",
+  "settings.conflict.title": "Changed elsewhere",
+  "settings.conflict.intro": "These settings changed after this dialog was opened. Nothing was saved, and your values are still here.",
+  "settings.error.required": "Fill this in before saving.",
+  "settings.error.invalidNumber": "That is not a number.",
+  "settings.error.outOfRange": "That value is outside the allowed range.",
+  "settings.error.invalidDate": "Choose a valid date.",
+  "settings.error.dateRange": "Choose a date from today up to 7 days ahead.",
+  "settings.error.weekdays": "Choose at least one weekday.",
+  "settings.error.invalidTime": "Use a time like 06:30.",
+  "settings.error.read": "The settings could not be read.",
+  "settings.error.refused": "Those settings were refused. Nothing changed.",
+  "settings.error.notCommitted": "The settings were not saved. Nothing changed.",
+  "settings.error.reconcileFailed": "The settings were saved, but the plan could not be updated.",
+  "settings.error.confirmationFailed": "The settings were saved, but the current state could not be confirmed.",
+  "settings.error.version": "This card and the integration speak different settings versions.",
+  "settings.error.unavailable": "Settings are not available right now.",
+  "settings.error.charger": "The configured charger could not be reached.",
+  "settings.error.generic": "The settings could not be changed. Nothing changed.",
+  "settings.error.invalid": "The settings were refused as invalid. Nothing changed.",
+  "settings.error.readOnly": "Only administrators can change settings.",
+  "settings.energy.slider": "Energy slider, {min} to {max} kWh in half-kWh steps",
+  "settings.current.slider": "Current slider, {min} to {max} A in whole amperes",
+  "settings.current.power": "Nominal power ≈ {power} kW",
+  "settings.current.powerUnknown": "Nominal power unknown",
   "bar.plan": "Plan",
   "settings.plan.title": "Charging plan",
+  "settings.plan.titleFor": "Charging plan for {name}",
   "settings.plan.intro": "How much to charge, when it must be finished and the current the plan may ask for. These are planning values, not commands to the charger.",
   "settings.plan.aria": "Plan: {value}",
   "entity.vehicle.automatic": "Automatic detection",
@@ -700,14 +605,17 @@ export const en = {
   "entity.error.field.unknownVehicle": "That vehicle is no longer available.",
   "issue.targetSocUnknown": "The target charge level cannot be planned: the vehicle's charge level or battery capacity is not known. Open Plan to choose a sensor or enter the capacity.",
   "settings.plan.mode.legend": "Charge by",
-  "settings.plan.mode.energy": "Energy (kWh)",
-  "settings.plan.mode.soc": "Target SoC (%)",
+  "settings.plan.mode.energy": "Energy · kWh",
+  "settings.plan.mode.soc": "Target SoC · %",
   "settings.soc.target": "Charge target",
   "settings.soc.slider": "Charge target, percent",
+  "settings.soc.floorMark": "min {percent} %",
+  "settings.soc.markNow": "now",
+  "settings.soc.markNowEstimated": "≈ now",
+  "settings.soc.markLimit": "limit",
   "settings.soc.vehicle": "Vehicle",
   "settings.soc.vehicleUnknown": "Not chosen",
   "settings.soc.estimated": "estimated",
-  "settings.soc.estimatedFrom": "estimated, last read {age}",
   "settings.soc.unknown": "Unknown",
   "settings.soc.need": "Energy needed",
   "settings.soc.capacityMissing": "Battery capacity is missing — enter it in Settings",
@@ -719,7 +627,7 @@ export const en = {
   "settings.soc.age.day": "{count} d ago",
   "settings.overview.titleNamed": "Card settings · {name}",
   "settings.soc.factNow": "Now {value}",
-  "settings.soc.factLimit": "Vehicle charge limit {value}",
+  "settings.soc.factLimit": "Charge limit {value}",
   "settings.soc.noNeed": "No charging needed now",
   "settings.soc.toLimit": "Charging to the vehicle's limit, {value}",
   "settings.energy.fullMark": "full",
@@ -727,8 +635,6 @@ export const en = {
   "settings.energy.roomHelp": "{kwh} kWh fills the battery{limit}.",
   "settings.energy.fillHelp": "Charges until the battery is full{limit}, {kwh} kWh now.",
   "settings.energy.limitSuffix": " (to the car's charge limit of {percent} %)",
-  "settings.carEndsCharge": "The car ends the charge itself when it is full or reaches its charge limit ({percent} %).",
-  "settings.soc.readAge": "Read {age}",
   "settings.soc.needAfterVehicle": "The need is calculated once the vehicle choice is saved.",
   "vehicleLine.aria": "{name}, {summary}",
   "vehicleLine.estimateTitle": "Estimated between readings, read {age}",
@@ -882,6 +788,17 @@ export const en = {
   "settings.status.notControlled": "Not controlled",
   "settings.status.foundAutomatically": "Found automatically",
   "settings.vehicle.limit": "Charge limit",
+  "settings.vehicle.limitHelp": "Written through the car's integration; it takes effect when the car next reads it",
+  "settings.vehicle.limitSlider": "Charge limit, percent",
+  "settings.vehicle.limitTooSoon": "The limit was set less than a minute ago. Try again shortly.",
+  "settings.vehicle.limitFailed": "Couldn't set the limit",
   "settings.vehicle.targetHelp": "Follows the car to every charger",
-  "settings.vehicle.sourcesHelp": "Read only to tell which car is plugged in.",
-} as const;
+  "settings.vehicle.targetDefault": "(default)",
+  "settings.vehicle.minimum": "Minimum charge level",
+  "settings.vehicle.minimumOff": "Off",
+  "settings.vehicle.minimumCap": "charge target {percent} %",
+  "settings.vehicle.minimumSlider": "Minimum charge level, off or percent",
+  "settings.vehicle.minimumNeedsSoc": "needs the car's charge level",
+  "settings.vehicle.minimumHelp": "Below this level SpotNav charges at once at full current, whatever the strategy. A pause or Stop you choose wins. Needs the car's charge level.",
+  "settings.vehicle.sourcesHelp": "Read only to tell which car is plugged in."
+}

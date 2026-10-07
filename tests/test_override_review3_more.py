@@ -409,9 +409,10 @@ async def test_r5_giving_up_on_a_charger_under_a_persons_stop_is_notified_and_wa
 
 
 def test_r5_the_give_up_message_is_short_in_every_language() -> None:
-    from custom_components.spotnav.notifications.messages import compose, LANGUAGES
+    from custom_components.spotnav.notifications.messages import compose
+    from custom_components.spotnav.texts import languages
 
-    for language in LANGUAGES:
+    for language in languages():
         message = compose("plan_stopped", "G", {"reason": "charger_ignores_stop"}, language)[1]
         assert message != compose("plan_stopped", "G", {"reason": "not_started"}, language)[1], language
         assert len(message) < 120, language

@@ -53,7 +53,7 @@ def test_a_top_off_the_car_ended_is_a_complete_charge_in_every_language() -> Non
     assert message == "Charging complete: the car is full."
     _, message = compose("charge_complete", "Garage", {"reason": "vehicle_full"}, "sv")
     assert message == "Laddningen är klar: bilen är full."
-    for language in ("da", "nb", "fi"):
+    for language in ("da", "nb", "fi", "de", "nl", "fr", "es"):
         _, message = compose("charge_complete", "Garage", {"reason": "vehicle_full"}, language)
         assert message and message != compose("charge_complete", "Garage", {"reason": "plan_done"}, language)[1]
 

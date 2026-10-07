@@ -10,8 +10,6 @@ import {
   CURRENT_SLIDER_STEP_A,
   ENERGY_SLIDER_MIN_KWH,
   ENERGY_SLIDER_STEP_KWH,
-  PERIODS_MAX,
-  PERIODS_MIN,
   TARGET_PERCENT_MAX,
   TARGET_PERCENT_MIN,
   energyFillTop,
@@ -23,7 +21,9 @@ import {
   type SettingsFormValues,
 } from "./settings";
 import { VISUAL_CLASSES as C, summaryValueClass } from "./visual-styles";
-import { chargeCeiling, effectiveTarget, pythonRound, pythonRoundedAbove, targetNeedKwh } from "./target-need";
+import { settingRow } from "./value-editors";
+import { floorSegment, placeMarks, targetTicks } from "./percent-slider";
+import { chargeCeiling, effectiveTarget, targetNeedKwh } from "./target-need";
 import type { Soc, Vehicle } from "./validate";
 
 export interface SettingsEditorForm {
@@ -51,6 +51,11 @@ export interface SettingsEditorForm {
   soc: Soc | null;
   vehicles: readonly Vehicle[];
   /**
+   * The car the charger plans for (the identified car, else the target car), by name: the Plan popover's
+   * title names it in energy mode, where no car is chosen. `null` or absent when no car is known.
+   */
+  plannedVehicleName?: string | null;
+  /**
    * What the departure date picker offers (today..+7 in the market's zone, and where a date starts), or
    * `null` while the zone is unknown: then a date can be seen and cleared but not chosen.
    */
@@ -62,6 +67,11 @@ export interface SettingsEditorHandlers {
   onCancel?: () => void;
   onReload: () => void;
   onReapply: (values: SettingsFormValues) => void;
+  /**
+   * The Plan popover's car, by name, whenever it changes: the one chosen in the Vehicle select (before it is
+   * saved) in target mode, the planned car in energy mode, `null` when none is known. Called once on build.
+   */
+  onVehicleName?: (name: string | null) => void;
 }
 
 export interface SettingsEditorBody {
@@ -195,7 +205,7 @@ function nearestStep(value: number, minimum: number, step: number, maximum: numb
 }
 
 /**
- * A field whose only control is its slider (the requested energy, the charge target, the charging periods,
+ * A field whose only control is its slider (the requested energy, the charge target,
  * the planned current), as the app draws it:
  * the label and the value the slider stands for share one row, the value at its end, and the slider takes
  * the full width under them, in a track a mark can be drawn on. The slider opens at the step nearest
@@ -284,9 +294,8 @@ export function settingsEditorBody(
     dateInput.max = form.days.max;
   }
   dateInput.value = form.values.departureDate;
-  // The charging periods and the planned current exactly as stored, until their sliders move: like the
-  // energy, neither has a number field, and a Save that does not move them keeps them as they are.
-  let periodsValue = form.values.maxPeriods;
+  // The planned current exactly as stored, until its slider moves: like the energy, it has no number field,
+  // and a Save that does not move it keeps it as it is. (The charge periods are a charger setting.)
   let currentValue = form.values.current;
   const storedNumber = (text: string): number => {
     const trimmed = text.trim();
@@ -392,21 +401,6 @@ export function settingsEditorBody(
     into.append(row.group, roomHelp);
     describe();
   };
-
-  /**
-   * The note under a slider at its top (a target at or above the car's own limit, or every kWh the battery
-   * has room for): the car, not SpotNav, ends that charge. Hidden until shown.
-   */
-  function carEndsNote(limit: number | null): HTMLElement {
-    const note = element(
-      doc,
-      "p",
-      C.settingsNote,
-      translate(language, "settings.carEndsCharge", { percent: formatNumber(language, chargeCeiling(limit), 0) }),
-    );
-    note.hidden = true;
-    return note;
-  }
 
   /**
    * The departure day below the time: "Every day" (no date) or "On a date" (up to seven days ahead). Choosing
@@ -529,34 +523,6 @@ export function settingsEditorBody(
       departure.hidden = !enabledInput.checked;
     });
     body.append(departure);
-    const periodsRow = sliderRow(doc, {
-      id: `${idPrefix}-deadline-periods`,
-      labelText: translate(language, "settings.deadline.periods"),
-      sliderLabel: translate(language, "settings.deadline.periods"),
-      minimum: PERIODS_MIN,
-      step: 1,
-      maximum: PERIODS_MAX,
-      value: storedNumber(periodsValue),
-      readOnly: form.readOnly,
-      part: "periods-value",
-    });
-    // "3 periods", in the reader's own plural rule.
-    const showPeriods = (): void => {
-      const count = storedNumber(periodsValue);
-      periodsRow.show(
-        Number.isFinite(count)
-          ? translate(language, `settings.deadline.periodsValue.${pluralForm(language, count)}` as TranslationKey, {
-              count: formatNumber(language, count, 3),
-            })
-          : translate(language, "settings.value.unset"),
-      );
-    };
-    periodsRow.slider.addEventListener("input", () => {
-      periodsValue = periodsRow.slider.value;
-      showPeriods();
-    });
-    showPeriods();
-    body.append(periodsRow.group);
   };
 
   // The phases a charge uses are not chosen here: the charger's wiring and the vehicle's onboard charger decide
@@ -624,13 +590,38 @@ export function settingsEditorBody(
   };
 
 
-  const socRadio = doc.createElement("input") as HTMLInputElement;
-  const energyRadio = doc.createElement("input") as HTMLInputElement;
+  // What the plan is driven by: the target charge level, else the energy to add. The Charge by row toggles it.
+  let socMode = form.values.driver === "target_soc";
   // The charge target exactly as stored (80 % for none), until its slider moves: like the energy, it has no
   // number field, and a target off the slider's step is kept as it is by a Save that does not move it.
   let targetValue = form.values.targetPercent === "" ? "80" : form.values.targetPercent;
 
   let vehicleSelect: HTMLSelectElement | null = null;
+
+  /**
+   * The car the popover is about now, by name: in target mode the one the Vehicle select shows (else the
+   * record's or the resolved one, as a Save would write it), in energy mode the car the charger plans for.
+   */
+  const shownVehicleName = (): string | null => {
+    const planned = form.plannedVehicleName ?? null;
+    if (!socMode) {
+      return planned;
+    }
+    const soc = form.soc;
+    const picked = vehicleSelect === null ? "" : vehicleSelect.value;
+    const id = picked !== "" ? picked : values.vehicleId !== "" ? values.vehicleId : (soc?.vehicle_id ?? "");
+    if (id === "") {
+      return planned;
+    }
+    const names = [
+      soc?.vehicles.find((entry) => entry.id === id)?.name,
+      soc?.vehicle_id === id ? soc.vehicle_name : null,
+      form.vehicles.find((entry) => entry.id === id)?.name,
+    ];
+    return names.find((name): name is string => typeof name === "string" && name.trim() !== "") ?? null;
+  };
+  /** Tells the dialog which car the popover is about now (see `onVehicleName`). */
+  const announceVehicle = (): void => handlers.onVehicleName?.(shownVehicleName());
 
   const socRow = (key: string, label: string, value: string): HTMLElement => {
     const row = element(doc, "div", C.capabilityItem);
@@ -653,12 +644,7 @@ export function settingsEditorBody(
     facts.dataset["soc"] = "facts";
     const verdict = element(doc, "p", C.settingsNote);
     verdict.dataset["soc"] = "verdict";
-    const carEnds = element(doc, "p", C.settingsNote);
-    carEnds.dataset["soc"] = "car-ends";
-    carEnds.hidden = true;
     const need = element(doc, "div");
-    const reading = element(doc, "p", C.settingsNote);
-    reading.dataset["soc"] = "reading";
 
     const pickedVehicle = (): string => {
       const picked = vehicleSelect === null ? "" : (vehicleSelect as HTMLSelectElement).value;
@@ -670,9 +656,10 @@ export function settingsEditorBody(
       facts.replaceChildren();
       verdict.replaceChildren();
       need.replaceChildren();
-      reading.replaceChildren();
-      facts.hidden = verdict.hidden = reading.hidden = true;
+      facts.hidden = verdict.hidden = true;
       if (soc === null) {
+        nowMark.hidden = limitMark.hidden = true;
+        arrangeMarks();
         return;
       }
       // The charge is the resolved vehicle's; another vehicle picked here has no reading until saved, so
@@ -686,40 +673,48 @@ export function settingsEditorBody(
       const draft = Number(targetValue.trim().replace(",", "."));
       const draftKnown = targetValue.trim() !== "" && Number.isFinite(draft);
 
+      // One line, as short as it can be said: "Now 92 % · Charge limit 80 % · 8 min ago". An estimate is
+      // "≈ 92 %" and always says how old the reading under it is; a reading says so once it is not fresh.
       const parts: string[] = [];
       if (now !== null) {
-        parts.push(translate(language, "settings.soc.factNow", { value: percent(now) }));
+        const level = `${soc.estimated ? "\u2248 " : ""}${percent(now)}`;
+        parts.push(translate(language, "settings.soc.factNow", { value: level }));
       }
-      if (limit !== null) {
+      if (limit !== null && chargeCeiling(limit) < 100) {
         parts.push(translate(language, "settings.soc.factLimit", { value: percent(chargeCeiling(limit)) }));
       }
+      if (now !== null && soc.age_s !== null && (soc.estimated || soc.age_s >= 90)) {
+        parts.push(ageSentence(soc.age_s));
+      }
       if (parts.length > 0) {
-        facts.textContent = parts.join(" \u00b7 ");
+        // Each part kept whole: a line too long for a phone breaks between them, never inside one.
+        parts.forEach((part, index) => {
+          if (index > 0) {
+            facts.append(doc.createTextNode(" \u00b7 "));
+          }
+          facts.append(element(doc, "span", C.settingsFact, part));
+        });
+        facts.dataset["estimated"] = String(soc.estimated);
         facts.hidden = false;
       }
-      if (!other && now !== null && soc.age_s !== null) {
-        const age = ageSentence(soc.age_s);
-        const note = soc.estimated
-          ? translate(language, "settings.soc.estimatedFrom", { age })
-          : soc.age_s >= 90
-            ? translate(language, "settings.soc.readAge", { age })
-            : "";
-        if (note !== "") {
-          reading.textContent = note.charAt(0).toUpperCase() + note.slice(1);
-          reading.dataset["estimated"] = String(soc.estimated);
-          reading.hidden = false;
-        }
-      }
-      // At or above the car's own limit (100 % when it states none) the car ends the charge itself.
-      const ceiling = chargeCeiling(limit);
-      carEnds.hidden = !(draftKnown && pythonRound(draft) >= ceiling);
-      carEnds.textContent = translate(language, "settings.carEndsCharge", { percent: formatNumber(language, ceiling, 0) });
+      // The same two facts as ticks on the track, worded under it: "nu" (an estimate says so) and "gräns".
+      const ticks = targetTicks(now, limit);
+      nowMark.hidden = ticks.now === null;
+      limitMark.hidden = ticks.limit === null;
+      nowMark.style.setProperty("--spotnav-mark", String(ticks.now ?? 0));
+      limitMark.style.setProperty("--spotnav-mark", String(ticks.limit ?? 0));
+      nowMark.textContent = translate(language, soc.estimated ? "settings.soc.markNowEstimated" : "settings.soc.markNow");
+      arrangeMarks();
+      // As the app: a target already met says so and no "0.0 kWh" under it; one at or above the car's own
+      // limit says the charge ends there, once.
+      let met = false;
       if (draftKnown) {
         if (now !== null && effectiveTarget(draft, limit) <= now) {
           verdict.textContent = translate(language, "settings.soc.noNeed");
           verdict.dataset["verdict"] = "none";
           verdict.hidden = false;
-        } else if (limit !== null && pythonRoundedAbove(draft, limit)) {
+          met = true;
+        } else if (limit !== null && effectiveTarget(draft, limit) === chargeCeiling(limit)) {
           verdict.textContent = translate(language, "settings.soc.toLimit", { value: percent(chargeCeiling(limit)) });
           verdict.dataset["verdict"] = "limit";
           verdict.hidden = false;
@@ -739,13 +734,15 @@ export function settingsEditorBody(
                 efficiency: soc.efficiency,
               });
       }
-      need.append(
-        socRow(
-          "need",
-          translate(language, "settings.soc.need"),
-          kwh === null ? translate(language, "settings.soc.unknown") : `${formatFixed(language, kwh, 1)} kWh`,
-        ),
-      );
+      if (!met) {
+        need.append(
+          socRow(
+            "need",
+            translate(language, "settings.soc.need"),
+            kwh === null ? translate(language, "settings.soc.unknown") : `${formatFixed(language, kwh, 1)} kWh`,
+          ),
+        );
+      }
       if (other) {
         need.append(element(doc, "p", C.settingsNote, translate(language, "settings.soc.needAfterVehicle")));
       }
@@ -756,18 +753,24 @@ export function settingsEditorBody(
         const select = doc.createElement("select") as HTMLSelectElement;
         select.dataset["soc"] = "vehicle-choice";
         select.disabled = form.readOnly;
-        const none = doc.createElement("option") as HTMLOptionElement;
-        none.value = "";
-        none.textContent = translate(language, "settings.soc.vehicleUnknown");
-        select.append(none);
+        const current = values.vehicleId !== "" ? values.vehicleId : (soc.vehicle_id ?? "");
+        if (current === "") {
+          // Only a prompt while no car is chosen: a target is always for a car, so "none" is never a choice.
+          const none = doc.createElement("option") as HTMLOptionElement;
+          none.value = "";
+          none.disabled = true;
+          none.textContent = translate(language, "settings.soc.vehicleUnknown");
+          select.append(none);
+        }
         for (const vehicle of soc.vehicles) {
           const option = doc.createElement("option") as HTMLOptionElement;
           option.value = vehicle.id;
           option.textContent = vehicle.name;
           select.append(option);
         }
-        select.value = values.vehicleId !== "" ? values.vehicleId : (soc.vehicle_id ?? "");
+        select.value = current;
         select.addEventListener("change", paint);
+        select.addEventListener("change", announceVehicle);
         vehicleSelect = select;
         block.append(field(doc, `${idPrefix}-vehicle`, translate(language, "settings.soc.vehicle"), select));
       } else {
@@ -776,7 +779,6 @@ export function settingsEditorBody(
         );
       }
       block.append(facts);
-      block.append(reading);
     }
     const storedTarget = (): number => {
       const text = targetValue.trim();
@@ -793,10 +795,74 @@ export function settingsEditorBody(
       readOnly: form.readOnly,
       part: "target-value",
     });
+    // The car's minimum charge level on the track: 0 to it in a darker tone, "min 30 %" under that part.
+    const floorPart = element(doc, "span", C.settingsFloorSegment);
+    floorPart.setAttribute("aria-hidden", "true");
+    const floorMark = element(doc, "span", `${C.settingsFullMark} ${C.settingsFloorMark}`);
+    floorMark.dataset["part"] = "floor-mark";
+    floorMark.setAttribute("aria-hidden", "true");
+    // The level now and the car's limit: ticks like the kWh slider's "fullt", their words beside "min 30 %".
+    const tickMark = (part: string, text: string): HTMLElement => {
+      const node = element(doc, "span", C.settingsFullMark, text);
+      node.dataset["part"] = part;
+      node.setAttribute("aria-hidden", "true");
+      node.hidden = true;
+      return node;
+    };
+    const nowMark = tickMark("now-mark", translate(language, "settings.soc.markNow"));
+    const limitMark = tickMark("limit-mark", translate(language, "settings.soc.markLimit"));
+    targetRow.track.append(floorPart, floorMark, nowMark, limitMark);
+    /**
+     * The words under the track, as the app places them: each under its tick and inside the track, a word that
+     * would touch another a line lower. Measured once the track is laid out; until then all on the first line.
+     */
+    const arrangeMarks = (): void => {
+      const track = targetRow.track;
+      const width = track.clientWidth;
+      const shown = [floorMark, nowMark, limitMark].filter((node) => !node.hidden);
+      const words = shown.map((node) => ({
+        node,
+        key: node.dataset["part"] ?? "",
+        // The track's own inset: half a thumb at each end, as in the marks' `left`.
+        center: 8 + (width - 16) * Number(node.style.getPropertyValue("--spotnav-mark") || "0"),
+        width: node.offsetWidth,
+      }));
+      const measured = width > 0 && words.every((word) => word.width > 0);
+      const placed = measured ? placeMarks(words, width, 6) : [];
+      let lines = 1;
+      for (const word of words) {
+        const at = placed.find((entry) => entry.key === word.key);
+        const level = at?.level ?? 0;
+        const shift = at === undefined ? 0 : at.left - (word.center - word.width / 2);
+        word.node.style.setProperty("--spotnav-mark-level", String(level));
+        word.node.style.setProperty("--spotnav-mark-shift", `${Math.round(shift * 100) / 100}px`);
+        lines = Math.max(lines, level + 1);
+      }
+      track.style.setProperty("--spotnav-mark-lines", String(lines));
+    };
+    if (typeof ResizeObserver !== "undefined") {
+      new ResizeObserver(() => arrangeMarks()).observe(targetRow.track);
+    }
+    const showFloor = (): void => {
+      const picked = pickedVehicle();
+      const floor = form.vehicles.find((entry) => entry.id === picked)?.min_percent ?? null;
+      const value = storedTarget();
+      const segment = floorSegment(floor, Number.isFinite(value) ? value : null);
+      floorPart.hidden = floorMark.hidden = segment === null;
+      if (segment !== null) {
+        floorPart.style.setProperty("--spotnav-mark", String(segment.end));
+        floorMark.style.setProperty("--spotnav-mark", String(segment.label));
+        floorMark.textContent = translate(language, "settings.soc.floorMark", {
+          percent: formatNumber(language, segment.percent, 0),
+        });
+      }
+      arrangeMarks();
+    };
     // The target as stored, exactly (`80 %`, `80.5 %`), or as the slider sets it once moved.
     const showTarget = (): void => {
       const value = storedTarget();
       targetRow.show(Number.isFinite(value) ? `${formatNumber(language, value, 3)} %` : "");
+      showFloor();
     };
     targetRow.slider.addEventListener("input", () => {
       targetValue = targetRow.slider.value;
@@ -810,11 +876,11 @@ export function settingsEditorBody(
       if (kept !== undefined) {
         targetValue = String(kept);
         targetRow.slider.value = String(nearestStep(kept, TARGET_PERCENT_MIN, 1, TARGET_PERCENT_MAX));
-        showTarget();
         paint();
       }
+      showTarget();
     });
-    block.append(targetRow.group, carEnds);
+    block.append(targetRow.group);
     if (soc !== null) {
       block.append(verdict, need);
       paint();
@@ -833,34 +899,50 @@ export function settingsEditorBody(
   };
 
   const appendMode = (): void => {
-    const group = element(doc, "fieldset", C.siteFieldset);
-    group.dataset["part"] = "mode";
-    group.append(element(doc, "legend", C.siteLegend, translate(language, "settings.plan.mode.legend")));
-    const radioName = `${idPrefix}-mode`;
-    const choice = (radio: HTMLInputElement, value: string, labelKey: TranslationKey): HTMLElement => {
-      radio.type = "radio";
-      radio.name = radioName;
-      radio.value = value;
-      radio.disabled = form.readOnly;
-      const label = element(doc, "label", C.siteChoice);
-      label.append(radio, doc.createTextNode(translate(language, labelKey)));
-      return label;
-    };
-    energyRadio.dataset["mode"] = "manual_kwh";
-    socRadio.dataset["mode"] = "target_soc";
-    group.append(
-      choice(energyRadio, "manual_kwh", "settings.plan.mode.energy"),
-      choice(socRadio, "target_soc", "settings.plan.mode.soc"),
-    );
-    // A target needs a charge-level source; without one the switch stays on energy unless the record
-    // already stands on the target.
+    // "Charge by", in the value-row style of the app: the label on the left, the mode in the accent colour on
+    // the right. With two choices a tap toggles between them; nothing is written until Save. A target needs
+    // a charge-level source, so without one (and a record not already on the target) the row is not there.
     const targetSaved = form.values.driver === "target_soc";
-    if (form.soc === null && !targetSaved) {
-      socRadio.disabled = true;
+    const choosable = form.soc !== null || targetSaved;
+    const modeText = (): string =>
+      translate(language, socMode ? "settings.plan.mode.soc" : "settings.plan.mode.energy");
+    let modeRow: HTMLElement | null = null;
+    const paintRow = (): void => {
+      if (modeRow === null) {
+        return;
+      }
+      modeRow.dataset["mode"] = socMode ? "target_soc" : "manual_kwh";
+      const value = modeRow.querySelector<HTMLElement>(`.${C.settingRowValue}`);
+      if (value !== null) {
+        value.textContent = modeText();
+        if (value.tagName === "BUTTON") {
+          value.setAttribute("aria-label", translate(language, "settings.row.changeable", { label, value: modeText() }));
+        }
+      }
+    };
+    const label = translate(language, "settings.plan.mode.legend");
+    if (choosable) {
+      const [row] = settingRow(doc, {
+        key: "charge_by",
+        label,
+        value: modeText(),
+        ...(form.readOnly
+          ? {}
+          : {
+              onTap: () => {
+                socMode = !socMode;
+                paintRow();
+                paintMode();
+              },
+              changeableText: translate(language, "settings.row.changeable", { label, value: modeText() }),
+            }),
+      });
+      modeRow = row!;
+      modeRow.dataset["mode"] = socMode ? "target_soc" : "manual_kwh";
+      body.append(modeRow);
+    } else {
+      socMode = false;
     }
-    socRadio.checked = form.values.driver === "target_soc";
-    energyRadio.checked = !socRadio.checked;
-    body.append(group);
     if (form.soc === null) {
       const note = element(doc, "p", C.settingsNote, translate(language, "settings.soc.needSensor"));
       note.dataset["soc"] = "need-sensor";
@@ -873,17 +955,16 @@ export function settingsEditorBody(
     let socPart: HTMLElement | null = null;
     body.append(energyPart);
     const paintMode = (): void => {
-      energyPart.hidden = socRadio.checked;
-      if (socRadio.checked && socPart === null) {
+      energyPart.hidden = socMode;
+      if (socMode && socPart === null) {
         socPart = socBlock();
         energyPart.after(socPart);
       }
       if (socPart !== null) {
-        socPart.hidden = !socRadio.checked;
+        socPart.hidden = !socMode;
       }
+      announceVehicle();
     };
-    energyRadio.addEventListener("change", paintMode);
-    socRadio.addEventListener("change", paintMode);
     paintMode();
   };
 
@@ -910,10 +991,9 @@ export function settingsEditorBody(
         .map((check) => check.value)
         .join("");
     }
-    values.maxPeriods = periodsValue;
     values.current = currentValue;
     if (form.kind === "plan") {
-      values.driver = socRadio.checked ? "target_soc" : "manual_kwh";
+      values.driver = socMode ? "target_soc" : "manual_kwh";
       values.targetPercent = targetValue;
       // The picked vehicle, else the record's, else the resolved one: what a target-mode Save writes as
       // `target.vehicle_id`.

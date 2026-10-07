@@ -13,14 +13,16 @@ import { VISUAL_CLASSES as C } from "./visual-styles";
 export interface VehicleEdits {
   sensor?: () => void;
   target?: () => void;
+  minimum?: () => void;
   capacity?: () => void;
   consumption?: () => void;
   onboard?: () => void;
+  chargeLimit?: () => void;
   plug?: () => void;
   location?: () => void;
 }
 
-/** A car's reference pictures for the camera: the words, the kinds it has, their thumbnails, and its editor. */
+/** A car's reference pictures for the camera: the words, the kinds it has, their thumbnails, and its editor (`onTap`, from the row or a tile). */
 export interface VehicleReference {
   text: string;
   kinds: ReadonlyArray<"day" | "night">;
@@ -104,9 +106,14 @@ export function vehicleSummary(doc: Document, language: Language, input: Vehicle
       translate(language, row.onboard_phases === 1 ? "settings.vehicle.onboardOne" : "settings.vehicle.onboardThree"),
       edits.onboard,
     );
-    // The car's own charge limit, as the car reports it. Read-only here: the card has no request that writes it.
+    // The car's own charge limit, as the car reports it; written to the car where Home Assistant can.
     if (row.max_percent !== null) {
-      valueRow("charge_limit", translate(language, "settings.vehicle.limit"), `${formatNumber(language, row.max_percent, 0)} %`);
+      valueRow(
+        "charge_limit",
+        translate(language, "settings.vehicle.limit"),
+        `${formatNumber(language, row.max_percent, 0)} %`,
+        edits.chargeLimit,
+      );
     }
     // The car's own target, the same at every charger, after its limit as in the app.
     if (row.target_percent !== undefined) {
@@ -115,6 +122,21 @@ export function vehicleSummary(doc: Document, language: Language, input: Vehicle
         translate(language, "settings.soc.target"),
         row.target_percent === null ? notSet : `${formatNumber(language, row.target_percent, 0)} %`,
         edits.target,
+      );
+    }
+    // The car's minimum charge level: below it SpotNav charges at once. It needs the car's level to act on.
+    if (row.min_percent !== undefined) {
+      const level =
+        row.min_percent === null
+          ? translate(language, "settings.vehicle.minimumOff")
+          : `${formatNumber(language, row.min_percent, 0)} %`;
+      valueRow(
+        "min_percent",
+        translate(language, "settings.vehicle.minimum"),
+        row.min_percent !== null && row.soc_entity_id === null
+          ? `${level} · ${translate(language, "settings.vehicle.minimumNeedsSoc")}`
+          : level,
+        edits.minimum,
       );
     }
   }
@@ -142,25 +164,43 @@ export function vehicleSummary(doc: Document, language: Language, input: Vehicle
       reference.text,
       reference.onTap,
     );
-    if (reference.kinds.length > 0) {
-      const thumbs = element(doc, "div", C.referenceThumbs);
-      thumbs.dataset["referenceThumbs"] = row.id;
-      for (const kind of reference.kinds) {
-        const image = doc.createElement("img");
-        image.className = C.referenceThumb;
-        image.alt = translate(language, kind === "day" ? "reference.day" : "reference.night");
-        image.dataset["referenceKind"] = kind;
-        image.hidden = true;
-        thumbs.append(image);
+    // Two equal tiles, day and night, each the editor's slot picture (the same aspect, the picture cropped to fill
+    // it) or "No picture"; a tile opens the editor as the row does.
+    const tiles = element(doc, "div", C.referenceTiles);
+    tiles.dataset["referenceTiles"] = row.id;
+    for (const kind of ["day", "night"] as const) {
+      const label = translate(language, kind === "day" ? "reference.day" : "reference.night");
+      const tile = element(doc, reference.onTap === undefined ? "div" : "button", C.referenceTile);
+      if (tile instanceof HTMLButtonElement) {
+        tile.type = "button";
+        const onTap = reference.onTap;
+        tile.addEventListener("click", () => onTap?.());
+      }
+      tile.dataset["referenceTile"] = kind;
+      const has = reference.kinds.includes(kind);
+      tile.dataset["state"] = has ? "taken" : "empty";
+      const frame = element(doc, "span", C.referenceSlotPicture);
+      const image = doc.createElement("img");
+      image.className = C.referenceSlotImage;
+      image.alt = label;
+      image.hidden = true;
+      const empty = element(doc, "span", C.referenceSlotEmpty, translate(language, "reference.empty"));
+      empty.hidden = has;
+      frame.append(image, empty);
+      tile.append(element(doc, "span", C.referenceTileLabel, label), frame);
+      tiles.append(tile);
+      if (has) {
         void reference.thumbnail(kind).then((picture) => {
           if (picture !== null) {
             image.src = picture.url;
             image.hidden = false;
+          } else {
+            empty.hidden = false;
           }
         });
       }
-      card.append(thumbs);
     }
+    card.append(tiles);
   }
   return card;
 }

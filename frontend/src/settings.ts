@@ -86,6 +86,12 @@ function whole(source: Record<string, unknown>, key: string): number {
   return typeof value === "number" && Number.isInteger(value) ? value : bad();
 }
 
+/** Automatic charge periods (`null`), or a whole number of them from 1 to 8. */
+function periodsOrNull(source: Record<string, unknown>, key: string): number | null {
+  const value = wholeOrNull(source, key);
+  return value === null || (value >= PERIODS_MIN && value <= PERIODS_MAX) ? value : bad();
+}
+
 function wholeOrNull(source: Record<string, unknown>, key: string): number | null {
   const value = source[key];
   if (value === null) {
@@ -342,7 +348,7 @@ export function decodeSettingsRecord(raw: unknown): SettingsRecord {
     amps: wholeOrNull(source, "amps"),
     requested_kwh: finite(source, "requested_kwh"),
     ...(present.includes("fill_to_limit") ? { fill_to_limit: booleanValue(source, "fill_to_limit") } : {}),
-    max_periods: whole(source, "max_periods"),
+    max_periods: periodsOrNull(source, "max_periods"),
     departure_enabled: booleanValue(source, "departure_enabled"),
     departure_time: wallTime(source, "departure_time"),
     departure_date: hasDate ? dateOrNull(source, "departure_date") : null,
@@ -454,7 +460,7 @@ export type SettingsEditorKind = "energy" | "deadline" | "current" | "plan";
 
 /**
  * The editors this contract covers. `plan` is the everyday popover: requested energy, finish by
- * (deadline toggle, time, charging-periods slider) and current, saved as one replacement. `energy`,
+ * (deadline toggle and time) and current, saved as one replacement. `energy`,
  * `deadline` and `current` are those same fields as focused edits.
  */
 export const SETTINGS_EDITOR_KINDS = [
@@ -628,7 +634,6 @@ export interface SettingsFormValues {
   departureDate: string;
   /** The weekdays a daily departure applies on, as the digits 1 (Monday) to 7 (Sunday) in ascending order. */
   departureWeekdays: string;
-  maxPeriods: string;
   current: string;
   driver: string;
   targetPercent: string;
@@ -643,7 +648,6 @@ export function formFromRecord(record: SettingsRecord): SettingsFormValues {
     deadlineTime: record.departure_time,
     departureDate: record.departure_date ?? "",
     departureWeekdays: record.departure_weekdays.join(""),
-    maxPeriods: String(record.max_periods),
     current: record.amps === null ? "" : String(record.amps),
     driver: record.driver,
     targetPercent:
@@ -693,6 +697,9 @@ function integer(text: string, minimum: number, maximum: number): FormCheck<numb
 
 export const TARGET_PERCENT_MIN = 0;
 export const TARGET_PERCENT_MAX = 100;
+/** The car's own charge limit's slider when its integration states no range: whole percent. */
+export const CHARGE_LIMIT_MIN_PERCENT = 1;
+export const CHARGE_LIMIT_MAX_PERCENT = 100;
 export const CAPACITY_MIN_KWH = 1;
 export const CAPACITY_MAX_KWH = 500;
 
@@ -770,10 +777,6 @@ export function checkDepartureDate(
     return { ok: false, errorKey: "settings.error.dateRange" };
   }
   return { ok: true, value: trimmed };
-}
-
-export function checkMaxPeriods(text: string): FormCheck<number> {
-  return integer(text, PERIODS_MIN, PERIODS_MAX);
 }
 
 export function checkCurrent(text: string): FormCheck<number> {
@@ -944,10 +947,6 @@ export function replacementFor(
   if (time !== null && !time.ok) {
     return time;
   }
-  const periods = kind === "deadline" || kind === "plan" ? checkMaxPeriods(values.maxPeriods) : null;
-  if (periods !== null && !periods.ok) {
-    return periods;
-  }
   // The departure date: only judged against today when the reader moved it from what they opened.
   const dateBase = opened === null ? record : opened;
   const dateMoved = values.departureDate !== (dateBase.departure_date ?? "");
@@ -1024,11 +1023,8 @@ export function replacementFor(
     opened === null ||
     (time !== null &&
       time.ok &&
-      periods !== null &&
-      periods.ok &&
       (values.deadlineEnabled !== opened.departure_enabled ||
         time.value !== opened.departure_time ||
-        periods.value !== opened.max_periods ||
         (date !== null && date.ok && date.value !== opened.departure_date)));
   const weekdaysMoved =
     dayList !== null &&
@@ -1039,10 +1035,9 @@ export function replacementFor(
     next.departure_weekdays = dayList;
     changed = changed || dayList.join("") !== record.departure_weekdays.join("");
   }
-  if (time !== null && time.ok && periods !== null && periods.ok && deadlineMoved) {
+  if (time !== null && time.ok && deadlineMoved) {
     next.departure_enabled = values.deadlineEnabled;
     next.departure_time = time.value;
-    next.max_periods = periods.value;
     // The date goes with the deadline: switching the deadline off drops it (a date means nothing without one).
     if (date !== null && date.ok) {
       next.departure_date = date.value;
@@ -1051,7 +1046,6 @@ export function replacementFor(
       changed ||
       values.deadlineEnabled !== record.departure_enabled ||
       time.value !== record.departure_time ||
-      periods.value !== record.max_periods ||
       (date !== null && date.ok && date.value !== record.departure_date);
   }
   return { ok: true, body: next, changed };

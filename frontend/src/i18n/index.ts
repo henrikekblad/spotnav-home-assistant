@@ -1,23 +1,31 @@
-// The five languages, the fallback rule, plural selection and placeholder substitution.
+// The languages, the fallback rule, plural selection and placeholder substitution.
+//
+// The words are in `<lang>.json`, one file per language. English is the source of truth for the key
+// set: every other language is typed against it here, so a missing key is a compile error, and the
+// i18n tests reject an extra one (a JSON file is not an object literal, so the type cannot).
 //
 // Everything here is pure: `hass.language` is read elsewhere, as a state-snapshot field, and only
 // its *value* reaches this module. Numbers, weekdays and plural categories come from `Intl`; nothing
 // is hand-formatted, and nothing is selected by `count === 1` alone, because a plural category is a
 // language's own rule and not arithmetic.
 
-import { da } from "./da";
-import { en } from "./en";
-import { fi } from "./fi";
-import { nb } from "./nb";
-import { sv } from "./sv";
+import da from "./da.json";
+import de from "./de.json";
+import en from "./en.json";
+import es from "./es.json";
+import fi from "./fi.json";
+import fr from "./fr.json";
+import nb from "./nb.json";
+import nl from "./nl.json";
+import sv from "./sv.json";
 
 export type TranslationKey = keyof typeof en;
 export type Translation = Record<TranslationKey, string>;
 
-export const LANGUAGES = ["en", "sv", "nb", "da", "fi"] as const;
+export const LANGUAGES = ["en", "sv", "nb", "da", "fi", "de", "nl", "fr", "es"] as const;
 export type Language = (typeof LANGUAGES)[number];
 
-export const TRANSLATIONS: Record<Language, Translation> = { en, sv, nb, da, fi };
+export const TRANSLATIONS: Record<Language, Translation> = { en, sv, nb, da, fi, de, nl, fr, es };
 
 /** Plural categories the headings use. Every supported language distinguishes one from other. */
 export type PluralCategory = "one" | "other";

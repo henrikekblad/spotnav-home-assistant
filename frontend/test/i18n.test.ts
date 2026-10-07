@@ -3,11 +3,11 @@
 import { describe, expect, it } from "vitest";
 
 import { LANGUAGES, TRANSLATIONS, placeholders, pluralForm, periodHeadingKey, resolveLanguage, translate } from "../src/i18n";
-import { en } from "../src/i18n/en";
+import en from "../src/i18n/en.json";
 
 const keys = Object.keys(en) as Array<keyof typeof en>;
 
-describe("the five languages", () => {
+describe("every language", () => {
   it("carry exactly the English key set, none empty", () => {
     for (const language of LANGUAGES) {
       const translation = TRANSLATIONS[language];
@@ -49,7 +49,11 @@ describe("language resolution", () => {
     ["no", "nb"],
     ["nn", "nb"],
     ["en-GB", "en"],
-    ["de", "en"],
+    ["de-DE", "de"],
+    ["nl-BE", "nl"],
+    ["fr-FR", "fr"],
+    ["es-ES", "es"],
+    ["it", "en"],
     ["", "en"],
     [null, "en"],
     [undefined, "en"],

@@ -126,7 +126,7 @@ class FakeModel(AITaskEntity):
             await self.hold.wait()
         if self.errors:
             raise self.errors.pop(0)
-        *references, now = attachments
+        now, *references = attachments
         labels = re.findall(r"picture \d+: (car_\d+)", task.instructions)
         answer = self.answer or next(
             (label for label, item in zip(labels, references) if same_picture(item["data"], now["data"])), "none"
@@ -244,7 +244,7 @@ async def test_the_model_gets_the_crop_and_the_references_and_no_name_and_the_cr
     await garage.settle()
     task = garage.model.tasks[0]
     assert [item["mime_type"] for item in task["attachments"]] == ["image/jpeg"] * 3
-    references, crop = task["attachments"][:2], task["attachments"][2]
+    crop, references = task["attachments"][0], task["attachments"][1:]
     for item in [*references, crop]:
         assert "/.storage/spotnav_camera/entry_a/tmp/" in str(item["path"]) and not item["path"].exists(), (
             "every picture is a crop with the frame now, gone after the call"
@@ -404,6 +404,10 @@ async def test_the_snapshot_frame_and_reference_commands(garage: Garage, hass: H
     assert [item["kind"] for item in taken["references"]] == ["day", "night"]
     thumb = await garage.ws("reference_picture", vehicle_id=kia, kind="day")
     assert thumb["picture"]["width"] <= 240 and base64.b64decode(thumb["picture"]["data"])[:2] == b"\xff\xd8"
+    night = await garage.ws("reference_picture", vehicle_id=kia, kind="night")
+    assert (night["picture"]["width"], night["picture"]["height"]) == (thumb["picture"]["width"], thumb["picture"]["height"]), (
+        "day and night come cropped with the same frame, at the same size"
+    )
     assert (await garage.ws("take_reference_picture", vehicle_id="unknown", kind="day"))["error"] == "spotnav_invalid_value"
     assert (await garage.ws("take_reference_picture", vehicle_id=kia, kind="dusk"))["error"] == "spotnav_invalid_value"
     garage.camera.fail = True

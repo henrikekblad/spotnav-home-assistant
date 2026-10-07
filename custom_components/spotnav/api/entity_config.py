@@ -6,8 +6,8 @@ written by `vehicles/vehicle_properties.py`):
 
     {type: "spotnav/update_vehicle", api_version: 1, charger_id, vehicle_id,
      changes: {capacity_kwh?: 1..500 | null, consumption_kwh_per_10km?: > 0 | null, onboard_phases?: 1 | 3 | null,
-               target_percent?: 0..100 | null},
-     expected: {capacity_kwh?, consumption_kwh_per_10km?, onboard_phases?, target_percent?}}
+               target_percent?: 0..100 | null, min_percent?: 10..80 in steps of 5 | null},
+     expected: {capacity_kwh?, consumption_kwh_per_10km?, onboard_phases?, target_percent?, min_percent?}}
 
 `null` clears a property. `expected` holds what the caller last saw for the keys it names; a
 mismatch is `spotnav_conflict` and nothing is written. The answer is the shared envelope plus
@@ -15,7 +15,7 @@ mismatch is `spotnav_conflict` and nothing is written. The answer is the shared 
 (an error frame), `spotnav_not_admin`, `spotnav_unknown_charger`, `spotnav_conflict`, and
 `spotnav_invalid_value` with `field_errors` (`vehicle_id`/`unknown_vehicle`, `changes`/`invalid_changes`,
 `capacity_kwh`/`invalid_capacity`, `consumption_kwh_per_10km`/`invalid_consumption`,
-`onboard_phases`/`invalid_onboard_phases`, `target_percent`/`invalid_target`,
+`onboard_phases`/`invalid_onboard_phases`, `target_percent`/`invalid_target`, `min_percent`/`invalid_min_percent`,
 `<key>`/`unknown_field`, `expected`/`invalid_expected`).
 
 They let the card choose every entity this integration uses (a charger's charge control, current
@@ -479,6 +479,7 @@ async def async_update_vehicle(
         vehicle_properties.KEY_CONSUMPTION: row.get("consumption_kwh_per_10km"),
         vehicle_properties.KEY_ONBOARD_PHASES: row.get("onboard_phases"),
         vehicle_properties.KEY_TARGET: row.get("target_percent"),
+        vehicle_properties.KEY_MIN: row.get("min_percent"),
     }
     if any(seen[key] != value for key, value in (expected or {}).items()):
         raise _refuse(ERROR_CONFLICT, [])

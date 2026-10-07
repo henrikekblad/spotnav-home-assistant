@@ -112,7 +112,7 @@ question as a banner with one button per car, and so does the SpotNav app.
   is kept across the restart; a plug-in that was still undecided is identified again from the restart (the
   question follows after three minutes, as for a plug-in). A button of a question that is gone takes it off
   the phone.
-- **Byt bil** (in the card and the app, for every Home Assistant user) changes the car at any time while a car is
+- **Change car** (in the card and the app, for every Home Assistant user) changes the car at any time while a car is
   plugged in: it answers an open question, or corrects a car already decided, and counts as an answer.
 - A person's answer holds for the car's stay. It is written after any automatic switch still being saved, and
   written again if another settings change got there first: it is the newest choice and is never dropped.
@@ -182,7 +182,9 @@ take, show and delete reference pictures for the camera chosen here, but cannot 
 
 **At a plug-in**, in **Automatic** mode, when two or more cars are left after the cars' own reports: SpotNav takes
 one picture, crops it with the frame and asks the AI Task which reference car is the one in the picture,
-comparing shape, roof line, windows and lights rather than colour. The answer is one car or none, and how sure
+comparing shape, roof line, windows and lights rather than colour. The picture of the spot now is sent first and
+the reference pictures after it: a model asked about "the last picture" was seen to answer "none" when a reference
+of an empty spot came just before it. The answer is one car or none, and how sure
 the model is.
 
 - The camera **decides on its own** only when all of this holds:
@@ -250,7 +252,7 @@ restarts. For each plug-in:
 - the car it ended with and how it was decided (as in the charge history). `assumed` says why the car that was
   already chosen was kept: `swiped` (the notification was swiped away), `unanswered` (nobody answered in twelve
   hours) or `unplugged` (unplugged before anything decided);
-- later corrections: a person's change with **Byt bil**, or a car's own report that overruled the camera.
+- later corrections: a person's change with **Change car**, or a car's own report that overruled the camera.
 
 No picture and no position is ever in it.
 

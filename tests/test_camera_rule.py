@@ -201,8 +201,12 @@ def test_the_question_names_no_car_and_lists_the_pictures_in_order() -> None:
     labels = labels_for(["device-a", "device-b"])
     assert labels == {"car_1": "device-a", "car_2": "device-b"}
     text = instructions_for([("car_1", "day"), ("car_1", "night"), ("car_2", "day")])
-    assert "picture 1: car_1 (daylight); picture 2: car_1 (night" in text and "picture 3: car_2 (daylight)" in text
-    assert "The first 3 are reference pictures" in text and "not the colour" in text and "Answer none" in text
+    # The picture of the spot now goes first: a vision model asked about "the last picture" was seen to answer
+    # "none" when an empty-spot reference came right before it, and to name the right car with it first.
+    assert "Picture 1 is the parking spot now" in text
+    assert "picture 2: car_1 (daylight); picture 3: car_1 (night" in text and "picture 4: car_2 (daylight)" in text
+    assert "Pictures 2 to 4 are reference pictures" in text and "not the colour" in text and "Answer none" in text
+    assert "last picture" not in text
     structure = answer_structure(list(labels))
     assert structure["vehicle"]["selector"] == {"select": {"options": ["car_1", "car_2", "none"]}}
     assert structure["confidence"]["selector"] == {"select": {"options": ["high", "medium", "low"]}}

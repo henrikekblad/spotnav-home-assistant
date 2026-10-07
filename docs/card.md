@@ -87,7 +87,9 @@ serious each is. Examples:
 | Stopped at 80 % (estimated, reading 40 min old) | The target was reached; shows the level the charge stopped at and how old or estimated it was. |
 | Charging is limited to 10 A by the site's load balancing. | Active load balancing has lowered the current. |
 | The home battery charges from the grid and shares the main fuse: the car gets 11 A. / House consumption limits the car to 11 A. | The same, with the cause when SpotNav knows it. |
+| Charging to the minimum level (30 %) | The car is below its [minimum charge level](target-soc.md#minimum-charge-level), so SpotNav charges at once at the set current; the strategy takes over at the floor. |
 | Solar · charging 9 A from surplus | The solar strategy's state: waiting for sun, surplus found and starting soon, surplus fading, charging, or no usable reading. |
+| Solar · surplus available (4.2 kW) / Solar · no car plugged in | Solar with no car plugged in: the surplus is enough to start a charge (plug the car in now), or it is not. |
 | Hybrid · 12 kWh from grid, 8 kWh expected from sun | The hybrid plan's split; with no forecast source it says it plans like Cheapest. |
 | The energy meter cannot be read: 6.5 kWh remains, from its last reading. / No energy meter: 3 kWh remains, counted from this charger's recorded charges. | The requested energy is counted without the charger's energy register, see [counting the requested energy](strategies.md#cheapest). |
 | Charging was started, but the vehicle is not requesting current. | The connector reports the car is not asking for current. It is an observation only: check the car's charging settings or reconnect the cable. |
@@ -187,11 +189,26 @@ under its heading; the car planned for is open first, and tapping another tab sh
 - **Onboard charger**: 1-phase or 3-phase (3-phase until you say otherwise). A charge uses the smaller of
   this and the charger's wiring, so a car with a single-phase onboard charger charges on one phase even
   on a three-phase wallbox.
+- **Charge limit**: the limit the car reports, when it has one. Where Home Assistant can write it, an administrator
+  can change it: its editor is a slider over the range and step the car's integration takes (50 to 100 % in steps
+  of 10 on a Kia, for example; 1 to 100 % when the integration does not say), the value shown large above it.
+  Nothing is written until you move the slider and save, and at most once a minute per car; the car takes the new
+  limit when its integration next reads it.
+- **Charge target**: the car's own target, 0 to 100 %, the same at every charger. Its editor sets it with a slider,
+  the value shown large above it. A car with none stored shows **Not set**; its editor opens at the target it is
+  planned with (80 %, or the car's charge limit when lower) marked **(default)**, and nothing is stored until you
+  move the slider and save.
+- **Minimum charge level**: **Off**, or 10 to 80 %. Its editor is a slider whose first stop is **Off**, then 10 to
+  80 % in steps of 5. It never goes past the charge target: the track beyond is hatched, with the target marked.
+  Below it SpotNav charges at once at full current, whatever the strategy, unless you paused or stopped the charge.
+  It needs the car's charge level, and says so next to the value when the car has no level sensor. See
+  [minimum charge level](target-soc.md#minimum-charge-level).
 - **Plug sensor** and **Location**: the car's own "plugged in" sensor and tracker, which tell which car is
   plugged in at a charger more than one car can charge at. Each is **Automatic**, one of the car's entities,
   or **None**. They are read only for that.
 - **Reference picture** (with a camera chosen for the charger): the car's day and night pictures for the
-  camera, with a thumbnail cropped as it is compared. See [the camera](vehicle-identification.md#the-camera).
+  camera, shown as two equal tiles, **Day** and **Night**, each cropped as it is compared (or *No picture*).
+  Tapping either opens the reference editor. See [the camera](vehicle-identification.md#the-camera).
 
 ### Which car is plugged in?
 
@@ -248,6 +265,11 @@ the editor, where a charger on a site also has its **Charger priority** (first, 
 choice: SpotNav then reads no energy register and looks for none, and lists one it finds on the charger
 under **To check**.
 
+**Charge periods**, below the charger's setup rows for administrators, is **Automatic** (the default) or
+**1 period** to **8 periods**. Automatic splits the charge only where the saving is worth another start, and
+each period is at least half an hour; a number is the most periods a plan may use. See
+[strategies](strategies.md#cheapest).
+
 ### Site
 
 The section is headed by the site's name and says whether its settings apply to one charger or to
@@ -278,23 +300,33 @@ several. A charger with no site says so.
 
 ## Plan settings
 
-The **Plan** cell opens **Charging plan**.
+The **Plan** cell opens **Charging plan**. Its title names the car the plan is for, as the app's
+planning card does: **Charging plan for EV6**. With a target SoC it is the car chosen under
+**Vehicle**, and it changes as soon as another car is chosen, before you save. With energy it is the
+car the charger plans for (the identified car, else the target car). With no car known the title is
+just **Charging plan**.
 
-![The plan settings: the charge target, departure time and weekdays, number of periods and current](images/card-settings-plan.png)
+![The plan settings: the charge target, departure time and weekdays and current](images/card-settings-plan.png)
 
-- **Charge by**: **Energy (kWh)** or **Target SoC (%)**. With a target SoC, see
-  [target state of charge](target-soc.md).
+- **Charge by**: a value row showing **Energy · kWh** or **Target SoC · %**. Tap the value to switch
+  to the other one; nothing is written until **Save**. The row is only there when a target can be
+  planned, that is when the car's charge level can be read or the plan already uses a target. With a
+  target SoC, see [target state of charge](target-soc.md).
 - **Requested energy**: 0.5 to 100 kWh on the slider, in half-kWh steps; the number field accepts
   more.
 - **Finish by a deadline** and **Departure time**. Without a deadline the plan covers the priced
   horizon.
-- **Maximum charging periods**: 1 to 8.
 - **Planned current**: the current the plan may ask for, in whole amperes, with the nominal power
   it means for the phases the charge uses (read-only, see below). It is a planning value, not a command
   to the charger.
-- With a target SoC: the **Target charge level** slider, the vehicle (when there are several), the
-  level now and how old it is or that it is estimated, the vehicle's charge limit when known, and
-  the **Energy needed**.
+- With a target SoC: the **Charge target** slider, the vehicle (when there are several), and one line with
+  the car's reading: the level now (with ≈ when it is estimated), the car's charge limit when known and how
+  old the reading is, for example *Now 75 % · Charge limit 80 % · 8 min ago*. Under the slider is the
+  **Energy needed**; a target that is already met says *No charging needed now*, and a target at the car's own
+  limit says *Charging to the vehicle's limit, 80 %* once, with no 0.0 kWh row. When the car has a minimum
+  charge level, the slider's track is darker from 0 to it, with **min 30 %** under that part. Ticks on the
+  track mark the level now (**now**, **≈ now** when estimated) and the car's charge limit (**limit**, only
+  below 100 %); a word that would touch another drops to a second line.
 
 If two clients change the settings at the same moment, the card says they changed elsewhere and
 offers **Use the server values** or **Apply my change again**; nothing is overwritten silently.

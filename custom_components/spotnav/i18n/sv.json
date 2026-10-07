@@ -1,0 +1,110 @@
+{
+  "notifications": {
+    "title": "SpotNav · {name}",
+    "stopped.not_started": "Laddningen startade inte enligt planen.",
+    "stopped.stopped": "Laddningen stannade under ett planerat fönster.",
+    "stopped.charger_unavailable": "Laddaren är inte tillgänglig under ett planerat fönster.",
+    "stopped.vehicle_not_requesting": "Bilen tar inte emot ström under ett planerat fönster.",
+    "stopped.held_by_charger": "Laddarens eget schema håller tillbaka den planerade laddningen.",
+    "stopped.charger_ignores_stop": "Laddaren fortsätter ladda fast den stoppades. Stoppa den vid laddaren eller koppla ur bilen.",
+    "stopped.charger_disabled": "Laddaren är avstängd, så den planerade laddningen kan inte starta.",
+    "at_risk": "Laddningen hinner inte bli klar till avresan.",
+    "at_risk.time": "Laddningen hinner inte bli klar till avresan {time}.",
+    "complete.target": "Laddningen är klar: målet {percent} är nått.",
+    "complete.energy": "Laddningen är klar: den begärda energin är levererad.",
+    "complete.plan_done": "Den planerade laddningen är slutförd.",
+    "complete.vehicle_full": "Laddningen är klar: bilen är full.",
+    "started": "Laddningen har startat.",
+    "test": "Testnotis från SpotNav: notiserna når den här telefonen.",
+    "started.until": "Laddningen har startat, till {time}.",
+    "plugged_in": "Bilen är inkopplad.",
+    "unplugged": "Bilen är urkopplad.",
+    "plan_installed": "Ny plan: laddar från {time}.",
+    "identify.ask": "Vilken bil är inkopplad?",
+    "identify.open": "Öppna SpotNav",
+    "identify.chosen": "{vehicle} vald.",
+    "identify.recognised": "{vehicle} vald automatiskt.",
+    "identify.kept": "{vehicle} behålls.",
+    "charged": "{kwh} laddat",
+    "planned": "{kwh} planerat",
+    "cost": "cirka {cost}"
+  },
+  "add_charger": {
+    "hint": "Lägg till en laddare: Inställningar → Enheter och tjänster → SpotNav → Lägg till post → Laddare; den erbjuder sig att ansluta till den här anläggningen."
+  },
+  "resolve_vehicle": {
+    "device": "{name} -- {count} möjliga batterisensorer",
+    "dismiss": "Detta är inte ett fordon (sluta rapportera det)"
+  },
+  "charger_detected": {
+    "external": "En annan styrning (evcc eller openWB) är installerad och kan redan styra den här laddaren. Inget föreslås: välj bara det du är säker på att SpotNav ska styra.",
+    "external_installed": "evcc eller openWB är installerad i Home Assistant och kan redan styra den här laddaren. Stäng av den för den här laddaren, annars kommer SpotNav och den att motverka varandra.",
+    "disabled": "Avstängda som standard men användbara (de aktiveras om rutan nedan är ikryssad):",
+    "balanced": "Perific balanserar den här laddarens installation via Zaptecs moln och ställer in samma tillgängliga ström som SpotNav skulle göra. Ingen ström föreslås: SpotNav startar och stoppar bara laddaren.",
+    "controller": "{name} styr också laddare; stäng av den för den här laddaren, annars motverkar {name} och SpotNav varandra.",
+    "cloud": "Om laddaren är kopplad till Tibber (eller en annan app) för smart laddning, stäng av det: Home Assistant ser det inte, och det motverkar SpotNav."
+  },
+  "measurement_reason": {
+    "mode": "Mätläget ändrades, så mätningen behöver ställas in. ",
+    "chargers": "Laddarna ändrades, så deras fasinkoppling behöver ställas in. ",
+    "measurement": "Den sparade mätningen är ofullständig, så den behöver ställas in. "
+  },
+  "site_form": {
+    "default_name": "Anläggning"
+  },
+  "site_confirm": {
+    "meter": "Elmätare",
+    "power_current_calculated": "effekt per fas, ström beräknas",
+    "power_current": "effekt och ström per fas",
+    "current": "ström per fas",
+    "current_entity": "en entitet med strömmen per fas",
+    "join_wiring": "**Fasinkoppling:** 3 faser, uppmätt ström från {source}",
+    "join_unknown": "SpotNav kan inte avgöra hur laddaren är inkopplad, så den läggs inte till automatiskt. Lägg till den från anläggningens inställningar.",
+    "reactive_found": "**Reaktiv effekt:** hittad",
+    "reactive_missing": "**Reaktiv effekt:** saknas (strömmen uppskattas med effektfaktor 0,9)",
+    "battery": "**Hemmabatteri:** {name} (laddning positiv)",
+    "no_battery": "**Hemmabatteri:** inget",
+    "charger": "**Laddare:** {name} – {phases} faser, uppmätt ström från {source}",
+    "label_power": "{name} – effekt per fas (ström beräknas)",
+    "label_power_current": "{name} – effekt och ström per fas",
+    "label_current": "{name} – ström per fas",
+    "ocpp_control": "**Laddstyrning:** {name}",
+    "ocpp_current_number": "**Ström ställs in via:** laddarens strömnummer ({name})",
+    "ocpp_current_config": "**Ström ställs in via:** OCPP ChangeConfiguration",
+    "ocpp_energy": "**Energimätare:** {name} (hittas automatiskt)",
+    "ocpp_energy_none": "ingen hittad"
+  },
+  "candidate_reason": {
+    "attributes_device_class_and_unit_match": "strömtyp och en stödd enhet",
+    "attributes_unit_match_only": "en stödd strömenhet",
+    "attributes_historical_match": "fasdata endast sedd i historiken, inte mätt just nu",
+    "attributes_profile_match": "laddarintegrationens egna fasströmsattribut",
+    "separate_entities_device_class_and_unit_match": "strömtyp och en stödd enhet",
+    "separate_entities_device_class_match_only": "endast strömtyp",
+    "separate_entities_unit_match_only": "endast en stödd strömenhet",
+    "separate_entities_name_match_only": "endast namnmönster",
+    "separate_entities_profile_match": "laddarintegrationens egna fasströmssensorer",
+    "possible_inverter_output_not_confirmed_as_grid_input": "ser ut som växelriktar-/solutdata, ej bekräftad som nätingång"
+  },
+  "candidate_confidence": {
+    "high": "hög tillförlitlighet",
+    "medium": "medel tillförlitlighet",
+    "low": "låg tillförlitlighet"
+  },
+  "candidate_representation": {
+    "separate_entities": "tre entiteter",
+    "attributes": "attribut"
+  },
+  "choice": {
+    "manual": "Välj manuellt",
+    "manual_separate_entities": "Välj manuellt (tre separata entiteter, en per fas)",
+    "manual_attributes": "Ange en entitet + dess fasattribut manuellt",
+    "skip": "Hoppa över (konfigurera senare)"
+  },
+  "current_control": {
+    "none": "Sätt ingen ström",
+    "change_configuration": "Ändra via ChangeConfiguration (AssignedCurrent)",
+    "number": "Laddarens strömnummer, inom dess skrivgränser",
+    "easee_dynamic_limit": "Easee dynamisk strömgräns (med begränsad skrivfrekvens)"
+  }
+}

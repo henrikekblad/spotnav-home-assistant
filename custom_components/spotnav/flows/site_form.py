@@ -32,6 +32,7 @@ from ..site.site_detection import MeterCandidate
 from ..site.site_membership import chargers_claimed_by_other_sites
 from ..planning.grid_voltage import default_voltage_between_phases_v
 from ..vehicles.choices import flow_language
+from ..texts import table
 from ..vehicles.discovery import DiscoveryCandidate
 from .labels import (
     candidate_options,
@@ -206,7 +207,7 @@ def voltage_between_phases_from_form(user_input: dict[str, Any], default: float 
 
 
 def default_site_name(hass) -> str:
-    return "Anl\u00e4ggning" if flow_language(hass) == "sv" else "Site"
+    return table(flow_language(hass), "site_form")["default_name"]
 
 
 def _default_kwarg(defaults: dict[str, Any], key: str) -> dict[str, Any]:

@@ -29,8 +29,7 @@ from .vehicles.duplicate_chargers import charger_entries_except, duplicate_pairs
 from .vehicles.choices import (
     DISMISS_VEHICLE_CHOICE,
     entity_option,
-    flow_language,
-    RESOLVE_VEHICLE_TEXT,
+    resolve_vehicle_text,
 )
 from .vehicles.discovery_decisions import (
     async_setup_decisions,
@@ -255,7 +254,7 @@ class ResolutionRepairFlow(RepairsFlow):
             options.append(
                 selector.SelectOptionDict(
                     value=DISMISS_VEHICLE_CHOICE,
-                    label=RESOLVE_VEHICLE_TEXT[flow_language(self.hass)]["dismiss"],
+                    label=resolve_vehicle_text(self.hass, "dismiss"),
                 )
             )
         return selector.SelectSelector(
