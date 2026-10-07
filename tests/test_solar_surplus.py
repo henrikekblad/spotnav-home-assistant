@@ -481,10 +481,46 @@ def test_set_current_only_on_whole_amp_change():
     assert v2.action == "hold"
     assert v2.reason == "on_steady"
 
-    # A real change to 9 A worth of power.
+    # A real change to 9 A worth of power: one amp, so only once it has lasted `step_confirm_s`.
     v3 = ctrl.observe(_obs(2.0, grid_w=-9.2 * 3 * VOLTAGE_V))
-    assert v3.action == "set_current"
-    assert v3.requested_a == 9.0
+    assert (v3.action, v3.reason) == ("hold", "on_steady")
+    v4 = ctrl.observe(_obs(2.0 + cfg.step_confirm_s, grid_w=-9.2 * 3 * VOLTAGE_V))
+    assert v4.action == "set_current"
+    assert v4.requested_a == 9.0
+
+
+def test_a_surplus_flapping_across_one_amp_never_moves_the_request():
+    """The field case (2026-10-07): `on_modulate` 13 <-> 14 A every 1 to 5 s. A one-amp step waits until the
+    surplus has stayed past it for `step_confirm_s`; a surplus that keeps coming back moves nothing."""
+    cfg = _config(start_delay_s=0.0, min_off_s=0.0)
+    ctrl = SolarController(cfg)
+    assert ctrl.observe(_obs(0.0, grid_w=-13.5 * 3 * VOLTAGE_V)).action == "start"
+    assert ctrl.observe(_obs(1.0, grid_w=-13.5 * 3 * VOLTAGE_V)).requested_a == 13.0
+
+    actions = []
+    now = 1.0
+    for index in range(60):
+        now += 1.0 + (index % 5)
+        amps = 14.05 if index % 2 == 0 else 13.95
+        actions.append(ctrl.observe(_obs(now, grid_w=-amps * 3 * VOLTAGE_V)).action)
+
+    assert set(actions) == {"hold"}
+    assert ctrl.last_requested_a == 13.0
+
+
+def test_a_one_amp_step_down_waits_too_and_a_larger_step_goes_at_once():
+    cfg = _config(start_delay_s=0.0, min_off_s=0.0)
+    ctrl = SolarController(cfg)
+    ctrl.observe(_obs(0.0, grid_w=-12.5 * 3 * VOLTAGE_V))
+    assert ctrl.observe(_obs(1.0, grid_w=-12.5 * 3 * VOLTAGE_V)).requested_a == 12.0
+
+    down = ctrl.observe(_obs(2.0, grid_w=-11.5 * 3 * VOLTAGE_V))
+    assert down.action == "hold"
+    held = ctrl.observe(_obs(2.0 + cfg.step_confirm_s, grid_w=-11.5 * 3 * VOLTAGE_V))
+    assert (held.action, held.requested_a) == ("set_current", 11.0)
+
+    jump = ctrl.observe(_obs(20.0, grid_w=-9.5 * 3 * VOLTAGE_V))
+    assert (jump.action, jump.requested_a, jump.reason) == ("set_current", 9.0, "on_modulate")
 
 
 def test_requested_a_only_present_on_start_and_set_current():

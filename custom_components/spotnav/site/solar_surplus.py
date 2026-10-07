@@ -3,7 +3,8 @@
 Pure Python (no Home Assistant import, no I/O, no clock; time arrives via
 `SolarObservation.now`). Per charger it decides only whether surplus justifies
 starting, stopping or re-requesting a current. Start and stop are rate-limited
-by minimum on/off times; modulation is only a new *requested* current for site
+by minimum on/off times, and a one-amp modulation waits until the surplus has stayed
+past it for `SolarConfig.step_confirm_s`; modulation is only a new *requested* current for site
 capacity's damped write path. It must never call a charger's `async_start` on
 every tick.
 
@@ -182,6 +183,11 @@ class SolarConfig:
     # with each charge it ends, up to the maximum.
     ended_retry_s: float = 1800.0
     ended_retry_max_s: float = 14400.0
+    # A modulation of one amp is made only once the surplus has stayed past it this long (seconds): a surplus
+    # hovering at a whole amp would otherwise move the request up and down on every reading (13 <-> 14 A every 1
+    # to 5 s in the field case of 2026-10-07). 10 s outlasts that meter noise and is short beside the start
+    # delay; a step of two amps or more is made at once.
+    step_confirm_s: float = 10.0
 
     def __post_init__(self) -> None:
         start_a = self.min_current_a if self.start_a is None else self.start_a
@@ -413,6 +419,9 @@ class SolarController:
         self._priority_effective: SolarPriority | None = None
         # The watts one amp is to the car on this tick's phases (`_refresh_breakdown`).
         self._watts_per_a: float | None = None
+        # A one-amp modulation waiting for the surplus to stay past it (`SolarConfig.step_confirm_s`): the
+        # current, and since when.
+        self._step_pending: tuple[float, float] | None = None
 
     @property
     def config(self) -> SolarConfig:
@@ -453,6 +462,7 @@ class SolarController:
         self._arming_since = None
         self._disarming_since = None
         self._last_requested_a = None
+        self._step_pending = None
         self._verify_until = None
         self._credited_start = False
         self._shortfall_since = None
@@ -541,6 +551,7 @@ class SolarController:
         self._arming_since = None
         self._disarming_since = None
         self._last_requested_a = requested_a
+        self._step_pending = None
         self._stale_since = None
         self._verify_until = None
         self._credited_start = False
@@ -564,6 +575,7 @@ class SolarController:
         is nothing to verify. Its next modulation writes what the surplus carries, whatever the charger was given
         meanwhile."""
         self._last_requested_a = None
+        self._step_pending = None
         self._verify_until = None
         self._credited_start = False
         self._shortfall_since = None
@@ -596,6 +608,7 @@ class SolarController:
         self._import_since = None
         requested = self._clamp_request(cfg.start_a)
         self._last_requested_a = requested
+        self._step_pending = None
         self._verify_until = now + cfg.verify_s
         self._credited_start = self._battery_credited()
         self._shortfall_since = None
@@ -610,6 +623,7 @@ class SolarController:
         self._disarming_since = None
         self._import_since = None
         self._last_requested_a = None
+        self._step_pending = None
         self._verify_until = None
         self._credited_start = False
         self._shortfall_since = None
@@ -703,6 +717,7 @@ class SolarController:
                 self._disarming_since = None
                 self._import_since = None
                 self._last_requested_a = None
+                self._step_pending = None
                 return self._verdict("stop", None, "charger_measurement_missing")
         # `disarming` is a countdown that this branch replaces with its own.
         self._state = "on"
@@ -710,6 +725,7 @@ class SolarController:
         minimum = cfg.min_current_a
         if self._last_requested_a != minimum:
             self._last_requested_a = minimum
+            self._step_pending = None
             return self._verdict("set_current", minimum, "charger_measurement_missing")
         return self._verdict("hold", None, "charger_measurement_missing")
 
@@ -746,6 +762,7 @@ class SolarController:
             self._on_since = now
             self._arming_since = None
             self._last_requested_a = cfg.start_a
+            self._step_pending = None
             return self._verdict("start", cfg.start_a, "unmeasured_start")
         return self._verdict("hold", None, "unmeasured_arming")
 
@@ -797,6 +814,7 @@ class SolarController:
             self._on_since = None
             self._disarming_since = None
             self._last_requested_a = None
+            self._step_pending = None
             return self._verdict("stop", None, "no_basis_stopped")
         return self._verdict("hold", None, "no_basis_grace")
 
@@ -822,6 +840,7 @@ class SolarController:
                 assert cfg.start_a is not None
                 requested = self._clamp_request(cfg.start_a)
                 self._last_requested_a = requested
+                self._step_pending = None
                 self._verify_until = now + cfg.verify_s
                 self._credited_start = self._battery_credited()
                 self._shortfall_since = None
@@ -857,6 +876,7 @@ class SolarController:
         self._on_since = None
         self._disarming_since = None
         self._last_requested_a = None
+        self._step_pending = None
         self._verify_until = None
         self._credited_start = False
         self._shortfall_since = None
@@ -912,6 +932,7 @@ class SolarController:
                 self._on_since = None
                 self._disarming_since = None
                 self._last_requested_a = None
+                self._step_pending = None
                 return self._verdict("stop", None, "stop_after_delay")
             reason: SolarReason = (
                 "disarming_delay" if elapsed < cfg.stop_delay_s else "disarming_min_on_wait"
@@ -922,6 +943,18 @@ class SolarController:
         self._state = "on"
         self._disarming_since = None
         requested = self._clamp_request(available_a)
+        if (
+            not was_disarming
+            and self._last_requested_a is not None
+            and abs(requested - self._last_requested_a) == 1.0
+        ):
+            pending = self._step_pending
+            if pending is None or pending[0] != requested:
+                self._step_pending = pending = (requested, now)
+            if now - pending[1] < cfg.step_confirm_s:
+                # One amp only once the surplus has stayed there: the request stays as it is.
+                return self._verdict("hold", None, "on_steady")
+        self._step_pending = None
         changed = requested != self._last_requested_a
         self._last_requested_a = requested
         if was_disarming:
