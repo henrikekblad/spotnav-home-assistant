@@ -56,6 +56,7 @@ describe("one stored energy amount", () => {
       fi: "1\u00a0000 kWh",
       nb: "1\u00a0000 kWh",
       sv: "1\u00a0000 kWh",
+      de: "1.000 kWh",
     };
     for (const language of LANGUAGES) {
       expect(energyAmount(language, 1000), language).toBe(grouped[language]);
