@@ -43,7 +43,7 @@ async def test_a_full_picture_frame_is_the_same_as_no_frame(garage: Garage) -> N
     saved = await garage.ws("save_camera_frame", frame={"x": 0, "y": 0, "w": 1, "h": 1})
     assert saved["ok"] is True
     refs = charger_data(garage.hass, garage.entry_id).camera.wire_references(kia)
-    assert refs[0]["stale"] is False, "the same crop counted as stale"
+    assert len(refs) == 1, "the same crop: the picture still compares"
 
 
 async def test_a_reference_write_cut_short_leaves_no_partial_picture(garage: Garage, hass: HomeAssistant) -> None:
@@ -84,7 +84,7 @@ async def test_a_second_cancel_while_the_crop_is_removed_leaves_it(
     task.cancel()
     with pytest.raises(asyncio.CancelledError):
         await task
-    await hass.async_add_executor_job(time.sleep, 0.5)
+    await hass.async_add_executor_job(time.sleep, 1.5)  # the crop and the two references' crops are written
     folder = camera.references.folder / "tmp"
     left = await hass.async_add_executor_job(lambda: list(folder.glob("*")) if folder.exists() else [])
     for item in left:

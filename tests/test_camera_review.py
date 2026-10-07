@@ -76,7 +76,7 @@ async def test_a_query_cancelled_while_the_crop_is_written_leaves_no_picture_beh
     task.cancel()
     with pytest.raises(asyncio.CancelledError):
         await task
-    await hass.async_add_executor_job(time.sleep, 0.4)
+    await hass.async_add_executor_job(time.sleep, 1.5)  # the crop and the two references' crops are written
     folder = camera.references.folder / "tmp"
     left = await hass.async_add_executor_job(lambda: list(folder.glob("*")))
     for item in left:

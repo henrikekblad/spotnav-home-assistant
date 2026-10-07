@@ -118,7 +118,7 @@ async def test_reference_pictures_are_kept_privately_replaced_by_kind_and_remove
     again = ReferenceStore(hass, "entry_a")
     await again.async_load()
     assert again.references("car1") == [day, night], "kept across a restart"
-    assert day.as_wire() == {"kind": "day", "taken_at": "2026-10-07T12:00:00+00:00", "colour": True, "stale": False}
+    assert day.as_wire() == {"kind": "day", "taken_at": "2026-10-07T12:00:00+00:00", "colour": True}
 
     assert await again.async_delete("car1", "night") == 1
     assert not Path(again.path(night)).exists()

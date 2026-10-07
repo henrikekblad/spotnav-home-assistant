@@ -28,6 +28,7 @@ from homeassistant.config_entries import ConfigFlow
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import HomeAssistantError
 from homeassistant.setup import async_setup_component
+from homeassistant.util import dt as dt_util
 from PIL import Image
 from pytest_homeassistant_custom_component.common import (
     CLIENT_ID,
@@ -66,6 +67,18 @@ def picture(car: tuple[int, int, int], ground: tuple[int, int, int] = (60, 60, 6
     out = io.BytesIO()
     image.save(out, format="JPEG", quality=90)
     return out.getvalue()
+
+
+def same_picture(first: bytes, second: bytes) -> bool:
+    """Two JPEGs of the same scene: the same size and nearly the same average colour (encoding moves a little)."""
+    def average(data: bytes) -> tuple[tuple[int, int], tuple[float, ...]]:
+        with Image.open(io.BytesIO(data)) as image:
+            small = image.convert("RGB").resize((8, 8))
+            raw = small.tobytes()
+            return image.size, tuple(sum(raw[channel::3]) / 64 for channel in range(3))
+
+    (size_a, colour_a), (size_b, colour_b) = average(first), average(second)
+    return size_a == size_b and max(abs(a - b) for a, b in zip(colour_a, colour_b)) < 6
 
 
 class FakeCamera(Camera):
@@ -115,7 +128,9 @@ class FakeModel(AITaskEntity):
             raise self.errors.pop(0)
         *references, now = attachments
         labels = re.findall(r"picture \d+: (car_\d+)", task.instructions)
-        answer = self.answer or next((label for label, item in zip(labels, references) if item["data"] == now["data"]), "none")
+        answer = self.answer or next(
+            (label for label, item in zip(labels, references) if same_picture(item["data"], now["data"])), "none"
+        )
         return GenDataTaskResult(conversation_id=chat_log.conversation_id, data={"vehicle": answer, "confidence": self.confidence})
 
 
@@ -230,13 +245,17 @@ async def test_the_model_gets_the_crop_and_the_references_and_no_name_and_the_cr
     task = garage.model.tasks[0]
     assert [item["mime_type"] for item in task["attachments"]] == ["image/jpeg"] * 3
     references, crop = task["attachments"][:2], task["attachments"][2]
+    for item in [*references, crop]:
+        assert "/.storage/spotnav_camera/entry_a/tmp/" in str(item["path"]) and not item["path"].exists(), (
+            "every picture is a crop with the frame now, gone after the call"
+        )
+        with Image.open(io.BytesIO(item["data"])) as image:
+            assert image.size == (320, 240), "only the parking spot, the references as the snapshot"
     camera = charger_data(hass, garage.entry_id).camera
-    assert [item["path"] for item in references] == [
-        camera.references.path(camera.references.references(garage.world.cars[name])[0]) for name in ("Kia", "Tesla")
-    ]
-    assert "/.storage/spotnav_camera/" in str(crop["path"]) and not crop["path"].exists(), "the temporary crop is gone"
-    with Image.open(io.BytesIO(crop["data"])) as image:
-        assert image.size == (320, 240), "only the parking spot"
+    for name in ("Kia", "Tesla"):
+        stored = camera.references.path(camera.references.references(garage.world.cars[name])[0])
+        with Image.open(stored) as image:
+            assert image.size == (640, 240), "the reference is kept whole"
     for name, car in garage.world.cars.items():
         assert name not in task["instructions"] and car not in task["instructions"]
     assert set(task["structure"].schema) == {"vehicle", "confidence"}
@@ -466,19 +485,44 @@ async def test_at_night_the_camera_only_orders_the_buttons_however_sure(garage: 
     assert [a["title"] for a in garage.world.sent()[0]["data"]["actions"]] == ["Tesla", "Kia"]
 
 
-async def test_a_redrawn_frame_makes_older_references_stale_until_taken_again(garage: Garage) -> None:
+async def test_a_redrawn_frame_keeps_every_reference_and_crops_it_anew(garage: Garage) -> None:
     await garage.start()
-    saved = await garage.ws("save_camera_frame", frame={"x": 0.4, "y": 0.0, "w": 0.6, "h": 1.0})
+    camera = charger_data(garage.hass, garage.entry_id).camera
+    kia, tesla = garage.world.cars["Kia"], garage.world.cars["Tesla"]
+    before = camera.references.references(kia)[0].signature
+    saved = await garage.ws("save_camera_frame", frame={"x": 0.25, "y": 0.0, "w": 0.75, "h": 1.0})
     assert saved["ok"] is True
-    kia = garage.world.cars["Kia"]
-    block = charger_data(garage.hass, garage.entry_id).camera.block([kia])
-    assert block["references"][kia][0]["stale"] is True
-    garage.car_parks(RED)
+    after = camera.references.references(kia)[0]
+    assert after.signature != before, "its colour is taken anew with the new frame (a third is ground now)"
+    assert after.signature_frame == saved_frame(saved)
+    assert "stale" not in camera.block([kia])["references"][kia][0]
+    thumb = await garage.ws("reference_picture", vehicle_id=kia, kind="day")
+    assert (thumb["picture"]["width"], thumb["picture"]["height"]) == (240, 120), "the crop with the frame now"
+    garage.car_parks(BLUE)
     await garage.world.plug_in()
     await garage.settle()
-    assert garage.model.tasks == [], "stale pictures compare with nothing"
-    taken = await garage.ws("take_reference_picture", vehicle_id=kia, kind="day")
-    assert taken["references"][0]["stale"] is False
+    assert len(garage.model.tasks) == 1 and garage.world.settings.target.vehicle_id == tesla
+
+
+def saved_frame(answer: dict[str, Any]) -> Any:
+    from custom_components.spotnav.vehicles.camera_settings import Frame
+
+    return Frame.from_wire(answer["identify_camera"]["frame"])
+
+
+async def test_a_picture_an_earlier_release_cropped_is_dropped_once_the_frame_differs(
+    garage: Garage, hass: HomeAssistant
+) -> None:
+    from custom_components.spotnav.vehicles.camera_pictures import Reference
+
+    await garage.start(references=False)
+    camera = charger_data(hass, garage.entry_id).camera
+    kia = garage.world.cars["Kia"]
+    old = Reference(kia, "day", dt_util.utcnow(), "camera.norr", Frame.from_wire(FRAME), (0.7, 0.1, 0.1), Frame.from_wire(FRAME))
+    await camera.references.async_put(old, picture(RED))
+    assert camera.usable(kia) == [old], "it compares while its frame stands"
+    await garage.ws("save_camera_frame", frame={"x": 0.25, "y": 0.0, "w": 0.75, "h": 1.0})
+    assert camera.references.references(kia) == [], "its whole picture is gone: it is dropped"
 
 
 async def test_a_cars_own_report_corrects_the_camera_and_a_persons_answer_outranks_both(garage: Garage) -> None:
@@ -613,3 +657,20 @@ async def test_an_ai_task_entity_names_the_model_of_its_subentry(hass: HomeAssis
     assert ai_task_model(hass, "ai_task.cloud") == "gpt-5-mini"
     assert ai_task_model(hass, "ai_task.plain") is None
     assert ai_task_model(hass, "ai_task.unknown") is None
+
+
+async def test_a_frame_changed_in_the_settings_takes_the_colours_anew_before_the_query(garage: Garage, hass: HomeAssistant) -> None:
+    await garage.start()
+    camera = charger_data(hass, garage.entry_id).camera
+    kia = garage.world.cars["Kia"]
+    wider = Frame(0.25, 0.0, 0.75, 1.0)
+    await domain_data(hass).auto_store.async_update(
+        garage.entry_id,
+        mutate=lambda settings: replace(settings, identify_camera=replace(settings.identify_camera, frame=wider)),
+    )
+    assert camera.reference_signatures([kia])[kia] == [None], "a colour taken with another frame says nothing"
+    garage.car_parks(BLUE)
+    await garage.world.plug_in()
+    await garage.settle()
+    assert camera.references.references(kia)[0].signature_frame == wider, "taken anew, lazily, before the query"
+    assert garage.world.identifier.method == METHOD_CAMERA
