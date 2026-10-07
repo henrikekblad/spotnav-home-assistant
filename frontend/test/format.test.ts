@@ -57,6 +57,9 @@ describe("one stored energy amount", () => {
       nb: "1\u00a0000 kWh",
       sv: "1\u00a0000 kWh",
       de: "1.000 kWh",
+      nl: "1.000 kWh",
+      fr: "1\u202f000 kWh",
+      es: "1000 kWh",
     };
     for (const language of LANGUAGES) {
       expect(energyAmount(language, 1000), language).toBe(grouped[language]);
@@ -179,6 +182,12 @@ describe("a weekday in the plural", () => {
     ["fi", 7, "sunnuntaisin"],
     ["fi", 3, "keskiviikkoisin"],
     ["fi", 1, "maanantaisin"],
+    ["de", 7, "Sonntage"],
+    ["de", 3, "Mittwoche"],
+    ["nl", 7, "zondagen"],
+    ["es", 7, "domingos"],
+    ["es", 1, "lunes"],
+    ["fr", 7, "dimanches"],
   ] as const)("%s weekday %s is %s", (language, weekday, expected) => {
     expect(weekdayPlural(language, weekday)).toBe(expected);
   });
