@@ -145,21 +145,18 @@ describe("the page", () => {
 });
 
 describe("the number editor", () => {
-  it("says what the value is for above the field, offers 'not specified' and writes the car's target", async () => {
+  it("says what the value is for above the field, offers 'not specified' and writes the car's capacity", async () => {
     const { hass, element } = await openSettings();
-    await tap(element, "[data-vehicle='vehicle_ev6'] [data-edit='target']");
+    await tap(element, "[data-vehicle='vehicle_ev6'] [data-edit='capacity']");
     const form = dialog(element).querySelector<HTMLFormElement>("form[data-value-editor='number']")!;
-    const help = form.querySelector(`.${VISUAL_CLASSES.entityHelp}`)!;
     const field = form.querySelector<HTMLInputElement>("[data-value-field='number']")!;
-    expect(help.textContent).toBe("Follows the car to every charger");
-    expect(help.compareDocumentPosition(field) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
-    expect(field.value).toBe("80");
+    expect(field.value).toBe("77");
     expect(form.querySelector<HTMLInputElement>("[data-value-none]")?.checked).toBe(false);
-    field.value = "101";
+    field.value = "501";
     await submit(element);
-    expect(form.querySelector("[role='alert']")?.textContent).toBe("Between 0 and 100.");
+    expect(form.querySelector("[role='alert']")?.textContent).toBe("Between 1 and 500.");
     expect(hass.entityMessages.some((message) => message["type"] === "spotnav/update_vehicle")).toBe(false);
-    field.value = "85";
+    field.value = "80";
     hass.entityHandler = async (message) =>
       message["type"] === "spotnav/update_vehicle"
         ? read("vehicle", "v1", "update_vehicle_success.json")
@@ -167,8 +164,8 @@ describe("the number editor", () => {
     await submit(element);
     expect(hass.entityMessages.find((message) => message["type"] === "spotnav/update_vehicle")).toMatchObject({
       vehicle_id: "vehicle_ev6",
-      changes: { target_percent: 85 },
-      expected: { target_percent: 80 },
+      changes: { capacity_kwh: 80 },
+      expected: { capacity_kwh: 77 },
     });
   });
 

@@ -147,6 +147,12 @@ export const VISUAL_CLASSES = {
   settingsUnit: "spotnav-settings-unit",
   settingsTrack: "spotnav-settings-track",
   settingsFullMark: "spotnav-settings-full-mark",
+  settingsFloorMark: "spotnav-settings-floor-mark",
+  settingsFloorSegment: "spotnav-settings-floor-segment",
+  sliderBlocked: "spotnav-slider-blocked",
+  sliderEnds: "spotnav-slider-ends",
+  valueAmount: "spotnav-value-amount",
+  valueDefault: "spotnav-value-default",
   settingsHead: "spotnav-settings-head",
   settingsAmount: "spotnav-settings-amount",
   settingsPower: "spotnav-settings-power",
@@ -414,6 +420,64 @@ export const VISUAL_STYLES = `
   }
   .spotnav-settings-full-mark[hidden] {
     display: none;
+  }
+  /*
+   * The minimum charge level on the plan's target slider: the track from 0 to it in a darker tone of the
+   * fill, and "min 30 %" under the middle of that part (no line across the track, unlike the "full" mark).
+   */
+  .spotnav-settings-floor-segment {
+    position: absolute;
+    top: 0.4375rem;
+    left: 8px;
+    width: calc((100% - 16px) * var(--spotnav-mark, 0));
+    height: 0.375rem;
+    border-radius: 0.1875rem 0 0 0.1875rem;
+    background: color-mix(in srgb, var(--primary-color, #03a9f4) 55%, #000);
+    pointer-events: none;
+  }
+  .spotnav-settings-floor-segment[hidden] {
+    display: none;
+  }
+  .spotnav-settings-floor-mark::before {
+    display: none;
+  }
+  /*
+   * The minimum's own slider: past the car's target it cannot go, so that part of the track is hatched
+   * (from \`--spotnav-from\`, 0..1 of the track) and the target is marked where it starts.
+   */
+  .spotnav-slider-blocked {
+    position: absolute;
+    top: 0.4375rem;
+    left: calc(8px + (100% - 16px) * var(--spotnav-from, 1));
+    right: 8px;
+    height: 0.375rem;
+    border-radius: 0 0.1875rem 0.1875rem 0;
+    background: repeating-linear-gradient(
+      135deg,
+      var(--card-background-color, #fff) 0 3px,
+      var(--secondary-text-color, #727272) 3px 6px
+    );
+    pointer-events: none;
+  }
+  .spotnav-slider-ends {
+    display: flex;
+    justify-content: space-between;
+    padding: 0 2px;
+    font-size: 0.75em;
+    color: var(--secondary-text-color, #727272);
+  }
+  /* A percent editor's value, large above its slider; "(default)" muted after a target none stored. */
+  .spotnav-value-amount {
+    margin: 8px 0 4px;
+    font-size: 1.75em;
+    font-weight: 500;
+    font-variant-numeric: tabular-nums;
+    color: var(--primary-color, #03a9f4);
+  }
+  .spotnav-value-default {
+    font-size: 0.5em;
+    font-weight: 400;
+    color: var(--secondary-text-color, #727272);
   }
   .spotnav-settings-unit {
     white-space: nowrap;

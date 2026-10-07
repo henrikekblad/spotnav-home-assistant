@@ -187,9 +187,15 @@ under its heading; the car planned for is open first, and tapping another tab sh
 - **Onboard charger**: 1-phase or 3-phase (3-phase until you say otherwise). A charge uses the smaller of
   this and the charger's wiring, so a car with a single-phase onboard charger charges on one phase even
   on a three-phase wallbox.
-- **Minimum charge level**: **Off**, or 10 to 80 %. Below it SpotNav charges at once at full current, whatever the
-  strategy, unless you paused or stopped the charge. It needs the car's charge level, and says so next to the
-  value when the car has no level sensor. See [minimum charge level](target-soc.md#minimum-charge-level).
+- **Charge target**: the car's own target, 0 to 100 %, the same at every charger. Its editor sets it with a slider,
+  the value shown large above it. A car with none stored shows **Not set**; its editor opens at the target it is
+  planned with (80 %, or the car's charge limit when lower) marked **(default)**, and nothing is stored until you
+  move the slider and save.
+- **Minimum charge level**: **Off**, or 10 to 80 %. Its editor is a slider whose first stop is **Off**, then 10 to
+  80 % in steps of 5. It never goes past the charge target: the track beyond is hatched, with the target marked.
+  Below it SpotNav charges at once at full current, whatever the strategy, unless you paused or stopped the charge.
+  It needs the car's charge level, and says so next to the value when the car has no level sensor. See
+  [minimum charge level](target-soc.md#minimum-charge-level).
 - **Plug sensor** and **Location**: the car's own "plugged in" sensor and tracker, which tell which car is
   plugged in at a charger more than one car can charge at. Each is **Automatic**, one of the car's entities,
   or **None**. They are read only for that.
@@ -297,7 +303,8 @@ The **Plan** cell opens **Charging plan**.
   to the charger.
 - With a target SoC: the **Target charge level** slider, the vehicle (when there are several), the
   level now and how old it is or that it is estimated, the vehicle's charge limit when known, and
-  the **Energy needed**.
+  the **Energy needed**. When the car has a minimum charge level, the slider's track is darker from 0 to it,
+  with **min 30 %** under that part.
 
 If two clients change the settings at the same moment, the card says they changed elsewhere and
 offers **Use the server values** or **Apply my change again**; nothing is overwritten silently.

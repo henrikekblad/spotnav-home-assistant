@@ -23,6 +23,7 @@ import {
   type SettingsFormValues,
 } from "./settings";
 import { VISUAL_CLASSES as C, summaryValueClass } from "./visual-styles";
+import { floorSegment } from "./percent-slider";
 import { chargeCeiling, effectiveTarget, pythonRound, pythonRoundedAbove, targetNeedKwh } from "./target-need";
 import type { Soc, Vehicle } from "./validate";
 
@@ -793,10 +794,32 @@ export function settingsEditorBody(
       readOnly: form.readOnly,
       part: "target-value",
     });
+    // The car's minimum charge level on the track: 0 to it in a darker tone, "min 30 %" under that part.
+    const floorPart = element(doc, "span", C.settingsFloorSegment);
+    floorPart.setAttribute("aria-hidden", "true");
+    const floorMark = element(doc, "span", `${C.settingsFullMark} ${C.settingsFloorMark}`);
+    floorMark.dataset["part"] = "floor-mark";
+    floorMark.setAttribute("aria-hidden", "true");
+    targetRow.track.append(floorPart, floorMark);
+    const showFloor = (): void => {
+      const picked = pickedVehicle();
+      const floor = form.vehicles.find((entry) => entry.id === picked)?.min_percent ?? null;
+      const value = storedTarget();
+      const segment = floorSegment(floor, Number.isFinite(value) ? value : null);
+      floorPart.hidden = floorMark.hidden = segment === null;
+      if (segment !== null) {
+        floorPart.style.setProperty("--spotnav-mark", String(segment.end));
+        floorMark.style.setProperty("--spotnav-mark", String(segment.label));
+        floorMark.textContent = translate(language, "settings.soc.floorMark", {
+          percent: formatNumber(language, segment.percent, 0),
+        });
+      }
+    };
     // The target as stored, exactly (`80 %`, `80.5 %`), or as the slider sets it once moved.
     const showTarget = (): void => {
       const value = storedTarget();
       targetRow.show(Number.isFinite(value) ? `${formatNumber(language, value, 3)} %` : "");
+      showFloor();
     };
     targetRow.slider.addEventListener("input", () => {
       targetValue = targetRow.slider.value;
@@ -810,9 +833,9 @@ export function settingsEditorBody(
       if (kept !== undefined) {
         targetValue = String(kept);
         targetRow.slider.value = String(nearestStep(kept, TARGET_PERCENT_MIN, 1, TARGET_PERCENT_MAX));
-        showTarget();
         paint();
       }
+      showTarget();
     });
     block.append(targetRow.group, carEnds);
     if (soc !== null) {
