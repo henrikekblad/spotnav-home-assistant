@@ -42,6 +42,7 @@ from .execution.power_energy import fresh_power_w, integrated_energy_unique_id, 
 from .runtime import controller_for
 from .sessions.sensors import session_entities
 from .vehicles.choices import flow_language
+from .site.site_capacity import site_activity
 from .site.site_capacity_controller import SiteCapacityController
 from .site.solar_surplus import SiteSurplus
 from .vehicles.charger_inventory import (
@@ -334,7 +335,35 @@ class PlanTimeEntity(SpotNavChargingEntity, SensorEntity):
         }
 
 
-class SiteStateEntity(SpotNavSiteEntity, SensorEntity):
+class _BuiltOnChangeSiteSensor(SpotNavSiteEntity, SensorEntity):
+    """A site sensor whose state and attributes are built when the site changes, not when they are read.
+
+    Home Assistant times the read of a state and its attributes (and warns above 0.4 s); building them in
+    the site's change callback keeps that read a lookup, and a write Home Assistant makes on its own
+    reuses what was built.
+    """
+
+    async def async_added_to_hass(self) -> None:
+        self._rebuild()
+        self.async_on_remove(self.controller.add_listener(self._on_site_changed))
+
+    @callback
+    def _on_site_changed(self) -> None:
+        self._rebuild()
+        self.async_write_ha_state()
+
+    def _rebuild(self) -> None:
+        self._attr_native_value = self._build_value()
+        self._attr_extra_state_attributes = self._build_attributes()
+
+    def _build_value(self) -> Any:
+        raise NotImplementedError
+
+    def _build_attributes(self) -> dict[str, Any] | None:
+        raise NotImplementedError
+
+
+class SiteStateEntity(_BuiltOnChangeSiteSensor):
     """The site capacity controller's own state.
 
     One named state instead of several booleans. Raw per-phase detail (never a webhook ID or other
@@ -349,15 +378,13 @@ class SiteStateEntity(SpotNavSiteEntity, SensorEntity):
         super().__init__(entry, controller)
         self._attr_unique_id = f"{entry.entry_id}_site_state"
 
-    @property
-    def native_value(self) -> str:
+    def _build_value(self) -> str:
         return self.controller.result.state
 
     def _site_members(self) -> list[str]:
         return list(self.controller.config.get(CONF_CHARGER_ENTRY_IDS) or [])
 
-    @property
-    def extra_state_attributes(self) -> dict[str, Any]:
+    def _build_attributes(self) -> dict[str, Any]:
         result = self.controller.result
         snapshot = self.controller.evaluation.capability
         attributes: dict[str, Any] = {}
@@ -367,6 +394,9 @@ class SiteStateEntity(SpotNavSiteEntity, SensorEntity):
         return {
             **attributes,
             "reason": result.reason,
+            # The state in a person's words: `measuring`, `balancing` (active load balancing on) or
+            # `not_measuring`; the state itself stays `observing` when healthy.
+            "site_activity": site_activity(result.state, self.controller.active_control_enabled),
             "measurement_mode": result.measurement_mode,
             "confidence": result.confidence,
             "limiting_phase": result.limiting_phase,
@@ -586,7 +616,7 @@ class SiteSolarSurplusEntity(SpotNavSiteEntity, SensorEntity):
         self.async_write_ha_state()
 
 
-class ChargerProposedCurrentEntity(SpotNavSiteEntity, SensorEntity):
+class ChargerProposedCurrentEntity(_BuiltOnChangeSiteSensor):
     """One associated charger's proposed current from the site controller.
 
     Observation and comparison only; see `site/site_capacity_controller.py` for whether and when
@@ -618,13 +648,11 @@ class ChargerProposedCurrentEntity(SpotNavSiteEntity, SensorEntity):
                 return allocation
         return None
 
-    @property
-    def native_value(self) -> float | None:
+    def _build_value(self) -> float | None:
         allocation = self._allocation()
         return allocation.proposed_current_a if allocation else None
 
-    @property
-    def extra_state_attributes(self) -> dict[str, Any] | None:
+    def _build_attributes(self) -> dict[str, Any] | None:
         allocation = self._allocation()
         if allocation is None:
             return None

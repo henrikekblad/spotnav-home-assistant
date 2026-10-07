@@ -953,6 +953,41 @@ def test_a_measurement_that_arrives_within_the_grace_is_never_warned_about(caplo
     assert [r for r in caplog.records if "own measured current" in r.message] == []
 
 
+def test_no_warning_about_the_measurement_while_the_charger_reports_no_car(caplog) -> None:
+    """An OCPP charger reports no current while `Available`: nothing is missing until a car is plugged in."""
+    import logging
+    from unittest.mock import MagicMock
+
+    from custom_components.spotnav.execution.solar_execution import (
+        MEASUREMENT_WARNING_GRACE_S,
+        SolarExecutionCoordinator,
+    )
+
+    now = [0.0]
+    controller = MagicMock()
+    controller.connection.return_value = ("connected", None)
+    controller.adapter.vehicle_connected.return_value = False
+    coordinator = SolarExecutionCoordinator(
+        MagicMock(), "c1", controller, MagicMock(), MagicMock(), now=lambda: now[0]
+    )
+    caplog.set_level(logging.WARNING)
+
+    def warnings() -> list[str]:
+        return [r.message for r in caplog.records if "own measured current is missing" in r.message]
+
+    coordinator._log_transition(_missing_verdict())
+    for _ in range(5):
+        now[0] += MEASUREMENT_WARNING_GRACE_S
+        coordinator._log_transition(_missing_verdict())
+    assert warnings() == []
+
+    # A car plugged in and the charger still says nothing about its current: that is worth saying, once.
+    controller.adapter.vehicle_connected.return_value = True
+    coordinator._log_transition(_missing_verdict())
+    coordinator._log_transition(_missing_verdict())
+    assert len(warnings()) == 1
+
+
 # -- below the floor an OCPP charger is paused, never "written"; starts are capped; resume
 
 

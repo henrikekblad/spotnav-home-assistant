@@ -183,6 +183,7 @@ config entry id. Reading is open to every authenticated user; writes require an 
 | `spotnav/get_entity_config`, `spotnav/update_entity_config` | The entities a charger and its site use. |
 | `spotnav/choose_vehicle_soc` | Choose (or clear) a vehicle's state-of-charge sensor. |
 | `spotnav/update_vehicle` | A vehicle's battery capacity, consumption, onboard charger, target and minimum charge level. |
+| `spotnav/write_charge_limit` | Write a car's own charge limit (`vehicle_id`, `percent`), the webhook's `set_charge_limit` over the WebSocket: same entity, range checks and one write a minute per car. Answers `{"api_version": 1, "ok", "error", "retry_after_s"}`; refusals `spotnav_invalid_value` (not a car with a writable limit, or a percent it cannot take), `spotnav_too_soon` (with `retry_after_s`), `spotnav_charge_limit_failed` (the car's integration failed the write). |
 | `spotnav/update_site_settings` | Solar priority, forecast sources, active load balancing. |
 | `spotnav/get_debug_bundle` | The redacted installation-wide debug bundle (administrators only). |
 | `spotnav/get_card_info` | Which card the integration serves, for any signed-in user: `{"api_version": 1, "ok": true, "error": null, "spotnav_version", "card_bundle_hash"}`. The card compares the hash with the one in the URL it was loaded from. Not a dashboard field, so an older card is never handed a key it does not know. |

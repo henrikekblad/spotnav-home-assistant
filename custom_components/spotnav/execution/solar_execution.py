@@ -1653,9 +1653,16 @@ class SolarExecutionCoordinator:
         if self._born_at is None:
             self._born_at = self._now()
         signature: tuple[Any, ...] = (verdict.state, verdict.action, verdict.reason)
-        if signature == self._logged:
+        # No car: a charger reports no current of its own while it has none to measure (an OCPP connector's
+        # current while `Available`). Not said, and not remembered as said: once a car is plugged in with the
+        # measurement still missing, it is.
+        warn_missing = (
+            verdict.reason == "charger_measurement_missing"
+            and not self._warned_missing
+            and not self._car_unplugged()
+        )
+        if signature == self._logged and not warn_missing:
             return
-        warn_missing = verdict.reason == "charger_measurement_missing" and not self._warned_missing
         if warn_missing and self._now() - self._born_at < MEASUREMENT_WARNING_GRACE_S:
             # Still starting up: say nothing and remember nothing, so the next tick after the grace
             # warns if the measurement is still missing.

@@ -333,13 +333,13 @@ describe("the app's status words", () => {
 });
 
 describe("the car's charge limit", () => {
-  it("shows the limit the car reports, read-only: the card has no request that writes it", async () => {
+  it("shows the limit the car reports, and only where it reports one", async () => {
     const body = payload();
     body.vehicles[0].max_percent = 90;
     const { element } = await openSettings("sv", true, body);
     const row = dialog(element).querySelector<HTMLElement>("[data-vehicle='vehicle_ev6'] [data-row='charge_limit']")!;
-    expect(row.textContent).toBe("Laddgräns90 %");
-    expect(row.querySelector("button")).toBeNull();
+    expect(row.textContent).toContain("Laddgräns");
+    expect(row.textContent).toContain("90 %");
     dialog(element).querySelector<HTMLButtonElement>("[data-vehicle-tab='vehicle_niro']")!.click();
     expect(dialog(element).querySelector("[data-vehicle='vehicle_niro'] [data-row='charge_limit']")).toBeNull();
     expect(["en", "da", "nb", "fi"].map((l) => translate(l as "en", "settings.vehicle.limit"))).toEqual([
@@ -348,6 +348,66 @@ describe("the car's charge limit", () => {
       "Ladegrense",
       "Latausraja",
     ]);
+  });
+
+  it("is read-only without the capability, and for someone who is not an administrator", async () => {
+    const body = payload();
+    body.vehicles[0].max_percent = 90;
+    body.charger.capabilities.set_charge_limit = false;
+    const { element } = await openSettings("en", true, body);
+    expect(dialog(element).querySelector("[data-vehicle='vehicle_ev6'] [data-row='charge_limit'] button")).toBeNull();
+    document.body.innerHTML = "";
+    const allowed = payload();
+    allowed.vehicles[0].max_percent = 90;
+    allowed.charger.capabilities.set_charge_limit = true;
+    const reader = await openSettings("en", false, allowed);
+    expect(dialog(reader.element).querySelector("[data-vehicle='vehicle_ev6'] [data-row='charge_limit'] button")).toBeNull();
+  });
+
+  it("opens the number editor, 1 to 100 in whole percent as in the app, and writes the car's limit", async () => {
+    const body = payload();
+    body.vehicles[0].max_percent = 90;
+    body.charger.capabilities.set_charge_limit = true;
+    const { hass, element } = await openSettings("en", true, body);
+    await tap(element, "[data-vehicle='vehicle_ev6'] [data-edit='charge_limit']");
+    const form = dialog(element).querySelector<HTMLFormElement>("form[data-value-editor='number']")!;
+    const field = form.querySelector<HTMLInputElement>("[data-value-field='number']")!;
+    expect(field.value).toBe("90");
+    expect(form.querySelector(`.${VISUAL_CLASSES.entityHelp}`)?.textContent).toBe(
+      translate("en", "settings.vehicle.limitHelp"),
+    );
+    expect(form.querySelector("[data-value-none]")).toBeNull();
+    field.value = "0";
+    await submit(element);
+    expect(form.querySelector("[role='alert']")?.textContent).toBe("Between 1 and 100.");
+    field.value = "80";
+    hass.entityHandler = async (message) =>
+      message["type"] === "spotnav/write_charge_limit"
+        ? { api_version: 1, ok: false, error: "spotnav_too_soon", retry_after_s: 42 }
+        : read("entity_config", "v1", "get_direct.json");
+    await submit(element);
+    expect(hass.entityMessages.find((message) => message["type"] === "spotnav/write_charge_limit")).toMatchObject({
+      api_version: 1,
+      charger_id: "entry_a",
+      vehicle_id: "vehicle_ev6",
+      percent: 80,
+    });
+    expect(form.querySelector("[role='alert']")?.textContent).toBe(translate("en", "settings.vehicle.limitTooSoon"));
+    hass.entityHandler = async (message) =>
+      message["type"] === "spotnav/write_charge_limit"
+        ? { api_version: 1, ok: false, error: "spotnav_invalid_value", retry_after_s: null }
+        : read("entity_config", "v1", "get_direct.json");
+    await submit(element);
+    expect(form.querySelector("[role='alert']")?.textContent).toBe(translate("en", "settings.vehicle.limitFailed"));
+    hass.entityHandler = async (message) =>
+      message["type"] === "spotnav/write_charge_limit"
+        ? { api_version: 1, ok: true, error: null, retry_after_s: null }
+        : read("entity_config", "v1", "get_direct.json");
+    const reads = hass.messages.filter((message) => message["type"] === "spotnav/get_dashboard").length;
+    await submit(element);
+    // It took: the editor closes and the dashboard is read once to show the car's new limit.
+    expect(form.isConnected && form.closest("[hidden]") === null).toBe(false);
+    expect(hass.messages.filter((message) => message["type"] === "spotnav/get_dashboard").length).toBe(reads + 1);
   });
 });
 

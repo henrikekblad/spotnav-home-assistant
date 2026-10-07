@@ -502,13 +502,44 @@
         "name": "Planlagt slutt"
       },
       "site_state": {
-        "name": "Kapasitetsstatus"
+        "name": "Kapasitetsstatus",
+        "state": {
+          "disabled": "Deaktivert",
+          "not_configured": "Ikke satt opp",
+          "missing_measurements": "Måling mangler",
+          "stale_measurements": "Måling utdatert",
+          "invalid_measurements": "Ugyldig måling",
+          "observing": "Måler"
+        },
+        "state_attributes": {
+          "site_activity": {
+            "name": "Aktivitet",
+            "state": {
+              "measuring": "Måler, aktiv lastbalansering av",
+              "balancing": "Måler, aktiv lastbalansering på",
+              "not_measuring": "Måler ikke"
+            }
+          }
+        }
       },
       "solar_surplus": {
         "name": "Soloverskudd"
       },
       "charger_proposed_current": {
-        "name": "Foreslått strøm – {charger}"
+        "name": "Foreslått strøm – {charger}",
+        "state_attributes": {
+          "state": {
+            "name": "Status",
+            "state": {
+              "invalid_measurements": "Ugyldig måling",
+              "requested_current_unknown": "Ønsket strøm ukjent",
+              "capacity_available": "Det er plass",
+              "capacity_limited": "Begrenset",
+              "below_minimum_current": "Under minste strøm",
+              "not_requesting": "Lader ikke"
+            }
+          }
+        }
       },
       "auto_plan_state": {
         "name": "Status for automatisk plan",

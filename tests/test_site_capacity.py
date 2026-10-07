@@ -873,6 +873,22 @@ def test_headroom_below_the_configured_minimum_current_recommends_pausing() -> N
     assert result.allocations[0].state == "below_minimum_current"
 
 
+def test_a_charger_that_requests_nothing_is_not_requesting_not_below_its_minimum() -> None:
+    """0 A asked for is a charger not charging: said as such, whatever the headroom, and nothing reserved."""
+    from custom_components.spotnav.site.site_capacity import REASON_NO_CURRENT_REQUESTED
+
+    for other_load in (5.0, 20.0, 28.0):
+        config = _config(direct=_direct(other_load, other_load, other_load))
+        idle = _charger(requested_current_a=0.0, min_current_a=6.0)
+
+        allocation = calculate_site_capacity(config, [idle]).allocations[0]
+
+        assert allocation.proposed_current_a == 0.0
+        assert allocation.state == "not_requesting"
+        assert allocation.reason == REASON_NO_CURRENT_REQUESTED == "no_current_requested"
+        assert allocation.limiting_phase is None
+
+
 def test_one_stale_phase_marks_the_whole_site_stale_even_if_others_are_fresh() -> None:
     direct = DirectPhaseMeasurement(
         l1=PhaseValue(5.0, HEALTHY_AGE),

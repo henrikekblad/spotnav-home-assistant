@@ -96,6 +96,8 @@ import type { ChargeBarFacts } from "./charge-bar";
 import {
   CAPACITY_MAX_KWH,
   CAPACITY_MIN_KWH,
+  CHARGE_LIMIT_MAX_PERCENT,
+  CHARGE_LIMIT_MIN_PERCENT,
   CONSUMPTION_MAX_KWH_PER_10KM,
   CONSUMPTION_MIN_KWH_PER_10KM,
   fiscalRows,
@@ -2759,6 +2761,26 @@ export function createCardView(input: CardViewInput): CardView {
         },
         propertyWrite("consumption_kwh_per_10km"),
       );
+    const limit = row.max_percent;
+    if (limit !== null && model.setChargeLimit) {
+      // The app's editor: whole percent, 1-100; the car's integration may take a narrower range and refuses the rest.
+      edits.chargeLimit = () =>
+        editNumber(
+          translate(model.language, "settings.vehicle.limit"),
+          {
+            help: translate(model.language, "settings.vehicle.limitHelp"),
+            unit: "%",
+            current: limit,
+            min: CHARGE_LIMIT_MIN_PERCENT,
+            max: CHARGE_LIMIT_MAX_PERCENT,
+            decimals: 0,
+          },
+          async (value) =>
+            value === null || value === limit
+              ? null
+              : await writeValue({ kind: "chargeLimit", vehicleId: row.id, percent: value }),
+        );
+    }
     edits.onboard = () =>
       editSingle(
         translate(model.language, "settings.vehicle.onboardLegend"),
