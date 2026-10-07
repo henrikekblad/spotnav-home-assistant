@@ -74,6 +74,58 @@ def distinct_cars(first: Sequence[Signature], second: Sequence[Signature]) -> bo
     return all(colour_distance(a, b) >= COLOUR_DISTINCT for a in ours for b in theirs)
 
 
+#: Why the camera's answer did or did not decide alone (`camera_reason`), for the diagnostics.
+REASON_DECIDED: Final = "decided"
+REASON_ANSWER_NONE: Final = "answer_none"
+REASON_CONFIDENCE_LOW: Final = "confidence_low"
+REASON_NIGHT: Final = "night"
+REASON_COLOUR_MISMATCH: Final = "colour_mismatch"
+REASON_MISSING_REFERENCE: Final = "missing_reference"
+REASON_SIMILAR_COLOUR: Final = "similar_colour"
+
+
+def camera_reason(
+    answer: str | None,
+    confidence: str | None,
+    candidates: Sequence[str],
+    references: Mapping[str, Sequence[Signature]],
+    now: Signature,
+) -> tuple[str, float | None]:
+    """Why the camera's `answer` (a candidate, or `None` for none) at `confidence` does or does not decide alone among
+    the `candidates` the cars' own evidence left, given each car's reference pictures' signatures (a car missing
+    from `references`, or with an empty list, has no reference picture) and `now`, the colour of the picture now
+    (`None` at night: an infrared picture has none). With `similar_colour`, the colour distance from the named car
+    to the nearest other car (`None` when one of them has no coloured picture); else `None`.
+
+    In order: `answer_none` (no car, or one that is no candidate: it counts for nothing), `confidence_low` (not
+    "high"), `night`, `colour_mismatch` (the colour now is not nearest the named car's: a model that names the red
+    car for a white crop does not decide), `missing_reference` (a car the camera cannot recognise may be the one
+    standing there), `similar_colour` (another car is not clearly different in colour), else `decided`.
+    """
+    if answer is None or answer not in candidates:
+        return REASON_ANSWER_NONE, None
+    if confidence != CONFIDENCE_HIGH:
+        return REASON_CONFIDENCE_LOW, None
+    if now is None:
+        return REASON_NIGHT, None
+    if nearest_car(now, candidates, references) != answer:
+        return REASON_COLOUR_MISMATCH, None
+    if any(not references.get(car) for car in candidates):
+        return REASON_MISSING_REFERENCE, None
+    others = [other for other in candidates if other != answer]
+    if all(distinct_cars(references[answer], references[other]) for other in others):
+        return REASON_DECIDED, None
+    ours = [signature for signature in references[answer] if signature is not None]
+    distances = [
+        colour_distance(a, b)
+        for other in others
+        for a in ours
+        for b in references[other]
+        if b is not None
+    ]
+    return REASON_SIMILAR_COLOUR, (round(min(distances), 3) if distances else None)
+
+
 def camera_verdict(
     answer: str | None,
     confidence: str | None,
@@ -81,22 +133,12 @@ def camera_verdict(
     references: Mapping[str, Sequence[Signature]],
     now: Signature,
 ) -> CameraVerdict:
-    """What the camera's `answer` (a candidate, or `None` for none) at `confidence` counts for among the
-    `candidates` the cars' own evidence left, given each car's reference pictures' signatures (a car missing
-    from `references`, or with an empty list, has no reference picture). `now` is the colour of the picture now
-    (`None` at night: an infrared picture has none, so the camera never decides then), and it must be nearest
-    the named car's reference colour among the candidates: a model that names the red car for a white crop does
-    not decide."""
-    if answer is None or answer not in candidates:
+    """What the camera's `answer` counts for (`camera_reason` says why): it decides alone only for `decided`, names
+    no car for `answer_none`, and otherwise only puts its car first."""
+    reason, _ = camera_reason(answer, confidence, candidates, references, now)
+    if reason == REASON_ANSWER_NONE:
         return CameraVerdict()
-    if confidence != CONFIDENCE_HIGH or now is None:
-        return CameraVerdict(prefers=answer)
-    if nearest_car(now, candidates, references) != answer:
-        return CameraVerdict(prefers=answer)
-    if any(not references.get(car) for car in candidates):
-        # A car the camera cannot recognise may be the one standing there.
-        return CameraVerdict(prefers=answer)
-    if all(distinct_cars(references[answer], references[other]) for other in candidates if other != answer):
+    if reason == REASON_DECIDED:
         return CameraVerdict(decides=answer, prefers=answer)
     return CameraVerdict(prefers=answer)
 

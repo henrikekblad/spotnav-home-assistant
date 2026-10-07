@@ -7,6 +7,7 @@ import pytest
 
 from custom_components.spotnav.vehicles.camera_rule import (
     answer_structure,
+    camera_reason,
     camera_verdict,
     CameraVerdict,
     COLOUR_DISTINCT,
@@ -135,6 +136,36 @@ def test_no_car_or_a_car_that_is_no_candidate_counts_for_nothing() -> None:
     references = {"ev6": [RED], "tesla": [WHITE]}
     assert camera_verdict(None, "high", ["ev6", "tesla"], references, RED) == CameraVerdict()
     assert camera_verdict("volvo", "high", ["ev6", "tesla"], references, RED) == CameraVerdict()
+
+
+def test_the_reason_says_why_the_camera_decided_alone_or_did_not() -> None:
+    references = {"ev6": [RED], "tesla": [WHITE], "ioniq": [DARK_GREY], "zoe": [], "kangoo": [None]}
+    assert camera_reason("ev6", "high", ["ev6", "tesla"], references, RED) == ("decided", None)
+    assert camera_reason(None, "high", ["ev6", "tesla"], references, RED) == ("answer_none", None)
+    assert camera_reason("volvo", "high", ["ev6", "tesla"], references, RED) == ("answer_none", None)
+    assert camera_reason("ev6", "medium", ["ev6", "tesla"], references, RED) == ("confidence_low", None)
+    assert camera_reason("ev6", None, ["ev6", "tesla"], references, RED) == ("confidence_low", None)
+    assert camera_reason("ev6", "high", ["ev6", "tesla"], references, None) == ("night", None)
+    assert camera_reason("ev6", "high", ["ev6", "tesla"], references, WHITE) == ("colour_mismatch", None)
+    assert camera_reason("ev6", "high", ["ev6", "tesla", "zoe"], references, RED) == ("missing_reference", None)
+    reason, distance = camera_reason("ioniq", "high", ["ioniq", "ev6", "kangoo"], {**references, "ev6": [DARK_BLUE]}, DARK_GREY)
+    assert reason == "similar_colour" and distance == pytest.approx(0.1, abs=0.01), "the nearest other car's distance"
+    assert camera_reason("ev6", "high", ["ev6", "kangoo"], references, RED) == ("similar_colour", None), (
+        "a car with no colour cannot be told apart by colour"
+    )
+
+
+def test_the_verdict_follows_the_reason() -> None:
+    references = {"ev6": [RED], "tesla": [WHITE], "zoe": []}
+    for answer, confidence, candidates, now in [
+        ("ev6", "high", ["ev6", "tesla"], RED), (None, "high", ["ev6", "tesla"], RED),
+        ("ev6", "low", ["ev6", "tesla"], RED), ("ev6", "high", ["ev6", "tesla"], None),
+        ("ev6", "high", ["ev6", "tesla", "zoe"], RED),
+    ]:
+        reason, _ = camera_reason(answer, confidence, candidates, references, now)
+        verdict = camera_verdict(answer, confidence, candidates, references, now)
+        assert (verdict.decides is not None) == (reason == "decided")
+        assert (verdict.prefers is None) == (reason == "answer_none")
 
 
 def test_a_sure_answer_decides_only_when_the_colour_now_is_nearest_the_named_car() -> None:
