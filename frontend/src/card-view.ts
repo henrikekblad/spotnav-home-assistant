@@ -64,7 +64,9 @@ import {
   type MarketEditorForm,
 } from "./market-editor";
 import { settingsEditorBody, settingsTrigger, type SettingsEditorForm } from "./settings-editor";
-import { MIN_PERCENT_HIGH, MIN_PERCENT_LOW, MIN_PERCENT_STEP, type ReferencePicture, type Vehicle } from "./validate";
+import { type ReferencePicture, type Vehicle } from "./validate";
+import { floorEditor, targetEditor } from "./percent-editors";
+import { defaultTargetPercent } from "./percent-slider";
 import { vehicleSummary, type VehicleEdits, type VehicleReference } from "./vehicle-settings";
 import {
   multiEditor,
@@ -2699,41 +2701,44 @@ export function createCardView(input: CardViewInput): CardView {
             : undefined,
         );
     }
+    // The target is set with a slider; a car with none stored opens at the target it is planned with.
+    const plannedTarget = row.target_percent ?? defaultTargetPercent(row.max_percent);
     if (row.target_percent !== undefined) {
       const current = row.target_percent;
+      const save = propertyWrite("target_percent");
       edits.target = () =>
-        editNumber(
-          translate(model.language, "settings.soc.target"),
-          {
-            help: translate(model.language, "settings.vehicle.targetHelp"),
-            unit: "%",
-            current,
-            min: 0,
-            max: 100,
-            decimals: 0,
-            noneLabel: translate(model.language, "entity.notSet"),
-          },
-          propertyWrite("target_percent"),
+        openValueEditor(translate(model.language, "settings.soc.target"), (handlers) =>
+          targetEditor(
+            doc,
+            model.language,
+            {
+              current,
+              fallback: plannedTarget,
+              help: translate(model.language, "settings.vehicle.targetHelp"),
+              idPrefix,
+            },
+            save,
+            handlers,
+          ),
         );
     }
     if (row.min_percent !== undefined) {
-      const levels: number[] = [];
-      for (let level = MIN_PERCENT_LOW; level <= MIN_PERCENT_HIGH; level += MIN_PERCENT_STEP) {
-        levels.push(level);
-      }
+      const current = row.min_percent;
+      const save = propertyWrite("min_percent");
       edits.minimum = () =>
-        editSingle(
-          translate(model.language, "settings.vehicle.minimum"),
-          [
-            { value: "", label: translate(model.language, "settings.vehicle.minimumOff") },
-            ...levels.map((level) => ({ value: String(level), label: `${formatNumber(model.language, level, 0)} %` })),
-          ],
-          row.min_percent === null || row.min_percent === undefined ? "" : String(row.min_percent),
-          (() => {
-            const save = propertyWrite("min_percent");
-            return (chosen: string) => save(chosen === "" ? null : Number(chosen));
-          })(),
-          translate(model.language, "settings.vehicle.minimumHelp"),
+        openValueEditor(translate(model.language, "settings.vehicle.minimum"), (handlers) =>
+          floorEditor(
+            doc,
+            model.language,
+            {
+              current,
+              target: plannedTarget,
+              help: translate(model.language, "settings.vehicle.minimumHelp"),
+              idPrefix,
+            },
+            save,
+            handlers,
+          ),
         );
     }
     edits.capacity = () =>

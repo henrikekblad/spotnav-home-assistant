@@ -1,5 +1,5 @@
-// The car's minimum charge level in the card: a row on the car's settings ("Lägsta laddnivå", Off or 30 %) through
-// the generic one-of-a-few editor, written as the car's own property, a note when the car has no charge level, and
+// The car's minimum charge level in the card: a row on the car's settings ("Lägsta laddnivå", Off or 30 %) whose
+// editor sets it with a slider, written as the car's own property, a note when the car has no charge level, and
 // the status line while it charges.
 
 import { readFileSync } from "node:fs";
@@ -99,17 +99,16 @@ describe("the car's minimum charge level", () => {
     expect(value.textContent).toBe(`30 % · ${translate("en", "settings.vehicle.minimumNeedsSoc")}`);
   });
 
-  it("is chosen in the one-of-a-few editor and written as the car's own", async () => {
+  it("is set with a slider in its editor and written as the car's own", async () => {
     const { hass, element } = await openSettings(payload(null));
     dialog(element).querySelector<HTMLButtonElement>("[data-vehicle='vehicle_ev6'] [data-edit='min_percent']")!.click();
     await settle();
-    const form = dialog(element).querySelector<HTMLFormElement>("form[data-value-editor='single']")!;
-    const options = Array.from(form.querySelectorAll<HTMLInputElement>("[data-value-option]")).map(
-      (option) => option.dataset["valueOption"],
-    );
-    expect(options).toEqual(["", "10", "15", "20", "25", "30", "35", "40", "45", "50", "55", "60", "65", "70", "75", "80"]);
+    const form = dialog(element).querySelector<HTMLFormElement>("form[data-value-editor='floor']")!;
     expect(form.textContent).toContain(translate("en", "settings.vehicle.minimumHelp"));
-    form.querySelector<HTMLInputElement>("[data-value-option='30']")!.click();
+    const slider = form.querySelector<HTMLInputElement>("input[type='range']")!;
+    expect(slider.value).toBe("0");
+    slider.value = "5";
+    slider.dispatchEvent(new Event("input", { bubbles: true }));
     form.requestSubmit();
     await settle();
     expect(hass.entityMessages.find((message) => message["type"] === "spotnav/update_vehicle")).toMatchObject({
