@@ -51,6 +51,7 @@ describe("language resolution", () => {
     ["en-GB", "en"],
     ["de-DE", "de"],
     ["nl-BE", "nl"],
+    ["fr-FR", "fr"],
     ["it", "en"],
     ["", "en"],
     [null, "en"],
