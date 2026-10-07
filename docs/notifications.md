@@ -57,7 +57,7 @@ A short line in Home Assistant's language (English, Swedish, Danish, Norwegian, 
 with the charger's name, for example:
 
 > **SpotNav · Garage**
-> Laddningen är klar: målet 80 % är nått. 12,4 kWh laddat, 18,30 kr.
+> Charging complete: the target 80 % was reached. 12.4 kWh charged, 18.30 kr.
 
 Charging complete gives the energy and the cost of that charge from its session, a new plan its start
 time, planned energy and estimated cost. Tapping the notification opens Home Assistant on the dashboard
