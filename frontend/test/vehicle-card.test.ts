@@ -105,7 +105,9 @@ describe("the Plan popover's target editor", () => {
     const { element } = await openPlan(twoVehicles());
     const slider = q<HTMLInputElement>(element, "[data-part='soc'] input[type='range']")!;
     expect([slider.min, slider.max, slider.value]).toEqual(["0", "100", "80"]);
-    expect(q(element, "[data-soc='facts']")?.textContent).toBe("Now 40 % · Vehicle charge limit 80 %");
+    expect(q(element, "[data-soc='facts']")?.textContent).toBe("Now 40 % · Charge limit 80 %");
+    // One line: the reading's age is on it, never a line of its own.
+    expect(q(element, "[data-soc='reading']")).toBeNull();
     const facts = q(element, "[data-soc='facts']")!;
     const field = q(element, "[data-part='soc'] [role='group']")!;
     expect(facts.compareDocumentPosition(field) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
@@ -115,6 +117,12 @@ describe("the Plan popover's target editor", () => {
     const second = await openPlan(noLimit);
     expect(q(second.element, "[data-soc='facts']")?.textContent).toBe("Now 40 %");
 
+    // A limit of 100 % is no limit worth stating: the end of the track says it.
+    const full = twoVehicles();
+    full["soc"]["vehicle_max_percent"] = 100;
+    const atFull = await openPlan(full);
+    expect(q(atFull.element, "[data-soc='facts']")?.textContent).toBe("Now 40 %");
+
     const nothing = twoVehicles();
     Object.assign(nothing["soc"], { vehicle_max_percent: null, value: null, missing: ["soc"] });
     const third = await openPlan(nothing);
@@ -123,7 +131,7 @@ describe("the Plan popover's target editor", () => {
 
   it("says it in Swedish", async () => {
     const { element } = await openPlan(twoVehicles(), aRecord(), "sv");
-    expect(q(element, "[data-soc='facts']")?.textContent).toBe("Nu 40 % · Bilens laddgräns 80 %");
+    expect(q(element, "[data-soc='facts']")?.textContent).toBe("Nu 40 % · Laddgräns 80 %");
   });
 
   it("recomputes the energy while the slider moves, with the backend's formula", async () => {
@@ -134,35 +142,41 @@ describe("the Plan popover's target editor", () => {
     expect(needText(element)).toContain("17.1 kWh"); // (60 - 40) % of 77 kWh over 0.9
     drag(element, 50);
     expect(needText(element)).toContain("8.6 kWh");
-    drag(element, 40);
-    expect(needText(element)).toContain("0.0 kWh");
-    drag(element, 5);
-    expect(needText(element)).toContain("0.0 kWh");
+    drag(element, 41);
+    expect(needText(element)).toContain("0.9 kWh");
     drag(element, 70);
     expect(needText(element)).toContain("25.7 kWh");
   });
 
-  it("says no charging is needed when the target is at or below the charge now", async () => {
+  it("says no charging is needed when the target is at or below the charge now, with no 0.0 kWh under it", async () => {
     const { element } = await openPlan(twoVehicles());
+    drag(element, 60);
     expect(verdict(element).hidden).toBe(true);
     drag(element, 40);
     expect(verdict(element).textContent).toBe("No charging needed now");
+    expect(q(element, "[data-soc-row='need']")).toBeNull();
     drag(element, 20);
     expect(verdict(element).textContent).toBe("No charging needed now");
+    expect(q(element, "[data-soc-row='need']")).toBeNull();
     drag(element, 41);
     expect(verdict(element).hidden).toBe(true);
+    expect(needText(element)).toContain("0.9 kWh");
   });
 
-  it("says the charge stops at the vehicle's limit when the target is above it, and counts only up to it", async () => {
+  it("says the charge stops at the vehicle's limit when the target is at or above it, and counts only up to it", async () => {
     const { element } = await openPlan(twoVehicles());
+    drag(element, 79);
+    expect(verdict(element).hidden).toBe(true);
+    drag(element, 80);
+    expect(verdict(element).textContent).toBe("Charging to the vehicle's limit, 80 %");
     drag(element, 81);
     expect(verdict(element).textContent).toBe("Charging to the vehicle's limit, 80 %");
     expect(needText(element)).toContain("34.2 kWh");
     drag(element, 100);
     expect(verdict(element).textContent).toBe("Charging to the vehicle's limit, 80 %");
     expect(needText(element)).toContain("34.2 kWh");
-    drag(element, 80);
-    expect(verdict(element).hidden).toBe(true);
+    // Said once: no note under the slider that the car ends the charge at its limit as well.
+    expect(q(element, "[data-soc='car-ends']")).toBeNull();
   });
 
   it("says it in Swedish, with a decimal comma", async () => {

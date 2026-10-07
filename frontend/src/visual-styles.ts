@@ -140,6 +140,7 @@ export const VISUAL_CLASSES = {
   settingsReapply: "spotnav-settings-reapply",
   settingsReadOnly: "spotnav-settings-readonly",
   settingsNote: "spotnav-settings-note",
+  settingsFact: "spotnav-settings-fact",
   capacityBlock: "spotnav-capacity-block",
   socLink: "spotnav-soc-link",
   settingsConflict: "spotnav-settings-conflict",
@@ -509,6 +510,10 @@ export const VISUAL_STYLES = `
    * The help line right under a slider (what fills the battery, the car ends the charge) sits on it. Only
    * that note: the others follow a fieldset, a date or a checkbox row and keep their space above.
    */
+  /* The plan's info line under the vehicle: it breaks between its parts, never inside one. */
+  .spotnav-settings-fact {
+    white-space: nowrap;
+  }
   .spotnav-settings-field:has(> .spotnav-settings-track) + .spotnav-settings-note {
     margin: 0;
   }

@@ -22,7 +22,7 @@ import {
 } from "./settings";
 import { VISUAL_CLASSES as C, summaryValueClass } from "./visual-styles";
 import { floorSegment, placeMarks, targetTicks } from "./percent-slider";
-import { chargeCeiling, effectiveTarget, pythonRound, pythonRoundedAbove, targetNeedKwh } from "./target-need";
+import { chargeCeiling, effectiveTarget, targetNeedKwh } from "./target-need";
 import type { Soc, Vehicle } from "./validate";
 
 export interface SettingsEditorForm {
@@ -392,21 +392,6 @@ export function settingsEditorBody(
   };
 
   /**
-   * The note under a slider at its top (a target at or above the car's own limit, or every kWh the battery
-   * has room for): the car, not SpotNav, ends that charge. Hidden until shown.
-   */
-  function carEndsNote(limit: number | null): HTMLElement {
-    const note = element(
-      doc,
-      "p",
-      C.settingsNote,
-      translate(language, "settings.carEndsCharge", { percent: formatNumber(language, chargeCeiling(limit), 0) }),
-    );
-    note.hidden = true;
-    return note;
-  }
-
-  /**
    * The departure day below the time: "Every day" (no date) or "On a date" (up to seven days ahead). Choosing
    * the date starts at the next occurrence of the time. Appended to `into`.
    */
@@ -623,12 +608,7 @@ export function settingsEditorBody(
     facts.dataset["soc"] = "facts";
     const verdict = element(doc, "p", C.settingsNote);
     verdict.dataset["soc"] = "verdict";
-    const carEnds = element(doc, "p", C.settingsNote);
-    carEnds.dataset["soc"] = "car-ends";
-    carEnds.hidden = true;
     const need = element(doc, "div");
-    const reading = element(doc, "p", C.settingsNote);
-    reading.dataset["soc"] = "reading";
 
     const pickedVehicle = (): string => {
       const picked = vehicleSelect === null ? "" : (vehicleSelect as HTMLSelectElement).value;
@@ -640,8 +620,7 @@ export function settingsEditorBody(
       facts.replaceChildren();
       verdict.replaceChildren();
       need.replaceChildren();
-      reading.replaceChildren();
-      facts.hidden = verdict.hidden = reading.hidden = true;
+      facts.hidden = verdict.hidden = true;
       if (soc === null) {
         nowMark.hidden = limitMark.hidden = true;
         arrangeMarks();
@@ -658,15 +637,28 @@ export function settingsEditorBody(
       const draft = Number(targetValue.trim().replace(",", "."));
       const draftKnown = targetValue.trim() !== "" && Number.isFinite(draft);
 
+      // One line, as short as it can be said: "Now 92 % · Charge limit 80 % · 8 min ago". An estimate is
+      // "≈ 92 %" and always says how old the reading under it is; a reading says so once it is not fresh.
       const parts: string[] = [];
       if (now !== null) {
-        parts.push(translate(language, "settings.soc.factNow", { value: percent(now) }));
+        const level = `${soc.estimated ? "\u2248 " : ""}${percent(now)}`;
+        parts.push(translate(language, "settings.soc.factNow", { value: level }));
       }
-      if (limit !== null) {
+      if (limit !== null && chargeCeiling(limit) < 100) {
         parts.push(translate(language, "settings.soc.factLimit", { value: percent(chargeCeiling(limit)) }));
       }
+      if (now !== null && soc.age_s !== null && (soc.estimated || soc.age_s >= 90)) {
+        parts.push(ageSentence(soc.age_s));
+      }
       if (parts.length > 0) {
-        facts.textContent = parts.join(" \u00b7 ");
+        // Each part kept whole: a line too long for a phone breaks between them, never inside one.
+        parts.forEach((part, index) => {
+          if (index > 0) {
+            facts.append(doc.createTextNode(" \u00b7 "));
+          }
+          facts.append(element(doc, "span", C.settingsFact, part));
+        });
+        facts.dataset["estimated"] = String(soc.estimated);
         facts.hidden = false;
       }
       // The same two facts as ticks on the track, worded under it: "nu" (an estimate says so) and "gräns".
@@ -677,29 +669,16 @@ export function settingsEditorBody(
       limitMark.style.setProperty("--spotnav-mark", String(ticks.limit ?? 0));
       nowMark.textContent = translate(language, soc.estimated ? "settings.soc.markNowEstimated" : "settings.soc.markNow");
       arrangeMarks();
-      if (!other && now !== null && soc.age_s !== null) {
-        const age = ageSentence(soc.age_s);
-        const note = soc.estimated
-          ? translate(language, "settings.soc.estimatedFrom", { age })
-          : soc.age_s >= 90
-            ? translate(language, "settings.soc.readAge", { age })
-            : "";
-        if (note !== "") {
-          reading.textContent = note.charAt(0).toUpperCase() + note.slice(1);
-          reading.dataset["estimated"] = String(soc.estimated);
-          reading.hidden = false;
-        }
-      }
-      // At or above the car's own limit (100 % when it states none) the car ends the charge itself.
-      const ceiling = chargeCeiling(limit);
-      carEnds.hidden = !(draftKnown && pythonRound(draft) >= ceiling);
-      carEnds.textContent = translate(language, "settings.carEndsCharge", { percent: formatNumber(language, ceiling, 0) });
+      // As the app: a target already met says so and no "0.0 kWh" under it; one at or above the car's own
+      // limit says the charge ends there, once.
+      let met = false;
       if (draftKnown) {
         if (now !== null && effectiveTarget(draft, limit) <= now) {
           verdict.textContent = translate(language, "settings.soc.noNeed");
           verdict.dataset["verdict"] = "none";
           verdict.hidden = false;
-        } else if (limit !== null && pythonRoundedAbove(draft, limit)) {
+          met = true;
+        } else if (limit !== null && effectiveTarget(draft, limit) === chargeCeiling(limit)) {
           verdict.textContent = translate(language, "settings.soc.toLimit", { value: percent(chargeCeiling(limit)) });
           verdict.dataset["verdict"] = "limit";
           verdict.hidden = false;
@@ -719,13 +698,15 @@ export function settingsEditorBody(
                 efficiency: soc.efficiency,
               });
       }
-      need.append(
-        socRow(
-          "need",
-          translate(language, "settings.soc.need"),
-          kwh === null ? translate(language, "settings.soc.unknown") : `${formatFixed(language, kwh, 1)} kWh`,
-        ),
-      );
+      if (!met) {
+        need.append(
+          socRow(
+            "need",
+            translate(language, "settings.soc.need"),
+            kwh === null ? translate(language, "settings.soc.unknown") : `${formatFixed(language, kwh, 1)} kWh`,
+          ),
+        );
+      }
       if (other) {
         need.append(element(doc, "p", C.settingsNote, translate(language, "settings.soc.needAfterVehicle")));
       }
@@ -756,7 +737,6 @@ export function settingsEditorBody(
         );
       }
       block.append(facts);
-      block.append(reading);
     }
     const storedTarget = (): number => {
       const text = targetValue.trim();
@@ -858,7 +838,7 @@ export function settingsEditorBody(
       }
       showTarget();
     });
-    block.append(targetRow.group, carEnds);
+    block.append(targetRow.group);
     if (soc !== null) {
       block.append(verdict, need);
       paint();
