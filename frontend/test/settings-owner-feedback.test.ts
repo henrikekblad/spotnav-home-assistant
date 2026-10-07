@@ -1,13 +1,13 @@
 // The owner's feedback on the Settings page: a value's editor returns to where the page was, the AI Task entities
-// that share a name are told apart, the frame is "Beskär bild laddplats", a stale reference picture says what to
-// do, the texts the owner found redundant are gone, and two or more cars share one "Bil" section with tabs.
+// that share a name are told apart, the frame is "Beskär bild laddplats", the texts the owner found redundant
+// are gone, and two or more cars share one "Bil" section with tabs.
 
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { entityLabels, staleText } from "../src/camera-editor";
+import { entityLabels } from "../src/camera-editor";
 import { LANGUAGES, translate } from "../src/i18n";
 import { FakeHass, mountCard } from "./helpers";
 
@@ -169,16 +169,12 @@ describe("AI Task entities that share a name", () => {
 });
 
 describe("the owner's wording", () => {
-  it("crops the parking spot, and says what a stale picture means and what to do", async () => {
+  it("crops the parking spot", async () => {
     const { element } = await openSettings(twoCars());
     const row = page(element).querySelector("[data-row='identify_frame']")!;
     expect(row.textContent).toBe("Beskär bild laddplatsHela bilden");
     expect(translate("sv", "camera.frame.drawn")).toBe("Beskuren");
-    expect(staleText("sv", [{ kind: "day", taken_at: "x", colour: true, stale: true }])).toBe(
-      "Dagbild: tagen innan beskärningen ändrades – ta en ny.",
-    );
     for (const language of LANGUAGES) {
-      expect(translate(language, "reference.stale")).not.toBe("");
       expect(translate(language, "camera.frame.label")).not.toBe("");
     }
   });

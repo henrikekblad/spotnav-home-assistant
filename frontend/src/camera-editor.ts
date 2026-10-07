@@ -327,20 +327,6 @@ export function entityLabels(
 
 // ------------------------------------------------------------------------------------------------ reference pictures
 
-/** The line under a car's "Reference picture" row when a picture was cropped with another frame, else `null`. */
-export function staleText(language: Language, pictures: readonly ReferencePicture[]): string | null {
-  const lines = pictures
-    .filter((picture) => picture.stale)
-    .map((picture) => staleLine(language, picture.kind));
-  return lines.length === 0 ? null : lines.join(" ");
-}
-
-/** "Dagbild: tagen innan beskärningen ändrades – ta en ny." */
-function staleLine(language: Language, kind: "day" | "night"): string {
-  const picture = translate(language, kind === "day" ? "reference.dayPicture" : "reference.nightPicture");
-  return `${picture}: ${translate(language, "reference.stale")}.`;
-}
-
 /** The words a car's "Reference picture" row shows: which pictures it has. */
 export function referenceText(language: Language, pictures: readonly ReferencePicture[]): string {
   const kinds = pictures.map((picture) => translate(language, picture.kind === "day" ? "reference.day" : "reference.night"));
@@ -386,10 +372,6 @@ export function referenceEditor(
       C.settingRowHelp,
       `${translate(language, picture.kind === "day" ? "reference.day" : "reference.night")} · ${input.formatTaken(picture.taken_at)}`,
     );
-    if (picture.stale) {
-      figure.dataset["stale"] = "true";
-      caption.append(doc.createElement("br"), doc.createTextNode(staleLine(language, picture.kind)));
-    }
     figure.append(image, caption);
     thumbs.append(figure);
     void input.thumbnail(picture.kind).then((thumbnail) => {

@@ -339,17 +339,13 @@ describe("a car's reference pictures", () => {
     });
   });
 
-  it("say when a picture was taken with another frame, so it is taken again", async () => {
+  it("never call a picture out of date: it is kept whole and cropped with the selection drawn now", async () => {
     const payload = dashboard();
     payload["camera_identification"]["references"][EV6][0]["stale"] = true;
     const { element } = await openSettings(payload, "sv");
     const ev6 = carSection(openDialog(element)!, EV6);
     expect(ev6.querySelector("[data-row='reference']")?.textContent).toContain("Dag, Natt");
-    expect(ev6.querySelector("[data-help='reference']")?.textContent).toBe("Dagbild: tagen innan beskärningen ändrades – ta en ny.");
-    ev6.querySelector<HTMLButtonElement>("[data-edit='reference']")!.click();
-    await settle();
-    const form = openDialog(element)!.querySelector<HTMLFormElement>("form[data-value-editor='reference']")!;
-    expect(form.querySelector("figure[data-stale='true']")?.textContent).toContain(translate("sv", "reference.stale"));
+    expect(ev6.querySelector("[data-help='reference']")).toBeNull();
   });
 
   it("say why a picture could not be taken", async () => {

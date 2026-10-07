@@ -290,8 +290,6 @@ export interface ReferencePicture {
   kind: "day" | "night";
   taken_at: string;
   colour: boolean;
-  /** Cropped with another frame than the one drawn now: not used until it is taken again. */
-  stale: boolean;
 }
 
 export interface CameraIdentification {
@@ -1636,7 +1634,7 @@ function cameraIdentificationOrNull(root: Record<string, unknown>): CameraIdenti
         if (!isRecord(entry) || (entry.kind !== "day" && entry.kind !== "night") || typeof entry.taken_at !== "string") {
           return [];
         }
-        return [{ kind: entry.kind, taken_at: entry.taken_at, colour: entry.colour === true, stale: entry.stale === true }];
+        return [{ kind: entry.kind, taken_at: entry.taken_at, colour: entry.colour === true }];
       });
     }
     return { cameras: choices("cameras"), ai_tasks: choices("ai_tasks"), references };

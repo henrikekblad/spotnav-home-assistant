@@ -85,7 +85,6 @@ import {
   isWholePicture,
   referenceEditor,
   referenceText,
-  staleText,
   type CameraPicture,
 } from "./camera-editor";
 import { issueText } from "./status";
@@ -2613,7 +2612,6 @@ export function createCardView(input: CardViewInput): CardView {
     };
     return {
       text: referenceText(model.language, pictures),
-      stale: staleText(model.language, pictures),
       kinds: pictures.map((picture) => picture.kind),
       thumbnail,
       ...(input.isAdmin
