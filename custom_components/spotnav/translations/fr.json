@@ -620,7 +620,7 @@
         }
       },
       "fiscal_tax_policy": {
-        "name": "Règle de taxe sur l'énergie",
+        "name": "Règle de taxe sur l'électricité",
         "state": {
           "off": "Désactivé",
           "suggested": "Utiliser la suggestion de la zone",
@@ -658,7 +658,7 @@
         "name": "TVA"
       },
       "energy_tax": {
-        "name": "Taxe sur l'énergie"
+        "name": "Taxe sur l'électricité"
       },
       "transfer_fee": {
         "name": "Frais de réseau"
