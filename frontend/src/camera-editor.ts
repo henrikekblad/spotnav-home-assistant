@@ -292,16 +292,53 @@ export function frameEditor(
   return editor.form;
 }
 
+// ------------------------------------------------------------------------------------------------ entity choices
+
+/**
+ * How each camera or AI Task entity is told apart: its name alone when no other has it; otherwise the name with
+ * what tells it apart (its model, else its entity id) as `detail`.
+ */
+export function entityLabels(
+  choices: ReadonlyArray<{ entity_id: string; name: string; model: string | null }>,
+): Map<string, { name: string; detail: string | null }> {
+  const counts = new Map<string, number>();
+  for (const choice of choices) {
+    counts.set(choice.name, (counts.get(choice.name) ?? 0) + 1);
+  }
+  const models = new Map<string, number>();
+  for (const choice of choices) {
+    if (choice.model !== null) {
+      const key = `${choice.name}\u0000${choice.model}`;
+      models.set(key, (models.get(key) ?? 0) + 1);
+    }
+  }
+  return new Map<string, { name: string; detail: string | null }>(
+    choices.map((choice): [string, { name: string; detail: string | null }] => {
+      if ((counts.get(choice.name) ?? 0) < 2) {
+        return [choice.entity_id, { name: choice.name, detail: null }];
+      }
+      // A model two of them share does not tell them apart: the entity id does.
+      const model = choice.model;
+      const unique = model !== null && (models.get(`${choice.name}\u0000${model}`) ?? 0) < 2;
+      return [choice.entity_id, { name: choice.name, detail: unique ? model : choice.entity_id }];
+    }),
+  );
+}
+
 // ------------------------------------------------------------------------------------------------ reference pictures
 
 /** The line under a car's "Reference picture" row when a picture was cropped with another frame, else `null`. */
 export function staleText(language: Language, pictures: readonly ReferencePicture[]): string | null {
-  const stale = pictures.filter((picture) => picture.stale);
-  if (stale.length === 0) {
-    return null;
-  }
-  const kinds = stale.map((picture) => translate(language, picture.kind === "day" ? "reference.day" : "reference.night"));
-  return `${kinds.join(", ")}: ${translate(language, "reference.stale")}`;
+  const lines = pictures
+    .filter((picture) => picture.stale)
+    .map((picture) => staleLine(language, picture.kind));
+  return lines.length === 0 ? null : lines.join(" ");
+}
+
+/** "Dagbild: tagen innan beskärningen ändrades – ta en ny." */
+function staleLine(language: Language, kind: "day" | "night"): string {
+  const picture = translate(language, kind === "day" ? "reference.dayPicture" : "reference.nightPicture");
+  return `${picture}: ${translate(language, "reference.stale")}.`;
 }
 
 /** The words a car's "Reference picture" row shows: which pictures it has. */
@@ -351,7 +388,7 @@ export function referenceEditor(
     );
     if (picture.stale) {
       figure.dataset["stale"] = "true";
-      caption.append(doc.createElement("br"), doc.createTextNode(translate(language, "reference.stale")));
+      caption.append(doc.createElement("br"), doc.createTextNode(staleLine(language, picture.kind)));
     }
     figure.append(image, caption);
     thumbs.append(figure);

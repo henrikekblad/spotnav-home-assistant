@@ -281,6 +281,8 @@ export interface Dashboard {
 export interface EntityChoice {
   entity_id: string;
   name: string;
+  /** An AI Task entity's model, when Home Assistant names one (`null` otherwise, and for a camera). */
+  model: string | null;
 }
 
 /** One of a car's reference pictures, as listed (never the picture itself). */
@@ -1622,7 +1624,11 @@ function cameraIdentificationOrNull(root: Record<string, unknown>): CameraIdenti
     const choices = (key: string): EntityChoice[] =>
       arrayValue(value, key).map((entry) => {
         const item = record(entry);
-        return { entity_id: text(item, "entity_id"), name: text(item, "name") };
+        return {
+          entity_id: text(item, "entity_id"),
+          name: text(item, "name"),
+          model: typeof item.model === "string" && item.model !== "" ? item.model : null,
+        };
       });
     const references: Record<string, ReferencePicture[]> = {};
     for (const [vehicleId, pictures] of Object.entries(record(value.references))) {
