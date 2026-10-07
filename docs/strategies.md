@@ -168,7 +168,9 @@ cannot, and for a direct site without the total it says the meter's total grid p
   the car ended at, outlast a restart and a switch to another strategy and back. A charge something
   else turned off is an ordinary stop. A charger that is not charging draws nothing, whatever its
   current sensor still shows. A charger that says no car is plugged in is never started by the sun and
-  holds no share of the surplus; a charge the sun ran there simply ends, with no stop sent.
+  holds no share of the surplus; a charge the sun ran there simply ends, with no stop sent. Its status
+  says *Solar · surplus available – plug in the car* while the surplus would start a charge (the same
+  minimum a start waits for), else *Solar · no car plugged in*. Hybrid keeps showing its plan.
 - Switching strategy while a charge runs hands it over rather than stopping it. To **Solar**: when the
   sun's rules would keep the charge going (the surplus covers the charger's minimum, as for a charge
   that runs), the sun takes it over and sets its current from the surplus; otherwise it is stopped
