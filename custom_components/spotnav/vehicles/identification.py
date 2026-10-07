@@ -651,6 +651,9 @@ class VehicleIdentifier:
     def _begin(self, now: datetime, *, again: bool = False, trigger: str = TRIGGER_PLUG_IN) -> None:
         """Identify the car plugged in at `now`. `again`: another car than the one decided is here after a short
         unplug, so what was decided or answered before no longer applies."""
+        if self._session is not None and self._session.state == STATE_ASKING and self._notifier is not None:
+            # A question still open ends with this plug-in.
+            self._notifier.vehicle_question_settled()
         self._close()
         self._remember(None)
         settings = self._settings()
@@ -723,6 +726,7 @@ class VehicleIdentifier:
         session = self._session
         if session is not None and session.state == STATE_ASKING and self._notifier is not None:
             self._notifier.clear_vehicle_question(self.tag, session.phones)
+            self._notifier.vehicle_question_settled()
         if session is not None:
             # Unplugged with nothing decided: the current car was kept.
             self._record_decision(session.entry, self._current_vehicle(), METHOD_ASSUMED, assumed=ASSUMED_UNPLUGGED)
@@ -1000,6 +1004,7 @@ class VehicleIdentifier:
         session = self._session
         if session is not None and session.state == STATE_ASKING and self._notifier is not None:
             self._notifier.clear_vehicle_question(self.tag, session.phones)
+            self._notifier.vehicle_question_settled()
         if session is not None:
             session.state = STATE_DECIDED
             session.nonce = None
@@ -1052,6 +1057,7 @@ class VehicleIdentifier:
             switch = self._hass.async_create_task(self._async_switch(car, person=person), eager_start=True)
         if was_asking and self._notifier is not None:
             self._notifier.retire_vehicle_question(self.tag, session.phones, wording, session.names.get(car, car))
+            self._notifier.vehicle_question_settled()
         return switch
 
     async def _async_switch(self, car: str, *, person: bool) -> None:
@@ -1117,7 +1123,8 @@ class VehicleIdentifier:
             # Nothing was being identified (identification off, one car known, decided before a restart), or the
             # car came after the question did: the correction is the plug-in's decision, kept as an answer would
             # be. An open question goes off the phones it was sent to, as for any answer.
-            if session is not None and session.state == STATE_ASKING:
+            asking = session is not None and session.state == STATE_ASKING
+            if asking:
                 retire_on = session.phones
             settings = self._settings()
             cars = self._candidates(settings)
@@ -1133,6 +1140,8 @@ class VehicleIdentifier:
             if retire_on and self._notifier is not None:
                 name = self._session.names.get(vehicle_id, vehicle_id)
                 self._notifier.retire_vehicle_question(self.tag, retire_on, "chosen", name)
+            if asking and self._notifier is not None:
+                self._notifier.vehicle_question_settled()
         switch = self._settle(vehicle_id, METHOD_ANSWERED, "chosen")
         if switch is not None:
             await switch
@@ -1176,8 +1185,10 @@ class VehicleIdentifier:
         session.state = STATE_DECIDED
         session.listening = False
         session.nonce = None
-        if self._notifier is not None and current is not None:
-            self._notifier.retire_vehicle_question(self.tag, session.phones, "kept", session.names.get(current, current))
+        if self._notifier is not None:
+            if current is not None:
+                self._notifier.retire_vehicle_question(self.tag, session.phones, "kept", session.names.get(current, current))
+            self._notifier.vehicle_question_settled()
 
 
 def _camera_error(err: BaseException) -> str:

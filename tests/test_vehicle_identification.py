@@ -590,11 +590,11 @@ async def test_the_diagnostics_say_how_when_and_by_which_entity_but_never_where(
 async def test_the_app_is_woken_for_the_question(world: World) -> None:
     await world.start()
     push = charger_data(world.hass, world.entry.entry_id).push
-    events: list[str] = []
-    push.async_event = lambda event, now: events.append(event)  # type: ignore[method-assign]
+    questions: list[Any] = []
+    push.async_question = questions.append  # type: ignore[method-assign]
     await world.plug_in()
     await world.later(ASK_AFTER_S + 5)
-    assert events.count("vehicle_identify") == 1
+    assert len(questions) == 1
 
 
 def test_a_session_keeps_how_its_car_was_decided() -> None:
