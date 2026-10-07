@@ -147,10 +147,11 @@ by the same camera at the same spot works, day and night. So SpotNav compares pi
 3. **AI task**: the AI Task entity that compares the pictures, or Home Assistant's default one. When several have
    one name (three "Ollama AI Task"), the card shows each one's model, or else its entity id. It must take
    pictures (attachments).
-4. **Per car, Reference picture**: with that car parked at the charger, tap **Take reference picture now**.
-   **Take night picture** adds a picture in the dark, for the camera's infrared. A new picture replaces the old one
-   of its kind, and **Delete** removes the car's pictures. A car without a reference picture is never recognised by
-   the camera. The picture is kept whole, and it is cropped with the selection drawn at the time it is compared,
+4. **Per car, Reference picture**: the dialog has a **Day** and a **Night** slot. With that car parked at the
+   charger, tap **Take day picture**; in the dark, **Take night picture** adds one for the camera's infrared. Over a
+   picture the button is **Retake**, and **Delete** under it removes only that picture. The slot updates in place
+   and the dialog stays open until **Close**. A car without a reference picture is never recognised by the
+   camera. The picture is kept whole, and it is cropped with the selection drawn at the time it is compared,
    so you can change the crop at any time without taking the pictures again; its thumbnail shows it cropped as it
    is compared.
 
