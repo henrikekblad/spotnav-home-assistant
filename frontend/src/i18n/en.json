@@ -261,7 +261,7 @@
   "entity.energy.meter": "Energy meter (kWh)",
   "entity.energy.power": "Power (W) — SpotNav calculates the energy",
   "entity.energy.none": "None",
-  "entity.notice.estimated": "The current is estimated from power (uppskattad), assuming a power factor of {pf} or better. The estimate is never below the real current at that power factor or better, and understates it below that. Add the meter's current, apparent power or reactive power for an exact value.",
+  "entity.notice.estimated": "The current is estimated from power, assuming a power factor of {pf} or better. The estimate is never below the real current at that power factor or better, and understates it below that. Add the meter's current, apparent power or reactive power for an exact value.",
   "entity.notice.estimatedShort": "Estimated",
   "entity.warning.updateInterval": "{integration} updates every {seconds} s, slower than the maximum measurement age.",
   "entity.warning.updateIntervalOption": "Lower it with \"{option}\" in that integration.",

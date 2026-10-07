@@ -1,0 +1,110 @@
+{
+  "notifications": {
+    "title": "SpotNav · {name}",
+    "stopped.not_started": "Der Ladevorgang hat nicht wie geplant begonnen.",
+    "stopped.stopped": "Der Ladevorgang wurde in einem geplanten Zeitfenster beendet.",
+    "stopped.charger_unavailable": "Die Ladestation ist in einem geplanten Zeitfenster nicht erreichbar.",
+    "stopped.vehicle_not_requesting": "Das Auto nimmt in einem geplanten Zeitfenster keinen Strom auf.",
+    "stopped.held_by_charger": "Der eigene Zeitplan der Ladestation hält den geplanten Ladevorgang zurück.",
+    "stopped.charger_ignores_stop": "Die Ladestation lädt weiter, obwohl sie gestoppt wurde. Stoppe sie an der Ladestation oder ziehe das Kabel ab.",
+    "stopped.charger_disabled": "Die Ladestation ist deaktiviert, daher kann der geplante Ladevorgang nicht beginnen.",
+    "at_risk": "Das Laden wird bis zur Abfahrt nicht fertig.",
+    "at_risk.time": "Das Laden wird bis zur Abfahrt um {time} nicht fertig.",
+    "complete.target": "Laden abgeschlossen: Das Ladeziel von {percent} ist erreicht.",
+    "complete.energy": "Laden abgeschlossen: Die gewünschte Energie wurde geladen.",
+    "complete.plan_done": "Der geplante Ladevorgang ist beendet.",
+    "complete.vehicle_full": "Laden abgeschlossen: Das Auto ist voll.",
+    "started": "Ladevorgang gestartet.",
+    "test": "Testbenachrichtigung von SpotNav: Benachrichtigungen erreichen dieses Telefon.",
+    "started.until": "Ladevorgang gestartet, bis {time}.",
+    "plugged_in": "Das Auto ist angeschlossen.",
+    "unplugged": "Das Auto ist abgesteckt.",
+    "plan_installed": "Neuer Ladeplan: Laden ab {time}.",
+    "identify.ask": "Welches Auto ist angeschlossen?",
+    "identify.open": "SpotNav öffnen",
+    "identify.chosen": "{vehicle} ausgewählt.",
+    "identify.recognised": "{vehicle} automatisch ausgewählt.",
+    "identify.kept": "{vehicle} beibehalten.",
+    "charged": "{kwh} geladen",
+    "planned": "{kwh} geplant",
+    "cost": "etwa {cost}"
+  },
+  "add_charger": {
+    "hint": "Ladestation hinzufügen: Einstellungen → Geräte & Dienste → SpotNav → Eintrag hinzufügen → Ladestation; sie bietet dann an, diesem Standort beizutreten."
+  },
+  "resolve_vehicle": {
+    "device": "{name} -- {count} mögliche Batteriesensoren",
+    "dismiss": "Das ist kein Fahrzeug (nicht mehr melden)"
+  },
+  "charger_detected": {
+    "external": "Ein anderer Regler (evcc oder openWB) ist installiert und steuert diese Ladestation womöglich schon. Es wird nichts vorgeschlagen: Wähle nur, was SpotNav sicher steuern soll.",
+    "external_installed": "evcc oder openWB ist in Home Assistant installiert und steuert diese Ladestation womöglich schon. Schalte es für diese Ladestation ab, sonst arbeiten SpotNav und es gegeneinander.",
+    "disabled": "Standardmäßig deaktiviert, aber nützlich (sie werden aktiviert, wenn das Kästchen unten angehakt bleibt):",
+    "balanced": "Perific verteilt die Last dieser Ladestation über die Zaptec-Cloud und setzt denselben verfügbaren Strom, den auch SpotNav setzen würde. Es wird kein Strom vorgeschlagen: SpotNav startet und stoppt die Ladestation nur.",
+    "controller": "{name} steuert ebenfalls Ladestationen; schalte es für diese Ladestation ab, sonst arbeiten SpotNav und {name} gegeneinander.",
+    "cloud": "Wenn die Ladestation für intelligentes Laden mit Tibber (oder einer anderen App) verbunden ist, schalte das ab: Home Assistant sieht es nicht, und es arbeitet gegen SpotNav."
+  },
+  "measurement_reason": {
+    "mode": "Die Messart wurde geändert, daher muss die Messung eingerichtet werden.",
+    "chargers": "Die Ladestationen wurden geändert, daher muss ihre Phasenbelegung eingerichtet werden.",
+    "measurement": "Die gespeicherte Messung ist unvollständig und muss eingerichtet werden."
+  },
+  "site_form": {
+    "default_name": "Standort"
+  },
+  "site_confirm": {
+    "meter": "Netzzähler",
+    "power_current_calculated": "Leistung pro Phase, Strom berechnet",
+    "power_current": "Leistung und Strom pro Phase",
+    "current": "Strom pro Phase",
+    "current_entity": "eine Entität mit dem Strom pro Phase",
+    "join_wiring": "**Phasenbelegung:** 3 Phasen, gemessener Strom von {source}",
+    "join_unknown": "SpotNav kann nicht erkennen, wie diese Ladestation angeschlossen ist, daher wird sie nicht automatisch hinzugefügt. Füge sie in den Einstellungen des Standorts hinzu.",
+    "reactive_found": "**Blindleistung:** gefunden",
+    "reactive_missing": "**Blindleistung:** nicht gefunden (Strom mit Leistungsfaktor 0,9 geschätzt)",
+    "battery": "**Hausbatterie:** {name} (Laden positiv)",
+    "no_battery": "**Hausbatterie:** keine",
+    "charger": "**Ladestation:** {name} – {phases} Phasen, gemessener Strom von {source}",
+    "label_power": "{name} – Leistung pro Phase (Strom berechnet)",
+    "label_power_current": "{name} – Leistung und Strom pro Phase",
+    "label_current": "{name} – Strom pro Phase",
+    "ocpp_control": "**Ladesteuerung:** {name}",
+    "ocpp_current_number": "**Strom gesetzt über:** die Strom-Zahl der Ladestation ({name})",
+    "ocpp_current_config": "**Strom gesetzt über:** OCPP ChangeConfiguration",
+    "ocpp_energy": "**Energiezähler:** {name} (automatisch gefunden)",
+    "ocpp_energy_none": "keiner gefunden"
+  },
+  "candidate_reason": {
+    "attributes_device_class_and_unit_match": "Geräteklasse Strom und eine unterstützte Einheit",
+    "attributes_unit_match_only": "eine unterstützte Stromeinheit",
+    "attributes_historical_match": "Daten pro Phase im Verlauf gesehen, derzeit nicht gemessen",
+    "attributes_profile_match": "die eigenen Stromattribute pro Phase der Ladestations-Integration",
+    "separate_entities_device_class_and_unit_match": "Geräteklasse Strom und eine unterstützte Einheit",
+    "separate_entities_device_class_match_only": "nur Geräteklasse Strom",
+    "separate_entities_unit_match_only": "nur eine unterstützte Stromeinheit",
+    "separate_entities_name_match_only": "nur Namensmuster",
+    "separate_entities_profile_match": "die eigenen Stromsensoren pro Phase der Ladestations-Integration",
+    "possible_inverter_output_not_confirmed_as_grid_input": "sieht nach Wechselrichter-/Solarausgang aus, nicht als Netzbezug bestätigt"
+  },
+  "candidate_confidence": {
+    "high": "hohe Sicherheit",
+    "medium": "mittlere Sicherheit",
+    "low": "geringe Sicherheit"
+  },
+  "candidate_representation": {
+    "separate_entities": "drei Entitäten",
+    "attributes": "Attribute"
+  },
+  "choice": {
+    "manual": "Manuell wählen",
+    "manual_separate_entities": "Manuell wählen (drei separate Entitäten, eine pro Phase)",
+    "manual_attributes": "Eine Entität und ihre Phasenattribute manuell eingeben",
+    "skip": "Vorerst überspringen (später einrichten)"
+  },
+  "current_control": {
+    "none": "Keinen Strom setzen",
+    "change_configuration": "ChangeConfiguration (AssignedCurrent)",
+    "number": "Die Strom-Zahl der Ladestation, innerhalb ihrer Schreibgrenzen",
+    "easee_dynamic_limit": "Dynamische Stromgrenze von Easee (begrenzte Änderungsrate)"
+  }
+}

@@ -21,7 +21,7 @@ from custom_components.spotnav.const import DOMAIN
 from .helpers import create_ocpp_charger_device, make_entry, make_ocpp_config_entry, make_site_entry
 
 TRANSLATIONS = Path(__file__).parents[1] / "custom_components" / "spotnav" / "translations"
-LANGUAGES = ("en", "sv", "da", "nb", "fi")
+LANGUAGES = ("en", "sv", "da", "nb", "fi", "de", "nl", "fr", "es")
 
 
 @pytest.fixture

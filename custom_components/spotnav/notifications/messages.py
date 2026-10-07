@@ -45,6 +45,8 @@ def money_text(language: str, money: Money) -> str:
     unit = _CURRENCY.get(money.currency, money.currency)
     if unit in ("€", "£") and language == "en":
         return f"{unit}{amount}"
+    if unit in ("€", "£") and language == "nl":
+        return f"{unit} {amount}"
     return f"{amount} {unit}"
 
 

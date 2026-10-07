@@ -52,13 +52,15 @@ def test_a_missing_key_falls_back_to_english_key_by_key(tmp_path: Path) -> None:
 
 
 def test_an_unknown_language_reads_english() -> None:
-    assert texts.table("de", "site_form")["default_name"] == "Site"
+    assert texts.table("it", "site_form")["default_name"] == "Site"
+    assert texts.table("de", "site_form")["default_name"] == "Standort"
     assert texts.table("sv", "site_form")["default_name"] == "Anläggning"
 
 
 def test_home_assistants_language_picks_a_file() -> None:
-    assert [texts.language_of(code) for code in ("sv", "sv-SE", "nb", "no", "nn", "da", "fi", "de", "en_GB", None)] == [
-        "sv", "sv", "nb", "nb", "nb", "da", "fi", "en", "en", "en",
+    codes = ("sv", "sv-SE", "nb", "no", "nn", "da", "fi", "de", "nl-BE", "fr_FR", "es", "it", "en_GB", None)
+    assert [texts.language_of(code) for code in codes] == [
+        "sv", "sv", "nb", "nb", "nb", "da", "fi", "de", "nl", "fr", "es", "en", "en", "en",
     ]
 
 

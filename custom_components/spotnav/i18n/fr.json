@@ -1,0 +1,110 @@
+{
+  "notifications": {
+    "title": "SpotNav · {name}",
+    "stopped.not_started": "La charge n'a pas démarré comme prévu.",
+    "stopped.stopped": "La charge s'est arrêtée pendant une plage planifiée.",
+    "stopped.charger_unavailable": "La borne est indisponible pendant une plage planifiée.",
+    "stopped.vehicle_not_requesting": "La voiture ne prend pas de courant pendant une plage planifiée.",
+    "stopped.held_by_charger": "La programmation propre à la borne retient la charge planifiée.",
+    "stopped.charger_ignores_stop": "La borne continue de charger bien qu'elle ait été arrêtée. Arrêtez-la sur la borne ou débranchez la voiture.",
+    "stopped.charger_disabled": "La borne est désactivée, la charge planifiée ne peut donc pas démarrer.",
+    "at_risk": "La charge ne sera pas prête pour le départ.",
+    "at_risk.time": "La charge ne sera pas prête pour le départ à {time}.",
+    "complete.target": "Charge terminée : l'objectif de {percent} a été atteint.",
+    "complete.energy": "Charge terminée : l'énergie demandée a été fournie.",
+    "complete.plan_done": "La charge planifiée est terminée.",
+    "complete.vehicle_full": "Charge terminée : la voiture est pleine.",
+    "started": "Charge démarrée.",
+    "test": "Notification de test de SpotNav : les notifications arrivent sur ce téléphone.",
+    "started.until": "Charge démarrée, jusqu'à {time}.",
+    "plugged_in": "La voiture est branchée.",
+    "unplugged": "La voiture est débranchée.",
+    "plan_installed": "Nouveau plan : charge à partir de {time}.",
+    "identify.ask": "Quelle voiture est branchée ?",
+    "identify.open": "Ouvrir SpotNav",
+    "identify.chosen": "{vehicle} sélectionnée.",
+    "identify.recognised": "{vehicle} sélectionnée automatiquement.",
+    "identify.kept": "{vehicle} conservée.",
+    "charged": "{kwh} chargés",
+    "planned": "{kwh} planifiés",
+    "cost": "environ {cost}"
+  },
+  "add_charger": {
+    "hint": "Ajoutez une borne : Paramètres → Appareils et services → SpotNav → Ajouter une entrée → Borne ; elle proposera de rejoindre ce site."
+  },
+  "resolve_vehicle": {
+    "device": "{name} -- {count} capteurs de batterie possibles",
+    "dismiss": "Ce n'est pas un véhicule (ne plus le signaler)"
+  },
+  "charger_detected": {
+    "external": "Un autre contrôleur (evcc ou openWB) est installé et pilote peut-être déjà cette borne. Rien n'est suggéré : ne choisissez que ce que SpotNav doit piloter selon vous avec certitude.",
+    "external_installed": "evcc ou openWB est installé dans Home Assistant et pilote peut-être déjà cette borne. Désactivez-le pour cette borne, sinon SpotNav et lui entreront en conflit.",
+    "disabled": "Désactivées par défaut, et utiles (elles sont activées si vous laissez la case ci-dessous cochée) :",
+    "balanced": "Perific équilibre l'installation de cette borne via le cloud de Zaptec et règle le même courant disponible que SpotNav le ferait. Aucun courant n'est suggéré : SpotNav se contente de démarrer et d'arrêter la borne.",
+    "controller": "{name} pilote aussi des bornes ; désactivez-le pour cette borne, sinon SpotNav et {name} entreront en conflit.",
+    "cloud": "Si la borne est liée à Tibber (ou à une autre application) pour la charge intelligente, désactivez cela : Home Assistant ne peut pas le voir, et cela entrera en conflit avec SpotNav."
+  },
+  "measurement_reason": {
+    "mode": "Le mode de mesure a changé, la mesure doit donc être configurée. ",
+    "chargers": "Les bornes ont changé, leur câblage des phases doit donc être configuré. ",
+    "measurement": "La mesure enregistrée est incomplète, elle doit donc être configurée. "
+  },
+  "site_form": {
+    "default_name": "Site"
+  },
+  "site_confirm": {
+    "meter": "Compteur réseau",
+    "power_current_calculated": "puissance par phase, courant calculé",
+    "power_current": "puissance et courant par phase",
+    "current": "courant par phase",
+    "current_entity": "une entité avec le courant par phase",
+    "join_wiring": "**Câblage des phases :** 3 phases, courant mesuré depuis {source}",
+    "join_unknown": "SpotNav ne peut pas déterminer le câblage de cette borne, elle n'est donc pas ajoutée automatiquement. Ajoutez-la depuis les paramètres du site.",
+    "reactive_found": "**Puissance réactive :** trouvée",
+    "reactive_missing": "**Puissance réactive :** non trouvée (courant estimé avec un facteur de puissance de 0,9)",
+    "battery": "**Batterie domestique :** {name} (charge en positif)",
+    "no_battery": "**Batterie domestique :** aucune",
+    "charger": "**Borne :** {name} – {phases} phases, courant mesuré depuis {source}",
+    "label_power": "{name} – puissance par phase (courant calculé)",
+    "label_power_current": "{name} – puissance et courant par phase",
+    "label_current": "{name} – courant par phase",
+    "ocpp_control": "**Commande de charge :** {name}",
+    "ocpp_current_number": "**Courant réglé via :** l'entité de courant de la borne ({name})",
+    "ocpp_current_config": "**Courant réglé via :** OCPP ChangeConfiguration",
+    "ocpp_energy": "**Compteur d'énergie :** {name} (trouvé automatiquement)",
+    "ocpp_energy_none": "aucun trouvé"
+  },
+  "candidate_reason": {
+    "attributes_device_class_and_unit_match": "classe d'appareil courant et unité prise en charge",
+    "attributes_unit_match_only": "une unité de courant prise en charge",
+    "attributes_historical_match": "données par phase vues dans l'historique, pas mesurées actuellement",
+    "attributes_profile_match": "les attributs de courant par phase propres à l'intégration de la borne",
+    "separate_entities_device_class_and_unit_match": "classe d'appareil courant et unité prise en charge",
+    "separate_entities_device_class_match_only": "classe d'appareil courant uniquement",
+    "separate_entities_unit_match_only": "unité de courant prise en charge uniquement",
+    "separate_entities_name_match_only": "motif de nom uniquement",
+    "separate_entities_profile_match": "les capteurs de courant par phase propres à l'intégration de la borne",
+    "possible_inverter_output_not_confirmed_as_grid_input": "ressemble à une sortie d'onduleur/solaire, non confirmée comme entrée réseau"
+  },
+  "candidate_confidence": {
+    "high": "fiabilité élevée",
+    "medium": "fiabilité moyenne",
+    "low": "fiabilité faible"
+  },
+  "candidate_representation": {
+    "separate_entities": "trois entités",
+    "attributes": "attributs"
+  },
+  "choice": {
+    "manual": "Choisir manuellement",
+    "manual_separate_entities": "Choisir manuellement (trois entités séparées, une par phase)",
+    "manual_attributes": "Saisir manuellement une entité + ses attributs de phase",
+    "skip": "Ignorer pour l'instant (configurer plus tard)"
+  },
+  "current_control": {
+    "none": "Ne pas régler de courant",
+    "change_configuration": "ChangeConfiguration (AssignedCurrent)",
+    "number": "L'entité de courant de la borne, dans ses limites d'écriture",
+    "easee_dynamic_limit": "Limite de courant dynamique Easee (fréquence limitée)"
+  }
+}

@@ -270,7 +270,8 @@ export function departureDayLabel(
 
 /**
  * A weekday in the plural the language uses for "every Sunday" (`Sundays`, `söndagar`, `søndager`,
- * `søndage`, `sunnuntaisin`), from the weekday name `Intl` gives. `null` for a number that is no ISO weekday.
+ * `søndage`, `sunnuntaisin`, `Sonntage`, `zondagen`, `domingos`, `dimanches`), from the weekday name
+ * `Intl` gives. `null` for a number that is no ISO weekday.
  */
 export function weekdayPlural(language: Language, isoWeekday: number): string | null {
   if (!Number.isInteger(isoWeekday) || isoWeekday < 1 || isoWeekday > 7) {
@@ -288,6 +289,14 @@ export function weekdayPlural(language: Language, isoWeekday: number): string | 
       return `${name}e`;
     case "fi":
       return name.endsWith("i") ? `${name}sin` : `${name}isin`;
+    case "de":
+      return `${name.charAt(0).toLocaleUpperCase(language)}${name.slice(1)}e`;
+    case "nl":
+      return `${name}en`;
+    case "es":
+      return name.endsWith("s") ? name : `${name}s`;
+    case "fr":
+      return `${name}s`;
     default:
       return `${name.charAt(0).toLocaleUpperCase(language)}${name.slice(1)}s`;
   }

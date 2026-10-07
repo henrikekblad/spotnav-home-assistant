@@ -1,4 +1,4 @@
-// The five languages, the fallback rule, plural selection and placeholder substitution.
+// The languages, the fallback rule, plural selection and placeholder substitution.
 //
 // The words are in `<lang>.json`, one file per language. English is the source of truth for the key
 // set: every other language is typed against it here, so a missing key is a compile error, and the
@@ -10,18 +10,22 @@
 // language's own rule and not arithmetic.
 
 import da from "./da.json";
+import de from "./de.json";
 import en from "./en.json";
+import es from "./es.json";
 import fi from "./fi.json";
+import fr from "./fr.json";
 import nb from "./nb.json";
+import nl from "./nl.json";
 import sv from "./sv.json";
 
 export type TranslationKey = keyof typeof en;
 export type Translation = Record<TranslationKey, string>;
 
-export const LANGUAGES = ["en", "sv", "nb", "da", "fi"] as const;
+export const LANGUAGES = ["en", "sv", "nb", "da", "fi", "de", "nl", "fr", "es"] as const;
 export type Language = (typeof LANGUAGES)[number];
 
-export const TRANSLATIONS: Record<Language, Translation> = { en, sv, nb, da, fi };
+export const TRANSLATIONS: Record<Language, Translation> = { en, sv, nb, da, fi, de, nl, fr, es };
 
 /** Plural categories the headings use. Every supported language distinguishes one from other. */
 export type PluralCategory = "one" | "other";
