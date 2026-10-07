@@ -301,7 +301,7 @@ The **Plan** cell opens **Charging plan**.
 
 ![The plan settings: the charge target, departure time and weekdays and current](images/card-settings-plan.png)
 
-- **Charge by**: **Energy (kWh)** or **Target SoC (%)**. With a target SoC, see
+- **Charge by**: **Energy · kWh** or **Target SoC · %**. With a target SoC, see
   [target state of charge](target-soc.md).
 - **Requested energy**: 0.5 to 100 kWh on the slider, in half-kWh steps; the number field accepts
   more.
@@ -313,7 +313,9 @@ The **Plan** cell opens **Charging plan**.
 - With a target SoC: the **Target charge level** slider, the vehicle (when there are several), the
   level now and how old it is or that it is estimated, the vehicle's charge limit when known, and
   the **Energy needed**. When the car has a minimum charge level, the slider's track is darker from 0 to it,
-  with **min 30 %** under that part.
+  with **min 30 %** under that part. Ticks on the track mark the level now (**now**, **≈ now** when
+  estimated) and the car's charge limit (**limit**, only below 100 %); a word that would touch
+  another drops to a second line.
 
 If two clients change the settings at the same moment, the card says they changed elsewhere and
 offers **Use the server values** or **Apply my change again**; nothing is overwritten silently.

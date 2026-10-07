@@ -16,6 +16,8 @@ import {
   floorSegment,
   limitOpening,
   limitStops,
+  placeMarks,
+  targetTicks,
 } from "../src/percent-slider";
 import { decodeVehicle } from "../src/validate";
 
@@ -80,6 +82,127 @@ describe("the minimum's segment on the plan's target slider", () => {
 
   it("uses the minimum alone when the target is not known", () => {
     expect(floorSegment(30, null)).toEqual({ percent: 30, end: 0.3, label: 0.15 });
+  });
+});
+
+describe("the level now and the car's limit on the plan's target slider", () => {
+  it("sit at the level now and at the car's limit, as fractions of the 0..100 track", () => {
+    expect(targetTicks(45, 90)).toEqual({ now: 0.45, limit: 0.9 });
+  });
+
+  it("put the limit where the car stops, its whole percent, and keep both on the track", () => {
+    expect(targetTicks(-3, 80.6)).toEqual({ now: 0, limit: 0.8 });
+    expect(targetTicks(104, 99.5)).toEqual({ now: 1, limit: 0.99 });
+  });
+
+  it("have no limit tick for a car that charges to 100 %", () => {
+    expect(targetTicks(45, 100)).toEqual({ now: 0.45, limit: null });
+    expect(targetTicks(45, 120)).toEqual({ now: 0.45, limit: null });
+  });
+
+  it("leave out what is not known", () => {
+    expect(targetTicks(null, null)).toEqual({ now: null, limit: null });
+    expect(targetTicks(Number.NaN, 90)).toEqual({ now: null, limit: 0.9 });
+  });
+});
+
+describe("the words under the slider's marks", () => {
+  const gap = 8;
+
+  it("share the first line under their ticks when far apart", () => {
+    expect(
+      placeMarks(
+        [
+          { key: "now", center: 100, width: 40 },
+          { key: "limit", center: 300, width: 50 },
+        ],
+        400,
+        gap,
+      ),
+    ).toEqual([
+      { key: "now", left: 80, level: 0 },
+      { key: "limit", left: 275, level: 0 },
+    ]);
+  });
+
+  it("drop the later word in track order to a second line when they would touch", () => {
+    expect(
+      placeMarks(
+        [
+          { key: "limit", center: 310, width: 50 },
+          { key: "now", center: 300, width: 40 },
+        ],
+        400,
+        gap,
+      ),
+    ).toEqual([
+      { key: "now", left: 280, level: 0 },
+      { key: "limit", left: 285, level: 1 },
+    ]);
+  });
+
+  it("keep a word near an end inside the row", () => {
+    expect(
+      placeMarks(
+        [
+          { key: "limit", center: 395, width: 50 },
+          { key: "now", center: 2, width: 40 },
+        ],
+        400,
+        gap,
+      ),
+    ).toEqual([
+      { key: "now", left: 0, level: 0 },
+      { key: "limit", left: 350, level: 0 },
+    ]);
+  });
+
+  it("count coming within the gap as touching", () => {
+    const placed = placeMarks(
+      [
+        { key: "a", center: 100, width: 40 },
+        { key: "b", center: 145, width: 40 },
+      ],
+      400,
+      gap,
+    );
+    expect(placed[1]?.level).toBe(1);
+  });
+
+  it("keep the minimum's word clear of now and the limit", () => {
+    const apart = placeMarks(
+      [
+        { key: "now", center: 160, width: 20 },
+        { key: "limit", center: 360, width: 40 },
+        { key: "min", center: 60, width: 60 },
+      ],
+      400,
+      gap,
+    );
+    expect(new Set(apart.map((mark) => mark.level))).toEqual(new Set([0]));
+    const tight = placeMarks(
+      [
+        { key: "min", center: 30, width: 60 },
+        { key: "now", center: 50, width: 20 },
+      ],
+      400,
+      gap,
+    );
+    expect(tight.find((mark) => mark.key === "min")?.level).toBe(0);
+    expect(tight.find((mark) => mark.key === "now")?.level).toBe(1);
+  });
+
+  it("use a third line only when both lines above are taken there", () => {
+    const placed = placeMarks(
+      [
+        { key: "min", center: 100, width: 40 },
+        { key: "now", center: 105, width: 20 },
+        { key: "limit", center: 110, width: 30 },
+      ],
+      400,
+      gap,
+    );
+    expect(placed.map((mark) => mark.level)).toEqual([0, 1, 2]);
   });
 });
 

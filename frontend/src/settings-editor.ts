@@ -21,7 +21,7 @@ import {
   type SettingsFormValues,
 } from "./settings";
 import { VISUAL_CLASSES as C, summaryValueClass } from "./visual-styles";
-import { floorSegment } from "./percent-slider";
+import { floorSegment, placeMarks, targetTicks } from "./percent-slider";
 import { chargeCeiling, effectiveTarget, pythonRound, pythonRoundedAbove, targetNeedKwh } from "./target-need";
 import type { Soc, Vehicle } from "./validate";
 
@@ -643,6 +643,8 @@ export function settingsEditorBody(
       reading.replaceChildren();
       facts.hidden = verdict.hidden = reading.hidden = true;
       if (soc === null) {
+        nowMark.hidden = limitMark.hidden = true;
+        arrangeMarks();
         return;
       }
       // The charge is the resolved vehicle's; another vehicle picked here has no reading until saved, so
@@ -667,6 +669,14 @@ export function settingsEditorBody(
         facts.textContent = parts.join(" \u00b7 ");
         facts.hidden = false;
       }
+      // The same two facts as ticks on the track, worded under it: "nu" (an estimate says so) and "gräns".
+      const ticks = targetTicks(now, limit);
+      nowMark.hidden = ticks.now === null;
+      limitMark.hidden = ticks.limit === null;
+      nowMark.style.setProperty("--spotnav-mark", String(ticks.now ?? 0));
+      limitMark.style.setProperty("--spotnav-mark", String(ticks.limit ?? 0));
+      nowMark.textContent = translate(language, soc.estimated ? "settings.soc.markNowEstimated" : "settings.soc.markNow");
+      arrangeMarks();
       if (!other && now !== null && soc.age_s !== null) {
         const age = ageSentence(soc.age_s);
         const note = soc.estimated
@@ -769,7 +779,48 @@ export function settingsEditorBody(
     const floorMark = element(doc, "span", `${C.settingsFullMark} ${C.settingsFloorMark}`);
     floorMark.dataset["part"] = "floor-mark";
     floorMark.setAttribute("aria-hidden", "true");
-    targetRow.track.append(floorPart, floorMark);
+    // The level now and the car's limit: ticks like the kWh slider's "fullt", their words beside "min 30 %".
+    const tickMark = (part: string, text: string): HTMLElement => {
+      const node = element(doc, "span", C.settingsFullMark, text);
+      node.dataset["part"] = part;
+      node.setAttribute("aria-hidden", "true");
+      node.hidden = true;
+      return node;
+    };
+    const nowMark = tickMark("now-mark", translate(language, "settings.soc.markNow"));
+    const limitMark = tickMark("limit-mark", translate(language, "settings.soc.markLimit"));
+    targetRow.track.append(floorPart, floorMark, nowMark, limitMark);
+    /**
+     * The words under the track, as the app places them: each under its tick and inside the track, a word that
+     * would touch another a line lower. Measured once the track is laid out; until then all on the first line.
+     */
+    const arrangeMarks = (): void => {
+      const track = targetRow.track;
+      const width = track.clientWidth;
+      const shown = [floorMark, nowMark, limitMark].filter((node) => !node.hidden);
+      const words = shown.map((node) => ({
+        node,
+        key: node.dataset["part"] ?? "",
+        // The track's own inset: half a thumb at each end, as in the marks' `left`.
+        center: 8 + (width - 16) * Number(node.style.getPropertyValue("--spotnav-mark") || "0"),
+        width: node.offsetWidth,
+      }));
+      const measured = width > 0 && words.every((word) => word.width > 0);
+      const placed = measured ? placeMarks(words, width, 6) : [];
+      let lines = 1;
+      for (const word of words) {
+        const at = placed.find((entry) => entry.key === word.key);
+        const level = at?.level ?? 0;
+        const shift = at === undefined ? 0 : at.left - (word.center - word.width / 2);
+        word.node.style.setProperty("--spotnav-mark-level", String(level));
+        word.node.style.setProperty("--spotnav-mark-shift", `${Math.round(shift * 100) / 100}px`);
+        lines = Math.max(lines, level + 1);
+      }
+      track.style.setProperty("--spotnav-mark-lines", String(lines));
+    };
+    if (typeof ResizeObserver !== "undefined") {
+      new ResizeObserver(() => arrangeMarks()).observe(targetRow.track);
+    }
     const showFloor = (): void => {
       const picked = pickedVehicle();
       const floor = form.vehicles.find((entry) => entry.id === picked)?.min_percent ?? null;
@@ -783,6 +834,7 @@ export function settingsEditorBody(
           percent: formatNumber(language, segment.percent, 0),
         });
       }
+      arrangeMarks();
     };
     // The target as stored, exactly (`80 %`, `80.5 %`), or as the slider sets it once moved.
     const showTarget = (): void => {

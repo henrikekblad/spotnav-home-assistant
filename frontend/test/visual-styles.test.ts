@@ -163,15 +163,15 @@ describe("accessibility and theming", () => {
   });
 
   it("keeps the help line under a slider close to it, and only that note", () => {
-    // Room under the track for the "full" word, and no more.
+    // Room under the track for the "full" word, and no more; a line more for each word dropped below another.
     const marked = VISUAL_STYLES.match(
       /\.spotnav-settings-track:has\(> \.spotnav-settings-full-mark:not\(\[hidden\]\)\) \{([^}]*)\}/s,
     )?.[1];
-    expect(marked?.trim()).toBe("padding-bottom: 0.4rem;");
+    expect(marked?.trim()).toBe("padding-bottom: calc(0.4rem + (var(--spotnav-mark-lines, 1) - 1) * 0.825em);");
     // The "full" word starts where the mark's line ends (1.125rem down the 1.25rem slider), so it fits in
     // that room instead of running into the help line.
     const word = VISUAL_STYLES.match(new RegExp(`\\.${VISUAL_CLASSES.settingsFullMark} \\{([^}]*)\}`, "s"))?.[1] ?? "";
-    expect(word).toContain("padding-top: 1.125rem");
+    expect(word).toContain("padding-top: calc(1.125rem + var(--spotnav-mark-level, 0) * 1.1em)");
     const line = VISUAL_STYLES.match(/\.spotnav-settings-full-mark::before \{([^}]*)\}/s)?.[1] ?? "";
     expect(line).toContain("top: 0.125rem");
     expect(line).toContain("height: 1rem");
