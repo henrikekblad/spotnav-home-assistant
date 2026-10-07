@@ -95,7 +95,7 @@
   "status.fillRoomUnknown": "Het niveau of de batterijgrootte van de auto is onbekend, dus er wordt {kwh} kWh geladen in plaats van tot vol.",
   "status.needLimitedByRoom": "Beperkt tot {kwh} kWh: de auto is bijna vol.",
   "status.chargingToVehicleLimit": "Laadt tot de auto stopt bij zijn eigen limiet ({percent} %).",
-  "status.minSocCharging": "Laadt tot het minimumniveau ({percent} %)",
+  "status.minSocCharging": "Laadt tot het minimale laadniveau ({percent} %)",
   "issue.needKept": "De energiemeter kan niet worden gelezen: er resteert {kwh} kWh, volgens de laatste meting.",
   "issue.needFromSessions": "Geen energiemeter: er resteert {kwh} kWh, berekend uit de geregistreerde laadsessies van deze laadpaal.",
   "status.siteMeasurement.stale.other": "{phases} zijn ouder dan {seconds} s.",

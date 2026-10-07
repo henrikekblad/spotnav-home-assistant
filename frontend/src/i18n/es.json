@@ -95,7 +95,7 @@
   "status.fillRoomUnknown": "Se desconoce el nivel o el tamaño de batería del coche, así que se cargan {kwh} kWh en lugar de llenarlo.",
   "status.needLimitedByRoom": "Limitado a {kwh} kWh: el coche está casi lleno.",
   "status.chargingToVehicleLimit": "Cargando hasta que el coche se detenga en su propio límite ({percent} %).",
-  "status.minSocCharging": "Cargando hasta el nivel mínimo ({percent} %)",
+  "status.minSocCharging": "Cargando hasta el nivel de carga mínimo ({percent} %)",
   "issue.needKept": "No se puede leer el contador de energía: quedan {kwh} kWh, según su última lectura.",
   "issue.needFromSessions": "Sin contador de energía: quedan {kwh} kWh, contados a partir de las cargas registradas de este cargador.",
   "status.siteMeasurement.stale.other": "{phases} tienen más de {seconds} s.",
