@@ -9,6 +9,8 @@ import random
 import pytest
 
 from custom_components.spotnav.site.solar_surplus import (
+    FALSE_CREDIT_CONFIRM_S,
+    FALSE_CREDIT_DRAW_FRACTION,
     SolarConfig,
     SolarController,
     SolarObservation,
@@ -479,10 +481,46 @@ def test_set_current_only_on_whole_amp_change():
     assert v2.action == "hold"
     assert v2.reason == "on_steady"
 
-    # A real change to 9 A worth of power.
+    # A real change to 9 A worth of power: one amp, so only once it has lasted `step_confirm_s`.
     v3 = ctrl.observe(_obs(2.0, grid_w=-9.2 * 3 * VOLTAGE_V))
-    assert v3.action == "set_current"
-    assert v3.requested_a == 9.0
+    assert (v3.action, v3.reason) == ("hold", "on_steady")
+    v4 = ctrl.observe(_obs(2.0 + cfg.step_confirm_s, grid_w=-9.2 * 3 * VOLTAGE_V))
+    assert v4.action == "set_current"
+    assert v4.requested_a == 9.0
+
+
+def test_a_surplus_flapping_across_one_amp_never_moves_the_request():
+    """The field case (2026-10-07): `on_modulate` 13 <-> 14 A every 1 to 5 s. A one-amp step waits until the
+    surplus has stayed past it for `step_confirm_s`; a surplus that keeps coming back moves nothing."""
+    cfg = _config(start_delay_s=0.0, min_off_s=0.0)
+    ctrl = SolarController(cfg)
+    assert ctrl.observe(_obs(0.0, grid_w=-13.5 * 3 * VOLTAGE_V)).action == "start"
+    assert ctrl.observe(_obs(1.0, grid_w=-13.5 * 3 * VOLTAGE_V)).requested_a == 13.0
+
+    actions = []
+    now = 1.0
+    for index in range(60):
+        now += 1.0 + (index % 5)
+        amps = 14.05 if index % 2 == 0 else 13.95
+        actions.append(ctrl.observe(_obs(now, grid_w=-amps * 3 * VOLTAGE_V)).action)
+
+    assert set(actions) == {"hold"}
+    assert ctrl.last_requested_a == 13.0
+
+
+def test_a_one_amp_step_down_waits_too_and_a_larger_step_goes_at_once():
+    cfg = _config(start_delay_s=0.0, min_off_s=0.0)
+    ctrl = SolarController(cfg)
+    ctrl.observe(_obs(0.0, grid_w=-12.5 * 3 * VOLTAGE_V))
+    assert ctrl.observe(_obs(1.0, grid_w=-12.5 * 3 * VOLTAGE_V)).requested_a == 12.0
+
+    down = ctrl.observe(_obs(2.0, grid_w=-11.5 * 3 * VOLTAGE_V))
+    assert down.action == "hold"
+    held = ctrl.observe(_obs(2.0 + cfg.step_confirm_s, grid_w=-11.5 * 3 * VOLTAGE_V))
+    assert (held.action, held.requested_a) == ("set_current", 11.0)
+
+    jump = ctrl.observe(_obs(20.0, grid_w=-9.5 * 3 * VOLTAGE_V))
+    assert (jump.action, jump.requested_a, jump.reason) == ("set_current", 9.0, "on_modulate")
 
 
 def test_requested_a_only_present_on_start_and_set_current():
@@ -994,6 +1032,97 @@ def test_a_false_credit_backs_off_the_battery_doubling_and_a_held_credit_resets_
     assert ctrl._next_backoff_s == 600.0  # noqa: SLF001 - the back-off length is the fact under test
 
 
+# The field case (2026-10-07, an Easee on one phase at 230 V, start minimum 7 A, a SolaX battery, car_first):
+# started at 7 A on 2308 W of which the battery's charge was 2037 W. 26 s later the battery had given way to the
+# car (2037 -> 635 W, about the car's real draw) but the charger's reading still showed 230 W; one second later it
+# read 1449 W.
+
+ONE_PHASE = ("L1",)
+
+
+def _one_phase(now: float, *, car_w: float, battery_w: float, grid_w: float) -> SolarObservation:
+    """One phase at 230 V: the car's draw and the grid in watts, the battery positive while it charges."""
+    return _obs(
+        now,
+        grid_w={"L1": grid_w, "L2": 0.0, "L3": 0.0},
+        car_delivered_a={"L1": car_w / VOLTAGE_V},
+        battery_w=battery_w,
+        battery_configured=True,
+        car_phases=ONE_PHASE,
+    )
+
+
+def _field_start(ctrl: SolarController) -> None:
+    """Armed at 0 s and started at 120 s on 2308 W of which 2037 W is the battery's charge."""
+    ctrl.observe(_one_phase(0.0, car_w=0.0, battery_w=2037.0, grid_w=-271.0))
+    start = ctrl.observe(_one_phase(120.0, car_w=0.0, battery_w=2037.0, grid_w=-271.0))
+    assert (start.action, start.requested_a) == ("start", 7.0)
+
+
+def _field_config() -> SolarConfig:
+    return _config(start_a=7.0, verify_s=120.0, min_off_s=0.0)
+
+
+def test_a_car_reading_that_has_not_caught_up_is_no_false_credit():
+    ctrl = SolarController(_field_config())
+    _field_start(ctrl)
+
+    # 26 s on: the battery gave way, the car's reading still shows 1 A: 1141 W available, short of the stop level.
+    lagging = ctrl.observe(_one_phase(146.0, car_w=230.0, battery_w=635.0, grid_w=-276.0))
+    assert lagging.available_w == pytest.approx(1141.0)
+    assert (lagging.action, lagging.reason, lagging.state) == ("hold", "start_verifying", "on")
+
+    # One second later the reading caught up: 2360 W, well above the stop level.
+    caught_up = ctrl.observe(_one_phase(147.0, car_w=1449.0, battery_w=635.0, grid_w=-276.0))
+    assert caught_up.available_w == pytest.approx(2360.0)
+    assert (caught_up.action, caught_up.reason, caught_up.state) == ("hold", "start_verifying", "on")
+    assert ctrl.priority_now(147.0) == "car_first", "no back-off for a credit that was never false"
+
+
+def test_a_car_drawing_what_it_was_asked_on_a_battery_turned_to_feed_it_is_still_a_false_credit():
+    ctrl = SolarController(_field_config())
+    _field_start(ctrl)
+
+    # The car draws its 7 A, the battery discharges into it and the grid reads about zero.
+    verdict = ctrl.observe(_one_phase(150.0, car_w=7.0 * VOLTAGE_V, battery_w=-1400.0, grid_w=20.0))
+
+    assert (verdict.action, verdict.reason, verdict.state) == ("stop", "battery_credit_false", "off")
+
+
+def test_a_shortfall_that_lasts_with_the_car_reading_still_low_is_judged_a_false_credit():
+    ctrl = SolarController(_field_config())
+    _field_start(ctrl)
+
+    # The car's reading stays low while the battery feeds it: held at first, judged once the shortfall lasted.
+    first = ctrl.observe(_one_phase(130.0, car_w=0.0, battery_w=-1400.0, grid_w=0.0))
+    assert (first.action, first.reason) == ("hold", "start_verifying")
+    still = ctrl.observe(_one_phase(130.0 + FALSE_CREDIT_CONFIRM_S - 1.0, car_w=0.0, battery_w=-1400.0, grid_w=0.0))
+    assert (still.action, still.reason) == ("hold", "start_verifying")
+    judged = ctrl.observe(_one_phase(130.0 + FALSE_CREDIT_CONFIRM_S, car_w=0.0, battery_w=-1400.0, grid_w=0.0))
+    assert (judged.action, judged.reason) == ("stop", "battery_credit_false")
+
+
+def test_a_shortfall_that_recovers_starts_its_wait_over():
+    ctrl = SolarController(_field_config())
+    _field_start(ctrl)
+
+    ctrl.observe(_one_phase(130.0, car_w=0.0, battery_w=-1400.0, grid_w=0.0))
+    ctrl.observe(_one_phase(140.0, car_w=1449.0, battery_w=635.0, grid_w=-276.0))  # recovered
+    again = ctrl.observe(_one_phase(130.0 + FALSE_CREDIT_CONFIRM_S, car_w=0.0, battery_w=-1400.0, grid_w=0.0))
+
+    assert (again.action, again.reason) == ("hold", "start_verifying")
+
+
+def test_the_draw_that_counts_as_near_what_was_asked_is_seventy_percent():
+    assert FALSE_CREDIT_DRAW_FRACTION == 0.7
+    ctrl = SolarController(_field_config())
+    _field_start(ctrl)
+    below = ctrl.observe(_one_phase(130.0, car_w=0.69 * 7.0 * VOLTAGE_V, battery_w=-1400.0, grid_w=0.0))
+    assert below.reason == "start_verifying"
+    at = ctrl.observe(_one_phase(131.0, car_w=0.7 * 7.0 * VOLTAGE_V, battery_w=-1400.0, grid_w=0.0))
+    assert at.reason == "battery_credit_false"
+
+
 def test_a_discharging_battery_is_never_surplus():
     for priority in ("car_first", "battery_first"):
         ctrl = SolarController(_config(priority=priority))
@@ -1119,3 +1248,15 @@ def test_take_over_with_no_usable_reading_stops_unless_told_to_wait():
     # The charger's own current unreadable is no basis either.
     verdict = SolarController(SolarConfig()).take_over(_obs(0.0, grid_w=-5000.0, car_delivered_a={"L1": None}))
     assert (verdict.action, verdict.reason) == ("stop", "no_basis_stopped")
+
+
+def test_no_car_is_off_with_nothing_to_stop_and_no_min_off_after_it():
+    ctrl = SolarController(_config(start_delay_s=0.0, min_off_s=300.0))
+    assert ctrl.observe(_obs(0.0, grid_w=-SIX_A_W)).action == "start"
+
+    gone = ctrl.car_absent(_obs(10.0, grid_w=-SIX_A_W))
+    assert (gone.action, gone.reason, gone.state) == ("hold", "no_car", "off")
+    assert not ctrl.running and ctrl.last_requested_a is None
+
+    # Plugged in again: it starts on the surplus at once, with no minimum off time for a stop never made.
+    assert ctrl.observe(_obs(20.0, grid_w=-SIX_A_W)).action == "start"

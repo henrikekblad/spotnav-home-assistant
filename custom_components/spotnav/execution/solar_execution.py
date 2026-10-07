@@ -2,7 +2,7 @@
 
 * Authority stays in the Auto layer. This module never calls a charger directly: every start, stop
   and modulation goes through `AutoExecutor.async_solar_start`/`async_solar_stop`/
-  `async_solar_set_current`, which take the charger's execution lock and call
+  `async_solar_set_current`/`async_solar_write_current`, which take the charger's execution lock and call
   `ChargingController`. It owns no lock and issues no service call.
 * The fast tick comes from site capacity. `SolarExecutionCoordinator` subscribes to the site's
   `SiteCapacityController.add_listener` and evaluates the pure `SolarController`
@@ -48,6 +48,15 @@
   `SOLAR_DECISION_LOG_LENGTH`): every action (`start`, `stop`, `set_current`, `take_over`) and every hold
   whose state or reason changed, with the energy balance it read. The site's diagnostics and the debug
   bundle carry it.
+* The sun's current reaches the charger by one writer only (`SolarExecutionState.solar_current_writer`): the site's
+  active control where it writes this charger (`SiteCapacityController.active_control_writes`), else the sun's own
+  write (`SolarExecutionCoordinator._write_own_current`): only while the sun runs the charge, never above the amps
+  the person set (so never more load than a plain start), on a change, at most once per `SOLAR_WRITE_INTERVAL_S`,
+  under the executor's lock and the adapter's policy for repeated writes. Modulation thus works without load
+  balancing, on a direct site and on a charger whose phase is unknown.
+* A charger that says no car is plugged in (`_car_unplugged`) is never armed or started, and a charge the sun
+  runs there goes `off` with no stop sent (`SolarController.car_absent`): nothing is charging, and it takes no
+  share of the site's surplus. A charger that cannot say keeps the rules above.
 * A charger that is not charging draws nothing, whatever its measured current still reads: a sensor keeps
   its last value when a charge ends, and that leftover is not the car's draw (`_build_observation`'s
   `charger_idle`).
@@ -105,6 +114,7 @@ from ..site.solar_surplus import (
 from .auto_execution import AutoExecutor, pause_blocks_execution
 from .charge_progress import SUSPENDED_EV
 from .charger_connection import CHARGING, DISCONNECTED, FINISHED
+from .chargers.base import IN_EFFECT_OUTCOMES
 from .controller import ChargingController
 
 
@@ -138,6 +148,17 @@ SUSPENDED_EVSE: Final = "SuspendedEVSE"
 #: Solar and hybrid decisions kept per charger for the diagnostics and the debug bundle (oldest dropped
 #: first), like the regulator's decision log.
 SOLAR_DECISION_LOG_LENGTH: Final = 200
+
+#: The sun's own current write (where active control does not write it): at most one per this many seconds. An
+#: Easee allows 20 writes a minute (`max_writes_per_minute`); three a minute leaves that budget to starts, stops,
+#: a plug-in's resend and the second send of a suspect write, and a car takes some seconds to settle on a new
+#: current, so the reading the next step is sized on shows the last one.
+SOLAR_WRITE_INTERVAL_S: Final = 20.0
+
+#: Who writes the sun's current (`SolarExecutionState.solar_current_writer`).
+WRITER_ACTIVE_CONTROL: Final = "active_control"
+WRITER_SOLAR: Final = "solar"
+WRITER_NONE: Final = "none"
 
 #: Token for hybrid arbitration handoff logs.
 HYBRID_LOG_TOKEN: Final = "HYBRID"
@@ -197,8 +218,8 @@ class SolarBasis:
 class SolarExecutionState:
     """Live solar-execution facts for one charger, for its Auto state.
 
-    `active_control_active` is the site's active-control opt-in: with it unset, site capacity never
-    writes a requested current and solar runs on/off at the start current only.
+    `active_control_active` is the site's active-control opt-in. `solar_current_writer` says who writes the
+    sun's current: the site's active control where it writes this charger, else the sun's own write.
     """
 
     state: str
@@ -223,6 +244,9 @@ class SolarExecutionState:
     basis: SolarBasis = field(default_factory=SolarBasis)
     #: When a car that stopped charging by itself (`car_stopped`) is tried again, `None` otherwise.
     retry_at: datetime | None = None
+    #: Who writes the sun's current to the charger: `active_control` (the site's damped write), `solar` (its own
+    #: write, where active control does not write this charger) or `none` (its current cannot be set).
+    solar_current_writer: str | None = None
 
 
 def solar_execution_state(hass: HomeAssistant, charger_entry_id: str) -> SolarExecutionState | None:
@@ -648,6 +672,10 @@ class SolarExecutionCoordinator:
         # A stop of solar's charge that did not go out (the charger's control did not take it): tried again
         # every tick until the charger is seen off (`_retry_owed_stop`).
         self._stop_owed = False
+        # The sun's own current write (`_write_own_current`): the amps last in effect on the charger by the sun's
+        # start or write, and when the last write was tried (this coordinator's clock).
+        self._written_a: int | None = None
+        self._written_at: float | None = None
 
     @property
     def state(self) -> SolarExecutionState | None:
@@ -868,6 +896,18 @@ class SolarExecutionCoordinator:
                     await self._async_recalculate_hybrid_preview()
                 site.notify_solar_surplus_changed()
                 return
+            if self._car_unplugged():
+                # No car: nothing arms or starts, and a charge the sun ran goes off with nothing to stop.
+                observation = self._observation(site, self._now())
+                verdict = self._solar.car_absent(observation)
+                self._took_over = False
+                self._update_state(verdict, site, basis=solar_basis(site, self._charger_entry_id, observation))
+                self._log_transition(verdict)
+                self._record_verdict(verdict, held_by_plan=False)
+                if settings.strategy == STRATEGY_HYBRID:
+                    await self._async_recalculate_hybrid_preview()
+                site.notify_solar_surplus_changed()
+                return
             ended = self._watch_charge(self._solar, self._now())
             if ended is not None:
                 # The charge ended without solar: a stop forgets who started it (and ends a charge the car
@@ -888,6 +928,7 @@ class SolarExecutionCoordinator:
             pass
         else:
             verdict = await self._apply_verdict(verdict)
+            await self._write_own_current(site)
         self._update_state(
             verdict, site, held_by_plan=held_by_plan, basis=solar_basis(site, self._charger_entry_id, observation)
         )
@@ -918,6 +959,12 @@ class SolarExecutionCoordinator:
         if self._unmeasured_start_allowed(site, now=observation.now):
             observation = replace(observation, unmeasured_start_allowed=True)
         return observation
+
+    def _car_unplugged(self) -> bool:
+        """Whether the charger says no car is plugged in: its connection `disconnected`, or its status naming no
+        vehicle. A charger that cannot say (a plain switch, an unreadable status) is not taken for empty."""
+        controller = self._controller
+        return controller.connection()[0] == DISCONNECTED or controller.adapter.vehicle_connected() is False
 
     def _charger_idle(self) -> bool:
         """Whether the charger is not charging: no Start on its way, and neither its charging state nor its
@@ -1086,7 +1133,7 @@ class SolarExecutionCoordinator:
             self._controller.plan_window_active_now or self._hybrid_satisfied()
         ):
             return None
-        if self._controller.adapter.vehicle_connected() is False:
+        if self._car_unplugged():
             return None
         now = self._now()
         observation = _build_observation(
@@ -1379,7 +1426,12 @@ class SolarExecutionCoordinator:
         its minimum off time."""
         if verdict.action == "start":
             assert verdict.requested_a is not None
-            if not await self._executor.async_solar_start(int(verdict.requested_a)):
+            started = await self._executor.async_solar_start(int(verdict.requested_a))
+            if started:
+                # The start wrote its own current: the sun's next write is a change from it.
+                self._written_a = int(verdict.requested_a)
+                self._written_at = self._now()
+            else:
                 _LOGGER.info(
                     "%s charger %s: the start did not go out; solar stays off",
                     SOLAR_SURPLUS_LOG_TOKEN,
@@ -1397,6 +1449,47 @@ class SolarExecutionCoordinator:
             await self._executor.async_solar_set_current(int(verdict.requested_a))
         # hold: nothing to do.
         return verdict
+
+    def current_writer(self, site: SiteCapacityController) -> str:
+        """Who writes the sun's current to this charger (`SolarExecutionState.solar_current_writer`)."""
+        if site.active_control_writes(self._charger_entry_id):
+            return WRITER_ACTIVE_CONTROL
+        return WRITER_SOLAR if self._controller.is_commandable else WRITER_NONE
+
+    async def _write_own_current(self, site: SiteCapacityController) -> None:
+        """Write the current the sun asks for where active control does not (module docstring). Only while the sun
+        runs the charge, with a stop neither owed nor on its way, on a change from what the sun's start or write put
+        on the charger, at most once per `SOLAR_WRITE_INTERVAL_S`, and capped at the amps the person set (none set:
+        nothing is written). Refused by the adapter's policy (a rate limit, a paused charger), it is tried again on a
+        later tick."""
+        solar = self._solar
+        if solar is None or not solar.running:
+            self._written_a = None
+            return
+        if solar.last_requested_a is None or self._stop_owed:
+            return
+        if self.current_writer(site) != WRITER_SOLAR or site.membership_conflicts:
+            return
+        cap_a = self._store.settings(self._charger_entry_id).amps
+        if cap_a is None:
+            return
+        target = min(int(solar.last_requested_a), cap_a)
+        if target == self._written_a:
+            return
+        now = self._now()
+        if self._written_at is not None and now - self._written_at < SOLAR_WRITE_INTERVAL_S:
+            return
+        self._written_at = now
+        outcome = await self._executor.async_solar_write_current(int(solar.last_requested_a), cap_a=cap_a)
+        if outcome in IN_EFFECT_OUTCOMES:
+            self._written_a = target
+        _LOGGER.debug(
+            "%s charger %s: the sun's own current write of %s A: %s",
+            SOLAR_SURPLUS_LOG_TOKEN,
+            self._charger_entry_id,
+            target,
+            outcome,
+        )
 
     def _update_state(
         self,
@@ -1422,6 +1515,7 @@ class SolarExecutionCoordinator:
             held_by_plan=held_by_plan,
             basis=basis if basis is not None else SolarBasis(),
             retry_at=self._retry_at(),
+            solar_current_writer=self.current_writer(site),
         )
 
     def _retry_at(self) -> datetime | None:

@@ -1083,6 +1083,23 @@ class SiteCapacityController:
                 reserved[phase] = reserved.get(phase, 0.0) + max(0.0, amps - drawn)
         return reserved
 
+    def active_control_writes(self, charger_entry_id: str) -> bool:
+        """Whether the active-control pass writes this charger's requested current at all: active control on, a
+        derived site (the regulator decides nothing on any other, `derived_mode_required`), the charger's phases
+        known, its own measured current configured, and a charger it can command. Wherever it does not, the sun
+        writes its own current (`execution/solar_execution.py`); wherever it does, it stays the only writer.
+        """
+        if not self._active_control_allowed():
+            return False
+        if self.config.get(CONF_MEASUREMENT_MODE) != MEASUREMENT_MODE_DERIVED:
+            return False
+        wiring = (self.config.get(CONF_PHASE_WIRING) or {}).get(charger_entry_id) or {}
+        if wiring.get("phases", 3) != 3 and not wiring.get("phase"):
+            return False
+        if source_from_dict(wiring.get(CONF_MEASURED_CURRENT_SOURCE)) is None:
+            return False
+        return self._is_commandable_charger(controller_for(self.hass, charger_entry_id))
+
     def _active_control_allowed(self) -> bool:
         """Both gates: the compile-time `ACTIVE_CONTROL_READY` and this site's
         `CONF_ACTIVE_CONTROL_ENABLED` option (off by default). They are independent so neither alone
@@ -2334,6 +2351,9 @@ class SiteCapacityController:
                 "site_incomplete_phases": list(state.basis.site_incomplete_phases) if state else [],
                 # When a car that stopped charging by itself is tried again (`car_stopped`).
                 "retry_at": state.retry_at.isoformat() if state and state.retry_at else None,
+                # Who writes the sun's current to the charger: `active_control`, `solar` (its own write, where
+                # active control does not), or `none` (a charger whose current cannot be set).
+                "solar_current_writer": state.solar_current_writer if state else None,
             }
         return snapshot
 

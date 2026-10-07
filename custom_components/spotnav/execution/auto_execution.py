@@ -2140,6 +2140,19 @@ class AutoExecutor:
                 return
             await self._controller.async_set_requested_current(amps)
 
+    async def async_solar_write_current(self, amps: int, *, cap_a: int) -> str | None:
+        """The sun's own write of its current, where active control does not write it
+        (`ChargingController.async_write_solar_current`): under this lock, and only while the strategy is the
+        sun's and no pause blocks execution. `None` when it was not this strategy's to write.
+        """
+        async with self._lock:
+            settings = self._store.settings(self._entry_id)
+            if pause_blocks_execution(settings) or settings.strategy not in (
+                STRATEGY_SOLAR, STRATEGY_HYBRID
+            ):
+                return None
+            return await self._controller.async_write_solar_current(amps, cap_a=cap_a)
+
     async def async_note_reconcile_failed(self) -> None:
         """Record a post-commit reconcile failure in the execution vocabulary."""
         self._last_error = EXECUTION_RECONCILE_FAILED
