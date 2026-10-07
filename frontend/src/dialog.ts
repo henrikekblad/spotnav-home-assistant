@@ -71,6 +71,25 @@ interface BackgroundState {
   ariaHidden: string | null;
 }
 
+/** The close control's cross (Material Design Icons' `close`), drawn in the text colour at 20 px. */
+function closeIcon(doc: Document): SVGElement {
+  const ns = "http://www.w3.org/2000/svg";
+  const svg = doc.createElementNS(ns, "svg") as SVGElement;
+  svg.setAttribute("viewBox", "0 0 24 24");
+  svg.setAttribute("width", "20");
+  svg.setAttribute("height", "20");
+  svg.setAttribute("aria-hidden", "true");
+  svg.setAttribute("focusable", "false");
+  const path = doc.createElementNS(ns, "path");
+  path.setAttribute(
+    "d",
+    "M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z",
+  );
+  path.setAttribute("fill", "currentColor");
+  svg.append(path);
+  return svg;
+}
+
 export function createDialog(options: DialogOptions): DialogHandle {
   const { owner, idPrefix, labels, onClose, onDismiss } = options;
   const doc = ownerDocumentOf(owner);
@@ -100,8 +119,9 @@ export function createDialog(options: DialogOptions): DialogHandle {
   const close = doc.createElement("button");
   close.type = "button";
   close.className = VISUAL_CLASSES.dialogClose;
-  close.textContent = "\u00d7";
   close.setAttribute("aria-label", labels.close);
+  close.title = labels.close;
+  close.append(closeIcon(doc));
 
   const body = doc.createElement("div");
   body.className = VISUAL_CLASSES.dialogBody;

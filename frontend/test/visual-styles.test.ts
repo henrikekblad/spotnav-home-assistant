@@ -232,6 +232,16 @@ describe("the compact dialog header and the fiscal row", () => {
     expect(close).not.toContain("align-self: flex-end");
   });
 
+  it("makes the close a discreet icon: no box, no border, a muted colour, its hit area kept", () => {
+    const close = rule(VISUAL_CLASSES.dialogClose);
+    expect(close).toContain("background: none");
+    expect(close).toContain("border: 0");
+    expect(close).toContain("color: var(--secondary-text-color, #727272)");
+    expect(close).toContain("min-width: 44px");
+    expect(close).not.toContain("border-radius: 8px");
+    expect(close).not.toContain("1px solid");
+  });
+
   it("lays a fiscal row out so a long name and a 320 px card still fit", () => {
     const row = rule(VISUAL_CLASSES.marketValue);
     expect(row).toContain("grid-template-columns: auto minmax(0, 1fr) clamp(4.5rem, 20%, 6rem) auto");

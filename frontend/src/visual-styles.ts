@@ -1765,16 +1765,30 @@ export const VISUAL_STYLES = `
     font-weight: 600;
     overflow-wrap: break-word;
   }
+  /*
+   * The close is a discreet cross: a 20 px icon in the muted text colour, no box and no border, in the header's
+   * top-right corner beside the title. Its 44x44 tap target stays, pulled into the dialog's padding so the cross
+   * lines up with the title rather than pushing it down.
+   */
   .${VISUAL_CLASSES.dialogClose} {
     flex: none;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
     min-width: 44px;
     min-height: 44px;
+    margin: -12px -12px -12px 0;
+    padding: 0;
     font: inherit;
-    color: var(--primary-text-color, #212121);
-    background: var(--secondary-background-color, transparent);
-    border: 1px solid var(--divider-color, #e0e0e0);
-    border-radius: 8px;
+    line-height: 0;
+    color: var(--secondary-text-color, #727272);
+    background: none;
+    border: 0;
+    border-radius: 50%;
     cursor: pointer;
+  }
+  .${VISUAL_CLASSES.dialogClose}:hover {
+    color: var(--primary-text-color, #212121);
   }
   .${VISUAL_CLASSES.dialogIntro} {
     margin: 0;
