@@ -404,6 +404,10 @@ async def test_the_snapshot_frame_and_reference_commands(garage: Garage, hass: H
     assert [item["kind"] for item in taken["references"]] == ["day", "night"]
     thumb = await garage.ws("reference_picture", vehicle_id=kia, kind="day")
     assert thumb["picture"]["width"] <= 240 and base64.b64decode(thumb["picture"]["data"])[:2] == b"\xff\xd8"
+    night = await garage.ws("reference_picture", vehicle_id=kia, kind="night")
+    assert (night["picture"]["width"], night["picture"]["height"]) == (thumb["picture"]["width"], thumb["picture"]["height"]), (
+        "day and night come cropped with the same frame, at the same size"
+    )
     assert (await garage.ws("take_reference_picture", vehicle_id="unknown", kind="day"))["error"] == "spotnav_invalid_value"
     assert (await garage.ws("take_reference_picture", vehicle_id=kia, kind="dusk"))["error"] == "spotnav_invalid_value"
     garage.camera.fail = True
