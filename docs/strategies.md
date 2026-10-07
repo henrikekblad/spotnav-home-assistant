@@ -6,8 +6,8 @@ work on this installation is listed as unavailable with the reason.
 ## What every strategy shares
 
 The plan is calculated from the charger's settings: price area, current in amps, the
-energy to charge (or a [target state of charge](target-soc.md)), the maximum number of charging
-periods, and an optional departure time. The card marks what is missing.
+energy to charge (or a [target state of charge](target-soc.md)), the charger's **Charge periods**
+(automatic by default, see [Cheapest](#cheapest)), and an optional departure time. The card marks what is missing.
 
 - **Automatic execution.** Home Assistant installs the plan and starts and stops the charger at
   the planned times. It survives restarts. **Pause** suspends automatic execution until the next

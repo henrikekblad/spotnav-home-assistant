@@ -26,7 +26,7 @@ charging losses.
 Several vehicles can be detected, and you choose which one the charger plans for, in the card's
 vehicle settings. Chargers do not report which car is plugged in, so at a charger more than one car can
 charge at SpotNav reads the cars' own plug sensors and positions and asks you when they cannot tell: see
-[Which car is plugged in?](vehicle-identification.md). Each car keeps its own target at the charger. Without
+[Which car is plugged in?](vehicle-identification.md). Each car has its own charge target, the same at every charger. Without
 a vehicle integration, charge a fixed number of kWh instead.
 
 ## How it behaves
@@ -98,7 +98,10 @@ minimum level (30 %)* while it runs.
 ## Vehicle charge limit
 
 If the vehicle's own integration exposes a charge-limit entity, SpotNav shows the limit in the
-card's plan settings and plans up to it. The app can also set it; the card only shows it.
+card's plan settings and plans up to it. An administrator can set it in the card (**Charge limit** in the car's
+settings) and any paired SpotNav app can too: the editor is a slider over the range and step the car's
+integration takes (50 to 100 % in steps of 10 on a Kia, for example; 1 to 100 % when it does not say). SpotNav
+writes at most once a minute per car, and the car takes the new limit when its integration next reads it.
 
 The limit is a number, or a percent picker (a select with options
 from 50 to 100); the AC limit is preferred over the DC limit, and discharge (V2L), minimum,
