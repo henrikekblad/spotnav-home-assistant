@@ -182,7 +182,9 @@ take, show and delete reference pictures for the camera chosen here, but cannot 
 
 **At a plug-in**, in **Automatic** mode, when two or more cars are left after the cars' own reports: SpotNav takes
 one picture, crops it with the frame and asks the AI Task which reference car is the one in the picture,
-comparing shape, roof line, windows and lights rather than colour. The answer is one car or none, and how sure
+comparing shape, roof line, windows and lights rather than colour. The picture of the spot now is sent first and
+the reference pictures after it: a model asked about "the last picture" was seen to answer "none" when a reference
+of an empty spot came just before it. The answer is one car or none, and how sure
 the model is.
 
 - The camera **decides on its own** only when all of this holds:
