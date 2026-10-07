@@ -255,6 +255,8 @@ class CapturedLive:
     #: While the car finishes a charge to its own limit past the plan's last window, that top-off's
     #: deadline (`ChargingController.top_off_until`).
     top_off_until: datetime | None = None
+    #: The car's minimum charge level while its own charge runs (`min_soc_floor.py`), else `None`.
+    min_soc_percent: float | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -1041,6 +1043,7 @@ def capture_dashboard(
             reports_plug_in=bool(controller is not None and controller.reports_plug_in),
             charging_to_vehicle_limit=bool(controller is not None and controller.charging_to_vehicle_limit),
             top_off_until=None if controller is None else controller.top_off_until,
+            min_soc_percent=_min_soc_percent(hass, entry_id),
         ),
         execution=CapturedExecution(
             state=EXECUTION_NOT_APPLIED if executor is None else executor.execution_state(),
@@ -2023,6 +2026,13 @@ def serialize_soc(soc: CapturedSoc | None) -> dict[str, Any] | None:
     }
 
 
+def _min_soc_percent(hass: HomeAssistant, entry_id: str) -> float | None:
+    """The car's minimum charge level while its own charge runs at this charger, else `None`."""
+    data = charger_data(hass, entry_id)
+    floor = None if data is None else data.min_soc
+    return None if floor is None else floor.charging_percent
+
+
 def serialize_vehicle(vehicle: CapturedVehicle) -> dict[str, Any]:
     """One entry of the root `vehicles`: `capacity_source` is `reported` (by the vehicle, not editable),
     `stored` (a person's answer) or `null` (missing). `min_percent` is the car's minimum charge level, `null` when
@@ -2163,6 +2173,7 @@ def status_facts(capture: CapturedDashboard) -> StatusFacts:
             _charge_ceiling(capture.soc) if capture.live.charging_to_vehicle_limit else None
         ),
         top_off_until=None if capture.live.top_off_until is None else _utc(capture.live.top_off_until),
+        min_soc_percent=capture.live.min_soc_percent,
         paused=capture.execution.paused is True,
         pause_until=None if pause is None else _utc(pause.expires_at),
         pause_choice=None if pause is None else pause.choice,

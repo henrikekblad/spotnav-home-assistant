@@ -187,7 +187,7 @@ class MinSocFloor:
         self._unsubs.append(controller.add_listener(self.async_poke))
         if self._interval is not None:
             self._unsubs.append(
-                async_track_time_interval(self._hass, lambda _now: self.async_poke(), self._interval)
+                async_track_time_interval(self._hass, self.async_poke, self._interval)
             )
 
     @callback
