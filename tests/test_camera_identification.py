@@ -52,6 +52,7 @@ pytestmark = pytest.mark.usefixtures("offline_relay")
 
 RED = (190, 30, 30)
 WHITE = (235, 235, 230)
+BLUE = (40, 90, 200)
 DARK_BLUE = (25, 30, 70)
 DARK_GREY = (38, 40, 52)
 EMPTY = (90, 90, 90)
@@ -129,7 +130,7 @@ class Garage:
         self.camera = FakeCamera()
         self.model = FakeModel()
 
-    async def start(self, *, colours: tuple[tuple[int, int, int], tuple[int, int, int]] = (RED, WHITE), references: bool = True) -> Garage:
+    async def start(self, *, colours: tuple[tuple[int, int, int], tuple[int, int, int]] = (RED, BLUE), references: bool = True) -> Garage:
         hass = self.hass
 
         async def setup_entry(hass: HomeAssistant, entry: Any) -> bool:
@@ -202,7 +203,7 @@ async def garage(hass: HomeAssistant, freezer: Any, hass_ws_client: Any, hass_ad
 
 async def test_between_cars_of_different_colours_a_sure_answer_decides_without_asking(garage: Garage) -> None:
     await garage.start()
-    garage.car_parks(WHITE)
+    garage.car_parks(BLUE)
     await garage.world.plug_in()
     await garage.settle()
     world = garage.world
@@ -262,7 +263,7 @@ async def test_between_similar_cars_the_camera_only_puts_its_car_first(garage: G
 async def test_a_less_sure_answer_only_orders_the_buttons(garage: Garage) -> None:
     await garage.start()
     garage.model.confidence = "medium"
-    garage.car_parks(WHITE)
+    garage.car_parks(BLUE)
     await garage.world.plug_in()
     await garage.settle()
     assert garage.world.settings.target.vehicle_id == garage.world.cars["Kia"]
@@ -293,7 +294,7 @@ async def test_no_car_at_the_spot_counts_for_nothing(garage: Garage) -> None:
 async def test_a_persons_answer_wins_over_a_late_camera(garage: Garage) -> None:
     await garage.start()
     garage.model.hold = asyncio.Event()
-    garage.car_parks(WHITE)
+    garage.car_parks(BLUE)
     await garage.world.plug_in()
     await garage.hass.async_block_till_done()
     assert await garage.world.identifier.async_answer(garage.world.cars["Kia"])
@@ -316,7 +317,7 @@ async def test_the_cars_own_report_decides_and_the_camera_is_not_asked(garage: G
 async def test_one_retry_after_an_error_and_none_after_that(garage: Garage) -> None:
     await garage.start()
     garage.model.errors = [HomeAssistantError("model down")]
-    garage.car_parks(WHITE)
+    garage.car_parks(BLUE)
     await garage.world.plug_in()
     await garage.settle()
     assert len(garage.model.tasks) == 2
@@ -336,7 +337,7 @@ async def test_one_retry_after_an_error_and_none_after_that(garage: Garage) -> N
 async def test_a_slow_model_is_ignored_and_the_question_asked_as_without_a_camera(garage: Garage) -> None:
     await garage.start()
     garage.model.hold = asyncio.Event()
-    garage.car_parks(WHITE)
+    garage.car_parks(BLUE)
     await garage.world.plug_in()
     await garage.model.asked.wait()
     await garage.world.later(QUERY_TIMEOUT_S - 1)
@@ -482,7 +483,7 @@ async def test_a_redrawn_frame_makes_older_references_stale_until_taken_again(ga
 
 async def test_a_cars_own_report_corrects_the_camera_and_a_persons_answer_outranks_both(garage: Garage) -> None:
     await garage.start()
-    garage.car_parks(WHITE)
+    garage.car_parks(BLUE)
     await garage.world.plug_in()
     await garage.settle()
     world = garage.world
@@ -499,7 +500,7 @@ async def test_a_cars_own_report_corrects_the_camera_and_a_persons_answer_outran
 
 async def test_the_camera_car_reporting_itself_unplugged_hands_over_to_the_other(garage: Garage) -> None:
     await garage.start()
-    garage.car_parks(WHITE)
+    garage.car_parks(BLUE)
     await garage.world.plug_in()
     await garage.settle()
     world = garage.world
@@ -511,7 +512,7 @@ async def test_the_camera_car_reporting_itself_unplugged_hands_over_to_the_other
 
 async def test_after_a_persons_answer_the_cars_reports_change_nothing(garage: Garage) -> None:
     await garage.start()
-    garage.car_parks(WHITE)
+    garage.car_parks(BLUE)
     await garage.world.plug_in()
     await garage.settle()
     world = garage.world
@@ -567,3 +568,23 @@ async def test_the_app_may_move_the_frame_but_never_choose_the_camera_or_the_ai_
         "/api/webhook/webhook-a", json={"version": 1, "action": "camera_snapshot", "camera_entity_id": "camera.norr"}
     )
     assert response.status == 400, "the app names no camera"
+
+
+async def test_a_white_car_shows_no_colour_and_the_camera_only_orders(garage: Garage) -> None:
+    await garage.start(colours=(RED, WHITE))
+    garage.car_parks(WHITE)
+    await garage.world.plug_in()
+    await garage.settle()
+    assert garage.world.identifier.method == METHOD_ASSUMED, "no colour to check the answer against: the safe side"
+    assert garage.camera_evidence()["used"] is True
+
+
+async def test_a_sure_answer_against_the_colour_now_only_orders(garage: Garage) -> None:
+    await garage.start()
+    garage.model.answer = "car_1"
+    garage.car_parks(BLUE)
+    await garage.world.plug_in()
+    await garage.settle()
+    assert garage.world.identifier.method == METHOD_ASSUMED, "the red car named for a blue crop"
+    await garage.world.later(ASK_AFTER_S + 5)
+    assert [a["title"] for a in garage.world.sent()[0]["data"]["actions"]] == ["Kia", "Tesla"]

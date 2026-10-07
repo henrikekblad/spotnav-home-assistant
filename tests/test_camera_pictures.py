@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import io
+import random
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -12,6 +13,7 @@ from PIL import Image
 from custom_components.spotnav.vehicles.camera_pictures import (
     as_jpeg,
     colour_signature,
+    reference_signature,
     crop_jpeg,
     MAX_SIDE,
     picture_size,
@@ -52,17 +54,40 @@ def test_a_camera_that_sends_another_format_gives_a_jpeg() -> None:
     assert max(picture_size(thumbnail_jpeg(picture(1000, 500, (1, 2, 3))))) == 240
 
 
-def test_a_daylight_picture_has_a_signature_and_a_night_or_infrared_one_has_none() -> None:
-    red = colour_signature(picture(200, 100, (60, 70, 60), spot=(180, 30, 30)))
-    white = colour_signature(picture(200, 100, (60, 70, 60), spot=(235, 235, 230)))
+def test_a_daylight_reference_keeps_its_colour_and_a_night_reference_has_none() -> None:
+    red = reference_signature(picture(200, 100, (60, 70, 60), spot=(180, 30, 30)), "day")
+    white = reference_signature(picture(200, 100, (60, 70, 60), spot=(235, 235, 230)), "day")
     assert red is not None and white is not None and distinct_cars([red], [white]), "a white car is a colour too"
-    assert colour_signature(picture(200, 100, (120, 120, 120), spot=(200, 200, 200))) is None, (
-        "grey all over, as an infrared picture"
-    )
-    assert colour_signature(picture(200, 100, (60, 70, 60), spot=(180, 30, 30)), "night") is None
-    blue = colour_signature(picture(200, 100, (25, 30, 70)))
-    grey_blue = colour_signature(picture(200, 100, (38, 40, 52)))
+    assert reference_signature(picture(200, 100, (60, 70, 60), spot=(180, 30, 30)), "night") is None
+    blue = reference_signature(picture(200, 100, (25, 30, 70)), "day")
+    grey_blue = reference_signature(picture(200, 100, (38, 40, 52)), "day")
     assert blue is not None and grey_blue is not None and not distinct_cars([blue], [grey_blue])
+
+
+def noisy(colour: tuple[int, int, int], spread: int, seed: int = 1) -> bytes:
+    """A picture of one colour with sensor noise (each channel moved by up to `spread`), as a camera gives it."""
+    rng = random.Random(seed)
+    image = Image.new("RGB", (160, 120))
+    image.putdata(
+        [tuple(max(0, min(255, value + rng.randint(-spread, spread))) for value in colour) for _ in range(160 * 120)]
+    )
+    out = io.BytesIO()
+    image.save(out, format="JPEG", quality=85)
+    return out.getvalue()
+
+
+def test_an_infrared_picture_has_no_colour_grey_or_tinted() -> None:
+    assert colour_signature(noisy((120, 120, 120), 12)) is None, "grey infrared with noise"
+    assert colour_signature(noisy((128, 118, 134), 10)) is None, "purple tint, no infrared-cut filter"
+    assert colour_signature(noisy((150, 128, 140), 10)) is None, "pink tint"
+    assert colour_signature(noisy((12, 12, 14), 6)) is None, "a dark night, noise only"
+
+
+def test_daylight_has_colour_even_dim() -> None:
+    assert colour_signature(noisy((25, 30, 70), 6)) is not None, "a dark blue car at dusk"
+    assert colour_signature(noisy((170, 40, 35), 10)) is not None, "a red car"
+    assert colour_signature(picture(200, 100, (60, 70, 60), spot=(180, 30, 30))) is not None, "a red car on grey ground"
+    assert colour_signature(picture(200, 100, (70, 110, 60), spot=(235, 235, 230))) is not None, "white car beside grass"
 
 
 def test_the_signature_is_taken_from_the_middle_of_the_crop() -> None:
@@ -70,7 +95,7 @@ def test_the_signature_is_taken_from_the_middle_of_the_crop() -> None:
     image.paste(Image.new("RGB", (60, 60), (200, 20, 20)), (20, 20))
     out = io.BytesIO()
     image.save(out, format="PNG")
-    signature = colour_signature(out.getvalue())
+    signature = reference_signature(out.getvalue(), "day")
     assert signature is not None and signature[0] > 0.7 and signature[1] < 0.15
 
 
@@ -79,7 +104,7 @@ async def test_reference_pictures_are_kept_privately_replaced_by_kind_and_remove
     store = ReferenceStore(hass, "entry_a")
     assert "/.storage/" in str(store.folder) and "www" not in store.folder.parts
     taken = datetime(2026, 10, 7, 12, 0, tzinfo=timezone.utc)
-    day = Reference("car1", "day", taken, "camera.norr", Frame(0, 0, 1, 1), (0.7, 0.1, 0.1))
+    day = Reference("car1", "day", taken, "camera.norr", Frame(0.1, 0.0, 0.8, 1.0), (0.7, 0.1, 0.1))
     night = Reference("car1", "night", taken, "camera.norr", None, None)
     await store.async_put(day, b"day-1")
     await store.async_put(night, b"night")

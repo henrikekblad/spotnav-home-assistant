@@ -14,6 +14,7 @@ from custom_components.spotnav.vehicles.camera_rule import (
     instructions_for,
     labels_for,
     may_query,
+    nearest_car,
     parse_answer,
     QUERY_ATTEMPTS,
 )
@@ -23,6 +24,8 @@ from custom_components.spotnav.vehicles.camera_settings import (
     crop_box,
     Frame,
     FRAME_MIN_SIZE,
+    normalised,
+    same_frame,
 )
 
 RED = (0.7, 0.1, 0.1)
@@ -68,8 +71,10 @@ def test_a_frame_is_inside_the_picture_and_not_a_slip_of_the_finger() -> None:
 def test_the_camera_settings_name_a_camera_and_an_ai_task_entity_or_the_default() -> None:
     raw = {"camera_entity_id": "camera.norr", "ai_task_entity_id": None, "frame": {"x": 0, "y": 0, "w": 1, "h": 1}}
     settings = CameraSettings.from_wire(raw)
-    assert settings == CameraSettings("camera.norr", None, Frame(0, 0, 1, 1))
-    assert settings.as_dict() == {**raw, "frame": {"x": 0.0, "y": 0.0, "w": 1.0, "h": 1.0}}
+    assert settings == CameraSettings("camera.norr", None, None), "the whole picture is stored as no frame"
+    assert settings.as_dict() == {**raw, "frame": None}
+    framed = CameraSettings.from_wire({**raw, "frame": {"x": 0.1, "y": 0, "w": 0.5, "h": 1}})
+    assert framed is not None and framed.frame == Frame(0.1, 0.0, 0.5, 1.0)
     assert CameraSettings.from_wire(None) is None
     for bad in (
         {**raw, "camera_entity_id": "image.norr"},
@@ -99,37 +104,44 @@ def test_cars_differ_only_when_every_coloured_picture_of_one_is_far_from_the_oth
 
 def test_a_high_confidence_answer_between_cars_of_different_colours_decides() -> None:
     references = {"ev6": [RED], "tesla": [WHITE]}
-    assert camera_verdict("ev6", "high", ["ev6", "tesla"], references) == CameraVerdict(decides="ev6", prefers="ev6")
+    assert camera_verdict("ev6", "high", ["ev6", "tesla"], references, RED) == CameraVerdict(decides="ev6", prefers="ev6")
 
 
 def test_at_night_the_camera_never_decides_alone() -> None:
     references = {"ev6": [RED], "tesla": [WHITE]}
-    assert camera_verdict("ev6", "high", ["ev6", "tesla"], references, in_colour=False) == CameraVerdict(prefers="ev6")
+    assert camera_verdict("ev6", "high", ["ev6", "tesla"], references, None) == CameraVerdict(prefers="ev6")
 
 
 def test_between_similar_cars_the_camera_only_orders_the_buttons() -> None:
     references = {"ev6": [DARK_BLUE, None], "ioniq": [DARK_GREY]}
-    assert camera_verdict("ev6", "high", ["ev6", "ioniq"], references) == CameraVerdict(prefers="ev6")
+    assert camera_verdict("ev6", "high", ["ev6", "ioniq"], references, DARK_BLUE) == CameraVerdict(prefers="ev6")
 
 
 def test_a_lower_confidence_only_orders_the_buttons() -> None:
     references = {"ev6": [RED], "tesla": [WHITE]}
-    assert camera_verdict("tesla", "medium", ["ev6", "tesla"], references) == CameraVerdict(prefers="tesla")
-    assert camera_verdict("tesla", None, ["ev6", "tesla"], references) == CameraVerdict(prefers="tesla")
+    assert camera_verdict("tesla", "medium", ["ev6", "tesla"], references, WHITE) == CameraVerdict(prefers="tesla")
+    assert camera_verdict("tesla", None, ["ev6", "tesla"], references, WHITE) == CameraVerdict(prefers="tesla")
 
 
 def test_a_car_without_a_reference_picture_keeps_the_camera_from_deciding() -> None:
     references = {"ev6": [RED], "tesla": [WHITE], "zoe": []}
-    assert camera_verdict("ev6", "high", ["ev6", "tesla", "zoe"], references) == CameraVerdict(prefers="ev6")
-    assert camera_verdict("ev6", "high", ["ev6", "tesla"], references).decides == "ev6", (
+    assert camera_verdict("ev6", "high", ["ev6", "tesla", "zoe"], references, RED) == CameraVerdict(prefers="ev6")
+    assert camera_verdict("ev6", "high", ["ev6", "tesla"], references, RED).decides == "ev6", (
         "a car the evidence ruled out does not count"
     )
 
 
 def test_no_car_or_a_car_that_is_no_candidate_counts_for_nothing() -> None:
     references = {"ev6": [RED], "tesla": [WHITE]}
-    assert camera_verdict(None, "high", ["ev6", "tesla"], references) == CameraVerdict()
-    assert camera_verdict("volvo", "high", ["ev6", "tesla"], references) == CameraVerdict()
+    assert camera_verdict(None, "high", ["ev6", "tesla"], references, RED) == CameraVerdict()
+    assert camera_verdict("volvo", "high", ["ev6", "tesla"], references, RED) == CameraVerdict()
+
+
+def test_a_sure_answer_decides_only_when_the_colour_now_is_nearest_the_named_car() -> None:
+    references = {"ev6": [RED], "tesla": [WHITE]}
+    assert camera_verdict("ev6", "high", ["ev6", "tesla"], references, (0.85, 0.85, 0.82)) == CameraVerdict(prefers="ev6")
+    assert nearest_car((0.6, 0.15, 0.1), ["ev6", "tesla"], references) == "ev6"
+    assert nearest_car((0.5, 0.5, 0.5), ["ev6"], {"ev6": [None]}) is None
 
 
 # --------------------------------------------------------------------------------- when it is asked
@@ -174,3 +186,11 @@ def test_an_answer_it_cannot_read_is_no_answer() -> None:
     assert parse_answer({"vehicle": "car_9", "confidence": "sure"}, labels) == (None, None)
     assert parse_answer("car_1", labels) == (None, None)
     assert parse_answer({"vehicle": 1}, labels) == (None, None)
+
+
+def test_frames_that_crop_the_same_picture_are_the_same() -> None:
+    assert normalised(Frame(0.0, 0.0, 1.0, 1.0)) is None and normalised(Frame(0.0005, 0, 0.9995, 1)) is None
+    assert same_frame(None, Frame(0, 0, 1, 1))
+    assert same_frame(Frame(0.1, 0.2, 0.5, 0.5), Frame(0.1004, 0.2, 0.5, 0.5))
+    assert not same_frame(Frame(0.1, 0.2, 0.5, 0.5), Frame(0.12, 0.2, 0.5, 0.5))
+    assert not same_frame(None, Frame(0.1, 0.2, 0.5, 0.5))
