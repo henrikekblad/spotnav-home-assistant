@@ -12,6 +12,7 @@
 import da from "./da.json";
 import de from "./de.json";
 import en from "./en.json";
+import es from "./es.json";
 import fi from "./fi.json";
 import fr from "./fr.json";
 import nb from "./nb.json";
@@ -21,10 +22,10 @@ import sv from "./sv.json";
 export type TranslationKey = keyof typeof en;
 export type Translation = Record<TranslationKey, string>;
 
-export const LANGUAGES = ["en", "sv", "nb", "da", "fi", "de", "nl", "fr"] as const;
+export const LANGUAGES = ["en", "sv", "nb", "da", "fi", "de", "nl", "fr", "es"] as const;
 export type Language = (typeof LANGUAGES)[number];
 
-export const TRANSLATIONS: Record<Language, Translation> = { en, sv, nb, da, fi, de, nl, fr };
+export const TRANSLATIONS: Record<Language, Translation> = { en, sv, nb, da, fi, de, nl, fr, es };
 
 /** Plural categories the headings use. Every supported language distinguishes one from other. */
 export type PluralCategory = "one" | "other";

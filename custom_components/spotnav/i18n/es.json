@@ -1,0 +1,110 @@
+{
+  "notifications": {
+    "title": "SpotNav · {name}",
+    "stopped.not_started": "La carga no ha empezado como estaba previsto.",
+    "stopped.stopped": "La carga se ha detenido durante una franja planificada.",
+    "stopped.charger_unavailable": "El cargador no está disponible durante una franja planificada.",
+    "stopped.vehicle_not_requesting": "El coche no está tomando corriente durante una franja planificada.",
+    "stopped.held_by_charger": "La programación propia del cargador está reteniendo la carga planificada.",
+    "stopped.charger_ignores_stop": "El cargador sigue cargando aunque se ha detenido. Detenlo en el cargador o desenchufa el coche.",
+    "stopped.charger_disabled": "El cargador está desactivado, así que la carga planificada no puede empezar.",
+    "at_risk": "La carga no estará lista para la salida.",
+    "at_risk.time": "La carga no estará lista para la salida de las {time}.",
+    "complete.target": "Carga completada: se ha alcanzado el objetivo del {percent}.",
+    "complete.energy": "Carga completada: se ha entregado la energía solicitada.",
+    "complete.plan_done": "La carga planificada ha terminado.",
+    "complete.vehicle_full": "Carga completada: el coche está lleno.",
+    "started": "La carga ha empezado.",
+    "test": "Notificación de prueba de SpotNav: las notificaciones llegan a este teléfono.",
+    "started.until": "La carga ha empezado, hasta las {time}.",
+    "plugged_in": "El coche está enchufado.",
+    "unplugged": "El coche está desenchufado.",
+    "plan_installed": "Nuevo plan: carga desde las {time}.",
+    "identify.ask": "¿Qué coche está enchufado?",
+    "identify.open": "Abrir SpotNav",
+    "identify.chosen": "{vehicle} seleccionado.",
+    "identify.recognised": "{vehicle} seleccionado automáticamente.",
+    "identify.kept": "Se mantiene {vehicle}.",
+    "charged": "{kwh} cargados",
+    "planned": "{kwh} planificados",
+    "cost": "unos {cost}"
+  },
+  "add_charger": {
+    "hint": "Añade un cargador: Ajustes → Dispositivos y servicios → SpotNav → Añadir entrada → Cargador; te ofrecerá unirse a esta instalación."
+  },
+  "resolve_vehicle": {
+    "device": "{name} -- {count} posibles sensores de batería",
+    "dismiss": "Esto no es un vehículo (dejar de avisar)"
+  },
+  "charger_detected": {
+    "external": "Hay otro controlador (evcc u openWB) instalado que puede que ya controle este cargador. No se sugiere nada: elige solo lo que tengas claro que SpotNav debe controlar.",
+    "external_installed": "evcc u openWB está instalado en Home Assistant y puede que ya controle este cargador. Desactívalo para este cargador o SpotNav y él se pelearán.",
+    "disabled": "Desactivadas por defecto, y útiles (se activan si dejas marcada la casilla de abajo):",
+    "balanced": "Perific equilibra la instalación de este cargador a través de la nube de Zaptec y fija la misma corriente disponible que fijaría SpotNav. No se sugiere ninguna corriente: SpotNav solo arranca y detiene el cargador.",
+    "controller": "{name} también controla cargadores; desactívalo para este cargador o SpotNav y {name} se pelearán.",
+    "cloud": "Si el cargador está vinculado a Tibber (u otra app) para la carga inteligente, desactívalo: Home Assistant no lo ve y se peleará con SpotNav."
+  },
+  "measurement_reason": {
+    "mode": "El modo de medición ha cambiado, así que hay que configurar la medición. ",
+    "chargers": "Los cargadores han cambiado, así que hay que configurar su conexión de fases. ",
+    "measurement": "La medición guardada está incompleta, así que hay que configurarla. "
+  },
+  "site_form": {
+    "default_name": "Instalación"
+  },
+  "site_confirm": {
+    "meter": "Contador de red",
+    "power_current_calculated": "potencia por fase, corriente calculada",
+    "power_current": "potencia y corriente por fase",
+    "current": "corriente por fase",
+    "current_entity": "una entidad con la corriente por fase",
+    "join_wiring": "**Conexión de fases:** 3 fases, corriente medida desde {source}",
+    "join_unknown": "SpotNav no puede saber cómo está conectado este cargador, así que no se añade automáticamente. Añádelo desde los ajustes de la instalación.",
+    "reactive_found": "**Potencia reactiva:** encontrada",
+    "reactive_missing": "**Potencia reactiva:** no encontrada (corriente estimada con factor de potencia 0,9)",
+    "battery": "**Batería doméstica:** {name} (carga en positivo)",
+    "no_battery": "**Batería doméstica:** ninguna",
+    "charger": "**Cargador:** {name} – {phases} fases, corriente medida desde {source}",
+    "label_power": "{name} – potencia por fase (corriente calculada)",
+    "label_power_current": "{name} – potencia y corriente por fase",
+    "label_current": "{name} – corriente por fase",
+    "ocpp_control": "**Control de carga:** {name}",
+    "ocpp_current_number": "**Corriente fijada mediante:** el número de corriente del cargador ({name})",
+    "ocpp_current_config": "**Corriente fijada mediante:** OCPP ChangeConfiguration",
+    "ocpp_energy": "**Contador de energía:** {name} (encontrado automáticamente)",
+    "ocpp_energy_none": "no se ha encontrado ninguno"
+  },
+  "candidate_reason": {
+    "attributes_device_class_and_unit_match": "clase de dispositivo de corriente y una unidad compatible",
+    "attributes_unit_match_only": "una unidad de corriente compatible",
+    "attributes_historical_match": "datos por fase vistos en el historial, sin medición ahora mismo",
+    "attributes_profile_match": "los atributos de corriente por fase de la propia integración del cargador",
+    "separate_entities_device_class_and_unit_match": "clase de dispositivo de corriente y una unidad compatible",
+    "separate_entities_device_class_match_only": "solo clase de dispositivo de corriente",
+    "separate_entities_unit_match_only": "solo una unidad de corriente compatible",
+    "separate_entities_name_match_only": "solo patrón de nombre",
+    "separate_entities_profile_match": "los sensores de corriente por fase de la propia integración del cargador",
+    "possible_inverter_output_not_confirmed_as_grid_input": "parece salida del inversor/solar, no confirmada como entrada de red"
+  },
+  "candidate_confidence": {
+    "high": "confianza alta",
+    "medium": "confianza media",
+    "low": "confianza baja"
+  },
+  "candidate_representation": {
+    "separate_entities": "tres entidades",
+    "attributes": "atributos"
+  },
+  "choice": {
+    "manual": "Elegir manualmente",
+    "manual_separate_entities": "Elegir manualmente (tres entidades separadas, una por fase)",
+    "manual_attributes": "Introducir manualmente una entidad + sus atributos de fase",
+    "skip": "Omitir por ahora (configurar más tarde)"
+  },
+  "current_control": {
+    "none": "No fijar una corriente",
+    "change_configuration": "ChangeConfiguration (AssignedCurrent)",
+    "number": "El número de corriente del cargador, dentro de sus límites de escritura",
+    "easee_dynamic_limit": "Límite dinámico de corriente de Easee (con límite de frecuencia)"
+  }
+}

@@ -1,0 +1,818 @@
+{
+  "title": "SpotNav",
+  "config": {
+    "flow_title": "{device} quiere conectarse · código {code}",
+    "step": {
+      "pairing": {
+        "menu_options": {
+          "pair_approve": "Aprobar",
+          "pair_deny": "Rechazar"
+        },
+        "title": "Un teléfono quiere conectarse",
+        "description": "Un dispositivo que se identifica como **{device}** pide conectarse y muestra el código **{code}**. Apruébalo solo si el mismo código aparece en su pantalla. Al aprobarlo se entregan los cargadores de esta instancia; el código solo sirve para compararlo."
+      },
+      "pair_approve": {
+        "title": "Aprobar"
+      },
+      "pair_deny": {
+        "title": "Rechazar"
+      },
+      "user": {
+        "title": "¿Qué quieres añadir?",
+        "description": "Un cargador conecta un punto de carga físico con SpotNav. Una instalación es opcional: equilibra la carga de todos los cargadores de una misma acometida eléctrica por debajo del fusible general.",
+        "data": {
+          "entry_type": "Qué añadir"
+        }
+      },
+      "charger_type": {
+        "title": "Elige el tipo de cargador",
+        "description": "Automático encuentra los controles del cargador a partir de su dispositivo: cargadores OCPP e integraciones compatibles (Easee, Wallbox, Zaptec, go-e, Peblar y más). Manual te permite elegir tú mismo cualquier interruptor de control de carga.",
+        "data": {
+          "mode": "Tipo de cargador"
+        }
+      },
+      "resolve_vehicle": {
+        "title": "Resolver un vehículo detectado",
+        "description": "Uno de estos dispositivos parece un vehículo pero informa de más de un nivel de batería, así que SpotNav no adivinará cuál es el nivel de carga. Elige el dispositivo que quieres resolver -- o vuelve a elegir el tipo de entrada si no reconoces nada de lo que hay aquí.",
+        "data": {
+          "device_id": "Dispositivo"
+        }
+      },
+      "resolve_vehicle_soc": {
+        "title": "¿Qué lectura es el nivel de carga?",
+        "description": "Elige cuál de las lecturas de batería de {name} es su nivel de carga real -- o indica que el dispositivo no es un vehículo que cargues, para que SpotNav deje de avisar de él.",
+        "data": {
+          "soc_entity_id": "Nivel de carga"
+        }
+      },
+      "ocpp_entities": {
+        "title": "Confirma los controles del cargador",
+        "description": "Solo se muestran las entidades compatibles que pertenecen al cargador OCPP seleccionado.",
+        "data": {
+          "charge_control": "Control de carga",
+          "current_limit": "Número de límite de corriente (opcional)",
+          "energy_register_entity": "Contador de energía (total)",
+          "current_control": "Cómo fija SpotNav la corriente"
+        },
+        "data_description": {
+          "charge_control": "El interruptor que inicia y detiene la carga en este conector.",
+          "current_limit": "El número de corriente propio del cargador; SpotNav solo lee su valor y su rango.",
+          "energy_register_entity": "El sensor de energía total del conector; se encuentra automáticamente, así que déjalo como está.",
+          "current_control": "Déjalo en \"No fijar una corriente\" salvo que se sepa que el cargador acepta el método elegido."
+        }
+      },
+      "generic": {
+        "title": "Elige los controles del cargador",
+        "data": {
+          "charge_control": "Control de carga",
+          "current_limit": "Corriente de carga (opcional)",
+          "energy_register_entity": "Contador de energía (total)",
+          "power_entity": "Sensor de potencia, enchufe inteligente (opcional)"
+        },
+        "data_description": {
+          "energy_register_entity": "El sensor de energía total del cargador, usado para contar la energía ya entregada. Opcional.",
+          "power_entity": "Un cargador sin conectividad detrás de un enchufe inteligente: el sensor de potencia del enchufe (W o kW). SpotNav cuenta la energía a partir de él y ve cuándo el coche ha dejado de consumir. El enchufe debe estar dimensionado para la corriente continua del cargador. Opcional."
+        }
+      },
+      "site": {
+        "title": "Instalación",
+        "description": "La instalación mantiene la corriente combinada de sus cargadores por debajo del fusible general. El control activo se puede activar y desactivar más tarde; funciona lo mejor posible, pero no es un dispositivo de protección. El calibre del fusible general debe introducirse explícitamente -- nunca se deduce de la carga medida. {charger_hint}",
+        "data": {
+          "name": "Nombre de la instalación",
+          "main_fuse_a": "Calibre del fusible general (A)",
+          "safety_margin_a": "Margen de seguridad (A)",
+          "measurement_mode": "Fuente de medición",
+          "charger_entry_ids": "Cargadores que comparten la capacidad de esta instalación",
+          "voltage_between_phases_v": "Tensión entre fases"
+        }
+      },
+      "site_detected": {
+        "title": "Contador de red encontrado",
+        "description": "SpotNav ha encontrado estos contadores de red. No se aplica nada hasta que lo confirmes; elige \"manual\" para escoger tú las entidades.",
+        "data": {
+          "choice": "Contador detectado",
+          "enable_disabled": "Activar las entidades desactivadas que necesita este contador"
+        }
+      },
+      "site_current_suggestions": {
+        "title": "Sugerencias de fuente de corriente de la instalación",
+        "description": "Son solo sugerencias, basadas en entidades que ya hay en Home Assistant -- no se aplica nada hasta que lo confirmes. Elige \"manual\" para escoger tú las entidades u \"omitir\" para configurarlo más tarde desde las opciones de la instalación.",
+        "data": {
+          "choice": "Fuente sugerida"
+        }
+      },
+      "site_details": {
+        "title": "Entidades de medición",
+        "description": "Elige los sensores del contador de red. Se acepta cualquier sensor; su unidad se comprueba al continuar (corriente en A o mA, potencia en W o kW, tensión en V, potencia reactiva en var o kvar, potencia aparente en VA o kVA). Solo se muestran los campos que corresponden a la fuente de medición elegida. Después sigue la conexión de fases de cada cargador asociado, de uno en uno.{charger_hint}",
+        "data": {
+          "direct_L1": "Corriente de red L1",
+          "direct_L2": "Corriente de red L2",
+          "direct_L3": "Corriente de red L3",
+          "site_current_signed": "La corriente de red tiene signo (la exportación es negativa)",
+          "grid_power_inverted": "La potencia de red es positiva al exportar (invertirla)",
+          "derived_L1_power_export": "Potencia de exportación L1 (opcional, cuando la importación y la exportación van aparte)",
+          "derived_L1_reactive_power": "Potencia reactiva L1 (opcional)",
+          "derived_L1_apparent_power": "Potencia aparente L1 (opcional)",
+          "derived_L1_current": "Corriente L1 (opcional)",
+          "derived_L2_power_export": "Potencia de exportación L2 (opcional, cuando la importación y la exportación van aparte)",
+          "derived_L2_reactive_power": "Potencia reactiva L2 (opcional)",
+          "derived_L2_apparent_power": "Potencia aparente L2 (opcional)",
+          "derived_L2_current": "Corriente L2 (opcional)",
+          "derived_L3_power_export": "Potencia de exportación L3 (opcional, cuando la importación y la exportación van aparte)",
+          "derived_L3_reactive_power": "Potencia reactiva L3 (opcional)",
+          "derived_L3_apparent_power": "Potencia aparente L3 (opcional)",
+          "derived_L3_current": "Corriente L3 (opcional)",
+          "derived_L1_power": "Potencia L1",
+          "derived_L1_voltage": "Tensión L1",
+          "derived_L2_power": "Potencia L2",
+          "derived_L2_voltage": "Tensión L2",
+          "derived_L3_power": "Potencia L3",
+          "derived_L3_voltage": "Tensión L3"
+        }
+      },
+      "charger_manual_source": {
+        "title": "Corriente medida del cargador",
+        "description": "Elige una entidad que pertenezca al propio dispositivo de este cargador e indica el atributo que contiene la corriente de cada fase. Solo se ofrecen entidades registradas en este cargador. Elige explícitamente la unidad de esos atributos -- \"A\" o \"mA\": la unidad propia de una entidad describe el valor de su estado, no necesariamente otros atributos que también tenga.",
+        "data": {
+          "entity_id": "Entidad (solo del propio dispositivo de este cargador)",
+          "attribute_L1": "Nombre del atributo L1",
+          "attribute_L2": "Nombre del atributo L2",
+          "attribute_L3": "Nombre del atributo L3",
+          "unit": "Unidad de esos atributos",
+          "confirm_unverified": "No se ha podido verificar nada -- guardar de todos modos"
+        }
+      },
+      "site_manual_source": {
+        "title": "Corriente de la instalación desde una entidad",
+        "description": "Elige una entidad que contenga la corriente de toda la instalación como atributos propios por fase e indica el atributo de cada fase. Nunca se ofrecen entidades que pertenezcan a uno de los cargadores de esta instalación -- el sensor propio de un cargador no puede ser también el total de toda la instalación. Elige explícitamente la unidad de esos atributos -- \"A\" o \"mA\": la unidad propia de una entidad describe el valor de su estado, no necesariamente otros atributos que también tenga.",
+        "data": {
+          "entity_id": "Entidad (cualquiera salvo los cargadores de esta instalación)",
+          "attribute_L1": "Nombre del atributo L1",
+          "attribute_L2": "Nombre del atributo L2",
+          "attribute_L3": "Nombre del atributo L3",
+          "unit": "Unidad de esos atributos",
+          "confirm_unverified": "No se ha podido verificar nada -- guardar de todos modos"
+        }
+      },
+      "detect_device": {
+        "title": "Elige el dispositivo del cargador",
+        "description": "Elige el dispositivo del cargador. SpotNav encuentra sus controles a partir de las entidades propias de esa integración; no se aplica nada hasta que confirmes el siguiente paso.",
+        "data": {
+          "device": "Cargador"
+        }
+      },
+      "own_mode": {
+        "title": "Desactiva el control propio del cargador",
+        "description": "Este cargador tiene activado su propio modo inteligente, solar o de equilibrado de carga: {modes}. Dos controladores en un mismo cargador se pelean entre sí. Desactívalo en la integración o la app propia del cargador y continúa.",
+        "data": {
+          "continue_anyway": "Continuar de todos modos (acepto que puedan pelearse)"
+        }
+      },
+      "detected_entities": {
+        "title": "Confirma {device}",
+        "description": "{warning}Encontrado a partir del dispositivo del cargador. Cambia o vacía lo que no sea correcto. \"Fijar la corriente del cargador\" está desactivado salvo que lo elijas: SpotNav escribe entonces la corriente solo según lo permitan los límites de escritura del cargador.{disabled}",
+        "data": {
+          "charge_control": "Control de carga",
+          "current_limit": "Número de corriente de carga (opcional)",
+          "current_control": "Fijar la corriente del cargador",
+          "energy_register_entity": "Registro de energía (opcional)",
+          "energy_register_is_session": "Usar el registro de energía por sesión (se reinicia en cada sesión)",
+          "charging_state_entity": "Sensor de estado que indica que está cargando (opcional)",
+          "enable_disabled_entities": "Activar las entidades útiles que están desactivadas"
+        }
+      },
+      "ocpp_confirm": {
+        "title": "Cargador encontrado",
+        "description": "Se han encontrado los controles de este cargador. Continúa para añadirlo o marca la casilla para cambiar estas opciones.\n\n{summary}",
+        "data": {
+          "adjust": "Cambiar estas opciones"
+        }
+      },
+      "site_confirm": {
+        "title": "Instalación encontrada",
+        "description": "Esto es lo que SpotNav ha encontrado para esta instalación. Continúa para crearla o marca la casilla para cambiar estas opciones.\n\n{summary}{charger_hint}",
+        "data": {
+          "adjust": "Cambiar estas opciones"
+        }
+      },
+      "join_site": {
+        "title": "Añadir a la instalación",
+        "description": "¿Añadir este cargador a la instalación {site}?\n\n{summary}",
+        "data": {
+          "join": "Añadirlo a la instalación"
+        }
+      },
+      "site_charger_wiring": {
+        "title": "Conexión de {charger}",
+        "description": "En un cargador monofásico, elige explícitamente la fase conectada -- con una fase desconocida nunca se puede calcular una recomendación segura para él. La corriente medida propia del cargador es opcional: elige una sugerencia encontrada, introduce una entidad con atributos por fase, introduce tres entidades separadas (una por fase, como las que ofrece la integración de Charge Amps) o déjalo en \"omitir\" para configurarlo más tarde.",
+        "data": {
+          "phases": "Número de fases",
+          "phase": "Fase conectada (cargadores monofásicos)",
+          "measured_source": "Fuente de corriente medida (opcional)"
+        }
+      },
+      "charger_manual_entities": {
+        "title": "Corriente medida del cargador, una entidad por fase",
+        "description": "Elige el sensor que contiene la corriente de cada fase. Solo se ofrecen entidades registradas en el propio dispositivo de este cargador, y cada una debe informar en amperios (A o mA).",
+        "data": {
+          "entity_L1": "Corriente L1",
+          "entity_L2": "Corriente L2",
+          "entity_L3": "Corriente L3"
+        }
+      },
+      "charger_installation": {
+        "title": "Fases del cargador, tensión entre fases",
+        "description": "Las entidades del cargador no dicen en cuántas fases carga. Elige una fase o tres: los planes se calculan a partir de ello. Donde gran parte de la red es IT (como en Noruega), indica también la tensión entre fases: 230 V en una red IT, 400 V en los demás casos.",
+        "data": {
+          "charger_phases": "Fases del cargador",
+          "voltage_between_phases_v": "Tensión entre fases"
+        }
+      }
+    },
+    "abort": {
+      "already_configured": "Este cargador o instalación ya está configurado.",
+      "pairing_approved": "Aprobado. El teléfono tiene ahora los cargadores de esta instancia.",
+      "pairing_denied": "Rechazado. Se ha avisado al teléfono y no se ha entregado nada.",
+      "pairing_request_expired": "Esa solicitud de emparejamiento ha caducado. Vuelve a empezar en el teléfono.",
+      "no_supported_charger": "No se ha encontrado ningún cargador compatible. Configura primero la integración propia del cargador o elige Manual.",
+      "no_charge_control": "No se ha encontrado ningún interruptor de control de carga OCPP activado para este dispositivo.",
+      "no_pending_site": "Los datos de esta instalación no se enviaron antes de abrir la entrada manual del cargador, así que no se ha guardado nada.",
+      "no_ambiguous_vehicles": "Ahora mismo no hay ningún vehículo detectado que haya que resolver.",
+      "vehicle_resolved": "Vehículo resuelto. Su nivel de carga se leerá de la lectura que has elegido.",
+      "vehicle_dismissed": "Vehículo descartado. SpotNav dejará de avisar de él hasta que se deshaga el descarte.",
+      "not_a_charger": "Ese dispositivo no es un cargador de vehículos eléctricos (es un controlador de calefacción o de enchufe).",
+      "charger_not_recognised": "SpotNav no conoce esta integración. Elige Manual en su lugar.",
+      "charger_not_controllable": "SpotNav no puede iniciar ni detener este cargador. Solo se puede leer."
+    },
+    "error": {
+      "safety_margin_at_or_above_fuse": "El margen de seguridad debe ser menor que el fusible general; de lo contrario no queda corriente para los cargadores.",
+      "charge_control_in_use": "Este control de carga ya lo usa otro cargador de SpotNav.",
+      "current_limit_in_use": "Este control de corriente de carga ya lo usa otro cargador de SpotNav.",
+      "duplicate_charger": "{other} y este cargador son el mismo cargador físico. Dos cargadores de SpotNav en un mismo cargador le envían órdenes contradictorias, así que conserva solo uno: elimina el otro en Ajustes → Dispositivos y servicios → SpotNav. SpotNav nunca elimina ninguno por ti.",
+      "charger_already_in_another_site": "Uno de estos cargadores ya está asignado a otra instalación.",
+      "manual_source_entity_invalid": "Elige una entidad de sensor que exista en Home Assistant.",
+      "manual_source_entity_wrong_device": "Esa entidad no está registrada en el propio dispositivo de este cargador, así que no puede ser la corriente medida de este cargador.",
+      "site_manual_source_entity_on_charger_device": "Esa entidad pertenece a uno de los cargadores de esta instalación, así que no puede ser la corriente total propia de la instalación.",
+      "manual_source_attributes_required": "Introduce el nombre del atributo de esta fase.",
+      "manual_source_unverified": "Ahora mismo nada de esta entidad coincide con esos nombres de atributo, y tampoco nada de los últimos {lookback_days} días del historial -- puede ser un cargador completamente nuevo o una errata. Marca \"guardar de todos modos\" para guardarlo igualmente.",
+      "device_not_found": "Ese dispositivo no existe.",
+      "own_mode_active": "El control propio del cargador sigue activado. Desactívalo o elige continuar de todos modos.",
+      "control_path_unknown": "SpotNav no sabe cómo iniciar y detener una carga con esta entidad. Elige el interruptor del cargador o un selector con opciones claras de inicio y parada.",
+      "current_limit_required": "Elige el número de corriente de carga con el que fijarla.",
+      "current_control_unsupported": "Esta forma de fijar la corriente no es adecuada para este cargador.",
+      "charger_no_answer": "El cargador no ha respondido, así que SpotNav no puede saber cómo se fija su corriente. Espera a que esté conectado y vuelve a enviar, o elige tú.",
+      "unit_expected_current": "Este sensor debe informar de la corriente en A o mA.",
+      "unit_expected_power": "Este sensor debe informar de la potencia en W o kW.",
+      "unit_expected_voltage": "Este sensor debe informar de la tensión en V.",
+      "unit_expected_reactive_power": "Este sensor debe informar de la potencia reactiva en var o kvar.",
+      "unit_expected_apparent_power": "Este sensor debe informar de la potencia aparente en VA o kVA.",
+      "manual_entities_duplicate": "Cada fase necesita su propia entidad."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Controles del cargador",
+        "data": {
+          "charge_control": "Control de carga",
+          "current_limit": "Corriente de carga (opcional)",
+          "current_control": "Fijar la corriente del cargador",
+          "energy_register_entity": "Contador de energía (total, opcional)",
+          "power_entity": "Sensor de potencia, enchufe inteligente (opcional)",
+          "idle_power_w": "Sin consumo por debajo de (W)"
+        },
+        "data_description": {
+          "idle_power_w": "Si la potencia está por debajo de este valor durante cinco minutos en una carga planificada, SpotNav indica que el coche no está consumiendo. Por defecto, 100 W."
+        }
+      },
+      "site_init": {
+        "title": "Ajustes de capacidad de la instalación",
+        "description": "Equilibrado de carga por debajo del fusible general. El control activo reduce la corriente de un cargador cuando hace falta; funciona lo mejor posible, pero no es un dispositivo de protección. El sensor de potencia de la batería es opcional y solo alimenta una estimación de diagnóstico -- nunca un límite de carga seguro.",
+        "data": {
+          "name": "Nombre de la instalación",
+          "site_enabled": "Cálculo de la instalación activado",
+          "active_control_enabled": "Control activo activado (opcional, solo en modo derivado)",
+          "main_fuse_a": "Calibre del fusible general (A)",
+          "safety_margin_a": "Margen de seguridad (A)",
+          "max_age_s": "Antigüedad máxima de la medición (segundos)",
+          "regulator_deadband_a": "Control activo: ignorar cambios menores que (A)",
+          "regulator_dwell_s": "Control activo: cuánto tiempo debe mantenerse un cambio (segundos)",
+          "yield_stepping_enabled": "Escalonado con cesión verificada activado (opcional, para una instalación con una carga que cede, p. ej. una batería doméstica)",
+          "yield_ceiling_a": "Escalonado con cesión: techo absoluto, nunca se supera (A, debe ser mayor que el fusible general)",
+          "solar_priority": "Prioridad del excedente solar (primero el coche o la batería doméstica)",
+          "battery_aggregate_power_entity": "Potencia de carga de la batería doméstica (opcional, solo diagnóstico)",
+          "change_measurement": "Cambiar la medición y la conexión de fases",
+          "measurement_mode": "Fuente de medición",
+          "charger_entry_ids": "Cargadores que comparten la capacidad de esta instalación",
+          "solar_forecast_entries": "Fuentes de previsión solar (opcional, las usa la estrategia híbrida)",
+          "voltage_between_phases_v": "Tensión entre fases"
+        }
+      },
+      "site_current_suggestions": {
+        "title": "Sugerencias de fuente de corriente de la instalación",
+        "description": "Son solo sugerencias, basadas en entidades que ya hay en Home Assistant -- no se aplica nada hasta que lo confirmes. Elige \"manual\" para escoger tú las entidades u \"omitir\" para configurarlo más tarde desde las opciones de la instalación.",
+        "data": {
+          "choice": "Fuente sugerida"
+        }
+      },
+      "site_details": {
+        "title": "Entidades de medición",
+        "description": "{reason}Elige los sensores del contador de red. Se acepta cualquier sensor; su unidad se comprueba al continuar (corriente en A o mA, potencia en W o kW, tensión en V, potencia reactiva en var o kvar, potencia aparente en VA o kVA). Solo se muestran los campos que corresponden a la fuente de medición elegida. Después sigue la conexión de fases de cada cargador asociado, de uno en uno.",
+        "data": {
+          "direct_L1": "Corriente de red L1",
+          "direct_L2": "Corriente de red L2",
+          "direct_L3": "Corriente de red L3",
+          "site_current_signed": "La corriente de red tiene signo (la exportación es negativa)",
+          "grid_power_inverted": "La potencia de red es positiva al exportar (invertirla)",
+          "derived_L1_power_export": "Potencia de exportación L1 (opcional, cuando la importación y la exportación van aparte)",
+          "derived_L1_reactive_power": "Potencia reactiva L1 (opcional)",
+          "derived_L1_apparent_power": "Potencia aparente L1 (opcional)",
+          "derived_L1_current": "Corriente L1 (opcional)",
+          "derived_L2_power_export": "Potencia de exportación L2 (opcional, cuando la importación y la exportación van aparte)",
+          "derived_L2_reactive_power": "Potencia reactiva L2 (opcional)",
+          "derived_L2_apparent_power": "Potencia aparente L2 (opcional)",
+          "derived_L2_current": "Corriente L2 (opcional)",
+          "derived_L3_power_export": "Potencia de exportación L3 (opcional, cuando la importación y la exportación van aparte)",
+          "derived_L3_reactive_power": "Potencia reactiva L3 (opcional)",
+          "derived_L3_apparent_power": "Potencia aparente L3 (opcional)",
+          "derived_L3_current": "Corriente L3 (opcional)",
+          "derived_L1_power": "Potencia L1",
+          "derived_L1_voltage": "Tensión L1",
+          "derived_L2_power": "Potencia L2",
+          "derived_L2_voltage": "Tensión L2",
+          "derived_L3_power": "Potencia L3",
+          "derived_L3_voltage": "Tensión L3"
+        }
+      },
+      "charger_manual_source": {
+        "title": "Corriente medida del cargador",
+        "description": "Elige una entidad que pertenezca al propio dispositivo de este cargador e indica el atributo que contiene la corriente de cada fase. Solo se ofrecen entidades registradas en este cargador. Elige explícitamente la unidad de esos atributos -- \"A\" o \"mA\": la unidad propia de una entidad describe el valor de su estado, no necesariamente otros atributos que también tenga.",
+        "data": {
+          "entity_id": "Entidad (solo del propio dispositivo de este cargador)",
+          "attribute_L1": "Nombre del atributo L1",
+          "attribute_L2": "Nombre del atributo L2",
+          "attribute_L3": "Nombre del atributo L3",
+          "unit": "Unidad de esos atributos",
+          "confirm_unverified": "No se ha podido verificar nada -- guardar de todos modos"
+        }
+      },
+      "site_manual_source": {
+        "title": "Corriente de la instalación desde una entidad",
+        "description": "Elige una entidad que contenga la corriente de toda la instalación como atributos propios por fase e indica el atributo de cada fase. Nunca se ofrecen entidades que pertenezcan a uno de los cargadores de esta instalación -- el sensor propio de un cargador no puede ser también el total de toda la instalación. Elige explícitamente la unidad de esos atributos -- \"A\" o \"mA\": la unidad propia de una entidad describe el valor de su estado, no necesariamente otros atributos que también tenga.",
+        "data": {
+          "entity_id": "Entidad (cualquiera salvo los cargadores de esta instalación)",
+          "attribute_L1": "Nombre del atributo L1",
+          "attribute_L2": "Nombre del atributo L2",
+          "attribute_L3": "Nombre del atributo L3",
+          "unit": "Unidad de esos atributos",
+          "confirm_unverified": "No se ha podido verificar nada -- guardar de todos modos"
+        }
+      },
+      "site_charger_wiring": {
+        "title": "Conexión de {charger}",
+        "description": "En un cargador monofásico, elige explícitamente la fase conectada -- con una fase desconocida nunca se puede calcular una recomendación segura para él. La corriente medida propia del cargador es opcional: elige una sugerencia encontrada, introduce una entidad con atributos por fase, introduce tres entidades separadas (una por fase, como las que ofrece la integración de Charge Amps) o déjalo en \"omitir\" para configurarlo más tarde.",
+        "data": {
+          "phases": "Número de fases",
+          "phase": "Fase conectada (cargadores monofásicos)",
+          "measured_source": "Fuente de corriente medida (opcional)"
+        }
+      },
+      "charger_manual_entities": {
+        "title": "Corriente medida del cargador, una entidad por fase",
+        "description": "Elige el sensor que contiene la corriente de cada fase. Solo se ofrecen entidades registradas en el propio dispositivo de este cargador, y cada una debe informar en amperios (A o mA).",
+        "data": {
+          "entity_L1": "Corriente L1",
+          "entity_L2": "Corriente L2",
+          "entity_L3": "Corriente L3"
+        }
+      }
+    },
+    "abort": {
+      "no_pending_site": "Los datos de esta instalación no se enviaron antes de abrir la entrada manual del cargador, así que no se ha guardado nada."
+    },
+    "error": {
+      "safety_margin_at_or_above_fuse": "El margen de seguridad debe ser menor que el fusible general; de lo contrario no queda corriente para los cargadores.",
+      "charge_control_in_use": "Este control de carga ya lo usa otro cargador de SpotNav.",
+      "current_limit_in_use": "Este control de corriente de carga ya lo usa otro cargador de SpotNav.",
+      "duplicate_charger": "{other} y este cargador son el mismo cargador físico. Dos cargadores de SpotNav en un mismo cargador le envían órdenes contradictorias, así que conserva solo uno: elimina el otro en Ajustes → Dispositivos y servicios → SpotNav. SpotNav nunca elimina ninguno por ti.",
+      "charger_already_in_another_site": "Uno de estos cargadores ya está asignado a otra instalación.",
+      "manual_source_entity_invalid": "Elige una entidad de sensor que exista en Home Assistant.",
+      "manual_source_entity_wrong_device": "Esa entidad no está registrada en el propio dispositivo de este cargador, así que no puede ser la corriente medida de este cargador.",
+      "site_manual_source_entity_on_charger_device": "Esa entidad pertenece a uno de los cargadores de esta instalación, así que no puede ser la corriente total propia de la instalación.",
+      "manual_source_attributes_required": "Introduce el nombre del atributo de esta fase.",
+      "manual_source_unverified": "Ahora mismo nada de esta entidad coincide con esos nombres de atributo, y tampoco nada de los últimos {lookback_days} días del historial -- puede ser un cargador completamente nuevo o una errata. Marca \"guardar de todos modos\" para guardarlo igualmente.",
+      "yield_ceiling_below_fuse": "El techo del escalonado con cesión debe ser mayor que el calibre del fusible general.",
+      "yield_ceiling_above_limit": "El techo debe ser menor que 1,25 veces el fusible general: es la carga que un fusible gG debe soportar durante una hora sin fundirse, y un paso de prueba puede acercarse a ella pero nunca alcanzarla.",
+      "unit_expected_current": "Este sensor debe informar de la corriente en A o mA.",
+      "unit_expected_power": "Este sensor debe informar de la potencia en W o kW.",
+      "unit_expected_voltage": "Este sensor debe informar de la tensión en V.",
+      "unit_expected_reactive_power": "Este sensor debe informar de la potencia reactiva en var o kvar.",
+      "unit_expected_apparent_power": "Este sensor debe informar de la potencia aparente en VA o kVA.",
+      "manual_entities_duplicate": "Cada fase necesita su propia entidad."
+    }
+  },
+  "selector": {
+    "mode": {
+      "options": {
+        "generic": "Manual",
+        "detected": "Automático (recomendado)"
+      }
+    },
+    "entry_type": {
+      "options": {
+        "charger": "Un cargador",
+        "site": "Una instalación (equilibrado de carga)",
+        "resolve_vehicle": "Resolver un vehículo detectado"
+      }
+    },
+    "measurement_mode": {
+      "options": {
+        "direct_phase_current": "Corriente de red por fase directa (preferida)",
+        "derived_phase_current": "Derivada de la potencia y la tensión (más exacta con la corriente, la potencia aparente o la reactiva del contador; si no, la corriente se estima)"
+      }
+    },
+    "solar_priority": {
+      "options": {
+        "car_first": "Primero el coche",
+        "battery_first": "Primero la batería doméstica"
+      }
+    },
+    "voltage_between_phases": {
+      "options": {
+        "400": "400 V (red TN, la habitual)",
+        "230": "230 V (red IT, común en Noruega)"
+      }
+    },
+    "charger_phases": {
+      "options": {
+        "1": "Una fase",
+        "3": "Tres fases"
+      }
+    }
+  },
+  "entity": {
+    "binary_sensor": {
+      "schedule_active": {
+        "name": "Programación activa"
+      },
+      "grid_charging": {
+        "name": "Cargando desde la red"
+      },
+      "grid_charging_site": {
+        "name": "Cargando desde la red"
+      }
+    },
+    "button": {
+      "start": {
+        "name": "Iniciar la carga"
+      },
+      "stop": {
+        "name": "Detener la carga"
+      },
+      "follow": {
+        "name": "Seguir la programación de carga"
+      },
+      "cancel": {
+        "name": "Cancelar la programación"
+      },
+      "recalculate_auto": {
+        "name": "Recalcular la propuesta automática"
+      },
+      "pause_auto": {
+        "name": "Pausar la planificación automática por precio"
+      },
+      "resume_auto": {
+        "name": "Reanudar la planificación automática por precio"
+      },
+      "clear_departure_date": {
+        "name": "Borrar la fecha de salida"
+      }
+    },
+    "sensor": {
+      "instance_connection": {
+        "name": "Emparejamiento de la app (todos los cargadores)"
+      },
+      "connection": {
+        "name": "Conexión de la app"
+      },
+      "plan_start": {
+        "name": "Inicio programado"
+      },
+      "plan_end": {
+        "name": "Fin programado"
+      },
+      "site_state": {
+        "name": "Estado de capacidad",
+        "state": {
+          "disabled": "Desactivado",
+          "not_configured": "Sin configurar",
+          "missing_measurements": "Falta la medición",
+          "stale_measurements": "Medición desactualizada",
+          "invalid_measurements": "Medición no válida",
+          "observing": "Midiendo"
+        },
+        "state_attributes": {
+          "site_activity": {
+            "name": "Actividad",
+            "state": {
+              "measuring": "Midiendo, equilibrado de carga activo desactivado",
+              "balancing": "Midiendo, equilibrado de carga activo activado",
+              "not_measuring": "Sin medir"
+            }
+          }
+        }
+      },
+      "solar_surplus": {
+        "name": "Excedente solar"
+      },
+      "charger_proposed_current": {
+        "name": "Corriente propuesta – {charger}",
+        "state_attributes": {
+          "state": {
+            "name": "Estado",
+            "state": {
+              "invalid_measurements": "Medición no válida",
+              "requested_current_unknown": "Corriente solicitada desconocida",
+              "capacity_available": "Cabe",
+              "capacity_limited": "Limitada",
+              "below_minimum_current": "Por debajo de la corriente mínima",
+              "not_requesting": "Sin cargar"
+            }
+          }
+        }
+      },
+      "auto_plan_state": {
+        "name": "Estado del plan automático",
+        "state": {
+          "incomplete_settings": "Ajustes incompletos",
+          "waiting_for_prices": "Esperando precios",
+          "waiting_for_publication": "Esperando los precios de mañana",
+          "price_data_stale": "Datos de precios desactualizados",
+          "proposal_ready": "Propuesta lista",
+          "proposal_unpriced": "La propuesta carga sin precios",
+          "nothing_to_charge": "Nada que cargar",
+          "planning_unavailable": "Planificación no disponible",
+          "error": "Error"
+        }
+      },
+      "auto_execution_state": {
+        "name": "Estado de ejecución automática",
+        "state": {
+          "not_applied": "No aplicado",
+          "scheduled": "Programado",
+          "active": "Cargando ahora",
+          "paused": "En pausa",
+          "complete": "Completado",
+          "apply_pending": "Esperando al límite de la franja",
+          "execution_error": "Error de ejecución"
+        }
+      },
+      "auto_next_start": {
+        "name": "Próximo inicio de carga planificado"
+      },
+      "auto_next_end": {
+        "name": "Próximo fin de carga planificado"
+      },
+      "auto_periods": {
+        "name": "Periodos de carga planificados"
+      },
+      "auto_cost": {
+        "name": "Coste planificado"
+      },
+      "auto_energy": {
+        "name": "Energía planificada"
+      },
+      "auto_settings_revision": {
+        "name": "Revisión de los ajustes automáticos"
+      },
+      "integrated_energy": {
+        "name": "Energía a partir de la potencia"
+      },
+      "sessions_energy_this_month": {
+        "name": "Energía cargada este mes"
+      },
+      "sessions_cost_this_month": {
+        "name": "Coste de carga este mes"
+      },
+      "sessions_energy_last_month": {
+        "name": "Energía cargada el mes pasado"
+      },
+      "sessions_cost_last_month": {
+        "name": "Coste de carga el mes pasado"
+      },
+      "sessions_last_energy": {
+        "name": "Energía de la última carga"
+      },
+      "sessions_last_cost": {
+        "name": "Coste de la última carga"
+      }
+    },
+    "select": {
+      "price_area": {
+        "name": "Zona de precio"
+      },
+      "fiscal_vat_policy": {
+        "name": "Política de IVA",
+        "state": {
+          "off": "Desactivado",
+          "suggested": "Usar la sugerencia de la zona",
+          "manual": "Usar un valor manual"
+        }
+      },
+      "fiscal_tax_policy": {
+        "name": "Política del impuesto sobre la electricidad",
+        "state": {
+          "off": "Desactivado",
+          "suggested": "Usar la sugerencia de la zona",
+          "manual": "Usar un valor manual"
+        }
+      },
+      "fiscal_transfer_policy": {
+        "name": "Política del peaje de acceso",
+        "state": {
+          "off": "Desactivado",
+          "suggested": "Usar la sugerencia de la zona",
+          "manual": "Usar un valor manual"
+        }
+      },
+      "auto_strategy": {
+        "name": "Estrategia de carga",
+        "state": {
+          "cheapest": "Horas más baratas",
+          "solar": "Excedente solar",
+          "hybrid": "Horas más baratas, reservando energía de red por el sol esperado"
+        }
+      }
+    },
+    "number": {
+      "charging_current": {
+        "name": "Corriente de carga"
+      },
+      "requested_energy": {
+        "name": "Energía a cargar"
+      },
+      "maximum_periods": {
+        "name": "Máximo de periodos de carga"
+      },
+      "vat_rate": {
+        "name": "IVA"
+      },
+      "energy_tax": {
+        "name": "Impuesto sobre la electricidad"
+      },
+      "transfer_fee": {
+        "name": "Peaje de acceso"
+      }
+    },
+    "date": {
+      "departure_date": {
+        "name": "Fecha de salida"
+      }
+    },
+    "switch": {
+      "departure_enabled": {
+        "name": "Hora límite de salida"
+      }
+    },
+    "time": {
+      "departure_time": {
+        "name": "Hora de salida"
+      }
+    },
+    "event": {
+      "charger_events": {
+        "name": "Eventos del cargador",
+        "state_attributes": {
+          "event_type": {
+            "state": {
+              "charge_started": "Carga iniciada",
+              "charge_finished": "Carga terminada",
+              "plugged_in": "Enchufado",
+              "unplugged": "Desenchufado",
+              "plan_installed": "Plan instalado",
+              "plan_at_risk": "Plan en riesgo"
+            }
+          }
+        }
+      }
+    }
+  },
+  "issues": {
+    "vehicle_soc_needs_decision": {
+      "title": "El nivel de carga de un vehículo requiere una decisión",
+      "fix_flow": {
+        "abort": {
+          "no_longer_needs_decision": "Este dispositivo ya no requiere una decisión."
+        },
+        "step": {
+          "pick": {
+            "title": "¿Qué lectura es el nivel de carga?",
+            "description": "**{device}** informa de más de una lectura de batería, así que SpotNav no adivinará cuál es el nivel de carga. Elige la que lo es, o indica que no es un vehículo, con lo que se deja de avisar de él.",
+            "data": {
+              "choice": "Lectura"
+            }
+          }
+        }
+      }
+    },
+    "vehicle_charge_limit_needs_decision": {
+      "title": "El límite de carga de un vehículo requiere una decisión",
+      "fix_flow": {
+        "abort": {
+          "no_longer_needs_decision": "Este dispositivo ya no requiere una decisión."
+        },
+        "step": {
+          "pick": {
+            "title": "¿Qué límite debe fijar un cambio?",
+            "description": "**{device}** informa de más de un límite de carga, así que SpotNav no adivinará cuál debe fijar un cambio. Elige el límite que deben usar los cambios de este vehículo. Se escribe a través de la integración propia del vehículo y surte efecto la próxima vez que esa integración lo lea.",
+            "data": {
+              "choice": "Límite de carga"
+            }
+          }
+        }
+      }
+    },
+    "duplicate_charger": {
+      "title": "Dos cargadores de SpotNav son el mismo cargador",
+      "description": "**{charger}** y **{other}** son el mismo cargador físico: comparten un dispositivo, una corriente medida, un conector OCPP o un dispositivo Easee. Dos cargadores de SpotNav en un mismo cargador le envían órdenes contradictorias. Elimina uno de ellos: Ajustes → Dispositivos y servicios → SpotNav → el menú de la entrada → Eliminar. SpotNav nunca elimina ninguno por ti."
+    },
+    "site_without_chargers": {
+      "title": "Añade un cargador a la instalación",
+      "description": "La instalación **{site}** todavía no tiene ningún cargador. Añade un cargador: Ajustes → Dispositivos y servicios → SpotNav → Añadir entrada → Cargador; te ofrecerá unirse a esta instalación."
+    }
+  },
+  "exceptions": {
+    "invalid_driver": {
+      "message": "Esa fuente de energía no es compatible."
+    },
+    "invalid_area": {
+      "message": "Selecciona primero un mercado: ese valor pertenece a uno."
+    },
+    "invalid_phases": {
+      "message": "Las fases deben ser 1 o 3."
+    },
+    "invalid_amps": {
+      "message": "La corriente debe ser un número entero de amperios."
+    },
+    "invalid_energy": {
+      "message": "La energía debe ser un número positivo de kWh."
+    },
+    "invalid_periods": {
+      "message": "El número de periodos debe ser un número entero de 1 a 8."
+    },
+    "invalid_departure": {
+      "message": "La salida debe ser una hora local de reloj."
+    },
+    "invalid_fiscal": {
+      "message": "Ese valor fiscal no se puede guardar tal como está."
+    },
+    "invalid_target": {
+      "message": "El registro del objetivo está incompleto."
+    },
+    "invalid_number": {
+      "message": "Ese valor debe ser un número válido."
+    },
+    "unknown_field": {
+      "message": "Este registro contiene un campo que esta versión no conoce."
+    },
+    "missing_field": {
+      "message": "A este registro le falta un campo que debe contener."
+    },
+    "invalid_proposal": {
+      "message": "Esa propuesta guardada no se puede usar."
+    },
+    "invalid_pause": {
+      "message": "El indicador de pausa debe estar activado o desactivado."
+    },
+    "revision_conflict": {
+      "message": "Estos ajustes han cambiado en otro sitio, así que el valor no se ha escrito. Vuelve a intentarlo."
+    },
+    "not_auto_mode": {
+      "message": "El precio automático no es el modo de planificación de este cargador."
+    },
+    "unknown_test_charger": {
+      "message": "Ningún cargador de SpotNav cargado tiene esa entrada de configuración o ese id de entidad."
+    },
+    "no_push_registered": {
+      "message": "Ningún cargador de SpotNav tiene activadas las notificaciones instantáneas de la app, así que no se ha enviado ninguna notificación push de prueba. A los teléfonos Companion elegidos para las notificaciones sí se les ha enviado un mensaje de prueba."
+    },
+    "stop_not_executed": {
+      "message": "El cargador no ha aceptado la parada: su control no está disponible. Vuelve a intentarlo cuando el cargador vuelva a estar disponible."
+    },
+    "storage_failed": {
+      "message": "No se ha podido guardar el plan de carga."
+    },
+    "reschedule_failed": {
+      "message": "No se ha podido activar el plan de carga; se mantiene el anterior."
+    },
+    "rollback_failed": {
+      "message": "No se ha podido activar el plan de carga ni restaurar el anterior."
+    },
+    "vehicle_not_connected": {
+      "message": "No hay ningún coche enchufado, así que no hay nada que iniciar."
+    },
+    "reconcile_failed": {
+      "message": "El cargador ha aceptado la orden, pero no se ha podido actualizar la carga automática para que coincida. Revisa el estado del cargador."
+    }
+  }
+}
