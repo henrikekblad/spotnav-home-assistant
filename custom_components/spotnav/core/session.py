@@ -8,7 +8,8 @@ charger_state_machine_2026-10-04.md`, section 1); this record names each once:
   restart: a status that says nothing is never a plug-in or an unplug).
 * `owner`: who owns the charge that runs (or would run): nobody, a plan window, the sun, a person (their
   Start under the boundary), the charger by itself, a top-off past the plan's last window, or a Charge-now
-  start that came in through the controller with no boundary (a button with no Auto, a webhook start).
+  start that came in through the controller with no boundary (a button with no Auto, a webhook start), or the
+  car's minimum charge level (`min_soc`: its known state of charge is below the floor set for it).
 * `manual`: a person's Start or Stop pauses Auto for the plug-in session (`action`, and `scope`: the plug-in
   the car is in, or the next one for a Stop given with no car).
 * `span_pause`: a pause a person picked for a span (next period, until tomorrow, until resumed). One pause is
@@ -58,6 +59,8 @@ OWNER_PERSON: Final = "person"
 OWNER_CHARGER_SELF: Final = "charger_self"
 OWNER_TOP_OFF: Final = "top_off"
 OWNER_CHARGE_NOW: Final = "charge_now"
+#: The car's known state of charge is below its minimum charge level: SpotNav charges it at once, at full current.
+OWNER_MIN_SOC: Final = "min_soc"
 OWNERS: Final = (
     OWNER_NONE,
     OWNER_PLAN,
@@ -66,9 +69,12 @@ OWNERS: Final = (
     OWNER_CHARGER_SELF,
     OWNER_TOP_OFF,
     OWNER_CHARGE_NOW,
+    OWNER_MIN_SOC,
 )
 #: Owners whose charge SpotNav started (the hold leaves such a charge alone).
-SPOTNAV_OWNERS: Final = frozenset({OWNER_PLAN, OWNER_SOLAR, OWNER_PERSON, OWNER_TOP_OFF, OWNER_CHARGE_NOW})
+SPOTNAV_OWNERS: Final = frozenset(
+    {OWNER_PLAN, OWNER_SOLAR, OWNER_PERSON, OWNER_TOP_OFF, OWNER_CHARGE_NOW, OWNER_MIN_SOC}
+)
 
 MANUAL_START: Final = "start"
 MANUAL_STOP: Final = "stop"
