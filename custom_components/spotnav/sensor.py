@@ -30,7 +30,7 @@ from .const import (
 )
 from .entity import AutoSurface, SpotNavAutoEntity, SpotNavChargingEntity, SpotNavSiteEntity
 from .execution.controller import ChargingController
-from .setup_hints import ADD_CHARGER_HINT
+from .setup_hints import add_charger_hint
 from .execution.power_energy import fresh_power_w, integrated_energy_unique_id, PowerIntegrator
 from .runtime import controller_for
 from .sessions.sensors import session_entities
@@ -355,7 +355,7 @@ class SiteStateEntity(SpotNavSiteEntity, SensorEntity):
         attributes: dict[str, Any] = {}
         if not any(controller_for(self.hass, charger_id) for charger_id in self._site_members()):
             # A site with no charger says how to add one, where its own device page shows it.
-            attributes["next_step"] = ADD_CHARGER_HINT[flow_language(self.hass)]
+            attributes["next_step"] = add_charger_hint(flow_language(self.hass))
         return {
             **attributes,
             "reason": result.reason,

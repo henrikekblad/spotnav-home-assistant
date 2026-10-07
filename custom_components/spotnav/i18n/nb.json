@@ -1,0 +1,32 @@
+{
+  "notifications": {
+    "title": "SpotNav · {name}",
+    "stopped.not_started": "Ladingen startet ikke som planlagt.",
+    "stopped.stopped": "Ladingen stoppet i et planlagt vindu.",
+    "stopped.charger_unavailable": "Laderen er ikke tilgjengelig i et planlagt vindu.",
+    "stopped.vehicle_not_requesting": "Bilen tar ikke imot strøm i et planlagt vindu.",
+    "stopped.held_by_charger": "Laderens egen tidsplan holder den planlagte ladingen tilbake.",
+    "stopped.charger_ignores_stop": "Laderen fortsetter å lade selv om den ble stoppet. Stopp den ved laderen eller koble fra bilen.",
+    "stopped.charger_disabled": "Laderen er slått av, så den planlagte ladingen kan ikke starte.",
+    "at_risk": "Ladingen blir ikke ferdig til avreise.",
+    "at_risk.time": "Ladingen blir ikke ferdig til avreise kl. {time}.",
+    "complete.target": "Ladingen er ferdig: målet {percent} er nådd.",
+    "complete.energy": "Ladingen er ferdig: den ønskede energien er levert.",
+    "complete.plan_done": "Den planlagte ladingen er fullført.",
+    "complete.vehicle_full": "Ladingen er ferdig: bilen er full.",
+    "started": "Ladingen har startet.",
+    "test": "Testvarsel fra SpotNav: varslene når frem til denne telefonen.",
+    "started.until": "Ladingen har startet, til {time}.",
+    "plugged_in": "Bilen er tilkoblet.",
+    "unplugged": "Bilen er frakoblet.",
+    "plan_installed": "Ny plan: lader fra {time}.",
+    "identify.ask": "Hvilken bil er tilkoblet?",
+    "identify.open": "Åpne SpotNav",
+    "identify.chosen": "{vehicle} valgt.",
+    "identify.recognised": "{vehicle} valgt automatisk.",
+    "identify.kept": "{vehicle} beholdes.",
+    "charged": "{kwh} ladet",
+    "planned": "{kwh} planlagt",
+    "cost": "cirka {cost}"
+  }
+}

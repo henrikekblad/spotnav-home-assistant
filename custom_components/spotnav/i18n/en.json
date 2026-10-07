@@ -1,0 +1,110 @@
+{
+  "notifications": {
+    "title": "SpotNav · {name}",
+    "stopped.not_started": "Charging did not start as planned.",
+    "stopped.stopped": "Charging stopped during a planned window.",
+    "stopped.charger_unavailable": "The charger is unavailable during a planned window.",
+    "stopped.vehicle_not_requesting": "The car is not taking current during a planned window.",
+    "stopped.held_by_charger": "The charger's own schedule is holding back the planned charge.",
+    "stopped.charger_ignores_stop": "The charger keeps charging although it was stopped. Stop it at the charger or unplug the car.",
+    "stopped.charger_disabled": "The charger is disabled, so the planned charge cannot start.",
+    "at_risk": "The charge will not be ready by the departure.",
+    "at_risk.time": "The charge will not be ready by the departure at {time}.",
+    "complete.target": "Charging complete: the target {percent} was reached.",
+    "complete.energy": "Charging complete: the requested energy was delivered.",
+    "complete.plan_done": "The planned charge has finished.",
+    "complete.vehicle_full": "Charging complete: the car is full.",
+    "started": "Charging started.",
+    "test": "Test notification from SpotNav: notifications reach this phone.",
+    "started.until": "Charging started, until {time}.",
+    "plugged_in": "The car is plugged in.",
+    "unplugged": "The car is unplugged.",
+    "plan_installed": "New plan: charging from {time}.",
+    "identify.ask": "Which car is plugged in?",
+    "identify.open": "Open SpotNav",
+    "identify.chosen": "{vehicle} selected.",
+    "identify.recognised": "{vehicle} selected automatically.",
+    "identify.kept": "{vehicle} kept.",
+    "charged": "{kwh} charged",
+    "planned": "{kwh} planned",
+    "cost": "about {cost}"
+  },
+  "add_charger": {
+    "hint": "Add a charger: Settings → Devices & services → SpotNav → Add entry → Charger; it will offer to join this site."
+  },
+  "resolve_vehicle": {
+    "device": "{name} -- {count} possible battery sensors",
+    "dismiss": "This is not a vehicle (stop reporting it)"
+  },
+  "charger_detected": {
+    "external": "Another controller (evcc or openWB) is installed and may already control this charger. Nothing is suggested: choose only what you are sure SpotNav should drive.",
+    "external_installed": "evcc or openWB is installed in Home Assistant and may already control this charger. Turn it off for this charger, or SpotNav and it will fight.",
+    "disabled": "Disabled by default, and useful (they are enabled if you leave the box below ticked):",
+    "balanced": "Perific balances this charger's installation through Zaptec's cloud and sets the same available current SpotNav would. No current is suggested: SpotNav only starts and stops the charger.",
+    "controller": "{name} also controls chargers; turn it off for this charger or SpotNav and {name} will fight.",
+    "cloud": "If the charger is linked to Tibber (or another app) for smart charging, turn that off: Home Assistant cannot see it, and it will fight SpotNav."
+  },
+  "measurement_reason": {
+    "mode": "The measurement mode changed, so the measurement needs to be set up. ",
+    "chargers": "The chargers changed, so their phase wiring needs to be set up. ",
+    "measurement": "The stored measurement is incomplete, so it needs to be set up. "
+  },
+  "site_form": {
+    "default_name": "Site"
+  },
+  "site_confirm": {
+    "meter": "Grid meter",
+    "power_current_calculated": "power per phase, current calculated",
+    "power_current": "power and current per phase",
+    "current": "current per phase",
+    "current_entity": "one entity with the current per phase",
+    "join_wiring": "**Phase wiring:** 3 phases, measured current from {source}",
+    "join_unknown": "SpotNav cannot tell how this charger is wired, so it is not added automatically. Add it from the site's settings.",
+    "reactive_found": "**Reactive power:** found",
+    "reactive_missing": "**Reactive power:** not found (current estimated with power factor 0.9)",
+    "battery": "**House battery:** {name} (charging positive)",
+    "no_battery": "**House battery:** none",
+    "charger": "**Charger:** {name} – {phases} phases, measured current from {source}",
+    "label_power": "{name} – power per phase (current calculated)",
+    "label_power_current": "{name} – power and current per phase",
+    "label_current": "{name} – current per phase",
+    "ocpp_control": "**Charge control:** {name}",
+    "ocpp_current_number": "**Current set via:** the charger's current number ({name})",
+    "ocpp_current_config": "**Current set via:** OCPP ChangeConfiguration",
+    "ocpp_energy": "**Energy meter:** {name} (found automatically)",
+    "ocpp_energy_none": "none found"
+  },
+  "candidate_reason": {
+    "attributes_device_class_and_unit_match": "current device class and a supported unit",
+    "attributes_unit_match_only": "a supported current unit",
+    "attributes_historical_match": "per-phase data seen in history, not measured right now",
+    "attributes_profile_match": "the charger integration's own per-phase current attributes",
+    "separate_entities_device_class_and_unit_match": "current device class and a supported unit",
+    "separate_entities_device_class_match_only": "current device class only",
+    "separate_entities_unit_match_only": "a supported current unit only",
+    "separate_entities_name_match_only": "name pattern only",
+    "separate_entities_profile_match": "the charger integration's own per-phase current sensors",
+    "possible_inverter_output_not_confirmed_as_grid_input": "looks like inverter/solar output, not confirmed as grid input"
+  },
+  "candidate_confidence": {
+    "high": "high confidence",
+    "medium": "medium confidence",
+    "low": "low confidence"
+  },
+  "candidate_representation": {
+    "separate_entities": "three entities",
+    "attributes": "attributes"
+  },
+  "choice": {
+    "manual": "Choose manually",
+    "manual_separate_entities": "Choose manually (three separate entities, one per phase)",
+    "manual_attributes": "Enter one entity + its phase attributes manually",
+    "skip": "Skip for now (configure later)"
+  },
+  "current_control": {
+    "none": "Do not set a current",
+    "change_configuration": "ChangeConfiguration (AssignedCurrent)",
+    "number": "The charger's current number, within its write limits",
+    "easee_dynamic_limit": "Easee dynamic current limit (rate limited)"
+  }
+}

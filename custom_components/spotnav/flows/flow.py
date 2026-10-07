@@ -103,7 +103,7 @@ from ..vehicles.choices import (
     DISMISS_VEHICLE_CHOICE,
     entity_option,
     flow_language,
-    RESOLVE_VEHICLE_TEXT,
+    resolve_vehicle_text,
 )
 from ..vehicles.discovery import (
     async_discover_charger_current_sources,
@@ -131,7 +131,8 @@ from .measured_source import (
     site_device_scope,
 )
 from .options import SiteCapacityOptionsFlow, SpotNavChargingOptionsFlow
-from ..setup_hints import ADD_CHARGER_HINT
+from ..setup_hints import add_charger_hint
+from ..texts import async_load as async_load_texts, table
 from .site_confirm import charger_found_summary, site_confirm_summary, site_join_summary
 from .site_form import (
     default_site_name,
@@ -160,33 +161,6 @@ PROBE_TIMEOUT_S = 10.0
 PROBE_SUPPORTED = "supported"
 PROBE_NOT_SUPPORTED = "not_supported"
 PROBE_UNREACHABLE = "unreachable"
-
-_DETECTED_TEXT: dict[str, dict[str, str]] = {
-    "en": {
-        "external": "Another controller (evcc or openWB) is installed and may already control this "
-        "charger. Nothing is suggested: choose only what you are sure SpotNav should drive.",
-        "external_installed": "evcc or openWB is installed in Home Assistant and may already control this "
-        "charger. Turn it off for this charger, or SpotNav and it will fight.",
-        "disabled": "Disabled by default, and useful (they are enabled if you leave the box below ticked):",
-        "balanced": "Perific balances this charger's installation through Zaptec's cloud and sets the same "
-        "available current SpotNav would. No current is suggested: SpotNav only starts and stops the charger.",
-        "controller": "{name} also controls chargers; turn it off for this charger or SpotNav and {name} will fight.",
-        "cloud": "If the charger is linked to Tibber (or another app) for smart charging, turn that off: "
-        "Home Assistant cannot see it, and it will fight SpotNav.",
-    },
-    "sv": {
-        "external": "En annan styrning (evcc eller openWB) är installerad och kan redan styra den här "
-        "laddaren. Inget föreslås: välj bara det du är säker på att SpotNav ska styra.",
-        "external_installed": "evcc eller openWB är installerad i Home Assistant och kan redan styra den här "
-        "laddaren. Stäng av den för den här laddaren, annars kommer SpotNav och den att motverka varandra.",
-        "disabled": "Avstängda som standard men användbara (de aktiveras om rutan nedan är ikryssad):",
-        "balanced": "Perific balanserar den här laddarens installation via Zaptecs moln och ställer in samma "
-        "tillgängliga ström som SpotNav skulle göra. Ingen ström föreslås: SpotNav startar och stoppar bara laddaren.",
-        "controller": "{name} styr också laddare; stäng av den för den här laddaren, annars motverkar {name} och SpotNav varandra.",
-        "cloud": "Om laddaren är kopplad till Tibber (eller en annan app) för smart laddning, stäng av det: "
-        "Home Assistant ser det inte, och det motverkar SpotNav.",
-    },
-}
 
 #: The form field naming the sensor that says the charger is charging (stored as `CONF_CHARGING_STATE`).
 FIELD_CHARGING_STATE_ENTITY = "charging_state_entity"
@@ -306,6 +280,8 @@ class SpotNavChargingConfigFlow(ChargerWiringSteps, config_entries.ConfigFlow, d
         """Choose what to add: a charger, a site capacity/load-balancing group,
         or a resolution for a vehicle detection could not decide about.
         """
+        # A first charger's flow can run before the integration's setup has read SpotNav's texts.
+        await async_load_texts(self.hass)
         if user_input is not None:
             if user_input[CONF_ENTRY_TYPE] == ENTRY_TYPE_SITE:
                 return await self.async_step_site()
@@ -399,7 +375,7 @@ class SpotNavChargingConfigFlow(ChargerWiringSteps, config_entries.ConfigFlow, d
         options.append(
             selector.SelectOptionDict(
                 value=DISMISS_VEHICLE_CHOICE,
-                label=RESOLVE_VEHICLE_TEXT[flow_language(self.hass)]["dismiss"],
+                label=resolve_vehicle_text(self.hass, "dismiss"),
             )
         )
         return self.async_show_form(
@@ -734,7 +710,7 @@ class SpotNavChargingConfigFlow(ChargerWiringSteps, config_entries.ConfigFlow, d
         detected = self._detected
         assert detected is not None
         suggest = not detected.external_controller
-        text = _DETECTED_TEXT[flow_language(self.hass)]
+        text = table(flow_language(self.hass), "charger_detected")
         schema = self._detected_schema(detected, suggest=suggest)
         errors: dict[str, str] = {}
         if user_input is not None:
@@ -1098,7 +1074,7 @@ class SpotNavChargingConfigFlow(ChargerWiringSteps, config_entries.ConfigFlow, d
 
     def _charger_hint(self) -> str:
         """How to add a charger, while there is none (the site's steps show it; it then offers to join)."""
-        return "" if charger_entries(self.hass) else f"\n\n{ADD_CHARGER_HINT[flow_language(self.hass)]}"
+        return "" if charger_entries(self.hass) else f"\n\n{add_charger_hint(flow_language(self.hass))}"
 
     async def async_step_site(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:
         """Main fuse, safety margin, measurement mode and associated chargers: the smallest useful base

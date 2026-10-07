@@ -9,6 +9,7 @@ from typing import Any
 
 from homeassistant.helpers import selector
 
+from ..texts import language_of, table
 from .vehicle_discovery import AmbiguousVehicleCandidate
 
 
@@ -16,22 +17,14 @@ from .vehicle_discovery import AmbiguousVehicleCandidate
 DISMISS_VEHICLE_CHOICE = "dismiss"
 
 
-# Labels built in code so a device's name and candidate count can be included.
-RESOLVE_VEHICLE_TEXT: dict[str, dict[str, str]] = {
-    "en": {
-        "device": "{name} -- {count} possible battery sensors",
-        "dismiss": "This is not a vehicle (stop reporting it)",
-    },
-    "sv": {
-        "device": "{name} -- {count} möjliga batterisensorer",
-        "dismiss": "Detta är inte ett fordon (sluta rapportera det)",
-    },
-}
-
-
 def flow_language(hass) -> str:
-    language = getattr(hass.config, "language", None) or "en"
-    return "sv" if language.startswith("sv") else "en"
+    """The language of Home Assistant's configuration, one of SpotNav's `i18n/<lang>.json` files."""
+    return language_of(getattr(hass.config, "language", None))
+
+
+def resolve_vehicle_text(hass, key: str) -> str:
+    """A label built in code (a device's name and candidate count go in): `device` or `dismiss`."""
+    return table(flow_language(hass), "resolve_vehicle")[key]
 
 
 def entity_option(hass, entity_id: str) -> Any:
@@ -45,7 +38,7 @@ def ambiguous_vehicle_option(hass, candidate: AmbiguousVehicleCandidate) -> Any:
     """A dropdown entry for an ambiguous device: its name and how many sensors there are to choose between."""
     return selector.SelectOptionDict(
         value=candidate.id,
-        label=RESOLVE_VEHICLE_TEXT[flow_language(hass)]["device"].format(
+        label=resolve_vehicle_text(hass, "device").format(
             name=candidate.name, count=len(candidate.candidate_entity_ids)
         ),
     )

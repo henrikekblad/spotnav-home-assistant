@@ -91,6 +91,7 @@ from .site.site_join import (
     prune_missing_members,
 )
 from .site.site_capacity_controller import SiteCapacityController
+from .texts import async_load as async_load_texts
 from .vehicles.discovery_decisions import async_setup_decisions
 from .vehicles.soc_estimate import SocReader
 from .vehicles.vehicle_refresh import async_ask_vehicle_update
@@ -108,6 +109,8 @@ async def async_setup(hass: HomeAssistant, config: dict[str, Any]) -> bool:
     repeatedly.
     """
     data = domain_data(hass)
+    # SpotNav's own words (`i18n/<lang>.json`), read once off the event loop.
+    await async_load_texts(hass)
     # Keep SpotNav's own recent log records for the debug bundle; changes no log level.
     data.log_buffer = attach_log_buffer()
     await async_setup_decisions(hass)

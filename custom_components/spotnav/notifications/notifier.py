@@ -53,7 +53,8 @@ from ..planning.auto_controller import AutoSnapshot
 from ..planning.auto_settings import AutoSettingsStore
 from ..sessions.store import SessionStore
 from ..const import DOMAIN
-from .messages import compose, EVENT_TEST, identify_text, language_of, Money
+from ..texts import language_of
+from .messages import compose, EVENT_TEST, identify_text, Money
 from .push import ChargerPush
 from .settings import EVENT_CHARGE_COMPLETE, EVENT_PLAN_STOPPED, EVENT_VEHICLE_IDENTIFY, NOTIFY_DOMAIN
 from .unexpected_stop import ExpectationFacts, UnexpectedStopDetector
