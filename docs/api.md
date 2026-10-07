@@ -44,7 +44,7 @@ charger executed whose pause could not be saved answers `{"ok": true, "action": 
 | `resume` | Clear a pause. |
 | `refresh_vehicle` | Re-read the vehicle's Home Assistant entities (`vehicle_id`); never wakes the car. |
 | `set_charge_limit` | Write the vehicle's charge-limit entity (`vehicle_id`, `percent`). |
-| `update_vehicle` | Change a vehicle's capacity, consumption or onboard charger, with `expected` values. |
+| `update_vehicle` | Change a vehicle's capacity, consumption, onboard charger, target or minimum charge level, with `expected` values. |
 | `update_site_settings` | Change solar priority or forecast sources of the charger's site. |
 | `update_charger_priority` | Change this charger's priority on its site: `{"priority", "expected"}` (see below). |
 | `push_register` | The app's instant notifications: `{"push_ref", "events"}`, or `{"push_ref": null}` to stop (see below). |
@@ -122,6 +122,16 @@ its own takes the highest target any charger planned it to before this release, 
 is aligned once. Nothing is withheld for it: the released app reads a vehicle row
 key by key and ignores keys it does not know (as it does the dashboard's root blocks).
 
+**A car's minimum charge level.** A vehicle row carries the additive `min_percent` (10-80 in steps of 5, `null`
+when off), the car's [minimum charge level](target-soc.md#minimum-charge-level), and `update_vehicle` writes it
+(`changes: {"min_percent": 30}`, `null` turns it off; anything else is `invalid_min_percent`; `expected` may name
+it). While the car's known level is below it SpotNav charges at once and the status headline is
+`min_soc_charging` (`percent`: the floor that applies, capped at the target and the car's own limit; tone `normal`).
+A released app words a code it does not know as "see Home Assistant", so the webhook leaves `min_percent` out of
+every vehicle row (the dashboard's `vehicles` and `update_vehicle`'s `vehicle`) and says `charging_now` (`until`
+`null`) in place of `min_soc_charging` unless the request asks for them (`"reads": ["min_soc"]`). An app offers the
+setting only for a row that carries `min_percent`.
+
 **Instant notifications.** `push_register` takes `push_ref`, the opaque reference the SpotNav relay
 gave the app for its Firebase token (base64url text, at most 512 characters), or `null` to stop, and an
 optional `events` (the notification event ids above; default `plan_stopped`, `plan_at_risk`,
@@ -172,7 +182,7 @@ config entry id. Reading is open to every authenticated user; writes require an 
 | `spotnav/find_region` | A Great Britain postcode to its price region (`GB-A` … `GB-P`): `{"postcode": "SW1A 1AA"}` answers `region` (one), `regions` (the relay-listed ones) and `reason` (`null`, `invalid_postcode`, `not_found`, `unavailable`). Home Assistant asks Octopus Energy's public lookup directly; the postcode never reaches the relay and is neither stored nor logged. |
 | `spotnav/get_entity_config`, `spotnav/update_entity_config` | The entities a charger and its site use. |
 | `spotnav/choose_vehicle_soc` | Choose (or clear) a vehicle's state-of-charge sensor. |
-| `spotnav/update_vehicle` | A vehicle's battery capacity, consumption and onboard charger. |
+| `spotnav/update_vehicle` | A vehicle's battery capacity, consumption, onboard charger, target and minimum charge level. |
 | `spotnav/update_site_settings` | Solar priority, forecast sources, active load balancing. |
 | `spotnav/get_debug_bundle` | The redacted installation-wide debug bundle (administrators only). |
 | `spotnav/get_card_info` | Which card the integration serves, for any signed-in user: `{"api_version": 1, "ok": true, "error": null, "spotnav_version", "card_bundle_hash"}`. The card compares the hash with the one in the URL it was loaded from. Not a dashboard field, so an older card is never handed a key it does not know. |
