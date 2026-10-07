@@ -785,6 +785,7 @@
   "settings.status.foundAutomatically": "Found automatically",
   "settings.vehicle.limit": "Charge limit",
   "settings.vehicle.limitHelp": "Written through the car's integration; it takes effect when the car next reads it",
+  "settings.vehicle.limitSlider": "Charge limit, percent",
   "settings.vehicle.limitTooSoon": "The limit was set less than a minute ago. Try again shortly.",
   "settings.vehicle.limitFailed": "Couldn't set the limit",
   "settings.vehicle.targetHelp": "Follows the car to every charger",

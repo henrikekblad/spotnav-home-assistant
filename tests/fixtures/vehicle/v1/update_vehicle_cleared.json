@@ -457,6 +457,7 @@
   "vehicle": {
     "capacity_kwh": null,
     "capacity_source": null,
+    "charge_limit_range": null,
     "consumption_kwh_per_10km": 1.7,
     "id": "vehicle_niro",
     "identification": {

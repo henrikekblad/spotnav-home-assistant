@@ -8,6 +8,7 @@
   "vehicle": {
     "capacity_kwh": 64.8,
     "capacity_source": "stored",
+    "charge_limit_range": null,
     "consumption_kwh_per_10km": 1.7,
     "id": "vehicle_niro",
     "identification": {

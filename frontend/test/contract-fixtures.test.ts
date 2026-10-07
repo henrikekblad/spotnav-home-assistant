@@ -702,6 +702,7 @@ describe("the backend's v7 vehicles", () => {
         },
         target_percent: 80,
         min_percent: null,
+        charge_limit_range: null,
       },
       {
         id: "vehicle_niro",
@@ -720,6 +721,7 @@ describe("the backend's v7 vehicles", () => {
         },
         target_percent: null,
         min_percent: null,
+        charge_limit_range: null,
       },
     ]);
   });
@@ -732,6 +734,7 @@ describe("the backend's v7 vehicles", () => {
     ["a source with no capacity", (raw) => (raw["vehicles"][0]["capacity_kwh"] = null)],
     ["a consumption of zero", (raw) => (raw["vehicles"][0]["consumption_kwh_per_10km"] = 0)],
     ["a charge limit above 100", (raw) => (raw["vehicles"][0]["max_percent"] = 101)],
+    ["a charge limit range without a step", (raw) => (raw["vehicles"][0]["charge_limit_range"] = { min: 50, max: 100 })],
     ["a vehicle charge level above 100", (raw) => (raw["vehicles"][0]["soc_percent"] = 101)],
     ["a vehicle without its charge level", (raw) => delete raw["vehicles"][0]["soc_percent"]],
     ["vehicles that is not a list", (raw) => (raw["vehicles"] = {})],

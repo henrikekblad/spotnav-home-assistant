@@ -1,13 +1,15 @@
-// The editors the car's charge target and minimum charge level open: the value large, a slider under it, and
-// Save and Cancel as every value editor has. Opening writes nothing; Save writes only a slider that was moved to
-// something other than what is stored. The minimum's first stop is Off and it never goes past the target: the
-// track beyond is hatched, with the target marked on it.
+// The editors the car's charge target, minimum charge level and own charge limit open: the value large, a slider
+// under it, and Save and Cancel as every value editor has. Opening writes nothing; Save writes only a slider that
+// was moved to something other than what is stored. The minimum's first stop is Off and it never goes past the
+// target: the track beyond is hatched, with the target marked on it. The limit's slider has the range and step the
+// car's integration takes.
 
 import { formatNumber } from "./format";
 import { translate, type Language } from "./i18n";
-import { FLOOR_LAST_INDEX, clampFloorIndex, floorAt, floorCapIndex, floorIndex } from "./percent-slider";
+import { FLOOR_LAST_INDEX, clampFloorIndex, floorAt, floorCapIndex, floorIndex, limitOpening, limitStops } from "./percent-slider";
 import { TARGET_PERCENT_MAX, TARGET_PERCENT_MIN } from "./settings";
 import { shell, type EditorHandlers, type SaveValue } from "./value-editors";
+import type { ChargeLimitRange } from "./validate";
 import { VISUAL_CLASSES as C } from "./visual-styles";
 
 function element(doc: Document, tag: string, className?: string, text?: string): HTMLElement {
@@ -21,20 +23,29 @@ function element(doc: Document, tag: string, className?: string, text?: string):
   return node;
 }
 
-function slider(doc: Document, id: string, label: string, min: number, max: number, value: number): HTMLInputElement {
+function slider(
+  doc: Document,
+  id: string,
+  label: string,
+  min: number,
+  max: number,
+  value: number,
+  step = 1,
+): HTMLInputElement {
   const input = doc.createElement("input") as HTMLInputElement;
   input.type = "range";
   input.className = C.settingsSlider;
   input.id = id;
   input.min = String(min);
   input.max = String(max);
-  input.step = "1";
+  input.step = String(step);
   input.value = String(value);
   input.setAttribute("aria-label", label);
   return input;
 }
 
-const percent = (language: Language, value: number): string => `${formatNumber(language, value, 0)} %`;
+const percent = (language: Language, value: number, decimals = 0): string =>
+  `${formatNumber(language, value, decimals)} %`;
 
 /** The value large, with the slider's spoken value kept the same. */
 function amountLine(doc: Document, input: HTMLInputElement): { node: HTMLElement; show: (text: string, extra?: string) => void } {
@@ -184,6 +195,65 @@ export function floorEditor(
       return null;
     }
     return await save(level);
+  });
+  return editor.form;
+}
+
+export interface LimitEditorInput {
+  /** The limit the car reports now. */
+  current: number;
+  /** What the car's limit can be written to; `null` or absent when unknown (1..100 in whole percent). */
+  range: ChargeLimitRange | null | undefined;
+  help: string;
+  idPrefix: string;
+}
+
+/** The car's own charge limit, over the range and step its integration takes. */
+export function limitEditor(
+  doc: Document,
+  language: Language,
+  input: LimitEditorInput,
+  save: SaveValue<number>,
+  handlers: EditorHandlers,
+): HTMLFormElement {
+  const editor = shell(doc, language, "limit", handlers);
+  const stops = limitStops(input.range);
+  const decimals = Number.isInteger(stops.step) && Number.isInteger(stops.min) ? 0 : 1;
+  const range = slider(
+    doc,
+    `${input.idPrefix}-value-limit`,
+    translate(language, "settings.vehicle.limitSlider"),
+    stops.min,
+    stops.max,
+    limitOpening(input.current, stops),
+    stops.step,
+  );
+  const amount = amountLine(doc, range);
+  let moved = false;
+  const paint = (): void => {
+    amount.show(percent(language, moved ? Number(range.value) : input.current, decimals));
+  };
+  range.addEventListener("input", () => {
+    moved = true;
+    paint();
+  });
+  paint();
+  const track = element(doc, "div", C.settingsTrack);
+  track.append(range);
+  const ends = element(doc, "div", C.sliderEnds);
+  ends.setAttribute("aria-hidden", "true");
+  ends.append(
+    element(doc, "span", undefined, percent(language, stops.min, decimals)),
+    element(doc, "span", undefined, percent(language, limitOpening(stops.max, stops), decimals)),
+  );
+  editor.body.append(element(doc, "p", C.entityHelp, input.help), amount.node, track, ends);
+  editor.submit(async () => {
+    const value = Number(range.value);
+    // Never a write for the slider only having been drawn, or moved back to the car's own limit.
+    if (!moved || value === input.current) {
+      return null;
+    }
+    return await save(value);
   });
   return editor.form;
 }

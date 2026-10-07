@@ -1,6 +1,9 @@
 // The car's two percent sliders: the charge target (0..100) and the minimum charge level (Off, then 10..80 in
 // fives, never past the target), and the minimum's shaded segment on the plan's target slider.
 
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
+
 import { describe, expect, it } from "vitest";
 
 import {
@@ -11,7 +14,10 @@ import {
   floorCapIndex,
   floorIndex,
   floorSegment,
+  limitOpening,
+  limitStops,
 } from "../src/percent-slider";
+import { decodeVehicle } from "../src/validate";
 
 describe("the minimum's stops", () => {
   it("are Off, then 10 to 80 in fives", () => {
@@ -74,5 +80,57 @@ describe("the minimum's segment on the plan's target slider", () => {
 
   it("uses the minimum alone when the target is not known", () => {
     expect(floorSegment(30, null)).toEqual({ percent: 30, end: 0.3, label: 0.15 });
+  });
+});
+
+describe("the charge limit's stops", () => {
+  it("are the range and step the car's limit reports", () => {
+    expect(limitStops({ min: 50, max: 100, step: 10 })).toEqual({ min: 50, max: 100, step: 10 });
+  });
+
+  it("fall back to 1..100 in whole percent only when unknown", () => {
+    expect(limitStops(null)).toEqual({ min: 1, max: 100, step: 1 });
+    expect(limitStops(undefined)).toEqual({ min: 1, max: 100, step: 1 });
+  });
+
+  it("open a limit at its own stop, or the nearest one inside the range", () => {
+    const kia = { min: 50, max: 100, step: 10 };
+    expect(limitOpening(80, kia)).toBe(80);
+    expect(limitOpening(84, kia)).toBe(80);
+    expect(limitOpening(86, kia)).toBe(90);
+    expect(limitOpening(30, kia)).toBe(50);
+    expect(limitOpening(100, kia)).toBe(100);
+    expect(limitOpening(95, { min: 50, max: 95, step: 10 })).toBe(90);
+    expect(limitOpening(72.4, limitStops(null))).toBe(72);
+  });
+});
+
+describe("the vehicle row's charge limit range", () => {
+  const row = JSON.parse(
+    readFileSync(join(__dirname, "..", "..", "tests", "fixtures", "dashboard", "target_soc_two_vehicles.json"), "utf8"),
+  ).vehicles[0];
+
+  it("is decoded when present, null when unknown, and absent from an older backend", () => {
+    expect(decodeVehicle({ ...row, charge_limit_range: { min: 50, max: 100, step: 10 } }).charge_limit_range).toEqual({
+      min: 50,
+      max: 100,
+      step: 10,
+    });
+    expect(decodeVehicle({ ...row, charge_limit_range: null }).charge_limit_range).toBeNull();
+    const { charge_limit_range: _, ...older } = row;
+    expect("charge_limit_range" in decodeVehicle(older)).toBe(false);
+  });
+
+  it("refuses a range no limit can have", () => {
+    for (const bad of [
+      { min: 0, max: 100, step: 1 },
+      { min: 50, max: 110, step: 10 },
+      { min: 80, max: 50, step: 10 },
+      { min: 50, max: 100, step: 0 },
+      { min: 50, max: 100 },
+      { min: 50, max: 100, step: 10, extra: 1 },
+    ]) {
+      expect(() => decodeVehicle({ ...row, charge_limit_range: bad })).toThrow();
+    }
   });
 });

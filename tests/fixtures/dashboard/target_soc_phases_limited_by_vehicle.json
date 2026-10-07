@@ -2320,6 +2320,7 @@
     {
       "capacity_kwh": 77.0,
       "capacity_source": "stored",
+      "charge_limit_range": null,
       "consumption_kwh_per_10km": 2.0,
       "id": "vehicle_ev6",
       "identification": {

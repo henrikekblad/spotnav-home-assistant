@@ -396,6 +396,15 @@ export interface Vehicle {
   target_percent?: number | null;
   /** The car's minimum charge level, 10-80 in steps of 5 (`null`: off); absent on an older backend. */
   min_percent?: number | null;
+  /** What the car's own limit can be written to (`null`: unknown); absent on an older backend. */
+  charge_limit_range?: ChargeLimitRange | null;
+}
+
+/** The percents a car's own charge limit takes: `min`..`max` in steps of `step`. */
+export interface ChargeLimitRange {
+  min: number;
+  max: number;
+  step: number;
 }
 
 export interface Soc {
@@ -1959,7 +1968,7 @@ const CAPACITY_SOURCES = ["reported", "stored"] as const;
 
 export function decodeVehicle(raw: unknown): Vehicle {
   const source = record(raw);
-  const optional = ["identification", "target_percent", "min_percent"].filter((key) =>
+  const optional = ["identification", "target_percent", "min_percent", "charge_limit_range"].filter((key) =>
     Object.prototype.hasOwnProperty.call(source, key),
   );
   exactKeys(source, [
@@ -1996,7 +2005,23 @@ export function decodeVehicle(raw: unknown): Vehicle {
       ? { target_percent: boundedOrNull(source, "target_percent", 0, 100) }
       : {}),
     ...(Object.prototype.hasOwnProperty.call(source, "min_percent") ? { min_percent: minimumLevel(source) } : {}),
+    ...(Object.prototype.hasOwnProperty.call(source, "charge_limit_range")
+      ? { charge_limit_range: chargeLimitRange(source["charge_limit_range"]) }
+      : {}),
   };
+}
+
+/** `null`, or `{min, max, step}` with `0 < min < max <= 100` and a positive step. */
+function chargeLimitRange(raw: unknown): ChargeLimitRange | null {
+  if (raw === null) {
+    return null;
+  }
+  const source = record(raw);
+  exactKeys(source, ["min", "max", "step"]);
+  const min = boundedOrNull(source, "min", 0, 100, true);
+  const max = boundedOrNull(source, "max", 0, 100, true);
+  const step = boundedOrNull(source, "step", 0, 100, true);
+  return min === null || max === null || step === null || min >= max ? bad() : { min, max, step };
 }
 
 /** A minimum charge level: `null` (off), or 10 to 80 in whole steps of 5. */

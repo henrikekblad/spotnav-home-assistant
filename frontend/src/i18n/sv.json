@@ -785,6 +785,7 @@
   "settings.status.foundAutomatically": "Hittad automatiskt",
   "settings.vehicle.limit": "Laddgräns",
   "settings.vehicle.limitHelp": "Skrivs via bilens integration; gäller när bilen läser av den nästa gång",
+  "settings.vehicle.limitSlider": "Laddgräns, procent",
   "settings.vehicle.limitTooSoon": "Laddgränsen ändrades för mindre än en minut sedan. Försök igen strax.",
   "settings.vehicle.limitFailed": "Kunde inte ange laddgränsen",
   "settings.vehicle.targetHelp": "Följer bilen till alla laddare",

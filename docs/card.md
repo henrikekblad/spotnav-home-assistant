@@ -187,6 +187,11 @@ under its heading; the car planned for is open first, and tapping another tab sh
 - **Onboard charger**: 1-phase or 3-phase (3-phase until you say otherwise). A charge uses the smaller of
   this and the charger's wiring, so a car with a single-phase onboard charger charges on one phase even
   on a three-phase wallbox.
+- **Charge limit**: the limit the car reports, when it has one. Where Home Assistant can write it, an administrator
+  can change it: its editor is a slider over the range and step the car's integration takes (50 to 100 % in steps
+  of 10 on a Kia, for example; 1 to 100 % when the integration does not say), the value shown large above it.
+  Nothing is written until you move the slider and save, and at most once a minute per car; the car takes the new
+  limit when its integration next reads it.
 - **Charge target**: the car's own target, 0 to 100 %, the same at every charger. Its editor sets it with a slider,
   the value shown large above it. A car with none stored shows **Not set**; its editor opens at the target it is
   planned with (80 %, or the car's charge limit when lower) marked **(default)**, and nothing is stored until you

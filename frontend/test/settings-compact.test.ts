@@ -361,29 +361,73 @@ describe("the car's charge limit", () => {
     expect(dialog(reader.element).querySelector("[data-vehicle='vehicle_ev6'] [data-row='charge_limit'] button")).toBeNull();
   });
 
-  it("opens the number editor, 1 to 100 in whole percent as in the app, and writes the car's limit", async () => {
+  const limitBody = (range?: { min: number; max: number; step: number } | null): Record<string, any> => {
     const body = payload();
     body.vehicles[0].max_percent = 90;
+    if (range !== undefined) {
+      body.vehicles[0].charge_limit_range = range;
+    }
     body.charger.capabilities.set_charge_limit = true;
-    const { hass, element } = await openSettings("en", true, body);
+    return body;
+  };
+  const limitWrites = (hass: FakeHass) =>
+    hass.entityMessages.filter((message) => message["type"] === "spotnav/write_charge_limit");
+  const slide = (slider: HTMLInputElement, value: number): void => {
+    slider.value = String(value);
+    slider.dispatchEvent(new Event("input", { bubbles: true }));
+  };
+
+  it("opens a slider over the range and step the car's limit takes, the value large above it, writing nothing", async () => {
+    const { hass, element } = await openSettings("sv", true, limitBody({ min: 50, max: 100, step: 10 }));
     await tap(element, "[data-vehicle='vehicle_ev6'] [data-edit='charge_limit']");
-    const form = dialog(element).querySelector<HTMLFormElement>("form[data-value-editor='number']")!;
-    const field = form.querySelector<HTMLInputElement>("[data-value-field='number']")!;
-    expect(field.value).toBe("90");
-    expect(form.querySelector(`.${VISUAL_CLASSES.entityHelp}`)?.textContent).toBe(
-      translate("en", "settings.vehicle.limitHelp"),
-    );
-    expect(form.querySelector("[data-value-none]")).toBeNull();
-    field.value = "0";
+    const form = dialog(element).querySelector<HTMLFormElement>("form[data-value-editor='limit']")!;
+    const slider = form.querySelector<HTMLInputElement>("input[type='range']")!;
+    expect([slider.min, slider.max, slider.step, slider.value]).toEqual(["50", "100", "10", "90"]);
+    expect(slider.getAttribute("aria-label")).toBe(translate("sv", "settings.vehicle.limitSlider"));
+    const amount = form.querySelector<HTMLElement>(`.${VISUAL_CLASSES.valueAmount}`)!;
+    expect(amount.textContent).toBe("90 %");
+    expect(amount.compareDocumentPosition(slider) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(Array.from(form.querySelectorAll(`.${VISUAL_CLASSES.sliderEnds} span`)).map((end) => end.textContent)).toEqual([
+      "50 %",
+      "100 %",
+    ]);
+    expect(form.textContent).toContain(translate("sv", "settings.vehicle.limitHelp"));
+    expect(limitWrites(hass)).toHaveLength(0);
     await submit(element);
-    expect(form.querySelector("[role='alert']")?.textContent).toBe("Between 1 and 100.");
-    field.value = "80";
+    expect(limitWrites(hass)).toHaveLength(0);
+  });
+
+  it("falls back to 1..100 in whole percent when the car's range is unknown", async () => {
+    for (const range of [undefined, null]) {
+      document.body.innerHTML = "";
+      const { element } = await openSettings("en", true, limitBody(range));
+      await tap(element, "[data-vehicle='vehicle_ev6'] [data-edit='charge_limit']");
+      const slider = dialog(element).querySelector<HTMLInputElement>("form[data-value-editor='limit'] input[type='range']")!;
+      expect([slider.min, slider.max, slider.step, slider.value]).toEqual(["1", "100", "1", "90"]);
+    }
+  });
+
+  it("writes a moved limit on Save, and shows a refusal in the editor", async () => {
+    const { hass, element } = await openSettings("en", true, limitBody({ min: 50, max: 100, step: 10 }));
+    await tap(element, "[data-vehicle='vehicle_ev6'] [data-edit='charge_limit']");
+    let form = dialog(element).querySelector<HTMLFormElement>("form[data-value-editor='limit']")!;
+    let slider = form.querySelector<HTMLInputElement>("input[type='range']")!;
+    slide(slider, 60);
+    slide(slider, 90);
+    await submit(element);
+    // Moved back to the car's own limit: nothing is written.
+    expect(limitWrites(hass)).toHaveLength(0);
+    await tap(element, "[data-vehicle='vehicle_ev6'] [data-edit='charge_limit']");
+    form = dialog(element).querySelector<HTMLFormElement>("form[data-value-editor='limit']")!;
+    slider = form.querySelector<HTMLInputElement>("input[type='range']")!;
+    slide(slider, 80);
+    expect(form.querySelector(`.${VISUAL_CLASSES.valueAmount}`)!.textContent).toBe("80 %");
     hass.entityHandler = async (message) =>
       message["type"] === "spotnav/write_charge_limit"
         ? { api_version: 1, ok: false, error: "spotnav_too_soon", retry_after_s: 42 }
         : read("entity_config", "v1", "get_direct.json");
     await submit(element);
-    expect(hass.entityMessages.find((message) => message["type"] === "spotnav/write_charge_limit")).toMatchObject({
+    expect(limitWrites(hass)[0]).toMatchObject({
       api_version: 1,
       charger_id: "entry_a",
       vehicle_id: "vehicle_ev6",
