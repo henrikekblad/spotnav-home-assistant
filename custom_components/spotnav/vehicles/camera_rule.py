@@ -27,8 +27,10 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from typing import Any, Final
 
-#: A query (snapshot, crop and the AI Task's answer) that takes longer than this is ignored.
-QUERY_TIMEOUT_S: Final = 30.0
+#: A query (snapshot, crop and the AI Task's answer, including loading the model) that takes longer than this is
+#: ignored. A 7B vision model on a home server answered in about 20 s, and in just over 30 s when it first had to be
+#: loaded again; two minutes leaves room for that and still ends before the question at three minutes.
+QUERY_TIMEOUT_S: Final = 120.0
 #: One query, and one retry after an error (not after a timeout: a slow model is slow again).
 QUERY_ATTEMPTS: Final = 2
 

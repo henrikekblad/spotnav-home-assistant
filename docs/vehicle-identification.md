@@ -192,15 +192,15 @@ the model is.
 - **Your answer always wins.** The camera is asked only while nobody has answered and nothing has decided, and
   an answer that comes later is not used.
 - The camera is asked **once per plug-in**, and once more only after an error. A model that takes longer than
-  30 seconds is ignored and SpotNav asks as without a camera. When a car's plug sensor or position decides,
+  two minutes (loading the model included) is ignored and SpotNav asks as without a camera. When a car's plug sensor or position decides,
   the camera is not asked at all. **Always ask** and **Off** never ask the camera.
 
 ### Which model?
 
 The AI Task needs a model that looks at pictures (a vision model). A local 7B vision model, for example
-`qwen2.5vl:7b` in Ollama, compares the pictures well enough and answers in a few seconds on an ordinary home
-server. Smaller models (4B) were seen to pick a reference picture by its place in the list rather than by what it
-shows, and to be sure about it: they are not recommended. A model that takes longer than 30 seconds is ignored, so a
+`qwen2.5vl:7b` in Ollama, compares the pictures well enough and answers in about 20 seconds on an ordinary
+home server (a little more when the model must first be loaded). Smaller models (4B) were seen to pick a reference picture by its place in the list rather than by what it
+shows, and to be sure about it: they are not recommended. A model that takes longer than two minutes is ignored, so a
 large model on a slow machine only costs time. The [history](#for-field-reports) shows each query's answer, how sure
 the model was and how long it took, so you can see how a model does at your charger.
 
