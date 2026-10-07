@@ -159,10 +159,12 @@ def test_auto_is_the_cheapest_plan_counting_each_start(seed: int) -> None:
         start = start_cost_minor(slots, FiscalChoice())
         shortest = min(SHORTEST_BLOCK_SLOTS, needed)
 
-        def feasible(chosen: tuple[int, ...]) -> bool:
+        def feasible(chosen: tuple[int, ...], shortest: int = shortest) -> bool:
             return min(runs_of(chosen)) >= shortest
 
-        def objective(chosen: tuple[int, ...]) -> float:
+        def objective(
+            chosen: tuple[int, ...], prices: list[float] = prices, per_slot: float = per_slot, start: float = start
+        ) -> float:
             return _cost(prices, chosen, per_slot) + start * len(runs_of(chosen))
 
         plans = [c for c in itertools.combinations(range(count), needed) if feasible(c)]
