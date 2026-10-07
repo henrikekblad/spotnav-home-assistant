@@ -253,6 +253,12 @@ export class SpotnavCard extends HTMLElement {
   private history: SessionsAnswer | null = null;
   private entitySaving = false;
   private reopenOverview = false;
+  /**
+   * Saves whose confirming read is still on its way: Settings is reopened only once it is in, from that read's
+   * dashboard. A render meanwhile (the periodic read answered while an editor was open, applied when it closed)
+   * must not reopen it from the dashboard from before the save, which would then hold the old value.
+   */
+  private confirmingReturn = 0;
   /** Where Settings was left for a value's editor: it reopens there, across the re-render a save causes. */
   private readonly overviewPlace: OverviewPlaceHolder = { place: null };
   /** A warning a value's save leaves for the Settings page it returns to (the plan was not updated). */
@@ -941,7 +947,12 @@ export class SpotnavCard extends HTMLElement {
 
   private async adoptThenOverview(record: SettingsRecord, notice: FailureSentence | null): Promise<void> {
     this.reopenOverview = true;
-    await this.adoptSettings(record, notice, "market");
+    this.confirmingReturn += 1;
+    try {
+      await this.adoptSettings(record, notice, "market");
+    } finally {
+      this.confirmingReturn -= 1;
+    }
     if (this.reopenOverview) {
       this.reopenOverview = false;
       if (this.connected && this.view !== null && !this.view.anyDialogOpen()) {
@@ -1633,12 +1644,17 @@ export class SpotnavCard extends HTMLElement {
 
   private async returnToSettingsAfterEntitySave(view: CardView, config: EntityConfig | null): Promise<void> {
     this.reopenOverview = true;
+    this.confirmingReturn += 1;
     view.closeEntityEditor();
     if (config !== null) {
       view.setEntityState({ kind: "ready", config });
     }
     this.confirmReadFailed = false;
-    await this.refresh({ purpose: "confirm", confirm: SETTINGS_CONFIRM_NOTICE });
+    try {
+      await this.refresh({ purpose: "confirm", confirm: SETTINGS_CONFIRM_NOTICE });
+    } finally {
+      this.confirmingReturn -= 1;
+    }
     if (this.reopenOverview) {
       this.reopenOverview = false;
       if (this.connected && this.view !== null && !this.view.anyDialogOpen()) {
@@ -1779,10 +1795,15 @@ export class SpotnavCard extends HTMLElement {
       const code = error instanceof SpotnavApiError ? error.code : null;
       return say(settingsErrorKey(code));
     }
-    this.view?.closeValueEditor();
     this.reopenOverview = true;
+    this.confirmingReturn += 1;
+    this.view?.closeValueEditor();
     this.confirmReadFailed = false;
-    await this.refresh({ purpose: "confirm", confirm: SETTINGS_CONFIRM_NOTICE });
+    try {
+      await this.refresh({ purpose: "confirm", confirm: SETTINGS_CONFIRM_NOTICE });
+    } finally {
+      this.confirmingReturn -= 1;
+    }
     if (this.reopenOverview) {
       this.reopenOverview = false;
       if (this.connected && this.view !== null && !this.view.anyDialogOpen()) {
@@ -2261,7 +2282,7 @@ export class SpotnavCard extends HTMLElement {
           }
         },
       });
-      if (this.reopenOverview) {
+      if (this.reopenOverview && this.confirmingReturn === 0) {
         this.reopenOverview = false;
         this.view.openSettingsOverview();
       }
