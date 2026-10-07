@@ -715,7 +715,7 @@
   "identify.vehicles.all": "Alle auto's",
   "identify.error.noVehicle": "Vink minstens één auto aan.",
   "identify.source.plug": "Stekkersensor",
-  "identify.source.location": "Locatie",
+  "identify.source.location": "Positie",
   "identify.source.automatic": "Automatisch",
   "identify.source.none": "Geen",
   "identify.source.choose": "Kies er één",

@@ -715,7 +715,7 @@
   "identify.vehicles.all": "Alle Autos",
   "identify.error.noVehicle": "Hake mindestens ein Auto an.",
   "identify.source.plug": "Stecker-Sensor",
-  "identify.source.location": "Standort",
+  "identify.source.location": "Position",
   "identify.source.automatic": "Automatisch",
   "identify.source.none": "Keiner",
   "identify.source.choose": "Einen wählen",
