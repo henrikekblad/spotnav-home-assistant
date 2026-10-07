@@ -1,0 +1,818 @@
+{
+  "title": "SpotNav",
+  "config": {
+    "flow_title": "{device} wil verbinden · code {code}",
+    "step": {
+      "pairing": {
+        "menu_options": {
+          "pair_approve": "Goedkeuren",
+          "pair_deny": "Weigeren"
+        },
+        "title": "Een telefoon wil verbinden",
+        "description": "Een apparaat dat zichzelf **{device}** noemt vraagt om te verbinden en toont de code **{code}**. Keur alleen goed als dezelfde code op het scherm staat. Goedkeuren geeft de laadpalen van deze instantie vrij; de code is alleen om te vergelijken."
+      },
+      "pair_approve": {
+        "title": "Goedkeuren"
+      },
+      "pair_deny": {
+        "title": "Weigeren"
+      },
+      "user": {
+        "title": "Wat wil je toevoegen?",
+        "description": "Een laadpaal koppelt één fysiek laadpunt aan SpotNav. Een locatie is optioneel: die verdeelt de belasting van alle laadpalen op één elektrische aansluiting onder de hoofdzekering.",
+        "data": {
+          "entry_type": "Wat toevoegen"
+        }
+      },
+      "charger_type": {
+        "title": "Kies het type laadpaal",
+        "description": "Automatisch vindt de bediening van de laadpaal via het apparaat: OCPP-laadpalen en ondersteunde integraties (Easee, Wallbox, Zaptec, go-e, Peblar en meer). Handmatig laat je zelf een schakelaar voor de laadbediening kiezen.",
+        "data": {
+          "mode": "Type laadpaal"
+        }
+      },
+      "resolve_vehicle": {
+        "title": "Een gevonden auto oplossen",
+        "description": "Een van deze apparaten lijkt op een auto maar geeft meer dan één batterijniveau door, dus SpotNav gaat niet raden welke het laadniveau is. Kies het apparaat dat je wilt oplossen -- of kies opnieuw het type item als je hier niets herkent.",
+        "data": {
+          "device_id": "Apparaat"
+        }
+      },
+      "resolve_vehicle_soc": {
+        "title": "Welke meting is het laadniveau?",
+        "description": "Kies welke van de batterijmetingen van {name} het werkelijke laadniveau is -- of geef aan dat het apparaat geen auto is die je laadt, zodat SpotNav het niet meer meldt.",
+        "data": {
+          "soc_entity_id": "Laadniveau"
+        }
+      },
+      "ocpp_entities": {
+        "title": "Bediening van de laadpaal bevestigen",
+        "description": "Alleen compatibele entiteiten van de gekozen OCPP-laadpaal worden getoond.",
+        "data": {
+          "charge_control": "Laadbediening",
+          "current_limit": "Stroomlimiet-entiteit (optioneel)",
+          "energy_register_entity": "Energiemeter (totaal)",
+          "current_control": "Hoe SpotNav de stroom instelt"
+        },
+        "data_description": {
+          "charge_control": "De schakelaar die het laden op deze connector start en stopt.",
+          "current_limit": "De eigen stroomentiteit van de laadpaal; SpotNav leest alleen de waarde en het bereik.",
+          "energy_register_entity": "De totale energiesensor van de connector; die wordt automatisch gevonden, dus laat hem zoals hij is.",
+          "current_control": "Laat op \"Geen stroom instellen\" staan, tenzij bekend is dat de laadpaal de gekozen methode accepteert."
+        }
+      },
+      "generic": {
+        "title": "Kies de bediening van de laadpaal",
+        "data": {
+          "charge_control": "Laadbediening",
+          "current_limit": "Laadstroom (optioneel)",
+          "energy_register_entity": "Energiemeter (totaal)",
+          "power_entity": "Vermogenssensor, slimme stekker (optioneel)"
+        },
+        "data_description": {
+          "energy_register_entity": "De totale energiesensor van de laadpaal, gebruikt om de al geleverde energie te tellen. Optioneel.",
+          "power_entity": "Een eenvoudige laadpaal achter een slimme stekker: de vermogenssensor van de stekker (W of kW). SpotNav telt de energie daarmee en ziet wanneer de auto geen stroom meer afneemt. De stekker moet geschikt zijn voor de continue stroom van de laadpaal. Optioneel."
+        }
+      },
+      "site": {
+        "title": "Locatie",
+        "description": "De locatie houdt de gezamenlijke stroom van haar laadpalen onder de hoofdzekering. Actieve regeling kan later aan- en uitgezet worden; het is naar beste vermogen, geen beveiligingsapparaat. De waarde van de hoofdzekering moet expliciet worden ingevuld -- die wordt nooit geraden uit de gemeten belasting. {charger_hint}",
+        "data": {
+          "name": "Naam van de locatie",
+          "main_fuse_a": "Hoofdzekering (A)",
+          "safety_margin_a": "Veiligheidsmarge (A)",
+          "measurement_mode": "Meetbron",
+          "charger_entry_ids": "Laadpalen die de capaciteit van deze locatie delen",
+          "voltage_between_phases_v": "Spanning tussen fasen"
+        }
+      },
+      "site_detected": {
+        "title": "Netmeter gevonden",
+        "description": "SpotNav heeft deze netmeters gevonden. Er wordt niets toegepast tot je bevestigt; kies \"handmatig\" om zelf entiteiten te kiezen.",
+        "data": {
+          "choice": "Gevonden meter",
+          "enable_disabled": "De uitgeschakelde entiteiten inschakelen die deze meter nodig heeft"
+        }
+      },
+      "site_current_suggestions": {
+        "title": "Voorstellen voor de stroombron van de locatie",
+        "description": "Dit zijn alleen voorstellen, op basis van entiteiten die al in Home Assistant staan -- er wordt niets toegepast tot je bevestigt. Kies \"handmatig\" om zelf entiteiten te kiezen, of \"overslaan\" om dit later via de opties van de locatie in te stellen.",
+        "data": {
+          "choice": "Voorgestelde bron"
+        }
+      },
+      "site_details": {
+        "title": "Meetentiteiten",
+        "description": "Kies de sensoren van de netmeter. Elke sensor wordt geaccepteerd; de eenheid wordt gecontroleerd als je verdergaat (stroom in A of mA, vermogen in W of kW, spanning in V, blindvermogen in var of kvar, schijnbaar vermogen in VA of kVA). Alleen velden die bij de gekozen meetbron passen worden getoond. Daarna volgt de fase-aansluiting van elke gekoppelde laadpaal, één laadpaal tegelijk.{charger_hint}",
+        "data": {
+          "direct_L1": "Netstroom L1",
+          "direct_L2": "Netstroom L2",
+          "direct_L3": "Netstroom L3",
+          "site_current_signed": "De netstroom heeft een teken (teruglevering is negatief)",
+          "grid_power_inverted": "Netvermogen is positief bij teruglevering (omkeren)",
+          "derived_L1_power_export": "Terugleververmogen L1 (optioneel, als afname en teruglevering apart zijn)",
+          "derived_L1_reactive_power": "Blindvermogen L1 (optioneel)",
+          "derived_L1_apparent_power": "Schijnbaar vermogen L1 (optioneel)",
+          "derived_L1_current": "Stroom L1 (optioneel)",
+          "derived_L2_power_export": "Terugleververmogen L2 (optioneel, als afname en teruglevering apart zijn)",
+          "derived_L2_reactive_power": "Blindvermogen L2 (optioneel)",
+          "derived_L2_apparent_power": "Schijnbaar vermogen L2 (optioneel)",
+          "derived_L2_current": "Stroom L2 (optioneel)",
+          "derived_L3_power_export": "Terugleververmogen L3 (optioneel, als afname en teruglevering apart zijn)",
+          "derived_L3_reactive_power": "Blindvermogen L3 (optioneel)",
+          "derived_L3_apparent_power": "Schijnbaar vermogen L3 (optioneel)",
+          "derived_L3_current": "Stroom L3 (optioneel)",
+          "derived_L1_power": "Vermogen L1",
+          "derived_L1_voltage": "Spanning L1",
+          "derived_L2_power": "Vermogen L2",
+          "derived_L2_voltage": "Spanning L2",
+          "derived_L3_power": "Vermogen L3",
+          "derived_L3_voltage": "Spanning L3"
+        }
+      },
+      "charger_manual_source": {
+        "title": "Gemeten stroom van de laadpaal",
+        "description": "Kies één entiteit van het eigen apparaat van deze laadpaal en geef het attribuut op dat de stroom van elke fase bevat. Alleen entiteiten die bij deze laadpaal zijn geregistreerd worden aangeboden. Kies de eenheid van die attributen -- \"A\" of \"mA\" -- expliciet: de eigen eenheid van een entiteit beschrijft de statuswaarde, niet per se andere attributen die hij ook heeft.",
+        "data": {
+          "entity_id": "Entiteit (alleen van het eigen apparaat van deze laadpaal)",
+          "attribute_L1": "Naam van attribuut L1",
+          "attribute_L2": "Naam van attribuut L2",
+          "attribute_L3": "Naam van attribuut L3",
+          "unit": "Eenheid van die attributen",
+          "confirm_unverified": "Niets kon worden gecontroleerd -- toch opslaan"
+        }
+      },
+      "site_manual_source": {
+        "title": "Stroom van de locatie uit één entiteit",
+        "description": "Kies één entiteit die de stroom van de hele locatie als eigen attributen per fase heeft, en geef het attribuut op voor elke fase. Entiteiten van een van de laadpalen van deze locatie worden nooit aangeboden -- de eigen sensor van een laadpaal kan niet ook het totaal van de hele locatie zijn. Kies de eenheid van die attributen -- \"A\" of \"mA\" -- expliciet: de eigen eenheid van een entiteit beschrijft de statuswaarde, niet per se andere attributen die hij ook heeft.",
+        "data": {
+          "entity_id": "Entiteit (alles behalve de laadpalen van deze locatie)",
+          "attribute_L1": "Naam van attribuut L1",
+          "attribute_L2": "Naam van attribuut L2",
+          "attribute_L3": "Naam van attribuut L3",
+          "unit": "Eenheid van die attributen",
+          "confirm_unverified": "Niets kon worden gecontroleerd -- toch opslaan"
+        }
+      },
+      "detect_device": {
+        "title": "Kies het apparaat van de laadpaal",
+        "description": "Kies het apparaat van de laadpaal. SpotNav vindt de bediening via de eigen entiteiten van die integratie; er wordt niets toegepast tot je de volgende stap bevestigt.",
+        "data": {
+          "device": "Laadpaal"
+        }
+      },
+      "own_mode": {
+        "title": "Zet de eigen regeling van de laadpaal uit",
+        "description": "Bij deze laadpaal staat een eigen slimme, zonne- of load-balancingmodus aan: {modes}. Twee regelaars op één laadpaal werken elkaar tegen. Zet het uit in de eigen integratie of app van de laadpaal en ga dan verder.",
+        "data": {
+          "continue_anyway": "Toch doorgaan (ik accepteer dat ze elkaar kunnen tegenwerken)"
+        }
+      },
+      "detected_entities": {
+        "title": "{device} bevestigen",
+        "description": "{warning}Gevonden via het apparaat van de laadpaal. Wijzig of wis wat niet klopt. \"Laadstroom van de laadpaal instellen\" staat uit tenzij je het kiest: SpotNav schrijft de stroom dan alleen zoals de schrijflimieten van de laadpaal toestaan.{disabled}",
+        "data": {
+          "charge_control": "Laadbediening",
+          "current_limit": "Laadstroom-entiteit (optioneel)",
+          "current_control": "Laadstroom van de laadpaal instellen",
+          "energy_register_entity": "Energieteller (optioneel)",
+          "energy_register_is_session": "De energieteller per laadsessie gebruiken (wordt elke laadsessie gereset)",
+          "charging_state_entity": "Statussensor die aangeeft dat er geladen wordt (optioneel)",
+          "enable_disabled_entities": "De nuttige uitgeschakelde entiteiten inschakelen"
+        }
+      },
+      "ocpp_confirm": {
+        "title": "Laadpaal gevonden",
+        "description": "De bediening van deze laadpaal is gevonden. Ga verder om hem toe te voegen, of vink het vakje aan om deze keuzes te wijzigen.\n\n{summary}",
+        "data": {
+          "adjust": "Deze keuzes wijzigen"
+        }
+      },
+      "site_confirm": {
+        "title": "Locatie gevonden",
+        "description": "Dit heeft SpotNav voor deze locatie gevonden. Ga verder om hem aan te maken, of vink het vakje aan om deze keuzes te wijzigen.\n\n{summary}{charger_hint}",
+        "data": {
+          "adjust": "Deze keuzes wijzigen"
+        }
+      },
+      "join_site": {
+        "title": "Aan locatie toevoegen",
+        "description": "Deze laadpaal toevoegen aan de locatie {site}?\n\n{summary}",
+        "data": {
+          "join": "Toevoegen aan de locatie"
+        }
+      },
+      "site_charger_wiring": {
+        "title": "Aansluiting van {charger}",
+        "description": "Kies voor een eenfasige laadpaal expliciet de aangesloten fase -- met een onbekende fase kan er nooit een veilige aanbeveling voor worden berekend. De eigen gemeten stroom van de laadpaal is optioneel: kies een gevonden voorstel, geef één entiteit met attributen per fase op, geef drie aparte entiteiten op (één per fase, zoals de Charge Amps-integratie die levert), of laat het op \"overslaan\" staan om het later in te stellen.",
+        "data": {
+          "phases": "Aantal fasen",
+          "phase": "Aangesloten fase (eenfasige laadpalen)",
+          "measured_source": "Bron van gemeten stroom (optioneel)"
+        }
+      },
+      "charger_manual_entities": {
+        "title": "Gemeten stroom van de laadpaal, één entiteit per fase",
+        "description": "Kies de sensor met de stroom van elke fase. Alleen entiteiten die bij het eigen apparaat van deze laadpaal zijn geregistreerd worden aangeboden, en elk moet ampère doorgeven (A of mA).",
+        "data": {
+          "entity_L1": "Stroom L1",
+          "entity_L2": "Stroom L2",
+          "entity_L3": "Stroom L3"
+        }
+      },
+      "charger_installation": {
+        "title": "Fasen van de laadpaal, spanning tussen fasen",
+        "description": "De entiteiten van de laadpaal zeggen niet op hoeveel fasen hij laadt. Kies één fase of drie: de planning wordt daarop gebaseerd. Waar een groot deel van het net IT is (zoals in Noorwegen), geef dan ook de spanning tussen fasen op; 230 V op een IT-net, anders 400 V.",
+        "data": {
+          "charger_phases": "Fasen van de laadpaal",
+          "voltage_between_phases_v": "Spanning tussen fasen"
+        }
+      }
+    },
+    "abort": {
+      "already_configured": "Deze laadpaal of locatie is al ingesteld.",
+      "pairing_approved": "Goedgekeurd. De telefoon heeft nu de laadpalen van deze instantie.",
+      "pairing_denied": "Geweigerd. De telefoon is op de hoogte gebracht en er is niets vrijgegeven.",
+      "pairing_request_expired": "Dat koppelverzoek is verlopen. Begin opnieuw op de telefoon.",
+      "no_supported_charger": "Er is geen ondersteunde laadpaal gevonden. Stel eerst de eigen integratie van de laadpaal in, of kies Handmatig.",
+      "no_charge_control": "Er is geen ingeschakelde OCPP-schakelaar voor de laadbediening gevonden voor dit apparaat.",
+      "no_pending_site": "De gegevens van deze locatie zijn niet verstuurd voordat het handmatige laadpaalitem werd geopend, dus er is niets opgeslagen.",
+      "no_ambiguous_vehicles": "Er is nu geen gevonden auto die moet worden opgelost.",
+      "vehicle_resolved": "Auto opgelost. Het laadniveau wordt gelezen van de meting die je hebt gekozen.",
+      "vehicle_dismissed": "Auto genegeerd. SpotNav meldt hem niet meer tot het negeren ongedaan wordt gemaakt.",
+      "not_a_charger": "Dat apparaat is geen laadpaal voor elektrische auto's (maar een verwarmings- of stopcontactregelaar).",
+      "charger_not_recognised": "SpotNav kent deze integratie niet. Kies in plaats daarvan Handmatig.",
+      "charger_not_controllable": "SpotNav kan deze laadpaal niet starten of stoppen. Hij kan alleen worden uitgelezen."
+    },
+    "error": {
+      "safety_margin_at_or_above_fuse": "De veiligheidsmarge moet lager zijn dan de hoofdzekering, anders blijft er geen stroom over voor de laadpalen.",
+      "charge_control_in_use": "Deze laadbediening wordt al gebruikt door een andere SpotNav-laadpaal.",
+      "current_limit_in_use": "Deze laadstroombediening wordt al gebruikt door een andere SpotNav-laadpaal.",
+      "duplicate_charger": "{other} en deze laadpaal zijn dezelfde fysieke laadpaal. Twee SpotNav-laadpalen op één laadpaal sturen tegenstrijdige commando's, dus houd er maar één: verwijder de andere in Instellingen → Apparaten & diensten → SpotNav. SpotNav verwijdert er nooit zelf een.",
+      "charger_already_in_another_site": "Een van deze laadpalen is al aan een andere locatie toegewezen.",
+      "manual_source_entity_invalid": "Kies een sensorentiteit die in Home Assistant bestaat.",
+      "manual_source_entity_wrong_device": "Die entiteit is niet geregistreerd bij het eigen apparaat van deze laadpaal, dus het kan niet de gemeten stroom van deze laadpaal zijn.",
+      "site_manual_source_entity_on_charger_device": "Die entiteit hoort bij een van de laadpalen van deze locatie, dus het kan niet de totale stroom van de locatie zelf zijn.",
+      "manual_source_attributes_required": "Vul de attribuutnaam voor deze fase in.",
+      "manual_source_unverified": "Niets op deze entiteit komt nu overeen met die attribuutnamen, en ook niets in de geschiedenis van de afgelopen {lookback_days} dagen -- misschien is het een gloednieuwe laadpaal, of een typfout. Vink \"toch opslaan\" aan om het toch te bewaren.",
+      "device_not_found": "Dat apparaat bestaat niet.",
+      "own_mode_active": "De eigen regeling van de laadpaal staat nog aan. Zet hem uit, of kies om toch door te gaan.",
+      "control_path_unknown": "SpotNav kan niet bepalen hoe het laden met deze entiteit wordt gestart en gestopt. Kies de schakelaar van de laadpaal, of een select met duidelijke start- en stopopties.",
+      "current_limit_required": "Kies de laadstroom-entiteit waarmee de stroom moet worden ingesteld.",
+      "current_control_unsupported": "Deze manier om de stroom in te stellen past niet bij deze laadpaal.",
+      "charger_no_answer": "De laadpaal antwoordde niet, dus SpotNav kan niet bepalen hoe de stroom wordt ingesteld. Wacht tot hij verbonden is en verstuur opnieuw, of kies zelf.",
+      "unit_expected_current": "Deze sensor moet stroom doorgeven in A of mA.",
+      "unit_expected_power": "Deze sensor moet vermogen doorgeven in W of kW.",
+      "unit_expected_voltage": "Deze sensor moet spanning doorgeven in V.",
+      "unit_expected_reactive_power": "Deze sensor moet blindvermogen doorgeven in var of kvar.",
+      "unit_expected_apparent_power": "Deze sensor moet schijnbaar vermogen doorgeven in VA of kVA.",
+      "manual_entities_duplicate": "Elke fase heeft een eigen entiteit nodig."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Bediening van de laadpaal",
+        "data": {
+          "charge_control": "Laadbediening",
+          "current_limit": "Laadstroom (optioneel)",
+          "current_control": "Laadstroom van de laadpaal instellen",
+          "energy_register_entity": "Energiemeter (totaal, optioneel)",
+          "power_entity": "Vermogenssensor, slimme stekker (optioneel)",
+          "idle_power_w": "Neemt niets af onder (W)"
+        },
+        "data_description": {
+          "idle_power_w": "Blijft het vermogen tijdens gepland laden vijf minuten onder deze waarde, dan meldt SpotNav dat de auto niets afneemt. Standaard 100 W."
+        }
+      },
+      "site_init": {
+        "title": "Capaciteitsinstellingen van de locatie",
+        "description": "Load balancing onder de hoofdzekering. Actieve regeling verlaagt zo nodig de stroom van een laadpaal; het is naar beste vermogen, geen beveiligingsapparaat. De sensor voor het batterijvermogen is optioneel en voedt alleen een diagnostische schatting -- nooit een veilige laadlimiet.",
+        "data": {
+          "name": "Naam van de locatie",
+          "site_enabled": "Locatieberekening ingeschakeld",
+          "active_control_enabled": "Actieve regeling ingeschakeld (opt-in, alleen afgeleide meetmethode)",
+          "main_fuse_a": "Hoofdzekering (A)",
+          "safety_margin_a": "Veiligheidsmarge (A)",
+          "max_age_s": "Maximale leeftijd van metingen (seconden)",
+          "regulator_deadband_a": "Actieve regeling: wijzigingen kleiner dan dit negeren (A)",
+          "regulator_dwell_s": "Actieve regeling: hoe lang een wijziging moet aanhouden (seconden)",
+          "yield_stepping_enabled": "Stapsgewijs verhogen met controle van terugschakelen ingeschakeld (opt-in, voor een locatie met een belasting die terugschakelt, bijv. een thuisbatterij)",
+          "yield_ceiling_a": "Stapsgewijs verhogen: harde bovengrens, nooit overschreden (A, moet hoger zijn dan de hoofdzekering)",
+          "solar_priority": "Prioriteit voor zonne-overschot (auto of thuisbatterij eerst)",
+          "battery_aggregate_power_entity": "Laadvermogen van de thuisbatterij (optioneel, alleen diagnostisch)",
+          "change_measurement": "Meting en fase-aansluiting wijzigen",
+          "measurement_mode": "Meetbron",
+          "charger_entry_ids": "Laadpalen die de capaciteit van deze locatie delen",
+          "solar_forecast_entries": "Bronnen voor zonneprognose (optioneel, gebruikt door de hybride strategie)",
+          "voltage_between_phases_v": "Spanning tussen fasen"
+        }
+      },
+      "site_current_suggestions": {
+        "title": "Voorstellen voor de stroombron van de locatie",
+        "description": "Dit zijn alleen voorstellen, op basis van entiteiten die al in Home Assistant staan -- er wordt niets toegepast tot je bevestigt. Kies \"handmatig\" om zelf entiteiten te kiezen, of \"overslaan\" om dit later via de opties van de locatie in te stellen.",
+        "data": {
+          "choice": "Voorgestelde bron"
+        }
+      },
+      "site_details": {
+        "title": "Meetentiteiten",
+        "description": "{reason}Kies de sensoren van de netmeter. Elke sensor wordt geaccepteerd; de eenheid wordt gecontroleerd als je verdergaat (stroom in A of mA, vermogen in W of kW, spanning in V, blindvermogen in var of kvar, schijnbaar vermogen in VA of kVA). Alleen velden die bij de gekozen meetbron passen worden getoond. Daarna volgt de fase-aansluiting van elke gekoppelde laadpaal, één laadpaal tegelijk.",
+        "data": {
+          "direct_L1": "Netstroom L1",
+          "direct_L2": "Netstroom L2",
+          "direct_L3": "Netstroom L3",
+          "site_current_signed": "De netstroom heeft een teken (teruglevering is negatief)",
+          "grid_power_inverted": "Netvermogen is positief bij teruglevering (omkeren)",
+          "derived_L1_power_export": "Terugleververmogen L1 (optioneel, als afname en teruglevering apart zijn)",
+          "derived_L1_reactive_power": "Blindvermogen L1 (optioneel)",
+          "derived_L1_apparent_power": "Schijnbaar vermogen L1 (optioneel)",
+          "derived_L1_current": "Stroom L1 (optioneel)",
+          "derived_L2_power_export": "Terugleververmogen L2 (optioneel, als afname en teruglevering apart zijn)",
+          "derived_L2_reactive_power": "Blindvermogen L2 (optioneel)",
+          "derived_L2_apparent_power": "Schijnbaar vermogen L2 (optioneel)",
+          "derived_L2_current": "Stroom L2 (optioneel)",
+          "derived_L3_power_export": "Terugleververmogen L3 (optioneel, als afname en teruglevering apart zijn)",
+          "derived_L3_reactive_power": "Blindvermogen L3 (optioneel)",
+          "derived_L3_apparent_power": "Schijnbaar vermogen L3 (optioneel)",
+          "derived_L3_current": "Stroom L3 (optioneel)",
+          "derived_L1_power": "Vermogen L1",
+          "derived_L1_voltage": "Spanning L1",
+          "derived_L2_power": "Vermogen L2",
+          "derived_L2_voltage": "Spanning L2",
+          "derived_L3_power": "Vermogen L3",
+          "derived_L3_voltage": "Spanning L3"
+        }
+      },
+      "charger_manual_source": {
+        "title": "Gemeten stroom van de laadpaal",
+        "description": "Kies één entiteit van het eigen apparaat van deze laadpaal en geef het attribuut op dat de stroom van elke fase bevat. Alleen entiteiten die bij deze laadpaal zijn geregistreerd worden aangeboden. Kies de eenheid van die attributen -- \"A\" of \"mA\" -- expliciet: de eigen eenheid van een entiteit beschrijft de statuswaarde, niet per se andere attributen die hij ook heeft.",
+        "data": {
+          "entity_id": "Entiteit (alleen van het eigen apparaat van deze laadpaal)",
+          "attribute_L1": "Naam van attribuut L1",
+          "attribute_L2": "Naam van attribuut L2",
+          "attribute_L3": "Naam van attribuut L3",
+          "unit": "Eenheid van die attributen",
+          "confirm_unverified": "Niets kon worden gecontroleerd -- toch opslaan"
+        }
+      },
+      "site_manual_source": {
+        "title": "Stroom van de locatie uit één entiteit",
+        "description": "Kies één entiteit die de stroom van de hele locatie als eigen attributen per fase heeft, en geef het attribuut op voor elke fase. Entiteiten van een van de laadpalen van deze locatie worden nooit aangeboden -- de eigen sensor van een laadpaal kan niet ook het totaal van de hele locatie zijn. Kies de eenheid van die attributen -- \"A\" of \"mA\" -- expliciet: de eigen eenheid van een entiteit beschrijft de statuswaarde, niet per se andere attributen die hij ook heeft.",
+        "data": {
+          "entity_id": "Entiteit (alles behalve de laadpalen van deze locatie)",
+          "attribute_L1": "Naam van attribuut L1",
+          "attribute_L2": "Naam van attribuut L2",
+          "attribute_L3": "Naam van attribuut L3",
+          "unit": "Eenheid van die attributen",
+          "confirm_unverified": "Niets kon worden gecontroleerd -- toch opslaan"
+        }
+      },
+      "site_charger_wiring": {
+        "title": "Aansluiting van {charger}",
+        "description": "Kies voor een eenfasige laadpaal expliciet de aangesloten fase -- met een onbekende fase kan er nooit een veilige aanbeveling voor worden berekend. De eigen gemeten stroom van de laadpaal is optioneel: kies een gevonden voorstel, geef één entiteit met attributen per fase op, geef drie aparte entiteiten op (één per fase, zoals de Charge Amps-integratie die levert), of laat het op \"overslaan\" staan om het later in te stellen.",
+        "data": {
+          "phases": "Aantal fasen",
+          "phase": "Aangesloten fase (eenfasige laadpalen)",
+          "measured_source": "Bron van gemeten stroom (optioneel)"
+        }
+      },
+      "charger_manual_entities": {
+        "title": "Gemeten stroom van de laadpaal, één entiteit per fase",
+        "description": "Kies de sensor met de stroom van elke fase. Alleen entiteiten die bij het eigen apparaat van deze laadpaal zijn geregistreerd worden aangeboden, en elk moet ampère doorgeven (A of mA).",
+        "data": {
+          "entity_L1": "Stroom L1",
+          "entity_L2": "Stroom L2",
+          "entity_L3": "Stroom L3"
+        }
+      }
+    },
+    "abort": {
+      "no_pending_site": "De gegevens van deze locatie zijn niet verstuurd voordat het handmatige laadpaalitem werd geopend, dus er is niets opgeslagen."
+    },
+    "error": {
+      "safety_margin_at_or_above_fuse": "De veiligheidsmarge moet lager zijn dan de hoofdzekering, anders blijft er geen stroom over voor de laadpalen.",
+      "charge_control_in_use": "Deze laadbediening wordt al gebruikt door een andere SpotNav-laadpaal.",
+      "current_limit_in_use": "Deze laadstroombediening wordt al gebruikt door een andere SpotNav-laadpaal.",
+      "duplicate_charger": "{other} en deze laadpaal zijn dezelfde fysieke laadpaal. Twee SpotNav-laadpalen op één laadpaal sturen tegenstrijdige commando's, dus houd er maar één: verwijder de andere in Instellingen → Apparaten & diensten → SpotNav. SpotNav verwijdert er nooit zelf een.",
+      "charger_already_in_another_site": "Een van deze laadpalen is al aan een andere locatie toegewezen.",
+      "manual_source_entity_invalid": "Kies een sensorentiteit die in Home Assistant bestaat.",
+      "manual_source_entity_wrong_device": "Die entiteit is niet geregistreerd bij het eigen apparaat van deze laadpaal, dus het kan niet de gemeten stroom van deze laadpaal zijn.",
+      "site_manual_source_entity_on_charger_device": "Die entiteit hoort bij een van de laadpalen van deze locatie, dus het kan niet de totale stroom van de locatie zelf zijn.",
+      "manual_source_attributes_required": "Vul de attribuutnaam voor deze fase in.",
+      "manual_source_unverified": "Niets op deze entiteit komt nu overeen met die attribuutnamen, en ook niets in de geschiedenis van de afgelopen {lookback_days} dagen -- misschien is het een gloednieuwe laadpaal, of een typfout. Vink \"toch opslaan\" aan om het toch te bewaren.",
+      "yield_ceiling_below_fuse": "De bovengrens voor stapsgewijs verhogen moet hoger zijn dan de waarde van de hoofdzekering.",
+      "yield_ceiling_above_limit": "De bovengrens moet lager zijn dan 1,25 keer de hoofdzekering: dat is de belasting die een gG-zekering een uur lang moet kunnen dragen zonder door te slaan, en een teststap mag die benaderen maar nooit bereiken.",
+      "unit_expected_current": "Deze sensor moet stroom doorgeven in A of mA.",
+      "unit_expected_power": "Deze sensor moet vermogen doorgeven in W of kW.",
+      "unit_expected_voltage": "Deze sensor moet spanning doorgeven in V.",
+      "unit_expected_reactive_power": "Deze sensor moet blindvermogen doorgeven in var of kvar.",
+      "unit_expected_apparent_power": "Deze sensor moet schijnbaar vermogen doorgeven in VA of kVA.",
+      "manual_entities_duplicate": "Elke fase heeft een eigen entiteit nodig."
+    }
+  },
+  "selector": {
+    "mode": {
+      "options": {
+        "generic": "Handmatig",
+        "detected": "Automatisch (aanbevolen)"
+      }
+    },
+    "entry_type": {
+      "options": {
+        "charger": "Een laadpaal",
+        "site": "Een locatie (load balancing)",
+        "resolve_vehicle": "Een gevonden auto oplossen"
+      }
+    },
+    "measurement_mode": {
+      "options": {
+        "direct_phase_current": "Netstroom direct per fase (voorkeur)",
+        "derived_phase_current": "Afgeleid uit vermogen en spanning (nauwkeuriger met de stroom, het schijnbaar vermogen of het blindvermogen van de meter; anders wordt de stroom geschat)"
+      }
+    },
+    "solar_priority": {
+      "options": {
+        "car_first": "Auto eerst",
+        "battery_first": "Thuisbatterij eerst"
+      }
+    },
+    "voltage_between_phases": {
+      "options": {
+        "400": "400 V (TN-net, het gebruikelijke)",
+        "230": "230 V (IT-net, gebruikelijk in Noorwegen)"
+      }
+    },
+    "charger_phases": {
+      "options": {
+        "1": "Eén fase",
+        "3": "Drie fasen"
+      }
+    }
+  },
+  "entity": {
+    "binary_sensor": {
+      "schedule_active": {
+        "name": "Schema actief"
+      },
+      "grid_charging": {
+        "name": "Laadt van het net"
+      },
+      "grid_charging_site": {
+        "name": "Laadt van het net"
+      }
+    },
+    "button": {
+      "start": {
+        "name": "Laden starten"
+      },
+      "stop": {
+        "name": "Laden stoppen"
+      },
+      "follow": {
+        "name": "Laadschema volgen"
+      },
+      "cancel": {
+        "name": "Schema annuleren"
+      },
+      "recalculate_auto": {
+        "name": "Auto-voorstel opnieuw berekenen"
+      },
+      "pause_auto": {
+        "name": "Automatische prijsplanning pauzeren"
+      },
+      "resume_auto": {
+        "name": "Automatische prijsplanning hervatten"
+      },
+      "clear_departure_date": {
+        "name": "Vertrekdatum wissen"
+      }
+    },
+    "sensor": {
+      "instance_connection": {
+        "name": "App-koppeling (alle laadpalen)"
+      },
+      "connection": {
+        "name": "App-verbinding"
+      },
+      "plan_start": {
+        "name": "Geplande start"
+      },
+      "plan_end": {
+        "name": "Gepland einde"
+      },
+      "site_state": {
+        "name": "Capaciteitsstatus",
+        "state": {
+          "disabled": "Uitgeschakeld",
+          "not_configured": "Niet ingesteld",
+          "missing_measurements": "Meting ontbreekt",
+          "stale_measurements": "Meting verouderd",
+          "invalid_measurements": "Meting ongeldig",
+          "observing": "Meet"
+        },
+        "state_attributes": {
+          "site_activity": {
+            "name": "Activiteit",
+            "state": {
+              "measuring": "Meet, actieve load balancing uit",
+              "balancing": "Meet, actieve load balancing aan",
+              "not_measuring": "Meet niet"
+            }
+          }
+        }
+      },
+      "solar_surplus": {
+        "name": "Zonne-overschot"
+      },
+      "charger_proposed_current": {
+        "name": "Voorgestelde stroom – {charger}",
+        "state_attributes": {
+          "state": {
+            "name": "Status",
+            "state": {
+              "invalid_measurements": "Meting ongeldig",
+              "requested_current_unknown": "Gevraagde stroom onbekend",
+              "capacity_available": "Past",
+              "capacity_limited": "Beperkt",
+              "below_minimum_current": "Onder de minimale stroom",
+              "not_requesting": "Laadt niet"
+            }
+          }
+        }
+      },
+      "auto_plan_state": {
+        "name": "Status van het automatische plan",
+        "state": {
+          "incomplete_settings": "Instellingen onvolledig",
+          "waiting_for_prices": "Wacht op prijzen",
+          "waiting_for_publication": "Wacht op de prijzen van morgen",
+          "price_data_stale": "Prijsgegevens verouderd",
+          "proposal_ready": "Voorstel klaar",
+          "proposal_unpriced": "Voorstel laadt zonder prijzen",
+          "nothing_to_charge": "Niets te laden",
+          "planning_unavailable": "Planning niet beschikbaar",
+          "error": "Fout"
+        }
+      },
+      "auto_execution_state": {
+        "name": "Uitvoeringsstatus automatisch laden",
+        "state": {
+          "not_applied": "Niet toegepast",
+          "scheduled": "Ingepland",
+          "active": "Laadt nu",
+          "paused": "Gepauzeerd",
+          "complete": "Voltooid",
+          "apply_pending": "Wacht op de venstergrens",
+          "execution_error": "Uitvoeringsfout"
+        }
+      },
+      "auto_next_start": {
+        "name": "Volgende geplande laadstart"
+      },
+      "auto_next_end": {
+        "name": "Volgend gepland laadeinde"
+      },
+      "auto_periods": {
+        "name": "Geplande laadperioden"
+      },
+      "auto_cost": {
+        "name": "Geplande kosten"
+      },
+      "auto_energy": {
+        "name": "Geplande energie"
+      },
+      "auto_settings_revision": {
+        "name": "Revisie van automatische instellingen"
+      },
+      "integrated_energy": {
+        "name": "Energie uit vermogen"
+      },
+      "sessions_energy_this_month": {
+        "name": "Geladen energie deze maand"
+      },
+      "sessions_cost_this_month": {
+        "name": "Laadkosten deze maand"
+      },
+      "sessions_energy_last_month": {
+        "name": "Geladen energie vorige maand"
+      },
+      "sessions_cost_last_month": {
+        "name": "Laadkosten vorige maand"
+      },
+      "sessions_last_energy": {
+        "name": "Energie laatste laadsessie"
+      },
+      "sessions_last_cost": {
+        "name": "Kosten laatste laadsessie"
+      }
+    },
+    "select": {
+      "price_area": {
+        "name": "Prijsgebied"
+      },
+      "fiscal_vat_policy": {
+        "name": "Btw-beleid",
+        "state": {
+          "off": "Uit",
+          "suggested": "Voorstel van het gebied gebruiken",
+          "manual": "Een handmatige waarde gebruiken"
+        }
+      },
+      "fiscal_tax_policy": {
+        "name": "Beleid energiebelasting",
+        "state": {
+          "off": "Uit",
+          "suggested": "Voorstel van het gebied gebruiken",
+          "manual": "Een handmatige waarde gebruiken"
+        }
+      },
+      "fiscal_transfer_policy": {
+        "name": "Beleid nettarief",
+        "state": {
+          "off": "Uit",
+          "suggested": "Voorstel van het gebied gebruiken",
+          "manual": "Een handmatige waarde gebruiken"
+        }
+      },
+      "auto_strategy": {
+        "name": "Laadstrategie",
+        "state": {
+          "cheapest": "Goedkoopste uren",
+          "solar": "Zonne-overschot",
+          "hybrid": "Goedkoopste uren, netstroom inhouden voor verwachte zon"
+        }
+      }
+    },
+    "number": {
+      "charging_current": {
+        "name": "Laadstroom"
+      },
+      "requested_energy": {
+        "name": "Te laden energie"
+      },
+      "maximum_periods": {
+        "name": "Maximaal aantal laadperioden"
+      },
+      "vat_rate": {
+        "name": "Btw"
+      },
+      "energy_tax": {
+        "name": "Energiebelasting"
+      },
+      "transfer_fee": {
+        "name": "Nettarief"
+      }
+    },
+    "date": {
+      "departure_date": {
+        "name": "Vertrekdatum"
+      }
+    },
+    "switch": {
+      "departure_enabled": {
+        "name": "Vertrekdeadline"
+      }
+    },
+    "time": {
+      "departure_time": {
+        "name": "Vertrektijd"
+      }
+    },
+    "event": {
+      "charger_events": {
+        "name": "Laadpaalgebeurtenissen",
+        "state_attributes": {
+          "event_type": {
+            "state": {
+              "charge_started": "Laden gestart",
+              "charge_finished": "Laden klaar",
+              "plugged_in": "Aangesloten",
+              "unplugged": "Losgekoppeld",
+              "plan_installed": "Plan ingesteld",
+              "plan_at_risk": "Plan in gevaar"
+            }
+          }
+        }
+      }
+    }
+  },
+  "issues": {
+    "vehicle_soc_needs_decision": {
+      "title": "Het laadniveau van een auto vraagt om een keuze",
+      "fix_flow": {
+        "abort": {
+          "no_longer_needs_decision": "Dit apparaat vraagt niet meer om een keuze."
+        },
+        "step": {
+          "pick": {
+            "title": "Welke meting is het laadniveau?",
+            "description": "**{device}** geeft meer dan één batterijmeting door, dus SpotNav gaat niet raden welke het laadniveau is. Kies de meting die het is, of geef aan dat dit geen auto is, zodat het niet meer wordt gemeld.",
+            "data": {
+              "choice": "Meting"
+            }
+          }
+        }
+      }
+    },
+    "vehicle_charge_limit_needs_decision": {
+      "title": "De laadlimiet van een auto vraagt om een keuze",
+      "fix_flow": {
+        "abort": {
+          "no_longer_needs_decision": "Dit apparaat vraagt niet meer om een keuze."
+        },
+        "step": {
+          "pick": {
+            "title": "Welke limiet moet een wijziging instellen?",
+            "description": "**{device}** geeft meer dan één laadlimiet door, dus SpotNav gaat niet raden welke een wijziging moet instellen. Kies de limiet die de wijzigingen voor deze auto moeten gebruiken. Die wordt geschreven via de eigen integratie van de auto en gaat in zodra die integratie hem de volgende keer leest.",
+            "data": {
+              "choice": "Laadlimiet"
+            }
+          }
+        }
+      }
+    },
+    "duplicate_charger": {
+      "title": "Twee SpotNav-laadpalen zijn dezelfde laadpaal",
+      "description": "**{charger}** en **{other}** zijn dezelfde fysieke laadpaal: ze delen een apparaat, een gemeten stroom, een OCPP-connector of een Easee-apparaat. Twee SpotNav-laadpalen op één laadpaal sturen tegenstrijdige commando's. Verwijder er één: Instellingen → Apparaten & diensten → SpotNav → het menu van het item → Verwijderen. SpotNav verwijdert er nooit zelf een."
+    },
+    "site_without_chargers": {
+      "title": "Voeg een laadpaal toe aan de locatie",
+      "description": "De locatie **{site}** heeft nog geen laadpaal. Voeg een laadpaal toe: Instellingen → Apparaten & diensten → SpotNav → Item toevoegen → Laadpaal; je krijgt dan de vraag of hij aan deze locatie moet worden toegevoegd."
+    }
+  },
+  "exceptions": {
+    "invalid_driver": {
+      "message": "Die energiebron wordt niet ondersteund."
+    },
+    "invalid_area": {
+      "message": "Kies eerst een markt: die waarde hoort bij een markt."
+    },
+    "invalid_phases": {
+      "message": "Het aantal fasen moet 1 of 3 zijn."
+    },
+    "invalid_amps": {
+      "message": "De stroom moet een geheel aantal ampère zijn."
+    },
+    "invalid_energy": {
+      "message": "De energie moet een positief aantal kWh zijn."
+    },
+    "invalid_periods": {
+      "message": "Het aantal perioden moet een geheel getal van 1 tot 8 zijn."
+    },
+    "invalid_departure": {
+      "message": "Het vertrek moet een lokale kloktijd zijn."
+    },
+    "invalid_fiscal": {
+      "message": "Die fiscale waarde kan zo niet worden opgeslagen."
+    },
+    "invalid_target": {
+      "message": "Het doelrecord is onvolledig."
+    },
+    "invalid_number": {
+      "message": "Die waarde moet een geldig getal zijn."
+    },
+    "unknown_field": {
+      "message": "Dit record bevat een veld dat deze versie niet kent."
+    },
+    "missing_field": {
+      "message": "Dit record mist een veld dat het moet bevatten."
+    },
+    "invalid_proposal": {
+      "message": "Dat opgeslagen voorstel kan niet worden gebruikt."
+    },
+    "invalid_pause": {
+      "message": "De pauzevlag moet aan of uit staan."
+    },
+    "revision_conflict": {
+      "message": "Deze instellingen zijn elders gewijzigd, dus de waarde is niet geschreven. Probeer het opnieuw."
+    },
+    "not_auto_mode": {
+      "message": "Automatische prijsplanning is niet de planningsmodus van deze laadpaal."
+    },
+    "unknown_test_charger": {
+      "message": "Geen geladen SpotNav-laadpaal heeft dat config entry- of entiteits-ID."
+    },
+    "no_push_registered": {
+      "message": "Geen enkele SpotNav-laadpaal heeft de directe meldingen van de app aanstaan, dus er is geen testpushbericht verstuurd. Companion-telefoons die voor meldingen zijn gekozen, hebben wel een testbericht gekregen."
+    },
+    "stop_not_executed": {
+      "message": "De laadpaal heeft het stopcommando niet uitgevoerd: de bediening is niet beschikbaar. Probeer het opnieuw als de laadpaal weer bereikbaar is."
+    },
+    "storage_failed": {
+      "message": "Het laadplan kon niet worden opgeslagen."
+    },
+    "reschedule_failed": {
+      "message": "Het laadplan kon niet worden geactiveerd; het vorige blijft gelden."
+    },
+    "rollback_failed": {
+      "message": "Het laadplan kon niet worden geactiveerd, en het vorige kon niet worden hersteld."
+    },
+    "vehicle_not_connected": {
+      "message": "Er is geen auto aangesloten, dus er is niets te starten."
+    },
+    "reconcile_failed": {
+      "message": "De laadpaal heeft het commando uitgevoerd, maar automatisch laden kon niet worden bijgewerkt. Controleer de status van de laadpaal."
+    }
+  }
+}

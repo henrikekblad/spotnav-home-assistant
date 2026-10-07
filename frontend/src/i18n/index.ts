@@ -14,15 +14,16 @@ import de from "./de.json";
 import en from "./en.json";
 import fi from "./fi.json";
 import nb from "./nb.json";
+import nl from "./nl.json";
 import sv from "./sv.json";
 
 export type TranslationKey = keyof typeof en;
 export type Translation = Record<TranslationKey, string>;
 
-export const LANGUAGES = ["en", "sv", "nb", "da", "fi", "de"] as const;
+export const LANGUAGES = ["en", "sv", "nb", "da", "fi", "de", "nl"] as const;
 export type Language = (typeof LANGUAGES)[number];
 
-export const TRANSLATIONS: Record<Language, Translation> = { en, sv, nb, da, fi, de };
+export const TRANSLATIONS: Record<Language, Translation> = { en, sv, nb, da, fi, de, nl };
 
 /** Plural categories the headings use. Every supported language distinguishes one from other. */
 export type PluralCategory = "one" | "other";
