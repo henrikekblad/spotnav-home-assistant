@@ -377,6 +377,15 @@ plan's line on an empty charger, as before. A released SpotNav app words a code 
 Assistant", so the webhook says `solar_waiting_for_sun` in place of either line unless the request asks for them
 (`"reads": ["solar_no_car_status"]`). The site sensor's `solar_surplus` rows carry the additive `start_a`.
 
+**The site's sensors.** The site state sensor (*Capacity state*) keeps its states; the healthy one, `observing`,
+is named **Measuring**. Its additive attribute `site_activity` says what the site is doing in a word: `measuring`
+(healthy, active load balancing off), `balancing` (healthy, active load balancing on) or `not_measuring` (any other
+state); the site's diagnostics carry the same. A charger's allocation (`state` on its *Proposed current* sensor and
+in the diagnostics' `result`) has the additive `not_requesting` (reason `no_current_requested`, no limiting phase)
+for a charger that asks for no current, which used to read `below_minimum_current`; a reader that does not know it
+treats it as any unknown state. Every site has the sensor *Solar surplus* (W, `null`/unknown without a usable basis)
+with the attributes `export_w`, `battery_w`, `car_w` and `priority`; see [Solar](strategies.md#solar).
+
 A site's `warnings` in `get_entity_config` carry the additive `unavailable_entities` (a list) and
 `inverter` (bool): for `measurement_unhealthy`, the meter's sensors unavailable together as above; empty
 and false otherwise.
@@ -569,8 +578,8 @@ and a `settings` replacement may echo `identify_camera` and move its `frame`, bu
 `invalid_camera`: choosing the camera and the AI Task entity, where the pictures go, is an administrator's.
 
 At a plug-in the camera is asked through `ai_task.generate_data` with a structured answer (`vehicle`: `car_1` …
-`car_n` or `none`; `confidence`: `high`, `medium` or `low`) and the pictures as attachments: each candidate's
-reference pictures, then the crop of the picture now. The attachments are `media-source://spotnav/<token>` ids that
+`car_n` or `none`; `confidence`: `high`, `medium` or `low`) and the pictures as attachments:
+the crop of the picture now first (picture 1), then each candidate's reference pictures. The attachments are `media-source://spotnav/<token>` ids that
 SpotNav's media source resolves to a local file only while that one call runs (the crop is a temporary file,
 deleted after the call); browsing SpotNav's media source shows nothing.
 
