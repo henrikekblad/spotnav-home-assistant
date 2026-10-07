@@ -31,7 +31,7 @@ from PIL import Image, ImageOps
 
 from ..const import DOMAIN
 from .camera_rule import PICTURE_DAY, PICTURE_KINDS, Signature
-from .camera_settings import crop_box, Frame
+from .camera_settings import crop_box, Frame, normalised
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -43,8 +43,11 @@ JPEG_QUALITY: Final = 85
 #: The middle of a cropped picture the colour signature is taken from (a fraction of each side): the car, not
 #: the ground around it.
 SIGNATURE_MIDDLE: Final = 0.6
-#: A picture whose pixels differ this little between red, green and blue on average has no colour (infrared).
-GREY_SPREAD: Final = 0.015
+#: `has_colour`: a pixel this saturated (HSV), and not near black, is coloured; a picture with this share of
+#: coloured pixels has colour. An infrared picture, grey or evenly tinted, stays near 0.1 saturation.
+COLOURED_SATURATION: Final = 0.25
+COLOURED_VALUE: Final = 0.15
+COLOURED_SHARE: Final = 0.05
 _SIGNATURE_PIXELS: Final = 24
 _VEHICLE_ID: Final = re.compile(r"^[A-Za-z0-9_-]{1,64}$")
 _STORE_VERSION: Final = 1
@@ -94,16 +97,8 @@ def thumbnail_jpeg(data: bytes, side: int = THUMBNAIL_SIDE) -> bytes:
     return _jpeg(image)
 
 
-def colour_signature(data: bytes, kind: str = PICTURE_DAY) -> Signature:
-    """The average colour of the middle of a cropped picture (red, green, blue, each 0-1, two decimals), or `None`
-    for a picture whose colour says nothing: a night picture, or one without any colour at all (an infrared
-    picture is grey all over; a daylight picture of a white or black car still has some colour around it)."""
-    if kind != PICTURE_DAY:
-        return None
-    image = _open(data)
-    whole = image.resize((_SIGNATURE_PIXELS, _SIGNATURE_PIXELS))
-    if _spread(_pixels(whole)) < GREY_SPREAD:
-        return None
+def _middle_colour(image: Image.Image) -> tuple[float, float, float]:
+    """The average colour of the middle of a cropped picture (red, green, blue, each 0-1, two decimals)."""
     width, height = image.size
     margin_x = width * (1 - SIGNATURE_MIDDLE) / 2
     margin_y = height * (1 - SIGNATURE_MIDDLE) / 2
@@ -119,14 +114,41 @@ def colour_signature(data: bytes, kind: str = PICTURE_DAY) -> Signature:
     )
 
 
+def has_colour(image: Image.Image) -> bool:
+    """Whether a picture shows colour, rather than an infrared night picture.
+
+    A pixel is coloured when its saturation (HSV: (max - min) / max) is at least `COLOURED_SATURATION` and it is not
+    near black (value at least `COLOURED_VALUE`, where saturation is noise). An infrared picture is grey, or, from a
+    camera without an infrared-cut filter, evenly tinted (purple or pink at a saturation near 0.1): few or none of
+    its pixels reach that. A daylight scene has coloured things in it (paint, grass, signs, lights). The picture has
+    colour when at least `COLOURED_SHARE` of its pixels are coloured. A daylight crop of only a white or grey car on
+    grey ground may read as no colour: the camera then only orders the buttons, which is the safe side.
+    """
+    pixels = _pixels(image.resize((_SIGNATURE_PIXELS, _SIGNATURE_PIXELS)))
+    coloured = 0
+    for pixel in pixels:
+        top = max(pixel)
+        if top >= COLOURED_VALUE * 255 and (top - min(pixel)) / top >= COLOURED_SATURATION:
+            coloured += 1
+    return coloured >= COLOURED_SHARE * len(pixels)
+
+
+def reference_signature(data: bytes, kind: str) -> Signature:
+    """A reference picture's colour signature: the middle's average colour for a daylight picture (the person
+    says it is daylight, so a white car keeps its white), `None` for a night picture."""
+    return _middle_colour(_open(data)) if kind == PICTURE_DAY else None
+
+
+def colour_signature(data: bytes) -> Signature:
+    """The colour of the picture now: the middle's average colour, or `None` when the picture shows no colour
+    (`has_colour`: an infrared night picture, grey or tinted)."""
+    image = _open(data)
+    return _middle_colour(image) if has_colour(image) else None
+
+
 def _pixels(image: Image.Image) -> list[tuple[int, int, int]]:
     raw = image.tobytes()
     return [(raw[index], raw[index + 1], raw[index + 2]) for index in range(0, len(raw), 3)]
-
-
-def _spread(pixels: list[tuple[int, int, int]]) -> float:
-    """How far red, green and blue lie apart, on average over the pixels (0: grey all over)."""
-    return sum(max(pixel) - min(pixel) for pixel in pixels) / len(pixels) / 255
 
 
 # --------------------------------------------------------------------------- the stored reference pictures
@@ -184,7 +206,7 @@ class Reference:
                 kind=raw["kind"],
                 taken_at=taken_at,
                 camera_entity_id=raw["camera_entity_id"],
-                frame=None if raw["frame"] is None else Frame.from_wire(raw["frame"]),
+                frame=normalised(None if raw["frame"] is None else Frame.from_wire(raw["frame"])),
                 signature=None if signature is None else (float(signature[0]), float(signature[1]), float(signature[2])),
             )
         except (KeyError, TypeError, ValueError, IndexError):
@@ -206,6 +228,14 @@ def _write(path: Path, data: bytes) -> None:
     os.replace(temporary, path)
 
 
+def _sweep(folder: Path) -> None:
+    """Remove what a write cut short left: the query crops in `tmp/` and half-written reference pictures."""
+    shutil.rmtree(folder / "tmp", True)
+    if folder.is_dir():
+        for stray in folder.glob("*.tmp"):
+            stray.unlink(missing_ok=True)
+
+
 def _read(path: Path) -> bytes | None:
     try:
         return path.read_bytes()
@@ -224,7 +254,7 @@ class ReferenceStore:
 
     async def async_load(self) -> None:
         # A crop left behind by a query that never finished (a power cut, a crash) goes now.
-        await self._hass.async_add_executor_job(shutil.rmtree, self.folder / "tmp", True)
+        await self._hass.async_add_executor_job(_sweep, self.folder)
         raw = await self._store.async_load()
         items = raw.get("references") if isinstance(raw, dict) else None
         self._references = {}
