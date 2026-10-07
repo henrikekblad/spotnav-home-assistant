@@ -753,17 +753,22 @@ export function settingsEditorBody(
         const select = doc.createElement("select") as HTMLSelectElement;
         select.dataset["soc"] = "vehicle-choice";
         select.disabled = form.readOnly;
-        const none = doc.createElement("option") as HTMLOptionElement;
-        none.value = "";
-        none.textContent = translate(language, "settings.soc.vehicleUnknown");
-        select.append(none);
+        const current = values.vehicleId !== "" ? values.vehicleId : (soc.vehicle_id ?? "");
+        if (current === "") {
+          // Only a prompt while no car is chosen: a target is always for a car, so "none" is never a choice.
+          const none = doc.createElement("option") as HTMLOptionElement;
+          none.value = "";
+          none.disabled = true;
+          none.textContent = translate(language, "settings.soc.vehicleUnknown");
+          select.append(none);
+        }
         for (const vehicle of soc.vehicles) {
           const option = doc.createElement("option") as HTMLOptionElement;
           option.value = vehicle.id;
           option.textContent = vehicle.name;
           select.append(option);
         }
-        select.value = values.vehicleId !== "" ? values.vehicleId : (soc.vehicle_id ?? "");
+        select.value = current;
         select.addEventListener("change", paint);
         select.addEventListener("change", announceVehicle);
         vehicleSelect = select;
