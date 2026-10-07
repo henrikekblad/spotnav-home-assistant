@@ -500,7 +500,12 @@ async def install_schedule(controller, payload: dict) -> None:
 
 
 def as_app_sees(settings: dict) -> dict:
-    """A WebSocket settings record as the webhook answers it: without `APP_UNREAD_SETTINGS`."""
+    """A WebSocket settings record as the webhook answers it: without `APP_UNREAD_SETTINGS`, and automatic
+    charge periods as their effective number."""
     from custom_components.spotnav.api.webhook import APP_UNREAD_SETTINGS
+    from custom_components.spotnav.planning.auto_settings import MAX_PERIODS
 
-    return {key: value for key, value in settings.items() if key not in APP_UNREAD_SETTINGS}
+    seen = {key: value for key, value in settings.items() if key not in APP_UNREAD_SETTINGS}
+    if "max_periods" in seen and seen["max_periods"] is None:
+        seen["max_periods"] = MAX_PERIODS
+    return seen

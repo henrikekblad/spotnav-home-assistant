@@ -642,6 +642,20 @@
           "solar": "Soloverskud",
           "hybrid": "Billigste timer, holder netenergi tilbage til forventet sol"
         }
+      },
+      "charge_periods": {
+        "name": "Ladeperioder",
+        "state": {
+          "auto": "Automatisk",
+          "1": "1 periode",
+          "2": "2 perioder",
+          "3": "3 perioder",
+          "4": "4 perioder",
+          "5": "5 perioder",
+          "6": "6 perioder",
+          "7": "7 perioder",
+          "8": "8 perioder"
+        }
       }
     },
     "number": {
@@ -650,9 +664,6 @@
       },
       "requested_energy": {
         "name": "Energi der skal lades"
-      },
-      "maximum_periods": {
-        "name": "Maks. ladeperioder"
       },
       "vat_rate": {
         "name": "Moms"

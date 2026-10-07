@@ -79,7 +79,11 @@ STORED_STRATEGIES: Final = (STRATEGY_CHEAPEST, STRATEGY_SOLAR, STRATEGY_HYBRID)
 #: vehicle, capacity and fiscal figures have none: they are `None` or off.
 DEFAULT_REQUESTED_KWH: Final = 20.0
 DEFAULT_CONSUMPTION_KWH_PER_10KM: Final = 2.0
-DEFAULT_MAX_PERIODS: Final = 1
+#: Automatic charge periods (`planning/planner.py` `AUTO_PERIODS`): no cap, a start cost per period instead.
+DEFAULT_MAX_PERIODS: Final = None
+#: The numbers a person may set in place of automatic periods.
+MIN_PERIODS: Final = 1
+MAX_PERIODS: Final = 8
 DEFAULT_DEPARTURE: Final = time(8, 0)
 
 #: How a charger with more than one vehicle finds out which one is plugged in (`vehicles/identification.py`):
@@ -482,7 +486,9 @@ class AutoSettings:
     #: "Fill": a manual need that is the battery's room (to the car's own limit) at each calculation, so it
     #: follows the car; without a known room `requested_kwh` stands. Ignored by a target.
     fill_to_limit: bool = False
-    max_periods: int = DEFAULT_MAX_PERIODS
+    #: A hard cap on the charge periods (1 to 8), or `None`: automatic (the planner weighs a start cost per
+    #: period). Stored under `periods`; a record from before it, which has `max_periods`, is read as automatic.
+    max_periods: int | None = DEFAULT_MAX_PERIODS
     departure_enabled: bool = True
     departure: time = DEFAULT_DEPARTURE
     #: The local date (in the area's zone) the departure falls on, or `None` for a daily departure
@@ -568,8 +574,12 @@ class AutoSettings:
         if self.amps is not None:
             if isinstance(self.amps, bool) or not isinstance(self.amps, int) or not 1 <= self.amps <= 80:
                 _refuse("invalid_amps", "amps must be a whole number of amperes when it is set")
-        if isinstance(self.max_periods, bool) or not isinstance(self.max_periods, int) or not 1 <= self.max_periods <= 8:
-            _refuse("invalid_periods", "max_periods must be a whole number between 1 and 8")
+        if self.max_periods is not None and (
+            isinstance(self.max_periods, bool)
+            or not isinstance(self.max_periods, int)
+            or not MIN_PERIODS <= self.max_periods <= MAX_PERIODS
+        ):
+            _refuse("invalid_periods", "max_periods must be automatic (None) or a whole number between 1 and 8")
         _positive(self.requested_kwh, "invalid_energy", "requested_kwh")
         if not isinstance(self.fill_to_limit, bool):
             _refuse("invalid_energy", "fill_to_limit must be a boolean")
@@ -653,7 +663,8 @@ class AutoSettings:
             "phases": self.phases,
             "amps": self.amps,
             "requested_kwh": self.requested_kwh,
-            "max_periods": self.max_periods,
+            # Not `max_periods`: a record that has that key is from before automatic periods (`from_stored`).
+            "periods": self.max_periods,
             "departure_enabled": self.departure_enabled,
             "departure": f"{self.departure.hour:02d}:{self.departure.minute:02d}",
             "pause": self.pause.as_dict(),
@@ -691,13 +702,14 @@ class AutoSettings:
         """
         stored = _exact_shape(
             raw,
-            frozenset(cls().as_dict()),
+            # `periods` (this release) or `max_periods` (before automatic periods, migrated below).
+            frozenset(cls().as_dict()) - {"periods"},
             "unknown_field",
             "a stored settings record",
             optional=frozenset(
                 {
                     "departure_date", "departure_weekdays", "notifications", "fill_to_limit", "vehicle_ids",
-                    "identify_mode", "identify_camera",
+                    "identify_mode", "identify_camera", "periods", "max_periods",
                 }
             ),
         )
@@ -751,7 +763,9 @@ class AutoSettings:
             amps=stored["amps"],
             requested_kwh=stored["requested_kwh"],
             fill_to_limit=stored.get("fill_to_limit", False),
-            max_periods=stored["max_periods"],
+            # The one-time migration: a record from before automatic periods stored a number under
+            # `max_periods`, the old default 1 for most; it becomes automatic. Saved with `periods` from then on.
+            max_periods=stored["periods"] if "periods" in stored else DEFAULT_MAX_PERIODS,
             departure_enabled=stored["departure_enabled"],
             departure=departure,
             departure_date=departure_date,

@@ -98,6 +98,9 @@
       },
       "fiscal_transfer_policy": {
         "default": "mdi:transmission-tower"
+      },
+      "charge_periods": {
+        "default": "mdi:counter"
       }
     },
     "number": {
@@ -106,9 +109,6 @@
       },
       "requested_energy": {
         "default": "mdi:battery-charging-80"
-      },
-      "maximum_periods": {
-        "default": "mdi:counter"
       },
       "vat_rate": {
         "default": "mdi:percent-outline"

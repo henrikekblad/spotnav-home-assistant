@@ -287,7 +287,7 @@ def stored_settings(**changes: Any) -> dict[str, Any]:
         ({"amps": "10"}, "invalid_amps"),
         ({"amps": True}, "invalid_amps"),
         ({"requested_kwh": "20"}, "invalid_energy"),
-        ({"max_periods": True}, "invalid_periods"),
+        ({"periods": True}, "invalid_periods"),
         ({"revision": True}, "invalid_number"),
         ({"revision": -1}, "invalid_number"),
         ({"departure_enabled": "yes"}, "invalid_departure"),

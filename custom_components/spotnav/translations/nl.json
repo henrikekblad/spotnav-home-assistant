@@ -642,6 +642,20 @@
           "solar": "Zonne-overschot",
           "hybrid": "Goedkoopste uren, netstroom inhouden voor verwachte zon"
         }
+      },
+      "charge_periods": {
+        "name": "Laadperiodes",
+        "state": {
+          "auto": "Automatisch",
+          "1": "1 periode",
+          "2": "2 periodes",
+          "3": "3 periodes",
+          "4": "4 periodes",
+          "5": "5 periodes",
+          "6": "6 periodes",
+          "7": "7 periodes",
+          "8": "8 periodes"
+        }
       }
     },
     "number": {
@@ -650,9 +664,6 @@
       },
       "requested_energy": {
         "name": "Te laden energie"
-      },
-      "maximum_periods": {
-        "name": "Maximaal aantal laadperioden"
       },
       "vat_rate": {
         "name": "Btw"

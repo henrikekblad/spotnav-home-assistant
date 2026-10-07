@@ -58,6 +58,7 @@ from ..planning.auto_settings import (
     FiscalOverride,
     IDENTIFY_AUTOMATIC,
     IDENTIFY_MODES,
+    MAX_PERIODS,
     PauseIntent,
     SettingsCode,
     STORED_STRATEGIES,
@@ -417,7 +418,10 @@ def decode_settings(raw: Any) -> AutoSettings:
         fill_to_limit=(
             _boolean(stored["fill_to_limit"], "fill_to_limit", "invalid_energy") if "fill_to_limit" in stored else False
         ),
-        max_periods=_whole(stored["max_periods"], "max_periods", "invalid_periods"),
+        # `null` is automatic periods; a number is a hard cap (1 to 8, `AutoSettings.validated`).
+        max_periods=(
+            None if stored["max_periods"] is None else _whole(stored["max_periods"], "max_periods", "invalid_periods")
+        ),
         departure_enabled=_boolean(
             stored["departure_enabled"], "departure_enabled", "invalid_departure"
         ),
@@ -455,6 +459,7 @@ def replacement_mutator(
     keep_identification: bool = False,
     keep_identify_camera: bool = False,
     keep_camera_choice: bool = False,
+    keep_auto_periods: bool = False,
     vehicle_target: Callable[[str | None], float | None] | None = None,
 ) -> Callable[[AutoSettings], AutoSettings]:
     """A full replacement expressed as the store's own mutation hook.
@@ -465,6 +470,8 @@ def replacement_mutator(
 
     `keep_camera_choice` (the paired app) keeps the stored camera and AI Task entity and takes only the frame.
     `keep_identification` keeps the identification fields (`vehicle_ids`, `identify_mode`, `identify_camera`).
+    `keep_auto_periods` (an app that does not read automatic periods, which was shown `MAX_PERIODS` in their
+    place) keeps automatic periods when the body echoes that number; any other number is the person's.
     Whatever the body
     says, a switch of the target vehicle that leaves the percent as it was takes the new vehicle's own target
     (`vehicle_target`, the car's property): the target follows the car.
@@ -498,6 +505,8 @@ def replacement_mutator(
             kept["identify_camera"] = (
                 None if chosen_camera is None else replace(chosen_camera, frame=None if sent is None else sent.frame)
             )
+        if keep_auto_periods and current.max_periods is None and replacement.max_periods == MAX_PERIODS:
+            kept["max_periods"] = None
         updated = replace(replacement, pause=current.pause, **kept)
         chosen = updated.target
         remembered = None if vehicle_target is None else vehicle_target(chosen.vehicle_id)
@@ -692,6 +701,7 @@ async def async_update_settings(
     expected_revision: Any,
     replacement: Any,
     from_app: bool = False,
+    reads_auto_periods: bool = True,
 ) -> AutoSettings:
     """Replace one charger's settings, at a revision the caller names, through its controller.
 
@@ -720,6 +730,7 @@ async def async_update_settings(
         keep_identify_mode=isinstance(replacement, Mapping) and "identify_mode" not in replacement,
         keep_identify_camera=isinstance(replacement, Mapping) and "identify_camera" not in replacement,
         keep_camera_choice=from_app,
+        keep_auto_periods=not reads_auto_periods,
         vehicle_target=lambda vehicle_id: vehicle_properties.stored_properties(hass, vehicle_id).target_percent,
     )
     _refuse_amps_above_charger_range(hass, entry_id, decoded)
