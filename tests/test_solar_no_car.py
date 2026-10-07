@@ -15,7 +15,9 @@ from typing import Any
 import pytest
 from homeassistant.core import HomeAssistant
 
+from custom_components.spotnav.api import dashboard as dashboard_api
 from custom_components.spotnav.planning.auto_settings import STRATEGY_HYBRID, STRATEGY_SOLAR
+from custom_components.spotnav.planning.status_compose import compose_status, StatusFacts
 
 from .test_mode_switch_handover import _garage, _sun
 from .world import tick_site
@@ -81,3 +83,34 @@ async def test_an_unknown_connection_keeps_todays_behaviour(hass: HomeAssistant)
 
     assert coordinator.state is not None and coordinator.state.state == "arming"
 
+
+
+def _solar_line(hass: HomeAssistant, charger: Any) -> dict[str, Any]:
+    """The solar headline the status composes from this charger's solar facts."""
+    facts = dashboard_api.status_facts(dashboard_api.capture_dashboard(hass, charger))
+    assert facts.solar is not None
+    return compose_status(StatusFacts(now=facts.now, strategy=STRATEGY_SOLAR, solar=facts.solar))["lines"][0]
+
+
+@pytest.mark.parametrize(
+    ("export_w", "line"),
+    [
+        (4000.0, {"code": "solar_no_car_surplus", "params": {"surplus_kw": 4.0}}),
+        (600.0, {"code": "solar_no_car", "params": {}}),
+        (0.0, {"code": "solar_no_car", "params": {}}),
+    ],
+)
+async def test_an_empty_charger_on_solar_says_no_car_and_whether_the_sun_would_start_one(
+    hass: HomeAssistant, export_w: float, line: dict[str, Any]
+) -> None:
+    """Not "waiting for sun" while the sun shines on an empty charger: the line says no car is plugged in, and that
+    plugging one in would start it when the surplus covers the start minimum (600 W on one phase is short of 6 A)."""
+    charger, site, controller, coordinator, clock, easee = await _garage(hass, STRATEGY_SOLAR)
+    await easee.status("disconnected")
+    _sun(hass, export_w=export_w)
+    for at in (0.0, 60.0, 125.0):
+        clock.value = at
+        await tick_site(hass, site)
+
+    assert coordinator.state is not None and coordinator.state.reason == "no_car"
+    assert _solar_line(hass, charger) == line

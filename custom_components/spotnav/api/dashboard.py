@@ -2118,6 +2118,9 @@ def status_facts(capture: CapturedDashboard) -> StatusFacts:
             charger_current_entity_name=names.get(_text(basis.get("charger_current_entity")) or ""),
             site_incomplete_phases=tuple(str(phase) for phase in basis.get("site_incomplete_phases") or ()),
             retry_at=_instant(basis.get("retry_at")),
+            available_a=finite_number(basis.get("available_a")),
+            available_w=finite_number(basis.get("available_w")),
+            start_a=finite_number(basis.get("start_a")),
         )
     elif state is not None and strategy == STRATEGY_HYBRID:
         hybrid = HybridFacts(
