@@ -17,6 +17,7 @@ export interface VehicleEdits {
   capacity?: () => void;
   consumption?: () => void;
   onboard?: () => void;
+  chargeLimit?: () => void;
   plug?: () => void;
   location?: () => void;
 }
@@ -105,9 +106,14 @@ export function vehicleSummary(doc: Document, language: Language, input: Vehicle
       translate(language, row.onboard_phases === 1 ? "settings.vehicle.onboardOne" : "settings.vehicle.onboardThree"),
       edits.onboard,
     );
-    // The car's own charge limit, as the car reports it. Read-only here: the card has no request that writes it.
+    // The car's own charge limit, as the car reports it; written to the car where Home Assistant can.
     if (row.max_percent !== null) {
-      valueRow("charge_limit", translate(language, "settings.vehicle.limit"), `${formatNumber(language, row.max_percent, 0)} %`);
+      valueRow(
+        "charge_limit",
+        translate(language, "settings.vehicle.limit"),
+        `${formatNumber(language, row.max_percent, 0)} %`,
+        edits.chargeLimit,
+      );
     }
     // The car's own target, the same at every charger, after its limit as in the app.
     if (row.target_percent !== undefined) {

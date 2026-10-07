@@ -22,6 +22,7 @@ import {
   UNSUPPORTED_API_VERSION,
   cameraCommand,
   chooseVehicleIdentification,
+  setChargeLimit,
   getDashboard,
   getCardInfo,
   getDebugBundle,
@@ -1943,6 +1944,16 @@ export class SpotnavCard extends HTMLElement {
         return answer !== null && answer.ok === true
           ? null
           : cameraErrorKey(typeof answer?.error === "string" ? answer.error : null);
+      }
+      case "chargeLimit": {
+        const answer = (await setChargeLimit(hass, charger, { vehicleId: write.vehicleId, percent: write.percent })) as {
+          ok?: unknown;
+          error?: unknown;
+        } | null;
+        if (answer !== null && answer.ok === true) {
+          return null;
+        }
+        return answer?.error === "spotnav_too_soon" ? "settings.vehicle.limitTooSoon" : "settings.vehicle.limitFailed";
       }
       case "vehicleSource": {
         const answer = (await chooseVehicleIdentification(hass, charger, {

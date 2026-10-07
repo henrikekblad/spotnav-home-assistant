@@ -255,6 +255,8 @@ export interface CardModel {
   chargerCars: Array<{ id: string; name: string | null }>;
   planRelation: PlanRelationKind;
   capabilities: CapabilityItem[];
+  /** Whether a car's own charge limit may be written (`spotnav/set_charge_limit`). */
+  setChargeLimit: boolean;
   contextArea: string | null;
   contextCurrency: string | null;
   /**
@@ -786,6 +788,7 @@ export function buildModel(input: BuildInput): CardModel {
     ),
     planRelation: planRelationOf(dashboard),
     capabilities: capabilitiesFor(dashboard),
+    setChargeLimit: dashboard.charger.capabilities.set_charge_limit,
     control: controlFactsFor(dashboard, language, input.sentAction ?? null, input.shownAutomatic ?? null),
     advisory: advisoryFor(dashboard, language),
     strategy: strategyFactsFor(dashboard, language),

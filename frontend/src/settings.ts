@@ -693,6 +693,9 @@ function integer(text: string, minimum: number, maximum: number): FormCheck<numb
 
 export const TARGET_PERCENT_MIN = 0;
 export const TARGET_PERCENT_MAX = 100;
+/** The car's own charge limit, as the app's editor offers it: whole percent. */
+export const CHARGE_LIMIT_MIN_PERCENT = 1;
+export const CHARGE_LIMIT_MAX_PERCENT = 100;
 export const CAPACITY_MIN_KWH = 1;
 export const CAPACITY_MAX_KWH = 500;
 
