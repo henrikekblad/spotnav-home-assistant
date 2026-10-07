@@ -254,6 +254,12 @@
       "params": [],
       "tone": "notice"
     },
+    "min_soc_charging": {
+      "params": [
+        "percent"
+      ],
+      "tone": "normal"
+    },
     "need_limited_by_room": {
       "params": [
         "kwh"

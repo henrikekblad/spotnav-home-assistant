@@ -1152,6 +1152,25 @@ CASES: list[tuple[str, StatusFacts, str, list[dict[str, Any]]]] = [
         ],
     ),
     (
+        "the car's minimum charge level charges it: its line leads in place of the plan's",
+        base(relation_applied=True, proposal=proposal(), charging=True, min_soc_percent=30.0),
+        "normal",
+        [{"code": "min_soc_charging", "params": {"percent": 30}}],
+    ),
+    (
+        "under solar the floor's line leads in place of the sun's",
+        base(strategy="solar", charging=True, min_soc_percent=45.0,
+             solar=SolarFacts(state="on", reason="surplus", requested_a=6)),
+        "normal",
+        [{"code": "min_soc_charging", "params": {"percent": 45}}],
+    ),
+    (
+        "a pause wins over the floor",
+        base(paused=True, min_soc_percent=30.0),
+        "normal",
+        [{"code": "paused", "params": {"until": None, "choice": None, "action": None, "ends": None}}],
+    ),
+    (
         "a decided car says nothing",
         base(relation_applied=True, proposal=proposal(), identification="decided"),
         "normal",
