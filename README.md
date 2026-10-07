@@ -13,6 +13,9 @@ public SpotNav Relay (no account or API key) and follows them.
   Lovelace card is included, and the SpotNav Android app
   ([Google Play](https://play.google.com/store/apps/details?id=se.sensnology.spotnav),
   [GitHub](https://github.com/henrikekblad/spotnav)) pairs with it.
+- **Speaks your language.** The card, the setup dialogs, the entities and the notifications are in
+  English, Swedish, Danish, Norwegian, Finnish, German, Dutch, Spanish and French, following Home
+  Assistant's language. See [Translating SpotNav](docs/translating.md) to add one.
 
 ## Requirements
 
@@ -86,6 +89,7 @@ match and choose **Approve**. No Home Assistant password or token is stored on t
 - [Notifications](docs/notifications.md): what SpotNav tells a phone through the Home Assistant app.
 - [Apps and API](docs/api.md): pairing, webhook and WebSocket contracts.
 - [Diagnostics and troubleshooting](docs/troubleshooting.md).
+- [Translating SpotNav](docs/translating.md): where the texts are, and the glossary for each language.
 
 ## Development
 
