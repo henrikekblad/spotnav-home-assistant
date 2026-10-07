@@ -305,12 +305,38 @@ describe("a car's reference pictures", () => {
     const { hass, element } = await openSettings(dashboard());
     const ev6 = carSection(openDialog(element)!, EV6);
     expect(ev6.querySelector("[data-row='reference']")?.textContent).toContain("Day, Night");
-    const thumbs = ev6.querySelectorAll<HTMLImageElement>("[data-reference-thumbs] img");
-    expect(thumbs).toHaveLength(2);
-    expect(thumbs[0]!.hidden).toBe(false);
+    const tiles = ev6.querySelectorAll<HTMLElement>("[data-reference-tiles] [data-reference-tile]");
+    expect(Array.from(tiles).map((tile) => tile.dataset["referenceTile"])).toEqual(["day", "night"]);
+    for (const tile of Array.from(tiles)) {
+      // Each tile the editor's slot picture: the same fixed aspect, the picture cropped to fill it.
+      expect(tile.querySelector(".spotnav-reference-slot-picture")).not.toBeNull();
+      expect(tile.querySelector<HTMLImageElement>("img.spotnav-reference-slot-image")!.hidden).toBe(false);
+      expect(tile.querySelector<HTMLElement>(".spotnav-reference-slot-empty")!.hidden).toBe(true);
+    }
+    expect(tiles[0]!.textContent).toContain("Day");
+    expect(tiles[1]!.textContent).toContain("Night");
     expect(hass.cameraMessages.filter((message) => message.type === "spotnav/reference_picture")).toHaveLength(2);
     const niro = carSection(openDialog(element)!, NIRO);
     expect(niro.querySelector("[data-row='reference']")?.textContent).toContain(translate("en", "reference.none"));
+  });
+
+  it("show an empty tile as No picture, and open the editor from a tile", async () => {
+    const payload = dashboard();
+    payload["camera_identification"]["references"][EV6] = [{ kind: "day", taken_at: "2026-10-07T12:00:00+00:00", colour: true }];
+    const { hass, element } = await openSettings(payload, "sv");
+    const ev6 = carSection(openDialog(element)!, EV6);
+    const night = ev6.querySelector<HTMLElement>("[data-reference-tile='night']")!;
+    expect(night.dataset["state"]).toBe("empty");
+    expect(night.querySelector<HTMLElement>(".spotnav-reference-slot-empty")!.hidden).toBe(false);
+    expect(night.textContent).toContain("Natt");
+    expect(night.textContent).toContain("Ingen bild");
+    expect(night.querySelector<HTMLImageElement>("img")!.hidden).toBe(true);
+    expect(hass.cameraMessages.filter((message) => message.type === "spotnav/reference_picture")).toHaveLength(1);
+    const niro = carSection(openDialog(element)!, NIRO);
+    expect(niro.querySelectorAll("[data-reference-tile][data-state='empty']")).toHaveLength(2);
+    night.click();
+    await settle();
+    expect(openDialog(element)!.querySelector("form[data-value-editor='reference']")).not.toBeNull();
   });
 
   /** The car's reference editor, opened from its row. */

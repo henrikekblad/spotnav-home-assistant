@@ -67,10 +67,11 @@ export const VISUAL_CLASSES = {
   cameraHandle: "spotnav-camera-handle",
   cameraPreview: "spotnav-camera-preview",
   cameraTools: "spotnav-camera-tools",
-  referenceThumbs: "spotnav-reference-thumbs",
+  referenceTiles: "spotnav-reference-tiles",
   vehicleTabs: "spotnav-vehicle-tabs",
   vehicleTab: "spotnav-vehicle-tab",
-  referenceThumb: "spotnav-reference-thumb",
+  referenceTile: "spotnav-reference-tile",
+  referenceTileLabel: "spotnav-reference-tile-label",
   referenceSlots: "spotnav-reference-slots",
   referenceSlot: "spotnav-reference-slot",
   referenceSlotTitle: "spotnav-reference-slot-title",
@@ -1574,27 +1575,41 @@ export const VISUAL_STYLES = `
     color: var(--primary-color, #03a9f4);
     font-weight: 600;
   }
-  .${VISUAL_CLASSES.referenceThumbs} {
-    display: flex;
-    flex-wrap: wrap;
-    justify-content: flex-end;
-    gap: 6px;
-    min-width: 0;
-    margin: 0 0 4px;
+  /* A car's reference pictures under its row: two equal tiles, day and night, each the editor's slot picture. */
+  .${VISUAL_CLASSES.referenceTiles} {
+    margin: 0 0 8px;
   }
-  .${VISUAL_CLASSES.referenceThumb} {
-    display: block;
-    max-width: 45%;
-    max-height: 4.5em;
-    border-radius: 4px;
-    object-fit: cover;
+  .${VISUAL_CLASSES.referenceTile} {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    min-width: 0;
+    padding: 0;
+    font: inherit;
+    color: inherit;
+    text-align: start;
+    background: none;
+    border: 0;
+  }
+  button.${VISUAL_CLASSES.referenceTile} {
+    cursor: pointer;
+  }
+  .${VISUAL_CLASSES.referenceTileLabel} {
+    color: var(--secondary-text-color, #727272);
+    font-size: 0.85rem;
+  }
+  .${VISUAL_CLASSES.referenceTile}[data-state="empty"] .${VISUAL_CLASSES.referenceSlotPicture} {
+    border: 1px dashed var(--divider-color, #e0e0e0);
   }
   /* A car's reference pictures: two equal slots, day and night, each its picture, its button and a quiet Delete. */
   .${VISUAL_CLASSES.referenceSlots} {
+    margin: 8px 0;
+  }
+  .${VISUAL_CLASSES.referenceSlots},
+  .${VISUAL_CLASSES.referenceTiles} {
     display: grid;
     grid-template-columns: repeat(2, minmax(0, 1fr));
     gap: 12px;
-    margin: 8px 0;
   }
   .${VISUAL_CLASSES.referenceSlot} {
     display: flex;
