@@ -4,6 +4,9 @@
 // and this is the runtime half: it fails loudly if a shipped locale is edited outside the type system,
 // and it proves the compact fiscal row's own labels exist in every language rather than only in English.
 
+import { readdirSync } from "node:fs";
+import { resolve } from "node:path";
+
 import { describe, expect, it } from "vitest";
 
 import { LANGUAGES, TRANSLATIONS, translate, type TranslationKey } from "../src/i18n";
@@ -18,6 +21,14 @@ const ROW_KEYS: TranslationKey[] = [
 ];
 
 describe("the shipped locales", () => {
+  it("are every JSON file in src/i18n, so a new language file cannot be left unwired", () => {
+    const folder = resolve(__dirname, "../src/i18n");
+    const files = readdirSync(folder)
+      .filter((name) => name.endsWith(".json"))
+      .map((name) => name.slice(0, -".json".length));
+    expect([...files].sort()).toEqual([...LANGUAGES].sort());
+  });
+
   it("hold exactly the same keys, in every language", () => {
     const english = Object.keys(TRANSLATIONS.en).sort();
     expect(english.length).toBeGreaterThan(0);

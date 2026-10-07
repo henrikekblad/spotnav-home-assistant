@@ -1,8 +1,4 @@
-// Norwegian Bokmål. Typed against the English key set, so a missing key is a compile error.
-
-import type { en } from "./en";
-
-export const nb: Record<keyof typeof en, string> = {
+{
   "card.title": "SpotNav",
   "state.loading": "Leser ladeplanen…",
   "state.unconfigured": "Velg én SpotNav-lader i kortets redigeringsverktøy.",
@@ -168,8 +164,7 @@ export const nb: Record<keyof typeof en, string> = {
   "entity.field.safetyMargin": "Sikkerhetsmargin",
   "entity.field.measurementMode": "Målemetode",
   "entity.field.voltageBetweenPhases": "Spenning mellom faser",
-  "entity.field.chargerPriority":
-    "Laderens prioritet",
+  "entity.field.chargerPriority": "Laderens prioritet",
   "entity.field.batteryPower": "Batteriets effekt",
   "entity.field.maxAge": "Høyeste målealder",
   "entity.mode.direct": "Fasestrømmer måles direkte",
@@ -204,16 +199,12 @@ export const nb: Record<keyof typeof en, string> = {
   "entity.help.safetyMargin": "Strømmen i ampere som SpotNav holder fri under hovedsikringen. Ladingen holdes under sikringen minus marginen, som derfor må være lavere enn sikringen.",
   "entity.help.measurementMode": "Om måleren oppgir strømmen for hver fase direkte, eller SpotNav regner den ut fra effekt og spenning.",
   "entity.help.voltageBetweenPhases": "Spenningen mellom to faser i det elektriske anlegget ditt. Trefaset ladeeffekt regnes ut fra den.",
-  "entity.help.chargerPriority":
-    "Når flere ladere deler anleggets sikring, får en lader satt til Først strøm før de andre, og en satt til Sist får det som er igjen.",
+  "entity.help.chargerPriority": "Når flere ladere deler anleggets sikring, får en lader satt til Først strøm før de andre, og en satt til Sist får det som er igjen.",
   "entity.voltage.tn": "400 V (TN-nett, det vanlige)",
   "entity.voltage.it": "230 V (IT-nett, vanlig i Norge)",
-  "entity.priority.first":
-    "Først",
-  "entity.priority.normal":
-    "Normal",
-  "entity.priority.last":
-    "Sist",
+  "entity.priority.first": "Først",
+  "entity.priority.normal": "Normal",
+  "entity.priority.last": "Sist",
   "entity.help.batteryPower": "En sensor for hjemmebatteriets effekt, slik at SpotNav kan ta hensyn til batteriet.",
   "entity.help.maxAge": "Hvor gammel en måling kan være, i sekunder, før SpotNav slutter å stole på den.",
   "entity.help.phaseDirect": "Sensoren som måler strømmen på denne fasen, i ampere.",
@@ -320,12 +311,9 @@ export const nb: Record<keyof typeof en, string> = {
   "site.activeControl.on": "På",
   "site.activeControl.off": "Av",
   "site.activeControl.available": "Tilgjengelig",
-  "site.activeControl.reason.duplicateMembership":
-    "Ikke tilgjengelig: denne laderen tilhører mer enn ett anlegg.",
-  "site.activeControl.reason.noCommandableCharger":
-    "Ikke tilgjengelig: ingen lader på anlegget tar imot en strømkommando.",
-  "site.activeControl.reason.measurement":
-    "Ikke tilgjengelig: anleggets egen effektmåling er ikke i orden.",
+  "site.activeControl.reason.duplicateMembership": "Ikke tilgjengelig: denne laderen tilhører mer enn ett anlegg.",
+  "site.activeControl.reason.noCommandableCharger": "Ikke tilgjengelig: ingen lader på anlegget tar imot en strømkommando.",
+  "site.activeControl.reason.measurement": "Ikke tilgjengelig: anleggets egen effektmåling er ikke i orden.",
   "site.activeControl.note": "Best effort, ingen verneinnretning. Når den slås av, får laderen tilbake strømmen som var senket.",
   "site.activeControl.pending": "Lagrer…",
   "site.activeControl.error.unavailable": "Lastbalanseringen kan ikke slås på akkurat nå: anlegget kan ikke styres aktivt for øyeblikket. Ingenting ble endret.",
@@ -353,8 +341,7 @@ export const nb: Record<keyof typeof en, string> = {
   "issue.count.one": "{count} punkt å se på",
   "issue.count.other": "{count} punkter å se på",
   "graph.title": "Ladeplan",
-  "graph.description":
-    "Prisgraf fra {from} til {to}, i {unit} per kWh. {count} intervaller over {days} dager. Valgt: {selected}.",
+  "graph.description": "Prisgraf fra {from} til {to}, i {unit} per kWh. {count} intervaller over {days} dager. Valgt: {selected}.",
   "graph.descriptionNoSelection": "Ingenting valgt.",
   "graph.descriptionNow": "Gjeldende intervall: {now}.",
   "graph.legend.today": "I dag",
@@ -379,8 +366,7 @@ export const nb: Record<keyof typeof en, string> = {
   "graph.hint": "Bruk piltastene for å gå gjennom intervallene.",
   "graph.toggle.show": "Vis prisgrafen",
   "graph.toggle.hide": "Skjul prisgrafen",
-  "graph.keyboardInstructions":
-    "Prisgraf. Piltastene flytter mellom intervaller, Home og End hopper til endene, Escape tømmer valget.",
+  "graph.keyboardInstructions": "Prisgraf. Piltastene flytter mellom intervaller, Home og End hopper til endene, Escape tømmer valget.",
   "plan.proposal.one": "Billigste ladeperiode ({count})",
   "plan.proposal.other": "Billigste ladeperioder ({count})",
   "plan.installed.one": "Planlagt ladeperiode ({count})",
@@ -394,8 +380,7 @@ export const nb: Record<keyof typeof en, string> = {
   "plan.activeNow": "Nå",
   "plan.missing": "ukjent",
   "cap.title": "Hva laderen kan",
-  "cap.intro":
-    "Hentet fra det integrasjonen rapporterer for denne laderen. Det som ikke er tilgjengelig her, kan kortet ikke slå på.",
+  "cap.intro": "Hentet fra det integrasjonen rapporterer for denne laderen. Det som ikke er tilgjengelig her, kan kortet ikke slå på.",
   "cap.autoPrice": "Automatisk prisplanlegging",
   "cap.currentLimit": "Dynamisk strømgrense",
   "cap.loadBalancing": "Lastbalansering",
@@ -465,10 +450,8 @@ export const nb: Record<keyof typeof en, string> = {
   "strategy.status.hybrid.noPriceData": "Hybrid · venter på prisdata",
   "strategy.status.hybrid.satisfied": "Hybrid · ladebehovet er allerede dekket",
   "strategy.status.hybrid.unknown": "Hybrid · planlegger",
-  "advisory.vehicleNotRequestingCurrent":
-    "Ladingen ble startet, men kjøretøyet ber ikke om strøm. Kontroller kjøretøyets ladeinnstillinger, eller koble til kabelen på nytt.",
-  "advisory.powerBelowThreshold":
-    "Ladingen ble startet, men laderen trekker nesten ingen effekt. Bilen kan være ferdig eller lader ikke: kontroller kjøretøyets ladeinnstillinger, eller koble til kabelen på nytt.",
+  "advisory.vehicleNotRequestingCurrent": "Ladingen ble startet, men kjøretøyet ber ikke om strøm. Kontroller kjøretøyets ladeinnstillinger, eller koble til kabelen på nytt.",
+  "advisory.powerBelowThreshold": "Ladingen ble startet, men laderen trekker nesten ingen effekt. Bilen kan være ferdig eller lader ikke: kontroller kjøretøyets ladeinnstillinger, eller koble til kabelen på nytt.",
   "control.noSettings": "Denne laderen har ingen innstillinger ennå, så det er ingenting å starte eller stoppe.",
   "control.pauseUnsettled": "En pause er lagret, men har ikke trådt i kraft ennå. Ingenting brukes.",
   "control.pauseClearFailed": "En pause har utløpt, men kunne ikke ryddes, så ingenting brukes.",
@@ -487,8 +470,7 @@ export const nb: Record<keyof typeof en, string> = {
   "action.error.unavailable": "Den handlingen er ikke tilgjengelig akkurat nå.",
   "action.error.failed": "Handlingen kunne ikke utføres. Ingenting ble endret.",
   "action.error.reconcileFailed": "Handlingen ble utført, men planen kunne ikke oppdateres.",
-  "action.error.confirmationFailed":
-    "Handlingen ble godtatt, men tilstanden kunne ikke bekreftes.",
+  "action.error.confirmationFailed": "Handlingen ble godtatt, men tilstanden kunne ikke bekreftes.",
   "action.error.invalidPause": "Det pausevalget er ikke tilgjengelig for denne laderen akkurat nå.",
   "action.error.notConnected": "Ingen bil er koblet til, så det er ingenting å starte.",
   "action.error.charger": "Den konfigurerte laderen kunne ikke nås.",
@@ -501,14 +483,11 @@ export const nb: Record<keyof typeof en, string> = {
   "context.currency": "Valuta",
   "market.unset": "Ikke angitt",
   "market.title": "Område og avgifter",
-  "market.intro":
-    "Hvilket marked laderen kjøper strøm fra, og avgiftene som legges på prisene.",
+  "market.intro": "Hvilket marked laderen kjøper strøm fra, og avgiftene som legges på prisene.",
   "market.loading": "Leser områdelisten…",
-  "market.readOnly":
-    "Bare administratorer kan endre område og avgifter. Du kan lese dem her.",
+  "market.readOnly": "Bare administratorer kan endre område og avgifter. Du kan lese dem her.",
   "market.area.label": "Område",
-  "market.area.description":
-    "Området avgjør hvilke priser som brukes, og hvilke avgifter som foreslås.",
+  "market.area.description": "Området avgjør hvilke priser som brukes, og hvilke avgifter som foreslås.",
   "market.included": "Inkludert i prisen",
   "market.includedNote": "Den publiserte prisen inkluderer allerede dette, så ingenting legges til.",
   "market.source": "Priskilde:",
@@ -534,150 +513,81 @@ export const nb: Record<keyof typeof en, string> = {
   "market.suggestion.label": "Foreslått: {value} {unit}",
   "market.suggestion.none": "Ingen foreslått verdi er publisert for området.",
   "market.error.read": "Områdelisten kunne ikke leses.",
-  "market.error.version":
-    "Dette kortet og integrasjonen snakker ulike markedsversjoner.",
+  "market.error.version": "Dette kortet og integrasjonen snakker ulike markedsversjoner.",
   "market.error.areaRequired": "Velg et område før du lagrer.",
   "market.error.areaUnknown": "Det området er ikke ett av de publiserte valgene.",
   "market.error.noSuggestion": "Området publiserer ingen foreslått verdi for det.",
   "market.state.loading": "Områdelisten leses fortsatt.",
-  "market.state.staleOffline":
-    "Dette er den siste områdelisten Home Assistant mottok; reléet har ikke vært nåbart siden.",
-  "market.state.staleInvalid":
-    "Dette er den siste områdelisten Home Assistant mottok; reléets nyere liste kunne ikke leses.",
-  "market.state.offline":
-    "Reléet kunne ikke nås, så ingen områder listes akkurat nå.",
-  "market.state.invalid":
-    "Reléets områdeliste kunne ikke leses, så ingen områder listes akkurat nå.",
-  "settings.energy.aria":
-    "Energi: {value}",
-  "settings.deadline.aria":
-    "Frist: {value}",
-  "settings.current.aria":
-    "Strøm: {value}",
-  "settings.energy.unset":
-    "Ikke angitt",
-  "settings.deadline.none":
-    "Ingen frist",
-  "settings.current.unset":
-    "Ikke angitt",
-  "settings.energy.title":
-    "Ladeenergi",
-  "settings.energy.intro":
-    "Hvor mye energi ladingen skal gi. Planen gjør det om til perioder.",
-  "settings.energy.label":
-    "Ønsket energi",
-  "settings.energy.targetSoc":
-    "Denne laderen planlegger fra et mål for ladenivå, så den manuelle energien kan ikke endres her.",
-  "settings.deadline.title":
-    "Frist og ladeperioder",
-  "settings.deadline.intro":
-    "Når ladingen må være ferdig, og hvor mange perioder den kan bruke.",
-  "settings.deadline.enabled":
-    "Ferdig innen en frist",
-  "settings.deadline.time":
-    "Avreisetid",
-  "settings.deadline.date":
-    "Avreise",
-  "settings.deadline.dateDaily":
-    "Hver dag",
-  "settings.deadline.dateOn":
-    "En bestemt dato",
-  "settings.deadline.dateHelp":
-    "Planen kan vente på timer som pleier å være billigere. Avreisen holdes alltid.",
-  "settings.deadline.datePast":
-    "Datoen er passert, så planen kjører hver dag til du velger en ny dato. Lagring fjerner den.",
-  "settings.deadline.weekdays":
-    "Ukedager",
-  "settings.deadline.weekdaysHelp":
-    "På en dag du utelater er det ingen avreise: planen går til neste dag du har valgt.",
-  "settings.deadline.today":
-    "i dag",
-  "settings.deadline.tomorrow":
-    "i morgen",
-  "settings.deadline.periods":
-    "Maks. ladeperioder",
+  "market.state.staleOffline": "Dette er den siste områdelisten Home Assistant mottok; reléet har ikke vært nåbart siden.",
+  "market.state.staleInvalid": "Dette er den siste områdelisten Home Assistant mottok; reléets nyere liste kunne ikke leses.",
+  "market.state.offline": "Reléet kunne ikke nås, så ingen områder listes akkurat nå.",
+  "market.state.invalid": "Reléets områdeliste kunne ikke leses, så ingen områder listes akkurat nå.",
+  "settings.energy.aria": "Energi: {value}",
+  "settings.deadline.aria": "Frist: {value}",
+  "settings.current.aria": "Strøm: {value}",
+  "settings.energy.unset": "Ikke angitt",
+  "settings.deadline.none": "Ingen frist",
+  "settings.current.unset": "Ikke angitt",
+  "settings.energy.title": "Ladeenergi",
+  "settings.energy.intro": "Hvor mye energi ladingen skal gi. Planen gjør det om til perioder.",
+  "settings.energy.label": "Ønsket energi",
+  "settings.energy.targetSoc": "Denne laderen planlegger fra et mål for ladenivå, så den manuelle energien kan ikke endres her.",
+  "settings.deadline.title": "Frist og ladeperioder",
+  "settings.deadline.intro": "Når ladingen må være ferdig, og hvor mange perioder den kan bruke.",
+  "settings.deadline.enabled": "Ferdig innen en frist",
+  "settings.deadline.time": "Avreisetid",
+  "settings.deadline.date": "Avreise",
+  "settings.deadline.dateDaily": "Hver dag",
+  "settings.deadline.dateOn": "En bestemt dato",
+  "settings.deadline.dateHelp": "Planen kan vente på timer som pleier å være billigere. Avreisen holdes alltid.",
+  "settings.deadline.datePast": "Datoen er passert, så planen kjører hver dag til du velger en ny dato. Lagring fjerner den.",
+  "settings.deadline.weekdays": "Ukedager",
+  "settings.deadline.weekdaysHelp": "På en dag du utelater er det ingen avreise: planen går til neste dag du har valgt.",
+  "settings.deadline.today": "i dag",
+  "settings.deadline.tomorrow": "i morgen",
+  "settings.deadline.periods": "Maks. ladeperioder",
   "settings.deadline.periodsValue.one": "{count} periode",
   "settings.deadline.periodsValue.other": "{count} perioder",
-  "settings.current.title":
-    "Planlagt strøm",
-  "settings.current.intro":
-    "Strømmen planen kan be om. Det er en planverdi, ikke en kommando til laderen.",
-  "settings.current.label":
-    "Planlagt strøm",
-  "settings.loading":
-    "Leser de gjeldende innstillingene…",
-  "settings.section.support":
-    "Støtte",
-  "debug.intro":
-    "Lagrer én fil med versjoner, status og de siste loggradene til en feilrapport. Hemmeligheter og din nøyaktige posisjon utelates.",
-  "debug.download":
-    "Last ned feilsøkingsinfo",
-  "debug.preparing":
-    "Forbereder…",
-  "debug.error.notAdmin":
-    "Bare administratorer kan laste ned feilsøkingsinfo.",
-  "debug.error.failed":
-    "Feilsøkingsinfoen kunne ikke hentes.",
-  "debug.cardOutdated":
-    "Kortet i denne nettleseren eller appen er eldre enn SpotNav. Last inn siden på nytt; i Home Assistants Companion-app: tving appen til å stoppe, og åpne den igjen.",
-  "settings.readOnly":
-    "Bare administratorer kan endre innstillinger. Du kan lese dem her.",
-  "settings.save":
-    "Lagre",
-  "settings.cancel":
-    "Avbryt",
-  "settings.reload":
-    "Bruk verdiene fra serveren",
-  "settings.reapply":
-    "Bruk endringen min igjen",
-  "settings.conflict.title":
-    "Endret et annet sted",
-  "settings.conflict.intro":
-    "Innstillingene ble endret etter at denne dialogen ble åpnet. Ingenting ble lagret, og verdiene dine er fortsatt her.",
-  "settings.error.required":
-    "Fyll inn dette før du lagrer.",
-  "settings.error.invalidNumber":
-    "Det er ikke et tall.",
-  "settings.error.outOfRange":
-    "Verdien er utenfor det tillatte området.",
-  "settings.error.invalidDate":
-    "Velg en gyldig dato.",
-  "settings.error.dateRange":
-    "Velg en dato fra i dag og opptil 7 dager frem.",
-  "settings.error.weekdays":
-    "Velg minst én ukedag.",
-  "settings.error.invalidTime":
-    "Bruk et klokkeslett som 06:30.",
-  "settings.error.read":
-    "Innstillingene kunne ikke leses.",
-  "settings.error.refused":
-    "Innstillingene ble avvist. Ingenting ble endret.",
-  "settings.error.notCommitted":
-    "Innstillingene ble ikke lagret. Ingenting ble endret.",
-  "settings.error.reconcileFailed":
-    "Innstillingene ble lagret, men planen kunne ikke oppdateres.",
-  "settings.error.confirmationFailed":
-    "Innstillingene ble lagret, men tilstanden kunne ikke bekreftes.",
-  "settings.error.version":
-    "Kortet og integrasjonen snakker ulike innstillingsversjoner.",
-  "settings.error.unavailable":
-    "Innstillinger er ikke tilgjengelige akkurat nå.",
-  "settings.error.charger":
-    "Den konfigurerte laderen kunne ikke nås.",
-  "settings.error.generic":
-    "Innstillingene kunne ikke endres. Ingenting ble endret.",
-  "settings.error.invalid":
-    "Innstillingene ble avvist som ugyldige. Ingenting ble endret.",
-  "settings.error.readOnly":
-    "Bare administratorer kan endre innstillinger.",
-  "settings.energy.slider":
-    "Energiskyver, {min} til {max} kWh i halvkWh-trinn",
-  "settings.current.slider":
-    "Strømglidebryter, {min} til {max} A i hele ampere",
-  "settings.current.power":
-    "Nominell effekt ≈ {power} kW",
-  "settings.current.powerUnknown":
-    "Nominell effekt ukjent",
+  "settings.current.title": "Planlagt strøm",
+  "settings.current.intro": "Strømmen planen kan be om. Det er en planverdi, ikke en kommando til laderen.",
+  "settings.current.label": "Planlagt strøm",
+  "settings.loading": "Leser de gjeldende innstillingene…",
+  "settings.section.support": "Støtte",
+  "debug.intro": "Lagrer én fil med versjoner, status og de siste loggradene til en feilrapport. Hemmeligheter og din nøyaktige posisjon utelates.",
+  "debug.download": "Last ned feilsøkingsinfo",
+  "debug.preparing": "Forbereder…",
+  "debug.error.notAdmin": "Bare administratorer kan laste ned feilsøkingsinfo.",
+  "debug.error.failed": "Feilsøkingsinfoen kunne ikke hentes.",
+  "debug.cardOutdated": "Kortet i denne nettleseren eller appen er eldre enn SpotNav. Last inn siden på nytt; i Home Assistants Companion-app: tving appen til å stoppe, og åpne den igjen.",
+  "settings.readOnly": "Bare administratorer kan endre innstillinger. Du kan lese dem her.",
+  "settings.save": "Lagre",
+  "settings.cancel": "Avbryt",
+  "settings.reload": "Bruk verdiene fra serveren",
+  "settings.reapply": "Bruk endringen min igjen",
+  "settings.conflict.title": "Endret et annet sted",
+  "settings.conflict.intro": "Innstillingene ble endret etter at denne dialogen ble åpnet. Ingenting ble lagret, og verdiene dine er fortsatt her.",
+  "settings.error.required": "Fyll inn dette før du lagrer.",
+  "settings.error.invalidNumber": "Det er ikke et tall.",
+  "settings.error.outOfRange": "Verdien er utenfor det tillatte området.",
+  "settings.error.invalidDate": "Velg en gyldig dato.",
+  "settings.error.dateRange": "Velg en dato fra i dag og opptil 7 dager frem.",
+  "settings.error.weekdays": "Velg minst én ukedag.",
+  "settings.error.invalidTime": "Bruk et klokkeslett som 06:30.",
+  "settings.error.read": "Innstillingene kunne ikke leses.",
+  "settings.error.refused": "Innstillingene ble avvist. Ingenting ble endret.",
+  "settings.error.notCommitted": "Innstillingene ble ikke lagret. Ingenting ble endret.",
+  "settings.error.reconcileFailed": "Innstillingene ble lagret, men planen kunne ikke oppdateres.",
+  "settings.error.confirmationFailed": "Innstillingene ble lagret, men tilstanden kunne ikke bekreftes.",
+  "settings.error.version": "Kortet og integrasjonen snakker ulike innstillingsversjoner.",
+  "settings.error.unavailable": "Innstillinger er ikke tilgjengelige akkurat nå.",
+  "settings.error.charger": "Den konfigurerte laderen kunne ikke nås.",
+  "settings.error.generic": "Innstillingene kunne ikke endres. Ingenting ble endret.",
+  "settings.error.invalid": "Innstillingene ble avvist som ugyldige. Ingenting ble endret.",
+  "settings.error.readOnly": "Bare administratorer kan endre innstillinger.",
+  "settings.energy.slider": "Energiskyver, {min} til {max} kWh i halvkWh-trinn",
+  "settings.current.slider": "Strømglidebryter, {min} til {max} A i hele ampere",
+  "settings.current.power": "Nominell effekt ≈ {power} kW",
+  "settings.current.powerUnknown": "Nominell effekt ukjent",
   "bar.plan": "Plan",
   "settings.plan.title": "Ladeplan",
   "settings.plan.intro": "Hvor mye som skal lades, når det skal være ferdig og hvilken strøm planen kan be om. Dette er planleggingsverdier, ikke kommandoer til laderen.",
@@ -870,5 +780,5 @@ export const nb: Record<keyof typeof en, string> = {
   "settings.status.foundAutomatically": "Funnet automatisk",
   "settings.vehicle.limit": "Ladegrense",
   "settings.vehicle.targetHelp": "Følger bilen til alle ladere",
-  "settings.vehicle.sourcesHelp": "Leses bare for å se hvilken bil som er tilkoblet.",
-};
+  "settings.vehicle.sourcesHelp": "Leses bare for å se hvilken bil som er tilkoblet."
+}
