@@ -47,8 +47,25 @@ periods, and an optional departure time. The card marks what is missing.
 
 ## Cheapest
 
-Buys the required energy in the cheapest quarter-hours before the departure time, within the
-maximum number of periods. With no departure time the plan covers the priced horizon.
+Buys the required energy in the cheapest quarter-hours before the departure time. With no departure
+time the plan covers the priced horizon.
+
+**How the charge is split into periods.** The charger setting **Charge periods** is **Automatic** by
+default. Every start costs something: the car wakes, the contactors close, the onboard charger ramps
+up, a cold battery is warmed again, and one more command to the charger or the car can fail. So the
+planner counts a start cost for each period, a quarter of a kWh at the average price of the window it
+plans in (so it means the same in every currency and at every price level), and picks the plan that is
+cheapest with those starts counted. Each period is at least half an hour; a need of only one
+quarter-hour is one quarter-hour.
+
+- Two cheap stretches split by a quarter-hour that costs only a little more become one period: at
+  11 kW that is up to about 9 % dearer than the quarter-hour it replaces, at 3.7 kW about 27 %.
+- A clearly expensive peak in between is never bridged: the charge stops for it and starts again.
+
+Choose **1 period** to **8 periods** instead and the planner keeps to at most that many periods, with
+no start cost and no shortest period: exactly the cheapest quarter-hours that fit, as before. One
+period charges in one block. Hybrid's grid part follows the same rule; solar charging starts and stops
+with the sun as before.
 
 **Equal prices charge late.** When several quarter-hours cost exactly the same (a flat price, or a
 fixed price that does not change through the day), SpotNav picks the latest ones before the

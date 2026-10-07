@@ -257,6 +257,11 @@ the editor, where a charger on a site also has its **Charger priority** (first, 
 choice: SpotNav then reads no energy register and looks for none, and lists one it finds on the charger
 under **To check**.
 
+**Charge periods**, below the charger's setup rows for administrators, is **Automatic** (the default) or
+**1 period** to **8 periods**. Automatic splits the charge only where the saving is worth another start, and
+each period is at least half an hour; a number is the most periods a plan may use. See
+[strategies](strategies.md#cheapest).
+
 ### Site
 
 The section is headed by the site's name and says whether its settings apply to one charger or to
@@ -289,7 +294,7 @@ several. A charger with no site says so.
 
 The **Plan** cell opens **Charging plan**.
 
-![The plan settings: the charge target, departure time and weekdays, number of periods and current](images/card-settings-plan.png)
+![The plan settings: the charge target, departure time and weekdays and current](images/card-settings-plan.png)
 
 - **Charge by**: **Energy (kWh)** or **Target SoC (%)**. With a target SoC, see
   [target state of charge](target-soc.md).
@@ -297,7 +302,6 @@ The **Plan** cell opens **Charging plan**.
   more.
 - **Finish by a deadline** and **Departure time**. Without a deadline the plan covers the priced
   horizon.
-- **Maximum charging periods**: 1 to 8.
 - **Planned current**: the current the plan may ask for, in whole amperes, with the nominal power
   it means for the phases the charge uses (read-only, see below). It is a planning value, not a command
   to the charger.

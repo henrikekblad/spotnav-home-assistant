@@ -51,6 +51,16 @@ charger executed whose pause could not be saved answers `{"ok": true, "action": 
 | `identify_vehicle` | Answer "which car is plugged in?": `{"vehicle_id"}` (see [vehicle identification](#vehicle-identification)). |
 | `choose_vehicle_identification` | Choose a car's plug or location source: `{"vehicle_id", "source", "entity_id"}` (see [vehicle identification](#vehicle-identification)). |
 
+**Charge periods.** `max_periods` is `null` for automatic periods (the default: the planner counts a start
+cost of a quarter of a kWh at the window's average price for each period and keeps each period at least half an
+hour; see [strategies](strategies.md#cheapest)), or a whole number from 1 to 8, the most periods a plan may use.
+Anything else is refused with `invalid_periods`. A record stored before automatic periods existed is read as
+automatic once, and saved that way at its next write; a number set after that stays. The released app refuses
+`null` here, so the webhook answers `8` in its place unless the request asks for it (`"reads": ["auto_periods"]`),
+and a webhook replacement without that `reads` that says `8` while the stored value is automatic keeps automatic
+(any other number is stored). The select entity **Charge periods** (`auto`, `1` to `8`) replaces the earlier
+number entity, which is removed.
+
 **Withheld settings fields.** The settings record has a `departure_weekdays` (an optional list of
 weekday numbers, 1 Monday to 7 Sunday, at least one, default all seven: the days a daily departure
 applies on) and a `departure_date` (an optional `YYYY-MM-DD`,
@@ -279,7 +289,7 @@ car's last reading needed and the car has not reported since; the status headlin
 code shows it as any unknown code.
 
 **Best effort before a departure.** When the need cannot be met by the departure, the plan is every
-whole quarter-hour from the first usable one up to the departure (one run, whatever `max_periods` says,
+whole quarter-hour from the first usable one up to the departure (one run, automatic or whatever number `max_periods` says,
 so the period limit never costs energy), installed and charged like any other: `planning` stays
 `proposal_ready` (or `proposal_unpriced`) and the status carries the notice `departure_shortfall` (`kwh`,
 the planned energy; `requested_kwh`, the need; `soc_percent`, what a target reaches by the departure,
