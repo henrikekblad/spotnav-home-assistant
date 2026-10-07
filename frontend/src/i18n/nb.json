@@ -616,7 +616,7 @@
   "settings.soc.age.day": "for {count} d siden",
   "settings.overview.titleNamed": "Kortinnstillinger · {name}",
   "settings.soc.factNow": "Nå {value}",
-  "settings.soc.factLimit": "Bilens laddegrense {value}",
+  "settings.soc.factLimit": "Bilens ladegrense {value}",
   "settings.soc.noNeed": "Ingen lading trengs nå",
   "settings.soc.toLimit": "Lader til bilens grense, {value}",
   "settings.energy.fullMark": "fullt",
