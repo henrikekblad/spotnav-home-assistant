@@ -87,13 +87,16 @@ SiteState = Literal[
 
 # Per-charger outcome, meaningful once the site is "observing".
 # "requested_current_unknown" also covers a charger blocked by another one on a
-# shared phase.
+# shared phase. "not_requesting": the charger asks for 0 A (it is not charging) where
+# that used to read "below_minimum_current"; added after the others, so a reader that
+# knows only those reads it as a state it does not know.
 ChargerState = Literal[
     "invalid_measurements",
     "requested_current_unknown",
     "capacity_available",
     "capacity_limited",
     "below_minimum_current",
+    "not_requesting",
 ]
 
 ControllerState = SiteState | ChargerState
@@ -134,6 +137,7 @@ REASON_BLOCKED_BY_UNKNOWN_SIBLING = "shared_phase_blocked_by_another_chargers_un
 REASON_CAPACITY_AVAILABLE = "requested_current_fits_within_headroom"
 REASON_CAPACITY_LIMITED = "requested_current_reduced_to_available_headroom"
 REASON_BELOW_MINIMUM = "available_headroom_below_charger_minimum_current"
+REASON_NO_CURRENT_REQUESTED = "no_current_requested"
 
 
 # Why a `PhaseValue` is `None`: absent, or present but unusable.
@@ -952,9 +956,15 @@ def allocate_chargers(
         floored = max(round_down_to_step(capped), 0.0)
         limiting = _limiting_phase(remaining, phases_used)
 
-        if floored < request.min_current_a:
+        if request.requested_current_a <= 0.0 and floored < request.min_current_a:
+            # Asking for nothing is not charging, not a headroom too small for the minimum.
             proposed = 0.0
-            state: ChargerState = "below_minimum_current"
+            state: ChargerState = "not_requesting"
+            reason = REASON_NO_CURRENT_REQUESTED
+            limiting = None
+        elif floored < request.min_current_a:
+            proposed = 0.0
+            state = "below_minimum_current"
             reason = REASON_BELOW_MINIMUM
         elif floored + 1e-9 < request.requested_current_a:
             proposed = floored
