@@ -77,17 +77,34 @@ APP_UNREAD_SETTINGS: Final = (
 )
 
 
-def _for_app(body: dict[str, Any], payload: dict[str, Any]) -> dict[str, Any]:
-    """`body` with the fields the app cannot read yet taken out of its settings record.
+#: Status lines an app released before them words as "see Home Assistant" in place of the real status: left out of
+#: the webhook's status block unless the request reads `APP_READS_IDENTIFICATION_STATUS`.
+APP_UNREAD_STATUS_CODES: Final = ("identifying_vehicle", "asking_vehicle")
+APP_READS_IDENTIFICATION_STATUS: Final = "identification_status"
 
-    A request opts in per field with a top-level `reads` list; anything else in it, or a `reads`
-    that is not a list, is ignored.
+
+def _for_app(body: dict[str, Any], payload: dict[str, Any]) -> dict[str, Any]:
+    """`body` with what the app cannot read yet taken out: fields of its settings record, and status lines.
+
+    A request opts in per field with a top-level `reads` list (`identification_status` for the identification's
+    status lines); anything else in it, or a `reads` that is not a list, is ignored.
     """
+    reads = payload.get("reads")
+    opted_in = {name for name in reads if isinstance(name, str)} if isinstance(reads, list) else set()
+    status = body.get("status")
+    if (
+        APP_READS_IDENTIFICATION_STATUS not in opted_in
+        and isinstance(status, dict)
+        and isinstance(status.get("lines"), list)
+    ):
+        lines = [
+            line for line in status["lines"]
+            if not (isinstance(line, dict) and line.get("code") in APP_UNREAD_STATUS_CODES)
+        ]
+        body = {**body, "status": {**status, "lines": lines}}
     settings = body.get("settings")
     if not isinstance(settings, dict):
         return body
-    reads = payload.get("reads")
-    opted_in = {name for name in reads if isinstance(name, str)} if isinstance(reads, list) else set()
     withheld = set(APP_UNREAD_SETTINGS) - opted_in
     return {**body, "settings": {key: value for key, value in settings.items() if key not in withheld}}
 

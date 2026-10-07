@@ -247,3 +247,29 @@ async def test_a_camera_without_a_picture_and_a_failing_model_name_their_error(g
     await garage.world.later(60)
     await garage.settle()
     assert camera_entry(garage)["error"] == "ai_task_error"
+
+
+# --------------------------------------------------------------------------------- the paired app
+
+
+def test_the_webhook_withholds_the_identification_lines_from_an_app_that_does_not_ask_for_them() -> None:
+    """An app released before these lines words a code it does not know as "see Home Assistant", in place of a few
+    minutes of real status: the webhook leaves them out unless the request reads `identification_status`."""
+    from custom_components.spotnav.api.webhook import _for_app
+
+    body = {
+        "ok": True,
+        "status": {
+            "tone": "normal",
+            "lines": [
+                {"code": "asking_vehicle", "params": {}},
+                {"code": "auto_installed", "params": {"start": "2026-10-07T22:00:00+00:00"}},
+            ],
+        },
+    }
+    older = _for_app(body, {"action": "dashboard"})
+    assert [line["code"] for line in older["status"]["lines"]] == ["auto_installed"]
+    assert older["status"]["tone"] == "normal"
+    newer = _for_app(body, {"action": "dashboard", "reads": ["identification_status"]})
+    assert [line["code"] for line in newer["status"]["lines"]] == ["asking_vehicle", "auto_installed"]
+    assert [line["code"] for line in body["status"]["lines"]] == ["asking_vehicle", "auto_installed"], "a copy"
