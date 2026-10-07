@@ -1,7 +1,7 @@
 // The car's percent sliders, as numbers only: the charge target (0..100, whole percent), the minimum charge level
 // (Off, then 10..80 in fives), which never goes past the target, as the backend's `effective_floor` caps it, and the
 // car's own charge limit (the range and step its integration takes). Also where the minimum's shaded segment sits
-// on the plan's target slider.
+// on the plan's target slider, with the ticks for the level now and the car's limit and where their words go.
 
 import { CHARGE_LIMIT_MAX_PERCENT, CHARGE_LIMIT_MIN_PERCENT } from "./settings";
 import { chargeCeiling } from "./target-need";
@@ -84,4 +84,52 @@ export function floorSegment(
   }
   const end = Math.min(1, percent / 100);
   return { percent, end, label: end / 2 };
+}
+
+/**
+ * The level now and the car's own limit as ticks on the 0..100 % target slider, as fractions of the track: the
+ * limit at the whole percent the car stops at. `null` for what is not known.
+ */
+export function targetTicks(now: number | null, limit: number | null): { now: number | null; limit: number | null } {
+  const at = (percent: number): number => Math.min(1, Math.max(0, percent / 100));
+  return {
+    now: now === null || !Number.isFinite(now) ? null : at(now),
+    limit: limit === null || !Number.isFinite(limit) ? null : at(chargeCeiling(limit)),
+  };
+}
+
+/** A word under a slider's mark: its tick's centre and its own width, in the row's pixels. */
+export interface MarkWord {
+  key: string;
+  center: number;
+  width: number;
+}
+
+/** Where a word goes: its left edge in the row, and its line under the track (0 is the first). */
+export interface PlacedMark {
+  key: string;
+  left: number;
+  level: number;
+}
+
+/**
+ * The words under a slider's marks ("min 30 %", "nu", "gräns"), as the app places them: each centred under its
+ * tick and kept inside the row, taken in track order; a word that would come within `gap` of one already on a
+ * line goes one line further down, so no two ever overlap.
+ */
+export function placeMarks(marks: readonly MarkWord[], containerWidth: number, gap: number): PlacedMark[] {
+  const placed: (PlacedMark & { width: number })[] = [];
+  for (const mark of [...marks].sort((a, b) => a.center - b.center)) {
+    const left = Math.min(Math.max(0, mark.center - mark.width / 2), Math.max(0, containerWidth - mark.width));
+    let level = 0;
+    while (
+      placed.some(
+        (other) => other.level === level && left < other.left + other.width + gap && other.left < left + mark.width + gap,
+      )
+    ) {
+      level += 1;
+    }
+    placed.push({ key: mark.key, left, level, width: mark.width });
+  }
+  return placed.map(({ key, left, level }) => ({ key, left, level }));
 }
