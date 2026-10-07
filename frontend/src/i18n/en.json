@@ -95,6 +95,7 @@
   "status.fillRoomUnknown": "The car's level or battery size is unknown, so {kwh} kWh is charged instead of filling.",
   "status.needLimitedByRoom": "Limited to {kwh} kWh: the car is almost full.",
   "status.chargingToVehicleLimit": "Charging until the car stops at its own limit ({percent} %).",
+  "status.minSocCharging": "Charging to the minimum level ({percent} %)",
   "issue.needKept": "The energy meter cannot be read: {kwh} kWh remains, from its last reading.",
   "issue.needFromSessions": "No energy meter: {kwh} kWh remains, counted from this charger's recorded charges.",
   "status.siteMeasurement.stale.other": "{phases} are older than {seconds} s.",
@@ -783,5 +784,9 @@
   "settings.status.foundAutomatically": "Found automatically",
   "settings.vehicle.limit": "Charge limit",
   "settings.vehicle.targetHelp": "Follows the car to every charger",
+  "settings.vehicle.minimum": "Minimum charge level",
+  "settings.vehicle.minimumOff": "Off",
+  "settings.vehicle.minimumNeedsSoc": "needs the car's charge level",
+  "settings.vehicle.minimumHelp": "Below this level SpotNav charges at once at full current, whatever the strategy. A pause or Stop you choose wins. Needs the car's charge level.",
   "settings.vehicle.sourcesHelp": "Read only to tell which car is plugged in."
 }

@@ -312,12 +312,15 @@ export interface VehicleChanges {
     onboard_phases?: 1 | 3 | null;
     /** The car's own target (the same at every charger); `null` clears it. */
     target_percent?: number | null;
+    /** The car's minimum charge level (10-80, steps of 5); `null` turns it off. */
+    min_percent?: number | null;
   };
   expected: {
     capacity_kwh?: number | null;
     consumption_kwh_per_10km?: number | null;
     onboard_phases?: 1 | 3 | null;
     target_percent?: number | null;
+    min_percent?: number | null;
   };
 }
 

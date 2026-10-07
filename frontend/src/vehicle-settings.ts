@@ -13,6 +13,7 @@ import { VISUAL_CLASSES as C } from "./visual-styles";
 export interface VehicleEdits {
   sensor?: () => void;
   target?: () => void;
+  minimum?: () => void;
   capacity?: () => void;
   consumption?: () => void;
   onboard?: () => void;
@@ -115,6 +116,21 @@ export function vehicleSummary(doc: Document, language: Language, input: Vehicle
         translate(language, "settings.soc.target"),
         row.target_percent === null ? notSet : `${formatNumber(language, row.target_percent, 0)} %`,
         edits.target,
+      );
+    }
+    // The car's minimum charge level: below it SpotNav charges at once. It needs the car's level to act on.
+    if (row.min_percent !== undefined) {
+      const level =
+        row.min_percent === null
+          ? translate(language, "settings.vehicle.minimumOff")
+          : `${formatNumber(language, row.min_percent, 0)} %`;
+      valueRow(
+        "min_percent",
+        translate(language, "settings.vehicle.minimum"),
+        row.min_percent !== null && row.soc_entity_id === null
+          ? `${level} · ${translate(language, "settings.vehicle.minimumNeedsSoc")}`
+          : level,
+        edits.minimum,
       );
     }
   }

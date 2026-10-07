@@ -394,6 +394,8 @@ export interface Vehicle {
   identification?: VehicleSources;
   /** The car's own target percent, the same at every charger (`null`: never set); absent on an older backend. */
   target_percent?: number | null;
+  /** The car's minimum charge level, 10-80 in steps of 5 (`null`: off); absent on an older backend. */
+  min_percent?: number | null;
 }
 
 export interface Soc {
@@ -1418,6 +1420,7 @@ export const STATUS_CODE_TABLE = {
   filling_to_limit: ["normal", { kwh: "number" }],
   fill_room_unknown: ["notice", { kwh: "number" }],
   charging_to_vehicle_limit: ["normal", { percent: "number" }],
+  min_soc_charging: ["normal", { percent: "number" }],
   remaining_need_estimated: ["notice", { kwh: "number", basis: "text" }],
   site_measurement_problem: [
     "notice",
@@ -1956,7 +1959,9 @@ const CAPACITY_SOURCES = ["reported", "stored"] as const;
 
 export function decodeVehicle(raw: unknown): Vehicle {
   const source = record(raw);
-  const optional = ["identification", "target_percent"].filter((key) => Object.prototype.hasOwnProperty.call(source, key));
+  const optional = ["identification", "target_percent", "min_percent"].filter((key) =>
+    Object.prototype.hasOwnProperty.call(source, key),
+  );
   exactKeys(source, [
     ...optional,
     "id",
@@ -1990,8 +1995,20 @@ export function decodeVehicle(raw: unknown): Vehicle {
     ...(Object.prototype.hasOwnProperty.call(source, "target_percent")
       ? { target_percent: boundedOrNull(source, "target_percent", 0, 100) }
       : {}),
+    ...(Object.prototype.hasOwnProperty.call(source, "min_percent") ? { min_percent: minimumLevel(source) } : {}),
   };
 }
+
+/** A minimum charge level: `null` (off), or 10 to 80 in whole steps of 5. */
+function minimumLevel(source: Record<string, unknown>): number | null {
+  const value = boundedOrNull(source, "min_percent", MIN_PERCENT_LOW, MIN_PERCENT_HIGH);
+  return value === null || value % MIN_PERCENT_STEP === 0 ? value : bad();
+}
+
+/** The minimum charge level's range and step, as the backend validates it (`vehicle_properties`). */
+export const MIN_PERCENT_LOW = 10;
+export const MIN_PERCENT_HIGH = 80;
+export const MIN_PERCENT_STEP = 5;
 
 function phaseCount(source: Record<string, unknown>, key: string): 1 | 3 {
   const value = source[key];

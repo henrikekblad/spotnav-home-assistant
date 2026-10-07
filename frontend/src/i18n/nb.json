@@ -95,6 +95,7 @@
   "status.fillRoomUnknown": "Bilens nivå eller batteristørrelse er ukjent, så {kwh} kWh lades i stedet for å fylle.",
   "status.needLimitedByRoom": "Begrenset til {kwh} kWh: bilen er nesten full.",
   "status.chargingToVehicleLimit": "Lader til bilen stopper ved sin egen ladegrense ({percent} %).",
+  "status.minSocCharging": "Lader til laveste nivå ({percent} %)",
   "issue.needKept": "Energimåleren kan ikke leses: {kwh} kWh gjenstår ifølge siste avlesning.",
   "issue.needFromSessions": "Ingen energimåler: {kwh} kWh gjenstår, regnet ut fra laderens lagrede ladinger.",
   "status.siteMeasurement.stale.other": "{phases} er eldre enn {seconds} s.",
@@ -783,5 +784,9 @@
   "settings.status.foundAutomatically": "Funnet automatisk",
   "settings.vehicle.limit": "Ladegrense",
   "settings.vehicle.targetHelp": "Følger bilen til alle ladere",
+  "settings.vehicle.minimum": "Laveste ladenivå",
+  "settings.vehicle.minimumOff": "Av",
+  "settings.vehicle.minimumNeedsSoc": "trenger bilens ladenivå",
+  "settings.vehicle.minimumHelp": "Under dette nivået lader SpotNav straks med full strøm, uansett strategi. En pause eller et stopp du velger går foran. Trenger bilens ladenivå.",
   "settings.vehicle.sourcesHelp": "Leses bare for å se hvilken bil som er tilkoblet."
 }

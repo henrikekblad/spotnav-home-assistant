@@ -203,6 +203,7 @@ export const STATUS_WORDING: Readonly<Record<StatusCode, TranslationKey>> = {
   filling_to_limit: "status.fillingToLimit",
   fill_room_unknown: "status.fillRoomUnknown",
   charging_to_vehicle_limit: "status.chargingToVehicleLimit",
+  min_soc_charging: "status.minSocCharging",
   remaining_need_estimated: "issue.needKept",
   site_measurement_problem: "issue.siteMeasurement",
   site_meter_unavailable: "status.meterUnavailable.meter",
@@ -543,6 +544,8 @@ export function lineText(line: StatusLine, format: FormatContext, nowMs: number)
       return say("status.fillRoomUnknown", { kwh: formatNumber(language, num(p["kwh"]) ?? 0, 1) });
     case "charging_to_vehicle_limit":
       return say("status.chargingToVehicleLimit", { percent: formatNumber(language, num(p["percent"]) ?? 100, 0) });
+    case "min_soc_charging":
+      return say("status.minSocCharging", { percent: formatNumber(language, num(p["percent"]) ?? 0, 0) });
     case "duplicate_charger":
       return say("issue.duplicateCharger", { other: typeof p["other"] === "string" ? p["other"] : "" });
     case "departure_shortfall": {

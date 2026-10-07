@@ -64,7 +64,7 @@ import {
   type MarketEditorForm,
 } from "./market-editor";
 import { settingsEditorBody, settingsTrigger, type SettingsEditorForm } from "./settings-editor";
-import type { ReferencePicture, Vehicle } from "./validate";
+import { MIN_PERCENT_HIGH, MIN_PERCENT_LOW, MIN_PERCENT_STEP, type ReferencePicture, type Vehicle } from "./validate";
 import { vehicleSummary, type VehicleEdits, type VehicleReference } from "./vehicle-settings";
 import {
   multiEditor,
@@ -2662,7 +2662,9 @@ export function createCardView(input: CardViewInput): CardView {
      * One property's Save, under compare-and-set on what the row showed; after a conflict the next Save expects
      * what the answer says is stored now (the editor says it changed elsewhere and keeps what was typed).
      */
-    const propertyWrite = <K extends "capacity_kwh" | "consumption_kwh_per_10km" | "onboard_phases" | "target_percent">(
+    const propertyWrite = <
+      K extends "capacity_kwh" | "consumption_kwh_per_10km" | "onboard_phases" | "target_percent" | "min_percent",
+    >(
       field: K,
     ): ((value: Vehicle[K]) => Promise<string | null>) => {
       let expected: Vehicle[K] = row[field];
@@ -2710,6 +2712,26 @@ export function createCardView(input: CardViewInput): CardView {
             noneLabel: translate(model.language, "entity.notSet"),
           },
           propertyWrite("target_percent"),
+        );
+    }
+    if (row.min_percent !== undefined) {
+      const levels: number[] = [];
+      for (let level = MIN_PERCENT_LOW; level <= MIN_PERCENT_HIGH; level += MIN_PERCENT_STEP) {
+        levels.push(level);
+      }
+      edits.minimum = () =>
+        editSingle(
+          translate(model.language, "settings.vehicle.minimum"),
+          [
+            { value: "", label: translate(model.language, "settings.vehicle.minimumOff") },
+            ...levels.map((level) => ({ value: String(level), label: `${formatNumber(model.language, level, 0)} %` })),
+          ],
+          row.min_percent === null || row.min_percent === undefined ? "" : String(row.min_percent),
+          (() => {
+            const save = propertyWrite("min_percent");
+            return (chosen: string) => save(chosen === "" ? null : Number(chosen));
+          })(),
+          translate(model.language, "settings.vehicle.minimumHelp"),
         );
     }
     edits.capacity = () =>
