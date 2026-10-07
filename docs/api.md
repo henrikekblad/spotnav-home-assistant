@@ -435,6 +435,12 @@ fewer than two cars can charge here; otherwise it is present, also with identifi
 one button per candidate, in the given order) or `decided`. `method` is how the car was decided so far:
 `plug_sensor`, `location`, `answered`, `manual`, `camera` (the charger's camera recognised it), or `assumed`
 (nothing decided it yet, or nobody answered); a client shows a method it does not know as none.
+While `state` is `waiting` the status block leads with the line `identifying_vehicle`, and while it is `asking` with
+`asking_vehicle` (both tone `normal`, no params), ahead of every other line of a block that is not blocking and not
+`starting_up`; neither is sent once the car is decided. The card ships with the integration and knows both. A
+released SpotNav app words a code it does not know as "see Home Assistant", so the webhook leaves both lines out of
+its status block unless the request asks for them (`"reads": ["identification_status"]`), the way the settings
+fields above are withheld.
 `likely` marks a car whose own plug sensor says it was plugged in. The additive `evidence` lists, per car, what it was judged by at the
 last look: `{"vehicle_id", "plug": {"entity_id", "state", "changed", "reported"} | null, "location": {"entity_id",
 "home", "reported"} | null, "verdict": "plugged_in" | "likely" | "not_plugged_in" | "away" | "elsewhere" | null}`
@@ -471,6 +477,9 @@ each question; a `mobile_app_notification_action` event with a matching action i
 wins. A retired question is replaced on every phone by the same tag without actions, silently (`alert_once: true`,
 `push: {"interruption-level": "passive"}`); unplugging sends `clear_notification`. A button of a question that is gone (answered, unplugged, a restart) takes the question off the phones.
 Each session in the history carries the additive `vehicle_decided_by` (`null` where nothing decided it).
+The charger's diagnostics (and the debug bundle) carry `vehicle_identification.history`, the last ten plug-ins with
+their evidence, camera query, question, answer and corrections ([fields](vehicle-identification.md#for-field-reports)).
+It is a support aid, not an API: its fields may change.
 
 #### The camera
 
