@@ -202,7 +202,7 @@ def test_a_new_window_starts_afresh() -> None:
 
 def test_every_language_has_every_text() -> None:
     files = read_files()
-    assert set(languages()) == {"en", "sv", "da", "nb", "fi"}
+    assert set(languages()) == {"en", "sv", "da", "nb", "fi", "de", "nl", "fr", "es"}
     for language in languages():
         assert set(files[language][NAMESPACE]) == set(files["en"][NAMESPACE]), language
 
