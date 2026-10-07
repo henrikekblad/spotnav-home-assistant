@@ -476,7 +476,7 @@
         "name": "Zeitplan abbrechen"
       },
       "recalculate_auto": {
-        "name": "Auto-Vorschlag neu berechnen"
+        "name": "Vorschlag der automatischen Preisplanung neu berechnen"
       },
       "pause_auto": {
         "name": "Automatische Preisplanung pausieren"
@@ -542,7 +542,7 @@
         }
       },
       "auto_plan_state": {
-        "name": "Status des Auto-Plans",
+        "name": "Status der automatischen Preisplanung",
         "state": {
           "incomplete_settings": "Einstellungen unvollständig",
           "waiting_for_prices": "Warten auf Preise",
@@ -556,7 +556,7 @@
         }
       },
       "auto_execution_state": {
-        "name": "Status der Auto-Ausführung",
+        "name": "Ausführungsstatus der automatischen Preisplanung",
         "state": {
           "not_applied": "Nicht angewendet",
           "scheduled": "Geplant",
@@ -583,7 +583,7 @@
         "name": "Geplante Energie"
       },
       "auto_settings_revision": {
-        "name": "Revision der Auto-Einstellungen"
+        "name": "Revision der Einstellungen der automatischen Preisplanung"
       },
       "integrated_energy": {
         "name": "Energie aus Leistung"
