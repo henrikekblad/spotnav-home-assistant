@@ -644,17 +644,17 @@
         }
       },
       "charge_periods": {
-        "name": "Laadperiodes",
+        "name": "Laadperioden",
         "state": {
           "auto": "Automatisch",
           "1": "1 periode",
-          "2": "2 periodes",
-          "3": "3 periodes",
-          "4": "4 periodes",
-          "5": "5 periodes",
-          "6": "6 periodes",
-          "7": "7 periodes",
-          "8": "8 periodes"
+          "2": "2 perioden",
+          "3": "3 perioden",
+          "4": "4 perioden",
+          "5": "5 perioden",
+          "6": "6 perioden",
+          "7": "7 perioden",
+          "8": "8 perioden"
         }
       }
     },
