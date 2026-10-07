@@ -378,16 +378,16 @@ class CameraIdentification:
         write = self._hass.async_add_executor_job(_prepare, snapshot.jpeg, settings.frame, temporary, crops)
         try:
             now = await asyncio.shield(write)
-            attachments = []
+            # The picture of the spot now first, then the references (`camera_rule.instructions_for`).
+            media_id, token = lend(self._hass, temporary)
+            tokens.append(token)
+            attachments = [{"media_content_id": media_id, "media_content_type": "image/jpeg"}]
             pictures: list[tuple[str, str]] = []
             for label, kind, path in lent:
                 media_id, token = lend(self._hass, path)
                 tokens.append(token)
                 attachments.append({"media_content_id": media_id, "media_content_type": "image/jpeg"})
                 pictures.append((label, kind))
-            media_id, token = lend(self._hass, temporary)
-            tokens.append(token)
-            attachments.append({"media_content_id": media_id, "media_content_type": "image/jpeg"})
             data: dict[str, Any] = {
                 "task_name": TASK_NAME,
                 "instructions": instructions_for(pictures),
