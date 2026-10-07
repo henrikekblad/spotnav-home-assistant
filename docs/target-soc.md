@@ -75,7 +75,7 @@ a vehicle integration, charge a fixed number of kWh instead.
 
 ## Minimum charge level
 
-Each car can have a minimum charge level, *Lägsta laddnivå* in the card's car settings (off by default, 10-80 %
+Each car can have a minimum charge level, **Minimum charge level** in the card's car settings (off by default, 10-80 %
 in steps of 5). It is the car's own, like its target: the car the charger plans for brings its floor with it to
 every charger. While the car's known level is below it, SpotNav charges at once at the full current set (your
 amps, capped by load balancing as any charge), whatever the strategy: cheapest periods, the sun and hybrid do not

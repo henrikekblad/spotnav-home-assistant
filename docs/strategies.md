@@ -183,7 +183,7 @@ cannot, and for a direct site without the total it says the meter's total grid p
 - Several chargers on one site share the surplus by their
   [charger priority](site-and-load-balancing.md#charger-priority): the first in the order is
   offered it all, the next only what the first cannot use.
-- Every site has a **Solar surplus** sensor (*Solöverskott*, in W) on its device: the power a car could
+- Every site has a **Solar surplus** sensor (in W) on its device: the power a car could
   take from the sun there right now, on the same basis solar charges on. It is the export to the grid,
   plus a charging house battery under *car first*, plus what the site's chargers already draw (a charger
   that is not charging draws nothing), less any import; a discharging battery never counts, and the
