@@ -22,7 +22,7 @@ export interface VehicleEdits {
   location?: () => void;
 }
 
-/** A car's reference pictures for the camera: the words, the kinds it has, their thumbnails, and its editor. */
+/** A car's reference pictures for the camera: the words, the kinds it has, their thumbnails, and its editor (`onTap`, from the row or a tile). */
 export interface VehicleReference {
   text: string;
   kinds: ReadonlyArray<"day" | "night">;
@@ -164,25 +164,43 @@ export function vehicleSummary(doc: Document, language: Language, input: Vehicle
       reference.text,
       reference.onTap,
     );
-    if (reference.kinds.length > 0) {
-      const thumbs = element(doc, "div", C.referenceThumbs);
-      thumbs.dataset["referenceThumbs"] = row.id;
-      for (const kind of reference.kinds) {
-        const image = doc.createElement("img");
-        image.className = C.referenceThumb;
-        image.alt = translate(language, kind === "day" ? "reference.day" : "reference.night");
-        image.dataset["referenceKind"] = kind;
-        image.hidden = true;
-        thumbs.append(image);
+    // Two equal tiles, day and night, each the editor's slot picture (the same aspect, the picture cropped to fill
+    // it) or "No picture"; a tile opens the editor as the row does.
+    const tiles = element(doc, "div", C.referenceTiles);
+    tiles.dataset["referenceTiles"] = row.id;
+    for (const kind of ["day", "night"] as const) {
+      const label = translate(language, kind === "day" ? "reference.day" : "reference.night");
+      const tile = element(doc, reference.onTap === undefined ? "div" : "button", C.referenceTile);
+      if (tile instanceof HTMLButtonElement) {
+        tile.type = "button";
+        const onTap = reference.onTap;
+        tile.addEventListener("click", () => onTap?.());
+      }
+      tile.dataset["referenceTile"] = kind;
+      const has = reference.kinds.includes(kind);
+      tile.dataset["state"] = has ? "taken" : "empty";
+      const frame = element(doc, "span", C.referenceSlotPicture);
+      const image = doc.createElement("img");
+      image.className = C.referenceSlotImage;
+      image.alt = label;
+      image.hidden = true;
+      const empty = element(doc, "span", C.referenceSlotEmpty, translate(language, "reference.empty"));
+      empty.hidden = has;
+      frame.append(image, empty);
+      tile.append(element(doc, "span", C.referenceTileLabel, label), frame);
+      tiles.append(tile);
+      if (has) {
         void reference.thumbnail(kind).then((picture) => {
           if (picture !== null) {
             image.src = picture.url;
             image.hidden = false;
+          } else {
+            empty.hidden = false;
           }
         });
       }
-      card.append(thumbs);
     }
+    card.append(tiles);
   }
   return card;
 }
