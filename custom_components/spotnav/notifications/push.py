@@ -13,6 +13,13 @@ of sorts and is never logged nor put in diagnostics.
 
 Sending: one request at a time, no retries; the same event is not woken for again within `REPEAT_S` and
 no more than `HOURLY_LIMIT` wake-ups go out an hour (the relay limits as well).
+
+The question which car is plugged in (`vehicle_identify`) has its own rules, since the app posts its own
+notification for it: every new question wakes (`async_question`), and so does its end, however it ends
+(`async_question_settled`), so the app can take that notification down. Neither is held back by the repeat
+rule nor the hourly limit, though both count towards it; a question wakes at most twice, once asked and once
+settled, and a plug-in asks at most once. Either one arriving while a wake-up is under way sends one more
+after it, since the app's check under way may have read the question as it was.
 """
 
 from __future__ import annotations
@@ -33,7 +40,7 @@ from homeassistant.util import dt as dt_util
 
 from ..const import DOMAIN
 from ..pricing.price_repository import DEFAULT_BASE_URL
-from .settings import DEFAULT_EVENTS, NOTIFICATION_EVENTS
+from .settings import DEFAULT_EVENTS, EVENT_VEHICLE_IDENTIFY, NOTIFICATION_EVENTS
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -135,6 +142,9 @@ class ChargerPush:
         self._last_sent: dict[str, datetime] = {}
         self._sent_times: deque[datetime] = deque()
         self._in_flight = False
+        #: A question which car is plugged in is open, and a wake-up is owed after the one under way.
+        self._question_open = False
+        self._follow_up = False
         self._last_result: str | None = None
         self._last_at: datetime | None = None
 
@@ -192,16 +202,50 @@ class ChargerPush:
             _LOGGER.debug("SpotNav charger %s: hourly wake-up limit reached", self._entry_id)
             return False
         self._last_sent[event] = now
+        self._start_wake(registration.push_ref, now)
+        return True
+
+    @callback
+    def async_question(self, now: datetime) -> bool:
+        """A new question which car is plugged in: wake the app if it asked for `vehicle_identify`, whatever
+        the repeat rule and the hourly limit. Returns whether the app is being woken for it."""
+        self._question_open = True
+        return self._question_wake(now)
+
+    @callback
+    def async_question_settled(self, now: datetime) -> bool:
+        """The open question ended (answered anywhere, decided, swiped, unanswered, unplugged): wake the app
+        so it takes its notification down, once per question. Returns whether the app is being woken."""
+        if not self._question_open:
+            return False
+        self._question_open = False
+        return self._question_wake(now)
+
+    def _question_wake(self, now: datetime) -> bool:
+        registration = self._registration
+        if registration is None or EVENT_VEHICLE_IDENTIFY not in registration.events:
+            return False
+        if self._in_flight:
+            self._follow_up = True
+            return True
+        self._start_wake(registration.push_ref, now)
+        return True
+
+    def _start_wake(self, push_ref: str, now: datetime) -> None:
         self._sent_times.append(now)
         self._in_flight = True
-        self._hass.async_create_task(self._async_wake(registration.push_ref), eager_start=True)
-        return True
+        self._hass.async_create_task(self._async_wake(push_ref), eager_start=True)
 
     async def _async_wake(self, push_ref: str) -> None:
         try:
             await self._async_send(push_ref, KIND_WAKE)
         finally:
             self._in_flight = False
+        if self._follow_up:
+            self._follow_up = False
+            registration = self._registration
+            if registration is not None:
+                self._start_wake(registration.push_ref, dt_util.utcnow())
 
     async def async_send_test(self) -> str | None:
         """Send the app a test push now (`spotnav.send_test_notification`): the result, `None` with no
