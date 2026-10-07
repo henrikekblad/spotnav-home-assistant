@@ -413,8 +413,9 @@ export function referenceEditor(
       take.disabled = working;
       remove.hidden = picture === undefined;
       remove.disabled = working;
-      caption.textContent = picture === undefined ? "" : input.formatTaken(picture.taken_at);
-      caption.hidden = picture === undefined;
+      // An empty slot keeps the caption's line, so both slots' buttons stand level.
+      caption.textContent = picture === undefined ? "\u00a0" : input.formatTaken(picture.taken_at);
+      caption.style.visibility = picture === undefined ? "hidden" : "";
       status.hidden = !working && error === null;
       status.textContent = working ? say("reference.taking") : (error ?? "");
       status.classList.toggle(C.referenceSlotError, !working && error !== null);
