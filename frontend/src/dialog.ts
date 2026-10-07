@@ -28,6 +28,8 @@ export interface DialogShowInput {
 export interface DialogHandle {
   element: HTMLElement;
   show(input: DialogShowInput): void;
+  /** Changes the open dialog's title in place, e.g. as a choice in its body changes what it is about. */
+  setTitle(text: string): void;
   hide(options?: { restoreFocus?: boolean }): void;
   isOpen(): boolean;
   destroy(): void;
@@ -297,6 +299,11 @@ export function createDialog(options: DialogOptions): DialogHandle {
   return {
     element: overlay,
     show,
+    setTitle: (text: string) => {
+      if (!destroyed) {
+        title.textContent = text;
+      }
+    },
     hide,
     isOpen: () => open,
     destroy(): void {
