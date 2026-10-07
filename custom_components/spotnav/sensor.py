@@ -2,19 +2,25 @@
 
 import json
 import math
+import time
+from collections.abc import Callable
 from datetime import datetime, timedelta
 from typing import Any
 from urllib.parse import urlencode
 
 from homeassistant.components.sensor import SensorDeviceClass, SensorEntity, SensorStateClass
 from homeassistant.config_entries import ConfigEntry, ConfigEntryChange, SIGNAL_CONFIG_ENTRY_CHANGED
-from homeassistant.const import EntityCategory, UnitOfElectricCurrent, UnitOfEnergy
+from homeassistant.const import EntityCategory, UnitOfElectricCurrent, UnitOfEnergy, UnitOfPower
 from homeassistant.core import callback, HomeAssistant
 from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.dispatcher import async_dispatcher_connect
 from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
-from homeassistant.helpers.event import async_track_state_change_event, async_track_time_interval
+from homeassistant.helpers.event import (
+    async_call_later,
+    async_track_state_change_event,
+    async_track_time_interval,
+)
 from homeassistant.helpers.restore_state import RestoreEntity
 from homeassistant.util import dt as dt_util
 
@@ -30,12 +36,14 @@ from .const import (
 )
 from .entity import AutoSurface, SpotNavAutoEntity, SpotNavChargingEntity, SpotNavSiteEntity
 from .execution.controller import ChargingController
+from .execution.solar_execution import site_solar_surplus
 from .setup_hints import add_charger_hint
 from .execution.power_energy import fresh_power_w, integrated_energy_unique_id, PowerIntegrator
 from .runtime import controller_for
 from .sessions.sensors import session_entities
 from .vehicles.choices import flow_language
 from .site.site_capacity_controller import SiteCapacityController
+from .site.solar_surplus import SiteSurplus
 from .vehicles.charger_inventory import (
     charger_entries,
     charger_pairing_payload,
@@ -53,7 +61,7 @@ async def async_setup_entry(
 ) -> None:
     if entry.data.get(CONF_ENTRY_TYPE) == ENTRY_TYPE_SITE:
         site_controller = entry.runtime_data.controller
-        entities: list[Any] = [SiteStateEntity(entry, site_controller)]
+        entities: list[Any] = [SiteStateEntity(entry, site_controller), SiteSolarSurplusEntity(entry, site_controller)]
         if entry.entry_id == instance_owner_entry_id(hass):
             entities.append(InstanceConnectionEntity(hass, entry))
         for charger_entry_id in site_controller.config.get(CONF_CHARGER_ENTRY_IDS) or []:
@@ -457,6 +465,125 @@ class SiteStateEntity(SpotNavSiteEntity, SensorEntity):
             # Hybrid diagnostics: one entry per associated charger, mirroring `solar_surplus`.
             "hybrid": self.controller.hybrid_snapshot,
         }
+
+
+#: The site's solar surplus is written at once when it moves at least this much (watts) from what it shows ...
+SURPLUS_STEP_W = 50.0
+#: ... and a smaller change once this long (seconds) after the last write, so a meter reporting twice a second
+#: does not put a row in the recorder for every reading.
+SURPLUS_INTERVAL_S = 10.0
+#: Never two writes of a number closer together than this (seconds): a house load swinging by a few hundred
+#: watts would otherwise pass the step on every reading.
+SURPLUS_MIN_GAP_S = 5.0
+
+
+def surplus_write_delay(
+    shown: dict[str, Any] | None, new: dict[str, Any] | None, elapsed_s: float | None
+) -> float | None:
+    """How long (seconds) until `new` is written over `shown`, `None` when nothing changed. `shown`/`new` are
+    the state and attributes (`None` for unknown); `elapsed_s` is the time since the last write.
+
+    Unknown to a number and back, or another priority, at once; a move of `SURPLUS_STEP_W` after
+    `SURPLUS_MIN_GAP_S`; any other change after `SURPLUS_INTERVAL_S`.
+    """
+    if shown == new:
+        return None
+    if shown is None or new is None or elapsed_s is None or shown["priority"] != new["priority"]:
+        return 0.0
+    if abs(new["surplus_w"] - shown["surplus_w"]) >= SURPLUS_STEP_W:
+        return max(0.0, SURPLUS_MIN_GAP_S - elapsed_s)
+    return max(0.0, SURPLUS_INTERVAL_S - elapsed_s)
+
+
+def _surplus_shown(surplus: SiteSurplus | None) -> dict[str, Any] | None:
+    if surplus is None:
+        return None
+    return {
+        "surplus_w": round(surplus.surplus_w),
+        "export_w": round(surplus.export_w),
+        "battery_w": round(surplus.battery_w),
+        "car_w": round(surplus.car_w),
+        "priority": surplus.priority_effective,
+    }
+
+
+class SiteSolarSurplusEntity(SpotNavSiteEntity, SensorEntity):
+    """What a car could take from the sun at the site now (`site_solar_surplus`), on the basis solar charges
+    on: export, a charging battery under `car_first`, and what the site's cars already draw; a discharging
+    battery never. `unknown` without a usable grid reading. Writes are throttled (`surplus_write_delay`)."""
+
+    _attr_translation_key = "solar_surplus"
+    _attr_device_class = SensorDeviceClass.POWER
+    _attr_state_class = SensorStateClass.MEASUREMENT
+    _attr_native_unit_of_measurement = UnitOfPower.WATT
+    _attr_suggested_display_precision = 0
+
+    def __init__(self, entry: ConfigEntry, controller: SiteCapacityController) -> None:
+        super().__init__(entry, controller)
+        self._attr_unique_id = f"{entry.entry_id}_solar_surplus"
+        self._shown: dict[str, Any] | None = None
+        self._written_at: float | None = None
+        self._flush_cancel: Callable[[], None] | None = None
+        self._flush_due: float | None = None
+        # Replaceable in tests.
+        self._now: Callable[[], float] = time.monotonic
+
+    async def async_added_to_hass(self) -> None:
+        self._shown = _surplus_shown(site_solar_surplus(self.hass, self.controller))
+        self._written_at = self._now()
+        self.async_on_remove(self.controller.add_listener(self._on_site_changed))
+        self.async_on_remove(self._cancel_flush)
+
+    @property
+    def native_value(self) -> float | None:
+        return None if self._shown is None else self._shown["surplus_w"]
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any] | None:
+        if self._shown is None:
+            return None
+        return {key: value for key, value in self._shown.items() if key != "surplus_w"}
+
+    @callback
+    def _cancel_flush(self) -> None:
+        if self._flush_cancel is not None:
+            self._flush_cancel()
+            self._flush_cancel = None
+        self._flush_due = None
+
+    @callback
+    def _on_site_changed(self) -> None:
+        if self.controller.rerendering:
+            # A solar re-render carries no new reading.
+            return
+        self._consider()
+
+    @callback
+    def _flush(self, _now: Any) -> None:
+        self._flush_cancel = None
+        self._flush_due = None
+        self._consider()
+
+    @callback
+    def _consider(self) -> None:
+        new = _surplus_shown(site_solar_surplus(self.hass, self.controller))
+        now = self._now()
+        elapsed_s = None if self._written_at is None else now - self._written_at
+        delay = surplus_write_delay(self._shown, new, elapsed_s)
+        if delay is None:
+            self._cancel_flush()
+            return
+        if delay > 0:
+            due = now + delay
+            if self._flush_cancel is None or self._flush_due is None or due < self._flush_due:
+                self._cancel_flush()
+                self._flush_due = due
+                self._flush_cancel = async_call_later(self.hass, delay, self._flush)
+            return
+        self._cancel_flush()
+        self._shown = new
+        self._written_at = now
+        self.async_write_ha_state()
 
 
 class ChargerProposedCurrentEntity(SpotNavSiteEntity, SensorEntity):

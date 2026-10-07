@@ -24,6 +24,10 @@ exposed on verdicts for diagnostics only. `battery_first` does not credit the ca
 with power going into the battery; a discharge passes through. Priority is a
 setting because a battery regulating the grid to zero leaves export ~0.
 
+The site-level part of the identity is `site_surplus`: with `car_w` what every car on the site draws it is the
+site's surplus (its `Solar surplus` sensor), and with one charger's draw it is that charger's reckoning
+(`surplus_breakdown`).
+
 `battery_configured=False` treats `battery_w is None` as 0.0 and reports
 `priority_effective = "battery_first"`. With `battery_configured=True` it means
 the battery is unreadable, which is no basis (0.0 would hide a discharge).
@@ -243,50 +247,103 @@ class SurplusBreakdown:
     priority_effective: SolarPriority
 
 
-def surplus_breakdown(observation: SolarObservation, priority: SolarPriority) -> SurplusBreakdown | None:
-    """The surplus one observation shows this charger, or `None` if a needed reading is unusable."""
-    grid = observation.signed_grid_w
+@dataclass(frozen=True, slots=True)
+class SiteSurplus:
+    """The site's surplus (module docstring's identity) for every car on it at once: `car_w` is what they all
+    draw. `battery_w` is the battery power counted: a charging battery under `car_first`, a discharge (negative)
+    under either priority, else 0.0."""
+
+    net_grid_w: float
+    export_w: float
+    battery_w: float
+    car_w: float
+    available_w: float
+    priority_effective: SolarPriority
+
+    @property
+    def surplus_w(self) -> float:
+        """What a car could take from the sun: `available_w`, never below zero."""
+        return max(0.0, self.available_w)
+
+
+def site_surplus(
+    *,
+    net_grid_w: float | None,
+    car_w: float,
+    battery_w: float | None,
+    battery_configured: bool,
+    priority: SolarPriority,
+) -> SiteSurplus | None:
+    """The energy balance at the house bus from the net grid power (positive = import), what the cars draw and
+    the battery (positive = charging); `None` without a grid reading or with a configured battery that cannot be
+    read (never 0.0, which would hide a discharge)."""
+    if net_grid_w is None:
+        return None
+    if battery_configured and battery_w is None:
+        return None
+    priority_effective: SolarPriority
+    if priority == "car_first" and battery_w is not None:
+        counted_battery_w = battery_w
+        priority_effective = "car_first"
+    else:
+        counted_battery_w = min(0.0, 0.0 if battery_w is None else battery_w)
+        priority_effective = "battery_first"
+    return SiteSurplus(
+        net_grid_w=net_grid_w,
+        export_w=max(0.0, -net_grid_w),
+        battery_w=counted_battery_w,
+        car_w=car_w,
+        available_w=car_w + counted_battery_w - net_grid_w,
+        priority_effective=priority_effective,
+    )
+
+
+def car_draw_w(observation: SolarObservation) -> float | None:
+    """What the charger draws, in watts, over the phases the car uses; `None` when a reading is missing."""
     voltage = observation.voltage_v
     delivered = observation.car_delivered_a
     car_phases = observation.car_phases
-
     if not car_phases:
-        return None
-    if any(grid.get(phase) is None for phase in PHASES):
         return None
     if any(voltage.get(phase) is None for phase in car_phases):
         return None
     if any(delivered.get(phase) is None for phase in car_phases):
         return None
-    if observation.battery_configured and observation.battery_w is None:
-        # A configured but unreadable battery is no basis, never 0.0.
+    return sum(delivered[phase] * voltage[phase] for phase in car_phases)  # type: ignore[misc]
+
+
+def surplus_breakdown(observation: SolarObservation, priority: SolarPriority) -> SurplusBreakdown | None:
+    """The surplus one observation shows this charger, or `None` if a needed reading is unusable."""
+    grid = observation.signed_grid_w
+    voltage = observation.voltage_v
+    car_phases = observation.car_phases
+
+    if any(grid.get(phase) is None for phase in PHASES):
         return None
-
-    net_grid_w = sum(grid[phase] for phase in PHASES)  # type: ignore[misc]
-    car_w = sum(delivered[phase] * voltage[phase] for phase in car_phases)  # type: ignore[misc]
-
-    battery_w = observation.battery_w
-    battery_w_for_formula = 0.0 if battery_w is None else battery_w
-    priority_effective: SolarPriority
-    if priority == "car_first" and battery_w is not None:
-        # The energy-balance identity (module docstring).
-        available_w = car_w + battery_w_for_formula - net_grid_w
-        priority_effective = "car_first"
-    else:
-        available_w = car_w + min(0.0, battery_w_for_formula) - net_grid_w
-        priority_effective = "battery_first"
+    car_w = car_draw_w(observation)
+    if car_w is None:
+        return None
+    surplus = site_surplus(
+        net_grid_w=sum(grid[phase] for phase in PHASES),  # type: ignore[misc]
+        car_w=car_w,
+        battery_w=observation.battery_w,
+        battery_configured=observation.battery_configured,
+        priority=priority,
+    )
+    if surplus is None:
+        return None
 
     mean_voltage = sum(voltage[phase] for phase in car_phases) / len(car_phases)  # type: ignore[misc]
     if mean_voltage <= 0:
         return None
     return SurplusBreakdown(
-        net_grid_w=net_grid_w,
-        export_w=max(0.0, -net_grid_w),
+        net_grid_w=surplus.net_grid_w,
+        export_w=surplus.export_w,
         car_w=car_w,
-        battery_w=battery_w,
-        available_w=available_w,
+        battery_w=observation.battery_w,
+        available_w=surplus.available_w,
         mean_voltage_v=mean_voltage,
-        priority_effective=priority_effective,
+        priority_effective=surplus.priority_effective,
     )
 
 

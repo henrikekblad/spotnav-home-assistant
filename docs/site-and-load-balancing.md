@@ -202,6 +202,10 @@ Set on the site, used by the [solar and hybrid strategies](strategies.md): **sol
 (car first or house battery first), an optional **home battery power** sensor (positive means
 charging), and the **solar forecast sources** for hybrid.
 
+The site's **Solar surplus** sensor shows, in watts, the power a car could take from the sun at the
+site now, from these settings and the site's grid readings, also on a site without chargers; see
+[Solar](strategies.md#solar).
+
 ## Total grid power (for solar)
 
 Solar and hybrid need the grid's signed power. A derived site has it per phase. A direct site
