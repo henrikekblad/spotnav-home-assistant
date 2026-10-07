@@ -1,0 +1,1 @@
+{"domain": "demo_vision", "name": "Demo vision", "version": "0.0.0", "config_flow": true, "integration_type": "hub", "iot_class": "local_polling", "documentation": "https://example.invalid", "codeowners": [], "requirements": [], "dependencies": ["ai_task", "camera"]}
