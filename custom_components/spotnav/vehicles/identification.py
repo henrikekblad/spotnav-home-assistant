@@ -71,6 +71,7 @@ from homeassistant.util import dt as dt_util
 from ..const import DOMAIN
 from ..planning.auto_settings import AutoSettings, AutoSettingsError, AutoSettingsStore, IDENTIFY_ASK, IDENTIFY_OFF
 from .camera_rule import camera_reason, camera_verdict, may_query, QUERY_TIMEOUT_S, Signature
+from .identification_changes import SourceChanges
 from .identification_sources import identification_sources, location_reading, plug_reading
 from . import vehicle_properties
 from .vehicle_discovery import resolve_target_vehicle
@@ -161,11 +162,17 @@ _STORE_KEY_PREFIX: Final = f"{DOMAIN}.identification"
 
 @dataclass(frozen=True, slots=True)
 class Candidate:
-    """What Home Assistant holds about one candidate car now."""
+    """What Home Assistant holds about one candidate car now, and when its entities really changed or reported
+    (`identification_changes`: a state written at Home Assistant's start, or re-created, is no report)."""
 
     vehicle_id: str
     plug: State | None = None
     location: State | None = None
+    #: When the plug entity changed to what it says now (`None`: no change seen).
+    plug_changed: datetime | None = None
+    #: When the position changed to what it says now, and when it was last reported (`None`: not seen).
+    location_changed: datetime | None = None
+    location_reported: datetime | None = None
     #: The car is identified at another SpotNav charger that is connected.
     elsewhere: bool = False
     #: When SpotNav last asked Home Assistant to re-read this car's entities (`REFRESH_ECHO_S`).
@@ -181,14 +188,15 @@ class Evidence:
     negative: str | None
 
 
-def _fresh(state: State, t0: datetime, refreshed_at: datetime | None) -> bool:
-    """Reported after the plug-in, or just before it (never a report from the drive home), and not the echo of
-    SpotNav's own re-read: a cloud cache written again moves `last_reported` without the car saying anything."""
-    reported = state.last_reported
-    if reported < t0 - timedelta(seconds=POSITION_MARGIN_BEFORE_S):
+def _fresh(candidate: Candidate, t0: datetime) -> bool:
+    """The position was reported after the plug-in, or just before it (never a report from the drive home), and
+    not as the echo of SpotNav's own re-read: a cloud cache written again is reported without the car saying
+    anything."""
+    reported, changed, refreshed_at = candidate.location_reported, candidate.location_changed, candidate.refreshed_at
+    if reported is None or reported < t0 - timedelta(seconds=POSITION_MARGIN_BEFORE_S):
         return False
     echo = refreshed_at is not None and refreshed_at <= reported <= refreshed_at + timedelta(seconds=REFRESH_ECHO_S)
-    return not echo or state.last_changed >= t0 - timedelta(seconds=POSITION_MARGIN_BEFORE_S)
+    return not echo or (changed is not None and changed >= t0 - timedelta(seconds=POSITION_MARGIN_BEFORE_S))
 
 
 def judge(candidate: Candidate, t0: datetime, now: datetime) -> Evidence:
@@ -197,18 +205,20 @@ def judge(candidate: Candidate, t0: datetime, now: datetime) -> Evidence:
     negative: str | None = METHOD_LOCATION if candidate.elsewhere else None
     plug = candidate.plug
     reading = plug_reading(plug)
+    changed = candidate.plug_changed
     if plug is not None and reading is True:
-        recent = plug.last_changed >= t0 - timedelta(seconds=PLUG_WINDOW_BEFORE_S)
+        recent = changed is not None and changed >= t0 - timedelta(seconds=PLUG_WINDOW_BEFORE_S)
         positive = STRONG if recent else WEAK
     elif plug is not None and reading is False and negative is None:
         # Only a car that went unplugged around or after the plug-in is not here. An "unplugged" that is only
         # written again says nothing: a cloud integration re-writes its cache (Kia's says "unplugged" for hours
-        # after the car was plugged in), on its own poll or on SpotNav's re-read, and `last_reported` moves.
-        if plug.last_changed >= t0 - timedelta(seconds=POSITION_MARGIN_BEFORE_S):
+        # after the car was plugged in), on its own poll or on SpotNav's re-read, and `last_reported` moves. Nor
+        # does one written anew at Home Assistant's start, or re-created: only a change seen happen counts.
+        if changed is not None and changed >= t0 - timedelta(seconds=POSITION_MARGIN_BEFORE_S):
             negative = METHOD_PLUG_SENSOR
     location = candidate.location
     at_home = location_reading(location)
-    if location is not None and at_home is False and _fresh(location, t0, candidate.refreshed_at):
+    if location is not None and at_home is False and _fresh(candidate, t0):
         negative = negative or METHOD_LOCATION
     elif at_home is True and positive is None:
         positive = WEAK
@@ -364,6 +374,9 @@ class VehicleIdentifier:
         self._unplug_cancel: CALLBACK_TYPE | None = None
         # When SpotNav last asked Home Assistant to re-read each car (its echo is no report).
         self._refreshed_at: dict[str, datetime] = {}
+        # When the candidate cars' plug and position entities really changed or reported, seen live: a state
+        # written at Home Assistant's start, or re-created, is no report (`identification_changes`).
+        self._changes = SourceChanges(hass)
         # What was decided at this plug-in, kept across a restart (`_STORE_KEY_PREFIX`): a restart with the car
         # still plugged in is no new plug-in, and a decided car is not asked about again.
         self._memory: Store[dict[str, Any]] = Store(hass, _STORE_VERSION, f"{_STORE_KEY_PREFIX}.{entry_id}")
@@ -469,6 +482,12 @@ class VehicleIdentifier:
             self._unsubscribe.append(preview.add_listener(self._on_snapshot))
         self._unsubscribe.append(self._hass.bus.async_listen(EVENT_ACTION, self._on_action))
         self._unsubscribe.append(self._hass.bus.async_listen(EVENT_CLEARED, self._on_cleared))
+        # The cars' entities are watched from now on; a car or an entity found later is watched within a minute.
+        self._watch()
+        self._unsubscribe.append(self._changes.stop)
+        self._unsubscribe.append(
+            async_track_time_interval(self._hass, self._on_watch_tick, timedelta(seconds=REEVALUATE_S))
+        )
         if self._connected is True:
             if remembered is not None:
                 # Decided before the restart, the same car still plugged in: nothing to identify again.
@@ -605,6 +624,8 @@ class VehicleIdentifier:
 
     @callback
     def _on_settings_written(self, entry_id: str, before: AutoSettings, after: AutoSettings) -> None:
+        if entry_id == self._entry_id:
+            self._watch()
         if entry_id == self._entry_id and before.target.vehicle_id != after.target.vehicle_id:
             self._check_person()
 
@@ -676,6 +697,7 @@ class VehicleIdentifier:
             chosen_at = None if skipped != SKIPPED_RECENT_CHOICE or self._manual_at is None else self._manual_at.isoformat()
             self._open_entry(now, trigger, settings.identify_mode, ids, skipped={"reason": skipped, "chosen_at": chosen_at})
             return
+        self._watch()
         current = self._current_vehicle()
         session = _Session(
             t0=now, mode=settings.identify_mode, cars=ids, names=dict(cars),
@@ -754,12 +776,12 @@ class VehicleIdentifier:
             plug = None if plug_id is None else self._hass.states.get(plug_id)
             location = None if location_id is None else self._hass.states.get(location_id)
             if car == decided:
-                gone = (plug is not None and plug_reading(plug) is False and plug.last_changed >= since) or (
-                    location is not None and location_reading(location) is False and location.last_reported >= since
+                gone = (plug_reading(plug) is False and _since(self._changes.changed(plug), since)) or (
+                    location_reading(location) is False and _since(self._changes.reported(location), since)
                 )
                 if gone:
                     break
-            elif not person and plug is not None and plug_reading(plug) is True and plug.last_changed >= since:
+            elif not person and plug_reading(plug) is True and _since(self._changes.changed(plug), since):
                 break
         else:
             return
@@ -776,6 +798,16 @@ class VehicleIdentifier:
                 remove()
             if session.camera_task is not None and not session.camera_task.done():
                 session.camera_task.cancel()
+
+    @callback
+    def _on_watch_tick(self, _now: datetime) -> None:
+        self._watch()
+
+    @callback
+    def _watch(self) -> None:
+        """Watch the plug and position entities of the cars that can charge here."""
+        cars = [car for car, _ in self._candidates(self._settings())]
+        self._changes.watch(entity for car in cars for entity in self._sources(car) if entity is not None)
 
     def _sources(self, car: str) -> tuple[str | None, str | None]:
         plug, location = identification_sources(self._hass, car)
@@ -807,10 +839,15 @@ class VehicleIdentifier:
         record = []
         for car in session.cars:
             plug_id, location_id = self._sources(car)
+            plug = None if plug_id is None else self._hass.states.get(plug_id)
+            location = None if location_id is None else self._hass.states.get(location_id)
             candidate = Candidate(
                 car,
-                plug=None if plug_id is None else self._hass.states.get(plug_id),
-                location=None if location_id is None else self._hass.states.get(location_id),
+                plug=plug,
+                location=location,
+                plug_changed=self._changes.changed(plug),
+                location_changed=self._changes.changed(location),
+                location_reported=self._changes.reported(location),
                 elsewhere=self._elsewhere(car),
                 refreshed_at=self._refreshed_at.get(car),
             )
@@ -1189,6 +1226,10 @@ class VehicleIdentifier:
             if current is not None:
                 self._notifier.retire_vehicle_question(self.tag, session.phones, "kept", session.names.get(current, current))
             self._notifier.vehicle_question_settled()
+
+
+def _since(moment: datetime | None, since: datetime) -> bool:
+    return moment is not None and moment >= since
 
 
 def _camera_error(err: BaseException) -> str:
