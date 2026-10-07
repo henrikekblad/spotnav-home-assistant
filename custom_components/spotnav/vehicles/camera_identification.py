@@ -6,13 +6,15 @@ the chosen AI Task entity (with a local model, they stay at home), and none goes
 
 * **Snapshot** (`async_snapshot`): one picture from the camera (`camera.async_get_image`), for the frame
   editor.
-* **Reference pictures** (`async_take_reference`): the camera's picture now, cropped with the charger's frame,
-  kept as a car's `day` or `night` reference (`camera_pictures.ReferenceStore`) with its colour signature.
-* **The query** (`async_ask`): a snapshot cropped with the frame, and the candidates' reference pictures from
-  the same camera, go to `ai_task.generate_data` with a structured answer (one of the cars or `none`, and a
-  confidence). The pictures are attachments by media-source id (`camera_media.py`): the crop as a temporary
-  file in SpotNav's private storage, deleted after the call, and the references as their stored files. What
-  the answer counts for is `camera_rule.camera_verdict`'s, applied by `identification.py`.
+* **Reference pictures** (`async_take_reference`): the camera's whole picture now, kept as a car's `day` or
+  `night` reference (`camera_pictures.ReferenceStore`), with its colour signature as cropped with the frame drawn
+  now (taken again when the frame is drawn again, or lazily before a query).
+* **The query** (`async_ask`): the snapshot and the candidates' reference pictures from the same camera, each
+  cropped with the frame drawn now, go to `ai_task.generate_data` with a structured answer (one of the cars or
+  `none`, and a confidence). The pictures are attachments by media-source id (`camera_media.py`): the crops as
+  temporary files in SpotNav's private storage, deleted after the call. Drawing the frame again never makes a
+  reference picture useless. What the answer counts for is `camera_rule.camera_verdict`'s, applied by
+  `identification.py`.
 """
 
 from __future__ import annotations
@@ -22,7 +24,7 @@ import logging
 import os
 import secrets
 from collections.abc import Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Any, Final
 
@@ -37,6 +39,7 @@ from .camera_pictures import (
     as_jpeg,
     colour_signature,
     reference_signature,
+    scaled_jpeg,
     crop_jpeg,
     picture_size,
     Reference,
@@ -138,10 +141,27 @@ def _write_temporary(path: Path, data: bytes) -> Path:
     return path
 
 
-def _crop_and_colour(jpeg: bytes, frame: Any) -> tuple[bytes, Signature]:
-    """The crop, and its colour (`None` for an infrared picture)."""
+def _prepare(jpeg: bytes, frame: Any, now: Path, references: list[tuple[Path, Path]]) -> Signature:
+    """Write the query's pictures: the snapshot cropped with `frame` to `now`, and each whole reference picture
+    cropped with it from its stored file to its temporary one. Answers the colour of the picture now."""
     crop = crop_jpeg(jpeg, frame)
-    return crop, colour_signature(crop)
+    _write_temporary(now, crop)
+    for source, target in references:
+        _write_temporary(target, crop_jpeg(source.read_bytes(), frame))
+    return colour_signature(crop)
+
+
+def _remove(paths: list[Path]) -> None:
+    for path in paths:
+        path.unlink(missing_ok=True)
+
+
+def _signature_of(path: Path, frame: Any, kind: str) -> Signature:
+    return reference_signature(crop_jpeg(path.read_bytes(), frame), kind)
+
+
+def _thumbnail_of(path: Path, frame: Any) -> bytes:
+    return thumbnail_jpeg(crop_jpeg(path.read_bytes(), frame))
 
 
 class CameraIdentification:
@@ -157,6 +177,42 @@ class CameraIdentification:
 
     async def async_load(self) -> None:
         await self.references.async_load()
+        await self._async_drop_outdated()
+
+    async def _async_drop_outdated(self) -> None:
+        """Drop the pictures an earlier release cropped when they were taken, once the frame is drawn otherwise:
+        their whole picture is gone, so they compare with nothing."""
+        settings = self.settings()
+        frame = None if settings is None else settings.frame
+        for reference in self.references.all():
+            if reference.frame is not None and not same_frame(reference.frame, frame):
+                _LOGGER.info("SpotNav dropped a reference picture cropped with an earlier frame; take it again")
+                await self.references.async_delete(reference.vehicle_id, reference.kind)
+
+    async def async_frame_changed(self) -> None:
+        """The frame was drawn again: the pictures are cropped with it from now on, and their colour taken anew."""
+        await self._async_drop_outdated()
+        await self.async_refresh_signatures([reference.vehicle_id for reference in self.references.all()])
+
+    async def async_refresh_signatures(self, vehicles: Sequence[str]) -> None:
+        """Take the colour of each car's whole reference pictures cropped with the frame drawn now, where it was
+        taken with another frame."""
+        settings = self.settings()
+        if settings is None:
+            return
+        for car in dict.fromkeys(vehicles):
+            for reference in self.usable(car):
+                if reference.frame is not None or same_frame(reference.signature_frame, settings.frame):
+                    continue
+                try:
+                    signature = await self._hass.async_add_executor_job(
+                        _signature_of, self.references.path(reference), settings.frame, reference.kind
+                    )
+                except OSError:
+                    continue
+                await self.references.async_update(
+                    replace(reference, signature=signature, signature_frame=normalised(settings.frame))
+                )
 
     def settings(self) -> CameraSettings | None:
         return self._store.settings(self._entry_id).identify_camera
@@ -164,20 +220,26 @@ class CameraIdentification:
     # ------------------------------------------------------------------ what others read
 
     def usable(self, vehicle_id: str) -> list[Reference]:
-        """A car's reference pictures that compare with the picture now: taken by the chosen camera with the frame
-        drawn now. One cropped with an earlier frame is stale until it is taken again."""
+        """A car's reference pictures from the chosen camera: kept whole, cropped with the frame drawn now when
+        compared (one an earlier release cropped when it was taken counts only while that frame stands)."""
         settings = self.settings()
         if settings is None:
             return []
         return [
             item
             for item in self.references.references(vehicle_id, settings.camera_entity_id)
-            if same_frame(item.frame, settings.frame)
+            if item.frame is None or same_frame(item.frame, settings.frame)
         ]
 
     def reference_signatures(self, vehicles: Sequence[str]) -> dict[str, list[Signature]]:
-        """Each car's usable reference pictures' colour signatures (a car without one: `[]`)."""
-        return {car: [item.signature for item in self.usable(car)] for car in vehicles}
+        """Each car's usable reference pictures' colour signatures with the frame drawn now (a car without a picture:
+        `[]`; a colour not yet taken with this frame says nothing: `None`)."""
+        settings = self.settings()
+        frame = None if settings is None else settings.frame
+        return {
+            car: [item.signature if same_frame(item.signature_frame, frame) else None for item in self.usable(car)]
+            for car in vehicles
+        }
 
     def ready_for(self, vehicles: Sequence[str]) -> bool:
         """Whether a query among `vehicles` can say anything: a camera is chosen and one of them has a reference."""
@@ -187,15 +249,8 @@ class CameraIdentification:
         return any(self.usable(car) for car in vehicles)
 
     def wire_references(self, vehicle_id: str) -> list[dict[str, Any]]:
-        """A car's reference pictures from the chosen camera, as a client sees them (`stale` when cropped with
-        another frame)."""
-        settings = self.settings()
-        if settings is None:
-            return []
-        return [
-            item.as_wire(stale=not same_frame(item.frame, settings.frame))
-            for item in self.references.references(vehicle_id, settings.camera_entity_id)
-        ]
+        """A car's reference pictures, as a client sees them."""
+        return [item.as_wire() for item in self.usable(vehicle_id)]
 
     def block(self, vehicles: Sequence[str]) -> dict[str, Any] | None:
         """The dashboard's `camera_identification`: the cameras and AI Task entities to choose from, and each
@@ -244,7 +299,8 @@ class CameraIdentification:
         return Snapshot(jpeg, width, height)
 
     async def async_take_reference(self, vehicle_id: str, kind: str) -> Reference:
-        """The camera's picture now, cropped with the frame, kept as the car's `kind` reference."""
+        """The camera's whole picture now, kept as the car's `kind` reference, with its colour as cropped with the
+        frame drawn now."""
         async with self._taking:
             return await self._async_take(vehicle_id, kind)
 
@@ -253,26 +309,33 @@ class CameraIdentification:
         if settings is None:
             raise CameraUnavailable("no_camera")
         snapshot = await self.async_snapshot(settings.camera_entity_id)
-        crop = await self._hass.async_add_executor_job(crop_jpeg, snapshot.jpeg, settings.frame)
+        whole = await self._hass.async_add_executor_job(scaled_jpeg, snapshot.jpeg)
+        crop = await self._hass.async_add_executor_job(crop_jpeg, whole, settings.frame)
         signature = await self._hass.async_add_executor_job(reference_signature, crop, kind)
         reference = Reference(
             vehicle_id=vehicle_id,
             kind=kind,
             taken_at=dt_util.utcnow().replace(microsecond=0),
             camera_entity_id=settings.camera_entity_id,
-            frame=normalised(settings.frame),
+            frame=None,
             signature=signature,
+            signature_frame=normalised(settings.frame),
         )
-        await self.references.async_put(reference, crop)
+        await self.references.async_put(reference, whole)
         return reference
 
     async def async_reference_thumbnail(self, vehicle_id: str, kind: str) -> bytes | None:
+        """A reference picture's thumbnail, cropped with the frame drawn now: what is compared."""
         settings = self.settings()
-        camera = None if settings is None else settings.camera_entity_id
-        for reference in self.references.references(vehicle_id, camera):
+        frame = None if settings is None else settings.frame
+        for reference in self.usable(vehicle_id):
             if reference.kind == kind:
-                data = await self.references.async_read(reference)
-                return None if data is None else await self._hass.async_add_executor_job(thumbnail_jpeg, data)
+                try:
+                    return await self._hass.async_add_executor_job(
+                        _thumbnail_of, self.references.path(reference), None if reference.frame is not None else frame
+                    )
+                except OSError:
+                    return None
         return None
 
     # ------------------------------------------------------------------ the query
@@ -287,22 +350,35 @@ class CameraIdentification:
         labelled = labels_for([car for car in candidates if self.usable(car)])
         if not labelled:
             raise CameraUnavailable("no_reference")
+        await self.async_refresh_signatures(list(labelled.values()))
         snapshot = await self.async_snapshot(camera)
-        crop, now = await self._hass.async_add_executor_job(_crop_and_colour, snapshot.jpeg, settings.frame)
-        # Named before it is written, so a query cancelled meanwhile still removes it once the write is done.
-        temporary = self.references.folder / "tmp" / f"query_{secrets.token_hex(8)}.jpg"
+        # Every picture the model sees is cropped with the frame drawn now: the snapshot, and each whole reference
+        # picture (one an earlier release cropped already goes as it is). Named before they are written, so a query
+        # cancelled meanwhile still removes them once the write is done.
+        folder = self.references.folder / "tmp"
+        temporary = folder / f"query_{secrets.token_hex(8)}.jpg"
+        crops: list[tuple[Path, Path]] = []
+        lent: list[tuple[str, str, Path]] = []
+        for label, car in labelled.items():
+            for reference in self.usable(car):
+                path = self.references.path(reference)
+                if reference.frame is None and settings.frame is not None:
+                    target = folder / f"reference_{secrets.token_hex(8)}.jpg"
+                    crops.append((path, target))
+                    path = target
+                lent.append((label, reference.kind, path))
+        written = [temporary, *(target for _, target in crops)]
         tokens: list[str] = []
-        write = self._hass.async_add_executor_job(_write_temporary, temporary, crop)
+        write = self._hass.async_add_executor_job(_prepare, snapshot.jpeg, settings.frame, temporary, crops)
         try:
-            await asyncio.shield(write)
+            now = await asyncio.shield(write)
             attachments = []
             pictures: list[tuple[str, str]] = []
-            for label, car in labelled.items():
-                for reference in self.usable(car):
-                    media_id, token = lend(self._hass, self.references.path(reference))
-                    tokens.append(token)
-                    attachments.append({"media_content_id": media_id, "media_content_type": "image/jpeg"})
-                    pictures.append((label, reference.kind))
+            for label, kind, path in lent:
+                media_id, token = lend(self._hass, path)
+                tokens.append(token)
+                attachments.append({"media_content_id": media_id, "media_content_type": "image/jpeg"})
+                pictures.append((label, kind))
             media_id, token = lend(self._hass, temporary)
             tokens.append(token)
             attachments.append({"media_content_id": media_id, "media_content_type": "image/jpeg"})
@@ -321,6 +397,6 @@ class CameraIdentification:
             for token in tokens:
                 take_back(self._hass, token)
             # Removed once the write is done, from its own callback: no further cancel can skip it.
-            write.add_done_callback(lambda _done: self._hass.async_add_executor_job(temporary.unlink, True))
+            write.add_done_callback(lambda _done: self._hass.async_add_executor_job(_remove, written))
         vehicle_id, confidence = parse_answer((response or {}).get("data"), labelled)
         return CameraAnswer(vehicle_id, confidence, now)

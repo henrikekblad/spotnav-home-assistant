@@ -4,9 +4,10 @@ The image functions are blocking and run in an executor (`hass.async_add_executo
 
 **Reference pictures** are kept per charger in Home Assistant's private storage, beside its `.storage` records:
 the files in `.storage/spotnav_camera/<charger id>/` (never `www/`, never a media folder), the list in the
-store `spotnav.camera_references.<charger id>`. Each is the camera's picture cropped with the frame as it was
-when it was taken, scaled to at most `MAX_SIDE` pixels, with the camera it came from, the frame, when it was
-taken and its colour signature (`colour_signature`). A car has at most one picture of each kind (`day`,
+store `spotnav.camera_references.<charger id>`. Each is the camera's whole picture, scaled to at most `WHOLE_SIDE`
+pixels, with the camera it came from, when it was taken and its colour signature (`reference_signature`) as
+cropped with the frame drawn now; it is cropped with the frame drawn at the time it is compared, so drawing the
+frame again never makes a picture useless. A car has at most one picture of each kind (`day`,
 `night`); a new one replaces the old. They are only ever read by SpotNav, sent only to the chosen AI Task
 entity, and removed with the charger.
 """
@@ -37,6 +38,8 @@ _LOGGER = logging.getLogger(__name__)
 
 #: A cropped picture (sent to the AI Task, or kept as a reference) is scaled to at most this many pixels a side.
 MAX_SIDE: Final = 768
+#: A reference picture is kept whole, at most this many pixels on its long side, and cropped when it is compared.
+WHOLE_SIDE: Final = 1600
 #: A thumbnail for the settings is at most this many pixels a side.
 THUMBNAIL_SIDE: Final = 240
 JPEG_QUALITY: Final = 85
@@ -81,6 +84,13 @@ def as_jpeg(data: bytes) -> bytes:
         if raw.format == "JPEG":
             return data
     return _jpeg(_open(data))
+
+
+def scaled_jpeg(data: bytes, side: int = WHOLE_SIDE) -> bytes:
+    """The whole picture, at most `side` pixels on its long side, as a JPEG."""
+    image = _open(data)
+    image.thumbnail((side, side))
+    return _jpeg(image)
 
 
 def crop_jpeg(data: bytes, frame: Frame | None) -> bytes:
@@ -162,8 +172,13 @@ class Reference:
     kind: str
     taken_at: datetime
     camera_entity_id: str
+    #: What the stored picture was cropped with: `None` for the whole picture (every picture taken now), which is
+    #: cropped with the frame drawn at the time it is compared. A picture an earlier release cropped when it was
+    #: taken compares only while that frame stands.
     frame: Frame | None
     signature: Signature
+    #: The frame `signature` was taken with (the colour of the picture cropped with it).
+    signature_frame: Frame | None = None
 
     @property
     def file_name(self) -> str:
@@ -177,17 +192,12 @@ class Reference:
             "camera_entity_id": self.camera_entity_id,
             "frame": None if self.frame is None else self.frame.as_dict(),
             "signature": None if self.signature is None else list(self.signature),
+            "signature_frame": None if self.signature_frame is None else self.signature_frame.as_dict(),
         }
 
-    def as_wire(self, *, stale: bool = False) -> dict[str, Any]:
-        """What a client sees: the kind, when it was taken, whether it has colour, and whether it was cropped with
-        another frame than the one drawn now (`stale`: not used until it is taken again). Never the picture."""
-        return {
-            "kind": self.kind,
-            "taken_at": self.taken_at.isoformat(),
-            "colour": self.signature is not None,
-            "stale": stale,
-        }
+    def as_wire(self) -> dict[str, Any]:
+        """What a client sees: the kind, when it was taken and whether it has colour. Never the picture."""
+        return {"kind": self.kind, "taken_at": self.taken_at.isoformat(), "colour": self.signature is not None}
 
     @classmethod
     def from_stored(cls, raw: Any) -> Reference | None:
@@ -201,13 +211,17 @@ class Reference:
                 or not isinstance(raw["camera_entity_id"], str)
             ):
                 return None
+            frame = normalised(None if raw["frame"] is None else Frame.from_wire(raw["frame"]))
+            # An earlier release took the signature with the picture's own frame.
+            signature_frame = raw.get("signature_frame", raw["frame"])
             return cls(
                 vehicle_id=raw["vehicle_id"],
                 kind=raw["kind"],
                 taken_at=taken_at,
                 camera_entity_id=raw["camera_entity_id"],
-                frame=normalised(None if raw["frame"] is None else Frame.from_wire(raw["frame"])),
+                frame=frame,
                 signature=None if signature is None else (float(signature[0]), float(signature[1]), float(signature[2])),
+                signature_frame=normalised(None if signature_frame is None else Frame.from_wire(signature_frame)),
             )
         except (KeyError, TypeError, ValueError, IndexError):
             return None
@@ -287,6 +301,11 @@ class ReferenceStore:
 
     async def async_read(self, reference: Reference) -> bytes | None:
         return await self._hass.async_add_executor_job(_read, self.path(reference))
+
+    async def async_update(self, reference: Reference) -> None:
+        """Keep a reference's new facts (its signature), the picture as it is."""
+        self._references[(reference.vehicle_id, reference.kind)] = reference
+        await self._async_save()
 
     async def async_put(self, reference: Reference, picture: bytes) -> None:
         """Keep `picture` as the car's reference of its kind, replacing the one before."""

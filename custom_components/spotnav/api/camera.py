@@ -12,7 +12,8 @@ Every command is an administrator's (WebSocket) or the paired app's (webhook, bo
   `references`, that car's reference pictures after it (`[{kind, taken_at, colour}]`).
 * `spotnav/delete_reference_picture` / `delete_reference_picture`: `{vehicle_id, kind: "day" | "night" | null}`
   (`null`: every one of that car's) -> `references`.
-* `spotnav/reference_picture` / `reference_picture`: `{vehicle_id, kind}` -> `picture`, a thumbnail.
+* `spotnav/reference_picture` / `reference_picture`: `{vehicle_id, kind}` -> `picture`, a thumbnail of the picture
+  cropped with the frame drawn now (what is compared).
 
 Refusals: `spotnav_no_camera` (no camera is chosen, or it is not there), `spotnav_no_picture` (the camera gave
 none), `spotnav_invalid_value` (not one of this charger's cars, a kind or frame that is not one, no such
@@ -142,6 +143,8 @@ async def async_save_camera_frame(hass: HomeAssistant, entry_id: str, payload: d
     except SettingsReconcileError:
         # Written; only the plan could not be updated (the settings answer says the same).
         pass
+    # The reference pictures are cropped with the new frame from now on: their colour is taken with it.
+    await camera.async_frame_changed()
     settings = camera.settings()
     if settings is None:
         raise CameraRefusal(ERROR_NO_CAMERA)
