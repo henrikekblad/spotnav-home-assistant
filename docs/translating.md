@@ -47,8 +47,10 @@ built per language in `weekdayPlural` (`frontend/src/format.ts`), so a new langu
 
 ## Glossaries
 
-The words each language uses for SpotNav's recurring terms. Use them in all three folders, so a new
-text reads like the old ones. Product names (SpotNav, Home Assistant, Easee, OCPP, Zaptec, Tibber,
+The words each language uses for SpotNav's recurring terms. Use them in all three folders and in the
+Android app (its `strings.xml`, its status line tables and its store texts), so a new text reads like
+the old ones and the card and the app call the same thing by the same name. This table is the single
+reference for both. Product names (SpotNav, Home Assistant, Easee, OCPP, Zaptec, Tibber,
 Octopus Energy), entity ids and the price areas' names, which come from the relay, are never
 translated.
 
@@ -60,30 +62,47 @@ translated.
 | departure / departure time | Abfahrt / Abfahrtszeit | vertrek / vertrektijd | départ / heure de départ | salida / hora de salida |
 | deadline | Abfahrtszeit | deadline | échéance | hora límite |
 | charge limit (the car's) | Ladegrenze | laadlimiet | limite de charge | límite de carga |
+| minimum charge level | Mindestladestand | minimaal laadniveau | niveau de charge minimum | nivel de carga mínimo |
 | charge target | Ladeziel | laaddoel | objectif de charge | objetivo de carga |
 | state of charge, charge level | Ladestand | laadniveau | niveau de charge | nivel de carga |
 | plan / charging plan | Plan / Ladeplan | plan / laadplan | plan / plan de charge | plan / plan de carga |
+| charging (the act), a planned charge | Laden, Ladevorgang | laden | charge | carga |
 | charging period | Ladezeitraum | laadperiode | période de charge | periodo de carga |
 | solar surplus | Solarüberschuss | zonne-overschot | surplus solaire | excedente solar |
 | grid fee (grid transfer) | Netzentgelt | nettarief | frais de réseau | peaje de acceso |
-| energy tax | Stromsteuer | energiebelasting | taxe sur l'énergie | impuesto sobre la electricidad |
+| energy tax | Stromsteuer | energiebelasting | taxe sur l'électricité | impuesto sobre la electricidad |
 | VAT | MwSt. | btw | TVA | IVA |
 | spot price | Spotpreis | dynamische prijs | prix spot | precio spot |
 | price area | Preiszone | prijsgebied | zone de prix | zona de precio |
 | load balancing | Lastmanagement | load balancing | équilibrage de charge | equilibrado de carga |
-| home battery | Hausbatterie | thuisbatterij | batterie domestique | batería doméstica |
+| home battery (short: battery) | Hausbatterie (Batterie) | thuisbatterij (batterij) | batterie domestique (batterie) | batería doméstica (batería) |
 | main fuse | Hauptsicherung | hoofdzekering | fusible principal | fusible general |
 | safety margin | Sicherheitsreserve | veiligheidsmarge | marge de sécurité | margen de seguridad |
 | grid meter | Netzzähler | netmeter | compteur réseau | contador de red |
-| energy meter | Energiezähler | energiemeter | compteur d'énergie | contador de energía |
+| energy meter, energy register | Energiezähler | energiemeter | compteur d'énergie | contador de energía |
 | import / export (grid) | Bezug / Einspeisung | afname / teruglevering | import / export | importación / exportación |
 | vehicle / car | Fahrzeug / Auto | auto | véhicule / voiture | vehículo / coche |
 | a charge (history) | Ladevorgang | laadsessie | recharge | carga |
 | plugged in / unplugged | angeschlossen / abgesteckt | aangesloten / losgekoppeld | branchée / débranchée | enchufado / desenchufado |
+| Which car is plugged in? | Welches Auto ist angeschlossen? | Welke auto is aangesloten? | Quelle voiture est branchée ? | ¿Qué coche está enchufado? |
+| Change car | Auto wechseln | Andere auto | Changer de voiture | Cambiar coche |
+| the car's position (identification) | Position | positie | position | posición (source: ubicación) |
+| reference picture | Referenzbild | referentiefoto | image de référence | imagen de referencia |
+| parking spot / Crop parking spot | Stellplatz / Stellplatz zuschneiden | parkeerplaats / Parkeerplaats bijsnijden | place de stationnement / Recadrer la place | plaza de aparcamiento / Recortar la plaza |
 | notification | Benachrichtigung | melding | notification | notificación |
 | start / stop / pause / resume | starten / stoppen / pausieren / fortsetzen | starten / stoppen / pauzeren / hervatten | démarrer / arrêter / mettre en pause / reprendre | iniciar / detener / pausar / reanudar |
 | automatic price planning (Auto) | automatische Preisplanung | automatische prijsplanning | planification automatique selon le prix | planificación automática por precio |
 | Cheapest / Solar / Hybrid | Günstigste / Solar / Hybrid | Goedkoopst / Zon / Hybride | Moins cher / Solaire / Hybride | Más barata / Solar / Híbrida |
+| strategy | Strategie | strategie | stratégie | estrategia |
+| schedule (paused / active) | Zeitplan | schema | programmation | programación |
+
+The site is never the car's position: German and Dutch call the position Position / positie, so it
+does not read as Standort / locatie. French uses "charge" for charging and the plan (charge planifiée,
+plan de charge) and "recharge" only for a recorded charge in the history.
+
+The app words Home Assistant's status codes with tables in `HaStatusWording.kt` that are copies of
+this card's `status.*`, `issue.*`, `control.paused*` and `strategy.status.*` texts. When one of those
+texts changes here, copy it into the app's table for the same language.
 
 German uses "du", as Home Assistant's German does, Dutch "je", Spanish "tú" and French "vous". German
 never shortens automatic price planning to "Auto", which means car.
