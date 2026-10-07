@@ -127,14 +127,18 @@
       "amps": 10,
       "cost": {
         "currency": "SEK",
-        "value": 34.6026423875
+        "value": 32.94341620625
       },
       "distance_mil": 10.0625,
-      "identity": "3495a3d49f298b4871b3392a2203240f",
+      "identity": "2ecc7126e14bb80486a5a41add3b2bbd",
       "periods": [
         {
-          "end": "2026-09-22T15:30:00+00:00",
-          "start": "2026-09-22T06:45:00+00:00"
+          "end": "2026-09-22T14:30:00+00:00",
+          "start": "2026-09-22T08:30:00+00:00"
+        },
+        {
+          "end": "2026-09-23T03:15:00+00:00",
+          "start": "2026-09-23T00:30:00+00:00"
         }
       ],
       "phases": 1,
@@ -538,7 +542,7 @@
         "effective_price": 225.56765,
         "end": "2026-09-22T09:00:00+02:00",
         "installed_planned": false,
-        "proposal_planned": true,
+        "proposal_planned": false,
         "raw_price": 225.56765,
         "start": "2026-09-22T08:45:00+02:00"
       },
@@ -548,7 +552,7 @@
         "effective_price": 263.417825,
         "end": "2026-09-22T09:15:00+02:00",
         "installed_planned": false,
-        "proposal_planned": true,
+        "proposal_planned": false,
         "raw_price": 263.417825,
         "start": "2026-09-22T09:00:00+02:00"
       },
@@ -558,7 +562,7 @@
         "effective_price": 237.33875000000003,
         "end": "2026-09-22T09:30:00+02:00",
         "installed_planned": false,
-        "proposal_planned": true,
+        "proposal_planned": false,
         "raw_price": 237.33875000000003,
         "start": "2026-09-22T09:15:00+02:00"
       },
@@ -568,7 +572,7 @@
         "effective_price": 210.7072,
         "end": "2026-09-22T09:45:00+02:00",
         "installed_planned": false,
-        "proposal_planned": true,
+        "proposal_planned": false,
         "raw_price": 210.7072,
         "start": "2026-09-22T09:30:00+02:00"
       },
@@ -578,7 +582,7 @@
         "effective_price": 187.36795,
         "end": "2026-09-22T10:00:00+02:00",
         "installed_planned": false,
-        "proposal_planned": true,
+        "proposal_planned": false,
         "raw_price": 187.36795,
         "start": "2026-09-22T09:45:00+02:00"
       },
@@ -588,7 +592,7 @@
         "effective_price": 203.8069,
         "end": "2026-09-22T10:15:00+02:00",
         "installed_planned": false,
-        "proposal_planned": true,
+        "proposal_planned": false,
         "raw_price": 203.8069,
         "start": "2026-09-22T10:00:00+02:00"
       },
@@ -598,7 +602,7 @@
         "effective_price": 191.6299,
         "end": "2026-09-22T10:30:00+02:00",
         "installed_planned": false,
-        "proposal_planned": true,
+        "proposal_planned": false,
         "raw_price": 191.6299,
         "start": "2026-09-22T10:15:00+02:00"
       },
@@ -848,7 +852,7 @@
         "effective_price": 193.332425,
         "end": "2026-09-22T16:45:00+02:00",
         "installed_planned": false,
-        "proposal_planned": true,
+        "proposal_planned": false,
         "raw_price": 193.332425,
         "start": "2026-09-22T16:30:00+02:00"
       },
@@ -858,7 +862,7 @@
         "effective_price": 232.52432500000003,
         "end": "2026-09-22T17:00:00+02:00",
         "installed_planned": false,
-        "proposal_planned": true,
+        "proposal_planned": false,
         "raw_price": 232.52432500000003,
         "start": "2026-09-22T16:45:00+02:00"
       },
@@ -868,7 +872,7 @@
         "effective_price": 186.54487500000002,
         "end": "2026-09-22T17:15:00+02:00",
         "installed_planned": false,
-        "proposal_planned": true,
+        "proposal_planned": false,
         "raw_price": 186.54487500000002,
         "start": "2026-09-22T17:00:00+02:00"
       },
@@ -878,7 +882,7 @@
         "effective_price": 237.51915000000002,
         "end": "2026-09-22T17:30:00+02:00",
         "installed_planned": false,
-        "proposal_planned": true,
+        "proposal_planned": false,
         "raw_price": 237.51915000000002,
         "start": "2026-09-22T17:15:00+02:00"
       },
@@ -1248,7 +1252,7 @@
         "effective_price": 189.37490000000003,
         "end": "2026-09-23T02:45:00+02:00",
         "installed_planned": false,
-        "proposal_planned": false,
+        "proposal_planned": true,
         "raw_price": 189.37490000000003,
         "start": "2026-09-23T02:30:00+02:00"
       },
@@ -1258,7 +1262,7 @@
         "effective_price": 188.39397499999998,
         "end": "2026-09-23T03:00:00+02:00",
         "installed_planned": false,
-        "proposal_planned": false,
+        "proposal_planned": true,
         "raw_price": 188.39397499999998,
         "start": "2026-09-23T02:45:00+02:00"
       },
@@ -1268,7 +1272,7 @@
         "effective_price": 190.67152500000003,
         "end": "2026-09-23T03:15:00+02:00",
         "installed_planned": false,
-        "proposal_planned": false,
+        "proposal_planned": true,
         "raw_price": 190.67152500000003,
         "start": "2026-09-23T03:00:00+02:00"
       },
@@ -1278,7 +1282,7 @@
         "effective_price": 187.77385,
         "end": "2026-09-23T03:30:00+02:00",
         "installed_planned": false,
-        "proposal_planned": false,
+        "proposal_planned": true,
         "raw_price": 187.77385,
         "start": "2026-09-23T03:15:00+02:00"
       },
@@ -1288,7 +1292,7 @@
         "effective_price": 187.26647499999999,
         "end": "2026-09-23T03:45:00+02:00",
         "installed_planned": false,
-        "proposal_planned": false,
+        "proposal_planned": true,
         "raw_price": 187.26647499999999,
         "start": "2026-09-23T03:30:00+02:00"
       },
@@ -1298,7 +1302,7 @@
         "effective_price": 188.3827,
         "end": "2026-09-23T04:00:00+02:00",
         "installed_planned": false,
-        "proposal_planned": false,
+        "proposal_planned": true,
         "raw_price": 188.3827,
         "start": "2026-09-23T03:45:00+02:00"
       },
@@ -1308,7 +1312,7 @@
         "effective_price": 188.867525,
         "end": "2026-09-23T04:15:00+02:00",
         "installed_planned": false,
-        "proposal_planned": false,
+        "proposal_planned": true,
         "raw_price": 188.867525,
         "start": "2026-09-23T04:00:00+02:00"
       },
@@ -1318,7 +1322,7 @@
         "effective_price": 188.529275,
         "end": "2026-09-23T04:30:00+02:00",
         "installed_planned": false,
-        "proposal_planned": false,
+        "proposal_planned": true,
         "raw_price": 188.529275,
         "start": "2026-09-23T04:15:00+02:00"
       },
@@ -1328,7 +1332,7 @@
         "effective_price": 191.2691,
         "end": "2026-09-23T04:45:00+02:00",
         "installed_planned": false,
-        "proposal_planned": false,
+        "proposal_planned": true,
         "raw_price": 191.2691,
         "start": "2026-09-23T04:30:00+02:00"
       },
@@ -1338,7 +1342,7 @@
         "effective_price": 197.075725,
         "end": "2026-09-23T05:00:00+02:00",
         "installed_planned": false,
-        "proposal_planned": false,
+        "proposal_planned": true,
         "raw_price": 197.075725,
         "start": "2026-09-23T04:45:00+02:00"
       },
@@ -1348,7 +1352,7 @@
         "effective_price": 183.59082500000002,
         "end": "2026-09-23T05:15:00+02:00",
         "installed_planned": false,
-        "proposal_planned": false,
+        "proposal_planned": true,
         "raw_price": 183.59082500000002,
         "start": "2026-09-23T05:00:00+02:00"
       },
@@ -2181,7 +2185,7 @@
     "fiscal_included": [],
     "identify_camera": null,
     "identify_mode": "automatic",
-    "max_periods": 1,
+    "max_periods": null,
     "notifications": {
       "available": [],
       "events": [

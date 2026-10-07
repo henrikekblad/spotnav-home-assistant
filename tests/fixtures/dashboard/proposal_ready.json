@@ -26,7 +26,7 @@
     "amps": 10,
     "requested_kwh": 20.0,
     "fill_to_limit": false,
-    "max_periods": 1,
+    "max_periods": null,
     "departure_enabled": false,
     "departure_time": "08:00",
     "departure_date": null,
