@@ -360,7 +360,7 @@ export async function chooseVehicleIdentification(
   });
 }
 
-/** `spotnav/set_charge_limit`'s own version. */
+/** `spotnav/write_charge_limit`'s own version. */
 export const CHARGE_LIMIT_API_VERSION = 1;
 
 /** Write a car's own charge limit (administrators only); the answer is decoded by the caller. */
@@ -370,7 +370,7 @@ export async function setChargeLimit(
   request: { vehicleId: string; percent: number },
 ): Promise<unknown> {
   return await call<unknown>(hass, {
-    type: "spotnav/set_charge_limit",
+    type: "spotnav/write_charge_limit",
     api_version: CHARGE_LIMIT_API_VERSION,
     charger_id: chargerId,
     vehicle_id: request.vehicleId,

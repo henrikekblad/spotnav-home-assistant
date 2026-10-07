@@ -43,7 +43,7 @@ export class FakeHass implements HomeAssistantLike {
 
   /** The same queue and the same promise, recording which object asked for it. */
   callWSFor<T>(from: unknown, message: Record<string, unknown>): Promise<T> {
-    if (message["type"] === "spotnav/get_entity_config" || message["type"] === "spotnav/update_entity_config" || message["type"] === "spotnav/choose_vehicle_soc" || message["type"] === "spotnav/update_vehicle" || message["type"] === "spotnav/set_charge_limit") {
+    if (message["type"] === "spotnav/get_entity_config" || message["type"] === "spotnav/update_entity_config" || message["type"] === "spotnav/choose_vehicle_soc" || message["type"] === "spotnav/update_vehicle" || message["type"] === "spotnav/write_charge_limit") {
       this.entityMessages.push(message);
       return (this.entityHandler === null ? new Promise<unknown>(() => undefined) : this.entityHandler(message)) as Promise<T>;
     }

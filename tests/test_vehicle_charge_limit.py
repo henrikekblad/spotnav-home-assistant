@@ -546,12 +546,12 @@ async def test_unconfirming_leaves_the_choice_unresolved_again(
     }
 
 
-# ------------------------------------------------- the card's command: `spotnav/set_charge_limit`
+# ------------------------------------------------- the card's command: `spotnav/write_charge_limit`
 
 
 def _ws_set(charger_id: object, vehicle_id: object, percent: object, **extra: Any) -> dict[str, Any]:
     return {
-        "type": "spotnav/set_charge_limit",
+        "type": "spotnav/write_charge_limit",
         "api_version": 1,
         "charger_id": charger_id,
         "vehicle_id": vehicle_id,

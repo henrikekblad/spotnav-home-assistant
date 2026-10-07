@@ -1,4 +1,4 @@
-"""`spotnav/set_charge_limit`: the card's twin of the webhook action `set_charge_limit`.
+"""`spotnav/write_charge_limit`: the card's twin of the webhook action `set_charge_limit`.
 
 `{api_version: 1, charger_id, vehicle_id, percent}` writes the car's own charge-limit entity through
 `vehicles/vehicle_charge_limit.async_set_charge_limit`, the app's write path: the same resolved entity,
@@ -41,7 +41,7 @@ def _answer(error: str | None = None, retry_after_s: int | None = None) -> dict[
 
 @websocket_api.websocket_command(
     {
-        vol.Required("type"): "spotnav/set_charge_limit",
+        vol.Required("type"): "spotnav/write_charge_limit",
         vol.Optional("api_version"): object,
         vol.Optional("charger_id"): object,
         vol.Optional("vehicle_id"): object,

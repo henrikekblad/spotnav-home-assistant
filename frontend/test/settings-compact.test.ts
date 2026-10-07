@@ -382,11 +382,11 @@ describe("the car's charge limit", () => {
     expect(form.querySelector("[role='alert']")?.textContent).toBe("Between 1 and 100.");
     field.value = "80";
     hass.entityHandler = async (message) =>
-      message["type"] === "spotnav/set_charge_limit"
+      message["type"] === "spotnav/write_charge_limit"
         ? { api_version: 1, ok: false, error: "spotnav_too_soon", retry_after_s: 42 }
         : read("entity_config", "v1", "get_direct.json");
     await submit(element);
-    expect(hass.entityMessages.find((message) => message["type"] === "spotnav/set_charge_limit")).toMatchObject({
+    expect(hass.entityMessages.find((message) => message["type"] === "spotnav/write_charge_limit")).toMatchObject({
       api_version: 1,
       charger_id: "entry_a",
       vehicle_id: "vehicle_ev6",
@@ -394,13 +394,13 @@ describe("the car's charge limit", () => {
     });
     expect(form.querySelector("[role='alert']")?.textContent).toBe(translate("en", "settings.vehicle.limitTooSoon"));
     hass.entityHandler = async (message) =>
-      message["type"] === "spotnav/set_charge_limit"
+      message["type"] === "spotnav/write_charge_limit"
         ? { api_version: 1, ok: false, error: "spotnav_invalid_value", retry_after_s: null }
         : read("entity_config", "v1", "get_direct.json");
     await submit(element);
     expect(form.querySelector("[role='alert']")?.textContent).toBe(translate("en", "settings.vehicle.limitFailed"));
     hass.entityHandler = async (message) =>
-      message["type"] === "spotnav/set_charge_limit"
+      message["type"] === "spotnav/write_charge_limit"
         ? { api_version: 1, ok: true, error: null, retry_after_s: null }
         : read("entity_config", "v1", "get_direct.json");
     const reads = hass.messages.filter((message) => message["type"] === "spotnav/get_dashboard").length;
