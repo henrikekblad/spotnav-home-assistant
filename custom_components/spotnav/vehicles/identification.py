@@ -35,6 +35,13 @@ changing the vehicle in the settings meanwhile. Once answered or decided the que
 phone; unplugging for longer than `UNPLUG_DEBOUNCE_S` clears it (a shorter unplug is the same plug-in, so what
 was decided or answered holds). Nobody answering, or the question dismissed, keeps the current car.
 
+**The history** (`diagnostics()["history"]`): the last `HISTORY_SIZE` plug-ins, kept in memory and stored with
+what was decided, for field reports: when, the candidates, each car's evidence, the camera (its answer, how sure,
+whether it was used, how long it took, its error, the AI Task entity and its model, and why it did or did not decide
+alone), a plug-in where nothing was identified and why (`skipped`), the question (when, to how many phones), the
+answer, the car and how it was decided (`assumed` says why the current car was kept: `swiped`, `unanswered`,
+`unplugged`), and later corrections. Ids and states only: no name, no picture, a position only home or away.
+
 A switch is a normal settings write (`AutoSettings.with_target_vehicle`: the car's own target),
 so the plan recalculates as after any other write. Nothing here starts, stops or owns a charge.
 `method` is how the car was decided, for the session record (`METHODS`).
@@ -43,6 +50,7 @@ so the plan recalculates as after any other write. Nothing here starts, stops or
 from __future__ import annotations
 
 import asyncio
+import copy
 import hmac
 import logging
 import secrets
@@ -62,7 +70,7 @@ from homeassistant.util import dt as dt_util
 
 from ..const import DOMAIN
 from ..planning.auto_settings import AutoSettings, AutoSettingsError, AutoSettingsStore, IDENTIFY_ASK, IDENTIFY_OFF
-from .camera_rule import camera_verdict, may_query, QUERY_TIMEOUT_S, Signature
+from .camera_rule import camera_reason, camera_verdict, may_query, QUERY_TIMEOUT_S, Signature
 from .identification_sources import identification_sources, location_reading, plug_reading
 from . import vehicle_properties
 from .vehicle_discovery import resolve_target_vehicle
@@ -126,6 +134,24 @@ EVENT_CLEARED: Final = "mobile_app_notification_cleared"
 #: Why a person's choice cannot be taken (`answer_refusal`).
 REFUSED_NOT_PLUGGED_IN: Final = "not_plugged_in"
 REFUSED_NOT_HERE: Final = "not_here"
+#: How many plug-ins the history keeps.
+HISTORY_SIZE: Final = 10
+#: What started a history entry: a plug-in, a plug-in seen at a restart, another car after a short unplug, or a
+#: person's correction where nothing was being identified.
+TRIGGER_PLUG_IN: Final = "plug_in"
+TRIGGER_RESTART: Final = "restart"
+TRIGGER_REPLUG: Final = "replug"
+TRIGGER_CORRECTION: Final = "correction"
+#: Why a plug-in identified nothing (`skipped`).
+SKIPPED_OFF: Final = "off"
+SKIPPED_ONLY_CANDIDATE: Final = "only_candidate"
+SKIPPED_RECENT_CHOICE: Final = "recent_choice"
+#: Why the current car was kept with nothing deciding (`assumed`).
+ASSUMED_SWIPED: Final = "swiped"
+ASSUMED_UNANSWERED: Final = "unanswered"
+ASSUMED_UNPLUGGED: Final = "unplugged"
+#: A camera answer that came after a person answered or the cars decided (`camera_reason`).
+CAMERA_LATE: Final = "late"
 _STORE_VERSION: Final = 1
 _STORE_KEY_PREFIX: Final = f"{DOMAIN}.identification"
 
@@ -296,6 +322,8 @@ class _Session:
     camera_task: asyncio.Task[None] | None = None
     camera_pick: str | None = None
     camera_record: dict[str, Any] | None = None
+    #: This plug-in's entry in the history (`VehicleIdentifier._history`).
+    entry: dict[str, Any] | None = None
 
     def all_evidence(self) -> list[dict[str, Any]]:
         return [*self.evidence, *([] if self.camera_record is None else [{"camera": self.camera_record}])]
@@ -341,11 +369,19 @@ class VehicleIdentifier:
         self._memory: Store[dict[str, Any]] = Store(hass, _STORE_VERSION, f"{_STORE_KEY_PREFIX}.{entry_id}")
         self._remembered: dict[str, Any] | None = None
         self._memory_lock = asyncio.Lock()
+        # What is stored: the plug-in's decision (`None`: nothing to keep) and the history of the last plug-ins.
+        self._kept: str | None = None
+        self._history: list[dict[str, Any]] = []
+        # The history entry of the plug-in in progress (also one where nothing was identified), `None` between.
+        self._entry: dict[str, Any] | None = None
 
     async def async_load(self) -> None:
-        """Read what was decided at the plug-in in progress before a restart, if anything."""
+        """Read what was decided at the plug-in in progress before a restart, if anything, and the history."""
         raw = await self._memory.async_load()
         self._remembered = raw if isinstance(raw, dict) and raw.get("method") in METHODS else None
+        self._kept = None if self._remembered is None else self._remembered["method"]
+        history = raw.get("history") if isinstance(raw, dict) else None
+        self._history = [item for item in history if isinstance(item, dict)][-HISTORY_SIZE:] if isinstance(history, list) else []
 
     @staticmethod
     async def async_remove_stored(hass: HomeAssistant, entry_id: str) -> None:
@@ -354,17 +390,67 @@ class VehicleIdentifier:
 
     def _remember(self, method: str | None) -> None:
         """Keep (or, with `None`, forget) what was decided at this plug-in, in the order it was decided."""
-        self._hass.async_create_task(self._async_remember(method), eager_start=True)
+        self._kept = method
+        self._save()
 
-    async def _async_remember(self, method: str | None) -> None:
+    def _save(self) -> None:
+        """Store the decision and the history as they are now; the writes land in the order they were made."""
+        data = {"method": self._kept, "history": copy.deepcopy(self._history)}
+        self._hass.async_create_task(self._async_save(data), eager_start=True)
+
+    async def _async_save(self, data: dict[str, Any]) -> None:
         async with self._memory_lock:
             try:
-                if method is None:
-                    await self._memory.async_remove()
-                else:
-                    await self._memory.async_save({"method": method})
+                await self._memory.async_save(data)
             except Exception as err:  # noqa: BLE001 - losing it costs one question after a restart
                 _LOGGER.debug("SpotNav could not keep the identification decision: %s", type(err).__name__)
+
+    # ------------------------------------------------------------------ the history
+
+    def _open_entry(
+        self, now: datetime, trigger: str, mode: str, cars: Sequence[str], *, skipped: dict[str, Any] | None = None
+    ) -> dict[str, Any]:
+        """Start the history entry of a plug-in (the oldest beyond `HISTORY_SIZE` goes)."""
+        entry: dict[str, Any] = {
+            "plugged_in_at": now.isoformat(),
+            "trigger": trigger,
+            "mode": mode,
+            "candidates": list(cars),
+            "evidence": [],
+            "camera": None,
+            "skipped": skipped,
+            "question": None,
+            "answered_at": None,
+            "vehicle_id": None,
+            "method": None,
+            "decided_at": None,
+            "assumed": None,
+            "corrections": [],
+        }
+        if skipped is not None:
+            entry["vehicle_id"] = self._current_vehicle()
+            entry["method"] = None if skipped["reason"] == SKIPPED_OFF else self._method
+            entry["decided_at"] = now.isoformat()
+        self._history.append(entry)
+        del self._history[:-HISTORY_SIZE]
+        self._entry = entry
+        self._save()
+        return entry
+
+    def _record_decision(self, entry: dict[str, Any] | None, car: str | None, method: str, *, assumed: str | None = None) -> None:
+        """The car a plug-in was decided as, or, once it was, a later correction."""
+        if entry is None:
+            return
+        now = dt_util.utcnow().isoformat()
+        if entry["decided_at"] is not None:
+            if assumed is None:
+                entry["corrections"].append({"at": now, "vehicle_id": car, "method": method})
+                self._save()
+            return
+        entry.update(vehicle_id=car, method=method, decided_at=now, assumed=assumed)
+        if method in (METHOD_ANSWERED, METHOD_MANUAL):
+            entry["answered_at"] = now
+        self._save()
 
     # ------------------------------------------------------------------ lifecycle
 
@@ -389,7 +475,7 @@ class VehicleIdentifier:
                 self._method = remembered["method"]
             else:
                 # Plugged in across a restart with nothing decided: identify it as a plug-in seen late.
-                self._plugged_in(dt_util.utcnow())
+                self._plugged_in(dt_util.utcnow(), trigger=TRIGGER_RESTART)
         elif remembered is not None:
             self._remember(None)
 
@@ -476,6 +562,8 @@ class VehicleIdentifier:
             "evidence": [] if session is None else session.all_evidence(),
             # The camera, its frame and which cars have reference pictures (never a picture).
             "camera": None if self._camera is None else self._camera.diagnostics(),
+            # The last plug-ins, oldest first (see the module docstring).
+            "history": copy.deepcopy(self._history),
         }
 
     # ------------------------------------------------------------------ observing
@@ -541,7 +629,7 @@ class VehicleIdentifier:
         return [(c.id, c.name) for c in choices]
 
     @callback
-    def _plugged_in(self, now: datetime) -> None:
+    def _plugged_in(self, now: datetime, *, trigger: str = TRIGGER_PLUG_IN) -> None:
         session = self._session
         if self._unplug_cancel is not None and session is not None:
             # Back within the debounce: the same plug-in unless what the cars report since the unplug says
@@ -558,26 +646,33 @@ class VehicleIdentifier:
                 # The ask deadline passed while the charger was empty.
                 self._ask()
             return
-        self._begin(now)
+        self._begin(now, trigger=trigger)
 
-    def _begin(self, now: datetime, *, again: bool = False) -> None:
+    def _begin(self, now: datetime, *, again: bool = False, trigger: str = TRIGGER_PLUG_IN) -> None:
         """Identify the car plugged in at `now`. `again`: another car than the one decided is here after a short
         unplug, so what was decided or answered before no longer applies."""
         self._close()
         self._remember(None)
         settings = self._settings()
         cars = self._candidates(settings)
+        ids = tuple(car for car, _ in cars)
+        if again:
+            trigger = TRIGGER_REPLUG
+        skipped: str | None = None
         if settings.identify_mode == IDENTIFY_OFF:
             self._method = METHOD_MANUAL
-            return
-        if len(cars) < 2:
+            skipped = SKIPPED_OFF
+        elif len(cars) < 2:
             self._method = METHOD_ONLY_CANDIDATE
-            return
-        if not again and self._manual_at is not None and (now - self._manual_at).total_seconds() <= RECENT_CHOICE_S:
+            skipped = SKIPPED_ONLY_CANDIDATE
+        elif not again and self._manual_at is not None and (now - self._manual_at).total_seconds() <= RECENT_CHOICE_S:
             # Chosen just before the car arrived: that is the answer.
             self._method = METHOD_MANUAL
+            skipped = SKIPPED_RECENT_CHOICE
+        if skipped is not None:
+            chosen_at = None if skipped != SKIPPED_RECENT_CHOICE or self._manual_at is None else self._manual_at.isoformat()
+            self._open_entry(now, trigger, settings.identify_mode, ids, skipped={"reason": skipped, "chosen_at": chosen_at})
             return
-        ids = tuple(car for car, _ in cars)
         current = self._current_vehicle()
         session = _Session(
             t0=now, mode=settings.identify_mode, cars=ids, names=dict(cars),
@@ -585,6 +680,7 @@ class VehicleIdentifier:
         )
         self._session = session
         self._method = METHOD_ASSUMED
+        session.entry = self._open_entry(now, trigger, settings.identify_mode, ids)
         watched = [entity for car in ids for entity in self._sources(car) if entity is not None]
         if watched:
             session.unsubscribe.append(
@@ -610,6 +706,7 @@ class VehicleIdentifier:
     @callback
     def _unplugged(self) -> None:
         if self._session is None:
+            self._entry = None
             self._remember(None)
             return
         if self._unplug_cancel is not None:
@@ -626,6 +723,10 @@ class VehicleIdentifier:
         session = self._session
         if session is not None and session.state == STATE_ASKING and self._notifier is not None:
             self._notifier.clear_vehicle_question(self.tag, session.phones)
+        if session is not None:
+            # Unplugged with nothing decided: the current car was kept.
+            self._record_decision(session.entry, self._current_vehicle(), METHOD_ASSUMED, assumed=ASSUMED_UNPLUGGED)
+        self._entry = None
         self._close()
         self._remember(None)
 
@@ -714,6 +815,8 @@ class VehicleIdentifier:
             record.append(_evidence_record(candidate, evidence))
         # What a field report needs to see why a car was decided: each car's entities, what they said, and when.
         session.evidence = record
+        if session.entry is not None:
+            session.entry["evidence"] = record
         return found
 
     def _elsewhere(self, car: str) -> bool:
@@ -801,6 +904,22 @@ class VehicleIdentifier:
         camera = self._camera
         settings = camera.settings()
         entity_id = None if settings is None else settings.camera_entity_id
+        ai_task, model = camera.ai_task()
+        started = dt_util.utcnow()
+        # The history's camera entry: what a field report needs to see why the camera did or did not decide.
+        history: dict[str, Any] = {
+            "entity_id": entity_id,
+            "ai_task_entity_id": ai_task,
+            "model": model,
+            "answer": None,
+            "confidence": None,
+            "used": False,
+            "latency_s": None,
+            "error": None,
+            "camera_reason": None,
+            "colour_distance": None,
+            "attempts": session.camera_attempts,
+        }
         try:
             async with asyncio.timeout(QUERY_TIMEOUT_S):
                 answer = await camera.async_ask(candidates)
@@ -808,17 +927,27 @@ class VehicleIdentifier:
             _LOGGER.debug("SpotNav's camera query took too long; the question is asked as without one")
             session.camera_failed = False
             session.camera_record = {"entity_id": entity_id, "answer": None, "confidence": None, "used": False}
+            self._camera_history(session, history, started, "timeout")
             return
         except Exception as err:  # noqa: BLE001 - a failing camera or model is no evidence
             _LOGGER.debug("SpotNav's camera query failed: %s", type(err).__name__)
             session.camera_failed = True
             session.camera_record = {"entity_id": entity_id, "answer": None, "confidence": None, "used": False}
+            self._camera_history(session, history, started, _camera_error(err))
             if self._session is session:
                 # Once more, if it still may (`camera_rule.QUERY_ATTEMPTS`).
                 self._hass.loop.call_soon(self._evaluate)
             return
         session.camera_failed = False
+        self._camera_history(session, history, started, None)
         self._apply_camera(session, entity_id, answer.vehicle_id, answer.confidence, answer.now)
+
+    def _camera_history(self, session: _Session, history: dict[str, Any], started: datetime, error: str | None) -> None:
+        history["latency_s"] = round((dt_util.utcnow() - started).total_seconds(), 2)
+        history["error"] = error
+        if session.entry is not None:
+            session.entry["camera"] = history
+            self._save()
 
     @callback
     def _apply_camera(
@@ -827,15 +956,21 @@ class VehicleIdentifier:
         """The camera's answer, applied only while nothing has decided and no one has answered."""
         record = {"entity_id": entity_id, "answer": answer or "none", "confidence": confidence, "used": False}
         session.camera_record = record
+        history = None if session.entry is None else session.entry["camera"]
+        if history is not None:
+            history.update(answer=record["answer"], confidence=confidence, camera_reason=CAMERA_LATE)
         if self._session is not session or session.state != STATE_WAITING or not session.listening:
             return
         if self._connected is False:
             return
         evidence = self._evidence(session, dt_util.utcnow())
         remaining = [item.vehicle_id for item in evidence if item.negative is None]
-        verdict = camera_verdict(
-            answer, confidence, remaining, self._camera.reference_signatures(remaining), now
-        )
+        references = self._camera.reference_signatures(remaining)
+        verdict = camera_verdict(answer, confidence, remaining, references, now)
+        if history is not None:
+            reason, distance = camera_reason(answer, confidence, remaining, references, now)
+            history.update(camera_reason=reason, colour_distance=distance, used=verdict.prefers is not None)
+            self._save()
         if verdict.prefers is None:
             return
         record["used"] = True
@@ -868,6 +1003,7 @@ class VehicleIdentifier:
         if session is not None:
             session.state = STATE_DECIDED
             session.nonce = None
+            self._record_decision(session.entry, self._current_vehicle(), METHOD_ASSUMED, assumed=ASSUMED_UNANSWERED)
 
     @callback
     def _ask(self) -> None:
@@ -888,6 +1024,9 @@ class VehicleIdentifier:
                 ],
                 open_button=open_button,
             )
+        if session.entry is not None and session.entry["question"] is None:
+            session.entry["question"] = {"sent_at": dt_util.utcnow().isoformat(), "phones": len(session.phones)}
+            self._save()
 
     @callback
     def _settle(self, car: str, method: str, wording: str) -> asyncio.Task[None] | None:
@@ -903,6 +1042,7 @@ class VehicleIdentifier:
         session.listening = False
         session.nonce = None
         self._method = method
+        self._record_decision(session.entry, car, method)
         self._remember(method)
         person = method in (METHOD_ANSWERED, METHOD_MANUAL)
         switch = None
@@ -981,10 +1121,14 @@ class VehicleIdentifier:
                 retire_on = session.phones
             settings = self._settings()
             cars = self._candidates(settings)
+            entry = self._entry
             self._close()
+            now = dt_util.utcnow()
+            ids = tuple(car for car, _ in cars)
             self._session = _Session(
-                t0=dt_util.utcnow(), mode=settings.identify_mode, cars=tuple(car for car, _ in cars),
+                t0=now, mode=settings.identify_mode, cars=ids,
                 names=dict(cars), order=[car for car, _ in cars], state=STATE_DECIDED, listening=False,
+                entry=entry if entry is not None else self._open_entry(now, TRIGGER_CORRECTION, settings.identify_mode, ids),
             )
             if retire_on and self._notifier is not None:
                 name = self._session.names.get(vehicle_id, vehicle_id)
@@ -1027,9 +1171,21 @@ class VehicleIdentifier:
         # Swiped away: no answer, so the current car stays, and nothing switches it later.
         current = self._current_vehicle()
         self._method = METHOD_ASSUMED
+        self._record_decision(session.entry, current, METHOD_ASSUMED, assumed=ASSUMED_SWIPED)
         self._remember(METHOD_ASSUMED)
         session.state = STATE_DECIDED
         session.listening = False
         session.nonce = None
         if self._notifier is not None and current is not None:
             self._notifier.retire_vehicle_question(self.tag, session.phones, "kept", session.names.get(current, current))
+
+
+def _camera_error(err: BaseException) -> str:
+    """What went wrong with a camera query, for the history: `no_snapshot` (no camera, or it gave no picture),
+    `no_reference` (no candidate has a reference picture), else `ai_task_error`."""
+    code = getattr(err, "code", None)
+    if code in ("no_camera", "no_picture"):
+        return "no_snapshot"
+    if code == "no_reference":
+        return "no_reference"
+    return "ai_task_error"

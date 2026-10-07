@@ -264,6 +264,12 @@ class CameraIdentification:
             "references": {car: self.wire_references(car) for car in vehicles},
         }
 
+    def ai_task(self) -> tuple[str | None, str | None]:
+        """The chosen AI Task entity (`None`: Home Assistant's default) and its model, when it names one."""
+        settings = self.settings()
+        entity_id = None if settings is None else settings.ai_task_entity_id
+        return entity_id, None if entity_id is None else ai_task_model(self._hass, entity_id)
+
     def diagnostics(self) -> dict[str, Any]:
         """The camera, the AI Task entity, the frame and which reference pictures each car has: never a picture."""
         settings = self.settings()
