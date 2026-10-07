@@ -2329,6 +2329,7 @@
     {
       "capacity_kwh": 15.6,
       "capacity_source": "stored",
+      "charge_limit_range": null,
       "consumption_kwh_per_10km": 2.0,
       "id": "<id>",
       "identification": {

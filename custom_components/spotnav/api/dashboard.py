@@ -124,6 +124,7 @@ from ..vehicles.charger_inventory import charger_entries
 from ..vehicles.duplicate_chargers import duplicates_of
 from ..vehicles.soc_estimate import battery_room_kwh, CHARGE_EFFICIENCY, target_need_kwh
 from ..vehicles.identification_sources import sources_block
+from ..vehicles.vehicle_charge_limit import charge_limit_range
 from ..vehicles.vehicle_discovery import discover_vehicles, resolve_target_vehicle
 from .charge_bar import charge_bar, ProgressFacts
 from .common import (
@@ -376,6 +377,8 @@ class CapturedVehicle:
     target_percent: float | None = None
     #: The car's minimum charge level (`vehicle_properties`), `None` when off.
     min_percent: int | None = None
+    #: What the car's own limit can be written to (`vehicle_charge_limit.charge_limit_range`), `None` when unknown.
+    charge_limit_range: dict[str, float] | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -720,6 +723,7 @@ def capture_vehicles(
                 identification=sources_block(hass, choice.id),
                 target_percent=own.target_percent,
                 min_percent=own.min_percent,
+                charge_limit_range=charge_limit_range(hass, choice.id),
             )
         )
     return tuple(rows), target_id
@@ -2036,7 +2040,8 @@ def _min_soc_percent(hass: HomeAssistant, entry_id: str) -> float | None:
 def serialize_vehicle(vehicle: CapturedVehicle) -> dict[str, Any]:
     """One entry of the root `vehicles`: `capacity_source` is `reported` (by the vehicle, not editable),
     `stored` (a person's answer) or `null` (missing). `min_percent` is the car's minimum charge level, `null` when
-    off.
+    off. `charge_limit_range` is `{"min", "max", "step"}`, the percents the car's own limit can be written to, `null`
+    when there is none to write or its range is unknown.
     """
     return {
         "id": vehicle.id,
@@ -2052,6 +2057,7 @@ def serialize_vehicle(vehicle: CapturedVehicle) -> dict[str, Any]:
         "identification": vehicle.identification,
         "target_percent": finite_number(vehicle.target_percent),
         "min_percent": vehicle.min_percent,
+        "charge_limit_range": vehicle.charge_limit_range,
     }
 
 

@@ -132,6 +132,14 @@ every vehicle row (the dashboard's `vehicles` and `update_vehicle`'s `vehicle`) 
 `null`) in place of `min_soc_charging` unless the request asks for them (`"reads": ["min_soc"]`). An app offers the
 setting only for a row that carries `min_percent`.
 
+**A car's charge limit range.** A vehicle row carries the additive `charge_limit_range`: `{"min", "max", "step"}`,
+the percents `set_charge_limit` (and `spotnav/write_charge_limit`) can write to the car's own limit, or `null` when
+there is no limit to write or its range is unknown. For a `number` limit these are the entity's own `min`, `max` and
+`step` (a step of 1 when it states none; a range from 0 starts at its first step above it, since a limit is never 0 %);
+for a percent `select`, its lowest and highest option and the smallest gap between two neighbours. A value outside
+`min`..`max` is refused as before. Nothing is withheld for it: the released app reads a vehicle row key by key and
+ignores keys it does not know. A client with no range offers 1-100 in whole percent and lets the write refuse the rest.
+
 **Instant notifications.** `push_register` takes `push_ref`, the opaque reference the SpotNav relay
 gave the app for its Firebase token (base64url text, at most 512 characters), or `null` to stop, and an
 optional `events` (the notification event ids above; default `plan_stopped`, `plan_at_risk`,

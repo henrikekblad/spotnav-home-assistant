@@ -634,3 +634,87 @@ async def test_another_version_of_the_command_is_refused(hass: HomeAssistant, ha
     reply = await ws_call(await admin(hass, hass_ws_client), _ws_set(entry.entry_id, vehicle["device_id"], 80, api_version=2))
     assert reply["success"] is False
     assert reply["error"]["code"] == "spotnav_unsupported_api_version"
+
+
+def _limit_attributes(hass: HomeAssistant, entity_id: str, **attributes: Any) -> None:
+    state = hass.states.get(entity_id)
+    assert state is not None
+    hass.states.async_set(entity_id, state.state, {**state.attributes, **attributes})
+
+
+def test_the_range_is_the_limit_entitys_own_min_max_and_step(hass: HomeAssistant) -> None:
+    """A Kia-shaped limit, 50-100 % in tens: the slider offers exactly what the write accepts."""
+    from custom_components.spotnav.vehicles.vehicle_charge_limit import charge_limit_range
+
+    vehicle = vehicle_device(hass, unique_id="niro", name="Niro")
+    _limit_attributes(hass, vehicle["limits"][0], step=10)
+
+    assert charge_limit_range(hass, vehicle["device_id"]) == {"min": 50.0, "max": 100.0, "step": 10.0}
+
+
+def test_a_limit_without_a_step_moves_in_whole_percent(hass: HomeAssistant) -> None:
+    from custom_components.spotnav.vehicles.vehicle_charge_limit import charge_limit_range
+
+    vehicle = vehicle_device(hass, unique_id="ev6", name="EV6")
+
+    assert charge_limit_range(hass, vehicle["device_id"]) == {"min": 50.0, "max": 100.0, "step": 1.0}
+
+
+def test_a_range_from_zero_starts_at_its_first_step_above_it(hass: HomeAssistant) -> None:
+    """A limit is never 0 % (the write refuses it), so the lowest stop is the first one above."""
+    from custom_components.spotnav.vehicles.vehicle_charge_limit import charge_limit_range
+
+    vehicle = vehicle_device(hass, unique_id="ev6", name="EV6")
+    _limit_attributes(hass, vehicle["limits"][0], min=0, step=5)
+
+    assert charge_limit_range(hass, vehicle["device_id"]) == {"min": 5.0, "max": 100.0, "step": 5.0}
+
+
+def test_a_percent_picker_ranges_over_its_options(hass: HomeAssistant) -> None:
+    """A `select` limit: from its lowest option to its highest, in the gap between neighbours."""
+    from custom_components.spotnav.vehicles.vehicle_charge_limit import charge_limit_range
+
+    vehicle = vehicle_device(hass, unique_id="zoe", name="Zoe", limits=())
+    _entity(
+        hass,
+        device_id=vehicle["device_id"],
+        domain="select",
+        object_id="charge_limit",
+        state="80",
+        attributes={"options": ["100", "50", "60", "70", "80", "90"]},
+    )
+
+    assert charge_limit_range(hass, vehicle["device_id"]) == {"min": 50.0, "max": 100.0, "step": 10.0}
+
+
+def test_no_range_without_a_limit_to_write(hass: HomeAssistant) -> None:
+    from custom_components.spotnav.vehicles.vehicle_charge_limit import charge_limit_range
+
+    two = vehicle_device(hass, unique_id="two", name="Two", limits=(("a_limit", "60"), ("b_limit", "80")))
+
+    assert charge_limit_range(hass, two["device_id"]) is None
+    assert charge_limit_range(hass, "no-such-car") is None
+
+
+async def test_the_vehicle_row_carries_the_limits_range(
+    hass: HomeAssistant, hass_client_no_auth, hass_ws_client
+) -> None:
+    """Additive on the dashboard's vehicle rows, for the app and the card alike; `null` with nothing to write."""
+    from .world import admin, ws_call
+
+    vehicle = vehicle_device(hass, unique_id="niro", name="Niro")
+    _limit_attributes(hass, vehicle["limits"][0], step=10)
+    entry = await one_charger(hass)
+
+    rows = (await _dashboard(await hass_client_no_auth(), "webhook-a"))["vehicles"]
+    row = next(row for row in rows if row["id"] == vehicle["device_id"])
+    assert row["charge_limit_range"] == {"min": 50.0, "max": 100.0, "step": 10.0}
+
+    card = (
+        await ws_call(
+            await admin(hass, hass_ws_client),
+            {"type": "spotnav/get_dashboard", "api_version": 1, "charger_id": entry.entry_id},
+        )
+    )["result"]
+    card_row = next(row for row in card["vehicles"] if row["id"] == vehicle["device_id"])
+    assert card_row["charge_limit_range"] == {"min": 50.0, "max": 100.0, "step": 10.0}

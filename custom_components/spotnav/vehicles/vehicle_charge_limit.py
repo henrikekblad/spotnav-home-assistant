@@ -133,6 +133,45 @@ def _select_option_for(state: Any, value: float) -> str:
     return max(fitting, key=lambda item: item[0])[1]
 
 
+def charge_limit_range(hass: HomeAssistant, vehicle_id: object) -> dict[str, float] | None:
+    """The percents `async_set_charge_limit` can write for `vehicle_id`: `{"min", "max", "step"}`, or `None`.
+
+    For a `number`, its own `min`, `max` and `step` (whole percent when it states no step); the range check
+    reads the same `min`/`max`. A limit is never 0 % (`_requested_percent`), so a range from 0 starts at its
+    first step above it. For a percent `select`, its lowest and highest option, stepped by the smallest gap
+    between neighbours. `None` when there is no limit to write, or its range cannot be read.
+    """
+    entity_id = vehicle_charge_limit_entity_id(hass, vehicle_id)
+    state = None if entity_id is None else hass.states.get(entity_id)
+    if entity_id is None or state is None:
+        return None
+    if entity_id.startswith("select."):
+        percents = sorted(
+            {
+                percent
+                for option in state.attributes.get("options") or []
+                if (percent := select_option_percent(option)) is not None and math.isfinite(percent)
+            }
+        )
+        if len(percents) < 2:
+            return None
+        minimum, maximum = percents[0], percents[-1]
+        step = min(high - low for low, high in zip(percents, percents[1:]))
+    else:
+        minimum = _as_float(state.attributes.get("min"))
+        maximum = _as_float(state.attributes.get("max"))
+        step = _as_float(state.attributes.get("step"))
+        if step is None or not math.isfinite(step) or step <= 0.0:
+            step = 1.0
+        if minimum is None or maximum is None:
+            return None
+        if minimum <= 0.0:
+            minimum += (math.floor(-minimum / step) + 1) * step
+    if not (math.isfinite(minimum) and math.isfinite(maximum)) or not 0.0 < minimum < maximum <= 100.0:
+        return None
+    return {"min": float(minimum), "max": float(maximum), "step": float(step)}
+
+
 async def async_set_charge_limit(
     hass: HomeAssistant, vehicle_id: object, percent: Any
 ) -> None:
