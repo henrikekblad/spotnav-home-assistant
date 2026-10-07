@@ -9,8 +9,11 @@ nothing is asked.
 
 ## Settings
 
-All of these are in the card's **Settings**: the section **Which car is plugged in?** (shown when more than one
-car is detected) and, per car, the car's own dialog. Only an administrator can change them.
+All of these are in the card's **Settings**: the charger's section (its identification rows are shown when more
+than one car is detected) and, per car, the car's tab in the **Car** section. Only an administrator can change
+them.
+
+![The charger's section: the cars at this charger, identification Automatic, the camera, its crop and the AI task](images/card-settings-charger.png)
 
 - **Vehicles at this charger.** These are the cars that can charge here. By default every car SpotNav detects
   is included. At least one must be ticked.
@@ -70,6 +73,13 @@ While SpotNav identifies the car, the card's and the app's status line leads wit
 while the question is open with **Waiting for an answer: which car is plugged in?**. The line is gone as soon as
 the car is decided (by the cars' reports, the camera, an answer, or a swiped question).
 
+![The card while the car is identified: "Identifying the car…" and "identifying…" on the car line](images/card-identifying.png)
+
+Once decided, the card's car line says how, for example **identified by the car's charging cable**, and ends in
+⇄ (**Change car**).
+
+![The car line: City car, identified by the car's charging cable, with ⇄](images/card-identified.png)
+
 A car's plug sensor may report late, depending on the integration. Many cloud integrations report within
 seconds to ten minutes, but some only every 30 minutes or more. If the report comes late, SpotNav asks.
 
@@ -78,7 +88,9 @@ seconds to ten minutes, but some only every 30 minutes or more. If the report co
 The question goes to the phones chosen under **Settings → Notifications**, as the event **Which car is plugged
 in?**. This event is on by default. It is a notification with one button per car. Android shows at most three
 buttons, so with more cars the two likeliest get a button and a third opens SpotNav. The card shows the same
-question as a banner with one button per car, and the SpotNav app will show it too.
+question as a banner with one button per car, and so does the SpotNav app.
+
+![The card's question: "Which car is plugged in?" with a button per car](images/card-identify-question.png)
 
 - The **first answer wins**, from any phone, the card or the app. Any Home Assistant user may answer in the
   card; changing the identification settings stays an administrator's. Choosing the car in the card's or app's
@@ -148,6 +160,8 @@ by the same camera at the same spot works, day and night. So SpotNav compares pi
    corner or the whole selection, with a finger or the mouse), check the preview of what is inside, and save. Only what is inside the
    frame is compared: no other cars, no street, and a dual-lens camera's seam stays out. Without a frame the whole
    picture is used.
+
+   ![Crop parking spot: the camera's picture with the selection around the parking bay, and what is compared](images/card-camera-frame.png)
 3. **AI task**: the AI Task entity that compares the pictures, or Home Assistant's default one. When several have
    one name (three "Ollama AI Task"), the card shows each one's model, or else its entity id. It must take
    pictures (attachments). See [Which model?](#which-model).
@@ -158,6 +172,10 @@ by the same camera at the same spot works, day and night. So SpotNav compares pi
    camera. The picture is kept whole, and it is cropped with the selection drawn at the time it is compared,
    so you can change the crop at any time without taking the pictures again; its thumbnail shows it cropped as it
    is compared.
+
+   ![A car's reference pictures: a day picture with Retake and Delete, and an empty night slot](images/card-reference-picture.png)
+
+The pictures in this guide are of a demo camera whose picture is drawn, not photographed.
 
 Choosing the camera and the AI task is an administrator's, in the card. The SpotNav app can draw the frame and
 take, show and delete reference pictures for the camera chosen here, but cannot choose another camera or AI task.

@@ -138,7 +138,11 @@ Home Assistant's own dashboards and in automations.
 ## The settings popover
 
 The gear icon opens **Card settings**, built fresh each time you open it. The plan and the strategy
-have their own cells on the card; everything else is here, in sections.
+have their own cells on the card; everything else is here, in sections headed by what they are about
+(**Electricity price**, **Car**, **Charger · …**, **Site · …**, **Solar**, **Notifications**, **Support**). Each
+value is one row; an administrator taps a value to open its own editor, and other users read it.
+
+![The settings page: a section per subject and a value per row](images/card-settings.png)
 
 ### Price area and fiscal
 
@@ -147,8 +151,8 @@ country and location and from the charger, and the card says "Suggested from you
 and charger – check Settings."
 Nothing you saved is overwritten. See [first-run defaults](setup.md#first-run-defaults).
 
-Shows the area, the currency and the VAT, energy tax and grid fee as the plan applies them. **Edit
-price area and taxes** opens the editor.
+Shows the area and the VAT, energy tax and grid fee as the plan applies them. Tapping the area or a tax
+opens the editor.
 
 ![The price area and fiscal settings](images/card-settings-price.png)
 
@@ -169,9 +173,10 @@ price area and taxes** opens the editor.
 
 ### Vehicle
 
-One block per vehicle Home Assistant detected, with the one this charger plans for marked.
+The **Car** section shows the car this charger plans for. With two or more cars detected it has a tab per car
+under its heading; the car planned for is open first, and tapping another tab shows that car's rows.
 
-![The vehicle settings](images/card-settings-vehicle.png)
+![The car section with a tab per car, the car's properties, its plug sensor and location, and its reference picture](images/card-settings-vehicle.png)
 
 - The **vehicle charge level** sensor, and whether it is chosen automatically. **Change vehicle
   charge level** lets you pick another sensor or go back to automatic detection, which matters when
@@ -185,17 +190,33 @@ One block per vehicle Home Assistant detected, with the one this charger plans f
 - **Plug sensor** and **Location**: the car's own "plugged in" sensor and tracker, which tell which car is
   plugged in at a charger more than one car can charge at. Each is **Automatic**, one of the car's entities,
   or **None**. They are read only for that.
+- **Reference picture** (with a camera chosen for the charger): the car's day and night pictures for the
+  camera, with a thumbnail cropped as it is compared. See [the camera](vehicle-identification.md#the-camera).
 
 ### Which car is plugged in?
 
-Shown when more than one car is detected: **Identification** (**Automatic**, **Always ask** or **Off**) and
-**Cars at this charger**, changed with **Change**. While SpotNav cannot tell which car was plugged in, the card
-shows "Which car is plugged in?" with one button per car, the likeliest first; one tap is the answer, the
-same as on the phones. The car line says how the car was decided ("identified by the car's charging cable",
-"selected manually", "assumed", ...). With two or more cars at the charger it ends in ⇄ and tapping it opens
-**Change car**, for anyone signed in: with a car plugged in it corrects that car; with none it sets the plan's car
-for the next plug-in (an administrator's settings write). See
-[Which car is plugged in?](vehicle-identification.md).
+Shown when more than one car is detected, in the charger's section: **Cars at this charger** and
+**Identification** (**Automatic**, **Always ask** or **Off**), and where Home Assistant has a camera and an AI Task
+entity, **Camera**, **Crop parking spot** and **AI task**.
+
+![The charger section with the cars at this charger, identification and the camera](images/card-settings-charger.png)
+
+While SpotNav identifies the car after a plug-in, the status line leads with "Identifying the car…" and the car
+line says "identifying…".
+
+![The card while the car is being identified](images/card-identifying.png)
+
+While SpotNav cannot tell which car was plugged in, the card shows "Which car is plugged in?" with one button
+per car, the likeliest first; one tap is the answer, the same as on the phones.
+
+![The question which car is plugged in, with a button per car](images/card-identify-question.png)
+
+The car line says how the car was decided ("identified by the car's charging cable", "selected manually",
+"assumed", ...). With two or more cars at the charger it ends in ⇄ and tapping it opens **Change car**, for
+anyone signed in: with a car plugged in it corrects that car; with none it sets the plan's car for the next
+plug-in (an administrator's settings write). See [Which car is plugged in?](vehicle-identification.md).
+
+![The car line: City car, identified by the car's charging cable, with ⇄ to change it](images/card-identified.png)
 
 Saving each value asks Home Assistant to confirm it; the card never shows a value the integration
 did not accept.
