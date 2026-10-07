@@ -87,6 +87,8 @@ class SessionFacts:
     vehicle_name: str | None
     #: The fraction of the car's power covered by surplus now, when the solar executor knows it.
     solar_share: float | None
+    #: How the vehicle was decided at this plug-in (`vehicles/identification.py`), `None` when nothing decided it.
+    vehicle_decided_by: str | None = None
 
 
 def started_by(hint: str | None, strategy: str | None) -> str:
@@ -178,6 +180,13 @@ class SessionRecorder:
                 self._was_charging = True
             return
         delivered = self._accrue(session, facts, now)
+        if facts.vehicle_decided_by is not None and facts.connected is not False and (
+            facts.vehicle_decided_by != session.vehicle_decided_by or facts.vehicle_id != session.vehicle_id
+        ):
+            # The car was identified, or answered for, after the charge began: the session is that car's.
+            session.vehicle_id = facts.vehicle_id
+            session.vehicle_name = facts.vehicle_name
+            session.vehicle_decided_by = facts.vehicle_decided_by
         self._was_charging = facts.charging
         if facts.charging:
             self._idle_since = self._idle_seen_at = None
@@ -223,6 +232,7 @@ class SessionRecorder:
             strategy=facts.strategy,
             vehicle_id=facts.vehicle_id,
             vehicle_name=facts.vehicle_name,
+            vehicle_decided_by=facts.vehicle_decided_by,
             solar_kwh=0.0,
             solar_known_kwh=0.0,
             last_register_kwh=facts.register_kwh,

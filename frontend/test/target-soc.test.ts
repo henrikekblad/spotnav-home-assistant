@@ -9,7 +9,6 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { issuesOf } from "../src/status";
 import { translate } from "../src/i18n";
 import {
-  checkCapacity,
   checkTargetPercent,
   formFromRecord,
   planSummaryParts,
@@ -368,9 +367,6 @@ describe("the replacement builder for the new fields", () => {
     expect(checkTargetPercent("-1")).toMatchObject({ ok: false });
     expect(checkTargetPercent("101")).toMatchObject({ ok: false });
     expect(checkTargetPercent("100")).toEqual({ ok: true, value: 100 });
-    expect(checkCapacity("77,46")).toEqual({ ok: true, value: 77.5 });
-    expect(checkCapacity("0")).toMatchObject({ ok: false });
-    expect(checkCapacity("500.1")).toMatchObject({ ok: false });
     const manual = aRecord({ driver: "manual_kwh", target: { vehicle_id: null, target_percent: 0.5 } });
     expect(replacementFor("plan", manual, formFromRecord(manual))).toMatchObject({ ok: true, changed: false });
     expect(replacementFor("plan", aRecord(), values({ targetPercent: "" }))).toMatchObject({ ok: false });

@@ -16,6 +16,11 @@ per charger: the same event is not sent again within `REPEAT_S`, and no more tha
 notifications go out in an hour. Each notification carries a `tag` (one per charger and event), so a
 phone replaces an older one of the same kind instead of stacking them, and a `url` a tap opens.
 
+The question of which car is plugged in (`vehicle_identify`) is asked by the charger's vehicle identification
+(`vehicles/identification.py`) through `ask_vehicle`: one button per car with the action ids it gives, the tag it
+gives, counted against `HOURLY_LIMIT` but not `REPEAT_S` (there is at most one per plug-in). Once answered it is
+replaced on every phone that got it (`retire_vehicle_question`) or cleared (`clear_vehicle_question`).
+
 The paired app's instant notifications (`push.py`) hear about the same events, with their own choice
 of events and their own limits, whether or not any phone is chosen here.
 """
@@ -48,9 +53,9 @@ from ..planning.auto_controller import AutoSnapshot
 from ..planning.auto_settings import AutoSettingsStore
 from ..sessions.store import SessionStore
 from ..const import DOMAIN
-from .messages import compose, EVENT_TEST, language_of, Money
+from .messages import compose, EVENT_TEST, identify_text, language_of, Money
 from .push import ChargerPush
-from .settings import EVENT_CHARGE_COMPLETE, EVENT_PLAN_STOPPED, NOTIFY_DOMAIN
+from .settings import EVENT_CHARGE_COMPLETE, EVENT_PLAN_STOPPED, EVENT_VEHICLE_IDENTIFY, NOTIFY_DOMAIN
 from .unexpected_stop import ExpectationFacts, UnexpectedStopDetector
 
 _LOGGER = logging.getLogger(__name__)
@@ -345,6 +350,71 @@ class ChargerNotifier:
                 "channel": "SpotNav",
             },
         }
+
+    # ------------------------------------------------------------------ which car is plugged in?
+
+    def _within_hourly_limit(self, now: datetime) -> bool:
+        while self._sent_times and (now - self._sent_times[0]).total_seconds() >= 3600:
+            self._sent_times.popleft()
+        return len(self._sent_times) < HOURLY_LIMIT
+
+    def _identify_data(self, tag: str) -> dict[str, Any]:
+        url = self._store.settings(self._entry_id).notifications.url or DEFAULT_URL
+        return {"url": url, "clickAction": url, "tag": tag, "group": "spotnav", "channel": "SpotNav"}
+
+    def ask_vehicle(self, tag: str, choices: list[tuple[str, str]], *, open_button: bool) -> tuple[str, ...]:
+        """Ask the chosen phones which car is plugged in: one button per `(action id, car name)`, and an
+        "Open SpotNav" button when not every car fits. Answers the phones it went to.
+
+        The text names no plate, place or person: it passes Google's and Apple's push services.
+        """
+        now = dt_util.utcnow()
+        if self._push is not None:
+            self._push.async_event(EVENT_VEHICLE_IDENTIFY, now)
+        notifications = self._store.settings(self._entry_id).notifications
+        if not notifications.wants(EVENT_VEHICLE_IDENTIFY):
+            return ()
+        if not self._within_hourly_limit(now):
+            _LOGGER.debug("SpotNav charger %s: hourly notification limit reached", self._entry_id)
+            return ()
+        targets = tuple(
+            target for target in notifications.targets if self._hass.services.has_service(NOTIFY_DOMAIN, target)
+        )
+        if not targets:
+            return ()
+        self._sent_times.append(now)
+        language = language_of(self._hass.config.language)
+        data = self._identify_data(tag)
+        actions: list[dict[str, Any]] = [{"action": action, "title": title} for action, title in choices]
+        if open_button:
+            actions.append({"action": "URI", "title": identify_text(language, "open"), "uri": data["url"]})
+        title, message = compose(EVENT_VEHICLE_IDENTIFY, self._name(), {}, language)
+        payload = {"title": title, "message": message, "data": {**data, "actions": actions}}
+        for target in targets:
+            self._hass.async_create_task(self._async_send(target, payload), eager_start=True)
+        return targets
+
+    def retire_vehicle_question(self, tag: str, targets: tuple[str, ...], wording: str, vehicle: str) -> None:
+        """Replace the question on every phone it went to: `chosen`, `recognised` or `kept`, without buttons and
+        silently: the same tag replaces it, `alert_once` keeps Android quiet and the passive interruption level
+        (iOS 15 and later) delivers it without a sound or a banner."""
+        if not targets:
+            return
+        language = language_of(self._hass.config.language)
+        title, _ = compose(EVENT_VEHICLE_IDENTIFY, self._name(), {}, language)
+        payload = {
+            "title": title,
+            "message": identify_text(language, wording, vehicle),
+            "data": {**self._identify_data(tag), "alert_once": True, "push": {"interruption-level": "passive"}},
+        }
+        for target in targets:
+            self._hass.async_create_task(self._async_send(target, payload), eager_start=True)
+
+    def clear_vehicle_question(self, tag: str, targets: tuple[str, ...]) -> None:
+        """Take the question off every phone it went to (the car was unplugged, or nobody answered in time)."""
+        payload = {"message": "clear_notification", "data": {"tag": tag}}
+        for target in targets:
+            self._hass.async_create_task(self._async_send(target, payload), eager_start=True)
 
     async def async_send_test(self) -> list[str]:
         """A test message to the chosen phones that exist now (`spotnav.send_test_notification`), outside

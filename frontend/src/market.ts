@@ -511,6 +511,17 @@ export type MarketReplacementCheck =
   | { ok: true; body: SettingsBody; changed: boolean }
   | { ok: false; errorKey: TranslationKey };
 
+/**
+ * The selected area's form with one fee changed, as its own editor states it: a figure (the person's own), or
+ * `null` for off (the figure that was typed is kept, as the area dialog keeps it).
+ */
+export function fiscalValues(record: SettingsRecord, component: FiscalComponent, value: number | null): MarketFormValues {
+  const values = marketFormFor(record, record.area_id);
+  values[component] =
+    value === null ? setEnabled(values[component], false) : { enabled: true, value: String(value), intent: "custom" };
+  return values;
+}
+
 export function marketReplacement(
   base: SettingsRecord,
   values: MarketFormValues,

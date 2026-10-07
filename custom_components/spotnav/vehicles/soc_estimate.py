@@ -44,7 +44,13 @@ from ..execution.target_stop import (
 )
 from ..planning.planner import resolve_target_energy, TargetEnergyRequest
 from ..util import finite_number
-from .vehicle_discovery import _device_name, discover_vehicles, resolve_target_vehicle, vehicle_soc_entity_id
+from .vehicle_discovery import (
+    _device_name,
+    charger_vehicle_ids,
+    discover_vehicles,
+    resolve_target_vehicle,
+    vehicle_soc_entity_id,
+)
 
 
 _LOGGER = logging.getLogger(__name__)
@@ -428,7 +434,9 @@ class SocReader:
 
     @callback
     def _on_any_battery_state(self, _event: Event[EventStateChangedData]) -> None:
-        vehicle_id, _ = resolve_target_vehicle(self._hass, self._awaited_vehicle)
+        vehicle_id, _ = resolve_target_vehicle(
+            self._hass, self._awaited_vehicle, charger_vehicle_ids(self._hass, self._entry_id)
+        )
         self.ensure_watch(vehicle_id)
         reading = self.read(vehicle_id)
         if reading is not None and reading.soc_percent is not None:

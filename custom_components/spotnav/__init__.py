@@ -21,6 +21,7 @@ from homeassistant.helpers.start import async_at_started
 from .api.dashboard import async_setup_dashboard_api
 from .api.debug import async_setup_debug_api
 from .api.entity_config import async_setup_entity_config_api
+from .api.identification import async_setup_identification_api
 from .api.manual_action import async_setup_manual_action_api
 from .api.market import async_setup_market_api
 from .api.region import async_setup_region_api
@@ -74,6 +75,8 @@ from .services import async_register_services
 from .notifications.notifier import ChargerNotifier
 from .notifications.push import ChargerPush
 from .execution.ownership_coverage import OwnershipCoverage
+from .vehicles.identification import VehicleIdentifier
+from .vehicles.vehicle_target import async_adopt as async_adopt_vehicle_target, async_setup_vehicle_targets
 from .sessions.inputs import current_fiscal, price_book_for, session_facts, soc_percent_now
 from .sessions.history_import import HistoryImporter, START_DELAY_S as HISTORY_IMPORT_DELAY_S
 from .sessions.recorder import SessionRecorder
@@ -88,7 +91,7 @@ from .site.site_capacity_controller import SiteCapacityController
 from .vehicles.discovery_decisions import async_setup_decisions
 from .vehicles.soc_estimate import SocReader
 from .vehicles.vehicle_refresh import async_ask_vehicle_update
-from .vehicles.vehicle_discovery import resolve_target_vehicle, vehicle_soc_entity_id
+from .vehicles.vehicle_discovery import charger_vehicle_ids, resolve_target_vehicle, vehicle_soc_entity_id
 from .vehicles.vehicle_properties import consumption_kwh_per_10km, stored_capacity_kwh
 
 
@@ -117,6 +120,8 @@ async def async_setup(hass: HomeAssistant, config: dict[str, Any]) -> bool:
     await async_setup_price_refresh(hass, repository)
     hass.bus.async_listen_once(EVENT_HOMEASSISTANT_STOP, partial(_async_stop, hass))
     await async_setup_auto_settings(hass)
+    # A car's target is the car's at every charger (`vehicles/vehicle_target.py`).
+    async_setup_vehicle_targets(hass)
     # The charge sessions' record, loaded before any charger entry starts recording into it.
     data.session_store = SessionStore(hass)
     data.session_store.set_fiscal_resolver(lambda charger_id, area_id: current_fiscal(hass, charger_id, area_id))
@@ -130,6 +135,7 @@ async def async_setup(hass: HomeAssistant, config: dict[str, Any]) -> bool:
     async_setup_manual_action_api(hass)
     async_setup_site_settings_api(hass)
     async_setup_entity_config_api(hass)
+    async_setup_identification_api(hass)
     async_setup_debug_api(hass)
     # Static route for the bundled card asset, versioned by the manifest.
     await async_setup_card_asset(hass)
@@ -277,10 +283,13 @@ async def _async_setup_charger_entry(hass: HomeAssistant, entry: ChargerConfigEn
     # Still no register: take the charger's own as soon as its integration registers or reports one.
     async_watch_for_register(hass, entry, controller)
     await _async_start_notifier(hass, entry, data, controller)
+    await _async_start_identifier(hass, entry, data, controller)
     # A charger the flow was asked to add to the site joins it now that its entry id exists.
     await async_apply_site_join(hass, entry)
     # After the join, so the site's wiring and fuse are known to the defaults.
     await async_seed_first_run(hass, entry, controller, data.preview)
+    # A target stored before targets were the car's becomes its car's.
+    await async_adopt_vehicle_target(hass, entry.entry_id)
     if (
         price_manager is not None
         and settings_store is not None
@@ -356,6 +365,21 @@ async def _async_start_notifier(
     notifier.async_start(data.preview)
 
 
+async def _async_start_identifier(
+    hass: HomeAssistant, entry: ChargerConfigEntry, data: ChargerData, controller: ChargingController
+) -> None:
+    """Which car is plugged in, when more than one can charge here (`vehicles/identification.py`)."""
+    store = domain_data(hass).auto_store
+    if store is None:
+        return
+    identifier = data.identifier = VehicleIdentifier(
+        hass, entry.entry_id, controller=controller, store=store, notifier=data.notifier
+    )
+    entry.async_on_unload(identifier.async_shutdown)
+    await identifier.async_load()
+    identifier.async_start(data.preview)
+
+
 def _async_schedule_history_import(
     hass: HomeAssistant,
     entry: ChargerConfigEntry,
@@ -396,7 +420,7 @@ async def _async_setup_auto_preview(
     assert data.executor is not None
 
     def _live_vehicle_facts(vehicle_id: str) -> LiveVehicleFacts | None:
-        return live_vehicle_facts(hass, data.soc_reader, vehicle_id)
+        return live_vehicle_facts(hass, data.soc_reader, vehicle_id, charger_vehicle_ids(hass, entry_id))
 
     def _vehicle_update(vehicle_id: str, ask: bool) -> None:
         # A target waits for the car's new level: hear of the next reading, and ask the car's integration
@@ -408,7 +432,9 @@ async def _async_setup_auto_preview(
             )
 
     def _consumption(vehicle_id: str) -> float | None:
-        return consumption_kwh_per_10km(hass, resolve_target_vehicle(hass, vehicle_id or None)[0])
+        return consumption_kwh_per_10km(
+            hass, resolve_target_vehicle(hass, vehicle_id or None, charger_vehicle_ids(hass, entry_id))[0]
+        )
 
     # The display need for the market is independent of execution; shared with the preview's
     # per-area stream and released on this entry's unload.
@@ -501,6 +527,7 @@ async def async_remove_entry(hass: HomeAssistant, entry: ConfigEntry) -> None:
     await async_remove_auto_state(hass, entry.entry_id)
     await SocReader.async_remove_stored(hass, entry.entry_id)
     await ChargerPush.async_remove_stored(hass, entry.entry_id)
+    await VehicleIdentifier.async_remove_stored(hass, entry.entry_id)
     await ChargerNotifier.async_remove_stored(hass, entry.entry_id)
     await OwnershipCoverage.async_remove_stored(hass, entry.entry_id)
     session_store = domain_data(hass).session_store

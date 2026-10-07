@@ -264,8 +264,37 @@ export interface Dashboard {
   starting_up: StartingUp | null;
   /** The charger's place in its site's allocation order; `null` without a site or when unreadable. */
   charger_priority: ChargerPriority | null;
+  /** Which car is plugged in, while a plug-in is identified; `null` otherwise, on an older backend or unreadable. */
+  identification: Identification | null;
+  /** Every detected car, at this charger or not: what "the cars at this charger" tick from (empty from an older backend). */
+  vehicle_choices: Array<{ id: string; name: string | null }>;
   /** The running charge's progress as Home Assistant decided it; `null` with no charge, or from an older backend. */
   progress: ChargeBarBlock | null;
+}
+
+/** The `identification` block: the open question (or how it was settled) and the candidates, likeliest first. */
+export interface Identification {
+  state: "waiting" | "asking" | "decided";
+  method: string | null;
+  vehicle_id: string | null;
+  since: string | null;
+  candidates: Array<{ vehicle_id: string; name: string; likely: boolean }>;
+  /** What each car was judged by at the last look; only the verdict is read here (empty from an older backend). */
+  evidence: Array<{ vehicle_id: string; verdict: string | null }>;
+}
+
+/** One of a car's identification sources: what is read (`null`: none, or not chosen yet) and what can be chosen. */
+export interface IdentificationSource {
+  entity_id: string | null;
+  name: string | null;
+  /** A person chose it; a chosen `null` is "none". */
+  chosen: boolean;
+  candidates: Array<{ entity_id: string; name: string | null }>;
+}
+
+export interface VehicleSources {
+  plug: IdentificationSource;
+  location: IdentificationSource;
 }
 
 export const CHARGE_BAR_BASES = ["target", "energy", "vehicle_limit", "open"] as const;
@@ -324,6 +353,10 @@ export interface Vehicle {
   onboard_phases: 1 | 3;
   /** `1` when charges suggest the onboard charger is single-phase and nobody has answered yet. */
   suggested_onboard_phases: 1 | null;
+  /** The car's plug sensor and tracker for identification; absent on an older backend. */
+  identification?: VehicleSources;
+  /** The car's own target percent, the same at every charger (`null`: never set); absent on an older backend. */
+  target_percent?: number | null;
 }
 
 export interface Soc {
@@ -1493,6 +1526,8 @@ export function decodeDashboard(raw: unknown): DecodeResult {
         connection: connectionOrNull(root),
         starting_up: startingUpOrNull(root),
         charger_priority: chargerPriorityOrNull(root),
+        identification: identificationOrNull(root),
+        vehicle_choices: vehicleChoicesOf(root),
         progress: chargeBarOrNull(root),
       },
     };
@@ -1538,7 +1573,66 @@ const DASHBOARD_KEYS = [
  * is accepted and never read (the card's History view asks `spotnav/get_sessions`). `charger_priority`
  * is read tolerantly for the settings overview; the card edits it in the entity configuration.
  */
-const OPTIONAL_DASHBOARD_KEYS = ["sessions_summary", "connection", "starting_up", "charger_priority", "progress"] as const;
+const OPTIONAL_DASHBOARD_KEYS = [
+  "sessions_summary",
+  "connection",
+  "starting_up",
+  "charger_priority",
+  "progress",
+  "identification",
+  "vehicle_choices",
+] as const;
+
+/** `vehicle_choices`, read leniently: an entry it cannot read is left out. */
+function vehicleChoicesOf(root: Record<string, unknown>): Array<{ id: string; name: string | null }> {
+  const value = root.vehicle_choices;
+  if (!Array.isArray(value)) {
+    return [];
+  }
+  return value.flatMap((entry) =>
+    isRecord(entry) && typeof entry.id === "string" && entry.id !== ""
+      ? [{ id: entry.id, name: typeof entry.name === "string" ? entry.name : null }]
+      : [],
+  );
+}
+
+const IDENTIFICATION_STATES = ["waiting", "asking", "decided"] as const;
+
+/** The `identification` block, or `null` when it is missing, null or unreadable: only the question is hidden. */
+function identificationOrNull(root: Record<string, unknown>): Identification | null {
+  const value = root.identification;
+  if (!isRecord(value)) {
+    return null;
+  }
+  try {
+    // `evidence` (each car's entities and what they said) is for a field report: accepted, not read.
+    const optional = Object.prototype.hasOwnProperty.call(value, "evidence") ? ["evidence"] : [];
+    exactKeys(value, ["state", "method", "vehicle_id", "since", "candidates", ...optional]);
+    return {
+      state: oneOfValues(text(value, "state"), IDENTIFICATION_STATES),
+      method: textOrNull(value, "method"),
+      vehicle_id: textOrNull(value, "vehicle_id"),
+      since: textOrNull(value, "since"),
+      candidates: arrayValue(value, "candidates").map((entry) => {
+        const item = record(entry);
+        exactKeys(item, ["vehicle_id", "name", "likely"]);
+        if (typeof item.likely !== "boolean") {
+          return bad();
+        }
+        return { vehicle_id: text(item, "vehicle_id"), name: text(item, "name"), likely: item.likely };
+      }),
+      evidence: Array.isArray(value.evidence)
+        ? value.evidence.flatMap((entry) =>
+            isRecord(entry) && typeof entry.vehicle_id === "string"
+              ? [{ vehicle_id: entry.vehicle_id, verdict: typeof entry.verdict === "string" ? entry.verdict : null }]
+              : [],
+          )
+        : [],
+    };
+  } catch {
+    return null;
+  }
+}
 
 /**
  * The `progress` block, or `null` when it is missing, null or unreadable: the card then draws no bar and
@@ -1579,6 +1673,42 @@ function chargeBarOrNull(root: Record<string, unknown>): ChargeBarBlock | null {
     };
   } catch {
     return null;
+  }
+}
+
+function oneOfValues<T extends string>(value: string, allowed: readonly T[]): T {
+  return (allowed as readonly string[]).includes(value) ? (value as T) : bad();
+}
+
+function decodeSource(raw: unknown): IdentificationSource {
+  const source = record(raw);
+  exactKeys(source, ["entity_id", "name", "chosen", "candidates"]);
+  if (typeof source.chosen !== "boolean") {
+    return bad();
+  }
+  return {
+    entity_id: textOrNull(source, "entity_id"),
+    name: textOrNull(source, "name"),
+    chosen: source.chosen,
+    candidates: arrayValue(source, "candidates").map((entry) => {
+      const item = record(entry);
+      exactKeys(item, ["entity_id", "name"]);
+      return { entity_id: text(item, "entity_id"), name: textOrNull(item, "name") };
+    }),
+  };
+}
+
+/** A vehicle row's `identification`, or absent when the backend leaves it out or it is unreadable. */
+function vehicleSourcesOrAbsent(source: Record<string, unknown>): { identification?: VehicleSources } {
+  const value = source["identification"];
+  if (!isRecord(value)) {
+    return {};
+  }
+  try {
+    exactKeys(value, ["plug", "location"]);
+    return { identification: { plug: decodeSource(value.plug), location: decodeSource(value.location) } };
+  } catch {
+    return {};
   }
 }
 
@@ -1757,7 +1887,9 @@ const CAPACITY_SOURCES = ["reported", "stored"] as const;
 
 export function decodeVehicle(raw: unknown): Vehicle {
   const source = record(raw);
+  const optional = ["identification", "target_percent"].filter((key) => Object.prototype.hasOwnProperty.call(source, key));
   exactKeys(source, [
+    ...optional,
     "id",
     "name",
     "soc_entity_id",
@@ -1785,6 +1917,10 @@ export function decodeVehicle(raw: unknown): Vehicle {
     soc_percent: boundedOrNull(source, "soc_percent", 0, 100),
     onboard_phases: phaseCount(source, "onboard_phases"),
     suggested_onboard_phases: required(source, "suggested_onboard_phases") === null ? null : suggestedPhase(source),
+    ...vehicleSourcesOrAbsent(source),
+    ...(Object.prototype.hasOwnProperty.call(source, "target_percent")
+      ? { target_percent: boundedOrNull(source, "target_percent", 0, 100) }
+      : {}),
   };
 }
 

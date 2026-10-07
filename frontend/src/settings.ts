@@ -17,6 +17,8 @@ import {
   SETTINGS_DRIVER_TARGET_SOC,
   SETTINGS_NOT_COMMITTED,
   SETTINGS_RECONCILE_FAILED,
+  IDENTIFY_MODES,
+  type IdentifyMode,
   SETTINGS_STRATEGY_CHEAPEST,
   SETTINGS_STRATEGY_HYBRID,
   SETTINGS_STRATEGY_SOLAR,
@@ -177,6 +179,8 @@ const OPTIONAL_RECORD_KEYS = [
   "fiscal_included",
   "notifications",
   "fill_to_limit",
+  "vehicle_ids",
+  "identify_mode",
 ] as const;
 /** Every weekday, Monday (1) to Sunday (7): what a record without `departure_weekdays` means. */
 export const ALL_WEEKDAYS: readonly number[] = [1, 2, 3, 4, 5, 6, 7];
@@ -209,6 +213,7 @@ export const NOTIFICATION_EVENTS = [
   "plugged_in",
   "unplugged",
   "plan_installed",
+  "vehicle_identify",
 ] as const;
 const NOTIFICATION_KEYS = ["targets", "events", "url", "available"] as const;
 const NOTIFY_SERVICE_KEYS = ["service", "name"] as const;
@@ -262,6 +267,15 @@ function decodeTarget(source: Record<string, unknown>): SettingsRecord["target"]
   };
 }
 
+/** `vehicle_ids`: `null`, or one or more different vehicle ids. */
+function vehicleIds(source: Record<string, unknown>): string[] | null {
+  if (source["vehicle_ids"] === null) {
+    return null;
+  }
+  const ids = list(source, "vehicle_ids").map((item) => (typeof item === "string" && item !== "" ? item : bad()));
+  return ids.length === 0 || new Set(ids).size !== ids.length ? bad() : ids;
+}
+
 /**
  * One canonical settings record: twelve keys, each with the type the contract promises.
  *
@@ -309,6 +323,8 @@ export function decodeSettingsRecord(raw: unknown): SettingsRecord {
     ...(present.includes("notifications")
       ? { notifications: decodeNotifications(record(source["notifications"])) }
       : {}),
+    ...(present.includes("vehicle_ids") ? { vehicle_ids: vehicleIds(source) } : {}),
+    ...(present.includes("identify_mode") ? { identify_mode: oneOf(source, "identify_mode", IDENTIFY_MODES) } : {}),
   };
 }
 
@@ -444,6 +460,10 @@ export function encodeBody(record: SettingsRecord): SettingsBody {
     strategy: record.strategy,
     driver: record.driver,
     target: { ...record.target },
+    ...(record.vehicle_ids === undefined
+      ? {}
+      : { vehicle_ids: record.vehicle_ids === null ? null : [...record.vehicle_ids] }),
+    ...(record.identify_mode === undefined ? {} : { identify_mode: record.identify_mode }),
   };
 }
 
@@ -483,6 +503,39 @@ export function notificationsReplacement(record: SettingsRecord, choice: Notific
     events.join(",") !== current.events.join(",") ||
     choice.url !== current.url;
   return { ok: true, body: { ...encodeBody(record), notifications }, changed };
+}
+
+/** What the identification Save chooses: the mode, and the cars ticked out of every car the card lists. */
+export interface IdentificationChoice {
+  mode: IdentifyMode;
+  vehicleIds: readonly string[];
+  allVehicleIds: readonly string[];
+}
+
+/**
+ * What the identification Save would send: the accepted record unchanged, plus `identify_mode` and `vehicle_ids`.
+ * Every car ticked is `null` (every detected car, now and later); no car ticked is refused. A record from a
+ * backend without the fields cannot take them.
+ */
+export function identificationReplacement(record: SettingsRecord, choice: IdentificationChoice): ReplacementCheck {
+  if (record.identify_mode === undefined || record.vehicle_ids === undefined) {
+    return { ok: false, errorKey: "settings.error.version" };
+  }
+  const ticked = choice.allVehicleIds.filter((id) => choice.vehicleIds.includes(id));
+  if (ticked.length === 0 || !(IDENTIFY_MODES as readonly string[]).includes(choice.mode)) {
+    return { ok: false, errorKey: "identify.error.noVehicle" };
+  }
+  const everyOrSome = (ids: readonly string[] | null): string[] | null =>
+    ids === null || ids.length === choice.allVehicleIds.length ? null : [...ids];
+  const vehicleIds = everyOrSome(ticked);
+  const stored = record.vehicle_ids;
+  const current = everyOrSome(stored === null ? null : choice.allVehicleIds.filter((id) => stored.includes(id)));
+  const changed = choice.mode !== record.identify_mode || JSON.stringify(vehicleIds) !== JSON.stringify(current);
+  return {
+    ok: true,
+    body: { ...encodeBody(record), identify_mode: choice.mode, vehicle_ids: vehicleIds },
+    changed,
+  };
 }
 
 /**
@@ -581,11 +634,6 @@ export const CAPACITY_MAX_KWH = 500;
 
 export function checkTargetPercent(text: string): FormCheck<number> {
   return decimal(text, TARGET_PERCENT_MIN, TARGET_PERCENT_MAX);
-}
-
-export function checkCapacity(text: string): FormCheck<number> {
-  const check = decimal(text, CAPACITY_MIN_KWH, CAPACITY_MAX_KWH);
-  return check.ok ? { ok: true, value: Math.round(check.value * 10) / 10 } : check;
 }
 
 export function checkEnergy(text: string): FormCheck<number> {
@@ -795,9 +843,6 @@ export const AMPS_MAX = 80;
 export const CONSUMPTION_MIN_KWH_PER_10KM = 0.1;
 export const CONSUMPTION_MAX_KWH_PER_10KM = 50;
 
-export function checkConsumption(text: string): FormCheck<number> {
-  return decimal(text, CONSUMPTION_MIN_KWH_PER_10KM, CONSUMPTION_MAX_KWH_PER_10KM);
-}
 /**
  * What one focused Save would send: the whole replacement, or the input that stops it.
  *

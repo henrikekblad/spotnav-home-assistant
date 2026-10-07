@@ -102,6 +102,7 @@
     }
   },
   "generated_at": "2026-09-22T06:00:00+00:00",
+  "identification": null,
   "live": {
     "charging": false,
     "measured_current_a": null,
@@ -2204,13 +2205,15 @@
     "driver": "manual_kwh",
     "fill_to_limit": false,
     "fiscal_included": [],
+    "identify_mode": "automatic",
     "max_periods": 1,
     "notifications": {
       "available": [],
       "events": [
         "plan_stopped",
         "plan_at_risk",
-        "charge_complete"
+        "charge_complete",
+        "vehicle_identify"
       ],
       "targets": [],
       "url": null
@@ -2223,7 +2226,8 @@
     "target": {
       "target_percent": null,
       "vehicle_id": null
-    }
+    },
+    "vehicle_ids": null
   },
   "site": {
     "active_control": {
@@ -2334,5 +2338,6 @@
     "vehicles": {}
   },
   "target_vehicle_id": null,
+  "vehicle_choices": [],
   "vehicles": []
 }

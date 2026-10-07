@@ -332,19 +332,27 @@ def soc_choices(hass: HomeAssistant) -> list[VehicleSocChoice]:
 
 
 def resolve_target_vehicle(
-    hass: HomeAssistant, stored_vehicle_id: object
+    hass: HomeAssistant, stored_vehicle_id: object, allowed: tuple[str, ...] | None = None
 ) -> tuple[str | None, list[VehicleSocChoice]]:
     """The vehicle a charger's target is for, and the candidates it was chosen from.
 
-    The stored id if still listed with a resolved sensor, else the only candidate,
-    else `None`.
+    `allowed` is the charger's vehicles (`AutoSettings.vehicle_ids`, `None` for every one): only those are
+    candidates. The stored id if still listed with a resolved sensor, else the only candidate, else `None`.
     """
-    candidates = [c for c in soc_choices(hass) if c.selected_entity_id is not None]
+    candidates = [
+        c for c in soc_choices(hass) if c.selected_entity_id is not None and (allowed is None or c.id in allowed)
+    ]
     if isinstance(stored_vehicle_id, str) and any(c.id == stored_vehicle_id for c in candidates):
         return stored_vehicle_id, candidates
     if len(candidates) == 1:
         return candidates[0].id, candidates
     return None, candidates
+
+
+def charger_vehicle_ids(hass: HomeAssistant, entry_id: str) -> tuple[str, ...] | None:
+    """The vehicles that can charge at this charger (`AutoSettings.vehicle_ids`), `None` for every one."""
+    store = domain_data(hass).auto_store
+    return None if store is None else store.settings(entry_id).vehicle_ids
 
 
 def valid_soc_choice(hass: HomeAssistant, device_id: object, entity_id: object) -> bool:

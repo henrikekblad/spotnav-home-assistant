@@ -540,6 +540,7 @@ describe("the backend's dashboard strategy_state, site and status fixtures", () 
           "detected_phases",
           "fiscal",
           "generated_at",
+          "identification",
           "live",
           "market",
           "phase_detection",
@@ -558,6 +559,7 @@ describe("the backend's dashboard strategy_state, site and status fixtures", () 
           "strategy_state",
           "summary",
           "target_vehicle_id",
+          "vehicle_choices",
           "vehicles",
         ].sort(),
       );
@@ -694,6 +696,11 @@ describe("the backend's v7 vehicles", () => {
         soc_percent: 40,
         onboard_phases: 3,
         suggested_onboard_phases: null,
+        identification: {
+          plug: { entity_id: null, name: null, chosen: false, candidates: [] },
+          location: { entity_id: null, name: null, chosen: false, candidates: [] },
+        },
+        target_percent: 80,
       },
       {
         id: "vehicle_niro",
@@ -706,6 +713,11 @@ describe("the backend's v7 vehicles", () => {
         soc_percent: 55,
         onboard_phases: 3,
         suggested_onboard_phases: null,
+        identification: {
+          plug: { entity_id: null, name: null, chosen: false, candidates: [] },
+          location: { entity_id: null, name: null, chosen: false, candidates: [] },
+        },
+        target_percent: null,
       },
     ]);
   });

@@ -40,6 +40,7 @@ from ..vehicles.vehicle_refresh import async_refresh_vehicle, VehicleRefreshLimi
 from .common import ERROR_UNSUPPORTED_VERSION
 from .dashboard import async_webhook_dashboard, DashboardFailure
 from .entity_config import async_webhook_update_charger_priority, async_webhook_update_vehicle
+from .identification import webhook_choose_vehicle_identification, webhook_identify_vehicle
 from .sessions import SESSIONS_API_VERSION, sessions_answer, SessionsRefusal
 from .settings import (
     async_update_settings,
@@ -70,7 +71,8 @@ _last_rejected_warning: float | None = None
 #: app that reads them is out. A request opts in per field with a top-level `reads` list. A
 #: replacement without one keeps the stored value (`fiscal_included` is read-only and never stored).
 APP_UNREAD_SETTINGS: Final = (
-    "departure_date", "departure_weekdays", "fiscal_included", "notifications", "fill_to_limit"
+    "departure_date", "departure_weekdays", "fiscal_included", "notifications", "fill_to_limit", "vehicle_ids",
+    "identify_mode",
 )
 
 
@@ -299,6 +301,8 @@ ACTIONS: Final[dict[str, Handler]] = {
         async_webhook_update_charger_priority, "update_charger_priority"
     ),
     "push_register": _push_register,
+    "identify_vehicle": webhook_identify_vehicle,
+    "choose_vehicle_identification": webhook_choose_vehicle_identification,
 }
 
 

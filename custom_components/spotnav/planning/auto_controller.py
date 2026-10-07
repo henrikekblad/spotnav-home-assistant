@@ -349,13 +349,13 @@ class LiveVehicleFacts:
 
 
 def live_vehicle_facts(
-    hass: HomeAssistant, soc_source: SocReader, stored_vehicle_id: str
+    hass: HomeAssistant, soc_source: SocReader, stored_vehicle_id: str, allowed: tuple[str, ...] | None = None
 ) -> LiveVehicleFacts | None:
     """What the planner knows about the vehicle a target is for, right now.
 
     Resolved as the dashboard resolves it (`resolve_target_vehicle`), so planning and display agree.
     """
-    vehicle_id, _ = resolve_target_vehicle(hass, stored_vehicle_id or None)
+    vehicle_id, _ = resolve_target_vehicle(hass, stored_vehicle_id or None, allowed)
     soc_source.ensure_watch(vehicle_id)
     reading = soc_source.read(vehicle_id)
     if reading is None or reading.soc_percent is None:

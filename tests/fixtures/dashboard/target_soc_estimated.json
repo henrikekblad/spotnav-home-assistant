@@ -90,6 +90,7 @@
     }
   },
   "generated_at": "2026-09-22T08:00:00+00:00",
+  "identification": null,
   "live": {
     "charging": false,
     "measured_current_a": null,
@@ -2192,13 +2193,15 @@
     "driver": "target_soc",
     "fill_to_limit": false,
     "fiscal_included": [],
+    "identify_mode": "automatic",
     "max_periods": 1,
     "notifications": {
       "available": [],
       "events": [
         "plan_stopped",
         "plan_at_risk",
-        "charge_complete"
+        "charge_complete",
+        "vehicle_identify"
       ],
       "targets": [],
       "url": null
@@ -2211,7 +2214,8 @@
     "target": {
       "target_percent": 80.0,
       "vehicle_id": "<id>"
-    }
+    },
+    "vehicle_ids": null
   },
   "site": null,
   "soc": {
@@ -2305,18 +2309,39 @@
     }
   },
   "target_vehicle_id": "<id>",
+  "vehicle_choices": [
+    {
+      "id": "<id>",
+      "name": "EV6"
+    }
+  ],
   "vehicles": [
     {
       "capacity_kwh": 77.0,
       "capacity_source": "stored",
       "consumption_kwh_per_10km": 2.0,
       "id": "<id>",
+      "identification": {
+        "location": {
+          "candidates": [],
+          "chosen": false,
+          "entity_id": null,
+          "name": null
+        },
+        "plug": {
+          "candidates": [],
+          "chosen": false,
+          "entity_id": null,
+          "name": null
+        }
+      },
       "max_percent": null,
       "name": "EV6",
       "onboard_phases": 3,
       "soc_entity_id": "sensor.ev6_battery",
       "soc_percent": 75.06493506493507,
-      "suggested_onboard_phases": null
+      "suggested_onboard_phases": null,
+      "target_percent": 80.0
     }
   ]
 }

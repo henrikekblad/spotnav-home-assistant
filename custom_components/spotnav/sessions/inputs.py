@@ -73,9 +73,11 @@ def session_facts(hass: HomeAssistant, controller: ChargingController) -> Sessio
     )
     vehicle_id = vehicle_name = None
     if settings is not None:
-        vehicle_id, candidates = resolve_target_vehicle(hass, settings.target.vehicle_id)
+        vehicle_id, candidates = resolve_target_vehicle(hass, settings.target.vehicle_id, settings.vehicle_ids)
         vehicle_name = next((item.name for item in candidates if item.id == vehicle_id), None)
     strategy = None if settings is None else settings.strategy
+    data = charger_data(hass, charger_id)
+    identifier = None if data is None else data.identifier
     return SessionFacts(
         charging=controller.charging,
         connected=adapter.vehicle_connected(),
@@ -86,6 +88,7 @@ def session_facts(hass: HomeAssistant, controller: ChargingController) -> Sessio
         vehicle_id=vehicle_id,
         vehicle_name=vehicle_name,
         solar_share=solar_share_of(hass, charger_id, strategy),
+        vehicle_decided_by=None if identifier is None else identifier.method,
     )
 
 
@@ -97,7 +100,8 @@ def soc_percent_now(hass: HomeAssistant, charger_id: str) -> float | None:
     reader = None if data is None else data.soc_reader
     if reader is None or store is None:
         return None
-    vehicle_id, _ = resolve_target_vehicle(hass, store.settings(charger_id).target.vehicle_id)
+    settings = store.settings(charger_id)
+    vehicle_id, _ = resolve_target_vehicle(hass, settings.target.vehicle_id, settings.vehicle_ids)
     reading = reader.read(vehicle_id)
     return None if reading is None else reading.soc_percent
 

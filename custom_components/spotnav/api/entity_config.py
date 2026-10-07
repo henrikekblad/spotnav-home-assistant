@@ -5,8 +5,9 @@ it to automatic detection) and `spotnav/update_vehicle` (a vehicle's battery siz
 written by `vehicles/vehicle_properties.py`):
 
     {type: "spotnav/update_vehicle", api_version: 1, charger_id, vehicle_id,
-     changes: {capacity_kwh?: 1..500 | null, consumption_kwh_per_10km?: > 0 | null, onboard_phases?: 1 | 3 | null},
-     expected: {capacity_kwh?, consumption_kwh_per_10km?, onboard_phases?}}
+     changes: {capacity_kwh?: 1..500 | null, consumption_kwh_per_10km?: > 0 | null, onboard_phases?: 1 | 3 | null,
+               target_percent?: 0..100 | null},
+     expected: {capacity_kwh?, consumption_kwh_per_10km?, onboard_phases?, target_percent?}}
 
 `null` clears a property. `expected` holds what the caller last saw for the keys it names; a
 mismatch is `spotnav_conflict` and nothing is written. The answer is the shared envelope plus
@@ -14,7 +15,7 @@ mismatch is `spotnav_conflict` and nothing is written. The answer is the shared 
 (an error frame), `spotnav_not_admin`, `spotnav_unknown_charger`, `spotnav_conflict`, and
 `spotnav_invalid_value` with `field_errors` (`vehicle_id`/`unknown_vehicle`, `changes`/`invalid_changes`,
 `capacity_kwh`/`invalid_capacity`, `consumption_kwh_per_10km`/`invalid_consumption`,
-`onboard_phases`/`invalid_onboard_phases`,
+`onboard_phases`/`invalid_onboard_phases`, `target_percent`/`invalid_target`,
 `<key>`/`unknown_field`, `expected`/`invalid_expected`).
 
 They let the card choose every entity this integration uses (a charger's charge control, current
@@ -78,7 +79,7 @@ from ..const import (
 )
 from ..repairs import async_clear_vehicle_soc, async_record_vehicle_soc
 from ..runtime import domain_data, preview_for
-from ..vehicles import vehicle_properties
+from ..vehicles import vehicle_properties, vehicle_target
 from ..vehicles.ocpp_identity import apply_target, resolve_target
 from ..vehicles.vehicle_discovery import resolve_target_vehicle, soc_choices, valid_soc_choice
 from .common import (
@@ -477,6 +478,7 @@ async def async_update_vehicle(
         vehicle_properties.KEY_CAPACITY: row.get("capacity_kwh"),
         vehicle_properties.KEY_CONSUMPTION: row.get("consumption_kwh_per_10km"),
         vehicle_properties.KEY_ONBOARD_PHASES: row.get("onboard_phases"),
+        vehicle_properties.KEY_TARGET: row.get("target_percent"),
     }
     if any(seen[key] != value for key, value in (expected or {}).items()):
         raise _refuse(ERROR_CONFLICT, [])
@@ -484,6 +486,10 @@ async def async_update_vehicle(
     after = await vehicle_properties.async_update_vehicle_properties(
         hass, store, vehicle_id, changes
     )
+    if after.target_percent != before.target_percent:
+        # The car's target is the same at every charger: those planning for it take it (and recalculate).
+        vehicle_target.note_target(hass, vehicle_id, after.target_percent)
+        await vehicle_target.async_spread(hass, vehicle_id)
     if after != before:
         await _recalculate_planners_for(hass, vehicle_id)
     return read_entity_config(hass, charger), _vehicle_row(hass, entry_id, vehicle_id)

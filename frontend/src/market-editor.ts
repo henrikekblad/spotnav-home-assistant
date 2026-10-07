@@ -80,44 +80,6 @@ function componentKey(component: FiscalComponent, suffix: "label" | "description
   return `market.${component}.${suffix}` as TranslationKey;
 }
 
-/**
- * The trigger icon: a small path-only SVG (a plug) hidden from assistive technology, built with
- * `createElementNS`.
- */
-export function marketIcon(doc: Document): SVGElement {
-  const ns = "http://www.w3.org/2000/svg";
-  const svg = doc.createElementNS(ns, "svg") as SVGElement;
-  svg.setAttribute("viewBox", "0 0 24 24");
-  svg.setAttribute("width", "18");
-  svg.setAttribute("height", "18");
-  svg.setAttribute("aria-hidden", "true");
-  svg.setAttribute("focusable", "false");
-  svg.classList.add(C.settingsIcon);
-  const path = doc.createElementNS(ns, "path");
-  path.setAttribute("d", "M9 3v6M15 3v6M6 9h12v3a6 6 0 0 1-12 0V9zm6 9v3");
-  path.setAttribute("fill", "none");
-  path.setAttribute("stroke", "currentColor");
-  path.setAttribute("stroke-width", "2");
-  path.setAttribute("stroke-linecap", "round");
-  svg.append(path);
-  return svg;
-}
-
-/**
- * The resting trigger: an icon and an action ("Edit price area and taxes"). The area is already on
- * the row above, so it appears only in the accessible name.
- */
-export function marketTrigger(doc: Document, language: Language, value: string): HTMLButtonElement {
-  const button = doc.createElement("button") as HTMLButtonElement;
-  button.type = "button";
-  button.className = `${C.button} ${C.settingsTrigger}`;
-  button.dataset["setting"] = "market";
-  button.setAttribute("aria-label", translate(language, "market.aria", { value }));
-  button.append(marketIcon(doc));
-  button.append(element(doc, "span", undefined, translate(language, "market.edit")));
-  return button;
-}
-
 interface AreaChoice {
   id: string;
   name: string | null;

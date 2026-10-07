@@ -138,7 +138,7 @@ describe("the general Settings popover", () => {
     const { element } = await mounted();
     settingsGeneralButton(element).click();
     const site = section(element, "site");
-    expect(site?.textContent).toContain(translate("en", "settings.section.site"));
+    expect(site?.textContent).toContain(translate("en", "settings.heading.site"));
     expect(site?.textContent).toContain(translate("en", "site.none"));
     // No invented site name, count or switch: this fixture is v3, which carries no `site` block at all.
     expect(site?.querySelector("input")).toBeNull();
@@ -150,7 +150,8 @@ describe("the general Settings popover", () => {
     settingsGeneralButton(element).click();
     const dialog = openDialog(element);
     expect(dialog?.querySelector("[data-section='capabilities']")).toBeNull();
-    expect(dialog?.querySelectorAll(`.${VISUAL_CLASSES.capabilityItem}`).length).toBe(
+    // Every row is a value row: the label on the left, the value on the right.
+    expect(dialog?.querySelectorAll(`.${VISUAL_CLASSES.settingRow}`).length).toBe(
       dialog?.querySelectorAll("[data-row]").length,
     );
     expect(dialog?.querySelector("[data-capability]")).toBeNull();
@@ -197,9 +198,9 @@ describe("the general Settings popover", () => {
     const marketTrigger = section(element, "market")?.querySelector<HTMLButtonElement>(
       `.${VISUAL_CLASSES.settingsTrigger}`,
     );
-    // The button is an action; the area is the row above it (and not repeated on the button).
-    expect(marketTrigger?.textContent).toBe(translate("en", "market.edit"));
-    expect(section(element, "market")?.querySelector("[data-row='area']")?.textContent).toContain("Malmö · SE4");
+    // The area row's value is the button: no separate "Edit" action under it.
+    expect(marketTrigger?.textContent).toBe("Malmö · SE4");
+    expect(marketTrigger?.closest("[data-row='area']")).not.toBeNull();
     marketTrigger?.click();
     await settle();
     expect(marketReads(hass)).toHaveLength(1);
@@ -234,10 +235,10 @@ describe("the general Settings popover", () => {
       const { element } = await mounted(fixture("start_idle"), true, language);
       settingsGeneralButton(element, language).click();
       const dialog = openDialog(element);
-      expect(dialog?.textContent, language).toContain(translate(language, "settings.section.site"));
+      expect(dialog?.textContent, language).toContain(translate(language, "settings.heading.site"));
       expect(dialog?.textContent, language).toContain(translate(language, "site.none"));
       expect(dialog?.textContent, language).toContain(translate(language, "settings.section.vehicle"));
-      expect(dialog?.textContent, language).toContain(translate(language, "settings.section.market"));
+      expect(dialog?.textContent, language).toContain(translate(language, "settings.heading.price"));
     }
   });
 });

@@ -310,8 +310,8 @@ describe("7-8. disconnect and reconnect", () => {
     const cardNode = shadow(element).querySelector(".spotnav-card");
     expect(cardNode).not.toBeNull();
     // Eleven overlays are created with the view and stay out of the card's height: issues,
-    // capabilities, pause, strategy, the planning editor, the area/fiscal editor, the entity editors
-    // the general Settings popover, the charge history and the notifications editor.
+    // capabilities, pause, strategy, the planning editor, the area/fiscal editor, the entity editors,
+    // the car choice, the general Settings popover, the charge history and the one-value editor.
     expect(dialogs(element)).toBe(11);
 
     // One refresh is in flight when the card leaves the document.

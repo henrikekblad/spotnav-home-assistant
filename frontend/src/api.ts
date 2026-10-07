@@ -306,14 +306,57 @@ export async function setVehicleSoc(
 
 export interface VehicleChanges {
   vehicleId: string;
-  changes: { capacity_kwh?: number | null; consumption_kwh_per_10km?: number | null; onboard_phases?: 1 | 3 | null };
-  expected: { capacity_kwh?: number | null; consumption_kwh_per_10km?: number | null; onboard_phases?: 1 | 3 | null };
+  changes: {
+    capacity_kwh?: number | null;
+    consumption_kwh_per_10km?: number | null;
+    onboard_phases?: 1 | 3 | null;
+    /** The car's own target (the same at every charger); `null` clears it. */
+    target_percent?: number | null;
+  };
+  expected: {
+    capacity_kwh?: number | null;
+    consumption_kwh_per_10km?: number | null;
+    onboard_phases?: 1 | 3 | null;
+    target_percent?: number | null;
+  };
 }
 
 /**
  * Change a vehicle's battery size, consumption and/or onboard charger under compare-and-set. Administrators only;
  * the answer is the entity envelope plus the vehicle's row.
  */
+/** The identification commands' own version. */
+export const IDENTIFICATION_API_VERSION = 1;
+
+/** A person's answer to "which car is plugged in?" (`spotnav/identify_vehicle`); the answer is decoded by the caller. */
+export async function identifyVehicle(hass: HomeAssistantLike, chargerId: string, vehicleId: string): Promise<unknown> {
+  return await call<unknown>(hass, {
+    type: "spotnav/identify_vehicle",
+    api_version: IDENTIFICATION_API_VERSION,
+    charger_id: chargerId,
+    vehicle_id: vehicleId,
+  });
+}
+
+/**
+ * Choose a car's plug or location source (`spotnav/choose_vehicle_identification`): an entity, `"none"`, or
+ * `null` for automatic.
+ */
+export async function chooseVehicleIdentification(
+  hass: HomeAssistantLike,
+  chargerId: string,
+  request: { vehicleId: string; source: "plug" | "location"; entityId: string | null },
+): Promise<unknown> {
+  return await call<unknown>(hass, {
+    type: "spotnav/choose_vehicle_identification",
+    api_version: IDENTIFICATION_API_VERSION,
+    charger_id: chargerId,
+    vehicle_id: request.vehicleId,
+    source: request.source,
+    entity_id: request.entityId,
+  });
+}
+
 export async function updateVehicle(
   hass: HomeAssistantLike,
   chargerId: string,

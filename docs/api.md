@@ -48,6 +48,8 @@ charger executed whose pause could not be saved answers `{"ok": true, "action": 
 | `update_site_settings` | Change solar priority or forecast sources of the charger's site. |
 | `update_charger_priority` | Change this charger's priority on its site: `{"priority", "expected"}` (see below). |
 | `push_register` | The app's instant notifications: `{"push_ref", "events"}`, or `{"push_ref": null}` to stop (see below). |
+| `identify_vehicle` | Answer "which car is plugged in?": `{"vehicle_id"}` (see [vehicle identification](#vehicle-identification)). |
+| `choose_vehicle_identification` | Choose a car's plug or location source: `{"vehicle_id", "source", "entity_id"}` (see [vehicle identification](#vehicle-identification)). |
 
 **Withheld settings fields.** The settings record has a `departure_weekdays` (an optional list of
 weekday numbers, 1 Monday to 7 Sunday, at least one, default all seven: the days a daily departure
@@ -68,8 +70,9 @@ area's override says. It is withheld from the webhook like the two fields above 
 
 The record also carries `notifications` (see [Notifications](notifications.md)): `targets` (notify
 service names such as `mobile_app_pixel_8`, at most ten), `events` (any of `plan_stopped`,
-`plan_at_risk`, `charge_complete`, `charge_started`, `plugged_in`, `unplugged`, `plan_installed`;
-default the first three), `url` (a Home Assistant path a tap opens, or `null` for the default
+`plan_at_risk`, `charge_complete`, `charge_started`, `plugged_in`, `unplugged`, `plan_installed`,
+`vehicle_identify`; default `plan_stopped`, `plan_at_risk`, `charge_complete` and `vehicle_identify`; a choice
+stored before `vehicle_identify` existed has it on), `url` (a Home Assistant path a tap opens, or `null` for the default
 dashboard) and a read-only `available` (`[{"service", "name"}]`, the Companion app's notify services
 that exist now, named after their phones). A replacement may leave the field out, and then the stored
 choice is kept; `available` may be echoed and is ignored; a bad value is refused with
@@ -86,6 +89,30 @@ chose an amount, and that clears it. Setting the requested-energy number entity 
 is not a boolean is refused with `invalid_energy`. It is withheld from the webhook like the fields above
 (ask with `"reads": ["fill_to_limit"]`), so an older app neither sees it nor is offered a record it would
 refuse.
+
+The record also carries two fields for [vehicle identification](vehicle-identification.md): `vehicle_ids`
+(the vehicles that can charge at this charger: `null` for every detected vehicle, the default, or a non-empty list
+of different vehicle ids) and `identify_mode` (`"automatic"`, the default, `"ask"` or `"off"`). `vehicle_ids` also
+limits what the charger plans for: the dashboard's `vehicles`, `target_vehicle_id`, the `soc` block's choices and
+the planner's car only name those vehicles (the only one of them is the target when none is chosen). The
+additive root `vehicle_choices` (`[{"id", "name"}]`, by name) lists every detected car whether or not it is one of
+this charger's: the list a client ticks `vehicle_ids` from, so a car left out can be ticked again (every car
+ticked is `null`). A
+replacement may leave either out, and then the stored value is kept; a bad list or mode is refused with
+`invalid_vehicles`. Both are withheld from the webhook like the fields above (ask with
+`"reads": ["vehicle_ids", "identify_mode"]`), so an older app never sees them, and its replacements keep them.
+
+**A car's target is the car's, at every charger.** The target percent is a vehicle property, beside its battery
+size: a vehicle row in `vehicles` carries the additive `target_percent` (0-100, `null` when never set), and
+`update_vehicle` writes it (`changes: {"target_percent": 85}`, `null` clears; anything else is `invalid_target`;
+`expected` may name it). The settings record's `target.target_percent` is its planned car's: a replacement that
+sets it sets the car's, and every other charger planning for that car takes it by a settings write of its own
+(its revision moves). A replacement that changes `target.vehicle_id` but leaves `target.target_percent` as it was
+gets the new car's target, when it has one. Only a write that changes the target moves the car's; when two
+chargers change it in quick succession the later change wins at every charger. At set-up, a car with no target of
+its own takes the highest target any charger planned it to before this release, and every charger planning for it
+is aligned once. Nothing is withheld for it: the released app reads a vehicle row
+key by key and ignores keys it does not know (as it does the dashboard's root blocks).
 
 **Instant notifications.** `push_register` takes `push_ref`, the opaque reference the SpotNav relay
 gave the app for its Firebase token (base64url text, at most 512 characters), or `null` to stop, and an
@@ -134,6 +161,7 @@ config entry id. Reading is open to every authenticated user; writes require an 
 | `spotnav/update_site_settings` | Solar priority, forecast sources, active load balancing. |
 | `spotnav/get_debug_bundle` | The redacted installation-wide debug bundle (administrators only). |
 | `spotnav/get_card_info` | Which card the integration serves, for any signed-in user: `{"api_version": 1, "ok": true, "error": null, "spotnav_version", "card_bundle_hash"}`. The card compares the hash with the one in the URL it was loaded from. Not a dashboard field, so an older card is never handed a key it does not know. |
+| `spotnav/identify_vehicle`, `spotnav/choose_vehicle_identification` | Answer "which car is plugged in?", and choose a car's plug or location source (see [vehicle identification](#vehicle-identification)). |
 | `spotnav/get_sessions` | A charger's charge sessions: summaries per month and day and the latest sessions, the same for one chosen `month`, or with `format: "csv"` and optional `from` and `to` dates (or a `month`) the sessions of that range as CSV text. |
 
 Rules that hold across them:
@@ -381,6 +409,56 @@ The additive `sessions_summary` block holds this month's and last month's charge
 `savings`). Cost is in the major unit, prices in the minor unit per kWh; `savings` compares with
 the day's average price and is an estimate (`savings_estimate: true`). A client ignores keys it does
 not know. Example answers of `spotnav/get_sessions` are in `tests/fixtures/sessions/`.
+
+### Vehicle identification
+
+At a charger more than one vehicle can charge at, SpotNav finds out which one was plugged in
+([how](vehicle-identification.md)). The additive root block `identification` is `null` while no car is plugged in or
+fewer than two cars can charge here; otherwise it is present, also with identification off or after a restart
+(then `state` is `decided`, `method` what stands, `since` `null` and `evidence` empty):
+
+```json
+{"state": "asking", "method": "assumed", "vehicle_id": "<the target vehicle now>",
+ "since": "2026-10-06T17:00:00+00:00",
+ "candidates": [{"vehicle_id": "...", "name": "Kia", "likely": false}, {"vehicle_id": "...", "name": "Tesla", "likely": true}]}
+```
+
+`state` is `waiting` (looking at the cars' own reports), `asking` (the question is open: a client shows it with
+one button per candidate, in the given order) or `decided`. `method` is how the car was decided so far:
+`plug_sensor`, `location`, `answered`, `manual`, or `assumed` (nothing decided it yet, or nobody answered).
+`likely` marks a car whose own plug sensor says it was plugged in. The additive `evidence` lists, per car, what it was judged by at the
+last look: `{"vehicle_id", "plug": {"entity_id", "state", "changed", "reported"} | null, "location": {"entity_id",
+"home", "reported"} | null, "verdict": "plugged_in" | "likely" | "not_plugged_in" | "away" | "elsewhere" | null}`
+(the diagnostics carry the same). A vehicle row in `vehicles` carries the
+additive `identification`: `{"plug": source, "location": source}`, each source `{"entity_id", "name", "chosen",
+"candidates": [{"entity_id", "name"}]}`; `entity_id` `null` with `chosen` false is nothing found, or several to
+choose from, and with `chosen` true it is the person's "none".
+
+`spotnav/identify_vehicle` (any signed-in user: the question goes to the household's phones) and the webhook action
+`identify_vehicle` take `vehicle_id`, one of this charger's cars (`vehicle_ids`, every detected car when `null`), and
+answer `{"api_version": 1, "ok", "error", "identification"}` with the block after the answer. They are taken whenever
+a car is plugged in: an answer while the question is open, or a correction of a car already decided (also where
+nothing was identified: identification off, one car, a decision from before a restart). Either way it is recorded
+as `answered` and holds like an answer for the car's stay (a replug within two minutes keeps it, unless the
+answered car itself reports unplugged or away), wins over every automatic result, replaces an open question on
+every phone silently, and writes the settings as any vehicle choice does. Refusals: `spotnav_not_identifying` (no
+car is plugged in), `spotnav_invalid_value` (not one of this charger's cars), `spotnav_unknown_charger`,
+`spotnav_unsupported_api_version`; over the webhook HTTP 400 with the same code. The settings that steer
+identification (`vehicle_ids`, `identify_mode`, a car's sources) stay an administrator's.
+
+`spotnav/choose_vehicle_identification` (administrators) and the webhook action of the same name take
+`vehicle_id`, `source` (`plug` or `location`) and `entity_id`: one of the source's candidates, `"none"` (the car
+has no such source) or `null` (back to automatic). The answer carries `identification`, the vehicle row's block
+after the write; a value that is not one of these is `spotnav_invalid_value`.
+
+The phones' question is the notification event `vehicle_identify`: tag `spotnav_<charger id>_identify`, the
+message "Which car is plugged in?" in Home Assistant's language, and `data.actions` with one
+`{"action": "SPOTNAV_ID_<charger id>_<nonce>_<index>", "title": "<car name>"}` per car (at most three; with more, the two
+likeliest and `{"action": "URI", "title": "Open SpotNav", "uri": <url>}`). The nonce is 128 random bits, new for
+each question; a `mobile_app_notification_action` event with a matching action is the answer, and the first one
+wins. A retired question is replaced on every phone by the same tag without actions, silently (`alert_once: true`,
+`push: {"interruption-level": "passive"}`); unplugging sends `clear_notification`. A button of a question that is gone (answered, unplugged, a restart) takes the question off the phones.
+Each session in the history carries the additive `vehicle_decided_by` (`null` where nothing decided it).
 
 ### History by month
 

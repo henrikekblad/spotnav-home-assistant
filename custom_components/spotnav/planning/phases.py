@@ -26,7 +26,7 @@ from ..const import CONF_CHARGER_PHASES
 from ..runtime import domain_data
 from ..vehicles import vehicle_properties
 from ..vehicles.discovery_decisions import DECISION_DOMAIN_PHASE_OBSERVATIONS
-from ..vehicles.vehicle_discovery import resolve_target_vehicle
+from ..vehicles.vehicle_discovery import charger_vehicle_ids, resolve_target_vehicle
 from .first_run import wired_phases, charger_phases_from_entry, site_for_charger
 
 
@@ -77,7 +77,7 @@ def charging_phases(
         resolved = (
             vehicle_properties.resolved_vehicle_id(hass, entry_id)
             if vehicle_id is None
-            else resolve_target_vehicle(hass, vehicle_id)[0]
+            else resolve_target_vehicle(hass, vehicle_id, charger_vehicle_ids(hass, entry_id))[0]
         )
         if resolved is not None:
             vehicle = vehicle_properties.onboard_phases(hass, resolved)

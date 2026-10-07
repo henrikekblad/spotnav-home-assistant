@@ -166,7 +166,18 @@ export interface SettingsBody {
   target: SettingsTarget;
   /** Sent only by a notifications Save; left out, the stored choice is kept. */
   notifications?: NotificationsBody;
+  /**
+   * Which car is plugged in (added after the first release of the contract: absent on an older backend, and
+   * then never sent): the vehicles that can charge here (`null` for every detected one; it also limits what the
+   * charger plans for), and how the plugged-in one is found. A car's target is the car's own (`Vehicle`).
+   */
+  vehicle_ids?: string[] | null;
+  identify_mode?: IdentifyMode;
 }
+
+/** How a charger with more than one vehicle finds out which one is plugged in. */
+export const IDENTIFY_MODES = ["automatic", "ask", "off"] as const;
+export type IdentifyMode = (typeof IDENTIFY_MODES)[number];
 
 export interface SettingsRecord extends Omit<SettingsBody, "notifications"> {
   revision: number;

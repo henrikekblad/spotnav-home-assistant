@@ -123,6 +123,7 @@ from ..vehicles import vehicle_properties
 from ..vehicles.charger_inventory import charger_entries
 from ..vehicles.duplicate_chargers import duplicates_of
 from ..vehicles.soc_estimate import battery_room_kwh, CHARGE_EFFICIENCY, target_need_kwh
+from ..vehicles.identification_sources import sources_block
 from ..vehicles.vehicle_discovery import discover_vehicles, resolve_target_vehicle
 from .charge_bar import charge_bar, ProgressFacts
 from .common import (
@@ -367,6 +368,10 @@ class CapturedVehicle:
     onboard_phases: int = vehicle_properties.DEFAULT_ONBOARD_PHASES
     #: `1` when charges suggest the onboard charger is single-phase and nobody has answered yet.
     suggested_onboard_phases: int | None = None
+    #: The car's plug and location sources for vehicle identification (`identification_sources.sources_block`).
+    identification: dict[str, Any] | None = None
+    #: The target percent the car is charged to at every charger (`vehicle_properties`), `None` when never set.
+    target_percent: float | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -443,6 +448,11 @@ class CapturedDashboard:
     notify_available: tuple[tuple[str, str], ...] = ()
     #: Friendly names of the entities a status line names (`entity_id -> name`), where they have one.
     entity_names: tuple[tuple[str, str], ...] = ()
+    #: Which car is plugged in, while a plug-in is being identified (`vehicles/identification.py`), else `None`.
+    identification: dict[str, Any] | None = None
+    #: Every detected car, `(id, name)`, whether or not it is one of this charger's (`vehicle_ids`): what the
+    #: settings tick from. `vehicles` lists only the charger's.
+    vehicle_choices: tuple[tuple[str, str], ...] = ()
     #: A smart plug's measured power now, in kW (`ChargingController.measured_power_w`).
     measured_power_kw: float | None = None
     #: The charger's voltage between phases (`grid_voltage.voltage_between_phases_v`).
@@ -604,8 +614,10 @@ def target_soc_capable(hass: HomeAssistant, entry_id: str) -> bool:
     if reader is None:
         return False
     store = domain_data(hass).auto_store
-    stored = None if store is None else store.settings(entry_id).target.vehicle_id
-    vehicle_id, _ = resolve_target_vehicle(hass, stored)
+    settings = None if store is None else store.settings(entry_id)
+    stored = None if settings is None else settings.target.vehicle_id
+    allowed = None if settings is None else settings.vehicle_ids
+    vehicle_id, _ = resolve_target_vehicle(hass, stored, allowed)
     if vehicle_id is None:
         if reader.has_source(None) and reader.capacity_kwh(None) is not None:
             return True
@@ -613,6 +625,7 @@ def target_soc_capable(hass: HomeAssistant, entry_id: str) -> bool:
             candidate.battery_capacity_kwh
             or vehicle_properties.stored_properties(hass, candidate.id).capacity_kwh
             for candidate in discover_vehicles(hass)
+            if allowed is None or candidate.id in allowed
         )
     return reader.has_source(vehicle_id) and reader.capacity_kwh(vehicle_id) is not None
 
@@ -625,7 +638,7 @@ def capture_soc(
     reader = None if data is None else data.soc_reader
     if reader is None or settings is None:
         return None
-    vehicle_id, candidates = resolve_target_vehicle(hass, settings.target.vehicle_id)
+    vehicle_id, candidates = resolve_target_vehicle(hass, settings.target.vehicle_id, settings.vehicle_ids)
     choose = vehicle_id is None and len(candidates) > 1
     if not reader.has_source(vehicle_id) and not choose:
         return None
@@ -669,7 +682,7 @@ def capture_vehicles(
     data = charger_data(hass, entry_id)
     reader = None if data is None else data.soc_reader
     stored = None if settings is None else settings.target.vehicle_id
-    target_id, candidates = resolve_target_vehicle(hass, stored)
+    target_id, candidates = resolve_target_vehicle(hass, stored, None if settings is None else settings.vehicle_ids)
     rows: list[CapturedVehicle] = []
     for choice in candidates:
         own = vehicle_properties.stored_properties(hass, choice.id)
@@ -697,6 +710,8 @@ def capture_vehicles(
                 soc_percent=soc_percent,
                 onboard_phases=own.phases,
                 suggested_onboard_phases=onboard_suggestion(hass, choice.id),
+                identification=sources_block(hass, choice.id),
+                target_percent=own.target_percent,
             )
         )
     return tuple(rows), target_id
@@ -1064,10 +1079,18 @@ def capture_dashboard(
         charger_priority=capture_charger_priority(hass, entry),
         notify_available=available_targets(hass),
         entity_names=_status_entity_names(hass, site),
+        identification=_identification(hass, entry_id),
+        vehicle_choices=tuple((choice.id, choice.name) for choice in resolve_target_vehicle(hass, None)[1]),
         measured_power_kw=_measured_power_kw(controller),
         voltage_between_phases_v=voltage_between_phases_v(hass, entry_id),
         session=capture_session(hass, entry_id),
     )
+
+
+def _identification(hass: HomeAssistant, entry_id: str) -> dict[str, Any] | None:
+    data = charger_data(hass, entry_id)
+    identifier = None if data is None else data.identifier
+    return None if identifier is None else identifier.dashboard()
 
 
 def _measured_power_kw(controller: ChargingController | None) -> float | None:
@@ -1669,6 +1692,8 @@ def serialize_dashboard(
         "connection": serialize_connection(capture.connection),
         "starting_up": serialize_starting_up(capture.starting_up),
         "charger_priority": serialize_charger_priority(capture.charger_priority, can_act=can_act),
+        "identification": capture.identification,
+        "vehicle_choices": [{"id": vehicle_id, "name": name} for vehicle_id, name in capture.vehicle_choices],
     }
 
 
@@ -1991,6 +2016,8 @@ def serialize_vehicle(vehicle: CapturedVehicle) -> dict[str, Any]:
         "soc_percent": finite_number(vehicle.soc_percent),
         "onboard_phases": vehicle.onboard_phases,
         "suggested_onboard_phases": vehicle.suggested_onboard_phases,
+        "identification": vehicle.identification,
+        "target_percent": finite_number(vehicle.target_percent),
     }
 
 

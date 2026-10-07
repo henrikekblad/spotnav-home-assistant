@@ -20,6 +20,7 @@
 import {
   SpotnavApiError,
   UNSUPPORTED_API_VERSION,
+  chooseVehicleIdentification,
   getDashboard,
   getCardInfo,
   getDebugBundle,
@@ -29,6 +30,7 @@ import {
   findRegion,
   getMarketOptions,
   getSettings,
+  identifyVehicle,
   listChargers,
   performAction,
   setVehicleSoc,
@@ -52,16 +54,16 @@ import {
   decodeVehicleAnswer,
   entityChange,
   entityErrorKey,
-  vehicleSocChanges,
+  fieldErrorKey,
   type EntityConfig,
   type EntityDraft,
-  type EntityFieldError,
   type EntityScope,
 } from "./entity-config";
 import { decodeDebugAnswer, saveDebugBundle } from "./debug-download";
 import { cardOutdated, clientBlock, decodeCardInfo, ownCardBundleHash, servedHashFromBundle } from "./card-identity";
 import { saveTextFile } from "./download";
 import { ensureHaSelector } from "./entity-editor";
+import type { FiscalComponentName, ValueWrite } from "./value-writes";
 import { decodeCsv, decodeSessions, type SessionsAnswer } from "./history";
 import {
   SETTINGS_EDITOR_KINDS,
@@ -69,13 +71,9 @@ import {
   departureDays,
   formFromRecord,
   manualEnergyReadOnly,
-  checkCapacity,
-  checkConsumption,
   replacementFor,
   settingsErrorKey,
   strategyReplacement,
-  notificationsReplacement,
-  type NotificationsChoice,
   vehicleReplacement,
   type ReplacementCheck,
   type CurrentRange,
@@ -89,14 +87,16 @@ import {
   decodeSiteSettingsAnswer,
   siteSettingsErrorKey,
   solarSettingsChange,
-  SITE_SETTINGS_CONFLICT,
 } from "./site-settings";
 import { resolveLanguage, translate, type Language, type TranslationKey } from "./i18n";
 import {
   decodeMarketOptions,
+  fiscalValues,
   marketEditable,
   marketFormFor,
   marketReplacement,
+  marketSuggestion,
+  type MarketReplacementCheck,
   marketStateKey,
   switchArea,
   type MarketDrafts,
@@ -116,7 +116,6 @@ import {
   type SentAction,
   type SiteFacts,
 } from "./model";
-import { SOLAR_FORECAST_PREFIX, SOLAR_PRIORITY_KEY } from "./solar-editor";
 import {
   API_VERSION,
   CARD_EDITOR_ELEMENT,
@@ -248,6 +247,8 @@ export class SpotnavCard extends HTMLElement {
   private history: SessionsAnswer | null = null;
   private entitySaving = false;
   private reopenOverview = false;
+  /** A warning a value's save leaves for the Settings page it returns to (the plan was not updated). */
+  private overviewWarning: { sentenceKey: TranslationKey; code: string | null } | null = null;
   private confirmReadFailed = false;
   private deferredRefresh = false;
   private readonly idPrefix: string;
@@ -653,6 +654,7 @@ export class SpotnavCard extends HTMLElement {
         values: formFromRecord(record),
         energyReadOnly: manualEnergyReadOnly(record),
         fillSupported: record.fill_to_limit !== undefined,
+        vehicleTargets: this.vehicleTargets(),
         phases: record.phases,
         limitedBy: this.phasesLimitedBy(),
         currentRange: this.currentRange(),
@@ -979,6 +981,17 @@ export class SpotnavCard extends HTMLElement {
     return this.cardState.kind === "ready" ? (this.cardState.dashboard.charging_phases?.limited_by ?? null) : null;
   }
 
+  /** Each car's own target (the same at every charger), from the dashboard's vehicle rows. */
+  private vehicleTargets(): Record<string, number> {
+    const targets: Record<string, number> = {};
+    for (const row of this.vehicleFacts()) {
+      if (typeof row.target_percent === "number") {
+        targets[row.id] = row.target_percent;
+      }
+    }
+    return targets;
+  }
+
   private vehicleFacts(): readonly Vehicle[] {
     return this.cardState.kind === "ready" ? vehiclesFor(this.cardState.dashboard) : [];
   }
@@ -1127,6 +1140,7 @@ export class SpotnavCard extends HTMLElement {
         values: formFromRecord(record),
         energyReadOnly: manualEnergyReadOnly(record),
         fillSupported: record.fill_to_limit !== undefined,
+        vehicleTargets: this.vehicleTargets(),
         phases: record.phases,
         limitedBy: this.phasesLimitedBy(),
         currentRange: this.currentRange(),
@@ -1191,23 +1205,46 @@ export class SpotnavCard extends HTMLElement {
    * Choose the vehicle the charger plans for: the same dialog-free write as the strategy, changing only
    * `target.vehicle_id` of a freshly read record under its revision.
    */
-  private async selectVehicle(vehicleId: string): Promise<void> {
-    await this.writeFreshSettings((record) => vehicleReplacement(record, vehicleId));
+  /**
+   * The banner's answer to "which car is plugged in?" (`spotnav/identify_vehicle`): the backend switches the car
+   * when it differs, retires the question on every phone, and the dashboard is read again. A refusal (the
+   * question was answered elsewhere meanwhile) is shown by that read, not here.
+   */
+  private async answerIdentification(vehicleId: string): Promise<void> {
+    const hass = this.hassObject;
+    const config = this.config;
+    // Any signed-in user may answer: the question goes to the household's phones as well.
+    if (!this.connected || hass === null || config === null || config.charger === "") {
+      return;
+    }
+    const generation = this.generation;
+    const dashboard = this.cardState.kind === "ready" ? this.cardState.dashboard : null;
+    if (dashboard?.connection?.state === "disconnected") {
+      // No car plugged in: the choice is the plan's car for the next plug-in.
+      await this.selectVehicle(vehicleId);
+      return;
+    }
+    let notPluggedIn = false;
+    try {
+      const answer = (await identifyVehicle(hass, config.charger, vehicleId)) as { ok?: unknown; error?: unknown } | null;
+      notPluggedIn = answer !== null && answer.ok === false && answer.error === "spotnav_not_identifying";
+    } catch {
+      // Not answered: the question stays until the next read says otherwise.
+    }
+    if (notPluggedIn && generation === this.generation && this.connected && this.isAdmin) {
+      // Unplugged meanwhile: the choice becomes the plan's car, which only an administrator may set. For
+      // anyone else the confirming read below shows the line as it now is.
+      await this.selectVehicle(vehicleId);
+      return;
+    }
+    if (generation === this.generation && this.connected) {
+      await this.refresh({ purpose: "confirm" });
+    }
   }
 
-  /**
-   * The Notifications dialog's Save: the same fresh-record write as the strategy, changing only
-   * `notifications`, then back to Settings (a refusal is said there).
-   */
-  private async saveNotifications(choice: NotificationsChoice): Promise<void> {
-    this.reopenOverview = true;
-    await this.writeFreshSettings((record) => notificationsReplacement(record, choice));
-    if (this.reopenOverview) {
-      this.reopenOverview = false;
-      if (this.connected && this.view !== null && !this.view.anyDialogOpen()) {
-        this.view.openSettingsOverview();
-      }
-    }
+  /** The plan's car, written into the settings (an administrator's write): what Byt bil does with no car plugged in. */
+  private async selectVehicle(vehicleId: string): Promise<void> {
+    await this.writeFreshSettings((record) => vehicleReplacement(record, vehicleId));
   }
 
   private async writeFreshSettings(build: (record: SettingsRecord) => ReplacementCheck): Promise<void> {
@@ -1602,196 +1639,6 @@ export class SpotnavCard extends HTMLElement {
     }
   }
 
-  private openVehicleEditor(vehicleId: string): void {
-    const listed = this.vehicleFacts().some((row) => row.id === vehicleId);
-    if (!this.isAdmin || !(listed || this.entityConfig?.vehicles.some((entry) => entry.id === vehicleId) === true)) {
-      return;
-    }
-    this.entityOperation += 1;
-    this.view?.openVehicleEditor(vehicleId, this.entityConfig);
-  }
-
-  /**
-   * One Save of one vehicle's dialog: the typed capacity and consumption are judged first (a refused field
-   * is marked and nothing is sent), then a changed charge-level sensor is chosen
-   * (`spotnav/choose_vehicle_soc`) and changed properties are written in one `spotnav/update_vehicle`
-   * under compare-and-set. Never optimistic. Success closes the dialog, reads the dashboard once and
-   * returns to Settings; a refusal stays in the dialog with its sentence.
-   */
-  private async saveVehicle(vehicleId: string, draft: EntityDraft): Promise<void> {
-    const hass = this.hassObject;
-    const config = this.config;
-    const view = this.view;
-    if (!this.connected || hass === null || config === null || config.charger === "" || view === null) {
-      return;
-    }
-    if (this.entitySaving) {
-      return;
-    }
-    if (!this.isAdmin) {
-      view.setEntityEditorNotice({ sentenceKey: "entity.error.notAdmin", code: null });
-      return;
-    }
-    const row = this.vehicleFacts().find((entry) => entry.id === vehicleId);
-    view.markEntityFieldErrors([]);
-    view.setEntityEditorNotice(null);
-
-    const errors: EntityFieldError[] = [];
-    const changes: { capacity_kwh?: number; consumption_kwh_per_10km?: number; onboard_phases?: 1 | 3 } = {};
-    const expected: { capacity_kwh?: number | null; consumption_kwh_per_10km?: number | null; onboard_phases?: 1 | 3 } = {};
-    const judge = (
-      text: string | undefined,
-      check: (text: string) => { ok: true; value: number } | { ok: false },
-      field: "capacity_kwh" | "consumption_kwh_per_10km",
-      code: string,
-      current: number | null,
-    ): void => {
-      if (text === undefined) {
-        return;
-      }
-      const checked = check(text);
-      if (!checked.ok) {
-        errors.push({ field, code });
-        return;
-      }
-      const value = Math.round(checked.value * 10) / 10;
-      if (value !== current) {
-        changes[field] = value;
-        expected[field] = current;
-      }
-    };
-    judge(draft["capacity"], checkCapacity, "capacity_kwh", "invalid_capacity", row?.capacity_kwh ?? null);
-    judge(
-      draft["consumption"],
-      checkConsumption,
-      "consumption_kwh_per_10km",
-      "invalid_consumption",
-      row?.consumption_kwh_per_10km ?? null,
-    );
-    const onboard = draft["onboard"];
-    if (onboard !== undefined && row !== undefined) {
-      if (onboard !== "1" && onboard !== "3") {
-        errors.push({ field: "onboard_phases", code: "invalid_onboard_phases" });
-      } else if (Number(onboard) !== row.onboard_phases) {
-        changes.onboard_phases = Number(onboard) as 1 | 3;
-        expected.onboard_phases = row.onboard_phases;
-      }
-    }
-    if (errors.length > 0) {
-      view.markEntityFieldErrors(errors);
-      return;
-    }
-    const read = this.entityConfig;
-    const socRequests =
-      read === null || draft["soc"] === undefined
-        ? []
-        : vehicleSocChanges(read.vehicles, { [vehicleId]: draft["soc"] }).filter((request) => request.vehicleId === vehicleId);
-    const propertiesChanged = Object.keys(changes).length > 0;
-    if (socRequests.length === 0 && !propertiesChanged) {
-      view.closeEntityEditor();
-      view.openSettingsOverview();
-      return;
-    }
-
-    const generation = this.generation;
-    this.entityOperation += 1;
-    this.entitySaving = true;
-    view.setEntityEditorPending(true);
-    const open = (): boolean =>
-      this.connected && generation === this.generation && this.view === view && view.vehicleEditorOpen() === vehicleId;
-    const refuse = (sentenceKey: TranslationKey, code: string | null, fieldErrors: readonly EntityFieldError[] = []): void => {
-      if (open()) {
-        view.markEntityFieldErrors(fieldErrors);
-        view.setEntityEditorNotice({ sentenceKey, code });
-      }
-    };
-    const generic = (failure: "unsupported" | "malformed"): TranslationKey =>
-      failure === "unsupported" ? "settings.error.version" : "entity.error.generic";
-    try {
-      let latest: EntityConfig | null = read;
-      for (const request of socRequests) {
-        const decoded = decodeEntityAnswer(await setVehicleSoc(hass, config.charger, request));
-        if (generation !== this.generation || !this.connected) {
-          return;
-        }
-        if (!decoded.ok) {
-          refuse(generic(decoded.failure), null);
-          return;
-        }
-        const answer = decoded.value;
-        if (answer.config !== null) {
-          this.entityConfig = answer.config;
-          latest = answer.config;
-        }
-        if (!answer.ok) {
-          const notice = { sentenceKey: entityErrorKey(answer.code), code: answer.code };
-          if (answer.config !== null && answer.fieldErrors.some((error) => error.code === "unknown_vehicle")) {
-            if (open()) {
-              view.openVehicleEditor(vehicleId, answer.config, notice);
-            }
-            return;
-          }
-          refuse(notice.sentenceKey, notice.code, answer.fieldErrors);
-          return;
-        }
-      }
-      if (propertiesChanged) {
-        const decoded = decodeVehicleAnswer(await updateVehicle(hass, config.charger, { vehicleId, changes, expected }));
-        if (generation !== this.generation || !this.connected) {
-          return;
-        }
-        if (!decoded.ok) {
-          refuse(generic(decoded.failure), null);
-          return;
-        }
-        const answer = decoded.value;
-        if (answer.config !== null) {
-          this.entityConfig = answer.config;
-          latest = answer.config;
-        }
-        if (!answer.ok) {
-          if (answer.code === ENTITY_CONFLICT && answer.config !== null) {
-            if (open()) {
-              view.openVehicleEditor(
-                vehicleId,
-                answer.config,
-                { sentenceKey: entityErrorKey(answer.code), code: answer.code },
-                answer.vehicle ?? undefined,
-              );
-              await this.confirmVehicleWrite();
-            }
-            return;
-          }
-          const fieldErrors = answer.fieldErrors.map((error) => ({
-            field: error.field,
-            code: error.code,
-          }));
-          refuse(
-            fieldErrors.length > 0 && answer.fieldErrors.every((error) => error.code !== "unknown_vehicle")
-              ? "entity.error.invalid"
-              : answer.fieldErrors.some((error) => error.code === "unknown_vehicle")
-                ? "entity.error.field.unknownVehicle"
-                : entityErrorKey(answer.code),
-            answer.code,
-            fieldErrors,
-          );
-          return;
-        }
-      }
-      await this.returnToSettingsAfterEntitySave(view, latest);
-    } catch (error) {
-      if (open()) {
-        const code = error instanceof SpotnavApiError ? error.code : null;
-        view.setEntityEditorNotice({ sentenceKey: "entity.error.generic", code });
-      }
-    } finally {
-      this.entitySaving = false;
-      if (this.view === view && view.vehicleEditorOpen() === vehicleId) {
-        view.setEntityEditorPending(false);
-      }
-    }
-  }
-
   /**
    * The one-tap answer to the card's "set its onboard charger to 1-phase?": `update_vehicle` under
    * compare-and-set. Keeping three phases is stored as an answer too, which ends the question. Whatever
@@ -1816,95 +1663,6 @@ export class SpotnavCard extends HTMLElement {
     }
     if (generation === this.generation && this.connected) {
       await this.refresh({ purpose: "confirm" });
-    }
-  }
-
-  private async confirmVehicleWrite(): Promise<void> {
-    this.confirmReadFailed = false;
-    await this.refresh({ purpose: "confirm", confirm: SETTINGS_CONFIRM_NOTICE });
-  }
-
-  private openSolarEditor(): void {
-    if (!this.isAdmin || this.siteFacts() === null) {
-      return;
-    }
-    this.view?.openSolarEditor();
-  }
-
-  /**
-   * The Solar dialog's Save (`spotnav/update_site_settings`, admin only) under compare-and-set: only the
-   * changed fields travel. Success closes the dialog, reads the dashboard once and returns to Settings. A
-   * conflict adopts the current values by the same route and says so on the row outside the popover; other
-   * refusals stay in the dialog with their sentence.
-   */
-  private async saveSolar(draft: EntityDraft): Promise<void> {
-    const hass = this.hassObject;
-    const config = this.config;
-    const view = this.view;
-    const site = this.siteFacts();
-    if (!this.connected || hass === null || config === null || config.charger === "" || view === null || site === null) {
-      return;
-    }
-    if (this.entitySaving) {
-      return;
-    }
-    if (!this.isAdmin) {
-      view.setEntityEditorNotice({ sentenceKey: "settings.error.readOnly", code: null });
-      return;
-    }
-    const forecast = site.solarForecastChoices
-      .filter((choice) => draft[`${SOLAR_FORECAST_PREFIX}${choice.id}`] === "true")
-      .map((choice) => choice.id);
-    const request = solarSettingsChange(
-      {
-        priority: site.solarPriority,
-        forecast: site.solarForecastChoices.filter((choice) => choice.selected).map((choice) => choice.id),
-      },
-      { priority: draft[SOLAR_PRIORITY_KEY] ?? site.solarPriority, forecast },
-    );
-    if (request === null) {
-      view.closeEntityEditor();
-      view.openSettingsOverview();
-      return;
-    }
-    const generation = this.generation;
-    const operation = ++this.siteOperation;
-    this.entitySaving = true;
-    view.setEntityEditorNotice(null);
-    view.setEntityEditorPending(true);
-    const open = (): boolean =>
-      this.connected && generation === this.generation && this.view === view && view.solarEditorOpen();
-    const refuse = (sentenceKey: TranslationKey, code: string | null): void => {
-      if (open()) {
-        view.setEntityEditorNotice({ sentenceKey, code });
-      }
-    };
-    try {
-      const decoded = decodeSiteSettingsAnswer(await updateSiteSettings(hass, config.charger, request));
-      if (generation !== this.generation || operation !== this.siteOperation || !this.connected) {
-        return;
-      }
-      if (!decoded.ok) {
-        refuse(decoded.failure === "unsupported" ? "settings.error.version" : "settings.error.generic", null);
-        return;
-      }
-      const answer = decoded.value;
-      if (answer.ok || answer.code === SITE_SETTINGS_CONFLICT) {
-        await this.returnToSettingsAfterEntitySave(view, null);
-        if (!answer.ok && this.connected && !this.confirmReadFailed) {
-          this.view?.setSettingsError({ sentenceKey: siteSettingsErrorKey(answer.code), code: answer.code });
-        }
-        return;
-      }
-      refuse(siteSettingsErrorKey(answer.code), answer.code);
-    } catch (error) {
-      const code = error instanceof SpotnavApiError ? error.code : null;
-      refuse(siteSettingsErrorKey(code), code);
-    } finally {
-      this.entitySaving = false;
-      if (this.view === view && view.solarEditorOpen()) {
-        view.setEntityEditorPending(false);
-      }
     }
   }
 
@@ -1979,6 +1737,225 @@ export class SpotnavCard extends HTMLElement {
       if (this.view === view) {
         view.setActiveControlPending(false);
       }
+    }
+  }
+
+  /**
+   * One value of the Settings page, written through the same request as the dialog it replaces (see
+   * `ValueWrite`). Answers `null` when it took: the editor is closed, the dashboard read once and Settings
+   * shown again; otherwise the sentence the editor keeps showing.
+   */
+  private async writeValue(write: ValueWrite): Promise<string | null> {
+    const hass = this.hassObject;
+    const config = this.config;
+    const language = this.languageOrFallback;
+    const say = (key: TranslationKey): string => translate(language, key);
+    if (!this.connected || hass === null || config === null || config.charger === "") {
+      return say("settings.error.generic");
+    }
+    if (!this.isAdmin) {
+      return say("settings.error.readOnly");
+    }
+    const generation = this.generation;
+    const current = (): boolean => this.connected && generation === this.generation;
+    this.overviewWarning = null;
+    try {
+      const failure = await this.performValueWrite(hass, config.charger, write);
+      if (!current()) {
+        return null;
+      }
+      if (failure !== null) {
+        return say(failure);
+      }
+    } catch (error) {
+      const code = error instanceof SpotnavApiError ? error.code : null;
+      return say(settingsErrorKey(code));
+    }
+    this.view?.closeValueEditor();
+    this.reopenOverview = true;
+    this.confirmReadFailed = false;
+    await this.refresh({ purpose: "confirm", confirm: SETTINGS_CONFIRM_NOTICE });
+    if (this.reopenOverview) {
+      this.reopenOverview = false;
+      if (this.connected && this.view !== null && !this.view.anyDialogOpen()) {
+        this.view.openSettingsOverview();
+      }
+    }
+    return null;
+  }
+
+  /** The request itself: `null` when it took, else the sentence key that says why not. */
+  private async performValueWrite(
+    hass: HomeAssistantLike,
+    charger: string,
+    write: ValueWrite,
+  ): Promise<TranslationKey | null> {
+    const adoptConfig = (config: EntityConfig | null): void => {
+      if (config !== null) {
+        this.entityConfig = config;
+        this.view?.setEntityState({ kind: "ready", config });
+      }
+    };
+    switch (write.kind) {
+      case "vehicle": {
+        const decoded = decodeVehicleAnswer(
+          await updateVehicle(hass, charger, { vehicleId: write.vehicleId, changes: write.changes, expected: write.expected }),
+        );
+        if (!decoded.ok) {
+          return decoded.failure === "unsupported" ? "settings.error.version" : "entity.error.generic";
+        }
+        adoptConfig(decoded.value.config);
+        if (decoded.value.ok) {
+          return null;
+        }
+        if (decoded.value.code === ENTITY_CONFLICT && decoded.value.vehicle !== null) {
+          write.onConflict?.(decoded.value.vehicle);
+        }
+        const errors = decoded.value.fieldErrors;
+        return errors.length > 0 && errors[0] !== undefined ? fieldErrorKey(errors[0].code) : entityErrorKey(decoded.value.code);
+      }
+      case "vehicleSoc": {
+        const decoded = decodeEntityAnswer(await setVehicleSoc(hass, charger, { vehicleId: write.vehicleId, entityId: write.entityId }));
+        if (!decoded.ok) {
+          return decoded.failure === "unsupported" ? "settings.error.version" : "entity.error.generic";
+        }
+        adoptConfig(decoded.value.config);
+        if (decoded.value.ok) {
+          return null;
+        }
+        const refused = decoded.value.fieldErrors[0];
+        return refused === undefined ? entityErrorKey(decoded.value.code) : fieldErrorKey(refused.code);
+      }
+      case "vehicleSource": {
+        const answer = (await chooseVehicleIdentification(hass, charger, {
+          vehicleId: write.vehicleId,
+          source: write.source,
+          entityId: write.entityId,
+        })) as { ok?: unknown; error?: unknown } | null;
+        return answer !== null && answer.ok === true
+          ? null
+          : entityErrorKey(typeof answer?.error === "string" ? answer.error : null);
+      }
+      case "entity": {
+        const read = this.entityConfig;
+        if (read === null) {
+          return "entity.error.generic";
+        }
+        const change = entityChange(read, write.scope, write.draft);
+        if (!change.ok) {
+          const first = change.errors[0];
+          return first === undefined ? entityErrorKey(ENTITY_INVALID_VALUE) : fieldErrorKey(first.code);
+        }
+        if (!change.changed) {
+          return null;
+        }
+        const decoded = decodeEntityAnswer(await updateEntityConfig(hass, charger, change.request));
+        if (!decoded.ok) {
+          return decoded.failure === "unsupported" ? "settings.error.version" : "entity.error.generic";
+        }
+        adoptConfig(decoded.value.config);
+        if (decoded.value.ok) {
+          return null;
+        }
+        const first = decoded.value.fieldErrors[0];
+        return first === undefined ? entityErrorKey(decoded.value.code) : fieldErrorKey(first.code);
+      }
+      case "solar": {
+        const site = this.siteFacts();
+        if (site === null) {
+          return "settings.error.generic";
+        }
+        const confirmed = {
+          priority: site.solarPriority,
+          forecast: site.solarForecastChoices.filter((choice) => choice.selected).map((choice) => choice.id),
+        };
+        const request = solarSettingsChange(confirmed, {
+          priority: write.priority ?? confirmed.priority,
+          forecast: write.forecast ?? confirmed.forecast,
+        });
+        if (request === null) {
+          return null;
+        }
+        const decoded = decodeSiteSettingsAnswer(await updateSiteSettings(hass, charger, request));
+        if (!decoded.ok) {
+          return decoded.failure === "unsupported" ? "settings.error.version" : "settings.error.generic";
+        }
+        return decoded.value.ok ? null : siteSettingsErrorKey(decoded.value.code);
+      }
+      case "settings":
+      case "fiscal": {
+        const [settingsRaw, optionsRaw] = await Promise.all([
+          getSettings(hass, charger),
+          write.kind === "fiscal" ? getMarketOptions(hass, charger) : Promise.resolve(null),
+        ]);
+        const read = decodeSettingsAnswer(settingsRaw);
+        if (!read.ok || read.value.settings === null) {
+          return read.ok && !read.value.ok ? settingsErrorKey(read.value.code) : "settings.error.read";
+        }
+        const record = read.value.settings;
+        let check: ReplacementCheck | MarketReplacementCheck;
+        if (write.kind === "settings") {
+          check = write.build(record);
+        } else {
+          const options = decodeMarketOptions(optionsRaw);
+          if (!options.ok) {
+            return options.failure === "unsupported" ? "market.error.version" : "market.error.read";
+          }
+          check = marketReplacement(record, fiscalValues(record, write.component, write.value), options.value);
+        }
+        if (!check.ok) {
+          return check.errorKey;
+        }
+        if (!check.changed) {
+          return null;
+        }
+        const decoded = decodeSettingsAnswer(await updateSettings(hass, charger, record.revision, check.body));
+        if (!decoded.ok) {
+          return decoded.failure === "unsupported" ? "settings.error.version" : "settings.error.generic";
+        }
+        const answer = decoded.value;
+        if (answer.ok) {
+          return null;
+        }
+        if (answer.code === SETTINGS_RECONCILE_FAILED) {
+          // Saved, but the plan was not updated: a warning the Settings page says once it is back.
+          this.overviewWarning = { sentenceKey: "settings.error.reconcileFailed", code: answer.code };
+          return null;
+        }
+        return settingsErrorKey(answer.code);
+      }
+    }
+  }
+
+  /** A fee's own editor needs the area's suggestion: read the market options, then open it. */
+  private async editFiscal(component: FiscalComponentName): Promise<void> {
+    const hass = this.hassObject;
+    const config = this.config;
+    if (!this.connected || hass === null || config === null || config.charger === "" || !this.isAdmin) {
+      return;
+    }
+    const generation = this.generation;
+    try {
+      const [settingsRaw, optionsRaw] = await Promise.all([getSettings(hass, config.charger), getMarketOptions(hass, config.charger)]);
+      if (generation !== this.generation || !this.connected) {
+        return;
+      }
+      const read = decodeSettingsAnswer(settingsRaw);
+      const options = decodeMarketOptions(optionsRaw);
+      if (!read.ok || read.value.settings === null || !options.ok) {
+        this.view?.setSettingsError({ sentenceKey: "settings.error.read", code: null });
+        return;
+      }
+      const record = read.value.settings;
+      const row = record.overrides.find((item) => item.area_id === record.area_id) ?? null;
+      const stored = row === null ? null : row[component];
+      this.view?.openFiscalEditor(component, {
+        current: stored !== null && stored.enabled ? (stored.value ?? marketSuggestion(options.value, record.area_id, component)) : null,
+        suggestion: marketSuggestion(options.value, record.area_id, component),
+      });
+    } catch (error) {
+      const code = error instanceof SpotnavApiError ? error.code : null;
+      this.view?.setSettingsError({ sentenceKey: settingsErrorKey(code), code });
     }
   }
 
@@ -2167,21 +2144,8 @@ export class SpotnavCard extends HTMLElement {
           return await findRegion(hass, postcode);
         },
         isAdmin: this.isAdmin,
-        onSelectVehicle: (vehicleId) => {
-          void this.selectVehicle(vehicleId);
-        },
         onSelectStrategy: (strategyId) => {
           void this.selectStrategy(strategyId);
-        },
-        onOpenSolarEditor: () => {
-          this.openSolarEditor();
-        },
-        onSaveSolar: (draft) => {
-          void this.saveSolar(draft);
-        },
-        onCancelSolar: () => !this.entitySaving,
-        onSaveNotifications: (choice) => {
-          void this.saveNotifications(choice);
         },
         onSetActiveControl: (confirmed, chosen) => {
           void this.setActiveControl(confirmed, chosen);
@@ -2198,6 +2162,11 @@ export class SpotnavCard extends HTMLElement {
           void this.exportHistory();
         },
         onSettingsOverviewOpened: () => {
+          const warning = this.overviewWarning;
+          if (warning !== null) {
+            this.overviewWarning = null;
+            this.view?.setOverviewNotice(warning);
+          }
           void this.loadEntityConfig();
           void this.loadCardInfo();
         },
@@ -2211,14 +2180,15 @@ export class SpotnavCard extends HTMLElement {
           void this.saveEntities(scope, draft);
         },
         onCancelEntities: () => !this.entitySaving,
-        onOpenVehicleEditor: (vehicleId) => {
-          this.openVehicleEditor(vehicleId);
-        },
-        onSaveVehicle: (vehicleId, draft) => {
-          void this.saveVehicle(vehicleId, draft);
-        },
         onAnswerOnboardPhases: (vehicleId, phases) => {
           void this.answerOnboardPhases(vehicleId, phases);
+        },
+        onAnswerIdentification: (vehicleId) => {
+          void this.answerIdentification(vehicleId);
+        },
+        onWriteValue: (write) => this.writeValue(write),
+        onEditFiscal: (component) => {
+          void this.editFiscal(component);
         },
         onDialogsClosed: () => {
           if (this.renderPending) {

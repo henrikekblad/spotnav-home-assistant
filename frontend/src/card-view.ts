@@ -20,7 +20,14 @@ import {
 import { applyFocus, chartHeightForWidth, renderChart, type ChartLabels } from "./chart-render";
 import { stripBarPlacement, stripBars, stripNowPosition, stripTicks } from "./chart-strip";
 import { createDialog, type DialogHandle } from "./dialog";
-import { noRecipientsNote, notificationsEditorBody, notificationsSummary } from "./notifications";
+import {
+  changeCarBody,
+  identificationBanner,
+  identificationSummary,
+  methodWords,
+  sourceChoice,
+} from "./identification";
+import { eventOptions, noRecipientsNote, notificationsSummary, phoneOptions } from "./notifications";
 import { clock, formatFixed, formatNumber, hasZone, percentAmount, pricePerKwh, wallTimeRepeats, weekdayDate } from "./format";
 import { pluralForm, translate, type Language, type TranslationKey } from "./i18n";
 import {
@@ -34,20 +41,17 @@ import {
 import type { ActiveControlNotice } from "./site-settings";
 import {
   conflictText,
-  controlCurrentText,
   entityEditorBody,
   entityNameIn,
   modeLabel,
   siteWarningRows,
-  vehicleEditorBody,
   type EntityEditorBody,
 } from "./entity-editor";
-import { solarEditorBody } from "./solar-editor";
 import {
-  automaticEntity,
   fieldsOf,
   isMissingEntity,
   storedMode,
+  vehicleChoice,
   type EntityConfig,
   type EntityDraft,
   type EntityFieldError,
@@ -57,24 +61,41 @@ import { marketAreaLabel, type MarketFormValues } from "./market";
 import { type RegionLookup } from "./market-editor";
 import {
   marketEditorBody,
-  marketTrigger,
   type MarketEditorForm,
 } from "./market-editor";
 import { settingsEditorBody, settingsTrigger, type SettingsEditorForm } from "./settings-editor";
 import type { Vehicle } from "./validate";
-import { vehicleSummary } from "./vehicle-settings";
+import { vehicleSummary, type VehicleEdits } from "./vehicle-settings";
+import {
+  multiEditor,
+  numberEditor,
+  onOffEditor,
+  sectionHeading,
+  settingRow,
+  singleEditor,
+  type ChoiceOption,
+  type EditorHandlers,
+  type NumberEditorInput,
+} from "./value-editors";
+import type { FiscalComponentName, ValueWrite } from "./value-writes";
+import type { IdentifyMode } from "./types";
 import { issueText } from "./status";
 import { historyBody, type HistoryState, type HistoryUi } from "./history";
-import { connectionLabel, vehicleChoicesFor, vehicleLineFor } from "./vehicle-line";
+import { connectionLabel, vehicleLineFor } from "./vehicle-line";
 import type { ChargeBarFacts } from "./charge-bar";
 import {
+  CAPACITY_MAX_KWH,
+  CAPACITY_MIN_KWH,
+  CONSUMPTION_MAX_KWH_PER_10KM,
+  CONSUMPTION_MIN_KWH_PER_10KM,
   fiscalRows,
+  identificationReplacement,
+  notificationsReplacement,
   planSummaryParts,
-  type NotificationsChoice,
   type SettingsEditorKind,
   type SettingsFormValues,
 } from "./settings";
-import { VISUAL_CLASSES as C, summaryValueClass } from "./visual-styles";
+import { VISUAL_CLASSES as C } from "./visual-styles";
 
 export interface CardViewInput {
   model: CardModel;
@@ -131,20 +152,6 @@ export interface CardViewInput {
    */
   onSelectStrategy: (strategyId: string) => void;
   /**
-   * A vehicle other than the planned one was chosen in the vehicle dialog. The view has already closed
-   * the dialog; the card owns the write and every outcome.
-   */
-  onSelectVehicle?: (vehicleId: string) => void;
-  /** The Solar card's Change button, and that dialog's Save (the card judges the draft) and Cancel. */
-  onOpenSolarEditor?: () => void;
-  onSaveSolar?: (draft: EntityDraft) => void;
-  onCancelSolar?: () => boolean | void;
-  /**
-   * The Notifications dialog's Save. The view has already closed the dialog; the card owns the write,
-   * every outcome and the return to Settings.
-   */
-  onSaveNotifications?: (choice: NotificationsChoice) => void;
-  /**
    * Active load-balancing switch (admin only): `confirmed` is the last shown opt-in, the other the
    * one just asked for. The control is already back on `confirmed`; the answer arrives through
    * `adoptActiveControl`.
@@ -179,11 +186,14 @@ export interface CardViewInput {
   onDownloadDebug?: () => void;
   onSaveEntities?: (scope: EntityScope, draft: EntityDraft) => void;
   onCancelEntities?: () => boolean | void;
-  /** A vehicle card's Change button, and that dialog's Save (sensor, capacity, consumption as typed). */
-  onOpenVehicleEditor?: (vehicleId: string) => void;
-  onSaveVehicle?: (vehicleId: string, draft: EntityDraft) => void;
   /** The one-tap answer to "set its onboard charger to 1-phase?": `1` accepts, `3` keeps it as it was. */
   onAnswerOnboardPhases?: (vehicleId: string, phases: 1 | 3) => void;
+  /** The one-tap answer to "which car is plugged in?". */
+  onAnswerIdentification?: (vehicleId: string) => void;
+  /** One value of the Settings page: the card writes it and answers `null`, or the sentence to show. */
+  onWriteValue?: (write: ValueWrite) => Promise<string | null>;
+  /** A fee's row: the card reads the area's suggestion and opens its editor (`openFiscalEditor`). */
+  onEditFiscal?: (component: FiscalComponentName) => void;
 }
 
 export type EntityViewState =
@@ -259,10 +269,6 @@ export interface CardView {
   anyDialogOpen(): boolean;
   setEntityState(state: EntityViewState): void;
   openEntityEditor(scope: EntityScope, config: EntityConfig, notice?: FailureSentence | null): void;
-  openVehicleEditor(vehicleId: string, config: EntityConfig | null, notice?: FailureSentence | null, row?: Vehicle): void;
-  vehicleEditorOpen(): string | null;
-  openSolarEditor(notice?: FailureSentence | null): void;
-  solarEditorOpen(): boolean;
   entityEditorOpen(): EntityScope | null;
   setEntityEditorNotice(failure: FailureSentence | null): void;
   markEntityFieldErrors(errors: readonly EntityFieldError[]): void;
@@ -276,8 +282,12 @@ export interface CardView {
   setCardOutdated(outdated: boolean): void;
   /** Close the Settings popover without returning focus (the card is about to redraw it). */
   closeSettingsOverview(): void;
-  /** Whether the Notifications dialog is open. */
-  notificationsEditorOpen(): boolean;
+  /** Whether a value editor is open. */
+  valueEditorOpen(): boolean;
+  /** Close the value editor after its write took (the card then reads the dashboard and shows Settings). */
+  closeValueEditor(): void;
+  /** A fee's own number editor, with the area's suggestion the card read for it. */
+  openFiscalEditor(component: FiscalComponentName, facts: { current: number | null; suggestion: number | null }): void;
 }
 
 /**
@@ -605,6 +615,15 @@ function settingsGearIcon(doc: Document): SVGElement {
 }
 
 /** A small battery glyph for the vehicle line. */
+/** Byt bil's ⇄ at the end of the car line. */
+function swapIcon(doc: Document): SVGElement {
+  const svg = icon(doc, (svg, ns) => {
+    svg.append(strokePath(ns, doc, "M5 8h13M15 5l3 3-3 3M19 16H6M9 13l-3 3 3 3"));
+  });
+  svg.dataset["icon"] = "swap";
+  return svg;
+}
+
 function batteryIcon(doc: Document): SVGElement {
   return icon(doc, (svg, ns) => {
     const body = doc.createElementNS(ns, "path");
@@ -836,7 +855,7 @@ export function createCardView(input: CardViewInput): CardView {
   const header = element(doc, "div", C.header);
   header.append(brandMark(doc, idPrefix));
   const vehicleLine = vehicleLineFor(model.language, model.soc, model.dashboardSettings);
-  let vehicleButton: HTMLButtonElement | null = null;
+  let vehicleButton: HTMLElement | null = null;
   // While the charge bar shows, it already says the charge runs: the connection line steps aside.
   const connectionText = model.chargeBar === null ? connectionLabel(model.language, model.connection) : null;
   const connectionClass = (): string =>
@@ -847,11 +866,20 @@ export function createCardView(input: CardViewInput): CardView {
     if (model.chargerName !== null) {
       identity.append(element(doc, "h3", C.name, model.chargerName));
     }
-    vehicleButton = element(doc, "button", C.vehicleLine);
-    vehicleButton.type = "button";
+    // The car line is Byt bil wherever the car can be changed (more than one car can charge here): for every
+    // user while a car is plugged in, since any user may answer which car it is. With no car plugged in the
+    // choice is the plan's car, an administrator's setting, so a reader who is not one gets the plain line.
+    const changeable =
+      model.chargerCars.length >= 2 && (input.isAdmin || model.connection?.state !== "disconnected");
+    const lineName = vehicleLine.name ?? translate(model.language, "settings.vehicle.unnamed");
+    const changeLabel = translate(model.language, "identify.changeCarAria", { name: lineName });
+    vehicleButton = element(doc, changeable ? "button" : "div", C.vehicleLine);
+    if (changeable) {
+      (vehicleButton as HTMLButtonElement).type = "button";
+      vehicleButton.setAttribute("aria-haspopup", "dialog");
+    }
     vehicleButton.dataset["vehicleLine"] = vehicleLine.vehicleId;
-    vehicleButton.setAttribute("aria-label", vehicleLine.ariaLabel);
-    vehicleButton.setAttribute("aria-haspopup", "dialog");
+    vehicleButton.setAttribute("aria-label", changeable ? changeLabel : vehicleLine.ariaLabel);
     if (vehicleLine.estimateTitle !== null) {
       vehicleButton.title = vehicleLine.estimateTitle;
       vehicleButton.dataset["estimated"] = "true";
@@ -866,6 +894,11 @@ export function createCardView(input: CardViewInput): CardView {
     if (vehicleLine.age !== null) {
       parts.push({ cls: C.vehicleLineAge, text: vehicleLine.age });
     }
+    // How the car was decided at this plug-in: "identified by the car's charging cable", "your answer" ...
+    const decidedBy = methodWords(model.language, model.identification);
+    if (decidedBy !== null) {
+      parts.push({ cls: C.vehicleLineAge, text: decidedBy });
+    }
     if (connectionText !== null) {
       parts.push({ cls: connectionClass(), text: connectionText, connection: true });
     }
@@ -873,13 +906,19 @@ export function createCardView(input: CardViewInput): CardView {
       const span = element(doc, "span", part.cls, index === 0 ? part.text : `\u00b7 ${part.text}`);
       if (part.connection === true) {
         span.dataset["connection"] = model.connection?.state ?? "";
-        vehicleButton?.setAttribute("aria-label", `${vehicleLine.ariaLabel}, ${connectionText}`);
+        if (!changeable) {
+          vehicleButton?.setAttribute("aria-label", `${vehicleLine.ariaLabel}, ${connectionText}`);
+        }
       }
       vehicleButton?.append(span);
     });
-    vehicleButton.addEventListener("click", () => {
-      openVehicleChoice();
-    });
+    if (changeable) {
+      vehicleButton.append(swapIcon(doc));
+      const opener = vehicleButton;
+      vehicleButton.addEventListener("click", () => {
+        openChangeCar(opener);
+      });
+    }
     identity.append(vehicleButton);
     header.append(identity);
   } else if (connectionText !== null) {
@@ -997,13 +1036,14 @@ export function createCardView(input: CardViewInput): CardView {
     background: () => card,
     onClose: notifyDialogsChanged,
   });
-  const notificationsDialog: DialogHandle = createDialog({
+  /** One value of the Settings page in its own editor (`value-editors.ts`). */
+  const valueDialog: DialogHandle = createDialog({
     owner: input.mount,
-    idPrefix: `${idPrefix}-notifications`,
+    idPrefix: `${idPrefix}-value`,
     labels,
     background: () => card,
     onClose: notifyDialogsChanged,
-    onDismiss: () => leaveSettingsChild(notificationsDialog),
+    onDismiss: () => leaveSettingsChild(valueDialog),
   });
 
   /**
@@ -1032,7 +1072,7 @@ export function createCardView(input: CardViewInput): CardView {
       entityDialog.isOpen() ||
       settingsOverviewDialog.isOpen() ||
       historyDialog.isOpen() ||
-      notificationsDialog.isOpen()
+      valueDialog.isOpen()
     );
   }
 
@@ -1119,6 +1159,21 @@ export function createCardView(input: CardViewInput): CardView {
     }
     suggestion.append(answers);
     card.append(suggestion);
+  }
+
+  // Which car is plugged in: the open question, answered with one tap (by anyone signed in), else the current
+  // car is kept. The phones are asked the same; the first answer wins.
+  const identification = model.identification;
+  if (identification !== null && identification.state === "asking") {
+    const current = identification.candidates.find((item) => item.vehicle_id === identification.vehicle_id);
+    card.append(
+      identificationBanner(doc, model.language, {
+        block: identification,
+        currentName: current?.name ?? null,
+        canAnswer: true,
+        onAnswer: (vehicleId) => input.onAnswerIdentification?.(vehicleId),
+      }),
+    );
   }
 
   if (model.status !== null) {
@@ -1762,64 +1817,24 @@ export function createCardView(input: CardViewInput): CardView {
     });
   }
 
-  /**
-   * The vehicle dialog: every vehicle of this charger with its charge, the planned one selected. Choosing
-   * another closes it at once and the card writes `target.vehicle_id`; a reader without write access
-   * sees the same list with the radios disabled. A single vehicle still opens the dialog, so the line
-   * always does what its label says.
-   */
-  function openVehicleChoice(): void {
+  function openChangeCar(opener: HTMLElement): void {
     if (destroyed) {
       return;
     }
-    issuesDialog.hide({ restoreFocus: false });
-    capabilityDialog.hide({ restoreFocus: false });
-    pauseDialog.hide({ restoreFocus: false });
-    strategyDialog.hide({ restoreFocus: false });
-    settingsOverviewDialog.hide({ restoreFocus: false });
-    const body = element(doc, "div");
-    if (!input.isAdmin) {
-      body.append(element(doc, "p", C.settingsReadOnly, translate(model.language, "settings.readOnly")));
-    }
-    const group = element(doc, "div", C.vehicleChoices);
-    group.setAttribute("role", "radiogroup");
-    group.setAttribute("aria-label", translate(model.language, "vehicleLine.dialogTitle"));
-    const plannedId = model.soc?.vehicle_id ?? model.targetVehicleId;
-    const name = `${idPrefix}-vehicle-choice`;
-    for (const choice of vehicleChoicesFor(model.language, model.vehicles, plannedId)) {
-      const label = element(doc, "label", C.vehicleChoice);
-      const radio = element(doc, "input");
-      radio.type = "radio";
-      radio.name = name;
-      radio.value = choice.id;
-      radio.checked = choice.selected;
-      radio.disabled = !input.isAdmin;
-      radio.dataset["vehicle"] = choice.id;
-      radio.addEventListener("change", () => {
-        if (!radio.checked || choice.selected || !input.isAdmin) {
-          return;
-        }
+    hideForChildDialog();
+    const body = changeCarBody(doc, model.language, {
+      block: model.identification,
+      vehicles: model.chargerCars,
+      currentId: model.identification?.vehicle_id ?? model.soc?.vehicle_id ?? model.targetVehicleId,
+      chargerName: model.chargerName,
+      idPrefix,
+      onChoose: (vehicleId) => {
         vehicleDialog.hide({ restoreFocus: false });
-        input.onSelectVehicle?.(choice.id);
-      });
-      label.append(
-        radio,
-        element(doc, "span", C.vehicleChoiceName, choice.name),
-        element(
-          doc,
-          "span",
-          C.vehicleChoiceCharge,
-          choice.charge ?? translate(model.language, "vehicleLine.noReading"),
-        ),
-      );
-      group.append(label);
-    }
-    body.append(group);
-    vehicleDialog.show({
-      title: translate(model.language, "vehicleLine.dialogTitle"),
-      body,
-      opener: vehicleButton,
+        input.onAnswerIdentification?.(vehicleId);
+      },
+      onCancel: () => vehicleDialog.hide(),
     });
+    vehicleDialog.show({ title: translate(model.language, "identify.changeCar"), body, opener });
   }
 
   function openStrategy(): void {
@@ -1887,7 +1902,7 @@ export function createCardView(input: CardViewInput): CardView {
           link.addEventListener("click", () => {
             strategyDialog.hide({ restoreFocus: false });
             vehicleDialog.hide({ restoreFocus: false });
-            input.onOpenEntityEditor?.("site");
+            openEntities("site");
           });
           item.append(link);
         }
@@ -1921,35 +1936,7 @@ export function createCardView(input: CardViewInput): CardView {
       body.append(element(doc, "p", C.settingsReadOnly, translate(model.language, "settings.readOnly")));
     }
 
-    const marketSection = element(doc, "section", C.settingsSection);
-    marketSection.dataset["section"] = "market";
-    marketSection.append(
-      element(doc, "h4", C.settingsSectionHeading, translate(model.language, "settings.section.market")),
-    );
-    if (model.contextArea !== null || model.contextAreaName !== null) {
-      marketSection.append(
-        overviewRow(
-          "area",
-          translate(model.language, "context.area"),
-          marketAreaLabel(model.language, model.contextAreaName, model.contextAreaId),
-        ),
-      );
-    }
-    // The price source is named in the area dialog only, beside the area choice (not in this overview).
-    for (const fiscal of fiscalRows(model.language, model.dashboardFiscal)) {
-      marketSection.append(overviewRow(fiscal.key, fiscal.label, fiscal.value));
-    }
-    const marketButton = marketTrigger(
-      doc,
-      model.language,
-      marketAreaLabel(model.language, model.contextAreaName, model.contextAreaId),
-    );
-    marketButton.classList.add(C.settingsSectionConfigure);
-    marketButton.addEventListener("click", () => {
-      input.onOpenMarket();
-    });
-    marketSection.append(marketButton);
-    body.append(marketSection);
+    body.append(priceSectionBody());
 
     // One card per vehicle, repainted when the entity configuration arrives (the sensor row needs it).
     vehicleRows = model.vehicles.map((entry) => ({ ...entry }));
@@ -2042,11 +2029,154 @@ export function createCardView(input: CardViewInput): CardView {
     debugButton.textContent = translate(model.language, debugPending ? "debug.preparing" : "debug.download");
   }
 
-  function overviewRow(key: string, label: string, value: string): HTMLElement {
-    const row = element(doc, "div", C.capabilityItem);
-    row.dataset["row"] = key;
-    row.append(element(doc, "span", C.capabilityLabel, label), element(doc, "span", summaryValueClass(value), value));
+  /**
+   * One value row (`value-editors.settingRow`): tappable in the accent colour when `onTap` changes it (only an
+   * administrator's), read-only in the normal colour otherwise.
+   */
+  function overviewRow(key: string, label: string, value: string, onTap?: () => void): HTMLElement {
+    const tap = input.isAdmin ? onTap : undefined;
+    const [row] = settingRow(doc, {
+      key,
+      label,
+      value,
+      ...(tap === undefined
+        ? {}
+        : { onTap: tap, changeableText: translate(model.language, "settings.row.changeable", { label, value }) }),
+    });
+    return row!;
+  }
+
+  /**
+   * The part of the next entity dialog to show alone, titled by its row; `null` opens the whole dialog. Set by
+   * every way into the dialog from this view, so a later open never inherits it.
+   */
+  let entityFocus: { scope: EntityScope; part: string; title: string } | null = null;
+
+  function openEntities(scope: EntityScope, focus: { part: string; title: string } | null = null): void {
+    entityFocus = focus === null ? null : { scope, ...focus };
+    input.onOpenEntityEditor?.(scope);
+  }
+
+  /**
+   * A setup row whose value opens a scope's entity dialog (only `part` of it when given): its button also
+   * carries `data-edit-entities`.
+   */
+  function entityRow(key: string, label: string, value: string, scope: EntityScope, part?: string): HTMLElement {
+    const row = overviewRow(key, label, value, () =>
+      openEntities(scope, part === undefined ? null : { part, title: label }),
+    );
+    const button = row.querySelector<HTMLButtonElement>("button");
+    if (button !== null) {
+      button.dataset["editEntities"] = scope;
+    }
     return row;
+  }
+
+  function rowHelp(key: string, text: string): HTMLElement {
+    const help = element(doc, "p", C.settingRowHelp, text);
+    help.dataset["help"] = key;
+    return help;
+  }
+
+  /** One value's own editor in the value dialog: Settings steps aside, and comes back on Cancel or a save. */
+  function openValueEditor(title: string, build: (handlers: EditorHandlers) => HTMLFormElement): void {
+    if (destroyed || !input.isAdmin) {
+      return;
+    }
+    hideForChildDialog();
+    const handlers: EditorHandlers = {
+      onDone: () => {
+        if (valueDialog.isOpen()) {
+          valueDialog.hide({ restoreFocus: false });
+          openSettingsOverview();
+        }
+      },
+      onCancel: () => leaveSettingsChild(valueDialog),
+    };
+    valueDialog.show({ title, body: build(handlers), opener: settingsGeneral });
+  }
+
+  function writeValue(write: ValueWrite): Promise<string | null> {
+    return input.onWriteValue?.(write) ?? Promise.resolve(translate(model.language, "settings.error.generic"));
+  }
+
+  function editNumber(
+    title: string,
+    spec: Omit<NumberEditorInput, "idPrefix" | "rangeMessage">,
+    save: (value: number | null) => Promise<string | null>,
+  ): void {
+    const rangeMessage = translate(model.language, "settings.error.range", {
+      min: formatNumber(model.language, spec.min, spec.decimals),
+      max: formatNumber(model.language, spec.max, spec.decimals),
+    });
+    openValueEditor(title, (handlers) =>
+      numberEditor(doc, model.language, { ...spec, idPrefix, rangeMessage }, save, handlers),
+    );
+  }
+
+  function editSingle(
+    title: string,
+    options: readonly ChoiceOption[],
+    selected: string | null,
+    save: (value: string) => Promise<string | null>,
+    intro?: string,
+  ): void {
+    openValueEditor(title, (handlers) =>
+      singleEditor(
+        doc,
+        model.language,
+        { ...(intro === undefined ? {} : { intro }), options, selected, idPrefix },
+        save,
+        handlers,
+      ),
+    );
+  }
+
+  function editMulti(
+    title: string,
+    options: readonly ChoiceOption[],
+    checked: readonly string[],
+    save: (values: string[]) => Promise<string | null>,
+    extra: { intro?: string; atLeastOne?: string } = {},
+  ): void {
+    openValueEditor(title, (handlers) =>
+      multiEditor(doc, model.language, { ...extra, options, checked }, save, handlers),
+    );
+  }
+
+  /** The price: the area (its own dialog, with the catalogue), and each fee in its own number editor. */
+  function priceSectionBody(): HTMLElement {
+    const section = element(doc, "section", C.settingsSection);
+    section.dataset["section"] = "market";
+    section.append(sectionHeading(doc, "price", translate(model.language, "settings.heading.price")));
+    const area = marketAreaLabel(model.language, model.contextAreaName, model.contextAreaId);
+    // The area opens its dialog for everyone: a reader who is not an administrator inspects it read-only there.
+    const areaLabel = translate(model.language, "context.area");
+    const areaValue = area || translate(model.language, "settings.value.unset");
+    const [areaRow] = settingRow(doc, {
+      key: "area",
+      label: areaLabel,
+      value: areaValue,
+      onTap: () => input.onOpenMarket(),
+      changeableText: translate(model.language, "settings.row.changeable", { label: areaLabel, value: areaValue }),
+    });
+    const areaButton = areaRow!.querySelector<HTMLElement>("button")!;
+    areaButton.classList.add(C.settingsTrigger);
+    if (!input.isAdmin) {
+      // Opened to look at only: drawn in the normal colour, like every other value a reader cannot change.
+      areaButton.classList.remove(C.settingRowEditable);
+    }
+    areaButton.dataset["setting"] = "market";
+    section.append(areaRow!);
+    // The price source is named in the area dialog only, beside the area choice (not in this overview).
+    for (const fiscal of fiscalRows(model.language, model.dashboardFiscal)) {
+      const component = fiscal.key as FiscalComponentName;
+      const included = model.dashboardFiscal?.[component].policy === "included";
+      section.append(
+        overviewRow(fiscal.key, fiscal.label, fiscal.value, included ? undefined : () => input.onEditFiscal?.(component)),
+      );
+    }
+    return section;
   }
 
   let overviewBodyNode: HTMLElement | null = null;
@@ -2055,7 +2185,6 @@ export function createCardView(input: CardViewInput): CardView {
   let vehicleListSlot: HTMLElement | null = null;
   let vehicleRows: Vehicle[] = [];
   let siteEntitySlot: HTMLElement | null = null;
-  let siteButtonSlot: HTMLElement | null = null;
 
   /** The vehicle's charge as the header line spells it: `~36 %` for an estimate, `No reading` for none. */
   function chargeFor(row: Vehicle): string {
@@ -2086,19 +2215,6 @@ export function createCardView(input: CardViewInput): CardView {
     return null;
   }
 
-  function changeButton(label: TranslationKey, scope: EntityScope, enabled: boolean): HTMLButtonElement {
-    const button = element(doc, "button", `${C.button} ${C.settingsSectionConfigure}`, translate(model.language, label));
-    button.type = "button";
-    button.dataset["editEntities"] = scope;
-    button.disabled = !enabled;
-    if (enabled) {
-      button.addEventListener("click", () => {
-        input.onOpenEntityEditor?.(scope);
-      });
-    }
-    return button;
-  }
-
   /** The friendly name an entity field states, or `null` when it names none. */
   function fieldEntityName(config: EntityConfig, scope: EntityScope, name: string): string | null {
     const field = fieldsOf(config, scope).find((entry) => entry.field === name);
@@ -2108,63 +2224,61 @@ export function createCardView(input: CardViewInput): CardView {
     return field.current.friendlyName;
   }
 
+  /**
+   * The charger's setup in short words (never entity ids): start and stop, the current, the energy register and
+   * a smart plug's power open the charger's entity dialog; the priority opens its own choice.
+   */
   function chargerRows(config: EntityConfig): HTMLElement[] {
-    const notSet = translate(model.language, "entity.notSet");
     const control = config.control;
     const nodes: HTMLElement[] = [];
-    const startStopId = control?.startStop.entityIds[0];
-    const startStopName =
-      startStopId !== undefined ? entityNameIn(config, startStopId) : fieldEntityName(config, "charger", "charge_control");
-    nodes.push(overviewRow("start_stop", translate(model.language, "control.startStop"), startStopName ?? notSet));
     const chargeControl = fieldsOf(config, "charger").find((entry) => entry.field === "charge_control");
+    const startStopMissing =
+      (chargeControl !== undefined && chargeControl.kind === "entity" && isMissingEntity(chargeControl)) ||
+      ((control?.startStop.entityIds.length ?? 0) === 0 && fieldEntityName(config, "charger", "charge_control") === null);
+    nodes.push(
+      entityRow(
+        "start_stop",
+        translate(model.language, "control.startStop"),
+        translate(model.language, startStopMissing ? "settings.status.missing" : "settings.status.active"),
+        "charger",
+        "charge-control",
+      ),
+    );
     if (chargeControl !== undefined && chargeControl.kind === "entity" && isMissingEntity(chargeControl)) {
       const warning = element(doc, "p", C.entityWarning, translate(model.language, "entity.missing.required"));
       warning.dataset["missing"] = "charge_control";
       nodes.push(warning);
     }
-    const currentId = control?.current.entityId ?? null;
     nodes.push(
-      overviewRow(
-        "current",
-        translate(model.language, "control.current"),
-        control === null
-          ? (fieldEntityName(config, "charger", "current_limit") ?? notSet)
-          : controlCurrentText(model.language, control, currentId === null ? "" : entityNameIn(config, currentId)),
-      ),
+      entityRow("current", translate(model.language, "control.current"), currentWord(config), "charger", "current-limit"),
     );
     const energyField = fieldsOf(config, "charger").find((entry) => entry.field === "energy_register_entity");
-    let energy = translate(model.language, "entity.foundAutomatically");
+    let energy = translate(model.language, "settings.status.foundAutomatically");
     if (energyField !== undefined && energyField.kind === "entity") {
       if (energyField.current !== null) {
-        energy = energyField.current.friendlyName;
+        energy = translate(model.language, "settings.status.chosen");
       } else if (energyField.none !== null && energyField.none.chosen) {
-        energy = translate(model.language, "entity.energy.none");
-      } else {
-        const automatic = automaticEntity(energyField);
-        if (automatic !== null) {
-          energy = translate(model.language, "entity.automatic", { name: automatic.friendlyName });
-        }
+        energy = translate(model.language, "settings.value.none");
       }
     }
-    nodes.push(overviewRow("energy_register", translate(model.language, "entity.field.energyRegister"), energy));
+    nodes.push(
+      entityRow("energy_register", translate(model.language, "entity.field.energyRegister"), energy, "charger", "energy"),
+    );
     // Only a charger behind a smart plug has a power sensor; the others get no row.
     const powerField = fieldsOf(config, "charger").find((entry) => entry.field === "power_entity");
     if (powerField !== undefined && powerField.kind === "entity" && powerField.current !== null) {
-      nodes.push(overviewRow("power_entity", translate(model.language, "entity.field.powerEntity"), powerField.current.friendlyName));
-    }
-    if (model.chargerPriority !== null) {
-      const priority = model.chargerPriority;
       nodes.push(
-        overviewRow(
-          "charger_priority",
-          translate(model.language, "entity.field.chargerPriority"),
-          translate(
-            model.language,
-            priority === "first" ? "entity.priority.first" : priority === "last" ? "entity.priority.last" : "entity.priority.normal",
-          ),
+        entityRow(
+          "power_entity",
+          translate(model.language, "entity.field.powerEntity"),
+          translate(model.language, "settings.status.present"),
+          "charger",
+          "energy",
         ),
       );
     }
+    nodes.push(...wiringRows(config));
+    nodes.push(...priorityRows());
     for (const conflict of control?.conflicts ?? []) {
       const warning = element(
         doc,
@@ -2178,24 +2292,310 @@ export function createCardView(input: CardViewInput): CardView {
     return nodes;
   }
 
-  /** Only what is configured: the fuse, the measurement in words and the battery. No "not set" rows. */
+  /**
+   * How the current is set, in the app's words: OCPP, Easee, Controlled (a number entity) or Not controlled. A
+   * path that is not enabled is not controlled, as the dashboard's own summary says.
+   */
+  function currentWord(config: EntityConfig): string {
+    const current = config.control?.current;
+    if (current === undefined) {
+      return translate(
+        model.language,
+        fieldEntityName(config, "charger", "current_limit") === null
+          ? "settings.status.notControlled"
+          : "settings.status.controlled",
+      );
+    }
+    if (current.kind === "none" || !current.enabled) {
+      return translate(model.language, "settings.status.notControlled");
+    }
+    if (current.kind === "ocpp") {
+      return "OCPP";
+    }
+    if (current.kind === "service") {
+      return "Easee";
+    }
+    return translate(model.language, "settings.status.controlled");
+  }
+
+  /**
+   * A charger in no site holds its own wiring: the phases it is wired for and the voltage between phases, each
+   * its own choice (a site holds them for its chargers, in the site's dialog).
+   */
+  function wiringRows(config: EntityConfig): HTMLElement[] {
+    const nodes: HTMLElement[] = [];
+    const choice = (
+      name: "charger_phases" | "voltage_between_phases_v",
+      labelKey: TranslationKey,
+      helpKey: TranslationKey,
+      optionLabel: (value: string) => string,
+      shown: (value: string) => string,
+      fallback: string,
+    ): void => {
+      const field = fieldsOf(config, "charger").find((entry) => entry.field === name);
+      if (field === undefined || field.kind !== "enum" || !field.writable) {
+        return;
+      }
+      const label = translate(model.language, labelKey);
+      const current = field.value ?? fallback;
+      const options: ChoiceOption[] = field.choices.map((value) => ({ value, label: optionLabel(value) }));
+      nodes.push(
+        overviewRow(name, label, shown(current), () =>
+          editSingle(
+            label,
+            options,
+            current,
+            (chosen) => writeValue({ kind: "entity", scope: "charger", draft: { [name]: chosen } }),
+            translate(model.language, helpKey),
+          ),
+        ),
+      );
+    };
+    const phases = (value: string): string =>
+      translate(model.language, value === "1" ? "settings.phases.one" : "settings.phases.three");
+    choice("charger_phases", "entity.field.chargerPhases", "entity.help.chargerPhases", phases, phases, "3");
+    choice(
+      "voltage_between_phases_v",
+      "entity.field.voltageBetweenPhases",
+      "entity.help.voltageBetweenPhases",
+      (value) => translate(model.language, value === "230" ? "entity.voltage.it" : "entity.voltage.tn"),
+      (value) => `${value} V`,
+      "400",
+    );
+    return nodes;
+  }
+
+  /** The charger's place in its site's order: a choice of three, with what it means above them. */
+  function priorityRows(): HTMLElement[] {
+    const priority = model.chargerPriority;
+    if (priority === null) {
+      return [];
+    }
+    const label = translate(model.language, "entity.field.chargerPriority");
+    const options: ChoiceOption[] = [
+      { value: "first", label: translate(model.language, "entity.priority.first") },
+      { value: "normal", label: translate(model.language, "entity.priority.normal") },
+      { value: "last", label: translate(model.language, "entity.priority.last") },
+    ];
+    const value = options.find((option) => option.value === priority)?.label ?? priority;
+    const help = translate(model.language, "entity.help.chargerPriority");
+    return [
+      overviewRow("charger_priority", label, value, () =>
+        editSingle(label, options, priority, (chosen) =>
+          writeValue({ kind: "entity", scope: "charger", draft: { charger_priority: chosen } }), help),
+      ),
+      rowHelp("charger_priority", help),
+    ];
+  }
+
+  /**
+   * Which car is plugged in, for a charger more than one car can charge at: the cars at this charger (at least
+   * one) and how the plugged-in one is found, each in its own editor. Absent on a backend without the fields.
+   */
+  function identificationRows(): HTMLElement[] {
+    const record = model.dashboardSettings;
+    if (record === null || record.identify_mode === undefined || model.vehicleChoices.length < 2) {
+      return [];
+    }
+    const summary = identificationSummary(model.language, record, model.vehicleChoices);
+    const carsLabel = translate(model.language, "identify.vehicles.label");
+    const modeLabel = translate(model.language, "identify.mode.label");
+    const cars = model.vehicleChoices.map((car) => ({ value: car.id, label: car.name ?? car.id }));
+    const allIds = model.vehicleChoices.map((car) => car.id);
+    const stored = record.vehicle_ids ?? null;
+    const ticked = stored === null ? allIds : allIds.filter((id) => stored.includes(id));
+    const mode = record.identify_mode;
+    const modes: ChoiceOption[] = (["automatic", "ask", "off"] as const).map((value) => ({
+      value,
+      label: translate(model.language, `identify.mode.${value}`),
+      help: translate(model.language, `identify.mode.${value}Help`),
+    }));
+    const nodes: HTMLElement[] = [element(doc, "hr", C.settingsDivider)];
+    nodes.push(
+      overviewRow("identify_vehicles", carsLabel, summary[1]?.value ?? "", () =>
+        editMulti(
+          carsLabel,
+          cars,
+          ticked,
+          (values) =>
+            writeValue({
+              kind: "settings",
+              build: (fresh) => identificationReplacement(fresh, { mode: fresh.identify_mode ?? mode, vehicleIds: values, allVehicleIds: allIds }),
+            }),
+          { atLeastOne: translate(model.language, "identify.error.noVehicle") },
+        ),
+      ),
+      overviewRow("identify_mode", modeLabel, summary[0]?.value ?? "", () =>
+        editSingle(modeLabel, modes, mode, (chosen) =>
+          writeValue({
+            kind: "settings",
+            build: (fresh) => {
+              const freshIds = fresh.vehicle_ids ?? null;
+              return identificationReplacement(fresh, {
+                mode: chosen as IdentifyMode,
+                vehicleIds: freshIds === null ? allIds : allIds.filter((id) => freshIds.includes(id)),
+                allVehicleIds: allIds,
+              });
+            },
+          }),
+        ),
+      ),
+    );
+    return nodes;
+  }
+
+  /** A car's editors: each property its own number or choice, written as the vehicle dialog wrote it. */
+  function vehicleEdits(row: Vehicle, config: EntityConfig | null): VehicleEdits {
+    const edits: VehicleEdits = {};
+    /**
+     * One property's Save, under compare-and-set on what the row showed; after a conflict the next Save expects
+     * what the answer says is stored now (the editor says it changed elsewhere and keeps what was typed).
+     */
+    const propertyWrite = <K extends "capacity_kwh" | "consumption_kwh_per_10km" | "onboard_phases" | "target_percent">(
+      field: K,
+    ): ((value: Vehicle[K]) => Promise<string | null>) => {
+      let expected: Vehicle[K] = row[field];
+      return (value) =>
+        writeValue({
+          kind: "vehicle",
+          vehicleId: row.id,
+          changes: { [field]: value },
+          expected: { [field]: expected },
+          onConflict: (fresh) => {
+            expected = fresh[field];
+          },
+        });
+    };
+    const sensor = config?.vehicles.find((entry) => entry.id === row.id) ?? null;
+    if (sensor !== null && sensor.candidates.length > 0) {
+      const label = translate(model.language, "entity.field.vehicleSoc");
+      edits.sensor = () =>
+        editSingle(
+          label,
+          [
+            ...sensor.candidates.map((candidate) => ({ value: candidate.entityId, label: candidate.friendlyName })),
+            { value: "", label: translate(model.language, "entity.vehicle.automatic") },
+          ],
+          vehicleChoice(sensor),
+          (chosen) => writeValue({ kind: "vehicleSoc", vehicleId: row.id, entityId: chosen === "" ? null : chosen }),
+          // Only when automatic detection really has nothing to pick among several sensors.
+          sensor.candidates.length > 1 && sensor.selected === null
+            ? translate(model.language, "entity.vehicle.several")
+            : undefined,
+        );
+    }
+    if (row.target_percent !== undefined) {
+      const current = row.target_percent;
+      edits.target = () =>
+        editNumber(
+          translate(model.language, "settings.soc.target"),
+          {
+            help: translate(model.language, "settings.vehicle.targetHelp"),
+            unit: "%",
+            current,
+            min: 0,
+            max: 100,
+            decimals: 0,
+            noneLabel: translate(model.language, "entity.notSet"),
+          },
+          propertyWrite("target_percent"),
+        );
+    }
+    edits.capacity = () =>
+      editNumber(
+        translate(model.language, "settings.capacity.label"),
+        {
+          unit: "kWh",
+          current: row.capacity_kwh,
+          min: CAPACITY_MIN_KWH,
+          max: CAPACITY_MAX_KWH,
+          decimals: 1,
+          noneLabel: translate(model.language, "entity.notSet"),
+        },
+        propertyWrite("capacity_kwh"),
+      );
+    edits.consumption = () =>
+      editNumber(
+        translate(model.language, "settings.consumption.label"),
+        {
+          unit: translate(model.language, "settings.consumption.unit"),
+          current: row.consumption_kwh_per_10km,
+          min: CONSUMPTION_MIN_KWH_PER_10KM,
+          max: CONSUMPTION_MAX_KWH_PER_10KM,
+          decimals: 1,
+        },
+        propertyWrite("consumption_kwh_per_10km"),
+      );
+    edits.onboard = () =>
+      editSingle(
+        translate(model.language, "settings.vehicle.onboardLegend"),
+        [
+          { value: "1", label: translate(model.language, "settings.vehicle.onboardOne") },
+          { value: "3", label: translate(model.language, "settings.vehicle.onboardThree") },
+        ],
+        String(row.onboard_phases),
+        (() => {
+          const save = propertyWrite("onboard_phases");
+          return (chosen: string) => save(chosen === "1" ? 1 : 3);
+        })(),
+        translate(model.language, "settings.vehicle.onboardHelp"),
+      );
+    const sources = row.identification;
+    if (sources !== undefined) {
+      for (const kind of ["plug", "location"] as const) {
+        const source = sources[kind];
+        edits[kind] = () =>
+          editSingle(
+            translate(model.language, kind === "plug" ? "identify.source.plug" : "identify.source.location"),
+            [
+              { value: "", label: translate(model.language, "identify.source.automatic") },
+              ...source.candidates.map((candidate) => ({ value: candidate.entity_id, label: candidate.name ?? candidate.entity_id })),
+              { value: "none", label: translate(model.language, "identify.source.none") },
+            ],
+            sourceChoice(source),
+            (chosen) =>
+              writeValue({ kind: "vehicleSource", vehicleId: row.id, source: kind, entityId: chosen === "" ? null : chosen }),
+            translate(model.language, "identify.source.help"),
+          );
+      }
+    }
+    return edits;
+  }
+
+  /**
+   * The site's setup: the main fuse in its own number editor; the measurement and the battery in short words,
+   * opening the site's entity dialog.
+   */
   function siteRows(config: EntityConfig): HTMLElement[] {
     const nodes: HTMLElement[] = [];
     const fuse = fieldsOf(config, "site").find((entry) => entry.field === "main_fuse_a");
     if (fuse !== undefined && fuse.kind === "number" && fuse.value !== null) {
+      const label = translate(model.language, "entity.field.mainFuse");
+      const current = fuse.value;
       nodes.push(
-        overviewRow("main_fuse_a", translate(model.language, "entity.field.mainFuse"), `${formatNumber(model.language, fuse.value, 1)} A`),
+        overviewRow("main_fuse_a", label, `${formatNumber(model.language, current, 1)} A`, fuse.writable
+          ? () =>
+              editNumber(label, { unit: "A", current, min: fuse.minimum, max: 1000, decimals: 1 }, (value) =>
+                writeValue({ kind: "entity", scope: "site", draft: { main_fuse_a: value === null ? "" : String(value) } }),
+              )
+          : undefined),
       );
     }
     const mode = storedMode(config);
     if (mode !== null) {
-      nodes.push(overviewRow("measurement_mode", translate(model.language, "entity.field.measurementMode"), modeLabel(model.language, mode)));
+      nodes.push(
+        entityRow("measurement_mode", translate(model.language, "entity.field.measurementMode"), modeLabel(model.language, mode), "site"),
+      );
     }
     nodes.push(
-      overviewRow(
+      entityRow(
         "battery",
         translate(model.language, "site.row.battery"),
-        fieldEntityName(config, "site", "battery_aggregate_power_entity") ?? translate(model.language, "settings.value.none"),
+        translate(
+          model.language,
+          fieldEntityName(config, "site", "battery_aggregate_power_entity") === null ? "settings.value.none" : "settings.status.present",
+        ),
+        "site",
       ),
     );
     if (config.site !== null) {
@@ -2246,22 +2646,19 @@ export function createCardView(input: CardViewInput): CardView {
             properties: !extra.includes(row),
             planned: row.id === model.targetVehicleId,
             charge: chargeFor(row),
-            isAdmin: input.isAdmin,
-            onChange: () => {
-              input.onOpenVehicleEditor?.(row.id);
-            },
+            edits: input.isAdmin ? vehicleEdits(row, state.kind === "ready" ? state.config : null) : {},
           }),
         );
       }
       if (focusId !== undefined) {
         vehicleListSlot
-          .querySelector<HTMLElement>(`[data-edit-vehicle="${focusId}"]`)
+          .querySelector<HTMLElement>(`[data-vehicle="${focusId}"] button`)
           ?.focus();
       }
     }
     if (entitySlot !== null) {
       entitySlot.replaceChildren(
-        element(doc, "h4", C.settingsSectionHeading, translate(model.language, "settings.section.entities")),
+        sectionHeading(doc, "charger", translate(model.language, "settings.heading.charger"), model.chargerName),
       );
       const line = unreadableLine(state);
       if (line !== null) {
@@ -2269,8 +2666,10 @@ export function createCardView(input: CardViewInput): CardView {
       }
       if (state.kind === "ready") {
         entitySlot.append(...chargerRows(state.config));
+      } else if (model.chargerPriority !== null) {
+        entitySlot.append(...priorityRows());
       }
-      entitySlot.append(changeButton("entity.edit.charger", "charger", state.kind === "ready" && input.isAdmin));
+      entitySlot.append(...identificationRows());
     }
     if (siteEntitySlot !== null) {
       siteEntitySlot.replaceChildren();
@@ -2282,11 +2681,7 @@ export function createCardView(input: CardViewInput): CardView {
         siteEntitySlot.append(...siteRows(state.config));
       }
     }
-    if (siteButtonSlot !== null) {
-      siteButtonSlot.replaceChildren(
-        changeButton("entity.edit.site", "site", state.kind === "ready" && state.config.site !== null && input.isAdmin),
-      );
-    }
+
   }
 
   /**
@@ -2298,18 +2693,12 @@ export function createCardView(input: CardViewInput): CardView {
     const siteSection = element(doc, "section", C.settingsSection);
     siteSection.dataset["section"] = "site";
     siteEntitySlot = null;
-    siteButtonSlot = null;
     if (site === null) {
-      siteSection.append(
-        element(doc, "h4", C.settingsSectionHeading, translate(model.language, "settings.section.site")),
-      );
+      siteSection.append(sectionHeading(doc, "site", translate(model.language, "settings.heading.site")));
       siteSection.append(element(doc, "p", C.muted, translate(model.language, "site.none")));
       return siteSection;
     }
-    const name = site.name.trim();
-    siteSection.append(
-      element(doc, "h4", C.settingsSectionHeading, name === "" ? translate(model.language, "settings.section.site") : name),
-    );
+    siteSection.append(sectionHeading(doc, "site", translate(model.language, "settings.heading.site"), site.name));
     siteSection.append(element(doc, "p", C.siteApplies, site.appliesToText));
     siteEntitySlot = element(doc, "div");
     siteEntitySlot.dataset["slot"] = "site-entities";
@@ -2321,12 +2710,10 @@ export function createCardView(input: CardViewInput): CardView {
     activeSlot.dataset["slot"] = "active-control";
     siteSection.append(activeSlot);
     paintActiveControl();
-    siteButtonSlot = element(doc, "div");
-    siteSection.append(siteButtonSlot);
     return siteSection;
   }
 
-  /** The solar card: priority and forecast sources in words, and the button for its dialog. */
+  /** Solar: the priority (one of two) and the forecast sources (any of them), each in its own editor. */
   function solarSectionBody(): HTMLElement | null {
     const site = model.site;
     if (site === null) {
@@ -2334,37 +2721,48 @@ export function createCardView(input: CardViewInput): CardView {
     }
     const section = element(doc, "section", C.settingsSection);
     section.dataset["section"] = "solar";
-    section.append(element(doc, "h4", C.settingsSectionHeading, translate(model.language, "settings.section.solar")));
+    section.append(sectionHeading(doc, "solar", translate(model.language, "settings.section.solar")));
     section.append(element(doc, "p", C.siteApplies, site.appliesToText));
+    const writable = site.writable;
+    const priorityLabel = translate(model.language, "site.solarPriority.title");
+    const priorities: ChoiceOption[] = [
+      { value: "car_first", label: translate(model.language, "site.solarPriority.carFirst") },
+      { value: "battery_first", label: translate(model.language, "site.solarPriority.batteryFirst") },
+    ];
     section.append(
       overviewRow(
         "solar_priority",
-        translate(model.language, "site.solarPriority.title"),
-        translate(model.language, site.solarPriority === "car_first" ? "site.solarPriority.carFirst" : "site.solarPriority.batteryFirst"),
+        priorityLabel,
+        priorities.find((option) => option.value === site.solarPriority)?.label ?? site.solarPriority,
+        writable
+          ? () => editSingle(priorityLabel, priorities, site.solarPriority, (chosen) => writeValue({ kind: "solar", priority: chosen }))
+          : undefined,
       ),
     );
-    const sources = site.solarForecastChoices.filter((choice) => choice.selected).map((choice) => choice.title);
+    const forecastLabel = translate(model.language, "site.solarForecast.title");
+    const sources = site.solarForecastChoices.filter((choice) => choice.selected);
     section.append(
       overviewRow(
         "solar_forecast",
-        translate(model.language, "site.solarForecast.title"),
-        sources.length === 0 ? translate(model.language, "settings.value.none") : sources.join(", "),
+        forecastLabel,
+        sources.length === 0 ? translate(model.language, "settings.value.none") : sources.map((choice) => choice.title).join(", "),
+        writable && site.solarForecastChoices.length > 0
+          ? () =>
+              editMulti(
+                forecastLabel,
+                site.solarForecastChoices.map((choice) => ({ value: choice.id, label: choice.title })),
+                sources.map((choice) => choice.id),
+                (values) => writeValue({ kind: "solar", forecast: values }),
+              )
+          : undefined,
       ),
     );
-    const button = element(doc, "button", `${C.button} ${C.settingsSectionConfigure}`, translate(model.language, "site.solar.change"));
-    button.type = "button";
-    button.dataset["editSolar"] = "true";
-    button.disabled = !(input.isAdmin && site.writable);
-    button.addEventListener("click", () => {
-      input.onOpenSolarEditor?.();
-    });
-    section.append(button);
     return section;
   }
 
   /**
-   * Notifications: the chosen phones and how many events are on, from the dashboard's settings record, and
-   * the Change button (administrators) that opens the dialog. Absent on a backend without notifications.
+   * Notifications: the chosen phones and the events, each row its own editor (any phones, any events). Absent on
+   * a backend without notifications.
    */
   function notificationsSectionBody(): HTMLElement | null {
     const record = model.dashboardSettings?.notifications;
@@ -2373,47 +2771,41 @@ export function createCardView(input: CardViewInput): CardView {
     }
     const section = element(doc, "section", C.settingsSection);
     section.dataset["section"] = "notifications";
+    section.append(sectionHeading(doc, "notifications", translate(model.language, "settings.section.notifications")));
+    // A tap on a notification opens the page this card is on.
+    const page = doc.defaultView?.location?.pathname ?? null;
+    const url = page !== null && page.startsWith("/") ? page : null;
+    const [phones, events] = notificationsSummary(model.language, record);
+    const phonesLabel = translate(model.language, "notifications.phones");
+    const eventsLabel = translate(model.language, "notifications.events");
     section.append(
-      element(doc, "h4", C.settingsSectionHeading, translate(model.language, "settings.section.notifications")),
+      overviewRow(phones?.key ?? "notification_targets", phonesLabel, phones?.value ?? "", () =>
+        editMulti(phonesLabel, phoneOptions(model.language, record), record.targets, (targets) =>
+          writeValue({
+            kind: "settings",
+            build: (fresh) =>
+              notificationsReplacement(fresh, { targets, events: fresh.notifications?.events ?? record.events, url }),
+          }),
+          {
+            intro: translate(model.language, record.available.length === 0 ? "notifications.noPhones" : "notifications.intro"),
+          },
+        ),
+      ),
+      overviewRow(events?.key ?? "notification_events", eventsLabel, events?.value ?? "", () =>
+        editMulti(eventsLabel, eventOptions(model.language), record.events, (chosen) =>
+          writeValue({
+            kind: "settings",
+            build: (fresh) =>
+              notificationsReplacement(fresh, { targets: fresh.notifications?.targets ?? record.targets, events: chosen, url }),
+          }),
+        ),
+      ),
     );
-    for (const row of notificationsSummary(model.language, record)) {
-      section.append(overviewRow(row.key, row.label, row.value));
-    }
     const missing = noRecipientsNote(doc, model.language, record);
     if (missing !== null) {
       section.append(missing);
     }
-    const button = element(doc, "button", `${C.button} ${C.settingsSectionConfigure}`, translate(model.language, "notifications.change"));
-    button.type = "button";
-    button.dataset["editNotifications"] = "true";
-    button.disabled = !input.isAdmin;
-    button.addEventListener("click", () => {
-      openNotificationsEditor();
-    });
-    section.append(button);
     return section;
-  }
-
-  function openNotificationsEditor(): void {
-    const record = model.dashboardSettings?.notifications;
-    if (destroyed || record === undefined || !input.isAdmin) {
-      return;
-    }
-    hideForChildDialog();
-    // A tap on a notification opens the page this card is on.
-    const page = doc.defaultView?.location?.pathname ?? null;
-    const built = notificationsEditorBody(doc, model.language, record, page !== null && page.startsWith("/") ? page : null, {
-      onSave: (choice) => {
-        notificationsDialog.hide({ restoreFocus: false });
-        input.onSaveNotifications?.(choice);
-      },
-      onCancel: () => leaveSettingsChild(notificationsDialog),
-    });
-    notificationsDialog.show({
-      title: translate(model.language, "notifications.dialogTitle"),
-      body: built.body,
-      opener: settingsGeneral,
-    });
   }
 
   // The load-balancing switch's state lives outside `model`: an answer repaints this block in place,
@@ -2434,46 +2826,46 @@ export function createCardView(input: CardViewInput): CardView {
       enabled: site.activeControlEnabled,
       reason: site.activeControlReason,
     };
+    const label = translate(model.language, "site.activeControl.title");
     const stateText = activePending
       ? translate(model.language, "site.activeControl.pending")
       : translate(model.language, state.enabled ? "site.activeControl.on" : "site.activeControl.off");
+    // Off may always be chosen; on only when the backend says it is available. Never optimistic: the row shows
+    // the confirmed value until an answer says otherwise.
+    const changeable = site.writable && site.activeControlWritable && !activePending && (state.available || state.enabled);
     const nodes: HTMLElement[] = [];
-    const row = element(doc, "div", C.capabilityItem);
-    row.dataset["row"] = "active-control";
-    const title = element(doc, "label", C.capabilityLabel, translate(model.language, "site.activeControl.title"));
-    const group = element(doc, "span", C.switchGroup);
-    const status = element(doc, "span", C.capabilityState, stateText);
-    status.dataset["role"] = "active-control-state";
-    group.append(status);
-    if (site.writable && site.activeControlWritable) {
-      const control = doc.createElement("input");
-      control.type = "checkbox";
-      control.className = C.switchControl;
-      control.id = `${idPrefix}-active-control`;
-      control.setAttribute("role", "switch");
-      control.checked = state.enabled;
-      // Off may always be chosen; on only when the backend says it is available.
-      control.disabled = activePending || (!state.available && !state.enabled);
-      if (activePending) {
-        control.setAttribute("aria-busy", "true");
-      }
-      title.htmlFor = control.id;
-      control.addEventListener("change", () => {
-        const chosen = control.checked;
-        // Never optimistic: the control shows the confirmed value until an answer says otherwise.
-        control.checked = state.enabled;
-        input.onSetActiveControl?.(state.enabled, chosen);
-      });
-      group.append(control);
+    const row = overviewRow(
+      "active-control",
+      label,
+      stateText,
+      changeable
+        ? () =>
+            openValueEditor(label, (handlers) =>
+              onOffEditor(
+                doc,
+                model.language,
+                { intro: translate(model.language, "site.activeControl.note"), on: state.enabled, idPrefix },
+                async (chosen) => {
+                  // The answer arrives through `adoptActiveControl`, painted in this row.
+                  input.onSetActiveControl?.(state.enabled, chosen);
+                  return null;
+                },
+                handlers,
+              ),
+            )
+        : undefined,
+    );
+    row.querySelector<HTMLElement>(`.${C.settingRowValue}`)?.setAttribute("data-role", "active-control-state");
+    if (activePending) {
+      row.setAttribute("aria-busy", "true");
     }
-    row.append(title, group);
     nodes.push(row);
     if (state.reason !== null) {
-      nodes.push(element(doc, "p", C.capabilityNote, state.reason.text));
+      nodes.push(rowHelp("active-control-reason", state.reason.text));
     } else if (!site.writable) {
-      nodes.push(element(doc, "p", C.capabilityNote, translate(model.language, "site.activeControl.available")));
+      nodes.push(rowHelp("active-control-available", translate(model.language, "site.activeControl.available")));
     }
-    nodes.push(element(doc, "p", C.capabilityNote, translate(model.language, "site.activeControl.note")));
+    nodes.push(rowHelp("active-control", translate(model.language, "site.activeControl.note")));
     if (activeNotice !== null) {
       const notice = element(
         doc,
@@ -2969,6 +3361,7 @@ export function createCardView(input: CardViewInput): CardView {
     if (destroyed) {
       return;
     }
+    const focus = entityFocus !== null && entityFocus.scope === scope ? entityFocus : null;
     issuesDialog.hide({ restoreFocus: false });
     capabilityDialog.hide({ restoreFocus: false });
     pauseDialog.hide({ restoreFocus: false });
@@ -2985,13 +3378,14 @@ export function createCardView(input: CardViewInput): CardView {
         config,
         hass: () => input.hass?.(),
         appliesText: scope === "site" ? (model.site?.appliesToText ?? null) : null,
+        ...(focus === null ? {} : { focus: focus.part }),
       },
       {
         onSave: (draft) => input.onSaveEntities?.(scope, draft),
         onCancel: () => leaveSettingsChild(entityDialog, input.onCancelEntities),
         onOpenSite: () => {
           entityDialog.hide({ restoreFocus: false });
-          input.onOpenEntityEditor?.("site");
+          openEntities("site");
         },
       },
       idPrefix,
@@ -3001,7 +3395,7 @@ export function createCardView(input: CardViewInput): CardView {
       built.setNotice(translate(model.language, notice.sentenceKey), notice.code);
     }
     entityDialog.show({
-      title: translate(model.language, scope === "site" ? "entity.editor.site" : "entity.editor.charger"),
+      title: focus !== null ? focus.title : translate(model.language, scope === "site" ? "entity.editor.site" : "entity.editor.charger"),
       body: built.body,
       opener: settingsGeneral,
     });
@@ -3016,78 +3410,6 @@ export function createCardView(input: CardViewInput): CardView {
     settingsDialog.hide({ restoreFocus: false });
     marketDialog.hide({ restoreFocus: false });
     settingsOverviewDialog.hide({ restoreFocus: false });
-  }
-
-  let vehicleEditorId: string | null = null;
-
-  function openVehicleEditor(
-    vehicleId: string,
-    config: EntityConfig | null,
-    notice: FailureSentence | null = null,
-    adopted?: Vehicle,
-  ): void {
-    const row = adopted ?? model.vehicles.find((entry) => entry.id === vehicleId) ?? null;
-    const sensor = config?.vehicles.find((entry) => entry.id === vehicleId) ?? null;
-    if (destroyed || (row === null && sensor === null)) {
-      return;
-    }
-    hideForChildDialog();
-    const built = vehicleEditorBody(
-      doc,
-      model.language,
-      { vehicleId, row, sensor },
-      {
-        onSave: (draft) => input.onSaveVehicle?.(vehicleId, draft),
-        onCancel: () => leaveSettingsChild(entityDialog, input.onCancelEntities),
-      },
-      idPrefix,
-    );
-    entityEditor = { scope: "vehicle", built };
-    vehicleEditorId = vehicleId;
-    if (notice !== null) {
-      built.setNotice(translate(model.language, notice.sentenceKey), notice.code);
-    }
-    entityDialog.show({
-      title: translate(model.language, "settings.vehicle.dialogTitle", {
-        name: row?.name ?? sensor?.name ?? translate(model.language, "settings.vehicle.unnamed"),
-      }),
-      body: built.body,
-      opener: settingsGeneral,
-    });
-  }
-
-  function openSolarEditor(notice: FailureSentence | null = null): void {
-    if (destroyed || model.site === null) {
-      return;
-    }
-    hideForChildDialog();
-    const built = solarEditorBody(
-      doc,
-      model.language,
-      model.site,
-      {
-        onSave: (draft) => input.onSaveSolar?.(draft),
-        onCancel: () => leaveSettingsChild(entityDialog, input.onCancelSolar),
-      },
-      idPrefix,
-    );
-    entityEditor = { scope: "solar", built };
-    if (notice !== null) {
-      built.setNotice(translate(model.language, notice.sentenceKey), notice.code);
-    }
-    entityDialog.show({
-      title: translate(model.language, "site.solar.dialogTitle"),
-      body: built.body,
-      opener: settingsGeneral,
-    });
-  }
-
-  function vehicleEditorOpen(): string | null {
-    return entityEditor !== null && entityEditor.scope === "vehicle" && entityDialog.isOpen() ? vehicleEditorId : null;
-  }
-
-  function solarEditorOpen(): boolean {
-    return entityEditor !== null && entityEditor.scope === "solar" && entityDialog.isOpen();
   }
 
   function entityEditorOpen(): EntityScope | null {
@@ -3209,11 +3531,30 @@ export function createCardView(input: CardViewInput): CardView {
       paintEntities();
     },
     openEntityEditor,
-    openVehicleEditor,
-    vehicleEditorOpen,
-    openSolarEditor,
-    notificationsEditorOpen: () => notificationsDialog.isOpen(),
-    solarEditorOpen,
+    valueEditorOpen: () => valueDialog.isOpen(),
+    closeValueEditor(): void {
+      valueDialog.hide({ restoreFocus: false });
+    },
+    openFiscalEditor(component: FiscalComponentName, facts: { current: number | null; suggestion: number | null }): void {
+      const fiscal = model.dashboardFiscal?.[component];
+      const label = translate(
+        model.language,
+        component === "vat" ? "settings.fiscal.vat" : component === "tax" ? "settings.fiscal.tax" : "settings.fiscal.transfer",
+      );
+      editNumber(
+        label,
+        {
+          unit: fiscal?.unit ?? "",
+          current: facts.current,
+          min: 0,
+          max: component === "vat" ? 100 : 100000,
+          decimals: 2,
+          noneLabel: translate(model.language, "settings.value.off"),
+          suggestion: facts.suggestion,
+        },
+        (value) => writeValue({ kind: "fiscal", component, value }),
+      );
+    },
     entityEditorOpen,
     setEntityEditorNotice(failure: FailureSentence | null): void {
       entityEditor?.built.setNotice(
@@ -3280,7 +3621,7 @@ export function createCardView(input: CardViewInput): CardView {
       entityDialog.destroy();
       settingsOverviewDialog.destroy();
       historyDialog.destroy();
-      notificationsDialog.destroy();
+      valueDialog.destroy();
       card.remove();
     },
   };

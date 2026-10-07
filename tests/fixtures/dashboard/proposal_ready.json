@@ -50,11 +50,14 @@
       "events": [
         "plan_stopped",
         "plan_at_risk",
-        "charge_complete"
+        "charge_complete",
+        "vehicle_identify"
       ],
       "url": null,
       "available": []
-    }
+    },
+    "vehicle_ids": null,
+    "identify_mode": "automatic"
   },
   "fiscal": {
     "vat": {
@@ -2285,5 +2288,7 @@
     "until": null,
     "waiting_for": []
   },
-  "charger_priority": null
+  "charger_priority": null,
+  "identification": null,
+  "vehicle_choices": []
 }

@@ -24,9 +24,10 @@ charging losses.
 ### Several vehicles
 
 Several vehicles can be detected, and you choose which one the charger plans for, in the card's
-vehicle settings. SpotNav does not detect which car is plugged in, because chargers do not report
-it: change the choice when a different car is connected. Without a vehicle integration, charge a
-fixed number of kWh instead.
+vehicle settings. Chargers do not report which car is plugged in, so at a charger more than one car can
+charge at SpotNav reads the cars' own plug sensors and positions and asks you when they cannot tell: see
+[Which car is plugged in?](vehicle-identification.md). Each car keeps its own target at the charger. Without
+a vehicle integration, charge a fixed number of kWh instead.
 
 ## How it behaves
 

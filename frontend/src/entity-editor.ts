@@ -46,16 +46,9 @@ import {
   type SiteCurrentSource,
   type SiteWarning,
   type VehicleSoc,
-  vehicleChoice,
 } from "./entity-config";
-import { formatFixed, formatNumber } from "./format";
+import { formatNumber } from "./format";
 import { measurementProblemText, meterUnavailableText, negativeCurrentText } from "./status";
-import {
-  CAPACITY_MAX_KWH,
-  CAPACITY_MIN_KWH,
-  CONSUMPTION_MAX_KWH_PER_10KM,
-  CONSUMPTION_MIN_KWH_PER_10KM,
-} from "./settings";
 import type { Vehicle } from "./validate";
 import { translate, type Language, type TranslationKey } from "./i18n";
 import { VISUAL_CLASSES as C } from "./visual-styles";
@@ -322,23 +315,6 @@ export async function ensureHaSelector(win: Window | null | undefined, timeoutMs
   }
 }
 
-export function controlCurrentText(language: Language, control: EntityControl, name: string): string {
-  const current = control.current;
-  if (current.kind === "none") {
-    return translate(language, "control.current.none");
-  }
-  if (!current.enabled) {
-    return translate(language, "control.current.off");
-  }
-  if (current.kind === "ocpp") {
-    return translate(language, "control.current.ocpp");
-  }
-  if (current.kind === "service") {
-    return translate(language, "control.current.service");
-  }
-  return translate(language, "control.current.number", { name });
-}
-
 /**
  * The restrictions the charger's control description puts on the current limit that the person should
  * know about, one sentence each; none for a charger whose current can be written freely (an OCPP
@@ -452,6 +428,12 @@ export interface EntityEditorInput {
   hass: () => unknown;
   appliesText: string | null;
   readOnly?: boolean;
+  /**
+   * One value of the Settings page: only the dialog part of that name is shown (`charge-control`,
+   * `current-limit`, `energy`), the rest kept hidden and unchanged. Without it, or when the part is not
+   * there, the whole dialog shows.
+   */
+  focus?: string;
 }
 
 export interface EntityEditorBody {
@@ -485,6 +467,13 @@ function selectorFor(field: EntityFieldEntity): { entity: Record<string, unknown
   }
   return { entity };
 }
+
+/** The fields each part of the charger's dialog owns, when that part is shown alone. */
+const FOCUS_FIELDS: Readonly<Record<string, readonly string[]>> = {
+  "charge-control": ["charge_control"],
+  "current-limit": ["current_limit"],
+  energy: ["energy_register_entity", "power_entity"],
+};
 
 export function entityEditorBody(
   doc: Document,
@@ -525,6 +514,8 @@ export function entityEditorBody(
   if (scope === "charger" && config.control !== null) {
     const notes = controlNotes(doc, language, config.control, (entityId) => entityNameIn(config, entityId));
     if (notes !== null) {
+      // How the charger is controlled: shown with the current limit when that is shown alone.
+      notes.dataset["focusWith"] = "current-limit";
       body.append(notes);
     }
   }
@@ -1677,6 +1668,21 @@ export function entityEditorBody(
     }
   }
 
+  // One value, one dialog: the other parts stay in the form (their values unchanged, so nothing of theirs is
+  // sent) but out of sight.
+  const focus = input.focus;
+  let focusFields: ReadonlySet<string> | null = null;
+  if (focus !== undefined && Array.from(body.children).some((child) => (child as HTMLElement).dataset["part"] === focus)) {
+    // A part sends only its own fields: a hidden part's defaults (an energy kind read as a meter clearing the
+    // plug's power entity, say) never reach the request.
+    focusFields = new Set(FOCUS_FIELDS[focus] ?? []);
+    for (const child of Array.from(body.children) as HTMLElement[]) {
+      if (child !== notice && child.dataset["part"] !== focus && child.dataset["focusWith"] !== focus) {
+        child.hidden = true;
+      }
+    }
+  }
+
   const actions = element(doc, "div", C.settingsActions);
   const save = element(doc, "button", `${C.button} ${C.settingsSave}`, translate(language, "settings.save"));
   save.type = "submit";
@@ -1730,6 +1736,10 @@ export function entityEditorBody(
     for (const clear of clearers) {
       clear(draft);
     }
+    if (focusFields !== null) {
+      const only = focusFields;
+      return Object.fromEntries(Object.entries(draft).filter(([name]) => only.has(name)));
+    }
     return draft;
   }
 
@@ -1774,232 +1784,4 @@ export interface VehicleEditorInput {
   row: Vehicle | null;
   /** The charge-level sensors this vehicle can choose from; `null` when the configuration lists none for it. */
   sensor: VehicleSoc | null;
-}
-
-/**
- * One vehicle's dialog: the charge-level sensor (one radio per sensor it has plus one for automatic
- * detection, which is all the backend accepts), battery capacity, consumption and onboard charger. Reports the draft as
- * text: `soc` (entity id, `""` for automatic; absent without a sensor block), `capacity` (absent when the
- * vehicle reports it itself), `consumption` and `onboard` (`"1"` or `"3"`). The card judges it and sends the changes.
- */
-export function vehicleEditorBody(
-  doc: Document,
-  language: Language,
-  input: VehicleEditorInput,
-  handlers: EntityEditorHandlers,
-  idPrefix: string,
-): EntityEditorBody {
-  const { row, sensor } = input;
-  const values: EntityDraft = {};
-  const controls: Array<HTMLElement & { disabled: boolean }> = [];
-  const errorNodes = new Map<string, { node: HTMLElement; input: HTMLElement }>();
-  let pending = false;
-
-  const body = element(doc, "form");
-  body.noValidate = true;
-  body.dataset["entityEditor"] = "vehicle";
-  body.dataset["vehicle"] = input.vehicleId;
-  const notice = element(doc, "p", C.settingsNotice);
-  notice.setAttribute("role", "status");
-  notice.hidden = true;
-  body.append(notice);
-
-  const errorFor = (name: string, control: HTMLElement): HTMLElement => {
-    const node = element(doc, "p", C.settingsError);
-    node.hidden = true;
-    node.dataset["fieldError"] = name;
-    node.setAttribute("role", "alert");
-    errorNodes.set(name, { node, input: control });
-    return node;
-  };
-
-  if (sensor !== null) {
-    values["soc"] = vehicleChoice(sensor);
-    const group = element(doc, "fieldset", C.siteFieldset);
-    group.dataset["part"] = "soc";
-    group.append(element(doc, "legend", C.siteLegend, translate(language, "settings.vehicle.sensorLegend")));
-    const radioName = `${idPrefix}-vehicle-soc`;
-    const choose = (value: string, label: string, title: string | null): void => {
-      const line = element(doc, "label", C.siteChoice);
-      const radio = doc.createElement("input");
-      radio.type = "radio";
-      radio.name = radioName;
-      radio.value = value;
-      radio.checked = values["soc"] === value;
-      radio.dataset["vehicleChoice"] = value === "" ? "automatic" : value;
-      radio.addEventListener("change", () => {
-        if (radio.checked) {
-          values["soc"] = value;
-        }
-      });
-      controls.push(radio);
-      line.append(radio, doc.createTextNode(label));
-      if (title !== null) {
-        line.title = title;
-      }
-      group.append(line);
-    };
-    for (const candidate of sensor.candidates) {
-      choose(candidate.entityId, candidate.friendlyName, candidate.entityId);
-    }
-    choose("", translate(language, "entity.vehicle.automatic"), null);
-    // Only when automatic detection really has nothing to pick: a health, 12 V or target sensor beside
-    // the charge level is among the candidates but does not stop it from choosing.
-    if (sensor.candidates.length > 1 && sensor.selected === null) {
-      group.append(element(doc, "p", C.entityHelp, translate(language, "entity.vehicle.several")));
-    }
-    group.append(errorFor("vehicle_soc", group));
-    body.append(group);
-  }
-
-  const numberField = (
-    name: "capacity" | "consumption",
-    errorField: string,
-    labelKey: TranslationKey,
-    unit: string,
-    current: number | null,
-    range: { min: number; max: number },
-  ): void => {
-    const block = element(doc, "div", C.settingsField);
-    block.dataset["part"] = name;
-    const id = `${idPrefix}-vehicle-${name}`;
-    const control = doc.createElement("input");
-    control.type = "number";
-    control.step = "0.1";
-    control.min = String(range.min);
-    control.max = String(range.max);
-    control.inputMode = "decimal";
-    control.className = C.settingsInput;
-    control.id = id;
-    values[name] = current === null ? "" : current.toFixed(1);
-    control.value = values[name] ?? "";
-    control.placeholder = current === null ? translate(language, "settings.capacity.unset") : "";
-    control.addEventListener("input", () => {
-      values[name] = control.value;
-    });
-    controls.push(control);
-    const label = element(doc, "label", C.settingsLabel, translate(language, labelKey));
-    label.setAttribute("for", id);
-    const line = element(doc, "div", C.settingsRow);
-    line.append(control, element(doc, "span", C.settingsUnit, unit));
-    block.append(label, line, errorFor(errorField, control));
-    body.append(block);
-  };
-
-  if (row === null) {
-    // Only the sensor can be chosen for a vehicle the dashboard does not list.
-  } else if (row.capacity_source === "reported" && row.capacity_kwh !== null) {
-    const line = element(doc, "div", C.capabilityItem);
-    line.dataset["row"] = "capacity";
-    line.append(
-      element(doc, "span", C.capabilityLabel, translate(language, "settings.capacity.label")),
-      element(doc, "span", C.settingsValue, `${formatFixed(language, row.capacity_kwh, 1)} kWh`),
-    );
-    body.append(line, element(doc, "p", C.settingsNote, translate(language, "settings.vehicle.capacityReported")));
-  } else {
-    numberField("capacity", "capacity_kwh", "settings.capacity.label", "kWh", row.capacity_kwh, {
-      min: CAPACITY_MIN_KWH,
-      max: CAPACITY_MAX_KWH,
-    });
-  }
-  if (row !== null) {
-    numberField(
-      "consumption",
-      "consumption_kwh_per_10km",
-      "settings.consumption.label",
-      translate(language, "settings.consumption.unit"),
-      row.consumption_kwh_per_10km,
-      { min: CONSUMPTION_MIN_KWH_PER_10KM, max: CONSUMPTION_MAX_KWH_PER_10KM },
-    );
-  }
-
-  if (row !== null) {
-    // The car's own charger: 1 or 3 phases. A charge uses the smaller of this and the charger's wiring.
-    values["onboard"] = String(row.onboard_phases);
-    const group = element(doc, "fieldset", C.siteFieldset);
-    group.dataset["part"] = "onboard";
-    group.append(
-      element(doc, "legend", C.siteLegend, translate(language, "settings.vehicle.onboardLegend")),
-      element(doc, "p", C.entityHelp, translate(language, "settings.vehicle.onboardHelp")),
-    );
-    for (const count of ["1", "3"] as const) {
-      const line = element(doc, "label", C.siteChoice);
-      const radio = doc.createElement("input");
-      radio.type = "radio";
-      radio.name = `${idPrefix}-vehicle-onboard`;
-      radio.value = count;
-      radio.checked = values["onboard"] === count;
-      radio.dataset["onboard"] = count;
-      radio.addEventListener("change", () => {
-        if (radio.checked) {
-          values["onboard"] = count;
-        }
-      });
-      controls.push(radio);
-      line.append(
-        radio,
-        doc.createTextNode(translate(language, count === "1" ? "settings.vehicle.onboardOne" : "settings.vehicle.onboardThree")),
-      );
-      group.append(line);
-    }
-    group.append(errorFor("onboard_phases", group));
-    body.append(group);
-  }
-
-  const actions = element(doc, "div", C.settingsActions);
-  const save = element(doc, "button", `${C.button} ${C.settingsSave}`, translate(language, "settings.save"));
-  save.type = "submit";
-  const cancel = element(doc, "button", C.button, translate(language, "settings.cancel"));
-  cancel.type = "button";
-  actions.append(save, cancel);
-  body.append(actions);
-  controls.push(save, cancel);
-  body.addEventListener("submit", (event) => {
-    event.preventDefault();
-    if (!pending) {
-      handlers.onSave({ ...values });
-    }
-  });
-  cancel.addEventListener("click", () => {
-    handlers.onCancel();
-  });
-
-  return {
-    body,
-    draft: () => ({ ...values }),
-    markErrors(errors) {
-      for (const [, entry] of errorNodes) {
-        entry.node.hidden = true;
-        entry.node.textContent = "";
-        entry.node.removeAttribute("data-code");
-        entry.input.removeAttribute("aria-invalid");
-      }
-      for (const error of errors) {
-        const entry = errorNodes.get(error.field);
-        if (entry === undefined) {
-          continue;
-        }
-        entry.node.hidden = false;
-        entry.node.textContent = translate(language, fieldErrorKey(error.code));
-        entry.node.dataset["code"] = error.code;
-        entry.input.setAttribute("aria-invalid", "true");
-      }
-    },
-    setNotice(text, code) {
-      notice.hidden = text === null;
-      notice.textContent = text ?? "";
-      if (code === null) {
-        notice.removeAttribute("data-code");
-      } else {
-        notice.dataset["code"] = code;
-      }
-    },
-    setPending(next) {
-      pending = next;
-      for (const control of controls) {
-        control.disabled = pending;
-      }
-    },
-    setHass() {},
-  };
 }

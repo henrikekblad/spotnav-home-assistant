@@ -89,8 +89,11 @@ def body(**changes: Any) -> dict[str, Any]:
 def test_the_wire_names_the_date_and_marks_it_optional() -> None:
     assert "departure_date" in SETTINGS_KEYS
     # `phases` is optional too: it is no longer a setting, and a replacement may send it or leave it out.
-    # `notifications` came later still, and `fill_to_limit` after it.
-    optional = {"departure_date", "departure_weekdays", "phases", "notifications", "fill_to_limit"}
+    # `notifications` came later still, `fill_to_limit` after it, and the vehicle identification's three last.
+    optional = {
+        "departure_date", "departure_weekdays", "phases", "notifications", "fill_to_limit", "vehicle_ids",
+        "identify_mode",
+    }
     assert OPTIONAL_SETTINGS_KEYS == optional
     assert REQUIRED_SETTINGS_KEYS == SETTINGS_KEYS - optional
     assert encode_settings(AutoSettings())["departure_date"] is None

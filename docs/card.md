@@ -182,6 +182,20 @@ One block per vehicle Home Assistant detected, with the one this charger plans f
 - **Onboard charger**: 1-phase or 3-phase (3-phase until you say otherwise). A charge uses the smaller of
   this and the charger's wiring, so a car with a single-phase onboard charger charges on one phase even
   on a three-phase wallbox.
+- **Plug sensor** and **Location**: the car's own "plugged in" sensor and tracker, which tell which car is
+  plugged in at a charger more than one car can charge at. Each is **Automatic**, one of the car's entities,
+  or **None**. They are read only for that.
+
+### Which car is plugged in?
+
+Shown when more than one car is detected: **Identification** (**Automatic**, **Always ask** or **Off**) and
+**Cars at this charger**, changed with **Change**. While SpotNav cannot tell which car was plugged in, the card
+shows "Which car is plugged in?" with one button per car, the likeliest first; one tap is the answer, the
+same as on the phones. The car line says how the car was decided ("identified by the car's charging cable",
+"selected manually", "assumed", ...). With two or more cars at the charger it ends in ⇄ and tapping it opens
+**Change car**, for anyone signed in: with a car plugged in it corrects that car; with none it sets the plan's car
+for the next plug-in (an administrator's settings write). See
+[Which car is plugged in?](vehicle-identification.md).
 
 Saving each value asks Home Assistant to confirm it; the card never shows a value the integration
 did not accept.

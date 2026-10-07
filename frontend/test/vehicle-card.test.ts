@@ -202,6 +202,22 @@ describe("the Plan popover's target editor", () => {
     expect(((update["settings"] as Record<string, any>)["target"] as Record<string, unknown>)["vehicle_id"]).toBe("vehicle_niro");
   });
 
+  it("shows the target the chosen car keeps here, and sends it with the car", async () => {
+    const payload = twoVehicles();
+    payload["vehicles"][0]["target_percent"] = 80;
+    payload["vehicles"][1]["target_percent"] = 65;
+    const record = { ...aRecord(), vehicle_ids: null, identify_mode: "automatic" as const };
+    const { hass, element } = await openPlan(payload, record);
+    const select = q<HTMLSelectElement>(element, "select[data-soc='vehicle-choice']")!;
+    select.value = "vehicle_niro";
+    select.dispatchEvent(new Event("change"));
+    expect(q(element, "[data-part='target-value']")?.textContent).toContain("65");
+    q<HTMLButtonElement>(element, ".spotnav-settings-save")!.click();
+    await settle();
+    const update = hass.messages.find((message) => message.type === "spotnav/update_settings")!;
+    expect((update["settings"] as Record<string, any>)["target"]).toEqual({ vehicle_id: "vehicle_niro", target_percent: 65 });
+  });
+
   it("has no picker with one vehicle, just its name, and no link to Settings anywhere", async () => {
     const payload = twoVehicles();
     payload["soc"]["vehicles"] = [];
@@ -242,28 +258,18 @@ const entityConfig = (): Record<string, any> => {
 };
 /** A vehicle's summary card on the Settings page. */
 const block = (element: Element, id: string) => dlg(element).querySelector<HTMLElement>(`[data-section='vehicle'][data-vehicle='${id}']`)!;
-/** Press a vehicle card's Change button: its dialog replaces the Settings page. */
-async function openVehicle(element: Element, id: string): Promise<void> {
-  block(element, id).querySelector<HTMLButtonElement>("[data-edit-vehicle]")!.click();
+/** Tap one of a vehicle's values: its own editor replaces the Settings page. */
+async function editValue(element: Element, id: string, row: string): Promise<void> {
+  block(element, id).querySelector<HTMLButtonElement>(`[data-edit='${row}']`)!.click();
   await settle();
 }
-const part = (element: Element, which: "capacity" | "consumption") =>
-  dlg(element).querySelector<HTMLElement>(`[data-part='${which}']`)!;
-const input = (element: Element, which: "capacity" | "consumption") => part(element, which).querySelector<HTMLInputElement>("input")!;
-const fieldError = (element: Element, name: string): HTMLElement | null => {
-  const node = dlg(element).querySelector<HTMLElement>(`[data-field-error='${name}']`);
-  return node === null || node.hidden ? null : node;
-};
-const dialogNotice = (element: Element): HTMLElement | null => {
-  const node = dlg(element).querySelector<HTMLElement>("[role='status']");
+const field = (element: Element) => dlg(element).querySelector<HTMLInputElement>("[data-value-field='number']")!;
+const noneBox = (element: Element) => dlg(element).querySelector<HTMLInputElement>("[data-value-none]");
+const editorError = (element: Element): HTMLElement | null => {
+  const node = dlg(element).querySelector<HTMLElement>("form[data-value-editor] [role='alert']");
   return node === null || node.hidden ? null : node;
 };
 const saveButton = (element: Element) => dlg(element).querySelector<HTMLButtonElement>(".spotnav-settings-save")!;
-/** Type into a field the way a reader does: the value changes and the input event follows. */
-function typeInto(control: HTMLInputElement, value: string): void {
-  control.value = value;
-  control.dispatchEvent(new Event("input"));
-}
 const vehicleUpdates = (hass: FakeHass) => hass.entityMessages.filter((message) => message["type"] === "spotnav/update_vehicle");
 
 /** The success answer, with the vehicle row and the answer's other facts set as a test needs. */
@@ -283,12 +289,13 @@ describe("the Settings page's vehicles", () => {
     expect(dlg(swedish.element).textContent).toContain("Kortinställningar · Wallbox");
   });
 
-  it("summarises every vehicle in its own card, marks the one this charger plans for and edits nothing inline", async () => {
+  it("summarises every vehicle in its own section, marks the one this charger plans for and edits nothing inline", async () => {
     const { element } = await openSettings(twoVehicles());
     const ids = Array.from(dlg(element).querySelectorAll<HTMLElement>("[data-section='vehicle']")).map((node) => node.dataset["vehicle"]);
     expect(ids).toEqual(["vehicle_ev6", "vehicle_niro"]);
-    expect(block(element, "vehicle_ev6").querySelector("h4")?.textContent).toBe("EV6");
-    expect(block(element, "vehicle_niro").querySelector("h4")?.textContent).toBe("Niro");
+    expect(block(element, "vehicle_ev6").querySelector("h4")?.textContent).toBe("Car · EV6");
+    expect(block(element, "vehicle_ev6").querySelector("h4 svg")?.getAttribute("data-icon")).toBe("car");
+    expect(block(element, "vehicle_niro").querySelector("h4")?.textContent).toBe("Car · Niro");
     expect(block(element, "vehicle_ev6").querySelector("[data-row='capacity']")?.textContent).toContain("77.0 kWh");
     expect(block(element, "vehicle_ev6").querySelector("[data-row='consumption']")?.textContent).toContain("2.0 kWh/10 km");
     expect(block(element, "vehicle_niro").querySelector("[data-row='capacity']")?.textContent).toContain("64.8 kWh");
@@ -297,10 +304,10 @@ describe("the Settings page's vehicles", () => {
     expect(block(element, "vehicle_niro").dataset["planned"]).toBe("false");
     expect(block(element, "vehicle_ev6").querySelector("[data-vehicle-mark='planned']")).not.toBeNull();
     expect(block(element, "vehicle_niro").querySelector("[data-vehicle-mark='planned']")).toBeNull();
-    // No input and no Save anywhere on the page: one Change button per vehicle.
+    // No input, no Save and no Change button on the page: each value is its own button.
     expect(dlg(element).querySelector("[data-section='vehicle'] input")).toBeNull();
-    expect(dlg(element).querySelector("[data-action^='save-vehicle']")).toBeNull();
-    expect(dlg(element).querySelectorAll("[data-edit-vehicle]")).toHaveLength(2);
+    expect(dlg(element).querySelector("[data-edit-vehicle]")).toBeNull();
+    expect(block(element, "vehicle_niro").querySelector("[data-edit='capacity']")?.textContent).toBe("64.8 kWh");
   });
 
   it("shows each vehicle's charge level, not its sensor, in the Settings overview", async () => {
@@ -335,45 +342,38 @@ describe("the Settings page's vehicles", () => {
     expect(summaryValueClass("x".repeat(19))).toContain("long");
   });
 
-  it("shows a reported capacity as read-only in the vehicle's dialog, with where it comes from", async () => {
+  it("shows a reported capacity read-only, with where it comes from", async () => {
     const payload = twoVehicles();
     payload["vehicles"][0]["capacity_source"] = "reported";
     const { element } = await openSettings(payload, { language: "sv" });
-    await openVehicle(element, "vehicle_ev6");
-    const row = dlg(element).querySelector("[data-row='capacity']");
+    const row = block(element, "vehicle_ev6").querySelector("[data-row='capacity']");
     expect(row?.textContent).toContain("77,0 kWh");
-    expect(dlg(element).textContent).toContain("rapporterad av bilen");
-    expect(dlg(element).querySelector("[data-part='capacity']")).toBeNull();
-    expect(input(element, "consumption").disabled).toBe(false);
+    expect(row?.querySelector("button")).toBeNull();
+    expect(block(element, "vehicle_ev6").textContent).toContain("rapporterad av bilen");
+    expect(block(element, "vehicle_ev6").querySelector("[data-edit='consumption']")).not.toBeNull();
   });
 
-  it("disables every Change button for a non-administrator, and says why", async () => {
+  it("offers no editor to a non-administrator, and says why", async () => {
     const { element } = await openSettings(twoVehicles(), { admin: false, entities: null });
-    const buttons = Array.from(dlg(element).querySelectorAll<HTMLButtonElement>("[data-edit-vehicle]"));
-    expect(buttons).toHaveLength(2);
-    expect(buttons.every((button) => button.disabled)).toBe(true);
+    expect(dlg(element).querySelectorAll("[data-section='vehicle'] button")).toHaveLength(0);
     expect(dlg(element).textContent).toContain(translate("en", "settings.readOnly"));
   });
 
-  it("opens the dialog with Save and Cancel, the current figures and no request", async () => {
+  it("opens one value in its own dialog with Save and Cancel, the current figure and no request", async () => {
     const { hass, element } = await openSettings(twoVehicles(), { entities: entityConfig() });
-    await openVehicle(element, "vehicle_niro");
-    expect(dlg(element).parentElement?.textContent).toContain("Vehicle · Niro");
-    expect(input(element, "capacity").value).toBe("64.8");
-    expect(input(element, "consumption").value).toBe("1.7");
-    expect(input(element, "consumption").step).toBe("0.1");
-    expect(input(element, "consumption").min).toBe("0.1");
-    expect(input(element, "consumption").max).toBe("50");
+    await editValue(element, "vehicle_niro", "consumption");
+    expect(dlg(element).parentElement?.textContent).toContain(translate("en", "settings.consumption.label"));
+    expect(field(element).value).toBe("1.7");
+    expect(dlg(element).textContent).toContain(translate("en", "settings.consumption.unit"));
     const buttons = Array.from(dlg(element).querySelectorAll<HTMLButtonElement>("form button")).map((node) => node.textContent);
     expect(buttons).toEqual([translate("en", "settings.save"), translate("en", "settings.cancel")]);
     expect(vehicleUpdates(hass)).toHaveLength(0);
   });
 
-  it("writes both fields in one request under compare-and-set, never adopting before the answer, then returns to Settings", async () => {
+  it("writes the value under compare-and-set, never adopting before the answer, then returns to Settings", async () => {
     const { hass, element } = await openSettings(twoVehicles());
-    await openVehicle(element, "vehicle_niro");
-    typeInto(input(element, "consumption"), "1.94");
-    typeInto(input(element, "capacity"), "70");
+    await editValue(element, "vehicle_niro", "consumption");
+    field(element).value = "1.94";
     let release: (value: unknown) => void = () => undefined;
     hass.entityHandler = () => new Promise((resolve) => (release = resolve));
     saveButton(element).click();
@@ -384,68 +384,28 @@ describe("the Settings page's vehicles", () => {
         api_version: 1,
         charger_id: "soc_charger",
         vehicle_id: "vehicle_niro",
-        changes: { capacity_kwh: 70, consumption_kwh_per_10km: 1.9 },
-        expected: { capacity_kwh: 64.8, consumption_kwh_per_10km: 1.7 },
+        changes: { consumption_kwh_per_10km: 1.9 },
+        expected: { consumption_kwh_per_10km: 1.7 },
       },
     ]);
-    // While the answer is on its way the dialog is still the dialog, with Save disabled.
-    expect(dlg(element).querySelector("[data-entity-editor='vehicle']")).not.toBeNull();
+    // While the answer is on its way the editor is still open, with Save disabled.
+    expect(dlg(element).querySelector("form[data-value-editor='number']")).not.toBeNull();
     expect(saveButton(element).disabled).toBe(true);
-    release(answerFrom("success", { capacity_kwh: 70, consumption_kwh_per_10km: 1.9 }));
+    release(answerFrom("success", { consumption_kwh_per_10km: 1.9 }));
     await settle();
     // One read of the dashboard confirms the write.
     expect(hass.messages.filter((message) => message.type === "spotnav/get_dashboard").length).toBeGreaterThan(1);
     hass.resolveNext(twoVehicles());
     await settle();
     expect(dlg(element).querySelector("[data-section='vehicle']")).not.toBeNull();
-    expect(dlg(element).querySelector("[data-entity-editor]")).toBeNull();
+    expect(dlg(element).querySelector("form[data-value-editor]")).toBeNull();
   });
 
-  it("shows the onboard charger as a 1-phase or 3-phase choice, on what is stored, and writes only a change", async () => {
+  it("clears a capacity with Not set, and rounds a typed one to a tenth", async () => {
     const { hass, element } = await openSettings(twoVehicles());
-    await openVehicle(element, "vehicle_niro");
-    const radios = Array.from(dlg(element).querySelectorAll<HTMLInputElement>("[data-part='onboard'] input[data-onboard]"));
-    expect(radios.map((radio) => radio.dataset["onboard"])).toEqual(["1", "3"]);
-    expect(radios.map((radio) => radio.checked)).toEqual([false, true]);
-    expect(dlg(element).querySelector("[data-part='onboard']")?.textContent).toContain(translate("en", "settings.vehicle.onboardLegend"));
-    expect(dlg(element).querySelector("[data-part='onboard']")?.textContent).toContain("1-phase");
-    expect(dlg(element).querySelector("[data-part='onboard']")?.textContent).toContain("3-phase");
-    // Nothing moved: nothing is sent.
-    saveButton(element).click();
-    await settle();
-    expect(vehicleUpdates(hass)).toHaveLength(0);
-
-    await openVehicle(element, "vehicle_niro");
-    hass.entityHandler = async () => answerFrom("success", { onboard_phases: 1 });
-    const one = dlg(element).querySelector<HTMLInputElement>("input[data-onboard='1']")!;
-    one.checked = true;
-    one.dispatchEvent(new Event("change", { bubbles: true }));
-    saveButton(element).click();
-    await settle();
-    expect(vehicleUpdates(hass)[0]).toMatchObject({
-      vehicle_id: "vehicle_niro",
-      changes: { onboard_phases: 1 },
-      expected: { onboard_phases: 3 },
-    });
-    expect(Object.keys((vehicleUpdates(hass)[0] as Record<string, any>)["changes"])).toEqual(["onboard_phases"]);
-  });
-
-  it("names the onboard charger on the vehicle's card and in every language", async () => {
-    const { element } = await openSettings(twoVehicles());
-    expect(block(element, "vehicle_niro").querySelector("[data-row='onboard']")?.textContent).toContain("3-phase");
-    for (const language of ["sv", "nb", "da", "fi"] as const) {
-      for (const key of ["settings.vehicle.onboardLegend", "settings.vehicle.onboardOne", "settings.vehicle.onboardHelp", "settings.vehicle.error.onboardPhases", "settings.phases.limitedByVehicle", "settings.phases.line"] as const) {
-        expect(translate(language, key), `${language} ${key}`).not.toBe(translate("en", key));
-      }
-    }
-    expect(translate("sv", "settings.phases.limitedByVehicle")).toBe("Bilen laddar på en fas.");
-  });
-
-  it("writes only the field that changed", async () => {
-    const { hass, element } = await openSettings(twoVehicles());
-    await openVehicle(element, "vehicle_ev6");
+    await editValue(element, "vehicle_ev6", "capacity");
     hass.entityHandler = async () => answerFrom("success", { capacity_kwh: 81.5 });
-    typeInto(input(element, "capacity"), "81.46");
+    field(element).value = "81.46";
     saveButton(element).click();
     await settle();
     expect(vehicleUpdates(hass)[0]).toMatchObject({
@@ -456,9 +416,45 @@ describe("the Settings page's vehicles", () => {
     expect(Object.keys((vehicleUpdates(hass)[0] as Record<string, any>)["changes"])).toEqual(["capacity_kwh"]);
   });
 
-  it("sends nothing when the figures are what is shown, and returns to Settings", async () => {
+  it("shows the onboard charger as a 1-phase or 3-phase choice, on what is stored, and writes only a change", async () => {
     const { hass, element } = await openSettings(twoVehicles());
-    await openVehicle(element, "vehicle_ev6");
+    await editValue(element, "vehicle_niro", "onboard");
+    const radios = Array.from(dlg(element).querySelectorAll<HTMLInputElement>("input[data-value-option]"));
+    expect(radios.map((radio) => radio.dataset["valueOption"])).toEqual(["1", "3"]);
+    expect(radios.map((radio) => radio.checked)).toEqual([false, true]);
+    expect(dlg(element).textContent).toContain("1-phase");
+    expect(dlg(element).textContent).toContain(translate("en", "settings.vehicle.onboardHelp"));
+    // Nothing moved: nothing is sent.
+    saveButton(element).click();
+    await settle();
+    expect(vehicleUpdates(hass)).toHaveLength(0);
+
+    await editValue(element, "vehicle_niro", "onboard");
+    hass.entityHandler = async () => answerFrom("success", { onboard_phases: 1 });
+    dlg(element).querySelector<HTMLInputElement>("input[data-value-option='1']")!.click();
+    saveButton(element).click();
+    await settle();
+    expect(vehicleUpdates(hass)[0]).toMatchObject({
+      vehicle_id: "vehicle_niro",
+      changes: { onboard_phases: 1 },
+      expected: { onboard_phases: 3 },
+    });
+  });
+
+  it("names the onboard charger on the vehicle's section and in every language", async () => {
+    const { element } = await openSettings(twoVehicles());
+    expect(block(element, "vehicle_niro").querySelector("[data-row='onboard']")?.textContent).toContain("3-phase");
+    for (const language of ["sv", "nb", "da", "fi"] as const) {
+      for (const key of ["settings.vehicle.onboardLegend", "settings.vehicle.onboardOne", "settings.vehicle.onboardHelp", "settings.vehicle.error.onboardPhases", "settings.phases.limitedByVehicle", "settings.phases.line"] as const) {
+        expect(translate(language, key), `${language} ${key}`).not.toBe(translate("en", key));
+      }
+    }
+    expect(translate("sv", "settings.phases.limitedByVehicle")).toBe("Bilen laddar på en fas.");
+  });
+
+  it("sends nothing when the figure is what is shown, and returns to Settings", async () => {
+    const { hass, element } = await openSettings(twoVehicles());
+    await editValue(element, "vehicle_ev6", "capacity");
     saveButton(element).click();
     await settle();
     expect(vehicleUpdates(hass)).toHaveLength(0);
@@ -467,8 +463,8 @@ describe("the Settings page's vehicles", () => {
 
   it("returns to Settings on Cancel without a request, dropping what was typed", async () => {
     const { hass, element } = await openSettings(twoVehicles());
-    await openVehicle(element, "vehicle_ev6");
-    typeInto(input(element, "capacity"), "99");
+    await editValue(element, "vehicle_ev6", "capacity");
+    field(element).value = "99";
     const cancel = Array.from(dlg(element).querySelectorAll<HTMLButtonElement>("form button")).find(
       (node) => node.textContent === translate("en", "settings.cancel"),
     );
@@ -478,107 +474,98 @@ describe("the Settings page's vehicles", () => {
     expect(block(element, "vehicle_ev6").querySelector("[data-row='capacity']")?.textContent).toContain("77.0 kWh");
   });
 
-  it("judges the range before any request and marks the field", async () => {
+  it("judges the range before any request, and keeps what was typed", async () => {
     const { hass, element } = await openSettings(twoVehicles());
-    await openVehicle(element, "vehicle_niro");
-    typeInto(input(element, "consumption"), "0.05");
+    await editValue(element, "vehicle_niro", "consumption");
+    field(element).value = "0.05";
     saveButton(element).click();
     await settle();
-    expect(fieldError(element, "consumption_kwh_per_10km")?.textContent).toBe(
-      translate("en", "settings.vehicle.error.consumption"),
-    );
-    typeInto(input(element, "capacity"), "900");
-    saveButton(element).click();
-    await settle();
+    expect(editorError(element)?.textContent).toBe(translate("en", "settings.error.range", { min: "0.1", max: "50" }));
     expect(vehicleUpdates(hass)).toHaveLength(0);
-    expect(fieldError(element, "capacity_kwh")?.textContent).toBe(translate("en", "settings.vehicle.error.capacity"));
-    expect(input(element, "capacity").getAttribute("aria-invalid")).toBe("true");
-    // What was typed stays where it was typed.
-    expect(input(element, "capacity").value).toBe("900");
+    expect(field(element).value).toBe("0.05");
   });
 
-  it("marks a refused field with the backend's own refusal and keeps what was typed", async () => {
+  it("says the backend's own refusal and keeps what was typed", async () => {
     const { hass, element } = await openSettings(twoVehicles());
-    await openVehicle(element, "vehicle_niro");
+    await editValue(element, "vehicle_niro", "capacity");
     hass.entityHandler = async () => vehicleAnswer("refused");
-    typeInto(input(element, "capacity"), "70");
+    field(element).value = "70";
     saveButton(element).click();
     await settle();
-    expect(fieldError(element, "capacity_kwh")?.textContent).toBe(translate("en", "settings.vehicle.error.capacity"));
-    expect(input(element, "capacity").value).toBe("70");
-    expect(input(element, "capacity").getAttribute("aria-invalid")).toBe("true");
-    expect(dlg(element).querySelector("[data-entity-editor='vehicle']")).not.toBeNull();
+    expect(editorError(element)?.textContent).toBe(translate("en", "settings.vehicle.error.capacity"));
+    expect(field(element).value).toBe("70");
+    expect(dlg(element).querySelector("form[data-value-editor='number']")).not.toBeNull();
     expect(saveButton(element).disabled).toBe(false);
   });
 
-  it("redraws from the row the answer states on a conflict, dropping what was typed, and says it changed elsewhere", async () => {
+  it("says a conflict, and the next Save expects what the answer says is stored now", async () => {
     const { hass, element } = await openSettings(twoVehicles());
-    await openVehicle(element, "vehicle_niro");
+    await editValue(element, "vehicle_niro", "capacity");
     hass.entityHandler = async () => answerFrom("conflict", { capacity_kwh: 70, consumption_kwh_per_10km: 2.4 });
-    typeInto(input(element, "capacity"), "75");
+    field(element).value = "75";
     saveButton(element).click();
     await settle();
-    expect(input(element, "capacity").value).toBe("70.0");
-    expect(input(element, "consumption").value).toBe("2.4");
-    expect(dialogNotice(element)?.textContent).toBe(translate("en", "entity.error.conflict"));
+    expect(editorError(element)?.textContent).toBe(translate("en", "entity.error.conflict"));
+    hass.entityHandler = async () => answerFrom("success", { capacity_kwh: 75 });
+    saveButton(element).click();
+    await settle();
+    expect(vehicleUpdates(hass).map((message) => message["expected"])).toEqual([
+      { capacity_kwh: 64.8 },
+      { capacity_kwh: 70 },
+    ]);
   });
 
   it("says a vehicle that no longer exists, and a non-administrator's refusal, as a sentence", async () => {
     const { hass, element } = await openSettings(twoVehicles());
-    await openVehicle(element, "vehicle_niro");
+    await editValue(element, "vehicle_niro", "capacity");
     hass.entityHandler = async () => vehicleAnswer("unknown_vehicle");
-    typeInto(input(element, "capacity"), "70");
+    field(element).value = "70";
     saveButton(element).click();
     await settle();
-    expect(dialogNotice(element)?.textContent).toBe(translate("en", "entity.error.field.unknownVehicle"));
+    expect(editorError(element)?.textContent).toBe(translate("en", "entity.error.field.unknownVehicle"));
     hass.entityHandler = async () => vehicleAnswer("not_admin");
     saveButton(element).click();
     await settle();
-    expect(dialogNotice(element)?.textContent).toBe(translate("en", "entity.error.notAdmin"));
+    expect(editorError(element)?.textContent).toBe(translate("en", "entity.error.notAdmin"));
   });
 
-  it("says a transport failure in the dialog and keeps what was typed", async () => {
+  it("says a transport failure in the editor and keeps what was typed", async () => {
     const { hass, element } = await openSettings(twoVehicles());
-    await openVehicle(element, "vehicle_niro");
+    await editValue(element, "vehicle_niro", "capacity");
     hass.entityHandler = async () => {
       throw new Error("offline");
     };
-    typeInto(input(element, "capacity"), "70");
+    field(element).value = "70";
     saveButton(element).click();
     await settle();
-    expect(dialogNotice(element)?.textContent).toBe(translate("en", "entity.error.generic"));
-    expect(dialogNotice(element)?.textContent).not.toContain("offline");
-    expect(input(element, "capacity").value).toBe("70");
+    expect(editorError(element)?.textContent).not.toContain("offline");
+    expect(editorError(element)?.textContent).not.toBe("");
+    expect(field(element).value).toBe("70");
   });
 
-  it("chooses the charge-level sensor and writes the figures in the same Save, sensor first", async () => {
+  it("chooses the charge-level sensor in its own editor", async () => {
     const { hass, element } = await openSettings(twoVehicles(), { entities: entityConfig() });
-    await openVehicle(element, "vehicle_niro");
-    const radios = Array.from(dlg(element).querySelectorAll<HTMLInputElement>("input[data-vehicle-choice]"));
+    await editValue(element, "vehicle_niro", "charge_level");
+    const radios = Array.from(dlg(element).querySelectorAll<HTMLInputElement>("input[data-value-option]"));
     expect(radios.length).toBeGreaterThan(1);
-    const other = radios.find((radio) => !radio.checked && radio.dataset["vehicleChoice"] !== "automatic")!;
+    const other = radios.find((radio) => !radio.checked && radio.dataset["valueOption"] !== "")!;
     other.click();
-    typeInto(input(element, "capacity"), "70");
-    hass.entityHandler = async (message) =>
-      message["type"] === "spotnav/choose_vehicle_soc" ? entityConfig() : answerFrom("success", { capacity_kwh: 70 });
+    hass.entityHandler = async () => entityConfig();
     saveButton(element).click();
     await settle();
-    const types = hass.entityMessages.map((message) => message["type"]);
-    expect(types.indexOf("spotnav/choose_vehicle_soc")).toBeGreaterThanOrEqual(0);
-    expect(types.indexOf("spotnav/choose_vehicle_soc")).toBeLessThan(types.indexOf("spotnav/update_vehicle"));
     expect(hass.entityMessages.find((message) => message["type"] === "spotnav/choose_vehicle_soc")).toMatchObject({
       vehicle_id: "vehicle_niro",
-      entity_id: other.value,
+      entity_id: other.dataset["valueOption"],
     });
   });
 
-  it("offers no vehicle card, and no capacity or consumption, when the dashboard lists none", async () => {
+  it("offers no vehicle section, and no capacity or consumption, when the dashboard lists none", async () => {
     const payload = twoVehicles();
     payload["vehicles"] = [];
     payload["target_vehicle_id"] = null;
     const { element } = await openSettings(payload, { entities: null });
     expect(dlg(element).querySelector("[data-vehicle]")).toBeNull();
-    expect(dlg(element).querySelector("[data-part]")).toBeNull();
+    expect(dlg(element).querySelector("[data-row='capacity']")).toBeNull();
     expect(dlg(element).textContent).toContain(translate("en", "settings.vehicle.none"));
   });
 });

@@ -53,8 +53,8 @@ async function mounted(payload: Record<string, unknown>, language = "en", admin 
   return { hass, element };
 }
 
-const line = (element: Element): HTMLButtonElement | null =>
-  shadow(element).querySelector<HTMLButtonElement>("button[data-vehicle-line]");
+const line = (element: Element): HTMLElement | null =>
+  shadow(element).querySelector<HTMLElement>("[data-vehicle-line]");
 const openDialog = (element: Element): HTMLElement | null =>
   Array.from(shadow(element).querySelectorAll<HTMLElement>("[role='dialog']")).find(
     (dialog) => dialog.closest("[hidden]") === null,
@@ -79,12 +79,15 @@ afterEach(() => {
 
 describe("the vehicle line", () => {
   it("shows the planned vehicle and its charge under the charger name", async () => {
-    const { element } = await mounted(withSoc({ value: 92, vehicle_name: "e-Outback" }, { driver: "manual_kwh" }));
+    // One car at this charger: the line only states it (with two it is Byt bil, `vehicle-identification.test`).
+    const { element } = await mounted(
+      withSoc({ value: 92, vehicle_name: "e-Outback" }, { driver: "manual_kwh", vehicle_ids: ["vehicle_ev6"] }),
+    );
     const button = line(element)!;
     expect(button.textContent).toBe("e-Outback· 92 %");
     expect(button.querySelector("svg")).not.toBeNull();
     expect(button.title).toBe("");
-    expect(button.getAttribute("aria-label")).toBe("e-Outback, 92 %. Choose which vehicle to charge");
+    expect(button.getAttribute("aria-label")).toBe("e-Outback, 92 %");
     const name = shadow(element).querySelector(".spotnav-header .spotnav-name")!;
     expect(name.nextElementSibling).toBe(button);
   });
@@ -132,8 +135,11 @@ describe("the vehicle line", () => {
   });
 
   it("is in the card's language", async () => {
-    const { element } = await mounted(withSoc({ value: 62, age_s: 7200 }, { driver: "manual_kwh" }), "sv");
-    expect(line(element)!.getAttribute("aria-label")).toContain("Välj vilket fordon som ska laddas");
+    const { element } = await mounted(
+      withSoc({ value: 62, age_s: 7200 }, { driver: "manual_kwh", vehicle_ids: ["vehicle_ev6"] }),
+      "sv",
+    );
+    expect(line(element)!.getAttribute("aria-label")).toBe("EV6, 62 %, för 2 h sedan");
     expect(line(element)!.textContent).toContain("för 2 h sedan");
   });
 
@@ -214,67 +220,18 @@ describe("the charger status in the header line", () => {
   });
 });
 
-describe("the vehicle dialog", () => {
-  it("lists every vehicle with its charge, the planned one selected", async () => {
-    const { element } = await mounted(twoVehicles());
-    line(element)!.click();
-    await settle();
-    const dialog = openDialog(element)!;
-    expect(dialog.querySelector("h3")?.textContent).toBe("Which vehicle should be charged?");
-    expect(radios(element).map((radio) => [radio.value, radio.checked, radio.disabled])).toEqual([
-      ["vehicle_ev6", true, false],
-      ["vehicle_niro", false, false],
-    ]);
-    const rows = Array.from(dialog.querySelectorAll(".spotnav-vehicle-choice")).map((row) => row.textContent);
-    expect(rows).toEqual(["EV640 %", "Niro55 %"]);
-  });
-
-  it("writes only target.vehicle_id of a freshly read record, under its revision", async () => {
-    const { hass, element } = await mounted(twoVehicles());
-    line(element)!.click();
-    await settle();
-    const niro = radios(element)[1]!;
-    niro.checked = true;
-    niro.dispatchEvent(new Event("change"));
-    await settle();
-    expect(openDialog(element)).toBeNull();
-    hass.resolveNext(answer(record({ revision: 9, amps: 16 })));
-    await settle();
-    const update = hass.messages.find((message) => message.type === "spotnav/update_settings")!;
-    expect(update["expected_revision"]).toBe(9);
-    expect(update["settings"]).toMatchObject({
-      amps: 16,
-      driver: "target_soc",
-      target: { vehicle_id: "vehicle_niro", target_percent: 80 },
-    });
-  });
-
-  it("writes nothing when the planned vehicle is chosen again", async () => {
-    const { hass, element } = await mounted(twoVehicles());
-    line(element)!.click();
-    await settle();
-    const ev6 = radios(element)[0]!;
-    ev6.dispatchEvent(new Event("change"));
-    await settle();
-    expect(hass.messages.some((message) => message.type === "spotnav/update_settings")).toBe(false);
-  });
-
-  it("is read-only for a reader who is not an administrator", async () => {
-    const { hass, element } = await mounted(twoVehicles(), "en", false);
-    expect(line(element)).not.toBeNull();
-    line(element)!.click();
-    await settle();
-    expect(radios(element).every((radio) => radio.disabled)).toBe(true);
-    expect(radios(element).map((radio) => radio.checked)).toEqual([true, false]);
-    expect(hass.messages.some((message) => message.type === "spotnav/update_settings")).toBe(false);
-  });
-
-  it("still opens with a single vehicle and shows just that one", async () => {
-    const payload = twoVehicles();
-    payload["vehicles"] = payload["vehicles"].slice(0, 1);
-    const { element } = await mounted(payload);
-    line(element)!.click();
-    await settle();
-    expect(radios(element).map((radio) => radio.value)).toEqual(["vehicle_ev6"]);
+describe("the vehicle line with one car at the charger", () => {
+  it("is no button and has no swap icon: there is nothing to change at this charger", async () => {
+    for (const admin of [true, false]) {
+      document.body.innerHTML = "";
+      const payload = twoVehicles();
+      payload["settings"]["vehicle_ids"] = ["vehicle_ev6"];
+      const { element } = await mounted(payload, "en", admin);
+      expect(line(element)?.tagName).not.toBe("BUTTON");
+      expect(line(element)?.querySelector("[data-icon='swap']")).toBeNull();
+      line(element)!.click();
+      await settle();
+      expect(openDialog(element)).toBeNull();
+    }
   });
 });

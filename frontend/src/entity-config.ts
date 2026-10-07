@@ -1136,24 +1136,6 @@ export function vehicleChoice(vehicle: VehicleSoc): string {
   return vehicle.source === "confirmed" && vehicle.selected !== null ? vehicle.selected.entityId : "";
 }
 
-/**
- * The requests one Save sends from the draft (`vehicle id -> entity id`, `""` for automatic): one
- * per vehicle whose choice changed, in listed order.
- */
-export function vehicleSocChanges(
-  vehicles: readonly VehicleSoc[],
-  draft: Readonly<Record<string, string>>,
-): VehicleSocRequest[] {
-  const requests: VehicleSocRequest[] = [];
-  for (const vehicle of vehicles) {
-    const chosen = draft[vehicle.id] ?? vehicleChoice(vehicle);
-    if (chosen !== vehicleChoice(vehicle)) {
-      requests.push({ vehicleId: vehicle.id, entityId: chosen === "" ? null : chosen });
-    }
-  }
-  return requests;
-}
-
 
 const FIELD_LABELS: Record<string, TranslationKey> = {
   charge_control: "entity.field.chargeControl",

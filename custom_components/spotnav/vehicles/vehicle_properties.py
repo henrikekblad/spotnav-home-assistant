@@ -8,9 +8,11 @@ keyed by device id). This module is the one writer of that domain and holds the 
   (`auto_settings.DEFAULT_CONSUMPTION_KWH_PER_10KM`).
 * Onboard charger: 1 or 3 phases, else three (`DEFAULT_ONBOARD_PHASES`). A charge uses the smaller
   of this and the charger's wiring (`planning/phases.py`).
+* Target: the charge level (0-100 %) the car is charged to at every charger, else none. A charger's
+  settings carry its planned car's (`vehicle_target.py` keeps the two the same).
 
-Payload: `{"capacity_kwh": 77.4, "consumption_kwh_per_10km": 1.9, "onboard_phases": 1}`, every key
-optional; an empty payload is no record.
+Payload: `{"capacity_kwh": 77.4, "consumption_kwh_per_10km": 1.9, "onboard_phases": 1, "target_percent": 80}`,
+every key optional; an empty payload is no record.
 """
 
 from __future__ import annotations
@@ -32,7 +34,8 @@ CAPACITY_MAX_KWH: Final = 500.0
 KEY_CAPACITY: Final = "capacity_kwh"
 KEY_CONSUMPTION: Final = "consumption_kwh_per_10km"
 KEY_ONBOARD_PHASES: Final = "onboard_phases"
-PROPERTY_KEYS: Final = (KEY_CAPACITY, KEY_CONSUMPTION, KEY_ONBOARD_PHASES)
+KEY_TARGET: Final = "target_percent"
+PROPERTY_KEYS: Final = (KEY_CAPACITY, KEY_CONSUMPTION, KEY_ONBOARD_PHASES, KEY_TARGET)
 
 #: What a vehicle with no stored onboard charger is taken to have.
 DEFAULT_ONBOARD_PHASES: Final = 3
@@ -40,6 +43,7 @@ DEFAULT_ONBOARD_PHASES: Final = 3
 ERR_INVALID_CAPACITY: Final = "invalid_capacity"
 ERR_INVALID_CONSUMPTION: Final = "invalid_consumption"
 ERR_INVALID_ONBOARD_PHASES: Final = "invalid_onboard_phases"
+ERR_INVALID_TARGET: Final = "invalid_target"
 ERR_UNKNOWN_FIELD: Final = "unknown_field"
 
 CapacitySource = Literal["reported", "stored"]
@@ -52,6 +56,7 @@ class VehicleProperties:
     capacity_kwh: float | None = None
     consumption_kwh_per_10km: float | None = None
     onboard_phases: int | None = None
+    target_percent: float | None = None
 
     @property
     def phases(self) -> int:
@@ -75,6 +80,12 @@ def valid_onboard_phases(value: Any) -> bool:
     return not isinstance(value, bool) and isinstance(value, int) and value in (1, 3)
 
 
+def valid_target(value: Any) -> bool:
+    """A percent, 0 to 100 (a boolean is not one)."""
+    number = finite_number(value)
+    return number is not None and not isinstance(value, bool) and 0.0 <= number <= 100.0
+
+
 def validate_changes(changes: Any) -> dict[str, str]:
     """`{field: code}` for everything wrong with a `changes` object; empty when it can be written.
 
@@ -93,6 +104,9 @@ def validate_changes(changes: Any) -> dict[str, str]:
         elif key == KEY_ONBOARD_PHASES:
             if value is not None and not valid_onboard_phases(value):
                 errors[key] = ERR_INVALID_ONBOARD_PHASES
+        elif key == KEY_TARGET:
+            if value is not None and not valid_target(value):
+                errors[key] = ERR_INVALID_TARGET
         else:
             errors[str(key)] = ERR_UNKNOWN_FIELD
     return errors
@@ -107,10 +121,12 @@ def stored_properties(hass: HomeAssistant, vehicle_id: object) -> VehiclePropert
     capacity = payload.get(KEY_CAPACITY)
     consumption = payload.get(KEY_CONSUMPTION)
     onboard = payload.get(KEY_ONBOARD_PHASES)
+    target = payload.get(KEY_TARGET)
     return VehicleProperties(
         capacity_kwh=float(capacity) if valid_capacity(capacity) else None,
         consumption_kwh_per_10km=float(consumption) if valid_consumption(consumption) else None,
         onboard_phases=onboard if valid_onboard_phases(onboard) else None,
+        target_percent=float(target) if valid_target(target) else None,
     )
 
 
@@ -130,10 +146,11 @@ def onboard_phases(hass: HomeAssistant, vehicle_id: str | None) -> int:
 
 
 def resolved_vehicle_id(hass: HomeAssistant, entry_id: str) -> str | None:
-    """The vehicle this charger plans for (stored, else the only one), or `None`."""
+    """The vehicle this charger plans for (stored, else the only one at this charger), or `None`."""
     auto = domain_data(hass).auto_store
-    stored = None if auto is None else auto.settings(entry_id).target.vehicle_id
-    return resolve_target_vehicle(hass, stored)[0]
+    settings = None if auto is None else auto.settings(entry_id)
+    stored = None if settings is None else settings.target.vehicle_id
+    return resolve_target_vehicle(hass, stored, None if settings is None else settings.vehicle_ids)[0]
 
 
 async def async_update_vehicle_properties(
@@ -157,6 +174,8 @@ async def async_update_vehicle_properties(
         payload[KEY_CONSUMPTION] = current.consumption_kwh_per_10km
     if current.onboard_phases is not None:
         payload[KEY_ONBOARD_PHASES] = current.onboard_phases
+    if current.target_percent is not None:
+        payload[KEY_TARGET] = current.target_percent
     for key, value in changes.items():
         if value is None:
             payload.pop(key, None)

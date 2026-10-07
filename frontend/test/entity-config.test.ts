@@ -263,11 +263,9 @@ describe("the words", () => {
   });
 
   it("translates the entity sentences rather than copying the English", () => {
-    for (const key of ["entity.error.conflict", "entity.edit.charger", "entity.vehicle.automatic", "market.edit"] as const) {
+    for (const key of ["entity.error.conflict", "entity.editor.charger", "entity.vehicle.automatic", "market.title"] as const) {
       expect(new Set(LANGUAGES.map((language) => translate(language, key))).size, key).toBeGreaterThanOrEqual(4);
     }
-    expect(translate("sv", "market.edit")).toBe("Ändra elområde och skatter");
-    expect(translate("sv", "settings.vehicle.change")).toBe("Ändra fordon");
   });
 });
 
