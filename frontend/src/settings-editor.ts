@@ -21,6 +21,7 @@ import {
   type SettingsFormValues,
 } from "./settings";
 import { VISUAL_CLASSES as C, summaryValueClass } from "./visual-styles";
+import { settingRow } from "./value-editors";
 import { floorSegment, placeMarks, targetTicks } from "./percent-slider";
 import { chargeCeiling, effectiveTarget, targetNeedKwh } from "./target-need";
 import type { Soc, Vehicle } from "./validate";
@@ -50,6 +51,11 @@ export interface SettingsEditorForm {
   soc: Soc | null;
   vehicles: readonly Vehicle[];
   /**
+   * The car the charger plans for (the identified car, else the target car), by name: the Plan popover's
+   * title names it in energy mode, where no car is chosen. `null` or absent when no car is known.
+   */
+  plannedVehicleName?: string | null;
+  /**
    * What the departure date picker offers (today..+7 in the market's zone, and where a date starts), or
    * `null` while the zone is unknown: then a date can be seen and cleared but not chosen.
    */
@@ -61,6 +67,11 @@ export interface SettingsEditorHandlers {
   onCancel?: () => void;
   onReload: () => void;
   onReapply: (values: SettingsFormValues) => void;
+  /**
+   * The Plan popover's car, by name, whenever it changes: the one chosen in the Vehicle select (before it is
+   * saved) in target mode, the planned car in energy mode, `null` when none is known. Called once on build.
+   */
+  onVehicleName?: (name: string | null) => void;
 }
 
 export interface SettingsEditorBody {
@@ -579,13 +590,38 @@ export function settingsEditorBody(
   };
 
 
-  const socRadio = doc.createElement("input") as HTMLInputElement;
-  const energyRadio = doc.createElement("input") as HTMLInputElement;
+  // What the plan is driven by: the target charge level, else the energy to add. The Charge by row toggles it.
+  let socMode = form.values.driver === "target_soc";
   // The charge target exactly as stored (80 % for none), until its slider moves: like the energy, it has no
   // number field, and a target off the slider's step is kept as it is by a Save that does not move it.
   let targetValue = form.values.targetPercent === "" ? "80" : form.values.targetPercent;
 
   let vehicleSelect: HTMLSelectElement | null = null;
+
+  /**
+   * The car the popover is about now, by name: in target mode the one the Vehicle select shows (else the
+   * record's or the resolved one, as a Save would write it), in energy mode the car the charger plans for.
+   */
+  const shownVehicleName = (): string | null => {
+    const planned = form.plannedVehicleName ?? null;
+    if (!socMode) {
+      return planned;
+    }
+    const soc = form.soc;
+    const picked = vehicleSelect === null ? "" : vehicleSelect.value;
+    const id = picked !== "" ? picked : values.vehicleId !== "" ? values.vehicleId : (soc?.vehicle_id ?? "");
+    if (id === "") {
+      return planned;
+    }
+    const names = [
+      soc?.vehicles.find((entry) => entry.id === id)?.name,
+      soc?.vehicle_id === id ? soc.vehicle_name : null,
+      form.vehicles.find((entry) => entry.id === id)?.name,
+    ];
+    return names.find((name): name is string => typeof name === "string" && name.trim() !== "") ?? null;
+  };
+  /** Tells the dialog which car the popover is about now (see `onVehicleName`). */
+  const announceVehicle = (): void => handlers.onVehicleName?.(shownVehicleName());
 
   const socRow = (key: string, label: string, value: string): HTMLElement => {
     const row = element(doc, "div", C.capabilityItem);
@@ -729,6 +765,7 @@ export function settingsEditorBody(
         }
         select.value = values.vehicleId !== "" ? values.vehicleId : (soc.vehicle_id ?? "");
         select.addEventListener("change", paint);
+        select.addEventListener("change", announceVehicle);
         vehicleSelect = select;
         block.append(field(doc, `${idPrefix}-vehicle`, translate(language, "settings.soc.vehicle"), select));
       } else {
@@ -857,34 +894,50 @@ export function settingsEditorBody(
   };
 
   const appendMode = (): void => {
-    const group = element(doc, "fieldset", C.siteFieldset);
-    group.dataset["part"] = "mode";
-    group.append(element(doc, "legend", C.siteLegend, translate(language, "settings.plan.mode.legend")));
-    const radioName = `${idPrefix}-mode`;
-    const choice = (radio: HTMLInputElement, value: string, labelKey: TranslationKey): HTMLElement => {
-      radio.type = "radio";
-      radio.name = radioName;
-      radio.value = value;
-      radio.disabled = form.readOnly;
-      const label = element(doc, "label", C.siteChoice);
-      label.append(radio, doc.createTextNode(translate(language, labelKey)));
-      return label;
-    };
-    energyRadio.dataset["mode"] = "manual_kwh";
-    socRadio.dataset["mode"] = "target_soc";
-    group.append(
-      choice(energyRadio, "manual_kwh", "settings.plan.mode.energy"),
-      choice(socRadio, "target_soc", "settings.plan.mode.soc"),
-    );
-    // A target needs a charge-level source; without one the switch stays on energy unless the record
-    // already stands on the target.
+    // "Charge by", in the value-row style of the app: the label on the left, the mode in the accent colour on
+    // the right. With two choices a tap toggles between them; nothing is written until Save. A target needs
+    // a charge-level source, so without one (and a record not already on the target) the row is not there.
     const targetSaved = form.values.driver === "target_soc";
-    if (form.soc === null && !targetSaved) {
-      socRadio.disabled = true;
+    const choosable = form.soc !== null || targetSaved;
+    const modeText = (): string =>
+      translate(language, socMode ? "settings.plan.mode.soc" : "settings.plan.mode.energy");
+    let modeRow: HTMLElement | null = null;
+    const paintRow = (): void => {
+      if (modeRow === null) {
+        return;
+      }
+      modeRow.dataset["mode"] = socMode ? "target_soc" : "manual_kwh";
+      const value = modeRow.querySelector<HTMLElement>(`.${C.settingRowValue}`);
+      if (value !== null) {
+        value.textContent = modeText();
+        if (value.tagName === "BUTTON") {
+          value.setAttribute("aria-label", translate(language, "settings.row.changeable", { label, value: modeText() }));
+        }
+      }
+    };
+    const label = translate(language, "settings.plan.mode.legend");
+    if (choosable) {
+      const [row] = settingRow(doc, {
+        key: "charge_by",
+        label,
+        value: modeText(),
+        ...(form.readOnly
+          ? {}
+          : {
+              onTap: () => {
+                socMode = !socMode;
+                paintRow();
+                paintMode();
+              },
+              changeableText: translate(language, "settings.row.changeable", { label, value: modeText() }),
+            }),
+      });
+      modeRow = row!;
+      modeRow.dataset["mode"] = socMode ? "target_soc" : "manual_kwh";
+      body.append(modeRow);
+    } else {
+      socMode = false;
     }
-    socRadio.checked = form.values.driver === "target_soc";
-    energyRadio.checked = !socRadio.checked;
-    body.append(group);
     if (form.soc === null) {
       const note = element(doc, "p", C.settingsNote, translate(language, "settings.soc.needSensor"));
       note.dataset["soc"] = "need-sensor";
@@ -897,17 +950,16 @@ export function settingsEditorBody(
     let socPart: HTMLElement | null = null;
     body.append(energyPart);
     const paintMode = (): void => {
-      energyPart.hidden = socRadio.checked;
-      if (socRadio.checked && socPart === null) {
+      energyPart.hidden = socMode;
+      if (socMode && socPart === null) {
         socPart = socBlock();
         energyPart.after(socPart);
       }
       if (socPart !== null) {
-        socPart.hidden = !socRadio.checked;
+        socPart.hidden = !socMode;
       }
+      announceVehicle();
     };
-    energyRadio.addEventListener("change", paintMode);
-    socRadio.addEventListener("change", paintMode);
     paintMode();
   };
 
@@ -936,7 +988,7 @@ export function settingsEditorBody(
     }
     values.current = currentValue;
     if (form.kind === "plan") {
-      values.driver = socRadio.checked ? "target_soc" : "manual_kwh";
+      values.driver = socMode ? "target_soc" : "manual_kwh";
       values.targetPercent = targetValue;
       // The picked vehicle, else the record's, else the resolved one: what a target-mode Save writes as
       // `target.vehicle_id`.

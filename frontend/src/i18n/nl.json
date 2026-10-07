@@ -597,6 +597,7 @@
   "settings.current.powerUnknown": "Nominaal vermogen onbekend",
   "bar.plan": "Plan",
   "settings.plan.title": "Laadplan",
+  "settings.plan.titleFor": "Laadplan voor {name}",
   "settings.plan.intro": "Hoeveel er geladen moet worden, wanneer het klaar moet zijn en de stroom die het plan mag vragen. Dit zijn planningswaarden, geen commando's aan de laadpaal.",
   "settings.plan.aria": "Plan: {value}",
   "entity.vehicle.automatic": "Automatische detectie",

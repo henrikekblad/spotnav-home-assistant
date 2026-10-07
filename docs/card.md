@@ -297,12 +297,18 @@ several. A charger with no site says so.
 
 ## Plan settings
 
-The **Plan** cell opens **Charging plan**.
+The **Plan** cell opens **Charging plan**. Its title names the car the plan is for, as the app's
+planning card does: **Charging plan for EV6**. With a target SoC it is the car chosen under
+**Vehicle**, and it changes as soon as another car is chosen, before you save. With energy it is the
+car the charger plans for (the identified car, else the target car). With no car known the title is
+just **Charging plan**.
 
 ![The plan settings: the charge target, departure time and weekdays and current](images/card-settings-plan.png)
 
-- **Charge by**: **Energy · kWh** or **Target SoC · %**. With a target SoC, see
-  [target state of charge](target-soc.md).
+- **Charge by**: a value row showing **Energy · kWh** or **Target SoC · %**. Tap the value to switch
+  to the other one; nothing is written until **Save**. The row is only there when a target can be
+  planned, that is when the car's charge level can be read or the plan already uses a target. With a
+  target SoC, see [target state of charge](target-soc.md).
 - **Requested energy**: 0.5 to 100 kWh on the slider, in half-kWh steps; the number field accepts
   more.
 - **Finish by a deadline** and **Departure time**. Without a deadline the plan covers the priced

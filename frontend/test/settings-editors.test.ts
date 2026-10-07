@@ -503,7 +503,7 @@ describe("the request lifecycle", () => {
     });
 
     const dialog = editorDialog(element);
-    expect(dialog?.querySelector<HTMLInputElement>("input[data-mode='target_soc']")?.checked).toBe(true);
+    expect(dialog?.querySelector<HTMLElement>("[data-row='charge_by']")?.dataset["mode"]).toBe("target_soc");
     expect(dialog?.querySelector<HTMLElement>("[data-part='energy']")?.hidden).toBe(true);
     expect(updates(hass)).toHaveLength(0);
   });

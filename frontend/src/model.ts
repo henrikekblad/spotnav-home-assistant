@@ -630,6 +630,34 @@ export function targetVehicleIdFor(dashboard: Dashboard): string | null {
   return dashboard.target_vehicle_id;
 }
 
+/**
+ * The name of the car the charger plans for, as the app's planning card names it: the identified car, else
+ * the dashboard's target car, else the `soc` block's, else the only car; `null` when none is known by name.
+ */
+export function plannedCarNameFor(dashboard: Dashboard): string | null {
+  const soc = dashboard.soc;
+  const id =
+    nonEmpty(dashboard.identification?.vehicle_id) ??
+    nonEmpty(dashboard.target_vehicle_id) ??
+    nonEmpty(soc?.vehicle_id) ??
+    (dashboard.vehicles.length === 1 ? dashboard.vehicles[0]!.id : null);
+  if (id === null) {
+    return null;
+  }
+  const names = [
+    dashboard.identification?.candidates.find((entry) => entry.vehicle_id === id)?.name,
+    dashboard.vehicles.find((entry) => entry.id === id)?.name,
+    dashboard.vehicle_choices.find((entry) => entry.id === id)?.name,
+    soc?.vehicles.find((entry) => entry.id === id)?.name,
+    soc?.vehicle_id === id ? soc.vehicle_name : null,
+  ];
+  return names.map((name) => nonEmpty(name)).find((name) => name !== null) ?? null;
+}
+
+function nonEmpty(value: string | null | undefined): string | null {
+  return value === null || value === undefined || value.trim() === "" ? null : value;
+}
+
 export function siteFactsFor(site: Site | null, language: Language): SiteFacts | null {
   if (site === null) {
     return null;

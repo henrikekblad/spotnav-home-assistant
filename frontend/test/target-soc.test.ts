@@ -190,8 +190,7 @@ describe("the Plan cell", () => {
 describe("the Plan popover in target mode", () => {
   it("stands on the target with the estimate, its age, the need and the vehicle", async () => {
     const { element } = await openPlan(fixture(), aRecord({ target: { vehicle_id: "<id>", target_percent: 80 } }));
-    expect(q<HTMLInputElement>(element, "input[data-mode='target_soc']")?.checked).toBe(true);
-    expect(q<HTMLInputElement>(element, "input[data-mode='manual_kwh']")?.checked).toBe(false);
+    expect(q(element, "[data-row='charge_by']")?.dataset["mode"]).toBe("target_soc");
     expect(q(element, "[data-part='energy']")?.hidden).toBe(true);
     expect(q<HTMLInputElement>(element, "[data-part='soc'] input[type='range']")?.value).toBe("80");
     // One line: an estimate marked "≈", as on the slider's tick, and the age of the reading it was built from.
@@ -250,11 +249,12 @@ describe("the Plan popover in target mode", () => {
     expect(q(element, "[data-soc='settings-link']")).toBeNull();
   });
 
-  it("offers the target only when a source exists: a null block disables it and explains why", async () => {
+  it("offers the target only when a source exists: a null block leaves out the Charge by row and explains why", async () => {
     const payload = fixture("cheapest_no_site");
     const { element } = await openPlan(payload, aRecord({ driver: "manual_kwh", target: { vehicle_id: null, target_percent: null } }));
-    expect(q<HTMLInputElement>(element, "input[data-mode='target_soc']")?.disabled).toBe(true);
-    expect(q<HTMLInputElement>(element, "input[data-mode='manual_kwh']")?.checked).toBe(true);
+    // Only energy is possible: no Charge by row, as in the app.
+    expect(q(element, "[data-row='charge_by']")).toBeNull();
+    expect(q(element, "[data-part='energy']")?.hidden).toBe(false);
     expect(q(element, "[data-soc='need-sensor']")).not.toBeNull();
     expect(q(element, "[data-part='soc']")).toBeNull();
   });
@@ -265,10 +265,7 @@ describe("the Plan popover in target mode", () => {
       payload,
       aRecord({ driver: "manual_kwh", target: { vehicle_id: "car-1", target_percent: null } }),
     );
-    const target = q<HTMLInputElement>(element, "input[data-mode='target_soc']")!;
-    expect(target.disabled).toBe(false);
-    target.checked = true;
-    target.dispatchEvent(new Event("change"));
+    q<HTMLButtonElement>(element, "[data-row='charge_by'] button")!.click();
     expect(q(element, "[data-part='energy']")?.hidden).toBe(true);
     expect(q(element, "[data-part='soc'] input[type='number']")).toBeNull();
     const slider = q<HTMLInputElement>(element, "[data-part='soc'] input[type='range']")!;
@@ -294,10 +291,7 @@ describe("the Plan popover in target mode", () => {
       target: { vehicle_id: null, target_percent: null },
     });
     const { hass, element } = await openPlan(payload, record);
-    const target = q<HTMLInputElement>(element, "input[data-mode='target_soc']")!;
-    expect(target.disabled).toBe(false);
-    target.checked = true;
-    target.dispatchEvent(new Event("change"));
+    q<HTMLButtonElement>(element, "[data-row='charge_by'] button")!.click();
     saveButton(element)!.click();
     await settle();
     const body = updates(hass)[0]!["settings"] as Record<string, any>;
@@ -325,10 +319,7 @@ describe("the Plan popover in target mode", () => {
       target: { vehicle_id: null, target_percent: null },
     });
     const { hass, element } = await openPlan(payload, record);
-    const target = q<HTMLInputElement>(element, "input[data-mode='target_soc']")!;
-    expect(target.disabled).toBe(false);
-    target.checked = true;
-    target.dispatchEvent(new Event("change"));
+    q<HTMLButtonElement>(element, "[data-row='charge_by'] button")!.click();
     const select = q<HTMLSelectElement>(element, "select[data-soc='vehicle-choice']")!;
     select.value = "car-2";
     saveButton(element)!.click();

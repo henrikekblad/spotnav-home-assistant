@@ -597,6 +597,7 @@
   "settings.current.powerUnknown": "Potencia nominal desconocida",
   "bar.plan": "Plan",
   "settings.plan.title": "Plan de carga",
+  "settings.plan.titleFor": "Plan de carga para {name}",
   "settings.plan.intro": "Cuánto cargar, cuándo debe terminar y la corriente que puede pedir el plan. Son valores de planificación, no órdenes al cargador.",
   "settings.plan.aria": "Plan: {value}",
   "entity.vehicle.automatic": "Detección automática",

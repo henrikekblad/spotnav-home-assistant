@@ -3391,9 +3391,17 @@ export function createCardView(input: CardViewInput): CardView {
   let settingsReapplyButton: HTMLButtonElement | null = null;
   let settingsPending = false;
   let settingsBodyReader: (() => SettingsFormValues) | null = null;
+  /** The car the Plan popover is about, as its body last said ("Charging plan for EV6"); `null` for none. */
+  let settingsVehicleName: string | null = null;
 
   function settingsTitleKey(kind: SettingsEditorKind): TranslationKey {
     return `settings.${kind}.title` as TranslationKey;
+  }
+
+  function settingsTitle(kind: SettingsEditorKind): string {
+    return kind === "plan" && settingsVehicleName !== null
+      ? translate(model.language, "settings.plan.titleFor", { name: settingsVehicleName })
+      : translate(model.language, settingsTitleKey(kind));
   }
 
   function settingsTriggerFor(kind: SettingsEditorKind): HTMLElement | null {
@@ -3439,6 +3447,8 @@ export function createCardView(input: CardViewInput): CardView {
     if (form === null || destroyed) {
       return;
     }
+    settingsVehicleName = null;
+    let building = true;
     const built = settingsEditorBody(
       doc,
       model.language,
@@ -3448,15 +3458,23 @@ export function createCardView(input: CardViewInput): CardView {
         onCancel: () => closeSettingsEditor(),
         onReload: () => input.onReloadSettings(form.kind),
         onReapply: (values) => input.onReapplySettings(form.kind, values),
+        // The title follows the Vehicle select and the mode at once, before anything is saved.
+        onVehicleName: (name) => {
+          settingsVehicleName = name;
+          if (!building && settingsForm === form && settingsDialog.isOpen()) {
+            settingsDialog.setTitle(settingsTitle(form.kind));
+          }
+        },
       },
       `${idPrefix}-settings-${form.kind}`,
     );
+    building = false;
     settingsBody = built.body;
     settingsBodyReader = built.values;
     settingsSaveButton = built.body.querySelector<HTMLButtonElement>(`.${C.settingsSave}`);
     settingsReapplyButton = built.body.querySelector<HTMLButtonElement>(`.${C.settingsReapply}`);
     settingsDialog.show({
-      title: translate(model.language, settingsTitleKey(form.kind)),
+      title: settingsTitle(form.kind),
       body: built.body,
       opener: settingsTriggerFor(form.kind),
     });
