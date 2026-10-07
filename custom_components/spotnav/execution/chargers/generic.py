@@ -38,7 +38,7 @@ from .base import (
     CurrentPath,
     path_description,
     StartStopPath,
-    WRITE_REGULATOR,
+    MODULATION_WRITES,
     WriteRateLimiter,
 )
 from .registry import (
@@ -303,14 +303,14 @@ class NumberCurrent(CurrentPath):
             # What the number shows is not what is applied: only a repeat of our own last write is
             # skipped, and only from the regulator.
             if (
-                reason == WRITE_REGULATOR
+                reason in MODULATION_WRITES
                 and self.last_written_a is not None
                 and self.last_written_a == int(math.floor(native / factor + 1e-9))
             ):
                 return ASSIGN_UNCHANGED
         elif present is not None and abs(present - native) < 1e-9:
             return ASSIGN_UNCHANGED
-        if reason == WRITE_REGULATOR and not self.policy.regulator_writes:
+        if reason in MODULATION_WRITES and not self.policy.regulator_writes:
             return ASSIGN_FLASH_GUARD
         if self.policy.ignored_while_paused and self._enabled() is False:
             return ASSIGN_IGNORED_WHILE_PAUSED

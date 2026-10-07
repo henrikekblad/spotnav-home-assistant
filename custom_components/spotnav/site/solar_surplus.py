@@ -4,8 +4,9 @@ Pure Python (no Home Assistant import, no I/O, no clock; time arrives via
 `SolarObservation.now`). Per charger it decides only whether surplus justifies
 starting, stopping or re-requesting a current. Start and stop are rate-limited
 by minimum on/off times, and a one-amp modulation waits until the surplus has stayed
-past it for `SolarConfig.step_confirm_s`; modulation is only a new *requested* current for site
-capacity's damped write path. It must never call a charger's `async_start` on
+past it for `SolarConfig.step_confirm_s`; modulation is only a new *requested* current, which site
+capacity's damped write path applies where active control writes the charger, and the caller's own
+rate-limited write anywhere else. It must never call a charger's `async_start` on
 every tick.
 
 Surplus is the energy balance at the house bus:

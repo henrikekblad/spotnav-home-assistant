@@ -32,7 +32,7 @@ from .base import (
     CurrentPath,
     path_description,
     StartStopPath,
-    WRITE_REGULATOR,
+    MODULATION_WRITES,
     WRITE_RESEND,
     WRITE_SESSION_START,
     WriteRateLimiter,
@@ -406,7 +406,7 @@ class EaseeDynamicLimit(CurrentPath):
         floor = math.ceil(self._min_start_a - 1e-9)
         if reason in (WRITE_SESSION_START, WRITE_RESEND):
             amps = max(amps, floor)  # never below the start minimum; never lowered either
-        elif reason == WRITE_REGULATOR and amps < floor and self._holding_start_floor():
+        elif reason in MODULATION_WRITES and amps < floor and self._holding_start_floor():
             # Held, not applied: the next pass asks again. A fuse that cannot wait is a stop.
             return ASSIGN_RATE_LIMITED
         self._note_confirmation()
@@ -415,7 +415,7 @@ class EaseeDynamicLimit(CurrentPath):
             # Only what the charger itself reports counts: a remembered write may have been cleared
             # by a plug-in or a reboot since.
             return ASSIGN_UNCHANGED
-        if read is None and reason == WRITE_REGULATOR and self.last_written_a == amps:
+        if read is None and reason in MODULATION_WRITES and self.last_written_a == amps:
             # Nothing can be read back, so the regulator loop must not spend the write budget on
             # the same value every pass; a start, a restore or a plug-in resend still sends it.
             return ASSIGN_UNCHANGED

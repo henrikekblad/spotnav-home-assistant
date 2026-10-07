@@ -68,6 +68,7 @@ from .power_energy import integrated_energy_unique_id, read_power_w
 from .chargers.adapter import build_adapter, ChargerAdapter
 from .chargers.base import (
     ASSIGN_ASSIGNED,
+    ASSIGN_BELOW_MINIMUM,
     ASSIGN_NO_TARGET,
     ASSIGN_PROBE_IN_FLIGHT,
     ASSIGN_READ_FAILED,
@@ -75,10 +76,12 @@ from .chargers.base import (
     ASSIGN_UNCONFIRMED,
     ASSIGN_UNSUPPORTED,
     IN_EFFECT_OUTCOMES,
+    MODULATION_WRITES,
     WRITE_REGULATOR,
     WRITE_RESEND,
     WRITE_RESTORE,
     WRITE_SESSION_START,
+    WRITE_SOLAR,
 )
 from .chargers.ocpp import assigned_amps_for_connector, OcppAssignedCurrent, rewrite_assigned_current
 from .charge_progress import (
@@ -2816,14 +2819,36 @@ class ChargingController:
         """Record a new requested current. Writes nothing to the charger, ever.
 
         The modulation path for solar: solar decides how much the car should want, never how much it gets
-        now. Site capacity's damped, yield-stepped write reads `requested_current_a` on its next pass and
-        applies it, capped by the fuse. `async_start` would write at once and undamped, bypassing every
+        now. Where active control writes this charger, site capacity's damped, yield-stepped write reads
+        `requested_current_a` on its next pass and applies it, capped by the fuse; anywhere else solar writes it
+        itself, rate-limited and capped (`async_write_solar_current`). `async_start` would write at once and undamped, bypassing every
         deadband, dwell and yield-stepping protection. It never toggles the charge control switch.
 
         Takes the operation lock: a modulation must not land mid plan-replacement or stop.
         """
         async with self._lock:
             await self._set_requested_current_locked(amps)
+
+    async def async_write_solar_current(self, amps: int, *, cap_a: int) -> str:
+        """The sun's own write of its current, on a site where active control does not write it
+        (`execution/solar_execution.py`), or a code naming why nothing was written.
+
+        Never more than `cap_a`, the amps the person set for this charger: the sun only ever lowers a charge from
+        what a plain start at those amps already allows, so this write adds no load beyond it, and the fuse stays
+        as safe as with a plain start. Never below the 6 A floor (below it the sun stops instead). Under the
+        operation lock, so it never lands inside a Start, a Stop or a plan replacement, and never while a stop is on
+        its way or after shut-down. Through the adapter's own policy for repeated writes (`MODULATION_WRITES`): its
+        rate limit, a paused charger that would be lifted by a current, a flash-stored setting.
+        """
+        amps = min(amps, cap_a)
+        if amps < DEFAULT_MIN_CURRENT_A:
+            return ASSIGN_BELOW_MINIMUM
+        async with self._lock:
+            if self._shut_down:
+                return REGULATED_SHUT_DOWN
+            if self._stop_in_flight:
+                return REGULATED_STOPPING
+            return await self._async_assign_current_outcome(amps, reason=WRITE_SOLAR)
 
     async def _set_requested_current_locked(self, amps: int) -> None:
         """The record itself. Runs with the operation lock held."""
@@ -2854,7 +2879,7 @@ class ChargingController:
         `number.set_value`. Best effort: the request is recorded by the caller either way, and every way
         this cannot proceed logs one warning naming no entity and writes nothing.
         """
-        if reason == WRITE_REGULATOR and self._stop_in_flight:
+        if reason in MODULATION_WRITES and self._stop_in_flight:
             # A stop holds `_assign_lock` while its command is on its way: the regulator's write never waits
             # for it, it is simply not sent (`_assign_current_locked` checks again once the lock is held).
             return REGULATED_STOPPING
@@ -2869,9 +2894,9 @@ class ChargingController:
                 "Not assigning %sA: the pilot-floor probe is stepping the current down", amps
             )
             return ASSIGN_PROBE_IN_FLIGHT
-        if reason == WRITE_REGULATOR and self._shut_down:
+        if reason in MODULATION_WRITES and self._shut_down:
             return REGULATED_SHUT_DOWN
-        if reason == WRITE_REGULATOR and self._stop_in_flight:
+        if reason in MODULATION_WRITES and self._stop_in_flight:
             # The regulator writes without the operation lock: a stop on its way (or one that began while this
             # write waited for `_assign_lock`) is not lifted by a current sent under it.
             return REGULATED_STOPPING

@@ -22,6 +22,7 @@ from custom_components.spotnav.execution.chargers.base import (
     ASSIGN_UNSUPPORTED,
     WRITE_REGULATOR,
     WRITE_SESSION_START,
+    WRITE_SOLAR,
 )
 from custom_components.spotnav.execution.chargers.generic import ButtonPath, SelectPath, SwitchPath
 from custom_components.spotnav.execution.controller import ChargingController
@@ -290,6 +291,8 @@ async def test_a_flash_stored_setting_is_written_at_a_session_start_and_never_by
 
     assert adapter.policy.flash_stored is True and adapter.policy.regulator_writes is False
     assert await adapter.async_set_current(10, reason=WRITE_REGULATOR) == ASSIGN_FLASH_GUARD
+    # The sun's own modulation is a repeated write as well: never to a flash-stored setting.
+    assert await adapter.async_set_current(10, reason=WRITE_SOLAR) == ASSIGN_FLASH_GUARD
     assert calls == []
     assert adapter.capabilities.set_current is True and adapter.capabilities.regulated_current is False
 

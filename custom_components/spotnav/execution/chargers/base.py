@@ -74,11 +74,17 @@ REFUSED_OUTCOMES: Final = frozenset(
 )
 
 # Why a current is being written: a session start (or a manual one), the regulator loop, the
-# restore after active control is turned off, or a re-send after the charger forgot its limit.
+# restore after active control is turned off, a re-send after the charger forgot its limit, or the sun's own
+# modulation on a site where the regulator does not write it.
 WRITE_SESSION_START: Final = "session_start"
 WRITE_REGULATOR: Final = "regulator"
 WRITE_RESTORE: Final = "restore"
 WRITE_RESEND: Final = "resend"
+WRITE_SOLAR: Final = "solar"
+#: The writes that modulate a running charge, again and again: each obeys a charger's policy for repeated writes
+#: (no flash-stored setting, the Easee's start floor held, the same value not sent twice) and never lands while a
+#: stop is on its way.
+MODULATION_WRITES: Final = frozenset({WRITE_REGULATOR, WRITE_SOLAR})
 
 _AMPERE_UNITS: Final = {"a": 1.0, "amp": 1.0, "amps": 1.0, "ampere": 1.0, "amperes": 1.0, "ma": 1000.0}
 

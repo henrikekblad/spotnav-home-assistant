@@ -16,6 +16,7 @@ from custom_components.spotnav.execution.chargers.base import (
     WRITE_REGULATOR,
     WRITE_RESEND,
     WRITE_SESSION_START,
+    WRITE_SOLAR,
 )
 from custom_components.spotnav.flows.charger_detection import detect_charger
 
@@ -116,10 +117,12 @@ async def test_easee_commands_count_against_the_budget_but_are_never_refused(has
     assert len(commands) == 30
     # The status still says `charging` only because the pauses have not been reported yet: held.
     assert await adapter.async_set_current(9, reason=WRITE_REGULATOR) == ASSIGN_IGNORED_WHILE_PAUSED
+    assert await adapter.async_set_current(9, reason=WRITE_SOLAR) == ASSIGN_IGNORED_WHILE_PAUSED
     await adapter.async_start()
     assert len(commands) == 31
     # Resumed, and the commands have used up the minute's budget.
     assert await adapter.async_set_current(9, reason=WRITE_REGULATOR) == ASSIGN_RATE_LIMITED
+    assert await adapter.async_set_current(9, reason=WRITE_SOLAR) == ASSIGN_RATE_LIMITED
     assert limits == []
 
 

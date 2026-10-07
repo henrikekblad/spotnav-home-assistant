@@ -169,6 +169,12 @@ def _site_diagnostics(hass: HomeAssistant, entry: ConfigEntry) -> dict[str, Any]
         # state from and to, the action and why, the current asked for and the energy balance it read.
         # Only changes and actions, never an unchanged hold.
         "solar_decision_log": _solar_decision_logs(hass, entry),
+        # Who writes the sun's current to each member charger on solar or hybrid: `active_control` (the site's
+        # damped write), `solar` (the sun's own write, where active control does not write that charger) or
+        # `none` (its current cannot be set).
+        "solar_current_writer": {}
+        if controller is None
+        else _solar_current_writers(hass, controller),
         # The battery-on-the-fuse probe per charger: state, last outcome and why, back-off left.
         "battery_probe": {} if controller is None else controller.battery_probe_snapshot,
         "start_credit": {} if controller is None else controller.start_credit_snapshot(),
@@ -200,6 +206,17 @@ def _solar_decision_logs(hass: HomeAssistant, entry: ConfigEntry) -> dict[str, l
         if data is not None and data.solar is not None:
             logs[charger_entry_id] = data.solar.decision_log
     return logs
+
+
+def _solar_current_writers(hass: HomeAssistant, controller: Any) -> dict[str, str]:
+    """Each member charger's `SolarExecutionCoordinator.current_writer`, by entry id; a charger with no solar
+    coordinator loaded is left out."""
+    writers: dict[str, str] = {}
+    for charger_entry_id in controller.config.get(CONF_CHARGER_ENTRY_IDS) or []:
+        data = charger_data(hass, charger_entry_id)
+        if data is not None and data.solar is not None:
+            writers[charger_entry_id] = data.solar.current_writer(controller)
+    return writers
 
 
 def _regulator_decision_to_dict(decision: RegulatorDecision) -> dict[str, Any]:
