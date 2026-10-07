@@ -139,8 +139,8 @@ describe("the page", () => {
     expect(dialog(element).querySelectorAll(`.${VISUAL_CLASSES.settingRowEditable}`)).toHaveLength(0);
   });
 
-  it("says Max laddperioder in Swedish", () => {
-    expect(translate("sv", "settings.deadline.periods")).toBe("Max laddperioder");
+  it("says Laddperioder in Swedish", () => {
+    expect(translate("sv", "settings.periods.label")).toBe("Laddperioder");
   });
 });
 

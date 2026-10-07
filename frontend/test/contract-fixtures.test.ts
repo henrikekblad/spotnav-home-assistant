@@ -389,7 +389,7 @@ const V7_STATUS_EXPECTED: Record<string, { tone: string; codes: string[]; englis
   "charger_states_its_maximum.json": {
     tone: "normal",
     codes: PLANNED,
-    english: "Planned from 08:45 · 20.1 kWh · 34.6 kr · 101 km",
+    english: "Planned from 10:30 · 20.1 kWh · 32.94 kr · 101 km",
   },
   "charging_without_prices.json": {
     tone: "notice",
@@ -409,7 +409,7 @@ const V7_STATUS_EXPECTED: Record<string, { tone: string; codes: string[]; englis
     english:
       "Planned from 12:15 · 20.8 kWh · 28.74 kr · 104 km · L1, L2, and L3 have no value (sensor.cheapest_direct_reader_site_l1, sensor.cheapest_direct_reader_site_l2, sensor.cheapest_direct_reader_site_l3).",
   },
-  "cheapest_no_site.json": { tone: "normal", codes: PLANNED, english: "Planned from 08:45 · 20.1 kWh · 34.6 kr · 101 km" },
+  "cheapest_no_site.json": { tone: "normal", codes: PLANNED, english: "Planned from 10:30 · 20.1 kWh · 32.94 kr · 101 km" },
   "hybrid_derived_site_no_forecast.json": {
     tone: "normal",
     codes: ["hybrid_no_forecast"],
@@ -430,13 +430,13 @@ const V7_STATUS_EXPECTED: Record<string, { tone: string; codes: string[]; englis
     codes: ["settings_incomplete"],
     english: "Finish setting up in Settings: price area, charging current.",
   },
-  "target_soc_estimated.json": { tone: "normal", codes: PLANNED, english: "Planned from 10:15 · 34.5 kWh · 82.92 kr · 173 km" },
+  "target_soc_estimated.json": { tone: "normal", codes: PLANNED, english: "Planned from 09:15 · 34.5 kWh · 62.55 kr · 173 km" },
   "target_soc_stopped_on_estimate.json": {
     tone: "normal",
     codes: [...PLANNED, "target_reached"],
-    english: "Planned from 10:15 · 34.5 kWh · 82.92 kr · 173 km · Stopped at 81 % (estimated, reading 30 min old)",
+    english: "Planned from 09:15 · 34.5 kWh · 62.55 kr · 173 km · Stopped at 81 % (estimated, reading 30 min old)",
   },
-  "target_soc_two_vehicles.json": { tone: "normal", codes: PLANNED, english: "Planned from 10:15 · 34.5 kWh · 82.92 kr · 173 km" },
+  "target_soc_two_vehicles.json": { tone: "normal", codes: PLANNED, english: "Planned from 09:15 · 34.5 kWh · 62.55 kr · 173 km" },
   "waiting_for_publication.json": {
     tone: "normal",
     codes: ["waiting_for_publication"],

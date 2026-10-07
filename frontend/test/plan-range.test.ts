@@ -82,7 +82,7 @@ describe("judging the current", () => {
   });
 
   it("saves the three planning values in one replacement, and nothing else", () => {
-    const values = { ...formFromRecord(record), energy: "30", deadlineEnabled: true, deadlineTime: "06:15", maxPeriods: "5", current: "10" };
+    const values = { ...formFromRecord(record), energy: "30", deadlineEnabled: true, deadlineTime: "06:15", current: "10" };
     const check = replacementFor("plan", record, values, { minA: 6, maxA: 32 });
     expect(check.ok && check.changed).toBe(true);
     if (check.ok) {
@@ -92,7 +92,8 @@ describe("judging the current", () => {
         departure_time: "06:15",
         departure_date: null,
         departure_weekdays: [1, 2, 3, 4, 5, 6, 7],
-        max_periods: 5,
+        // The charge periods are a charger setting, kept as stored.
+        max_periods: 3,
         amps: 10,
         phases: 3,
       });

@@ -9,6 +9,7 @@
 // max/min/current overlay (facts the model lacks are omitted, not shown as "unknown"), the action
 // bar, and the header's History and Settings actions.
 
+import { chargePeriodsLabel, chargePeriodsOptions, chargePeriodsReplacement, chargePeriodsValue } from "./charge-periods";
 import { chartNowAt, nextIntervalBoundary, type ChartMark, type ChartNow } from "./chart";
 import {
   createChartInteraction,
@@ -2437,6 +2438,26 @@ export function createCardView(input: CardViewInput): CardView {
     ];
   }
 
+  /** The charge periods, an administrator's charger setting: automatic, or at most 1 to 8 (`charge-periods.ts`). */
+  function chargePeriodsRows(): HTMLElement[] {
+    const record = model.dashboardSettings;
+    if (record === null || !input.isAdmin) {
+      return [];
+    }
+    const label = translate(model.language, "settings.periods.label");
+    return [
+      overviewRow("charge_periods", label, chargePeriodsLabel(model.language, record.max_periods), () =>
+        editSingle(
+          label,
+          chargePeriodsOptions(model.language),
+          chargePeriodsValue(record),
+          (chosen) => writeValue({ kind: "settings", build: (fresh) => chargePeriodsReplacement(fresh, chosen) }),
+          translate(model.language, "settings.periods.help"),
+        ),
+      ),
+    ];
+  }
+
   /**
    * Which car is plugged in, for a charger more than one car can charge at: the cars at this charger (at least
    * one) and how the plugged-in one is found, each in its own editor. Absent on a backend without the fields.
@@ -2922,6 +2943,7 @@ export function createCardView(input: CardViewInput): CardView {
     } else if (model.chargerPriority !== null) {
       slot.append(...priorityRows());
     }
+    slot.append(...chargePeriodsRows());
     slot.append(...identificationRows());
   }
 
