@@ -1539,7 +1539,7 @@ export const VISUAL_STYLES = `
     display: flex;
     align-items: center;
     justify-content: center;
-    aspect-ratio: 4 / 3;
+    aspect-ratio: 16 / 9;
     overflow: hidden;
     border-radius: 6px;
     background: var(--secondary-background-color, #f2f2f2);
