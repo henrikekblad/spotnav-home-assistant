@@ -28,6 +28,7 @@ from typing import Any, Final
 
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import HomeAssistantError
+from homeassistant.helpers import entity_registry as er
 from homeassistant.util import dt as dt_util
 
 from ..planning.auto_settings import AutoSettingsStore
@@ -95,9 +96,34 @@ def camera_choices(hass: HomeAssistant) -> list[dict[str, str]]:
     return _entity_choices(hass, CAMERA_DOMAIN)
 
 
-def ai_task_choices(hass: HomeAssistant) -> list[dict[str, str]]:
-    """AI Task entities that can answer with data and take pictures."""
-    return _entity_choices(hass, AI_TASK_DOMAIN, AI_TASK_FEATURES)
+#: Where an AI Task integration keeps its model in a config subentry (Ollama: `model`; OpenAI, Anthropic, Google:
+#: `chat_model`).
+_MODEL_KEYS: Final = ("model", "chat_model")
+
+
+def ai_task_model(hass: HomeAssistant, entity_id: str) -> str | None:
+    """The model an AI Task entity runs, from its config subentry, or `None` when it names none."""
+    entry = er.async_get(hass).async_get(entity_id)
+    if entry is None or entry.config_entry_id is None or entry.config_subentry_id is None:
+        return None
+    config_entry = hass.config_entries.async_get_entry(entry.config_entry_id)
+    subentry = None if config_entry is None else config_entry.subentries.get(entry.config_subentry_id)
+    if subentry is None:
+        return None
+    for key in _MODEL_KEYS:
+        value = subentry.data.get(key)
+        if isinstance(value, str) and value:
+            return value
+    return None
+
+
+def ai_task_choices(hass: HomeAssistant) -> list[dict[str, Any]]:
+    """AI Task entities that can answer with data and take pictures, each with its model (`None`: not known), so
+    several entities with one name (three "Ollama AI Task") can be told apart."""
+    return [
+        {**choice, "model": ai_task_model(hass, choice["entity_id"])}
+        for choice in _entity_choices(hass, AI_TASK_DOMAIN, AI_TASK_FEATURES)
+    ]
 
 
 def offered(hass: HomeAssistant) -> bool:

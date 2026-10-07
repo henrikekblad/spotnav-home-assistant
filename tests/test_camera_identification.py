@@ -437,7 +437,7 @@ async def test_the_app_has_the_same_commands_and_the_dashboard_lists_the_choices
     status, dashboard = await post("dashboard", api_version=1)
     block = dashboard["camera_identification"]
     assert block["cameras"] == [{"entity_id": "camera.norr", "name": "Norr"}]
-    assert block["ai_tasks"] == [{"entity_id": "ai_task.local", "name": "Local"}]
+    assert block["ai_tasks"] == [{"entity_id": "ai_task.local", "name": "Local", "model": None}]
     assert [item["kind"] for item in block["references"][tesla]] == ["day"]
     assert "identify_camera" not in dashboard["settings"], "withheld from an app that does not ask for it"
 
@@ -588,3 +588,28 @@ async def test_a_sure_answer_against_the_colour_now_only_orders(garage: Garage) 
     assert garage.world.identifier.method == METHOD_ASSUMED, "the red car named for a blue crop"
     await garage.world.later(ASK_AFTER_S + 5)
     assert [a["title"] for a in garage.world.sent()[0]["data"]["actions"]] == ["Kia", "Tesla"]
+
+
+async def test_an_ai_task_entity_names_the_model_of_its_subentry(hass: HomeAssistant) -> None:
+    from homeassistant.config_entries import ConfigSubentryData
+    from homeassistant.helpers import entity_registry as er
+
+    from custom_components.spotnav.vehicles.camera_identification import ai_task_model
+
+    entry = MockConfigEntry(
+        domain="ollama",
+        subentries_data=[
+            ConfigSubentryData(data={"model": "qwen3-vl:4b-instruct"}, subentry_type="ai_task_data", title="Ollama AI Task", unique_id=None),
+            ConfigSubentryData(data={"chat_model": "gpt-5-mini"}, subentry_type="ai_task_data", title="Cloud", unique_id=None),
+        ],
+    )
+    entry.add_to_hass(hass)
+    first, second = list(entry.subentries)
+    registry = er.async_get(hass)
+    registry.async_get_or_create("ai_task", "ollama", "a", config_entry=entry, config_subentry_id=first, suggested_object_id="ollama_ai_task")
+    registry.async_get_or_create("ai_task", "ollama", "b", config_entry=entry, config_subentry_id=second, suggested_object_id="cloud")
+    registry.async_get_or_create("ai_task", "ollama", "c", config_entry=entry, suggested_object_id="plain")
+    assert ai_task_model(hass, "ai_task.ollama_ai_task") == "qwen3-vl:4b-instruct"
+    assert ai_task_model(hass, "ai_task.cloud") == "gpt-5-mini"
+    assert ai_task_model(hass, "ai_task.plain") is None
+    assert ai_task_model(hass, "ai_task.unknown") is None

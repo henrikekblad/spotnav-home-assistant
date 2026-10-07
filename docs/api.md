@@ -479,14 +479,17 @@ entity that takes attachments, or a camera is chosen (`settings.identify_camera`
 
 ```json
 {"cameras": [{"entity_id": "camera.norr", "name": "Norr"}],
- "ai_tasks": [{"entity_id": "ai_task.ollama", "name": "Ollama AI Task"}],
+ "ai_tasks": [{"entity_id": "ai_task.ollama", "name": "Ollama AI Task", "model": "qwen3-vl:4b-instruct"}],
  "references": {"<vehicle id>": [{"kind": "day", "taken_at": "2026-10-07T12:00:00+00:00", "colour": true, "stale": false}]}}
 ```
 
-`references` lists, for each of this charger's cars, its reference pictures from the chosen camera (`day` first;
+An AI Task entry's `model` is the model its config subentry names (`null` when it names none): several entities
+often share one name, and a client tells them apart by it, or else by the entity id. `references` lists, for each
+of this charger's cars, its reference pictures from the chosen camera (`day` first;
 `colour` says whether the picture has a colour signature, which a night or infrared picture has not; `stale`, a
 boolean on every entry, is `true` when it was cropped with another frame than the one drawn now: it is not used
-until it is taken again, and a client says so, as the card's "Taken with another frame – take it again"); never
+until it is taken again, and a client says so, as the card's "Day picture: taken before the crop was changed –
+take a new one"); never
 the pictures themselves. The camera and the AI Task entity are chosen with a settings replacement
 (`identify_camera`); the frame and the pictures with these commands, each an administrator's over the WebSocket
 (`spotnav/<name>`, `api_version: 1`, `charger_id`) and the paired app's over the webhook (the action `<name>`, bound to
