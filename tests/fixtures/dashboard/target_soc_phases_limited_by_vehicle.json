@@ -2193,8 +2193,8 @@
     "driver": "target_soc",
     "fill_to_limit": false,
     "fiscal_included": [],
-    "identify_mode": "automatic",
     "identify_camera": null,
+    "identify_mode": "automatic",
     "max_periods": 1,
     "notifications": {
       "available": [],
@@ -2337,6 +2337,7 @@
         }
       },
       "max_percent": null,
+      "min_percent": null,
       "name": "EV6",
       "onboard_phases": 1,
       "soc_entity_id": "sensor.ev6_battery",

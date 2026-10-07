@@ -85,6 +85,11 @@ APP_READS_IDENTIFICATION_STATUS: Final = "identification_status"
 #: said before them, `solar_waiting_for_sun`, in their place.
 APP_UNREAD_SOLAR_NO_CAR_CODES: Final = ("solar_no_car", "solar_no_car_surplus")
 APP_READS_SOLAR_NO_CAR_STATUS: Final = "solar_no_car_status"
+#: The car's minimum charge level: an app that does not read `APP_READS_MIN_SOC` gets the ordinary charging line in
+#: place of `min_soc_charging`, and vehicle rows without `min_percent` (its settings row is never offered).
+APP_UNREAD_MIN_SOC_CODES: Final = ("min_soc_charging",)
+APP_READS_MIN_SOC: Final = "min_soc"
+APP_UNREAD_VEHICLE_FIELDS: Final = ("min_percent",)
 
 
 def _status_for_app(line: Any, opted_in: set[str]) -> Any:
@@ -96,18 +101,41 @@ def _status_for_app(line: Any, opted_in: set[str]) -> Any:
         return None
     if code in APP_UNREAD_SOLAR_NO_CAR_CODES and APP_READS_SOLAR_NO_CAR_STATUS not in opted_in:
         return {"code": "solar_waiting_for_sun", "params": {}}
+    if code in APP_UNREAD_MIN_SOC_CODES and APP_READS_MIN_SOC not in opted_in:
+        return {"code": "charging_now", "params": {"until": None}}
     return line
+
+
+def _opted_in(payload: dict[str, Any]) -> set[str]:
+    reads = payload.get("reads")
+    return {name for name in reads if isinstance(name, str)} if isinstance(reads, list) else set()
+
+
+def _vehicle_for_app(row: Any, opted_in: set[str]) -> Any:
+    """One vehicle row as the app reads it: without the fields it has not opted into."""
+    if not isinstance(row, dict) or APP_READS_MIN_SOC in opted_in:
+        return row
+    return {key: value for key, value in row.items() if key not in APP_UNREAD_VEHICLE_FIELDS}
+
+
+def _vehicle_answer_for_app(body: dict[str, Any], payload: dict[str, Any]) -> dict[str, Any]:
+    """`update_vehicle`'s answer with its `vehicle` row as the app reads it (`_vehicle_for_app`)."""
+    if not isinstance(body.get("vehicle"), dict):
+        return body
+    return {**body, "vehicle": _vehicle_for_app(body["vehicle"], _opted_in(payload))}
 
 
 def _for_app(body: dict[str, Any], payload: dict[str, Any]) -> dict[str, Any]:
     """`body` with what the app cannot read yet taken out: fields of its settings record, and status lines.
 
     A request opts in per field with a top-level `reads` list (`identification_status` for the identification's
-    status lines, `solar_no_car_status` for the solar lines of an empty charger); anything else in it, or a `reads`
-    that is not a list, is ignored.
+    status lines, `solar_no_car_status` for the solar lines of an empty charger, `min_soc` for the car's minimum
+    charge level: its status line and the vehicle rows' `min_percent`); anything else in it, or a `reads` that is not
+    a list, is ignored.
     """
-    reads = payload.get("reads")
-    opted_in = {name for name in reads if isinstance(name, str)} if isinstance(reads, list) else set()
+    opted_in = _opted_in(payload)
+    if isinstance(body.get("vehicles"), list):
+        body = {**body, "vehicles": [_vehicle_for_app(row, opted_in) for row in body["vehicles"]]}
     status = body.get("status")
     if isinstance(status, dict) and isinstance(status.get("lines"), list):
         lines = [
@@ -306,11 +334,15 @@ async def _push_register(hass: HomeAssistant, entry: ChargerConfigEntry, payload
 def _bounded_write(
     write: Callable[[HomeAssistant, ChargerConfigEntry, dict[str, Any]], Awaitable[tuple[int, dict[str, Any]]]],
     action: str,
+    for_app: Callable[[dict[str, Any], dict[str, Any]], dict[str, Any]] | None = None,
 ) -> Handler:
-    """A write twinning a WebSocket command: its own envelope, the routing `action` beside it."""
+    """A write twinning a WebSocket command: its own envelope (with what the app has not opted into taken out,
+    `for_app`), the routing `action` beside it."""
 
     async def handler(hass: HomeAssistant, entry: ChargerConfigEntry, payload: dict[str, Any]) -> Outcome:
         status, envelope = await write(hass, entry, payload)
+        if for_app is not None:
+            envelope = for_app(envelope, payload)
         return web.json_response({**envelope, "action": action}, status=status)
 
     return handler
@@ -326,7 +358,7 @@ ACTIONS: Final[dict[str, Handler]] = {
     "dashboard": _dashboard,
     "sessions": _sessions,
     "settings": _settings,
-    "update_vehicle": _bounded_write(async_webhook_update_vehicle, "update_vehicle"),
+    "update_vehicle": _bounded_write(async_webhook_update_vehicle, "update_vehicle", _vehicle_answer_for_app),
     "update_site_settings": _bounded_write(async_webhook_update_site_settings, "update_site_settings"),
     "update_charger_priority": _bounded_write(
         async_webhook_update_charger_priority, "update_charger_priority"

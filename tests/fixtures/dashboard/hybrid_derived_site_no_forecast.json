@@ -2221,8 +2221,8 @@
     "driver": "manual_kwh",
     "fill_to_limit": false,
     "fiscal_included": [],
-    "identify_mode": "automatic",
     "identify_camera": null,
+    "identify_mode": "automatic",
     "max_periods": 1,
     "notifications": {
       "available": [],

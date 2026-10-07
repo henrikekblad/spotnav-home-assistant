@@ -372,6 +372,8 @@ class CapturedVehicle:
     identification: dict[str, Any] | None = None
     #: The target percent the car is charged to at every charger (`vehicle_properties`), `None` when never set.
     target_percent: float | None = None
+    #: The car's minimum charge level (`vehicle_properties`), `None` when off.
+    min_percent: int | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -715,6 +717,7 @@ def capture_vehicles(
                 suggested_onboard_phases=onboard_suggestion(hass, choice.id),
                 identification=sources_block(hass, choice.id),
                 target_percent=own.target_percent,
+                min_percent=own.min_percent,
             )
         )
     return tuple(rows), target_id
@@ -2022,7 +2025,8 @@ def serialize_soc(soc: CapturedSoc | None) -> dict[str, Any] | None:
 
 def serialize_vehicle(vehicle: CapturedVehicle) -> dict[str, Any]:
     """One entry of the root `vehicles`: `capacity_source` is `reported` (by the vehicle, not editable),
-    `stored` (a person's answer) or `null` (missing).
+    `stored` (a person's answer) or `null` (missing). `min_percent` is the car's minimum charge level, `null` when
+    off.
     """
     return {
         "id": vehicle.id,
@@ -2037,6 +2041,7 @@ def serialize_vehicle(vehicle: CapturedVehicle) -> dict[str, Any]:
         "suggested_onboard_phases": vehicle.suggested_onboard_phases,
         "identification": vehicle.identification,
         "target_percent": finite_number(vehicle.target_percent),
+        "min_percent": vehicle.min_percent,
     }
 
 

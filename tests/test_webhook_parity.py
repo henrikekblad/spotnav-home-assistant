@@ -182,7 +182,7 @@ async def test_update_vehicle_over_the_webhook_shares_the_sockets_core_and_envel
     status, refused = await post(
         client,
         "webhook-entry_car",
-        {"action": "update_vehicle", "vehicle_id": car, "changes": {"capacity_kwh": 900, "consumption_kwh_per_10km": 0}},
+        {"action": "update_vehicle", "reads": ["min_soc"], "vehicle_id": car, "changes": {"capacity_kwh": 900, "consumption_kwh_per_10km": 0}},
     )
     assert status == 400 and refused["error"] == "spotnav_invalid_value" and refused["config"] is None
     assert {e["field"] for e in refused["field_errors"]} == {"capacity_kwh", "consumption_kwh_per_10km"}
@@ -194,6 +194,7 @@ async def test_update_vehicle_over_the_webhook_shares_the_sockets_core_and_envel
         "webhook-entry_car",
         {
             "action": "update_vehicle",
+            "reads": ["min_soc"],
             "charger_id": other.entry_id,
             "vehicle_id": car,
             "changes": {"capacity_kwh": 64.8, "consumption_kwh_per_10km": 1.7},
@@ -210,18 +211,18 @@ async def test_update_vehicle_over_the_webhook_shares_the_sockets_core_and_envel
     status, conflict = await post(
         client,
         "webhook-entry_car",
-        {"action": "update_vehicle", "vehicle_id": car, "changes": {"capacity_kwh": 70}, "expected": {"capacity_kwh": 50}},
+        {"action": "update_vehicle", "reads": ["min_soc"], "vehicle_id": car, "changes": {"capacity_kwh": 70}, "expected": {"capacity_kwh": 50}},
     )
     assert status == 409 and conflict["error"] == "spotnav_conflict" and conflict["vehicle"]["capacity_kwh"] == 64.8
 
     status, unknown = await post(
-        client, "webhook-entry_car", {"action": "update_vehicle", "vehicle_id": "nope", "changes": {"capacity_kwh": 70}}
+        client, "webhook-entry_car", {"action": "update_vehicle", "reads": ["min_soc"], "vehicle_id": "nope", "changes": {"capacity_kwh": 70}}
     )
     assert status == 400 and unknown["field_errors"] == [{"field": "vehicle_id", "code": "unknown_vehicle"}]
 
     status, bad_version = await post(
         client, "webhook-entry_car",
-        {"action": "update_vehicle", "api_version": 2, "vehicle_id": car, "changes": {"capacity_kwh": 70}},
+        {"action": "update_vehicle", "reads": ["min_soc"], "api_version": 2, "vehicle_id": car, "changes": {"capacity_kwh": 70}},
     )
     assert status == 400 and bad_version["error"] == "spotnav_unsupported_api_version"
 
