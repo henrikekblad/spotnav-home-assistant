@@ -148,7 +148,8 @@ export interface SettingsBody {
    * after the first release of the contract: absent on an older backend, and then never sent.
    */
   fill_to_limit?: boolean;
-  max_periods: number;
+  /** A hard cap on the charge periods (1 to 8), or `null`: automatic (`charge-periods.ts`). */
+  max_periods: number | null;
   departure_enabled: boolean;
   departure_time: string;
   /**

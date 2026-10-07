@@ -642,6 +642,20 @@
           "solar": "Solöverskott",
           "hybrid": "Billigaste timmarna, minus väntad sol"
         }
+      },
+      "charge_periods": {
+        "name": "Laddperioder",
+        "state": {
+          "auto": "Automatiskt",
+          "1": "1 period",
+          "2": "2 perioder",
+          "3": "3 perioder",
+          "4": "4 perioder",
+          "5": "5 perioder",
+          "6": "6 perioder",
+          "7": "7 perioder",
+          "8": "8 perioder"
+        }
       }
     },
     "number": {
@@ -650,9 +664,6 @@
       },
       "requested_energy": {
         "name": "Energi att ladda"
-      },
-      "maximum_periods": {
-        "name": "Högsta antal laddperioder"
       },
       "vat_rate": {
         "name": "Moms"

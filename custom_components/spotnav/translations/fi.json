@@ -642,6 +642,20 @@
           "solar": "Aurinkoylijäämä",
           "hybrid": "Halvimmat tunnit, verkkoenergiaa säästetään odotetun auringon varalle"
         }
+      },
+      "charge_periods": {
+        "name": "Latausjaksot",
+        "state": {
+          "auto": "Automaattinen",
+          "1": "1 jakso",
+          "2": "2 jaksoa",
+          "3": "3 jaksoa",
+          "4": "4 jaksoa",
+          "5": "5 jaksoa",
+          "6": "6 jaksoa",
+          "7": "7 jaksoa",
+          "8": "8 jaksoa"
+        }
       }
     },
     "number": {
@@ -650,9 +664,6 @@
       },
       "requested_energy": {
         "name": "Ladattava energia"
-      },
-      "maximum_periods": {
-        "name": "Latausjaksoja enintään"
       },
       "vat_rate": {
         "name": "ALV"

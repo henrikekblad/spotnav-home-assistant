@@ -419,7 +419,6 @@ async def test_numbers_refuse_rather_than_clamp(
     entry = await setup_charger(hass)
     await go_auto(hass)
     amps = entity_id(hass, entry.entry_id, "charging_current", "number")
-    periods = entity_id(hass, entry.entry_id, "maximum_periods", "number")
     energy = entity_id(hass, entry.entry_id, "requested_energy", "number")
 
     assert hass.states.get(amps).attributes["min"] == ABSOLUTE_MIN_AMPS
@@ -435,15 +434,6 @@ async def test_numbers_refuse_rather_than_clamp(
         await call(hass, "number", "set_value", {"entity_id": amps, "value": 6.5})
     assert refusal.value.translation_key == "invalid_amps"
     assert settings_of(hass, entry.entry_id).amps == 10
-
-    with pytest.raises(ServiceValidationError):
-        await call(hass, "number", "set_value", {"entity_id": periods, "value": 9})
-    assert settings_of(hass, entry.entry_id).max_periods == 1
-
-    with pytest.raises(ServiceValidationError) as refusal:
-        await call(hass, "number", "set_value", {"entity_id": periods, "value": 2.5})
-    assert refusal.value.translation_key == "invalid_periods"
-    assert settings_of(hass, entry.entry_id).max_periods == 1
 
     with pytest.raises(ServiceValidationError):
         await call(hass, "number", "set_value", {"entity_id": energy, "value": 0})
@@ -463,7 +453,7 @@ async def test_every_number_reaches_the_plain_figures_a_person_types(
     entry = await setup_charger(hass)
     await go_auto(hass)
 
-    keys = ("charging_current", "requested_energy", "maximum_periods")
+    keys = ("charging_current", "requested_energy")
     for key in keys:
         attributes = hass.states.get(entity_id(hass, entry.entry_id, key, "number")).attributes
         minimum, step, maximum = (attributes[bound] for bound in ("min", "step", "max"))

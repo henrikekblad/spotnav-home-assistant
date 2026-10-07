@@ -642,6 +642,20 @@
           "solar": "Surplus solaire",
           "hybrid": "Heures les moins chères, en réservant de l'énergie réseau pour le soleil attendu"
         }
+      },
+      "charge_periods": {
+        "name": "Périodes de charge",
+        "state": {
+          "auto": "Automatique",
+          "1": "1 période",
+          "2": "2 périodes",
+          "3": "3 périodes",
+          "4": "4 périodes",
+          "5": "5 périodes",
+          "6": "6 périodes",
+          "7": "7 périodes",
+          "8": "8 périodes"
+        }
       }
     },
     "number": {
@@ -650,9 +664,6 @@
       },
       "requested_energy": {
         "name": "Énergie à charger"
-      },
-      "maximum_periods": {
-        "name": "Nombre maximal de périodes de charge"
       },
       "vat_rate": {
         "name": "TVA"

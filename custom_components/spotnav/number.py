@@ -14,6 +14,7 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import EntityCategory, PERCENTAGE, UnitOfElectricCurrent, UnitOfEnergy
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import ServiceValidationError
+from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 from .const import CONF_ENTRY_TYPE, DOMAIN, ENTRY_TYPE_SITE
@@ -46,7 +47,7 @@ def whole_number(value: float) -> float:
     """The value as an `int` when exactly integral, unchanged otherwise.
 
     Home Assistant hands number entities floats (`13.0`) but the model stores whole amperes and
-    periods as `int`. `13.4` passes through so the backend refuses it by name.
+    current as `int`. `13.4` passes through so the backend refuses it by name.
     """
     return int(value) if float(value).is_integer() else value
 
@@ -58,10 +59,15 @@ async def async_setup_entry(
         return
     controller = entry.runtime_data.controller
     auto = AutoSurface.resolve(hass, entry.entry_id)
+    # The charge periods became a select with "automatic" (`select.py`): the number an older release created
+    # is removed.
+    registry = er.async_get(hass)
+    leftover = registry.async_get_entity_id("number", DOMAIN, f"{entry.entry_id}_maximum_periods")
+    if leftover is not None:
+        registry.async_remove(leftover)
     entities: list[Any] = [
         AutoCurrentNumber(entry, controller, auto),
         AutoEnergyNumber(entry, controller, auto),
-        AutoPeriodsNumber(entry, controller, auto),
     ]
     entities.extend(
         AutoFiscalValueNumber(entry, controller, auto, component)
@@ -164,29 +170,6 @@ class AutoEnergyNumber(AutoSettingNumber):
     def store_value(self, value: float) -> Any:
         # An amount, so not "Fill" any more.
         return lambda settings: replace(settings, requested_kwh=value, fill_to_limit=False)
-
-
-class AutoPeriodsNumber(AutoSettingNumber):
-    """How many separate charging periods one plan may use, 1 to 8."""
-
-    _attr_translation_key = "maximum_periods"
-    _attr_native_min_value = 1
-    _attr_native_max_value = 8
-    _attr_native_step = 1
-
-    def __init__(
-        self, entry: ConfigEntry, controller: ChargingController, auto: AutoSurface
-    ) -> None:
-        super().__init__(entry, controller, auto, key="maximum_periods")
-
-    @property
-    def native_value(self) -> float | None:
-        settings = self.settings
-        return None if settings is None else settings.max_periods
-
-    def store_value(self, value: float) -> Any:
-        whole = whole_number(value)
-        return lambda settings: replace(settings, max_periods=whole)
 
 
 class AutoFiscalValueNumber(SpotNavAutoEntity, NumberEntity):

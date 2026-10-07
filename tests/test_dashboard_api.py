@@ -650,7 +650,8 @@ async def test_ordinary_entity_attributes_stay_compact(hass: HomeAssistant) -> N
         checked += 1
         for key, value in state.attributes.items():
             assert key not in ("intervals", "prices", "price_series"), entity.entity_id
-            if isinstance(value, list):
+            # A select's choices are not chart points (the charge periods offer automatic and 1 to 8).
+            if isinstance(value, list) and key != "options":
                 assert len(value) <= 8, (entity.entity_id, key)
     assert checked >= 20
 

@@ -642,6 +642,20 @@
           "solar": "Solar surplus",
           "hybrid": "Cheapest hours, holding back grid energy for expected sun"
         }
+      },
+      "charge_periods": {
+        "name": "Charge periods",
+        "state": {
+          "auto": "Automatic",
+          "1": "1 period",
+          "2": "2 periods",
+          "3": "3 periods",
+          "4": "4 periods",
+          "5": "5 periods",
+          "6": "6 periods",
+          "7": "7 periods",
+          "8": "8 periods"
+        }
       }
     },
     "number": {
@@ -650,9 +664,6 @@
       },
       "requested_energy": {
         "name": "Energy to charge"
-      },
-      "maximum_periods": {
-        "name": "Maximum charging periods"
       },
       "vat_rate": {
         "name": "VAT"

@@ -10,8 +10,6 @@ import {
   CURRENT_SLIDER_STEP_A,
   ENERGY_SLIDER_MIN_KWH,
   ENERGY_SLIDER_STEP_KWH,
-  PERIODS_MAX,
-  PERIODS_MIN,
   TARGET_PERCENT_MAX,
   TARGET_PERCENT_MIN,
   energyFillTop,
@@ -196,7 +194,7 @@ function nearestStep(value: number, minimum: number, step: number, maximum: numb
 }
 
 /**
- * A field whose only control is its slider (the requested energy, the charge target, the charging periods,
+ * A field whose only control is its slider (the requested energy, the charge target,
  * the planned current), as the app draws it:
  * the label and the value the slider stands for share one row, the value at its end, and the slider takes
  * the full width under them, in a track a mark can be drawn on. The slider opens at the step nearest
@@ -285,9 +283,8 @@ export function settingsEditorBody(
     dateInput.max = form.days.max;
   }
   dateInput.value = form.values.departureDate;
-  // The charging periods and the planned current exactly as stored, until their sliders move: like the
-  // energy, neither has a number field, and a Save that does not move them keeps them as they are.
-  let periodsValue = form.values.maxPeriods;
+  // The planned current exactly as stored, until its slider moves: like the energy, it has no number field,
+  // and a Save that does not move it keeps it as it is. (The charge periods are a charger setting.)
   let currentValue = form.values.current;
   const storedNumber = (text: string): number => {
     const trimmed = text.trim();
@@ -530,34 +527,6 @@ export function settingsEditorBody(
       departure.hidden = !enabledInput.checked;
     });
     body.append(departure);
-    const periodsRow = sliderRow(doc, {
-      id: `${idPrefix}-deadline-periods`,
-      labelText: translate(language, "settings.deadline.periods"),
-      sliderLabel: translate(language, "settings.deadline.periods"),
-      minimum: PERIODS_MIN,
-      step: 1,
-      maximum: PERIODS_MAX,
-      value: storedNumber(periodsValue),
-      readOnly: form.readOnly,
-      part: "periods-value",
-    });
-    // "3 periods", in the reader's own plural rule.
-    const showPeriods = (): void => {
-      const count = storedNumber(periodsValue);
-      periodsRow.show(
-        Number.isFinite(count)
-          ? translate(language, `settings.deadline.periodsValue.${pluralForm(language, count)}` as TranslationKey, {
-              count: formatNumber(language, count, 3),
-            })
-          : translate(language, "settings.value.unset"),
-      );
-    };
-    periodsRow.slider.addEventListener("input", () => {
-      periodsValue = periodsRow.slider.value;
-      showPeriods();
-    });
-    showPeriods();
-    body.append(periodsRow.group);
   };
 
   // The phases a charge uses are not chosen here: the charger's wiring and the vehicle's onboard charger decide
@@ -933,7 +902,6 @@ export function settingsEditorBody(
         .map((check) => check.value)
         .join("");
     }
-    values.maxPeriods = periodsValue;
     values.current = currentValue;
     if (form.kind === "plan") {
       values.driver = socRadio.checked ? "target_soc" : "manual_kwh";

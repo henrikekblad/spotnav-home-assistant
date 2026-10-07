@@ -108,10 +108,8 @@ let focusKind: Kind = "energy";
 
 function inputs(element: Element): HTMLInputElement[] {
   const dialog = editorDialog(element);
-  // The popover's own order: energy, the deadline toggle, the time, current -- and the periods slider,
-  // which is a range control and is placed last for the deadline section.
+  // The popover's own order: energy, the deadline toggle, the time, current.
   const all = Array.from(dialog?.querySelectorAll<HTMLInputElement>(".spotnav-settings-input") ?? []);
-  const periods = Array.from(dialog?.querySelectorAll<HTMLInputElement>("input[id$='-deadline-periods']") ?? []);
   // The current, like the energy, is its slider alone: no number field beside it.
   const current = Array.from(dialog?.querySelectorAll<HTMLInputElement>("input[type='range'][id$='-current']") ?? []);
   // The departure date picker has its own helper (`dateField`); it is not one of the positional controls.
@@ -124,7 +122,7 @@ function inputs(element: Element): HTMLInputElement[] {
   if (focusKind === "current") {
     return current;
   }
-  return [...tail, ...periods];
+  return tail;
 }
 
 /** Set a control's value the way a reader does, so its own listeners hear it. */
@@ -141,11 +139,6 @@ function energyText(element: Element): string {
 /** The current editor's value text, on its label row. */
 function currentText(element: Element): string {
   return editorDialog(element)?.querySelector("[data-part='current-value']")?.textContent ?? "";
-}
-
-/** The charging periods' value text, on their label row. */
-function periodsText(element: Element): string {
-  return editorDialog(element)?.querySelector("[data-part='periods-value']")?.textContent ?? "";
 }
 
 function button(element: Element, className: string): HTMLButtonElement | null {
@@ -351,12 +344,11 @@ describe("the request lifecycle", () => {
     }
   });
 
-  it("changes the deadline's three fields in one replacement, keeping the stored values when off", async () => {
+  it("changes the deadline's fields in one replacement, keeping the stored values when off", async () => {
     const { hass, element, record } = await openEditor("deadline");
-    const [enabled, time, periods] = inputs(element);
+    const [enabled, time] = inputs(element);
     enabled!.checked = false;
     time!.value = "05:15";
-    enter(periods!, "8");
 
     button(element, "spotnav-settings-save")!.click();
     await settle();
@@ -365,13 +357,13 @@ describe("the request lifecycle", () => {
     const body = updates(hass)[0]!["settings"] as Record<string, unknown>;
     expect(body["departure_enabled"]).toBe(false);
     expect(body["departure_time"]).toBe("05:15");
-    expect(body["max_periods"]).toBe(8);
+    // The charge periods are a charger setting: kept as stored.
+    expect(body["max_periods"]).toBe(record["max_periods"]);
     // Everything else, including the fields this dialog does not own, is untouched.
     const expected: Record<string, unknown> = { ...record };
     delete expected["revision"];
     expected["departure_enabled"] = false;
     expected["departure_time"] = "05:15";
-    expected["max_periods"] = 8;
     expect(body).toEqual(expected);
   });
 
@@ -954,7 +946,7 @@ function sliderNode(element: Element): HTMLInputElement | null {
   if (focusKind === "current") {
     return sliders.find((node) => label(node).startsWith("Current slider")) ?? null;
   }
-  return sliders.find((node) => node.id.endsWith("-deadline-periods")) ?? null;
+  return null;
 }
 
 function powerLine(element: Element): string {
@@ -1142,65 +1134,22 @@ describe("the current slider and the nominal power beside it", () => {
     expect(body["requested_kwh"]).toBe(12.5);
   });
 
-  it("states the charging periods on their label row, from a 1 to 8 slider", async () => {
-    const { hass, element } = await openEditor("deadline", { record: aRecord({ max_periods: 4 }) });
-    const range = sliderNode(element)!;
-    expect([range.min, range.max, range.step, range.value]).toEqual(["1", "8", "1", "4"]);
-    expect(periodsText(element)).toBe("4 periods");
-    expect(range.getAttribute("aria-valuetext")).toBe("4 periods");
-    expect(range.getAttribute("aria-label")).toBe(translate("en", "settings.deadline.periods"));
-    const group = range.closest<HTMLElement>("[role='group']")!;
-    const label = group.querySelector("label")!;
-    expect(label.textContent).toBe(translate("en", "settings.deadline.periods"));
-    expect(label.getAttribute("for")).toBe(range.id);
-    expect(group.querySelector("[data-part='periods-value']")!.parentElement).toBe(label.parentElement);
-    // No number, no output beside the slider and no unit.
-    expect(group.querySelectorAll("input")).toHaveLength(1);
-    expect(group.querySelector("output")).toBeNull();
-    expect(group.querySelector(".spotnav-settings-unit")).toBeNull();
-
-    enter(range, "1");
-    expect(periodsText(element)).toBe("1 period");
-    expect(range.getAttribute("aria-valuetext")).toBe("1 period");
-    enter(range, "7");
-    expect(periodsText(element)).toBe("7 periods");
-    expect(inputs(element)).toHaveLength(3);
-
-    button(element, "spotnav-settings-save")!.click();
-    await settle();
-    expect((updates(hass)[0]!["settings"] as Record<string, unknown>)["max_periods"]).toBe(7);
-  });
-
-  it.each<[string, number, string]>([
-    ["sv", 1, "1 period"],
-    ["sv", 3, "3 perioder"],
-    ["da", 1, "1 periode"],
-    ["da", 3, "3 perioder"],
-    ["nb", 1, "1 periode"],
-    ["nb", 3, "3 perioder"],
-    ["fi", 1, "1 jakso"],
-    ["fi", 3, "3 jaksoa"],
-    ["en", 3, "3 periods"],
-  ])("words the periods in %s: %s as %s", async (language, count, shown) => {
-    document.body.innerHTML = "";
-    const { element } = await openEditor("deadline", { record: aRecord({ max_periods: count }), language });
-    expect(periodsText(element)).toBe(shown);
+  it("has no charging periods slider: they are a charger setting", async () => {
+    const { element } = await openEditor("deadline", { record: aRecord({ max_periods: 4 }) });
+    expect(editorDialog(element)!.querySelector("input[id$='-deadline-periods']")).toBeNull();
+    expect(editorDialog(element)!.querySelector("[data-part='periods-value']")).toBeNull();
   });
 });
 
   it("draws every slider the same way: its label row, then the slider alone in its track", async () => {
-    // Energy, periods and current: the label and the value on one row, the slider under them at the full
+    // Energy and current: the label and the value on one row, the slider under them at the full
     // width. No slider has a number field, a unit or an out-of-range note beside it any more.
     const { element } = await openEditor("current");
     const dialog = editorDialog(element)!;
     expect(dialog.querySelector(".spotnav-settings-pair")).toBeNull();
     expect(dialog.querySelector("input[type='number']")).toBeNull();
     const sliders = Array.from(dialog.querySelectorAll<HTMLInputElement>("input[type='range']"));
-    expect(sliders.map((node) => node.id.replace(/^.*-(energy|periods|current)$/, "$1"))).toEqual([
-      "energy",
-      "periods",
-      "current",
-    ]);
+    expect(sliders.map((node) => node.id.replace(/^.*-(energy|current)$/, "$1"))).toEqual(["energy", "current"]);
     for (const slider of sliders) {
       const group = slider.closest<HTMLElement>("[role='group']")!;
       expect(Array.from(group.children).map((node) => node.className), slider.id).toEqual([
@@ -1227,8 +1176,6 @@ describe("the current slider and the nominal power beside it", () => {
     expect(label.getAttribute("for")).toBe(box.id);
     expect(label.textContent).toBe(translate("en", "settings.deadline.enabled"));
     // The same label as "Requested energy" or "Departure time".
-    const periodsLabel = dialog.querySelector<HTMLElement>("label[for$='-deadline-periods']")!;
-    expect(label.className).toBe(periodsLabel.className);
     expect(label.className).toBe(VISUAL_CLASSES.settingsLabel);
   });
 
@@ -1545,8 +1492,8 @@ describe("the departure date picker", () => {
     expect(noteOf(element)!.textContent).toBe(translate("en", "settings.deadline.datePast"));
     expect(translate("en", "settings.deadline.datePast")).toMatch(/every day until you choose a new date.*clears it/);
 
-    const periods = editorDialog(element)!.querySelector<HTMLInputElement>("input[id$='-deadline-periods']")!;
-    enter(periods, "5");
+    const [, time] = inputs(element);
+    time!.value = "05:45";
     button(element, "spotnav-settings-save")!.click();
     await settle();
     expect(updates(hass)).toHaveLength(1);

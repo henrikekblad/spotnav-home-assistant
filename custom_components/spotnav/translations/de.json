@@ -642,6 +642,20 @@
           "solar": "Solarüberschuss",
           "hybrid": "Günstigste Stunden, Netzstrom für erwartete Sonne zurückhalten"
         }
+      },
+      "charge_periods": {
+        "name": "Ladezeiträume",
+        "state": {
+          "auto": "Automatisch",
+          "1": "1 Zeitraum",
+          "2": "2 Zeiträume",
+          "3": "3 Zeiträume",
+          "4": "4 Zeiträume",
+          "5": "5 Zeiträume",
+          "6": "6 Zeiträume",
+          "7": "7 Zeiträume",
+          "8": "8 Zeiträume"
+        }
       }
     },
     "number": {
@@ -650,9 +664,6 @@
       },
       "requested_energy": {
         "name": "Zu ladende Energie"
-      },
-      "maximum_periods": {
-        "name": "Maximale Ladezeiträume"
       },
       "vat_rate": {
         "name": "MwSt."

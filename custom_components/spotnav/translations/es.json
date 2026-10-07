@@ -642,6 +642,20 @@
           "solar": "Excedente solar",
           "hybrid": "Horas más baratas, reservando energía de red por el sol esperado"
         }
+      },
+      "charge_periods": {
+        "name": "Periodos de carga",
+        "state": {
+          "auto": "Automático",
+          "1": "1 periodo",
+          "2": "2 periodos",
+          "3": "3 periodos",
+          "4": "4 periodos",
+          "5": "5 periodos",
+          "6": "6 periodos",
+          "7": "7 periodos",
+          "8": "8 periodos"
+        }
       }
     },
     "number": {
@@ -650,9 +664,6 @@
       },
       "requested_energy": {
         "name": "Energía a cargar"
-      },
-      "maximum_periods": {
-        "name": "Máximo de periodos de carga"
       },
       "vat_rate": {
         "name": "IVA"

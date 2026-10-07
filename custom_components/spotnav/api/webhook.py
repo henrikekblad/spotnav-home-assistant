@@ -32,7 +32,7 @@ from ..execution.auto_execution import (
     EXECUTION_RECONCILE_FAILED,
 )
 from ..execution.controller import ChargingExecutionError
-from ..planning.auto_settings import AutoSettingsError
+from ..planning.auto_settings import AutoSettingsError, MAX_PERIODS
 from ..planning.phases import effective_phases
 from ..runtime import ChargerConfigEntry, domain_data
 from ..vehicles.vehicle_charge_limit import async_set_charge_limit, VehicleChargeLimitLimited
@@ -90,6 +90,9 @@ APP_READS_SOLAR_NO_CAR_STATUS: Final = "solar_no_car_status"
 APP_UNREAD_MIN_SOC_CODES: Final = ("min_soc_charging",)
 APP_READS_MIN_SOC: Final = "min_soc"
 APP_UNREAD_VEHICLE_FIELDS: Final = ("min_percent",)
+#: Automatic charge periods (`max_periods` null): an app that does not read `APP_READS_AUTO_PERIODS` gets the
+#: effective number, `MAX_PERIODS`, in its place, and its replacement echoing that number keeps automatic.
+APP_READS_AUTO_PERIODS: Final = "auto_periods"
 
 
 def _status_for_app(line: Any, opted_in: set[str]) -> Any:
@@ -130,7 +133,8 @@ def _for_app(body: dict[str, Any], payload: dict[str, Any]) -> dict[str, Any]:
 
     A request opts in per field with a top-level `reads` list (`identification_status` for the identification's
     status lines, `solar_no_car_status` for the solar lines of an empty charger, `min_soc` for the car's minimum
-    charge level: its status line and the vehicle rows' `min_percent`); anything else in it, or a `reads` that is not
+    charge level: its status line and the vehicle rows' `min_percent`; `auto_periods` for a `max_periods` of
+    null); anything else in it, or a `reads` that is not
     a list, is ignored.
     """
     opted_in = _opted_in(payload)
@@ -146,7 +150,10 @@ def _for_app(body: dict[str, Any], payload: dict[str, Any]) -> dict[str, Any]:
     if not isinstance(settings, dict):
         return body
     withheld = set(APP_UNREAD_SETTINGS) - opted_in
-    return {**body, "settings": {key: value for key, value in settings.items() if key not in withheld}}
+    shown = {key: value for key, value in settings.items() if key not in withheld}
+    if APP_READS_AUTO_PERIODS not in opted_in and "max_periods" in shown and shown["max_periods"] is None:
+        shown["max_periods"] = MAX_PERIODS
+    return {**body, "settings": shown}
 
 
 def _log_rejected(error: Exception) -> None:
@@ -296,6 +303,7 @@ async def _settings(hass: HomeAssistant, entry: ChargerConfigEntry, payload: dic
             expected_revision=payload.get("expected_revision"),
             replacement=payload.get("settings"),
             from_app=True,
+            reads_auto_periods=APP_READS_AUTO_PERIODS in _opted_in(payload),
         )
     except SettingsRefusal as refusal:
         return web.json_response(_for_app({**settings_failure(refusal.code, None), "action": action}, payload), status=400)
