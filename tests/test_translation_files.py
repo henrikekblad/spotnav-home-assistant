@@ -16,7 +16,7 @@ import pytest
 
 ROOT = Path(__file__).parents[1] / "custom_components" / "spotnav"
 FOLDERS = ("translations", "i18n")
-LANGUAGES = ("en", "sv", "da", "nb", "fi")
+LANGUAGES = ("en", "sv", "da", "nb", "fi", "de")
 PLACEHOLDER = re.compile(r"\{(\w+)\}")
 
 
