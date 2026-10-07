@@ -44,8 +44,8 @@ the recording or from the code that ran. A charger without the `ownership_shadow
 from before version 5) is reported as having nothing to replay. The exit code is 1 when a replay differs.
 
 Useful entities on each charger: *Auto plan state*, *Auto execution state*, *Next planned
-charging start*, *Planned cost* and *Auto settings revision*. On a site: *Capacity state* and one
-*Proposed current* sensor per charger.
+charging start*, *Planned cost* and *Auto settings revision*. On a site: *Capacity state*, *Solar
+surplus* and one *Proposed current* sensor per charger.
 
 ## Setting up
 

@@ -183,6 +183,17 @@ cannot, and for a direct site without the total it says the meter's total grid p
 - Several chargers on one site share the surplus by their
   [charger priority](site-and-load-balancing.md#charger-priority): the first in the order is
   offered it all, the next only what the first cannot use.
+- Every site has a **Solar surplus** sensor (*Solöverskott*, in W) on its device: the power a car could
+  take from the sun there right now, on the same basis solar charges on. It is the export to the grid,
+  plus a charging house battery under *car first*, plus what the site's chargers already draw (a charger
+  that is not charging draws nothing), less any import; a discharging battery never counts, and the
+  sensor never goes below zero. It is worked out from the site's own readings whatever strategy its
+  chargers use, also on a site with no charger. It is *unknown* without a usable grid reading (the same
+  freshness rules as solar: a stale or missing total or phase) or with a house battery sensor that
+  cannot be read. The attributes `export_w`, `battery_w` (the battery power counted, negative while it
+  discharges), `car_w` and `priority` show the parts. To keep the recorder small it is written when it
+  moves 50 W or more, at most every 5 seconds, and a smaller change every 10 seconds; going unknown or
+  back, or a change of priority, is written at once.
 
 ## Hybrid
 
