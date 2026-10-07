@@ -158,7 +158,7 @@
   "entity.error.read": "De entiteiten konden niet worden gelezen.",
   "entity.field.chargeControl": "Laadbediening",
   "entity.field.currentLimit": "Stroomlimiet",
-  "entity.field.energyRegister": "Energieteller",
+  "entity.field.energyRegister": "Energiemeter",
   "entity.field.powerEntity": "Vermogenssensor (slimme stekker)",
   "entity.field.vehicleSoc": "Laadniveau van de auto",
   "entity.field.mainFuse": "Hoofdzekering",

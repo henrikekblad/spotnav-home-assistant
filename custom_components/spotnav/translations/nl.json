@@ -175,8 +175,8 @@
           "charge_control": "Laadbediening",
           "current_limit": "Laadstroom-entiteit (optioneel)",
           "current_control": "Laadstroom van de laadpaal instellen",
-          "energy_register_entity": "Energieteller (optioneel)",
-          "energy_register_is_session": "De energieteller per laadsessie gebruiken (wordt elke laadsessie gereset)",
+          "energy_register_entity": "Energiemeter (optioneel)",
+          "energy_register_is_session": "De energiemeter per laadsessie gebruiken (wordt elke laadsessie gereset)",
           "charging_state_entity": "Statussensor die aangeeft dat er geladen wordt (optioneel)",
           "enable_disabled_entities": "De nuttige uitgeschakelde entiteiten inschakelen"
         }
