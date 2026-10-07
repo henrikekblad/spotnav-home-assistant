@@ -376,6 +376,9 @@ class VehicleIdentifier:
         self._expected_vehicle = self._settings().target.vehicle_id
         remembered, self._remembered = self._remembered, None
         self._unsubscribe.append(self._controller.add_listener(self._observe))
+        # A person's choice of the car is seen when it is written, so "just before the plug-in" is measured
+        # from then (a snapshot listener may not hear of it until the plug-in itself).
+        self._unsubscribe.append(self._store.add_write_listener(self._on_settings_written))
         if preview is not None:
             self._unsubscribe.append(preview.add_listener(self._on_snapshot))
         self._unsubscribe.append(self._hass.bus.async_listen(EVENT_ACTION, self._on_action))
@@ -466,6 +469,8 @@ class VehicleIdentifier:
             "since": None if session is None else session.t0.isoformat(),
             "candidates": 0 if session is None else len(session.cars),
             "asked_phones": 0 if session is None else len(session.phones),
+            # When a person last chose the car (a choice shortly before a plug-in answers it, `RECENT_CHOICE_S`).
+            "chosen_at": None if self._manual_at is None else self._manual_at.isoformat(),
             # The entities each car was judged by, their states and when they changed and were written: what a
             # field report needs. A position says only home or away, never where.
             "evidence": [] if session is None else session.all_evidence(),
@@ -511,8 +516,14 @@ class VehicleIdentifier:
         self._evaluate()
 
     @callback
+    def _on_settings_written(self, entry_id: str, before: AutoSettings, after: AutoSettings) -> None:
+        if entry_id == self._entry_id and before.target.vehicle_id != after.target.vehicle_id:
+            self._check_person()
+
+    @callback
     def _check_person(self) -> None:
-        """A change of the target vehicle that identification did not make is a person's choice."""
+        """A change of the target vehicle that identification did not make is a person's choice, from now: this
+        runs at the write (`_on_settings_written`), and finds nothing new when the charger reports later."""
         stored = self._settings().target.vehicle_id
         if stored == self._expected_vehicle:
             return
