@@ -81,25 +81,37 @@ APP_UNREAD_SETTINGS: Final = (
 #: the webhook's status block unless the request reads `APP_READS_IDENTIFICATION_STATUS`.
 APP_UNREAD_STATUS_CODES: Final = ("identifying_vehicle", "asking_vehicle")
 APP_READS_IDENTIFICATION_STATUS: Final = "identification_status"
+#: The solar lines for an empty charger: an app that does not read `APP_READS_SOLAR_NO_CAR_STATUS` gets the line it
+#: said before them, `solar_waiting_for_sun`, in their place.
+APP_UNREAD_SOLAR_NO_CAR_CODES: Final = ("solar_no_car", "solar_no_car_surplus")
+APP_READS_SOLAR_NO_CAR_STATUS: Final = "solar_no_car_status"
+
+
+def _status_for_app(line: Any, opted_in: set[str]) -> Any:
+    """One status line as the app reads it: unchanged, replaced by the line an older app knows, or `None` (left out)."""
+    if not isinstance(line, dict):
+        return line
+    code = line.get("code")
+    if code in APP_UNREAD_STATUS_CODES and APP_READS_IDENTIFICATION_STATUS not in opted_in:
+        return None
+    if code in APP_UNREAD_SOLAR_NO_CAR_CODES and APP_READS_SOLAR_NO_CAR_STATUS not in opted_in:
+        return {"code": "solar_waiting_for_sun", "params": {}}
+    return line
 
 
 def _for_app(body: dict[str, Any], payload: dict[str, Any]) -> dict[str, Any]:
     """`body` with what the app cannot read yet taken out: fields of its settings record, and status lines.
 
     A request opts in per field with a top-level `reads` list (`identification_status` for the identification's
-    status lines); anything else in it, or a `reads` that is not a list, is ignored.
+    status lines, `solar_no_car_status` for the solar lines of an empty charger); anything else in it, or a `reads`
+    that is not a list, is ignored.
     """
     reads = payload.get("reads")
     opted_in = {name for name in reads if isinstance(name, str)} if isinstance(reads, list) else set()
     status = body.get("status")
-    if (
-        APP_READS_IDENTIFICATION_STATUS not in opted_in
-        and isinstance(status, dict)
-        and isinstance(status.get("lines"), list)
-    ):
+    if isinstance(status, dict) and isinstance(status.get("lines"), list):
         lines = [
-            line for line in status["lines"]
-            if not (isinstance(line, dict) and line.get("code") in APP_UNREAD_STATUS_CODES)
+            kept for kept in (_status_for_app(line, opted_in) for line in status["lines"]) if kept is not None
         ]
         body = {**body, "status": {**status, "lines": lines}}
     settings = body.get("settings")
