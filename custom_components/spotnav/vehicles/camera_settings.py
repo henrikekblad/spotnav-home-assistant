@@ -64,6 +64,29 @@ class Frame:
 
 #: The whole picture: what a camera without a frame is cropped to.
 WHOLE_PICTURE: Final = Frame(0.0, 0.0, 1.0, 1.0)
+#: Frames this close (each fraction) crop the same picture.
+FRAME_TOLERANCE: Final = 0.001
+
+
+def normalised(frame: Frame | None) -> Frame | None:
+    """`frame`, or `None` when it is the whole picture (the same crop either way)."""
+    if frame is None or all(
+        abs(mine - whole) <= FRAME_TOLERANCE
+        for mine, whole in zip((frame.x, frame.y, frame.w, frame.h), (0.0, 0.0, 1.0, 1.0), strict=True)
+    ):
+        return None
+    return frame
+
+
+def same_frame(first: Frame | None, second: Frame | None) -> bool:
+    """Whether two frames crop the same picture: the whole picture either way, or within `FRAME_TOLERANCE`."""
+    first, second = normalised(first), normalised(second)
+    if first is None or second is None:
+        return first is second
+    return all(
+        abs(a - b) <= FRAME_TOLERANCE
+        for a, b in zip((first.x, first.y, first.w, first.h), (second.x, second.y, second.w, second.h), strict=True)
+    )
 
 
 def crop_box(frame: Frame | None, width: int, height: int) -> tuple[int, int, int, int]:
@@ -106,7 +129,8 @@ class CameraSettings:
         return cls(
             camera_entity_id=_entity(raw["camera_entity_id"], "camera", "camera_entity_id"),
             ai_task_entity_id=None if ai_task is None else _entity(ai_task, "ai_task", "ai_task_entity_id"),
-            frame=None if raw["frame"] is None else Frame.from_wire(raw["frame"]),
+            # The whole picture is stored as no frame: the same crop, one way of saying it.
+            frame=normalised(None if raw["frame"] is None else Frame.from_wire(raw["frame"])),
         )
 
     def validated(self) -> CameraSettings:
