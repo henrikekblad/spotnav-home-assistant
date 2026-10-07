@@ -504,6 +504,9 @@
       "site_state": {
         "name": "Kapasitetsstatus"
       },
+      "solar_surplus": {
+        "name": "Soloverskudd"
+      },
       "charger_proposed_current": {
         "name": "Foreslått strøm – {charger}"
       },

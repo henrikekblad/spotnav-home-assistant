@@ -504,6 +504,9 @@
       "site_state": {
         "name": "Capacity state"
       },
+      "solar_surplus": {
+        "name": "Solar surplus"
+      },
       "charger_proposed_current": {
         "name": "Proposed current – {charger}"
       },

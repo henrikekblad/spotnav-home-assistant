@@ -55,6 +55,9 @@
       "site_state": {
         "default": "mdi:transmission-tower"
       },
+      "solar_surplus": {
+        "default": "mdi:solar-power-variant"
+      },
       "charger_proposed_current": {
         "default": "mdi:current-ac"
       },

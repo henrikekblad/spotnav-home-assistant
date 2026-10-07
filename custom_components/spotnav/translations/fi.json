@@ -504,6 +504,9 @@
       "site_state": {
         "name": "Kapasiteetin tila"
       },
+      "solar_surplus": {
+        "name": "Aurinkoylijäämä"
+      },
       "charger_proposed_current": {
         "name": "Ehdotettu virta – {charger}"
       },
