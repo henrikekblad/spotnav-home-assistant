@@ -14,7 +14,7 @@ from custom_components.spotnav.flows import SpotNavChargingConfigFlow
 TRANSLATIONS = Path("custom_components/spotnav/translations")
 
 
-@pytest.mark.parametrize("language", ["en", "sv", "da", "nb", "fi"])
+@pytest.mark.parametrize("language", ["en", "sv", "da", "nb", "fi", "de", "nl", "fr", "es"])
 async def test_the_generic_charger_form_labels_every_field(hass: HomeAssistant, language: str) -> None:
     flow = SpotNavChargingConfigFlow()
     flow.hass = hass

@@ -19,7 +19,7 @@ from pytest_homeassistant_custom_component.common import (
 from custom_components.spotnav.api.settings import decode_settings, encode_settings
 from custom_components.spotnav.api.webhook import _for_app, APP_UNREAD_SETTINGS
 from custom_components.spotnav.execution.controller import ChargingPlan
-from custom_components.spotnav.notifications.messages import compose, Money, NAMESPACE
+from custom_components.spotnav.notifications.messages import compose, Money, money_text, NAMESPACE
 from custom_components.spotnav.texts import language_of, languages, read_files
 from custom_components.spotnav.notifications.settings import (
     DEFAULT_EVENTS,
@@ -207,9 +207,10 @@ def test_every_language_has_every_text() -> None:
         assert set(files[language][NAMESPACE]) == set(files["en"][NAMESPACE]), language
 
 
-def test_home_assistants_language_picks_one_of_the_five() -> None:
-    assert [language_of(code) for code in ("sv", "sv-SE", "nb", "no", "nn", "da", "fi", "de", None)] == [
-        "sv", "sv", "nb", "nb", "nb", "da", "fi", "en", "en",
+def test_home_assistants_language_picks_one_of_spotnavs() -> None:
+    codes = ("sv", "sv-SE", "nb", "no", "nn", "da", "fi", "de-DE", "nl", "fr-BE", "es", "it", None)
+    assert [language_of(code) for code in codes] == [
+        "sv", "sv", "nb", "nb", "nb", "da", "fi", "de", "nl", "fr", "es", "en", "en",
     ]
 
 
@@ -228,6 +229,9 @@ def test_messages_are_short_and_carry_the_charger_energy_and_money() -> None:
     assert compose("plan_installed", "G", {"time": "01:00", "kwh": 20.0, "cost": Money(450, "EUR")}, "en")[1] == (
         "New plan: charging from 01:00. 20.0 kWh planned, about €4.50."
     )
+    assert money_text("de", Money(450, "EUR")) == "4,50 €"
+    assert money_text("fr", Money(450, "EUR")) == "4,50 €"
+    assert money_text("nl", Money(450, "EUR")) == "€ 4,50"
     assert compose("plan_at_risk", "G", {"time": "07:00"}, "sv")[1] == (
         "Laddningen hinner inte bli klar till avresan 07:00."
     )
