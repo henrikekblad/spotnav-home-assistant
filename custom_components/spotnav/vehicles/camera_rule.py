@@ -182,7 +182,7 @@ def answer_structure(labels: Sequence[str]) -> dict[str, Any]:
     """The `structure` of `ai_task.generate_data`: one of the labels or `none`, and a confidence."""
     return {
         "vehicle": {
-            "description": "The reference car that is the car in the last picture, or none.",
+            "description": "The reference car that is the car in picture 1, or none.",
             "required": True,
             "selector": {"select": {"options": [*labels, ANSWER_NONE]}},
         },
@@ -195,18 +195,20 @@ def answer_structure(labels: Sequence[str]) -> dict[str, Any]:
 
 
 def instructions_for(pictures: Sequence[tuple[str, str]]) -> str:
-    """The question, for reference pictures given as (label, kind) in the order they are attached; the picture
-    of the parking spot now is attached last."""
+    """The question, for reference pictures given as (label, kind) in the order they are attached after the picture
+    of the parking spot now, which goes first: a vision model asked about "the last picture" was seen to answer none
+    when an empty-spot reference came right before it, and to name the right car with the picture now first."""
     listing = "; ".join(
         f"picture {index}: {label} ({'daylight' if kind == PICTURE_DAY else 'night, may be infrared without colour'})"
-        for index, (label, kind) in enumerate(pictures, start=1)
+        for index, (label, kind) in enumerate(pictures, start=2)
     )
     return (
         "The pictures come from one camera that watches one parking spot at a car charger. "
-        f"The first {len(pictures)} are reference pictures of known cars parked at that spot: {listing}. "
-        "The last picture is the parking spot now. Which reference car is the car in the last picture? "
+        "Picture 1 is the parking spot now. "
+        f"Pictures 2 to {len(pictures) + 1} are reference pictures of known cars parked at that spot: {listing}. "
+        "Which reference car is the car in picture 1? "
         "Compare the shape, roof line, windows, lights and wheels, not the colour (light and infrared change it). "
-        f"Answer {ANSWER_NONE} if there is no car in the last picture or none of the reference cars matches. "
+        f"Answer {ANSWER_NONE} if there is no car in picture 1 or none of the reference cars matches. "
         "Say how sure you are: high, medium or low."
     )
 
