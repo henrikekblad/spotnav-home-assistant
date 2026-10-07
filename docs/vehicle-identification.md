@@ -150,10 +150,9 @@ by the same camera at the same spot works, day and night. So SpotNav compares pi
 4. **Per car, Reference picture**: with that car parked at the charger, tap **Take reference picture now**.
    **Take night picture** adds a picture in the dark, for the camera's infrared. A new picture replaces the old one
    of its kind, and **Delete** removes the car's pictures. A car without a reference picture is never recognised by
-   the camera. A picture is cropped with the frame as it is when the picture is taken, so draw the frame first.
-   When the crop is changed, the pictures taken before are marked "Day picture: taken before the crop was changed –
-   take a new one" and are not used until they are taken again (a frame over the whole picture is the same as no
-   frame).
+   the camera. The picture is kept whole, and it is cropped with the selection drawn at the time it is compared,
+   so you can change the crop at any time without taking the pictures again; its thumbnail shows it cropped as it
+   is compared.
 
 Choosing the camera and the AI task is an administrator's, in the card. The SpotNav app can draw the frame and
 take, show and delete reference pictures for the camera chosen here, but cannot choose another camera or AI task.

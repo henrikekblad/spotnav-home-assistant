@@ -480,17 +480,16 @@ entity that takes attachments, or a camera is chosen (`settings.identify_camera`
 ```json
 {"cameras": [{"entity_id": "camera.norr", "name": "Norr"}],
  "ai_tasks": [{"entity_id": "ai_task.ollama", "name": "Ollama AI Task", "model": "qwen3-vl:4b-instruct"}],
- "references": {"<vehicle id>": [{"kind": "day", "taken_at": "2026-10-07T12:00:00+00:00", "colour": true, "stale": false}]}}
+ "references": {"<vehicle id>": [{"kind": "day", "taken_at": "2026-10-07T12:00:00+00:00", "colour": true}]}}
 ```
 
 An AI Task entry's `model` is the model its config subentry names (`null` when it names none): several entities
 often share one name, and a client tells them apart by it, or else by the entity id. `references` lists, for each
 of this charger's cars, its reference pictures from the chosen camera (`day` first;
-`colour` says whether the picture has a colour signature, which a night or infrared picture has not; `stale`, a
-boolean on every entry, is `true` when it was cropped with another frame than the one drawn now: it is not used
-until it is taken again, and a client says so, as the card's "Day picture: taken before the crop was changed –
-take a new one"); never
-the pictures themselves. The camera and the AI Task entity are chosen with a settings replacement
+`colour` says whether the picture has a colour signature, which a night or infrared picture has not); never the
+pictures themselves. A reference picture is kept whole and cropped with the frame drawn now whenever it is compared
+or shown, so drawing the frame again never makes it useless. (A `stale` field an earlier build of this branch sent
+is gone: absent means usable.) The camera and the AI Task entity are chosen with a settings replacement
 (`identify_camera`); the frame and the pictures with these commands, each an administrator's over the WebSocket
 (`spotnav/<name>`, `api_version: 1`, `charger_id`) and the paired app's over the webhook (the action `<name>`, bound to
 its charger). Every answer is `{"api_version": 1, "ok", "error", ...}`; a picture is `{"content_type": "image/jpeg",
@@ -507,7 +506,8 @@ its charger). Every answer is `{"api_version": 1, "ok", "error", ...}`; a pictur
 Refusals: `spotnav_no_camera` (no camera chosen, or it is not there), `spotnav_no_picture` (the camera gave none),
 `spotnav_invalid_value` (not one of this charger's cars, an unknown kind or a bad frame, no such picture),
 `spotnav_not_admin` (WebSocket), `spotnav_unknown_charger`, `spotnav_unsupported_api_version`; over the webhook HTTP
-400 with the same code. A reference picture is the camera's picture cropped with the frame at that moment.
+400 with the same code. A reference picture is the camera's whole picture (at most 1600 px on its long side); its
+thumbnail and what the model is shown are cropped with the frame drawn now.
 
 **The paired app sees only the chosen camera.** Over the webhook `camera_snapshot` takes no `camera_entity_id` (one
 given is `spotnav_invalid_value`) and answers the chosen camera's picture (`spotnav_no_camera` with none chosen),
