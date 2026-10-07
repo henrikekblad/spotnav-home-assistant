@@ -53,7 +53,7 @@ start" told shortly before it.
 
 ## What a notification says
 
-A short line in Home Assistant's language (English, Swedish, Danish, Norwegian or Finnish), titled
+A short line in Home Assistant's language (English, Swedish, Danish, Norwegian, Finnish, German, Dutch, French or Spanish), titled
 with the charger's name, for example:
 
 > **SpotNav · Garage**
