@@ -342,7 +342,7 @@ The site sensor's `solar_surplus` rows carry the same facts as `basis_problem`, 
 
 **A solar charger with no car.** In place of `solar_waiting_for_sun`, a solar charger whose charger says no car
 is plugged in says `solar_no_car_surplus` (`surplus_kw`: the surplus the sun's rules reckon for it, in kW, `null`
-when not known; clients need not show it) while that surplus covers the start minimum a charge would start at, and
+when not known; the card and the app show it with one decimal, "Sol · överskott finns (4,2 kW)") while that surplus covers the start minimum a charge would start at, and
 `solar_no_car` otherwise or while solar has no full basis (both tone `normal`, no notification). Hybrid shows its
 plan's line on an empty charger, as before. A released SpotNav app words a code it does not know as "see Home
 Assistant", so the webhook says `solar_waiting_for_sun` in place of either line unless the request asks for them
