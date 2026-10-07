@@ -1248,3 +1248,15 @@ def test_take_over_with_no_usable_reading_stops_unless_told_to_wait():
     # The charger's own current unreadable is no basis either.
     verdict = SolarController(SolarConfig()).take_over(_obs(0.0, grid_w=-5000.0, car_delivered_a={"L1": None}))
     assert (verdict.action, verdict.reason) == ("stop", "no_basis_stopped")
+
+
+def test_no_car_is_off_with_nothing_to_stop_and_no_min_off_after_it():
+    ctrl = SolarController(_config(start_delay_s=0.0, min_off_s=300.0))
+    assert ctrl.observe(_obs(0.0, grid_w=-SIX_A_W)).action == "start"
+
+    gone = ctrl.car_absent(_obs(10.0, grid_w=-SIX_A_W))
+    assert (gone.action, gone.reason, gone.state) == ("hold", "no_car", "off")
+    assert not ctrl.running and ctrl.last_requested_a is None
+
+    # Plugged in again: it starts on the surplus at once, with no minimum off time for a stop never made.
+    assert ctrl.observe(_obs(20.0, grid_w=-SIX_A_W)).action == "start"

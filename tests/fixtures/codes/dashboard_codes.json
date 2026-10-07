@@ -107,6 +107,7 @@
     "no_basis_grace",
     "no_basis_off",
     "no_basis_stopped",
+    "no_car",
     "off_no_surplus",
     "on_modulate",
     "on_steady",

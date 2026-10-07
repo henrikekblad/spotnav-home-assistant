@@ -48,6 +48,9 @@
   `SOLAR_DECISION_LOG_LENGTH`): every action (`start`, `stop`, `set_current`, `take_over`) and every hold
   whose state or reason changed, with the energy balance it read. The site's diagnostics and the debug
   bundle carry it.
+* A charger that says no car is plugged in (`_car_unplugged`) is never armed or started, and a charge the sun
+  runs there goes `off` with no stop sent (`SolarController.car_absent`): nothing is charging, and it takes no
+  share of the site's surplus. A charger that cannot say keeps the rules above.
 * A charger that is not charging draws nothing, whatever its measured current still reads: a sensor keeps
   its last value when a charge ends, and that leftover is not the car's draw (`_build_observation`'s
   `charger_idle`).
@@ -868,6 +871,18 @@ class SolarExecutionCoordinator:
                     await self._async_recalculate_hybrid_preview()
                 site.notify_solar_surplus_changed()
                 return
+            if self._car_unplugged():
+                # No car: nothing arms or starts, and a charge the sun ran goes off with nothing to stop.
+                observation = self._observation(site, self._now())
+                verdict = self._solar.car_absent(observation)
+                self._took_over = False
+                self._update_state(verdict, site, basis=solar_basis(site, self._charger_entry_id, observation))
+                self._log_transition(verdict)
+                self._record_verdict(verdict, held_by_plan=False)
+                if settings.strategy == STRATEGY_HYBRID:
+                    await self._async_recalculate_hybrid_preview()
+                site.notify_solar_surplus_changed()
+                return
             ended = self._watch_charge(self._solar, self._now())
             if ended is not None:
                 # The charge ended without solar: a stop forgets who started it (and ends a charge the car
@@ -918,6 +933,12 @@ class SolarExecutionCoordinator:
         if self._unmeasured_start_allowed(site, now=observation.now):
             observation = replace(observation, unmeasured_start_allowed=True)
         return observation
+
+    def _car_unplugged(self) -> bool:
+        """Whether the charger says no car is plugged in: its connection `disconnected`, or its status naming no
+        vehicle. A charger that cannot say (a plain switch, an unreadable status) is not taken for empty."""
+        controller = self._controller
+        return controller.connection()[0] == DISCONNECTED or controller.adapter.vehicle_connected() is False
 
     def _charger_idle(self) -> bool:
         """Whether the charger is not charging: no Start on its way, and neither its charging state nor its
@@ -1086,7 +1107,7 @@ class SolarExecutionCoordinator:
             self._controller.plan_window_active_now or self._hybrid_satisfied()
         ):
             return None
-        if self._controller.adapter.vehicle_connected() is False:
+        if self._car_unplugged():
             return None
         now = self._now()
         observation = _build_observation(

@@ -147,6 +147,9 @@ SolarReason = Literal[
     "vehicle_full",
     "car_stopped",
     "charger_stopped",
+    # The charger says no car is plugged in (`SolarController.car_absent`): nothing arms or starts, and a charge
+    # this controller ran goes off with nothing to stop.
+    "no_car",
 ]
 
 # Why a charge solar ran ended without solar (`SolarController.charge_ended`).
@@ -478,6 +481,25 @@ class SolarController:
                 self._retry_at = now + self._next_retry_s
                 self._next_retry_s = min(self._next_retry_s * 2.0, cfg.ended_retry_max_s)
         return self._verdict("stop", None, cause)
+
+    def car_absent(self, observation: SolarObservation) -> SolarVerdict:
+        """The charger says no car is plugged in: `off`, with no start armed and no stop to carry out (an empty
+        charger has nothing to stop, and a stop sent to it would only be a command for nothing). A charge this
+        controller ran is forgotten as such; `min_off_s` is not started, since nothing was stopped. The surplus
+        is still reckoned for the diagnostics."""
+        self._refresh_breakdown(observation)
+        self._state = "off"
+        self._arming_since = None
+        self._on_since = None
+        self._disarming_since = None
+        self._stale_since = None
+        self._import_since = None
+        self._last_requested_a = None
+        self._step_pending = None
+        self._verify_until = None
+        self._credited_start = False
+        self._shortfall_since = None
+        return self._verdict("hold", None, "no_car")
 
     def car_drew(self) -> None:
         """The car took a charge again: the next one it ends waits the shortest retry again."""

@@ -1,0 +1,83 @@
+"""The sun never starts or modulates a charger with no car.
+
+The field case (2026-10-07, "Driveway", an Easee on hybrid, `connection: disconnected` all morning): at 07:49:28 the
+sun's rules sent resume and 7 A to the empty charger and logged `solar_start`; from 07:53 the decision log showed
+`on_modulate` 13 <-> 14 A every 1 to 5 s with the car drawing 0 W for some ten minutes, holding the site's surplus
+for a charger with no car.
+
+Every tick is an explicit site recompute at a hand-set instant (`tests.test_solar_execution`).
+"""
+
+from __future__ import annotations
+
+from typing import Any
+
+import pytest
+from homeassistant.core import HomeAssistant
+
+from custom_components.spotnav.planning.auto_settings import STRATEGY_HYBRID, STRATEGY_SOLAR
+
+from .test_mode_switch_handover import _garage, _sun
+from .world import tick_site
+
+pytestmark = pytest.mark.usefixtures("offline_relay")
+
+
+def _actions(coordinator: Any) -> list[tuple[str, str]]:
+    return [(entry["action"], entry["reason"]) for entry in coordinator.decision_log if entry["action"] != "hold"]
+
+
+@pytest.mark.parametrize("strategy", [STRATEGY_SOLAR, STRATEGY_HYBRID])
+async def test_an_unplugged_charger_is_never_armed_or_started_on_any_surplus(
+    hass: HomeAssistant, strategy: str
+) -> None:
+    charger, site, controller, coordinator, clock, easee = await _garage(hass, strategy)
+    await easee.status("disconnected")
+    _sun(hass, export_w=4000.0)
+
+    for at in (0.0, 60.0, 125.0, 400.0, 900.0):
+        clock.value = at
+        await tick_site(hass, site)
+
+    assert coordinator.state is not None and coordinator.state.state == "off"
+    assert coordinator.state.reason == "no_car"
+    assert "resume" not in easee.commands and not easee.limits
+    assert _actions(coordinator) == []
+    assert coordinator.share_member(site, order=0) is None, "an empty charger holds no share of the surplus"
+
+
+async def test_a_charger_unplugged_under_a_running_solar_charge_goes_off_without_a_stop(hass: HomeAssistant) -> None:
+    charger, site, controller, coordinator, clock, easee = await _garage(hass, STRATEGY_SOLAR)
+    _sun(hass, export_w=4000.0)
+    await tick_site(hass, site)
+    clock.value = 125.0
+    await tick_site(hass, site)
+    assert coordinator.state is not None and coordinator.state.state == "on"
+    assert "resume" in easee.commands
+    easee.commands.clear()
+
+    # The car leaves before it ever drew: the charger says disconnected.
+    await easee.status("disconnected")
+    clock.value = 130.0
+    await tick_site(hass, site)
+
+    assert coordinator.state.state == "off" and coordinator.state.reason == "no_car"
+    assert easee.pauses == 0, "nothing to stop on an empty charger"
+
+    # The sun goes on shining: nothing arms, nothing is sent.
+    for at in (200.0, 400.0, 900.0):
+        clock.value = at
+        await tick_site(hass, site)
+    assert coordinator.state.state == "off"
+    assert easee.commands == []
+
+
+async def test_an_unknown_connection_keeps_todays_behaviour(hass: HomeAssistant) -> None:
+    charger, site, controller, coordinator, clock, easee = await _garage(hass, STRATEGY_SOLAR)
+    hass.states.async_set("sensor.easee_status", "unavailable")
+    await hass.async_block_till_done()
+    _sun(hass, export_w=4000.0)
+    await tick_site(hass, site)
+
+    assert coordinator.state is not None and coordinator.state.state == "arming"
+
