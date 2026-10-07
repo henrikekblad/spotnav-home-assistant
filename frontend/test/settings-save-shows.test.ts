@@ -183,12 +183,16 @@ describe("a value shows its new value right after its editor saved", () => {
     expect(page(element).querySelector("[data-row='identify_frame']")?.textContent).toContain(translate("en", "camera.frame.drawn"));
   });
 
-  it("a reference picture taken now", async () => {
+  it("a reference picture taken now, once its editor is closed", async () => {
     const { hass, element } = await openSettings();
     page(element).querySelector<HTMLButtonElement>(`[data-vehicle='${EV6}'] [data-edit='reference']`)!.click();
     await settle();
     await periodicReadWhileEditing(hass);
-    page(element).querySelector<HTMLFormElement>("form[data-value-editor='reference']")!.requestSubmit();
+    const form = page(element).querySelector<HTMLFormElement>("form[data-value-editor='reference']")!;
+    form.querySelector<HTMLButtonElement>("[data-reference='day'] [data-reference-action='take']")!.click();
+    await settle();
+    // The picture shows in its slot at once; Close reads the dashboard again for the Settings row.
+    form.querySelector<HTMLButtonElement>("[data-reference-close]")!.click();
     await settle();
     const after = dashboard((payload) => {
       payload["camera_identification"]["references"][EV6] = [{ kind: "day", taken_at: "2026-10-07T12:00:00+00:00", colour: true }];

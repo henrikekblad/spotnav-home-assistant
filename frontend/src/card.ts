@@ -67,7 +67,7 @@ import { cardOutdated, clientBlock, decodeCardInfo, ownCardBundleHash, servedHas
 import { saveTextFile } from "./download";
 import { ensureHaSelector } from "./entity-editor";
 import type { FiscalComponentName, ValueWrite } from "./value-writes";
-import { cameraErrorKey, decodePicture, type CameraPicture } from "./camera-editor";
+import { cameraErrorKey, decodePicture, type CameraPicture, type ReferenceAnswer } from "./camera-editor";
 import { decodeCsv, decodeSessions, type SessionsAnswer } from "./history";
 import {
   SETTINGS_EDITOR_KINDS,
@@ -131,7 +131,7 @@ import {
   type MarketOptionsV1,
   type SettingsRecord,
 } from "./types";
-import { decodeDashboard, type Dashboard, type Soc, type Vehicle } from "./validate";
+import { decodeDashboard, referencePictures, type Dashboard, type Soc, type Vehicle } from "./validate";
 import { OUTCOME_POLL_MS, outcomeSettled, outcomeWatchFor, type OutcomeWatch } from "./charge-bar";
 import { parseCardConfig, type CardConfig } from "./view";
 import { browserStore, initialChartCollapsed, readChartCollapsed, writeChartCollapsed } from "./chart-preference";
@@ -1795,6 +1795,12 @@ export class SpotnavCard extends HTMLElement {
       const code = error instanceof SpotnavApiError ? error.code : null;
       return say(settingsErrorKey(code));
     }
+    await this.closeEditorAndConfirm();
+    return null;
+  }
+
+  /** The value editor closes, the dashboard is read once, and Settings opens again from that read. */
+  private async closeEditorAndConfirm(): Promise<void> {
     this.reopenOverview = true;
     this.confirmingReturn += 1;
     this.view?.closeValueEditor();
@@ -1810,7 +1816,40 @@ export class SpotnavCard extends HTMLElement {
         this.view.openSettingsOverview();
       }
     }
-    return null;
+  }
+
+  /**
+   * One slot of a car's reference editor: take that kind's picture now, or delete it. Answers the car's pictures
+   * after it, which the editor shows in place (it stays open), or the sentence for that slot.
+   */
+  private async referencePicture(
+    vehicleId: string,
+    kind: "day" | "night",
+    action: "take" | "delete",
+  ): Promise<ReferenceAnswer> {
+    const hass = this.hassObject;
+    const config = this.config;
+    const say = (key: TranslationKey): string => translate(this.languageOrFallback, key);
+    if (!this.connected || hass === null || config === null || config.charger === "") {
+      return { message: say("settings.error.generic") };
+    }
+    if (!this.isAdmin) {
+      return { message: say("settings.error.readOnly") };
+    }
+    try {
+      const answer = (await cameraCommand(
+        hass,
+        config.charger,
+        action === "take" ? "take_reference_picture" : "delete_reference_picture",
+        { vehicle_id: vehicleId, kind },
+      )) as { ok?: unknown; error?: unknown; references?: unknown } | null;
+      if (answer === null || answer.ok !== true) {
+        return { message: say(cameraErrorKey(typeof answer?.error === "string" ? answer.error : null)) };
+      }
+      return { pictures: Array.isArray(answer.references) ? referencePictures(answer.references) : [] };
+    } catch (error) {
+      return { message: say(cameraErrorKey(error instanceof SpotnavApiError ? error.code : null)) };
+    }
   }
 
   /**
@@ -1896,13 +1935,8 @@ export class SpotnavCard extends HTMLElement {
         const refused = decoded.value.fieldErrors[0];
         return refused === undefined ? entityErrorKey(decoded.value.code) : fieldErrorKey(refused.code);
       }
-      case "cameraFrame":
-      case "reference": {
-        const answer = (await (write.kind === "cameraFrame"
-          ? cameraCommand(hass, charger, "save_camera_frame", { frame: write.frame })
-          : write.action === "delete"
-            ? cameraCommand(hass, charger, "delete_reference_picture", { vehicle_id: write.vehicleId, kind: null })
-            : cameraCommand(hass, charger, "take_reference_picture", { vehicle_id: write.vehicleId, kind: write.action }))) as {
+      case "cameraFrame": {
+        const answer = (await cameraCommand(hass, charger, "save_camera_frame", { frame: write.frame })) as {
           ok?: unknown;
           error?: unknown;
         } | null;
@@ -2272,6 +2306,10 @@ export class SpotnavCard extends HTMLElement {
         },
         onWriteValue: (write) => this.writeValue(write),
         onCameraPicture: (request) => this.cameraPicture(request),
+        onReferencePicture: (vehicleId, kind, action) => this.referencePicture(vehicleId, kind, action),
+        onReferencesChanged: () => {
+          void this.closeEditorAndConfirm();
+        },
         overviewPlace: this.overviewPlace,
         onEditFiscal: (component) => {
           void this.editFiscal(component);

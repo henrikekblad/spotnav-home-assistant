@@ -153,8 +153,9 @@ describe("accessibility and theming", () => {
       new RegExp(`\\.${VISUAL_CLASSES.settingsUnit} \\{[^}]*white-space: nowrap`, "s"),
     );
     // Grids of their own: the market value row, the action bar's two (three columns narrow, six in the
-    // wide container query) and the entity editor's meter line (one column narrow, auto columns wide).
-    expect(VISUAL_STYLES.match(/grid-template-columns:/g)?.length).toBe(5);
+    // wide container query), the entity editor's meter line (one column narrow, auto columns wide) and the
+    // reference editor's day and night slots.
+    expect(VISUAL_STYLES.match(/grid-template-columns:/g)?.length).toBe(6);
     const valueBlock =
       VISUAL_STYLES.match(new RegExp(`\\.${VISUAL_CLASSES.marketValue} \\{[^}]*\}`, "s"))?.[0] ?? "";
     expect(valueBlock).toContain("minmax(0, 1fr)");

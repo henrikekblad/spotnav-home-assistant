@@ -1,6 +1,6 @@
 // The camera for vehicle identification, on the Settings page: the frame editor (a fresh picture from Home
 // Assistant with a frame to drag and resize, by finger or mouse, a preview of what is inside it, and Save), the
-// reference picture editor of a car (its pictures, "Take reference picture now", "Take night picture", Delete),
+// reference picture editor of a car (a day and a night slot, each taken, retaken or deleted in place),
 // and the words its rows show. The card owns every request: an editor asks for a picture through `load` and
 // hands what was chosen to `save`, which answers `null` when it took or the sentence to show. No picture is
 // processed here; Home Assistant crops and scales.
@@ -333,85 +333,149 @@ export function referenceText(language: Language, pictures: readonly ReferencePi
   return kinds.length === 0 ? translate(language, "reference.none") : kinds.join(", ");
 }
 
+export type PictureKind = "day" | "night";
+
+/** What a slot's button or delete answered: the car's pictures after it, or the sentence to show in that slot. */
+export type ReferenceAnswer = { pictures: ReferencePicture[] } | { message: string };
+
 export interface ReferenceEditorInput {
-  carName: string;
   pictures: readonly ReferencePicture[];
   /** A picture's thumbnail, or `null` when there is none. */
-  thumbnail: (kind: "day" | "night") => Promise<CameraPicture | null>;
-  /** Take a picture now, or delete the car's pictures: `null` when it took, or the sentence to show. */
-  act: (action: "day" | "night" | "delete") => Promise<string | null>;
+  thumbnail: (picture: ReferencePicture) => Promise<CameraPicture | null>;
+  /** Take one kind's picture now, or delete that kind's picture. */
+  act: (kind: PictureKind, action: "take" | "delete") => Promise<ReferenceAnswer>;
   formatTaken: (iso: string) => string;
+  /** Close: `changed` when a picture was taken or deleted here. */
+  onClose: (changed: boolean) => void;
 }
 
+const KINDS: readonly PictureKind[] = ["day", "night"];
+
 /**
- * A car's reference pictures: each with its thumbnail and when it was taken, then "Take reference picture now",
- * "Take night picture" and, with any picture, Delete. A button that takes closes the editor.
+ * A car's reference pictures, one slot each for day and night: its thumbnail and when it was taken, or "No
+ * picture"; one button that takes it ("Take day picture", "Take night picture", or "Retake" over a picture); and a
+ * quiet Delete with a picture. A slot shows its own progress and failure, and a picture taken or deleted updates
+ * its slot in place. The editor's one button is Close.
  */
 export function referenceEditor(
   doc: Document,
   language: Language,
   input: ReferenceEditorInput,
-  handlers: EditorHandlers,
-): HTMLFormElement {
-  const editor = shell(doc, language, "reference", handlers, translate(language, "reference.take"));
-  const body = editor.body;
-  body.append(element(doc, "p", C.entityHelp, translate(language, "reference.intro", { name: input.carName })));
-  const thumbs = element(doc, "div", C.referenceThumbs);
-  thumbs.style.justifyContent = "flex-start";
-  for (const picture of input.pictures) {
-    const figure = element(doc, "figure");
-    figure.style.margin = "0";
-    figure.dataset["reference"] = picture.kind;
+): { form: HTMLFormElement; close: () => void } {
+  const say = (key: TranslationKey): string => translate(language, key);
+  const form = element(doc, "form") as HTMLFormElement;
+  form.noValidate = true;
+  form.dataset["valueEditor"] = "reference";
+  form.addEventListener("submit", (event) => event.preventDefault());
+  form.append(element(doc, "p", C.entityHelp, say("reference.intro")));
+  const help = element(doc, "p", C.settingRowHelp, say("reference.help"));
+  help.dataset["referenceHelp"] = "true";
+  const slots = element(doc, "div", C.referenceSlots);
+  form.append(slots, help);
+  let pictures: readonly ReferencePicture[] = input.pictures;
+  let changed = false;
+  const busy = new Set<PictureKind>();
+  const paints = new Map<PictureKind, (error: string | null) => void>();
+
+  for (const kind of KINDS) {
+    const slot = element(doc, "section", C.referenceSlot);
+    slot.dataset["reference"] = kind;
+    const heading = element(doc, "h4", C.referenceSlotTitle, say(kind === "day" ? "reference.day" : "reference.night"));
+    const frame = element(doc, "div", C.referenceSlotPicture);
     const image = doc.createElement("img");
-    image.className = C.referenceThumb;
-    image.alt = translate(language, picture.kind === "day" ? "reference.day" : "reference.night");
-    image.hidden = true;
-    const caption = element(
-      doc,
-      "figcaption",
-      C.settingRowHelp,
-      `${translate(language, picture.kind === "day" ? "reference.day" : "reference.night")} · ${input.formatTaken(picture.taken_at)}`,
-    );
-    figure.append(image, caption);
-    thumbs.append(figure);
-    void input.thumbnail(picture.kind).then((thumbnail) => {
-      if (thumbnail !== null) {
-        image.src = thumbnail.url;
-        image.hidden = false;
+    image.className = C.referenceSlotImage;
+    image.alt = say(kind === "day" ? "reference.day" : "reference.night");
+    const empty = element(doc, "span", C.referenceSlotEmpty, say("reference.empty"));
+    frame.append(image, empty);
+    const caption = element(doc, "p", C.settingRowHelp);
+    caption.dataset["referenceTaken"] = kind;
+    const status = element(doc, "p", C.referenceSlotStatus);
+    status.setAttribute("role", "status");
+    const take = element(doc, "button", C.button) as HTMLButtonElement;
+    take.type = "button";
+    take.dataset["referenceAction"] = "take";
+    const remove = element(doc, "button", C.referenceDelete, say("reference.delete")) as HTMLButtonElement;
+    remove.type = "button";
+    remove.dataset["referenceAction"] = "delete";
+    remove.setAttribute("aria-label", `${say("reference.delete")}: ${heading.textContent}`);
+    const tools = element(doc, "div", C.referenceSlotTools);
+    tools.append(take, remove);
+    slot.append(heading, frame, caption, status, tools);
+    slots.append(slot);
+
+    // The thumbnail asked for last: an older answer for a picture since replaced is not shown.
+    let shownFor: string | null = null;
+    const paint = (error: string | null): void => {
+      const picture = pictures.find((item) => item.kind === kind);
+      const working = busy.has(kind);
+      slot.dataset["state"] = working ? "busy" : picture === undefined ? "empty" : "taken";
+      take.textContent = say(picture !== undefined ? "reference.retake" : kind === "day" ? "reference.takeDay" : "reference.takeNight");
+      take.disabled = working;
+      remove.hidden = picture === undefined;
+      remove.disabled = working;
+      caption.textContent = picture === undefined ? "" : input.formatTaken(picture.taken_at);
+      caption.hidden = picture === undefined;
+      status.hidden = !working && error === null;
+      status.textContent = working ? say("reference.taking") : (error ?? "");
+      status.classList.toggle(C.referenceSlotError, !working && error !== null);
+      if (picture === undefined) {
+        shownFor = null;
+        image.hidden = true;
+        image.removeAttribute("src");
+        empty.hidden = false;
+        return;
       }
-    });
-  }
-  if (input.pictures.length > 0) {
-    body.append(thumbs);
-  }
-  const tools = element(doc, "div", C.cameraTools);
-  const button = (key: TranslationKey, action: "night" | "delete"): HTMLButtonElement => {
-    const node = element(doc, "button", C.button, translate(language, key)) as HTMLButtonElement;
-    node.type = "button";
-    node.dataset["referenceAction"] = action;
-    node.addEventListener("click", () => {
-      node.disabled = true;
-      editor.setError(null);
-      void input.act(action).then((message) => {
-        node.disabled = false;
-        if (message === null) {
-          handlers.onDone();
+      if (shownFor !== picture.taken_at) {
+        shownFor = picture.taken_at;
+        const wanted = picture.taken_at;
+        image.hidden = true;
+        empty.hidden = true;
+        void input.thumbnail(picture).then((thumbnail) => {
+          if (shownFor === wanted && thumbnail !== null) {
+            image.src = thumbnail.url;
+            image.hidden = false;
+          }
+        });
+      }
+    };
+    paints.set(kind, paint);
+    const act = (action: "take" | "delete"): void => {
+      if (busy.has(kind)) {
+        return;
+      }
+      busy.add(kind);
+      paint(null);
+      void input.act(kind, action).then((answer) => {
+        busy.delete(kind);
+        if ("pictures" in answer) {
+          changed = true;
+          pictures = answer.pictures;
+          help.hidden = pictures.length > 0;
+          for (const [other, repaint] of paints) {
+            if (other === kind || !busy.has(other)) {
+              repaint(null);
+            }
+          }
         } else {
-          editor.setError(message);
+          paint(answer.message);
         }
       });
-    });
-    return node;
-  };
-  tools.append(button("reference.takeNight", "night"));
-  if (input.pictures.length > 0) {
-    tools.append(button("reference.delete", "delete"));
+    };
+    take.addEventListener("click", () => act("take"));
+    remove.addEventListener("click", () => act("delete"));
+    paint(null);
   }
-  body.append(tools);
-  body.append(element(doc, "p", C.settingRowHelp, translate(language, "reference.help")));
-  // The form's own button (Save's place) takes the daylight picture.
-  editor.submit(async () => await input.act("day"));
-  return editor.form;
+  help.hidden = pictures.length > 0;
+
+  const actions = element(doc, "div", C.settingsActions);
+  const close = element(doc, "button", C.button, say("dialog.close")) as HTMLButtonElement;
+  close.type = "button";
+  close.dataset["referenceClose"] = "true";
+  close.addEventListener("click", () => input.onClose(changed));
+  actions.append(close);
+  form.append(actions);
+  // Escape, the backdrop and the dialog's cross close it as Close does.
+  return { form, close: () => input.onClose(changed) };
 }
 
 /** The sentence for a camera refusal. */

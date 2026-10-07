@@ -1,6 +1,7 @@
 // The camera for vehicle identification in the card: the frame's geometry, the settings field, the dashboard
 // block, the Settings rows (camera, frame, AI task), the frame editor (drag and resize by pointer or keys, the
-// preview, Save) and a car's reference pictures (thumbnails, take, take at night, delete), in five languages.
+// preview, Save) and a car's reference pictures (a day and a night slot, each taken, retaken or deleted in place),
+// in five languages.
 
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
@@ -306,37 +307,87 @@ describe("a car's reference pictures", () => {
     expect(niro.querySelector("[data-row='reference']")?.textContent).toContain(translate("en", "reference.none"));
   });
 
-  it("are taken now, at night, and deleted from the car's own editor", async () => {
+  /** The car's reference editor, opened from its row. */
+  async function openEditor(element: Element, vehicle = EV6): Promise<HTMLFormElement> {
+    carSection(openDialog(element)!, vehicle)
+      .querySelector<HTMLButtonElement>("[data-edit='reference']")!
+      .click();
+    await settle();
+    return openDialog(element)!.querySelector<HTMLFormElement>("form[data-value-editor='reference']")!;
+  }
+  const slot = (form: HTMLElement, kind: string): HTMLElement => form.querySelector<HTMLElement>(`[data-reference='${kind}']`)!;
+
+  it("show a day and a night slot, each with its own button and a quiet Delete only over a picture", async () => {
+    const payload = dashboard();
+    payload["camera_identification"]["references"][EV6] = [{ kind: "day", taken_at: "2026-10-07T12:00:00+00:00", colour: true }];
+    const { element } = await openSettings(payload, "sv");
+    const form = await openEditor(element);
+    expect(openDialog(element)!.querySelector("h2, h3")?.textContent).toBe("Referensbild — EV6");
+    expect(form.textContent).toContain("Ta bilden när bilen står vid laddaren.");
+    const day = slot(form, "day");
+    const night = slot(form, "night");
+    expect(day.dataset["state"]).toBe("taken");
+    expect(day.querySelector("[data-reference-action='take']")?.textContent).toBe("Ta om");
+    expect(day.querySelector<HTMLElement>("[data-reference-action='delete']")!.hidden).toBe(false);
+    expect(day.querySelector<HTMLImageElement>("img")!.hidden).toBe(false);
+    expect(night.dataset["state"]).toBe("empty");
+    expect(night.textContent).toContain("Ingen bild");
+    expect(night.querySelector("[data-reference-action='take']")?.textContent).toBe("Ta nattbild");
+    expect(night.querySelector<HTMLElement>("[data-reference-action='delete']")!.hidden).toBe(true);
+    // A car with a picture is recognised: the warning is for a car with none.
+    expect(form.querySelector<HTMLElement>("[data-reference-help]")!.hidden).toBe(true);
+    // The only button is Close.
+    expect(form.querySelector("button[type='submit']")).toBeNull();
+    expect(form.querySelector("[data-reference-close]")?.textContent).toBe("Stäng");
+  });
+
+  it("take and delete one kind in place, the dialog staying open, and read the dashboard again on Close", async () => {
     const { hass, element } = await openSettings(dashboard());
-    const open = async (): Promise<HTMLFormElement> => {
-      carSection(openDialog(element)!, EV6)
-        .querySelector<HTMLButtonElement>("[data-edit='reference']")!
-        .click();
-      await settle();
-      return openDialog(element)!.querySelector<HTMLFormElement>("form[data-value-editor='reference']")!;
-    };
-    let form = await open();
-    expect(form.querySelectorAll("figure[data-reference]")).toHaveLength(2);
-    expect(form.querySelector("button[type='submit']")?.textContent).toBe(translate("en", "reference.take"));
-    form.requestSubmit();
+    const form = await openEditor(element, NIRO);
+    expect(form.querySelector<HTMLElement>("[data-reference-help]")!.hidden).toBe(false);
+    let answer: (value: unknown) => void = () => undefined;
+    hass.cameraHandler = async (message) =>
+      message["type"] === "spotnav/reference_picture" ? picture(240, 90) : await new Promise((resolve) => (answer = resolve));
+    slot(form, "night").querySelector<HTMLButtonElement>("[data-reference-action='take']")!.click();
     await settle();
     expect(hass.cameraMessages.at(-1)).toEqual({
-      type: "spotnav/take_reference_picture", api_version: 1, charger_id: "soc_charger", vehicle_id: EV6, kind: "day",
+      type: "spotnav/take_reference_picture", api_version: 1, charger_id: "soc_charger", vehicle_id: NIRO, kind: "night",
     });
-    hass.resolveNext(dashboard());
+    expect(slot(form, "night").dataset["state"]).toBe("busy");
+    expect(slot(form, "night").textContent).toContain(translate("en", "reference.taking"));
+    expect(slot(form, "day").dataset["state"]).toBe("empty");
+    answer({ api_version: 1, ok: true, error: null, vehicle_id: NIRO, references: [{ kind: "night", taken_at: "2026-10-07T21:00:00+00:00", colour: false }] });
     await settle();
-    form = await open();
-    form.querySelector<HTMLButtonElement>("[data-reference-action='night']")!.click();
-    await settle();
-    expect(hass.cameraMessages.at(-1)?.["kind"]).toBe("night");
-    hass.resolveNext(dashboard());
-    await settle();
-    form = await open();
-    form.querySelector<HTMLButtonElement>("[data-reference-action='delete']")!.click();
+    expect(openDialog(element)!.querySelector("form[data-value-editor='reference']")).toBe(form);
+    expect(slot(form, "night").dataset["state"]).toBe("taken");
+    expect(slot(form, "night").querySelector("[data-reference-action='take']")?.textContent).toBe(translate("en", "reference.retake"));
+    expect(form.querySelector<HTMLElement>("[data-reference-help]")!.hidden).toBe(true);
+    slot(form, "night").querySelector<HTMLButtonElement>("[data-reference-action='delete']")!.click();
     await settle();
     expect(hass.cameraMessages.at(-1)).toEqual({
-      type: "spotnav/delete_reference_picture", api_version: 1, charger_id: "soc_charger", vehicle_id: EV6, kind: null,
+      type: "spotnav/delete_reference_picture", api_version: 1, charger_id: "soc_charger", vehicle_id: NIRO, kind: "night",
     });
+    answer({ api_version: 1, ok: true, error: null, vehicle_id: NIRO, references: [] });
+    await settle();
+    expect(slot(form, "night").dataset["state"]).toBe("empty");
+    const reads = hass.messages.length;
+    form.querySelector<HTMLButtonElement>("[data-reference-close]")!.click();
+    await settle();
+    expect(openDialog(element)?.querySelector("form[data-value-editor='reference']") ?? null).toBeNull();
+    expect(hass.messages.length).toBeGreaterThan(reads);
+    hass.resolveNext(dashboard());
+    await settle();
+    expect(openDialog(element)?.querySelector("[data-section='vehicle']")).not.toBeNull();
+  });
+
+  it("close on Close without a read when nothing changed", async () => {
+    const { hass, element } = await openSettings(dashboard());
+    const form = await openEditor(element);
+    const reads = hass.messages.length;
+    form.querySelector<HTMLButtonElement>("[data-reference-close]")!.click();
+    await settle();
+    expect(hass.messages.length).toBe(reads);
+    expect(openDialog(element)?.querySelector("[data-section='vehicle']")).not.toBeNull();
   });
 
   it("never call a picture out of date: it is kept whole and cropped with the selection drawn now", async () => {
@@ -348,25 +399,25 @@ describe("a car's reference pictures", () => {
     expect(ev6.querySelector("[data-help='reference']")).toBeNull();
   });
 
-  it("say why a picture could not be taken", async () => {
+  it("say in the slot why a picture could not be taken", async () => {
     const { hass, element } = await openSettings(dashboard());
     hass.cameraHandler = async (message) =>
       message["type"] === "spotnav/take_reference_picture" ? { api_version: 1, ok: false, error: "spotnav_no_picture" } : picture(240, 90);
-    carSection(openDialog(element)!, NIRO)
-      .querySelector<HTMLButtonElement>("[data-edit='reference']")!
-      .click();
+    const form = await openEditor(element, NIRO);
+    slot(form, "day").querySelector<HTMLButtonElement>("[data-reference-action='take']")!.click();
     await settle();
-    const form = openDialog(element)!.querySelector<HTMLFormElement>("form[data-value-editor='reference']")!;
-    expect(form.querySelector("[data-reference-action='delete']")).toBeNull();
-    form.requestSubmit();
-    await settle();
-    expect(form.textContent).toContain(translate("en", "camera.error.noPicture"));
+    expect(slot(form, "day").textContent).toContain(translate("en", "camera.error.noPicture"));
+    expect(slot(form, "day").dataset["state"]).toBe("empty");
+    expect(slot(form, "night").textContent).not.toContain(translate("en", "camera.error.noPicture"));
   });
 
   it("are worded as the owner chose, in every language", () => {
-    expect(translate("sv", "reference.take")).toBe("Ta referensbild nu");
+    expect(translate("sv", "reference.takeDay")).toBe("Ta dagbild");
     expect(translate("sv", "reference.takeNight")).toBe("Ta nattbild");
+    expect(translate("sv", "reference.retake")).toBe("Ta om");
+    expect(translate("sv", "reference.empty")).toBe("Ingen bild");
     expect(translate("sv", "reference.delete")).toBe("Ta bort");
+    expect(translate("sv", "reference.title", { name: "EV6" })).toBe("Referensbild — EV6");
     expect(translate("sv", "camera.frame.label")).toBe("Beskär bild laddplats");
     expect(translate("sv", "camera.frame.drawn")).toBe("Beskuren");
     expect(translate("en", "camera.frame.label")).toBe("Crop parking spot");

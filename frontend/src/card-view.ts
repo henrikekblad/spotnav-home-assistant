@@ -64,7 +64,7 @@ import {
   type MarketEditorForm,
 } from "./market-editor";
 import { settingsEditorBody, settingsTrigger, type SettingsEditorForm } from "./settings-editor";
-import type { Vehicle } from "./validate";
+import type { ReferencePicture, Vehicle } from "./validate";
 import { vehicleSummary, type VehicleEdits, type VehicleReference } from "./vehicle-settings";
 import {
   multiEditor,
@@ -86,6 +86,8 @@ import {
   referenceEditor,
   referenceText,
   type CameraPicture,
+  type PictureKind,
+  type ReferenceAnswer,
 } from "./camera-editor";
 import { issueText } from "./status";
 import { historyBody, type HistoryState, type HistoryUi } from "./history";
@@ -225,6 +227,10 @@ export interface CardViewInput {
   overviewPlace?: OverviewPlaceHolder;
   /** A picture for the camera's editors: the camera's picture now, or a car's reference thumbnail. */
   onCameraPicture?: (request: CameraPictureRequest) => Promise<{ picture: CameraPicture } | { code: string | null }>;
+  /** A slot of a car's reference editor: take or delete that kind's picture; the editor stays open. */
+  onReferencePicture?: (vehicleId: string, kind: PictureKind, action: "take" | "delete") => Promise<ReferenceAnswer>;
+  /** The reference editor closed after a picture was taken or deleted: the card reads the dashboard again. */
+  onReferencesChanged?: () => void;
   /** A fee's row: the card reads the area's suggestion and opens its editor (`openFiscalEditor`). */
   onEditFiscal?: (component: FiscalComponentName) => void;
 }
@@ -1076,8 +1082,10 @@ export function createCardView(input: CardViewInput): CardView {
     labels,
     background: () => card,
     onClose: notifyDialogsChanged,
-    onDismiss: () => leaveSettingsChild(valueDialog),
+    onDismiss: () => (valueLeave ?? (() => leaveSettingsChild(valueDialog)))(),
   });
+  /** How the open value editor is left by Escape, the backdrop or the cross, when it is not as Cancel. */
+  let valueLeave: (() => void) | null = null;
 
   /**
    * The one way out of a dialog opened from the Settings page (Cancel, close, Escape, backdrop).
@@ -2112,7 +2120,10 @@ export function createCardView(input: CardViewInput): CardView {
   }
 
   /** One value's own editor in the value dialog: Settings steps aside, and comes back on Cancel or a save. */
-  function openValueEditor(title: string, build: (handlers: EditorHandlers) => HTMLFormElement): void {
+  function openValueEditor(
+    title: string,
+    build: (handlers: EditorHandlers) => HTMLFormElement | { form: HTMLFormElement; close: () => void },
+  ): void {
     if (destroyed || !input.isAdmin) {
       return;
     }
@@ -2126,7 +2137,9 @@ export function createCardView(input: CardViewInput): CardView {
       },
       onCancel: () => leaveSettingsChild(valueDialog),
     };
-    valueDialog.show({ title, body: build(handlers), opener: settingsGeneral });
+    const built = build(handlers);
+    valueLeave = "close" in built ? built.close : null;
+    valueDialog.show({ title, body: "close" in built ? built.form : built, opener: settingsGeneral });
   }
 
   function writeValue(write: ValueWrite): Promise<string | null> {
@@ -2595,14 +2608,17 @@ export function createCardView(input: CardViewInput): CardView {
       return undefined;
     }
     const carName = row.name ?? translate(model.language, "settings.vehicle.unnamed");
-    const thumbnail = (kind: "day" | "night"): Promise<CameraPicture | null> => {
-      const picture = pictures.find((item) => item.kind === kind);
-      if (picture === undefined || input.onCameraPicture === undefined) {
+    const thumbnailOf = (picture: ReferencePicture): Promise<CameraPicture | null> => {
+      if (input.onCameraPicture === undefined) {
         return Promise.resolve(null);
       }
       return input
-        .onCameraPicture({ kind: "reference", vehicleId: row.id, pictureKind: kind, takenAt: picture.taken_at })
+        .onCameraPicture({ kind: "reference", vehicleId: row.id, pictureKind: picture.kind, takenAt: picture.taken_at })
         .then((answer) => ("picture" in answer ? answer.picture : null));
+    };
+    const thumbnail = (kind: PictureKind): Promise<CameraPicture | null> => {
+      const picture = pictures.find((item) => item.kind === kind);
+      return picture === undefined ? Promise.resolve(null) : thumbnailOf(picture);
     };
     const formatTaken = (iso: string): string => {
       const instant = Date.parse(iso);
@@ -2617,19 +2633,22 @@ export function createCardView(input: CardViewInput): CardView {
       ...(input.isAdmin
         ? {
             onTap: () =>
-              openValueEditor(translate(model.language, "reference.label"), (handlers) =>
-                referenceEditor(
-                  doc,
-                  model.language,
-                  {
-                    carName,
-                    pictures,
-                    thumbnail,
-                    act: (action) => writeValue({ kind: "reference", vehicleId: row.id, action }),
-                    formatTaken,
+              openValueEditor(translate(model.language, "reference.title", { name: carName }), (handlers) =>
+                referenceEditor(doc, model.language, {
+                  pictures,
+                  thumbnail: thumbnailOf,
+                  act: (kind, action) =>
+                    input.onReferencePicture?.(row.id, kind, action) ??
+                    Promise.resolve({ message: translate(model.language, "settings.error.generic") }),
+                  formatTaken,
+                  onClose: (changed) => {
+                    if (changed && input.onReferencesChanged !== undefined) {
+                      input.onReferencesChanged();
+                    } else {
+                      handlers.onCancel();
+                    }
                   },
-                  handlers,
-                ),
+                }),
               ),
           }
         : {}),

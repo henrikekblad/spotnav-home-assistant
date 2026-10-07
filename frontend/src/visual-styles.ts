@@ -71,6 +71,16 @@ export const VISUAL_CLASSES = {
   vehicleTabs: "spotnav-vehicle-tabs",
   vehicleTab: "spotnav-vehicle-tab",
   referenceThumb: "spotnav-reference-thumb",
+  referenceSlots: "spotnav-reference-slots",
+  referenceSlot: "spotnav-reference-slot",
+  referenceSlotTitle: "spotnav-reference-slot-title",
+  referenceSlotPicture: "spotnav-reference-slot-picture",
+  referenceSlotImage: "spotnav-reference-slot-image",
+  referenceSlotEmpty: "spotnav-reference-slot-empty",
+  referenceSlotStatus: "spotnav-reference-slot-status",
+  referenceSlotError: "spotnav-reference-slot-error",
+  referenceSlotTools: "spotnav-reference-slot-tools",
+  referenceDelete: "spotnav-reference-delete",
   settingsDivider: "spotnav-settings-divider",
   settingsSectionValue: "spotnav-settings-section-value",
   settingsSectionConfigure: "spotnav-settings-section-configure",
@@ -1506,6 +1516,88 @@ export const VISUAL_STYLES = `
     max-height: 4.5em;
     border-radius: 4px;
     object-fit: cover;
+  }
+  /* A car's reference pictures: two equal slots, day and night, each its picture, its button and a quiet Delete. */
+  .${VISUAL_CLASSES.referenceSlots} {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 12px;
+    margin: 8px 0;
+  }
+  .${VISUAL_CLASSES.referenceSlot} {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    min-width: 0;
+  }
+  .${VISUAL_CLASSES.referenceSlotTitle} {
+    margin: 0;
+    font-size: 0.95rem;
+    font-weight: 600;
+  }
+  .${VISUAL_CLASSES.referenceSlotPicture} {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    aspect-ratio: 4 / 3;
+    overflow: hidden;
+    border-radius: 6px;
+    background: var(--secondary-background-color, #f2f2f2);
+  }
+  .${VISUAL_CLASSES.referenceSlot}[data-state="empty"] .${VISUAL_CLASSES.referenceSlotPicture},
+  .${VISUAL_CLASSES.referenceSlot}[data-state="busy"] .${VISUAL_CLASSES.referenceSlotPicture} {
+    border: 1px dashed var(--divider-color, #e0e0e0);
+  }
+  .${VISUAL_CLASSES.referenceSlot}[data-state="busy"] .${VISUAL_CLASSES.referenceSlotPicture} {
+    opacity: 0.5;
+  }
+  .${VISUAL_CLASSES.referenceSlotImage} {
+    display: block;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+  }
+  .${VISUAL_CLASSES.referenceSlotImage}[hidden],
+  .${VISUAL_CLASSES.referenceSlotEmpty}[hidden] {
+    display: none;
+  }
+  .${VISUAL_CLASSES.referenceSlotEmpty} {
+    color: var(--secondary-text-color, #727272);
+    font-size: 0.85rem;
+  }
+  .${VISUAL_CLASSES.referenceSlot} > p {
+    margin: 0;
+  }
+  .${VISUAL_CLASSES.referenceSlotStatus} {
+    color: var(--secondary-text-color, #727272);
+    font-size: 0.85rem;
+  }
+  .${VISUAL_CLASSES.referenceSlotStatus}.${VISUAL_CLASSES.referenceSlotError} {
+    color: var(--error-color, #db4437);
+  }
+  .${VISUAL_CLASSES.referenceSlotTools} {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 4px 12px;
+  }
+  .${VISUAL_CLASSES.referenceDelete} {
+    min-height: 36px;
+    padding: 0 4px;
+    font: inherit;
+    font-size: 0.85rem;
+    color: var(--secondary-text-color, #727272);
+    background: none;
+    border: 0;
+    text-decoration: underline;
+    cursor: pointer;
+  }
+  .${VISUAL_CLASSES.referenceDelete}[hidden] {
+    display: none;
+  }
+  .${VISUAL_CLASSES.referenceDelete}:disabled {
+    cursor: default;
+    opacity: 0.5;
   }
   .${VISUAL_CLASSES.settingsSectionValue} {
     font-variant-numeric: tabular-nums;

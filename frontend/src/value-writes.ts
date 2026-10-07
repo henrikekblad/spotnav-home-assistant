@@ -34,7 +34,5 @@ export type ValueWrite =
   | { kind: "settings"; build: (record: SettingsRecord) => ReplacementCheck }
   /** The camera's frame (`spotnav/save_camera_frame`; `null` is the whole picture). */
   | { kind: "cameraFrame"; frame: CameraFrame | null }
-  /** Take a car's reference picture now (`day` or `night`), or delete its pictures (`spotnav/*_reference_picture`). */
-  | { kind: "reference"; vehicleId: string; action: "day" | "night" | "delete" }
   /** One fee of the selected area: a figure, or `null` for off. */
   | { kind: "fiscal"; component: FiscalComponentName; value: number | null };

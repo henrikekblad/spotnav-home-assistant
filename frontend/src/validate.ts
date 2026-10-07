@@ -292,6 +292,16 @@ export interface ReferencePicture {
   colour: boolean;
 }
 
+/** A car's reference pictures as Home Assistant lists them; an entry that is not one is left out. */
+export function referencePictures(list: readonly unknown[]): ReferencePicture[] {
+  return list.flatMap((entry) => {
+    if (!isRecord(entry) || (entry.kind !== "day" && entry.kind !== "night") || typeof entry.taken_at !== "string") {
+      return [];
+    }
+    return [{ kind: entry.kind, taken_at: entry.taken_at, colour: entry.colour === true }];
+  });
+}
+
 export interface CameraIdentification {
   cameras: EntityChoice[];
   ai_tasks: EntityChoice[];
@@ -1630,12 +1640,7 @@ function cameraIdentificationOrNull(root: Record<string, unknown>): CameraIdenti
       });
     const references: Record<string, ReferencePicture[]> = {};
     for (const [vehicleId, pictures] of Object.entries(record(value.references))) {
-      references[vehicleId] = (Array.isArray(pictures) ? pictures : bad()).flatMap((entry) => {
-        if (!isRecord(entry) || (entry.kind !== "day" && entry.kind !== "night") || typeof entry.taken_at !== "string") {
-          return [];
-        }
-        return [{ kind: entry.kind, taken_at: entry.taken_at, colour: entry.colour === true }];
-      });
+      references[vehicleId] = referencePictures(Array.isArray(pictures) ? pictures : bad());
     }
     return { cameras: choices("cameras"), ai_tasks: choices("ai_tasks"), references };
   } catch {
