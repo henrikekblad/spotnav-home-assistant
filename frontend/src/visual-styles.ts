@@ -387,21 +387,24 @@ export const VISUAL_STYLES = `
   }
   /*
    * The energy slider's track with its "full" mark: a thin line across the track at the battery's room
-   * (\`--spotnav-mark\`, 0..1 of the track, inset by half a thumb at each end) and its word under it.
+   * (\`--spotnav-mark\`, 0..1 of the track, inset by half a thumb at each end) and its word under it. The
+   * plan's target slider marks the level now and the car's limit the same way; a word that would touch
+   * another goes a line lower (\`--spotnav-mark-level\`, the track as deep as \`--spotnav-mark-lines\`), and
+   * one at an end is moved inside the track (\`--spotnav-mark-shift\`) while its line stays at the tick.
    */
   .spotnav-settings-track {
     position: relative;
     min-width: 0;
   }
   .spotnav-settings-track:has(> .spotnav-settings-full-mark:not([hidden])) {
-    padding-bottom: 0.4rem;
+    padding-bottom: calc(0.4rem + (var(--spotnav-mark-lines, 1) - 1) * 0.825em);
   }
   .spotnav-settings-full-mark {
     position: absolute;
     top: 0;
     left: calc(8px + (100% - 16px) * var(--spotnav-mark, 0));
-    transform: translateX(-50%);
-    padding-top: 1.125rem;
+    transform: translateX(calc(-50% + var(--spotnav-mark-shift, 0px)));
+    padding-top: calc(1.125rem + var(--spotnav-mark-level, 0) * 1.1em);
     font-size: 0.75em;
     line-height: 1;
     white-space: nowrap;
@@ -413,7 +416,7 @@ export const VISUAL_STYLES = `
     position: absolute;
     /* Across the 1.25rem slider's track, centred on it. */
     top: 0.125rem;
-    left: 50%;
+    left: calc(50% - var(--spotnav-mark-shift, 0px));
     height: 1rem;
     transform: translateX(-50%);
     border-left: 2px solid var(--primary-text-color, #212121);

@@ -1,5 +1,6 @@
 // The plan popover's target slider shows the car's minimum charge level: the track from 0 to it in a darker
 // tone, and "min 30 %" under the middle of that part. Off draws nothing; another car picked shows its own.
+// Ticks mark the level now ("nu") and the car's limit ("gräns"); a word that would touch another drops a line.
 
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
@@ -126,5 +127,89 @@ describe("the minimum on the plan's target slider", () => {
     select.dispatchEvent(new Event("change"));
     expect(block.querySelector<HTMLElement>(`.${C.settingsFloorMark}`)!.textContent).toBe("min 50 %");
     expect(translate("en", "settings.soc.floorMark", { percent: "50" })).toBe("min 50 %");
+  });
+});
+
+describe("the level now and the car's limit on the plan's target slider", () => {
+  const mark = (block: HTMLElement, part: string): HTMLElement =>
+    block.querySelector<HTMLElement>(`[data-part='${part}']`)!;
+
+  it("are ticks at the level now and the car's limit, worded under the track", async () => {
+    const block = await openPlan(payload(30));
+    const now = mark(block, "now-mark");
+    const limit = mark(block, "limit-mark");
+    expect(now.hidden).toBe(false);
+    expect(now.textContent).toBe("nu");
+    expect(now.style.getPropertyValue("--spotnav-mark")).toBe("0.4");
+    expect(limit.hidden).toBe(false);
+    expect(limit.textContent).toBe("gräns");
+    expect(limit.style.getPropertyValue("--spotnav-mark")).toBe("0.8");
+    // The same tick as the kWh slider's "fullt", in the slider's own track.
+    expect(now.classList.contains(C.settingsFullMark)).toBe(true);
+    expect(now.parentElement).toBe(block.querySelector("input[type='range']")!.parentElement);
+  });
+
+  it("say the level now is an estimate when it is one", async () => {
+    const body = payload(null);
+    body.soc.estimated = true;
+    const block = await openPlan(body);
+    expect(mark(block, "now-mark").textContent).toBe("≈ nu");
+  });
+
+  it("leave out the limit when the car states none, and the level now for another car picked", async () => {
+    const block = await openPlan(payload(null));
+    const select = block.querySelector<HTMLSelectElement>("[data-soc='vehicle-choice']")!;
+    select.value = "vehicle_niro";
+    select.dispatchEvent(new Event("change"));
+    expect(mark(block, "now-mark").hidden).toBe(true);
+    expect(mark(block, "limit-mark").hidden).toBe(true);
+  });
+
+  it("have no limit tick when the car charges to 100 %", async () => {
+    const body = payload(null);
+    body.soc.vehicle_max_percent = 100;
+    const block = await openPlan(body);
+    expect(mark(block, "limit-mark").hidden).toBe(true);
+    expect(mark(block, "now-mark").hidden).toBe(false);
+  });
+
+  it("drop a word that would touch another to a second line", async () => {
+    // A 116 px track (100 px of travel) and 30 px words: "min 30 %" at 23, "nu" at 48 and "gräns" at 88.
+    const width = vi.spyOn(HTMLElement.prototype, "clientWidth", "get").mockReturnValue(116);
+    const words = vi.spyOn(HTMLElement.prototype, "offsetWidth", "get").mockReturnValue(30);
+    try {
+      const block = await openPlan(payload(30));
+      const level = (part: string): string => mark(block, part).style.getPropertyValue("--spotnav-mark-level");
+      expect(level("floor-mark")).toBe("0");
+      expect(level("now-mark")).toBe("1");
+      expect(level("limit-mark")).toBe("0");
+      const track = block.querySelector<HTMLElement>("input[type='range']")!.parentElement!;
+      expect(track.style.getPropertyValue("--spotnav-mark-lines")).toBe("2");
+      // Back on the first line once the minimum's word is gone (a target of 0 leaves nothing of it).
+      const slider = block.querySelector<HTMLInputElement>("input[type='range']")!;
+      slider.value = "0";
+      slider.dispatchEvent(new Event("input", { bubbles: true }));
+      expect(level("now-mark")).toBe("0");
+      expect(track.style.getPropertyValue("--spotnav-mark-lines")).toBe("1");
+    } finally {
+      width.mockRestore();
+      words.mockRestore();
+    }
+  });
+
+  it("keep a word at the end of the track inside it", async () => {
+    const width = vi.spyOn(HTMLElement.prototype, "clientWidth", "get").mockReturnValue(116);
+    const words = vi.spyOn(HTMLElement.prototype, "offsetWidth", "get").mockReturnValue(30);
+    try {
+      const body = payload(null);
+      body.soc.value = 100;
+      const block = await openPlan(body);
+      // "nu" at 108 would end at 123: held at 86, 7 px left of its tick, the tick itself staying put.
+      expect(mark(block, "now-mark").style.getPropertyValue("--spotnav-mark-shift")).toBe("-7px");
+      expect(mark(block, "now-mark").style.getPropertyValue("--spotnav-mark")).toBe("1");
+    } finally {
+      width.mockRestore();
+      words.mockRestore();
+    }
   });
 });
