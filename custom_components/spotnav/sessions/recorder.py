@@ -95,6 +95,10 @@ def started_by(hint: str | None, strategy: str | None) -> str:
     """How a session started, from who asked and the strategy then in force."""
     if hint == STARTED_MANUAL:
         return STARTED_MANUAL
+    if hint == "min_soc":
+        # The car's minimum charge level: SpotNav's own automatic start, as a plan window's (never "other", which
+        # reads as a car that came back with a new need).
+        hint = STARTED_PLAN_WINDOW
     if hint in (STARTED_PLAN_WINDOW, STARTED_SOLAR):
         return STARTED_HYBRID if strategy == STARTED_HYBRID else hint
     return STARTED_OTHER

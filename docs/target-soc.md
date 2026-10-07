@@ -73,6 +73,28 @@ a vehicle integration, charge a fixed number of kWh instead.
 - A reached target overshoots slightly: the reading that crossed it describes where the car was
   a moment ago. The card shows the level the charge stopped at and how old or estimated it was.
 
+## Minimum charge level
+
+Each car can have a minimum charge level, *Lägsta laddnivå* in the card's car settings (off by default, 10-80 %
+in steps of 5). It is the car's own, like its target: the car the charger plans for brings its floor with it to
+every charger. While the car's known level is below it, SpotNav charges at once at the full current set (your
+amps, capped by load balancing as any charge), whatever the strategy: cheapest periods, the sun and hybrid do not
+hold it back, and a charge the plan or the sun runs is taken over at full current. The status says *Charging to the
+minimum level (30 %)* while it runs.
+
+- **A person's pause or Stop wins.** A pause you chose, or a Stop, holds the minimum level too: you decided. A
+  charge you started is yours.
+- **At the floor the strategy takes over**, with no stop and start: a planned period open now goes on with the
+  charge, the sun (solar, hybrid) keeps it while its surplus does, and otherwise the charge stops. With a target,
+  the plan is made for the rest of the need, from the minimum level to the target. A floor charge that ended at the
+  floor starts again only when the level is a couple of percent below it, so a reading that wobbles never cycles
+  the charger.
+- **It needs the car's level.** A fresh reading, an estimate carried forward from the charger's energy register,
+  or a reading the car reported while plugged in counts. With none of these (no level sensor, or only a reading
+  from before the plug-in) the minimum level does nothing, and the setting says it needs the car's charge level.
+- It never charges past the target or the car's own charge limit: a minimum above either is capped there.
+- No notification of its own: *Charging started* and *Charge complete* are sent as for any charge.
+
 ## Vehicle charge limit
 
 If the vehicle's own integration exposes a charge-limit entity, SpotNav shows the limit in the

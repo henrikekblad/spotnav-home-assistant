@@ -77,6 +77,8 @@ from typing import Any, Final
 from homeassistant.core import callback, HomeAssistant
 from homeassistant.util import dt as dt_util
 
+from .min_soc_floor import ORIGIN_MIN_SOC
+
 from ..const import (
     CONF_ACTIVE_CONTROL_ENABLED,
     CONF_BATTERY_AGGREGATE_POWER_ENTITY,
@@ -930,6 +932,9 @@ class SolarExecutionCoordinator:
         if settings.strategy == STRATEGY_HYBRID:
             self._log_hybrid_satisfied(False)
         held_by_plan = settings.strategy == STRATEGY_HYBRID and self._controller.plan_window_active_now
+        # The car's minimum charge level runs the charge (`min_soc_floor.py`): the sun observes and acts on nothing,
+        # as beside a plan window, until the floor hands the charge over.
+        held_by_floor = self._controller.charge_origin == ORIGIN_MIN_SOC
         if pause_blocks_execution(settings):
             # Auto is paused (a person's Start or Stop pauses it for the plug-in): the sun neither starts,
             # stops nor modulates the charger, and takes over nothing. Fresh afterwards: the start delay runs
@@ -945,11 +950,11 @@ class SolarExecutionCoordinator:
 
         if self._solar is None:
             self._solar = self._build_controller(site)
-        elif not held_by_plan and self._state is not None and self._state.held_by_plan:
+        elif not (held_by_plan or held_by_floor) and self._state is not None and self._state.held_by_plan:
             # A plan window held the charge until now (its end handed it over, or the strategy left the plan): what
             # the sun asked for meanwhile was never written, so its next modulation writes again.
             self._solar.release_request()
-        if not held_by_plan:
+        if not (held_by_plan or held_by_floor):
             if await self._adopt_solar_charge(site, self._solar):
                 # Solar's own charge resumed by load balancing was decided this tick (kept or stopped).
                 if settings.strategy == STRATEGY_HYBRID:
@@ -990,18 +995,21 @@ class SolarExecutionCoordinator:
         if verdict.action in ("start", "stop") or verdict.state == "off":
             # Solar's own start, or no charge of solar's any more.
             self._took_over = False
-        if held_by_plan:
+        if held_by_plan or held_by_floor:
             # Arbitration: the state machine saw this observation (its timers keep ticking) but its
-            # verdict is not carried out while a plan window owns the charger.
+            # verdict is not carried out while a plan window or the car's minimum charge level owns the charger.
             pass
         else:
             verdict = await self._apply_verdict(verdict)
             await self._write_own_current(site)
         self._update_state(
-            verdict, site, held_by_plan=held_by_plan, basis=solar_basis(site, self._charger_entry_id, observation)
+            verdict,
+            site,
+            held_by_plan=held_by_plan or held_by_floor,
+            basis=solar_basis(site, self._charger_entry_id, observation),
         )
         self._log_transition(verdict)
-        self._record_verdict(verdict, held_by_plan=held_by_plan)
+        self._record_verdict(verdict, held_by_plan=held_by_plan or held_by_floor)
         self._log_hybrid_handoff(held_by_plan)
         if settings.strategy == STRATEGY_HYBRID:
             await self._async_recalculate_hybrid_preview()

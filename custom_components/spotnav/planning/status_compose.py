@@ -84,6 +84,9 @@ Precedence (first match wins the headline; "add" rows append a fact line)
    charger), load_balancing_limited, load_balancing_unavailable. Tone `notice` if any is present;
    otherwise `normal`. A proposal waiting for a window boundary is the normal line proposal_pending.
 
+0b. While the car's minimum charge level charges it (`min_soc_percent`, its floor), min_soc_charging{percent}
+   is the headline in place of the strategy's and the plan's (3 and 4), after the identification line; the plan's
+   figures and notices follow. A pause wins: never while one holds.
 0. While a plug-in's car is being identified (`identification` `waiting` or `asking`, two or more cars at the
    charger), identifying_vehicle or asking_vehicle goes ahead of every other line of a block that is not
    blocking and not starting_up; it is gone once the car is decided. Tone normal, no params.
@@ -158,6 +161,8 @@ STATUS_CODES: Final[dict[str, tuple[str, tuple[str, ...]]]] = {
     "planning_unavailable": (TONE_BLOCKING, ("reason",)),
     "planning_error": (TONE_BLOCKING, ("reason",)),
     "paused": (TONE_NORMAL, ("until", "choice", "action", "ends")),
+    # The car's known state of charge is below its minimum charge level (`percent`): SpotNav charges at once.
+    "min_soc_charging": (TONE_NORMAL, ("percent",)),
     "charging_now": (TONE_NORMAL, ("until",)),
     # The plan's last window ended with the car still drawing on a charge to its own limit: it goes on
     # until the car stops by itself, at most until `until` (an hour past the window, never past the
@@ -461,6 +466,8 @@ class StatusFacts:
     starting_up: bool = False
     #: The identification block's `state` (`waiting`, `asking`, `decided`), `None` without one.
     identification: str | None = None
+    #: The car's minimum charge level while its own charge runs (`min_soc_floor.py`), else `None`.
+    min_soc_percent: float | None = None
 
 
 def _line(code: str, **params: Any) -> dict[str, Any]:
@@ -958,6 +965,8 @@ def compose_status(facts: StatusFacts) -> dict[str, Any]:
         lines.append(_paused_line(facts))
         if facts.charging:
             lines.append(_line("charging_now", until=None))
+    elif facts.min_soc_percent is not None:
+        lines.append(_line("min_soc_charging", percent=round(facts.min_soc_percent)))
     elif facts.solar is not None:
         lines.extend(_solar_lines(facts.solar, charging=facts.charging))
         lines.extend(_price_wait_lines(facts))

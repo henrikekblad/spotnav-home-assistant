@@ -37,7 +37,8 @@ change: a stop that never went out keeps the owner (I4), a start that never went
 Events: `plug_in`, `unplug`, `connection_unknown`, `window_start` (timer, re-arm or plug-in), `window_end`,
 `final_window_end`, `rearm` (outside every window, or past the last), `person_start`, `person_stop`,
 `direct_start`/`direct_stop` (no boundary), `resume` (resume, follow, an expired span pause), `pause_choice`,
-`strategy_change`, `solar_start`, `solar_stop` (also the take-over of a self-started charge), `charger_reported_on`,
+`strategy_change`, `solar_start`, `solar_stop` (also the take-over of a self-started charge), `min_soc_start`,
+`min_soc_end` (the car's minimum charge level), `charger_reported_on`,
 `charger_reported_off`, `car_ended`, `balancing_pause`, `balancing_resume`, `target_reached`, `need_met`,
 `top_off_end`, `plan_installed`, `plan_dropped`, `restart`, `timer`, `command_result`.
 
@@ -64,6 +65,12 @@ the sun's rules keep it (`sun_keeps` on `strategy_change`: the surplus at or abo
 reading at hand, and, running beside the plan, its own state `on`, never `disarming`), and is stopped once
 otherwise. The other way, a plan window open when the sun runs a charge takes it over at its start
 (`window_start`, no command), and the sun leaving it does not stop it.
+The car's minimum charge level (`execution/min_soc_floor.py`) is an owner of its own, `min_soc`: while the car's
+known state of charge is below it, `min_soc_start` starts the charge at once at the full current set (also one the
+plan or the sun runs, or one the charger began by itself), but never through a pause a person chose or their Stop,
+and never a charge a person started. A window's end, a re-arm, the hold, the stray stop, the sun's stop and a
+strategy change leave it alone. At the floor `min_soc_end` hands it to a plan window open now or the sun with no
+command (`handed_to`), or stops it once.
 
 ```mermaid
 stateDiagram-v2
@@ -77,6 +84,10 @@ stateDiagram-v2
         none --> person: person_start (result)
         none --> solar: solar_start (result)
         none --> charge_now: direct_start
+        none --> min_soc: min_soc_start (result)
+        min_soc --> plan: min_soc_end (a window open now)
+        min_soc --> solar: min_soc_end (the sun's strategy)
+        min_soc --> none: min_soc_end (stop went out), person_stop, charger_reported_off
         plan --> top_off: final_window_end (car still drawing)
         top_off --> plan: plan_installed, rearm past the last window
         plan --> none: window_end, target, need_met, rearm, stray, stop went out, charger_reported_off

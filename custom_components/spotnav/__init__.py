@@ -45,6 +45,7 @@ from .entity_renames import async_setup_entity_renames
 from .log_buffer import attach_log_buffer
 from .execution.auto_execution import AutoExecutor, pause_blocks_execution
 from .execution.controller import ChargingController
+from .execution.min_soc_floor import FloorInputs, MinSocFloor
 from .execution.solar_execution import (
     async_rebind_solar_execution,
     async_setup_solar_execution,
@@ -96,7 +97,7 @@ from .vehicles.discovery_decisions import async_setup_decisions
 from .vehicles.soc_estimate import SocReader
 from .vehicles.vehicle_refresh import async_ask_vehicle_update
 from .vehicles.vehicle_discovery import charger_vehicle_ids, resolve_target_vehicle, vehicle_soc_entity_id
-from .vehicles.vehicle_properties import consumption_kwh_per_10km, stored_capacity_kwh
+from .vehicles.vehicle_properties import consumption_kwh_per_10km, stored_capacity_kwh, stored_properties
 
 
 _LOGGER = logging.getLogger(__name__)
@@ -469,6 +470,33 @@ async def _async_setup_auto_preview(
             entry.async_create_task(hass, preview.async_recalculate(), f"{entry_id} recalculate")
 
     data.soc_reader.set_on_reading(_soc_moved)
+
+    def _floor_inputs() -> FloorInputs | None:
+        # The car the charger plans for, read as the planner reads it, with no side effect on the planner's wait.
+        settings = settings_store.settings(entry_id)
+        vehicle_id, _ = resolve_target_vehicle(hass, settings.target.vehicle_id, charger_vehicle_ids(hass, entry_id))
+        if vehicle_id is None:
+            return None
+        floor = stored_properties(hass, vehicle_id).min_percent
+        if floor is None:
+            return FloorInputs(min_percent=None, target_percent=None, vehicle_max_percent=None, soc_percent=None)
+        data.soc_reader.ensure_watch(vehicle_id)
+        reading = data.soc_reader.read(vehicle_id)
+        return FloorInputs(
+            min_percent=floor,
+            target_percent=settings.target.target_percent if settings.driver == DRIVER_TARGET_SOC else None,
+            vehicle_max_percent=data.soc_reader.vehicle_max_percent(vehicle_id),
+            soc_percent=None if reading is None else reading.soc_percent,
+            soc_estimated=bool(reading is not None and reading.estimated),
+            soc_age_s=None if reading is None else reading.age_s,
+        )
+
+    # The car's minimum charge level: decided again at every change of the charger, every calculation (a new
+    # reading plans again) and every half minute.
+    floor = data.min_soc = MinSocFloor(hass, entry_id, data.executor, settings_store, _floor_inputs)
+    floor.async_start()
+    entry.async_on_unload(floor.async_stop)
+    entry.async_on_unload(preview.add_listener(floor.async_poke))
 
     def _on_connection(event: str) -> bool:
         # A plug-in or an unplug: plan again (the need counted afresh for a new plug-in), and let Auto

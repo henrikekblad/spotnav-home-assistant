@@ -187,6 +187,9 @@ under its heading; the car planned for is open first, and tapping another tab sh
 - **Onboard charger**: 1-phase or 3-phase (3-phase until you say otherwise). A charge uses the smaller of
   this and the charger's wiring, so a car with a single-phase onboard charger charges on one phase even
   on a three-phase wallbox.
+- **Minimum charge level**: **Off**, or 10 to 80 %. Below it SpotNav charges at once at full current, whatever the
+  strategy, unless you paused or stopped the charge. It needs the car's charge level, and says so next to the
+  value when the car has no level sensor. See [minimum charge level](target-soc.md#minimum-charge-level).
 - **Plug sensor** and **Location**: the car's own "plugged in" sensor and tracker, which tell which car is
   plugged in at a charger more than one car can charge at. Each is **Automatic**, one of the car's entities,
   or **None**. They are read only for that.

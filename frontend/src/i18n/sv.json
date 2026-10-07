@@ -95,6 +95,7 @@
   "status.fillRoomUnknown": "Bilens nivå eller batteristorlek är okänd, så {kwh} kWh laddas i stället för att fylla.",
   "status.needLimitedByRoom": "Begränsat till {kwh} kWh: bilen är nästan full.",
   "status.chargingToVehicleLimit": "Laddar tills bilen stoppar vid sin egen laddgräns ({percent} %).",
+  "status.minSocCharging": "Laddar till lägsta nivå ({percent} %)",
   "issue.needKept": "Energimätaren kan inte läsas: {kwh} kWh återstår enligt dess senaste värde.",
   "issue.needFromSessions": "Ingen energimätare: {kwh} kWh återstår, räknat från laddarens sparade laddningar.",
   "status.siteMeasurement.stale.other": "{phases} är äldre än {seconds} s.",
@@ -783,5 +784,9 @@
   "settings.status.foundAutomatically": "Hittad automatiskt",
   "settings.vehicle.limit": "Laddgräns",
   "settings.vehicle.targetHelp": "Följer bilen till alla laddare",
+  "settings.vehicle.minimum": "Lägsta laddnivå",
+  "settings.vehicle.minimumOff": "Av",
+  "settings.vehicle.minimumNeedsSoc": "behöver bilens laddnivå",
+  "settings.vehicle.minimumHelp": "Under den här nivån laddar SpotNav direkt med full ström, oavsett strategi. En paus eller ett stopp du väljer går före. Behöver bilens laddnivå.",
   "settings.vehicle.sourcesHelp": "Läses bara för att se vilken bil som är inkopplad."
 }

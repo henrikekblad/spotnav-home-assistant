@@ -474,6 +474,7 @@
       }
     },
     "max_percent": null,
+    "min_percent": null,
     "name": "Niro",
     "onboard_phases": 3,
     "soc_entity_id": "sensor.niro_battery",

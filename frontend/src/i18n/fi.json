@@ -95,6 +95,7 @@
   "status.fillRoomUnknown": "Auton varaustaso tai akun koko on tuntematon, joten ladataan {kwh} kWh täyttämisen sijaan.",
   "status.needLimitedByRoom": "Enintään {kwh} kWh: auto on lähes täynnä.",
   "status.chargingToVehicleLimit": "Ladataan, kunnes auto lopettaa itse omaan latausrajaansa ({percent} %).",
+  "status.minSocCharging": "Ladataan alimpaan tasoon ({percent} %)",
   "issue.needKept": "Energiamittaria ei voi lukea: {kwh} kWh jäljellä sen viimeisimmän lukeman mukaan.",
   "issue.needFromSessions": "Ei energiamittaria: {kwh} kWh jäljellä laturin tallennettujen latausten perusteella.",
   "status.siteMeasurement.stale.other": "{phases}: arvot ovat yli {seconds} s vanhoja.",
@@ -783,5 +784,9 @@
   "settings.status.foundAutomatically": "Löydetty automaattisesti",
   "settings.vehicle.limit": "Latausraja",
   "settings.vehicle.targetHelp": "Seuraa autoa kaikille latureille",
+  "settings.vehicle.minimum": "Alin varaustaso",
+  "settings.vehicle.minimumOff": "Pois",
+  "settings.vehicle.minimumNeedsSoc": "tarvitsee auton varaustason",
+  "settings.vehicle.minimumHelp": "Tämän tason alapuolella SpotNav lataa heti täydellä virralla strategiasta riippumatta. Valitsemasi tauko tai pysäytys menee edelle. Tarvitsee auton varaustason.",
   "settings.vehicle.sourcesHelp": "Luetaan vain sen näkemiseksi, mikä auto on kytketty."
 }

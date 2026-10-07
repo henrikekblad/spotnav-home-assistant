@@ -223,6 +223,33 @@ class SolarStop(Event):
     stop_recent: bool = False
 
 
+#: Who takes a floor charge over at the floor (`MinSocEnd.handed_to`): a plan window open now, the sun, or nobody
+#: (the charge is stopped).
+HAND_TO_PLAN: Final = "plan"
+HAND_TO_SOLAR: Final = "solar"
+HAND_TO_NOBODY: Final = ""
+
+
+@dataclass(frozen=True)
+class MinSocStart(Event):
+    """The car's known state of charge is below its minimum charge level (`execution/min_soc_floor.py`): SpotNav
+    charges at once, at the full current set, whatever the strategy, the plan's windows or the sun say. A person's
+    pause or Stop wins, and a charge a person started stays theirs. `connected` is what the charger says now."""
+
+    kind: ClassVar[str] = "min_soc_start"
+    connected: bool | None = True
+
+
+@dataclass(frozen=True)
+class MinSocEnd(Event):
+    """The floor charge is over: the car reached its minimum charge level, its level is no longer known, the floor
+    was turned off, or a pause holds Auto. The strategy decides from here: `handed_to` a plan window open now
+    (`plan`) or the sun (`solar`) takes the charge over with no command, or nobody does and it is stopped once."""
+
+    kind: ClassVar[str] = "min_soc_end"
+    handed_to: str = HAND_TO_NOBODY
+
+
 @dataclass(frozen=True)
 class ChargerReportedOn(Event):
     """The charger reported its charge control on (charging, or enabled). Decided at every such report: the hold
@@ -423,6 +450,8 @@ EVENT_TYPES: Final[dict[str, type[Event]]] = {
         StrategyChange,
         SolarStart,
         SolarStop,
+        MinSocStart,
+        MinSocEnd,
         ChargerReportedOn,
         ChargerReportedOff,
         CarEnded,
