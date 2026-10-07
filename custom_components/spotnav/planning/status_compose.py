@@ -191,7 +191,7 @@ STATUS_CODES: Final[dict[str, tuple[str, tuple[str, ...]]]] = {
     "solar_no_reading_waiting": (TONE_NORMAL, ()),
     "solar_waiting_for_sun": (TONE_NORMAL, ()),
     # The charger says no car is plugged in (`SolarController.car_absent`), in place of solar_waiting_for_sun:
-    # with the surplus this moment enough to start a charge (`start_a`), solar_no_car_surplus ("plug the car in",
+    # with the surplus this moment enough to start a charge (`start_a`), solar_no_car_surplus (worded with
     # the surplus in `surplus_kw`, null when not known), else solar_no_car.
     "solar_no_car": (TONE_NORMAL, ()),
     "solar_no_car_surplus": (TONE_NORMAL, ("surplus_kw",)),
