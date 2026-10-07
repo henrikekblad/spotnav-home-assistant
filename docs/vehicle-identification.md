@@ -151,7 +151,8 @@ by the same camera at the same spot works, day and night. So SpotNav compares pi
    of its kind, and **Delete** removes the car's pictures. A car without a reference picture is never recognised by
    the camera. A picture is cropped with the frame as it is when the picture is taken, so draw the frame first.
    When the frame is drawn again, the pictures taken with the earlier frame are marked "taken with another frame –
-   take it again" and are not used until they are taken again.
+   take it again" and are not used until they are taken again (a frame over the whole picture is the same as no
+   frame).
 
 Choosing the camera and the AI task is an administrator's, in the card. The SpotNav app can draw the frame and
 take, show and delete reference pictures for the camera chosen here, but cannot choose another camera or AI task.
@@ -163,8 +164,10 @@ the model is.
 
 - The camera **decides on its own** only when the model is sure ("high") and the car it names has a clearly
   different colour from every other car left, judged from the daylight reference pictures when they were taken.
-  Every car left must have a reference picture. At night (an infrared picture has no colour) it never decides
-  on its own.
+  Every car left must have a reference picture, and the colour of the picture now must be nearest the named
+  car's own reference colour. At night it never decides on its own: an infrared picture is grey, or evenly
+  tinted purple or pink by a camera without an infrared filter, and so are a few daylight pictures of only a white
+  or grey car on grey ground (then the camera only orders the buttons).
 - **A car's own report outranks the camera.** If, after the camera decided, a car's plug sensor or position
   settles it within the 30 minutes SpotNav listens, SpotNav switches to that car (recorded as decided by the plug
   sensor or the position). If the camera's car reports that it is not plugged in or away and nothing else
