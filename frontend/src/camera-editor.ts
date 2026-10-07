@@ -355,7 +355,7 @@ const KINDS: readonly PictureKind[] = ["day", "night"];
  * A car's reference pictures, one slot each for day and night: its thumbnail and when it was taken, or "No
  * picture"; one button that takes it ("Take day picture", "Take night picture", or "Retake" over a picture); and a
  * quiet Delete with a picture. A slot shows its own progress and failure, and a picture taken or deleted updates
- * its slot in place. The editor's one button is Close.
+ * its slot in place. The editor has no button of its own: the dialog's cross closes it.
  */
 export function referenceEditor(
   doc: Document,
@@ -468,14 +468,7 @@ export function referenceEditor(
   }
   help.hidden = pictures.length > 0;
 
-  const actions = element(doc, "div", C.settingsActions);
-  const close = element(doc, "button", C.button, say("dialog.close")) as HTMLButtonElement;
-  close.type = "button";
-  close.dataset["referenceClose"] = "true";
-  close.addEventListener("click", () => input.onClose(changed));
-  actions.append(close);
-  form.append(actions);
-  // Escape, the backdrop and the dialog's cross close it as Close does.
+  // No button of its own: the dialog's cross, Escape and the backdrop close it.
   return { form, close: () => input.onClose(changed) };
 }
 

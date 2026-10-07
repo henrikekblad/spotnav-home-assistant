@@ -22,6 +22,7 @@ import { LANGUAGES, translate, type TranslationKey } from "../src/i18n";
 import { cameraReplacement, decodeSettingsRecord, encodeBody } from "../src/settings";
 import { SETTINGS_API_VERSION, type SettingsRecord } from "../src/types";
 import { decodeDashboard } from "../src/validate";
+import { VISUAL_CLASSES } from "../src/visual-styles";
 import { FakeHass, mountCard } from "./helpers";
 
 const FIXTURES = join(__dirname, "..", "..", "tests", "fixtures");
@@ -84,6 +85,11 @@ async function openSettings(payload: Record<string, unknown>, language = "en") {
 function carSection(page: HTMLElement, id: string): HTMLElement {
   page.querySelector<HTMLButtonElement>(`[data-vehicle-tab='${id}'][aria-selected='false']`)?.click();
   return page.querySelector<HTMLElement>(`[data-section='vehicle'][data-vehicle='${id}']`)!;
+}
+
+/** The dialog's own cross: the reference editor's only way out besides Escape and the backdrop. */
+function cross(element: Element): HTMLButtonElement {
+  return openDialog(element)!.querySelector<HTMLButtonElement>(`.${VISUAL_CLASSES.dialogClose}`)!;
 }
 
 function openDialog(element: Element): HTMLElement | null {
@@ -336,12 +342,14 @@ describe("a car's reference pictures", () => {
     expect(night.querySelector<HTMLElement>("[data-reference-action='delete']")!.hidden).toBe(true);
     // A car with a picture is recognised: the warning is for a car with none.
     expect(form.querySelector<HTMLElement>("[data-reference-help]")!.hidden).toBe(true);
-    // The only button is Close.
+    // No Save and no Close of its own: the dialog's cross closes it.
     expect(form.querySelector("button[type='submit']")).toBeNull();
-    expect(form.querySelector("[data-reference-close]")?.textContent).toBe("Stäng");
+    expect(form.querySelector("[data-reference-close]")).toBeNull();
+    expect(Array.from(form.querySelectorAll("button")).every((button) => button.dataset["referenceAction"] !== undefined)).toBe(true);
+    expect(cross(element)).not.toBeNull();
   });
 
-  it("take and delete one kind in place, the dialog staying open, and read the dashboard again on Close", async () => {
+  it("take and delete one kind in place, the dialog staying open, and read the dashboard again when it is closed", async () => {
     const { hass, element } = await openSettings(dashboard());
     const form = await openEditor(element, NIRO);
     expect(form.querySelector<HTMLElement>("[data-reference-help]")!.hidden).toBe(false);
@@ -371,7 +379,7 @@ describe("a car's reference pictures", () => {
     await settle();
     expect(slot(form, "night").dataset["state"]).toBe("empty");
     const reads = hass.messages.length;
-    form.querySelector<HTMLButtonElement>("[data-reference-close]")!.click();
+    cross(element).click();
     await settle();
     expect(openDialog(element)?.querySelector("form[data-value-editor='reference']") ?? null).toBeNull();
     expect(hass.messages.length).toBeGreaterThan(reads);
@@ -380,11 +388,11 @@ describe("a car's reference pictures", () => {
     expect(openDialog(element)?.querySelector("[data-section='vehicle']")).not.toBeNull();
   });
 
-  it("close on Close without a read when nothing changed", async () => {
+  it("close without a read when nothing changed", async () => {
     const { hass, element } = await openSettings(dashboard());
     const form = await openEditor(element);
     const reads = hass.messages.length;
-    form.querySelector<HTMLButtonElement>("[data-reference-close]")!.click();
+    cross(element).click();
     await settle();
     expect(hass.messages.length).toBe(reads);
     expect(openDialog(element)?.querySelector("[data-section='vehicle']")).not.toBeNull();

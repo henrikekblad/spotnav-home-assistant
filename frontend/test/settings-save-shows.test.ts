@@ -9,6 +9,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { REFRESH_INTERVAL_MS } from "../src/card";
 import { translate } from "../src/i18n";
+import { VISUAL_CLASSES } from "../src/visual-styles";
 import { FakeHass, mountCard } from "./helpers";
 
 const FIXTURES = join(__dirname, "..", "..", "tests", "fixtures");
@@ -191,8 +192,8 @@ describe("a value shows its new value right after its editor saved", () => {
     const form = page(element).querySelector<HTMLFormElement>("form[data-value-editor='reference']")!;
     form.querySelector<HTMLButtonElement>("[data-reference='day'] [data-reference-action='take']")!.click();
     await settle();
-    // The picture shows in its slot at once; Close reads the dashboard again for the Settings row.
-    form.querySelector<HTMLButtonElement>("[data-reference-close]")!.click();
+    // The picture shows in its slot at once; closing the editor reads the dashboard again for the Settings row.
+    page(element).querySelector<HTMLButtonElement>(`.${VISUAL_CLASSES.dialogClose}`)!.click();
     await settle();
     const after = dashboard((payload) => {
       payload["camera_identification"]["references"][EV6] = [{ kind: "day", taken_at: "2026-10-07T12:00:00+00:00", colour: true }];
