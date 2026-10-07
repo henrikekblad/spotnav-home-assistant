@@ -35,6 +35,7 @@ from .camera_media import lend, take_back
 from .camera_pictures import (
     as_jpeg,
     colour_signature,
+    reference_signature,
     crop_jpeg,
     picture_size,
     Reference,
@@ -42,7 +43,7 @@ from .camera_pictures import (
     thumbnail_jpeg,
 )
 from .camera_rule import answer_structure, instructions_for, labels_for, parse_answer, Signature
-from .camera_settings import CameraSettings
+from .camera_settings import CameraSettings, normalised, same_frame
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -77,8 +78,8 @@ class CameraAnswer:
 
     vehicle_id: str | None
     confidence: str | None
-    #: The picture now has colour: at night (infrared) colour tells no car apart, whatever the references say.
-    in_colour: bool = True
+    #: The colour of the picture now (`None` at night: infrared shows none, and colour then tells no car apart).
+    now: Signature = None
 
 
 def _entity_choices(hass: HomeAssistant, domain: str, features: int = 0) -> list[dict[str, str]]:
@@ -111,10 +112,10 @@ def _write_temporary(path: Path, data: bytes) -> Path:
     return path
 
 
-def _crop_and_colour(jpeg: bytes, frame: Any) -> tuple[bytes, bool]:
-    """The crop, and whether it has colour (a daylight picture; an infrared one is grey all over)."""
+def _crop_and_colour(jpeg: bytes, frame: Any) -> tuple[bytes, Signature]:
+    """The crop, and its colour (`None` for an infrared picture)."""
     crop = crop_jpeg(jpeg, frame)
-    return crop, colour_signature(crop) is not None
+    return crop, colour_signature(crop)
 
 
 class CameraIdentification:
@@ -145,7 +146,7 @@ class CameraIdentification:
         return [
             item
             for item in self.references.references(vehicle_id, settings.camera_entity_id)
-            if item.frame == settings.frame
+            if same_frame(item.frame, settings.frame)
         ]
 
     def reference_signatures(self, vehicles: Sequence[str]) -> dict[str, list[Signature]]:
@@ -166,7 +167,7 @@ class CameraIdentification:
         if settings is None:
             return []
         return [
-            item.as_wire(stale=item.frame != settings.frame)
+            item.as_wire(stale=not same_frame(item.frame, settings.frame))
             for item in self.references.references(vehicle_id, settings.camera_entity_id)
         ]
 
@@ -227,13 +228,13 @@ class CameraIdentification:
             raise CameraUnavailable("no_camera")
         snapshot = await self.async_snapshot(settings.camera_entity_id)
         crop = await self._hass.async_add_executor_job(crop_jpeg, snapshot.jpeg, settings.frame)
-        signature = await self._hass.async_add_executor_job(colour_signature, crop, kind)
+        signature = await self._hass.async_add_executor_job(reference_signature, crop, kind)
         reference = Reference(
             vehicle_id=vehicle_id,
             kind=kind,
             taken_at=dt_util.utcnow().replace(microsecond=0),
             camera_entity_id=settings.camera_entity_id,
-            frame=settings.frame,
+            frame=normalised(settings.frame),
             signature=signature,
         )
         await self.references.async_put(reference, crop)
@@ -261,7 +262,7 @@ class CameraIdentification:
         if not labelled:
             raise CameraUnavailable("no_reference")
         snapshot = await self.async_snapshot(camera)
-        crop, in_colour = await self._hass.async_add_executor_job(_crop_and_colour, snapshot.jpeg, settings.frame)
+        crop, now = await self._hass.async_add_executor_job(_crop_and_colour, snapshot.jpeg, settings.frame)
         # Named before it is written, so a query cancelled meanwhile still removes it once the write is done.
         temporary = self.references.folder / "tmp" / f"query_{secrets.token_hex(8)}.jpg"
         tokens: list[str] = []
@@ -293,13 +294,7 @@ class CameraIdentification:
         finally:
             for token in tokens:
                 take_back(self._hass, token)
-            await self._async_remove_temporary(write, temporary)
+            # Removed once the write is done, from its own callback: no further cancel can skip it.
+            write.add_done_callback(lambda _done: self._hass.async_add_executor_job(temporary.unlink, True))
         vehicle_id, confidence = parse_answer((response or {}).get("data"), labelled)
-        return CameraAnswer(vehicle_id, confidence, in_colour)
-
-    async def _async_remove_temporary(self, write: asyncio.Future[Path], temporary: Path) -> None:
-        try:
-            await write
-        except Exception:  # noqa: BLE001 - a write that failed left nothing, or a part removed below
-            pass
-        await self._hass.async_add_executor_job(temporary.unlink, True)
+        return CameraAnswer(vehicle_id, confidence, now)

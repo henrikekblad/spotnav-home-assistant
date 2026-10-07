@@ -62,7 +62,7 @@ from homeassistant.util import dt as dt_util
 
 from ..const import DOMAIN
 from ..planning.auto_settings import AutoSettings, AutoSettingsError, AutoSettingsStore, IDENTIFY_ASK, IDENTIFY_OFF
-from .camera_rule import camera_verdict, may_query, QUERY_TIMEOUT_S
+from .camera_rule import camera_verdict, may_query, QUERY_TIMEOUT_S, Signature
 from .identification_sources import identification_sources, location_reading, plug_reading
 from . import vehicle_properties
 from .vehicle_discovery import resolve_target_vehicle
@@ -807,11 +807,11 @@ class VehicleIdentifier:
                 self._hass.loop.call_soon(self._evaluate)
             return
         session.camera_failed = False
-        self._apply_camera(session, entity_id, answer.vehicle_id, answer.confidence, answer.in_colour)
+        self._apply_camera(session, entity_id, answer.vehicle_id, answer.confidence, answer.now)
 
     @callback
     def _apply_camera(
-        self, session: _Session, entity_id: str | None, answer: str | None, confidence: str | None, in_colour: bool = True
+        self, session: _Session, entity_id: str | None, answer: str | None, confidence: str | None, now: Signature
     ) -> None:
         """The camera's answer, applied only while nothing has decided and no one has answered."""
         record = {"entity_id": entity_id, "answer": answer or "none", "confidence": confidence, "used": False}
@@ -823,7 +823,7 @@ class VehicleIdentifier:
         evidence = self._evidence(session, dt_util.utcnow())
         remaining = [item.vehicle_id for item in evidence if item.negative is None]
         verdict = camera_verdict(
-            answer, confidence, remaining, self._camera.reference_signatures(remaining), in_colour
+            answer, confidence, remaining, self._camera.reference_signatures(remaining), now
         )
         if verdict.prefers is None:
             return

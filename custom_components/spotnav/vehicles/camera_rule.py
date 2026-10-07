@@ -4,7 +4,8 @@ The camera is one source of evidence for vehicle identification (`identification
 the cars' own reports have not decided, and its answer:
 
 * **decides alone** only when it is high confidence, the picture now has colour (never at night: an infrared
-  picture is grey), every candidate left has a reference picture, and the car
+  picture is grey or evenly tinted) nearest the named car's reference colour, every candidate left has a
+  reference picture, and the car
   it names is visibly different in colour from every other candidate (`distinct_cars`, from the colour
   signature stored with each reference picture when it was taken; a picture without colour, an infrared night
   picture, says nothing about colour);
@@ -78,15 +79,19 @@ def camera_verdict(
     confidence: str | None,
     candidates: Sequence[str],
     references: Mapping[str, Sequence[Signature]],
-    in_colour: bool = True,
+    now: Signature,
 ) -> CameraVerdict:
     """What the camera's `answer` (a candidate, or `None` for none) at `confidence` counts for among the
     `candidates` the cars' own evidence left, given each car's reference pictures' signatures (a car missing
-    from `references`, or with an empty list, has no reference picture). `in_colour` is whether the picture now
-    has colour: at night (infrared, grey all over) colour tells no car apart, so the camera never decides then."""
+    from `references`, or with an empty list, has no reference picture). `now` is the colour of the picture now
+    (`None` at night: an infrared picture has none, so the camera never decides then), and it must be nearest
+    the named car's reference colour among the candidates: a model that names the red car for a white crop does
+    not decide."""
     if answer is None or answer not in candidates:
         return CameraVerdict()
-    if confidence != CONFIDENCE_HIGH or not in_colour:
+    if confidence != CONFIDENCE_HIGH or now is None:
+        return CameraVerdict(prefers=answer)
+    if nearest_car(now, candidates, references) != answer:
         return CameraVerdict(prefers=answer)
     if any(not references.get(car) for car in candidates):
         # A car the camera cannot recognise may be the one standing there.
@@ -94,6 +99,19 @@ def camera_verdict(
     if all(distinct_cars(references[answer], references[other]) for other in candidates if other != answer):
         return CameraVerdict(decides=answer, prefers=answer)
     return CameraVerdict(prefers=answer)
+
+
+def nearest_car(now: tuple[float, float, float], candidates: Sequence[str], references: Mapping[str, Sequence[Signature]]) -> str | None:
+    """The candidate whose nearest coloured reference picture is nearest `now`, or `None` when that is not one car
+    (a tie, or no coloured picture)."""
+    distances = {
+        car: min((colour_distance(now, signature) for signature in references.get(car, ()) if signature is not None), default=None)
+        for car in candidates
+    }
+    known = sorted((distance, car) for car, distance in distances.items() if distance is not None)
+    if not known or (len(known) > 1 and known[0][0] == known[1][0]):
+        return None
+    return known[0][1]
 
 
 def may_query(*, attempts: int, failed: bool, waiting: bool, remaining: int, elapsed_s: float, window_s: float) -> bool:
