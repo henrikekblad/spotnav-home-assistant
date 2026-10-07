@@ -287,7 +287,8 @@ await closeCardDialog();
 await openCard();
 await cardButton("^Plan:");
 await sleep(800);
-await b.click("label, input[type=radio]", "Target SoC").catch(() => {});
+// Charge by is a value row whose tap toggles the mode: tapped only while it shows energy.
+await b.click("[data-row='charge_by'] button", "^Energy").catch(() => {});
 await sleep(600);
 await cardShot("card-settings-plan", CARD_DIALOG);
 await closeCardDialog();
