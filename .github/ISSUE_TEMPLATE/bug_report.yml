@@ -1,0 +1,63 @@
+name: Something does not work as it should
+description: Report a bug in SpotNav for Home Assistant, its card or the app.
+title: "Bug: "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting! The debug file says far more than a description can, but it holds your entity ids,
+        device names, prices and charging times, so **do not attach it here** (files on GitHub are public).
+        Download it in the card (Settings → Support → **Download debug info**, administrators) right after the
+        problem happened, and email it to **support@sensnology.se** with this issue's number in the subject.
+        Do not paste addresses, webhook ids or tokens below.
+  - type: input
+    id: versions
+    attributes:
+      label: Versions
+      description: SpotNav (Settings → Devices & services → SpotNav), Home Assistant, and the app if you use it.
+      placeholder: "Example: SpotNav 1.14.0, Home Assistant 2026.10.1, app 1.2.0"
+    validations:
+      required: true
+  - type: input
+    id: hardware
+    attributes:
+      label: Charger, car and meter
+      placeholder: "Example: Easee Home (easee), Kia EV6 (kia_uvo), Tibber Pulse"
+    validations:
+      required: true
+  - type: dropdown
+    id: area
+    attributes:
+      label: Where it happens
+      multiple: true
+      options:
+        - Planning or prices
+        - Starting, stopping or the charging current
+        - Solar or hybrid
+        - Load balancing (main fuse)
+        - Which car is plugged in (identification or camera)
+        - Notifications
+        - The card
+        - The Android app or widget
+        - Setup
+        - Something else
+    validations:
+      required: true
+  - type: textarea
+    id: happened
+    attributes:
+      label: What happened
+      description: What you did, what you expected and what SpotNav did instead. The time it happened helps us find it in the debug file.
+    validations:
+      required: true
+  - type: dropdown
+    id: debug
+    attributes:
+      label: Debug file
+      options:
+        - I emailed it to support@sensnology.se with this issue's number
+        - I will email it shortly
+        - I cannot get it (say why above)
+    validations:
+      required: true

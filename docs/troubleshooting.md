@@ -9,7 +9,9 @@ Download diagnostics from **Settings, Devices & services, SpotNav**, the entry's
  The file has the entry's configuration, price data state, the planner
 and controller state, and for a site the measurements, their ages and the load-balancing
 decisions. The webhook id and OCPP charge point id are redacted, and no webhook or pairing URL is
-included, so the file is safe to attach to a public bug report.
+included. It still holds your entity ids, device names, prices and charging times, so don't attach it to a
+public GitHub issue: open the issue with the **bug report** form, then email the file to
+**support@sensnology.se** with the issue's number in the subject.
 
 The site entry's file (and the card's **Download debug info** in Settings, Support, for
 administrators) also carries the whole installation as one debug bundle (`bundle_version` 6):
