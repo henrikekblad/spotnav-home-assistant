@@ -722,7 +722,7 @@ def render() -> str:
         f"- **{DETECTED}**: SpotNav recognises the integration's entities and follows its documented "
         "behaviour, but nobody has confirmed it on real hardware yet.",
         "",
-        f"Using one of these? Tell us whether it works: [Works with my hardware or does not]({ISSUES_URL}).",
+        f"Using one of these? Tell us whether it works: [Hardware tested]({ISSUES_URL}).",
         "",
         "Jump to: [chargers](#supported-ev-chargers), [grid meters](#supported-grid-meters), "
         "[house batteries](#supported-house-batteries), [vehicles](#supported-vehicles), "
