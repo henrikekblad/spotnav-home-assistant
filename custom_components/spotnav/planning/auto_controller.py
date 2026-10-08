@@ -631,6 +631,9 @@ class AutoPlannerController:
         self._listeners: list[Callable[[AutoSnapshot], None]] = []
         self._unsubscribe: Callable[[], None] | None = None
         self._subscribed_area: str | None = None
+        # Which subscription a price notification belongs to. Not `_generation`: a settings write moves
+        # that and keeps an unchanged area's subscription, which would then be heard as stale for good.
+        self._subscription = 0
         self._generation = 0
         self._shutdown = False
         self._snapshot: AutoSnapshot | None = None
@@ -946,13 +949,14 @@ class AutoPlannerController:
         if self._subscribed_area == settings.area_id:
             return
         self._drop_subscription()
-        generation = self._generation
+        self._subscription += 1
+        subscription = self._subscription
         owner = f"{OWNER_PREFIX}{self._entry_id}"
 
         @callback
         def on_area_snapshot(_area_snapshot: Any) -> None:
             # The manager calls listeners synchronously; the calculation is a coroutine, so make it a task.
-            self._hass.async_create_task(self._on_area_changed(generation))
+            self._hass.async_create_task(self._on_prices_changed(subscription))
 
         self._unsubscribe = await self._manager.async_subscribe(
             owner_id=owner, area_id=settings.area_id, listener=on_area_snapshot
@@ -964,6 +968,17 @@ class AutoPlannerController:
             self._unsubscribe()
         self._unsubscribe = None
         self._subscribed_area = None
+        self._subscription += 1
+
+    async def _on_prices_changed(self, subscription: int) -> None:
+        """The subscribed area's prices changed (tomorrow's arrived, say): recalculate, unless the
+        notification belongs to a subscription since dropped or moved.
+
+        Judged by the subscription alone, whatever else is going on (a car plugged in or not).
+        """
+        if self._shutdown or subscription != self._subscription:
+            return
+        await self._on_area_changed(self._generation)
 
     async def _on_area_changed(self, generation: int) -> None:
         """A shared price snapshot changed: recalculate, unless this callback is stale.
