@@ -31,7 +31,7 @@ from custom_components.spotnav.planning.auto_settings import (
     PauseIntent,
     TargetSocIntent,
 )
-from custom_components.spotnav.execution.controller import ChargingController
+from custom_components.spotnav.execution.controller import CONNECTION_UNPLUGGED, ChargingController
 from custom_components.spotnav.diagnostics import async_get_config_entry_diagnostics
 from custom_components.spotnav.pricing.price_refresh import PriceRefreshManager
 
@@ -437,6 +437,64 @@ async def test_a_need_that_can_wait_for_tomorrows_prices_waits_and_says_when(
         abs((timer.when - datetime(2026, 9, 22, 18, 52, 51, tzinfo=timezone.utc)).total_seconds()) < 5
         for timer in harness.scheduler.pending
     ), f"{[t.when for t in harness.scheduler.pending]}: an appointment at the latest safe start: 08:00 tomorrow less 20 kWh at 80 percent of 2.3 kW, less one slot"
+
+
+async def test_tomorrows_prices_end_the_wait_after_a_settings_change_without_a_plug_in(
+    harness: Harness, no_execution: dict[str, Any]
+) -> None:
+    """Seen on a real charger: the car was unplugged and the plan waited for tomorrow's prices; they
+    arrived hours later and the plan kept waiting until the car was plugged in again.
+
+    The settings had been changed after the preview started (here: the departure set), and every
+    later price notification was then dropped as coming from an old subscription, because the area
+    was the same and the subscription was kept. Nothing about a vehicle is involved: the arrival of
+    tomorrow's prices must replan by itself. Today's document is not fetched again, so the
+    area-level `fetched_at` stays as it was; the new day must still count.
+    """
+    serve(harness.transport, days=(TODAY,), listed=(TODAY,))
+    harness.transport.serve(
+        harness.transport.day_path(SE4, TODAY), 200, cheap_night_day(SE4, TODAY)
+    )
+    controller = await harness.auto()
+    await controller.async_apply_settings(
+        mutate=lambda settings: replace(settings, departure_enabled=True, departure=time(8, 0))
+    )
+    # The car leaves: the replan after the unplug settles still waits for tomorrow's prices.
+    harness.clock.now = datetime(2026, 9, 22, 6, 43, 54, tzinfo=timezone.utc)
+    assert controller.note_connection(CONNECTION_UNPLUGGED) is False
+    settled = [timer for timer in harness.scheduler.pending if timer.when == harness.clock() + timedelta(seconds=5)]
+    assert len(settled) == 1
+    settled[0].fire()
+    await harness.hass.async_block_till_done()
+    waiting = controller.snapshot()
+    assert waiting.state == "waiting_for_publication"
+    stamp = harness.area.fetched_at
+    recording = Recording()
+    controller.add_listener(recording)
+
+    harness.clock.now = datetime(2026, 9, 22, 11, 7, tzinfo=timezone.utc)
+    harness.transport.serve(
+        harness.transport.day_path(SE4, TOMORROW), 200, cheap_night_day(SE4, TOMORROW)
+    )
+    serve_index(harness.transport, {SE4: list(_BOTH)})
+    # Only the price manager's own refresh fires: the planner's appointments (the latest safe start,
+    # the departure) lie hours ahead, and firing them would replan for a reason that was not there.
+    refreshes = [
+        timer for timer in harness.scheduler.pending
+        if getattr(getattr(timer.action, "func", None), "__name__", "") == "_on_global_refresh"
+    ]
+    assert refreshes
+    for timer in refreshes:
+        timer.fire()
+    await harness.hass.async_block_till_done()
+
+    assert harness.area.tomorrow_snapshot.document is not None, "tomorrow's prices arrived"
+    assert harness.area.fetched_at == stamp, "the area-level fetched_at did not move"
+    ready = controller.snapshot()
+    assert ready.state == "proposal_ready" and ready.reason == "ready"
+    assert ready.proposal is not None and ready.proposal.has_plan
+    assert recording.states[-1] == "proposal_ready", "listeners (card, app, sensors) heard it"
+    assert_nothing_executed(no_execution)
 
 
 async def test_only_what_cannot_wait_is_bought_now_from_known_prices(
