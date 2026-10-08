@@ -1,0 +1,22 @@
+name: "Idea: something SpotNav could do"
+description: Suggest a new feature or an improvement.
+title: "Idea: "
+labels: ["idea"]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: What would you like to be easier, cheaper or smarter?
+      description: The situation and what bothers you today — this helps more than a finished solution.
+    validations:
+      required: true
+  - type: textarea
+    id: idea
+    attributes:
+      label: Your idea
+      description: How you imagine SpotNav could handle it. Optional.
+  - type: input
+    id: setup
+    attributes:
+      label: Your setup (optional)
+      placeholder: "Example: Easee, Kia EV6, Tibber Pulse, solar with a battery"

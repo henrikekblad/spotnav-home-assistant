@@ -1,48 +1,27 @@
-name: Works with my hardware, or does not
-description: Tell us how SpotNav behaves with your charger, meter, battery, solar forecast or car.
+name: "Hardware tested: tell us what you use SpotNav with"
+description: A compatibility report for the supported list (works or not). For a bug, use Bug instead.
 title: "Hardware: "
 labels: ["hardware-report"]
 body:
   - type: markdown
     attributes:
       value: |
-        The supported hardware list (`docs/supported.md` in this repository) marks a row as Tested only when it is confirmed on real hardware. A report here moves a row
-        from "Detected from the integration's source" to Tested, or shows what to fix.
+        The supported hardware list (`docs/supported.md` in this repository) marks a row as Tested only when it is
+        confirmed on real hardware. A report here moves rows from "Detected from the integration's source" to
+        Tested, or shows what to fix. Something behaving wrongly? Use the **Bug** form instead.
         Do not paste addresses, webhook ids or tokens.
-  - type: dropdown
-    id: result
-    attributes:
-      label: Result
-      options:
-        - Works with my hardware
-        - Does not work with my hardware
-        - Works, with something to note
-    validations:
-      required: true
-  - type: dropdown
-    id: kind
-    attributes:
-      label: What kind of hardware
-      options:
-        - EV charger
-        - Grid meter
-        - House battery
-        - Solar forecast
-        - Car
-    validations:
-      required: true
-  - type: input
+  - type: textarea
     id: hardware
     attributes:
-      label: Make and model
-      placeholder: "Example: Charge Amps HALO"
-    validations:
-      required: true
-  - type: input
-    id: integration
-    attributes:
-      label: Home Assistant integration and its domain
-      placeholder: "Example: ocpp"
+      label: Your hardware
+      description: |
+        One line per device: what it is, make and model, the Home Assistant integration (its domain), and whether
+        it works with SpotNav. List everything you use with it: chargers, cars, grid meter, battery, solar forecast.
+      placeholder: |
+        Charger: Charge Amps HALO (ocpp) — works: start/stop, current, energy meter
+        Car: Kia EV6 (kia_uvo) — works, charge level every 30 min
+        Grid meter: Tibber Pulse (tibber) — works
+        Battery: Sigenergy (sigen) — power read fine
     validations:
       required: true
   - type: input
@@ -54,12 +33,5 @@ body:
   - type: textarea
     id: details
     attributes:
-      label: What happened
-      description: What you did, what you expected and what SpotNav did instead. For a charger, say which of start and stop, current control and the energy meter worked.
-    validations:
-      required: true
-  - type: textarea
-    id: diagnostics
-    attributes:
-      label: Diagnostics (optional)
-      description: Attach the file from Settings, Devices & services, SpotNav, the entry's menu, Download diagnostics. It is safe to attach publicly.
+      label: Anything to note (optional)
+      description: For a device that did not work, or only partly, what you saw. For a charger, say which of start and stop, current control and the energy meter worked.

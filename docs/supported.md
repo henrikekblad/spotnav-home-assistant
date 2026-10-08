@@ -10,7 +10,7 @@ Each row says how it is known to work:
 - **Set up by users: detected and configured, charging not yet confirmed**: users have added it and SpotNav detected and configured it correctly, but nobody has yet confirmed that charging or current control works.
 - **Detected from the integration's source**: SpotNav recognises the integration's entities and follows its documented behaviour, but nobody has confirmed it on real hardware yet.
 
-Using one of these? Tell us whether it works: [Works with my hardware or does not](../../../issues/new?template=hardware_report.yml).
+Using one of these? Tell us whether it works: [Hardware tested](../../../issues/new?template=hardware_report.yml).
 
 Jump to: [chargers](#supported-ev-chargers), [grid meters](#supported-grid-meters), [house batteries](#supported-house-batteries), [vehicles](#supported-vehicles), [solar forecast](#supported-solar-forecast), [price areas](#supported-price-areas).
 

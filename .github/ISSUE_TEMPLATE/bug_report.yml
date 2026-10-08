@@ -1,4 +1,4 @@
-name: Something does not work as it should
+name: "Bug: something does not work as it should"
 description: Report a bug in SpotNav for Home Assistant, its card or the app.
 title: "Bug: "
 labels: ["bug"]
