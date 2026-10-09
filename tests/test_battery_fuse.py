@@ -1064,7 +1064,11 @@ async def test_a_paused_charge_is_not_resumed_without_the_minimum_plus_a_margin(
 
 
 async def test_a_session_start_never_gives_the_car_more_than_the_site_allows(hass: HomeAssistant) -> None:
-    controller, charger, calls, yield_clock, damper_clock, site, prefix = await _owner_site(hass, "bfstart")
+    # The battery idle: what the start may take is the site's margin (one charging from the grid starts the car at
+    # its minimum, `tests/test_balancing_retry.py`).
+    controller, charger, calls, yield_clock, damper_clock, site, prefix = await _owner_site(
+        hass, "bfstart", battery_w=0.0
+    )
     cc = controller_of(hass, charger.entry_id)
     cc.set_start_cap(lambda: controller.start_allowance_a(charger.entry_id))
     turn_on = async_mock_service(hass, "switch", "turn_on")

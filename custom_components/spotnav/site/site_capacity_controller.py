@@ -706,6 +706,7 @@ class SiteCapacityController:
         current_conflicts = self.membership_conflicts
         self._observe_reports()
         self.result = self._calculate()
+        self._sample_battery()
         self._observe_charger_starts(previous)
         self._update_direction_history()
         previous_decisions = self.regulator_decisions
@@ -1045,7 +1046,8 @@ class SiteCapacityController:
 
     def start_allowance_a(self, charger_entry_id: str) -> float | None:
         """What a start may give this charger now, in amps: the tightest phase's uncredited margin
-        plus what the charger already delivers there. `None` (no cap) unless active control is on,
+        plus what the charger already delivers there, and no more than the car's minimum while the home
+        battery fills the fuse (`_battery_takes_the_fuse`). `None` (no cap) unless active control is on,
         nothing blocks writing, and the measurement is usable on every phase the charger uses."""
         if not self._active_control_allowed() or self.membership_conflicts:
             return None
@@ -1068,7 +1070,13 @@ class SiteCapacityController:
                 return None
             own = 0.0 if delivered is None else (delivered.get(phase).value or 0.0)
             allowances.append(margin + own - reserved.get(phase, 0.0))
-        return max(0.0, min(allowances))
+        allowance = max(0.0, min(allowances))
+        minimum = self._min_current_a(charger_entry_id)
+        if allowance >= minimum and self._battery_takes_the_fuse():
+            # The battery fills the fuse as the car starts: the car goes in at its minimum, so the battery has a car
+            # it can give way to rather than a full one on top of it, and yield stepping raises it from there.
+            return minimum
+        return allowance
 
     def reserve_start(self, charger_entry_id: str, amps: float | None) -> None:
         """A start of `amps` is on its way to this charger (`None`: it did not go out, or is over). Until
@@ -1366,6 +1374,20 @@ class SiteCapacityController:
             charger_entry_id, charger_controller, decision, fresh, damper, previous_setpoint
         ):
             return True
+
+        minimum = self._min_current_a(charger_entry_id)
+        if (
+            previous_setpoint is None
+            and proposed > minimum
+            and not self._car_draws(charger_entry_id, decision)
+            and self._battery_takes_the_fuse()
+        ):
+            # The first word on a charge that starts with its current not known here (a start, a charger that began
+            # by itself): with the battery filling the fuse it is the car's minimum, never the whole request on a
+            # basis yield stepping has not had yet. A lowering only, and never of a car already drawing; the stepper
+            # raises it on what the battery gives up.
+            decision = replace(decision, proposed_current_a=minimum)
+            proposed = minimum
 
         # Yield-verified stepping, only when enabled. The probe gate matters even though writes
         # are suppressed during a probe: its artificial steps would contaminate the observation.
