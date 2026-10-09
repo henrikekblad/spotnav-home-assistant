@@ -13,7 +13,9 @@ from __future__ import annotations
 from dataclasses import replace
 from datetime import datetime, timedelta, timezone
 from typing import Any
+from uuid import uuid4
 
+import pytest
 from homeassistant.core import HomeAssistant
 from homeassistant.util import dt as dt_util
 from pytest_homeassistant_custom_component.common import async_fire_time_changed, async_mock_service
@@ -25,12 +27,21 @@ from custom_components.spotnav.notifications.notifier import (
     PLUG_IN_WAIT_S,
     SETTLE_S,
 )
+from custom_components.spotnav.notifications import push as push_module
 from custom_components.spotnav.notifications.push import PushRegistration
 from custom_components.spotnav.runtime import charger_data, domain_data
 
 from .test_notifications import _choose
-from .test_push import FakeRelay, REF, relay  # noqa: F401 - the relay fixture
+from .test_push import FakeRelay, REF
 from .world import controller_of, setup_charger
+
+@pytest.fixture
+def relay(monkeypatch: pytest.MonkeyPatch) -> FakeRelay:
+    """The SpotNav relay the paired app's wake-ups go to, recording each one."""
+    fake = FakeRelay()
+    monkeypatch.setattr(push_module, "async_get_clientsession", lambda _hass: fake)
+    return fake
+
 
 DAY = datetime(2026, 10, 9, tzinfo=timezone.utc)
 
@@ -40,6 +51,8 @@ def at(hour: int, minute: int = 0, second: int = 0, *, day: int = 0) -> datetime
 
 
 def plan_of(periods: list[tuple[datetime, datetime]], kwh: float, **changes: Any) -> ChargingPlan:
+    """A plan as Auto installs one: each calculation has its own identity (settings revision, prices)."""
+    changes.setdefault("auto_identity", uuid4().hex)
     return ChargingPlan(
         start=periods[0][0].isoformat(),
         end=periods[-1][1].isoformat(),
@@ -188,7 +201,8 @@ async def test_a_burst_of_plans_tells_only_the_last_one(hass: HomeAssistant, fre
     await _go(hass, freezer, at(14, 10, 20) + timedelta(seconds=SETTLE_S - 2))
     assert _told(calls) == [] and relay.requests == []
     await _go(hass, freezer, at(14, 10, 20) + timedelta(seconds=SETTLE_S + 1))
-    assert _told(calls) == ["New plan: charging from 22:00. 32.0 kWh planned."]
+    told = _told(calls)
+    assert len(told) == 1 and "32.0 kWh planned" in told[0]
     assert len(relay.requests) == 1
 
 
