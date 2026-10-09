@@ -42,6 +42,9 @@ Precedence (first match wins the headline; "add" rows append a fact line)
      charging_without_prices (+plan_energy) > topping_off{until} (the plan's last window ended with the
      car still drawing on a charge to its own limit: it charges until the car is full, at most until
      `until`) > charging_now (+plan_energy +plan_cost) >
+     balancing_paused{retry_at, cause} (+plan_energy +plan_cost; inside an installed period, load balancing
+     paused the plan's charge because the house, or a home battery charging from the grid (`cause`), takes the
+     whole fuse: it is tried again at `retry_at`, or as soon as there is room when that is null) >
      held_until_window{time} (a charge that started by itself outside the plan was stopped, or a car
      waits for the next window) >
      waiting_for_history > waiting_for_publication > buying_before_publication > auto_planned (+energy +cost +distance) >
@@ -164,6 +167,10 @@ STATUS_CODES: Final[dict[str, tuple[str, tuple[str, ...]]]] = {
     # The car's known state of charge is below its minimum charge level (`percent`): SpotNav charges at once.
     "min_soc_charging": (TONE_NORMAL, ("percent",)),
     "charging_now": (TONE_NORMAL, ("until",)),
+    # Inside an installed period load balancing paused the plan's charge: the house, or a home battery charging from
+    # the grid (`cause`, as `load_balancing_limited`'s), takes the whole fuse. It is tried again at `retry_at` (a
+    # battery probe's or a resume's back-off end), or as soon as there is room when that is null.
+    "balancing_paused": (TONE_NORMAL, ("retry_at", "cause")),
     # The plan's last window ended with the car still drawing on a charge to its own limit: it goes on
     # until the car stops by itself, at most until `until` (an hour past the window, never past the
     # departure).
@@ -468,6 +475,11 @@ class StatusFacts:
     identification: str | None = None
     #: The car's minimum charge level while its own charge runs (`min_soc_floor.py`), else `None`.
     min_soc_percent: float | None = None
+    #: Load balancing holds the charge back (`ChargingController.paused_by_balancing`): when it is tried again
+    #: (`None`: as soon as there is room) and why there is no room (`SiteCapacityController.balancing_pause`).
+    balancing_paused: bool = False
+    balancing_retry_at: datetime | None = None
+    balancing_cause: str | None = None
 
 
 def _line(code: str, **params: Any) -> dict[str, Any]:
@@ -726,6 +738,16 @@ def _plan_headline(facts: StatusFacts) -> list[dict[str, Any]]:
         ]
     if facts.charging:
         return [_line("charging_now", until=None)]
+    if facts.balancing_paused and active is not None:
+        retry_at = facts.balancing_retry_at
+        return [
+            _line(
+                "balancing_paused",
+                retry_at=None if retry_at is None or retry_at <= now else aware_iso(retry_at),
+                cause=facts.balancing_cause,
+            ),
+            *_plan_facts(proposal, energy=True, cost=True, distance=False),
+        ]
     if facts.hold_until is not None:
         return [_line("held_until_window", time=aware_iso(facts.hold_until))]
     wait = _price_wait_line(facts)
