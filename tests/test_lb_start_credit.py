@@ -86,8 +86,18 @@ class _Halo:
         await self.hass.async_block_till_done()
 
 
-async def _halo(hass: HomeAssistant, monkeypatch, entry_id: str = "halo", *, l1=1.63, l2=0.92, l3=6.36) -> _Halo:
-    """The owner's site at 03:30, the car plugged in, not charging, the charger reading nothing."""
+async def _halo(
+    hass: HomeAssistant,
+    monkeypatch,
+    entry_id: str = "halo",
+    *,
+    l1=1.63,
+    l2=0.92,
+    l3=6.36,
+    battery_entity: str | None = None,
+) -> _Halo:
+    """The owner's site at 03:30, the car plugged in, not charging, the charger reading nothing. `battery_entity`: the
+    home battery's power (W, positive while it charges), as the owner's Sigenergy reports it."""
     from custom_components.spotnav.execution.chargers.adapter import ChargerAdapter
 
     prefix = f"{entry_id}_charger"
@@ -131,6 +141,7 @@ async def _halo(hass: HomeAssistant, monkeypatch, entry_id: str = "halo", *, l1=
         derived_entities=derived,
         active_control_enabled=True,
         yield_stepping_enabled=True,
+        battery_aggregate_power_entity=battery_entity,
     )
     assert await hass.config_entries.async_setup(site_entry.entry_id)
     await hass.async_block_till_done()
