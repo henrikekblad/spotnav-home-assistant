@@ -11,6 +11,23 @@ trackers, so a disabled event entity does not silence a phone:
 * the controller's `completion_record` for `charge_complete`, with the charge's energy and cost from
   its session.
 
+A new plan (`plan_installed`) is told only when it is news to a person, on the phones and in the app's wake-up
+alike (the event entity still fires for every plan):
+
+* it settles first: plans installed within `SETTLE_S` of one another are one burst, and only the plan standing
+  when the burst is over is judged (`SETTLE_MAX_S` bounds a burst that never ends);
+* not while the car is known to be away: a charger that says no car is connected keeps planning, but nothing
+  is told. An unknown reading keeps the last known one; a charger that cannot say at all tells as before. After
+  a plug-in the first plan installed is told; if none comes, the standing plan is told after `PLUG_IN_WAIT_S`
+  or when its first window opens, whichever is sooner;
+* not when it is the plan last told about (`plan_fingerprint`, kept across restarts), nor what is left of it
+  (`plan_is_remainder`: a window ended, or the plan was calculated again partway through);
+* not when it follows a person's own settings write (`QUIET_AFTER_WRITE_S`): they see it.
+
+Each plan told is counted (`plan_notice`, kept across restarts with the told plan), whatever phones are chosen
+or limits allow: the dashboard carries the count, and the paired app's own check tells a new plan when it
+rises instead of deciding by itself.
+
 Every event first sets a baseline: loading the integration is not an event. Sending is rate-limited
 per charger: the same event is not sent again within `REPEAT_S`, and no more than `HOURLY_LIMIT`
 notifications go out in an hour. Each notification carries a `tag` (one per charger and event), so a
@@ -74,6 +91,20 @@ DEFAULT_URL: Final = "/"
 REASON_CHARGER_IGNORES_STOP: Final = "charger_ignores_stop"
 #: A new plan calculated this soon after a settings write for the charger is not announced.
 QUIET_AFTER_WRITE_S: Final = 60.0
+#: Plans installed this close to one another are one burst: only the last is judged. Long enough for a
+#: person's few quick writes (seven seconds apart in the field) and for Auto's replan after a plug-in, whose
+#: connector status settles for 5 s; short enough that the plan is still told while the person looks at it.
+SETTLE_S: Final = 30.0
+#: A burst that keeps going is judged this long after its first plan all the same.
+SETTLE_MAX_S: Final = 120.0
+#: After a plug-in with no new plan, the standing plan is told this long after it (or as its first window
+#: opens, if sooner). A car's own cloud often reports its level only on its next poll, about half an hour
+#: after a plug-in in the field, and the plan made from that reading is the one worth telling.
+PLUG_IN_WAIT_S: Final = 45 * 60.0
+#: Two period edges this close are the same edge.
+_EDGE_S: Final = 60.0
+#: A remainder may carry this much more energy than the told plan (rounding).
+_ENERGY_SLACK_KWH: Final = 0.05
 #: A completed charge's session is the open one, or one that closed this recently.
 _SESSION_RECENT_S: Final = 600.0
 
@@ -103,6 +134,54 @@ def plan_fingerprint(plan: Any) -> str | None:
     energy = None if plan.energy_kwh is None else round(plan.energy_kwh, 1)
     return json.dumps(
         [[[item["start"], item["end"]] for item in periods], energy, plan.vehicle_id], separators=(",", ":")
+    )
+
+
+def _intervals(periods: list[Any]) -> list[tuple[datetime, datetime]] | None:
+    """Sorted, merged `(start, end)` instants of `[start, end]` ISO pairs, or `None` when one is unreadable."""
+    parsed: list[tuple[datetime, datetime]] = []
+    for start, end in periods:
+        begin, finish = dt_util.parse_datetime(start), dt_util.parse_datetime(end)
+        if begin is None or finish is None:
+            return None
+        if finish > begin:
+            parsed.append((begin, finish))
+    merged: list[tuple[datetime, datetime]] = []
+    for begin, finish in sorted(parsed):
+        if merged and begin <= merged[-1][1]:
+            merged[-1] = (merged[-1][0], max(merged[-1][1], finish))
+        else:
+            merged.append((begin, finish))
+    return merged
+
+
+def plan_is_remainder(plan: Any, told: str | None, now: datetime) -> bool:
+    """Whether `plan` is only what is left of the plan last told about (its `plan_fingerprint`): the same car,
+    the told periods from now on (or from the new plan's first start, if that is earlier), and no more energy.
+
+    A window that ended, or a plan calculated again partway through, gives one; any period added, moved or
+    left out of what was still ahead, more energy or another car is a real change.
+    """
+    fingerprint = plan_fingerprint(plan)
+    if fingerprint is None or told is None:
+        return False
+    try:
+        told_periods, told_energy, told_vehicle = json.loads(told)
+    except (ValueError, TypeError):
+        return False
+    new_periods, new_energy, new_vehicle = json.loads(fingerprint)
+    if new_vehicle != told_vehicle or (new_energy is None) != (told_energy is None):
+        return False
+    if new_energy is not None and new_energy > told_energy + _ENERGY_SLACK_KWH:
+        return False
+    new, before = _intervals(new_periods), _intervals(told_periods)
+    if not new or before is None:
+        return False
+    cut = min(new[0][0], now)
+    left = [(max(begin, cut), finish) for begin, finish in before if finish > cut]
+    return len(left) == len(new) and all(
+        abs((a[0] - b[0]).total_seconds()) <= _EDGE_S and abs((a[1] - b[1]).total_seconds()) <= _EDGE_S
+        for a, b in zip(left, new, strict=True)
     )
 
 
@@ -143,23 +222,53 @@ class ChargerNotifier:
         # The fingerprint of the plan last told about, kept across restarts (see `plan_fingerprint`).
         self._plan_store: Store[dict[str, Any]] = Store(hass, _STORE_VERSION, f"{_STORE_KEY_PREFIX}.{entry_id}")
         self._notified_plan: str | None = None
+        # The plans told so far and when the last was (`plan_notice`), kept with the told plan.
+        self._notice_seq = 0
+        self._notice_at: datetime | None = None
+        # The car at the charger: the last known reading, `None` before one (or for a charger that cannot say).
+        self._connected: bool | None = None
+        # A plan burst being settled: when it began, when it is judged, and whether its last plan followed a
+        # person's own write. `_owed_until`: after a plug-in, when the standing plan is told if none follows.
+        self._burst_since: datetime | None = None
+        self._burst_due: datetime | None = None
+        self._burst_quiet = False
+        self._owed_until: datetime | None = None
+        self._plan_timer: CALLBACK_TYPE | None = None
+        self._plan_timer_at: datetime | None = None
 
     async def async_load(self) -> None:
         """Read the last told plan's fingerprint, before `async_start`."""
         raw = await self._plan_store.async_load()
         fingerprint = raw.get("fingerprint") if isinstance(raw, dict) else None
         self._notified_plan = fingerprint if isinstance(fingerprint, str) else None
+        seq = raw.get("notice_seq") if isinstance(raw, dict) else None
+        self._notice_seq = seq if isinstance(seq, int) and not isinstance(seq, bool) and seq >= 0 else 0
+        at = raw.get("notice_at") if isinstance(raw, dict) else None
+        self._notice_at = dt_util.parse_datetime(at) if isinstance(at, str) and self._notice_seq else None
 
     @staticmethod
     async def async_remove_stored(hass: HomeAssistant, entry_id: str) -> None:
         """The charger is gone for good: forget the plan it last told about."""
         await Store(hass, _STORE_VERSION, f"{_STORE_KEY_PREFIX}.{entry_id}").async_remove()
 
+    @property
+    def plan_notice(self) -> dict[str, Any]:
+        """How many plans were told (`seq`, 0 before the first) and when the last was (`at`, ISO, or `None`)."""
+        at = self._notice_at
+        return {"seq": self._notice_seq, "at": None if at is None else at.isoformat()}
+
     def _remember_plan(self, fingerprint: str | None) -> None:
         if fingerprint is None or fingerprint == self._notified_plan:
             return
         self._notified_plan = fingerprint
-        self._hass.async_create_task(self._plan_store.async_save({"fingerprint": fingerprint}), eager_start=True)
+        self._save_plan()
+
+    def _save_plan(self) -> None:
+        record: dict[str, Any] = {"fingerprint": self._notified_plan}
+        if self._notice_seq:
+            record["notice_seq"] = self._notice_seq
+            record["notice_at"] = None if self._notice_at is None else self._notice_at.isoformat()
+        self._hass.async_create_task(self._plan_store.async_save(record), eager_start=True)
 
     @callback
     def async_start(self, preview: Any = None) -> None:
@@ -176,6 +285,7 @@ class ChargerNotifier:
             remove()
         self._unsubscribe.clear()
         self._cancel_recheck()
+        self._arm_plan_timer(None)
 
     @callback
     def _on_snapshot(self, snapshot: AutoSnapshot) -> None:
@@ -190,6 +300,7 @@ class ChargerNotifier:
         controller = self._controller
         settings = self._store.settings(self._entry_id)
         now = dt_util.utcnow()
+        self._observe_connection(now)
         events: list[tuple[str, dict[str, Any]]] = []
         for kind, attributes in self._tracker.observe(
             charger_facts(self._hass, controller, self._snapshot, settings)
@@ -212,6 +323,30 @@ class ChargerNotifier:
         self._arm_recheck(self._stops.due_at)
         for kind, attributes in events:
             self._maybe_send(kind, attributes, now)
+
+    def _observe_connection(self, now: datetime) -> None:
+        """Follow the car at the charger. An unknown reading keeps the last known one; a plug-in owes the
+        plan that then stands, an unplug drops a plan not yet told."""
+        adapter = self._controller.adapter
+        if not adapter.reports_connection:
+            self._connected = None
+            return
+        reading = adapter.vehicle_connected()
+        if reading is None or reading == self._connected:
+            return
+        before, self._connected = self._connected, reading
+        if not self._baselined or before is None:
+            return
+        if reading:
+            plan = self._controller.plan
+            until = now + timedelta(seconds=PLUG_IN_WAIT_S)
+            if plan is not None:
+                until = max(min(until, plan.start_time), now + timedelta(seconds=SETTLE_S))
+            self._owed_until = until
+        else:
+            self._burst_since = self._burst_due = self._owed_until = None
+            self._burst_quiet = False
+        self._arm_plan_timer(self._plan_due())
 
     def _expectation(self, now: datetime) -> ExpectationFacts:
         controller = self._controller
@@ -282,21 +417,86 @@ class ChargerNotifier:
         self._recheck = None
         self._recheck_at = None
 
+    # ------------------------------------------------------------------ a new plan, settled
+
+    def _plan_installed(self, now: datetime) -> None:
+        """A plan was installed: start or extend its burst. Nothing is told while the car is away."""
+        if self._connected is False:
+            return
+        written = self._store.last_settings_write(self._entry_id)
+        self._burst_quiet = written is not None and 0 <= (now - written).total_seconds() < QUIET_AFTER_WRITE_S
+        if self._burst_since is None:
+            self._burst_since = now
+        self._burst_due = min(
+            now + timedelta(seconds=SETTLE_S), self._burst_since + timedelta(seconds=SETTLE_MAX_S)
+        )
+        # The plan after a plug-in is here: it, not the one that stood, is what is told.
+        self._owed_until = None
+        self._arm_plan_timer(self._plan_due())
+
+    def _plan_due(self) -> datetime | None:
+        return self._burst_due if self._burst_due is not None else self._owed_until
+
+    def _arm_plan_timer(self, due: datetime | None) -> None:
+        if due == self._plan_timer_at:
+            return
+        if self._plan_timer is not None:
+            self._plan_timer()
+        self._plan_timer = None
+        self._plan_timer_at = due
+        if due is None:
+            return
+
+        @callback
+        def _fire(_now: datetime) -> None:
+            self._plan_timer = None
+            self._plan_timer_at = None
+            self._judge_plan(dt_util.utcnow())
+
+        self._plan_timer = async_track_point_in_utc_time(self._hass, _fire, due)
+
+    def _judge_plan(self, now: datetime) -> None:
+        """The burst is over (or a plug-in's wait ran out): tell the plan that stands if it is news."""
+        due = self._plan_due()
+        if due is None or now < due:
+            self._arm_plan_timer(due)
+            return
+        quiet = self._burst_due is not None and self._burst_quiet
+        self._burst_since = self._burst_due = self._owed_until = None
+        self._burst_quiet = False
+        plan = self._controller.plan
+        fingerprint = plan_fingerprint(plan)
+        if fingerprint is None or self._connected is False:
+            return
+        if quiet:
+            # A person just changed this charger's settings and sees the plan that followed: not told, but
+            # known, so the same plan after a restart is not told either.
+            self._remember_plan(fingerprint)
+            return
+        if fingerprint == self._notified_plan:
+            # The same plan as the one last told about (Home Assistant restarted, a burst came back to it, or
+            # it was calculated again to the same result): nothing new for a person.
+            return
+        if plan_is_remainder(plan, self._notified_plan, now):
+            # What is left of the told plan (a window ended): told already. The told plan stays the measure.
+            _LOGGER.debug("SpotNav charger %s: the rest of the told plan is not told again", self._entry_id)
+            return
+        # News: counted and known whether or not a phone or the app hears of it now (the app reads the count).
+        self._notice_seq += 1
+        self._notice_at = now
+        self._notified_plan = fingerprint
+        self._save_plan()
+        self._send(EVENT_PLAN_INSTALLED, {}, now, fingerprint)
+
     # ------------------------------------------------------------------ sending
 
     def _maybe_send(self, event: str, attributes: dict[str, Any], now: datetime) -> None:
-        fingerprint = plan_fingerprint(self._controller.plan) if event == EVENT_PLAN_INSTALLED else None
         if event == EVENT_PLAN_INSTALLED:
-            written = self._store.last_settings_write(self._entry_id)
-            if written is not None and 0 <= (now - written).total_seconds() < QUIET_AFTER_WRITE_S:
-                # A person just changed this charger's settings and sees the plan that followed: not
-                # told, but known, so the same plan after a restart is not told either.
-                self._remember_plan(fingerprint)
-                return
-        if fingerprint is not None and fingerprint == self._notified_plan:
-            # The same plan as the one last told about (Home Assistant restarted, or it was calculated
-            # again to the same result): nothing new for a person.
+            self._plan_installed(now)
             return
+        self._send(event, attributes, now, None)
+
+    def _send(self, event: str, attributes: dict[str, Any], now: datetime, fingerprint: str | None) -> None:
         if self._push is not None:
             # The paired app's wake-up, with its own events and limits, whatever phones are chosen here.
             if self._push.async_event(event, now):

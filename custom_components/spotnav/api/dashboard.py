@@ -474,6 +474,8 @@ class CapturedDashboard:
     voltage_between_phases_v: float = 400.0
     #: The open charge session, `None` while none runs.
     session: CapturedSession | None = None
+    #: The notifier's count of the plans it told (`ChargerNotifier.plan_notice`), `None` without a notifier.
+    plan_notice: dict[str, Any] | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -1107,7 +1109,14 @@ def capture_dashboard(
         measured_power_kw=_measured_power_kw(controller),
         voltage_between_phases_v=voltage_between_phases_v(hass, entry_id),
         session=capture_session(hass, entry_id),
+        plan_notice=_plan_notice(hass, entry_id),
     )
+
+
+def _plan_notice(hass: HomeAssistant, entry_id: str) -> dict[str, Any] | None:
+    data = charger_data(hass, entry_id)
+    notifier = None if data is None else data.notifier
+    return None if notifier is None else notifier.plan_notice
 
 
 def _identification(hass: HomeAssistant, entry_id: str) -> dict[str, Any] | None:
@@ -1726,6 +1735,8 @@ def serialize_dashboard(
         "charger_priority": serialize_charger_priority(capture.charger_priority, can_act=can_act),
         "identification": capture.identification,
         "vehicle_choices": [{"id": vehicle_id, "name": name} for vehicle_id, name in capture.vehicle_choices],
+        # Additive: the plans the notifier told, so the paired app tells a new plan by the same decision.
+        "plan_notice": capture.plan_notice,
         # Additive, and only where a camera is offered or chosen: an older client never meets it.
         **(
             {}

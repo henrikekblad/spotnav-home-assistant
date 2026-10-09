@@ -175,6 +175,10 @@
     },
     "remaining_kwh": null
   },
+  "plan_notice": {
+    "at": null,
+    "seq": 0
+  },
   "planning": {
     "applied": true,
     "applied_identity": "1d82cd5d3c6d566ddcbbae97de7f6a12",

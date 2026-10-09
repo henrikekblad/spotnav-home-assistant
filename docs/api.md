@@ -268,6 +268,14 @@ action and the automatic action, with pause choices), `live`, `status` (typed st
 and `strategy_state`, `vehicles` and `soc`, `site`, `charging_phases`, `phase_detection`, `charge_progress`, `progress`.
 Example documents are in `tests/fixtures/dashboard/`.
 
+**Plans told.** The additive root `plan_notice` (`{"seq", "at"}`) counts the new plans Home Assistant told
+about: `seq` rises by one each time the charger's notifier decides a new plan is news (the decision that sends
+the Companion phones' "New plan" and wakes the paired app, see [Notifications](notifications.md#when-a-new-plan-is-told)),
+whether or not a phone was chosen or a limit held the message back; `at` is when that was (ISO), `null` before
+the first. It is kept across restarts and never falls back. A client that tells a person about new plans does so
+when `seq` changes, instead of comparing plans itself; a backend without the field leaves that to the client.
+`null` for a charger without a notifier.
+
 **A person's own pause.** A Start or Stop pauses automatic execution for the plug-in session: the
 `control.pause` record then carries the choice `manual` with two more keys, `action` (`start` or `stop`)
 and `scope` (`plug_in`, the plug-in the car is in, or `next_plug_in` for a Stop given with no car), and no

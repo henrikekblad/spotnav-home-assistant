@@ -19,6 +19,7 @@ from pytest_homeassistant_custom_component.common import (
 from custom_components.spotnav.api.settings import decode_settings, encode_settings
 from custom_components.spotnav.api.webhook import _for_app, APP_UNREAD_SETTINGS
 from custom_components.spotnav.execution.controller import ChargingPlan
+from custom_components.spotnav.notifications.notifier import SETTLE_S
 from custom_components.spotnav.notifications.messages import compose, Money, money_text, NAMESPACE
 from custom_components.spotnav.texts import language_of, languages, read_files
 from custom_components.spotnav.notifications.settings import (
@@ -452,6 +453,13 @@ async def test_the_app_keeps_notifications_it_does_not_read_and_edits_them_when_
 # ------------------------------------------------------------------ a plan a person's own settings write caused
 
 
+async def _install(hass: HomeAssistant, freezer: Any, controller: Any, plan: ChargingPlan) -> None:
+    """Install a plan and let it settle: a new plan is told once no other follows within `SETTLE_S`."""
+    await controller.async_install(plan)
+    await hass.async_block_till_done()
+    await _later(hass, freezer, SETTLE_S + 1)
+
+
 def _installs(calls: list[Any]) -> list[Any]:
     return [call for call in calls if call.data["message"].startswith("New plan")]
 
@@ -474,15 +482,13 @@ async def test_a_plan_after_a_settings_write_is_not_announced(hass: HomeAssistan
     entry, calls, controller = await _quiet_charger(hass, freezer)
     await _write_amps(hass, entry.entry_id)
     await _later(hass, freezer, 5)
-    await controller.async_install(_window_now(amps=12))
-    await hass.async_block_till_done()
+    await _install(hass, freezer, controller, _window_now(amps=12))
     assert _installs(calls) == []
 
 
 async def test_a_plan_from_new_prices_is_announced(hass: HomeAssistant, freezer: Any) -> None:
     entry, calls, controller = await _quiet_charger(hass, freezer)
-    await controller.async_install(_window_now(amps=12))
-    await hass.async_block_till_done()
+    await _install(hass, freezer, controller, _window_now(amps=12))
     assert len(_installs(calls)) == 1
 
 
@@ -490,8 +496,7 @@ async def test_a_write_a_minute_ago_does_not_silence_the_next_plan(hass: HomeAss
     entry, calls, controller = await _quiet_charger(hass, freezer)
     await _write_amps(hass, entry.entry_id)
     await _later(hass, freezer, 61)
-    await controller.async_install(_window_now(amps=12))
-    await hass.async_block_till_done()
+    await _install(hass, freezer, controller, _window_now(amps=12))
     assert len(_installs(calls)) == 1
 
 
@@ -516,8 +521,7 @@ async def test_an_entity_write_quiets_the_plan_too(hass: HomeAssistant, freezer:
     await _later(hass, freezer, 120)
     amps = entity_id(hass, entry.entry_id, "charging_current", "number")
     await call(hass, "number", "set_value", {"entity_id": amps, "value": 12})
-    await controller.async_install(_window_now(amps=12))
-    await hass.async_block_till_done()
+    await _install(hass, freezer, controller, _window_now(amps=12))
     assert _installs(calls) == []
 
 
@@ -533,8 +537,7 @@ async def test_a_webhook_write_quiets_the_plan_too(
         client, {"action": "settings", "expected_revision": settings["revision"], "settings": {**body, "amps": 12}}
     )
     assert status == 200 and answer["ok"] is True
-    await controller.async_install(_window_now(amps=12))
-    await hass.async_block_till_done()
+    await _install(hass, freezer, controller, _window_now(amps=12))
     assert _installs(calls) == []
 
 
@@ -552,8 +555,7 @@ async def test_a_websocket_write_quiets_the_plan_too(hass: HomeAssistant, freeze
     }
     frame = await ws_call(client, update_settings_message(entry.entry_id, current.revision, {**body, "amps": 12}))
     assert frame["result"]["ok"] is True, frame
-    await controller.async_install(_window_now(amps=12))
-    await hass.async_block_till_done()
+    await _install(hass, freezer, controller, _window_now(amps=12))
     assert _installs(calls) == []
 
 
@@ -583,13 +585,11 @@ async def _restart(hass: HomeAssistant, freezer: Any, entry: MockConfigEntry) ->
 
 async def test_a_restart_with_the_same_plan_is_not_a_new_plan(hass: HomeAssistant, freezer: Any) -> None:
     entry, calls, controller = await _quiet_charger(hass, freezer)
-    await controller.async_install(_plan_at())
-    await hass.async_block_till_done()
+    await _install(hass, freezer, controller, _plan_at())
     assert len(_installs(calls)) == 1
     controller = await _restart(hass, freezer, entry)
     # Calculated again after the restart: another amperage and identity, the same periods and energy.
-    await controller.async_install(_plan_at(amps=16, auto_identity="a" * 32))
-    await hass.async_block_till_done()
+    await _install(hass, freezer, controller, _plan_at(amps=16, auto_identity="a" * 32))
     assert len(_installs(calls)) == 1
 
 
@@ -605,11 +605,9 @@ async def test_a_restart_with_a_changed_plan_is_a_new_plan(
     hass: HomeAssistant, freezer: Any, changed: dict[str, Any]
 ) -> None:
     entry, calls, controller = await _quiet_charger(hass, freezer)
-    await controller.async_install(_plan_at())
-    await hass.async_block_till_done()
+    await _install(hass, freezer, controller, _plan_at())
     controller = await _restart(hass, freezer, entry)
-    await controller.async_install(_plan_at(amps=16, **changed))
-    await hass.async_block_till_done()
+    await _install(hass, freezer, controller, _plan_at(amps=16, **changed))
     assert len(_installs(calls)) == 2
 
 
@@ -617,8 +615,7 @@ async def test_the_told_plan_is_kept_across_a_reload(hass: HomeAssistant, freeze
     entry, calls, controller = await _quiet_charger(hass, freezer)
     key = f"spotnav.notified_plan.{entry.entry_id}"
     assert key not in hass_storage
-    await controller.async_install(_plan_at())
-    await hass.async_block_till_done()
+    await _install(hass, freezer, controller, _plan_at())
     fingerprint = hass_storage[key]["data"]["fingerprint"]
     assert fingerprint
     await _restart(hass, freezer, entry)
@@ -631,11 +628,9 @@ async def test_a_plan_quiet_after_a_persons_own_change_is_remembered_and_not_tol
     entry, calls, controller = await _quiet_charger(hass, freezer)
     await _write_amps(hass, entry.entry_id)
     await _later(hass, freezer, 5)
-    await controller.async_install(_plan_at())
-    await hass.async_block_till_done()
+    await _install(hass, freezer, controller, _plan_at())
     assert _installs(calls) == []
     assert hass_storage[f"spotnav.notified_plan.{entry.entry_id}"]["data"]["fingerprint"]
     controller = await _restart(hass, freezer, entry)
-    await controller.async_install(_plan_at(amps=16, auto_identity="a" * 32))
-    await hass.async_block_till_done()
+    await _install(hass, freezer, controller, _plan_at(amps=16, auto_identity="a" * 32))
     assert _installs(calls) == []
