@@ -132,7 +132,19 @@ It is best effort and is not a protective device. Turning it off gives back any 
   open ends it, also while the charger has not yet answered the pause: a pause repeated then holds back
   nothing. At most two resumes go out in ten minutes; one more due in them waits 15 minutes, so a load
   that comes and goes does not cycle the relays (the charger is paused at most three times in ten
-  minutes, as Peblar allows). The site sensor and the diagnostics show it (`balancing_resume`).
+  minutes, as Peblar allows). The site sensor and the diagnostics show it (`balancing_resume`). A
+  stopped charger's own current is not needed for it: an OCPP charger sends no meter values while it
+  is stopped, so its reading grows old, but a stopped charger draws nothing. Inside the plan's window
+  the status says so: "Paused – the house is using the whole fuse; trying again at 04:30" (or "when
+  there is room" when no time is set, and "the home battery charges from the grid and fills the main
+  fuse" when that is why).
+- **A start while the home battery charges from the grid** (yield stepping on, *car first*, a *home
+  battery power* sensor that charges at 300 W or more, or rose by that much in the last minute) gives
+  the car its minimum current, not the whole request, and so does the regulator's first word on a
+  start whose car does not draw yet; yield stepping raises it on what the battery gives up.
+- **One reading lowers the car once.** A pass on a site reading taken before the regulator's last write
+  does not credit the car with that write's lower current, so the same excess does not lower the car
+  again on every pass; the next reading that is still over lowers it again at once.
 - A stop already sent is not sent again by another path for the same decision (a re-arm right after
   the last window's end, the regulator's next pass) for 15 seconds, unless the charger reports charging
   again or SpotNav starts it meanwhile: a charger that has ended the transaction rejects a second stop.
@@ -167,8 +179,10 @@ It is best effort and is not a protective device. Turning it off gives back any 
     the car for want of headroom and the battery is charging from the grid, SpotNav starts the car
     at its minimum current as a probe and watches the grid for up to 30 seconds (the damper's dwell
     if shorter): if every phase is back within the band the battery gave way and the car goes on
-    from there; if not, the car is stopped again and no new probe is tried for 10 minutes, doubling
-    to an hour. A car that has visibly started but does not yet draw its minimum when the window
+    from there; if not, the car is stopped again and no new probe is tried for 10 minutes, then 15
+    minutes each time, for as long as the charge is wanted (the plan's window open, a person's Start).
+    A grid held a few tenths over the fuse within the band is no reason to skip the probe: that is the
+    battery's own regulation. A car that has visibly started but does not yet draw its minimum when the window
     ends (the charger's status has turned to charging since the start, or its own current has begun
     to rise) is waited for up to 90 seconds from the start, as long as a start is credited: cars ramp
     up over tens of seconds and OCPP meter values lag. A status that already said charging when the
