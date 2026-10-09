@@ -193,6 +193,7 @@ export const STATUS_WORDING: Readonly<Record<StatusCode, TranslationKey>> = {
   price_data_stale: "issue.priceStale",
   price_data_degraded: "issue.priceDegraded",
   unpriced: "issue.unpriced",
+  balancing_paused: "status.balancingPausedHouse",
   load_balancing_limited: "status.loadBalancingLimitedTo",
   load_balancing_unavailable: "issue.loadBalancing",
   held_by_charger: "issue.heldByCharger",
@@ -239,6 +240,9 @@ export const STATUS_VARIANT_KEYS: readonly TranslationKey[] = [
   "status.waitingForPublicationNoTime",
   "status.waitingForHistoryNoDetail",
   "status.loadBalancingLimited",
+  "status.balancingPausedBattery",
+  "status.balancingPausedHouseRoom",
+  "status.balancingPausedBatteryRoom",
   "strategy.status.solar.chargingUnknown",
   "strategy.status.hybrid.creditSuffix",
   "issue.needFromSessions",
@@ -491,6 +495,16 @@ export function lineText(line: StatusLine, format: FormatContext, nowMs: number)
       return credit !== null && credit > 0
         ? `${grid}${say("strategy.status.hybrid.creditSuffix", { credit: formatNumber(language, credit, 1) })}`
         : grid;
+    }
+    case "balancing_paused": {
+      // Load balancing paused the plan's charge: why (the house, or a home battery charging from the grid) and when
+      // it is tried again, or that it is when there is room.
+      const battery = p["cause"] === "battery_shares_fuse";
+      const at = ms(p["retry_at"]);
+      if (at === null || !zoned) {
+        return say(battery ? "status.balancingPausedBatteryRoom" : "status.balancingPausedHouseRoom");
+      }
+      return say(battery ? "status.balancingPausedBattery" : "status.balancingPausedHouse", { time: clock(format, at) });
     }
     case "load_balancing_limited": {
       const limit = num(p["limit_a"]);
