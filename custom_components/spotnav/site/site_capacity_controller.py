@@ -205,6 +205,29 @@ LIMIT_AT_FUSE_MARGIN_A = 2.0
 LIMIT_CAUSE_BATTERY_SHARES_FUSE = "battery_shares_fuse"
 LIMIT_CAUSE_HOUSE_CONSUMPTION = "house_consumption"
 
+#: How far back (seconds) a rise of the home battery's power counts (`_battery_takes_the_fuse`): a battery that
+#: begins its own grid charge at a quarter-hour's boundary reads a few hundred watts at first and its full power
+#: seconds later.
+BATTERY_RISE_WINDOW_S = 60.0
+
+#: The regulator decision a charger whose own reading is too old to decide on gets (`site/regulator.py`). An OCPP
+#: charger sends no meter values while no transaction runs, so a charger load balancing stopped reads its last value,
+#: unchanged and unreported, for as long as it is stopped.
+REASON_CHARGER_MEASUREMENT_UNUSABLE = "charger_measurement_unusable"
+
+#: The regulator writes kept per charger, newest last, to tell which of them a site reading may already show
+#: (`_written_at_reading`).
+_WRITES_KEPT = 4
+
+
+@dataclass(frozen=True, slots=True)
+class BalancingPauseState:
+    """A charge load balancing holds back, as the status says it: when it is tried again (`None`: as soon as there
+    is room, with no time to name) and why there is no room (`LIMIT_CAUSE_*`)."""
+
+    retry_at: datetime | None
+    cause: str
+
 #: Decision-log details of the battery-on-the-fuse handling (`site/battery_probe.py`).
 DETAIL_HELD_BATTERY_AT_LIMIT = "held_battery_at_limit"
 #: Decision-log detail of a proposal held because a meter load balancing reads updates too seldom
@@ -335,6 +358,11 @@ class SiteCapacityController:
         self._credited_a: dict[str, dict[PhaseName, float]] = {}
         self._start_credit_seq = 0
         self._seen_charging: dict[str, bool] = {}
+        # The home battery's power on recent recomputes (`_yield_now` seconds, W), for a rise toward a charge.
+        self._battery_samples: deque[tuple[float, float]] = deque()
+        # The regulator's own writes per charger (`_async_write_regulated`): when (wall clock), the current written
+        # and the one in force before it (`None` when not known), newest last.
+        self._regulated_writes: dict[str, deque[tuple[datetime, float, float | None]]] = {}
         # Last logged apply outcome per charger, so a line is emitted per change rather than per
         # recompute.
         self._logged_apply_outcomes: dict[str, tuple[Any, ...]] = {}
@@ -1277,6 +1305,18 @@ class SiteCapacityController:
             return True
         proposed = decision.proposed_current_a
         if proposed is None:
+            if decision.reason == REASON_CHARGER_MEASUREMENT_UNUSABLE and charger_controller.paused_by_balancing:
+                # A charger load balancing stopped is off by its own control, and an OCPP charger sends no meter
+                # values then: its reading grows too old to decide a current on, but a stopped charger draws
+                # nothing, and the resume and the probe judge the site's own readings. Without this the charge it
+                # holds back is never tried again (the night of 2026-10-09).
+                damper = self._damper_for(charger_entry_id)
+                if not await self._async_maybe_resume_paused_charge(
+                    charger_entry_id, charger_controller, decision, fresh, damper, damper.last_written_a
+                ):
+                    await self._async_maybe_start_battery_probe(
+                        charger_entry_id, charger_controller, decision, fresh, damper, damper.last_written_a
+                    )
             return True
         failure = applyability_failure(
             decision=decision,
@@ -1482,6 +1522,62 @@ class SiteCapacityController:
             ),
             yield_verdict=yield_verdict,
         )
+
+    # -- a home battery charging from the grid as the car starts
+
+    def _fresh_battery_w(self) -> float | None:
+        """The home battery's power (W, positive while it charges) on a fresh, usable reading, else `None`."""
+        battery = self.battery_aggregate_power()
+        max_age_s = float(self.config.get(CONF_MAX_AGE_S, DEFAULT_MAX_AGE_S))
+        if (
+            battery is None
+            or battery.value is None
+            or battery.problem is not None
+            or battery.age_s is None
+            or battery.age_s > max_age_s
+        ):
+            return None
+        return float(battery.value)
+
+    def _sample_battery(self) -> None:
+        """Keep the battery's power of the last `BATTERY_RISE_WINDOW_S`, for `_battery_takes_the_fuse`."""
+        now = self._yield_now()
+        samples = self._battery_samples
+        while samples and now - samples[0][0] > BATTERY_RISE_WINDOW_S:
+            samples.popleft()
+        watts = self._fresh_battery_w()
+        if watts is not None:
+            samples.append((now, watts))
+
+    def _battery_takes_the_fuse(self) -> bool:
+        """Whether the home battery charges from the grid, or its power is rising toward a charge, so a car that
+        starts now meets a fuse the battery is filling: `car_first` with yield stepping on (the battery is one that
+        gives way to the car, `_battery_rules_apply`), and on a fresh reading the battery charges at least
+        `LIMIT_BATTERY_CHARGING_W`, or rose by that much within `BATTERY_RISE_WINDOW_S` and now takes power. A start
+        then goes in at the car's minimum (`start_allowance_a`), and so does the regulator's first word on a charge
+        it knows no current of (`_async_apply_to_charger`); yield stepping raises it on what the battery gives up.
+        An unread battery, or none configured, changes nothing."""
+        if not self._battery_rules_apply():
+            return False
+        watts = self._fresh_battery_w()
+        if watts is None:
+            return False
+        if watts >= LIMIT_BATTERY_CHARGING_W:
+            return True
+        lowest = min((sample for _, sample in self._battery_samples), default=watts)
+        return watts > 0.0 and watts - lowest >= LIMIT_BATTERY_CHARGING_W
+
+    def _car_draws(self, charger_entry_id: str, decision: RegulatorDecision) -> bool:
+        """Whether the charger's own reading shows the car drawing on a phase of `decision`'s."""
+        wiring: dict[str, Any] = (self.config.get(CONF_PHASE_WIRING) or {}).get(charger_entry_id) or {}
+        delivered = self._read_charger_measured_current(wiring)
+        return delivered is not None and any(
+            (delivered.get(phase).value or 0.0) >= PROBE_IDLE_BELOW_A for phase in decision.basis
+        )
+
+    def _min_current_a(self, charger_entry_id: str) -> float:
+        wiring: dict[str, Any] = (self.config.get(CONF_PHASE_WIRING) or {}).get(charger_entry_id) or {}
+        return float(wiring.get("min_current_a", DEFAULT_MIN_CURRENT_A))
 
     # -- a grid-charging battery that holds the grid at the fuse (`site/battery_probe.py`)
 
@@ -1786,6 +1882,33 @@ class SiteCapacityController:
             }
         return snapshot
 
+    def balancing_pause(self, charger_entry_id: str) -> BalancingPauseState | None:
+        """The charge load balancing holds back at this charger, as the status says it, or `None` when it holds
+        none back. `retry_at` is when it is tried again: the battery probe's or the resume's back-off end, the
+        probe's first; `None` when nothing holds it back but room (the probe tries at once on a battery that fills
+        the fuse, the resume after its dwell). `cause` is the battery filling the fuse (a fresh reading charging at
+        least `LIMIT_BATTERY_CHARGING_W`), else the house's own consumption."""
+        charger_controller = controller_for(self.hass, charger_entry_id)
+        if charger_controller is None or not charger_controller.paused_by_balancing:
+            return None
+        now = self._yield_now()
+        remaining: float | None = None
+        probe = self._battery_probes.get(charger_entry_id)
+        if probe is not None:
+            remaining = probe.snapshot(now)["backoff_remaining_s"]
+        if remaining is None:
+            until = self._resume_backoff_until.get(charger_entry_id)
+            remaining = None if until is None or until <= now else until - now
+        watts = self._fresh_battery_w()
+        return BalancingPauseState(
+            retry_at=None if remaining is None else dt_util.utcnow() + timedelta(seconds=remaining),
+            cause=(
+                LIMIT_CAUSE_BATTERY_SHARES_FUSE
+                if watts is not None and watts >= LIMIT_BATTERY_CHARGING_W
+                else LIMIT_CAUSE_HOUSE_CONSUMPTION
+            ),
+        )
+
     async def _async_maybe_start_battery_probe(
         self,
         charger_entry_id: str,
@@ -1803,8 +1926,9 @@ class SiteCapacityController:
         person's Stop, a window's end or a target stop is never undone) and the charger's own
         scheduler does not hold it; a vehicle is plugged in; the request on record is at least the
         minimum; the car is not drawing; the grid has no headroom for the minimum but no phase is
-        over the band (never into a real overload); the battery charges at least as hard as the
-        car's minimum would draw; the car's minimum would not take any phase past
+        over the band (never into a real overload: a decision to lower for an overload within the band is the
+        battery's own regulation, which a stopped car cannot lower anyway); the battery charges at least as
+        hard as the car's minimum would draw; the car's minimum would not take any phase past
         `PROBE_MAX_FUSE_FACTOR` times the fuse; and no back-off is running. A start the charger
         refuses counts as a failure.
         """
@@ -1822,7 +1946,6 @@ class SiteCapacityController:
             or main_fuse_a is None
             or requested is None
             or requested < min_current_a
-            or decision.reason in MUST_LOWER_REASONS
             or (previous_setpoint is not None and previous_setpoint >= min_current_a)
             or fresh.state != "observing"
             or not charger_controller.paused_by_balancing

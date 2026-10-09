@@ -12,7 +12,10 @@ up the amps the car takes. Two things follow, both only under `car_first` with y
 * The *probe*: with the car held at 0 A while the plan wants it charging, the car is started at its
   minimum current and the grid is watched for a short window. If every phase is back within the band
   by the end of it the battery gave way; otherwise the car is stopped again and the probe is not
-  repeated for a back-off that doubles up to an hour. A car that has visibly started but not yet
+  repeated for a back-off of ten minutes, then a quarter of an hour each time, for as long as the charge
+  is wanted (a plan window open, a person's Start): a battery whose own grid charge ends while the
+  window is still open gives the car its turn within that quarter, and a charger is paused no more than
+  three times in ten minutes (Peblar's `PAUSE_WINDOW_S`). A car that has visibly started but not yet
   reached its minimum by the end of the window (it ramps slowly, or the charger's reading lags) is
   waited for up to `PROBE_EXTENDED_WINDOW_S`, only while every phase stays within the band.
 
@@ -37,9 +40,11 @@ PROBE_WINDOW_S: Final = 30.0
 #: The shortest window, however short the dwell: a battery needs seconds to react.
 PROBE_MIN_WINDOW_S: Final = 5.0
 
-#: Back-off after a failed probe, doubling on each consecutive failure.
+#: Back-off after a failed probe, doubling on each consecutive failure up to the cap: the probe goes on being
+#: tried at least every quarter of an hour while the charge is wanted (the night of 2026-10-09: an hour's cap would
+#: have left a 75-minute window with two tries).
 PROBE_BACKOFF_INITIAL_S: Final = 600.0
-PROBE_BACKOFF_MAX_S: Final = 3600.0
+PROBE_BACKOFF_MAX_S: Final = 900.0
 
 #: While probing, the car's minimum current is on top of a grid already at the limit. A phase above
 #: this multiple of the main fuse, or more than `PROBE_EXCESS_TOLERANCE_A` above what the car can

@@ -174,7 +174,7 @@ def test_a_probe_fails_on_any_doubt(site, delivered, now, reason) -> None:
     assert (verdict.state, verdict.reason) == ("failed", reason)
 
 
-def test_back_off_doubles_to_an_hour_and_a_success_clears_it() -> None:
+def test_back_off_doubles_to_its_cap_and_a_success_clears_it() -> None:
     probe = BatteryProbe()
     now = 0.0
     expected = PROBE_BACKOFF_INITIAL_S
@@ -465,8 +465,8 @@ async def test_a_battery_that_does_not_yield_stops_the_car_within_the_window_and
     yield_clock.advance(31.0)
     await controller._async_apply_active_control()
     assert len(turn_off) == 2
-    # The back-off doubled.
-    assert controller.battery_probe_snapshot[charger.entry_id]["backoff_remaining_s"] > 1190.0
+    # The back-off grew, to its cap: tried again at least every quarter of an hour.
+    assert 890.0 < controller.battery_probe_snapshot[charger.entry_id]["backoff_remaining_s"] <= 900.0
     log = [e for e in controller.regulator_decision_log if e["outcome"].startswith("probe_")]
     assert [e["outcome"] for e in log] == [
         "probe_started",
@@ -695,7 +695,7 @@ async def test_a_stale_charging_status_that_flickers_unavailable_is_still_no_sig
         "not_paused_by_balancing",
         "no_vehicle",
         "held_by_the_charger",
-        "overload_decision",
+        "overload_beyond_the_band",
         "would_exceed_the_cap",
         "stale_grid",
     ],
@@ -712,8 +712,11 @@ async def test_no_probe_without_every_condition(hass: HomeAssistant, monkeypatch
     (controller, charger, calls, yield_clock, damper_clock, site, prefix, cc, turn_off) = (
         await _paused_site(hass, monkeypatch, f"bfno{case.replace('_', '')}", battery_w=battery_w, **setup)
     )
-    if case == "overload_decision":
+    if case == "overload_beyond_the_band":
+        # An overload decision on its own no longer refuses (within the band it is the battery's regulation, the
+        # night of 2026-10-09); one beyond the band still does.
         _held_at_zero(controller, charger, reason=_OVERLOAD)
+        set_site_current_a(hass, site, 20.6)
     if case == "grid_over_the_band":
         set_site_current_a(hass, site, 21.0)
     if case == "car_drawing":
