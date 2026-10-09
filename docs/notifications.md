@@ -17,13 +17,34 @@ has its own choice, so the driver of each car can follow their own charger.
 | Charging complete | yes | the target state of charge was reached, the requested energy was delivered, the car stopped by itself when full after the plan's last window, or the plan's last window (or the hour after it that a car still charging to its own limit gets) ended while the car was charging |
 | Charging started | no | the charger starts charging, for whatever reason |
 | Car plugged in / Car unplugged | no | for a charger that can say whether a car is connected |
-| New plan | no | a plan different from the one before is installed, with its start, energy and estimated cost |
+| New plan | no | a plan different from the one last told is installed, with its start, energy and estimated cost ([when](#when-a-new-plan-is-told)) |
 | Which car is plugged in? | yes | at a charger more than one car can charge at, when SpotNav cannot tell which car was plugged in: a question with one button per car ([vehicle identification](vehicle-identification.md)) |
-
-A new plan that SpotNav calculates within a minute after someone changed that charger's settings (in the app, the card or a SpotNav entity) is not told, nor does it wake the app, because the person already sees it; problems are never held back this way.
 
 With no phone ticked nothing is sent. A phone that is later removed from Home Assistant stays in the
 list, marked as not found, and is skipped.
+
+### When a new plan is told
+
+SpotNav plans again whenever something changes, but a phone hears of a new plan only when it is news. The same
+rules hold for the Companion phones and for the SpotNav app's instant notifications:
+
+- **Not while the car is away.** While the charger says no car is plugged in, SpotNav keeps planning (the card
+  and the app stay up to date) but tells no new plan. After a plug-in it tells the first plan made for the car,
+  or, if none comes, the plan that stands 45 minutes after the plug-in (or when its first window opens, if that
+  is sooner). A charger that cannot tell whether a car is there tells as before; a moment when a charger that
+  can tell says neither (a fault, an offline charger) counts as the last thing it did say.
+- **One plan per burst.** A new plan is told 30 seconds after it was made, and only if no other plan came in
+  the meantime: a few quick changes give one notification, for the plan they ended in. A plan that keeps
+  changing is told two minutes after the first. Problems, a completed charge and the question which car is
+  plugged in are never held back this way.
+- **Not the same plan again.** A plan that is the one last told (after a restart too) is not told, nor is what
+  is left of it: when the first window has ended, or the plan is calculated again partway through, with the
+  same windows still ahead and no more energy. A real change to what is left is told.
+- **Not your own change.** A new plan that SpotNav calculates within a minute after someone changed that
+  charger's settings (in the app, the card or a SpotNav entity) is not told, nor does it wake the app, because
+  the person already sees it.
+
+The [Charger events](api.md#home-assistant-events) entity still fires for every new plan, for automations.
 
 ## "Charging stopped or did not start as planned"
 
