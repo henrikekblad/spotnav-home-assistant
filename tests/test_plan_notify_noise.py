@@ -324,3 +324,49 @@ async def test_a_remainder_after_a_restart_is_not_told(hass: HomeAssistant, free
     await _install(hass, entry.entry_id, plan_of([SECOND], 18.0))
     await _go(hass, freezer, at(23, 34))
     assert len(_told(calls)) == 1
+
+
+# ------------------------------------------------------------------ the decision, for the paired app
+
+
+def _notice(hass: HomeAssistant, entry: Any) -> Any:
+    from custom_components.spotnav.api import dashboard as dashboard_api
+
+    capture = dashboard_api.capture_dashboard(hass, entry)
+    return dashboard_api.serialize_dashboard(capture, can_act=True)["plan_notice"]
+
+
+async def test_the_dashboard_counts_the_plans_told(hass: HomeAssistant, freezer: Any, relay: FakeRelay) -> None:
+    """`plan_notice.seq` rises with each plan told (the phones' and the wake-up's decision), and only then."""
+    entry, _calls, car = await _world(hass, freezer, relay)
+    assert _notice(hass, entry) == {"seq": 0, "at": None}
+    await _install(hass, entry.entry_id, plan_of([FIRST, SECOND], 30.0))
+    assert _notice(hass, entry)["seq"] == 0, "not before the plan settled"
+    await _go(hass, freezer, at(14, 10))
+    told_at = at(14, 5) + timedelta(seconds=SETTLE_S)
+    assert _notice(hass, entry) == {"seq": 1, "at": told_at.isoformat()}
+
+    # Away, a burst back to it, the rest of it: none of them is told, none is counted.
+    await car.set(False)
+    await _install(hass, entry.entry_id, plan_of([(at(22), at(23, 45)), SECOND], 33.0))
+    await _go(hass, freezer, at(15))
+    await car.set(True)
+    await _install(hass, entry.entry_id, plan_of([FIRST, SECOND], 30.0))
+    await _go(hass, freezer, at(15, 5))
+    await _go(hass, freezer, at(23, 30))
+    await _install(hass, entry.entry_id, plan_of([SECOND], 18.0))
+    await _go(hass, freezer, at(23, 31))
+    assert _notice(hass, entry)["seq"] == 1
+
+    # A plan told with no phone chosen and no app registered is still counted: the app reads it from here.
+    await _choose(hass, entry.entry_id, targets=(), events=())
+    await charger_data(hass, entry.entry_id).push.async_register(None)
+    await _go(hass, freezer, at(23, 33))
+    await _install(hass, entry.entry_id, plan_of([(at(1, day=1), at(4, day=1))], 25.0))
+    await _go(hass, freezer, at(23, 34))
+    assert _notice(hass, entry)["seq"] == 2
+
+    # Kept across a restart: an app does not see a reset as a new plan.
+    assert await hass.config_entries.async_reload(entry.entry_id)
+    await hass.async_block_till_done()
+    assert _notice(hass, entry)["seq"] == 2
