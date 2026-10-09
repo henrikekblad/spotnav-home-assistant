@@ -44,7 +44,9 @@ rules hold for the Companion phones and for the SpotNav app's instant notificati
   charger's settings (in the app, the card or a SpotNav entity) is not told, nor does it wake the app, because
   the person already sees it.
 
-The [Charger events](api.md#home-assistant-events) entity still fires for every new plan, for automations.
+The SpotNav app's own check every 15 minutes follows the same decision: it tells a new plan when Home
+Assistant counted one (`plan_notice` in the [dashboard](api.md#the-dashboard-document)), not by comparing plans
+itself. The [Charger events](api.md#home-assistant-events) entity still fires for every new plan, for automations.
 
 ## "Charging stopped or did not start as planned"
 
