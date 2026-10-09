@@ -343,8 +343,7 @@ async def test_the_dashboard_counts_the_plans_told(hass: HomeAssistant, freezer:
     await _install(hass, entry.entry_id, plan_of([FIRST, SECOND], 30.0))
     assert _notice(hass, entry)["seq"] == 0, "not before the plan settled"
     await _go(hass, freezer, at(14, 10))
-    told_at = at(14, 5) + timedelta(seconds=SETTLE_S)
-    assert _notice(hass, entry) == {"seq": 1, "at": told_at.isoformat()}
+    assert _notice(hass, entry) == {"seq": 1, "at": at(14, 10).isoformat()}, "when it was told"
 
     # Away, a burst back to it, the rest of it: none of them is told, none is counted.
     await car.set(False)

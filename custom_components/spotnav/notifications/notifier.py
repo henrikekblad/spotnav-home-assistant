@@ -24,6 +24,10 @@ alike (the event entity still fires for every plan):
   (`plan_is_remainder`: a window ended, or the plan was calculated again partway through);
 * not when it follows a person's own settings write (`QUIET_AFTER_WRITE_S`): they see it.
 
+Each plan told is counted (`plan_notice`, kept across restarts with the told plan), whatever phones are chosen
+or limits allow: the dashboard carries the count, and the paired app's own check tells a new plan when it
+rises instead of deciding by itself.
+
 Every event first sets a baseline: loading the integration is not an event. Sending is rate-limited
 per charger: the same event is not sent again within `REPEAT_S`, and no more than `HOURLY_LIMIT`
 notifications go out in an hour. Each notification carries a `tag` (one per charger and event), so a
@@ -218,6 +222,9 @@ class ChargerNotifier:
         # The fingerprint of the plan last told about, kept across restarts (see `plan_fingerprint`).
         self._plan_store: Store[dict[str, Any]] = Store(hass, _STORE_VERSION, f"{_STORE_KEY_PREFIX}.{entry_id}")
         self._notified_plan: str | None = None
+        # The plans told so far and when the last was (`plan_notice`), kept with the told plan.
+        self._notice_seq = 0
+        self._notice_at: datetime | None = None
         # The car at the charger: the last known reading, `None` before one (or for a charger that cannot say).
         self._connected: bool | None = None
         # A plan burst being settled: when it began, when it is judged, and whether its last plan followed a
@@ -234,17 +241,34 @@ class ChargerNotifier:
         raw = await self._plan_store.async_load()
         fingerprint = raw.get("fingerprint") if isinstance(raw, dict) else None
         self._notified_plan = fingerprint if isinstance(fingerprint, str) else None
+        seq = raw.get("notice_seq") if isinstance(raw, dict) else None
+        self._notice_seq = seq if isinstance(seq, int) and not isinstance(seq, bool) and seq >= 0 else 0
+        at = raw.get("notice_at") if isinstance(raw, dict) else None
+        self._notice_at = dt_util.parse_datetime(at) if isinstance(at, str) and self._notice_seq else None
 
     @staticmethod
     async def async_remove_stored(hass: HomeAssistant, entry_id: str) -> None:
         """The charger is gone for good: forget the plan it last told about."""
         await Store(hass, _STORE_VERSION, f"{_STORE_KEY_PREFIX}.{entry_id}").async_remove()
 
+    @property
+    def plan_notice(self) -> dict[str, Any]:
+        """How many plans were told (`seq`, 0 before the first) and when the last was (`at`, ISO, or `None`)."""
+        at = self._notice_at
+        return {"seq": self._notice_seq, "at": None if at is None else at.isoformat()}
+
     def _remember_plan(self, fingerprint: str | None) -> None:
         if fingerprint is None or fingerprint == self._notified_plan:
             return
         self._notified_plan = fingerprint
-        self._hass.async_create_task(self._plan_store.async_save({"fingerprint": fingerprint}), eager_start=True)
+        self._save_plan()
+
+    def _save_plan(self) -> None:
+        record: dict[str, Any] = {"fingerprint": self._notified_plan}
+        if self._notice_seq:
+            record["notice_seq"] = self._notice_seq
+            record["notice_at"] = None if self._notice_at is None else self._notice_at.isoformat()
+        self._hass.async_create_task(self._plan_store.async_save(record), eager_start=True)
 
     @callback
     def async_start(self, preview: Any = None) -> None:
@@ -457,6 +481,11 @@ class ChargerNotifier:
             # What is left of the told plan (a window ended): told already. The told plan stays the measure.
             _LOGGER.debug("SpotNav charger %s: the rest of the told plan is not told again", self._entry_id)
             return
+        # News: counted and known whether or not a phone or the app hears of it now (the app reads the count).
+        self._notice_seq += 1
+        self._notice_at = now
+        self._notified_plan = fingerprint
+        self._save_plan()
         self._send(EVENT_PLAN_INSTALLED, {}, now, fingerprint)
 
     # ------------------------------------------------------------------ sending
