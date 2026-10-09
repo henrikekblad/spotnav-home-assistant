@@ -1011,14 +1011,16 @@ class SiteCapacityController:
                 if requested is not None:
                     given.append(float(requested))
             damper = self._dampers.get(charger_entry_id)
-            if damper is not None and damper.last_written_a is not None and damper.last_written_a > 0:
-                given.append(damper.last_written_a)
-            cap = max(0.0, min(given))
+            written = None if damper is None else damper.last_written_a
             credited: dict[PhaseName, float] = {}
             replaced: dict[PhaseName, PhaseValue] = {}
             for phase, value in values.items():
                 if value.value is None or value.problem is not None:
                     continue
+                # What the regulator last wrote, as far as this phase's reading can show it: a reading taken before
+                # that write still shows the current before it (`_written_at_reading`).
+                in_force = self._written_at_reading(charger_entry_id, written, self._reading_at(phase))
+                cap = max(0.0, min(given + ([in_force] if in_force is not None and in_force > 0 else [])))
                 now_a = site_a.get(phase)
                 before_a = credit.baseline_a.get(phase)
                 if now_a is None or before_a is None:
@@ -1043,6 +1045,34 @@ class SiteCapacityController:
                     l3=replaced.get("L3", measured.l3),
                 )
         return result
+
+    def _reading_at(self, phase: PhaseName) -> datetime | None:
+        """When the site's reading of `phase` was last reported (changed or not), or `None`: its active-power
+        entity's own `last_reported` where the site is derived, else what `self.result` says of its age."""
+        reported = self._active_power_last_reported(phase)
+        if reported is not None:
+            return reported
+        age = self.result.phase_report_age_s.get(phase)
+        if age is None:
+            age = self.result.phase_age_s.get(phase)
+        return None if age is None else dt_util.utcnow() - timedelta(seconds=age)
+
+    def _written_at_reading(
+        self, charger_entry_id: str, written: float | None, reading_at: datetime | None
+    ) -> float | None:
+        """The regulator's last written current `written` as a reading taken at `reading_at` shows it: the current in
+        force before that write when the write went out after the reading (`None` when that is not known), else
+        `written`. One reading is the measure of one current: a pass on a reading the site took before the
+        regulator's last write must not credit the car with that write's lower current, or the same excess lowers the
+        car again on every pass until a new reading comes (02:15:12, 2026-10-09: 16, 15, 11, 7 A within 0.6 s on one
+        reading). A new reading that is still over lowers it again at once."""
+        writes = self._regulated_writes.get(charger_entry_id)
+        if written is None or not writes or reading_at is None:
+            return written
+        at, amps, before = writes[-1]
+        if amps != written or at <= reading_at:
+            return written
+        return before
 
     def start_allowance_a(self, charger_entry_id: str) -> float | None:
         """What a start may give this charger now, in amps: the tightest phase's uncredited margin
@@ -1533,6 +1563,8 @@ class SiteCapacityController:
                 yield_verdict=yield_verdict,
             )
             return
+        writes = self._regulated_writes.setdefault(charger_entry_id, deque(maxlen=_WRITES_KEPT))
+        writes.append((dt_util.utcnow(), float(setpoint), previous_setpoint))
         self._log_active_control_outcome(
             charger_entry_id,
             decision,
