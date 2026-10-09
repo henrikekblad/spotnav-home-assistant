@@ -327,6 +327,11 @@ class CapturedSite:
     #: for, and why where known (`SiteCapacityController.load_balancing_limit`).
     limit_a: float | None = None
     limit_cause: str | None = None
+    #: Load balancing holds this charger's charge back: when it is tried again and why there is no room
+    #: (`SiteCapacityController.balancing_pause`).
+    balancing_paused: bool = False
+    balancing_retry_at: datetime | None = None
+    balancing_cause: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -895,6 +900,7 @@ def capture_site(
     hybrid_snapshot = controller.hybrid_snapshot.get(charger_entry_id)
     capability = controller.capability_snapshot
     limit_a, limit_cause = controller.load_balancing_limit(charger_entry_id)
+    balancing = controller.balancing_pause(charger_entry_id)
     return CapturedSite(
         site_name=entry.title,
         state=str(result.state),
@@ -923,6 +929,9 @@ def capture_site(
         measurement_problem=controller.measurement_problem,
         limit_a=finite_number(limit_a),
         limit_cause=limit_cause,
+        balancing_paused=balancing is not None,
+        balancing_retry_at=None if balancing is None else balancing.retry_at,
+        balancing_cause=None if balancing is None else balancing.cause,
     )
 
 
@@ -2180,6 +2189,9 @@ def status_facts(capture: CapturedDashboard) -> StatusFacts:
         ),
         top_off_until=None if capture.live.top_off_until is None else _utc(capture.live.top_off_until),
         min_soc_percent=capture.live.min_soc_percent,
+        balancing_paused=site is not None and site.balancing_paused,
+        balancing_retry_at=None if site is None else _utc(site.balancing_retry_at),
+        balancing_cause=None if site is None else site.balancing_cause,
         paused=capture.execution.paused is True,
         pause_until=None if pause is None else _utc(pause.expires_at),
         pause_choice=None if pause is None else pause.choice,

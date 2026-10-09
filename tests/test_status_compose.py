@@ -149,6 +149,41 @@ CASES: list[tuple[str, StatusFacts, str, list[dict[str, Any]]]] = [
         ],
     ),
     (
+        "load balancing paused the plan's charge inside its period: said so, with when it is tried again",
+        base(
+            installed_periods=((at(-1), at(1)),),
+            relation_applied=True,
+            proposal=proposal(),
+            balancing_paused=True,
+            balancing_retry_at=at(0.25),
+            balancing_cause="battery_shares_fuse",
+        ),
+        "normal",
+        [
+            {"code": "balancing_paused", "params": {"retry_at": iso(0.25), "cause": "battery_shares_fuse"}},
+            PLANNED[1],
+            PLANNED[2],
+        ],
+    ),
+    (
+        "paused by load balancing with no time to name: tried again when there is room",
+        base(installed_periods=((at(-1), at(1)),), balancing_paused=True, balancing_cause="house_consumption"),
+        "normal",
+        [{"code": "balancing_paused", "params": {"retry_at": None, "cause": "house_consumption"}}],
+    ),
+    (
+        "a balancing pause outside every period is not the plan's to explain",
+        base(installed_periods=((at(1), at(2)),), balancing_paused=True, balancing_cause="house_consumption"),
+        "normal",
+        [{"code": "auto_installed", "params": {"start": iso(1)}}],
+    ),
+    (
+        "a person's pause wins over a balancing pause",
+        base(installed_periods=((at(-1), at(1)),), paused=True, balancing_paused=True, balancing_cause="house_consumption"),
+        "normal",
+        [{"code": "paused", "params": {"until": None, "choice": None, "action": None, "ends": None}}],
+    ),
+    (
         "charging with no period keeps no end",
         base(charging=True),
         "normal",

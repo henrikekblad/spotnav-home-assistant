@@ -340,6 +340,29 @@ describe("the status line renders the block and nothing else", () => {
     );
   });
 
+  it("says load balancing paused the plan's charge and when it is tried again, in every language", () => {
+    // 02:30:22 UTC is 04:30 in Stockholm.
+    const house = block(statusLine("balancing_paused", { retry_at: "2026-09-22T02:30:22+00:00", cause: "house_consumption" }));
+    const battery = block(statusLine("balancing_paused", { retry_at: "2026-09-22T02:30:22+00:00", cause: "battery_shares_fuse" }));
+    const room = block(statusLine("balancing_paused", { retry_at: null, cause: "house_consumption" }));
+    expect(statusText(house, format("sv"), NOW)).toBe("Pausad – huset använder hela säkringen; försöker igen kl. 04:30");
+    expect(statusText(battery, format("sv"), NOW)).toBe(
+      "Pausad – hemmabatteriet laddar från nätet och fyller huvudsäkringen; försöker igen kl. 04:30",
+    );
+    expect(statusText(room, format("sv"), NOW)).toBe("Pausad – huset använder hela säkringen; försöker igen när det finns plats");
+    expect(statusText(house, format("en"), NOW)).toBe("Paused – the house is using the whole fuse; trying again at 04:30");
+    expect(statusText(room, format("en"), NOW)).toBe("Paused – the house is using the whole fuse; trying again when there is room");
+    const all = ["sv", "en", "nb", "da", "fi", "de", "fr", "es", "nl"] as const;
+    for (const language of all) {
+      const words = (status: Status) =>
+        statusText(status, { ...format("sv"), language } as unknown as ReturnType<typeof format>, NOW) ?? "";
+      expect(words(house)).toMatch(/04[:.]30/);
+      expect(words(battery)).toMatch(/04[:.]30/);
+      expect(words(battery)).not.toBe(words(house));
+      expect(words(room)).not.toMatch(/\{|04[:.]30/);
+    }
+  });
+
   it("names why load balancing holds the car below its plan, where the server knows", () => {
     const battery = block(statusLine("load_balancing_limited", { limit_a: 11, cause: "battery_shares_fuse" }));
     const house = block(statusLine("load_balancing_limited", { limit_a: 11, cause: "house_consumption" }));

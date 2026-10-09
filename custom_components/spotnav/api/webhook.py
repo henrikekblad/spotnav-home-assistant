@@ -93,6 +93,10 @@ APP_UNREAD_VEHICLE_FIELDS: Final = ("min_percent",)
 #: Automatic charge periods (`max_periods` null): an app that does not read `APP_READS_AUTO_PERIODS` gets the
 #: effective number, `MAX_PERIODS`, in its place, and its replacement echoing that number keeps automatic.
 APP_READS_AUTO_PERIODS: Final = "auto_periods"
+#: The plan's charge load balancing paused inside its window: an app that does not read `APP_READS_BALANCING_PAUSED`
+#: gets the line it already words in its place, load balancing limiting the car to nothing, for the same cause.
+APP_UNREAD_BALANCING_PAUSED_CODES: Final = ("balancing_paused",)
+APP_READS_BALANCING_PAUSED: Final = "balancing_paused"
 
 
 def _status_for_app(line: Any, opted_in: set[str]) -> Any:
@@ -106,6 +110,9 @@ def _status_for_app(line: Any, opted_in: set[str]) -> Any:
         return {"code": "solar_waiting_for_sun", "params": {}}
     if code in APP_UNREAD_MIN_SOC_CODES and APP_READS_MIN_SOC not in opted_in:
         return {"code": "charging_now", "params": {"until": None}}
+    if code in APP_UNREAD_BALANCING_PAUSED_CODES and APP_READS_BALANCING_PAUSED not in opted_in:
+        params = line.get("params") if isinstance(line.get("params"), dict) else {}
+        return {"code": "load_balancing_limited", "params": {"limit_a": 0, "phase": None, "cause": params.get("cause")}}
     return line
 
 
@@ -134,7 +141,7 @@ def _for_app(body: dict[str, Any], payload: dict[str, Any]) -> dict[str, Any]:
     A request opts in per field with a top-level `reads` list (`identification_status` for the identification's
     status lines, `solar_no_car_status` for the solar lines of an empty charger, `min_soc` for the car's minimum
     charge level: its status line and the vehicle rows' `min_percent`; `auto_periods` for a `max_periods` of
-    null); anything else in it, or a `reads` that is not
+    null; `balancing_paused` for the plan's charge load balancing paused); anything else in it, or a `reads` that is not
     a list, is ignored.
     """
     opted_in = _opted_in(payload)

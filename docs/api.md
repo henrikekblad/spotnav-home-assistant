@@ -142,6 +142,14 @@ every vehicle row (the dashboard's `vehicles` and `update_vehicle`'s `vehicle`) 
 `null`) in place of `min_soc_charging` unless the request asks for them (`"reads": ["min_soc"]`). An app offers the
 setting only for a row that carries `min_percent`.
 
+**A charge load balancing paused.** Inside an installed period, while load balancing holds the plan's charge back
+(no room for the car's minimum current), the status headline is `balancing_paused` (tone `normal`): `retry_at` is
+when it is tried again (the battery probe's or the resume's back-off end), `null` when it is tried as soon as there
+is room; `cause` is `battery_shares_fuse` (a home battery charging from the grid) or `house_consumption`, as
+`load_balancing_limited`'s. The plan's `plan_energy` and `plan_cost` follow it. The webhook says
+`load_balancing_limited` (`limit_a` `0`, `phase` `null`, the same `cause`) in its place unless the request asks for
+it (`"reads": ["balancing_paused"]`).
+
 **A car's charge limit range.** A vehicle row carries the additive `charge_limit_range`: `{"min", "max", "step"}`,
 the percents `set_charge_limit` (and `spotnav/write_charge_limit`) can write to the car's own limit, or `null` when
 there is no limit to write or its range is unknown. For a `number` limit these are the entity's own `min`, `max` and

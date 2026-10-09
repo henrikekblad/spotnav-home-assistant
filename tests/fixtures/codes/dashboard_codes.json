@@ -135,6 +135,13 @@
       ],
       "tone": "normal"
     },
+    "balancing_paused": {
+      "params": [
+        "cause",
+        "retry_at"
+      ],
+      "tone": "normal"
+    },
     "buying_before_publication": {
       "params": [
         "kwh"
