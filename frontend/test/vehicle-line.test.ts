@@ -114,9 +114,34 @@ describe("the vehicle line", () => {
     expect(old).toBe("64 % \u00b7 2 h ago");
   });
 
-  it("shows the target beside the charge while the target drives the plan", async () => {
+  it("words the charge as a share of the target while the target drives the plan", async () => {
     const { element } = await mounted(withSoc({ value: 62 }));
-    expect(line(element)!.textContent).toContain("62 % → 80 %");
+    expect(line(element)!.textContent).toContain("62 % of 80 % target");
+    expect(line(element)!.textContent).not.toContain("→");
+    // Above the target, the line never reads as if the level would drop to it.
+    const above = await mounted(withSoc({ value: 100 }), "sv");
+    expect(line(above.element)!.textContent).toContain("100 % av 80 % mål");
+  });
+
+  it.each([
+    ["sv", "62 % av 80 % mål"],
+    ["en", "62 % of 80 % target"],
+    ["da", "62 % af 80 % mål"],
+    ["nb", "62 % av 80 % mål"],
+    ["fi", "62 % / 80 % tavoite"],
+    ["de", "62 % von 80 % Ziel"],
+    ["nl", "62 % van 80 % doel"],
+    ["es", "62 % de un objetivo de 80 %"],
+    ["fr", "62 % sur un objectif de 80 %"],
+  ])("words the charge of the target in %s", async (language, words) => {
+    const { element } = await mounted(withSoc({ value: 62 }), language as "en");
+    const text = (line(element)!.textContent ?? "").replace(/\s/g, " ");
+    expect(text).toContain(words);
+  });
+
+  it("keeps the estimate's ~ before the level of the target", async () => {
+    const { element } = await mounted(withSoc({ value: 62, estimated: true, age_s: 12 * 60 }));
+    expect(line(element)!.textContent).toContain("~62 % of 80 % target");
   });
 
   it("marks an estimate with ~ and says in a tooltip how old the reading is", async () => {
