@@ -646,6 +646,7 @@
   "vehicleLine.estimateTitle": "Anslått mellom avlesningene, avlest {age}",
   "vehicleLine.dialogTitle": "Hvilket kjøretøy skal lades?",
   "vehicleLine.noReading": "Ingen avlesning",
+  "vehicleLine.ofTarget": "{level} av {target} mål",
   "connection.disconnected": "Ikke tilkoblet",
   "connection.connected": "Tilkoblet",
   "connection.charging": "Lader",

@@ -646,6 +646,7 @@
   "vehicleLine.estimateTitle": "Geschat tussen metingen, gelezen {age}",
   "vehicleLine.dialogTitle": "Welke auto moet worden geladen?",
   "vehicleLine.noReading": "Geen meting",
+  "vehicleLine.ofTarget": "{level} van {target} doel",
   "connection.disconnected": "Niet aangesloten",
   "connection.connected": "Aangesloten",
   "connection.charging": "Laadt",

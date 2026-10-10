@@ -646,6 +646,7 @@
   "vehicleLine.estimateTitle": "Arvio lukemien välillä, luettu {age}",
   "vehicleLine.dialogTitle": "Mikä ajoneuvo ladataan?",
   "vehicleLine.noReading": "Ei lukemaa",
+  "vehicleLine.ofTarget": "{level} / {target} tavoite",
   "connection.disconnected": "Ei kytketty",
   "connection.connected": "Kytketty",
   "connection.charging": "Lataa",

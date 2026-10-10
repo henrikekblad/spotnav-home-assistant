@@ -15,7 +15,7 @@ export interface VehicleLineFacts {
   vehicleId: string;
   /** The vehicle's own name, or `null` when it has none: the line then starts with the charge. */
   name: string | null;
-  /** `92 %`, or `62 % → 80 %` while the target drives the plan. */
+  /** `92 %`, or `62 % of 80 % target` while the target drives the plan. */
   charge: string;
   /** `~` while the figure is an estimate between readings. */
   estimatePrefix: string;
@@ -66,7 +66,10 @@ export function vehicleLineFor(
       ? (settings.target.target_percent ?? soc.target_percent)
       : null;
   const now = percentAmount(language, soc.value);
-  const charge = target === null ? now : `${now} → ${percentAmount(language, target)}`;
+  const charge =
+    target === null
+      ? now
+      : translate(language, "vehicleLine.ofTarget", { level: now, target: percentAmount(language, target) });
   const estimatePrefix = soc.estimated ? "~" : "";
   const age = !soc.estimated && soc.age_s !== null && soc.age_s > STALE_READING_S ? ageSentence(language, soc.age_s) : null;
   const estimateTitle =

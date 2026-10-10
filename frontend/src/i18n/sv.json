@@ -646,6 +646,7 @@
   "vehicleLine.estimateTitle": "Uppskattad mellan avläsningarna, avläst {age}",
   "vehicleLine.dialogTitle": "Vilket fordon ska laddas?",
   "vehicleLine.noReading": "Ingen avläsning",
+  "vehicleLine.ofTarget": "{level} av {target} mål",
   "connection.disconnected": "Ej ansluten",
   "connection.connected": "Ansluten",
   "connection.charging": "Laddar",
