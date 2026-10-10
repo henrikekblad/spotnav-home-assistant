@@ -237,8 +237,8 @@ def hold_blocked(session: ChargeSession, *, solar_holds: bool, plan_auto_owned: 
 def car_ended_holds_window(
     session: ChargeSession, *, open_window_start: datetime | None, known_full: bool, need_grew: bool
 ) -> bool:
-    """R3: after the car ended a person's charge, a car known full keeps every later window of the plug-in from
-    starting it unless its need grew; otherwise only the window already open then is skipped."""
+    """R3: after the car ended a charge (a person's, or the plan's), a car known full keeps every later window of the
+    plug-in from starting it unless its need grew; otherwise only the window already open then is skipped."""
     ended_at = session.car_ended_at
     if ended_at is None or open_window_start is None:
         return False
@@ -648,6 +648,11 @@ def _reported_off(session: ChargeSession, event: ChargerReportedOff, now: dateti
 
 
 def _car_ended(session: ChargeSession, event: CarEnded, now: datetime) -> Decision:
+    if event.plan:
+        # The plan's charge, which the car stopped taking in an open window: the record (R3) only.
+        if session.owner != OWNER_PLAN:
+            return session, ()
+        return session.with_changes(car_ended_at=now), ()
     if not session.person_started:
         return session, ()
     return session.with_changes(manual=None, car_ended_at=now), ()
