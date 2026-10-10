@@ -48,6 +48,15 @@ The SpotNav app's own check every 15 minutes follows the same decision: it tells
 Assistant counted one (`plan_notice` in the [dashboard](api.md#the-dashboard-document)), not by comparing plans
 itself. The [Charger events](api.md#home-assistant-events) entity still fires for every new plan, for automations.
 
+### Not about a charge with no car
+
+While the charger says no car is plugged in, a plan is kept for the car but nothing about its charge is told: not
+that it will not be ready by the departure, not that a window did not start and not that it is complete. A window
+that opens with no car starts nothing; plugging the car in inside it starts the charge. A departure that cannot be
+met is told after the plug-in, with the plan made for the car, if it still cannot be met then. As for a new plan, a
+charger that cannot tell whether a car is there tells as before, and a moment when it says neither counts as the
+last thing it did say.
+
 ## "Charging stopped or did not start as planned"
 
 This is told only for a charge SpotNav expected: a window of the installed plan is open now. It is told

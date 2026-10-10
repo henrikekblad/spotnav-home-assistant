@@ -20,6 +20,8 @@ The rules are today's, as the manual-pause specs and their three review rounds s
   and says so (`charger_ignores_stop`, R5).
 * After the car ended a person's charge, a car known full skips every later window of the plug-in unless its
   need grew; otherwise only the window open then is skipped (R3).
+* A window that opens (its timer, a re-arm) while the charger says no car is plugged in starts nothing: the plug-in
+  inside it does. A charger that cannot say is started as before.
 * The hold of a charge that began by itself outside a window, its override, the claim of one inside a window
   as the plan's, the stop of a plan charge that strays, the re-arm's stop outside the windows, the window ends,
   the top-off, the target and need-met stops, the sun's start, stop and take-over (I4), load balancing's pause
@@ -365,6 +367,10 @@ def _window_start(session: ChargeSession, event: WindowStart, now: datetime) -> 
             # A pause holds Auto (one whose stop failed leaves its plan): no window of it starts (bug 8).
             return s, ()
         if ended_holds:
+            return s, ()
+        if event.connected is False:
+            # No car at the charger: nothing to start (a charger takes a start without one and waits). The plug-in
+            # inside the window starts it.
             return s, ()
         return _start(s, REASON_PLAN_WINDOW, OWNER_PLAN)
     s = session
