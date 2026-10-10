@@ -4186,7 +4186,9 @@ class ChargingController:
             if verdict is not None:
                 start = self._shadow.choose(
                     "window_start",
-                    self._automatic_permitted(AUTOMATIC_START) and not self._car_ended_holds_window(),
+                    self._automatic_permitted(AUTOMATIC_START)
+                    and not self._car_ended_holds_window()
+                    and self.adapter.vehicle_connected() is not False,
                     ("start", "plan_window") in verdict,
                 )
                 if not start:
@@ -4203,6 +4205,12 @@ class ChargingController:
                 )
                 return False
             elif self._car_ended_holds_window():
+                return False
+            elif self.adapter.vehicle_connected() is False:
+                # No car at the charger: a start would only wait for one (an OCPP charger takes it and shows
+                # Preparing) and leave the charge control on with nothing delivered. The plug-in inside the
+                # window starts it (`async_start_on_plug_in`).
+                _LOGGER.info("SpotNav charger %s: a window opens with no car plugged in; nothing is started", self.entry_id)
                 return False
             legacy.append("start")
             outcome = CommandOutcome(False)
