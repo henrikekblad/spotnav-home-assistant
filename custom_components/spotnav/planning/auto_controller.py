@@ -56,6 +56,7 @@ from ..vehicles.soc_estimate import (
 from ..vehicles.vehicle_discovery import resolve_target_vehicle
 from ..vehicles.vehicle_properties import stored_properties
 from ..execution.min_soc_floor import effective_floor, known_soc
+from ..execution.target_stop import car_ended_full_percent
 from .auto_settings import (
     AutoSettings,
     AutoSettingsError,
@@ -1712,20 +1713,42 @@ class AutoPlannerController:
             power_kw=power,
             vehicle_id=vehicle_id,
             now=calculated_at,
+            car_ended_at=controller.car_ended_at,
+            car_full=car_ended_full_percent(
+                facts.soc_percent,
+                estimated=facts.soc_estimated,
+                target_soc_percent=settings.target.target_percent,
+                vehicle_max_percent=facts.max_percent,
+            ),
         )
-        if not decision.wait or decision.delivery is None:
+        if not decision.wait:
+            return None
+        if decision.delivery is None and decision.reason != "car_ended":
             return None
         if decision.replan_at is not None:
             self._arm_wake(decision.replan_at)
-        charge = decision.delivery.last_session_id
-        ask = charge != self._update_asked_for
+        if decision.delivery is not None:
+            charge = decision.delivery.last_session_id
+            ask = charge != self._update_asked_for
+            if ask:
+                _LOGGER.info(
+                    "SpotNav charger %s: %.2f kWh measured since the car last reported %.0f %%, at least the "
+                    "%.2f kWh it needed; waiting for its new level before planning again",
+                    self._entry_id, decision.delivery.kwh, facts.soc_percent or 0.0, need_kwh,
+                )
+        else:
+            # The car ended the charge with the estimate at full: asked once per time it ended one.
+            ended_at = controller.car_ended_at
+            charge = f"car_ended:{None if ended_at is None else ended_at.isoformat()}"
+            ask = charge != self._update_asked_for
+            if ask:
+                _LOGGER.info(
+                    "SpotNav charger %s: the car ended the charge with an estimated %.0f %%; waiting for its "
+                    "new level before planning again",
+                    self._entry_id, facts.soc_percent or 0.0,
+                )
         if ask:
             self._update_asked_for = charge
-            _LOGGER.info(
-                "SpotNav charger %s: %.2f kWh measured since the car last reported %.0f %%, at least the "
-                "%.2f kWh it needed; waiting for its new level before planning again",
-                self._entry_id, decision.delivery.kwh, facts.soc_percent or 0.0, need_kwh,
-            )
         if self._vehicle_update is not None and facts.vehicle_id:
             self._vehicle_update(facts.vehicle_id, ask)
         if settings.strategy == STRATEGY_HYBRID:

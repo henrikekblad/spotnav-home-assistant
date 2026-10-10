@@ -24,6 +24,13 @@ It waits while all of these hold:
 * no departure is near: with one, it waits only until the need, if the reading were true, would just still
   fit at the charger's power (with `DEPARTURE_MARGIN_S` to spare), and that instant is `replan_at`.
 
+After the car ended the charge by itself (`controller.car_ended_at`, later than the reading), the charge is over
+even with the plan's control still on or a window of it still ahead: those two no longer keep the wait from starting.
+The measured energy must still cover the need. And an estimate from delivered energy, which waits for nothing on its
+own, waits too once the car ended the charge while the estimate says it is full (`target_stop.car_ended_full`): the
+car asked for no more, so planning the small rest the estimate leaves would only move a window the car refuses, again
+and again, until the departure.
+
 A newer reading, an unplug or that instant ends the wait; the planner then plans from what it reads.
 """
 
@@ -47,6 +54,8 @@ DEPARTURE_MARGIN_S: Final = 30 * 60.0
 
 WaitReason = Literal[
     "waiting",
+    #: The car ended the charge by itself and the estimate says it is full.
+    "car_ended",
     "estimated",
     "no_reading_age",
     "charging",
@@ -124,21 +133,31 @@ def decide_vehicle_update_wait(
     power_kw: float | None,
     vehicle_id: str | None,
     now: datetime,
+    car_ended_at: datetime | None = None,
+    car_full: bool = False,
 ) -> WaitDecision:
-    """Whether to wait for the car's new level rather than plan `need_kwh` (wall energy) again."""
-    if estimated:
-        return WaitDecision(False, "estimated")
+    """Whether to wait for the car's new level rather than plan `need_kwh` (wall energy) again.
+
+    `car_ended_at`: when the car last ended the charge by itself in this plug-in; `car_full`: whether the level
+    read now says that car is full (`target_stop.car_ended_full`)."""
     if reading_age_s is None:
-        return WaitDecision(False, "no_reading_age")
-    if charging:
+        return WaitDecision(False, "estimated" if estimated else "no_reading_age")
+    read_at = now - timedelta(seconds=max(0.0, reading_age_s))
+    ended = car_ended_at is not None and car_ended_at >= read_at
+    if estimated:
+        if not (ended and car_full):
+            return WaitDecision(False, "estimated")
+        if connected is False:
+            return WaitDecision(False, "unplugged")
+        return _until_departure("car_ended", need_kwh, departure_at, power_kw, now, None)
+    if charging and not ended:
         return WaitDecision(False, "charging")
-    if window_ahead:
+    if window_ahead and not ended:
         return WaitDecision(False, "window_ahead")
     if connected is False:
         return WaitDecision(False, "unplugged")
     if plugged_in_at is None:
         return WaitDecision(False, "no_plug_in")
-    read_at = now - timedelta(seconds=max(0.0, reading_age_s))
     delivery = measured_delivery_since(
         sessions, read_at=read_at, plugged_in_at=plugged_in_at, vehicle_id=vehicle_id
     )
@@ -146,12 +165,24 @@ def decide_vehicle_update_wait(
         return WaitDecision(False, "no_measurement")
     if delivery.kwh + NEED_TOLERANCE_KWH < need_kwh:
         return WaitDecision(False, "short_of_need", delivery=delivery)
+    return _until_departure("waiting", need_kwh, departure_at, power_kw, now, delivery)
+
+
+def _until_departure(
+    reason: WaitReason,
+    need_kwh: float,
+    departure_at: datetime | None,
+    power_kw: float | None,
+    now: datetime,
+    delivery: MeasuredDelivery | None,
+) -> WaitDecision:
+    """Wait, and with a departure only until the need, if the reading were true, would just still fit."""
     if departure_at is None:
-        return WaitDecision(True, "waiting", delivery=delivery)
+        return WaitDecision(True, reason, delivery=delivery)
     if power_kw is None or not power_kw > 0:
         # How long the need would take is unknown: the departure's safety wins.
         return WaitDecision(False, "departure_close", delivery=delivery)
     latest = departure_at - timedelta(hours=need_kwh / power_kw, seconds=DEPARTURE_MARGIN_S)
     if now >= latest:
         return WaitDecision(False, "departure_close", delivery=delivery)
-    return WaitDecision(True, "waiting", replan_at=latest, delivery=delivery)
+    return WaitDecision(True, reason, replan_at=latest, delivery=delivery)
