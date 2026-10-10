@@ -39,6 +39,12 @@ SOC_FRESH_MAX_AGE_S: Final = 180.0
 #: the estimate alone.
 ESTIMATE_STOP_MARGIN_PERCENT: Final = 1.0
 
+#: How far below its goal (the target, or the car's own limit when that is lower) a car that ended a plan's
+#: charge by itself may read and still be full (`car_ended_full`): a reading rounds and a car may stop at 99 %;
+#: an estimate carries the error of the pack size and the charging loss over the whole charge.
+CAR_ENDED_READING_MARGIN_PERCENT: Final = 1.0
+CAR_ENDED_ESTIMATE_MARGIN_PERCENT: Final = 3.0
+
 
 @dataclass(frozen=True, slots=True)
 class SocReading:
@@ -97,6 +103,42 @@ def charges_to_vehicle_limit(target_soc_percent: float | None, vehicle_max_perce
     if target_soc_percent is None:
         return False
     return target_soc_percent >= charge_ceiling_percent(vehicle_max_percent)
+
+
+def car_ended_full_percent(
+    soc_percent: float | None,
+    *,
+    estimated: bool,
+    target_soc_percent: float | None,
+    vehicle_max_percent: float | None,
+) -> bool:
+    """Whether a car that stopped taking a plan's charge by itself is full for that plan. Pure.
+
+    Never on its own a reason to stop a car that draws: only once the car itself has stopped drawing does a level
+    within `CAR_ENDED_READING_MARGIN_PERCENT` (a reading) or `CAR_ENDED_ESTIMATE_MARGIN_PERCENT` (the estimate from
+    delivered energy) of the goal say it is full. The goal is the target, or the car's own limit (else 100) when that
+    is lower or there is no target. A level that was not read is never full.
+    """
+    if soc_percent is None or not math.isfinite(soc_percent):
+        return False
+    ceiling = charge_ceiling_percent(vehicle_max_percent)
+    goal = ceiling if target_soc_percent is None else min(target_soc_percent, ceiling)
+    margin = CAR_ENDED_ESTIMATE_MARGIN_PERCENT if estimated else CAR_ENDED_READING_MARGIN_PERCENT
+    return soc_percent >= goal - margin
+
+
+def car_ended_full(
+    reading: SocReading | None, *, target_soc_percent: float | None, vehicle_max_percent: float | None
+) -> bool:
+    """`car_ended_full_percent` for one reading (`None` or an unusable one is never full)."""
+    if reading is None:
+        return False
+    return car_ended_full_percent(
+        reading.soc_percent,
+        estimated=reading.estimated,
+        target_soc_percent=target_soc_percent,
+        vehicle_max_percent=vehicle_max_percent,
+    )
 
 
 def resolve_soc_reading(

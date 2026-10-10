@@ -37,6 +37,7 @@ from homeassistant.util import dt as dt_util
 
 from ..const import DOMAIN
 from ..execution.target_stop import (
+    charge_ceiling_percent,
     charger_soc_entity_id,
     SOC_FRESH_MAX_AGE_S,
     SocReading,
@@ -154,12 +155,18 @@ def is_fresh(reading: SocReading | None) -> bool:
 
 
 def estimate_soc_percent(
-    anchor: SocAnchor, *, register_kwh: float | None, capacity_kwh: float | None
+    anchor: SocAnchor,
+    *,
+    register_kwh: float | None,
+    capacity_kwh: float | None,
+    ceiling_percent: float | None = None,
 ) -> float | None:
     """The state of charge carried forward from `anchor` by the energy delivered since, or `None`.
 
     `None` without a register (now or at the anchor), without a positive capacity, or when the
-    register went backwards. Clamped to 100.
+    register went backwards. Clamped to the car's own charge limit (`ceiling_percent`, else 100): a car
+    takes nothing past it, so energy counted beyond it is charging loss, not charge. Never below the
+    anchor's own reading.
     """
     if register_kwh is None or anchor.register_kwh is None:
         return None
@@ -169,7 +176,9 @@ def estimate_soc_percent(
     if delivered < -REGISTER_TOLERANCE_KWH:
         return None
     delivered = max(0.0, delivered)
-    return min(100.0, anchor.soc_percent + delivered * CHARGE_EFFICIENCY / capacity_kwh * 100.0)
+    ceiling = charge_ceiling_percent(ceiling_percent)
+    estimate = min(ceiling, anchor.soc_percent + delivered * CHARGE_EFFICIENCY / capacity_kwh * 100.0)
+    return max(anchor.soc_percent, estimate)
 
 
 def resolve_soc(
@@ -182,6 +191,7 @@ def resolve_soc(
     vehicle_id: str | None,
     register_entity_id: str | None = None,
     plugged_in_throughout: bool = False,
+    ceiling_percent: float | None = None,
 ) -> SocResolution:
     """The state of charge to plan and stop against, and the anchor to keep. Pure.
 
@@ -200,6 +210,7 @@ def resolve_soc(
       stay, whatever the register reads, and the reading's age is the anchor's. Without that continuity (a
       restart of Home Assistant, an unplug, a connection not known) it is a new reading as any other: when
       in doubt the delivered energy is forgotten (a second charge), never invented (a car left short);
+    * the estimate is bounded by the car's own charge limit (`ceiling_percent`, `estimate_soc_percent`);
     * where no estimate can be made the raw reading is returned untouched, or `None`.
     """
     if anchor is not None and anchor.vehicle_id != vehicle_id:
@@ -252,7 +263,9 @@ def resolve_soc(
         assert reading is not None
         # The anchor's own reading, set again by the start: as old as the anchor.
         reading = replace(reading, age_s=max(0.0, (now - anchor.read_at).total_seconds()))
-    estimate = estimate_soc_percent(anchor, register_kwh=register_kwh, capacity_kwh=capacity_kwh)
+    estimate = estimate_soc_percent(
+        anchor, register_kwh=register_kwh, capacity_kwh=capacity_kwh, ceiling_percent=ceiling_percent
+    )
     delivered_something = (
         estimate is not None
         and anchor.register_kwh is not None
@@ -509,23 +522,46 @@ class SocReader:
         )
 
     def read(self, vehicle_id: str | None) -> SocReading | None:
-        """The effective state of charge now: a fresh reading, else the estimate, else the raw one."""
+        """The effective state of charge now: a fresh reading, else the estimate, else the raw one.
+
+        For the car the charger plans for: its reading moves the one anchor (a fresh reading, or another car
+        chosen). A read for no car at all is only a look (`peek`) while a car holds the anchor: it never drops
+        that car's anchor.
+        """
+        if not vehicle_id and self._anchor is not None and self._anchor.vehicle_id:
+            return self.peek(vehicle_id)
+        resolution = self._resolve(vehicle_id, self._anchor)
+        if resolution.anchor != self._anchor:
+            self._anchor = resolution.anchor
+            self._save()
+        return resolution.reading
+
+    def peek(self, vehicle_id: str | None) -> SocReading | None:
+        """`read` without touching the anchor: for a car only shown (another car at the charger in the card's
+        list, a site's overview), never the one planned for. The anchor's car gets its estimate; any other car
+        its reading as it is.
+
+        One anchor is kept per charger. Before, a dashboard that listed every car at the charger read each of
+        them through `read`: the second car took the anchor, and the planned car's next read anchored its stale
+        reading again at the register's present value, so nothing it had been given counted any more.
+        """
+        anchor = self._anchor if self._anchor is not None and self._anchor.vehicle_id == vehicle_id else None
+        return self._resolve(vehicle_id, anchor).reading
+
+    def _resolve(self, vehicle_id: str | None, anchor: SocAnchor | None) -> SocResolution:
         register_entity_id = self._register_entity_id()
         reading, throughout = self._with_comeback(self._raw_reader(vehicle_id))
-        resolution = resolve_soc(
+        return resolve_soc(
             reading=reading,
-            anchor=self._anchor,
+            anchor=anchor,
             register_kwh=read_energy_register_kwh(self._hass, register_entity_id),
             capacity_kwh=self.capacity_kwh(vehicle_id),
             now=self._now(),
             vehicle_id=vehicle_id,
             register_entity_id=register_entity_id,
             plugged_in_throughout=throughout,
+            ceiling_percent=self.vehicle_max_percent(vehicle_id),
         )
-        if resolution.anchor != self._anchor:
-            self._anchor = resolution.anchor
-            self._save()
-        return resolution.reading
 
     def _with_comeback(self, reading: SocReading | None) -> tuple[SocReading | None, bool]:
         """`reading` flagged `restored` when its state is its entity coming back, and whether the charger saw

@@ -43,12 +43,14 @@ from custom_components.spotnav.execution.auto_execution import (
     EXECUTION_PAUSED,
     EXECUTION_PENDING,
     EXECUTION_SCHEDULED,
+    AutoExecutor,
     AutomaticDecision,
     ControlFacts,
     ImmediateDecision,
     application_from_plan,
     decide_automatic,
     decide_immediate,
+    PendingApplication,
 )
 from custom_components.spotnav.planning.auto_settings import (
     DRIVER_TARGET_SOC,
@@ -1817,3 +1819,29 @@ async def test_only_a_snapshot_from_this_calculation_or_later_can_hold_a_plan_ba
     assert executor._prices_still_live(application, 5)
     live(None)
     assert executor._prices_still_live(application, 5)
+
+
+async def test_a_waiting_proposal_whose_windows_have_passed_is_dropped_quietly(
+    session: Session, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The field night of 2026-10-10, 06:00: the plan's last window ended, and the proposal that had waited for that
+    boundary (05:45-06:00, made at 05:31) was applied only then. It was over, so it was refused as unusable, and the
+    charger showed an execution error at the departure. A proposal that is over is dropped, with no error."""
+    serve(session.transport)
+    await session.set_auto(departure=time(20, 0))
+    executor = session.executor
+    applied = executor.applied
+    assert applied is not None
+    executor._pending = PendingApplication(  # noqa: SLF001 - the proposal that waited for the boundary
+        application=replace(applied, identity="f" * 32),
+        attempt=executor.begin_attempt(),
+        settings_revision=session.settings().revision,
+        price_identity=applied.price_identity,
+    )
+    monkeypatch.setattr(AutoExecutor, "_still_the_current_proposal", lambda self, settings, pending: True)
+    monkeypatch.setattr(AutoExecutor, "window_charging_now", lambda self: False)
+    later = session.clock() + timedelta(days=1)
+    monkeypatch.setattr(dt_util, "utcnow", lambda *_args, **_kwargs: later)
+    await executor.async_apply_pending()
+    assert executor._pending is None  # noqa: SLF001
+    assert executor.last_error is None, "a proposal that is over is no error"

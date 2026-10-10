@@ -20,7 +20,7 @@ code, in shadow mode: it decides, compares and records, and never acts on a char
 | `manual` | A person's Start or Stop pausing Auto for the plug-in session: `action` and `scope` (`plug_in`, or `next_plug_in` for a Stop given with no car). |
 | `span_pause` | A pause the person picked for a span (`next_period`, `until_tomorrow`, `until_resumed`). Never beside `manual`. |
 | `held`, `overridden` | The hold of a charge that began by itself outside a window, and a person's override of it. |
-| `car_ended_at` | The car ended a person's charge by itself in this plug-in (R3). |
+| `car_ended_at` | The car ended a charge by itself in this plug-in (R3): a person's, or the plan's in an open window (`car_ended` with `plan`). |
 | `balancing_paused`, `paused_origin` | Load balancing holds a charge back, and whose it was. |
 | `held_for_safety`, `safety_stopped_at` | That hold was a safety stop, resumed no sooner than its gap. |
 | `hold_stop_*` | The stops under a person's Stop (C7): when they went out, the last try, the give-up, one on its way. |
@@ -39,7 +39,8 @@ Events: `plug_in`, `unplug`, `connection_unknown`, `window_start` (timer, re-arm
 `direct_start`/`direct_stop` (no boundary), `resume` (resume, follow, an expired span pause), `pause_choice`,
 `strategy_change`, `solar_start`, `solar_stop` (also the take-over of a self-started charge), `min_soc_start`,
 `min_soc_end` (the car's minimum charge level), `charger_reported_on`,
-`charger_reported_off`, `car_ended`, `balancing_pause`, `balancing_resume`, `target_reached`, `need_met`,
+`charger_reported_off`, `car_ended` (a person's charge, or with `plan` the plan's: the car stopped taking it in an open
+window; a car full for the plan then also gives `target_reached`, or `need_met` without a target), `balancing_pause`, `balancing_resume`, `target_reached`, `need_met`,
 `top_off_end`, `plan_installed`, `plan_dropped`, `restart`, `timer`, `command_result`.
 
 The rules are today's (`plans/ha_manual_override_and_fixes.md` and its three review rounds): the gate every

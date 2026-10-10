@@ -473,6 +473,24 @@ async def _async_setup_auto_preview(
 
     data.soc_reader.set_on_reading(_soc_moved)
 
+    def _car_ended(vehicle_id: str | None, _full: bool) -> None:
+        # The car stopped taking the plan's charge by itself: hear of its next reading, ask its integration once to
+        # read it again (`refresh_vehicle`'s own call and interval, never a wake-up), and plan again from what is
+        # known now (a car full by the estimate, or a stale reading the charge already covered, waits for that
+        # reading instead of being planned again).
+        data.soc_reader.notify_next_reading()
+        car = vehicle_id or resolve_target_vehicle(
+            hass, settings_store.settings(entry_id).target.vehicle_id, charger_vehicle_ids(hass, entry_id)
+        )[0]
+        if car:
+            entry.async_create_background_task(
+                hass, async_ask_vehicle_update(hass, car), f"{entry_id} vehicle refresh"
+            )
+        entry.async_create_task(hass, preview.async_recalculate(), f"{entry_id} recalculate")
+
+    data.controller.set_car_ended_observer(_car_ended)
+    entry.async_on_unload(lambda: data.controller.set_car_ended_observer(None))
+
     def _floor_inputs() -> FloorInputs | None:
         # The car the charger plans for, read as the planner reads it, with no side effect on the planner's wait.
         settings = settings_store.settings(entry_id)
