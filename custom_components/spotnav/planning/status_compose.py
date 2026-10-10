@@ -54,9 +54,14 @@ Precedence (first match wins the headline; "add" rows append a fact line)
    last reading needed and the car has not reported its new level yet.
    Nothing matched (a plan that exists but says nothing) leaves `lines` empty: idle.
 5. Target facts, right after the headline (never in a blocking block):
-     target_reached{soc_percent, basis: reading|estimate, reading_age_s} while the stop record is
-     current, i.e. from the stop until a new schedule or a manual Start clears it (the controller
-     owns that lifetime; a cancel does not clear it); tone normal.
+     target_reached{soc_percent, basis: reading|estimate, reading_age_s, stopped_at} while the stop
+     record is current: from the stop until it no longer describes the present (the controller owns that
+     lifetime: a new schedule, any charge started or seen, an unplug, another car, a target raised above
+     the stop level, or a level read after the stop below the target ends it; a cancel does not). Tone
+     normal. `stopped_at` is when the stop was made (null for a record without one); `reading_age_s` is the
+     age of the reading at the stop, kept for older clients, never the age of the stop. Never after a
+     headline that says the car charges (solar_charging, charging_now, min_soc_charging, topping_off,
+     charging_without_prices), nor while the charger draws current: the stop is over then.
      target_unverifiable{reason: no_source|reading_unusable} while a plan with a target is
      enforced and no usable reading exists (no record then); tone notice, the target cannot be
      checked (the window still ends the charge). The record wins if both were ever present.
@@ -233,7 +238,7 @@ STATUS_CODES: Final[dict[str, tuple[str, tuple[str, ...]]]] = {
     "hybrid_satisfied": (TONE_NORMAL, ()),
     "hybrid_unknown": (TONE_NORMAL, ()),
     "settings_suggested": (TONE_NORMAL, ("fields",)),
-    "target_reached": (TONE_NORMAL, ("soc_percent", "basis", "reading_age_s")),
+    "target_reached": (TONE_NORMAL, ("soc_percent", "basis", "reading_age_s", "stopped_at")),
     "target_unverifiable": (TONE_NOTICE, ("reason",)),
     "price_data_stale": (TONE_NOTICE, ("reason",)),
     "price_data_degraded": (TONE_NOTICE, ("reason",)),
@@ -380,6 +385,8 @@ class TargetFacts:
     #: With no record: why a plan's target cannot be checked right now (`no_source` or
     #: `reading_unusable`), else `None`.
     unverifiable_reason: str | None = None
+    #: When the recorded stop was made.
+    stopped_at: datetime | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -900,11 +907,20 @@ def _vehicle_limit_lines(facts: StatusFacts) -> list[dict[str, Any]]:
     return lines
 
 
-def _target_lines(facts: StatusFacts) -> list[dict[str, Any]]:
+#: Headlines that say the car charges now: a target's stop told after one would contradict it.
+CHARGING_HEADLINES: Final = frozenset(
+    {"solar_charging", "charging_now", "min_soc_charging", "topping_off", "charging_without_prices"}
+)
+
+
+def _target_lines(facts: StatusFacts, *, charging_told: bool) -> list[dict[str, Any]]:
     target = facts.target
     if target is None:
         return []
     if target.stop_soc_percent is not None:
+        if charging_told or facts.charging:
+            # A charge is on: the stop is over, whatever the record still says.
+            return []
         age = target.stop_reading_age_s
         return [
             _line(
@@ -912,6 +928,7 @@ def _target_lines(facts: StatusFacts) -> list[dict[str, Any]]:
                 soc_percent=round(target.stop_soc_percent, 1),
                 basis="estimate" if target.stop_basis == "estimate" else "reading",
                 reading_age_s=None if age is None else round(max(age, 0.0)),
+                stopped_at=aware_iso(target.stopped_at),
             )
         ]
     if target.unverifiable_reason is not None:
@@ -999,7 +1016,7 @@ def compose_status(facts: StatusFacts) -> dict[str, Any]:
         lines.extend(_plan_headline(facts))
     if _pending_proposal(facts) and not any(line["code"] == "proposal_pending" for line in lines):
         lines.append(_pending_line(facts))
-    lines.extend(_target_lines(facts))
+    lines.extend(_target_lines(facts, charging_told=any(line["code"] in CHARGING_HEADLINES for line in lines)))
     lines.extend(_vehicle_limit_lines(facts))
     lines.extend(_notices(facts))
     if facts.suggested:

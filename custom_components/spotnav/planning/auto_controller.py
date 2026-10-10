@@ -1007,9 +1007,25 @@ class AutoPlannerController:
             self._executor.begin_attempt() if self._executor is not None else self._attempt + 1
         )
         attempt = self._attempt
+        self._lapse_target_stop(settings)
         snapshot = await self._compute(settings, attempt)
         await self._apply(settings, snapshot, attempt)
         return self._republish_execution(snapshot)
+
+    def _lapse_target_stop(self, settings: AutoSettings) -> None:
+        """Let the controller end a target stop's record that no longer describes the car the charger plans for:
+        another car, a target raised above the stop level, or a level read after the stop below the target
+        (`ChargingController.lapse_target_stop`). Every change of these plans again, so this is where it is seen."""
+        controller = None if self._executor is None else self._executor.controller
+        if controller is None or controller.target_stop_record is None:
+            return
+        facts = None if self._vehicle_reader is None else self._vehicle_reader(settings.target.vehicle_id or "")
+        controller.lapse_target_stop(
+            vehicle_id=None if facts is None else facts.vehicle_id or None,
+            target_percent=settings.target.target_percent if settings.driver == DRIVER_TARGET_SOC else None,
+            soc_percent=None if facts is None else facts.soc_percent,
+            soc_age_s=None if facts is None else facts.soc_age_s,
+        )
 
     async def _compute(self, settings: AutoSettings, attempt: int) -> AutoSnapshot:
         """`_compute_plan`, with how a manual need was counted stamped on whatever it returns, and the

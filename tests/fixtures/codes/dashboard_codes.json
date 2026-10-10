@@ -488,7 +488,8 @@
       "params": [
         "basis",
         "reading_age_s",
-        "soc_percent"
+        "soc_percent",
+        "stopped_at"
       ],
       "tone": "normal"
     },

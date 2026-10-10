@@ -50,6 +50,8 @@
   "status.targetStoppedNow": "Gestopt bij {soc} % (zojuist)",
   "status.targetStoppedEstimate": "Gestopt bij {soc} % (geschat)",
   "status.targetStoppedEstimateAge": "Gestopt bij {soc} % (geschat, meting van {age} geleden)",
+  "status.targetStoppedAt": "Gestopt bij {soc} % om {time}",
+  "status.targetStoppedEstimateAt": "Gestopt bij {soc} % om {time} (geschat)",
   "status.targetAgeMinutes": "{n} min",
   "status.targetAgeHours": "{n} u",
   "issue.targetUnverifiable": "Het doel kan nu niet worden gecontroleerd.",

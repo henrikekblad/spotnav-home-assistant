@@ -1414,7 +1414,10 @@ export const STATUS_CODE_TABLE = {
   hybrid_satisfied: ["normal", {}],
   hybrid_unknown: ["normal", {}],
   settings_suggested: ["normal", { fields: "codes" }],
-  target_reached: ["normal", { soc_percent: "number", basis: "text", reading_age_s: "numberOrNull" }],
+  target_reached: [
+    "normal",
+    { soc_percent: "number", basis: "text", reading_age_s: "numberOrNull", stopped_at: "instantOrNull" },
+  ],
   target_unverifiable: ["notice", { reason: "text" }],
   price_data_stale: ["notice", { reason: "textOrNull" }],
   price_data_degraded: ["notice", { reason: "textOrNull" }],
@@ -1637,6 +1640,8 @@ const OPTIONAL_DASHBOARD_KEYS = [
   "identification",
   "vehicle_choices",
   "camera_identification",
+  // The notifier's count of the plans it told, for the app's background check: accepted and never read.
+  "plan_notice",
 ] as const;
 
 /** The `camera_identification` block, or `null` when it is missing or unreadable: the camera rows are hidden. */

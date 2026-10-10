@@ -99,7 +99,11 @@ from .target_stop import (
     charge_ceiling_percent,
     charges_to_vehicle_limit,
     decide_target_stop,
+    LAPSE_CHARGE_STARTED,
+    LAPSE_CHARGING,
+    LAPSE_UNPLUGGED,
     SocReading,
+    target_stop_lapse,
 )
 from . import top_off
 from .window_hold import HOLD, OVERRIDE, WindowHold
@@ -1227,8 +1231,12 @@ class ChargingController:
             self._shadow_report_end(report)
 
     def _observe_charging_again(self) -> None:
-        """A charger seen charging after it was seen not to: a stop sent before is no longer the one on its way."""
+        """A charger seen charging after it was seen not to: a stop sent before is no longer the one on its way, and
+        a target's stop no longer describes the charger (one still reporting the charge while a stop of ours settles
+        is that stop on its way)."""
         charging = self.charging
+        if charging and self._seen_charging is not True and not self._stop_settling():
+            self._end_target_stop(LAPSE_CHARGING)
         if charging and self._seen_charging is False:
             self._stop_settle_since = None
         self._seen_charging = charging
@@ -1318,6 +1326,9 @@ class ChargingController:
             self._first_known_connected_at = dt_util.utcnow()
         elif not connected:
             self._first_known_connected_at = None
+        if not connected:
+            # The car the target stopped for left (or, after a restart, left while nobody looked).
+            self._end_target_stop(LAPSE_UNPLUGGED)
         if connected is False or previous is False:
             self._session_generation += 1
             # A safety stop's hold belongs to the plug-in it was made in.
@@ -2963,6 +2974,10 @@ class ChargingController:
             ):
                 # A charger that only stores a value while paused takes it once it is running.
                 await self._async_assign_current_outcome(explicit_amps, reason=WRITE_SESSION_START)
+        if executed:
+            # Whoever started it (a plan, the sun, hybrid, a person, a resume), a charge is on: a target's stop
+            # no longer describes the charger.
+            self._end_target_stop(LAPSE_CHARGE_STARTED)
         if executed and (self._plan_charge != was_plan_charge or origin_changed):
             await self._async_save_quietly()
         self._notify()
@@ -4319,8 +4334,56 @@ class ChargingController:
 
     @property
     def target_stop_record(self) -> dict[str, Any] | None:
-        """The recorded target stop, or `None`."""
+        """The recorded target stop, or `None`.
+
+        It lives from the stop until it no longer describes the present: a new schedule, any charge started or
+        seen (`_start_locked`, `_observe_charging_again`), an unplug (`_connection_changed`), or, as Auto finds
+        when it plans (`lapse_target_stop`), another car, a target raised above the stop level, or a level read
+        after the stop below the target.
+        """
         return self._target_stop
+
+    def lapse_target_stop(
+        self,
+        *,
+        vehicle_id: str | None = None,
+        target_percent: float | None = None,
+        soc_percent: float | None = None,
+        soc_age_s: float | None = None,
+    ) -> str | None:
+        """End the target stop's record when the car the charger plans for now (`vehicle_id`, its target and its
+        level, `soc_age_s` the age of the reading the level comes from) says it no longer describes the car
+        (`target_stop.target_stop_lapse`). Returns why it ended, or `None` while it stands (or there is none)."""
+        record = self._target_stop
+        if record is None:
+            return None
+        reason = target_stop_lapse(
+            record,
+            vehicle_id=vehicle_id,
+            target_percent=target_percent,
+            soc_percent=soc_percent,
+            soc_age_s=soc_age_s,
+            now=dt_util.utcnow(),
+        )
+        if reason is not None and self._end_target_stop(reason):
+            self._notify()
+        return reason
+
+    def _end_target_stop(self, reason: str) -> bool:
+        """Forget the target stop's record, saved soon so a restart does not bring it back. Returns whether one
+        was there. Sends nothing to the charger: the record is only what the status tells."""
+        if self._target_stop is None:
+            return False
+        self._target_stop = None
+        _LOGGER.info("SpotNav charger %s: the target stop no longer describes the car (%s)", self.entry_id, reason)
+        if self._restored:
+            self.hass.async_create_task(self._async_save_target_stop())
+        return True
+
+    async def _async_save_target_stop(self) -> None:
+        async with self._lock:
+            if self._target_stop is None:
+                await self._async_save_quietly()
 
 
     def _async_arm_target_listener(self) -> None:

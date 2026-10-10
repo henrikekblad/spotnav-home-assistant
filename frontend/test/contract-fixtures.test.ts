@@ -434,7 +434,7 @@ const V7_STATUS_EXPECTED: Record<string, { tone: string; codes: string[]; englis
   "target_soc_stopped_on_estimate.json": {
     tone: "normal",
     codes: [...PLANNED, "target_reached"],
-    english: "Planned from 09:15 · 34.5 kWh · 62.55 kr · 173 km · Stopped at 81 % (estimated, reading 30 min old)",
+    english: "Planned from 09:15 · 34.5 kWh · 62.55 kr · 173 km · Stopped at 81 % at 08:30 (estimated)",
   },
   "target_soc_two_vehicles.json": { tone: "normal", codes: PLANNED, english: "Planned from 09:15 · 34.5 kWh · 62.55 kr · 173 km" },
   "waiting_for_publication.json": {
@@ -545,6 +545,7 @@ describe("the backend's dashboard strategy_state, site and status fixtures", () 
           "market",
           "phase_detection",
           "plan",
+          "plan_notice",
           "planning",
           "prices",
           "progress",

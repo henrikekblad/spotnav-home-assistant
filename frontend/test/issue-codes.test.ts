@@ -9,7 +9,7 @@ import { join } from "node:path";
 
 import { describe, expect, it } from "vitest";
 
-import { LANGUAGES, TRANSLATIONS, translate } from "../src/i18n";
+import { LANGUAGES, TRANSLATIONS, translate, type Language } from "../src/i18n";
 import {
   ACTIVE_CONTROL_REASON_KEYS,
   EXECUTION_ERROR_KEYS,
@@ -213,6 +213,33 @@ describe("every status code the backend composes is decoded and worded", () => {
     expect(worded("sv", "estimate", 7300)).toBe("Stoppad vid 81 % (uppskattat, avläsningen 2 h gammal)");
     expect(worded("en", "estimate", 30)).toBe("Stopped at 81 % (estimated)");
     expect(worded("en", "reading", 3700)).toBe("Stopped at 81 % (reading 1 h old)");
+  });
+
+  it("words a target stop with the time it was made, never as just now hours later", () => {
+    // The field case: stopped at 05:31Z on a reading (age 0 then), worded three hours later.
+    const stop = "2026-09-22T05:31:00+00:00";
+    const later = Date.parse("2026-09-22T08:33:00Z");
+    const worded = (language: Language, basis: string, at: string | null, now = later): string =>
+      lineText(
+        {
+          code: "target_reached",
+          params: { soc_percent: 53, basis, reading_age_s: 0, stopped_at: at },
+        } as unknown as StatusLine,
+        { ...FORMAT, language },
+        now,
+      );
+    expect(worded("sv", "reading", stop)).toBe("Stoppad vid 53 % kl. 07:31");
+    expect(worded("sv", "estimate", stop)).toBe("Stoppad vid 53 % kl. 07:31 (uppskattat)");
+    expect(worded("en", "reading", stop)).toBe("Stopped at 53 % at 07:31");
+    // A stop on an earlier day names the day.
+    expect(worded("en", "reading", stop, Date.parse("2026-09-23T08:33:00Z"))).toMatch(/^Stopped at 53 % at \S+ .*07:31$/u);
+    // Without a time (an older Home Assistant) the reading's age, as before.
+    expect(worded("sv", "reading", null)).toBe("Stoppad vid 53 % (nyss)");
+    for (const language of LANGUAGES) {
+      const text = worded(language, "reading", stop);
+      expect(text, language).toMatch(/07[:.]31/u);
+      expect(text, language).not.toMatch(/\{\w+\}/u);
+    }
   });
 
   it("words missing settings as setup, naming the price area on its own", () => {

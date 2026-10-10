@@ -50,6 +50,8 @@
   "status.targetStoppedNow": "Stoppet ved {soc} % (akkurat nå)",
   "status.targetStoppedEstimate": "Stoppet ved {soc} % (anslått)",
   "status.targetStoppedEstimateAge": "Stoppet ved {soc} % (anslått, avlesningen er {age} gammel)",
+  "status.targetStoppedAt": "Stoppet ved {soc} % kl. {time}",
+  "status.targetStoppedEstimateAt": "Stoppet ved {soc} % kl. {time} (anslått)",
   "status.targetAgeMinutes": "{n} min",
   "status.targetAgeHours": "{n} t",
   "issue.targetUnverifiable": "Målet kan ikke kontrolleres akkurat nå.",

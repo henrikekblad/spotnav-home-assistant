@@ -50,6 +50,8 @@
   "status.targetStoppedNow": "Gestoppt bei {soc} % (gerade eben)",
   "status.targetStoppedEstimate": "Gestoppt bei {soc} % (geschätzt)",
   "status.targetStoppedEstimateAge": "Gestoppt bei {soc} % (geschätzt, Wert {age} alt)",
+  "status.targetStoppedAt": "Gestoppt bei {soc} % um {time}",
+  "status.targetStoppedEstimateAt": "Gestoppt bei {soc} % um {time} (geschätzt)",
   "status.targetAgeMinutes": "{n} min",
   "status.targetAgeHours": "{n} h",
   "issue.targetUnverifiable": "Das Ladeziel lässt sich gerade nicht prüfen.",

@@ -50,6 +50,8 @@
   "status.targetStoppedNow": "Pysäytetty {soc} %:iin (juuri äsken)",
   "status.targetStoppedEstimate": "Pysäytetty {soc} %:iin (arvio)",
   "status.targetStoppedEstimateAge": "Pysäytetty {soc} %:iin (arvio, lukema on {age} vanha)",
+  "status.targetStoppedAt": "Pysäytetty {soc} %:iin klo {time}",
+  "status.targetStoppedEstimateAt": "Pysäytetty {soc} %:iin klo {time} (arvio)",
   "status.targetAgeMinutes": "{n} min",
   "status.targetAgeHours": "{n} h",
   "issue.targetUnverifiable": "Tavoitetta ei voi tarkistaa juuri nyt.",

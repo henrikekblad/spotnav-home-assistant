@@ -50,6 +50,8 @@
   "status.targetStoppedNow": "Arrêtée à {soc} % (à l'instant)",
   "status.targetStoppedEstimate": "Arrêtée à {soc} % (estimé)",
   "status.targetStoppedEstimateAge": "Arrêtée à {soc} % (estimé, relevé datant de {age})",
+  "status.targetStoppedAt": "Arrêtée à {soc} % à {time}",
+  "status.targetStoppedEstimateAt": "Arrêtée à {soc} % à {time} (estimé)",
   "status.targetAgeMinutes": "{n} min",
   "status.targetAgeHours": "{n} h",
   "issue.targetUnverifiable": "L'objectif ne peut pas être vérifié pour le moment.",

@@ -65,7 +65,7 @@ from ..execution.charge_progress import (
     NOT_OBSERVED,
     STATE_VEHICLE_NOT_REQUESTING_CURRENT,
 )
-from ..execution.target_stop import charge_ceiling_percent
+from ..execution.target_stop import charge_ceiling_percent, target_stop_time
 from ..execution.controller import (
     ChargingController,
     CURRENT_RANGE_DEFAULT_MAX_A,
@@ -285,6 +285,8 @@ class CapturedTarget:
     stop_basis: str | None = None
     stop_reading_age_s: float | None = None
     unverifiable_reason: str | None = None
+    #: When the recorded stop was made.
+    stopped_at: datetime | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -535,6 +537,7 @@ def capture_target(controller: ChargingController | None) -> CapturedTarget | No
             stop_soc_percent=finite_number(record.get("soc_percent")),
             stop_basis="estimate" if record.get("basis") == "estimate" else "reading",
             stop_reading_age_s=finite_number(record.get("reading_age_s")),
+            stopped_at=target_stop_time(record),
         )
     plan = controller.plan
     if plan is None or plan.target_soc_percent is None:
@@ -2222,6 +2225,7 @@ def status_facts(capture: CapturedDashboard) -> StatusFacts:
             stop_basis=capture.target.stop_basis,
             stop_reading_age_s=capture.target.stop_reading_age_s,
             unverifiable_reason=capture.target.unverifiable_reason,
+            stopped_at=capture.target.stopped_at,
         ),
         site_measurement=None if site is None else _measurement_facts(site.measurement_problem, names),
         duplicate_chargers=capture.duplicates,
