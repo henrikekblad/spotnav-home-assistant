@@ -47,7 +47,9 @@ a vehicle integration, charge a fixed number of kWh instead.
   unplugged, or the charger could not say for a while) the value is a new reading and the energy delivered before it
   is no longer counted: when in doubt SpotNav may charge again, never leave the car short. When the
   register itself changes (found again, or chosen in the card), counting starts again from the new
-  register's first value.
+  register's first value. The estimate never goes past the car's own charge limit (100 % when the car
+  states none). Showing another car (the card's list of the cars at a charger, a site's overview) never
+  touches the estimate of the car the charger plans for.
 - **After a charge, before the car reports.** Where the level cannot be carried forward (no register
   then, or one that started again), a target whose charge has ended and delivered, as measured by the
   charger's register or a smart plug's power, at least what the car's last reading needed is not
@@ -59,9 +61,26 @@ a vehicle integration, charge a fixed number of kWh instead.
   app's refresh, never a wake-up). A newer reading plans at once (even the same value, if the car
   really did not take the energy), an unplug ends the wait, and with a departure the need is planned
   again in time to still fit. Energy that was only estimated from the charger's current changes nothing.
+  Once the car has ended the charge by itself (below), a period still ahead or a charge control still on
+  no longer keeps this wait from starting, and an estimate that says the car is full waits the same way
+  instead of planning the last percent or two again and again.
+- **The car ends the charge.** When, inside a planned period with the plan's charge on, the car takes
+  nothing for five minutes (the charger measures at most 1 A, or an OCPP charger says `SuspendedEV`), the
+  car has ended the charge. Load balancing pausing it, the charger holding it back itself
+  (`SuspendedEVSE`) and a Start not yet answered are not the car. If the car's level then says it is full
+  for the plan (a reading within 1 percentage point of the target, or of the car's own limit when that is
+  lower; an estimate within 3), the plan ends there as a reached target: the charge is stopped, the
+  periods still ahead are cleared, the card shows the level it stopped at (*Stopped at 100 % (estimated)*)
+  and a charge to the car's own limit is told as *Charging complete: the car is full.* Otherwise the car
+  stopped for a reason of its own (its own timer, a fault): the charge and the plan stay, the period open
+  then does not start it again, and a later period charges as planned. Either way SpotNav asks the car's
+  integration once to read its level again; a fresh reading below the target is planned again at once.
+  The car having stopped by itself is what lets a level within that margin count: no reading or estimate
+  ever stops a car that is still drawing short of its target.
 - **To the car's own limit.** A target at or above the car's own charge limit (or 100 % when the car
   states none) is the car's to end: SpotNav keeps the charge on within the planned periods and never
-  stops it on a reading or an estimate, and a car that stops taking current there is full, not a fault.
+  stops it on a reading or an estimate while the car draws, and a car that stops taking current there is
+  full, not a fault: the plan ends then, as above.
   The status says *Charging until the car stops at its own limit (100 %)* while it runs. A car still
   drawing when the last planned period ends is let finish: the charge stays on until the car stops by
   itself, at most an hour past the period and never past the departure (*Charging until the car is full

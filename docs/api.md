@@ -308,7 +308,9 @@ planned instead). The card's slider goes past the room to `min(capacity to the c
 
 **Waiting for the car's new level.** With a target, the planning state `nothing_to_charge` has the reason
 `waiting_for_vehicle_update` when the charge that just ended delivered, by measurement, at least what the
-car's last reading needed and the car has not reported since; the status headline is then
+car's last reading needed and the car has not reported since, or when the car ended the charge by itself while
+the estimate from delivered energy says it is full (a charge control still on or a period still ahead does not
+keep this off once the car ended the charge); the status headline is then
 `waiting_for_vehicle_update` (no params) in place of `nothing_to_charge`. A client that does not know the
 code shows it as any unknown code.
 
