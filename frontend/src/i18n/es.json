@@ -50,6 +50,8 @@
   "status.targetStoppedNow": "Detenido al {soc} % (ahora mismo)",
   "status.targetStoppedEstimate": "Detenido al {soc} % (estimado)",
   "status.targetStoppedEstimateAge": "Detenido al {soc} % (estimado, lectura de hace {age})",
+  "status.targetStoppedAt": "Detenido al {soc} % a las {time}",
+  "status.targetStoppedEstimateAt": "Detenido al {soc} % a las {time} (estimado)",
   "status.targetAgeMinutes": "{n} min",
   "status.targetAgeHours": "{n} h",
   "issue.targetUnverifiable": "Ahora mismo no se puede comprobar el objetivo.",

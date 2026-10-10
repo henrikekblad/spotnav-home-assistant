@@ -50,6 +50,8 @@
   "status.targetStoppedNow": "Stoppad vid {soc} % (nyss)",
   "status.targetStoppedEstimate": "Stoppad vid {soc} % (uppskattat)",
   "status.targetStoppedEstimateAge": "Stoppad vid {soc} % (uppskattat, avläsningen {age} gammal)",
+  "status.targetStoppedAt": "Stoppad vid {soc} % kl. {time}",
+  "status.targetStoppedEstimateAt": "Stoppad vid {soc} % kl. {time} (uppskattat)",
   "status.targetAgeMinutes": "{n} min",
   "status.targetAgeHours": "{n} h",
   "issue.targetUnverifiable": "Målet kan inte kontrolleras just nu.",

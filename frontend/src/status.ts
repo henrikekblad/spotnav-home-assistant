@@ -232,6 +232,8 @@ export const STATUS_VARIANT_KEYS: readonly TranslationKey[] = [
   "status.targetStoppedNow",
   "status.targetStoppedEstimate",
   "status.targetStoppedEstimateAge",
+  "status.targetStoppedAt",
+  "status.targetStoppedEstimateAt",
   "status.targetAgeMinutes",
   "status.targetAgeHours",
   "status.proposalPendingAt",
@@ -524,9 +526,15 @@ export function lineText(line: StatusLine, format: FormatContext, nowMs: number)
         : say("status.finishSetup", { fields: names.map((key) => say(key)).join(", ") });
     }
     case "target_reached": {
-      // An estimate says so; a reading under a minute old is "just now".
+      // Told with the time of the stop. Without one (or without the market's zone) the age of the reading the
+      // stop was made on, as before: an estimate says so; a reading under a minute old is "just now".
       const soc = formatNumber(language, num(p["soc_percent"]) ?? 0, 0);
       const estimated = p["basis"] === "estimate";
+      const stoppedAt = ms(p["stopped_at"]);
+      if (stoppedAt !== null && zoned) {
+        const time = momentText(format, stoppedAt, nowMs);
+        return say(estimated ? "status.targetStoppedEstimateAt" : "status.targetStoppedAt", { soc, time });
+      }
       const ageS = num(p["reading_age_s"]);
       const age =
         ageS === null || ageS < 60

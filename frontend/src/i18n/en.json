@@ -50,6 +50,8 @@
   "status.targetStoppedNow": "Stopped at {soc} % (just now)",
   "status.targetStoppedEstimate": "Stopped at {soc} % (estimated)",
   "status.targetStoppedEstimateAge": "Stopped at {soc} % (estimated, reading {age} old)",
+  "status.targetStoppedAt": "Stopped at {soc} % at {time}",
+  "status.targetStoppedEstimateAt": "Stopped at {soc} % at {time} (estimated)",
   "status.targetAgeMinutes": "{n} min",
   "status.targetAgeHours": "{n} h",
   "issue.targetUnverifiable": "The target can't be checked right now.",

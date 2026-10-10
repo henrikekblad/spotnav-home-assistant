@@ -1414,7 +1414,10 @@ export const STATUS_CODE_TABLE = {
   hybrid_satisfied: ["normal", {}],
   hybrid_unknown: ["normal", {}],
   settings_suggested: ["normal", { fields: "codes" }],
-  target_reached: ["normal", { soc_percent: "number", basis: "text", reading_age_s: "numberOrNull" }],
+  target_reached: [
+    "normal",
+    { soc_percent: "number", basis: "text", reading_age_s: "numberOrNull", stopped_at: "instantOrNull" },
+  ],
   target_unverifiable: ["notice", { reason: "text" }],
   price_data_stale: ["notice", { reason: "textOrNull" }],
   price_data_degraded: ["notice", { reason: "textOrNull" }],
