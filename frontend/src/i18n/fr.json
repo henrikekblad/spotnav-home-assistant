@@ -646,6 +646,7 @@
   "vehicleLine.estimateTitle": "Estimé entre les relevés, relevé {age}",
   "vehicleLine.dialogTitle": "Quel véhicule faut-il charger ?",
   "vehicleLine.noReading": "Aucun relevé",
+  "vehicleLine.ofTarget": "{level} sur un objectif de {target}",
   "connection.disconnected": "Non branchée",
   "connection.connected": "Branchée",
   "connection.charging": "En charge",

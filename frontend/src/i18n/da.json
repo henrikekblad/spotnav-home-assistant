@@ -646,6 +646,7 @@
   "vehicleLine.estimateTitle": "Anslået mellem aflæsningerne, aflæst {age}",
   "vehicleLine.dialogTitle": "Hvilket køretøj skal oplades?",
   "vehicleLine.noReading": "Ingen aflæsning",
+  "vehicleLine.ofTarget": "{level} af {target} mål",
   "connection.disconnected": "Ikke tilsluttet",
   "connection.connected": "Tilsluttet",
   "connection.charging": "Oplader",

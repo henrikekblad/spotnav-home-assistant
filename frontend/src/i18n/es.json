@@ -646,6 +646,7 @@
   "vehicleLine.estimateTitle": "Estimado entre lecturas, leído {age}",
   "vehicleLine.dialogTitle": "¿Qué vehículo se debe cargar?",
   "vehicleLine.noReading": "Sin lectura",
+  "vehicleLine.ofTarget": "{level} de un objetivo de {target}",
   "connection.disconnected": "No conectado",
   "connection.connected": "Conectado",
   "connection.charging": "Cargando",

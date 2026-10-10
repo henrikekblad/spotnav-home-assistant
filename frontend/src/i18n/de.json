@@ -646,6 +646,7 @@
   "vehicleLine.estimateTitle": "Zwischen den Messungen geschätzt, gelesen {age}",
   "vehicleLine.dialogTitle": "Welches Fahrzeug soll geladen werden?",
   "vehicleLine.noReading": "Kein Messwert",
+  "vehicleLine.ofTarget": "{level} von {target} Ziel",
   "connection.disconnected": "Nicht verbunden",
   "connection.connected": "Verbunden",
   "connection.charging": "Lädt",
