@@ -706,7 +706,7 @@ def capture_vehicles(
         if reader is not None:
             capacity, source = reader.capacity_with_source(choice.id)
             max_percent = reader.vehicle_max_percent(choice.id)
-            reading = reader.read(choice.id)
+            reading = reader.peek(choice.id)
             soc_percent = None if reading is None else reading.soc_percent
         else:
             capacity, source, max_percent = own.capacity_kwh, ("stored" if own.capacity_kwh else None), None

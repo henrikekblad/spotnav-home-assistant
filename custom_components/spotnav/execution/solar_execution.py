@@ -1115,7 +1115,7 @@ class SolarExecutionCoordinator:
         settings = self._store.settings(self._charger_entry_id)
         vehicle_id = settings.target.vehicle_id
         data = charger_data(self._hass, self._charger_entry_id)
-        reading = None if data is None else data.soc_reader.read(vehicle_id)
+        reading = None if data is None else data.soc_reader.peek(vehicle_id)
         soc = None if reading is None else reading.soc_percent
         limit = self._controller.vehicle_limit_percent(vehicle_id)
         return self._controller.plugged_in_at, soc, limit, settings.target.target_percent

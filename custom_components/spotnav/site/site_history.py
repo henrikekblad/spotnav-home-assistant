@@ -112,7 +112,8 @@ def _charger_sample(site: SiteCapacityController, charger_entry_id: str) -> dict
     )
     store = domain_data(site.hass).auto_store
     vehicle_id = None if store is None else store.settings(charger_entry_id).target.vehicle_id
-    reading = data.soc_reader.read(vehicle_id)
+    # Only shown: never moves the anchor of the car the charger plans for (`SocReader.peek`).
+    reading = data.soc_reader.peek(vehicle_id)
     item["soc_percent"] = None if reading is None else _rounded(reading.soc_percent, 1)
     item["soc_source"] = None if reading is None else reading.source
     return item
