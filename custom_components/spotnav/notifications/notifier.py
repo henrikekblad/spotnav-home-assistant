@@ -28,6 +28,12 @@ Each plan told is counted (`plan_notice`, kept across restarts with the told pla
 or limits allow: the dashboard carries the count, and the paired app's own check tells a new plan when it
 rises instead of deciding by itself.
 
+No outcome of a charge that cannot happen is told while the car is known to be away (the same reading as
+above: an unknown one keeps the last known, a charger that cannot say tells as before), on the phones and in the
+app's wake-up alike: no `plan_at_risk`, no `plan_stopped` for a window that did not start and no `charge_complete`.
+A `plan_at_risk` held back is told after the plug-in, when the plan made for the car is judged, if the departure
+still cannot be met then.
+
 Every event first sets a baseline: loading the integration is not an event. Sending is rate-limited
 per charger: the same event is not sent again within `REPEAT_S`, and no more than `HOURLY_LIMIT`
 notifications go out in an hour. Each notification carries a `tag` (one per charger and event), so a
@@ -74,7 +80,7 @@ from ..texts import language_of
 from .messages import compose, EVENT_TEST, identify_text, Money
 from .push import ChargerPush
 from .settings import EVENT_CHARGE_COMPLETE, EVENT_PLAN_STOPPED, EVENT_VEHICLE_IDENTIFY, NOTIFY_DOMAIN
-from .unexpected_stop import ExpectationFacts, UnexpectedStopDetector
+from .unexpected_stop import ExpectationFacts, REASON_NOT_STARTED, UnexpectedStopDetector
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -235,6 +241,10 @@ class ChargerNotifier:
         self._owed_until: datetime | None = None
         self._plan_timer: CALLBACK_TYPE | None = None
         self._plan_timer_at: datetime | None = None
+        # `plan_at_risk` held back while the car was away (its attributes), told after the plug-in if the departure
+        # still cannot be met then; and whether it cannot be met now.
+        self._at_risk_owed: dict[str, Any] | None = None
+        self._at_risk_now = False
 
     async def async_load(self) -> None:
         """Read the last told plan's fingerprint, before `async_start`."""
@@ -301,14 +311,24 @@ class ChargerNotifier:
         settings = self._store.settings(self._entry_id)
         now = dt_util.utcnow()
         self._observe_connection(now)
+        # The car is known to be away: no outcome of a charge that cannot happen is told.
+        away = self._connected is False
         events: list[tuple[str, dict[str, Any]]] = []
-        for kind, attributes in self._tracker.observe(
-            charger_facts(self._hass, controller, self._snapshot, settings)
-        ):
+        facts = charger_facts(self._hass, controller, self._snapshot, settings)
+        for kind, attributes in self._tracker.observe(facts):
+            if kind == EVENT_PLAN_AT_RISK:
+                # Told now, or after the plug-in if it still holds then; either way this one is settled.
+                self._at_risk_owed = attributes if away else None
+                if away:
+                    _LOGGER.debug("SpotNav charger %s: plan_at_risk held back while no car is plugged in", self._entry_id)
+                    continue
             if kind in _TRACKED:
                 events.append((kind, attributes))
+        self._at_risk_now = facts.at_risk
+        if not facts.at_risk:
+            self._at_risk_owed = None
         reason = self._stops.observe(self._expectation(now))
-        if reason is not None:
+        if reason is not None and not (away and reason == REASON_NOT_STARTED):
             events.append((EVENT_PLAN_STOPPED, {"reason": reason}))
         ignores_stop = bool(controller.ignores_person_stop)
         if self._baselined and ignores_stop and not self._ignores_stop:
@@ -317,7 +337,11 @@ class ChargerNotifier:
         completion = controller.completion_record
         completion_at = None if completion is None else completion.get("at")
         if self._baselined and completion is not None and completion_at != self._completion_at:
-            events.append((EVENT_CHARGE_COMPLETE, dict(completion)))
+            if away:
+                # Nothing was charged for the plan with no car there: a window's end is no completion.
+                _LOGGER.debug("SpotNav charger %s: charge_complete not told while no car is plugged in", self._entry_id)
+            else:
+                events.append((EVENT_CHARGE_COMPLETE, dict(completion)))
         self._completion_at = completion_at
         self._baselined = True
         self._arm_recheck(self._stops.due_at)
@@ -464,6 +488,7 @@ class ChargerNotifier:
         quiet = self._burst_due is not None and self._burst_quiet
         self._burst_since = self._burst_due = self._owed_until = None
         self._burst_quiet = False
+        self._tell_owed_at_risk(now)
         plan = self._controller.plan
         fingerprint = plan_fingerprint(plan)
         if fingerprint is None or self._connected is False:
@@ -487,6 +512,14 @@ class ChargerNotifier:
         self._notified_plan = fingerprint
         self._save_plan()
         self._send(EVENT_PLAN_INSTALLED, {}, now, fingerprint)
+
+    def _tell_owed_at_risk(self, now: datetime) -> None:
+        """The plan made for the car after its plug-in is in: a departure that still cannot be met is told now."""
+        if self._at_risk_owed is None or self._connected is False:
+            return
+        owed, self._at_risk_owed = self._at_risk_owed, None
+        if self._at_risk_now:
+            self._send(EVENT_PLAN_AT_RISK, owed, now, None)
 
     # ------------------------------------------------------------------ sending
 

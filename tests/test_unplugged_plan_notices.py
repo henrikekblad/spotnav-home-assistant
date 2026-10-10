@@ -110,6 +110,10 @@ async def _world(
         entry.entry_id, mutate=lambda settings: replace(settings, departure=time(7, 30))
     )
     await charger_data(hass, entry.entry_id).push.async_register(PushRegistration(push_ref=REF, events=DEFAULT_EVENTS))
+    # The night's plans are given by hand: Auto's own snapshots (settings incomplete here) are not heard.
+    notifier = charger_data(hass, entry.entry_id).notifier
+    assert len(notifier._unsubscribe) == 3
+    notifier._unsubscribe.pop()()
     car = None
     if connected is not None:
         car = Car(hass, entry.entry_id)
