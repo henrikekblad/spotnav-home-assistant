@@ -545,6 +545,7 @@ describe("the backend's dashboard strategy_state, site and status fixtures", () 
           "market",
           "phase_detection",
           "plan",
+          "plan_notice",
           "planning",
           "prices",
           "progress",

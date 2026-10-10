@@ -1637,6 +1637,8 @@ const OPTIONAL_DASHBOARD_KEYS = [
   "identification",
   "vehicle_choices",
   "camera_identification",
+  // The notifier's count of the plans it told, for the app's background check: accepted and never read.
+  "plan_notice",
 ] as const;
 
 /** The `camera_identification` block, or `null` when it is missing or unreadable: the camera rows are hidden. */
