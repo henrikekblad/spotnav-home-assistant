@@ -4,6 +4,8 @@ Only Home Assistant can see the car's state of charge while a charge runs, so on
 early when the target is reached.
 
 * `decide_target_stop` is pure: a target and a reading in, a decision out.
+* `target_stop_lapse` is pure: whether the record of a stop still describes the car (another car, a target
+  raised above the stop level, or a level read after the stop below the target ends it).
 * `resolve_soc_reading` reads one state and reports what it found, including "the entity exists but
   its value is unusable" as distinct from "no entity".
 
@@ -15,7 +17,8 @@ from __future__ import annotations
 
 import math
 from dataclasses import dataclass
-from typing import Final, Literal
+from datetime import datetime
+from typing import Any, Final, Literal
 
 from homeassistant.core import HomeAssistant, State
 from homeassistant.helpers import entity_registry as er
@@ -44,6 +47,19 @@ ESTIMATE_STOP_MARGIN_PERCENT: Final = 1.0
 #: an estimate carries the error of the pack size and the charging loss over the whole charge.
 CAR_ENDED_READING_MARGIN_PERCENT: Final = 1.0
 CAR_ENDED_ESTIMATE_MARGIN_PERCENT: Final = 3.0
+
+#: How far below the target a level read after a target's stop may be and the stop still describe the car
+#: (`target_stop_lapse`): a cloud's rounding and a little standby loss are not a car that was driven.
+TARGET_STOP_LAPSE_MARGIN_PERCENT: Final = 2.0
+
+#: Why a target stop's record no longer describes the present (`target_stop_lapse`, and the controller's own
+#: reasons: a charge started or seen, the car unplugged).
+LAPSE_OTHER_VEHICLE: Final = "other_vehicle"
+LAPSE_TARGET_RAISED: Final = "target_raised"
+LAPSE_LEVEL_DROPPED: Final = "level_dropped"
+LAPSE_CHARGE_STARTED: Final = "charge_started"
+LAPSE_CHARGING: Final = "charging"
+LAPSE_UNPLUGGED: Final = "unplugged"
 
 
 @dataclass(frozen=True, slots=True)
@@ -238,3 +254,66 @@ def decide_target_stop(
     if reading.soc_percent >= target_soc_percent:
         return TargetDecision(stop=True, reason="reached")
     return TargetDecision(stop=False, reason="below_target")
+
+
+def target_stop_lapse(
+    record: dict[str, Any],
+    *,
+    vehicle_id: str | None,
+    target_percent: float | None,
+    soc_percent: float | None,
+    soc_age_s: float | None,
+    now: datetime,
+) -> str | None:
+    """Why the record of a target's stop no longer describes the car, or `None` while it does.
+
+    Pure. `vehicle_id` is the car the charger plans for now, `target_percent` its target (`None`: no target to
+    compare), and `soc_percent`/`soc_age_s` its level now and the age of the reading it comes from (an estimate's
+    is that of the reading it was carried from):
+
+    * another car than the one stopped for: `other_vehicle` (either side unknown says nothing);
+    * a target above the level the car stopped at (the target stopped at, for a record without a level):
+      `target_raised`;
+    * a level from a reading taken after the stop, more than `TARGET_STOP_LAPSE_MARGIN_PERCENT` below the
+      target stopped at: `level_dropped` (the car was driven, or used its battery).
+    """
+    stopped_for = record.get("vehicle_id")
+    if isinstance(stopped_for, str) and stopped_for and vehicle_id and vehicle_id != stopped_for:
+        return LAPSE_OTHER_VEHICLE
+    stop_target = _finite(record.get("target_soc_percent"))
+    stop_level = _finite(record.get("soc_percent"))
+    if stop_level is None:
+        stop_level = stop_target
+    if target_percent is not None and stop_level is not None and target_percent > stop_level:
+        return LAPSE_TARGET_RAISED
+    stopped_at = _instant(record.get("at"))
+    if (
+        soc_percent is not None
+        and soc_age_s is not None
+        and stopped_at is not None
+        and stop_target is not None
+        and now.timestamp() - soc_age_s > stopped_at.timestamp()
+        and soc_percent < stop_target - TARGET_STOP_LAPSE_MARGIN_PERCENT
+    ):
+        return LAPSE_LEVEL_DROPPED
+    return None
+
+
+def target_stop_time(record: dict[str, Any] | None) -> datetime | None:
+    """When the recorded stop was made (an aware instant), or `None` for a record without a readable one."""
+    return None if record is None else _instant(record.get("at"))
+
+
+def _finite(value: Any) -> float | None:
+    if isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(value):
+        return None
+    return float(value)
+
+
+def _instant(value: Any) -> datetime | None:
+    if not isinstance(value, str):
+        return None
+    moment = dt_util.parse_datetime(value)
+    if moment is None or moment.tzinfo is None:
+        return None
+    return moment
