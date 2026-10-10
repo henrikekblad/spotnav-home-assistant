@@ -438,6 +438,18 @@ def test_a_window_start_that_starts_nothing(event: ev.WindowStart) -> None:
     assert kinds(commands) == []
 
 
+@pytest.mark.parametrize("trigger", ["timer", "rearm"])
+def test_a_window_opening_at_an_empty_charger_starts_nothing(trigger: str) -> None:
+    """The charger says no car is plugged in: the window's start waits for the plug-in, which starts it."""
+    session, commands = run(
+        ChargeSession(held=True, overridden=True), ev.WindowStart(trigger=trigger, open_window_start=T0, connected=False)
+    )
+    assert kinds(commands) == []
+    assert not session.held and not session.overridden, "the plug-in session a hold belonged to still ends here"
+    _, commands = run(session, ev.WindowStart(trigger=trigger, open_window_start=T0, connected=None))
+    assert commands == (Start("plan_window"),), "a charger that cannot say is started as before"
+
+
 def test_a_plug_in_inside_a_window_claims_a_charge_the_charger_began() -> None:
     session, commands = run(ChargeSession(owner="charger_self"), ev.WindowStart(trigger="plug_in", control_on=True))
     assert commands == (Start("claim"),)
