@@ -313,6 +313,15 @@ def decide_automatic(facts: ControlFacts) -> AutomaticDecision:
 PAUSE_RETRY_DELAY: Final = timedelta(seconds=60)
 
 
+def _plan_over(plan: ChargingPlan) -> bool:
+    """Whether every window of a plan has passed (a plan whose instants cannot be read is not: it is refused as
+    unusable where it is validated)."""
+    try:
+        return plan.end_time <= dt_util.utcnow()
+    except (TypeError, ValueError):
+        return False
+
+
 def pause_blocks_execution(settings: AutoSettings) -> bool:
     """Whether the persisted settings record still forbids every Auto application.
 
@@ -1003,6 +1012,12 @@ class AutoExecutor:
             if applied is not None and applied.identity == application.identity:
                 self._pending = None
                 return applied
+            if _plan_over(application.plan):
+                # It waited for a boundary that came only at its own end (a proposal for the last quarter before
+                # the departure, applied when the window before it ended): nothing is left of it to install, and
+                # that is no error.
+                self._pending = None
+                return self.applied
             try:
                 self._controller.validate_plan(application.plan)
             except ValueError:
