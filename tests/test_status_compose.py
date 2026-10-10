@@ -716,7 +716,7 @@ CASES: list[tuple[str, StatusFacts, str, list[dict[str, Any]]]] = [
         "normal",
         [
             {"code": "nothing_to_charge", "params": {}},
-            {"code": "target_reached", "params": {"soc_percent": 81.4, "basis": "reading", "reading_age_s": 12}},
+            {"code": "target_reached", "params": {"soc_percent": 81.4, "basis": "reading", "reading_age_s": 12, "stopped_at": None}},
         ],
     ),
     (
@@ -729,9 +729,53 @@ CASES: list[tuple[str, StatusFacts, str, list[dict[str, Any]]]] = [
         "notice",
         [
             {"code": "nothing_to_charge", "params": {}},
-            {"code": "target_reached", "params": {"soc_percent": 81.0, "basis": "estimate", "reading_age_s": 1800}},
+            {"code": "target_reached", "params": {"soc_percent": 81.0, "basis": "estimate", "reading_age_s": 1800, "stopped_at": None}},
             {"code": "price_data_stale", "params": {"reason": None}},
         ],
+    ),
+    (
+        "a stop names its own time, so a client never calls an old stop just now",
+        base(
+            planning=planning("nothing_to_charge", "already_at_target"),
+            target=TargetFacts(53.0, "reading", 0.0, stopped_at=at(-3)),
+        ),
+        "normal",
+        [
+            {"code": "nothing_to_charge", "params": {}},
+            {
+                "code": "target_reached",
+                "params": {"soc_percent": 53.0, "basis": "reading", "reading_age_s": 0, "stopped_at": iso(-3)},
+            },
+        ],
+    ),
+    (
+        "the field case: solar arming three hours after the stop tells the stop with its time",
+        base(
+            strategy="solar",
+            planning=planning("planning_unavailable", "solar_running"),
+            solar=SolarFacts(state="arming"),
+            target=TargetFacts(53.0, "reading", 0.0, stopped_at=at(-3)),
+        ),
+        "normal",
+        [
+            {"code": "solar_arming", "params": {}},
+            {
+                "code": "target_reached",
+                "params": {"soc_percent": 53.0, "basis": "reading", "reading_age_s": 0, "stopped_at": iso(-3)},
+            },
+        ],
+    ),
+    (
+        "a solar headline that says charging is never followed by a stop",
+        base(
+            strategy="solar",
+            planning=planning("planning_unavailable", "solar_running"),
+            solar=SolarFacts(state="on", requested_a=11),
+            charging=True,
+            target=TargetFacts(53.0, "reading", 0.0, stopped_at=at(-3)),
+        ),
+        "normal",
+        [{"code": "solar_charging", "params": {"requested_a": 11}}],
     ),
     (
         "a stop record without an age is still worded",
@@ -739,7 +783,7 @@ CASES: list[tuple[str, StatusFacts, str, list[dict[str, Any]]]] = [
         "normal",
         [
             {"code": "nothing_to_charge", "params": {}},
-            {"code": "target_reached", "params": {"soc_percent": 80.0, "basis": "reading", "reading_age_s": None}},
+            {"code": "target_reached", "params": {"soc_percent": 80.0, "basis": "reading", "reading_age_s": None, "stopped_at": None}},
         ],
     ),
     (
@@ -760,7 +804,7 @@ CASES: list[tuple[str, StatusFacts, str, list[dict[str, Any]]]] = [
         "normal",
         [
             {"code": "nothing_to_charge", "params": {}},
-            {"code": "target_reached", "params": {"soc_percent": 80.0, "basis": "reading", "reading_age_s": 1}},
+            {"code": "target_reached", "params": {"soc_percent": 80.0, "basis": "reading", "reading_age_s": 1, "stopped_at": None}},
         ],
     ),
     (
@@ -1267,6 +1311,30 @@ def test_a_line_that_is_blocking_is_never_composed_with_normal_life() -> None:
             # The one exception: a trailing charging_now while the charger draws current.
             rest = [line["code"] for line in block["lines"][len(blocking) :]]
             assert rest in ([], ["charging_now"]) and facts.charging == bool(rest)
+
+
+#: Headlines that say the car is charging now: a stop told after one would contradict it.
+CHARGING_HEADLINES = ("solar_charging", "charging_now", "min_soc_charging", "topping_off", "charging_without_prices")
+
+
+def _with_stop(facts: StatusFacts) -> StatusFacts:
+    from dataclasses import replace
+
+    return replace(facts, target=TargetFacts(53.0, "reading", 0.0, stopped_at=at(-3)))
+
+
+def test_a_headline_that_says_charging_is_never_followed_by_target_reached() -> None:
+    """Every rule's facts, with a stop record added: wherever a line says the car charges, no stop is told."""
+    told_charging = 0
+    for _, facts, _, _ in CASES:
+        for candidate in (facts, _with_stop(facts)):
+            codes_now = codes(compose_status(candidate))
+            if any(code in CHARGING_HEADLINES for code in codes_now):
+                told_charging += 1
+                assert "target_reached" not in codes_now, codes_now
+            if candidate.charging:
+                assert "target_reached" not in codes_now, codes_now
+    assert told_charging > 0
 
 
 async def test_the_dashboard_and_the_webhook_carry_the_same_block(
