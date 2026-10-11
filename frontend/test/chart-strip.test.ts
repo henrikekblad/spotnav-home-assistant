@@ -23,7 +23,7 @@ import { translate } from "../src/i18n";
 import type { CardModel } from "../src/model";
 import { VISUAL_CLASSES as C, VISUAL_STYLES } from "../src/visual-styles";
 import { dashboard, FakeHass, mountCard } from "./helpers";
-import { mountPoint, NOW, quarterModel, twoDayModel, twoDayPlanModel } from "./visual-fixtures";
+import { mountPoint, NOW, quarterModel, twoDayModel, twoDayPlanModel, waitingProposalModel } from "./visual-fixtures";
 
 const DAY_MS = 86_400_000;
 const HOUR_MS = 3_600_000;
@@ -263,6 +263,19 @@ describe("the strip in the card", () => {
     expect(VISUAL_STYLES).toMatch(
       /\.spotnav-strip-bar\[data-tomorrow="true"\]\[data-kind="proposal"\] \{[^}]*repeating-linear-gradient\(135deg/s,
     );
+    card.destroy();
+  });
+
+  it("follows a waiting proposal: the running window installed, the proposal after it, old windows gone", () => {
+    const { card, root } = view(waitingProposalModel(), { chartCollapsed: true });
+    const bars = Array.from(root.querySelectorAll<HTMLElement>(`.${C.stripBar}`));
+    // The running 06:00-06:45 splits at the clock (06:30); then today's 06:45-07:15 and tomorrow's 06:15-06:45.
+    expect(bars.map((bar) => [bar.dataset["kind"], bar.dataset["past"], bar.dataset["tomorrow"]]).sort()).toEqual([
+      ["installed", "false", "false"],
+      ["installed", "true", "false"],
+      ["proposal", "false", "false"],
+      ["proposal", "false", "true"],
+    ]);
     card.destroy();
   });
 

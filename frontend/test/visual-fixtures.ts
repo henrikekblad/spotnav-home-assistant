@@ -219,6 +219,65 @@ export function twoDayPlanModel(nowMs: number = NOW): CardModel {
   return buildModel({ dashboard: dashboardWithDayRows(today, tomorrow), language: "en", nowMs });
 }
 
+/**
+ * A proposal waiting beside an older installed plan, with the clock (04:30Z, 06:30 local) inside the
+ * installed window 06:00-06:45. The installed plan also has an old 07:30-08:00 window today and 06:00-06:30
+ * tomorrow; the proposal is 06:45-07:15 today and 06:15-06:45 tomorrow. Rows are flagged from the periods
+ * by overlap, as the backend does. `pending: false` installs nothing new: the proposal is applied.
+ */
+export function waitingProposalModel(options: { pending?: boolean; nowMs?: number } = {}): CardModel {
+  const pending = options.pending ?? true;
+  const span = (start: string, end: string) => ({ start, end, startMs: Date.parse(start), endMs: Date.parse(end) });
+  const installed = [
+    span("2026-09-22T04:00:00+00:00", "2026-09-22T04:45:00+00:00"),
+    span("2026-09-22T05:30:00+00:00", "2026-09-22T06:00:00+00:00"),
+    span("2026-09-23T04:00:00+00:00", "2026-09-23T04:30:00+00:00"),
+  ];
+  const proposal = [
+    span("2026-09-22T04:45:00+00:00", "2026-09-22T05:15:00+00:00"),
+    span("2026-09-23T04:15:00+00:00", "2026-09-23T04:45:00+00:00"),
+  ];
+  const overlaps = (spans: typeof installed, from: number, to: number) =>
+    spans.some((entry) => from < entry.endMs && entry.startMs < to);
+  const flagged = (startIso: string, count: number, day: string) => {
+    const startMs = Date.parse(startIso);
+    return quarterHourRows(startIso, Array.from({ length: count }, (_unused, index) => 100 + index * 10), {
+      day,
+      flags: (index) => {
+        const from = startMs + index * 900_000;
+        return {
+          installed_planned: overlaps(installed, from, from + 900_000),
+          proposal_planned: overlaps(proposal, from, from + 900_000),
+        };
+      },
+    });
+  };
+  const base = rawDashboard();
+  const plan = base.plan as Record<string, unknown>;
+  const periods = (spans: typeof installed) => spans.map((entry) => ({ start: entry.start, end: entry.end }));
+  const payload = rawDashboard({
+    prices: {
+      ...(base.prices as Record<string, unknown>),
+      intervals: [...flagged("2026-09-22T04:00:00+00:00", 8, SEPT), ...flagged("2026-09-23T04:00:00+00:00", 4, NEXT_DAY)],
+      interval_count: 12,
+      priced_slots: 12,
+    },
+    plan: {
+      ...plan,
+      proposal: { ...(plan.proposal as Record<string, unknown>), periods: periods(proposal) },
+      installed: { ...(plan.installed as Record<string, unknown>), periods: periods(installed), active_period_index: 0 },
+      relation: pending
+        ? { applied: false, applied_identity: "installed-1", pending_identity: "proposal-1" }
+        : { applied: true, applied_identity: "installed-1", pending_identity: null },
+    },
+  });
+  const result = decodeDashboard(payload);
+  if (!result.ok) {
+    throw new Error(`waiting-proposal fixture did not decode: ${result.failure}`);
+  }
+  return buildModel({ dashboard: result.value, language: "en", nowMs: options.nowMs ?? NOW });
+}
+
 /** Several decoded days' rows in one decoded dashboard, flags kept, in instant order, through the real decoder. */
 export function dashboardWithDayRows(...days: Dashboard[]): Dashboard {
   const rows = days.flatMap((day) => day.prices.intervals);
