@@ -95,3 +95,37 @@ def test_an_unmapped_planner_code_is_named_in_the_log(caplog: pytest.LogCaptureF
     caplog.clear()
     assert AutoPlannerController._map_planner_code("deadline_too_short") == "deadline_too_short"  # noqa: SLF001
     assert caplog.text == ""
+
+
+# The field case (2026-10-11): 3 kWh to 50 % on a 35.5 kWh battery at 43 %, Hybrid, departure 07:00 tomorrow
+# before tomorrow's prices are published, and enough sun to cover the need. `remaining - credit` left a float
+# residue (4.4e-16 kWh) that passed `<= 0`, the planner then waited for the publication with that need, and
+# `price_wait.decide` refused it: `error` / `unexpected_failure`, logged as a WARNING on every site update.
+RESIDUE_SETTINGS: dict[str, Any] = {
+    "strategy": "hybrid", "amps": 14, "phases": 1,
+    "departure_enabled": True, "departure": time(7, 0),
+}
+
+
+@pytest.mark.parametrize("wh", [2000.0, 3000.0])
+async def test_a_float_residue_left_for_the_grid_is_nothing_to_buy(
+    hass: HomeAssistant, transport: Any, monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture, wh: float,
+) -> None:
+    serve_prices(transport, days=(TODAY,), rising=True)  # tomorrow is not published yet
+    _sunny(monkeypatch, wh)
+    with freeze_time("2026-09-22 10:41:00"), caplog.at_level(logging.WARNING):
+        charger, car_id, _ = await charger_and_car(
+            hass, capacity=35.5, soc_percent="43", driver=DRIVER_MANUAL_KWH, requested_kwh=3.0,
+            target=TargetSocIntent(), **RESIDUE_SETTINGS,
+        )
+        await go_auto(
+            hass, charger.entry_id, driver=DRIVER_TARGET_SOC,
+            target=TargetSocIntent(vehicle_id=car_id, target_percent=50), **RESIDUE_SETTINGS,
+        )
+        preview = preview_for(hass, charger.entry_id)
+        await preview.async_recalculate()
+        snapshot = preview.snapshot()
+    assert (snapshot.state, snapshot.reason) == ("nothing_to_charge", "solar_covers_need")
+    assert snapshot.last_error_code is None and snapshot.proposal is None
+    assert "Auto preview calculation failed" not in caplog.text

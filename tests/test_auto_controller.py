@@ -13,6 +13,7 @@ service would still be a forbidden call.
 from __future__ import annotations
 
 import json
+import logging
 from dataclasses import replace
 from datetime import datetime, time, timedelta, timezone
 from typing import Any
@@ -173,6 +174,44 @@ async def test_entering_auto_with_an_area_calculates_a_real_proposal(
     assert harness.transport.call_count("/v1/index.json") == 1
     assert harness.area is not None and harness.area.subscriber_count == 1
     assert_nothing_executed(no_execution)
+
+
+async def test_a_failure_that_repeats_for_the_same_inputs_is_warned_once(
+    harness: Harness, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    """Every site update recalculates: the same failure is one WARNING with its message, repeats DEBUG."""
+    from custom_components.spotnav.planning import auto_controller
+
+    message = "need_kwh must be positive"
+
+    def explode(_request: Any) -> Any:
+        raise ValueError(message)
+
+    serve(harness.transport)
+    monkeypatch.setattr(auto_controller, "calculate_plan", explode)
+    logger = "custom_components.spotnav.planning.auto_controller"
+
+    def failures(level: int) -> list[str]:
+        return [
+            r.getMessage() for r in caplog.records
+            if r.levelno == level and r.getMessage().startswith("Auto preview calculation failed")
+        ]
+
+    with caplog.at_level(logging.DEBUG, logger=logger):
+        controller = await harness.auto()
+        for _ in range(3):
+            await controller.async_recalculate()
+        assert controller.snapshot().reason == "unexpected_failure"
+        assert failures(logging.WARNING) == [f"Auto preview calculation failed: ValueError: {message}"]
+        assert len(failures(logging.DEBUG)) >= 3
+
+        message = "another failure"  # a different error is news again
+        await controller.async_recalculate()
+        assert len(failures(logging.WARNING)) == 2
+
+        harness.clock.advance(seconds=30)  # the clock alone is not a change of inputs
+        await controller.async_recalculate()
+        assert len(failures(logging.WARNING)) == 2
 
 
 async def test_two_chargers_share_one_price_stream_and_calculate_separately(
