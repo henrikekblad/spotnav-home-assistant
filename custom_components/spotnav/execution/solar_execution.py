@@ -36,7 +36,9 @@
   control went off after it was seen on (not a load-balancing pause): the car ended it when the
   connector says `Finishing` or `SuspendedEV`, or the car had stopped drawing just before; an unplug or
   anything else is `charger_stopped`. The control still on with the car drawing nothing for `CAR_IDLE_S`
-  is the car ending it too, and solar stops it. A car at or above its own limit is `vehicle_full`, else
+  is the car ending it too, and solar stops it, as is a start the charger answered but the car never took
+  (no charge, nothing holding it, a car plugged in) for `CAR_IDLE_S`, on a charger whose control is on only
+  while it charges (`_start_not_taken`). A car at or above its own limit is `vehicle_full`, else
   `car_stopped` (tried again after a back-off). A re-plug, a state of charge `SOC_DROP_PCT` lower, or a
   higher limit or target clears it. That wait, the next retry's length and what the car ended at are kept
   on the charger's controller and saved (`_keep_ended`), and seeded into a rebuilt controller
@@ -721,10 +723,12 @@ class SolarExecutionCoordinator:
         # (`_take_over`): leaving solar does not stop it, as it never stopped a charge it did not start.
         self._took_over = False
         # The watch on the charge solar runs (`_watch_charge`): whether its charge control was seen on, since
-        # when the car has drawn nothing with it on, and since when it has drawn. Then what a charge the car
-        # ended was ended at (`_ended_context`): the plug-in, its state of charge, its limit and the target.
+        # when the car has drawn nothing with it on, since when it has drawn, and since when a start no longer
+        # pending has not been taken (`_unseen_since`). Then what a charge the car ended was ended at
+        # (`_ended_context`): the plug-in, its state of charge, its limit and the target.
         self._seen_control_on = False
         self._idle_since: float | None = None
+        self._unseen_since: float | None = None
         self._drawing_since: float | None = None
         self._ended_context: tuple[datetime | None, float | None, float | None, float | None] | None = None
         # Bounded log of what solar decided for this charger, newest last (`decision_log`): only changes and
@@ -952,8 +956,10 @@ class SolarExecutionCoordinator:
             self._solar = self._build_controller(site)
         elif not (held_by_plan or held_by_floor) and self._state is not None and self._state.held_by_plan:
             # A plan window held the charge until now (its end handed it over, or the strategy left the plan): what
-            # the sun asked for meanwhile was never written, so its next modulation writes again.
+            # the sun asked for meanwhile was never written, so its next modulation writes again. A start
+            # not taken is timed afresh: the watch did not run meanwhile.
             self._solar.release_request()
+            self._unseen_since = None
         if not (held_by_plan or held_by_floor):
             if await self._adopt_solar_charge(site, self._solar):
                 # Solar's own charge resumed by load balancing was decided this tick (kept or stopped).
@@ -1049,17 +1055,20 @@ class SolarExecutionCoordinator:
     def _watch_charge(self, solar: SolarController, now: float) -> SolarVerdict | None:
         """The charger's own state against solar's: the verdict that ends a charge solar runs which ended
         without it (module docstring), else `None`. Never while load balancing has paused the charge (its
-        regulator resumes it), and a charge control never seen on (a Start not taken yet) ended nothing."""
+        regulator resumes it), and a charge control never seen on (a Start not taken yet) ended nothing, unless
+        the start was not taken at all (`_start_not_taken`)."""
         controller = self._controller
         if not solar.running:
             self._seen_control_on = False
             self._idle_since = None
             self._drawing_since = None
+            self._unseen_since = None
             return None
         if controller.paused_by_balancing:
             return None
         if controller.charge_control_on:
             self._seen_control_on = True
+            self._unseen_since = None
             drawing = controller.car_drawing()
             if controller.held_by_charger or controller.charge_progress_facts().connector_status == SUSPENDED_EVSE:
                 # The charger holds the car back, not the car itself.
@@ -1081,7 +1090,9 @@ class SolarExecutionCoordinator:
             if now - self._idle_since < CAR_IDLE_S:
                 return None
             return self._end(solar, now, self._car_cause())
-        if not self._seen_control_on or controller.start_pending:
+        if not self._seen_control_on:
+            return self._start_not_taken(solar, now)
+        if controller.start_pending:
             return None
         connection = controller.connection()[0]
         status = controller.charge_progress_facts().connector_status
@@ -1094,11 +1105,40 @@ class SolarExecutionCoordinator:
             cause = "charger_stopped"
         return self._end(solar, now, cause)
 
+    def _start_not_taken(self, solar: SolarController, now: float) -> SolarVerdict | None:
+        """A start solar sent that the car never took: the charger answered it (no longer pending) but neither
+        charges nor holds the car itself, with a car plugged in, for `CAR_IDLE_S`. Only for a charger whose
+        charge control is on only while it charges (no enable switch of its own: Easee's `awaiting_start`); one
+        with a switch shows a start taken by the switch, and the car's idling is then watched with it on. The
+        car ended it as a car drawing nothing with the control on does (`_car_cause`), so it waits for its
+        retry rather than being written currents it does not take."""
+        controller = self._controller
+        if (
+            controller.start_pending
+            or controller.adapter.enabled_state() is not None
+            or controller.held_by_charger
+            or controller.adapter.vehicle_connected() is not True
+        ):
+            self._unseen_since = None
+            return None
+        if self._unseen_since is None:
+            self._unseen_since = now
+        if now - self._unseen_since < CAR_IDLE_S:
+            return None
+        _LOGGER.info(
+            "%s charger %s: the car did not take the start for %.0f s",
+            SOLAR_SURPLUS_LOG_TOKEN,
+            self._charger_entry_id,
+            now - self._unseen_since,
+        )
+        return self._end(solar, now, self._car_cause())
+
     def _end(self, solar: SolarController, now: float, cause: SolarEndCause) -> SolarVerdict:
         """Hand the controller a charge that ended without solar, remembering what it ended at."""
         self._seen_control_on = False
         self._idle_since = None
         self._drawing_since = None
+        self._unseen_since = None
         self._took_over = False
         self._ended_context = None if cause == "charger_stopped" else self._vehicle_context()
         _LOGGER.info(
