@@ -16,11 +16,14 @@ export interface StripBar {
   end: number;
   /** Over by the now instant: drawn dimmed. */
   past: boolean;
+  /** On another day than the now fact's, as the band's own flag: drawn hatched like the graph's band. */
+  tomorrow: boolean;
 }
 
 /**
  * The bars, in wall-clock order: every installed and proposed period, the part before `nowMs` marked
  * past. A period under way is split at the now instant, so what is done dims and what remains does not.
+ * Tomorrow's periods keep their band's `tomorrow` flag, so they are hatched rather than solid.
  */
 export function stripBars(bands: PlanBands, nowMs: number): StripBar[] {
   const bars: StripBar[] = [];
@@ -29,15 +32,16 @@ export function stripBars(bands: PlanBands, nowMs: number): StripBar[] {
     ["proposal", bands.proposal],
   ] as const) {
     for (const band of list) {
+      const { tomorrow } = band;
       if (band.endMs <= nowMs) {
-        bars.push({ kind, start: band.startPosition, end: band.endPosition, past: true });
+        bars.push({ kind, start: band.startPosition, end: band.endPosition, past: true, tomorrow });
       } else if (band.startMs >= nowMs) {
-        bars.push({ kind, start: band.startPosition, end: band.endPosition, past: false });
+        bars.push({ kind, start: band.startPosition, end: band.endPosition, past: false, tomorrow });
       } else {
         const share = (nowMs - band.startMs) / (band.endMs - band.startMs);
         const split = band.startPosition + share * (band.endPosition - band.startPosition);
-        bars.push({ kind, start: band.startPosition, end: split, past: true });
-        bars.push({ kind, start: split, end: band.endPosition, past: false });
+        bars.push({ kind, start: band.startPosition, end: split, past: true, tomorrow });
+        bars.push({ kind, start: split, end: band.endPosition, past: false, tomorrow });
       }
     }
   }

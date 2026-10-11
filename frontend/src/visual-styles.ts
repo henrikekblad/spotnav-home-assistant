@@ -294,6 +294,21 @@ export const PLAN_BAND_STYLE = {
   hatchAngle: 45,
 } as const;
 
+/** A CSS gradient runs across its stripes, so its angle is the line angle plus a quarter turn. */
+const STRIP_HATCH_GRADIENT_ANGLE = PLAN_BAND_STYLE.hatchAngle + 90;
+
+/**
+ * The collapsed strip's hatch for one kind: the band colour in lines `hatchWidth` wide every
+ * `hatchSpacing`, at the shared angle. The strip has no marks over it, so the lines are full strength.
+ */
+function stripHatch(kind: "installed" | "proposal"): string {
+  const { hatchSpacing, hatchWidth } = PLAN_BAND_STYLE[kind];
+  return (
+    `repeating-linear-gradient(${STRIP_HATCH_GRADIENT_ANGLE}deg, ` +
+    `var(--primary-color, #03a9f4) 0 ${hatchWidth}px, transparent ${hatchWidth}px ${hatchSpacing}px)`
+  );
+}
+
 export const VISUAL_STYLES = `
   /*
    * The compact settings row and the dialogs it opens: quiet icon-plus-value triggers that wrap on a
@@ -1365,8 +1380,8 @@ export const VISUAL_STYLES = `
   }
   /*
    * The collapsed chart: a slim rounded track spanning the chart's own 24-hour axis, the plan's periods
-   * as bars in the primary colour (the ones already over dimmed), the now line as the chart draws it, and
-   * the hour labels in the chart's label style.
+   * as bars in the primary colour (the ones already over dimmed, tomorrow's hatched like the graph's),
+   * the now line as the chart draws it, and the hour labels in the chart's label style.
    */
   .${VISUAL_CLASSES.strip} {
     margin: 6px 0 0;
@@ -1392,6 +1407,12 @@ export const VISUAL_STYLES = `
   }
   .${VISUAL_CLASSES.stripBar}[data-past="true"] {
     opacity: 0.4;
+  }
+  .${VISUAL_CLASSES.stripBar}[data-tomorrow="true"][data-kind="installed"] {
+    background: ${stripHatch("installed")};
+  }
+  .${VISUAL_CLASSES.stripBar}[data-tomorrow="true"][data-kind="proposal"] {
+    background: ${stripHatch("proposal")};
   }
   .${VISUAL_CLASSES.stripNow} {
     position: absolute;
@@ -1427,6 +1448,9 @@ export const VISUAL_STYLES = `
     }
     .${VISUAL_CLASSES.stripBar} {
       background: Highlight;
+    }
+    .${VISUAL_CLASSES.stripBar}[data-tomorrow="true"][data-kind] {
+      background: repeating-linear-gradient(${STRIP_HATCH_GRADIENT_ANGLE}deg, Highlight 0 2px, transparent 2px 5px);
     }
   }
   /* The Settings popover's sections: one bordered block per topic. */

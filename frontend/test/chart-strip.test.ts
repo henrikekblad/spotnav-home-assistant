@@ -52,38 +52,38 @@ describe("the strip's bars", () => {
   it("dims a period that is over and keeps a coming one at full strength", () => {
     const bars = stripBars(bands([band(2, 4), band(20, 22)]), now);
     expect(bars).toEqual([
-      { kind: "installed", start: 2 / 24, end: 4 / 24, past: true },
-      { kind: "installed", start: 20 / 24, end: 22 / 24, past: false },
+      { kind: "installed", start: 2 / 24, end: 4 / 24, past: true, tomorrow: false },
+      { kind: "installed", start: 20 / 24, end: 22 / 24, past: false, tomorrow: false },
     ]);
   });
 
   it("splits a period now under way at the now instant", () => {
     const bars = stripBars(bands([band(11, 13)]), now);
     expect(bars).toEqual([
-      { kind: "installed", start: 11 / 24, end: 12 / 24, past: true },
-      { kind: "installed", start: 12 / 24, end: 13 / 24, past: false },
+      { kind: "installed", start: 11 / 24, end: 12 / 24, past: true, tomorrow: false },
+      { kind: "installed", start: 12 / 24, end: 13 / 24, past: false, tomorrow: false },
     ]);
   });
 
   it("draws the proposal's periods too, in time order, and tomorrow's on the same wall-clock axis", () => {
     const bars = stripBars(bands([band(20, 21)], [band(3, 4, 1), band(1, 2)]), now);
-    expect(bars.map((bar) => [bar.kind, bar.start * 24, bar.past])).toEqual([
-      ["proposal", 1, true],
-      ["proposal", 3, false],
-      ["installed", 20, false],
+    expect(bars.map((bar) => [bar.kind, bar.start * 24, bar.past, bar.tomorrow])).toEqual([
+      ["proposal", 1, true, false],
+      ["proposal", 3, false, true],
+      ["installed", 20, false, false],
     ]);
   });
 
   it("gives a quarter-hour at least the minimum width, and never lets it run past either end", () => {
     expect(STRIP_MIN_BAR_PX).toBe(3);
-    const quarter = { kind: "installed" as const, start: 3 / 96, end: 4 / 96, past: false };
+    const quarter = { kind: "installed" as const, start: 3 / 96, end: 4 / 96, past: false, tomorrow: false };
     const first = stripBarPlacement(quarter);
     expect(Number.parseFloat(first.left ?? "")).toBeCloseTo((3 / 96) * 100, 3);
     expect(first.right).toBeNull();
     expect(Number.parseFloat(first.width)).toBeCloseTo((1 / 96) * 100, 3);
     expect(first.minWidth).toBe("3px");
     // In the right half the bar is anchored on its end, so the minimum width grows inwards.
-    const last = stripBarPlacement({ kind: "installed" as const, start: 95 / 96, end: 1, past: false });
+    const last = stripBarPlacement({ kind: "installed" as const, start: 95 / 96, end: 1, past: false, tomorrow: false });
     expect(last.left).toBeNull();
     expect(last.right).toBe("0%");
     expect(Number.parseFloat(last.width)).toBeCloseTo((1 / 96) * 100, 3);
@@ -244,6 +244,25 @@ describe("the strip in the card", () => {
       expect(Number.parseFloat(bar.style.width)).toBeCloseTo((1 / 96) * 100, 3);
     }
     expect(VISUAL_STYLES).toMatch(/\.spotnav-strip-bar\[data-past="true"\] \{[^}]*opacity/s);
+    card.destroy();
+  });
+
+  it("marks tomorrow's periods for the hatch, today's not", () => {
+    const { card, root } = view(twoDayPlanModel(), { chartCollapsed: true });
+    const bars = Array.from(root.querySelectorAll<HTMLElement>(`.${C.stripBar}`));
+    // Today's 06:00-06:30 (over by the clock), tomorrow's installed 06:00-06:15 and proposed 06:15-06:30.
+    const marks = bars.map((bar) => [bar.dataset["kind"], bar.dataset["past"], bar.dataset["tomorrow"]]).sort();
+    expect(marks).toEqual([
+      ["installed", "false", "true"],
+      ["installed", "true", "false"],
+      ["proposal", "false", "true"],
+    ]);
+    expect(VISUAL_STYLES).toMatch(
+      /\.spotnav-strip-bar\[data-tomorrow="true"\]\[data-kind="installed"\] \{[^}]*repeating-linear-gradient\(135deg/s,
+    );
+    expect(VISUAL_STYLES).toMatch(
+      /\.spotnav-strip-bar\[data-tomorrow="true"\]\[data-kind="proposal"\] \{[^}]*repeating-linear-gradient\(135deg/s,
+    );
     card.destroy();
   });
 

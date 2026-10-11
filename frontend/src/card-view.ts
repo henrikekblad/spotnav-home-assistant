@@ -1375,6 +1375,7 @@ export function createCardView(input: CardViewInput): CardView {
         const node = element(doc, "span", C.stripBar);
         node.dataset["kind"] = bar.kind;
         node.dataset["past"] = bar.past ? "true" : "false";
+        node.dataset["tomorrow"] = bar.tomorrow ? "true" : "false";
         const place = stripBarPlacement(bar);
         if (place.left !== null) {
           node.style.left = place.left;
