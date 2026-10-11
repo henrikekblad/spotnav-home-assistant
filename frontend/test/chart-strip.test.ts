@@ -23,7 +23,7 @@ import { translate } from "../src/i18n";
 import type { CardModel } from "../src/model";
 import { VISUAL_CLASSES as C, VISUAL_STYLES } from "../src/visual-styles";
 import { dashboard, FakeHass, mountCard } from "./helpers";
-import { mountPoint, NOW, quarterModel, twoDayModel } from "./visual-fixtures";
+import { mountPoint, NOW, quarterModel, twoDayModel, twoDayPlanModel } from "./visual-fixtures";
 
 const DAY_MS = 86_400_000;
 const HOUR_MS = 3_600_000;
@@ -38,6 +38,7 @@ function band(startHour: number, endHour: number, dayIndex = 0): PlanBand {
     endMs: dayStart + endHour * HOUR_MS,
     startPosition: startHour / 24,
     endPosition: endHour / 24,
+    tomorrow: dayIndex > 0,
   };
 }
 
@@ -244,6 +245,23 @@ describe("the strip in the card", () => {
     }
     expect(VISUAL_STYLES).toMatch(/\.spotnav-strip-bar\[data-past="true"\] \{[^}]*opacity/s);
     card.destroy();
+  });
+
+  it("gives every card on the page its own hatch pattern ids", () => {
+    const first = view(twoDayPlanModel(), { idPrefix: "first" });
+    const second = view(twoDayPlanModel(), { idPrefix: "second" });
+    const ids = (root: ShadowRoot) => Array.from(root.querySelectorAll("pattern")).map((pattern) => pattern.id);
+    expect(ids(first.root)).toEqual(["first-chart-hatch-installed", "first-chart-hatch-proposal"]);
+    expect(ids(second.root)).toEqual(["second-chart-hatch-installed", "second-chart-hatch-proposal"]);
+    // Every hatched band references a pattern in its own card.
+    for (const { root } of [first, second]) {
+      for (const rect of Array.from(root.querySelectorAll(".spotnav-band-tomorrow"))) {
+        const id = /^url\(#(.+)\)$/.exec(rect.getAttribute("fill") ?? "")?.[1];
+        expect(ids(root)).toContain(id);
+      }
+    }
+    first.card.destroy();
+    second.card.destroy();
   });
 
   it("draws the now line where the clock is, and the hour labels under the track", () => {

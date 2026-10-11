@@ -5,7 +5,14 @@
 
 import { describe, expect, it } from "vitest";
 
-import { VISUAL_CLASSES, FOCUS_LINE_TOKENS, VISUAL_STYLES, focusLineColour } from "../src/visual-styles";
+import {
+  VISUAL_CLASSES,
+  FOCUS_LINE_TOKENS,
+  PLAN_BAND_STYLE,
+  VISUAL_STYLES,
+  focusLineColour,
+} from "../src/visual-styles";
+import { CROSS_PLAN_BAND_STYLE } from "./visual-fixtures";
 
 const classes = Object.values(VISUAL_CLASSES);
 
@@ -262,5 +269,27 @@ describe("the compact dialog header and the fiscal row", () => {
     expect(rule(VISUAL_CLASSES.marketSuggestion)).toContain("flex-wrap: wrap");
     expect(rule(VISUAL_CLASSES.marketCheckbox)).not.toContain("width:");
     expect(rule(VISUAL_CLASSES.marketCheckbox)).not.toContain("height:");
+  });
+});
+
+describe("the plan bands' shared treatment", () => {
+  it("uses the cross-client values, installed heavier than proposal", () => {
+    expect(PLAN_BAND_STYLE).toEqual(CROSS_PLAN_BAND_STYLE);
+    const { installed, proposal } = PLAN_BAND_STYLE;
+    expect(installed.fillOpacity).toBeGreaterThan(proposal.fillOpacity);
+    expect(installed.hatchOpacity).toBeGreaterThan(proposal.hatchOpacity);
+    expect(installed.hatchSpacing).toBeLessThan(proposal.hatchSpacing);
+  });
+
+  it("tints only today's runs solid, and hatches another day's in the theme's band colour", () => {
+    expect(VISUAL_STYLES).toMatch(
+      /\.spotnav-band-installed:not\(\.spotnav-band-tomorrow\) \{\s*fill: var\(--primary-color, #03a9f4\);\s*opacity: 0\.16;/,
+    );
+    expect(VISUAL_STYLES).toMatch(
+      /\.spotnav-band-proposal:not\(\.spotnav-band-tomorrow\) \{\s*fill: var\(--primary-color, #03a9f4\);\s*opacity: 0\.07;/,
+    );
+    expect(VISUAL_STYLES).toMatch(/\.spotnav-band-hatch \{\s*stroke: var\(--primary-color, #03a9f4\);/);
+    expect(VISUAL_STYLES).toMatch(/\.spotnav-band-hatch\[data-kind="installed"\] \{\s*stroke-opacity: 0\.5;/);
+    expect(VISUAL_STYLES).toMatch(/\.spotnav-band-hatch\[data-kind="proposal"\] \{\s*stroke-opacity: 0\.3;/);
   });
 });

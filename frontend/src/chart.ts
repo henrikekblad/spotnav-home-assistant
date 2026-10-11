@@ -711,6 +711,12 @@ export interface PlanBand {
   /** Wall-clock fractions of one day, same x function as the marks. An edge on local midnight is 1 (24:00), the day's own end. */
   startPosition: number;
   endPosition: number;
+  /**
+   * Drawn hatched rather than solid: the run is not on the market-local day the now fact is in, the same
+   * rule as a mark's `tomorrow`. On the shared axis tomorrow's 00:00-05:30 sits left of the now line, and
+   * without this it reads as a plan already over.
+   */
+  tomorrow: boolean;
 }
 
 export interface PlanBands {
@@ -756,6 +762,7 @@ function runsOf(
       endMs: row.endMs,
       startPosition: bandPosition(row.startMs, day, clock),
       endPosition: bandPosition(row.endMs, day, clock),
+      tomorrow: day.role !== "today",
     };
     bands.push(open);
   }

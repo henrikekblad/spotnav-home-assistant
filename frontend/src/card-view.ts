@@ -1339,7 +1339,11 @@ export function createCardView(input: CardViewInput): CardView {
         model.chart.days.length,
       ),
       labels,
-      ids: { title: `${idPrefix}-chart-title`, description: `${idPrefix}-chart-description` },
+      ids: {
+        title: `${idPrefix}-chart-title`,
+        description: `${idPrefix}-chart-description`,
+        hatch: `${idPrefix}-chart-hatch`,
+      },
     });
     drawn?.element.remove();
     drawn = result;

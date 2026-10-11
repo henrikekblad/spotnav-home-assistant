@@ -101,7 +101,7 @@ export function renderFor(
     title: options.title ?? "chart-title",
     description: options.description ?? "chart-description",
     labels: TEST_LABELS,
-    ids: { title: "test-chart-title", description: "test-chart-description" },
+    ids: { title: "test-chart-title", description: "test-chart-description", hatch: "test-chart-hatch" },
   });
 }
 
@@ -202,7 +202,24 @@ export function midnightModel(nowMs: number = AFTER_MIDNIGHT_MS): CardModel {
   });
 }
 
-/** Several decoded days' rows in one decoded dashboard, in instant order, through the real decoder. */
+/**
+ * Two local days with a plan on both: today's 06:00-06:30 installed and tomorrow's 06:00-06:15
+ * installed plus 06:15-06:30 proposed, the clock on today. Today's runs are drawn solid, tomorrow's
+ * hatched.
+ */
+export function twoDayPlanModel(nowMs: number = NOW): CardModel {
+  const today = dashboardWithRows("2026-09-22T04:00:00+00:00", [100, 200], {
+    day: SEPT,
+    flags: () => ({ installed_planned: true }),
+  });
+  const tomorrow = dashboardWithRows("2026-09-23T04:00:00+00:00", [300, 400], {
+    day: NEXT_DAY,
+    flags: (index) => (index === 0 ? { installed_planned: true } : { proposal_planned: true }),
+  });
+  return buildModel({ dashboard: dashboardWithDayRows(today, tomorrow), language: "en", nowMs });
+}
+
+/** Several decoded days' rows in one decoded dashboard, flags kept, in instant order, through the real decoder. */
 export function dashboardWithDayRows(...days: Dashboard[]): Dashboard {
   const rows = days.flatMap((day) => day.prices.intervals);
   const payload = rawDashboard();
@@ -217,8 +234,8 @@ export function dashboardWithDayRows(...days: Dashboard[]): Dashboard {
     known: true,
     estimated: false,
     basis_day: null,
-    proposal_planned: false,
-    installed_planned: false,
+    proposal_planned: row.proposal_planned,
+    installed_planned: row.installed_planned,
   }));
   const result = decodeDashboard(payload);
   if (!result.ok) {
@@ -291,6 +308,20 @@ export function crossClientModel(
   }
   return buildModel({ dashboard: result.value, language: "en", nowMs: CROSS_NOW });
 }
+
+/**
+ * The plan bands' treatment every client draws, as numbers rather than pixels. Today's runs are a
+ * solid tint at `fillOpacity`; a run on any other day (tomorrow, on the overlaid axis) is a diagonal
+ * hatch in the same colour instead: one line `hatchWidth` px wide every `hatchSpacing` px (measured
+ * across the lines), at `hatchOpacity`, rotated `hatchAngle` degrees clockwise from vertical so the
+ * lines run from lower left to upper right. Installed stays heavier than proposal in both treatments.
+ * The card's `PLAN_BAND_STYLE` must equal this; Android follows the same values.
+ */
+export const CROSS_PLAN_BAND_STYLE = {
+  installed: { fillOpacity: 0.16, hatchSpacing: 4, hatchWidth: 1.25, hatchOpacity: 0.5 },
+  proposal: { fillOpacity: 0.07, hatchSpacing: 6, hatchWidth: 1, hatchOpacity: 0.3 },
+  hatchAngle: 45,
+} as const;
 
 /**
  * The autumn night: 01:00 local happens twice, so the walk must reach both instants.

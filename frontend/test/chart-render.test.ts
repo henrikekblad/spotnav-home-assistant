@@ -30,6 +30,7 @@ import {
   quarterModel,
   renderFor,
   twoDayModel,
+  twoDayPlanModel,
 } from "./visual-fixtures";
 
 const SVG_NS = "http://www.w3.org/2000/svg";
@@ -234,6 +235,44 @@ describe("bands, gutter and paint order", () => {
     expect(result.nowLine.getAttribute("display")).toBe("none");
     applyFocus(result, null);
     expect(result.selectionLine.getAttribute("display")).toBe("none");
+  });
+});
+
+describe("tomorrow's bands are hatched, today's solid", () => {
+  it("fills tomorrow's runs with their kind's hatch pattern and leaves today's to the solid tint", () => {
+    const model = twoDayPlanModel();
+    expect(model.bands.installed.map((band) => band.tomorrow)).toEqual([false, true]);
+    expect(model.bands.proposal.map((band) => band.tomorrow)).toEqual([true]);
+    const result = renderFor(model);
+    const today = Array.from(result.element.querySelectorAll('.spotnav-bands rect[data-day-index="0"]'));
+    expect(today).toHaveLength(1);
+    expect(today[0]?.getAttribute("class")).toBe("spotnav-band-installed");
+    expect(today[0]?.hasAttribute("fill")).toBe(false);
+    const installed = result.element.querySelector('.spotnav-band-installed[data-day-index="1"]');
+    const proposal = result.element.querySelector('.spotnav-band-proposal[data-day-index="1"]');
+    expect(installed?.classList.contains("spotnav-band-tomorrow")).toBe(true);
+    expect(proposal?.classList.contains("spotnav-band-tomorrow")).toBe(true);
+    expect(installed?.getAttribute("fill")).toBe("url(#test-chart-hatch-installed)");
+    expect(proposal?.getAttribute("fill")).toBe("url(#test-chart-hatch-proposal)");
+    // Each referenced pattern exists in this SVG, as a diagonal line in the band colour's class.
+    for (const kind of ["installed", "proposal"] as const) {
+      const pattern = result.element.querySelector(`defs > pattern[id="test-chart-hatch-${kind}"]`);
+      expect(pattern?.getAttribute("patternUnits")).toBe("userSpaceOnUse");
+      expect(pattern?.getAttribute("patternTransform")).toBe("rotate(45)");
+      const line = pattern?.querySelector("line");
+      expect(line?.getAttribute("class")).toBe("spotnav-band-hatch");
+      expect(line?.getAttribute("data-kind")).toBe(kind);
+    }
+    // Installed stays heavier than proposal: a denser hatch.
+    const spacing = (kind: string) =>
+      Number(result.element.querySelector(`pattern[id="test-chart-hatch-${kind}"]`)?.getAttribute("width"));
+    expect(spacing("installed")).toBeLessThan(spacing("proposal"));
+  });
+
+  it("defines no pattern when every run is today's", () => {
+    const result = renderFor(quarterModel((index) => (index < 2 ? { installed_planned: true } : { proposal_planned: true })));
+    expect(result.element.querySelector("defs")).toBeNull();
+    expect(result.element.querySelectorAll(".spotnav-band-tomorrow")).toHaveLength(0);
   });
 });
 
