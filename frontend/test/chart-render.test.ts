@@ -2,7 +2,7 @@
 
 import { describe, expect, it } from "vitest";
 
-import { chartNowAt, hitTargets, hourMarkers, intervalIdentity, xForWallClock } from "../src/chart";
+import { chartNowAt, hitTargets, hourMarkers, intervalIdentity, xForWallClock, type PlanBand } from "../src/chart";
 import {
   applyFocus,
   chartHeightForWidth,
@@ -30,6 +30,8 @@ import {
   quarterModel,
   renderFor,
   twoDayModel,
+  twoDayPlanModel,
+  waitingProposalModel,
 } from "./visual-fixtures";
 
 const SVG_NS = "http://www.w3.org/2000/svg";
@@ -234,6 +236,87 @@ describe("bands, gutter and paint order", () => {
     expect(result.nowLine.getAttribute("display")).toBe("none");
     applyFocus(result, null);
     expect(result.selectionLine.getAttribute("display")).toBe("none");
+  });
+});
+
+describe("tomorrow's bands are hatched, today's solid", () => {
+  it("fills tomorrow's runs with their kind's hatch pattern and leaves today's to the solid tint", () => {
+    const model = twoDayPlanModel();
+    expect(model.bands.installed.map((band) => band.tomorrow)).toEqual([false, true]);
+    expect(model.bands.proposal.map((band) => band.tomorrow)).toEqual([true]);
+    const result = renderFor(model);
+    const today = Array.from(result.element.querySelectorAll('.spotnav-bands rect[data-day-index="0"]'));
+    expect(today).toHaveLength(1);
+    expect(today[0]?.getAttribute("class")).toBe("spotnav-band-installed");
+    expect(today[0]?.hasAttribute("fill")).toBe(false);
+    const installed = result.element.querySelector('.spotnav-band-installed[data-day-index="1"]');
+    const proposal = result.element.querySelector('.spotnav-band-proposal[data-day-index="1"]');
+    expect(installed?.classList.contains("spotnav-band-tomorrow")).toBe(true);
+    expect(proposal?.classList.contains("spotnav-band-tomorrow")).toBe(true);
+    expect(installed?.getAttribute("fill")).toBe("url(#test-chart-hatch-installed)");
+    expect(proposal?.getAttribute("fill")).toBe("url(#test-chart-hatch-proposal)");
+    // Each referenced pattern exists in this SVG, as a diagonal line in the band colour's class.
+    for (const kind of ["installed", "proposal"] as const) {
+      const pattern = result.element.querySelector(`defs > pattern[id="test-chart-hatch-${kind}"]`);
+      expect(pattern?.getAttribute("patternUnits")).toBe("userSpaceOnUse");
+      expect(pattern?.getAttribute("patternTransform")).toBe("rotate(45)");
+      const line = pattern?.querySelector("line");
+      expect(line?.getAttribute("class")).toBe("spotnav-band-hatch");
+      expect(line?.getAttribute("data-kind")).toBe(kind);
+    }
+    // Installed stays heavier than proposal: a denser hatch.
+    const spacing = (kind: string) =>
+      Number(result.element.querySelector(`pattern[id="test-chart-hatch-${kind}"]`)?.getAttribute("width"));
+    expect(spacing("installed")).toBeLessThan(spacing("proposal"));
+  });
+
+  it("defines no pattern when every run is today's", () => {
+    const result = renderFor(quarterModel((index) => (index < 2 ? { installed_planned: true } : { proposal_planned: true })));
+    expect(result.element.querySelector("defs")).toBeNull();
+    expect(result.element.querySelectorAll(".spotnav-band-tomorrow")).toHaveLength(0);
+  });
+});
+
+describe("a proposal waiting for the running window", () => {
+  const spans = (list: readonly PlanBand[]) =>
+    list.map((band) => [band.dayIndex, band.startPosition * 24, band.endPosition * 24, band.tomorrow]);
+
+  it("draws the installed plan only for the running window and the proposal after it, dropping the old windows", () => {
+    const model = waitingProposalModel();
+    // 06:00-06:45 is under way; the installed 07:30-08:00 today and 06:00-06:30 tomorrow are replaced.
+    expect(spans(model.bands.installed)).toEqual([[0, 6, 6.75, false]]);
+    // The proposal from the running window's end: 06:45-07:15 today, and 06:15-06:45 tomorrow, hatched.
+    expect(spans(model.bands.proposal)).toEqual([
+      [0, 6.75, 7.25, false],
+      [1, 6.25, 6.75, true],
+    ]);
+    const result = renderFor(model);
+    expect(result.element.querySelectorAll(".spotnav-band-installed")).toHaveLength(1);
+    const tomorrow = result.element.querySelector('.spotnav-band-proposal[data-day-index="1"]');
+    expect(tomorrow?.getAttribute("fill")).toBe("url(#test-chart-hatch-proposal)");
+    expect(result.element.querySelector('pattern[id="test-chart-hatch-installed"]')).toBeNull();
+  });
+
+  it("shows the whole proposal when no installed window holds the clock", () => {
+    const model = waitingProposalModel({ nowMs: Date.parse("2026-09-22T05:20:00Z") });
+    expect(model.bands.installed).toEqual([]);
+    expect(spans(model.bands.proposal)).toEqual([
+      [0, 6.75, 7.25, false],
+      [1, 6.25, 6.75, true],
+    ]);
+  });
+
+  it("keeps the installed plan whole, and the proposal only where nothing is installed, when nothing is pending", () => {
+    const model = waitingProposalModel({ pending: false });
+    expect(spans(model.bands.installed)).toEqual([
+      [0, 6, 6.75, false],
+      [0, 7.5, 8, false],
+      [1, 6, 6.5, true],
+    ]);
+    expect(spans(model.bands.proposal)).toEqual([
+      [0, 6.75, 7.25, false],
+      [1, 6.5, 6.75, true],
+    ]);
   });
 });
 

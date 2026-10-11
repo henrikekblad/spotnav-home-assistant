@@ -4,8 +4,8 @@
 // one wall-clock axis. Everything is created with `createElementNS` and `textContent` /
 // `setAttribute`; no backend code is drawn.
 //
-// Paint order equals DOM order (SVG has no z-index): metadata, bands, grid and axes, now and
-// selection lines, then marks with tomorrow first so today paints above it.
+// Paint order equals DOM order (SVG has no z-index): metadata, band patterns, bands, grid and axes,
+// now and selection lines, then marks with tomorrow first so today paints above it.
 
 import {
   chartScale,
@@ -20,7 +20,7 @@ import {
   type PlanBand,
   type PlanBands,
 } from "./chart";
-import { VISUAL_CLASSES } from "./visual-styles";
+import { PLAN_BAND_STYLE, VISUAL_CLASSES } from "./visual-styles";
 
 const SVG_NS = "http://www.w3.org/2000/svg";
 
@@ -43,7 +43,11 @@ export interface ChartRenderInput {
   title: string;
   description: string;
   labels: ChartLabels;
-  ids: { title: string; description: string };
+  /**
+   * Document-unique ids. `hatch` prefixes the band patterns' ids (`<hatch>-installed`,
+   * `<hatch>-proposal`), so several cards on one page never reference each other's pattern.
+   */
+  ids: { title: string; description: string; hatch: string };
 }
 
 export interface ChartRenderResult {
@@ -93,25 +97,59 @@ export function markClassNames(target: ChartHitTarget, series: ChartSeries): str
   return classes;
 }
 
+type BandKind = "installed" | "proposal";
+
+/**
+ * The hatch another day's runs are filled with: one line per tile in the band colour (set by the
+ * stylesheet, so it follows the theme), rotated to the shared angle. The line sits mid-tile so the
+ * tile edge never clips it.
+ */
+function hatchPattern(id: string, kind: BandKind): SVGPatternElement {
+  const { hatchSpacing, hatchWidth } = PLAN_BAND_STYLE[kind];
+  const pattern = svg("pattern", {
+    id,
+    patternUnits: "userSpaceOnUse",
+    width: hatchSpacing,
+    height: hatchSpacing,
+    patternTransform: `rotate(${PLAN_BAND_STYLE.hatchAngle})`,
+  });
+  pattern.append(
+    svg("line", {
+      class: VISUAL_CLASSES.bandHatch,
+      "data-kind": kind,
+      x1: hatchSpacing / 2,
+      x2: hatchSpacing / 2,
+      y1: 0,
+      y2: hatchSpacing,
+      "stroke-width": hatchWidth,
+    }),
+  );
+  return pattern;
+}
+
 /**
  * One shaded span on the shared wall-clock axis. `data-day-index`/`data-day-key` keep the date
- * the run belongs to, which the geometry alone cannot say.
+ * the run belongs to, which the geometry alone cannot say. Today's run is a solid tint from the
+ * stylesheet; another day's is filled with that kind's hatch pattern.
  */
 function bandRect(
   band: PlanBand,
   scale: ChartScale,
-  className: string,
+  kind: BandKind,
+  hatchId: string,
 ): SVGRectElement {
   const startX = xForWallClock(scale, band.startPosition);
   const endX = xForWallClock(scale, band.endPosition);
+  const className = kind === "installed" ? VISUAL_CLASSES.bandInstalled : VISUAL_CLASSES.bandProposal;
   return svg("rect", {
-    class: className,
+    class: band.tomorrow ? `${className} ${VISUAL_CLASSES.bandTomorrow}` : className,
     x: startX,
     y: scale.top,
     width: Math.max(0, endX - startX),
     height: Math.max(0, scale.bottom - scale.top),
     "data-day-index": band.dayIndex,
     "data-day-key": band.dayKey,
+    ...(band.tomorrow ? { fill: `url(#${hatchId})` } : {}),
   });
 }
 
@@ -135,13 +173,24 @@ export function renderChart(input: ChartRenderInput): ChartRenderResult {
   description.textContent = input.description;
   root.append(title, description);
 
-  // Shading: installed is authoritative, proposal only where nothing is installed.
+  // Shading: installed is authoritative, proposal only where nothing is installed. A kind's hatch
+  // pattern is defined only when one of its runs is on another day.
   const bandLayer = svg("g", { class: VISUAL_CLASSES.bands });
-  for (const band of bands.installed) {
-    bandLayer.append(bandRect(band, scale, VISUAL_CLASSES.bandInstalled));
+  const defs = svg("defs");
+  for (const [kind, list] of [
+    ["installed", bands.installed],
+    ["proposal", bands.proposal],
+  ] as const) {
+    const hatchId = `${ids.hatch}-${kind}`;
+    if (list.some((band) => band.tomorrow)) {
+      defs.append(hatchPattern(hatchId, kind));
+    }
+    for (const band of list) {
+      bandLayer.append(bandRect(band, scale, kind, hatchId));
+    }
   }
-  for (const band of bands.proposal) {
-    bandLayer.append(bandRect(band, scale, VISUAL_CLASSES.bandProposal));
+  if (defs.childElementCount > 0) {
+    root.append(defs);
   }
   root.append(bandLayer);
 

@@ -23,7 +23,7 @@ import { translate } from "../src/i18n";
 import type { CardModel } from "../src/model";
 import { VISUAL_CLASSES as C, VISUAL_STYLES } from "../src/visual-styles";
 import { dashboard, FakeHass, mountCard } from "./helpers";
-import { mountPoint, NOW, quarterModel, twoDayModel } from "./visual-fixtures";
+import { mountPoint, NOW, quarterModel, twoDayModel, twoDayPlanModel, waitingProposalModel } from "./visual-fixtures";
 
 const DAY_MS = 86_400_000;
 const HOUR_MS = 3_600_000;
@@ -38,6 +38,7 @@ function band(startHour: number, endHour: number, dayIndex = 0): PlanBand {
     endMs: dayStart + endHour * HOUR_MS,
     startPosition: startHour / 24,
     endPosition: endHour / 24,
+    tomorrow: dayIndex > 0,
   };
 }
 
@@ -51,38 +52,38 @@ describe("the strip's bars", () => {
   it("dims a period that is over and keeps a coming one at full strength", () => {
     const bars = stripBars(bands([band(2, 4), band(20, 22)]), now);
     expect(bars).toEqual([
-      { kind: "installed", start: 2 / 24, end: 4 / 24, past: true },
-      { kind: "installed", start: 20 / 24, end: 22 / 24, past: false },
+      { kind: "installed", start: 2 / 24, end: 4 / 24, past: true, tomorrow: false },
+      { kind: "installed", start: 20 / 24, end: 22 / 24, past: false, tomorrow: false },
     ]);
   });
 
   it("splits a period now under way at the now instant", () => {
     const bars = stripBars(bands([band(11, 13)]), now);
     expect(bars).toEqual([
-      { kind: "installed", start: 11 / 24, end: 12 / 24, past: true },
-      { kind: "installed", start: 12 / 24, end: 13 / 24, past: false },
+      { kind: "installed", start: 11 / 24, end: 12 / 24, past: true, tomorrow: false },
+      { kind: "installed", start: 12 / 24, end: 13 / 24, past: false, tomorrow: false },
     ]);
   });
 
   it("draws the proposal's periods too, in time order, and tomorrow's on the same wall-clock axis", () => {
     const bars = stripBars(bands([band(20, 21)], [band(3, 4, 1), band(1, 2)]), now);
-    expect(bars.map((bar) => [bar.kind, bar.start * 24, bar.past])).toEqual([
-      ["proposal", 1, true],
-      ["proposal", 3, false],
-      ["installed", 20, false],
+    expect(bars.map((bar) => [bar.kind, bar.start * 24, bar.past, bar.tomorrow])).toEqual([
+      ["proposal", 1, true, false],
+      ["proposal", 3, false, true],
+      ["installed", 20, false, false],
     ]);
   });
 
   it("gives a quarter-hour at least the minimum width, and never lets it run past either end", () => {
     expect(STRIP_MIN_BAR_PX).toBe(3);
-    const quarter = { kind: "installed" as const, start: 3 / 96, end: 4 / 96, past: false };
+    const quarter = { kind: "installed" as const, start: 3 / 96, end: 4 / 96, past: false, tomorrow: false };
     const first = stripBarPlacement(quarter);
     expect(Number.parseFloat(first.left ?? "")).toBeCloseTo((3 / 96) * 100, 3);
     expect(first.right).toBeNull();
     expect(Number.parseFloat(first.width)).toBeCloseTo((1 / 96) * 100, 3);
     expect(first.minWidth).toBe("3px");
     // In the right half the bar is anchored on its end, so the minimum width grows inwards.
-    const last = stripBarPlacement({ kind: "installed" as const, start: 95 / 96, end: 1, past: false });
+    const last = stripBarPlacement({ kind: "installed" as const, start: 95 / 96, end: 1, past: false, tomorrow: false });
     expect(last.left).toBeNull();
     expect(last.right).toBe("0%");
     expect(Number.parseFloat(last.width)).toBeCloseTo((1 / 96) * 100, 3);
@@ -244,6 +245,55 @@ describe("the strip in the card", () => {
     }
     expect(VISUAL_STYLES).toMatch(/\.spotnav-strip-bar\[data-past="true"\] \{[^}]*opacity/s);
     card.destroy();
+  });
+
+  it("marks tomorrow's periods for the hatch, today's not", () => {
+    const { card, root } = view(twoDayPlanModel(), { chartCollapsed: true });
+    const bars = Array.from(root.querySelectorAll<HTMLElement>(`.${C.stripBar}`));
+    // Today's 06:00-06:30 (over by the clock), tomorrow's installed 06:00-06:15 and proposed 06:15-06:30.
+    const marks = bars.map((bar) => [bar.dataset["kind"], bar.dataset["past"], bar.dataset["tomorrow"]]).sort();
+    expect(marks).toEqual([
+      ["installed", "false", "true"],
+      ["installed", "true", "false"],
+      ["proposal", "false", "true"],
+    ]);
+    expect(VISUAL_STYLES).toMatch(
+      /\.spotnav-strip-bar\[data-tomorrow="true"\]\[data-kind="installed"\] \{[^}]*repeating-linear-gradient\(135deg/s,
+    );
+    expect(VISUAL_STYLES).toMatch(
+      /\.spotnav-strip-bar\[data-tomorrow="true"\]\[data-kind="proposal"\] \{[^}]*repeating-linear-gradient\(135deg/s,
+    );
+    card.destroy();
+  });
+
+  it("follows a waiting proposal: the running window installed, the proposal after it, old windows gone", () => {
+    const { card, root } = view(waitingProposalModel(), { chartCollapsed: true });
+    const bars = Array.from(root.querySelectorAll<HTMLElement>(`.${C.stripBar}`));
+    // The running 06:00-06:45 splits at the clock (06:30); then today's 06:45-07:15 and tomorrow's 06:15-06:45.
+    expect(bars.map((bar) => [bar.dataset["kind"], bar.dataset["past"], bar.dataset["tomorrow"]]).sort()).toEqual([
+      ["installed", "false", "false"],
+      ["installed", "true", "false"],
+      ["proposal", "false", "false"],
+      ["proposal", "false", "true"],
+    ]);
+    card.destroy();
+  });
+
+  it("gives every card on the page its own hatch pattern ids", () => {
+    const first = view(twoDayPlanModel(), { idPrefix: "first" });
+    const second = view(twoDayPlanModel(), { idPrefix: "second" });
+    const ids = (root: ShadowRoot) => Array.from(root.querySelectorAll("pattern")).map((pattern) => pattern.id);
+    expect(ids(first.root)).toEqual(["first-chart-hatch-installed", "first-chart-hatch-proposal"]);
+    expect(ids(second.root)).toEqual(["second-chart-hatch-installed", "second-chart-hatch-proposal"]);
+    // Every hatched band references a pattern in its own card.
+    for (const { root } of [first, second]) {
+      for (const rect of Array.from(root.querySelectorAll(".spotnav-band-tomorrow"))) {
+        const id = /^url\(#(.+)\)$/.exec(rect.getAttribute("fill") ?? "")?.[1];
+        expect(ids(root)).toContain(id);
+      }
+    }
+    first.card.destroy();
+    second.card.destroy();
   });
 
   it("draws the now line where the clock is, and the hour labels under the track", () => {

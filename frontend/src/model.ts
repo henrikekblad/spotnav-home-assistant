@@ -10,6 +10,7 @@ import {
   localDayKey,
   plannedBands,
   type ChartSeries,
+  type PendingProposal,
   type PlanBands,
 } from "./chart";
 import {
@@ -113,6 +114,27 @@ export function planRelationOf(dashboard: Dashboard): PlanRelationKind {
     return "installed_only";
   }
   return dashboard.plan.relation.applied === true ? "applied_same" : "pending_beside_installed";
+}
+
+/**
+ * The proposal queued for a window boundary, as Home Assistant's status composer decides it
+ * (`_pending_proposal`): not applied, and `relation.pending_identity` names this very proposal, which has
+ * periods. The running window is the installed period holding `nowMs`, the same fact the status line's
+ * "installed when the current charging window ends" reads. `null` when nothing is pending.
+ */
+export function pendingProposalOf(dashboard: Dashboard, nowMs: number): PendingProposal | null {
+  const { proposal, installed, relation } = dashboard.plan;
+  if (
+    relation.applied !== false ||
+    proposal === null ||
+    proposal.identity === null ||
+    relation.pending_identity !== proposal.identity ||
+    proposal.periods.length === 0
+  ) {
+    return null;
+  }
+  const running = installed?.periods.find((period) => period.startMs <= nowMs && nowMs < period.endMs) ?? null;
+  return { running: running === null ? null : { startMs: running.startMs, endMs: running.endMs } };
 }
 
 /**
@@ -767,7 +789,7 @@ export function buildModel(input: BuildInput): CardModel {
   };
   const rows = dashboard.prices.intervals;
   const chart = chartSeries(rows, format.timeZone, input.nowMs);
-  const bands = plannedBands(rows, chart.days, format.timeZone);
+  const bands = plannedBands(rows, chart.days, format.timeZone, pendingProposalOf(dashboard, input.nowMs));
   const status = dashboard.status;
   const issues = issuesOf(status, language);
   const zone = hasZone(format);

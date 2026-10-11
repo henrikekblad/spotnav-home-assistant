@@ -711,6 +711,12 @@ export interface PlanBand {
   /** Wall-clock fractions of one day, same x function as the marks. An edge on local midnight is 1 (24:00), the day's own end. */
   startPosition: number;
   endPosition: number;
+  /**
+   * Drawn hatched rather than solid: the run is not on the market-local day the now fact is in, the same
+   * rule as a mark's `tomorrow`. On the shared axis tomorrow's 00:00-05:30 sits left of the now line, and
+   * without this it reads as a plan already over.
+   */
+  tomorrow: boolean;
 }
 
 export interface PlanBands {
@@ -756,10 +762,20 @@ function runsOf(
       endMs: row.endMs,
       startPosition: bandPosition(row.startMs, day, clock),
       endPosition: bandPosition(row.endMs, day, clock),
+      tomorrow: day.role !== "today",
     };
     bands.push(open);
   }
   return bands;
+}
+
+/**
+ * A proposal queued beside the installed plan until the charging window under way ends (Home
+ * Assistant's `proposal_pending`). `running` is that window, the installed period that holds now, or
+ * `null` when none does.
+ */
+export interface PendingProposal {
+  running: { startMs: number; endMs: number } | null;
 }
 
 /**
@@ -768,15 +784,30 @@ function runsOf(
  * A run never crosses a local day and is positioned on the shared wall-clock axis like the marks, while
  * `dayKey`/`dayIndex` keep its real date. `proposal` carries only what the installed schedule does not
  * already cover, so an applied proposal is not darkened twice.
+ *
+ * With a proposal pending, the installed plan is shown only for the window under way, and everything
+ * after that window's end comes from the proposal alone: the installed plan's later windows are the
+ * ones the proposal replaces, so they are not drawn.
  */
 export function plannedBands(
   rows: readonly PriceInterval[],
   days: readonly ChartDay[],
   timeZone: string,
+  pending: PendingProposal | null = null,
 ): PlanBands {
   const clock = zoneClock(timeZone);
+  if (pending === null) {
+    return {
+      installed: runsOf(rows, days, clock, (row) => row.installed_planned),
+      proposal: runsOf(rows, days, clock, (row) => row.proposal_planned && !row.installed_planned),
+    };
+  }
+  const running = pending.running;
+  const inRunning = (row: PriceInterval): boolean =>
+    running !== null && row.installed_planned && row.startMs < running.endMs && running.startMs < row.endMs;
+  const afterRunning = running === null ? Number.NEGATIVE_INFINITY : running.endMs;
   return {
-    installed: runsOf(rows, days, clock, (row) => row.installed_planned),
-    proposal: runsOf(rows, days, clock, (row) => row.proposal_planned && !row.installed_planned),
+    installed: runsOf(rows, days, clock, inRunning),
+    proposal: runsOf(rows, days, clock, (row) => row.proposal_planned && row.startMs >= afterRunning),
   };
 }
