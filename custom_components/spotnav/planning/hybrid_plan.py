@@ -46,6 +46,8 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from typing import Literal, Mapping, Sequence
 
+from .price_wait import EPSILON_KWH
+
 
 #: The state hybrid is in this call; see the module docstring for precedence.
 HybridState = Literal["no_forecast", "waiting_for_sun", "last_call", "satisfied", "not_worth_it"]
@@ -377,6 +379,9 @@ def plan_hybrid(
             state, reason = "not_worth_it", "holding_back_does_not_pay"
 
     grid_kwh = remaining_need_kwh - credit_kwh
+    if grid_kwh <= EPSILON_KWH:
+        # A credit equal to the need leaves float residue (4e-16), not energy to buy.
+        grid_kwh = 0.0
 
     return HybridResult(
         grid_kwh=grid_kwh,

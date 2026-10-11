@@ -1118,7 +1118,7 @@ class AutoPlannerController:
                 fill=resolved.fill,
             )
 
-        if energy_kwh <= 0:
+        if energy_kwh <= price_wait.EPSILON_KWH:
             # A manual need fully delivered: answered like `target_soc`'s `already_at_target`, since
             # `calculate_plan` refuses a non-positive `requested_kwh`. A normal state, not a failure.
             if settings.strategy == STRATEGY_HYBRID:
@@ -1165,7 +1165,7 @@ class AutoPlannerController:
                 self._hass, self._entry_id, hybrid_outcome, plan_window_active=plan_window_active
             )
             energy_kwh = hybrid_outcome.result.grid_kwh
-            if energy_kwh <= 0:
+            if energy_kwh <= price_wait.EPSILON_KWH:
                 # The sun is credited with the whole need: no grid energy to place, and the planner
                 # refuses a non-positive amount (`invalid_energy`). A normal state, not a failure.
                 return self._fresh_snapshot(
