@@ -89,6 +89,9 @@ from .planner import (
 
 _LOGGER = logging.getLogger(__name__)
 
+#: Stands in for a request's `now` when telling whether a preview failure repeats: the clock moves every call.
+_FAILURE_CLOCK: Final = datetime(2000, 1, 1, tzinfo=timezone.utc)
+
 
 #: Owner id prefix for the refresh-manager subscription; never stored.
 OWNER_PREFIX: Final = "auto:"
@@ -628,6 +631,9 @@ class AutoPlannerController:
         self._register_unread_since: datetime | None = None
         self._reading_replan_asked = False
         self._unread_notice_cancel: Callable[[], None] | None = None
+        # The last unexpected preview failure, as (error, request without its clock): a repeat of it is
+        # logged at DEBUG, so a failure that every site update hits does not flood the log.
+        self._last_failure: tuple[str, str, PlanRequest] | None = None
 
         self._listeners: list[Callable[[AutoSnapshot], None]] = []
         self._unsubscribe: Callable[[], None] | None = None
@@ -1216,11 +1222,15 @@ class AutoPlannerController:
                 entry=entry, price_snapshot=area_snapshot, error_code=err.code,
             )
         except Exception as err:  # noqa: BLE001 - unexpected, and never fatal to the entry
-            _LOGGER.warning("Auto preview calculation failed: %s", type(err).__name__)
+            failure = (type(err).__name__, str(err), replace(plan_request, now=_FAILURE_CLOCK))
+            log = _LOGGER.debug if failure == self._last_failure else _LOGGER.warning
+            self._last_failure = failure
+            log("Auto preview calculation failed: %s: %s", failure[0], failure[1])
             return self._fresh_snapshot(
                 settings, "error", "unexpected_failure", calculated_at,
                 entry=entry, price_snapshot=area_snapshot,
             )
+        self._last_failure = None
 
         if not result.has_plan:
             return self._fresh_snapshot(
