@@ -35,13 +35,14 @@ The graph shows the price of every interval, in the price area's currency per kW
   marks now, and the current interval is highlighted.
 - The plan is drawn on top of the prices. **Scheduled** bands are the charging periods Home
   Assistant has installed and will follow. **Proposal** bands are a newer plan that is ready but
-  not installed yet.
+  not installed yet, and are fainter. Today's bands are solid and tomorrow's are hatched, so a
+  period tomorrow night is not read as one already over just because it sits left of the now line.
 - A summary line gives the highest price, the lowest price and the price now.
 - Touch or hover an interval to read its price. With the keyboard, the arrow keys step through the
   intervals, Home and End jump to the ends, and Escape clears the selection. Times follow the
   price area's time zone, and the autumn hour that repeats is shown with its offset.
 - Press the summary line to fold the graph into a slim strip of the same day: the charging
-  periods as bars (the ones already over dimmed), the line for now and the hours under it. Press it
+  periods as bars (the ones already over dimmed, tomorrow's hatched), the line for now and the hours under it. Press it
   again to open the graph. The choice is remembered per charger in that browser. To start folded
   where nothing is remembered yet, add `chart: compact` to the card's YAML.
 
