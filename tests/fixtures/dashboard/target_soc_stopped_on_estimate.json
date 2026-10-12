@@ -88,7 +88,7 @@
       "value_source": "off"
     }
   },
-  "generated_at": "2026-09-22T06:30:00+00:00",
+  "generated_at": "2026-09-22T06:40:05+00:00",
   "identification": null,
   "live": {
     "charging": false,
@@ -2215,16 +2215,16 @@
   },
   "site": null,
   "soc": {
-    "age_s": 1800,
+    "age_s": 2405,
     "capacity_kwh": 77.0,
     "efficiency": 0.9,
     "estimated": true,
     "missing": [],
     "need_kwh": 0.0,
-    "room_kwh": 16.13,
+    "room_kwh": 14.43,
     "source": "vehicle",
     "target_percent": 80.0,
-    "value": 81.1,
+    "value": 83.1,
     "vehicle_id": "<id>",
     "vehicle_max_percent": null,
     "vehicle_name": "EV6",
@@ -2266,9 +2266,9 @@
         "code": "target_reached",
         "params": {
           "basis": "estimate",
-          "reading_age_s": 1800,
-          "soc_percent": 81.1,
-          "stopped_at": "2026-09-22T06:30:00+00:00"
+          "reading_age_s": 2405,
+          "soc_percent": 83.1,
+          "stopped_at": "2026-09-22T06:40:05+00:00"
         }
       }
     ],
@@ -2346,7 +2346,7 @@
       "name": "EV6",
       "onboard_phases": 3,
       "soc_entity_id": "sensor.ev6_battery",
-      "soc_percent": 81.1428571428572,
+      "soc_percent": 83.12987012987024,
       "suggested_onboard_phases": null,
       "target_percent": 80.0
     }

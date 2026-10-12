@@ -77,7 +77,12 @@ def compose(event: str, name: str, facts: dict[str, Any], language: str) -> tupl
 
     `facts` by event: `plan_stopped` {reason} (`charger_ignores_stop` too: the charger keeps charging under a
     person's Stop); `plan_at_risk` {time?}; `charge_complete` {reason,
-    target_percent?, kwh?, cost?}; `charge_started` {until?}; `plan_installed` {time, kwh?, cost?}.
+    target_percent?, level_percent?, basis?, kwh?, cost?}; `charge_started` {until?}; `plan_installed` {time, kwh?,
+    cost?}.
+
+    A target's completion says what the stop was taken on (`_target_message`): the target and the car's own level
+    for a reading at or above it, the level as an estimate for one from delivered energy, and the level below the
+    target for a car that ended the charge just short of it.
     """
     text = table(language, NAMESPACE)
     title = text["title"].format(name=name)
@@ -92,7 +97,7 @@ def compose(event: str, name: str, facts: dict[str, Any], language: str) -> tupl
         reason = facts.get("reason")
         percent = facts.get("target_percent")
         if reason == "target" and percent is not None:
-            message = text["complete.target"].format(percent=percent_text(language, percent))
+            message = _target_message(language, text, percent, facts.get("level_percent"), facts.get("basis"))
         elif reason == "energy":
             message = text["complete.energy"]
         elif reason == "vehicle_full":
@@ -112,6 +117,28 @@ def compose(event: str, name: str, facts: dict[str, Any], language: str) -> tupl
     else:
         message = text[event]
     return title, message
+
+
+def _target_message(
+    language: str, text: Mapping[str, str], target: float, level: Any, basis: Any
+) -> str:
+    """A target's completion: never "the target is reached" on an estimate, nor for a level read below it.
+
+    * no level known: `complete.target`, the target alone;
+    * an estimate (`basis` `estimate`): `complete.target_estimate`, the level rounded to a whole percent and called
+      an estimate, beside the target;
+    * a reading at or above the target: `complete.target_reading`, the target and the car's level;
+    * a reading below it (a car that ended the charge just short of the target): `complete.stopped_below`.
+    """
+    target_text = percent_text(language, target)
+    if isinstance(level, bool) or not isinstance(level, (int, float)):
+        return text["complete.target"].format(percent=target_text)
+    if basis == "estimate":
+        return text["complete.target_estimate"].format(
+            level=percent_text(language, round(level)), percent=target_text
+        )
+    key = "complete.target_reading" if level >= target else "complete.stopped_below"
+    return text[key].format(level=percent_text(language, level), percent=target_text)
 
 
 def identify_text(language: str, key: str, vehicle: str | None = None) -> str:

@@ -98,7 +98,13 @@ from .target_stop import (
     car_ended_full,
     charge_ceiling_percent,
     charges_to_vehicle_limit,
+    CONFIRM_ASK,
+    CONFIRM_ESTIMATE,
+    confirm_estimate,
     decide_target_stop,
+    ESTIMATE_CONFIRM_WAIT_S,
+    estimate_needs_confirming,
+    EstimateCheck,
     LAPSE_CHARGE_STARTED,
     LAPSE_CHARGING,
     LAPSE_UNPLUGGED,
@@ -613,6 +619,15 @@ class ChargingController:
         self._plan_watch = PlanChargeWatch()
         self._plan_watch_cancel: Callable[[], None] | None = None
         self._car_ended_observer: Callable[[str | None, bool], None] | None = None
+        # Asks the car's integration for a fresh reading of a car (`set_reading_asker`); answers whether it could.
+        self._reading_asker: Callable[[str | None], bool] | None = None
+        # The car asked for a fresh reading because an estimate reached the target (`_confirm_estimate`), and the
+        # timer that looks again when the wait for its answer is over. In memory: a restart asks again.
+        self._estimate_check: EstimateCheck | None = None
+        self._estimate_check_cancel: Callable[[], None] | None = None
+        # While a plan is installed: the target stop record of the plan it replaces (`_install_locked`), so a new
+        # plan the same stop already satisfies ends without a second completion (`_enforce_target_locked`).
+        self._replaced_target_stop: dict[str, Any] | None = None
         # A stop of a charge the charger began by itself under a person's Stop is on its way
         # (`_observe_person_hold`): one at a time.
         self._person_hold_stop_pending = False
@@ -1329,6 +1344,7 @@ class ChargingController:
         if not connected:
             # The car the target stopped for left (or, after a restart, left while nobody looked).
             self._end_target_stop(LAPSE_UNPLUGGED)
+            self._end_estimate_check()
         if connected is False or previous is False:
             self._session_generation += 1
             # A safety stop's hold belongs to the plug-in it was made in.
@@ -1541,6 +1557,12 @@ class ChargingController:
         """Who is told when the car ended the plan's charge by itself: the car whose level was read, and whether
         that level says it is full (the planner plans again, and the car is asked once for a fresh reading)."""
         self._car_ended_observer = observer
+
+    def set_reading_asker(self, asker: Callable[[str | None], bool] | None) -> None:
+        """Who asks a car's integration to read the car again (`vehicle_refresh.async_ask_vehicle_update`): called
+        with the car when only an estimate says the target is reached, it answers whether a re-read was asked (a car
+        with nothing to re-read offers none). Without one, the estimate decides at once (`confirm_estimate`)."""
+        self._reading_asker = asker
 
     @callback
     def _look_at_plan_charge_timer(self, _now: datetime) -> None:
@@ -2583,10 +2605,15 @@ class ChargingController:
                 EXECUTION_STORAGE_FAILED, "the charging plan could not be stored"
             ) from err
         try:
-            await self._reschedule_locked()
             # A schedule that arrives already satisfied ends at once rather than booking unusable
-            # quarter-hours.
-            await self._enforce_target_locked()
+            # quarter-hours. Satisfied by the stop of the plan it replaces (the re-arm opening its window, or the
+            # check below), it ends on that stop's record (`_standing_target_stop`).
+            self._replaced_target_stop = previous_target_stop
+            try:
+                await self._reschedule_locked()
+                await self._enforce_target_locked()
+            finally:
+                self._replaced_target_stop = None
         except Exception as err:
             await self._rollback_install(previous_plan, previous_target_stop, err)
             if isinstance(err, ChargingExecutionError):
@@ -3617,6 +3644,7 @@ class ChargingController:
         # State-change subscriptions are local callbacks too: nothing may be decided or called
         # once this controller is gone.
         self._async_disarm_target_listener()
+        self._cancel_estimate_check_timer()
         self._async_disarm_probe_listener()
         self._async_disarm_charge_state_listener()
         self._async_disarm_progress_listener()
@@ -4250,10 +4278,25 @@ class ChargingController:
         if self._target_stopping:
             return False
         reading = self.target_reading()
+        target = self.plan.target_soc_percent
+        to_vehicle_limit = self.charges_to_vehicle_limit()
+        stood = self._standing_target_stop(reading, to_vehicle_limit)
+        if stood is not None:
+            self._target_stopping = True
+            try:
+                await self._target_stop_locked(reading, stood=stood)
+            finally:
+                self._target_stopping = False
+            return True
+        self._note_estimate_answer(reading, target)
+        if estimate_needs_confirming(target_soc_percent=target, reading=reading, to_vehicle_limit=to_vehicle_limit):
+            assert reading is not None
+            if not self._confirm_estimate(reading, target):
+                return False
         decision = decide_target_stop(
-            target_soc_percent=self.plan.target_soc_percent,
+            target_soc_percent=target,
             reading=reading,
-            to_vehicle_limit=self.charges_to_vehicle_limit(),
+            to_vehicle_limit=to_vehicle_limit,
         )
         if not decision.stop:
             return False
@@ -4266,19 +4309,165 @@ class ChargingController:
             self._target_stopping = False
         return True
 
+    def _standing_target_stop(self, reading: SocReading | None, to_vehicle_limit: bool) -> dict[str, Any] | None:
+        """The record of the stop a plan being installed replaces, while it still describes the car for the new plan
+        (`target_stop_lapse`: the same car, a target not above the level stopped at, no lower level read since) and
+        the level now (read or estimated) is still at the target: the same charge's target, already stopped for.
+        The new plan ends on it without asking the car again and without a second completion. `None` otherwise
+        (outside an install, a record that lapsed, or a level below the target: the new plan is decided as any)."""
+        record = self._replaced_target_stop
+        plan = self.plan
+        if (
+            record is None
+            or plan is None
+            or plan.target_soc_percent is None
+            or to_vehicle_limit
+            or reading is None
+            or reading.soc_percent is None
+            or reading.soc_percent < plan.target_soc_percent
+        ):
+            return None
+        lapse = target_stop_lapse(
+            record,
+            vehicle_id=plan.vehicle_id,
+            target_percent=plan.target_soc_percent,
+            soc_percent=None if reading is None else reading.soc_percent,
+            soc_age_s=None if reading is None else reading.age_s,
+            now=dt_util.utcnow(),
+        )
+        return record if lapse is None else None
+
+    def _note_estimate_answer(self, reading: SocReading | None, target: float) -> None:
+        """A reading (not an estimate) taken after the car was asked, below the target: the ask is answered, and
+        the car is asked again only once the estimate has moved on (`confirm_estimate`)."""
+        check = self._estimate_check
+        if (
+            check is None
+            or check.answered
+            or reading is None
+            or reading.estimated
+            or reading.soc_percent is None
+            or reading.age_s is None
+            or reading.vehicle_id != check.vehicle_id
+            or reading.soc_percent >= target
+        ):
+            return
+        read_at = dt_util.utcnow() - timedelta(seconds=reading.age_s)
+        if read_at < check.asked_at:
+            return
+        _LOGGER.info(
+            "SpotNav charger %s: the car read %s%% after it was asked, below the target %s%%; charging on",
+            self.entry_id,
+            reading.soc_percent,
+            target,
+        )
+        self._estimate_check = replace(check, answered=True)
+        self._cancel_estimate_check_timer()
+
+    def _confirm_estimate(self, reading: SocReading, target: float) -> bool:
+        """Only an estimate says the target is reached: ask the car for a fresh reading the first time (and again
+        once the estimate moved on after a reading answered below the target), and keep charging while the answer
+        is awaited. Returns whether the estimate may decide now (`confirm_estimate`'s `estimate`).
+
+        Nothing here is a command to the charger, so the ownership core hears nothing of it: it hears the target's
+        stop (`TargetReached`) when one is made, on a reading or, after the wait, on the estimate."""
+        assert reading.soc_percent is not None
+        now = dt_util.utcnow()
+        step = confirm_estimate(target_soc_percent=target, reading=reading, check=self._estimate_check, now=now)
+        if step == CONFIRM_ESTIMATE:
+            return True
+        if step != CONFIRM_ASK:
+            return False
+        asker = self._reading_asker
+        refreshable = False
+        if asker is not None:
+            try:
+                refreshable = bool(asker(reading.vehicle_id))
+            except Exception:  # noqa: BLE001 - a car that cannot be asked is one that offers no refresh
+                _LOGGER.debug("SpotNav charger %s: asking the car for a fresh reading failed", self.entry_id)
+        self._estimate_check = EstimateCheck(
+            vehicle_id=reading.vehicle_id,
+            asked_at=now,
+            estimate_percent=reading.soc_percent,
+            refreshable=refreshable,
+        )
+        _LOGGER.info(
+            "SpotNav charger %s: the estimate %.1f%% reaches the target %s%%; %s",
+            self.entry_id,
+            reading.soc_percent,
+            target,
+            "asking the car for a fresh reading before stopping"
+            if refreshable
+            else "the car offers no fresh reading, so the estimate decides with its margin",
+        )
+        if not refreshable:
+            return True
+        self._arm_estimate_check_timer()
+        return False
+
+    def _arm_estimate_check_timer(self) -> None:
+        """Look again when the wait for the asked reading is over: a register that moves seldom would otherwise
+        leave the decision waiting for its next step."""
+        self._cancel_estimate_check_timer()
+        check = self._estimate_check
+        if check is None or check.answered or not check.refreshable or self._shut_down:
+            return
+        left = ESTIMATE_CONFIRM_WAIT_S - (dt_util.utcnow() - check.asked_at).total_seconds()
+        if left < 0:
+            return
+
+        @callback
+        def _due(_now: datetime) -> None:
+            self._estimate_check_cancel = None
+            if self.plan is not None and self.plan.target_soc_percent is not None:
+                self._async_spawn(self._async_enforce_target(), "the target's stop")
+
+        self._estimate_check_cancel = async_call_later(self.hass, left + 1.0, _due)
+
+    def _cancel_estimate_check_timer(self) -> None:
+        if self._estimate_check_cancel is not None:
+            self._estimate_check_cancel()
+            self._estimate_check_cancel = None
+
+    def _end_estimate_check(self) -> None:
+        """The charge the ask was for is over (a target's stop, an unplug): the next one asks afresh."""
+        self._estimate_check = None
+        self._cancel_estimate_check_timer()
+
     async def _target_stop_locked(
-        self, reading: SocReading | None, *, gated: bool = False, car_ended: bool = False
+        self,
+        reading: SocReading | None,
+        *,
+        gated: bool = False,
+        car_ended: bool = False,
+        stood: dict[str, Any] | None = None,
     ) -> None:
         """Stop for a reached target and record why before ending the plan. The lock is held. `car_ended`: the car
-        stopped taking the charge by itself and the reading says it is full (`_async_plan_car_ended`)."""
+        stopped taking the charge by itself and the reading says it is full (`_async_plan_car_ended`). `stood`: the
+        record of the stop this charge already had (`_standing_target_stop`), kept as it is."""
         token = self._shadow.begin()
         outcome = CommandOutcome(False)
         try:
-            outcome = self._shadow_stop_outcome(await self._target_stop_body(reading, car_ended=car_ended))
+            outcome = self._shadow_stop_outcome(
+                await self._target_stop_body(reading, car_ended=car_ended, stood=stood)
+            )
         finally:
             self._shadow.end(token, core_events.TargetReached(gated=gated), legacy=("stop",), outcome=outcome)
 
-    async def _target_stop_body(self, reading: SocReading | None, *, car_ended: bool = False) -> bool:
+    async def _target_stop_body(
+        self, reading: SocReading | None, *, car_ended: bool = False, stood: dict[str, Any] | None = None
+    ) -> bool:
+        self._end_estimate_check()
+        if stood is not None:
+            # A plan charge's target is stopped for once: a plan installed after that stop (a calculation that
+            # followed it) ends on the same record, and the charge is not told complete a second time.
+            self._target_stop = stood
+            _LOGGER.info(
+                "SpotNav charger %s: the target stop made at %s still stands; the new plan ends with it",
+                self.entry_id,
+                stood.get("at"),
+            )
+            return await self._automatic_stop_locked("the target's stop", clear_schedule=True)
         self._target_stop = {
             "at": dt_util.utcnow().isoformat(),
             "soc_percent": reading.soc_percent if reading else None,
@@ -4307,6 +4496,10 @@ class ChargingController:
             "vehicle_full" if car_ended and self.charges_to_vehicle_limit() else "target",
             target_soc_percent=self._target_stop["target_soc_percent"],
             soc_percent=self._target_stop["soc_percent"],
+            # What the level is: a reading or the estimate from delivered energy, and how old the reading
+            # behind it was, so a notice never calls an estimate the target reached.
+            basis=self._target_stop["basis"],
+            reading_age_s=self._target_stop["reading_age_s"],
         )
         return await self._automatic_stop_locked("the target's stop", clear_schedule=True)
 

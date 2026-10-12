@@ -322,7 +322,11 @@ class BalancingResume(Event):
 @dataclass(frozen=True)
 class TargetReached(Event):
     """The plan's target is reached: its stop, which ends the plan. `gated`: decided through the execution
-    boundary's gate (the reading's own listener); a window start or an install decides it without the gate."""
+    boundary's gate (the reading's own listener); a window start or an install decides it without the gate.
+
+    An estimate that reaches the target first asks the car for a fresh reading (`target_stop.confirm_estimate`);
+    that ask and the wait for it send nothing to the charger, so there is no event for them: this one comes when
+    the stop is made, on a reading or on the estimate after the wait."""
 
     kind: ClassVar[str] = "target_reached"
     gated: bool = True

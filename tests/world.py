@@ -10,7 +10,7 @@ from typing import Any
 import pytest
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers import device_registry as dr, entity_registry as er
-from pytest_homeassistant_custom_component.common import async_mock_service, MockConfigEntry
+from pytest_homeassistant_custom_component.common import async_fire_time_changed, async_mock_service, MockConfigEntry
 
 from custom_components.spotnav.vehicles import vehicle_properties
 from custom_components.spotnav.planning.auto_settings import (
@@ -27,6 +27,7 @@ from custom_components.spotnav.const import (
     MODE_OCPP,
 )
 from custom_components.spotnav.execution.controller import ChargingController, ChargingPlan
+from custom_components.spotnav.execution.target_stop import ESTIMATE_CONFIRM_WAIT_S, ESTIMATE_STOP_MARGIN_PERCENT
 from custom_components.spotnav.site.measurement_source import PhaseMeasurementSource, source_to_dict
 from custom_components.spotnav.site.site_capacity_controller import SiteCapacityController
 from custom_components.spotnav.execution.solar_execution import (
@@ -440,16 +441,22 @@ async def real_controller_stop(hass: HomeAssistant, frozen: Any) -> None:
             {"unit_of_measurement": "kWh", "device_class": "energy", "state_class": "total_increasing"},
         )
 
-    # 40 % + 81 % - 40 % = 41 points of 77 kWh at 0.9: 35.08 kWh from the wall.
-    meter(34.0)
-    await hass.async_block_till_done()
-    assert controller.plan is not None and not turn_off, "80.9 % estimated is below target plus margin"
+    # 40 % + 41 points of 77 kWh at 0.9: 35.08 kWh from the wall reaches the 80 % target on the estimate.
     meter(35.2)
+    await hass.async_block_till_done()
+    assert controller.plan is not None and not turn_off, "an estimate at the target asks the car first"
+    # No fresh reading comes within the wait: the estimate decides, with its margin.
+    frozen.tick(timedelta(seconds=ESTIMATE_CONFIRM_WAIT_S + 5))
+    async_fire_time_changed(hass)
+    await hass.async_block_till_done()
+    assert controller.plan is not None and not turn_off, "81 % estimated is below target plus margin"
+    # 43 points: 36.79 kWh.
+    meter(36.9)
     await hass.async_block_till_done()
     assert controller.plan is None
     record = controller.target_stop_record
     assert record is not None and record["basis"] == "estimate" and record["estimated"] is True
-    assert record["soc_percent"] == pytest.approx(81.0, abs=0.3)
+    assert record["soc_percent"] == pytest.approx(80.0 + ESTIMATE_STOP_MARGIN_PERCENT, abs=0.3)
 
 
 async def one_charger(hass: HomeAssistant):

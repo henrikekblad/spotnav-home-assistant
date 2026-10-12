@@ -38,10 +38,13 @@ a vehicle integration, charge a fixed number of kWh instead.
 - **Stale readings.** Cloud-polled car sensors can be an hour old in the middle of a charge.
   When the reading is older than three minutes, SpotNav estimates the level forward from the
   charger's energy register (set or found automatically on the charger) and marks it as
-  estimated. An estimate stops a charge only once it is a margin above the target. A fresh
-  reading always replaces the estimate. A reading taken while the register could not be read yet
-  (a restart before the charger's integration is up) is carried forward from the register's first
-  value. When the car's sensor only comes back (its integration reloaded or loaded late) with the
+  estimated. A fresh reading always replaces the estimate. Many registers book energy late (an Easee's
+  lifetime register can post an hour's charge at once), so a reading is carried forward only from the first
+  value the register posts at or after it: energy charged before the reading and booked later is never
+  counted on top of it, and energy charged between the reading and that value is left out, so the estimate
+  can fall short of the car, never run ahead of it. Until that value comes the estimate stays at the reading.
+  A reading taken while the register could not be read yet (a restart before the charger's integration is
+  up) is carried forward from the register's first value. When the car's sensor only comes back (its integration reloaded or loaded late) with the
   value of the last reading, and the charger saw the car plugged in all the while, that is the last
   reading set again and the estimate goes on from it. Otherwise (Home Assistant restarted, the car was
   unplugged, or the charger could not say for a while) the value is a new reading and the energy delivered before it
@@ -50,6 +53,16 @@ a vehicle integration, charge a fixed number of kWh instead.
   register's first value. The estimate never goes past the car's own charge limit (100 % when the car
   states none). Showing another car (the card's list of the cars at a charger, a site's overview) never
   touches the estimate of the car the charger plans for.
+- **An estimate at the target asks the car first.** When only an estimate says the target is reached,
+  SpotNav keeps charging and asks the car's integration once to read the car again (the same re-read as the
+  app's refresh, never a wake-up). A reading at or above the target then stops the charge as a reading. A
+  reading below it lets the charge go on, and the car is asked again only once the estimate has moved
+  another percentage point, never on every step of the register. When no reading comes within ten minutes,
+  or the car has nothing to re-read, the estimate alone stops the charge once it is 3 percentage points above
+  the target. Ten minutes is about the time a small battery takes to gain those 3 points, so the wait costs
+  little overshoot.
+- **One stop per charge.** A plan installed straight after a target's stop (Auto calculating again) that the
+  same stop still satisfies ends on that stop's record: the charge is told complete once.
 - **After a charge, before the car reports.** Where the level cannot be carried forward (no register
   then, or one that started again), a target whose charge has ended and delivered, as measured by the
   charger's register or a smart plug's power, at least what the car's last reading needed is not
@@ -90,7 +103,10 @@ a vehicle integration, charge a fixed number of kWh instead.
 - **Manual Start** is a decision by a person and is not vetoed by a level at or above the
   target.
 - A reached target overshoots slightly: the reading that crossed it describes where the car was
-  a moment ago. The card shows the level the charge stopped at and how old or estimated it was.
+  a moment ago. The card shows the level the charge stopped at and how old or estimated it was, and
+  the notification says the same: *the target 80 % was reached (the car shows 81 %)* on a reading,
+  *Charging stopped at 83 % (estimated), the target is 80 %* on an estimate, and *The car stopped
+  charging at 79 %, just below the target 80 %* for a car that ended the charge within a point of it.
 
 ## Minimum charge level
 

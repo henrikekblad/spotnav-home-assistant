@@ -709,6 +709,9 @@ class ChargerNotifier:
             facts = {
                 "reason": attributes.get("reason"),
                 "target_percent": attributes.get("target_soc_percent"),
+                # A target's stop: the level it was taken at and whether that was read or estimated.
+                "level_percent": attributes.get("soc_percent"),
+                "basis": attributes.get("basis"),
             }
             session = self._recent_session()
             if session is not None:
