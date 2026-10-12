@@ -233,3 +233,75 @@ async def test_a_new_plan_keeps_the_ask_so_the_car_is_not_asked_on_every_calcula
     await _look(hass, controller)
     assert asked == ["ev6"] and halo.stops == 0
     await controller.async_shutdown()
+
+
+# ------------------------------------------------------------------------------ one stop per plan charge
+
+
+async def test_a_plan_installed_after_the_target_stop_ends_on_the_same_record_without_a_second_completion(
+    hass: HomeAssistant, freezer: Any
+) -> None:
+    """04:14:26 that night: the stop's plan was replaced by a calculation within the second, whose install found the
+    target reached again and recorded a second completion (and the shadow a second `target_reached`)."""
+    car = Mazda(84.0)
+    controller, halo, _ = await _charge(hass, freezer, car, refreshable=False)
+    car.estimates(85.0 + ESTIMATE_STOP_MARGIN_PERCENT + 1.0)
+    await _look(hass, controller)
+    assert halo.stops == 1 and controller.plan is None
+    completion = controller.completion_record
+    record = controller.target_stop_record
+    assert completion is not None and record is not None
+    halo.calls.clear()
+    await _later(hass, freezer, 1)
+
+    await controller.async_install(_plan(target=85.0, hours=3.0))
+    await hass.async_block_till_done()
+    assert controller.plan is None, "the new plan is satisfied by the same stop"
+    assert controller.completion_record == completion, "no second completion"
+    assert controller.target_stop_record == record, "the stop's own record stands"
+    assert "turn_on" not in halo.calls
+    await controller.async_shutdown()
+
+
+async def test_a_raised_target_after_the_stop_is_a_new_charge(hass: HomeAssistant, freezer: Any) -> None:
+    car = Mazda(84.0)
+    controller, halo, asked = await _charge(hass, freezer, car, refreshable=False)
+    car.estimates(85.0 + ESTIMATE_STOP_MARGIN_PERCENT)
+    await _look(hass, controller)
+    assert halo.stops == 1 and controller.plan is None
+    completion = controller.completion_record
+    await _later(hass, freezer, 1)
+    await controller.async_install(_plan(target=95.0, hours=3.0))
+    await hass.async_block_till_done()
+    assert controller.plan is not None and controller.completion_record == completion
+    assert controller.target_stop_record is None
+    await controller.async_shutdown()
+
+
+async def test_a_later_plan_installed_while_the_charger_still_reports_the_charge_ends_once(
+    hass: HomeAssistant, freezer: Any
+) -> None:
+    """The field order: the new plan's windows lie ahead, its re-arm stops a charger still reporting the charge,
+    and its own check finds the target reached: one completion, the first."""
+    from dataclasses import replace as replace_plan
+
+    from homeassistant.util import dt as dt_util
+
+    car = Mazda(84.0)
+    controller, halo, _ = await _charge(hass, freezer, car, refreshable=False)
+    car.estimates(89.98)
+    await _look(hass, controller)
+    completion = controller.completion_record
+    assert halo.stops == 1 and completion is not None and completion["basis"] == "estimate"
+    await _later(hass, freezer, 1)
+    ahead = dt_util.utcnow() + timedelta(hours=2)
+    plan = replace_plan(
+        _plan(target=85.0),
+        start=ahead.isoformat(),
+        end=(ahead + timedelta(hours=2)).isoformat(),
+        periods=[{"start": ahead.isoformat(), "end": (ahead + timedelta(hours=1)).isoformat()}],
+    )
+    await controller.async_install(plan)
+    await hass.async_block_till_done()
+    assert controller.plan is None and controller.completion_record == completion
+    await controller.async_shutdown()
