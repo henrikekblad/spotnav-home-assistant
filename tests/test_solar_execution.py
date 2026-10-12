@@ -22,6 +22,7 @@ from freezegun import freeze_time
 from homeassistant.core import HomeAssistant
 from pytest_homeassistant_custom_component.common import async_mock_service
 
+from custom_components.spotnav.diagnostics import entry_diagnostics
 from custom_components.spotnav.planning.auto_settings import STRATEGY_CHEAPEST, STRATEGY_SOLAR
 from custom_components.spotnav.execution.controller import ChargingController
 from custom_components.spotnav.site.site_capacity_controller import SiteCapacityController
@@ -413,10 +414,10 @@ def test_build_observation_uses_confirmed_unchanged_grid_power_the_strict_field_
     assert observation.voltage_v["L1"] == 230.0
 
 
-async def test_solar_surplus_attribute_present_and_disabled_for_a_cheapest_charger(
+async def test_solar_surplus_diagnostics_present_and_disabled_for_a_cheapest_charger(
     hass: HomeAssistant,
 ) -> None:
-    """The `solar_surplus` attribute exists for every associated charger even when not on the `solar` strategy, with `enabled: False` and "nothing observed yet" defaults, never a missing key."""
+    """The site diagnostics' `solar_surplus` exists for every associated charger even when not on the `solar` strategy, with `enabled: False` and "nothing observed yet" defaults, never a missing key."""
     from .world import setup_charger
 
     entry = await setup_charger(
@@ -435,7 +436,9 @@ async def test_solar_surplus_attribute_present_and_disabled_for_a_cheapest_charg
 
     state = hass.states.get("sensor.site_capacity_state")
     assert state is not None
-    snapshot = state.attributes["solar_surplus"]
+    # Not an attribute any more: it moves with each reading.
+    assert "solar_surplus" not in state.attributes
+    snapshot = entry_diagnostics(hass, site_entry)["solar_surplus"]
     assert snapshot[entry.entry_id] == {
         "enabled": False,
         "state": "unknown",
@@ -461,10 +464,10 @@ async def test_solar_surplus_attribute_present_and_disabled_for_a_cheapest_charg
     assert site_controller.solar_surplus_snapshot == snapshot
 
 
-async def test_solar_surplus_attribute_reflects_the_live_verdict_when_enabled(
+async def test_solar_surplus_diagnostics_reflect_the_live_verdict_when_enabled(
     hass: HomeAssistant,
 ) -> None:
-    """The enabled, live half of the same attribute: why a charger is or is not solar-charging."""
+    """The enabled, live half of the same diagnostics: why a charger is or is not solar-charging."""
     charger, site_entry, controller, coordinator, clock, turn_on_calls, turn_off_calls = (
         await solar_setup(hass)
     )
@@ -472,13 +475,10 @@ async def test_solar_surplus_attribute_reflects_the_live_verdict_when_enabled(
 
     set_site_power_w(hass, "solar_site", -1400.0)
     await tick_site(hass, site_controller)
-    # The sensor platform only republishes on the site controller's `_notify()`, which `tick_site`'s `_recompute()` triggers, but a state write from the entity still needs one more loop turn.
     await hass.async_block_till_done()
 
     assert coordinator.state is not None
-    state = hass.states.get("sensor.site_capacity_state")
-    assert state is not None
-    snapshot = state.attributes["solar_surplus"][charger.entry_id]
+    snapshot = entry_diagnostics(hass, site_entry)["solar_surplus"][charger.entry_id]
     assert snapshot["enabled"] is True
     assert snapshot["state"] == coordinator.state.state == "arming"
     assert snapshot["action"] == coordinator.state.action == "hold"

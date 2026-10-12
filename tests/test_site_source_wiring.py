@@ -17,6 +17,7 @@ from custom_components.spotnav.const import (
     CONF_SITE_CURRENT_SIGNED,
     MEASUREMENT_MODE_DERIVED,
 )
+from custom_components.spotnav.diagnostics import entry_diagnostics
 from custom_components.spotnav.site.measurement_source import PhaseMeasurementSource, source_to_dict
 
 from .helpers import make_site_entry, set_current_sensor
@@ -171,8 +172,10 @@ async def test_the_site_state_exposes_the_estimate_to_the_card_and_diagnostics(h
     if state is None:
         state = next(s for s in hass.states.async_all("sensor") if "current_estimated" in s.attributes)
     assert state.attributes["current_estimated"] is True
-    assert state.attributes["estimated_power_factor"] == 0.9
-    assert state.attributes["phase_current_basis"] == {phase: "estimated" for phase in PHASES}
+    result = entry_diagnostics(hass, entry)["result"]
+    assert result["current_estimated"] is True
+    assert result["estimated_power_factor"] == 0.9
+    assert result["phase_current_basis"] == {phase: "estimated" for phase in PHASES}
 
 
 async def test_grid_power_inversion_makes_an_export_positive_meter_import_positive(hass: HomeAssistant) -> None:

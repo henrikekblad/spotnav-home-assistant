@@ -189,6 +189,11 @@ def _site_diagnostics(hass: HomeAssistant, entry: ConfigEntry) -> dict[str, Any]
         else _solar_current_writers(hass, controller),
         # The battery-on-the-fuse probe per charger: state, last outcome and why, back-off left.
         "battery_probe": {} if controller is None else controller.battery_probe_snapshot,
+        # Per member charger, the last yield-stepping verdict, solar surplus state and hybrid state (once
+        # attributes of the site state sensor, which no longer carries what moves with each reading).
+        "yield_stepping": {} if controller is None else controller.yield_stepping_snapshot,
+        "solar_surplus": {} if controller is None else controller.solar_surplus_snapshot,
+        "hybrid": {} if controller is None else controller.hybrid_snapshot,
         "start_credit": {} if controller is None else controller.start_credit_snapshot(),
         # The resumes of a balancing pause per charger, and the back-off left after too many in ten minutes.
         "balancing_resume": {} if controller is None else controller.balancing_resume_snapshot(),

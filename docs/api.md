@@ -393,7 +393,8 @@ when not known; the card and the app show it with one decimal, "Solar · surplus
 `solar_no_car` otherwise or while solar has no full basis (both tone `normal`, no notification). Hybrid shows its
 plan's line on an empty charger, as before. A released SpotNav app words a code it does not know as "see Home
 Assistant", so the webhook says `solar_waiting_for_sun` in place of either line unless the request asks for them
-(`"reads": ["solar_no_car_status"]`). The site sensor's `solar_surplus` rows carry the additive `start_a`.
+(`"reads": ["solar_no_car_status"]`). The `solar_surplus` rows in the site's diagnostics carry the additive
+`start_a`.
 
 **The site's sensors.** The site state sensor (*Capacity state*) keeps its states; the healthy one, `observing`,
 is named **Measuring**. Its additive attribute `site_activity` says what the site is doing in a word: `measuring`
@@ -403,6 +404,18 @@ in the diagnostics' `result`) has the additive `not_requesting` (reason `no_curr
 for a charger that asks for no current, which used to read `below_minimum_current`; a reader that does not know it
 treats it as any unknown state. Every site has the sensor *Solar surplus* (W, `null`/unknown without a usable basis)
 with the attributes `export_w`, `battery_w`, `car_w` and `priority`; see [Solar](strategies.md#solar).
+
+After 1.14.3 the *Capacity state* and *Proposed current* sensors no longer carry what changes with each meter
+reading, and are written only when what they show changes (each changed attribute was a row in the recorder).
+Removed from *Capacity state*: `max_age_s`, `measured_site_current_a`, `phase_age_s`, `phase_report_age_s`,
+`phase_liveness`, `phase_signed_active_power_w`, `phase_signed_active_power_age_s`,
+`phase_signed_active_power_reason`, `phase_current_basis`, `estimated_power_factor`, the four headroom figures,
+`battery_yield_basis`, `limiting_phase`, `site_measurement_configured`, `charger_control_available`,
+`current_control_available`, `calculation_available`, `has_unknown_active_request`, `grid_power`,
+`yield_stepping`, `battery_probe`, `balancing_resume`, `solar_surplus` and `hybrid`; from *Proposed current*:
+`measured_charger_current_a`, `limiting_phase` and `regulator_limiting_phase`. Every one of them is in the site's
+diagnostics (`result`, `capability`, `grid_power`, `regulator` and the per-charger blocks). The currents kept
+are rounded to 0.1 A. See [Troubleshooting](troubleshooting.md#site).
 
 A site's `warnings` in `get_entity_config` carry the additive `unavailable_entities` (a list) and
 `inverter` (bool): for `measurement_unhealthy`, the meter's sensors unavailable together as above; empty
