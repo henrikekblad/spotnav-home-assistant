@@ -13,7 +13,11 @@ state of charge and how sure we are, answered in three layers:
 
     soc_est = soc_at_last_fresh_reading + delivered_since_kwh x efficiency / capacity_kwh x 100
 
-`delivered_since_kwh` is the change of the charger's energy register since the reading. The
+`delivered_since_kwh` is the change of the charger's energy register since the reading. Many registers
+lag (a cloud that books an hour's energy at once), so the register value the reading is measured from (its
+baseline) is never one posted before the reading: it is the first value the register posts at or after it
+(`resolve_soc`). Energy charged before the reading and booked late lands in that value, not in the estimate;
+energy charged between the reading and that value is left uncounted (an under-count, never an over-count). The
 result is flagged `estimated`, a fresh reading (no older than `target_stop.SOC_FRESH_MAX_AGE_S`)
 always replaces it, and it is never invented: with no register, no capacity or a register that
 went backwards the raw reading is reported as is. Nothing here writes to a charger or a car.
@@ -82,9 +86,9 @@ _STORE_KEY_PREFIX: Final = f"{DOMAIN}.soc_anchor"
 class SocAnchor:
     """The last real reading and the energy register when it was taken.
 
-    `register_kwh` is `None` when the register was unreadable then: such an anchor carries a
-    reading, and an estimate only once the register's first readable value has become its baseline
-    (`resolve_soc`). `read_at` is when the reading was made, not noticed. `register_entity_id` names
+    `register_kwh` is the baseline: `None` until the register has posted a value after `read_at` (or while it
+    is unreadable). Such an anchor carries a reading, and an estimate only once that value has become its
+    baseline (`resolve_soc`). `read_at` is when the reading was made, not noticed. `register_entity_id` names
     the register `register_kwh` was read from: a baseline from another register (one found again, or
     chosen by a person) is dropped and taken again, never subtracted across two meters.
     """
@@ -192,6 +196,7 @@ def resolve_soc(
     register_entity_id: str | None = None,
     plugged_in_throughout: bool = False,
     ceiling_percent: float | None = None,
+    register_updated_at: datetime | None = None,
 ) -> SocResolution:
     """The state of charge to plan and stop against, and the anchor to keep. Pure.
 
@@ -201,9 +206,20 @@ def resolve_soc(
     * a stale reading newer than the anchor replaces it only while nothing has been delivered
       since the anchor (a car driven or charged elsewhere while idle);
     * with no anchor a stale reading starts one;
-    * an anchor's baseline from another register than `register_entity_id` is dropped, and an anchor
-      without a baseline (the register could not be read then, or it was dropped) takes the register's
-      first readable value: energy before it is not credited, so either can only under-count;
+    * the baseline (`SocAnchor.register_kwh`) is the first register value posted at or after the reading
+      (`register_updated_at`; `None` means not known and takes the value as current). A register that lags
+      books energy charged before the reading later: a baseline posted before the reading would count that
+      energy on top of the reading (the field night of 12 October: a 77 % reading at 02:48 measured from a
+      value posted at 02:16, and the 03:05 step, charged before 02:45, counted again). Until such a value
+      arrives the anchor has no baseline and the reading is not carried forward; energy charged between the
+      reading and that value is not counted. It can only under-count, provided the register's first value
+      after a reading holds what was charged before it (a register that lags past its own next update is not
+      caught);
+    * an anchor's baseline from another register than `register_entity_id` is dropped and taken again under
+      the same rule: energy before it is not credited, so it can only under-count;
+    * whether nothing was delivered since the anchor (the stale reading's replacement above) is told by the
+      register; a lagging register can make it look so while energy was charged, and the newer reading then
+      replaces the anchor with a baseline under the rule above, which can only under-count;
     * a reading that is the car's entity coming back (`SocReading.restored`: a reload or late load of its
       integration) with the anchor's value, while the car is shown to have stayed plugged in through the
       gap (`plugged_in_throughout`), is the anchor's own reading, not a new one: the anchor and its baseline
@@ -222,9 +238,15 @@ def resolve_soc(
     ):
         # A baseline read from another meter (a register found again, or chosen): never subtracted.
         anchor = replace(anchor, register_kwh=None)
-    if anchor is not None and anchor.register_kwh is None and register_kwh is not None:
-        # Anchored while the register could not be read (a restart before the charger's integration had
-        # its register): its first readable value is the baseline.
+    if (
+        anchor is not None
+        and anchor.register_kwh is None
+        and register_kwh is not None
+        and _posted_after(register_updated_at, anchor.read_at)
+    ):
+        # The first value the register posted after the reading (or the first readable one, after a restart
+        # before the charger's integration had its register): what it had booked of the energy charged before
+        # the reading is in it.
         anchor = replace(anchor, register_kwh=register_kwh, register_entity_id=register_entity_id)
     usable = reading is not None and reading.soc_percent is not None
     restored = (
@@ -242,9 +264,7 @@ def resolve_soc(
         newer = anchor is None or (read_at - anchor.read_at).total_seconds() > SAME_READING_S
         if is_fresh(reading):
             if newer:
-                anchor = SocAnchor(
-                    reading.soc_percent, register_kwh, read_at, reading.source, vehicle_id, register_entity_id
-                )
+                anchor = _new_anchor(reading, read_at, vehicle_id, register_kwh, register_entity_id, register_updated_at)
             return SocResolution(reading, anchor)
         if newer:
             idle = (
@@ -254,9 +274,7 @@ def resolve_soc(
                 or register_kwh - anchor.register_kwh <= REGISTER_TOLERANCE_KWH
             )
             if idle:
-                anchor = SocAnchor(
-                    reading.soc_percent, register_kwh, read_at, reading.source, vehicle_id, register_entity_id
-                )
+                anchor = _new_anchor(reading, read_at, vehicle_id, register_kwh, register_entity_id, register_updated_at)
     if anchor is None:
         return SocResolution(reading, None)
     if restored:
@@ -286,6 +304,26 @@ def resolve_soc(
         ),
         anchor,
     )
+
+
+def _posted_after(register_updated_at: datetime | None, read_at: datetime) -> bool:
+    """Whether a register value was posted after a reading, or at the same instant (`None`: not known, taken as
+    current)."""
+    return register_updated_at is None or register_updated_at >= read_at
+
+
+def _new_anchor(
+    reading: SocReading,
+    read_at: datetime,
+    vehicle_id: str | None,
+    register_kwh: float | None,
+    register_entity_id: str | None,
+    register_updated_at: datetime | None,
+) -> SocAnchor:
+    """An anchor for `reading`, with the register as its baseline only when it was posted after the reading."""
+    assert reading.soc_percent is not None
+    baseline = register_kwh if _posted_after(register_updated_at, read_at) else None
+    return SocAnchor(reading.soc_percent, baseline, read_at, reading.source, vehicle_id, register_entity_id)
 
 
 def target_need_kwh(
@@ -337,9 +375,20 @@ def read_energy_register_kwh(hass: HomeAssistant, entity_id: str | None) -> floa
     Requires a numeric state, `Wh`/`kWh` and `state_class: total_increasing`, so a session or
     momentary value that falls back to zero is never misread as a reset.
     """
+    return read_energy_register(hass, entity_id)[0]
+
+
+def read_energy_register(hass: HomeAssistant, entity_id: str | None) -> tuple[float | None, datetime | None]:
+    """`read_energy_register_kwh` and when the register posted that value (its `last_updated`), or
+    `(None, None)`."""
     if not entity_id:
-        return None
+        return None, None
     state = hass.states.get(entity_id)
+    value = _register_kwh(state)
+    return (None, None) if value is None or state is None else (value, state.last_updated)
+
+
+def _register_kwh(state: Any) -> float | None:
     if state is None or state.state in (STATE_UNAVAILABLE, STATE_UNKNOWN, ""):
         return None
     attributes = state.attributes or {}
@@ -551,10 +600,12 @@ class SocReader:
     def _resolve(self, vehicle_id: str | None, anchor: SocAnchor | None) -> SocResolution:
         register_entity_id = self._register_entity_id()
         reading, throughout = self._with_comeback(self._raw_reader(vehicle_id))
+        register_kwh, register_updated_at = read_energy_register(self._hass, register_entity_id)
         return resolve_soc(
             reading=reading,
             anchor=anchor,
-            register_kwh=read_energy_register_kwh(self._hass, register_entity_id),
+            register_kwh=register_kwh,
+            register_updated_at=register_updated_at,
             capacity_kwh=self.capacity_kwh(vehicle_id),
             now=self._now(),
             vehicle_id=vehicle_id,
