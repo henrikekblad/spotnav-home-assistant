@@ -247,8 +247,8 @@ third each for three phases, the whole total on the charger's phase for one phas
 per phase and caps the result by that phase's fuse headroom on top of what the car already draws.
 A stale (older than the maximum measurement age, unless Home Assistant keeps hearing from the
 sensor) or missing total is an unknown surplus, never zero export. The site sensor's
-`solar_capable`, `solar_reason` and `grid_power` attributes and the diagnostics' `grid_power`
-block show the state; `solar_reason` is `needs_total_grid_power` when a direct site lacks it.
+`solar_capable` and `solar_reason` attributes and the diagnostics' `grid_power` block show the
+state; `solar_reason` is `needs_total_grid_power` when a direct site lacks it.
 
 ## Meter detection, signs and estimated current
 

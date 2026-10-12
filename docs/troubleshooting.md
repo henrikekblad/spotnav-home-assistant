@@ -14,7 +14,7 @@ public GitHub issue: open the issue with the **bug report** form, then email the
 **support@sensnology.se** with the issue's number in the subject.
 
 The site entry's file (and the card's **Download debug info** in Settings, Support, for
-administrators) also carries the whole installation as one debug bundle (`bundle_version` 6):
+administrators) also carries the whole installation as one debug bundle (`bundle_version` 7):
 
 - `history_60min` per site: the last hour, one sample a minute kept in memory (nothing is read from
   the recorder). Each sample has the grid's total power, the site's current per phase, the house
@@ -35,6 +35,9 @@ administrators) also carries the whole installation as one debug bundle (`bundle
   disagreed on, found drift at and failed on, and when it first and last saw one. Unlike the rest of
   `ownership_shadow` it is kept across restarts, from `since` (under the integration's `version`
   then) until the charger is removed.
+- `yield_stepping`, `solar_surplus` and `hybrid` in the site's diagnostics, per charger (version 7):
+  the last yield-stepping verdict, the solar surplus state and the hybrid state, which the *Capacity
+  state* sensor carried as attributes up to 1.14.3.
 
 To check a saved bundle's charge-ownership recording offline, run
 `.venv/bin/python tools/replay_bundle.py bundle.json` in the integration's repository (no Home
@@ -48,6 +51,16 @@ from before version 5) is reported as having nothing to replay. The exit code is
 Useful entities on each charger: *Auto plan state*, *Auto execution state*, *Next planned
 charging start*, *Planned cost* and *Auto settings revision*. On a site: *Capacity state*, *Solar
 surplus* and one *Proposed current* sensor per charger.
+
+*Capacity state* carries what a person reads it for: `reason`, `site_activity`, `measurement_mode`,
+`confidence`, `current_estimated`, the membership conflicts, the measurement health, why load balancing
+is blocked, whether it is available and on, whether solar can run (`solar_capable`, `solar_reason`) and
+the solar priority. *Proposed current* carries the requested current, the setpoint, the allocation's
+`state` and `reason`, the charger measurement's health and the regulator's proposal and reason. The
+per-phase readings, their ages, the headroom figures, the limiting phase, the grid power and the
+per-charger solar, hybrid, yield-stepping, battery-probe and resume detail are in the site's
+diagnostics; they change with every meter reading. Both sensors are written only when what they show
+changes.
 
 ## Setting up
 
@@ -128,6 +141,15 @@ surplus* and one *Proposed current* sensor per charger.
   older than the maximum age means it stopped reporting. Fix that sensor or the mapping; load
   balancing and solar wait until all three phases read.
 - **Measurements are old.** Raise *maximum measurement age* only if the sensor really updates that slowly.
+- **The recorder database grew large.** Up to 1.14.3 the site's *Capacity state* sensor was written
+  with every meter reading, with attributes (ages, raw per-phase values) that differed each time, so
+  each write stored a new attributes row: several gigabytes in a few days on a meter that reports
+  every second. It is now written only when its state or attributes change, and excluding it from the
+  recorder is no longer needed. The old rows go once they are older than the recorder's
+  `purge_keep_days` (10 by default); to reclaim the space at once, run the action `recorder.purge`
+  with `repack: true` (Developer tools, Actions), or `recorder.purge_entities` for
+  `sensor.<site>_capacity_state` and the site's *Proposed current* sensors followed by
+  `recorder.purge` with `repack: true`. A repack can take a while on a big database.
 
 ## Phone and pairing
 
