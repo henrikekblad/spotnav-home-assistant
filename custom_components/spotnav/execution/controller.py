@@ -4307,6 +4307,10 @@ class ChargingController:
             "vehicle_full" if car_ended and self.charges_to_vehicle_limit() else "target",
             target_soc_percent=self._target_stop["target_soc_percent"],
             soc_percent=self._target_stop["soc_percent"],
+            # What the level is: a reading or the estimate from delivered energy, and how old the reading
+            # behind it was, so a notice never calls an estimate the target reached.
+            basis=self._target_stop["basis"],
+            reading_age_s=self._target_stop["reading_age_s"],
         )
         return await self._automatic_stop_locked("the target's stop", clear_schedule=True)
 
