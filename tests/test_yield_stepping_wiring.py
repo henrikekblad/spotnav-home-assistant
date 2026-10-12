@@ -18,6 +18,7 @@ from homeassistant.core import HomeAssistant
 from homeassistant.util import dt as dt_util
 from pytest_homeassistant_custom_component.common import async_mock_service
 
+from custom_components.spotnav.diagnostics import entry_diagnostics
 from custom_components.spotnav.const import (
     CONF_MEASURED_CURRENT_SOURCE,
     CONF_YIELD_CEILING_A,
@@ -638,14 +639,14 @@ async def test_options_flow_rejects_a_ceiling_at_or_above_the_limit(hass: HomeAs
     assert result["errors"] == {CONF_YIELD_CEILING_A: "yield_ceiling_above_limit"}
 
 
-async def test_yield_stepping_attribute_present_when_disabled(hass: HomeAssistant) -> None:
+async def test_yield_stepping_diagnostics_present_when_disabled(hass: HomeAssistant) -> None:
     site_entry, charger, _configure_calls = await _yield_setup(
         hass, entry_id="attr_disabled", yield_stepping_enabled=False
     )
     controller = controller_of(hass, site_entry.entry_id)
 
-    state = hass.states.get("sensor.site_capacity_state")
-    snapshot = state.attributes["yield_stepping"]
+    assert "yield_stepping" not in hass.states.get("sensor.site_capacity_state").attributes
+    snapshot = entry_diagnostics(hass, site_entry)["yield_stepping"]
     assert snapshot[charger.entry_id] == {
         "enabled": False,
         "state": "unknown",
@@ -660,7 +661,7 @@ async def test_yield_stepping_attribute_present_when_disabled(hass: HomeAssistan
     assert controller.yield_stepping_snapshot == snapshot
 
 
-async def test_yield_stepping_attribute_reflects_the_latest_verdict_when_enabled(
+async def test_yield_stepping_diagnostics_reflect_the_latest_verdict_when_enabled(
     hass: HomeAssistant,
 ) -> None:
     site_entry, charger, configure_calls = await _yield_setup(hass, entry_id="attr_enabled")
@@ -683,8 +684,7 @@ async def test_yield_stepping_attribute_reflects_the_latest_verdict_when_enabled
     controller._notify()
     await hass.async_block_till_done()
 
-    state = hass.states.get("sensor.site_capacity_state")
-    snapshot = state.attributes["yield_stepping"][charger.entry_id]
+    snapshot = entry_diagnostics(hass, site_entry)["yield_stepping"][charger.entry_id]
     assert snapshot["enabled"] is True
     assert snapshot["action"] == "write"
     assert snapshot["reason"] == "probe_step"

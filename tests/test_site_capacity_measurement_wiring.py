@@ -19,6 +19,7 @@ from custom_components.spotnav.const import (
     MEASUREMENT_MODE_DERIVED,
     SITE_RECOMPUTE_INTERVAL_S,
 )
+from custom_components.spotnav.diagnostics import entry_diagnostics
 from custom_components.spotnav.flows.labels import power_sensor_entity_options
 from custom_components.spotnav.site.measurement_source import (
     PhaseMeasurementSource,
@@ -369,7 +370,11 @@ async def test_charger_proposed_current_entity_exposes_measured_and_setpoint(
     assert entity_id is not None
     proposed = hass.states.get(entity_id)
     assert proposed is not None
-    assert proposed.attributes["measured_charger_current_a"] == {"L1": 8.0, "L2": 8.0, "L3": 8.0}
+    # The per-phase reading moves with every report, so it is the controller's (and the diagnostics'), not an
+    # attribute: each change of one is a new attributes row in the recorder.
+    assert "measured_charger_current_a" not in proposed.attributes
+    measured = controller_of(hass, entry.entry_id).evaluation.charger_measured_current[charger.entry_id]
+    assert (measured.l1.value, measured.l2.value, measured.l3.value) == (8.0, 8.0, 8.0)
     assert proposed.attributes["measured_charger_current_health"] == "healthy"
     assert proposed.attributes["setpoint_current_a"] is None
 
@@ -413,10 +418,10 @@ async def test_battery_aggregate_power_entity_feeds_the_two_tier_headroom_diagno
     assert controller.result.battery_yield_basis == "assumed_equal_split"
     assert abs(controller.result.estimated_headroom_if_battery_yields_a["L1"] - 24.0) < 1e-6
 
-    state = hass.states.get("sensor.site_capacity_state")
-    assert state.attributes["battery_yield_basis"] == "assumed_equal_split"
-    assert abs(state.attributes["estimated_headroom_if_battery_yields_a"]["L1"] - 24.0) < 1e-6
-    assert abs(state.attributes["phase_headroom_a"]["L1"] - 4.0) < 1e-6
+    result = entry_diagnostics(hass, entry)["result"]
+    assert result["battery_yield_basis"] == "assumed_equal_split"
+    assert abs(result["estimated_headroom_if_battery_yields_a"]["L1"] - 24.0) < 1e-6
+    assert abs(result["phase_headroom_a"]["L1"] - 4.0) < 1e-6
 
 
 async def test_no_battery_entity_configured_reports_unknown_basis_through_the_entity(
@@ -429,9 +434,9 @@ async def test_no_battery_entity_configured_reports_unknown_basis_through_the_en
     assert await hass.config_entries.async_setup(entry.entry_id)
     await hass.async_block_till_done()
 
-    state = hass.states.get("sensor.site_capacity_state")
-    assert state.attributes["battery_yield_basis"] == "unknown"
-    assert all(v is None for v in state.attributes["estimated_headroom_if_battery_yields_a"].values())
+    result = entry_diagnostics(hass, entry)["result"]
+    assert result["battery_yield_basis"] == "unknown"
+    assert all(v is None for v in result["estimated_headroom_if_battery_yields_a"].values())
 
 
 async def test_options_flow_roundtrip_sets_and_clears_the_battery_entity(
@@ -563,16 +568,13 @@ async def test_sensor_exposes_measured_margin_and_ev_credit_estimate_as_distinct
     assert await hass.config_entries.async_setup(entry.entry_id)
     await hass.async_block_till_done()
 
-    state = hass.states.get("sensor.site_capacity_state")
+    result = entry_diagnostics(hass, entry)["result"]
     # Real headroom used for the proposal: 25 - 1 - 20 = 4 A (uncredited).
-    assert abs(state.attributes["phase_headroom_a"]["L1"] - 4.0) < 1e-6
-    assert state.attributes["measured_margin_a"]["L1"] == state.attributes["phase_headroom_a"]["L1"]
+    assert abs(result["phase_headroom_a"]["L1"] - 4.0) < 1e-6
+    assert result["measured_margin_a"]["L1"] == result["phase_headroom_a"]["L1"]
     # Diagnostic EV-credited estimate: 25 - 1 - (20 - 8.9) = 12.9 A, larger than the real headroom above.
-    assert abs(state.attributes["calculated_headroom_after_ev_credit_a"]["L1"] - 12.9) < 1e-6
-    assert (
-        state.attributes["calculated_headroom_after_ev_credit_a"]["L1"]
-        != state.attributes["phase_headroom_a"]["L1"]
-    )
+    assert abs(result["calculated_headroom_after_ev_credit_a"]["L1"] - 12.9) < 1e-6
+    assert result["calculated_headroom_after_ev_credit_a"]["L1"] != result["phase_headroom_a"]["L1"]
 
 
 async def test_configured_battery_per_phase_source_without_confirmation_reports_unknown(

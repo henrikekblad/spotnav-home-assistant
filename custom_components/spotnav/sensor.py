@@ -335,13 +335,25 @@ class PlanTimeEntity(SpotNavChargingEntity, SensorEntity):
         }
 
 
+def rounded_amps(value: float | None) -> float | None:
+    """A current as an attribute shows it: to 0.1 A, so float jitter is no change of state."""
+    return None if value is None else round(float(value), 1)
+
+
 class _BuiltOnChangeSiteSensor(SpotNavSiteEntity, SensorEntity):
     """A site sensor whose state and attributes are built when the site changes, not when they are read.
 
     Home Assistant times the read of a state and its attributes (and warns above 0.4 s); building them in
     the site's change callback keeps that read a lookup, and a write Home Assistant makes on its own
     reuses what was built.
+
+    The site changes with every meter reading (several a second on some meters), so a site change is
+    written only when the state or the attributes differ from what was written last: every change of an
+    attribute is a new attributes row in the recorder. The attributes therefore carry nothing that moves
+    with each reading (no ages, no raw per-phase readings); that detail is in the site's diagnostics.
     """
+
+    _written: tuple[Any, dict[str, Any] | None] | None = None
 
     async def async_added_to_hass(self) -> None:
         self._rebuild()
@@ -349,12 +361,17 @@ class _BuiltOnChangeSiteSensor(SpotNavSiteEntity, SensorEntity):
 
     @callback
     def _on_site_changed(self) -> None:
-        self._rebuild()
-        self.async_write_ha_state()
+        if self._rebuild():
+            self.async_write_ha_state()
 
-    def _rebuild(self) -> None:
-        self._attr_native_value = self._build_value()
-        self._attr_extra_state_attributes = self._build_attributes()
+    def _rebuild(self) -> bool:
+        """Build the state and attributes; whether they differ from the last ones built."""
+        built = (self._build_value(), self._build_attributes())
+        if built == self._written:
+            return False
+        self._written = built
+        self._attr_native_value, self._attr_extra_state_attributes = built
+        return True
 
     def _build_value(self) -> Any:
         raise NotImplementedError
@@ -366,13 +383,34 @@ class _BuiltOnChangeSiteSensor(SpotNavSiteEntity, SensorEntity):
 class SiteStateEntity(_BuiltOnChangeSiteSensor):
     """The site capacity controller's own state.
 
-    One named state instead of several booleans. Raw per-phase detail (never a webhook ID or other
-    secret) is exposed only as attributes, like `ConnectionEntity`.
+    One named state instead of several booleans, with the few facts a person reads it for as attributes
+    (never a webhook ID or other secret). The per-phase readings, their ages, the headroom figures and the
+    per-charger solar, hybrid, yield-stepping, battery-probe and resume detail are in the site's
+    diagnostics (`diagnostics._site_diagnostics`), not here: they move with every reading. So does the
+    limiting phase where the phases carry about the same load (each phase's report hands it on).
     """
 
     _attr_entity_category = EntityCategory.DIAGNOSTIC
 
     _attr_translation_key = "site_state"
+
+    # Kept on the entity but out of the recorder's history: settings and capability facts, and the
+    # localized hint, which say nothing about a moment.
+    _unrecorded_attributes = frozenset(
+        {
+            "next_step",
+            "measurement_mode",
+            "current_estimated",
+            "membership_conflicts",
+            "site_measurement_health",
+            "blocking_reasons",
+            "active_load_balancing_available",
+            "active_load_balancing_enabled",
+            "solar_capable",
+            "solar_reason",
+            "solar_priority",
+        }
+    )
 
     def __init__(self, entry: ConfigEntry, controller: SiteCapacityController) -> None:
         super().__init__(entry, controller)
@@ -398,55 +436,10 @@ class SiteStateEntity(_BuiltOnChangeSiteSensor):
             # `not_measuring`; the state itself stays `observing` when healthy.
             "site_activity": site_activity(result.state, self.controller.active_control_enabled),
             "measurement_mode": result.measurement_mode,
+            # `guarded` while a phase is trusted only as confirmed unchanged (see `classify_phase_liveness`).
             "confidence": result.confidence,
-            "limiting_phase": result.limiting_phase,
-            "max_age_s": result.max_age_s,
-            # The site's own measured total, never a requested/setpoint/estimated value.
-            "measured_site_current_a": dict(result.measured_phase_current_a),
-            "phase_age_s": dict(result.phase_age_s),
-            # `phase_liveness` decides whether a value is accepted for the proposals below
-            # (`fresh` and `confirmed_unchanged` are; a `confirmed_unchanged` phase comes off
-            # headroom by `CONFIRMED_UNCHANGED_MARGIN_A` and `confidence` reports "guarded").
-            # See `classify_phase_liveness`. `phase_report_age_s` is the raw number behind it
-            # (`last_reported`, not `last_updated`).
-            "phase_report_age_s": dict(result.phase_report_age_s),
-            "phase_liveness": dict(result.phase_liveness),
-            # Diagnostic only, never a charging current: one phase's signed active power in watts
-            # (negative = exporting, same convention as `grid_active_power`), derived mode only;
-            # `None` when the phase is unusable, with `phase_signed_active_power_reason` saying why.
-            "phase_signed_active_power_w": dict(result.phase_signed_active_power_w),
-            "phase_signed_active_power_age_s": dict(result.phase_signed_active_power_age_s),
-            "phase_signed_active_power_reason": dict(result.phase_signed_active_power_reason),
-            # How each phase's current was obtained: `measured` (the meter's own current, as |I|),
-            # `apparent` (S / U), `reactive` (sqrt(P^2 + Q^2) / U) or `estimated`
-            # (|P| / (U x `estimated_power_factor`)). An estimate is never lower than the true
-            # current for a power factor of at least that assumption and understates below it, so
-            # `current_estimated` is stated wherever the current is shown.
-            "phase_current_basis": dict(result.phase_current_basis),
+            # True when a phase's current is estimated from active power alone (`|P| / (U x 0.9)`).
             "current_estimated": result.current_estimated,
-            "estimated_power_factor": result.estimated_power_factor,
-            # Four distinct headroom numbers; never conflate them (see site/site_capacity.py).
-            # 1. "measured_margin_a": the raw margin at the main fuse, crediting no charger's
-            #    own current.
-            "measured_margin_a": dict(result.measured_margin_a),
-            # 2. "phase_headroom_a": what the proposals below were computed from; always identical
-            #    to (1) in every mode.
-            "phase_headroom_a": dict(result.phase_headroom_a),
-            # 3. "calculated_headroom_after_ev_credit_a": headroom if a charger's own measured
-            #    draw were credited back. Diagnostic only, not proven safe to rely on (see the
-            #    "Scalar current subtraction" section of site/site_capacity.py).
-            "calculated_headroom_after_ev_credit_a": dict(
-                result.calculated_headroom_after_ev_credit_a
-            ),
-            # 4. "estimated_headroom_if_battery_yields_a": diagnostic only, never a safe limit:
-            #    extra headroom if a home battery stopped charging now, layered on (2).
-            # `battery_yield_basis` says how far to trust it: "measured_per_phase",
-            # "assumed_equal_split" (a whole-site aggregate divided evenly, an explicit
-            # assumption) or "unknown" (every phase `None`, never guessed).
-            "estimated_headroom_if_battery_yields_a": dict(
-                result.estimated_headroom_if_battery_yields_a
-            ),
-            "battery_yield_basis": result.battery_yield_basis,
             # Diagnostic; see SiteCapacityController's class doc.
             "membership_conflicts": [
                 {
@@ -458,11 +451,6 @@ class SiteStateEntity(_BuiltOnChangeSiteSensor):
             ],
             # Compact capability/health snapshot (see vehicles/capability.py); full detail is in diagnostics.
             "site_measurement_health": snapshot.site_measurement.health,
-            "site_measurement_configured": snapshot.site_measurement.configured,
-            "charger_control_available": snapshot.charger_control_available,
-            "current_control_available": snapshot.current_control_available,
-            "calculation_available": snapshot.load_balancing.calculation_available,
-            "has_unknown_active_request": snapshot.load_balancing.has_unknown_active_request,
             "blocking_reasons": list(snapshot.load_balancing.blocking_reasons),
             # `available`: this site could be actively controlled now (healthy measurement, no
             # membership conflict, a charger that opted into the write path). `enabled`: this
@@ -474,26 +462,10 @@ class SiteStateEntity(_BuiltOnChangeSiteSensor):
             # not (a direct site needs the meter's total grid power).
             "solar_capable": snapshot.solar.capable,
             "solar_reason": snapshot.solar.reason,
-            # The meter's total grid power, its age and the export derived from it.
-            "grid_power": self.controller.evaluation.grid_power,
-            # Yield-verified stepping (see `site_capacity_controller.yield_stepping_snapshot`): one
-            # entry per associated charger, present even while the site option is off.
-            "yield_stepping": self.controller.yield_stepping_snapshot,
-            # The battery-on-the-fuse probe (`site/battery_probe.py`): one entry per associated
-            # charger with its state and last outcome.
-            "battery_probe": self.controller.battery_probe_snapshot,
-            # The resumes of a charge load balancing paused: how many in ten minutes, and the back-off left after
-            # too many (`site_capacity_controller.RESUME_LIMIT`).
-            "balancing_resume": self.controller.balancing_resume_snapshot(),
             # Solar surplus priority: `car_first` or `battery_first`, present even when never stored.
             "solar_priority": self.controller.config.get(
                 CONF_SOLAR_PRIORITY, DEFAULT_SOLAR_PRIORITY
             ),
-            # Solar surplus execution: one entry per associated charger, present even when its
-            # strategy is not `solar`, mirroring `yield_stepping`.
-            "solar_surplus": self.controller.solar_surplus_snapshot,
-            # Hybrid diagnostics: one entry per associated charger, mirroring `solar_surplus`.
-            "hybrid": self.controller.hybrid_snapshot,
         }
 
 
@@ -630,6 +602,16 @@ class ChargerProposedCurrentEntity(_BuiltOnChangeSiteSensor):
     _attr_state_class = SensorStateClass.MEASUREMENT
     _attr_native_unit_of_measurement = UnitOfElectricCurrent.AMPERE
 
+    # Fixed per charger, or what the regulator only computes for comparison.
+    _unrecorded_attributes = frozenset(
+        {
+            "charger_entry_id",
+            "measured_charger_current_health",
+            "regulator_proposed_current_a",
+            "regulator_reason",
+        }
+    )
+
     def __init__(
         self,
         entry: ConfigEntry,
@@ -650,7 +632,7 @@ class ChargerProposedCurrentEntity(_BuiltOnChangeSiteSensor):
 
     def _build_value(self) -> float | None:
         allocation = self._allocation()
-        return allocation.proposed_current_a if allocation else None
+        return rounded_amps(allocation.proposed_current_a) if allocation else None
 
     def _build_attributes(self) -> dict[str, Any] | None:
         allocation = self._allocation()
@@ -660,36 +642,28 @@ class ChargerProposedCurrentEntity(_BuiltOnChangeSiteSensor):
         setpoint_current_a = (
             None if charger_controller is None else charger_controller.setpoint_current_a
         )
-        evaluation = self.controller.evaluation
-        measured = evaluation.charger_measured_current.get(self._charger_entry_id)
-        capability = evaluation.capability.charger_measurement.get(self._charger_entry_id)
+        capability = self.controller.evaluation.capability.charger_measurement.get(self._charger_entry_id)
         regulator_decision = self.controller.regulator_decisions.get(self._charger_entry_id)
+        # The charger's measured current per phase moves with every reading; it is the charger's own
+        # sensor, and the site's diagnostics (`history_60min`, the regulator's basis) carry it. So does the
+        # limiting phase on a site whose phases carry about the same load, and is in the diagnostics'
+        # `result.allocations` and `regulator`.
         return {
             "charger_entry_id": allocation.charger_entry_id,
-            # Requested, setpoint and measured values stay explicitly distinct.
-            "requested_current_a": allocation.requested_current_a,
-            "setpoint_current_a": setpoint_current_a,
-            "measured_charger_current_a": None
-            if measured is None
-            else {
-                "L1": measured.l1.value,
-                "L2": measured.l2.value,
-                "L3": measured.l3.value,
-            },
+            # Requested and setpoint values stay explicitly distinct.
+            "requested_current_a": rounded_amps(allocation.requested_current_a),
+            "setpoint_current_a": rounded_amps(setpoint_current_a),
             "measured_charger_current_health": capability.health if capability else "not_configured",
             "state": allocation.state,
             "reason": allocation.reason,
-            "limiting_phase": allocation.limiting_phase,
             # Best-effort load balancing (regulator): a separate diagnostic computation
             # from "proposed_current_a"/"state"/"reason" above, never sent to the charger.
             "regulator_proposed_current_a": (
-                regulator_decision.proposed_current_a if regulator_decision else None
+                rounded_amps(regulator_decision.proposed_current_a) if regulator_decision else None
             ),
             "regulator_reason": regulator_decision.reason if regulator_decision else None,
-            "regulator_limiting_phase": (
-                regulator_decision.limiting_phase if regulator_decision else None
-            ),
         }
+
 
 class AutoProposalSensor(SpotNavAutoEntity, SensorEntity):
     """Base for the sensors that describe the latest proposal.

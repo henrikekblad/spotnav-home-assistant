@@ -114,7 +114,7 @@ async def test_reading_the_site_sensors_state_builds_nothing(hass: HomeAssistant
     # A change of the site builds them again.
     controller._notify()
     await hass.async_block_till_done()
-    assert calls["solar_surplus_snapshot"] >= 1
+    assert calls["membership_conflicts"] >= 1
 
 
 async def test_a_site_sensor_state_write_is_cheap(hass: HomeAssistant) -> None:
