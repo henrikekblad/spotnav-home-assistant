@@ -4,6 +4,8 @@ Only Home Assistant can see the car's state of charge while a charge runs, so on
 early when the target is reached.
 
 * `decide_target_stop` is pure: a target and a reading in, a decision out.
+* `confirm_estimate` is pure: what to do when only an estimate says the target is reached (ask the car for a
+  fresh reading, wait for it, or let the estimate decide).
 * `target_stop_lapse` is pure: whether the record of a stop still describes the car (another car, a target
   raised above the stop level, or a level read after the stop below the target ends it).
 * `resolve_soc_reading` reads one state and reports what it found, including "the entity exists but
@@ -39,8 +41,25 @@ SocSource = Literal["vehicle", "charger"]
 SOC_FRESH_MAX_AGE_S: Final = 180.0
 
 #: How far above the target an *estimated* state of charge must be before a charge is stopped on
-#: the estimate alone.
-ESTIMATE_STOP_MARGIN_PERCENT: Final = 1.0
+#: the estimate alone: only once the car was asked for a fresh reading and none came within
+#: `ESTIMATE_CONFIRM_WAIT_S`, or when the car offers no refresh (`confirm_estimate`). The estimate carries the
+#: error of the pack size and the charging loss over the whole charge; 3 % is the same allowance a car that
+#: ended the charge itself is given (`CAR_ENDED_ESTIMATE_MARGIN_PERCENT`).
+ESTIMATE_STOP_MARGIN_PERCENT: Final = 3.0
+
+#: How long a fresh reading asked for when the estimate first reached the target is waited for before the
+#: estimate alone decides. A car's cloud answers a re-read in seconds to a few minutes; ten minutes is about 3 %
+#: of a 35 kWh pack at 7 kW, the margin the estimate then needs anyway, so a big pack loses no time and a small
+#: one overshoots little more than the margin.
+ESTIMATE_CONFIRM_WAIT_S: Final = 10 * 60.0
+
+#: After a fresh reading answered below the target, how much further the estimate must move before the car is
+#: asked again: one ask per percent at most, never a refresh on every register step.
+ESTIMATE_REASK_STEP_PERCENT: Final = 1.0
+
+#: An ask older than this is forgotten and the car is asked again: a charge that went on (a plan cleared and a
+#: later one in the same plug-in) is not decided on an answer awaited an hour ago.
+ESTIMATE_CHECK_STALE_S: Final = 3600.0
 
 #: How far below its goal (the target, or the car's own limit when that is lower) a car that ended a plan's
 #: charge by itself may read and still be full (`car_ended_full`): a reading rounds and a car may stop at 99 %;
@@ -88,13 +107,82 @@ class SocReading:
 
 
 @dataclass(frozen=True, slots=True)
+class EstimateCheck:
+    """The car asked for a fresh reading because an estimate reached the target (`confirm_estimate`).
+
+    `refreshable` is whether a re-read could be asked at all (a car with no entity to re-read offers none);
+    `answered` that a reading taken after `asked_at` came back below the target.
+    """
+
+    vehicle_id: str | None
+    asked_at: datetime
+    estimate_percent: float
+    refreshable: bool
+    answered: bool = False
+
+
+#: `confirm_estimate`'s answers.
+CONFIRM_ASK: Final = "ask"
+CONFIRM_WAIT: Final = "wait"
+CONFIRM_ESTIMATE: Final = "estimate"
+
+
+def confirm_estimate(
+    *, target_soc_percent: float, reading: SocReading, check: EstimateCheck | None, now: datetime
+) -> str:
+    """What an estimate at or above the target leads to, before it may stop anything. Pure.
+
+    * the car not asked yet for this charge (or another car asked, or the ask is older than
+      `ESTIMATE_CHECK_STALE_S`): `ask` for a fresh reading, and keep charging;
+    * asked, and a reading taken since answered below the target: `ask` again once the estimate moved
+      `ESTIMATE_REASK_STEP_PERCENT` past the estimate of the last ask, else `wait`;
+    * asked, no answer yet: `wait` up to `ESTIMATE_CONFIRM_WAIT_S`, then `estimate`;
+    * the car offers no refresh: `estimate` at once.
+
+    `estimate` hands the decision to `decide_target_stop`, which stops on an estimate only at the target plus
+    `ESTIMATE_STOP_MARGIN_PERCENT`. A reading at or above the target never comes here: it stops at once.
+    """
+    if (
+        check is None
+        or check.vehicle_id != reading.vehicle_id
+        or (now - check.asked_at).total_seconds() >= ESTIMATE_CHECK_STALE_S
+    ):
+        return CONFIRM_ASK
+    if check.answered:
+        assert reading.soc_percent is not None
+        if reading.soc_percent >= check.estimate_percent + ESTIMATE_REASK_STEP_PERCENT:
+            return CONFIRM_ASK
+        return CONFIRM_WAIT
+    if not check.refreshable:
+        return CONFIRM_ESTIMATE
+    if (now - check.asked_at).total_seconds() >= ESTIMATE_CONFIRM_WAIT_S:
+        return CONFIRM_ESTIMATE
+    return CONFIRM_WAIT
+
+
+def estimate_needs_confirming(
+    *, target_soc_percent: float | None, reading: SocReading | None, to_vehicle_limit: bool = False
+) -> bool:
+    """Whether only an estimate says the target is reached (`confirm_estimate` decides what follows)."""
+    return (
+        target_soc_percent is not None
+        and not to_vehicle_limit
+        and reading is not None
+        and reading.estimated
+        and reading.soc_percent is not None
+        and reading.soc_percent >= target_soc_percent
+    )
+
+
+@dataclass(frozen=True, slots=True)
 class TargetDecision:
     """What one reading means for one target: stop, or not, and why."""
 
     stop: bool
     reason: Literal[
         "reached",
-        #: The stop was taken on an estimate (target plus `ESTIMATE_STOP_MARGIN_PERCENT`).
+        #: The stop was taken on an estimate (target plus `ESTIMATE_STOP_MARGIN_PERCENT`), once no fresh reading
+        #: confirmed it (`confirm_estimate`).
         "reached_estimate",
         "below_target",
         "no_target",
@@ -237,7 +325,8 @@ def decide_target_stop(
     * no reading or an unusable value: `reading_unusable`, never a stop; the window's own end remains
       the guard;
     * reading >= target: `reached`, compared as floats without rounding (89.6 is below 90);
-    * an estimate >= target + `ESTIMATE_STOP_MARGIN_PERCENT` (capped at 100): `reached_estimate`;
+    * an estimate >= target + `ESTIMATE_STOP_MARGIN_PERCENT` (capped at 100): `reached_estimate`. The controller
+      asks the car for a fresh reading first (`confirm_estimate`) and takes this only when none came;
     * otherwise `below_target`.
     """
     if target_soc_percent is None:

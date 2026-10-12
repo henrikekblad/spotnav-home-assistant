@@ -97,7 +97,12 @@ from .texts import async_load as async_load_texts
 from .vehicles.discovery_decisions import async_setup_decisions
 from .vehicles.soc_estimate import SocReader
 from .vehicles.vehicle_refresh import async_ask_vehicle_update
-from .vehicles.vehicle_discovery import charger_vehicle_ids, resolve_target_vehicle, vehicle_soc_entity_id
+from .vehicles.vehicle_discovery import (
+    charger_vehicle_ids,
+    resolve_target_vehicle,
+    vehicle_reading_entity_ids,
+    vehicle_soc_entity_id,
+)
 from .vehicles.vehicle_properties import consumption_kwh_per_10km, stored_capacity_kwh, stored_properties
 
 
@@ -490,6 +495,21 @@ async def _async_setup_auto_preview(
 
     data.controller.set_car_ended_observer(_car_ended)
     entry.async_on_unload(lambda: data.controller.set_car_ended_observer(None))
+
+    def _ask_reading(vehicle_id: str | None) -> bool:
+        # Only an estimate says the target is reached: ask the car's integration to read it again (its own
+        # interval, never a wake-up), and hear of the answer however little it moved. A car with nothing to
+        # re-read offers no refresh, and the estimate decides with its margin.
+        if not vehicle_id or not vehicle_reading_entity_ids(hass, vehicle_id):
+            return False
+        data.soc_reader.notify_next_reading()
+        entry.async_create_background_task(
+            hass, async_ask_vehicle_update(hass, vehicle_id), f"{entry.entry_id} vehicle refresh for the target"
+        )
+        return True
+
+    data.controller.set_reading_asker(_ask_reading)
+    entry.async_on_unload(lambda: data.controller.set_reading_asker(None))
 
     def _floor_inputs() -> FloorInputs | None:
         # The car the charger plans for, read as the planner reads it, with no side effect on the planner's wait.

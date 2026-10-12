@@ -13,11 +13,12 @@ from typing import Any
 import pytest
 from freezegun import freeze_time
 from homeassistant.core import HomeAssistant, callback
-from pytest_homeassistant_custom_component.common import async_mock_service
+from pytest_homeassistant_custom_component.common import async_fire_time_changed, async_mock_service
 
 from custom_components.spotnav.api import dashboard as dashboard_api
 from custom_components.spotnav.execution.controller import ChargingPlan
 from custom_components.spotnav.execution.target_stop import (
+    ESTIMATE_CONFIRM_WAIT_S,
     charge_ceiling_percent,
     charges_to_vehicle_limit,
     decide_target_stop,
@@ -75,7 +76,7 @@ def test_a_charge_to_the_cars_limit_is_never_stopped_by_a_reading_or_an_estimate
         assert decision.stop is False and decision.reason == "vehicle_limit"
     # A target below the car's limit still stops at the target.
     assert decide_target_stop(target_soc_percent=80.0, reading=_reading(80.0)).stop is True
-    assert decide_target_stop(target_soc_percent=80.0, reading=_reading(81.0, estimated=True)).stop is True
+    assert decide_target_stop(target_soc_percent=80.0, reading=_reading(83.0, estimated=True)).stop is True
 
 
 # ------------------------------------------------------------------ the cap on a manual need
@@ -249,7 +250,12 @@ async def test_a_target_below_the_cars_limit_still_stops_on_the_estimate(hass: H
         )
         assert not controller.charges_to_vehicle_limit()
         frozen.tick(timedelta(minutes=30))
-        _meter(hass, 35.2)  # 81 % estimated: the target plus its margin
+        _meter(hass, 35.2)  # 81 % estimated: the car is asked for a fresh reading first
+        await hass.async_block_till_done()
+        assert controller.plan is not None
+        frozen.tick(timedelta(seconds=ESTIMATE_CONFIRM_WAIT_S + 5))
+        async_fire_time_changed(hass)
+        _meter(hass, 36.9)  # 83 % estimated, no reading came: the target plus its margin
         await hass.async_block_till_done()
         assert controller.plan is None
         assert controller.target_stop_record is not None and controller.target_stop_record["basis"] == "estimate"

@@ -68,7 +68,8 @@ def run_charge(
     step_s: float = 30.0,
 ) -> tuple[Car, float, str, int]:
     """Charge until the real decision says stop. `poll_every_s=None` is a charger that reports
-    the state of charge itself, every step. Returns (car, minutes, stop reason, fresh anchors)."""
+    the state of charge itself, every step. The car offers no refresh here, so an estimate decides alone, at the
+    target plus its margin (`confirm_estimate`). Returns (car, minutes, stop reason, fresh anchors)."""
     car = Car(soc=start, efficiency=efficiency)
     # The car was last polled hours ago, at the state it was left in.
     last_poll_value, last_poll_at = start, -3 * 3600.0
@@ -100,11 +101,11 @@ def run_charge(
     raise AssertionError("the charge never stopped")
 
 
-def test_a_stale_poll_car_stops_within_two_percent_over_its_target() -> None:
+def test_a_stale_poll_car_stops_within_the_estimates_margin_over_its_target() -> None:
     """The Kia case: the sensor answers once an hour, 40 % to 80 % of a 77 kWh pack at 11 kW."""
     car, minutes, reason, anchors = run_charge(start=40.0, target=80.0, poll_every_s=3600.0)
     assert reason == "reached_estimate" or reason == "reached"
-    assert 80.0 <= car.soc <= 82.0, car.soc
+    assert 80.0 <= car.soc <= 80.0 + ESTIMATE_STOP_MARGIN_PERCENT, car.soc
     assert anchors >= 2, "the hourly polls each replaced the estimate"
     assert 185 < minutes < 200
 
@@ -112,14 +113,14 @@ def test_a_stale_poll_car_stops_within_two_percent_over_its_target() -> None:
 def test_a_stale_poll_that_never_answers_still_stops_on_the_estimate_alone() -> None:
     car, _, reason, _ = run_charge(start=40.0, target=80.0, poll_every_s=10 * 3600.0)
     assert reason == "reached_estimate"
-    assert 80.0 + ESTIMATE_STOP_MARGIN_PERCENT <= car.soc <= 82.0, car.soc
+    assert 80.0 + ESTIMATE_STOP_MARGIN_PERCENT <= car.soc <= 81.0 + ESTIMATE_STOP_MARGIN_PERCENT, car.soc
 
 
 @pytest.mark.parametrize("efficiency", [0.85, 0.95])
 def test_an_efficiency_that_is_off_by_five_points_is_bounded_by_the_polls(efficiency: float) -> None:
     """With an hourly poll the error is corrected every hour: the miss stays small either way."""
     car, _, _, _ = run_charge(start=40.0, target=80.0, poll_every_s=3600.0, efficiency=efficiency)
-    assert 78.5 <= car.soc <= 83.0, car.soc
+    assert 78.5 <= car.soc <= 81.0 + ESTIMATE_STOP_MARGIN_PERCENT, car.soc
 
 
 def test_a_charger_that_reports_the_state_of_charge_stops_at_the_target() -> None:
@@ -175,8 +176,8 @@ def test_an_estimate_stops_only_above_the_target_plus_margin() -> None:
     def estimated(value: float) -> SocReading:
         return SocReading(value, "vehicle", None, "car", 3600.0, estimated=True)
 
-    assert not decide_target_stop(target_soc_percent=80.0, reading=estimated(80.9)).stop
-    stop = decide_target_stop(target_soc_percent=80.0, reading=estimated(81.0))
+    assert not decide_target_stop(target_soc_percent=80.0, reading=estimated(82.9)).stop
+    stop = decide_target_stop(target_soc_percent=80.0, reading=estimated(83.0))
     assert stop.stop and stop.reason == "reached_estimate"
     # A reading has no margin, and a target of 100 is still reachable by an estimate.
     assert decide_target_stop(target_soc_percent=80.0, reading=_reading(80.0, 5.0)).reason == "reached"
@@ -488,8 +489,12 @@ async def test_a_shrinking_need_never_interrupts_the_running_window(
     turn_offs = [c for c in calls if c[0] == "turn_off"]
     turn_ons = [c for c in calls if c[0] == "turn_on"]
     if driver == DRIVER_TARGET_SOC:
-        assert controller.plan is None and controller.target_stop_record is not None
-        assert len(turn_offs) == 1, calls  # the target stop itself, once
+        # The target's stop on the estimate (asked first, then at its margin), or the window sized to the target
+        # ending first: either way once, and never before the window's end on a shrinking need.
+        assert controller.plan is None
+        completion = controller.completion_record
+        assert completion is not None and completion["reason"] in ("target", "plan_done"), completion
+        assert len(turn_offs) == 1, calls
     assert len(turn_ons) == 1, calls  # never a start after the start
     assert ("set_value", "") not in calls
 
