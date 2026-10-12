@@ -32,6 +32,9 @@ the core again.
 Version 6 adds, inside `ownership_shadow`, `coverage`: per event kind of the core (every kind, zeros until seen) how
 many events the shadow decided, compared, disagreed on, found drift at and failed on, and when it first and last saw
 one, kept across restarts since `since` (under the integration's `version` then; `execution/ownership_coverage.py`).
+
+Version 7 adds, inside the site's `diagnostics`, `yield_stepping`, `solar_surplus` and `hybrid` (per member charger),
+which the site state sensor carried as attributes until it stopped carrying what moves with each reading.
 """
 
 from __future__ import annotations
@@ -74,7 +77,7 @@ from .site.measurement_source import grid_power_source_from_dict, source_from_di
 
 _LOGGER = logging.getLogger(__name__)
 
-BUNDLE_VERSION: Final = 6
+BUNDLE_VERSION: Final = 7
 REDACTED: Final = "**REDACTED**"
 
 #: Keys whose value is never shown, wherever they sit in the bundle.
