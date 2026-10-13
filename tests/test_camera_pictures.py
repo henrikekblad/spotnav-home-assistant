@@ -8,7 +8,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from homeassistant.core import HomeAssistant
-from PIL import Image
+from PIL import Image, ImageDraw
 
 from custom_components.spotnav.vehicles.camera_pictures import (
     as_jpeg,
@@ -19,9 +19,10 @@ from custom_components.spotnav.vehicles.camera_pictures import (
     picture_size,
     Reference,
     ReferenceStore,
+    SIGNATURE_VERSION,
     thumbnail_jpeg,
 )
-from custom_components.spotnav.vehicles.camera_rule import distinct_cars
+from custom_components.spotnav.vehicles.camera_rule import camera_reason, colour_distance, COLOUR_DISTINCT, distinct_cars
 from custom_components.spotnav.vehicles.camera_settings import Frame
 
 
@@ -131,3 +132,82 @@ async def test_reference_pictures_are_kept_privately_replaced_by_kind_and_remove
     gone = ReferenceStore(hass, "entry_a")
     await gone.async_load()
     assert gone.references("car1") == []
+
+
+# --------------------------------------------------------------------------------- the car, not the ground
+
+PAVING = (125, 100, 80)
+
+
+def driveway(car: tuple[int, int, int] | None, *, seed: int = 1, size: tuple[int, int] = (400, 300)) -> bytes:
+    """A crop of a parking spot: brown paving with sensor noise, and a car (its body, dark windows and wheels)
+    covering about a third of the middle, as a camera framing the whole spot sees it; `None`: the empty spot."""
+    width, height = size
+    rng = random.Random(seed)
+    image = Image.new("RGB", size)
+    image.putdata([tuple(max(0, min(255, value + rng.randint(-12, 12))) for value in PAVING) for _ in range(width * height)])
+    if car is not None:
+        draw = ImageDraw.Draw(image)
+        draw.rectangle((110, 110, 290, 220), fill=car)
+        draw.rectangle((150, 115, 250, 145), fill=(20, 22, 25))
+        draw.ellipse((125, 200, 160, 235), fill=(15, 15, 15))
+        draw.ellipse((240, 200, 275, 235), fill=(15, 15, 15))
+    out = io.BytesIO()
+    image.save(out, format="JPEG", quality=85)
+    return out.getvalue()
+
+
+DARK_BLUE_CAR = (35, 55, 105)
+
+
+def test_a_dark_blue_car_on_paving_is_clearly_apart_from_the_empty_spot() -> None:
+    """The field case: one car's only reference is the empty driveway, the other a dark blue car on it. The middle's
+    average colour was mostly paving for both (0.21 apart); the car's own colour is far from the paving."""
+    ev6 = reference_signature(driveway(DARK_BLUE_CAR), "day")
+    empty = reference_signature(driveway(None, seed=2), "day")
+    now = colour_signature(driveway(DARK_BLUE_CAR, seed=3))
+    assert ev6 is not None and empty is not None and now is not None
+    assert ev6[2] > ev6[0] + 0.1, "the car's blue, not the paving's brown"
+    assert colour_distance(ev6, empty) >= COLOUR_DISTINCT + 0.1
+    references = {"ev6": [ev6], "test": [empty]}
+    assert camera_reason("ev6", "high", ["ev6", "test"], references, now) == ("decided", None)
+
+
+def test_two_blue_cars_on_paving_stay_alike_and_a_red_one_is_apart() -> None:
+    blue = reference_signature(driveway(DARK_BLUE_CAR), "day")
+    other_blue = reference_signature(driveway((40, 60, 115), seed=4), "day")
+    red = reference_signature(driveway((170, 35, 30), seed=5), "day")
+    now = colour_signature(driveway(DARK_BLUE_CAR, seed=6))
+    reason, distance = camera_reason("a", "high", ["a", "b"], {"a": [blue], "b": [other_blue]}, now)
+    assert reason == "similar_colour" and distance is not None and distance < 0.1
+    assert camera_reason("a", "high", ["a", "c"], {"a": [blue], "c": [red]}, now) == ("decided", None)
+
+
+def test_the_empty_spot_reads_as_its_ground_and_a_car_filling_the_edge_as_the_middle() -> None:
+    empty = reference_signature(driveway(None), "day")
+    assert empty is not None and colour_distance(empty, tuple(value / 255 for value in PAVING)) < 0.05
+    # No one colour along most of the edge (the car reaches it): the middle's average colour, as before.
+    image = Image.new("RGB", (100, 100), (20, 160, 20))
+    image.paste(Image.new("RGB", (50, 100), (200, 20, 20)), (0, 0))
+    out = io.BytesIO()
+    image.save(out, format="PNG")
+    signature = reference_signature(out.getvalue(), "day")
+    assert signature is not None and 0.38 < signature[0] < 0.48 and 0.3 < signature[1] < 0.4
+
+
+def test_a_night_picture_on_paving_still_has_no_colour() -> None:
+    assert reference_signature(driveway(DARK_BLUE_CAR), "night") is None
+    grey = Image.open(io.BytesIO(driveway(DARK_BLUE_CAR))).convert("L").convert("RGB")
+    out = io.BytesIO()
+    grey.save(out, format="JPEG")
+    assert colour_signature(out.getvalue()) is None, "an infrared picture of the car on paving"
+
+
+def test_a_signature_stored_by_an_earlier_release_has_the_first_version() -> None:
+    taken = datetime(2026, 10, 7, 12, 0, tzinfo=timezone.utc)
+    stored = Reference("car1", "day", taken, "camera.norr", None, (0.3, 0.3, 0.3)).as_stored()
+    assert stored["signature_version"] == SIGNATURE_VERSION == 2
+    assert Reference.from_stored(stored).signature_version == SIGNATURE_VERSION
+    del stored["signature_version"]
+    assert Reference.from_stored(stored).signature_version == 1
+    assert Reference.from_stored({**stored, "signature_version": "2"}) is None
