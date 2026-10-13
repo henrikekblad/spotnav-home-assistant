@@ -9,7 +9,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { REFRESH_INTERVAL_MS } from "../src/card";
 import { translate } from "../src/i18n";
-import { FakeHass, mountCard } from "./helpers";
+import { FakeHass, mountCard, settingsOffered } from "./helpers";
 
 const ENTITY_DIR = join(__dirname, "..", "..", "tests", "fixtures", "entity_config", "v1");
 const DASHBOARD_DIR = join(__dirname, "..", "..", "tests", "fixtures", "dashboard");
@@ -156,6 +156,7 @@ describe("the Settings page's charger and site cards", () => {
       "energy_register",
       "charger_priority",
       "charge_periods",
+      "users_change_plan",
     ]);
     expect(rowText(element, "start_stop")).toContain(translate("en", "control.startStop"));
     // Short status words, never the entity's name or id.
@@ -215,20 +216,18 @@ describe("the Settings page's charger and site cards", () => {
     expect(openDialog(element)?.querySelector(".spotnav-entity-help-toggle")).toBeNull();
   });
 
-  it("asks a non-administrator nothing, says only administrators can change entities, and offers no editor", async () => {
+  it("asks a non-administrator nothing and shows them no entities, only what they may change", async () => {
     const { hass, element } = await mounted({ admin: false });
+    expect(settingsOffered(element)).toBe(true);
     openSettings(element);
     await settle();
     expect(gets(hass)).toHaveLength(0);
-    const section = openDialog(element)?.querySelector<HTMLElement>("[data-section='entities']");
-    expect(section?.textContent).toContain(translate("en", "entity.adminOnly"));
-    // Nothing to change: no entity dialog, and no value in the accent colour (the price area opens read-only).
-    // Display is this device's own preference, changeable by anyone, so it is left out.
+    // Settings shows such a reader only what they may change: this device's Display, no entities.
+    expect(openDialog(element)?.querySelector("[data-section='entities']")).toBeNull();
     const changeable = Array.from(
       openDialog(element)?.querySelectorAll("[data-edit-entities], .spotnav-setting-row-editable") ?? [],
-    ).filter((node) => node.closest("[data-section='display']") === null);
-    expect(changeable).toHaveLength(0);
-    expect(openDialog(element)?.textContent).toContain(translate("en", "settings.readOnly"));
+    ).map((node) => node.closest("[data-section]")?.getAttribute("data-section"));
+    expect(changeable).toEqual(["display"]);
   });
 
   it("states a failed read in words, with the code only as an attribute, and offers no editor", async () => {
@@ -263,7 +262,7 @@ describe("the Settings page's charger and site cards", () => {
       });
       openSettings(hidden.element);
       await settle();
-      expect(sectionRows(hidden.element, "entities")).toEqual(["start_stop", "current", "energy_register", "charge_periods"]);
+      expect(sectionRows(hidden.element, "entities")).toEqual(["start_stop", "current", "energy_register", "charge_periods", "users_change_plan"]);
     }
     document.body.innerHTML = "";
     const absent = await mounted({
@@ -273,7 +272,7 @@ describe("the Settings page's charger and site cards", () => {
     });
     openSettings(absent.element);
     await settle();
-    expect(sectionRows(absent.element, "entities")).toEqual(["start_stop", "current", "energy_register", "charge_periods"]);
+    expect(sectionRows(absent.element, "entities")).toEqual(["start_stop", "current", "energy_register", "charge_periods", "users_change_plan"]);
   });
 
   it("shows only the charger's card and no site rows when the charger has no site", async () => {
@@ -288,6 +287,7 @@ describe("the Settings page's charger and site cards", () => {
       "charger_phases",
       "voltage_between_phases_v",
       "charge_periods",
+      "users_change_plan",
     ]);
     const site = openDialog(element)?.querySelector("[data-section='site']");
     expect(site?.textContent).toContain(translate("en", "site.none"));

@@ -561,6 +561,8 @@
   "settings.periods.autoHelp": "Die günstigsten Stunden, nur dann aufgeteilt, wenn die Ersparnis einen weiteren Start wert ist. Jeder Zeitraum dauert mindestens 30 Minuten.",
   "settings.periods.value.one": "{count} Zeitraum",
   "settings.periods.value.other": "{count} Zeiträume",
+  "settings.usersPlan.label": "Benutzern ohne Administratorrechte erlauben, Strategie und Plan zu ändern",
+  "settings.usersPlan.help": "Für einen Bildschirm, der als gewöhnlicher Home-Assistant-Benutzer angemeldet ist. Starten und Pausieren funktionieren für alle; damit können sie zusätzlich die Strategie wählen und den Plan ändern. Alles andere in den Einstellungen bleibt Administratoren vorbehalten.",
   "settings.current.title": "Geplanter Strom",
   "settings.current.intro": "Der Strom, den der Ladeplan anfordern darf. Er ist ein Planungswert, kein Befehl an die Ladestation.",
   "settings.current.label": "Geplanter Strom",

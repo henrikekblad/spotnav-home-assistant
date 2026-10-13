@@ -156,6 +156,39 @@ async def test_start_is_admitted_once_through_the_execution_boundary(
     assert (after.pause.choice, after.pause.action, after.pause.expires_at) == ("manual", "start", None)
 
 
+async def test_a_user_who_is_not_an_administrator_may_start_pause_and_resume(
+    hass: HomeAssistant,
+    hass_ws_client,
+    hass_read_only_access_token: str,
+    offline_relay: None,
+    effects: dict[str, Counted],
+) -> None:
+    """A wall screen signed in as an ordinary user: Pause, Resume and Start each go through the same
+    boundary as an administrator's, once each, and the dashboard says this caller may act."""
+    entry = await setup_charger(hass)
+    await go_auto(hass, entry.entry_id)
+    reader = await hass_ws_client(hass, hass_read_only_access_token)
+
+    dashboard = await ws_call(
+        reader, {"type": "spotnav/get_dashboard", "api_version": 1, "charger_id": entry.entry_id}
+    )
+    assert dashboard["result"]["control"]["can_act"] is True
+
+    paused = await ws_call(reader, action_message(entry.entry_id, "stop", choice=PAUSE_UNTIL_RESUMED))
+    assert paused["result"]["ok"] is True and paused["result"]["choice"] == PAUSE_UNTIL_RESUMED
+    assert stored(hass, entry.entry_id).pause.choice == PAUSE_UNTIL_RESUMED
+
+    resumed = await ws_call(reader, action_message(entry.entry_id, "resume"))
+    assert resumed["result"]["ok"] is True and resumed["result"]["action"] == "resume"
+    assert effects["resume"].calls == 1
+    assert stored(hass, entry.entry_id).pause.choice is None
+
+    started = await ws_call(reader, action_message(entry.entry_id, "start"))
+    assert started["success"] is True and started["result"]["ok"] is True
+    assert effects["start"].calls == 1
+    assert stored(hass, entry.entry_id).pause.action == "start"
+
+
 @pytest.mark.parametrize("choice", [PAUSE_UNTIL_RESUMED, PAUSE_UNTIL_TOMORROW])
 async def test_each_pause_choice_is_admitted_once_while_the_charger_is_charging(
     hass: HomeAssistant,
@@ -758,7 +791,7 @@ async def test_every_refused_request_makes_zero_writes_and_zero_boundary_calls(
     effects: dict[str, Counted],
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Bad action, misplaced choice, wrong id, site id, unloaded entry, non-admin, wrong version."""
+    """Bad action, misplaced choice, wrong id, site id, unloaded entry, wrong version, also for a non-admin."""
     entry = await setup_charger(hass)
     unloaded = await setup_charger(
         hass, entry_id="entry_c", webhook_id="webhook-c", charge_control="switch.charger_c"
@@ -793,11 +826,11 @@ async def test_every_refused_request_makes_zero_writes_and_zero_boundary_calls(
         assert frame["result"]["error"] == code, message
         assert frame["result"]["action"] is None and frame["result"]["choice"] is None, message
 
-    # Home Assistant's own admin boundary, not this handler: a non-admin cannot act at all.
+    # A user who is not an administrator meets the same validation: a malformed request is refused
+    # by the same code and moves nothing.
     reader = await hass_ws_client(hass, hass_read_only_access_token)
-    refused = await ws_call(reader, action_message(entry.entry_id, "start"))
-    assert refused["success"] is False and refused["error"]["code"] == "unauthorized"
-    assert "result" not in refused
+    refused = await ws_call(reader, action_message(entry.entry_id, "charge"))
+    assert refused["success"] is True and refused["result"]["error"] == ERROR_INVALID_ACTION
 
     # A version this contract does not speak is refused the way the other two contracts refuse one.
     wrong_version = await ws_call(client, action_message(entry.entry_id, "start", api_version=2))

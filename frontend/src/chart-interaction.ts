@@ -87,12 +87,13 @@ export const FALLBACK_SIZE: ChartSize = { width: 320, height: 150 };
 const DEFAULT_DIRECTION_THRESHOLD = 4;
 
 /**
- * Default measurement: the viewport's width, with the height computed from it by the chart-height
- * policy so the drawn box, viewBox and policy cannot disagree.
+ * Default measurement: the viewport's layout width, with the height computed from it by the chart-height
+ * policy so the drawn box, viewBox and policy cannot disagree. Layout width, not the bounding rectangle:
+ * the SVG is drawn in layout pixels, and a rectangle includes any CSS transform or zoom on an ancestor, so
+ * in a scaled container (a wall screen's fullscreen view) it would squeeze the chart sideways.
  */
 function defaultMeasure(viewport: HTMLElement): ChartSize {
-  const rect = viewport.getBoundingClientRect();
-  const width = rect.width > 0 ? rect.width : FALLBACK_SIZE.width;
+  const width = viewport.clientWidth > 0 ? viewport.clientWidth : FALLBACK_SIZE.width;
   return { width, height: chartHeightForWidth(width) };
 }
 

@@ -2185,6 +2185,7 @@
       "target_percent": null,
       "vehicle_id": null
     },
+    "users_change_plan": false,
     "vehicle_ids": null
   },
   "site": null,

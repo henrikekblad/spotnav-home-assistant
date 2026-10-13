@@ -14,7 +14,7 @@ import {
   type ChartObserverLike,
   type ChartSize,
 } from "../src/chart-interaction";
-import type { ChartRenderResult } from "../src/chart-render";
+import { chartHeightForWidth, type ChartRenderResult } from "../src/chart-render";
 import type { CardModel } from "../src/model";
 import {
   AFTER_MIDNIGHT_MS,
@@ -401,6 +401,43 @@ describe("resize ownership", () => {
     expect(measured.every((node) => node === h.viewport)).toBe(true);
     expect(h.interaction.size()).toEqual({ width: 320, height: 150 });
     expect(h.host.getBoundingClientRect().height).not.toBe(260);
+  });
+
+  it("draws at the viewport's layout width inside a scaled container, not its scaled rectangle", () => {
+    // A wall screen's fullscreen view scales the whole card: the rectangle is twice the layout box, but the
+    // SVG is drawn in layout pixels, so measuring the rectangle would squeeze the chart sideways after a redraw.
+    const model = baseModel();
+    const scaled = document.createElement("div");
+    scaled.style.transform = "scale(2)";
+    document.body.append(scaled);
+    const host = document.createElement("section");
+    const viewport = document.createElement("div");
+    host.append(viewport);
+    scaled.append(host);
+    const layoutWidth = 360;
+    Object.defineProperty(viewport, "clientWidth", { configurable: true, value: layoutWidth });
+    Object.defineProperty(viewport, "getBoundingClientRect", {
+      configurable: true,
+      value: () => new DOMRect(0, 0, layoutWidth * 2, chartHeightForWidth(layoutWidth) * 2),
+    });
+    viewport.append(renderFor(model, SIZE).element);
+    const interaction = createChartInteraction({
+      host,
+      viewport,
+      surface: () => viewport.querySelector("svg"),
+      onSelectionChange: () => {},
+      onResize: (size) => {
+        viewport.replaceChildren(renderFor(model, size).element);
+      },
+      observe: () => null,
+      now: () => NOW,
+    });
+    const viewBox = viewport.querySelector("svg")?.getAttribute("viewBox")?.split(" ").map(Number);
+    expect(viewBox?.[2]).toBe(layoutWidth);
+    expect(viewBox?.[3]).toBe(chartHeightForWidth(layoutWidth));
+    expect(interaction.size().width).toBe(layoutWidth);
+    interaction.destroy();
+    scaled.remove();
   });
 
   it("does not redraw when the readout or legend grows", () => {

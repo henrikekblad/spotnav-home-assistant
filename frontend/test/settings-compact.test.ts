@@ -11,7 +11,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { translate } from "../src/i18n";
 import { MARKET_API_VERSION, SETTINGS_API_VERSION } from "../src/types";
 import { VISUAL_CLASSES } from "../src/visual-styles";
-import { FakeHass, mountCard } from "./helpers";
+import { FakeHass, mountCard, settingsOffered, shownSections } from "./helpers";
 
 const FIX = join(__dirname, "..", "..", "tests", "fixtures");
 const read = (...parts: string[]): Record<string, any> => JSON.parse(readFileSync(join(FIX, ...parts), "utf8"));
@@ -134,11 +134,13 @@ describe("the page", () => {
     expect(charger.textContent).not.toContain("switch.");
   });
 
-  it("is read-only for a reader who is not an administrator", async () => {
+  it("shows a reader who is not an administrator only Display, the one thing on it they may change", async () => {
     const { element } = await openSettings("en", false);
-    // Display is this device's own preference, changeable by anyone; every charger value is read-only.
+    expect(settingsOffered(element)).toBe(true);
+    // Display is this device's own preference, changeable by anyone, and the only section such a reader is shown.
     const editable = Array.from(dialog(element).querySelectorAll(`.${VISUAL_CLASSES.settingRowEditable}`));
     expect(editable.map((node) => node.closest("[data-section]")?.getAttribute("data-section"))).toEqual(["display"]);
+    expect(Array.from(dialog(element).querySelectorAll("[data-section]")).map((node) => node.getAttribute("data-section"))).toEqual(["display"]);
   });
 
   it("says Laddperioder in Swedish", () => {
@@ -360,7 +362,9 @@ describe("the car's charge limit", () => {
     allowed.vehicles[0].max_percent = 90;
     allowed.charger.capabilities.set_charge_limit = true;
     const reader = await openSettings("en", false, allowed);
-    expect(dialog(reader.element).querySelector("[data-vehicle='vehicle_ev6'] [data-row='charge_limit'] button")).toBeNull();
+    // Settings shows such a reader only what they may change: this device's Display.
+    expect(shownSections(reader.element)).toEqual(["display"]);
+    expect(reader.element.shadowRoot?.querySelector("[data-row='charge_limit'] button")).toBeNull();
   });
 
   const limitBody = (range?: { min: number; max: number; step: number } | null): Record<string, any> => {

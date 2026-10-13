@@ -139,7 +139,8 @@ describe("the row in each available x enabled state", () => {
   });
 
   it("is read-only for a reader who may not write: a state, no control, the reason kept", async () => {
-    const { element } = await open(ENABLED_UNAVAILABLE, { admin: false, writable: false });
+    // The backend's word (`site.writable: false`) decides, not the reader's role in Home Assistant.
+    const { element } = await open(ENABLED_UNAVAILABLE, { writable: false });
     expect(control(element)).toBeNull();
     expect(slot(element).textContent).toContain(translate("en", "site.activeControl.on"));
     expect(slot(element).textContent).toContain(translate("en", "site.activeControl.reason.measurement"));

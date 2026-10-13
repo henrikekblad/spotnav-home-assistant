@@ -10,7 +10,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { translate } from "../src/i18n";
 import { floorIndex } from "../src/percent-slider";
 import { VISUAL_CLASSES as C } from "../src/visual-styles";
-import { FakeHass, mountCard } from "./helpers";
+import { FakeHass, mountCard, shownSections } from "./helpers";
 
 const FIX = join(__dirname, "..", "..", "tests", "fixtures");
 const read = (...parts: string[]): Record<string, any> => JSON.parse(readFileSync(join(FIX, ...parts), "utf8"));
@@ -96,9 +96,9 @@ describe("the rows", () => {
 
   it("cannot be changed by a reader who is not an administrator", async () => {
     const { element } = await openSettings(payload(80, 30), "en", false);
-    const car = dialog(element).querySelector<HTMLElement>("[data-vehicle='vehicle_ev6']")!;
-    expect(car.querySelector("[data-edit='target']")).toBeNull();
-    expect(car.querySelector("[data-edit='min_percent']")).toBeNull();
+    // Settings shows such a reader only what they may change: this device's Display.
+    expect(shownSections(element)).toEqual(["display"]);
+    expect(element.shadowRoot?.querySelector("[data-edit='target'], [data-edit='min_percent']")).toBeNull();
   });
 });
 

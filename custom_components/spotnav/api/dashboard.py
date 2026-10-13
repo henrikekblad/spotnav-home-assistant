@@ -1694,12 +1694,18 @@ def serialize_live(capture: CapturedDashboard) -> dict[str, Any]:
 
 
 def serialize_dashboard(
-    capture: CapturedDashboard, *, can_act: bool, active_control_writable: bool | None = None
+    capture: CapturedDashboard,
+    *,
+    can_act: bool,
+    active_control_writable: bool | None = None,
+    can_control: bool | None = None,
 ) -> dict[str, Any]:
     """One dashboard response, exactly these sections, in this order.
 
-    `can_act` is the caller's administrative authority; `active_control_writable` says whether this
-    carrier may also switch active load balancing (the webhook never may).
+    `can_act` is the caller's administrative authority (the site and the charger priority);
+    `can_control` whether it may use `spotnav/manual_action` (`control.can_act`), defaulting to
+    `can_act`; `active_control_writable` says whether this carrier may also switch active load
+    balancing (the webhook never may).
     """
     return {
         "api_version": DASHBOARD_API_VERSION,
@@ -1718,7 +1724,7 @@ def serialize_dashboard(
         "strategy": serialize_strategy(capture),
         "strategy_options": list(capture.strategy_options),
         "strategy_state": serialize_strategy_state(capture),
-        "control": serialize_control(capture, can_act=can_act),
+        "control": serialize_control(capture, can_act=can_act if can_control is None else can_control),
         "charge_progress": capture.charge_progress.as_dict(),
         "site": serialize_site(
             capture.site, can_act=can_act, active_control_writable=active_control_writable
@@ -1919,7 +1925,8 @@ def serialize_control(capture: CapturedDashboard, *, can_act: bool) -> dict[str,
     happen to Auto's execution. Both come from `execution.decide_axes`, so they describe one moment.
     `pause_choices` sits beside the automatic `pause` only: a bare immediate `stop` takes no choice,
     `resume` has nothing to choose, `none` accepts nothing. The other keys are the persisted pause
-    observation, the execution gate, the failure code and this connection's administrative authority.
+    observation, the execution gate, the failure code and whether this connection may act on the axes
+    (`spotnav/manual_action`, open to every signed-in user).
     """
     settings = capture.settings
     axes = execution.decide_axes(control_facts(capture))
@@ -2317,7 +2324,13 @@ async def websocket_get_dashboard(
     capture = capture_dashboard(
         hass, resolved, forecast_domains=await async_forecast_capable_domains(hass)  # type: ignore[arg-type]
     )
-    connection.send_result(msg["id"], serialize_dashboard(capture, can_act=is_admin(connection)))
+    # Start, Stop, Pause and Resume are any signed-in user's; the settings and the site an administrator's.
+    connection.send_result(
+        msg["id"],
+        serialize_dashboard(
+            capture, can_act=is_admin(connection), can_control=connection.user is not None
+        ),
+    )
 
 
 async def async_webhook_dashboard(

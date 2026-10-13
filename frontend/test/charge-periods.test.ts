@@ -11,7 +11,7 @@ import { chargePeriodsLabel, chargePeriodsOptions, chargePeriodsReplacement } fr
 import { LANGUAGES, translate } from "../src/i18n";
 import { decodeSettingsRecord } from "../src/settings";
 import { SETTINGS_API_VERSION } from "../src/types";
-import { FakeHass, mountCard } from "./helpers";
+import { FakeHass, mountCard, shownSections } from "./helpers";
 
 const FIX = join(__dirname, "..", "..", "tests", "fixtures");
 const read = (...parts: string[]): Record<string, any> => JSON.parse(readFileSync(join(FIX, ...parts), "utf8"));
@@ -121,7 +121,9 @@ describe("the charger section", () => {
 
   it("is not shown to a reader who is not an administrator", async () => {
     const { element } = await openSettings("en", false);
-    expect(dialog(element).querySelector("[data-row='charge_periods']")).toBeNull();
+    // Settings shows such a reader only what they may change: this device's Display.
+    expect(shownSections(element)).toEqual(["display"]);
+    expect(element.shadowRoot?.querySelector("[data-row='charge_periods']")).toBeNull();
   });
 
   it("names a stored number in the reader's plural", async () => {

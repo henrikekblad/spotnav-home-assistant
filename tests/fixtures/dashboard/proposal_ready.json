@@ -58,7 +58,8 @@
     },
     "vehicle_ids": null,
     "identify_mode": "automatic",
-    "identify_camera": null
+    "identify_camera": null,
+    "users_change_plan": false
   },
   "fiscal": {
     "vat": {

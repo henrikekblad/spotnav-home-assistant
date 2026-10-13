@@ -381,6 +381,8 @@ describe("9. a language change stays local", () => {
     vi.advanceTimersByTime(1_000);
     const before = hass.messages.length;
     const swedish = hass.snapshot("sv", "sv");
+    // An administrator's snapshot: a reader who is not one has no Settings to open on this card.
+    swedish.user = { is_admin: true };
     element.hass = swedish;
     await settle();
 

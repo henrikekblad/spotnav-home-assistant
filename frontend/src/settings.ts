@@ -190,6 +190,7 @@ const OPTIONAL_RECORD_KEYS = [
   "vehicle_ids",
   "identify_mode",
   "identify_camera",
+  "users_change_plan",
 ] as const;
 /** Every weekday, Monday (1) to Sunday (7): what a record without `departure_weekdays` means. */
 export const ALL_WEEKDAYS: readonly number[] = [1, 2, 3, 4, 5, 6, 7];
@@ -362,6 +363,9 @@ export function decodeSettingsRecord(raw: unknown): SettingsRecord {
     ...(present.includes("vehicle_ids") ? { vehicle_ids: vehicleIds(source) } : {}),
     ...(present.includes("identify_mode") ? { identify_mode: oneOf(source, "identify_mode", IDENTIFY_MODES) } : {}),
     ...(present.includes("identify_camera") ? { identify_camera: decodeCamera(source["identify_camera"]) } : {}),
+    ...(present.includes("users_change_plan")
+      ? { users_change_plan: booleanValue(source, "users_change_plan") }
+      : {}),
   };
 }
 
@@ -502,6 +506,7 @@ export function encodeBody(record: SettingsRecord): SettingsBody {
       : { vehicle_ids: record.vehicle_ids === null ? null : [...record.vehicle_ids] }),
     ...(record.identify_mode === undefined ? {} : { identify_mode: record.identify_mode }),
     ...(record.identify_camera === undefined ? {} : { identify_camera: copyCamera(record.identify_camera) }),
+    ...(record.users_change_plan === undefined ? {} : { users_change_plan: record.users_change_plan }),
   };
 }
 
@@ -547,6 +552,21 @@ export function strategyReplacement(record: SettingsRecord, strategy: string): R
     return { ok: false, errorKey: "settings.error.invalid" };
   }
   return { ok: true, body: { ...encodeBody(record), strategy }, changed: strategy !== record.strategy };
+}
+
+/**
+ * What turning "let users who are not administrators change strategy and plan" on or off sends: the accepted record
+ * unchanged, plus `users_change_plan`. A record from a backend without the field cannot take one.
+ */
+export function usersChangePlanReplacement(record: SettingsRecord, allowed: boolean): ReplacementCheck {
+  if (record.users_change_plan === undefined) {
+    return { ok: false, errorKey: "settings.error.version" };
+  }
+  return {
+    ok: true,
+    body: { ...encodeBody(record), users_change_plan: allowed },
+    changed: allowed !== record.users_change_plan,
+  };
 }
 
 /** What a notifications Save chooses: the services and events (where a tap opens is the card's own page). */

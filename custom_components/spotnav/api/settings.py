@@ -21,6 +21,8 @@ public face, so nothing here serializes `as_dict()` or accepts `from_stored()` p
   as it was gets the new vehicle's target (`vehicles/vehicle_target.py`).
 * And `identify_camera` (`null`, or the camera, AI Task entity and frame that help tell which car is plugged in,
   `vehicles/camera_settings.py`): left out, the stored value is kept; a bad value is `invalid_camera`.
+* And `users_change_plan` (whether Home Assistant users who are not administrators may change this charger's strategy
+  and plan): left out, the stored value is kept. Only an administrator changes it.
 * One read-only fact, `fiscal_included`: the fiscal components (`vat`, `tax`, `transfer`) the selected area's
   published price already contains (contract v2's `included`). They are locked as "included in the price" and
   nothing is added for them, whatever the overrides say. A body may echo it; it is never stored.
@@ -41,7 +43,7 @@ from __future__ import annotations
 
 import logging
 import re
-from dataclasses import replace
+from dataclasses import fields, replace
 from datetime import date, datetime, time
 from typing import Any, Callable, Final, Mapping
 
@@ -70,7 +72,7 @@ from ..planning.phases import effective_phases
 from ..runtime import controller_for, domain_data, preview_for
 from ..vehicles import vehicle_properties
 from ..vehicles.camera_settings import CameraSettings, CameraSettingsError
-from .common import ERROR_CHARGER_UNLOADED, lookup_charger, send_unsupported_version
+from .common import ERROR_CHARGER_UNLOADED, ERROR_NOT_ADMIN, is_admin, lookup_charger, send_unsupported_version
 
 
 #: The wire contract's own version, separate from the storage schema, the dashboard's and the
@@ -98,6 +100,7 @@ SETTINGS_KEYS: Final = frozenset(
         "vehicle_ids",
         "identify_mode",
         "identify_camera",
+        "users_change_plan",
     }
 )
 
@@ -106,9 +109,33 @@ SETTINGS_KEYS: Final = frozenset(
 OPTIONAL_SETTINGS_KEYS: Final = frozenset(
     {
         "departure_date", "departure_weekdays", "phases", "notifications", "fill_to_limit", "vehicle_ids",
-        "identify_mode", "identify_camera",
+        "identify_mode", "identify_camera", "users_change_plan",
     }
 )
+
+#: The settings a user who is not an administrator may change, when the charger's `users_change_plan` allows it:
+#: what the card's Strategy and Plan cells write (the strategy; the energy and "Fill"; the target, its car and the
+#: driver between the two; the finish-by switch, time, date and weekdays; the current), by `AutoSettings` field.
+#: Everything else (the price area and fiscal figures, charge periods, notifications, the cars and identification,
+#: and `users_change_plan` itself) stays an administrator's, and a body from anyone else that moves it is refused.
+NON_ADMIN_FIELDS: Final = frozenset(
+    {
+        "strategy",
+        "requested_kwh",
+        "fill_to_limit",
+        "driver",
+        "target",
+        "departure_enabled",
+        "departure",
+        "departure_date",
+        "departure_weekdays",
+        "amps",
+    }
+)
+
+#: Fields no body states, so never compared for that rule: the revision and the pause, and the phases an older
+#: release stored (accepted and ignored, see below).
+_UNSTATED_FIELDS: Final = frozenset({"revision", "pause", "phases"})
 
 #: `phases` joins them since the phases a charge uses stopped being a setting (the charger's wiring and the
 #: vehicle's onboard charger decide them): an older client still sends it, a newer one may leave it out,
@@ -362,6 +389,7 @@ def encode_settings(
         "vehicle_ids": None if settings.vehicle_ids is None else list(settings.vehicle_ids),
         "identify_mode": settings.identify_mode,
         "identify_camera": None if settings.identify_camera is None else settings.identify_camera.as_dict(),
+        "users_change_plan": settings.users_change_plan,
     }
 
 
@@ -444,6 +472,11 @@ def decode_settings(raw: Any) -> AutoSettings:
             else IDENTIFY_AUTOMATIC
         ),
         identify_camera=camera_from_wire(stored.get("identify_camera")),
+        users_change_plan=(
+            _boolean(stored["users_change_plan"], "users_change_plan", "invalid_permission")
+            if "users_change_plan" in stored
+            else False
+        ),
     ).validated()
 
 
@@ -460,6 +493,7 @@ def replacement_mutator(
     keep_identify_camera: bool = False,
     keep_camera_choice: bool = False,
     keep_auto_periods: bool = False,
+    keep_users_change_plan: bool = False,
     vehicle_target: Callable[[str | None], float | None] | None = None,
 ) -> Callable[[AutoSettings], AutoSettings]:
     """A full replacement expressed as the store's own mutation hook.
@@ -505,6 +539,8 @@ def replacement_mutator(
             kept["identify_camera"] = (
                 None if chosen_camera is None else replace(chosen_camera, frame=None if sent is None else sent.frame)
             )
+        if keep_users_change_plan:
+            kept["users_change_plan"] = current.users_change_plan
         if keep_auto_periods and current.max_periods is None and replacement.max_periods == MAX_PERIODS:
             kept["max_periods"] = None
         updated = replace(replacement, pause=current.pause, **kept)
@@ -680,6 +716,27 @@ def _refuse_camera_choice(stored: CameraSettings | None, sent: CameraSettings | 
         _refuse("invalid_camera", "the camera and the AI Task entity are chosen by an administrator")
 
 
+def plan_only_mutator(mutate: Callable[[AutoSettings], AutoSettings]) -> Callable[[AutoSettings], AutoSettings]:
+    """`mutate` for a caller who is not an administrator: refused (`spotnav_not_admin`) while the record being
+    replaced does not allow it (`users_change_plan`), or when the result moves a field outside `NON_ADMIN_FIELDS`.
+    """
+
+    def guarded(current: AutoSettings) -> AutoSettings:
+        if not current.users_change_plan:
+            raise SettingsRefusal(ERROR_NOT_ADMIN)
+        updated = mutate(current)
+        for item in fields(AutoSettings):
+            name = item.name
+            if name in NON_ADMIN_FIELDS or name in _UNSTATED_FIELDS:
+                continue
+            if getattr(updated, name) != getattr(current, name):
+                _LOGGER.debug("A settings write from a user who is not an administrator moved %s", name)
+                raise SettingsRefusal(ERROR_NOT_ADMIN)
+        return updated
+
+    return guarded
+
+
 async def async_get_settings(hass: HomeAssistant, entry_id: Any) -> AutoSettings:
     """One charger's canonical settings, or a stable-code refusal.
 
@@ -702,6 +759,7 @@ async def async_update_settings(
     replacement: Any,
     from_app: bool = False,
     reads_auto_periods: bool = True,
+    plan_only: bool = False,
 ) -> AutoSettings:
     """Replace one charger's settings, at a revision the caller names, through its controller.
 
@@ -709,6 +767,10 @@ async def async_update_settings(
     `AutoPlannerController.async_apply_settings`; the store's lock does the compare-and-set and the
     committed record is what this returns. One edit is one store mutation, one revision and at most
     one reconcile, and never admits or clears a pause.
+
+    `plan_only` is a caller who is not an administrator: refused (`spotnav_not_admin`) unless the charger's
+    `users_change_plan` is on, and then only for a body that moves nothing outside `NON_ADMIN_FIELDS`. Both are
+    judged before anything is touched and again inside the store's lock, against the record being replaced.
     """
     _entry, failure = lookup_charger(hass, entry_id)
     if failure is not None:
@@ -716,6 +778,8 @@ async def async_update_settings(
     store = domain_data(hass).auto_store
     if store is None:
         raise SettingsRefusal(ERROR_SETTINGS_UNAVAILABLE)
+    if plan_only and not store.settings(entry_id).users_change_plan:
+        raise SettingsRefusal(ERROR_NOT_ADMIN)
     revision = expected_revision_from(expected_revision)
     decoded = decode_settings(replacement)
     if from_app and isinstance(replacement, Mapping) and "identify_camera" in replacement:
@@ -731,8 +795,13 @@ async def async_update_settings(
         keep_identify_camera=isinstance(replacement, Mapping) and "identify_camera" not in replacement,
         keep_camera_choice=from_app,
         keep_auto_periods=not reads_auto_periods,
+        keep_users_change_plan=isinstance(replacement, Mapping) and "users_change_plan" not in replacement,
         vehicle_target=lambda vehicle_id: vehicle_properties.stored_properties(hass, vehicle_id).target_percent,
     )
+    if plan_only:
+        mutate = plan_only_mutator(mutate)
+        # Judged once now, so a refused body touches nothing (not even the executor's attempt).
+        mutate(store.settings(entry_id))
     _refuse_amps_above_charger_range(hass, entry_id, decoded)
     controller = preview_for(hass, entry_id)
     if controller is None:
@@ -740,6 +809,9 @@ async def async_update_settings(
         raise SettingsRefusal(ERROR_CHARGER_UNLOADED)
     try:
         await controller.async_apply_settings(mutate=mutate, expected_revision=revision)
+    except SettingsRefusal:
+        # `plan_only`'s refusal inside the lock: nothing written.
+        raise
     except AutoSettingsError:
         # Refused by validation or the compare-and-set before the store returned: nothing written.
         raise
@@ -785,12 +857,13 @@ async def websocket_get_settings(
         "settings": object,
     }
 )
-@websocket_api.require_admin
 @websocket_api.async_response
 async def websocket_update_settings(
     hass: HomeAssistant, connection: websocket_api.ActiveConnection, msg: dict[str, Any]
 ) -> None:
-    """Replace one charger's settings. An administrative operation.
+    """Replace one charger's settings. An administrator's, or, where the charger's `users_change_plan` allows it,
+    any signed-in user's for the strategy and the plan alone (`NON_ADMIN_FIELDS`); anyone else is refused with
+    `spotnav_not_admin`.
 
     The envelope is transport-neutral (`api_version`/`ok`/`error`/`settings`/`pause`); a conflict
     answers with the current record.
@@ -805,9 +878,11 @@ async def websocket_update_settings(
             entry_id,
             expected_revision=msg.get("expected_revision"),
             replacement=msg.get("settings"),
+            plan_only=not is_admin(connection),
         )
     except SettingsRefusal as refusal:
-        connection.send_error(msg["id"], refusal.code, "That charger is not available")
+        message = "Only an administrator may change that" if refusal.code == ERROR_NOT_ADMIN else "That charger is not available"
+        connection.send_error(msg["id"], refusal.code, message)
         return
     except SettingsReconcileError as failure:
         connection.send_result(

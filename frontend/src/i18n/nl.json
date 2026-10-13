@@ -561,6 +561,8 @@
   "settings.periods.autoHelp": "De goedkoopste uren, alleen opgesplitst waar de besparing een extra start waard is. Elke periode duurt minstens 30 minuten.",
   "settings.periods.value.one": "{count} periode",
   "settings.periods.value.other": "{count} perioden",
+  "settings.usersPlan.label": "Gebruikers die geen beheerder zijn strategie en plan laten wijzigen",
+  "settings.usersPlan.help": "Voor een scherm dat is aangemeld als gewone Home Assistant-gebruiker. Starten en Pauzeren werken voor iedereen; hiermee kunnen ze ook de strategie kiezen en het plan wijzigen. Al het andere in Instellingen blijft voor beheerders.",
   "settings.current.title": "Geplande stroom",
   "settings.current.intro": "De stroom die het plan mag vragen. Het is een planningswaarde, geen commando aan de laadpaal.",
   "settings.current.label": "Geplande stroom",

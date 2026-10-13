@@ -106,6 +106,7 @@ import {
   identificationReplacement,
   notificationsReplacement,
   planSummaryParts,
+  usersChangePlanReplacement,
   type SettingsEditorKind,
   type SettingsFormValues,
 } from "./settings";
@@ -129,6 +130,14 @@ export interface OverviewPlaceHolder {
   place: OverviewPlace | null;
   /** The car whose tab is open on the Settings page (with two or more cars). */
   vehicle?: string | null;
+}
+
+/** One section of the Settings page: whether anyone may change something in it, and how it is added to the page. */
+interface OverviewSection {
+  key: string;
+  /** A preference every user may change (of this device); otherwise only an administrator changes its values. */
+  anyone: boolean;
+  append: (body: HTMLElement) => void;
 }
 
 export interface CardViewInput {
@@ -893,6 +902,8 @@ export function createCardView(input: CardViewInput): CardView {
   const doc = input.mount.ownerDocument;
   const now = input.now ?? (() => Date.now());
   let destroyed = false;
+  /** Whether this reader may change the strategy and the plan: an administrator, or anyone the charger lets. */
+  const mayPlan = input.isAdmin || model.dashboardSettings?.users_change_plan === true;
 
   const card = element(doc, "div", C.card);
   card.style.boxSizing = "border-box";
@@ -915,9 +926,9 @@ export function createCardView(input: CardViewInput): CardView {
     }
     // The car line is Byt bil wherever the car can be changed (more than one car can charge here): for every
     // user while a car is plugged in, since any user may answer which car it is. With no car plugged in the
-    // choice is the plan's car, an administrator's setting, so a reader who is not one gets the plain line.
+    // choice is the plan's car, a plan setting (`mayPlan`), so a reader who may not change the plan gets the plain line.
     const changeable =
-      model.chargerCars.length >= 2 && (input.isAdmin || model.connection?.state !== "disconnected");
+      model.chargerCars.length >= 2 && (mayPlan || model.connection?.state !== "disconnected");
     const lineName = vehicleLine.name ?? translate(model.language, "settings.vehicle.unnamed");
     const changeLabel = translate(model.language, "identify.changeCarAria", { name: lineName });
     vehicleButton = element(doc, changeable ? "button" : "div", C.vehicleLine);
@@ -999,8 +1010,11 @@ export function createCardView(input: CardViewInput): CardView {
   settingsGeneral.type = "button";
   settingsGeneral.setAttribute("aria-label", translate(model.language, "header.settings"));
   settingsGeneral.title = translate(model.language, "header.settings");
+  settingsGeneral.dataset["settings"] = "open";
   settingsGeneral.append(settingsGearIcon(doc));
   headerActions.append(historyButton, settingsGeneral);
+  // Shown to a reader who is not an administrator only when Settings holds something they may change.
+  settingsGeneral.hidden = !settingsChangeable();
   header.append(headerActions);
   card.append(header);
 
@@ -1913,15 +1927,15 @@ export function createCardView(input: CardViewInput): CardView {
     settingsOverviewDialog.hide({ restoreFocus: false });
     const body = element(doc, "div");
     body.append(element(doc, "p", `${C.muted} ${C.dialogIntro}`, translate(model.language, "strategy.intro")));
-    if (!input.isAdmin) {
+    if (!mayPlan) {
       body.append(element(doc, "p", C.settingsReadOnly, translate(model.language, "settings.readOnly")));
     }
     for (const row of model.strategy.rows) {
       const item = element(doc, "div", C.strategyRow);
       const selected = row.id === model.strategy.selectedId;
-      // An available, non-selected row is a real button for an administrator. The selected and unavailable
-      // rows stay disabled; the backend's `require_admin` is the security boundary, this is a courtesy.
-      const writable = row.available && !selected && input.isAdmin;
+      // An available, non-selected row is a real button for a reader who may change the strategy (`mayPlan`). The
+      // selected and unavailable rows stay disabled; the backend's own check is the security boundary.
+      const writable = row.available && !selected && mayPlan;
       const button = element(doc, "button", C.choiceButton, translate(model.language, row.labelKey));
       button.type = "button";
       button.dataset["strategy"] = row.id;
@@ -1938,12 +1952,13 @@ export function createCardView(input: CardViewInput): CardView {
       item.append(button);
       if (row.reason !== null) {
         item.append(element(doc, "span", C.strategyReason, row.reason));
-        // A solar strategy held back for lack of solar settings points at the card that sets them.
+        // A solar strategy held back for lack of solar settings points an administrator at the card that sets them.
         if (
           !row.available &&
           model.site !== null &&
           SOLAR_SETUP_ROWS.has(row.id) &&
-          row.reasonCode !== STRATEGY_NEEDS_TOTAL_POWER
+          row.reasonCode !== STRATEGY_NEEDS_TOTAL_POWER &&
+          input.isAdmin
         ) {
           const link = element(doc, "button", C.strategyLink, translate(model.language, "strategy.setupSolar"));
           link.type = "button";
@@ -1983,6 +1998,68 @@ export function createCardView(input: CardViewInput): CardView {
   }
 
   /**
+   * The Settings popover's sections, in order. `anyone` marks a section holding something every user may change
+   * (a preference of this device, not a charger setting); every other section's values are an administrator's to
+   * change. A reader who is not an administrator is shown only the `anyone` sections, and no Settings button at
+   * all when there is none (`settingsChangeable`): a wall screen signed in as an ordinary user gets no page of
+   * values it cannot change.
+   */
+  function overviewSections(): OverviewSection[] {
+    return [
+      { key: "market", anyone: false, append: (body) => body.append(priceSectionBody()) },
+      {
+        key: "vehicle",
+        anyone: false,
+        append: (body) => {
+          // One card per vehicle, repainted when the entity configuration arrives (the sensor row needs it).
+          vehicleRows = model.vehicles.map((entry) => ({ ...entry }));
+          vehicleListSlot = element(doc, "div");
+          vehicleListSlot.dataset["slot"] = "vehicles";
+          body.append(vehicleListSlot);
+        },
+      },
+      {
+        key: "entities",
+        anyone: false,
+        append: (body) => {
+          entitySlot = element(doc, "section", C.settingsSection);
+          entitySlot.dataset["section"] = "entities";
+          body.append(entitySlot);
+        },
+      },
+      {
+        key: "site",
+        anyone: false,
+        append: (body) => {
+          body.append(siteSectionBody());
+          const solar = solarSectionBody();
+          if (solar !== null) {
+            body.append(solar);
+          }
+        },
+      },
+      {
+        key: "notifications",
+        anyone: false,
+        append: (body) => {
+          const notifications = notificationsSectionBody();
+          if (notifications !== null) {
+            body.append(notifications);
+          }
+        },
+      },
+      // How this device draws the card: anyone's, administrator or not.
+      { key: "display", anyone: true, append: (body) => body.append(displaySectionBody()) },
+      { key: "support", anyone: false, append: (body) => body.append(supportSectionBody()) },
+    ];
+  }
+
+  /** Whether this reader may change anything in Settings: an administrator always, anyone else only an `anyone` section. */
+  function settingsChangeable(): boolean {
+    return input.isAdmin || overviewSections().some((section) => section.anyone);
+  }
+
+  /**
    * The general Settings popover, built fresh from the model on every open (no request): an overview
    * with one card per area (price area and taxes, each vehicle, the charger, the site, solar), two or
    * three summary rows each and one Change button that opens a dialog with Save and Cancel. Nothing here
@@ -1991,6 +2068,8 @@ export function createCardView(input: CardViewInput): CardView {
   function settingsOverviewBody(): HTMLElement {
     const body = element(doc, "div");
     overviewBodyNode = body;
+    vehicleListSlot = null;
+    entitySlot = null;
 
     overviewNoticeNode = element(doc, "p", C.settingsNotice);
     overviewNoticeNode.hidden = true;
@@ -1998,37 +2077,12 @@ export function createCardView(input: CardViewInput): CardView {
     body.append(overviewNoticeNode);
     paintOverviewNotice();
 
-    if (!input.isAdmin) {
-      body.append(element(doc, "p", C.settingsReadOnly, translate(model.language, "settings.readOnly")));
-    }
-
-    body.append(priceSectionBody());
-
-    // One card per vehicle, repainted when the entity configuration arrives (the sensor row needs it).
-    vehicleRows = model.vehicles.map((entry) => ({ ...entry }));
-    vehicleListSlot = element(doc, "div");
-    vehicleListSlot.dataset["slot"] = "vehicles";
-    body.append(vehicleListSlot);
-
-    entitySlot = element(doc, "section", C.settingsSection);
-    entitySlot.dataset["section"] = "entities";
-    body.append(entitySlot);
-
-    body.append(siteSectionBody());
-    const solar = solarSectionBody();
-    if (solar !== null) {
-      body.append(solar);
+    for (const section of overviewSections()) {
+      if (input.isAdmin || section.anyone) {
+        section.append(body);
+      }
     }
     paintEntities();
-
-    const notifications = notificationsSectionBody();
-    if (notifications !== null) {
-      body.append(notifications);
-    }
-
-    body.append(displaySectionBody());
-
-    body.append(supportSectionBody());
 
     return body;
   }
@@ -2283,24 +2337,16 @@ export function createCardView(input: CardViewInput): CardView {
     section.dataset["section"] = "market";
     section.append(sectionHeading(doc, "price", translate(model.language, "settings.heading.price")));
     const area = marketAreaLabel(model.language, model.contextAreaName, model.contextAreaId);
-    // The area opens its dialog for everyone: a reader who is not an administrator inspects it read-only there.
+    // The area opens its own dialog, with the catalogue, for an administrator; anyone else reads it, as every other value.
     const areaLabel = translate(model.language, "context.area");
     const areaValue = area || translate(model.language, "settings.value.unset");
-    const [areaRow] = settingRow(doc, {
-      key: "area",
-      label: areaLabel,
-      value: areaValue,
-      onTap: () => input.onOpenMarket(),
-      changeableText: translate(model.language, "settings.row.changeable", { label: areaLabel, value: areaValue }),
-    });
-    const areaButton = areaRow!.querySelector<HTMLElement>("button")!;
-    areaButton.classList.add(C.settingsTrigger);
-    if (!input.isAdmin) {
-      // Opened to look at only: drawn in the normal colour, like every other value a reader cannot change.
-      areaButton.classList.remove(C.settingRowEditable);
+    const areaRow = overviewRow("area", areaLabel, areaValue, () => input.onOpenMarket());
+    const areaButton = areaRow.querySelector<HTMLElement>("button");
+    if (areaButton !== null) {
+      areaButton.classList.add(C.settingsTrigger);
+      areaButton.dataset["setting"] = "market";
     }
-    areaButton.dataset["setting"] = "market";
-    section.append(areaRow!);
+    section.append(areaRow);
     // The price source is named in the area dialog only, beside the area choice (not in this overview).
     for (const fiscal of fiscalRows(model.language, model.dashboardFiscal)) {
       const component = fiscal.key as FiscalComponentName;
@@ -2535,6 +2581,35 @@ export function createCardView(input: CardViewInput): CardView {
           chargePeriodsValue(record),
           (chosen) => writeValue({ kind: "settings", build: (fresh) => chargePeriodsReplacement(fresh, chosen) }),
           translate(model.language, "settings.periods.help"),
+        ),
+      ),
+    ];
+  }
+
+  /**
+   * Whether users who are not administrators may change this charger's strategy and plan: an administrator's
+   * choice, Off by default, for a wall screen signed in as an ordinary user. Absent on a backend without it.
+   */
+  function usersChangePlanRows(): HTMLElement[] {
+    const record = model.dashboardSettings;
+    if (record === null || record.users_change_plan === undefined || !input.isAdmin) {
+      return [];
+    }
+    const label = translate(model.language, "settings.usersPlan.label");
+    const onOff = (on: boolean): string => translate(model.language, on ? "settings.value.on" : "settings.value.off");
+    const options: ChoiceOption[] = [
+      { value: "on", label: onOff(true) },
+      { value: "off", label: onOff(false) },
+    ];
+    return [
+      overviewRow("users_change_plan", label, onOff(record.users_change_plan), () =>
+        editSingle(
+          label,
+          options,
+          record.users_change_plan === true ? "on" : "off",
+          (chosen) =>
+            writeValue({ kind: "settings", build: (fresh) => usersChangePlanReplacement(fresh, chosen === "on") }),
+          translate(model.language, "settings.usersPlan.help"),
         ),
       ),
     ];
@@ -3021,6 +3096,7 @@ export function createCardView(input: CardViewInput): CardView {
       slot.append(...priorityRows());
     }
     slot.append(...chargePeriodsRows());
+    slot.append(...usersChangePlanRows());
     slot.append(...identificationRows());
   }
 
@@ -3343,7 +3419,7 @@ export function createCardView(input: CardViewInput): CardView {
   }
 
   function openSettingsOverview(): void {
-    if (destroyed) {
+    if (destroyed || !settingsChangeable()) {
       return;
     }
     overviewNotice = null;

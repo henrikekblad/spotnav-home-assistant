@@ -561,6 +561,8 @@
   "settings.periods.autoHelp": "The cheapest hours, split only where the saving is worth another start. Each period is at least 30 minutes.",
   "settings.periods.value.one": "{count} period",
   "settings.periods.value.other": "{count} periods",
+  "settings.usersPlan.label": "Let users who are not administrators change strategy and plan",
+  "settings.usersPlan.help": "For a screen signed in as an ordinary Home Assistant user. Start and Pause work for everyone; this also lets them choose the strategy and change the plan. Everything else in Settings stays with administrators.",
   "settings.current.title": "Planned current",
   "settings.current.intro": "The current the plan may ask for. It is a planning value, not a command to the charger.",
   "settings.current.label": "Planned current",

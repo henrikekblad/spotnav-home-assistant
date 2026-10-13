@@ -159,7 +159,8 @@ async def _payload(
     hass: HomeAssistant, entry: MockConfigEntry, *, can_act: bool, forecast_domains: frozenset[str] = frozenset()
 ) -> dict[str, Any]:
     capture = dashboard_api.capture_dashboard(hass, entry, forecast_domains=forecast_domains)
-    return dashboard_api.serialize_dashboard(capture, can_act=can_act)
+    # As `spotnav/get_dashboard` answers: every signed-in caller may act on the control axes.
+    return dashboard_api.serialize_dashboard(capture, can_act=can_act, can_control=True)
 
 
 async def _state_cheapest_no_site(hass: HomeAssistant) -> dict[str, Any]:
@@ -209,8 +210,8 @@ async def _state_cheapest_direct_site_admin(hass: HomeAssistant) -> dict[str, An
 
 
 async def _state_cheapest_direct_site_read_only(hass: HomeAssistant) -> dict[str, Any]:
-    """The identical state, read by a non-admin: `site.writable` (and `control.can_act`) flip to
-    `false`, and nothing else about the capture changes."""
+    """The identical state, read by a non-admin: `site.writable` flips to `false` (`control.can_act`
+    stays `true`, Start and Pause being anyone's), and nothing else about the capture changes."""
     charger = await _direct_site_charger(hass, entry_id="cheapest_direct_reader")
     return await _payload(hass, charger, can_act=False)
 
