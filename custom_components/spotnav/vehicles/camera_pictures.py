@@ -7,7 +7,8 @@ the files in `.storage/spotnav_camera/<charger id>/` (never `www/`, never a medi
 store `spotnav.camera_references.<charger id>`. Each is the camera's whole picture, scaled to at most `WHOLE_SIDE`
 pixels, with the camera it came from, when it was taken and its colour signature (`reference_signature`) as
 cropped with the frame drawn now; it is cropped with the frame drawn at the time it is compared, so drawing the
-frame again never makes a picture useless. A car has at most one picture of each kind (`day`,
+frame again never makes a picture useless. A signature taken in an earlier release's way (`SIGNATURE_VERSION`) is
+taken anew from the stored picture at load. A car has at most one picture of each kind (`day`,
 `night`); a new one replaces the old. They are only ever read by SpotNav, sent only to the chosen AI Task
 entity, and removed with the charger.
 """

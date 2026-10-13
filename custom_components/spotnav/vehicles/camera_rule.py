@@ -41,11 +41,13 @@ CONFIDENCES: Final = (CONFIDENCE_HIGH, CONFIDENCE_MEDIUM, CONFIDENCE_LOW)
 #: The model's answer for no car, or none of the reference cars.
 ANSWER_NONE: Final = "none"
 
-#: Two reference pictures differ in colour when their average colours (red, green, blue, each 0-1) are at least
-#: this far apart: black and white, red and silver do; dark blue and dark grey do not.
+#: Two reference pictures differ in colour when their cars' colours (red, green, blue, each 0-1; see
+#: `camera_pictures._car_colour`) are at least this far apart: black and white, red and silver do; dark blue and
+#: dark grey do not.
 COLOUR_DISTINCT: Final = 0.25
 
-#: A reference picture's average colour (red, green, blue, each 0-1), or `None` for a picture without colour.
+#: A picture's car colour (red, green, blue, each 0-1: what in the middle differs from the ground), or `None` for a
+#: picture without colour.
 type Signature = tuple[float, float, float] | None
 
 PICTURE_DAY: Final = "day"

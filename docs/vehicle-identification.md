@@ -198,9 +198,14 @@ the model is.
   The last rule is the one people meet most. A model compares shapes, but two cars of one colour (two dark blue
   cars, a dark blue and a dark grey one) look much alike in a small, cropped camera picture, and a model can be
   sure and still wrong. So between such cars the camera never decides alone. "Similar colour" is measured on the
-  reference pictures' average colour: black and white, or red and silver, are clearly different; dark blue and
-  dark grey are not. A white or grey car on grey ground can show almost no colour at all, and then it counts as
-  similar too.
+  colour of the car in each reference picture: the average colour of what in the middle of the frame differs from
+  the ground, the colour most of the frame's edge shares. A car on a large patch of paving is then its own colour,
+  not the paving's, and a reference picture of the empty spot is the ground's colour, clearly apart from a
+  coloured car. Where no one colour runs along most of the edge (the car reaches it), the middle's average colour
+  counts. Black and white, or red and silver, are clearly different; dark blue and dark grey are not. A white or
+  grey car on grey ground can show almost no colour at all, and then it counts as similar too. Reference pictures
+  taken with an earlier release have their colour taken anew from the stored picture when SpotNav starts: there
+  is no need to take them again.
 - At night it never decides on its own: an infrared picture is grey, or evenly tinted purple or pink by a camera
   without an infrared filter.
 - In every other case the camera **only puts its car first** on the question's buttons, and the question is asked
