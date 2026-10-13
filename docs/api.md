@@ -120,6 +120,21 @@ inside the picture; four decimals are kept), `null` for the whole picture. A rep
 then it is kept; anything else is refused with `invalid_camera`. It is withheld from the webhook like the fields
 above (ask with `"reads": ["identify_camera"]`).
 
+The record also carries `users_change_plan` (a boolean, default `false`): whether Home Assistant users who are
+not administrators may change this charger's strategy and plan over the WebSocket. Only an administrator changes
+it. A replacement may leave it out, and then the stored value is kept; a value that is not a boolean is refused
+with `invalid_permission`. It is withheld from the webhook like the fields above (ask with
+`"reads": ["users_change_plan"]`).
+
+**Who may replace the settings.** An administrator may change any field. A user who is not one is refused with
+`spotnav_not_admin` while the charger's `users_change_plan` is off; while it is on, a replacement from them is
+accepted only when every field it changes is one of the strategy and plan fields: `strategy`, `requested_kwh`,
+`fill_to_limit`, `driver`, `target`, `departure_enabled`, `departure_time`, `departure_date`,
+`departure_weekdays` and `amps` (`NON_ADMIN_FIELDS` in `custom_components/spotnav/api/settings.py`). One that
+also changes anything else (`area_id`, `overrides`, `max_periods`, `notifications`, `vehicle_ids`,
+`identify_mode`, `identify_camera`, `users_change_plan`) is refused whole with `spotnav_not_admin` and
+nothing is written. The check is made again inside the store's lock against the record being replaced.
+
 **A car's target is the car's, at every charger.** The target percent is a vehicle property, beside its battery
 size: a vehicle row in `vehicles` carries the additive `target_percent` (0-100, `null` when never set), and
 `update_vehicle` writes it (`changes: {"target_percent": 85}`, `null` clears; anything else is `invalid_target`;
@@ -196,8 +211,10 @@ for a charger on no site; 400 `spotnav_unsupported_api_version`. Examples are in
 
 Every command takes `api_version: 1` and (except `list_chargers`) a `charger_id`, the charger's
 config entry id. Reading is open to every authenticated user, and so is `spotnav/manual_action`
-(Start, Stop, Pause, Resume); every other write requires an administrator (`spotnav_not_admin`, or
-Home Assistant's own `unauthorized`, otherwise). The dashboard's `control.can_act` says whether the
+(Start, Stop, Pause, Resume); `spotnav/update_settings` is an administrator's, or, where the charger's
+`users_change_plan` allows it, anyone's for the strategy and plan fields alone (see **Who may replace the settings** under
+[Charger webhook](#charger-webhook)); every other write requires an administrator
+(`spotnav_not_admin`, or Home Assistant's own `unauthorized`, otherwise). The dashboard's `control.can_act` says whether the
 caller may use `manual_action` (true for every signed-in user and over the webhook); `site.writable`
 and `charger_priority.writable` say whether it may change those (an administrator, or the webhook).
 
