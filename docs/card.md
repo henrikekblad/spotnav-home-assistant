@@ -6,8 +6,11 @@ card picker, and add one card per charger.
 
 ![The SpotNav card with a planned band on the graph, the plan and the buttons](images/card-hero.png)
 
-Reading is open to every Home Assistant user. Changing anything needs an administrator; other
-users see the values and a note that only administrators can change them.
+Reading is open to every Home Assistant user, and so are **Start**, **Stop**, **Pause** and **Resume**:
+a wall screen signed in as an ordinary user can start a charge or pause the schedule. Changing a
+setting (the strategy, the plan and everything in Settings) needs an administrator; other users see
+the strategy and the plan with a note that only administrators can change them, and get no gear icon
+when there is nothing in Settings they may change.
 
 ## Header
 
@@ -18,7 +21,8 @@ The header shows the charger's name and three icons.
   marked available or unavailable for this charger. An item that is unavailable here cannot be
   switched on from the card. The list is taken from what the integration reports for the charger.
 - **Charge history** (the clock icon) opens [the charge history](#charge-history).
-- **Card settings** (the gear icon) opens [the settings popover](#the-settings-popover).
+- **Card settings** (the gear icon) opens [the settings popover](#the-settings-popover). It is shown to a
+  user who is not an administrator only when the popover holds something they may change.
 
 When something needs attention, a banner says so: a notice in a neutral colour, or a message in
 red when something must be fixed before charging can be planned. The banner counts the items to
@@ -70,8 +74,9 @@ A row of four cells sits under the plan. Each shows a state and opens or does on
 | **Strategy** | The chosen strategy | Opens **Charging strategy**: **Cheapest**, **Solar** and **Hybrid**, see [charging strategies](strategies.md). A strategy that cannot work on this installation is listed with the reason, for example that Solar requires a site that can measure the solar surplus. |
 | **Plan** | Energy, deadline and current, for example `20 kWh · No deadline · 16 A` | Opens the plan settings, see [Plan](#plan-settings). |
 
-Start and Stop are disabled for a user who is not an administrator, and while a start or a stop is
-waiting for the charger to acknowledge it (at most 30 seconds): the cell then says **Starting…** or
+Start, Stop, Pause and Resume work for every Home Assistant user; the Strategy and Plan cells open
+read-only for a user who is not an administrator. Start and Stop are disabled while a start or a stop
+is waiting for the charger to acknowledge it (at most 30 seconds): the cell then says **Starting…** or
 **Stopping…**.
 
 ## Status lines
@@ -147,7 +152,9 @@ Home Assistant's own dashboards and in automations.
 The gear icon opens **Card settings**, built fresh each time you open it. The plan and the strategy
 have their own cells on the card; everything else is here, in sections headed by what they are about
 (**Electricity price**, **Car**, **Charger · …**, **Site · …**, **Solar**, **Notifications**, **Support**). Each
-value is one row; an administrator taps a value to open its own editor, and other users read it.
+value is one row; an administrator taps a value to open its own editor. A user who is not an
+administrator is shown only the sections holding something they may change, and no gear icon when
+there are none.
 
 ![The settings page: a section per subject and a value per row](images/card-settings.png)
 

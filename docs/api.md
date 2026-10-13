@@ -195,15 +195,18 @@ for a charger on no site; 400 `spotnav_unsupported_api_version`. Examples are in
 ## WebSocket commands
 
 Every command takes `api_version: 1` and (except `list_chargers`) a `charger_id`, the charger's
-config entry id. Reading is open to every authenticated user; writes require an administrator
-(`spotnav_not_admin` otherwise).
+config entry id. Reading is open to every authenticated user, and so is `spotnav/manual_action`
+(Start, Stop, Pause, Resume); every other write requires an administrator (`spotnav_not_admin`, or
+Home Assistant's own `unauthorized`, otherwise). The dashboard's `control.can_act` says whether the
+caller may use `manual_action` (true for every signed-in user and over the webhook); `site.writable`
+and `charger_priority.writable` say whether it may change those (an administrator, or the webhook).
 
 | Command | Purpose |
 | ------- | ------- |
 | `spotnav/list_chargers` | The chargers on this instance (`id`, `name`). |
 | `spotnav/get_dashboard` | The dashboard document for one charger. |
 | `spotnav/get_settings`, `spotnav/update_settings` | Read and replace the settings record. |
-| `spotnav/manual_action` | `start`, `stop` (with an optional pause `choice`) or `resume`. |
+| `spotnav/manual_action` | `start`, `stop` (with an optional pause `choice`) or `resume`; any signed-in user. |
 | `spotnav/get_market_options` | Price areas from the relay and their suggested fiscal values. |
 | `spotnav/find_region` | A Great Britain postcode to its price region (`GB-A` … `GB-P`): `{"postcode": "SW1A 1AA"}` answers `region` (one), `regions` (the relay-listed ones) and `reason` (`null`, `invalid_postcode`, `not_found`, `unavailable`). Home Assistant asks Octopus Energy's public lookup directly; the postcode never reaches the relay and is neither stored nor logged. |
 | `spotnav/get_entity_config`, `spotnav/update_entity_config` | The entities a charger and its site use. |
