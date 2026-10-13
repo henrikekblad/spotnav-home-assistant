@@ -9,7 +9,9 @@ It routes once, to the boundary that owns the behaviour:
 * `resume` -> `AutoPlannerController.async_resume`.
 
 Properties: no direct effect (one request is at most one call to one boundary, no retry);
-stable codes and no prose (exception text never reaches a client); admin for every mutation.
+stable codes and no prose (exception text never reaches a client); open to every signed-in user,
+as Home Assistant's own switches are, so a wall screen signed in as an ordinary user can start and pause.
+Settings stay an administrator's (`spotnav/update_settings`).
 
 The envelope reports whether the boundary accepted the action, not what it later achieved; a
 failed physical stop shows up as `pause_stop_failed` in the next dashboard read.
@@ -142,12 +144,11 @@ def action_failure(code: str) -> dict[str, Any]:
         vol.Optional("choice"): object,
     }
 )
-@websocket_api.require_admin
 @websocket_api.async_response
 async def websocket_manual_action(
     hass: HomeAssistant, connection: websocket_api.ActiveConnection, msg: dict[str, Any]
 ) -> None:
-    """Carry out one immediate manual action: an administrative operation, at most one write.
+    """Carry out one immediate manual action for any signed-in user: at most one write.
 
     `AutoControlRefused` means nothing moved; `AutoControlCommitted` means the effect is durable and
     its follow-up failed. Anything else is logged by type and answered with the generic

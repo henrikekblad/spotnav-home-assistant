@@ -339,10 +339,11 @@ async def test_a_response_reads_memory_and_calls_nothing(
     assert store.settings(entry.entry_id).revision == revision, "no settings write"
 
 
-async def test_a_non_admin_sees_the_same_facts_with_can_act_false(
+async def test_a_non_admin_sees_the_same_facts_and_may_act_but_not_write_the_site(
     hass: HomeAssistant, hass_ws_client, hass_read_only_access_token: str, offline_relay: None
 ) -> None:
-    """Authority is a fact about the caller, published beside the facts, never guessed by a client."""
+    """Authority is a fact about the caller, published beside the facts, never guessed by a client:
+    Start, Stop, Pause and Resume are any signed-in user's, the site's settings an administrator's."""
     entry = await setup_charger(hass)
     await go_auto(hass, entry.entry_id)
     reader = await hass_ws_client(hass, hass_read_only_access_token)
@@ -353,7 +354,7 @@ async def test_a_non_admin_sees_the_same_facts_with_can_act_false(
     )
 
     assert frame["success"] is True
-    assert frame["result"]["control"]["can_act"] is False
+    assert frame["result"]["control"]["can_act"] is True
     assert frame["result"]["control"]["immediate_action"] == ACTION_START, "the same control facts"
 
 

@@ -903,15 +903,15 @@ def test_serializers_cannot_consult_live_state() -> None:
     """
     import inspect
 
-    # The capture may (and must) take `hass`; the serializers may not. `can_act` is allowed because
-    # it is a fact about the *caller* rather than live state: it is read once from the connection
+    # The capture may (and must) take `hass`; the serializers may not. `can_act` and `can_control` are
+    # allowed because they are facts about the *caller* rather than live state: it is read once from the connection
     # before serialization and cannot change what the capture observed.
     serializers = [name for name in dir(dashboard_api) if name.startswith("serialize_")]
     assert serializers
     for name in serializers:
         function = getattr(dashboard_api, name)
         parameters = inspect.signature(function).parameters
-        assert set(parameters) <= {"capture", "charger", "chargers", "settings", "area_entry", "site", "component", "suggestion", "unit", "intervals", "can_act", "active_control_writable", "soc", "vehicle", "summary", "phases", "connection", "state", "priority"}, (name, list(parameters))
+        assert set(parameters) <= {"capture", "charger", "chargers", "settings", "area_entry", "site", "component", "suggestion", "unit", "intervals", "can_act", "can_control", "active_control_writable", "soc", "vehicle", "summary", "phases", "connection", "state", "priority"}, (name, list(parameters))
         assert "hass" not in parameters, name
 
 # ------------------------------------------------- the states the contract must distinguish

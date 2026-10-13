@@ -61,7 +61,7 @@
   "control": {
     "automatic_action": "pause",
     "automatic_action_reason": null,
-    "can_act": false,
+    "can_act": true,
     "execution_error": null,
     "immediate_action": "start",
     "immediate_action_reason": null,
