@@ -114,6 +114,7 @@ SettingsCode = Literal[
     "invalid_notifications",
     "invalid_vehicles",
     "invalid_camera",
+    "invalid_permission",
 ]
 
 
@@ -516,6 +517,9 @@ class AutoSettings:
     identify_mode: str = IDENTIFY_AUTOMATIC
     #: The camera that helps tell which car is plugged in (`vehicles/camera_settings.py`), or `None`: no camera.
     identify_camera: CameraSettings | None = None
+    #: Whether Home Assistant users who are not administrators may change this charger's strategy and plan
+    #: (`api/settings.py`'s `NON_ADMIN_FIELDS`); an administrator's choice, off by default. Not a planning input.
+    users_change_plan: bool = False
 
     @property
     def execution_paused(self) -> bool:
@@ -583,6 +587,8 @@ class AutoSettings:
         _positive(self.requested_kwh, "invalid_energy", "requested_kwh")
         if not isinstance(self.fill_to_limit, bool):
             _refuse("invalid_energy", "fill_to_limit must be a boolean")
+        if not isinstance(self.users_change_plan, bool):
+            _refuse("invalid_permission", "users_change_plan must be a boolean")
         if not isinstance(self.departure, time) or self.departure.tzinfo is not None:
             _refuse("invalid_departure", "departure must be a local wall time")
         if not isinstance(self.departure_enabled, bool):
@@ -692,6 +698,9 @@ class AutoSettings:
             stored["identify_mode"] = self.identify_mode
         if self.identify_camera is not None:
             stored["identify_camera"] = self.identify_camera.as_dict()
+        if self.users_change_plan:
+            # Additive too: written only when an administrator turned it on.
+            stored["users_change_plan"] = True
         return stored
 
     @classmethod
@@ -709,7 +718,7 @@ class AutoSettings:
             optional=frozenset(
                 {
                     "departure_date", "departure_weekdays", "notifications", "fill_to_limit", "vehicle_ids",
-                    "identify_mode", "identify_camera", "periods", "max_periods",
+                    "identify_mode", "identify_camera", "periods", "max_periods", "users_change_plan",
                 }
             ),
         )
@@ -778,6 +787,7 @@ class AutoSettings:
             vehicle_ids=None if vehicle_ids is None else tuple(vehicle_ids),
             identify_mode=stored.get("identify_mode", IDENTIFY_AUTOMATIC),
             identify_camera=identify_camera,
+            users_change_plan=stored.get("users_change_plan", False),
         ).validated()
 
 

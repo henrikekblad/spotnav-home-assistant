@@ -2228,6 +2228,7 @@
       "target_percent": 80.0,
       "vehicle_id": "vehicle_ev6"
     },
+    "users_change_plan": false,
     "vehicle_ids": null
   },
   "site": null,

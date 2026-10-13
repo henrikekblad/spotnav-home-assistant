@@ -17,7 +17,7 @@ from pytest_homeassistant_custom_component.common import MockConfigEntry, async_
 
 from custom_components.spotnav.planning.auto_controller import AutoPlannerController
 from custom_components.spotnav.planning.auto_settings import AutoSettings
-from custom_components.spotnav.api.common import ERROR_UNSUPPORTED_VERSION
+from custom_components.spotnav.api.common import ERROR_NOT_ADMIN, ERROR_UNSUPPORTED_VERSION
 from custom_components.spotnav.api.settings import (
     SETTINGS_API_VERSION,
     SETTINGS_KEYS,
@@ -132,19 +132,107 @@ async def test_an_admin_full_replacement_commits_once_and_returns_the_envelope(
 async def test_a_non_admin_update_is_refused_by_the_admin_boundary_and_changes_nothing(
     hass: HomeAssistant, hass_ws_client, hass_read_only_access_token: str, changes: dict[str, Any]
 ) -> None:
-    """The plan, the price area and the strategy alike: Start and Pause are anyone's, settings are not."""
+    """The plan, the price area and the strategy alike, while the charger does not let users who are not
+    administrators change its strategy and plan (the default): Start and Pause are anyone's, settings are not."""
     entry = await setup_charger(hass)
     before = stored(hass)
+    assert before.users_change_plan is False
     client = await non_admin(hass, hass_ws_client, hass_read_only_access_token)
 
     message = update_settings_message(entry.entry_id, 0, body_of(before, **changes))
     frame = await ws_call(client, message)
 
-    # Home Assistant's own boundary answers, not the handler: an error frame with its stable code.
     assert frame["success"] is False and frame["id"] == message["id"]
-    assert frame["error"]["code"] == "unauthorized"
+    assert frame["error"]["code"] == ERROR_NOT_ADMIN
     assert "result" not in frame
     assert stored(hass) == before
+
+
+async def _allow_users_to_plan(hass: HomeAssistant, hass_ws_client, entry_id: str) -> AutoSettings:
+    """An administrator turns `users_change_plan` on, by the same full replacement as any setting."""
+    client = await admin(hass, hass_ws_client)
+    before = stored(hass)
+    frame = await ws_call(
+        client, update_settings_message(entry_id, before.revision, body_of(before, users_change_plan=True))
+    )
+    assert frame["success"] is True and frame["result"]["ok"] is True
+    assert frame["result"]["settings"]["users_change_plan"] is True
+    return stored(hass)
+
+
+@pytest.mark.parametrize(
+    "changes",
+    [
+        {"strategy": "solar"},
+        {"amps": 16},
+        {"requested_kwh": 30.0},
+        {"departure_enabled": False},
+        {"departure_time": "07:15", "departure_weekdays": [1, 2, 3, 4, 5]},
+        {"driver": "target_soc", "target": {"vehicle_id": None, "target_percent": 80}},
+    ],
+    ids=["strategy", "current", "energy", "deadline_off", "deadline_time", "target"],
+)
+async def test_with_users_change_plan_a_non_admin_may_change_the_strategy_and_plan(
+    hass: HomeAssistant, hass_ws_client, hass_read_only_access_token: str, changes: dict[str, Any]
+) -> None:
+    entry = await setup_charger(hass)
+    allowed = await _allow_users_to_plan(hass, hass_ws_client, entry.entry_id)
+    client = await non_admin(hass, hass_ws_client, hass_read_only_access_token)
+
+    frame = await ws_call(
+        client, update_settings_message(entry.entry_id, allowed.revision, body_of(allowed, **changes))
+    )
+
+    assert frame["success"] is True and frame["result"]["ok"] is True, frame
+    after = stored(hass)
+    assert after.revision == allowed.revision + 1
+    for key, value in changes.items():
+        assert frame["result"]["settings"][key] == value, key
+    assert after.users_change_plan is True and after.area_id == allowed.area_id
+
+
+@pytest.mark.parametrize(
+    "changes",
+    [
+        {"area_id": "SE3"},
+        {"max_periods": 2},
+        {"users_change_plan": False},
+        {"identify_mode": "ask"},
+        {"notifications": {"targets": [], "events": [], "url": None}},
+        # A plan change that also moves the price area is refused whole.
+        {"amps": 16, "area_id": "SE3"},
+    ],
+    ids=["price_area", "charge_periods", "the_flag_itself", "identification", "notifications", "mixed"],
+)
+async def test_with_users_change_plan_a_non_admin_still_may_not_change_anything_else(
+    hass: HomeAssistant, hass_ws_client, hass_read_only_access_token: str, changes: dict[str, Any]
+) -> None:
+    entry = await setup_charger(hass)
+    allowed = await _allow_users_to_plan(hass, hass_ws_client, entry.entry_id)
+    client = await non_admin(hass, hass_ws_client, hass_read_only_access_token)
+
+    frame = await ws_call(
+        client, update_settings_message(entry.entry_id, allowed.revision, body_of(allowed, **changes))
+    )
+
+    assert frame["success"] is False and frame["error"]["code"] == ERROR_NOT_ADMIN, frame
+    assert stored(hass) == allowed, "nothing written"
+
+
+async def test_users_change_plan_is_kept_when_a_body_leaves_it_out(
+    hass: HomeAssistant, hass_ws_client
+) -> None:
+    """An older client does not know the field: its replacement keeps what an administrator chose."""
+    entry = await setup_charger(hass)
+    allowed = await _allow_users_to_plan(hass, hass_ws_client, entry.entry_id)
+    client = await admin(hass, hass_ws_client)
+    body = body_of(allowed, amps=10)
+    del body["users_change_plan"]
+
+    frame = await ws_call(client, update_settings_message(entry.entry_id, allowed.revision, body))
+
+    assert frame["result"]["ok"] is True
+    assert stored(hass).users_change_plan is True
 
 
 async def test_an_unsupported_version_is_refused_by_both_commands(
