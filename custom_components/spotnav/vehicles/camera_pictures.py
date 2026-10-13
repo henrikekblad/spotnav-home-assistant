@@ -46,6 +46,18 @@ JPEG_QUALITY: Final = 85
 #: The middle of a cropped picture the colour signature is taken from (a fraction of each side): the car, not
 #: the ground around it.
 SIGNATURE_MIDDLE: Final = 0.6
+#: What the colour signature means; a stored signature of another version is taken anew from its picture at load.
+#: 1: the middle's average colour. 2: the average colour of what in the middle differs from the ground
+#: (`_car_colour`).
+SIGNATURE_VERSION: Final = 2
+#: `_car_colour`: the ground is the colour most of the crop's edge (`GROUND_EDGE` pixels deep in the
+#: `_SIGNATURE_PIXELS` grid) shares, within `GROUND_DISTANCE` (red, green, blue, each 0-1); it counts only when
+#: at least `GROUND_SHARE` of the edge has it. A middle pixel at least `GROUND_DISTANCE` from it is the car, and
+#: the car counts when at least `CAR_SHARE` of the middle is car.
+GROUND_EDGE: Final = 2
+GROUND_DISTANCE: Final = 0.15
+GROUND_SHARE: Final = 0.6
+CAR_SHARE: Final = 0.15
 #: `has_colour`: a pixel this saturated (HSV), and not near black, is coloured; a picture with this share of
 #: coloured pixels has colour. An infrared picture, grey or evenly tinted, stays near 0.1 saturation.
 COLOURED_SATURATION: Final = 0.25
@@ -107,21 +119,67 @@ def thumbnail_jpeg(data: bytes, side: int = THUMBNAIL_SIDE) -> bytes:
     return _jpeg(image)
 
 
-def _middle_colour(image: Image.Image) -> tuple[float, float, float]:
-    """The average colour of the middle of a cropped picture (red, green, blue, each 0-1, two decimals)."""
-    width, height = image.size
-    margin_x = width * (1 - SIGNATURE_MIDDLE) / 2
-    margin_y = height * (1 - SIGNATURE_MIDDLE) / 2
-    middle = image.crop(
-        (int(margin_x), int(margin_y), max(int(width - margin_x), int(margin_x) + 1), max(int(height - margin_y), int(margin_y) + 1))
-    ).resize((_SIGNATURE_PIXELS, _SIGNATURE_PIXELS))
-    pixels = _pixels(middle)
+def _average(pixels: list[tuple[int, int, int]]) -> tuple[float, float, float]:
+    """The average colour of `pixels` (red, green, blue, each 0-1, two decimals)."""
     count = len(pixels)
     return (
         round(sum(pixel[0] for pixel in pixels) / count / 255, 2),
         round(sum(pixel[1] for pixel in pixels) / count / 255, 2),
         round(sum(pixel[2] for pixel in pixels) / count / 255, 2),
     )
+
+
+def _near(first: tuple[int, int, int], second: tuple[int, int, int], limit: float) -> bool:
+    return (first[0] - second[0]) ** 2 + (first[1] - second[1]) ** 2 + (first[2] - second[2]) ** 2 < limit
+
+
+def _ground(edge: list[tuple[int, int, int]]) -> tuple[int, int, int] | None:
+    """The ground's colour: the colour most of the crop's edge shares (the edge pixel with the most others within
+    `GROUND_DISTANCE`, averaged with them), or `None` when less than `GROUND_SHARE` of the edge shares one colour
+    (the car reaches the edge, or the ground is no one colour)."""
+    limit = (GROUND_DISTANCE * 255) ** 2
+    best: list[tuple[int, int, int]] = []
+    for pixel in edge:
+        alike = [other for other in edge if _near(pixel, other, limit)]
+        if len(alike) > len(best):
+            best = alike
+    if len(best) < GROUND_SHARE * len(edge):
+        return None
+    count = len(best)
+    return (
+        round(sum(pixel[0] for pixel in best) / count),
+        round(sum(pixel[1] for pixel in best) / count),
+        round(sum(pixel[2] for pixel in best) / count),
+    )
+
+
+def _car_colour(image: Image.Image) -> tuple[float, float, float]:
+    """The colour of the car in a cropped picture (red, green, blue, each 0-1, two decimals): the average of what in
+    the middle differs from the ground, so a car on a large patch of paving is its own colour, not the paving's.
+
+    The ground is the colour most of the crop's edge shares (`_ground`); a middle pixel at least `GROUND_DISTANCE`
+    from it is the car (paint, windows, wheels, its shadow). When there is no one ground colour, or less than
+    `CAR_SHARE` of the middle is car (the empty spot), it is the middle's average colour: the empty spot reads as
+    its ground, clearly apart from a coloured car.
+    """
+    grid = image.resize((_SIGNATURE_PIXELS, _SIGNATURE_PIXELS))
+    pixels = _pixels(grid)
+    side = _SIGNATURE_PIXELS
+    low = round(side * (1 - SIGNATURE_MIDDLE) / 2)
+    high = max(side - low, low + 1)
+    edge = [
+        pixels[y * side + x]
+        for y in range(side)
+        for x in range(side)
+        if min(x, y, side - 1 - x, side - 1 - y) < GROUND_EDGE
+    ]
+    middle = [pixels[y * side + x] for y in range(low, high) for x in range(low, high)]
+    ground = _ground(edge)
+    if ground is None:
+        return _average(middle)
+    limit = (GROUND_DISTANCE * 255) ** 2
+    car = [pixel for pixel in middle if not _near(pixel, ground, limit)]
+    return _average(car) if len(car) >= CAR_SHARE * len(middle) else _average(middle)
 
 
 def has_colour(image: Image.Image) -> bool:
@@ -144,16 +202,16 @@ def has_colour(image: Image.Image) -> bool:
 
 
 def reference_signature(data: bytes, kind: str) -> Signature:
-    """A reference picture's colour signature: the middle's average colour for a daylight picture (the person
+    """A reference picture's colour signature: the car's colour (`_car_colour`) for a daylight picture (the person
     says it is daylight, so a white car keeps its white), `None` for a night picture."""
-    return _middle_colour(_open(data)) if kind == PICTURE_DAY else None
+    return _car_colour(_open(data)) if kind == PICTURE_DAY else None
 
 
 def colour_signature(data: bytes) -> Signature:
-    """The colour of the picture now: the middle's average colour, or `None` when the picture shows no colour
+    """The colour of the picture now: the car's colour (`_car_colour`), or `None` when the picture shows no colour
     (`has_colour`: an infrared night picture, grey or tinted)."""
     image = _open(data)
-    return _middle_colour(image) if has_colour(image) else None
+    return _car_colour(image) if has_colour(image) else None
 
 
 def _pixels(image: Image.Image) -> list[tuple[int, int, int]]:
