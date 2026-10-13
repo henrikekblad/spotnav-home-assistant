@@ -32,24 +32,34 @@ review and opens the full list with the integration's own wording.
 
 The graph shows the price of every interval, in the price area's currency per kWh.
 
-- One horizontal axis is one local day, 00:00 to 24:00. Today is drawn over tomorrow, and an
-  earlier day is subdued. Tomorrow's prices appear once they are published, usually in the
-  afternoon.
+- By default (**Day**) the horizontal axis is one local day, 00:00 to 24:00. Today is drawn over
+  tomorrow, and an earlier day is subdued. Tomorrow's prices appear once they are published, usually
+  in the afternoon.
+- With **From now** (see [Display](#display)) and tomorrow's prices published, the axis runs in real
+  time from the start of the current hour to the end of the last published day, about 32 to 35 hours,
+  with the now line near the left edge. Every interval sits at its own time: nothing that has already
+  ended is drawn, tomorrow is drawn like today, and a charging period across midnight is one band.
+  Ticks come every six hours, and midnight is a dashed line labelled with the new day's weekday and
+  date. Until tomorrow's prices are published, **From now** looks exactly like **Day**.
 - Bars cheaper than the day's average are marked as cheap and pricier ones as expensive. A line
   marks now, and the current interval is highlighted.
 - The plan is drawn on top of the prices. **Scheduled** bands are the charging periods Home
   Assistant has installed and will follow. **Proposal** bands are a newer plan that is ready but
-  not installed yet, and are fainter. Today's bands are solid and tomorrow's are hatched, so a
-  period tomorrow night is not read as one already over just because it sits left of the now line.
+  not installed yet, and are fainter. On **Day**, today's bands are solid and tomorrow's are hatched,
+  so a period tomorrow night is not read as one already over just because it sits left of the now
+  line. On **From now** every band is solid.
   When a new plan is waiting for the charging window under way to end, the graph shows the
   scheduled band only for that window and the waiting plan's proposal bands after it; the scheduled
   periods it replaces are not drawn.
-- A summary line gives the highest price, the lowest price and the price now.
+- A summary line gives the highest price (▲), the lowest price (▼) and the price now. ▲ and ▼ cover
+  the prices drawn at full strength: today's on **Day**, everything shown on **From now** (from the
+  current hour to the end of the last published day).
 - Touch or hover an interval to read its price. With the keyboard, the arrow keys step through the
   intervals, Home and End jump to the ends, and Escape clears the selection. Times follow the
   price area's time zone, and the autumn hour that repeats is shown with its offset.
-- Press the summary line to fold the graph into a slim strip of the same day: the charging
-  periods as bars (the ones already over dimmed, tomorrow's hatched), the line for now and the hours under it. Press it
+- Press the summary line to fold the graph into a slim strip on the same axis: the charging
+  periods as bars (the ones already over dimmed, tomorrow's hatched on **Day**), the line for now and the
+  hours under it, with a dashed line at midnight on **From now**. Press it
   again to open the graph. The choice is remembered per charger in that browser. To start folded
   where nothing is remembered yet, add `chart: compact` to the card's YAML.
 
@@ -151,10 +161,10 @@ Home Assistant's own dashboards and in automations.
 
 The gear icon opens **Card settings**, built fresh each time you open it. The plan and the strategy
 have their own cells on the card; everything else is here, in sections headed by what they are about
-(**Electricity price**, **Car**, **Charger · …**, **Site · …**, **Solar**, **Notifications**, **Support**). Each
-value is one row; an administrator taps a value to open its own editor. A user who is not an
-administrator is shown only the sections holding something they may change, and no gear icon when
-there are none.
+(**Electricity price**, **Car**, **Charger · …**, **Site · …**, **Solar**, **Notifications**, **Display**,
+**Support**). Each value is one row; an administrator taps a value to open its own editor. **Display**
+belongs to this device, and anyone can change it. A user who is not an administrator is shown only the
+sections holding something they may change (today **Display**), and no gear icon when there are none.
 
 ![The settings page: a section per subject and a value per row](images/card-settings.png)
 
@@ -309,6 +319,15 @@ several. A charger with no site says so.
 
 **Phones** and **Events** say who is told about what; **Change notifications** opens the choice. See
 [Notifications](notifications.md).
+
+### Display
+
+How this device draws the card, marked "Only this device": nothing is sent to Home Assistant, and the
+choice applies to every SpotNav card in this browser (on other devices and browsers each keeps its own).
+**Chart time axis** is **Day** (00–24, tomorrow drawn over today; the default) or **From now** (from
+this hour to the end of the last published day; see [The price graph](#the-price-graph)). Where the
+browser cannot store it, for example in a private window, the choice holds until the page is reloaded
+and the card then starts on **Day**.
 
 ## Plan settings
 

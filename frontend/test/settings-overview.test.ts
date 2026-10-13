@@ -14,7 +14,7 @@ import { SETTINGS_API_VERSION, type SettingsRecord } from "../src/types";
 import { VISUAL_CLASSES } from "../src/visual-styles";
 import { CARD_OUTDATED_NOTE, setOwnCardBundleHashForTest } from "../src/card-identity";
 import { CARD_VERSION } from "../src/generated/version";
-import { FakeHass, mountCard, settingsOffered } from "./helpers";
+import { FakeHass, mountCard, settingsOffered, shownSections } from "./helpers";
 
 const DASHBOARD_DIR = join(__dirname, "..", "..", "tests", "fixtures", "dashboard");
 const CONFIG = { type: "custom:spotnav-card", charger: "entry_a" };
@@ -127,7 +127,7 @@ describe("the general Settings popover", () => {
     const sections = Array.from(dialog?.querySelectorAll("[data-section]") ?? []).map((node) =>
       node.getAttribute("data-section"),
     );
-    expect(sections).toEqual(["market", "vehicle", "entities", "site", "notifications", "support"]);
+    expect(sections).toEqual(["market", "vehicle", "entities", "site", "notifications", "display", "support"]);
     // Every fact shown came from the dashboard already read; the one thing asked of the backend is the
     // entity configuration (administrators only, on its own line in the fake transport).
     expect(hass.messages.length).toBe(before);
@@ -273,9 +273,11 @@ describe("Download debug info", () => {
       translate("en", "debug.download"),
     ]);
 
-    // A reader who is not an administrator may change nothing in Settings, so is offered none of it.
+    // A reader who is not an administrator is shown only what they may change: Display, and no Support.
     const reader = await mounted(fixture("start_idle"), false);
-    expect(settingsOffered(reader.element)).toBe(false);
+    expect(settingsOffered(reader.element)).toBe(true);
+    await openSettings(reader.element);
+    expect(shownSections(reader.element)).toEqual(["display"]);
     expect(debugButton(reader.element)).toBeNull();
   });
 

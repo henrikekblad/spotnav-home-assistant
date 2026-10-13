@@ -248,3 +248,10 @@ export function settingsOffered(element: Element): boolean {
   const button = element.shadowRoot?.querySelector<HTMLButtonElement>("[data-settings='open']") ?? null;
   return button !== null && !button.hidden;
 }
+
+/** The sections of the open Settings page, in order (`[]` when it is not open). */
+export function shownSections(element: Element): string[] {
+  const dialogs = Array.from(element.shadowRoot?.querySelectorAll<HTMLElement>("[role='dialog']") ?? []);
+  const open = dialogs.find((dialog) => dialog.closest("[hidden]") === null) ?? null;
+  return Array.from(open?.querySelectorAll<HTMLElement>("[data-section]") ?? []).map((node) => node.dataset["section"] ?? "");
+}

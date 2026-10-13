@@ -807,5 +807,12 @@
   "settings.vehicle.minimumSlider": "Laveste ladeniveau, fra eller procent",
   "settings.vehicle.minimumNeedsSoc": "kræver bilens ladeniveau",
   "settings.vehicle.minimumHelp": "Under dette niveau lader SpotNav straks med fuld strøm, uanset strategi. En pause eller et stop, du vælger, går forud. Kræver bilens ladeniveau.",
-  "settings.vehicle.sourcesHelp": "Læses kun for at se, hvilken bil der er tilsluttet."
+  "settings.vehicle.sourcesHelp": "Læses kun for at se, hvilken bil der er tilsluttet.",
+  "settings.section.display": "Visning",
+  "display.applies": "Kun denne enhed: gælder alle SpotNav-kort i denne browser.",
+  "display.chartAxis": "Tidsakse i grafen",
+  "display.chartAxis.day": "Døgn",
+  "display.chartAxis.dayHelp": "00–24, med i morgen tegnet oven på i dag.",
+  "display.chartAxis.fromNow": "Fra nu",
+  "display.chartAxis.fromNowHelp": "Fra denne time til slutningen af det sidste offentliggjorte døgn. Indtil morgendagens priser er ude, det samme som Døgn."
 }

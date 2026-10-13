@@ -20,7 +20,7 @@ import {
   type SettingsRecord,
 } from "../src/types";
 import { VISUAL_CLASSES } from "../src/visual-styles";
-import { FakeHass, mountCard, settingsOffered } from "./helpers";
+import { FakeHass, mountCard, shownSections } from "./helpers";
 
 const DASHBOARD_DIR = join(__dirname, "..", "..", "tests", "fixtures", "dashboard");
 const CONFIG = { type: "custom:spotnav-card", charger: "entry_a" };
@@ -249,9 +249,10 @@ async function openMarket(
   const record = options.record ?? aRecord();
   const { hass, element } = await mounted(options.admin ?? true);
   if (options.admin === false) {
-    // A reader who is not an administrator has no Settings and no area row to tap: the editor's own
-    // read-only guard is reached by code.
-    expect(settingsOffered(element)).toBe(false);
+    // A reader who is not an administrator has no area row to tap (their Settings holds only Display):
+    // the editor's own read-only guard is reached by code.
+    settingsGeneralButton(element).click();
+    expect(shownSections(element)).toEqual(["display"]);
     void (element as unknown as { openMarket(): Promise<void> }).openMarket();
   } else {
     marketTrigger(element).click();

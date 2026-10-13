@@ -1,8 +1,10 @@
-// The collapsed chart: a slim 24-hour strip with the plan's charging periods as bars, the now line and
-// the hour labels. Pure geometry on the chart's own wall-clock axis (0 is 00:00, 1 is 24:00), so the
-// strip spans exactly what the chart spans, one day or two overlaid. The view turns it into DOM.
+// The collapsed chart: a slim strip with the plan's charging periods as bars, the now line and the hour
+// labels. Pure geometry on the chart's own axis, read from the same positions: on the wall-clock overlay
+// 0 is 00:00 and 1 is 24:00 (one day or two overlaid), on the real-time range 0 is the current hour and 1
+// the end of the last published day, with a divider at each midnight inside. So the strip spans exactly
+// what the chart spans. The view turns it into DOM.
 
-import type { ChartNow, ChartSeries, PlanBands } from "./chart";
+import { zoneClock, type ChartNow, type ChartSeries, type PlanBands } from "./chart";
 
 /** The narrowest bar drawn, in CSS pixels, so a single quarter-hour still shows. */
 export const STRIP_MIN_BAR_PX = 3;
@@ -11,12 +13,12 @@ const DAY_MS = 86_400_000;
 
 export interface StripBar {
   kind: "installed" | "proposal";
-  /** Wall-clock fractions of one day, like the chart's x. */
+  /** Positions on the chart's axis, like the chart's x. */
   start: number;
   end: number;
   /** Over by the now instant: drawn dimmed. */
   past: boolean;
-  /** On another day than the now fact's, as the band's own flag: drawn hatched like the graph's band. */
+  /** The band's own flag (another day on the wall-clock overlay, never on the range): drawn hatched like the graph's band. */
   tomorrow: boolean;
 }
 
@@ -74,23 +76,45 @@ export function stripBarPlacement(bar: StripBar): StripPlacement {
 }
 
 /**
- * The now line's place: the current interval's position plus the time gone inside it, or `null` when no
- * published interval holds the clock (the chart draws no now line then either).
+ * The now line's place: the current interval's position plus the time gone inside it (against `spanMs`,
+ * the time the axis spans: the series' `time.spanMs`), or `null` when no published interval holds the
+ * clock (the chart draws no now line then either).
  */
-export function stripNowPosition(now: ChartNow, nowMs: number): number | null {
+export function stripNowPosition(now: ChartNow, nowMs: number, spanMs: number = DAY_MS): number | null {
   const mark = now.mark;
   if (mark === null) {
     return null;
   }
   const inside = Math.min(Math.max(nowMs - mark.startMs, 0), mark.endMs - mark.startMs);
-  return Math.min(Math.max(mark.position + inside / DAY_MS, 0), 1);
+  return Math.min(Math.max(mark.position + inside / spanMs, 0), 1);
 }
 
-/** The hour labels under the strip, at the chart's own tick positions: `00 06 12 18 24`. */
-export function stripTicks(series: ChartSeries): Array<{ position: number; label: string }> {
-  const positions = series.axis.length > 0 ? series.axis.map((tick) => tick.position) : [0, 0.25, 0.5, 0.75, 1];
-  return positions.map((position) => ({
-    position,
-    label: String(Math.round(position * 24)).padStart(2, "0"),
-  }));
+export interface StripTick {
+  position: number;
+  label: string;
+  /** A midnight inside the range axis: the view draws a divider through the track there. */
+  dayStart?: true;
+}
+
+/**
+ * The hour labels under the strip, at the chart's own tick positions: `00 06 12 18 24` on the wall-clock
+ * axis; on the range each tick's local hour in `timeZone`, the right edge `24`.
+ */
+export function stripTicks(series: ChartSeries, timeZone = ""): StripTick[] {
+  const ticks =
+    series.axis.length > 0
+      ? series.axis
+      : [0, 0.25, 0.5, 0.75, 1].map((position) => ({ position, instantMs: 0 }));
+  const range = series.time?.kind === "range";
+  const clock = zoneClock(timeZone);
+  return ticks.map((tick) => {
+    const hours =
+      !range || tick.position >= 1
+        ? Math.round(tick.position * 24)
+        : Math.floor(clock.msOfDay(tick.instantMs) / 3_600_000);
+    const label = String(hours).padStart(2, "0");
+    return "dayStart" in tick && tick.dayStart === true
+      ? { position: tick.position, label, dayStart: true }
+      : { position: tick.position, label };
+  });
 }

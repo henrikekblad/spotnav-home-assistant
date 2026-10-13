@@ -10,7 +10,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { translate } from "../src/i18n";
 import { ACTION_API_VERSION, SETTINGS_API_VERSION } from "../src/types";
 import { VISUAL_CLASSES as C } from "../src/visual-styles";
-import { FakeHass, mountCard, settingsOffered } from "./helpers";
+import { FakeHass, mountCard, settingsOffered, shownSections } from "./helpers";
 
 const DASHBOARD_DIR = join(__dirname, "..", "..", "tests", "fixtures", "dashboard");
 const CONFIG = { type: "custom:spotnav-card", charger: "entry_a" };
@@ -120,9 +120,11 @@ describe("a reader who is not an administrator", () => {
     expect(writes(hass)).toHaveLength(0);
   });
 
-  it("is offered no Settings, and so no price area to change, when nothing there is theirs to change", async () => {
+  it("is shown only Display in Settings, and so no price area to change", async () => {
     const { hass, element } = await mountedReader();
-    expect(settingsOffered(element)).toBe(false);
+    expect(settingsOffered(element)).toBe(true);
+    shadow(element).querySelector<HTMLButtonElement>("[data-settings='open']")?.click();
+    expect(shownSections(element)).toEqual(["display"]);
     expect(shadow(element).querySelector("[data-setting='market'], [data-edit='area']")).toBeNull();
     expect(sent(hass, "spotnav/get_market_options")).toHaveLength(0);
   });

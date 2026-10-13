@@ -215,14 +215,18 @@ describe("the Settings page's charger and site cards", () => {
     expect(openDialog(element)?.querySelector(".spotnav-entity-help-toggle")).toBeNull();
   });
 
-  it("asks a non-administrator nothing and offers no Settings, since nothing there is theirs to change", async () => {
+  it("asks a non-administrator nothing and shows them no entities, only what they may change", async () => {
     const { hass, element } = await mounted({ admin: false });
-    expect(settingsOffered(element)).toBe(false);
+    expect(settingsOffered(element)).toBe(true);
     openSettings(element);
     await settle();
     expect(gets(hass)).toHaveLength(0);
-    expect(openDialog(element)).toBeNull();
-    expect(element.shadowRoot?.querySelectorAll("[data-edit-entities], .spotnav-setting-row-editable")).toHaveLength(0);
+    // Settings shows such a reader only what they may change: this device's Display, no entities.
+    expect(openDialog(element)?.querySelector("[data-section='entities']")).toBeNull();
+    const changeable = Array.from(
+      openDialog(element)?.querySelectorAll("[data-edit-entities], .spotnav-setting-row-editable") ?? [],
+    ).map((node) => node.closest("[data-section]")?.getAttribute("data-section"));
+    expect(changeable).toEqual(["display"]);
   });
 
   it("states a failed read in words, with the code only as an attribute, and offers no editor", async () => {

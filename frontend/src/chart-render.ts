@@ -1,7 +1,9 @@
 // The graph as SVG, drawn from the accepted geometry only. The scale comes from `chartScale`, every
 // x from `xForWallClock`, every y from `yAt` inside `hitTargets`, and the returned `targets` are
-// the ones drawn, so interaction can never hit-test a different chart. Today and tomorrow share
-// one wall-clock axis. Everything is created with `createElementNS` and `textContent` /
+// the ones drawn, so interaction can never hit-test a different chart. Positions come from the
+// series' time mapping (`ChartSeries.time`): the wall-clock overlay, where today and tomorrow share
+// one 24-hour axis, or the real-time range, where a midnight inside is drawn as a day divider and
+// labelled with the new day. Everything is created with `createElementNS` and `textContent` /
 // `setAttribute`; no backend code is drawn.
 //
 // Paint order equals DOM order (SVG has no z-index): metadata, band patterns, bands, grid and axes,
@@ -27,6 +29,8 @@ const SVG_NS = "http://www.w3.org/2000/svg";
 /** The localized strings the SVG needs; the renderer formats nothing itself. */
 export interface ChartLabels {
   time(instantMs: number): string;
+  /** The new day at a midnight inside the range axis (weekday and date); the time label when omitted. */
+  day?(instantMs: number): string;
 }
 
 export interface ChartRenderInput {
@@ -216,9 +220,10 @@ export function renderChart(input: ChartRenderInput): ChartRenderResult {
   }
   for (const tick of series.axis) {
     const x = xForWallClock(scale, tick.position);
+    const dayStart = tick.dayStart === true;
     axis.append(
       svg("line", {
-        class: VISUAL_CLASSES.gridline,
+        class: dayStart ? `${VISUAL_CLASSES.gridline} ${VISUAL_CLASSES.dayDivider}` : VISUAL_CLASSES.gridline,
         x1: x,
         x2: x,
         y1: scale.top,
@@ -226,12 +231,12 @@ export function renderChart(input: ChartRenderInput): ChartRenderResult {
       }),
     );
     const text = svg("text", {
-      class: VISUAL_CLASSES.tickLabel,
+      class: dayStart ? `${VISUAL_CLASSES.tickLabel} ${VISUAL_CLASSES.dayLabel}` : VISUAL_CLASSES.tickLabel,
       x,
       y: scale.bottom + scale.axisTextSize,
       "text-anchor": tick.position === 0 ? "start" : tick.position === 1 ? "end" : "middle",
     });
-    text.textContent = labels.time(tick.instantMs);
+    text.textContent = dayStart && labels.day !== undefined ? labels.day(tick.instantMs) : labels.time(tick.instantMs);
     axis.append(text);
   }
   root.append(axis);
