@@ -136,7 +136,17 @@ import {
 import { decodeDashboard, referencePictures, type Dashboard, type Soc, type Vehicle } from "./validate";
 import { OUTCOME_POLL_MS, outcomeSettled, outcomeWatchFor, type OutcomeWatch } from "./charge-bar";
 import { parseCardConfig, type CardConfig } from "./view";
-import { browserStore, initialChartCollapsed, readChartCollapsed, writeChartCollapsed } from "./chart-preference";
+import {
+  browserStore,
+  CHART_AXIS_EVENT,
+  CHART_AXIS_KEY,
+  initialChartCollapsed,
+  readChartAxis,
+  readChartCollapsed,
+  writeChartAxis,
+  writeChartCollapsed,
+} from "./chart-preference";
+import type { ChartAxisMode } from "./chart";
 import { VISUAL_CLASSES, VISUAL_STYLES } from "./visual-styles";
 
 /** One bounded refresh cycle; the retry action exists because a timer alone is not a promise. */
@@ -147,6 +157,28 @@ export const REFRESH_INTERVAL_MS = 30_000;
  * ARIA and dialog ids. Never derived from user-controlled text and never random.
  */
 let cardInstanceCounter = 0;
+
+/**
+ * The chart axis chosen on this page, shared by every card in it: it holds where the browser cannot store
+ * it. `null` defers to storage (and its default, the wall-clock day).
+ */
+let pageChartAxis: ChartAxisMode | null = null;
+
+/** This browser's chart axis, the same for every SpotNav card in it. */
+export function chartAxisNow(): ChartAxisMode {
+  return pageChartAxis ?? readChartAxis(browserStore);
+}
+
+/** Choose the axis for every card in this browser: stored, and announced to the cards on this page. */
+export function chooseChartAxis(mode: ChartAxisMode): void {
+  pageChartAxis = mode;
+  writeChartAxis(browserStore, mode);
+  try {
+    globalThis.dispatchEvent?.(new Event(CHART_AXIS_EVENT));
+  } catch {
+    // No window to announce on: the next render of each card reads the choice anyway.
+  }
+}
 
 const CHARGER_REFUSALS = [
   "spotnav_unknown_charger",
@@ -274,6 +306,20 @@ export class SpotnavCard extends HTMLElement {
    */
   private chartCollapsed: boolean | null = null;
 
+  /** Another card on this page, or another tab (through storage), changed the chart axis: redraw. */
+  private readonly onChartAxisChanged = (event: Event): void => {
+    if (event.type === "storage") {
+      const key = (event as StorageEvent).key;
+      if (key !== null && key !== CHART_AXIS_KEY) {
+        return;
+      }
+      pageChartAxis = null;
+    }
+    if (this.connected && this.cardState.kind === "ready") {
+      this.render();
+    }
+  };
+
   constructor() {
     super();
     this.root = this.attachShadow({ mode: "open" });
@@ -326,11 +372,15 @@ export class SpotnavCard extends HTMLElement {
 
   connectedCallback(): void {
     this.connected = true;
+    globalThis.addEventListener?.(CHART_AXIS_EVENT, this.onChartAxisChanged);
+    globalThis.addEventListener?.("storage", this.onChartAxisChanged);
     this.startWork();
   }
 
   disconnectedCallback(): void {
     this.connected = false;
+    globalThis.removeEventListener?.(CHART_AXIS_EVENT, this.onChartAxisChanged);
+    globalThis.removeEventListener?.("storage", this.onChartAxisChanged);
     this.stopTimer();
     this.generation += 1;
     this.attempt += 1;
@@ -2230,6 +2280,7 @@ export class SpotnavCard extends HTMLElement {
         nowMs: Date.now(),
         sentAction: this.sentAction,
         shownAutomatic: this.shownAutomatic,
+        chartAxis: chartAxisNow(),
       });
       this.rememberControls(model.control);
       this.view = createCardView({
@@ -2237,6 +2288,9 @@ export class SpotnavCard extends HTMLElement {
         mount: host,
         idPrefix: this.idPrefix,
         chartCollapsed: this.chartCollapsedNow(),
+        onChartAxisChange: (mode) => {
+          chooseChartAxis(mode);
+        },
         onChartCollapsedChange: (collapsed) => {
           this.chartCollapsed = collapsed;
           if (this.config !== null && this.config.charger !== "") {

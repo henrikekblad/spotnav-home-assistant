@@ -807,5 +807,12 @@
   "settings.vehicle.minimumSlider": "Mindestladestand, aus oder Prozent",
   "settings.vehicle.minimumNeedsSoc": "braucht den Ladestand des Autos",
   "settings.vehicle.minimumHelp": "Unter diesem Ladestand lädt SpotNav sofort mit vollem Strom, unabhängig von der Strategie. Eine von dir gewählte Pause oder ein Stopp hat Vorrang. Braucht den Ladestand des Autos.",
-  "settings.vehicle.sourcesHelp": "Wird nur gelesen, um zu erkennen, welches Auto angeschlossen ist."
+  "settings.vehicle.sourcesHelp": "Wird nur gelesen, um zu erkennen, welches Auto angeschlossen ist.",
+  "settings.section.display": "Anzeige",
+  "display.applies": "Nur dieses Gerät: gilt für alle SpotNav-Karten in diesem Browser.",
+  "display.chartAxis": "Zeitachse im Diagramm",
+  "display.chartAxis.day": "Tag",
+  "display.chartAxis.dayHelp": "00–24, morgen über heute gezeichnet.",
+  "display.chartAxis.fromNow": "Ab jetzt",
+  "display.chartAxis.fromNowHelp": "Von dieser Stunde bis zum Ende des letzten veröffentlichten Tages. Bis die Preise für morgen da sind, wie Tag."
 }

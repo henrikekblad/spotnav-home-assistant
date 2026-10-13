@@ -223,7 +223,11 @@ describe("the Settings page's charger and site cards", () => {
     const section = openDialog(element)?.querySelector<HTMLElement>("[data-section='entities']");
     expect(section?.textContent).toContain(translate("en", "entity.adminOnly"));
     // Nothing to change: no entity dialog, and no value in the accent colour (the price area opens read-only).
-    expect(openDialog(element)?.querySelectorAll("[data-edit-entities], .spotnav-setting-row-editable")).toHaveLength(0);
+    // Display is this device's own preference, changeable by anyone, so it is left out.
+    const changeable = Array.from(
+      openDialog(element)?.querySelectorAll("[data-edit-entities], .spotnav-setting-row-editable") ?? [],
+    ).filter((node) => node.closest("[data-section='display']") === null);
+    expect(changeable).toHaveLength(0);
     expect(openDialog(element)?.textContent).toContain(translate("en", "settings.readOnly"));
   });
 

@@ -136,7 +136,9 @@ describe("the page", () => {
 
   it("is read-only for a reader who is not an administrator", async () => {
     const { element } = await openSettings("en", false);
-    expect(dialog(element).querySelectorAll(`.${VISUAL_CLASSES.settingRowEditable}`)).toHaveLength(0);
+    // Display is this device's own preference, changeable by anyone; every charger value is read-only.
+    const editable = Array.from(dialog(element).querySelectorAll(`.${VISUAL_CLASSES.settingRowEditable}`));
+    expect(editable.map((node) => node.closest("[data-section]")?.getAttribute("data-section"))).toEqual(["display"]);
   });
 
   it("says Laddperioder in Swedish", () => {

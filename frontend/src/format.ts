@@ -137,6 +137,18 @@ export function weekdayDate(context: FormatContext, instantMs: number): string {
   }).format(new Date(instantMs));
 }
 
+/** A short day cue under the chart's midnight divider: the weekday and day of month ("ons 14", "Wed 14"). */
+export function dayCue(context: FormatContext, instantMs: number): string {
+  if (!hasZone(context) || !Number.isFinite(instantMs)) {
+    return "";
+  }
+  return dateFormat(context.language, {
+    weekday: "short",
+    day: "numeric",
+    timeZone: context.timeZone,
+  }).format(new Date(instantMs));
+}
+
 function wallReading(context: FormatContext, instantMs: number): string {
   return dateFormat("en", {
     hour: "2-digit",
