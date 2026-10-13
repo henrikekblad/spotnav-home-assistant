@@ -237,6 +237,9 @@ class Reference:
     signature: Signature
     #: The frame `signature` was taken with (the colour of the picture cropped with it).
     signature_frame: Frame | None = None
+    #: What `signature` means (`SIGNATURE_VERSION` when it was taken); one of an earlier version is taken anew from
+    #: the stored picture, and says nothing until then.
+    signature_version: int = SIGNATURE_VERSION
 
     @property
     def file_name(self) -> str:
@@ -251,6 +254,7 @@ class Reference:
             "frame": None if self.frame is None else self.frame.as_dict(),
             "signature": None if self.signature is None else list(self.signature),
             "signature_frame": None if self.signature_frame is None else self.signature_frame.as_dict(),
+            "signature_version": self.signature_version,
         }
 
     def as_wire(self) -> dict[str, Any]:
@@ -272,6 +276,10 @@ class Reference:
             frame = normalised(None if raw["frame"] is None else Frame.from_wire(raw["frame"]))
             # An earlier release took the signature with the picture's own frame.
             signature_frame = raw.get("signature_frame", raw["frame"])
+            # An earlier release stored no version: its signature is the middle's average colour.
+            signature_version = raw.get("signature_version", 1)
+            if not isinstance(signature_version, int) or isinstance(signature_version, bool):
+                return None
             return cls(
                 vehicle_id=raw["vehicle_id"],
                 kind=raw["kind"],
@@ -280,6 +288,7 @@ class Reference:
                 frame=frame,
                 signature=None if signature is None else (float(signature[0]), float(signature[1]), float(signature[2])),
                 signature_frame=normalised(None if signature_frame is None else Frame.from_wire(signature_frame)),
+                signature_version=signature_version,
             )
         except (KeyError, TypeError, ValueError, IndexError):
             return None
