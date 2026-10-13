@@ -13,6 +13,12 @@ language has exactly the English keys, with the same `{placeholders}`. Today Spo
 | `custom_components/spotnav/i18n/<lang>.json` | What SpotNav words in code: notifications, dropdown labels, the summaries in the setup dialogs, the default site name. | `namespace → key → text`. |
 | `frontend/src/i18n/<lang>.json` | The card. | `key → text`, one flat object. |
 
+The card's bundle carries English only. `npm run build` writes every other language beside it as
+`custom_components/spotnav/www/i18n/<lang>.<hash>.json`, named by its content, and Home Assistant
+serves the folder at `/spotnav/i18n/`. The card fetches the reader's file once per page load and
+shows its loading state until it is in; if it cannot be had, the card is in English until the next
+load. The files are committed with the bundle, so an install needs no build step.
+
 Some sentences appear in more than one place and should read the same, for example the card's
 `state.addCharger` and `add_charger.hint` in `i18n/`. Keep a language's terms the same in all
 three folders: the card's file is the reference for established words (charger, site, departure,
@@ -27,16 +33,19 @@ product names and links as they are.
 1. Copy `translations/en.json`, `i18n/en.json` and `frontend/src/i18n/en.json` to `<lang>.json` in
    the same folders, with the language's code as Home Assistant uses it (`de`, `nl`, ...), and
    translate the values. Never change a key.
-2. In `frontend/src/i18n/index.ts`, import the new file and add the code to `LANGUAGES` and
-   `TRANSLATIONS`. The integration's side needs no code: it reads every file in `i18n/`, and Home
-   Assistant reads every file in `translations/`.
+2. In `frontend/src/i18n/index.ts`, add the code to `LANGUAGES`; in `frontend/src/i18n/all.ts`
+   (what the tests and tools load), import the new file and add it to `TRANSLATIONS`; and add the
+   code to `SERVED_LANGUAGES` in `frontend/scripts/languages.mjs`, so the build writes its file. The
+   integration's side needs no code: it reads every file in `i18n/`, serves every file in
+   `www/i18n/`, and Home Assistant reads every file in `translations/`.
 3. Run the checks:
    - `pytest tests/test_translation_files.py`: every file has exactly the English keys, none empty,
      with the same placeholders.
    - In `frontend/`: `npm run type-check` (a missing key is a compile error), `npm test` (extra keys,
-     placeholders, and a file not listed in `LANGUAGES`), then `npm run build` for the card's asset.
+     placeholders, and a file not listed in `LANGUAGES`), then `npm run build` for the card's asset
+     and its language files, and commit both (`npm run check-dist` fails while either is stale).
 
-A key missing from an `i18n/` file falls back to English for that key, so a half-done language does
+A key missing from an `i18n/` file, or from a card language file, falls back to English for that key, so a half-done language does
 not break anything, but the tests above fail until it is complete.
 
 Numbers in notifications are written with a decimal comma in every language except English

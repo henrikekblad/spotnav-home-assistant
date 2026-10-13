@@ -9,7 +9,8 @@ import { resolve } from "node:path";
 
 import { describe, expect, it } from "vitest";
 
-import { LANGUAGES, TRANSLATIONS, translate, type TranslationKey } from "../src/i18n";
+import { LANGUAGES, translate, type TranslationKey } from "../src/i18n";
+import { TRANSLATIONS } from "../src/i18n/all";
 
 /** The keys the compact row adds or renames. */
 const ROW_KEYS: TranslationKey[] = [

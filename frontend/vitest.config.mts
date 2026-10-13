@@ -6,6 +6,8 @@ export default defineConfig({
     // view model, the API wrappers and the bundle audit do not care either way.
     environment: "jsdom",
     include: ["test/**/*.test.ts"],
+    // The bundle carries English only; the tests have every language from source, synchronously.
+    setupFiles: ["test/setup-languages.ts"],
     restoreMocks: true,
     unstubGlobals: true,
   },

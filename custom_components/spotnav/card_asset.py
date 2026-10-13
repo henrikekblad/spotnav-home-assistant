@@ -1,4 +1,4 @@
-"""The bundled card's one static route: a compiled, versioned frontend asset.
+"""The bundled card's static routes: a compiled, versioned frontend asset and its language files.
 
 The compiled file is committed next to the Python that serves it. It is served with
 `StaticPathConfig` and `hass.http.async_register_static_paths`, registered once for the whole
@@ -6,6 +6,12 @@ domain during domain setup (a per-entry registration would fail as a duplicate r
 and never unregistered. The URL carries the manifest version and a short hash of the bundle as a query
 (`card_asset_url`), so an upgrade or a rebuild is a new URL and the file may be cached hard. A missing compiled file raises rather
 than registering a route that answers 404.
+
+The bundle carries English only. Every other language is a file in `www/i18n/`, named
+`<lang>.<hash>.json` by its own content and served from `/spotnav/i18n/`; the card is compiled with
+those names, so it asks for exactly the file this build put there, and a changed translation is a
+new name that may be cached hard too. Because the names are inside the bundle, the bundle's hash
+(`read_bundle_digest`, the debug bundle's `card_bundle_hash`) changes with any translation.
 """
 
 from __future__ import annotations
@@ -32,6 +38,12 @@ CARD_URL_PATH: Final = f"/{DOMAIN}/spotnav-card.js"
 
 #: The compiled asset inside the package; the route serves this file only.
 CARD_ASSET_PATH: Final = Path(__file__).parent / "www" / "spotnav-card.js"
+
+#: Where the language files are served: a directory of content-named files, so cached hard.
+LANGUAGE_URL_PATH: Final = f"/{DOMAIN}/i18n"
+
+#: The language files inside the package (`frontend/scripts/build.mjs` writes them).
+LANGUAGE_DIR_PATH: Final = Path(__file__).parent / "www" / "i18n"
 
 CARD_ELEMENT: Final = "spotnav-card"
 
@@ -89,10 +101,19 @@ async def async_setup_card_asset(hass: HomeAssistant) -> None:
         )
         return
 
-    await hass.http.async_register_static_paths(
+    paths = [
         # A versioned URL may be cached hard; the changed query is the upgrade guarantee.
-        [StaticPathConfig(CARD_URL_PATH, str(CARD_ASSET_PATH), cache_headers=True)]
-    )
+        StaticPathConfig(CARD_URL_PATH, str(CARD_ASSET_PATH), cache_headers=True)
+    ]
+    if await hass.async_add_executor_job(LANGUAGE_DIR_PATH.is_dir):
+        # Each file is named by its content, so it may be cached hard as well.
+        paths.append(StaticPathConfig(LANGUAGE_URL_PATH, str(LANGUAGE_DIR_PATH), cache_headers=True))
+    else:
+        _LOGGER.warning(
+            "The SpotNav card's language files are missing at %s; the card is shown in English",
+            LANGUAGE_DIR_PATH,
+        )
+    await hass.http.async_register_static_paths(paths)
     data.card_served = True
     digest = await hass.async_add_executor_job(read_bundle_digest)
     data.card_served_digest = digest

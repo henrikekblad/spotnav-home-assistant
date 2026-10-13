@@ -14,6 +14,12 @@ strategy and the plan with a note that only administrators can change them, unle
 turned on **Let users who are not administrators change strategy and plan** for the charger (see
 [Charger entities](#charger-entities)); then they change both as an administrator does.
 
+The card speaks the language set in your Home Assistant profile (see
+[Translating SpotNav](translating.md)). Other than English, the words are loaded from Home
+Assistant when the card starts, so for a moment the card shows an empty loading line rather than
+English. Change the language in your profile and the card follows once the new words are in. If they
+cannot be loaded, the card is in English until the page is reloaded.
+
 ## Header
 
 The header shows the charger's name and three icons.

@@ -365,6 +365,8 @@ export interface HomeAssistantLike {
    * `resolveLanguage()`, which falls back to English.
    */
   language?: string;
+  /** The reader's locale; its `language` is preferred over `language` above when present. */
+  locale?: { language?: string };
 }
 
 declare global {

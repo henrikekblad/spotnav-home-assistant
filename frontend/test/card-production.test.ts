@@ -561,9 +561,19 @@ describe("12-13. hostile input and the audits", () => {
         expect(source.includes(entry), `source contains ${entry}`).toBe(false);
       }
     }
-    for (const entry of forbidden) {
+    for (const entry of forbidden.filter((name) => name !== "fetch(")) {
       expect(bundleCode.includes(entry), `bundle contains ${entry}`).toBe(false);
     }
+    // One `fetch`, and only in the language loader: the reader's language file, from Home Assistant's
+    // own origin (`i18n/index.ts`). No element source names it.
+    expect(bundleCode.split("fetch(").length - 1).toBe(1);
+    const fetchUsers = readdirSync(resolve(__dirname, "../src"))
+      .filter((name) => name.endsWith(".ts"))
+      .filter((name) => stripComments(readFileSync(resolve(__dirname, "../src", name), "utf8")).includes("fetch("));
+    expect(fetchUsers).toEqual([]);
+    expect(stripComments(readFileSync(resolve(__dirname, "../src/i18n/index.ts"), "utf8"))).toContain(
+      "globalThis.fetch(",
+    );
     // Browser storage only for the chart's remembered collapsed state: one module names it, once.
     const storageUsers = readdirSync(resolve(__dirname, "../src"))
       .filter((name) => name.endsWith(".ts"))

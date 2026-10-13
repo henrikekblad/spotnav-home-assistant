@@ -3,13 +3,15 @@
   "version": "0.0.0",
   "private": true,
   "type": "module",
-  "description": "Source, tests and build for the SpotNav Lovelace card that ships inside the spotnav integration. The compiled bundle is committed to custom_components/spotnav/www/spotnav-card.js.",
+  "description": "Source, tests and build for the SpotNav Lovelace card that ships inside the spotnav integration. The compiled bundle is committed to custom_components/spotnav/www/spotnav-card.js, the language files beside it in www/i18n/.",
   "scripts": {
     "version:write": "node scripts/write-version.mjs",
-    "build": "npm run version:write && node scripts/build.mjs",
-    "check-dist": "npm run version:write && node scripts/check-dist.mjs",
-    "type-check": "npm run version:write && tsc --noEmit",
-    "test": "npm run version:write && vitest run"
+    "languages:write": "node scripts/write-languages.mjs",
+    "generate": "npm run version:write && npm run languages:write",
+    "build": "npm run generate && node scripts/build.mjs",
+    "check-dist": "npm run generate && node scripts/check-dist.mjs",
+    "type-check": "npm run generate && tsc --noEmit",
+    "test": "npm run generate && vitest run"
   },
   "devDependencies": {
     "@types/node": "22.20.4",

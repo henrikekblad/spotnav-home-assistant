@@ -8,6 +8,10 @@
 //   charger id and a monotonic attempt number; only the newest started attempt may update the card.
 //   Concurrent attempts for the same generation and charger coalesce; the visible retry forces a new one.
 // - `hass` is a state snapshot, not a lifecycle event; only a changed `language` rerenders locally.
+// - Language: English is in the bundle, every other language is a file fetched once per page
+//   (`i18n/index.ts`). Until the reader's language is in, the card shows its loading state with no
+//   words, so a Swedish reader never sees English first; a language changed later keeps the card in
+//   the old one until the new one is in. A failed fetch leaves the card in English until a reload.
 // - Disconnect stops the timer, bumps the generation, forgets the in-flight attempt and destroys the view.
 // - Actions: one request per click, only for an action and choice the rendered snapshot offered and only
 //   when `can_act`. Nothing is rendered optimistically. While an action is in flight, ordinary reads are
@@ -93,7 +97,14 @@ import {
   siteSettingsErrorKey,
   solarSettingsChange,
 } from "./site-settings";
-import { resolveLanguage, translate, type Language, type TranslationKey } from "./i18n";
+import {
+  isLanguagePending,
+  loadLanguage,
+  resolveLanguage,
+  translate,
+  type Language,
+  type TranslationKey,
+} from "./i18n";
 import {
   decodeMarketOptions,
   fiscalValues,
@@ -249,7 +260,10 @@ export class SpotnavCard extends HTMLElement {
   private assigned = false;
   private generation = 0;
   private attempt = 0;
+  /** The language shown: the reader's once its words are in (or given up on), `null` before that. */
   private language: Language | null = null;
+  /** The reader's language from `hass`, which `language` follows once it can. */
+  private wantedLanguage: Language | null = null;
   private view: CardView | null = null;
   private actionInFlight: { generation: number; attempt: number; action: ActionId } | null = null;
   private editor: {
@@ -351,11 +365,16 @@ export class SpotnavCard extends HTMLElement {
   }
 
   set hass(hass: HomeAssistantLike) {
-    const nextLanguage = resolveLanguage(hass.language);
-    const changed = this.language !== null && this.language !== nextLanguage;
+    const nextLanguage = resolveLanguage(hass.locale?.language ?? hass.language);
+    const previous = this.language;
     this.hassObject = hass;
     this.view?.setEntityHass(hass);
-    this.language = nextLanguage;
+    this.followLanguage(nextLanguage);
+    const changed = previous !== null && this.language !== previous;
+    if (previous === null && this.language !== null && this.config !== null) {
+      // The first language there is: the wordless loading state becomes the worded one.
+      this.render();
+    }
     if (!this.assigned) {
       this.assigned = true;
       this.startWork();
@@ -364,6 +383,30 @@ export class SpotnavCard extends HTMLElement {
     if (changed) {
       this.renderLocal();
     }
+  }
+
+  /**
+   * Show `next` now if its words are here (or cannot be had), else keep what is shown and load it: the
+   * card renders again when it is in. One request per language and page, however often `hass` changes.
+   */
+  private followLanguage(next: Language): void {
+    if (this.wantedLanguage === next) {
+      return;
+    }
+    this.wantedLanguage = next;
+    if (!isLanguagePending(next)) {
+      this.language = next;
+      return;
+    }
+    void loadLanguage(next).then(() => {
+      if (this.wantedLanguage !== next) {
+        return;
+      }
+      this.language = next;
+      if (this.connected) {
+        this.render();
+      }
+    });
   }
 
   get hass(): HomeAssistantLike | null {
@@ -2238,6 +2281,17 @@ export class SpotnavCard extends HTMLElement {
     view?.destroy();
   }
 
+  /**
+   * True while the card has no language to show yet: the reader's file is on its way, or (before the
+   * first `hass`) the card is loading and would otherwise say so in English.
+   */
+  private waitingForLanguage(): boolean {
+    if (this.language !== null) {
+      return false;
+    }
+    return this.hassObject === null ? this.cardState.kind === "loading" : true;
+  }
+
   private get languageOrFallback(): Language {
     return this.language ?? resolveLanguage(null);
   }
@@ -2282,6 +2336,16 @@ export class SpotnavCard extends HTMLElement {
     const host = doc.createElement("div");
     host.className = VISUAL_CLASSES.shell;
     this.root.replaceChildren(style, host);
+
+    if (this.waitingForLanguage()) {
+      // The loading state before the reader's language is known or in: no words in any language yet.
+      const sentence = doc.createElement("p");
+      sentence.className = VISUAL_CLASSES.muted;
+      sentence.setAttribute("aria-busy", "true");
+      sentence.textContent = "\u2026";
+      host.append(sentence);
+      return;
+    }
 
     if (this.cardState.kind === "ready") {
       const model = buildModel({
