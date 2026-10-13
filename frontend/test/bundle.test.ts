@@ -42,7 +42,6 @@ const FORBIDDEN = [
   "Authorization",
   // `http://` and `https://` are asserted separately below: the compiled SVG code carries the W3C
   // namespace `http://www.w3.org/2000/svg`, which is an identifier rather than a network address.
-  "fetch(",
   "XMLHttpRequest",
   "EventSource",
   "new WebSocket",
@@ -59,6 +58,20 @@ describe("the committed asset", () => {
 
   it.each(FORBIDDEN)("does not mention %s", (needle) => {
     expect(SOURCE).not.toContain(needle);
+  });
+
+  it("fetches once, its language file from Home Assistant's own /spotnav/i18n/ path", () => {
+    // `fetch(` is otherwise forbidden: the one call is the language loader's (`src/i18n/index.ts`),
+    // with a relative URL, so it can only reach the Home Assistant that served the card.
+    expect(SOURCE.split("fetch(").length - 1).toBe(1);
+    expect(SOURCE).toContain('"/spotnav/i18n/"');
+  });
+
+  it("carries English only: no other language's words are compiled in", () => {
+    expect(SOURCE).toContain(translate("en", "state.loading"));
+    for (const language of ["sv", "nb", "da", "fi", "de", "nl", "fr", "es"] as const) {
+      expect(SOURCE, language).not.toContain(translate(language, "state.loading"));
+    }
   });
 
   it("reaches browser storage once, for the chart's remembered collapsed state only", () => {
