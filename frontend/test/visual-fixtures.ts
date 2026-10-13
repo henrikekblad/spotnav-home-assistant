@@ -424,3 +424,127 @@ export function chartHost(
   host.append(result.element);
   return { host, result };
 }
+
+/**
+ * The "From now" chart axis, as numbers every client asserts (the card here, Android from the same values).
+ *
+ * Rule: with a coming day published, "from_now" draws real time from the start of the current local hour
+ * to the end of the last published day (its next local midnight); positions are `(instant - start) / span`.
+ * Nothing that ended before the start is drawn; a plan run across midnight is one band, clipped to the axis.
+ * Nothing is overlaid, so no mark is subdued and no band hatched: bands are solid at
+ * `CROSS_PLAN_BAND_STYLE[kind].fillOpacity` (installed stronger than proposal), and the waiting-proposal
+ * rule is the same as on the day axis. Ticks are every local 00/06/12/18 inside the range plus the right
+ * edge; a midnight strictly inside is a day start (a dashed divider, labelled with weekday and date). With
+ * no coming day published, "from_now" is exactly the day axis. Max/Min (▲/▼) cover the drawn marks.
+ * The choice is this device's own (`storageKey` in the card's browser storage), default "day".
+ *
+ * The scene: 2026-10-11 16:00 Europe/Stockholm (CEST), tomorrow published, a plan 14:00 → 05:30 tomorrow.
+ */
+export const CROSS_AXIS_FROM_NOW = {
+  timeZone: "Europe/Stockholm",
+  modes: ["day", "from_now"],
+  defaultMode: "day",
+  storageKey: "spotnav-card.chart-axis",
+  today: "2026-10-11",
+  tomorrow: "2026-10-12",
+  nowMs: Date.parse("2026-10-11T16:00:00+02:00"),
+  axisStartMs: Date.parse("2026-10-11T16:00:00+02:00"),
+  axisEndMs: Date.parse("2026-10-13T00:00:00+02:00"),
+  spanMs: 32 * 3_600_000,
+  planStartMs: Date.parse("2026-10-11T14:00:00+02:00"),
+  planEndMs: Date.parse("2026-10-12T05:30:00+02:00"),
+  /** The one band: clipped at the axis start, one run across midnight. */
+  band: { startMs: Date.parse("2026-10-11T16:00:00+02:00"), endMs: Date.parse("2026-10-12T05:30:00+02:00"), startPosition: 0, endPosition: 13.5 / 32 },
+  ticks: [
+    { position: 2 / 32, label: "18:00", dayStart: false },
+    { position: 8 / 32, label: "00:00", dayStart: true },
+    { position: 14 / 32, label: "06:00", dayStart: false },
+    { position: 20 / 32, label: "12:00", dayStart: false },
+    { position: 26 / 32, label: "18:00", dayStart: false },
+    { position: 1, label: "00:00", dayStart: false },
+  ],
+  /** The now line: the 16:00 quarter-hour's own position. */
+  nowPosition: 0,
+} as const;
+
+/** One price per quarter-hour of a 96-slot day: a night trough, a morning and an evening peak. */
+export function dayPrices(base: number): number[] {
+  return Array.from({ length: 96 }, (_unused, index) => {
+    const hour = index / 4;
+    const morning = Math.exp(-((hour - 8) ** 2) / 4) * 90;
+    const evening = Math.exp(-((hour - 18.5) ** 2) / 5) * 140;
+    return Math.round((base + morning + evening + 10 * Math.sin(index / 3)) * 10) / 10;
+  });
+}
+
+/**
+ * The "From now" scene as a model: today and (unless `tomorrow: false`) tomorrow in quarter-hours. `plan`
+ * "installed" flags 14:00 → 05:30 tomorrow as installed; "pending" installs 14:00-16:15 and proposes
+ * 16:15 → 05:30 tomorrow beside it, waiting for the running window (the preview's Hybrid plan).
+ */
+export function axisSceneModel(
+  options: { axis?: "day" | "from_now"; tomorrow?: boolean; plan?: "installed" | "pending" | "none"; nowMs?: number; language?: CardModel["language"]; overrides?: Record<string, unknown> } = {},
+): CardModel {
+  const scene = CROSS_AXIS_FROM_NOW;
+  const plan = options.plan ?? "installed";
+  const span = (start: string, end: string) => ({ start, end, startMs: Date.parse(start), endMs: Date.parse(end) });
+  const installed =
+    plan === "installed"
+      ? [span("2026-10-11T14:00:00+02:00", "2026-10-12T05:30:00+02:00")]
+      : plan === "pending"
+        ? [span("2026-10-11T14:00:00+02:00", "2026-10-11T16:15:00+02:00")]
+        : [];
+  const proposal =
+    plan === "pending" ? [span("2026-10-11T16:15:00+02:00", "2026-10-12T05:30:00+02:00")] : plan === "installed" ? installed : [];
+  const overlaps = (spans: typeof installed, from: number, to: number) =>
+    spans.some((entry) => from < entry.endMs && entry.startMs < to);
+  const flagged = (startIso: string, day: string, prices: number[]) => {
+    const startMs = Date.parse(startIso);
+    return quarterHourRows(startIso, prices, {
+      day,
+      flags: (index) => {
+        const from = startMs + index * 900_000;
+        return {
+          installed_planned: overlaps(installed, from, from + 900_000),
+          proposal_planned: overlaps(proposal, from, from + 900_000),
+        };
+      },
+    });
+  };
+  const rows = [
+    ...flagged("2026-10-11T00:00:00+02:00", scene.today, dayPrices(60)),
+    ...(options.tomorrow === false ? [] : flagged("2026-10-12T00:00:00+02:00", scene.tomorrow, dayPrices(45))),
+  ];
+  const base = rawDashboard(options.overrides ?? {});
+  const basePlan = base.plan as Record<string, unknown>;
+  const periods = (spans: typeof installed) => spans.map((entry) => ({ start: entry.start, end: entry.end }));
+  const payload = rawDashboard({
+    ...(options.overrides ?? {}),
+    market: { ...(base.market as Record<string, unknown>), timezone: scene.timeZone },
+    prices: {
+      ...(base.prices as Record<string, unknown>),
+      intervals: rows,
+      interval_count: rows.length,
+      priced_slots: rows.length,
+    },
+    plan: {
+      ...basePlan,
+      proposal: { ...(basePlan.proposal as Record<string, unknown>), periods: periods(proposal) },
+      installed: { ...(basePlan.installed as Record<string, unknown>), periods: periods(installed), active_period_index: installed.length > 0 ? 0 : null },
+      relation:
+        plan === "pending"
+          ? { applied: false, applied_identity: "installed-1", pending_identity: "proposal-1" }
+          : { applied: true, applied_identity: "installed-1", pending_identity: null },
+    },
+  });
+  const result = decodeDashboard(payload);
+  if (!result.ok) {
+    throw new Error(`axis scene did not decode: ${result.failure}`);
+  }
+  return buildModel({
+    dashboard: result.value,
+    language: options.language ?? "en",
+    nowMs: options.nowMs ?? scene.nowMs,
+    chartAxis: options.axis ?? "from_now",
+  });
+}
