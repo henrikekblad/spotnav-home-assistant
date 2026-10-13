@@ -3,9 +3,15 @@
 // The rules match the other SpotNav clients; the cross-client fixture in
 // `frontend/test/visual-fixtures.ts` names the values they agree on.
 //
-// Time model: one wall-clock axis, today over tomorrow.
-//   * The plot has one x axis: the local wall clock of one day, 00:00 to 24:00 across the full width.
-//     Today and tomorrow are overlaid on it.
+// Time model. The x axis is one `TimeAxis` with two implementations, chosen by a display preference of
+// this browser (`ChartAxisMode`):
+//   * "day" (the default), the wall-clock overlay: the local wall clock of one day, 00:00 to 24:00
+//     across the full width, today and tomorrow overlaid on it (`wallClockAxis`). The rules below are
+//     this axis's.
+//   * "from_now", the real-time range: from the start of the current hour to the end of the last
+//     published day, placed by instant (`rangeAxis`). Only when a coming day is published; otherwise
+//     "from_now" is exactly "day". On the range nothing is overlaid: no mark is subdued and no band is
+//     hatched, a run across midnight is one band, and what ended before the axis starts is not drawn.
 //   * Rows are grouped by the backend's `day`; a mark's x is the fraction of its own local wall clock.
 //   * A date's role (`past`, `today`, `future`) is read from the market's clock at the injected now
 //     instant, never from a day's position in the rows: an accepted capture can still hold the day the
@@ -17,8 +23,9 @@
 //     rows and so no marks.
 //   * 23-, 24- and 25-hour days are neither stretched nor filled; the axis keeps its five fixed ticks.
 //
-// Every coordinate goes through `xForWallClock(scale, position)`: marks, hit targets, plan bands, ticks,
-// the now line, the selection line and the pointer's inverse mapping.
+// Every instant becomes a position through the series' `time.position`, and every position an x through
+// `xForWallClock(scale, position)`: marks, hit targets, plan bands, ticks, the now line, the selection
+// line and the pointer's inverse mapping.
 
 import type { PriceInterval } from "./validate";
 
@@ -205,6 +212,95 @@ export function wallClockPosition(clock: ZoneClock, instantMs: number): number {
   return clock.msOfDay(instantMs) / DAY_MS;
 }
 
+/**
+ * How the x axis reads time: the wall-clock overlay of one day ("day", the default) or real time from
+ * the current hour to the end of the last published day ("from_now"). A display preference of this
+ * browser, never a charger setting.
+ */
+export type ChartAxisMode = "day" | "from_now";
+
+export const CHART_AXIS_MODES: readonly ChartAxisMode[] = ["day", "from_now"];
+
+export const DEFAULT_CHART_AXIS: ChartAxisMode = "day";
+
+/**
+ * The one time mapping, with two implementations (`wallClockAxis`, `rangeAxis`). Everything that turns
+ * an instant into a position on the plot asks this object; nothing else knows which axis is drawn.
+ */
+export interface TimeAxis {
+  /** `wall_clock`: one day 00-24, other days overlaid on it. `range`: real time from `startMs` to `endMs`. */
+  kind: "wall_clock" | "range";
+  /** Other days are drawn over the now-fact day: their marks subdued, their plan bands hatched. */
+  overlay: boolean;
+  /** The instants at the left and right edges; `null` on the wall-clock axis, which has one per day. */
+  startMs: number | null;
+  endMs: number | null;
+  /** The time the full plot width stands for: 24 hours on the wall-clock axis, end minus start on the range. */
+  spanMs: number;
+  /**
+   * The x fraction (0 left edge, 1 right edge) of an instant. `edge: "end"` reads the instant as the end of
+   * a span: on the wall-clock axis an end on local midnight is that day's 24:00, not the next 00:00.
+   */
+  position(instantMs: number, edge?: "start" | "end"): number;
+  /** Whether the half-open span `[startMs, endMs)` has any part on the axis. */
+  shows(startMs: number, endMs: number): boolean;
+}
+
+/** The wall-clock overlay: an instant's place is its local time of day, whichever day it is on. */
+export function wallClockAxis(clock: ZoneClock): TimeAxis {
+  return {
+    kind: "wall_clock",
+    overlay: true,
+    startMs: null,
+    endMs: null,
+    spanMs: DAY_MS,
+    position(instantMs, edge = "start") {
+      const position = wallClockPosition(clock, instantMs);
+      return edge === "end" && position === 0 ? 1 : position;
+    },
+    shows: () => true,
+  };
+}
+
+/** The real-time range: an instant's place is its share of the time from `startMs` to `endMs`. */
+export function rangeAxis(startMs: number, endMs: number): TimeAxis {
+  const spanMs = Math.max(1, endMs - startMs);
+  return {
+    kind: "range",
+    overlay: false,
+    startMs,
+    endMs,
+    spanMs,
+    position: (instantMs) => (instantMs - startMs) / spanMs,
+    shows: (from, to) => to > startMs && from < endMs,
+  };
+}
+
+/** The instant the local hour containing `instantMs` began (zones with half-hour offsets included). */
+export function localHourStart(instantMs: number, clock: ZoneClock): number {
+  return instantMs - (clock.msOfDay(instantMs) % HOUR_MS);
+}
+
+/**
+ * The axis the chart draws for a mode. "from_now" is the range from the start of the current hour to the
+ * end of the last published day, but only while a coming day is published (a day after the now-fact day
+ * with at least one row); without one it is the wall-clock axis, so the two modes then draw the same.
+ */
+export function timeAxisFor(
+  mode: ChartAxisMode,
+  days: readonly ChartDay[],
+  clock: ZoneClock,
+  nowMs: number,
+): TimeAxis {
+  const last = days[days.length - 1];
+  if (mode !== "from_now" || last === undefined || !days.some((day) => day.role === "future" && day.slots > 0)) {
+    return wallClockAxis(clock);
+  }
+  const startMs = localHourStart(nowMs, clock);
+  const endMs = last.startMs + last.lengthMs;
+  return endMs > startMs ? rangeAxis(startMs, endMs) : wallClockAxis(clock);
+}
+
 export function yAt(scale: ChartScale, value: number): number {
   const span = scale.maxValue - scale.minValue;
   const share = span <= 0 ? 0 : (value - scale.minValue) / span;
@@ -292,13 +388,24 @@ export interface ChartMark {
 export interface AxisTick {
   position: number;
   instantMs: number;
+  /**
+   * A local midnight inside the range axis, where one day gives way to the next: drawn as a divider and
+   * labelled with the new day (weekday and date) rather than its time. Never set on the wall-clock axis
+   * or on an edge.
+   */
+  dayStart?: true;
 }
 
 export interface ChartSeries {
   marks: ChartMark[];
   days: ChartDay[];
-  /** The one tick sequence both days share: five wall-clock positions. */
+  /**
+   * The ticks: on the wall-clock axis the one sequence both days share (five wall-clock positions); on the
+   * range every local 00/06/12/18 inside it plus the right edge.
+   */
   axis: AxisTick[];
+  /** The time mapping every position in this series came from. */
+  time: TimeAxis;
   hourly: boolean;
   minValue: number;
   maxValue: number;
@@ -324,6 +431,7 @@ export function chartSeries(
   rows: readonly PriceInterval[],
   timeZone: string,
   nowMs: number,
+  mode: ChartAxisMode = DEFAULT_CHART_AXIS,
 ): ChartSeries {
   const clock = zoneClock(timeZone);
   // The one authority for a date's role: the market's local day at the now instant, never inferred from row order or the host's zone.
@@ -363,6 +471,7 @@ export function chartSeries(
     });
   }
 
+  const time = timeAxisFor(mode, days, clock, nowMs);
   const marks: ChartMark[] = [];
   for (const [dayIndex, day] of days.entries()) {
     const bucket = byDay.get(day.key) as PriceInterval[];
@@ -370,6 +479,9 @@ export function chartSeries(
       const price = row.effective_price;
       if (price === null || !Number.isFinite(price)) {
         continue; // Missing, never zero.
+      }
+      if (!time.shows(row.startMs, row.endMs)) {
+        continue; // Over before the range axis starts: not drawn.
       }
       const hourly = row.duration_minutes >= 60;
       const drawnMs = hourly ? row.startMs + row.duration_minutes * 60_000 / 2 : row.startMs;
@@ -381,11 +493,11 @@ export function chartSeries(
         dayKey: row.day,
         dayIndex,
         role: day.role,
-        tomorrow: day.role !== "today",
+        tomorrow: time.overlay && day.role !== "today",
         hourly,
         proposalPlanned: row.proposal_planned,
         installedPlanned: row.installed_planned,
-        position: wallClockPosition(clock, drawnMs),
+        position: time.position(drawnMs),
         wallClock: wallClockOf(drawnMs, clock),
         offset: clock.offsetLabel(drawnMs),
       });
@@ -396,7 +508,8 @@ export function chartSeries(
   return {
     marks,
     days,
-    axis: axisTicks(days, clock),
+    axis: time.kind === "range" ? rangeTicks(time, days, clock) : axisTicks(days, clock),
+    time,
     hourly: marks.length > 0 && marks.every((mark) => mark.hourly),
     minValue: Math.min(0, ...(prices.length > 0 ? prices : [0])),
     maxValue: Math.max(1, ...(prices.length > 0 ? prices : [1])),
@@ -492,6 +605,33 @@ export function axisTicks(days: readonly ChartDay[], clock: ZoneClock): AxisTick
 }
 
 /**
+ * The range axis's ticks: every local 00:00, 06:00, 12:00 and 18:00 of the published days that falls
+ * inside the range (each found by instant, so a 23- or 25-hour day keeps its ticks on those wall clocks),
+ * then the right edge. A midnight strictly inside is a `dayStart`; the left edge, the current hour, has no
+ * tick of its own.
+ */
+export function rangeTicks(axis: TimeAxis, days: readonly ChartDay[], clock: ZoneClock): AxisTick[] {
+  const startMs = axis.startMs ?? 0;
+  const endMs = axis.endMs ?? startMs;
+  const ticks: AxisTick[] = [];
+  for (const day of days) {
+    for (const hour of [0, 6, 12, 18]) {
+      const instantMs = hour === 0 ? day.startMs : instantAtWallClock([day], hour * 60, clock);
+      if (instantMs < startMs || instantMs >= endMs) {
+        continue;
+      }
+      const tick: AxisTick = { position: axis.position(instantMs), instantMs };
+      if (hour === 0 && instantMs > startMs) {
+        tick.dayStart = true;
+      }
+      ticks.push(tick);
+    }
+  }
+  ticks.push({ position: 1, instantMs: endMs });
+  return ticks;
+}
+
+/**
  * An instant that reads `minuteOfDay` on the wall clock of one of these days.
  *
  * Corrected like `localMidnightAt`: test the hour either side and keep the candidate closest to the
@@ -568,9 +708,10 @@ export function markGeometry(
   xs: readonly number[],
   scale: ChartMetrics,
   hourly: boolean,
+  spanMs: number = DAY_MS,
 ): ChartMarkGeometry {
   const panel = Math.max(1, scale.right - scale.left);
-  const spacing = nearestCentreSpacing(xs, panel / (MINUTES_PER_DAY / 15));
+  const spacing = nearestCentreSpacing(xs, panel * (15 * 60_000 / spanMs));
   const preferred = Math.min(
     Math.max(preferredMarkRadius(scale, false), MIN_POINT_RADIUS),
     MAX_POINT_RADIUS,
@@ -581,7 +722,7 @@ export function markGeometry(
     MAX_POINT_RADIUS,
   );
   const tomorrowRadius = Math.min(tomorrowPreferred, normalRadius * TOMORROW_RADIUS_RATIO);
-  const hourHalf = hourly ? panel / 24 : 0;
+  const hourHalf = hourly ? panel * (HOUR_MS / spanMs) : 0;
   return {
     spacing,
     normalRadius,
@@ -614,12 +755,13 @@ export function hitTargets(
   current: ChartMark | null,
 ): ChartHitTarget[] {
   const xs = series.marks.map((mark) => xForWallClock(scale, mark.position));
-  const geometry = markGeometry(xs, scale, series.hourly);
+  const spanMs = series.time.spanMs;
+  const geometry = markGeometry(xs, scale, series.hourly, spanMs);
   const panelWidth = Math.max(0, scale.right - scale.left);
   return series.marks.map((mark, index) => {
     const isCurrent = current !== null && mark.startMs === current.startMs;
-    // An hourly segment's half length is its duration against the shared 24-hour axis.
-    const halfLength = mark.hourly ? ((mark.durationMinutes * 60_000) / 2 / DAY_MS) * panelWidth : 0;
+    // An hourly segment's half length is its duration against the time the axis spans.
+    const halfLength = mark.hourly ? ((mark.durationMinutes * 60_000) / 2 / spanMs) * panelWidth : 0;
     return {
       mark,
       x: xs[index] as number,
@@ -704,17 +846,23 @@ export function walkMarks(
 }
 
 export interface PlanBand {
+  /** The date of the run's first drawn interval. On the range axis a run may go on into the next date. */
   dayKey: string;
   dayIndex: number;
+  /** The drawn span: on the range axis clipped to the axis, so a run under way starts at the axis's left edge. */
   startMs: number;
   endMs: number;
-  /** Wall-clock fractions of one day, same x function as the marks. An edge on local midnight is 1 (24:00), the day's own end. */
+  /**
+   * Positions from the series' time mapping, same function as the marks. On the wall-clock axis an edge
+   * on local midnight is 1 (24:00), the day's own end.
+   */
   startPosition: number;
   endPosition: number;
   /**
-   * Drawn hatched rather than solid: the run is not on the market-local day the now fact is in, the same
-   * rule as a mark's `tomorrow`. On the shared axis tomorrow's 00:00-05:30 sits left of the now line, and
-   * without this it reads as a plan already over.
+   * Drawn hatched rather than solid: on the wall-clock overlay, the run is not on the market-local day the
+   * now fact is in, the same rule as a mark's `tomorrow`. On the shared axis tomorrow's 00:00-05:30 sits
+   * left of the now line, and without this it reads as a plan already over. Never set on the range axis,
+   * where every run sits at its own time.
    */
   tomorrow: boolean;
 }
@@ -725,44 +873,43 @@ export interface PlanBands {
 }
 
 /**
- * The wall-clock fraction of one band edge. An edge on local midnight is the end of the day it belongs
- * to (24:00) and is drawn at the right edge, so a run ending at day's end does not wrap to 00:00. Marks
- * never face this case, as no interval starts at 24:00.
+ * The runs of flagged rows. On the wall-clock overlay a run never crosses a local day; on the range it
+ * goes on across midnight while the rows are contiguous, skips what is over before the axis starts and is
+ * clipped to the axis.
  */
-function bandPosition(instantMs: number, day: ChartDay, clock: ZoneClock): number {
-  const position = wallClockPosition(clock, instantMs);
-  return instantMs > day.startMs && position === 0 ? 1 : position;
-}
-
 function runsOf(
   rows: readonly PriceInterval[],
   days: readonly ChartDay[],
-  clock: ZoneClock,
+  time: TimeAxis,
   flag: (row: PriceInterval) => boolean,
 ): PlanBand[] {
   const indexOfDay = new Map(days.map((day, index) => [day.key, index]));
+  const lower = time.startMs ?? Number.NEGATIVE_INFINITY;
+  const upper = time.endMs ?? Number.POSITIVE_INFINITY;
   const bands: PlanBand[] = [];
   let open: PlanBand | null = null;
   for (const row of rows.slice().sort((left, right) => left.startMs - right.startMs)) {
     const dayIndex = indexOfDay.get(row.day);
-    if (!flag(row) || dayIndex === undefined) {
+    if (!flag(row) || dayIndex === undefined || !time.shows(row.startMs, row.endMs)) {
       open = null;
       continue;
     }
     const day = days[dayIndex] as ChartDay;
-    if (open !== null && open.dayIndex === dayIndex && open.endMs === row.startMs) {
-      open.endMs = row.endMs;
-      open.endPosition = bandPosition(row.endMs, day, clock);
+    const startMs = Math.max(row.startMs, lower);
+    const endMs = Math.min(row.endMs, upper);
+    if (open !== null && (!time.overlay || open.dayIndex === dayIndex) && open.endMs === startMs) {
+      open.endMs = endMs;
+      open.endPosition = time.position(endMs, "end");
       continue;
     }
     open = {
       dayKey: row.day,
       dayIndex,
-      startMs: row.startMs,
-      endMs: row.endMs,
-      startPosition: bandPosition(row.startMs, day, clock),
-      endPosition: bandPosition(row.endMs, day, clock),
-      tomorrow: day.role !== "today",
+      startMs,
+      endMs,
+      startPosition: time.position(startMs, "start"),
+      endPosition: time.position(endMs, "end"),
+      tomorrow: time.overlay && day.role !== "today",
     };
     bands.push(open);
   }
@@ -781,8 +928,8 @@ export interface PendingProposal {
 /**
  * The shaded spans, from the backend's half-open flags.
  *
- * A run never crosses a local day and is positioned on the shared wall-clock axis like the marks, while
- * `dayKey`/`dayIndex` keep its real date. `proposal` carries only what the installed schedule does not
+ * Runs are positioned by the series' time mapping like the marks (`time`; the wall-clock overlay when
+ * omitted), while `dayKey`/`dayIndex` keep the real date. `proposal` carries only what the installed schedule does not
  * already cover, so an applied proposal is not darkened twice.
  *
  * With a proposal pending, the installed plan is shown only for the window under way, and everything
@@ -794,12 +941,12 @@ export function plannedBands(
   days: readonly ChartDay[],
   timeZone: string,
   pending: PendingProposal | null = null,
+  time: TimeAxis = wallClockAxis(zoneClock(timeZone)),
 ): PlanBands {
-  const clock = zoneClock(timeZone);
   if (pending === null) {
     return {
-      installed: runsOf(rows, days, clock, (row) => row.installed_planned),
-      proposal: runsOf(rows, days, clock, (row) => row.proposal_planned && !row.installed_planned),
+      installed: runsOf(rows, days, time, (row) => row.installed_planned),
+      proposal: runsOf(rows, days, time, (row) => row.proposal_planned && !row.installed_planned),
     };
   }
   const running = pending.running;
@@ -807,7 +954,7 @@ export function plannedBands(
     running !== null && row.installed_planned && row.startMs < running.endMs && running.startMs < row.endMs;
   const afterRunning = running === null ? Number.NEGATIVE_INFINITY : running.endMs;
   return {
-    installed: runsOf(rows, days, clock, inRunning),
-    proposal: runsOf(rows, days, clock, (row) => row.proposal_planned && row.startMs >= afterRunning),
+    installed: runsOf(rows, days, time, inRunning),
+    proposal: runsOf(rows, days, time, (row) => row.proposal_planned && row.startMs >= afterRunning),
   };
 }
