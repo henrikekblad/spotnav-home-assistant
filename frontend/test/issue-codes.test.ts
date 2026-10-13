@@ -9,7 +9,8 @@ import { join } from "node:path";
 
 import { describe, expect, it } from "vitest";
 
-import { LANGUAGES, TRANSLATIONS, translate, type Language } from "../src/i18n";
+import { LANGUAGES, translate, type Language } from "../src/i18n";
+import { TRANSLATIONS } from "../src/i18n/all";
 import {
   ACTIVE_CONTROL_REASON_KEYS,
   EXECUTION_ERROR_KEYS,
