@@ -807,5 +807,12 @@
   "settings.vehicle.minimumSlider": "Nivel de carga mínimo, desactivado o porcentaje",
   "settings.vehicle.minimumNeedsSoc": "necesita el nivel de carga del coche",
   "settings.vehicle.minimumHelp": "Por debajo de este nivel SpotNav carga de inmediato a plena corriente, sea cual sea la estrategia. Una pausa o un Detener que elijas tiene prioridad. Necesita el nivel de carga del coche.",
-  "settings.vehicle.sourcesHelp": "Solo se lee para saber qué coche está enchufado."
+  "settings.vehicle.sourcesHelp": "Solo se lee para saber qué coche está enchufado.",
+  "settings.section.display": "Visualización",
+  "display.applies": "Solo este dispositivo: se aplica a todas las tarjetas SpotNav de este navegador.",
+  "display.chartAxis": "Eje de tiempo del gráfico",
+  "display.chartAxis.day": "Día",
+  "display.chartAxis.dayHelp": "00–24, con mañana dibujado sobre hoy.",
+  "display.chartAxis.fromNow": "Desde ahora",
+  "display.chartAxis.fromNowHelp": "Desde esta hora hasta el final del último día publicado. Hasta que se publiquen los precios de mañana, igual que Día."
 }

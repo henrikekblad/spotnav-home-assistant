@@ -807,5 +807,12 @@
   "settings.vehicle.minimumSlider": "Minimaal laadniveau, uit of procent",
   "settings.vehicle.minimumNeedsSoc": "vereist het laadniveau van de auto",
   "settings.vehicle.minimumHelp": "Onder dit niveau laadt SpotNav direct op volle stroom, ongeacht de strategie. Een pauze of Stoppen die je zelf kiest gaat voor. Vereist het laadniveau van de auto.",
-  "settings.vehicle.sourcesHelp": "Alleen gelezen om te bepalen welke auto is aangesloten."
+  "settings.vehicle.sourcesHelp": "Alleen gelezen om te bepalen welke auto is aangesloten.",
+  "settings.section.display": "Weergave",
+  "display.applies": "Alleen dit apparaat: geldt voor alle SpotNav-kaarten in deze browser.",
+  "display.chartAxis": "Tijdas van de grafiek",
+  "display.chartAxis.day": "Dag",
+  "display.chartAxis.dayHelp": "00–24, met morgen over vandaag getekend.",
+  "display.chartAxis.fromNow": "Vanaf nu",
+  "display.chartAxis.fromNowHelp": "Van dit uur tot het einde van de laatst gepubliceerde dag. Tot de prijzen van morgen er zijn, hetzelfde als Dag."
 }

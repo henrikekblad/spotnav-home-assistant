@@ -10,7 +10,7 @@
 // bar, and the header's History and Settings actions.
 
 import { chargePeriodsLabel, chargePeriodsOptions, chargePeriodsReplacement, chargePeriodsValue } from "./charge-periods";
-import { chartNowAt, nextIntervalBoundary, type ChartMark, type ChartNow } from "./chart";
+import { chartNowAt, nextIntervalBoundary, type ChartAxisMode, type ChartMark, type ChartNow } from "./chart";
 import {
   createChartInteraction,
   FALLBACK_SIZE,
@@ -147,6 +147,11 @@ export interface CardViewInput {
   chartCollapsed?: boolean;
   /** The price row was pressed and the chart collapsed (`true`) or expanded; the card remembers it. */
   onChartCollapsedChange?: (collapsed: boolean) => void;
+  /**
+   * The chart's time axis was chosen in Settings (Display): a preference of this browser, which the card
+   * stores and applies to every SpotNav card in it. Anyone may choose it, not only an administrator.
+   */
+  onChartAxisChange?: (mode: ChartAxisMode) => void;
   /**
    * What the row does when a person acts: the card owns the request, the guard and the refresh; the
    * view only reports the click with the backend-supplied choice.
@@ -2021,9 +2026,67 @@ export function createCardView(input: CardViewInput): CardView {
       body.append(notifications);
     }
 
+    body.append(displaySectionBody());
+
     body.append(supportSectionBody());
 
     return body;
+  }
+
+  /** The chart axis this view shows as chosen: the model's, then whatever was chosen here since. */
+  let chartAxisChoice: ChartAxisMode = model.chartAxis;
+
+  /**
+   * Display: how this device draws the card, not a charger setting. Stored in this browser for every
+   * SpotNav card in it, and marked so (as the site's sections say which chargers they apply to). Anyone may
+   * change it, administrator or not.
+   */
+  function displaySectionBody(): HTMLElement {
+    const section = element(doc, "section", C.settingsSection);
+    section.dataset["section"] = "display";
+    section.append(sectionHeading(doc, "display", translate(model.language, "settings.section.display")));
+    const applies = element(doc, "p", C.siteApplies, translate(model.language, "display.applies"));
+    applies.dataset["deviceOnly"] = "true";
+    section.append(applies);
+    const label = translate(model.language, "display.chartAxis");
+    const value = translate(model.language, chartAxisChoice === "from_now" ? "display.chartAxis.fromNow" : "display.chartAxis.day");
+    const options: ChoiceOption[] = [
+      {
+        value: "day",
+        label: translate(model.language, "display.chartAxis.day"),
+        help: translate(model.language, "display.chartAxis.dayHelp"),
+      },
+      {
+        value: "from_now",
+        label: translate(model.language, "display.chartAxis.fromNow"),
+        help: translate(model.language, "display.chartAxis.fromNowHelp"),
+      },
+    ];
+    const [row] = settingRow(doc, {
+      key: "chart_axis",
+      label,
+      value,
+      onTap: () =>
+        openValueEditor(
+          label,
+          (handlers) =>
+            singleEditor(
+              doc,
+              model.language,
+              { options, selected: chartAxisChoice, idPrefix: `${idPrefix}-chart-axis` },
+              async (chosen) => {
+                chartAxisChoice = chosen === "from_now" ? "from_now" : "day";
+                input.onChartAxisChange?.(chartAxisChoice);
+                return null;
+              },
+              handlers,
+            ),
+          { anyone: true },
+        ),
+      changeableText: translate(model.language, "settings.row.changeable", { label, value }),
+    });
+    section.append(row!);
+    return section;
   }
 
   /**
@@ -2139,12 +2202,16 @@ export function createCardView(input: CardViewInput): CardView {
     return help;
   }
 
-  /** One value's own editor in the value dialog: Settings steps aside, and comes back on Cancel or a save. */
+  /**
+   * One value's own editor in the value dialog: Settings steps aside, and comes back on Cancel or a save.
+   * Only an administrator's, except for a display preference of this device (`anyone`).
+   */
   function openValueEditor(
     title: string,
     build: (handlers: EditorHandlers) => HTMLFormElement | { form: HTMLFormElement; close: () => void },
+    options: { anyone?: boolean } = {},
   ): void {
-    if (destroyed || !input.isAdmin) {
+    if (destroyed || (!input.isAdmin && options.anyone !== true)) {
       return;
     }
     hideForChildDialog();
