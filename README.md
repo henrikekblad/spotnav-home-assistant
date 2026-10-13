@@ -100,7 +100,9 @@ cd frontend && npm ci && npm test && npm run check-dist
 ```
 
 The card source is in `frontend/`; the compiled bundle in
-`custom_components/spotnav/www/` is committed and `npm run build` regenerates it.
+`custom_components/spotnav/www/` and its language files in `www/i18n/` are committed, and
+`npm run build` regenerates both (`npm run check-dist` fails while either is stale). The bundle
+carries English only and fetches the reader's language from `/spotnav/i18n/<lang>.<hash>.json`.
 
 How charger control is being restructured into one explicit model, running in shadow mode for now, is described in
 [docs/architecture-state.md](docs/architecture-state.md).
