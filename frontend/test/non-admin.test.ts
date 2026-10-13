@@ -7,7 +7,7 @@ import { join } from "node:path";
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { translate } from "../src/i18n";
+import { LANGUAGES, translate } from "../src/i18n";
 import { ACTION_API_VERSION, SETTINGS_API_VERSION } from "../src/types";
 import { VISUAL_CLASSES as C } from "../src/visual-styles";
 import { FakeHass, mountCard, settingsOffered, shownSections } from "./helpers";
@@ -16,25 +16,33 @@ const DASHBOARD_DIR = join(__dirname, "..", "..", "tests", "fixtures", "dashboar
 const CONFIG = { type: "custom:spotnav-card", charger: "entry_a" };
 const shadow = (element: Element): ShadowRoot => element.shadowRoot as ShadowRoot;
 
-/** The dashboard as `spotnav/get_dashboard` answers a reader who is not an administrator. */
-function readerDashboard(): Record<string, unknown> {
-  return JSON.parse(
-    readFileSync(join(DASHBOARD_DIR, "cheapest_direct_site_read_only.json"), "utf8"),
-  ) as Record<string, unknown>;
+/** The dashboard as `spotnav/get_dashboard` answers a reader who is not an administrator (or the named fixture). */
+function readerDashboard(name = "cheapest_direct_site_read_only"): Record<string, unknown> {
+  return JSON.parse(readFileSync(join(DASHBOARD_DIR, `${name}.json`), "utf8")) as Record<string, unknown>;
 }
 
 async function settle(): Promise<void> {
   await vi.advanceTimersByTimeAsync(0);
 }
 
-async function mountedReader(): Promise<{ hass: FakeHass; element: ReturnType<typeof mountCard> }> {
+/** The same dashboard where an administrator let users who are not administrators change the strategy and plan. */
+function lettingUsersPlan(name?: string): Record<string, unknown> {
+  const payload = readerDashboard(name);
+  (payload["settings"] as Record<string, unknown>)["users_change_plan"] = true;
+  return payload;
+}
+
+async function mountedReader(
+  payload: Record<string, unknown> = readerDashboard(),
+  admin = false,
+): Promise<{ hass: FakeHass; element: ReturnType<typeof mountCard> }> {
   const hass = new FakeHass();
   const element = mountCard(CONFIG, hass);
   const snapshot = hass.snapshot("reader", "en");
-  snapshot.user = { is_admin: false };
+  snapshot.user = { is_admin: admin };
   element.hass = snapshot;
   await settle();
-  hass.resolveNext(readerDashboard());
+  hass.resolveNext(payload);
   await settle();
   return { hass, element };
 }
@@ -127,5 +135,92 @@ describe("a reader who is not an administrator", () => {
     expect(shownSections(element)).toEqual(["display"]);
     expect(shadow(element).querySelector("[data-setting='market'], [data-edit='area']")).toBeNull();
     expect(sent(hass, "spotnav/get_market_options")).toHaveLength(0);
+  });
+});
+
+describe("a reader who is not an administrator, where the charger lets users change strategy and plan", () => {
+  it("chooses a strategy: the available rows are buttons, and a choice is one settings write", async () => {
+    // A site where every strategy can work, so there is one to choose.
+    const { hass, element } = await mountedReader(lettingUsersPlan("solar_derived_site"));
+    shadow(element).querySelector<HTMLButtonElement>(`.${C.strategyButton}`)?.click();
+    const dialog = openDialog(element);
+    expect(dialog?.querySelector(`.${C.settingsReadOnly}`)).toBeNull();
+    const free = Array.from(dialog?.querySelectorAll<HTMLButtonElement>("[data-strategy]") ?? []).filter(
+      (row) => !row.disabled,
+    );
+    expect(free.length).toBeGreaterThan(0);
+    const chosen = free[0]!.dataset["strategy"];
+    free[0]!.click();
+    await settle();
+    // The write reads the record fresh first, then replaces it.
+    hass.resolveNext({
+      api_version: SETTINGS_API_VERSION,
+      ok: true,
+      error: null,
+      settings: lettingUsersPlan("solar_derived_site")["settings"],
+      pause: { choice: null, admitted_at: null, expires_at: null },
+    });
+    await settle();
+    const update = sent(hass, "spotnav/update_settings")[0] as Record<string, any> | undefined;
+    expect(update?.["settings"]["strategy"]).toBe(chosen);
+  });
+
+  it("edits the plan: the form has Save and no read-only note", async () => {
+    const { hass, element } = await mountedReader(lettingUsersPlan());
+    shadow(element).querySelector<HTMLButtonElement>("[data-setting='plan']")?.click();
+    await settle();
+    hass.resolveNext({
+      api_version: SETTINGS_API_VERSION,
+      ok: true,
+      error: null,
+      settings: lettingUsersPlan()["settings"],
+      pause: { choice: null, admitted_at: null, expires_at: null },
+    });
+    await settle();
+    const dialog = openDialog(element);
+    expect(dialog?.querySelector(`.${C.settingsReadOnly}`)).toBeNull();
+    expect(dialog?.querySelector(`.${C.settingsSave}`)).not.toBeNull();
+  });
+
+  it("still sees only Display in Settings, and not the switch itself", async () => {
+    const { element } = await mountedReader(lettingUsersPlan());
+    shadow(element).querySelector<HTMLButtonElement>("[data-settings='open']")?.click();
+    expect(shownSections(element)).toEqual(["display"]);
+    expect(shadow(element).querySelector("[data-row='users_change_plan']")).toBeNull();
+  });
+});
+
+describe("the administrator's switch", () => {
+  it("is a row in the charger's section, Off by default, and turning it on is one settings write", async () => {
+    const { hass, element } = await mountedReader(readerDashboard(), true);
+    shadow(element).querySelector<HTMLButtonElement>("[data-settings='open']")?.click();
+    const row = openDialog(element)?.querySelector<HTMLElement>("[data-section='entities'] [data-row='users_change_plan']");
+    expect(row?.textContent).toBe(translate("en", "settings.usersPlan.label") + translate("en", "settings.value.off"));
+    row?.querySelector<HTMLButtonElement>("[data-edit='users_change_plan']")?.click();
+    await settle();
+    const form = openDialog(element)?.querySelector<HTMLFormElement>("form[data-value-editor='single']");
+    expect(form?.textContent).toContain(translate("en", "settings.usersPlan.help"));
+    form?.querySelector<HTMLInputElement>("[data-value-option='on']")?.click();
+    form?.requestSubmit();
+    await settle();
+    hass.resolveNext({
+      api_version: SETTINGS_API_VERSION,
+      ok: true,
+      error: null,
+      settings: readerDashboard()["settings"],
+      pause: { choice: null, admitted_at: null, expires_at: null },
+    });
+    await settle();
+    const update = sent(hass, "spotnav/update_settings")[0] as Record<string, any> | undefined;
+    expect(update?.["settings"]["users_change_plan"]).toBe(true);
+  });
+
+  it("has its words in every language, in Swedish as asked", () => {
+    for (const language of LANGUAGES) {
+      for (const key of ["settings.usersPlan.label", "settings.usersPlan.help"] as const) {
+        expect(translate(language, key)).not.toBe(key);
+      }
+    }
+    expect(translate("sv", "settings.usersPlan.label")).toBe("Låt användare som inte är administratörer ändra strategi och plan");
   });
 });
