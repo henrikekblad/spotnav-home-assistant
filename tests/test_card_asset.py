@@ -110,6 +110,67 @@ async def test_setup_registers_the_hashed_url_computed_off_the_loop(
     assert urls == [card_asset.card_asset_url(MANIFEST["version"], real())]
 
 
+#: The language files the build wrote: every language but English, each named by its content.
+LANGUAGE_FILES = sorted(card_asset.LANGUAGE_DIR_PATH.glob("*.json"))
+
+
+def test_every_language_but_english_is_a_content_named_file_in_the_package() -> None:
+    import hashlib
+    import re
+
+    assert card_asset.LANGUAGE_URL_PATH == "/spotnav/i18n"
+    assert card_asset.LANGUAGE_DIR_PATH == PACKAGE / "www" / "i18n"
+    names = [path.name for path in LANGUAGE_FILES]
+    assert sorted(name.split(".")[0] for name in names) == sorted(
+        ["sv", "nb", "da", "fi", "de", "nl", "fr", "es"]
+    )
+    bundle = card_asset.CARD_ASSET_PATH.read_text(encoding="utf-8")
+    for path in LANGUAGE_FILES:
+        assert re.fullmatch(r"[a-z]{2}\.[0-9a-f]{8}\.json", path.name), path.name
+        content = path.read_bytes()
+        assert path.name.split(".")[1] == hashlib.sha256(content).hexdigest()[:8]
+        assert isinstance(json.loads(content), dict)
+        # The card is compiled with the names, so the bundle's hash follows every translation.
+        assert path.name in bundle
+
+
+async def test_the_language_files_are_served_as_json_and_cached_hard(
+    hass: HomeAssistant, hass_client_no_auth: Any, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    assert await async_setup_component(hass, "http", {})
+    registrations = Registrations(hass, monkeypatch)
+    await setup_charger(hass, entry_id="entry_a", webhook_id="webhook-a", charge_control="switch.entry_a")
+
+    config = registrations.configs[registrations.paths.index(card_asset.LANGUAGE_URL_PATH)]
+    assert Path(config.path).resolve() == card_asset.LANGUAGE_DIR_PATH
+    assert config.cache_headers is True
+
+    client = await hass_client_no_auth()
+    swedish = next(path for path in LANGUAGE_FILES if path.name.startswith("sv."))
+    response = await client.get(f"{card_asset.LANGUAGE_URL_PATH}/{swedish.name}")
+    assert response.status == 200
+    assert response.headers["Content-Type"].startswith("application/json")
+    assert "max-age" in response.headers.get("Cache-Control", ""), "named by content, cached on purpose"
+    assert json.loads(await response.read()) == json.loads(swedish.read_bytes())
+
+    # Nothing outside the directory, and no other name.
+    assert (await client.get(f"{card_asset.LANGUAGE_URL_PATH}/sv.00000000.json")).status == 404
+    assert (await client.get(f"{card_asset.LANGUAGE_URL_PATH}/../manifest.json")).status in (403, 404)
+    assert (await client.get(f"{card_asset.LANGUAGE_URL_PATH}/")).status in (403, 404)
+
+
+async def test_missing_language_files_still_serve_the_card(
+    hass: HomeAssistant, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    """An install without the folder shows the card in English rather than failing."""
+    assert await async_setup_component(hass, "http", {})
+    registrations = Registrations(hass, monkeypatch)
+    monkeypatch.setattr(card_asset, "LANGUAGE_DIR_PATH", tmp_path / "absent")
+    await setup_charger(hass, entry_id="entry_a", webhook_id="webhook-a", charge_control="switch.entry_a")
+    assert registrations.paths == [card_asset.CARD_URL_PATH]
+    assert "language files are missing" in caplog.text
+
+
 async def _noop() -> None:
     return None
 
@@ -133,7 +194,7 @@ async def test_one_route_for_two_entries_a_reload_and_a_second_setup(
     # A second setup call is what a reloaded domain or a second setup path would do.
     await card_asset.async_setup_card_asset(hass)
 
-    assert registrations.paths == [card_asset.CARD_URL_PATH]
+    assert registrations.paths == [card_asset.CARD_URL_PATH, card_asset.LANGUAGE_URL_PATH]
 
     config = registrations.configs[0]
     served = Path(config.path).resolve()
@@ -165,7 +226,7 @@ async def test_the_route_survives_another_entry_unloading(
     assert await hass.config_entries.async_unload(second.entry_id)
     await hass.async_block_till_done()
 
-    assert registrations.paths == [card_asset.CARD_URL_PATH], "still registered once"
+    assert registrations.paths == [card_asset.CARD_URL_PATH, card_asset.LANGUAGE_URL_PATH], "still registered once"
     # The test client starts the HTTP server, which freezes the router: registration has to be
     # finished by the time it exists.
     client = await hass_client_no_auth()
@@ -173,7 +234,7 @@ async def test_the_route_survives_another_entry_unloading(
     assert response.status == 200, "and still served after another entry unloaded"
     assert await hass.config_entries.async_reload(second.entry_id)
     await hass.async_block_till_done()
-    assert registrations.paths == [card_asset.CARD_URL_PATH], "and a reload adds nothing"
+    assert registrations.paths == [card_asset.CARD_URL_PATH, card_asset.LANGUAGE_URL_PATH], "and a reload adds nothing"
 
 
 async def test_a_missing_asset_fails_loudly_and_registers_nothing(
