@@ -9,7 +9,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { REFRESH_INTERVAL_MS } from "../src/card";
 import { translate } from "../src/i18n";
-import { FakeHass, mountCard } from "./helpers";
+import { FakeHass, mountCard, settingsOffered } from "./helpers";
 
 const ENTITY_DIR = join(__dirname, "..", "..", "tests", "fixtures", "entity_config", "v1");
 const DASHBOARD_DIR = join(__dirname, "..", "..", "tests", "fixtures", "dashboard");
@@ -215,16 +215,14 @@ describe("the Settings page's charger and site cards", () => {
     expect(openDialog(element)?.querySelector(".spotnav-entity-help-toggle")).toBeNull();
   });
 
-  it("asks a non-administrator nothing, says only administrators can change entities, and offers no editor", async () => {
+  it("asks a non-administrator nothing and offers no Settings, since nothing there is theirs to change", async () => {
     const { hass, element } = await mounted({ admin: false });
+    expect(settingsOffered(element)).toBe(false);
     openSettings(element);
     await settle();
     expect(gets(hass)).toHaveLength(0);
-    const section = openDialog(element)?.querySelector<HTMLElement>("[data-section='entities']");
-    expect(section?.textContent).toContain(translate("en", "entity.adminOnly"));
-    // Nothing to change: no entity dialog, and no value in the accent colour (the price area opens read-only).
-    expect(openDialog(element)?.querySelectorAll("[data-edit-entities], .spotnav-setting-row-editable")).toHaveLength(0);
-    expect(openDialog(element)?.textContent).toContain(translate("en", "settings.readOnly"));
+    expect(openDialog(element)).toBeNull();
+    expect(element.shadowRoot?.querySelectorAll("[data-edit-entities], .spotnav-setting-row-editable")).toHaveLength(0);
   });
 
   it("states a failed read in words, with the code only as an attribute, and offers no editor", async () => {

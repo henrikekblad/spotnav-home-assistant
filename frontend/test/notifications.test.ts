@@ -10,7 +10,7 @@ import { LANGUAGES, translate } from "../src/i18n";
 import { noRecipientsHint, notificationsSummary } from "../src/notifications";
 import { decodeSettingsRecord, encodeBody, notificationsReplacement, NOTIFICATION_EVENTS } from "../src/settings";
 import { SETTINGS_API_VERSION, type NotificationsRecord, type SettingsRecord } from "../src/types";
-import { FakeHass, mountCard } from "./helpers";
+import { FakeHass, mountCard, settingsOffered } from "./helpers";
 
 const DASHBOARD_DIR = join(__dirname, "..", "..", "tests", "fixtures", "dashboard");
 const CONFIG = { type: "custom:spotnav-card", charger: "entry_a" };
@@ -217,7 +217,9 @@ describe("the Notifications section", () => {
   it("cannot be changed by a reader who is not an administrator", async () => {
     const { element } = await mounted(withNotifications(notifications()), false);
     openSettings(element);
-    expect(openDialog(element)!.querySelector("[data-section='notifications'] button")).toBeNull();
+    // Nothing in Settings is theirs to change, so the card offers no Settings at all.
+    expect(settingsOffered(element)).toBe(false);
+    expect(element.shadowRoot?.querySelector("[data-section='notifications']")).toBeNull();
   });
 
   it("is absent for a backend without notifications", async () => {

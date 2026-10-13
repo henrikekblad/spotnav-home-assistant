@@ -239,3 +239,12 @@ export function mountEditor(
   document.body.appendChild(element);
   return element;
 }
+
+/**
+ * Whether the card offers its Settings button: a reader who is not an administrator gets it only when Settings
+ * holds something they may change.
+ */
+export function settingsOffered(element: Element): boolean {
+  const button = element.shadowRoot?.querySelector<HTMLButtonElement>("[data-settings='open']") ?? null;
+  return button !== null && !button.hidden;
+}

@@ -11,7 +11,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { translate } from "../src/i18n";
 import { MARKET_API_VERSION, SETTINGS_API_VERSION } from "../src/types";
 import { VISUAL_CLASSES } from "../src/visual-styles";
-import { FakeHass, mountCard } from "./helpers";
+import { FakeHass, mountCard, settingsOffered } from "./helpers";
 
 const FIX = join(__dirname, "..", "..", "tests", "fixtures");
 const read = (...parts: string[]): Record<string, any> => JSON.parse(readFileSync(join(FIX, ...parts), "utf8"));
@@ -134,9 +134,10 @@ describe("the page", () => {
     expect(charger.textContent).not.toContain("switch.");
   });
 
-  it("is read-only for a reader who is not an administrator", async () => {
+  it("is not offered to a reader who is not an administrator, who may change nothing on it", async () => {
     const { element } = await openSettings("en", false);
-    expect(dialog(element).querySelectorAll(`.${VISUAL_CLASSES.settingRowEditable}`)).toHaveLength(0);
+    expect(settingsOffered(element)).toBe(false);
+    expect(element.shadowRoot?.querySelectorAll(`.${VISUAL_CLASSES.settingRowEditable}`)).toHaveLength(0);
   });
 
   it("says Laddperioder in Swedish", () => {
@@ -358,7 +359,8 @@ describe("the car's charge limit", () => {
     allowed.vehicles[0].max_percent = 90;
     allowed.charger.capabilities.set_charge_limit = true;
     const reader = await openSettings("en", false, allowed);
-    expect(dialog(reader.element).querySelector("[data-vehicle='vehicle_ev6'] [data-row='charge_limit'] button")).toBeNull();
+    expect(settingsOffered(reader.element)).toBe(false);
+    expect(reader.element.shadowRoot?.querySelector("[data-row='charge_limit'] button")).toBeNull();
   });
 
   const limitBody = (range?: { min: number; max: number; step: number } | null): Record<string, any> => {

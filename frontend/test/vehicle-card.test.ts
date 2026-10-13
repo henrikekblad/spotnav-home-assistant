@@ -9,7 +9,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { translate } from "../src/i18n";
 import { summaryValueClass } from "../src/visual-styles";
 import { SETTINGS_API_VERSION, type SettingsRecord } from "../src/types";
-import { FakeHass, mountCard } from "./helpers";
+import { FakeHass, mountCard, settingsOffered } from "./helpers";
 
 const FIXTURES = join(__dirname, "..", "..", "tests", "fixtures");
 const CONFIG = { type: "custom:spotnav-card", charger: "soc_charger" };
@@ -373,10 +373,10 @@ describe("the Settings page's vehicles", () => {
     expect(block(element, "vehicle_ev6").querySelector("[data-edit='consumption']")).not.toBeNull();
   });
 
-  it("offers no editor to a non-administrator, and says why", async () => {
+  it("offers no editor to a non-administrator: no Settings at all, since nothing there is theirs to change", async () => {
     const { element } = await openSettings(twoVehicles(), { admin: false, entities: null });
-    expect(dlg(element).querySelectorAll("[data-section='vehicle'] button:not([role='tab'])")).toHaveLength(0);
-    expect(dlg(element).textContent).toContain(translate("en", "settings.readOnly"));
+    expect(settingsOffered(element)).toBe(false);
+    expect(openDialog(element)).toBeNull();
   });
 
   it("opens one value in its own dialog with Save and Cancel, the current figure and no request", async () => {

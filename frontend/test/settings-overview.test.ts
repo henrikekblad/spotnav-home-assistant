@@ -14,7 +14,7 @@ import { SETTINGS_API_VERSION, type SettingsRecord } from "../src/types";
 import { VISUAL_CLASSES } from "../src/visual-styles";
 import { CARD_OUTDATED_NOTE, setOwnCardBundleHashForTest } from "../src/card-identity";
 import { CARD_VERSION } from "../src/generated/version";
-import { FakeHass, mountCard } from "./helpers";
+import { FakeHass, mountCard, settingsOffered } from "./helpers";
 
 const DASHBOARD_DIR = join(__dirname, "..", "..", "tests", "fixtures", "dashboard");
 const CONFIG = { type: "custom:spotnav-card", charger: "entry_a" };
@@ -273,15 +273,10 @@ describe("Download debug info", () => {
       translate("en", "debug.download"),
     ]);
 
+    // A reader who is not an administrator may change nothing in Settings, so is offered none of it.
     const reader = await mounted(fixture("start_idle"), false);
-    await openSettings(reader.element);
+    expect(settingsOffered(reader.element)).toBe(false);
     expect(debugButton(reader.element)).toBeNull();
-    // About this card is for everyone: a reader's Support section holds it alone.
-    const readerSupport = section(reader.element, "support");
-    expect(Array.from(readerSupport?.querySelectorAll("button") ?? []).map((button) => button.textContent)).toEqual([
-      translate("en", "settings.about.open"),
-    ]);
-    expect(section(reader.element, "about")).toBeNull();
   });
 
   it("asks for the bundle and saves it as spotnav-debug-<date>.json", async () => {
@@ -380,7 +375,7 @@ describe("Support says when the card here is older than the one served", () => {
 
   async function opened(served: string, language: Language = "en"): Promise<{ element: Element; hass: FakeHass }> {
     setOwnCardBundleHashForTest("11111111");
-    const result = await mounted(fixture("start_idle"), false, language);
+    const result = await mounted(fixture("start_idle"), true, language);
     result.hass.cardInfoHandler = async () => ({
       api_version: 1,
       ok: true,
@@ -393,7 +388,7 @@ describe("Support says when the card here is older than the one served", () => {
     return result;
   }
 
-  it("shows the note to any user when the hashes differ, in their language", async () => {
+  it("shows the note when the hashes differ, in the reader's language", async () => {
     const { element, hass } = await opened("22222222", "sv");
     expect(hass.cardInfoMessages.at(-1)).toMatchObject({ type: "spotnav/get_card_info", api_version: 1 });
     const note = section(element, "support")?.querySelector<HTMLElement>("[data-card-outdated]");

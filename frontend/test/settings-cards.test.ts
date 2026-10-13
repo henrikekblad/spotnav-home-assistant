@@ -8,7 +8,7 @@ import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { translate } from "../src/i18n";
-import { FakeHass, mountCard } from "./helpers";
+import { FakeHass, mountCard, settingsOffered } from "./helpers";
 
 const ROOT = join(__dirname, "..", "..", "tests", "fixtures");
 const CONFIG = { type: "custom:spotnav-card", charger: "entry_a" };
@@ -129,7 +129,10 @@ describe("the Solar section", () => {
 
   it("is read-only for a non-administrator", async () => {
     const { element } = await open(dashboard(withSources()), { admin: false });
-    expect(solarCard(element)!.querySelector("button")).toBeNull();
+    // Nothing in Settings is theirs to change, so the card offers no Settings at all.
+    expect(settingsOffered(element)).toBe(false);
+    expect(openDialog(element)).toBeNull();
+    expect(element.shadowRoot?.querySelector("[data-section='solar']")).toBeNull();
   });
 });
 
