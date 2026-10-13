@@ -124,14 +124,20 @@ async def test_an_admin_full_replacement_commits_once_and_returns_the_envelope(
     assert envelope["settings"]["strategy"] == "cheapest"
 
 
+@pytest.mark.parametrize(
+    "changes",
+    [{"amps": 16}, {"area_id": "SE3"}, {"strategy": "solar"}],
+    ids=["plan", "price_area", "strategy"],
+)
 async def test_a_non_admin_update_is_refused_by_the_admin_boundary_and_changes_nothing(
-    hass: HomeAssistant, hass_ws_client, hass_read_only_access_token: str
+    hass: HomeAssistant, hass_ws_client, hass_read_only_access_token: str, changes: dict[str, Any]
 ) -> None:
+    """The plan, the price area and the strategy alike: Start and Pause are anyone's, settings are not."""
     entry = await setup_charger(hass)
     before = stored(hass)
     client = await non_admin(hass, hass_ws_client, hass_read_only_access_token)
 
-    message = update_settings_message(entry.entry_id, 0, body_of(before, amps=16))
+    message = update_settings_message(entry.entry_id, 0, body_of(before, **changes))
     frame = await ws_call(client, message)
 
     # Home Assistant's own boundary answers, not the handler: an error frame with its stable code.
