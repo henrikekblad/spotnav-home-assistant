@@ -561,6 +561,8 @@
   "settings.periods.autoHelp": "Halvimmat tunnit, jaettuna vain kun säästö on uuden käynnistyksen arvoinen. Jokainen jakso on vähintään 30 minuuttia.",
   "settings.periods.value.one": "{count} jakso",
   "settings.periods.value.other": "{count} jaksoa",
+  "settings.usersPlan.label": "Salli muiden kuin ylläpitäjien muuttaa strategiaa ja suunnitelmaa",
+  "settings.usersPlan.help": "Näytölle, joka on kirjautunut tavallisena Home Assistant -käyttäjänä. Aloita ja Keskeytä toimivat kaikille; tämä antaa heidän myös valita strategian ja muuttaa suunnitelmaa. Kaikki muu asetuksissa jää ylläpitäjille.",
   "settings.current.title": "Suunniteltu virta",
   "settings.current.intro": "Virta, jota suunnitelma saa pyytää. Se on suunnitteluarvo, ei komento laturille.",
   "settings.current.label": "Suunniteltu virta",

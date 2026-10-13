@@ -554,6 +554,21 @@ export function strategyReplacement(record: SettingsRecord, strategy: string): R
   return { ok: true, body: { ...encodeBody(record), strategy }, changed: strategy !== record.strategy };
 }
 
+/**
+ * What turning "let users who are not administrators change strategy and plan" on or off sends: the accepted record
+ * unchanged, plus `users_change_plan`. A record from a backend without the field cannot take one.
+ */
+export function usersChangePlanReplacement(record: SettingsRecord, allowed: boolean): ReplacementCheck {
+  if (record.users_change_plan === undefined) {
+    return { ok: false, errorKey: "settings.error.version" };
+  }
+  return {
+    ok: true,
+    body: { ...encodeBody(record), users_change_plan: allowed },
+    changed: allowed !== record.users_change_plan,
+  };
+}
+
 /** What a notifications Save chooses: the services and events (where a tap opens is the card's own page). */
 export interface NotificationsChoice {
   targets: string[];

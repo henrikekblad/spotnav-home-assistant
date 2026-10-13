@@ -561,6 +561,8 @@
   "settings.periods.autoHelp": "Las horas más baratas, divididas solo cuando el ahorro compensa otro arranque. Cada periodo dura al menos 30 minutos.",
   "settings.periods.value.one": "{count} periodo",
   "settings.periods.value.other": "{count} periodos",
+  "settings.usersPlan.label": "Permitir que los usuarios que no son administradores cambien la estrategia y el plan",
+  "settings.usersPlan.help": "Para una pantalla con sesión iniciada como usuario normal de Home Assistant. Iniciar y Pausar funcionan para todos; esto además les permite elegir la estrategia y cambiar el plan. Todo lo demás en Ajustes sigue reservado a los administradores.",
   "settings.current.title": "Corriente planificada",
   "settings.current.intro": "La corriente que puede pedir el plan. Es un valor de planificación, no una orden al cargador.",
   "settings.current.label": "Corriente planificada",

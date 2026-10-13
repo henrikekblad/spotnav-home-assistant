@@ -106,6 +106,7 @@ import {
   identificationReplacement,
   notificationsReplacement,
   planSummaryParts,
+  usersChangePlanReplacement,
   type SettingsEditorKind,
   type SettingsFormValues,
 } from "./settings";
@@ -901,6 +902,8 @@ export function createCardView(input: CardViewInput): CardView {
   const doc = input.mount.ownerDocument;
   const now = input.now ?? (() => Date.now());
   let destroyed = false;
+  /** Whether this reader may change the strategy and the plan: an administrator, or anyone the charger lets. */
+  const mayPlan = input.isAdmin || model.dashboardSettings?.users_change_plan === true;
 
   const card = element(doc, "div", C.card);
   card.style.boxSizing = "border-box";
@@ -923,9 +926,9 @@ export function createCardView(input: CardViewInput): CardView {
     }
     // The car line is Byt bil wherever the car can be changed (more than one car can charge here): for every
     // user while a car is plugged in, since any user may answer which car it is. With no car plugged in the
-    // choice is the plan's car, an administrator's setting, so a reader who is not one gets the plain line.
+    // choice is the plan's car, a plan setting (`mayPlan`), so a reader who may not change the plan gets the plain line.
     const changeable =
-      model.chargerCars.length >= 2 && (input.isAdmin || model.connection?.state !== "disconnected");
+      model.chargerCars.length >= 2 && (mayPlan || model.connection?.state !== "disconnected");
     const lineName = vehicleLine.name ?? translate(model.language, "settings.vehicle.unnamed");
     const changeLabel = translate(model.language, "identify.changeCarAria", { name: lineName });
     vehicleButton = element(doc, changeable ? "button" : "div", C.vehicleLine);
@@ -1924,15 +1927,15 @@ export function createCardView(input: CardViewInput): CardView {
     settingsOverviewDialog.hide({ restoreFocus: false });
     const body = element(doc, "div");
     body.append(element(doc, "p", `${C.muted} ${C.dialogIntro}`, translate(model.language, "strategy.intro")));
-    if (!input.isAdmin) {
+    if (!mayPlan) {
       body.append(element(doc, "p", C.settingsReadOnly, translate(model.language, "settings.readOnly")));
     }
     for (const row of model.strategy.rows) {
       const item = element(doc, "div", C.strategyRow);
       const selected = row.id === model.strategy.selectedId;
-      // An available, non-selected row is a real button for an administrator. The selected and unavailable
-      // rows stay disabled; the backend's `require_admin` is the security boundary, this is a courtesy.
-      const writable = row.available && !selected && input.isAdmin;
+      // An available, non-selected row is a real button for a reader who may change the strategy (`mayPlan`). The
+      // selected and unavailable rows stay disabled; the backend's own check is the security boundary.
+      const writable = row.available && !selected && mayPlan;
       const button = element(doc, "button", C.choiceButton, translate(model.language, row.labelKey));
       button.type = "button";
       button.dataset["strategy"] = row.id;
@@ -2584,6 +2587,35 @@ export function createCardView(input: CardViewInput): CardView {
   }
 
   /**
+   * Whether users who are not administrators may change this charger's strategy and plan: an administrator's
+   * choice, Off by default, for a wall screen signed in as an ordinary user. Absent on a backend without it.
+   */
+  function usersChangePlanRows(): HTMLElement[] {
+    const record = model.dashboardSettings;
+    if (record === null || record.users_change_plan === undefined || !input.isAdmin) {
+      return [];
+    }
+    const label = translate(model.language, "settings.usersPlan.label");
+    const onOff = (on: boolean): string => translate(model.language, on ? "settings.value.on" : "settings.value.off");
+    const options: ChoiceOption[] = [
+      { value: "on", label: onOff(true) },
+      { value: "off", label: onOff(false) },
+    ];
+    return [
+      overviewRow("users_change_plan", label, onOff(record.users_change_plan), () =>
+        editSingle(
+          label,
+          options,
+          record.users_change_plan === true ? "on" : "off",
+          (chosen) =>
+            writeValue({ kind: "settings", build: (fresh) => usersChangePlanReplacement(fresh, chosen === "on") }),
+          translate(model.language, "settings.usersPlan.help"),
+        ),
+      ),
+    ];
+  }
+
+  /**
    * Which car is plugged in, for a charger more than one car can charge at: the cars at this charger (at least
    * one) and how the plugged-in one is found, each in its own editor. Absent on a backend without the fields.
    */
@@ -3064,6 +3096,7 @@ export function createCardView(input: CardViewInput): CardView {
       slot.append(...priorityRows());
     }
     slot.append(...chargePeriodsRows());
+    slot.append(...usersChangePlanRows());
     slot.append(...identificationRows());
   }
 

@@ -663,6 +663,15 @@ export class SpotnavCard extends HTMLElement {
     return this.hassObject?.user?.is_admin === true;
   }
 
+  /**
+   * Whether this reader may change the strategy and the plan: an administrator, or anyone where the charger's
+   * `users_change_plan` (an administrator's choice) allows it. A courtesy: the backend judges every write.
+   */
+  private get mayPlan(): boolean {
+    const settings = this.cardState.kind === "ready" ? this.cardState.dashboard.settings : null;
+    return this.isAdmin || settings?.users_change_plan === true;
+  }
+
   private editorIsCurrent(generation: number, operation: number): boolean {
     return this.connected && generation === this.generation && operation === this.editorOperation;
   }
@@ -716,7 +725,7 @@ export class SpotnavCard extends HTMLElement {
       this.editor = { kind, record, conflict: null, operation, generation, saving: false };
       this.view?.showSettingsEditorForm({
         kind,
-        readOnly: !this.isAdmin,
+        readOnly: !this.mayPlan,
         values: formFromRecord(record),
         energyReadOnly: manualEnergyReadOnly(record),
         fillSupported: record.fill_to_limit !== undefined,
@@ -1087,7 +1096,7 @@ export class SpotnavCard extends HTMLElement {
     if (editor === null || editor.kind !== kind || editor.saving) {
       return;
     }
-    if (!this.isAdmin) {
+    if (!this.mayPlan) {
       this.showEditorNotice(kind, "settings.error.readOnly", null);
       return;
     }
@@ -1213,7 +1222,7 @@ export class SpotnavCard extends HTMLElement {
       editor.conflict = null;
       this.view?.showSettingsEditorForm({
         kind,
-        readOnly: !this.isAdmin,
+        readOnly: !this.mayPlan,
         values: formFromRecord(record),
         energyReadOnly: manualEnergyReadOnly(record),
         fillSupported: record.fill_to_limit !== undefined,
@@ -1309,9 +1318,9 @@ export class SpotnavCard extends HTMLElement {
     } catch {
       // Not answered: the question stays until the next read says otherwise.
     }
-    if (notPluggedIn && generation === this.generation && this.connected && this.isAdmin) {
-      // Unplugged meanwhile: the choice becomes the plan's car, which only an administrator may set. For
-      // anyone else the confirming read below shows the line as it now is.
+    if (notPluggedIn && generation === this.generation && this.connected && this.mayPlan) {
+      // Unplugged meanwhile: the choice becomes the plan's car, which only a reader who may change the plan sets
+      // (`mayPlan`). For anyone else the confirming read below shows the line as it now is.
       await this.selectVehicle(vehicleId);
       return;
     }
@@ -1328,7 +1337,8 @@ export class SpotnavCard extends HTMLElement {
   private async writeFreshSettings(build: (record: SettingsRecord) => ReplacementCheck): Promise<void> {
     const hass = this.hassObject;
     const config = this.config;
-    if (!this.connected || hass === null || config === null || config.charger === "" || !this.isAdmin) {
+    // The strategy and the plan's car: an administrator's, or anyone's where `users_change_plan` allows it.
+    if (!this.connected || hass === null || config === null || config.charger === "" || !this.mayPlan) {
       return;
     }
     const generation = this.generation;

@@ -561,6 +561,8 @@
   "settings.periods.autoHelp": "De billigste timene, delt opp bare der besparelsen er verdt en start til. Hver periode er minst 30 minutter.",
   "settings.periods.value.one": "{count} periode",
   "settings.periods.value.other": "{count} perioder",
+  "settings.usersPlan.label": "La brukere som ikke er administratorer endre strategi og plan",
+  "settings.usersPlan.help": "For en skjerm logget inn som en vanlig Home Assistant-bruker. Start og Pause virker for alle; dette lar dem også velge strategi og endre planen. Alt annet i Innstillinger endres bare av administratorer.",
   "settings.current.title": "Planlagt strøm",
   "settings.current.intro": "Strømmen planen kan be om. Det er en planverdi, ikke en kommando til laderen.",
   "settings.current.label": "Planlagt strøm",
