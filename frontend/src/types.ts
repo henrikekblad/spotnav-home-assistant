@@ -179,6 +179,11 @@ export interface SettingsBody {
    * an older backend, and then never sent): `null` for none.
    */
   identify_camera?: CameraSettings | null;
+  /**
+   * Whether Home Assistant users who are not administrators may change this charger's strategy and plan (added
+   * after the first release of the contract: absent on an older backend, and then never sent). An administrator's.
+   */
+  users_change_plan?: boolean;
 }
 
 /** The parking spot in the camera's picture, as fractions of its width and height (0-1). */
