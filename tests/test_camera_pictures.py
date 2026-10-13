@@ -22,7 +22,7 @@ from custom_components.spotnav.vehicles.camera_pictures import (
     SIGNATURE_VERSION,
     thumbnail_jpeg,
 )
-from custom_components.spotnav.vehicles.camera_rule import camera_reason, colour_distance, COLOUR_DISTINCT, distinct_cars
+from custom_components.spotnav.vehicles.camera_rule import camera_reason, colour_distance, COLOUR_DISTINCT, distinct_cars, GRID
 from custom_components.spotnav.vehicles.camera_settings import Frame
 
 
@@ -91,13 +91,14 @@ def test_daylight_has_colour_even_dim() -> None:
     assert colour_signature(picture(200, 100, (70, 110, 60), spot=(235, 235, 230))) is not None, "white car beside grass"
 
 
-def test_the_signature_is_taken_from_the_middle_of_the_crop() -> None:
-    image = Image.new("RGB", (100, 100), (20, 160, 20))
-    image.paste(Image.new("RGB", (60, 60), (200, 20, 20)), (20, 20))
+def test_the_signature_is_the_crop_shrunk_to_a_grid() -> None:
+    image = Image.new("RGB", (100, 50), (20, 160, 20))
+    image.paste(Image.new("RGB", (50, 50), (200, 20, 20)), (50, 0))
     out = io.BytesIO()
     image.save(out, format="PNG")
     signature = reference_signature(out.getvalue(), "day")
-    assert signature is not None and signature[0] > 0.7 and signature[1] < 0.15
+    assert signature is not None and len(signature) == GRID * GRID * 3
+    assert tuple(signature[:3]) == (20, 160, 20) and tuple(signature[-3:]) == (200, 20, 20), "left ground, right car"
 
 
 async def test_reference_pictures_are_kept_privately_replaced_by_kind_and_removed(hass: HomeAssistant, tmp_path: Path) -> None:
@@ -105,7 +106,7 @@ async def test_reference_pictures_are_kept_privately_replaced_by_kind_and_remove
     store = ReferenceStore(hass, "entry_a")
     assert "/.storage/" in str(store.folder) and "www" not in store.folder.parts
     taken = datetime(2026, 10, 7, 12, 0, tzinfo=timezone.utc)
-    day = Reference("car1", "day", taken, "camera.norr", Frame(0.1, 0.0, 0.8, 1.0), (0.7, 0.1, 0.1))
+    day = Reference("car1", "day", taken, "camera.norr", Frame(0.1, 0.0, 0.8, 1.0), bytes(GRID * GRID * 3))
     night = Reference("car1", "night", taken, "camera.norr", None, None)
     await store.async_put(day, b"day-1")
     await store.async_put(night, b"night")
@@ -162,12 +163,12 @@ DARK_BLUE_CAR = (35, 55, 105)
 
 def test_a_dark_blue_car_on_paving_is_clearly_apart_from_the_empty_spot() -> None:
     """The field case: one car's only reference is the empty driveway, the other a dark blue car on it. The middle's
-    average colour was mostly paving for both (0.21 apart); the car's own colour is far from the paving."""
+    average colour was mostly paving for both (0.21 apart); where the two pictures differ, the car is far from the
+    paving."""
     ev6 = reference_signature(driveway(DARK_BLUE_CAR), "day")
     empty = reference_signature(driveway(None, seed=2), "day")
     now = colour_signature(driveway(DARK_BLUE_CAR, seed=3))
     assert ev6 is not None and empty is not None and now is not None
-    assert ev6[2] > ev6[0] + 0.1, "the car's blue, not the paving's brown"
     assert colour_distance(ev6, empty) >= COLOUR_DISTINCT + 0.1
     references = {"ev6": [ev6], "test": [empty]}
     assert camera_reason("ev6", "high", ["ev6", "test"], references, now) == ("decided", None)
@@ -183,16 +184,18 @@ def test_two_blue_cars_on_paving_stay_alike_and_a_red_one_is_apart() -> None:
     assert camera_reason("a", "high", ["a", "c"], {"a": [blue], "c": [red]}, now) == ("decided", None)
 
 
-def test_the_empty_spot_reads_as_its_ground_and_a_car_filling_the_edge_as_the_middle() -> None:
-    empty = reference_signature(driveway(None), "day")
-    assert empty is not None and colour_distance(empty, tuple(value / 255 for value in PAVING)) < 0.05
-    # No one colour along most of the edge (the car reaches it): the middle's average colour, as before.
-    image = Image.new("RGB", (100, 100), (20, 160, 20))
-    image.paste(Image.new("RGB", (50, 100), (200, 20, 20)), (0, 0))
+def test_a_car_parked_a_little_further_on_is_near_itself() -> None:
+    parked = reference_signature(driveway(DARK_BLUE_CAR), "day")
+    image = Image.open(io.BytesIO(driveway(DARK_BLUE_CAR, seed=7))).transform((400, 300), Image.Transform.AFFINE, (1, 0, -20, 0, 1, 0))
     out = io.BytesIO()
-    image.save(out, format="PNG")
-    signature = reference_signature(out.getvalue(), "day")
-    assert signature is not None and 0.38 < signature[0] < 0.48 and 0.3 < signature[1] < 0.4
+    image.save(out, format="JPEG", quality=85)
+    further = colour_signature(out.getvalue())
+    assert parked is not None and further is not None and colour_distance(parked, further) < COLOUR_DISTINCT
+    darker = Image.open(io.BytesIO(driveway(DARK_BLUE_CAR, seed=8))).point(lambda value: round(value * 0.75))
+    out = io.BytesIO()
+    darker.save(out, format="JPEG", quality=85)
+    later = colour_signature(out.getvalue())
+    assert later is not None and colour_distance(parked, later) < COLOUR_DISTINCT, "the same car in other light"
 
 
 def test_a_night_picture_on_paving_still_has_no_colour() -> None:
@@ -205,9 +208,15 @@ def test_a_night_picture_on_paving_still_has_no_colour() -> None:
 
 def test_a_signature_stored_by_an_earlier_release_has_the_first_version() -> None:
     taken = datetime(2026, 10, 7, 12, 0, tzinfo=timezone.utc)
-    stored = Reference("car1", "day", taken, "camera.norr", None, (0.3, 0.3, 0.3)).as_stored()
-    assert stored["signature_version"] == SIGNATURE_VERSION == 2
-    assert Reference.from_stored(stored).signature_version == SIGNATURE_VERSION
-    del stored["signature_version"]
-    assert Reference.from_stored(stored).signature_version == 1
+    grid = bytes(range(256)) * (GRID * GRID * 3 // 256)
+    stored = Reference("car1", "day", taken, "camera.norr", None, grid).as_stored()
+    assert stored["signature_version"] == SIGNATURE_VERSION == 2 and isinstance(stored["signature"], str)
+    assert Reference.from_stored(stored) == Reference("car1", "day", taken, "camera.norr", None, grid)
+    assert Reference.from_stored({**stored, "signature": stored["signature"][:-8]}).signature_version == 0, (
+        "a broken signature is taken anew"
+    )
+    earlier = {**stored, "signature": [0.3, 0.3, 0.3]}
+    del earlier["signature_version"]
+    loaded = Reference.from_stored(earlier)
+    assert loaded is not None and loaded.signature_version == 1 and loaded.signature is None, "says nothing until taken anew"
     assert Reference.from_stored({**stored, "signature_version": "2"}) is None

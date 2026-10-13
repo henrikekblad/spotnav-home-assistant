@@ -203,7 +203,7 @@ async def test_between_similar_cars_the_reason_is_the_colour_with_its_distance(g
     await garage.settle()
     camera = camera_entry(garage)
     assert camera["camera_reason"] == "similar_colour"
-    assert 0 < camera["colour_distance"] < 0.25
+    assert 0 <= camera["colour_distance"] < 0.25
 
 
 async def test_a_less_sure_answer_says_why(garage: Garage) -> None:

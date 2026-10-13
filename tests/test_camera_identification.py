@@ -522,7 +522,7 @@ async def test_a_picture_an_earlier_release_cropped_is_dropped_once_the_frame_di
     await garage.start(references=False)
     camera = charger_data(hass, garage.entry_id).camera
     kia = garage.world.cars["Kia"]
-    old = Reference(kia, "day", dt_util.utcnow(), "camera.norr", Frame.from_wire(FRAME), (0.7, 0.1, 0.1), Frame.from_wire(FRAME))
+    old = Reference(kia, "day", dt_util.utcnow(), "camera.norr", Frame.from_wire(FRAME), b"\x00" * 3072, Frame.from_wire(FRAME))
     await camera.references.async_put(old, picture(RED))
     assert camera.usable(kia) == [old], "it compares while its frame stands"
     await garage.ws("save_camera_frame", frame={"x": 0.25, "y": 0.0, "w": 0.75, "h": 1.0})
@@ -715,18 +715,16 @@ async def test_a_car_whose_reference_is_the_empty_spot_leaves_a_blue_car_to_the_
 
 
 async def test_a_colour_an_earlier_release_took_is_taken_anew_at_load(garage: Garage, hass: HomeAssistant) -> None:
-    from custom_components.spotnav.vehicles.camera_pictures import Reference, SIGNATURE_VERSION
+    from custom_components.spotnav.vehicles.camera_pictures import crop_jpeg, Reference, reference_signature, SIGNATURE_VERSION
 
     await garage.start(references=False)
     camera = charger_data(hass, garage.entry_id).camera
     kia = garage.world.cars["Kia"]
-    earlier = Reference(
-        kia, "day", dt_util.utcnow(), "camera.norr", None, (0.3, 0.3, 0.3), Frame.from_wire(FRAME), signature_version=1
-    )
+    earlier = Reference(kia, "day", dt_util.utcnow(), "camera.norr", None, None, Frame.from_wire(FRAME), signature_version=1)
     await camera.references.async_put(earlier, on_paving(DARK_BLUE_CAR))
     assert camera.reference_signatures([kia])[kia] == [None], "an earlier way's colour says nothing"
     await camera.async_load()
     taken = camera.references.references(kia)[0]
     assert taken.signature_version == SIGNATURE_VERSION and taken.signature_frame == Frame.from_wire(FRAME)
-    assert taken.signature is not None and taken.signature[2] > taken.signature[0] + 0.1, "the car's blue"
+    assert taken.signature == reference_signature(crop_jpeg(on_paving(DARK_BLUE_CAR), Frame.from_wire(FRAME)), "day")
     assert camera.reference_signatures([kia])[kia] == [taken.signature]
