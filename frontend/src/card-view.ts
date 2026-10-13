@@ -29,7 +29,7 @@ import {
   sourceChoice,
 } from "./identification";
 import { eventOptions, noRecipientsNote, notificationsSummary, phoneOptions } from "./notifications";
-import { clock, formatFixed, formatNumber, hasZone, percentAmount, pricePerKwh, wallTimeRepeats, weekdayDate } from "./format";
+import { clock, dayCue, formatFixed, formatNumber, hasZone, percentAmount, pricePerKwh, wallTimeRepeats, weekdayDate } from "./format";
 import { pluralForm, translate, type Language, type TranslationKey } from "./i18n";
 import {
   actionErrorKey,
@@ -1322,6 +1322,7 @@ export function createCardView(input: CardViewInput): CardView {
     }
     const labels: ChartLabels = {
       time: (instantMs) => clock(model.format, instantMs),
+      day: (instantMs) => dayCue(model.format, instantMs),
     };
     const result = renderChart({
       series: model.chart,
@@ -1388,13 +1389,24 @@ export function createCardView(input: CardViewInput): CardView {
         return node;
       }),
     );
-    const position = stripNowPosition(nowState, at);
+    const position = stripNowPosition(nowState, at, model.chart.time.spanMs);
     stripNow.hidden = position === null;
     stripNow.style.left = position === null ? "" : `${position * 100}%`;
+    const ticks = stripTicks(model.chart, model.format.timeZone);
+    // A midnight inside the real-time axis: a thin divider through the track, as the chart draws one.
+    stripArea.querySelectorAll(`.${C.stripDivider}`).forEach((node) => node.remove());
+    for (const tick of ticks.filter((entry) => entry.dayStart === true)) {
+      const divider = element(doc, "span", C.stripDivider);
+      divider.style.left = `${tick.position * 100}%`;
+      stripArea.insertBefore(divider, stripNow);
+    }
     stripLabels.replaceChildren(
-      ...stripTicks(model.chart).map((tick) => {
+      ...ticks.map((tick) => {
         const label = element(doc, "span", C.stripLabel, tick.label);
         label.style.left = `${tick.position * 100}%`;
+        if (tick.position <= 0 || tick.position >= 1) {
+          label.dataset["edge"] = tick.position <= 0 ? "start" : "end";
+        }
         return label;
       }),
     );

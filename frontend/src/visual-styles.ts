@@ -120,6 +120,7 @@ export const VISUAL_CLASSES = {
   stripNow: "spotnav-strip-now",
   stripLabels: "spotnav-strip-labels",
   stripLabel: "spotnav-strip-label",
+  stripDivider: "spotnav-strip-divider",
   settingsIcon: "spotnav-settings-icon",
   settingsValue: "spotnav-settings-value",
   settingsValueLong: "spotnav-settings-value-long",
@@ -192,6 +193,8 @@ export const VISUAL_CLASSES = {
   gridline: "spotnav-gridline",
   axisLabel: "spotnav-axis-label",
   tickLabel: "spotnav-tick-label",
+  dayDivider: "spotnav-day-divider",
+  dayLabel: "spotnav-day-label",
   now: "spotnav-now",
   selection: "spotnav-selection",
   marks: "spotnav-marks",
@@ -1217,6 +1220,15 @@ export const VISUAL_STYLES = `
     fill: var(--secondary-text-color, #727272);
     font-size: 11px;
   }
+  /* A midnight inside the real-time axis: a quiet dashed divider, the new day named under it. */
+  .${VISUAL_CLASSES.dayDivider} {
+    stroke: var(--secondary-text-color, #727272);
+    stroke-opacity: 0.55;
+    stroke-dasharray: 3 3;
+  }
+  .${VISUAL_CLASSES.dayLabel} {
+    font-weight: 600;
+  }
   .${VISUAL_CLASSES.bands} {
     pointer-events: none;
   }
@@ -1441,6 +1453,18 @@ export const VISUAL_STYLES = `
   }
   .${VISUAL_CLASSES.stripLabel}:last-child {
     transform: translateX(-100%);
+  }
+  /* On the real-time axis the first label is not on the edge, so it centres like the others. */
+  .${VISUAL_CLASSES.stripLabel}:first-child:not([data-edge]) {
+    transform: translateX(-50%);
+  }
+  .${VISUAL_CLASSES.stripDivider} {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    width: 0;
+    border-left: 1px dashed var(--secondary-text-color, #727272);
+    opacity: 0.6;
   }
   @media (forced-colors: active) {
     .${VISUAL_CLASSES.stripNow} {

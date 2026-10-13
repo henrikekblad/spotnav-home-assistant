@@ -7,8 +7,10 @@
 
 import {
   chartSeries,
+  DEFAULT_CHART_AXIS,
   localDayKey,
   plannedBands,
+  type ChartAxisMode,
   type ChartSeries,
   type PendingProposal,
   type PlanBands,
@@ -237,6 +239,13 @@ export interface CardModel {
   severity: Severity | null;
   chart: ChartSeries;
   bands: PlanBands;
+  /** This browser's chart axis preference, as asked for; `chart.time` says what is drawn. */
+  chartAxis: ChartAxisMode;
+  /**
+   * Max and Min cover the marks drawn at full strength: the now-fact day's on the wall-clock overlay (the
+   * other day is subdued there), every drawn mark on the range axis (from the current hour to the end of
+   * the last published day).
+   */
   summary: {
     max: string | null;
     min: string | null;
@@ -774,6 +783,8 @@ export interface BuildInput {
   sentAction?: SentAction | null;
   /** The automatic action the card last showed (`pause` or `resume`), kept while an action is pending. */
   shownAutomatic?: string | null;
+  /** This browser's chart axis preference; the wall-clock day when omitted. */
+  chartAxis?: ChartAxisMode;
 }
 
 export function buildModel(input: BuildInput): CardModel {
@@ -788,8 +799,9 @@ export function buildModel(input: BuildInput): CardModel {
     countries: market?.countries ?? [],
   };
   const rows = dashboard.prices.intervals;
-  const chart = chartSeries(rows, format.timeZone, input.nowMs);
-  const bands = plannedBands(rows, chart.days, format.timeZone, pendingProposalOf(dashboard, input.nowMs));
+  const chartAxis = input.chartAxis ?? DEFAULT_CHART_AXIS;
+  const chart = chartSeries(rows, format.timeZone, input.nowMs, chartAxis);
+  const bands = plannedBands(rows, chart.days, format.timeZone, pendingProposalOf(dashboard, input.nowMs), chart.time);
   const status = dashboard.status;
   const issues = issuesOf(status, language);
   const zone = hasZone(format);
@@ -802,6 +814,14 @@ export function buildModel(input: BuildInput): CardModel {
   // Max/Min are for the day the now fact is in (by the chart's own role authority), never `days[0]`, which
   // is merely the earliest held date. When no accepted day is that day, both are unavailable.
   const nowDay = chart.days.find((day) => day.role === "today") ?? null;
+  // On the range axis nothing is subdued, so Max/Min cover every drawn mark instead.
+  const drawnPrices = chart.marks.map((mark) => mark.price);
+  const extremes = chart.time.overlay
+    ? { max: nowDay?.max ?? null, min: nowDay?.min ?? null }
+    : {
+        max: drawnPrices.length === 0 ? null : Math.max(...drawnPrices),
+        min: drawnPrices.length === 0 ? null : Math.min(...drawnPrices),
+      };
   const installed = dashboard.plan.installed;
   const technicalCodes = issues
     .map((entry) => entry.technical)
@@ -822,12 +842,13 @@ export function buildModel(input: BuildInput): CardModel {
     severity: status === null || status.tone === "normal" || issues.length === 0 ? null : status.tone,
     chart,
     bands,
+    chartAxis,
     summary: {
-      max: price(nowDay?.max ?? null),
-      min: price(nowDay?.min ?? null),
+      max: price(extremes.max),
+      min: price(extremes.min),
       current: price(chart.current?.price ?? null),
-      maxFigure: figure(nowDay?.max ?? null),
-      minFigure: figure(nowDay?.min ?? null),
+      maxFigure: figure(extremes.max),
+      minFigure: figure(extremes.min),
     },
     figures: figuresFor(dashboard, format),
     proposalPeriods: toPeriods(dashboard.plan.proposal?.periods ?? [], format, null),
