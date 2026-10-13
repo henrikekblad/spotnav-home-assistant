@@ -522,7 +522,7 @@ async def test_a_picture_an_earlier_release_cropped_is_dropped_once_the_frame_di
     await garage.start(references=False)
     camera = charger_data(hass, garage.entry_id).camera
     kia = garage.world.cars["Kia"]
-    old = Reference(kia, "day", dt_util.utcnow(), "camera.norr", Frame.from_wire(FRAME), (0.7, 0.1, 0.1), Frame.from_wire(FRAME))
+    old = Reference(kia, "day", dt_util.utcnow(), "camera.norr", Frame.from_wire(FRAME), b"\x00" * 3072, Frame.from_wire(FRAME))
     await camera.references.async_put(old, picture(RED))
     assert camera.usable(kia) == [old], "it compares while its frame stands"
     await garage.ws("save_camera_frame", frame={"x": 0.25, "y": 0.0, "w": 0.75, "h": 1.0})
@@ -678,3 +678,53 @@ async def test_a_frame_changed_in_the_settings_takes_the_colours_anew_before_the
     await garage.settle()
     assert camera.references.references(kia)[0].signature_frame == wider, "taken anew, lazily, before the query"
     assert garage.world.identifier.method == METHOD_CAMERA
+
+
+# --------------------------------------------------------------------------------- the car, not the ground
+
+PAVING = (125, 100, 80)
+DARK_BLUE_CAR = (35, 55, 105)
+
+
+def on_paving(car: tuple[int, int, int] | None) -> bytes:
+    """The camera's picture of a brown driveway: the parking spot (the frame, the right half) mostly paving, with a
+    small car in its middle, or empty with `None`."""
+    image = Image.new("RGB", (640, 240), PAVING)
+    if car is not None:
+        image.paste(Image.new("RGB", (120, 80), car), (440, 80))
+    out = io.BytesIO()
+    image.save(out, format="JPEG", quality=90)
+    return out.getvalue()
+
+
+async def test_a_car_whose_reference_is_the_empty_spot_leaves_a_blue_car_to_the_camera(garage: Garage) -> None:
+    """The field case: the Tesla's only reference picture is the empty driveway. The Kia, a dark blue car on that
+    driveway, is clearly apart from it in colour, so a sure answer decides without asking."""
+    await garage.start(references=False)
+    kia, tesla = garage.world.cars["Kia"], garage.world.cars["Tesla"]
+    for car, scene in ((kia, on_paving(DARK_BLUE_CAR)), (tesla, on_paving(None))):
+        garage.camera.picture = scene
+        assert (await garage.ws("take_reference_picture", vehicle_id=car, kind="day"))["ok"] is True
+    garage.camera.picture = on_paving(DARK_BLUE_CAR)
+    await garage.world.plug_in()
+    await garage.settle()
+    assert garage.world.identifier.method == METHOD_CAMERA
+    assert garage.world.settings.target.vehicle_id == kia
+    history = garage.world.identifier.diagnostics()
+    assert "similar_colour" not in str(history)
+
+
+async def test_a_colour_an_earlier_release_took_is_taken_anew_at_load(garage: Garage, hass: HomeAssistant) -> None:
+    from custom_components.spotnav.vehicles.camera_pictures import crop_jpeg, Reference, reference_signature, SIGNATURE_VERSION
+
+    await garage.start(references=False)
+    camera = charger_data(hass, garage.entry_id).camera
+    kia = garage.world.cars["Kia"]
+    earlier = Reference(kia, "day", dt_util.utcnow(), "camera.norr", None, None, Frame.from_wire(FRAME), signature_version=1)
+    await camera.references.async_put(earlier, on_paving(DARK_BLUE_CAR))
+    assert camera.reference_signatures([kia])[kia] == [None], "an earlier way's colour says nothing"
+    await camera.async_load()
+    taken = camera.references.references(kia)[0]
+    assert taken.signature_version == SIGNATURE_VERSION and taken.signature_frame == Frame.from_wire(FRAME)
+    assert taken.signature == reference_signature(crop_jpeg(on_paving(DARK_BLUE_CAR), Frame.from_wire(FRAME)), "day")
+    assert camera.reference_signatures([kia])[kia] == [taken.signature]

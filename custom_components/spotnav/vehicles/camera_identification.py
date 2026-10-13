@@ -44,6 +44,7 @@ from .camera_pictures import (
     picture_size,
     Reference,
     ReferenceStore,
+    SIGNATURE_VERSION,
     thumbnail_jpeg,
 )
 from .camera_rule import answer_structure, instructions_for, labels_for, parse_answer, Signature
@@ -178,6 +179,8 @@ class CameraIdentification:
     async def async_load(self) -> None:
         await self.references.async_load()
         await self._async_drop_outdated()
+        # A colour taken the way an earlier release took it is taken anew from the stored picture.
+        await self.async_refresh_signatures([reference.vehicle_id for reference in self.references.all()])
 
     async def _async_drop_outdated(self) -> None:
         """Drop the pictures an earlier release cropped when they were taken, once the frame is drawn otherwise:
@@ -196,22 +199,30 @@ class CameraIdentification:
 
     async def async_refresh_signatures(self, vehicles: Sequence[str]) -> None:
         """Take the colour of each car's whole reference pictures cropped with the frame drawn now, where it was
-        taken with another frame."""
+        taken with another frame or in an earlier release's way (`SIGNATURE_VERSION`). A picture an earlier
+        release cropped when it was taken is already cropped: its colour is taken anew from it as it is."""
         settings = self.settings()
         if settings is None:
             return
         for car in dict.fromkeys(vehicles):
             for reference in self.usable(car):
-                if reference.frame is not None or same_frame(reference.signature_frame, settings.frame):
+                current = reference.signature_version == SIGNATURE_VERSION
+                if current and (reference.frame is not None or same_frame(reference.signature_frame, settings.frame)):
                     continue
+                cropped = reference.frame is not None
                 try:
                     signature = await self._hass.async_add_executor_job(
-                        _signature_of, self.references.path(reference), settings.frame, reference.kind
+                        _signature_of, self.references.path(reference), None if cropped else settings.frame, reference.kind
                     )
                 except OSError:
                     continue
                 await self.references.async_update(
-                    replace(reference, signature=signature, signature_frame=normalised(settings.frame))
+                    replace(
+                        reference,
+                        signature=signature,
+                        signature_frame=reference.signature_frame if cropped else normalised(settings.frame),
+                        signature_version=SIGNATURE_VERSION,
+                    )
                 )
 
     def settings(self) -> CameraSettings | None:
@@ -233,11 +244,16 @@ class CameraIdentification:
 
     def reference_signatures(self, vehicles: Sequence[str]) -> dict[str, list[Signature]]:
         """Each car's usable reference pictures' colour signatures with the frame drawn now (a car without a picture:
-        `[]`; a colour not yet taken with this frame says nothing: `None`)."""
+        `[]`; a colour not yet taken with this frame, or in an earlier release's way, says nothing: `None`)."""
         settings = self.settings()
         frame = None if settings is None else settings.frame
         return {
-            car: [item.signature if same_frame(item.signature_frame, frame) else None for item in self.usable(car)]
+            car: [
+                item.signature
+                if same_frame(item.signature_frame, frame) and item.signature_version == SIGNATURE_VERSION
+                else None
+                for item in self.usable(car)
+            ]
             for car in vehicles
         }
 

@@ -7,13 +7,16 @@ the files in `.storage/spotnav_camera/<charger id>/` (never `www/`, never a medi
 store `spotnav.camera_references.<charger id>`. Each is the camera's whole picture, scaled to at most `WHOLE_SIDE`
 pixels, with the camera it came from, when it was taken and its colour signature (`reference_signature`) as
 cropped with the frame drawn now; it is cropped with the frame drawn at the time it is compared, so drawing the
-frame again never makes a picture useless. A car has at most one picture of each kind (`day`,
+frame again never makes a picture useless. A signature taken in an earlier release's way (`SIGNATURE_VERSION`) is
+taken anew from the stored picture at load. A car has at most one picture of each kind (`day`,
 `night`); a new one replaces the old. They are only ever read by SpotNav, sent only to the chosen AI Task
 entity, and removed with the charger.
 """
 
 from __future__ import annotations
 
+import base64
+import binascii
 import io
 import logging
 import os
@@ -31,7 +34,7 @@ from homeassistant.util import dt as dt_util
 from PIL import Image, ImageOps
 
 from ..const import DOMAIN
-from .camera_rule import PICTURE_DAY, PICTURE_KINDS, Signature
+from .camera_rule import GRID, PICTURE_DAY, PICTURE_KINDS, Signature
 from .camera_settings import crop_box, Frame, normalised
 
 _LOGGER = logging.getLogger(__name__)
@@ -43,9 +46,10 @@ WHOLE_SIDE: Final = 1600
 #: A thumbnail for the settings is at most this many pixels a side.
 THUMBNAIL_SIDE: Final = 240
 JPEG_QUALITY: Final = 85
-#: The middle of a cropped picture the colour signature is taken from (a fraction of each side): the car, not
-#: the ground around it.
-SIGNATURE_MIDDLE: Final = 0.6
+#: What the colour signature means; a stored signature of another version is taken anew from its picture at load.
+#: 1: the middle's average colour. 2: the crop shrunk to `camera_rule.GRID` pixels a side (`_grid`), compared
+#: picture with picture (`camera_rule.colour_distance`).
+SIGNATURE_VERSION: Final = 2
 #: `has_colour`: a pixel this saturated (HSV), and not near black, is coloured; a picture with this share of
 #: coloured pixels has colour. An infrared picture, grey or evenly tinted, stays near 0.1 saturation.
 COLOURED_SATURATION: Final = 0.25
@@ -107,21 +111,9 @@ def thumbnail_jpeg(data: bytes, side: int = THUMBNAIL_SIDE) -> bytes:
     return _jpeg(image)
 
 
-def _middle_colour(image: Image.Image) -> tuple[float, float, float]:
-    """The average colour of the middle of a cropped picture (red, green, blue, each 0-1, two decimals)."""
-    width, height = image.size
-    margin_x = width * (1 - SIGNATURE_MIDDLE) / 2
-    margin_y = height * (1 - SIGNATURE_MIDDLE) / 2
-    middle = image.crop(
-        (int(margin_x), int(margin_y), max(int(width - margin_x), int(margin_x) + 1), max(int(height - margin_y), int(margin_y) + 1))
-    ).resize((_SIGNATURE_PIXELS, _SIGNATURE_PIXELS))
-    pixels = _pixels(middle)
-    count = len(pixels)
-    return (
-        round(sum(pixel[0] for pixel in pixels) / count / 255, 2),
-        round(sum(pixel[1] for pixel in pixels) / count / 255, 2),
-        round(sum(pixel[2] for pixel in pixels) / count / 255, 2),
-    )
+def _grid(image: Image.Image) -> bytes:
+    """A cropped picture's colour signature: shrunk to `GRID` x `GRID` pixels, each the average colour of its area."""
+    return image.resize((GRID, GRID), Image.Resampling.BOX).tobytes()
 
 
 def has_colour(image: Image.Image) -> bool:
@@ -144,16 +136,16 @@ def has_colour(image: Image.Image) -> bool:
 
 
 def reference_signature(data: bytes, kind: str) -> Signature:
-    """A reference picture's colour signature: the middle's average colour for a daylight picture (the person
-    says it is daylight, so a white car keeps its white), `None` for a night picture."""
-    return _middle_colour(_open(data)) if kind == PICTURE_DAY else None
+    """A reference picture's colour signature (`_grid`) for a daylight picture (the person says it is daylight, so a
+    white car keeps its white), `None` for a night picture."""
+    return _grid(_open(data)) if kind == PICTURE_DAY else None
 
 
 def colour_signature(data: bytes) -> Signature:
-    """The colour of the picture now: the middle's average colour, or `None` when the picture shows no colour
-    (`has_colour`: an infrared night picture, grey or tinted)."""
+    """The colour signature of the picture now (`_grid`), or `None` when the picture shows no colour (`has_colour`:
+    an infrared night picture, grey or tinted)."""
     image = _open(data)
-    return _middle_colour(image) if has_colour(image) else None
+    return _grid(image) if has_colour(image) else None
 
 
 def _pixels(image: Image.Image) -> list[tuple[int, int, int]]:
@@ -179,6 +171,9 @@ class Reference:
     signature: Signature
     #: The frame `signature` was taken with (the colour of the picture cropped with it).
     signature_frame: Frame | None = None
+    #: What `signature` means (`SIGNATURE_VERSION` when it was taken); one of an earlier version is taken anew from
+    #: the stored picture, and says nothing until then.
+    signature_version: int = SIGNATURE_VERSION
 
     @property
     def file_name(self) -> str:
@@ -191,8 +186,9 @@ class Reference:
             "taken_at": self.taken_at.isoformat(),
             "camera_entity_id": self.camera_entity_id,
             "frame": None if self.frame is None else self.frame.as_dict(),
-            "signature": None if self.signature is None else list(self.signature),
+            "signature": None if self.signature is None else base64.b64encode(self.signature).decode("ascii"),
             "signature_frame": None if self.signature_frame is None else self.signature_frame.as_dict(),
+            "signature_version": self.signature_version,
         }
 
     def as_wire(self) -> dict[str, Any]:
@@ -214,16 +210,28 @@ class Reference:
             frame = normalised(None if raw["frame"] is None else Frame.from_wire(raw["frame"]))
             # An earlier release took the signature with the picture's own frame.
             signature_frame = raw.get("signature_frame", raw["frame"])
+            # An earlier release stored no version: its signature, the middle's average colour, says nothing now
+            # and is taken anew from the picture (`CameraIdentification.async_refresh_signatures`).
+            signature_version = raw.get("signature_version", 1)
+            if not isinstance(signature_version, int) or isinstance(signature_version, bool):
+                return None
+            if signature_version != SIGNATURE_VERSION:
+                signature = None
+            elif signature is not None:
+                signature = base64.b64decode(signature, validate=True)
+                if len(signature) != GRID * GRID * 3:
+                    signature, signature_version = None, 0
             return cls(
                 vehicle_id=raw["vehicle_id"],
                 kind=raw["kind"],
                 taken_at=taken_at,
                 camera_entity_id=raw["camera_entity_id"],
                 frame=frame,
-                signature=None if signature is None else (float(signature[0]), float(signature[1]), float(signature[2])),
+                signature=signature,
                 signature_frame=normalised(None if signature_frame is None else Frame.from_wire(signature_frame)),
+                signature_version=signature_version,
             )
-        except (KeyError, TypeError, ValueError, IndexError):
+        except (KeyError, TypeError, ValueError, IndexError, binascii.Error):
             return None
 
 

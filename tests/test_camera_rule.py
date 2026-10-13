@@ -11,7 +11,9 @@ from custom_components.spotnav.vehicles.camera_rule import (
     camera_verdict,
     CameraVerdict,
     COLOUR_DISTINCT,
+    colour_distance,
     distinct_cars,
+    GRID,
     instructions_for,
     labels_for,
     may_query,
@@ -29,10 +31,24 @@ from custom_components.spotnav.vehicles.camera_settings import (
     same_frame,
 )
 
-RED = (0.7, 0.1, 0.1)
-WHITE = (0.9, 0.9, 0.9)
-DARK_BLUE = (0.1, 0.12, 0.25)
-DARK_GREY = (0.15, 0.15, 0.17)
+GROUND = (0.45, 0.4, 0.35)
+
+
+def scene(car: tuple[float, float, float] | None, *, columns: tuple[int, int] = (8, 24)) -> bytes:
+    """A colour signature: the parking spot's ground with a car (one colour, 0-1) in the middle of the picture,
+    over `columns`; `None`: the empty spot."""
+    pixels = bytearray()
+    for row in range(GRID):
+        for column in range(GRID):
+            inside = car is not None and 10 <= row < 22 and columns[0] <= column < columns[1]
+            pixels += bytes(round(value * 255) for value in (car if inside and car is not None else GROUND))
+    return bytes(pixels)
+
+
+RED = scene((0.7, 0.1, 0.1))
+WHITE = scene((0.9, 0.9, 0.9))
+DARK_BLUE = scene((0.1, 0.12, 0.25))
+DARK_GREY = scene((0.15, 0.15, 0.17))
 
 # --------------------------------------------------------------------------------- the frame and the crop
 
@@ -99,8 +115,35 @@ def test_cars_differ_only_when_every_coloured_picture_of_one_is_far_from_the_oth
     assert not distinct_cars([], [WHITE])
     assert distinct_cars([RED, None], [WHITE]), "a night picture beside a day picture changes nothing"
     assert not distinct_cars([RED, DARK_GREY], [DARK_BLUE]), "one similar pair is enough to doubt"
-    near = (RED[0] - COLOUR_DISTINCT + 0.01, RED[1], RED[2])
+    near = scene((0.7 - COLOUR_DISTINCT + 0.01, 0.1, 0.1))
     assert not distinct_cars([RED], [near])
+
+
+def test_colour_is_compared_where_two_pictures_differ() -> None:
+    blue = (0.14, 0.2, 0.4)
+    empty = scene(None)
+    assert colour_distance(scene(blue), empty) >= COLOUR_DISTINCT + 0.1, "a dark blue car against the empty spot"
+    assert colour_distance(scene(blue), scene((0.7, 0.1, 0.1))) >= COLOUR_DISTINCT, "a red car"
+    assert colour_distance(scene(blue), scene(blue)) == 0, "the same picture"
+    assert colour_distance(empty, empty) == 0
+    assert colour_distance(scene(blue), scene(blue, columns=(10, 26))) < COLOUR_DISTINCT, "parked a little further on"
+    assert colour_distance(scene(blue), scene((0.16, 0.22, 0.43), columns=(8, 28))) < COLOUR_DISTINCT, (
+        "a longer car of the same colour: only ground against car differs, and its colour is right beside it"
+    )
+
+
+def test_a_change_of_light_is_evened_out_on_the_ground() -> None:
+    blue = scene((0.14, 0.2, 0.4))
+    darker = bytes(round(value * 0.7) for value in blue)
+    assert colour_distance(blue, darker) == 0, "the same car, an hour later"
+    assert colour_distance(darker, scene(None)) >= COLOUR_DISTINCT
+    lighter_empty = bytes(min(255, round(value * 1.3)) for value in scene(None))
+    assert colour_distance(scene((0.7, 0.1, 0.1)), lighter_empty) >= COLOUR_DISTINCT
+
+
+def test_pictures_that_cannot_be_compared_are_not_different() -> None:
+    assert colour_distance(RED, RED[:-3]) == 0
+    assert colour_distance(b"", b"") == 0
 
 
 def test_a_high_confidence_answer_between_cars_of_different_colours_decides() -> None:
@@ -148,11 +191,18 @@ def test_the_reason_says_why_the_camera_decided_alone_or_did_not() -> None:
     assert camera_reason("ev6", "high", ["ev6", "tesla"], references, None) == ("night", None)
     assert camera_reason("ev6", "high", ["ev6", "tesla"], references, WHITE) == ("colour_mismatch", None)
     assert camera_reason("ev6", "high", ["ev6", "tesla", "zoe"], references, RED) == ("missing_reference", None)
-    reason, distance = camera_reason("ioniq", "high", ["ioniq", "ev6", "kangoo"], {**references, "ev6": [DARK_BLUE]}, DARK_GREY)
-    assert reason == "similar_colour" and distance == pytest.approx(0.1, abs=0.01), "the nearest other car's distance"
+    greyish_blue = scene((0.1, 0.12, 0.32))
+    reason, distance = camera_reason("ioniq", "high", ["ioniq", "ev6", "kangoo"], {**references, "ev6": [greyish_blue]}, DARK_GREY)
+    assert reason == "similar_colour" and distance == pytest.approx(0.16, abs=0.01), "the nearest other car's distance"
     assert camera_reason("ev6", "high", ["ev6", "kangoo"], references, RED) == ("similar_colour", None), (
         "a car with no colour cannot be told apart by colour"
     )
+
+
+def test_another_car_as_near_the_picture_now_is_a_similar_colour() -> None:
+    """Two dark cars the pictures cannot tell apart are both the same as the picture now: not a colour mismatch."""
+    references = {"ev6": [DARK_BLUE], "ioniq": [DARK_GREY]}
+    assert camera_reason("ev6", "high", ["ev6", "ioniq"], references, DARK_GREY) == ("similar_colour", 0.0)
 
 
 def test_the_verdict_follows_the_reason() -> None:
@@ -170,9 +220,9 @@ def test_the_verdict_follows_the_reason() -> None:
 
 def test_a_sure_answer_decides_only_when_the_colour_now_is_nearest_the_named_car() -> None:
     references = {"ev6": [RED], "tesla": [WHITE]}
-    assert camera_verdict("ev6", "high", ["ev6", "tesla"], references, (0.85, 0.85, 0.82)) == CameraVerdict(prefers="ev6")
-    assert nearest_car((0.6, 0.15, 0.1), ["ev6", "tesla"], references) == "ev6"
-    assert nearest_car((0.5, 0.5, 0.5), ["ev6"], {"ev6": [None]}) is None
+    assert camera_verdict("ev6", "high", ["ev6", "tesla"], references, scene((0.85, 0.85, 0.82))) == CameraVerdict(prefers="ev6")
+    assert nearest_car(scene((0.6, 0.15, 0.1)), ["ev6", "tesla"], references) == "ev6"
+    assert nearest_car(scene((0.5, 0.5, 0.5)), ["ev6"], {"ev6": [None]}) is None
 
 
 # --------------------------------------------------------------------------------- when it is asked

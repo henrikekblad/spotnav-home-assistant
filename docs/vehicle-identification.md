@@ -197,10 +197,17 @@ the model is.
 
   The last rule is the one people meet most. A model compares shapes, but two cars of one colour (two dark blue
   cars, a dark blue and a dark grey one) look much alike in a small, cropped camera picture, and a model can be
-  sure and still wrong. So between such cars the camera never decides alone. "Similar colour" is measured on the
-  reference pictures' average colour: black and white, or red and silver, are clearly different; dark blue and
-  dark grey are not. A white or grey car on grey ground can show almost no colour at all, and then it counts as
-  similar too.
+  sure and still wrong. So between such cars the camera never decides alone. "Similar colour" is measured picture
+  against picture: every picture comes from the same camera and frame, so where two pictures differ is where the
+  cars differ, while the ground, plants, posts and the time stamp stay and cancel out. There the two pictures'
+  average colours are compared, after the light of one is evened out to the other's on the ground that stays. A
+  dark blue car is then far from a reference picture of the empty spot, however much paving the frame holds, and
+  a car parked a little further on, or in other light, stays near itself. Black and white, or red and silver, are
+  clearly different; dark blue and dark grey are not. A white or grey car on grey ground can show almost no colour
+  at all, and then it counts as similar too. The picture now is compared with each car's reference pictures the
+  same way, and the camera decides only when the car it names is nearest. Reference pictures taken with an
+  earlier release have their colour taken anew from the stored picture when SpotNav starts: there is no need to
+  take them again.
 - At night it never decides on its own: an infrared picture is grey, or evenly tinted purple or pink by a camera
   without an infrared filter.
 - In every other case the camera **only puts its car first** on the question's buttons, and the question is asked
@@ -243,9 +250,11 @@ restarts. For each plug-in:
 - the camera, when it was asked: its answer and how sure the model was, whether the answer was used, how long the
   query took (`latency_s`), the AI Task entity and its model, an error (`timeout`, `no_snapshot`, `no_reference`,
   `ai_task_error`), and `camera_reason`, why it did or did not decide on its own: `decided`, `similar_colour` (with
-  `colour_distance`, the reference colours' distance; 0.25 or more is clearly different), `night`,
-  `missing_reference`, `confidence_low`, `answer_none` (no car, or none of the cars), `colour_mismatch` (the colour
-  now is not nearest the named car's), or `late` (it answered after a person or the cars had decided);
+  `colour_distance`, how different the nearest other car's reference picture is where the two differ; 0.25 or more
+  is clearly different, 0 is pictures the colours cannot tell apart; also when another car is as near the picture
+  now), `night`, `missing_reference`, `confidence_low`, `answer_none` (no car, or none of the cars),
+  `colour_mismatch` (another car is nearer the picture now than the named car), or `late` (it answered after a
+  person or the cars had decided);
 - `skipped` with a reason when nothing was identified: `off`, `only_candidate`, or `recent_choice` with `chosen_at`
   (the car was chosen shortly before the plug-in);
 - the question: when it was sent and to how many phones, and when it was answered;
