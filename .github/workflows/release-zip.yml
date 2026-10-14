@@ -1,0 +1,34 @@
+name: Release zip
+
+# HACS installs SpotNav from spotnav.zip attached to each release (hacs.json: zip_release), which also lets
+# GitHub count the downloads. The zip holds what is inside custom_components/spotnav, at the tag.
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Release tag to attach spotnav.zip to (for example v1.15.1)"
+        required: true
+
+permissions:
+  contents: write
+
+jobs:
+  zip:
+    runs-on: ubuntu-latest
+    env:
+      TAG: ${{ github.event.release.tag_name || inputs.tag }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.TAG }}
+      - name: Build spotnav.zip
+        run: |
+          cd custom_components/spotnav
+          zip -r -X "$GITHUB_WORKSPACE/spotnav.zip" . -x '*/__pycache__/*' '__pycache__/*' '*.pyc'
+      - name: Attach to the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release upload "$TAG" spotnav.zip --clobber
