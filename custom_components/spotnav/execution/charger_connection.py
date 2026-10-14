@@ -119,7 +119,10 @@ PLATFORM_STATUS: Final[dict[str, dict[str, str]]] = {
         "charging": CHARGING,
         "error": ERROR,
     },
-    "chargeamps": OCPP_STATUS,
+    # The chargeamps integration words its connector's OCPP status, or the Charge Amps API's own
+    # (`Available`, `Charging`, `Connected`, `Error`) where it has no OCPP one. A connector turned off
+    # says `Unavailable`, with or without a car.
+    "chargeamps": {**OCPP_STATUS, "connected": CONNECTED, "error": ERROR},
     "lektrico": {
         "available": DISCONNECTED,
         "connected": CONNECTED,
@@ -217,6 +220,21 @@ PLATFORM_STATUS: Final[dict[str, dict[str, str]]] = {
         "error": ERROR,
     },
 }
+
+
+#: Status values the tables word as disconnected that do not prove no vehicle is there: SmartEVSE stays
+#: in `Ready to Charge` (state A) with a car plugged in while its access is off, as its Off and Pause
+#: modes (SpotNav's stop) leave it.
+NO_VEHICLE_UNSURE: Final = frozenset({("smartevse", "ready to charge")})
+
+
+def no_vehicle_values(platform: str | None) -> tuple[str, ...]:
+    """The raw status values of a platform that say no vehicle is plugged in: its table's disconnected
+    ones, less those that do not prove it (`NO_VEHICLE_UNSURE`)."""
+    table = PLATFORM_STATUS.get(platform or "", {})
+    return tuple(
+        raw for raw, state in table.items() if state == DISCONNECTED and (platform, raw) not in NO_VEHICLE_UNSURE
+    )
 
 
 def normalise_status(platform: str | None, raw: str | None) -> str:
