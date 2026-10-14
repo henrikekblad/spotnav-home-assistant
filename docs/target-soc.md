@@ -44,13 +44,27 @@ a vehicle integration, charge a fixed number of kWh instead.
   counted on top of it, and energy charged between the reading and that value is left out, so the estimate
   can fall short of the car, never run ahead of it. Until that value comes the estimate stays at the reading.
   A reading taken while the register could not be read yet (a restart before the charger's integration is
-  up) is carried forward from the register's first value. When the car's sensor only comes back (its integration reloaded or loaded late) with the
-  value of the last reading, and the charger saw the car plugged in all the while, that is the last
-  reading set again and the estimate goes on from it. Otherwise (Home Assistant restarted, the car was
-  unplugged, or the charger could not say for a while) the value is a new reading and the energy delivered before it
-  is no longer counted: when in doubt SpotNav may charge again, never leave the car short. When the
-  register itself changes (found again, or chosen in the card), counting starts again from the new
-  register's first value. The estimate never goes past the car's own charge limit (100 % when the car
+  up) is carried forward from the register's first value. When Home Assistant restarts, the car's integration
+  writes its last value again, stamped with the start; SpotNav takes that first value with the last reading's
+  level as the last reading set again, keeps its time and the register value it is measured from, and the
+  energy delivered before and after the restart both count. When the car's sensor only comes back later (its
+  integration reloaded) with the value of the last reading, and the charger saw the car plugged in all the
+  while, that is the last reading set again too. Otherwise (the car was unplugged, or the charger could not
+  say for a while) the value is a new reading and the energy delivered before it is no longer counted: when
+  in doubt SpotNav may charge again, never leave the car short. A value that moved is always a new reading.
+  A register that starts counting again (a per-session register at a plug-in or a restart, a meter that
+  reads 0 while its charger reboots) keeps what it had counted; one back at its old count was a glitch, and
+  nothing is counted twice. When the register itself changes (found again, or chosen in the card), counting
+  starts again from the new register's first value.
+- **When the car reported.** Many car integrations put the car's own report time on the same device: Kia
+  and Hyundai's "Last updated at", Renault's "Last battery activity", Polestar's battery data time, VW's
+  "Last connected", Ford's "Last refresh", or a generic "Last updated" or "Last communication". When
+  exactly one such timestamp sensor is found on the car's device, a reading's age is taken from it instead
+  of from when Home Assistant wrote the value, so an hours-old value is never taken as fresh. A report time
+  newer than the last reading is a new reading even with the same value. A sensor that names something
+  else (a trip, a position, a service date, a charge's end), an unknown or unavailable one, or two that
+  match alike are not used, and the age comes from Home Assistant as before. The charger's diagnostics
+  show which one was used (`soc.last_reading.time_basis`). The estimate never goes past the car's own charge limit (100 % when the car
   states none). Showing another car (the card's list of the cars at a charger, a site's overview) never
   touches the estimate of the car the charger plans for.
 - **An estimate at the target asks the car first.** When only an estimate says the target is reached,
