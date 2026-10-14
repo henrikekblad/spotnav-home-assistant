@@ -230,6 +230,17 @@ await saveAmps(15);
 await saveAmps(16);
 await sleep(1500);
 await cardShot("card-hero", CARD, 0);
+// The same card on the From now axis. The axis is this browser's choice (Settings → Display), kept in its
+// storage: set it there for the one picture and clear it again, so every other picture is on Day.
+if (wanted("card-from-now")) {
+  await b.eval(`localStorage.setItem("spotnav-card.chart-axis", "from_now")`);
+  await openCard();
+  await sleep(1500);
+  await cardShot("card-from-now", CARD, 0);
+  await b.eval(`localStorage.removeItem("spotnav-card.chart-axis")`);
+  await openCard();
+  await sleep(1000);
+}
 
 step("charge history");
 await cardButton("^Charge history$");
@@ -265,18 +276,24 @@ await sleep(1500);
 // The Settings page in its compact style: a section per subject, a value per row, each opening its own editor.
 const SECTION = (name) => `(() => { const D = window.__docs; const c = ${CARD}; return [...c.shadowRoot.querySelectorAll("section[data-section=${name}]")].find(D.visible) || null; })()`;
 const ROW = (key) => `${CARD}.shadowRoot.querySelector("[data-edit=${key}]")`;
+/** A section of the Settings page, scrolled into the dialog's view first: a section low on the page is cut off otherwise. */
+async function sectionShot(name, section) {
+  await b.eval(`${SECTION(section)}?.scrollIntoView({ block: "nearest" })`);
+  await sleep(400);
+  await cardShot(name, SECTION(section), 8);
+}
 async function tapRow(key) {
   await b.eval(`${ROW(key)}.click()`);
   await sleep(2500);
 }
 await cardShot("card-settings", CARD_DIALOG);
-await cardShot("card-settings-price", SECTION("market"), 8);
+await sectionShot("card-settings-price", "market");
 // The car section has a tab per car; the open one is the car the charger plans for ("Family car").
 await b.eval(`${CARD}.shadowRoot.querySelector('[data-vehicle-tab="${(await demo.dashboard(api, garageId)).target_vehicle_id}"]')?.click()`);
 await sleep(800);
-await cardShot("card-settings-vehicle", SECTION("vehicle"), 8);
-await cardShot("card-settings-charger", SECTION("entities"), 8);
-await cardShot("card-settings-site", SECTION("site"), 8);
+await sectionShot("card-settings-vehicle", "vehicle");
+await sectionShot("card-settings-charger", "entities");
+await sectionShot("card-settings-site", "site");
 await tapRow("identify_frame");
 await cardShot("card-camera-frame", CARD_DIALOG);
 await closeCardDialog();
