@@ -812,6 +812,8 @@
   "settings.vehicle.minimumSlider": "Minimum charge level, off or percent",
   "settings.vehicle.minimumNeedsSoc": "needs the car's charge level",
   "settings.vehicle.minimumHelp": "Below this level SpotNav charges at once at full current, whatever the strategy. A pause or Stop you choose wins. Needs the car's charge level.",
+  "settings.vehicle.wake": "Wake the car for a reading",
+  "settings.vehicle.wakeHelp": "Asks the car itself to report its charge level when a charge ends and its last report is old. This uses the car's 12 V battery and the maker's limit on requests, so SpotNav does it at most once per charge end.",
   "settings.vehicle.sourcesHelp": "Read only to tell which car is plugged in.",
   "settings.section.display": "Display",
   "display.applies": "Only this device: applies to every SpotNav card in this browser.",

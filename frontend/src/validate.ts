@@ -398,6 +398,11 @@ export interface Vehicle {
   min_percent?: number | null;
   /** What the car's own limit can be written to (`null`: unknown); absent on an older backend. */
   charge_limit_range?: ChargeLimitRange | null;
+  /**
+   * Whether SpotNav wakes the car for a reading at a charge's end (`null`: its integration offers no wake, so the
+   * setting is not offered); absent on an older backend.
+   */
+  wake_for_reading?: boolean | null;
 }
 
 /** The percents a car's own charge limit takes: `min`..`max` in steps of `step`. */
@@ -1978,7 +1983,7 @@ const CAPACITY_SOURCES = ["reported", "stored"] as const;
 
 export function decodeVehicle(raw: unknown): Vehicle {
   const source = record(raw);
-  const optional = ["identification", "target_percent", "min_percent", "charge_limit_range"].filter((key) =>
+  const optional = ["identification", "target_percent", "min_percent", "charge_limit_range", "wake_for_reading"].filter((key) =>
     Object.prototype.hasOwnProperty.call(source, key),
   );
   exactKeys(source, [
@@ -2018,6 +2023,7 @@ export function decodeVehicle(raw: unknown): Vehicle {
     ...(Object.prototype.hasOwnProperty.call(source, "charge_limit_range")
       ? { charge_limit_range: chargeLimitRange(source["charge_limit_range"]) }
       : {}),
+    ...(Object.prototype.hasOwnProperty.call(source, "wake_for_reading") ? { wake_for_reading: booleanOrNull(source, "wake_for_reading") } : {}),
   };
 }
 

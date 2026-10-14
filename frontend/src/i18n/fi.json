@@ -812,6 +812,8 @@
   "settings.vehicle.minimumSlider": "Alin varaustaso, pois tai prosenttia",
   "settings.vehicle.minimumNeedsSoc": "tarvitsee auton varaustason",
   "settings.vehicle.minimumHelp": "Tämän tason alapuolella SpotNav lataa heti täydellä virralla strategiasta riippumatta. Valitsemasi tauko tai pysäytys menee edelle. Tarvitsee auton varaustason.",
+  "settings.vehicle.wake": "Herätä auto lukemaa varten",
+  "settings.vehicle.wakeHelp": "Pyytää autoa itse ilmoittamaan varaustasonsa, kun lataus päättyy ja viimeisin ilmoitus on vanha. Tämä kuluttaa auton 12 V:n akkua ja valmistajan pyyntörajaa, joten SpotNav tekee sen enintään kerran latauksen päättyessä.",
   "settings.vehicle.sourcesHelp": "Luetaan vain sen näkemiseksi, mikä auto on kytketty.",
   "settings.section.display": "Näyttö",
   "display.applies": "Vain tämä laite: koskee kaikkia SpotNav-kortteja tässä selaimessa.",

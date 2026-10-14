@@ -314,6 +314,8 @@ export interface VehicleChanges {
     target_percent?: number | null;
     /** The car's minimum charge level (10-80, steps of 5); `null` turns it off. */
     min_percent?: number | null;
+    /** Whether SpotNav wakes the car for a reading at a charge's end. */
+    wake_for_reading?: boolean;
   };
   expected: {
     capacity_kwh?: number | null;
@@ -321,6 +323,7 @@ export interface VehicleChanges {
     onboard_phases?: 1 | 3 | null;
     target_percent?: number | null;
     min_percent?: number | null;
+    wake_for_reading?: boolean | null;
   };
 }
 

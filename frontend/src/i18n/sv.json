@@ -812,6 +812,8 @@
   "settings.vehicle.minimumSlider": "Lägsta laddnivå, av eller procent",
   "settings.vehicle.minimumNeedsSoc": "behöver bilens laddnivå",
   "settings.vehicle.minimumHelp": "Under den här nivån laddar SpotNav direkt med full ström, oavsett strategi. En paus eller ett stopp du väljer går före. Behöver bilens laddnivå.",
+  "settings.vehicle.wake": "Väck bilen för en avläsning",
+  "settings.vehicle.wakeHelp": "Ber bilen själv att rapportera sin laddnivå när en laddning tar slut och den senaste rapporten är gammal. Det använder bilens 12 V-batteri och tillverkarens gräns för förfrågningar, så SpotNav gör det högst en gång per avslutad laddning.",
   "settings.vehicle.sourcesHelp": "Läses bara för att se vilken bil som är inkopplad.",
   "settings.section.display": "Visning",
   "display.applies": "Bara den här enheten: gäller alla SpotNav-kort i den här webbläsaren.",

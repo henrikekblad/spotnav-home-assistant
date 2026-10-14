@@ -812,6 +812,8 @@
   "settings.vehicle.minimumSlider": "Mindestladestand, aus oder Prozent",
   "settings.vehicle.minimumNeedsSoc": "braucht den Ladestand des Autos",
   "settings.vehicle.minimumHelp": "Unter diesem Ladestand lädt SpotNav sofort mit vollem Strom, unabhängig von der Strategie. Eine von dir gewählte Pause oder ein Stopp hat Vorrang. Braucht den Ladestand des Autos.",
+  "settings.vehicle.wake": "Auto für eine Ablesung wecken",
+  "settings.vehicle.wakeHelp": "Bittet das Auto selbst, seinen Ladestand zu melden, wenn eine Ladung endet und die letzte Meldung alt ist. Das belastet die 12-V-Batterie des Autos und das Anfragelimit des Herstellers, daher macht SpotNav das höchstens einmal pro Ladeende.",
   "settings.vehicle.sourcesHelp": "Wird nur gelesen, um zu erkennen, welches Auto angeschlossen ist.",
   "settings.section.display": "Anzeige",
   "display.applies": "Nur dieses Gerät: gilt für alle SpotNav-Karten in diesem Browser.",
