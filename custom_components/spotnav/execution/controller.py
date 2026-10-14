@@ -1485,25 +1485,52 @@ class ChargingController:
         (`SOC_DROP_PCT`): the need grew. A car that only stopped drawing (its own timer, a preconditioning
         pause, a fault, or a state of charge nobody can read) skips just the window already open then; a
         later window charges it as planned."""
+        holds, facts = self._car_ended_hold()
+        if facts is not None:
+            self._shadow_car_facts = facts
+        return holds
+
+    def _car_ended_hold(self) -> tuple[bool, tuple[bool, bool, bool] | None]:
+        """`_car_ended_holds_window` without telling the shadow: whether the window open now holds, and the car's
+        facts it was decided on (`None` when no window is open or nothing ended)."""
         ended_at = self._car_ended_at
         if ended_at is None or self.plan is None:
-            return False
+            return False, None
         try:
             windows = self.plan.windows
         except ValueError:
-            return False
+            return False, None
         now = dt_util.utcnow()
         if not any(start <= now < end for start, end in windows):
-            return False
+            return False, None
         if self._car_ended_known_full():
             grew = self._car_ended_need_grew()
-            self._shadow_car_facts = (True, grew, False)
-            return not grew
+            return not grew, (True, grew, False)
         if self._car_ended_awaits_level():
-            self._shadow_car_facts = (False, False, True)
-            return True
-        self._shadow_car_facts = (False, False, False)
-        return any(start <= now < end and start <= ended_at for start, end in windows)
+            return True, (False, False, True)
+        return any(start <= now < end and start <= ended_at for start, end in windows), (False, False, False)
+
+    @property
+    def car_ended_holds_charge(self) -> bool:
+        """Whether the car ended the plan's charge by itself and the window open now is not to start it again
+        (`_car_ended_holds_window`, a wait for its level among them): load balancing neither resumes nor probes a
+        plan's charge it holds back then. A charge that is not the plan's (a person's, the sun's) is not held here.
+
+        A wait for the car's level that ended (a level read below the target, a raised target) holds nothing more,
+        though the window open at the end would still skip a start: the charge control the watch's end leaves on lets
+        the car take what it wants then, and load balancing gives back the charge it holds back the same way."""
+        paused = self._paused_charge
+        if self._paused_by_balancing and paused is not None and not paused[1]:
+            return False
+        holds, facts = self._car_ended_hold()
+        if holds and facts == (False, False, False) and self._car_ended_wait is not None:
+            return False
+        return holds
+
+    @property
+    def plug_in_generation(self) -> int:
+        """Which plug-in this is: changes with every plug-in and unplug this controller sees."""
+        return self._session_generation
 
     def _car_ended_awaits_level(self) -> bool:
         """Whether the plan waits for the car's level after the car ended its charge short of the target
@@ -1680,6 +1707,18 @@ class ChargingController:
         self._reading_asker = asker
 
     @callback
+    def note_car_refused_probe(self) -> None:
+        """Load balancing's battery probes found the car taking nothing, in a row, with the charger saying so too
+        (`site/battery_probe.py`, `car_refused`): the car has ended the plan's charge by itself, though load balancing
+        holds that charge back and the watch (`PlanChargeWatch`) cannot see it. Handled as the watch's end, under the
+        lock (`_async_plan_car_ended`)."""
+        if self._shut_down:
+            return
+        self._async_spawn(
+            self._async_plan_car_ended(by_probe=True), "the car's end of the plan's charge, seen by the battery probe"
+        )
+
+    @callback
     def _look_at_plan_charge_timer(self, _now: datetime) -> None:
         self._look_at_plan_charge()
 
@@ -1710,8 +1749,10 @@ class ChargingController:
         if ended:
             self._async_spawn(self._async_plan_car_ended(), "the car's end of the plan's charge")
 
-    async def _async_plan_car_ended(self) -> None:
-        """The car stopped taking the plan's charge by itself in an open window (`PlanChargeWatch`).
+    async def _async_plan_car_ended(self, *, by_probe: bool = False) -> None:
+        """The car stopped taking the plan's charge by itself in an open window (`PlanChargeWatch`), or refused load
+        balancing's battery probes while it held that charge back (`by_probe`: the charge control is off then, and the
+        charge balancing holds back must be the plan's).
 
         Decided again under the lock, as an automatic decision. The car-ended record (R3) starts now, as after a
         person's charge: the window open now does not start the car again, and a later one does only when the car
@@ -1722,11 +1763,20 @@ class ChargingController:
         """
         async with self._automatic(AUTOMATIC_STOP) as allowed:
             plan = self.plan
+            if by_probe:
+                paused = self._paused_charge
+                plan_charge = (
+                    self._paused_by_balancing
+                    and paused is not None
+                    and paused[1]
+                    and self.top_off_until is None
+                )
+            else:
+                plan_charge = self._plan_charge and self._control_on
             if (
                 not allowed
                 or plan is None
-                or not self._plan_charge
-                or not self._control_on
+                or not plan_charge
                 or self._target_stopping
                 or self._open_window_end() is None
             ):
@@ -1756,9 +1806,10 @@ class ChargingController:
                 raise
             self._shadow.end(token, core_events.CarEnded(plan=True))
             _LOGGER.info(
-                "SpotNav charger %s: the car stopped taking the plan's charge by itself (%s)",
+                "SpotNav charger %s: the car stopped taking the plan's charge by itself (%s%s)",
                 self.entry_id,
                 "full" if full else "not shown full",
+                "; it refused load balancing's probes" if by_probe else "",
             )
             wait = self._car_ended_wait
             if wait is not None:
