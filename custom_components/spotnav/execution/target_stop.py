@@ -18,7 +18,7 @@ vehicle's while it is live. Nothing here writes anything; the controller acts on
 from __future__ import annotations
 
 import math
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import datetime
 from typing import Any, Final, Literal
 
@@ -26,6 +26,7 @@ from homeassistant.core import HomeAssistant, State
 from homeassistant.helpers import entity_registry as er
 from homeassistant.util import dt as dt_util
 
+from ..vehicles.report_time import vehicle_report_time
 from ..vehicles.vehicle_discovery import (
     _device_entities,
     _percent_battery_sensor_entity_ids,
@@ -35,6 +36,9 @@ from ..vehicles.vehicle_discovery import (
 
 # Where a state-of-charge reading came from.
 SocSource = Literal["vehicle", "charger"]
+
+# What a reading's age is measured from (`SocReading.time_basis`).
+TimeBasis = Literal["last_updated", "vehicle_timestamp", "anchor"]
 
 #: How old a reading may be and still count as the state of charge rather than something to
 #: estimate forward from.
@@ -87,8 +91,9 @@ class SocReading:
 
     `soc_percent` is `None` when the entity exists but its value is unusable (`unavailable`, `unknown`,
     non-numeric, outside 0..100); that differs from no reading because the entity is still worth
-    watching. `entity_id` is internal and never part of a payload. `age_s` comes from the live
-    `State.last_updated`.
+    watching. `entity_id` is internal and never part of a payload. `age_s` comes from the car's own report
+    time when its integration gives one (`vehicles.report_time`), else from the live `State.last_updated`
+    (`time_basis`).
     """
 
     soc_percent: float | None
@@ -104,6 +109,14 @@ class SocReading:
     #: value, and with the car shown to have stayed plugged in, it is that reading set again
     #: (`soc_estimate.SocReader`, `resolve_soc`).
     restored: bool = False
+    #: What `age_s` is measured from: `last_updated` (the state's), `vehicle_timestamp` (the car's own report
+    #: time, `time_entity_id`) or `anchor` (a value Home Assistant only set again, as old as the reading it
+    #: repeats, `soc_estimate.resolve_soc`).
+    time_basis: TimeBasis = "last_updated"
+    #: The age by the state's `last_updated`, kept when `age_s` is the car's report time.
+    state_age_s: float | None = None
+    #: The car's report-time sensor `age_s` was read from (`vehicle_timestamp`); internal, never in a payload.
+    time_entity_id: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -302,12 +315,28 @@ def _reading_for_entity(
     state: State | None = hass.states.get(entity_id)
     if state is None:
         return None
-    return SocReading(
+    now = dt_util.utcnow()
+    state_age = (now - state.last_updated).total_seconds()
+    reading = SocReading(
         soc_percent=valid_soc_percent(state),
         source=source,
         entity_id=entity_id,
         vehicle_id=vehicle_id,
-        age_s=(dt_util.utcnow() - state.last_updated).total_seconds(),
+        age_s=state_age,
+    )
+    if source != "vehicle":
+        # A charger's reading is live: its own `last_updated` is when it was measured.
+        return reading
+    reported = vehicle_report_time(hass, entity_id, now)
+    if reported is None:
+        return reading
+    time_entity_id, reported_at = reported
+    return replace(
+        reading,
+        age_s=max(0.0, (now - reported_at).total_seconds()),
+        time_basis="vehicle_timestamp",
+        state_age_s=state_age,
+        time_entity_id=time_entity_id,
     )
 
 
