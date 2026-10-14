@@ -381,7 +381,7 @@ def resolve_soc(
         and reading.time_basis == "last_updated"
         and anchor is not None
         and reading.soc_percent == anchor.soc_percent
-        and ((reading.restored and plugged_in_throughout) or since_restart)
+        and ((reading.restored and plugged_in_throughout) or (since_restart and _newer(read_at, anchor)))
     )
     if usable and not restored:
         assert reading is not None and reading.soc_percent is not None
