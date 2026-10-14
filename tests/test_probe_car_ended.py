@@ -346,3 +346,20 @@ async def test_a_battery_that_does_not_yield_is_unaffected(hass: HomeAssistant, 
     assert "probe_car_ended" not in _outcomes(halo)
     assert halo.cc.car_ended_at is None
     assert halo.cc.paused_by_balancing, "still held back, for when there is room"
+
+
+async def test_a_car_the_estimate_shows_full_ends_the_plan_at_the_refused_probes(hass: HomeAssistant, monkeypatch) -> None:
+    halo, car = await _plan_paused_by_the_battery(hass, monkeypatch, "estfull")
+    car.percent = 90.0  # within the estimate's three points of the 91 % target
+    await _probe(halo)
+    await _probe_stopped(halo)
+    halo.advance(PROBE_BACKOFF_INITIAL_S)
+    await _probe(halo)
+    await hass.async_block_till_done()
+    assert "probe_car_ended" in _outcomes(halo)
+    assert halo.cc.plan is None, "full for the plan: a reached target"
+    await _probe_stopped(halo)
+    for _ in range(3):
+        halo.advance(PROBE_BACKOFF_MAX_S)
+        await halo.tick()
+    assert _outcomes(halo).count("probe_started") == 2
