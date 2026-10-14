@@ -28,6 +28,7 @@ from .runtime import charger_data, controller_for, domain_data, executor_for, pr
 from .site.regulator import RegulatorDecision
 from .site.site_capacity import ChargerAllocation, site_activity, SiteCapacityResult
 from .vehicles.capability import SiteCapabilitySnapshot
+from .vehicles.vehicle_wake import wake_diagnostics
 
 
 _LOGGER = logging.getLogger(__name__)
@@ -107,6 +108,9 @@ def _charger_diagnostics(hass: HomeAssistant, entry: ConfigEntry) -> dict[str, A
         # result and time. Never the relay ref.
         "push": _push(hass, entry.entry_id),
         "vehicle_identification": _identification(hass, entry.entry_id),
+        # Each car's last wake for a reading (`vehicles/vehicle_wake.py`): when, through which integration, for which
+        # charge end and its result, with whether the car has it turned on and its integration offers a wake now.
+        "vehicle_wake": wake_diagnostics(hass),
         # The state of charge's kept anchor and what the last reading's age was measured from: the car's own report
         # time, the state's `last_updated`, or the anchor's (a value Home Assistant only set again).
         "soc": _soc(hass, entry.entry_id),
