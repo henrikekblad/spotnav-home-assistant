@@ -672,8 +672,10 @@ def _reported_off(session: ChargeSession, event: ChargerReportedOff, now: dateti
 
 def _car_ended(session: ChargeSession, event: CarEnded, now: datetime) -> Decision:
     if event.plan:
-        # The plan's charge, which the car stopped taking in an open window: the record (R3) only.
-        if session.owner != OWNER_PLAN:
+        # The plan's charge, which the car stopped taking in an open window: the record (R3) only. Also one load
+        # balancing holds back (owned by nobody while it waits), whose battery probes the car refused.
+        held_back = session.balancing_paused and session.paused_origin == OWNER_PLAN
+        if session.owner != OWNER_PLAN and not held_back:
             return session, ()
         return session.with_changes(car_ended_at=now), ()
     if not session.person_started:

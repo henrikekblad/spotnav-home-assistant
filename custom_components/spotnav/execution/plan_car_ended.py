@@ -9,6 +9,10 @@ the plan's charge control on, it draws nothing for `PLAN_CAR_IDLE_S` in a row: b
 Not the car: load balancing pausing the charge, the charger's own scheduler or load balancer holding it (or its
 connector saying `SuspendedEVSE`), a Start not yet answered, a control that is off, a charge that is not the plan's,
 and a car whose drawing cannot be read at all. Each of these starts the clock again.
+
+While load balancing holds the plan's charge back this watch sees nothing; there the battery probe is the car's
+test instead: two probes in a row the car refused (`site/battery_probe.py`, `car_refused`) end the charge the same
+way (`ChargingController.note_car_refused_probe`).
 """
 
 from __future__ import annotations

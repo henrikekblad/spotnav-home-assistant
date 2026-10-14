@@ -1772,6 +1772,15 @@ class SiteCapacityController:
             return None
         return connection == CONNECTION_CHARGING
 
+    @staticmethod
+    def _connector_status(charger_controller: Any) -> str | None:
+        """The charger's connector status in the progress check's vocabulary (`SuspendedEV`, `Charging`, the raw
+        text), or `None` when none can be read."""
+        try:
+            return charger_controller.charge_progress_facts().connector_status
+        except Exception:  # noqa: BLE001 - an unreadable status says nothing
+            return None
+
     def _record_probe_event(
         self,
         charger_entry_id: str,
@@ -1836,6 +1845,8 @@ class SiteCapacityController:
         vehicle plugged in, the request on record at least the minimum, the car not drawing, every
         phase measured, and a margin of one amp above the minimum (so it does not flap) that has
         lasted for the dwell. It restarts at `min(request, allowance)`. `True` when it started.
+        Never a plan's charge the car ended by itself (`car_ended_holds_charge`): no window starts that car
+        again either, until its level is read or the wait ends otherwise.
         """
         wiring: dict[str, Any] = (self.config.get(CONF_PHASE_WIRING) or {}).get(
             charger_entry_id
@@ -1854,6 +1865,7 @@ class SiteCapacityController:
             or charger_controller.held_by_charger
             or charger_controller.adapter.vehicle_connected() is not True
             or (previous_setpoint is not None and previous_setpoint >= min_current_a)
+            or charger_controller.car_ended_holds_charge
         ):
             self._resume_ready_since.pop(charger_entry_id, None)
             return False
@@ -1978,7 +1990,8 @@ class SiteCapacityController:
         Every condition must hold, each a refusal when unknown: `car_first` with yield stepping on;
         the charger is stopped because balancing paused it and nothing has touched it since (so a
         person's Stop, a window's end or a target stop is never undone) and the charger's own
-        scheduler does not hold it; a vehicle is plugged in; the request on record is at least the
+        scheduler does not hold it; a vehicle is plugged in; the plan's charge is not one the car ended by
+        itself (`car_ended_holds_charge`, a wait for its level among them); the request on record is at least the
         minimum; the car is not drawing; the grid has no headroom for the minimum but no phase is
         over the band (never into a real overload: a decision to lower for an overload within the band is the
         battery's own regulation, which a stopped car cannot lower anyway); the battery charges at least as
@@ -2006,6 +2019,7 @@ class SiteCapacityController:
             or not self._charge_still_wanted(charger_entry_id, charger_controller)
             or charger_controller.held_by_charger
             or charger_controller.adapter.vehicle_connected() is not True
+            or charger_controller.car_ended_holds_charge
         ):
             return False
         delivered = self._read_charger_measured_current(wiring)
@@ -2055,6 +2069,7 @@ class SiteCapacityController:
             phases,
             dict(zip(phases, delivered_a)),
             charger_charging=charging_before,
+            plug_in=charger_controller.plug_in_generation,
         )
         self._schedule_probe_check(probe.window_s)
         self._record_probe_event(
@@ -2108,6 +2123,7 @@ class SiteCapacityController:
                 },
                 main_fuse_a=float(main_fuse_a) if main_fuse_a is not None else 0.0,
                 charger_charging=self._charger_reports_charging(charger_controller),
+                connector_status=self._connector_status(charger_controller),
             )
             if verdict.state == "verifying":
                 if verdict.reason != "verifying":
@@ -2154,6 +2170,20 @@ class SiteCapacityController:
         if write.written or write.outcome == REGULATED_STOPPED:
             damper.record_write(0.0)
             probe.stopped()
+            if probe.car_refused:
+                # The car refused the probes in a row with the charger's own reports agreeing: it has ended the
+                # charge by itself. Told once, after the stop went out, so the plan's car-ended path sees the charge
+                # load balancing holds back, as it is.
+                probe.forget_refusals()
+                self._record_probe_event(
+                    charger_entry_id,
+                    decision,
+                    outcome="probe_car_ended",
+                    detail="car_refused_probes",
+                    setpoint=None,
+                    previous_setpoint=damper.last_written_a,
+                )
+                charger_controller.note_car_refused_probe()
             return
         _LOGGER.warning(
             "SpotNav site %s battery probe: charger %s could not be stopped (%s); trying again",
@@ -2182,6 +2212,7 @@ class SiteCapacityController:
                     "last_age_s": None,
                     "backoff_remaining_s": None,
                     "probes": 0,
+                    "car_refusals": 0,
                 }
             )
             snapshot[charger_entry_id] = {"enabled": applies, **entry}

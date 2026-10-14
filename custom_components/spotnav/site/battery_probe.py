@@ -18,6 +18,15 @@ up the amps the car takes. Two things follow, both only under `car_first` with y
   three times in ten minutes (Peblar's `PAUSE_WINDOW_S`). A car that has visibly started but not yet
   reached its minimum by the end of the window (it ramps slowly, or the charger's reading lags) is
   waited for up to `PROBE_EXTENDED_WINDOW_S`, only while every phase stays within the band.
+* The *car's refusal*: a probe can also show that the car itself takes nothing. One that ends as
+  `car_not_drawing` while the charger's own reports agreed all along (its measured current at most
+  `PROBE_IDLE_BELOW_A` on every phase the car uses at every look and never rising by `PROBE_RISE_A`, its status
+  never charging, and its connector at `SuspendedEV`, the car asking for no current, at the end) is the car's
+  refusal; two of them in a row
+  (`PROBE_CAR_ENDED_STREAK`, in one plug-in, at most `PROBE_CAR_ENDED_GAP_S` apart) are the car ending the charge
+  by itself (`car_ended`): the plan then waits for the car's level, as after the plan's own watch
+  (`execution/plan_car_ended.py`), and no probe starts the car again. A probe that fails for the grid (the
+  battery did not yield, an overload, a measurement) is no such sign, and neither is a reading that is missing.
 
 This module is pure (no Home Assistant import, no I/O, no clock of its own): time arrives as seconds
 from the caller's clock. It decides nothing about writing; `SiteCapacityController` does that.
@@ -63,6 +72,19 @@ PROBE_IDLE_BELOW_A: Final = 1.0
 #: The wait is granted pass by pass, only while every phase is within `HELD_BAND_A` of its limit (what a
 #: probe that succeeded may hold indefinitely), so it never keeps the site above the band past the window.
 PROBE_EXTENDED_WINDOW_S: Final = 90.0
+
+#: How many probes in a row the car must refuse (`car_refused`) before it has ended the charge by itself. One probe
+#: looks at the car for half a minute (at most `PROBE_EXTENDED_WINDOW_S`), which a car waking from sleep may need
+#: whole; two, ten to fifteen minutes apart, are as much as the plan's own watch asks (five minutes at SuspendedEV).
+PROBE_CAR_ENDED_STREAK: Final = 2
+#: The longest (seconds) between two refusals that count as in a row: twice the longest back-off, so a probe that
+#: was not tried in between (the site had room, the window had not opened) breaks the row.
+PROBE_CAR_ENDED_GAP_S: Final = 2.0 * PROBE_BACKOFF_MAX_S
+
+#: The connector status of a car that asks for no current (OCPP's spelling, `plan_car_ended.SUSPENDED_EV`).
+SUSPENDED_EV: Final = "SuspendedEV"
+#: The status a charger that charges reports (`charge_progress`'s vocabulary).
+CHARGING_STATUS: Final = "Charging"
 
 #: A rise (A) in the charger's own reading on a phase the car uses, since the probe started, that shows the
 #: car has begun to draw; below it the reading is an idle charger's flicker.
@@ -135,6 +157,16 @@ class BatteryProbe:
         self.last_reason: str | None = None
         self.last_at: float | None = None
         self.count = 0
+        # The car's refusal (`car_refused`): whether the running probe's charger reports agreed so far, and the
+        # last verdict's connector status; the refusals in a row, when the last was, and the plug-in it was in.
+        self._took_nothing = False
+        self._last_connector: str | None = None
+        self._plug_in: object | None = None
+        self._refusals = 0
+        self._last_refusal_at: float | None = None
+        self._refusal_plug_in: object | None = None
+        #: The last probe that ended was the car's refusal (`car_refused`).
+        self.last_refused = False
 
     @property
     def window_s(self) -> float:
@@ -159,10 +191,12 @@ class BatteryProbe:
         delivered_a: Mapping[PhaseName, float | None] | None = None,
         *,
         charger_charging: bool | None = None,
+        plug_in: object | None = None,
     ) -> None:
         """A probe was started: the car, on `car_phases`, was given `probe_a` while the grid read
         `baseline_a` and the charger itself `delivered_a`; `charger_charging` is what the charger's
-        status said just before the start was sent (`None` when it said nothing readable)."""
+        status said just before the start was sent (`None` when it said nothing readable). `plug_in`
+        names the plug-in the car is in: refusals in another one are not in a row with this one's."""
         self.state = "probing"
         self._started_at = now
         self._probe_a = probe_a
@@ -174,6 +208,9 @@ class BatteryProbe:
         self._status_left_charging = False
         self._extended = False
         self._car_phases = tuple(car_phases)
+        self._took_nothing = True
+        self._last_connector = None
+        self._plug_in = plug_in
         self.count += 1
 
     def refused(self, now: float, reason: str) -> None:
@@ -189,6 +226,7 @@ class BatteryProbe:
         delivered_a: Mapping[PhaseName, float | None],
         main_fuse_a: float,
         charger_charging: bool | None = None,
+        connector_status: str | None = None,
     ) -> ProbeVerdict:
         """Judge a running probe on fresh readings. Any doubt ends it as a failure: the window is a
         bounded exception to the overload rules, never a reason to look away from a bad reading.
@@ -197,9 +235,14 @@ class BatteryProbe:
         we sent): `True` or `False` when it says, `None` when it is unreadable or unknown. With it and the charger's reading, a car that has started but not yet reached its
         minimum when the window ends is waited for (`PROBE_EXTENDED_WINDOW_S`), every check above still
         running on every pass.
+
+        `connector_status`: the charger's connector status in `charge_progress`'s vocabulary (`None`: none
+        readable). With the charger's reading it decides whether a `car_not_drawing` is the car's refusal
+        (`car_refused`), never whether the probe goes on.
         """
         if self._started_at is None:
             return ProbeVerdict("failed", "not_started")
+        self._observe_car(delivered_a, charger_charging, connector_status)
         if charger_charging is False:
             # Only a status that definitely says something else has left charging; an unreadable one
             # (a reconnect) says nothing, and a stale Charging after it is still stale.
@@ -266,6 +309,65 @@ class BatteryProbe:
                 return "car_current_rising"
         return None
 
+    def _observe_car(
+        self,
+        delivered_a: Mapping[PhaseName, float | None],
+        charger_charging: bool | None,
+        connector_status: str | None,
+    ) -> None:
+        """One look at what the charger itself says about the car: the probe stays the car's refusal only while
+        every phase the car uses reads at most `PROBE_IDLE_BELOW_A`, none has risen by `PROBE_RISE_A` since the
+        start (a car that has begun to draw), and nothing says the charger charges."""
+        self._last_connector = connector_status
+        if not self._car_phases or charger_charging is True or connector_status == CHARGING_STATUS:
+            self._took_nothing = False
+            return
+        for phase in self._car_phases:
+            value = delivered_a.get(phase)
+            baseline = self._delivered_baseline.get(phase)
+            if (
+                value is None
+                or value > PROBE_IDLE_BELOW_A
+                or (baseline is not None and value - baseline >= PROBE_RISE_A)
+            ):
+                self._took_nothing = False
+                return
+
+    @property
+    def car_refused(self) -> bool:
+        """Whether the car has refused `PROBE_CAR_ENDED_STREAK` probes in a row, the last just now: it has ended the
+        charge by itself. Cleared by `forget_refusals` (once acted on) and by any other outcome."""
+        return self.last_refused and self._refusals >= PROBE_CAR_ENDED_STREAK
+
+    def forget_refusals(self) -> None:
+        """The car's refusals were acted on (or no longer matter): the next conclusion needs a new row."""
+        self._refusals = 0
+        self._last_refusal_at = None
+        self._refusal_plug_in = None
+        self.last_refused = False
+
+    def _count_refusal(self, now: float, outcome: ProbeOutcome, reason: str) -> None:
+        """Count the probe that just ended towards the car's refusals, or break the row."""
+        refused = (
+            outcome == "failed"
+            and reason == "car_not_drawing"
+            and self._took_nothing
+            and self._last_connector == SUSPENDED_EV
+        )
+        self.last_refused = refused
+        if not refused:
+            self.forget_refusals()
+            return
+        in_row = (
+            self._last_refusal_at is not None
+            and now - self._last_refusal_at <= PROBE_CAR_ENDED_GAP_S
+            and self._refusal_plug_in == self._plug_in
+        )
+        self._refusals = self._refusals + 1 if in_row else 1
+        self._last_refusal_at = now
+        self._refusal_plug_in = self._plug_in
+        self.last_refused = True
+
     def extension_remaining_s(self, now: float) -> float | None:
         """Seconds left of the longest wait for a starting car, or `None` with no probe running."""
         if self._started_at is None:
@@ -286,6 +388,8 @@ class BatteryProbe:
             self.state = "backoff"
 
     def _finish(self, now: float, outcome: ProbeOutcome, reason: str) -> None:
+        self._count_refusal(now, outcome, reason)
+        self._took_nothing = False
         self.last_outcome = outcome
         self.last_reason = reason
         self.last_at = now
@@ -314,4 +418,5 @@ class BatteryProbe:
             "last_age_s": None if self.last_at is None else round(now - self.last_at, 1),
             "backoff_remaining_s": None if not remaining else round(remaining, 1),
             "probes": self.count,
+            "car_refusals": self._refusals,
         }

@@ -296,8 +296,9 @@ class ChargerReportedOff(Event):
 @dataclass(frozen=True)
 class CarEnded(Event):
     """The car ended a charge by itself (full, or stopped drawing): the car-ended record (R3) starts now. A person's
-    charge (`plan` false): their Start's pause ends. The plan's charge in an open window (`plan`): nothing else
-    changes; whether the car is full is the target's or the need's own event after it."""
+    charge (`plan` false): their Start's pause ends. The plan's charge in an open window (`plan`), or one load
+    balancing holds back whose battery probes the car refused: nothing else changes; whether the car is full is the
+    target's or the need's own event after it."""
 
     kind: ClassVar[str] = "car_ended"
     plan: bool = False
