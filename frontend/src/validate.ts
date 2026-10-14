@@ -1350,9 +1350,10 @@ export function decodeSite(source: Record<string, unknown>): Site {
 export type StatusTone = "normal" | "notice" | "blocking";
 export const STATUS_TONES: readonly StatusTone[] = ["normal", "notice", "blocking"];
 
-export type StatusParam = string | number | string[] | null;
+export type StatusParam = string | number | boolean | string[] | null;
 
-type StatusParamKind = "text" | "textOrNull" | "instant" | "instantOrNull" | "number" | "numberOrNull" | "int" | "codes" | "choiceOrNull";
+type StatusParamKind =
+  "text" | "textOrNull" | "instant" | "instantOrNull" | "number" | "numberOrNull" | "int" | "boolean" | "codes" | "choiceOrNull";
 
 /**
  * Every status code Home Assistant composes (`status_compose.STATUS_CODES`), with its tone and typed
@@ -1387,6 +1388,7 @@ export const STATUS_CODE_TABLE = {
   no_plan: ["normal", {}],
   nothing_to_charge: ["normal", {}],
   waiting_for_vehicle_update: ["normal", {}],
+  car_ended_waiting: ["normal", { soc_percent: "numberOrNull", estimated: "boolean" }],
   plan_energy: ["normal", { kwh: "number" }],
   plan_cost: ["normal", { amount_minor: "int", currency: "text" }],
   plan_distance: ["normal", { mil: "number" }],
@@ -1487,6 +1489,8 @@ function decodeStatusParam(source: Record<string, unknown>, key: string, kind: S
       const value = numberValue(source, key);
       return Number.isInteger(value) ? value : bad();
     }
+    case "boolean":
+      return booleanValue(source, key);
     case "choiceOrNull":
       return enumOrNull(source, key, STORED_PAUSE_CHOICES);
     case "codes":

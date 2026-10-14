@@ -316,6 +316,25 @@ describe("the status line renders the block and nothing else", () => {
     }
   });
 
+  it("says the car ended the charge at its level and the plan waits for the car's level", () => {
+    const estimated = block(statusLine("car_ended_waiting", { soc_percent: 86.2, estimated: true }));
+    expect(statusText(estimated, format("en"), NOW)).toMatch(
+      /^The car ended the charge at ~86 % \(estimated\); waiting for the car's level\.?$/,
+    );
+    expect(statusText(estimated, format("sv"), NOW)).toMatch(
+      /^Bilen avslutade laddningen vid ~86 % \(uppskattat\), väntar på bilens nivå\.?$/,
+    );
+    const read = block(statusLine("car_ended_waiting", { soc_percent: 43, estimated: false }));
+    expect(statusText(read, format("sv"), NOW)).toMatch(/^Bilen avslutade laddningen vid 43 %, väntar på bilens nivå\.?$/);
+    const unknown = block(statusLine("car_ended_waiting", { soc_percent: null, estimated: false }));
+    expect(statusText(unknown, format("en"), NOW)).toMatch(/^The car ended the charge; waiting for the car's level\.?$/);
+    for (const language of ["da", "fi", "nb"] as const) {
+      const text = statusText(estimated, format(language), NOW) ?? "";
+      expect(text).toContain("86");
+      expect(text).not.toBe(statusText(estimated, format("en"), NOW));
+    }
+  });
+
   it("says a scheduled pause is the schedule's, beside a charge that runs anyway, in five languages", () => {
     const paused = block(statusLine("paused", { until: "2026-09-22T20:00:00+00:00" }), statusLine("charging_now", { until: null }));
     const words = (language: "en" | "sv" | "nb" | "da" | "fi") => statusText(paused, format(language), NOW) ?? "";
