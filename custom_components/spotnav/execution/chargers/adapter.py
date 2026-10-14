@@ -41,6 +41,7 @@ from ..charger_connection import (
     CONNECTED,
     FINISHED,
     normalise_ocpp,
+    no_vehicle_values,
     normalise_status,
     PAUSED,
     UNKNOWN,
@@ -135,7 +136,11 @@ class ChargerAdapter:
         self._charging_values = tuple(value.lower() for value in charging_values)
         self._idle_values = tuple(value.lower() for value in vehicle_idle_values)
         self._held_values = tuple(value.lower() for value in held_values)
-        self._disconnected_values = tuple(value.lower() for value in disconnected_values)
+        #: The status values that say no vehicle is plugged in: the profile's, and those the platform's
+        #: connection table (what the dashboard shows) words as disconnected, so both read one table.
+        self._disconnected_values = tuple(
+            dict.fromkeys((*(value.lower() for value in disconnected_values), *no_vehicle_values(platform)))
+        )
         self._connector_status_entity = connector_status_entity
         #: The lowest current a charge is started at: the profile's, never below the 6 A floor.
         self.min_start_current_a = max(DEFAULT_MIN_CURRENT_A, min_start_current_a or 0.0)
@@ -321,7 +326,7 @@ class ChargerAdapter:
     @property
     def reports_connection(self) -> bool:
         """Whether this charger can say if a vehicle is plugged in at all (an OCPP connector, or a
-        status sensor whose profile names the values that mean no vehicle)."""
+        status sensor with values that mean no vehicle, by its profile or its platform's connection table)."""
         if self._connector_status_entity is not None and self._connector_status_entity() is not None:
             return True
         return bool(self._disconnected_values)
@@ -330,8 +335,9 @@ class ChargerAdapter:
         """Whether a vehicle is plugged in, or `None` when this charger cannot say.
 
         An OCPP connector says it through its status (`Available` is no vehicle); another charger
-        through its status sensor, when its profile names the values that mean no vehicle. A plain
-        switch says nothing. Only a status that says a vehicle is there counts as connected: an
+        through its status sensor, read by the same table as the dashboard's connection
+        (`charger_connection`), when that table or its profile names values that mean no vehicle. A
+        plain switch says nothing. Only a status that says a vehicle is there counts as connected: an
         unreadable one, a fault, an offline or updating charger, `Unavailable` or `Reserved` say nothing
         about the vehicle, so a plug-in or an unplug is never read from them.
         """

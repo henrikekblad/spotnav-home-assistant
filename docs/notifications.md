@@ -57,6 +57,14 @@ met is told after the plug-in, with the plan made for the car, if it still canno
 charger that cannot tell whether a car is there tells as before, and a moment when it says neither counts as the
 last thing it did say.
 
+A charger can tell when it is an OCPP connector, or when its status sensor says it the way the card's connection
+shows it (*disconnected*): Easee, Wallbox, Zaptec, go-e, Wattpilot, Peblar, NRGkick, Charge Amps, Lektrico,
+OpenEVSE, Alfen, Heidelberg, GARO, DEFA, ABB Terra AC, Ohme and Monta. A status that does not prove the car is away
+counts as neither: Charge Amps says *Unavailable* while its switch has the connector off, so a window opening then
+still starts it (a car plugged in meanwhile would not be seen), and nothing is told once it says *Available*.
+SmartEVSE's *Ready to Charge* is also said with a car plugged in while the charger is paused, so a SmartEVSE cannot
+tell. A plain switch cannot tell.
+
 ## "Charging stopped or did not start as planned"
 
 This is told only for a charge SpotNav expected: a window of the installed plan is open now. It is told
