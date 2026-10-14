@@ -80,6 +80,12 @@ def _identification(hass: HomeAssistant, entry_id: str) -> dict[str, Any] | None
     return None if identifier is None else identifier.diagnostics()
 
 
+def _soc(hass: HomeAssistant, entry_id: str) -> dict[str, Any] | None:
+    data = charger_data(hass, entry_id)
+    reader = None if data is None else data.soc_reader
+    return None if reader is None else reader.diagnostics()
+
+
 def _push(hass: HomeAssistant, entry_id: str) -> dict[str, Any] | None:
     data = charger_data(hass, entry_id)
     push = None if data is None else data.push
@@ -101,6 +107,9 @@ def _charger_diagnostics(hass: HomeAssistant, entry: ConfigEntry) -> dict[str, A
         # result and time. Never the relay ref.
         "push": _push(hass, entry.entry_id),
         "vehicle_identification": _identification(hass, entry.entry_id),
+        # The state of charge's kept anchor and what the last reading's age was measured from: the car's own report
+        # time, the state's `last_updated`, or the anchor's (a value Home Assistant only set again).
+        "soc": _soc(hass, entry.entry_id),
         "controller": None
         if controller is None
         else {
