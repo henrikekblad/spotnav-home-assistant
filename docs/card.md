@@ -237,6 +237,10 @@ under its heading; the car planned for is open first, and tapping another tab sh
   Below it SpotNav charges at once at full current, whatever the strategy, unless you paused or stopped the charge.
   It needs the car's charge level, and says so next to the value when the car has no level sensor. See
   [minimum charge level](target-soc.md#minimum-charge-level).
+- **Wake the car for a reading**: **Off** (the default) or **On**, shown only for a car whose integration can wake
+  it (Kia/Hyundai, Tesla Fleet, Teslemetry, Tessie). On, SpotNav asks the car itself to report at a charge's end
+  when its last report is old, at most once per charge end and once per half hour. It uses the car's 12 V battery
+  and the maker's request limit. See [waking the car](target-soc.md#waking-the-car-for-a-reading).
 - **Plug sensor** and **Location**: the car's own "plugged in" sensor and tracker, which tell which car is
   plugged in at a charger more than one car can charge at. Each is **Automatic**, one of the car's entities,
   or **None**. They are read only for that.

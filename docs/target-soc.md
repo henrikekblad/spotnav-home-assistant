@@ -69,7 +69,7 @@ a vehicle integration, charge a fixed number of kWh instead.
   touches the estimate of the car the charger plans for.
 - **An estimate at the target asks the car first.** When only an estimate says the target is reached,
   SpotNav keeps charging and asks the car's integration once to read the car again (the same re-read as the
-  app's refresh, never a wake-up). A reading at or above the target then stops the charge as a reading. A
+  app's refresh; a wake-up only for a car that [opted in](#waking-the-car-for-a-reading)). A reading at or above the target then stops the charge as a reading. A
   reading below it lets the charge go on, and the car is asked again only once the estimate has moved
   another percentage point, never on every step of the register. When no reading comes within ten minutes,
   or the car has nothing to re-read, the estimate alone stops the charge once it is 3 percentage points above
@@ -112,7 +112,8 @@ a vehicle integration, charge a fixed number of kWh instead.
   end (within three minutes) that is below the target means the car stopped for a reason of its own (its
   own timer, a fault): the charge and the plan stay, the period open then does not start it again, and a
   later period charges as planned. Either way SpotNav asks the car's integration once to read its level
-  again; a fresh reading below the target is planned again at once.
+  again (and, while the plan waits for the level, wakes a car that [opted in](#waking-the-car-for-a-reading)); a
+  fresh reading below the target is planned again at once.
   The car having stopped by itself is what lets a level within that margin count: no reading or estimate
   ever stops a car that is still drawing short of its target.
 - **To the car's own limit.** A target at or above the car's own charge limit (or 100 % when the car
@@ -155,6 +156,32 @@ minimum level (30 %)* while it runs.
 - It never charges past the target or the car's own charge limit: a minimum above either is capped there.
 - No notification of its own: *Charging started* and *Charge complete* are sent as for any charge.
 
+## Waking the car for a reading
+
+Many car integrations answer a re-read from their cloud's copy of the car, and a sleeping car's copy can be hours
+old: a Kia EV6 that had charged to 100 % read 86 % to SpotNav all night. **Wake the car for a reading** in the
+car's settings (off by default, an administrator's setting) lets SpotNav ask the car itself to report at a charge's
+end, when the cheap re-read brought nothing fresh (no reading made in the last three minutes):
+
+- when only an estimate says the target is reached, inside the ten-minute wait for the asked reading (a car
+  answers a wake in one to three minutes; SpotNav waits at most five for it, then reads the car's entities again);
+- when the car ended a plan's charge and the plan waits for its level.
+
+It costs the car's 12 V battery and a request from the maker's limit, so SpotNav wakes a car at most once per
+charge end and never within 30 minutes of its last wake, whatever answered; the last wake is stored, so a restart
+cannot wake it again sooner. A wake that fails or times out is only noted: SpotNav goes on as without it (the
+estimate with its margin). A person's refresh from the app never wakes the car. The charger's diagnostics show each
+car's last wake (`vehicle_wake`: when, through which integration, for which charge end, and the result).
+
+The setting is offered only for a car whose integration has a wake SpotNav knows:
+
+| Integration | Wake |
+| --- | --- |
+| Kia Uvo / Hyundai Bluelink (`kia_uvo`) | `kia_uvo.force_update` with the car's device. It asks every car on that account to report. |
+| Tesla Fleet (`tesla_fleet`) | The car's **Wake** button. |
+| Teslemetry (`teslemetry`) | The car's **Wake** button. |
+| Tessie (`tessie`) | The car's **Wake** button. |
+
 ## Vehicle charge limit
 
 If the vehicle's own integration exposes a charge-limit entity, SpotNav shows the limit in the
@@ -174,6 +201,7 @@ converted); remaining, available or added energy is never taken for it.
 
 Refreshing a vehicle (from the app) re-reads its Home Assistant entities: SpotNav only asks Home
 Assistant to update them, which is a request to the vehicle's own integration, and it never calls an
-integration's own force-update service, so SpotNav does not wake the car. A sleeping car keeps
+integration's own force-update service, so SpotNav does not wake the car (only a car that
+[opted in](#waking-the-car-for-a-reading) is woken, and only at a charge's end). A sleeping car keeps
 reporting what it last knew, and SpotNav asks at most once a minute per vehicle. Between readings
 the level is estimated from the charger's energy register.
