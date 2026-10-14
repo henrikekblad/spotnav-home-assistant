@@ -194,9 +194,19 @@ It is best effort and is not a protective device. Turning it off gives back any 
     holds only while every phase stays within the band; a reading above it ends the probe at once. A
     car that shows nothing by the end of the window is stopped then, as before. A probe is never started against a
     real overload, and it ends at once on a stale or missing measurement or a phase far above what
-    the car's minimum can explain. A charge a person stopped is never restarted this way. The
-    outcome is in the site's diagnostics under `battery_probe` and in the decision log
-    (`probe_started`, `probe_extended`, `probe_succeeded`, `probe_failed`).
+    the car's minimum can explain. A charge a person stopped is never restarted this way. A car
+    that refuses two probes in a row in the plan's charge (each ends as `car_not_drawing`, the charger's
+    own current at most 1 A all along, never rising, its status never charging and its connector at
+    `SuspendedEV` at the end; at most 30 minutes apart, in one plug-in) has ended the charge by itself,
+    exactly as if the plan's own five-minute watch had seen it ([target level](target-soc.md)): the plan
+    waits for the car's level, and no probe, no resume of the paused charge and no planned period starts
+    the car again until that wait ends. One probe looks at the car for half a minute, which a car waking
+    from sleep may need whole, hence two. A probe that fails because the battery did not yield, a missing
+    reading, or a charger that holds the car back itself (`SuspendedEVSE`) says nothing about the car.
+    (On 14 October a full car was started at the minimum every 10 to 15 minutes for over an hour while
+    the home battery charged from the grid.) The outcome is in the site's diagnostics under
+    `battery_probe` (with `car_refusals`, the refusals in a row) and in the decision log (`probe_started`,
+    `probe_extended`, `probe_succeeded`, `probe_failed`, `probe_car_ended`).
   - **A short overload is not a reset.** While yield stepping is verified, one sample above the
     ceiling (and at most 4 A above it) steps the car back once instead of to the minimum. A second
     sample in a row, a larger excess, or two such samples within two minutes still stops at the

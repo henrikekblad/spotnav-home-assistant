@@ -94,7 +94,10 @@ a vehicle integration, charge a fixed number of kWh instead.
 - **The car ends the charge.** When, inside a planned period with the plan's charge on, the car takes
   nothing for five minutes (the charger measures at most 1 A, or an OCPP charger says `SuspendedEV`), the
   car has ended the charge. Load balancing pausing it, the charger holding it back itself
-  (`SuspendedEVSE`) and a Start not yet answered are not the car. If the car's level then says it is full
+  (`SuspendedEVSE`) and a Start not yet answered are not the car. While load balancing holds the
+  plan's charge back for a home battery charging from the grid, a car that refuses two of its battery
+  probes in a row (it takes nothing at its minimum current, and the charger says `SuspendedEV`) has
+  ended the charge the same way ([load balancing](site-and-load-balancing.md)). If the car's level then says it is full
   for the plan (a reading within 1 percentage point of the target, or of the car's own limit when that is
   lower; an estimate within 3), the plan ends there as a reached target: the charge is stopped, the
   periods still ahead are cleared, the card shows the level it stopped at (*Stopped at 100 % (estimated)*)
