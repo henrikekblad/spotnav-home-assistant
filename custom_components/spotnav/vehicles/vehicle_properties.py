@@ -13,9 +13,11 @@ keyed by device id). This module is the one writer of that domain and holds the 
 * Minimum charge level: the floor (10-80 %, in steps of 5) the car is never left below at any charger, else
   none (off). Read where it applies, from the car a charger plans for (`execution/min_soc_floor.py`), so it
   follows the car with no copy in a charger's settings.
+* Wake for a reading: whether SpotNav may ask the car itself to report once at a charge's end, when its
+  integration offers that (`vehicle_wake.py`), else off. Stored only when on.
 
 Payload: `{"capacity_kwh": 77.4, "consumption_kwh_per_10km": 1.9, "onboard_phases": 1, "target_percent": 80,
-"min_percent": 30}`,
+"min_percent": 30, "wake_for_reading": true}`,
 every key optional; an empty payload is no record.
 """
 
@@ -40,7 +42,8 @@ KEY_CONSUMPTION: Final = "consumption_kwh_per_10km"
 KEY_ONBOARD_PHASES: Final = "onboard_phases"
 KEY_TARGET: Final = "target_percent"
 KEY_MIN: Final = "min_percent"
-PROPERTY_KEYS: Final = (KEY_CAPACITY, KEY_CONSUMPTION, KEY_ONBOARD_PHASES, KEY_TARGET, KEY_MIN)
+KEY_WAKE: Final = "wake_for_reading"
+PROPERTY_KEYS: Final = (KEY_CAPACITY, KEY_CONSUMPTION, KEY_ONBOARD_PHASES, KEY_TARGET, KEY_MIN, KEY_WAKE)
 
 #: The minimum charge level's range and step (percent).
 MIN_PERCENT_LOW: Final = 10
@@ -55,6 +58,7 @@ ERR_INVALID_CONSUMPTION: Final = "invalid_consumption"
 ERR_INVALID_ONBOARD_PHASES: Final = "invalid_onboard_phases"
 ERR_INVALID_TARGET: Final = "invalid_target"
 ERR_INVALID_MIN: Final = "invalid_min_percent"
+ERR_INVALID_WAKE: Final = "invalid_wake_for_reading"
 ERR_UNKNOWN_FIELD: Final = "unknown_field"
 
 CapacitySource = Literal["reported", "stored"]
@@ -69,6 +73,8 @@ class VehicleProperties:
     onboard_phases: int | None = None
     target_percent: float | None = None
     min_percent: int | None = None
+    #: Off unless a person turned it on (`vehicle_wake.py` decides whether the car's integration can wake it).
+    wake_for_reading: bool = False
 
     @property
     def phases(self) -> int:
@@ -133,6 +139,9 @@ def validate_changes(changes: Any) -> dict[str, str]:
         elif key == KEY_MIN:
             if value is not None and not valid_min_percent(value):
                 errors[key] = ERR_INVALID_MIN
+        elif key == KEY_WAKE:
+            if value is not None and not isinstance(value, bool):
+                errors[key] = ERR_INVALID_WAKE
         else:
             errors[str(key)] = ERR_UNKNOWN_FIELD
     return errors
@@ -155,6 +164,7 @@ def stored_properties(hass: HomeAssistant, vehicle_id: object) -> VehiclePropert
         onboard_phases=onboard if valid_onboard_phases(onboard) else None,
         target_percent=float(target) if valid_target(target) else None,
         min_percent=int(floor) if valid_min_percent(floor) else None,
+        wake_for_reading=payload.get(KEY_WAKE) is True,
     )
 
 
@@ -206,9 +216,14 @@ async def async_update_vehicle_properties(
         payload[KEY_TARGET] = current.target_percent
     if current.min_percent is not None:
         payload[KEY_MIN] = current.min_percent
+    if current.wake_for_reading:
+        payload[KEY_WAKE] = True
     for key, value in changes.items():
-        if value is None:
+        if value is None or (key == KEY_WAKE and value is False):
+            # Off is the default: stored only when on.
             payload.pop(key, None)
+        elif key == KEY_WAKE:
+            payload[key] = True
         elif key in (KEY_ONBOARD_PHASES, KEY_MIN):
             payload[key] = int(value)
         else:

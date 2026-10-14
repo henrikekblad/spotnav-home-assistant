@@ -45,6 +45,9 @@ DECISION_DOMAIN_VEHICLE_IDENTIFICATION = "vehicle_identification"
 # What charges showed about the phases they used, per vehicle and per charger. Written only by
 # `planning/phases.py`.
 DECISION_DOMAIN_PHASE_OBSERVATIONS = "phase_observations"
+# A car's last wake for a reading (`{"at", "integration", "occasion", "result"}`), kept so a restart cannot wake it
+# again inside the interval. Written only by `vehicles/vehicle_wake.py`.
+DECISION_DOMAIN_VEHICLE_WAKE = "vehicle_wake"
 
 _DISMISSED_KEY = "dismissed"
 _CONFIRMED_KEY = "confirmed"
@@ -149,6 +152,10 @@ class DiscoveryDecisionStore:
             return None
         payload = self._confirmed.get(domain, {}).get(stable_id)
         return dict(payload) if payload else None
+
+    def confirmed_ids(self, domain: str) -> list[str]:
+        """The ids with a confirmation in `domain`, sorted."""
+        return sorted(self._confirmed.get(domain, {}))
 
     async def async_confirm(self, domain: str, stable_id: str, payload: dict[str, Any]) -> None:
         """Record a human's decision about a candidate as a payload.
