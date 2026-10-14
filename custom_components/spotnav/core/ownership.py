@@ -237,13 +237,25 @@ def hold_blocked(session: ChargeSession, *, solar_holds: bool, plan_auto_owned: 
 
 
 def car_ended_holds_window(
-    session: ChargeSession, *, open_window_start: datetime | None, known_full: bool, need_grew: bool
+    session: ChargeSession,
+    *,
+    open_window_start: datetime | None,
+    known_full: bool,
+    need_grew: bool,
+    awaits_level: bool = False,
 ) -> bool:
     """R3: after the car ended a charge (a person's, or the plan's), a car known full keeps every later window of the
-    plug-in from starting it unless its need grew; otherwise only the window already open then is skipped."""
+    plug-in from starting it unless its need grew; otherwise only the window already open then is skipped.
+
+    A plan that waits for the car's level (`awaits_level`: the car ended the plan's charge short of the target, its
+    level then an estimate or a reading older than the end, and no level read since says it is below the target)
+    keeps every window from starting until one does: a car that took nothing more is not started again on a level
+    nobody read."""
     ended_at = session.car_ended_at
     if ended_at is None or open_window_start is None:
         return False
+    if awaits_level:
+        return True
     if known_full:
         return not need_grew
     return open_window_start <= ended_at
@@ -357,6 +369,7 @@ def _window_start(session: ChargeSession, event: WindowStart, now: datetime) -> 
         open_window_start=event.open_window_start,
         known_full=event.car_ended_known_full,
         need_grew=event.need_grew,
+        awaits_level=event.car_ended_awaits_level,
     )
     if event.trigger != TRIGGER_PLUG_IN:
         # The plug-in session a hold belonged to ends where the next window starts.
@@ -601,7 +614,11 @@ def _reported_on(session: ChargeSession, event: ChargerReportedOn, now: datetime
             s = s.with_changes(held=True)
             hold = True
     ended_holds = car_ended_holds_window(
-        s, open_window_start=event.open_window_start, known_full=event.car_ended_known_full, need_grew=event.need_grew
+        s,
+        open_window_start=event.open_window_start,
+        known_full=event.car_ended_known_full,
+        need_grew=event.need_grew,
+        awaits_level=event.car_ended_awaits_level,
     )
     unclaimed = (
         s.owner in (OWNER_NONE, OWNER_CHARGER_SELF)
@@ -775,6 +792,7 @@ def _recheck(session: ChargeSession, event: Recheck, now: datetime) -> Decision:
             open_window_start=event.open_window_start,
             known_full=event.car_ended_known_full,
             need_grew=event.need_grew,
+            awaits_level=event.car_ended_awaits_level,
         )
         if (
             automatic_allowed(s, GATE_START)
