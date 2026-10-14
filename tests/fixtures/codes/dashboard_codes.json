@@ -148,6 +148,13 @@
       ],
       "tone": "normal"
     },
+    "car_ended_waiting": {
+      "params": [
+        "estimated",
+        "soc_percent"
+      ],
+      "tone": "normal"
+    },
     "charger_disabled": {
       "params": [],
       "tone": "notice"

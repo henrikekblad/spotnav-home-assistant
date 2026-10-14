@@ -41,7 +41,9 @@ Precedence (first match wins the headline; "add" rows append a fact line)
 4. Plan headline, the card's `statusSentence` chain:
      charging_without_prices (+plan_energy) > topping_off{until} (the plan's last window ended with the
      car still drawing on a charge to its own limit: it charges until the car is full, at most until
-     `until`) > charging_now (+plan_energy +plan_cost) >
+     `until`) > car_ended_waiting{soc_percent, estimated} (the car ended the plan's charge by itself short of
+     the target, at `soc_percent` from delivered energy or an older reading, and takes nothing now: no window
+     starts it again until its level is read) > charging_now (+plan_energy +plan_cost) >
      balancing_paused{retry_at, cause} (+plan_energy +plan_cost; inside an installed period, load balancing
      paused the plan's charge because the house, or a home battery charging from the grid (`cause`), takes the
      whole fuse: it is tried again at `retry_at`, or as soon as there is room when that is null) >
@@ -198,6 +200,10 @@ STATUS_CODES: Final[dict[str, tuple[str, tuple[str, ...]]]] = {
     # A target's charge delivered, by measurement, what the car's last reading needed, and the car has not
     # reported since: nothing is planned until it does (or is unplugged, or a departure needs the time).
     "waiting_for_vehicle_update": (TONE_NORMAL, ()),
+    # The car ended the plan's charge by itself short of the target at `soc_percent` (null when no level was
+    # known), `estimated` from delivered energy or a reading older than the end, and no window starts it again
+    # until its level is read: a reading below the target charges it again, one at the target ends the plan.
+    "car_ended_waiting": (TONE_NORMAL, ("soc_percent", "estimated")),
     "plan_energy": (TONE_NORMAL, ("kwh",)),
     "plan_cost": (TONE_NORMAL, ("amount_minor", "currency")),
     "plan_distance": (TONE_NORMAL, ("mil",)),
@@ -482,6 +488,12 @@ class StatusFacts:
     identification: str | None = None
     #: The car's minimum charge level while its own charge runs (`min_soc_floor.py`), else `None`.
     min_soc_percent: float | None = None
+    #: The car ended the plan's charge short of the target and the plan waits for its level
+    #: (`ChargingController.car_ended_wait`): the level it ended at (`None`: not known) and whether that was an
+    #: estimate. `car_ended_waiting` says whether it waits at all.
+    car_ended_waiting: bool = False
+    car_ended_soc_percent: float | None = None
+    car_ended_estimated: bool = False
     #: Load balancing holds the charge back (`ChargingController.paused_by_balancing`): when it is tried again
     #: (`None`: as soon as there is room) and why there is no room (`SiteCapacityController.balancing_pause`).
     balancing_paused: bool = False
@@ -738,6 +750,17 @@ def _plan_headline(facts: StatusFacts) -> list[dict[str, Any]]:
         return [_line("charging_without_prices"), *_plan_facts(proposal, energy=True, cost=False, distance=False)]
     if facts.top_off_until is not None:
         return [_line("topping_off", until=aware_iso(facts.top_off_until))]
+    if facts.car_ended_waiting:
+        # The charge control may still be on in the window open when the car ended the charge: the car takes
+        # nothing, and no window starts it again until its level is read.
+        level = facts.car_ended_soc_percent
+        return [
+            _line(
+                "car_ended_waiting",
+                soc_percent=None if level is None else round(level, 1),
+                estimated=facts.car_ended_estimated,
+            )
+        ]
     if facts.charging and active is not None:
         return [
             _line("charging_now", until=aware_iso(active[1])),

@@ -258,6 +258,9 @@ class CapturedLive:
     top_off_until: datetime | None = None
     #: The car's minimum charge level while its own charge runs (`min_soc_floor.py`), else `None`.
     min_soc_percent: float | None = None
+    #: The car ended the plan's charge short of the target and the plan waits for its level
+    #: (`ChargingController.car_ended_wait`), else `None`.
+    car_ended_wait: dict[str, Any] | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -1062,6 +1065,7 @@ def capture_dashboard(
             charging_to_vehicle_limit=bool(controller is not None and controller.charging_to_vehicle_limit),
             top_off_until=None if controller is None else controller.top_off_until,
             min_soc_percent=_min_soc_percent(hass, entry_id),
+            car_ended_wait=None if controller is None else controller.car_ended_wait,
         ),
         execution=CapturedExecution(
             state=EXECUTION_NOT_APPLIED if executor is None else executor.execution_state(),
@@ -2210,6 +2214,7 @@ def status_facts(capture: CapturedDashboard) -> StatusFacts:
         ),
         top_off_until=None if capture.live.top_off_until is None else _utc(capture.live.top_off_until),
         min_soc_percent=capture.live.min_soc_percent,
+        **_car_ended_facts(capture.live.car_ended_wait, settings),
         balancing_paused=site is not None and site.balancing_paused,
         balancing_retry_at=None if site is None else _utc(site.balancing_retry_at),
         balancing_cause=None if site is None else site.balancing_cause,
@@ -2253,6 +2258,22 @@ def status_facts(capture: CapturedDashboard) -> StatusFacts:
             cause=site.limit_cause,
         ),
     )
+
+
+def _car_ended_facts(wait: dict[str, Any] | None, settings: Any) -> dict[str, Any]:
+    """The status facts of a plan waiting for the car's level after the car ended its charge short of the target: not
+    once the target is raised above the one the car ended at (the planner plans that again)."""
+    if wait is None:
+        return {}
+    target = None if settings is None else getattr(getattr(settings, "target", None), "target_percent", None)
+    ended_target = finite_number(wait.get("target_percent"))
+    if target is not None and ended_target is not None and target > ended_target:
+        return {}
+    return {
+        "car_ended_waiting": True,
+        "car_ended_soc_percent": finite_number(wait.get("soc_percent")),
+        "car_ended_estimated": wait.get("estimated") is True,
+    }
 
 
 def _charge_ceiling(soc: CapturedSoc | None) -> float:

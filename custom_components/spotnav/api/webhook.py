@@ -97,6 +97,10 @@ APP_READS_AUTO_PERIODS: Final = "auto_periods"
 #: gets the line it already words in its place, load balancing limiting the car to nothing, for the same cause.
 APP_UNREAD_BALANCING_PAUSED_CODES: Final = ("balancing_paused",)
 APP_READS_BALANCING_PAUSED: Final = "balancing_paused"
+#: The plan waiting for the car's level after the car ended its charge short of the target: an app that does not read
+#: `APP_READS_CAR_ENDED_WAITING` gets the line it already words for a wait for the car's level in its place.
+APP_UNREAD_CAR_ENDED_CODES: Final = ("car_ended_waiting",)
+APP_READS_CAR_ENDED_WAITING: Final = "car_ended_waiting"
 
 
 def _status_for_app(line: Any, opted_in: set[str]) -> Any:
@@ -113,6 +117,8 @@ def _status_for_app(line: Any, opted_in: set[str]) -> Any:
     if code in APP_UNREAD_BALANCING_PAUSED_CODES and APP_READS_BALANCING_PAUSED not in opted_in:
         params = line.get("params") if isinstance(line.get("params"), dict) else {}
         return {"code": "load_balancing_limited", "params": {"limit_a": 0, "phase": None, "cause": params.get("cause")}}
+    if code in APP_UNREAD_CAR_ENDED_CODES and APP_READS_CAR_ENDED_WAITING not in opted_in:
+        return {"code": "waiting_for_vehicle_update", "params": {}}
     return line
 
 
@@ -141,8 +147,8 @@ def _for_app(body: dict[str, Any], payload: dict[str, Any]) -> dict[str, Any]:
     A request opts in per field with a top-level `reads` list (`identification_status` for the identification's
     status lines, `solar_no_car_status` for the solar lines of an empty charger, `min_soc` for the car's minimum
     charge level: its status line and the vehicle rows' `min_percent`; `auto_periods` for a `max_periods` of
-    null; `balancing_paused` for the plan's charge load balancing paused); anything else in it, or a `reads` that is not
-    a list, is ignored.
+    null; `balancing_paused` for the plan's charge load balancing paused; `car_ended_waiting` for the plan waiting for
+    the car's level after the car ended its charge); anything else in it, or a `reads` that is not a list, is ignored.
     """
     opted_in = _opted_in(payload)
     if isinstance(body.get("vehicles"), list):
