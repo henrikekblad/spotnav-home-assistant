@@ -6,8 +6,10 @@ written by `vehicles/vehicle_properties.py`):
 
     {type: "spotnav/update_vehicle", api_version: 1, charger_id, vehicle_id,
      changes: {capacity_kwh?: 1..500 | null, consumption_kwh_per_10km?: > 0 | null, onboard_phases?: 1 | 3 | null,
-               target_percent?: 0..100 | null, min_percent?: 10..80 in steps of 5 | null},
-     expected: {capacity_kwh?, consumption_kwh_per_10km?, onboard_phases?, target_percent?, min_percent?}}
+               target_percent?: 0..100 | null, min_percent?: 10..80 in steps of 5 | null,
+               wake_for_reading?: true | false | null},
+     expected: {capacity_kwh?, consumption_kwh_per_10km?, onboard_phases?, target_percent?, min_percent?,
+                wake_for_reading?}}
 
 `null` clears a property. `expected` holds what the caller last saw for the keys it names; a
 mismatch is `spotnav_conflict` and nothing is written. The answer is the shared envelope plus
@@ -16,7 +18,8 @@ mismatch is `spotnav_conflict` and nothing is written. The answer is the shared 
 `spotnav_invalid_value` with `field_errors` (`vehicle_id`/`unknown_vehicle`, `changes`/`invalid_changes`,
 `capacity_kwh`/`invalid_capacity`, `consumption_kwh_per_10km`/`invalid_consumption`,
 `onboard_phases`/`invalid_onboard_phases`, `target_percent`/`invalid_target`, `min_percent`/`invalid_min_percent`,
-`<key>`/`unknown_field`, `expected`/`invalid_expected`).
+`wake_for_reading`/`invalid_wake_for_reading` (not a boolean) or `wake_unsupported` (turned on for a car whose
+integration offers no wake), `<key>`/`unknown_field`, `expected`/`invalid_expected`).
 
 They let the card choose every entity this integration uses (a charger's charge control, current
 limit and energy register and, for a site charger, the site's main fuse, measurement mode,
@@ -41,6 +44,7 @@ per-phase meters, battery power sensor and maximum measurement age), validated b
 from __future__ import annotations
 
 import logging
+from dataclasses import replace
 from typing import Any, Final
 
 import voluptuous as vol
@@ -82,6 +86,7 @@ from ..runtime import domain_data, preview_for
 from ..vehicles import vehicle_properties, vehicle_target
 from ..vehicles.ocpp_identity import apply_target, resolve_target
 from ..vehicles.vehicle_discovery import resolve_target_vehicle, soc_choices, valid_soc_choice
+from ..vehicles.vehicle_wake import wake_supported
 from .common import (
     ERROR_NOT_ADMIN,
     ERROR_UNSUPPORTED_VERSION,
@@ -148,6 +153,9 @@ from ..site.site_detection import (
     BatteryCandidate,
     enable_disabled_entities,
 )
+
+#: `wake_for_reading` turned on for a car whose integration offers no wake (`vehicle_wake.WAKE_METHODS`).
+ERR_WAKE_UNSUPPORTED: Final = "wake_unsupported"
 
 
 _LOGGER = logging.getLogger(__name__)
@@ -467,6 +475,12 @@ async def async_update_vehicle(
     ):
         raise _refuse(ERROR_INVALID_VALUE, [FieldError("vehicle_id", ERR_UNKNOWN_VEHICLE)])
     errors = vehicle_properties.validate_changes(changes)
+    if (
+        not errors
+        and changes.get(vehicle_properties.KEY_WAKE) is True
+        and not wake_supported(hass, vehicle_id)
+    ):
+        errors = {vehicle_properties.KEY_WAKE: ERR_WAKE_UNSUPPORTED}
     if errors:
         raise _refuse(ERROR_INVALID_VALUE, [FieldError(k, c) for k, c in errors.items()])
     if expected is not None and (
@@ -480,6 +494,7 @@ async def async_update_vehicle(
         vehicle_properties.KEY_ONBOARD_PHASES: row.get("onboard_phases"),
         vehicle_properties.KEY_TARGET: row.get("target_percent"),
         vehicle_properties.KEY_MIN: row.get("min_percent"),
+        vehicle_properties.KEY_WAKE: row.get("wake_for_reading"),
     }
     if any(seen[key] != value for key, value in (expected or {}).items()):
         raise _refuse(ERROR_CONFLICT, [])
@@ -491,7 +506,8 @@ async def async_update_vehicle(
         # The car's target is the same at every charger: those planning for it take it (and recalculate).
         vehicle_target.note_target(hass, vehicle_id, after.target_percent)
         await vehicle_target.async_spread(hass, vehicle_id)
-    if after != before:
+    if replace(after, wake_for_reading=False) != replace(before, wake_for_reading=False):
+        # The wake changes no plan.
         await _recalculate_planners_for(hass, vehicle_id)
     return read_entity_config(hass, charger), _vehicle_row(hass, entry_id, vehicle_id)
 
