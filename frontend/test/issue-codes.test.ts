@@ -49,6 +49,8 @@ function sample(kind: string): unknown {
       return ["amps", "phases"];
     case "choiceOrNull":
       return "until_tomorrow";
+    case "boolean":
+      return true;
     case "text":
       return "SEK";
     default:

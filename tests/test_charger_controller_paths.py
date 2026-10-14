@@ -569,3 +569,29 @@ async def test_a_stop_that_begins_while_the_regulators_write_waits_is_not_lifted
     assert (result.outcome, result.code) == (REGULATED_HELD, REGULATED_STOPPING)
     assert number == []
     await controller.async_shutdown()
+
+
+async def test_a_pause_asked_for_by_several_passes_at_once_is_logged_once(
+    hass: HomeAssistant, caplog: pytest.LogCaptureFixture
+) -> None:
+    """Several passes of the regulator (and a failed battery probe's own stop) can each ask for the same pause
+    before the charger is seen off: the field log of 14 October had the line two or three times per pause. A pause
+    is load balancing at work, said once and not as a warning; a safety stop stays a warning."""
+    import asyncio
+    import logging
+
+    controller = await _controller(hass, "wallbox", clock=Clock())
+    async_mock_service(hass, "number", "set_value")
+    async_mock_service(hass, "switch", "turn_off")
+    caplog.set_level(logging.DEBUG, logger="custom_components.spotnav.execution.controller")
+
+    results = await asyncio.gather(
+        *(controller.async_apply_regulated_current(0, must_lower=True) for _ in range(3))
+    )
+
+    assert {(result.outcome, result.code) for result in results} == {(REGULATED_STOPPED, "pause")}
+    said = [record for record in caplog.records if "pausing the charge" in record.getMessage()]
+    assert len(said) == 1 and said[0].levelno == logging.INFO
+    assert not [record for record in caplog.records if "cannot be lowered in time" in record.getMessage()]
+    assert len([r for r in caplog.records if "already holds the charge paused" in r.getMessage()]) == 2
+    await controller.async_shutdown()

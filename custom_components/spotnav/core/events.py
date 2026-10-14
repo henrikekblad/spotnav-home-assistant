@@ -74,7 +74,8 @@ class WindowStart(Event):
 
     Facts: whether the target's stop fired or is on its way (it ends the plan instead), whether a window is open
     (a plug-in), the open window's start (the car-ended rule, R3), whether the car that ended a person's charge is
-    known full for the plan and whether its need grew since, what the charger shows, and what else may own it (the
+    known full for the plan and whether its need grew since, whether the plan waits for the car's level after the car
+    ended its charge short of the target (`car_ended_awaits_level`), what the charger shows, and what else may own it (the
     sun's phase; a pause holds the hold only for an Auto plan)."""
 
     kind: ClassVar[str] = "window_start"
@@ -85,6 +86,7 @@ class WindowStart(Event):
     open_window_start: datetime | None = None
     car_ended_known_full: bool = False
     need_grew: bool = False
+    car_ended_awaits_level: bool = False
     control_on: bool = False
     connected: bool | None = None
     start_pending: bool = False
@@ -270,6 +272,7 @@ class ChargerReportedOn(Event):
     open_window_start: datetime | None = None
     car_ended_known_full: bool = False
     need_grew: bool = False
+    car_ended_awaits_level: bool = False
     solar_holds: bool = False
     plan_auto_owned: bool = True
     handed_off: bool = False
@@ -415,6 +418,7 @@ class Recheck(Event):
     open_window_start: datetime | None = None
     car_ended_known_full: bool = False
     need_grew: bool = False
+    car_ended_awaits_level: bool = False
     solar_holds: bool = False
     plan_auto_owned: bool = True
     handed_off: bool = False

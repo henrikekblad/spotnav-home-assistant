@@ -334,6 +334,16 @@ keep this off once the car ended the charge); the status headline is then
 `waiting_for_vehicle_update` (no params) in place of `nothing_to_charge`. A client that does not know the
 code shows it as any unknown code.
 
+**The car ended the plan's charge short of the target.** When the car ended the plan's charge by itself on a level
+nobody read then (the estimate from delivered energy, or a reading from before the end) below the target, the plan
+waits for the car's level: no window starts the car again until a reading made after the end, and the planning state
+is `nothing_to_charge` with the reason `waiting_for_vehicle_update` (no departure ends this wait). The status
+headline is `car_ended_waiting` (tone `normal`; `soc_percent`, the level the car ended at, `null` when none was
+known; `estimated`, a boolean: whether that level is the estimate) in place of `charging_now` (the window open at the
+end may keep its charge control on), the plan's lines and `waiting_for_vehicle_update`, while the car draws nothing.
+The webhook says `waiting_for_vehicle_update` (no params) in its place unless the request asks for it
+(`"reads": ["car_ended_waiting"]`).
+
 **Best effort before a departure.** When the need cannot be met by the departure, the plan is every
 whole quarter-hour from the first usable one up to the departure (one run, automatic or whatever number `max_periods` says,
 so the period limit never costs energy), installed and charged like any other: `planning` stays

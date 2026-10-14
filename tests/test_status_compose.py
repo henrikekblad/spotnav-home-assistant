@@ -166,6 +166,36 @@ CASES: list[tuple[str, StatusFacts, str, list[dict[str, Any]]]] = [
         ],
     ),
     (
+        "the car ended the plan's charge short of the target: it waits for the car's level, not charging now",
+        base(
+            installed_periods=((at(-1), at(1)), (at(2), at(3))),
+            relation_applied=True,
+            proposal=proposal(),
+            charging=True,
+            car_ended_waiting=True,
+            car_ended_soc_percent=86.20930232558122,
+            car_ended_estimated=True,
+        ),
+        "normal",
+        [{"code": "car_ended_waiting", "params": {"soc_percent": 86.2, "estimated": True}}],
+    ),
+    (
+        "waiting for the car's level after the plan ended, on an older reading",
+        base(
+            planning=planning("nothing_to_charge", "waiting_for_vehicle_update"),
+            car_ended_waiting=True,
+            car_ended_soc_percent=43.0,
+        ),
+        "normal",
+        [{"code": "car_ended_waiting", "params": {"soc_percent": 43.0, "estimated": False}}],
+    ),
+    (
+        "a person's pause wins over the wait for the car's level",
+        base(paused=True, car_ended_waiting=True, car_ended_soc_percent=86.2, car_ended_estimated=True),
+        "normal",
+        [{"code": "paused", "params": {"until": None, "choice": None, "action": None, "ends": None}}],
+    ),
+    (
         "paused by load balancing with no time to name: tried again when there is room",
         base(installed_periods=((at(-1), at(1)),), balancing_paused=True, balancing_cause="house_consumption"),
         "normal",

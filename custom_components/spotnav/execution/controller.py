@@ -108,6 +108,7 @@ from .target_stop import (
     LAPSE_CHARGE_STARTED,
     LAPSE_CHARGING,
     LAPSE_UNPLUGGED,
+    SOC_FRESH_MAX_AGE_S,
     SocReading,
     target_stop_lapse,
 )
@@ -477,6 +478,22 @@ def _validate_stored_amps(value: Any) -> int | None:
     return amps
 
 
+def _stored_car_ended_wait(raw: Any) -> dict[str, Any] | None:
+    """A stored car-ended wait (`ChargingController._car_ended_wait`), or `None` for anything that is not exactly one
+    (storage is untrusted)."""
+    if not isinstance(raw, dict):
+        return None
+    target = _safe_float(raw.get("target"))
+    level = raw.get("level")
+    level = None if level is None or isinstance(level, bool) else _safe_float(level)
+    estimated = raw.get("estimated")
+    if target is None or not 0.0 < target <= 100.0 or not isinstance(estimated, bool):
+        return None
+    if raw.get("level") is not None and level is None:
+        return None
+    return {"target": target, "level": level, "estimated": estimated}
+
+
 @dataclass(frozen=True, slots=True)
 class ResolvedCurrent:
     """The best available answer to "what current is this charger about to use", with provenance.
@@ -614,6 +631,11 @@ class ChargingController:
         # window starts again only once it has dropped by the hysteresis the sun's rules use (`SOC_DROP_PCT`).
         self._car_ended_soc: float | None = None
         self._car_ended_vehicle: str | None = None
+        # The car ended the plan's charge of a target with no level read then that says it is full: what the plan
+        # waits for (`_car_ended_awaits_level`), as `{"target", "level", "estimated"}`: the plan's target then, and the
+        # level the car ended at (an estimate from delivered energy, or a reading older than the end) and whether it
+        # was estimated. Persisted with the record and forgotten with it; `None` when nothing waits.
+        self._car_ended_wait: dict[str, Any] | None = None
         # The plan's charge in an open window, watched for the car ending it by itself (`_look_at_plan_charge`), and
         # who is told when it did: the car whose level is read, and whether it is full (`set_car_ended_observer`).
         self._plan_watch = PlanChargeWatch()
@@ -827,7 +849,7 @@ class ChargingController:
         # of who owns the charge or which person intent holds, compared, never acting. What a report or a timer
         # decided (`_shadow_note`), the car-ended facts the last decision read, and the sun's part of the hold guard.
         self._shadow_decisions: list[str] | None = None
-        self._shadow_car_facts: tuple[bool, bool] = (False, False)
+        self._shadow_car_facts: tuple[bool, bool, bool] = (False, False, False)
         self._shadow_unobserved = False
         self._solar_hold_probe: Callable[[], bool] | None = None
         # Step 2, behind `CONF_CORE_OWNERSHIP` (off unless set): the core decides, today's code acts on its verdicts
@@ -913,6 +935,9 @@ class ChargingController:
             )
             ended_vehicle = saved.get("car_ended_vehicle")
             self._car_ended_vehicle = ended_vehicle if isinstance(ended_vehicle, str) else None
+            self._car_ended_wait = (
+                _stored_car_ended_wait(saved.get("car_ended_wait")) if self._car_ended_at is not None else None
+            )
             backoff = saved.get("solar_credit_backoff")
             if isinstance(backoff, dict):
                 until = backoff.get("until")
@@ -1367,6 +1392,7 @@ class ChargingController:
         had_car_ended = self._car_ended_at is not None
         self._car_ended_at = None
         self._car_ended_soc = None
+        self._car_ended_wait = None
         if connected:
             self._plugged_in_at = dt_util.utcnow()
             self._plug_in_seen = True
@@ -1471,10 +1497,97 @@ class ChargingController:
             return False
         if self._car_ended_known_full():
             grew = self._car_ended_need_grew()
-            self._shadow_car_facts = (True, grew)
+            self._shadow_car_facts = (True, grew, False)
             return not grew
-        self._shadow_car_facts = (False, False)
+        if self._car_ended_awaits_level():
+            self._shadow_car_facts = (False, False, True)
+            return True
+        self._shadow_car_facts = (False, False, False)
         return any(start <= now < end and start <= ended_at for start, end in windows)
+
+    def _car_ended_awaits_level(self) -> bool:
+        """Whether the plan waits for the car's level after the car ended its charge short of the target
+        (`_car_ended_wait`): every window holds, the one open then and every later one, until a level read after
+        the end says the car is below the target (`_car_ended_level_since`, by more than the margin a car that ended
+        a charge may read below its goal and still be full), the car is unplugged or plugged in again, the target is
+        raised above the one the car ended at, or a person starts the charge. A level read since at the target ends
+        the plan instead (`_enforce_target_locked`).
+
+        Before, only the window open at the end was skipped and a later one started a car that took nothing (the
+        field night of 14 October: an estimate of 86 % against a target of 91 % for a car that was full)."""
+        wait = self._car_ended_wait
+        plan = self.plan
+        if wait is None or self._car_ended_at is None or plan is None or plan.target_soc_percent is None:
+            return False
+        if plan.target_soc_percent > wait["target"]:
+            return False
+        if (
+            self._car_ended_vehicle is not None
+            and plan.vehicle_id is not None
+            and self._car_ended_vehicle != plan.vehicle_id
+        ):
+            return False
+        level = self._car_ended_level_since()
+        return level is None or self._car_ended_level_full(level)
+
+    def _car_ended_level_since(self) -> SocReading | None:
+        """The car's level read after it ended the plan's charge (`_car_ended_at`), or `None`: a reading made after
+        it, or an estimate carried from one."""
+        ended_at = self._car_ended_at
+        if ended_at is None or self._soc_reader is None:
+            return None
+        try:
+            reading = self._soc_reader(self._car_ended_vehicle)
+        except Exception:  # noqa: BLE001 - an unreadable car says nothing new
+            return None
+        if reading is None or reading.soc_percent is None or reading.age_s is None:
+            return None
+        read_at = dt_util.utcnow() - timedelta(seconds=max(0.0, reading.age_s))
+        return reading if read_at > ended_at else None
+
+    def _car_ended_level_full(self, reading: SocReading) -> bool:
+        """Whether a level read after the car ended the plan's charge says it is full for the plan
+        (`target_stop.car_ended_full`)."""
+        plan = self.plan
+        return plan is not None and car_ended_full(
+            reading,
+            target_soc_percent=plan.target_soc_percent,
+            vehicle_max_percent=self.vehicle_limit_percent(plan.vehicle_id),
+        )
+
+    def car_ended_waits_for(self, *, target_percent: float | None, vehicle_id: str | None) -> bool:
+        """Whether the planner waits for the car's level rather than plan the target again
+        (`vehicle_update_wait`): the car ended the plan's charge short of the target with no level read then that
+        says it is full, for this car, and the target is not raised above the one it ended at. Whether a level was
+        read since is the planner's own (the reading's age)."""
+        wait = self._car_ended_wait
+        if wait is None or self._car_ended_at is None or target_percent is None:
+            return False
+        if self._car_ended_vehicle is not None and vehicle_id and self._car_ended_vehicle != vehicle_id:
+            return False
+        return target_percent <= wait["target"]
+
+    @property
+    def car_ended_wait(self) -> dict[str, Any] | None:
+        """For the status: the car ended the plan's charge and nothing since says its level is below the target, and
+        it is not drawing now. `{"soc_percent", "estimated", "target_percent"}`: the level it ended at (`None` when
+        none was known), whether that was an estimate, and the target then; `None` otherwise."""
+        wait = self._car_ended_wait
+        if wait is None or self._car_ended_at is None:
+            return None
+        level = self._car_ended_level_since()
+        if level is not None and not self._car_ended_level_full(level):
+            return None
+        if self._car_drawing_now():
+            return None
+        return {"soc_percent": wait["level"], "estimated": wait["estimated"], "target_percent": wait["target"]}
+
+    def _car_drawing_now(self) -> bool:
+        """Whether the car draws current now (`_car_drawing`); what cannot be read is not drawing."""
+        try:
+            return self._car_drawing() is True
+        except Exception:  # noqa: BLE001 - what cannot be read is not drawing
+            return False
 
     def _car_ended_known_full(self) -> bool:
         """Whether the car that ended a person's charge was full for the plan in force: its state of charge
@@ -1532,6 +1645,8 @@ class ChargingController:
                 None if reading is None or getattr(reading, "estimated", False) else reading.soc_percent
             )
             self._car_ended_vehicle = vehicle_id
+            # A person's charge the car ended waits for nothing: only the plan's own charge does.
+            self._car_ended_wait = None
             # A record kept from an earlier charge (its retry long past) must not let the sun start the car the
             # watch just found full: the wait starts now.
             retry_s = SolarConfig().ended_retry_s
@@ -1634,6 +1749,7 @@ class ChargingController:
                 # Only a read state of charge makes the car known full for later windows (`_car_ended_known_full`).
                 self._car_ended_soc = None if reading is None or reading.estimated else reading.soc_percent
                 self._car_ended_vehicle = vehicle_id
+                self._car_ended_wait = self._car_ended_wait_for(plan, reading, full)
                 await self._async_save_quietly()
             except BaseException:
                 self._shadow.cancel(token)
@@ -1644,6 +1760,26 @@ class ChargingController:
                 self.entry_id,
                 "full" if full else "not shown full",
             )
+            wait = self._car_ended_wait
+            if wait is not None:
+                _LOGGER.info(
+                    "SpotNav charger %s: the car ended the charge at %s against a target of %.0f %%; no window starts "
+                    "it again until its level is read",
+                    self.entry_id,
+                    "an unknown level" if wait["level"] is None
+                    else f"{wait['level']:.0f} % ({'estimated' if wait['estimated'] else 'an older reading'})",
+                    wait["target"],
+                )
+                if wait["estimated"]:
+                    # Told as the charge's end, on the estimate: "Charging stopped at about 86 % (estimated), the
+                    # target is 91 %." A level read later tells the end again if it ends the plan.
+                    self._record_completion(
+                        "target",
+                        target_soc_percent=wait["target"],
+                        soc_percent=wait["level"],
+                        basis="estimate",
+                        reading_age_s=None if reading is None else reading.age_s,
+                    )
             if full:
                 if plan.target_soc_percent is not None:
                     self._target_stopping = True
@@ -1660,6 +1796,19 @@ class ChargingController:
                 observer(vehicle_id, full)
             except Exception:  # noqa: BLE001 - the charge is decided; telling it must not undo that
                 _LOGGER.exception("SpotNav charger %s: telling that the car ended the charge failed", self.entry_id)
+
+    def _car_ended_wait_for(
+        self, plan: ChargingPlan, reading: SocReading | None, full: bool
+    ) -> dict[str, Any] | None:
+        """What the plan waits for after the car ended its charge (`_car_ended_wait`): only a plan with a target, for a
+        car whose level can be read at all, ended short of full on a level nobody read then (an estimate from
+        delivered energy, or a reading older than the end). `None` when the car is full, or read below the target
+        just now (a later window charges it as planned), or there is no level to wait for."""
+        if full or plan.target_soc_percent is None or reading is None or reading.soc_percent is None:
+            return None
+        if not reading.estimated and reading.age_s is not None and reading.age_s <= SOC_FRESH_MAX_AGE_S:
+            return None
+        return {"target": plan.target_soc_percent, "level": reading.soc_percent, "estimated": bool(reading.estimated)}
 
     def take_legacy_person_stop(self) -> bool:
         """A person's Stop an older release stored (`person_stopped`), once: the execution boundary takes it
@@ -1752,7 +1901,7 @@ class ChargingController:
 
     async def _plug_in_start_locked(self) -> bool:
         token = self._shadow.begin()
-        self._shadow_car_facts = (False, False)
+        self._shadow_car_facts = (False, False, False)
         facts = self._shadow_facts(
             lambda: {
                 "window_open": self._open_window_end() is not None,
@@ -1809,9 +1958,13 @@ class ChargingController:
             return None
         try:
             self._car_ended_holds_window()
-            known_full, need_grew = self._shadow_car_facts
+            known_full, need_grew, awaits = self._shadow_car_facts
             event = core_events.WindowStart(
-                trigger=trigger, **facts, car_ended_known_full=known_full, need_grew=need_grew
+                trigger=trigger,
+                **facts,
+                car_ended_known_full=known_full,
+                need_grew=need_grew,
+                car_ended_awaits_level=awaits,
             )
         except Exception:  # noqa: BLE001 - today's decision stands
             return None
@@ -2882,6 +3035,7 @@ class ChargingController:
             # A person decided to charge: what the car ended before is theirs to overrule.
             self._car_ended_at = None
             self._car_ended_soc = None
+            self._car_ended_wait = None
             await self._async_save_quietly()
         if manual and self._target_stop is not None:
             self._target_stop = None
@@ -3146,20 +3300,36 @@ class ChargingController:
             return RegulatedWrite(REGULATED_HELD, outcome, False)
         return await self._regulated_stop("safety_stop", cause=outcome)
 
-    async def _regulated_stop(self, code: str, *, cause: str | None = None) -> RegulatedWrite:
-        if self._shut_down:
-            return RegulatedWrite(REGULATED_HELD, REGULATED_SHUT_DOWN, False)
+    def _log_regulated_stop(self, code: str, cause: str | None) -> None:
+        """Say once that load balancing stops the charge, under the operation lock. Several passes of the regulator
+        (and a failed battery probe's own stop) may each ask for the same pause before the charger is seen off: a
+        pause while balancing already holds the charge is that pause again, and only a debug line. A pause is load
+        balancing doing its work (info); a safety stop, a current the charger would not take, is a warning."""
+        if code == "pause":
+            if self._paused_by_balancing:
+                _LOGGER.debug("SpotNav charger %s: load balancing already holds the charge paused", self.entry_id)
+                return
+            _LOGGER.info(
+                "SpotNav charger %s: pausing the charge; load balancing leaves less than the charger's minimum current",
+                self.entry_id,
+            )
+            return
         _LOGGER.warning(
             "SpotNav charger %s: stopping the charge (%s%s); the current cannot be lowered in time",
             self.entry_id,
             code,
             "" if cause is None else f": {cause}",
         )
+
+    async def _regulated_stop(self, code: str, *, cause: str | None = None) -> RegulatedWrite:
+        if self._shut_down:
+            return RegulatedWrite(REGULATED_HELD, REGULATED_SHUT_DOWN, False)
         try:
             async with self._lock:
                 if self._shut_down:
                     # Shut down while this stop waited for the lock: nothing more goes to the charger.
                     return RegulatedWrite(REGULATED_HELD, REGULATED_SHUT_DOWN, False)
+                self._log_regulated_stop(code, cause)
                 # Only a charge that was running can be one balancing interrupted; a pause written to a
                 # charger somebody already stopped must not make it look wanted. Read under the operation
                 # lock: a person's Stop that lands first is never remembered as a charge to resume.
@@ -3866,6 +4036,8 @@ class ChargingController:
             "car_ended_at": None if self._car_ended_at is None else self._car_ended_at.isoformat(),
             "car_ended_soc": self._car_ended_soc,
             "car_ended_vehicle": self._car_ended_vehicle,
+            # What the plan waits for after the car ended its charge short of the target (`_car_ended_awaits_level`).
+            "car_ended_wait": self._car_ended_wait,
             # A charge load balancing paused, and what it was, so its regulator resumes it after a restart.
             "balancing_pause": None
             if not self._paused_by_balancing
@@ -4205,7 +4377,7 @@ class ChargingController:
         if await self._enforce_target_locked():
             return True
         token = self._shadow.begin()
-        self._shadow_car_facts = (False, False)
+        self._shadow_car_facts = (False, False, False)
         facts = self._shadow_facts(self._shadow_start_facts)
         legacy: list[str] = []
         outcome: CommandOutcome | None = None
@@ -4260,7 +4432,32 @@ class ChargingController:
         mid plan-replacement.
         """
         async with self._automatic(AUTOMATIC_STOP) as allowed:
-            return allowed and await self._enforce_target_locked(gated=True)
+            if not allowed:
+                return False
+            if await self._enforce_target_locked(gated=True):
+                return True
+            await self._end_car_ended_wait_locked()
+            return False
+
+    async def _end_car_ended_wait_locked(self) -> None:
+        """A level read after the car ended the plan's charge says it is below the target (`_car_ended_awaits_level`):
+        the wait is over, and a window open now starts as a re-arm starts it (later windows by their timers). The
+        window that was open when the car ended the charge stays skipped (R3). With the lock held."""
+        if self._car_ended_wait is None:
+            return
+        level = self._car_ended_level_since()
+        if level is None or self._car_ended_level_full(level):
+            return
+        _LOGGER.info(
+            "SpotNav charger %s: the car reads %.0f %% since it ended the charge; the plan charges again",
+            self.entry_id,
+            level.soc_percent or 0.0,
+        )
+        self._car_ended_wait = None
+        await self._async_save_quietly()
+        if self.plan is not None and not self._control_on and self._open_window_end() is not None:
+            await self._reschedule_locked()
+        self._notify()
 
     async def _enforce_target_locked(self, *, gated: bool = False) -> bool:
         """The target decision itself, with the operation lock held.
@@ -4288,6 +4485,17 @@ class ChargingController:
             finally:
                 self._target_stopping = False
             return True
+        if self._car_ended_awaits_level():
+            level = self._car_ended_level_since()
+            if level is not None:
+                # The car's level read after it ended the plan's charge says it is full for the plan: the plan
+                # ends there, told with that level (`complete.target_reading` or `complete.stopped_below`).
+                self._target_stopping = True
+                try:
+                    await self._target_stop_locked(level, gated=gated, car_ended=True)
+                finally:
+                    self._target_stopping = False
+                return True
         self._note_estimate_answer(reading, target)
         if estimate_needs_confirming(target_soc_percent=target, reading=reading, to_vehicle_limit=to_vehicle_limit):
             assert reading is not None
@@ -4798,8 +5006,9 @@ class ChargingController:
             # under the lock, and ends the plan as this would have when it may not run.
             self._async_spawn(self._async_begin_top_off(), "the last window's end")
             return
-        if self.plan is not None and self._control_on:
-            # A charge still running at the last window's end: the plan is done.
+        if self.plan is not None and self._control_on and self._car_ended_wait is None:
+            # A charge still running at the last window's end: the plan is done. Not when the car ended it short of
+            # the target: that end was told when the car ended it.
             self._record_completion("plan_done", target_soc_percent=self.plan.target_soc_percent)
         self._async_spawn(self._async_window_end_stop(clear_schedule=True), "the last window end's stop")
 
@@ -4970,7 +5179,7 @@ class ChargingController:
                     if stop:
                         until = None
                 if until is None:
-                    if self._control_on:
+                    if self._control_on and self._car_ended_wait is None:
                         self._record_completion("plan_done", target_soc_percent=plan.target_soc_percent)
                     if not stop:
                         # Not the plan's charge: it goes on, and the plan ends.
@@ -5243,9 +5452,9 @@ class ChargingController:
         }
 
     def _shadow_take_car_facts(self) -> dict[str, bool]:
-        known_full, need_grew = self._shadow_car_facts
-        self._shadow_car_facts = (False, False)
-        return {"car_ended_known_full": known_full, "need_grew": need_grew}
+        known_full, need_grew, awaits = self._shadow_car_facts
+        self._shadow_car_facts = (False, False, False)
+        return {"car_ended_known_full": known_full, "need_grew": need_grew, "car_ended_awaits_level": awaits}
 
     def _shadow_facts(self, read: Callable[[], dict[str, Any]]) -> dict[str, Any] | None:
         """Facts for an event, read without ever raising into the real path (`None`: they could not be read, and
@@ -5323,11 +5532,11 @@ class ChargingController:
         reading them may read the car's state of charge, which moves and saves its anchor. With the option off they
         are what today's rule read itself, taken after it (`_recheck`), so the shadow reads nothing of the car."""
         open_start, ahead = self._shadow_windows()
-        self._shadow_car_facts = (False, False)
+        self._shadow_car_facts = (False, False, False)
         if self._core_drives and what == core_events.RECHECK_CLAIM:
             self._car_ended_holds_window()
-        known_full, need_grew = self._shadow_car_facts
-        self._shadow_car_facts = (False, False)
+        known_full, need_grew, awaits = self._shadow_car_facts
+        self._shadow_car_facts = (False, False, False)
         commanded = what in (core_events.RECHECK_HOLD, core_events.RECHECK_PERSON_HOLD)
         return {
             "control_on": self._control_on if commanded else self._control_observation is True,
@@ -5338,6 +5547,7 @@ class ChargingController:
             "open_window_start": open_start,
             "car_ended_known_full": known_full,
             "need_grew": need_grew,
+            "car_ended_awaits_level": awaits,
             "handed_off": self._shadow_handed_off(),
             "top_off": self.top_off_until is not None,
             "start_pending": self._shadow_start_pending(),
@@ -5389,13 +5599,15 @@ class ChargingController:
             event = None
         previous = self._shadow_decisions
         self._shadow_decisions = []
-        self._shadow_car_facts = (False, False)
+        self._shadow_car_facts = (False, False, False)
         if self._core_drives and event is not None:
             try:
                 if isinstance(event, core_events.ChargerReportedOn):
                     self._car_ended_holds_window()
-                    known_full, need_grew = self._shadow_car_facts
-                    event = replace(event, car_ended_known_full=known_full, need_grew=need_grew)
+                    known_full, need_grew, awaits = self._shadow_car_facts
+                    event = replace(
+                        event, car_ended_known_full=known_full, need_grew=need_grew, car_ended_awaits_level=awaits
+                    )
                 self._core_report_verdict = self._core_hold_verdict = self._shadow.verdict(event)
             except Exception:  # noqa: BLE001 - today's decision stands
                 self._core_report_verdict = self._core_hold_verdict = None

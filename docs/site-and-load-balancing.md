@@ -127,7 +127,10 @@ It is best effort and is not a protective device. Turning it off gives back any 
 - **A charge load balancing paused** (no room for the car's minimum current) is started again once
   every phase it uses has room for the minimum and one amp more for the dwell time (60 s), while the
   charge is still wanted: the plan's window is open, the sun's charge or a person's Start. It goes on as
-  the charge it was (a plan's charge stays the plan's). A stopped charger is not paused again, so the
+  the charge it was (a plan's charge stays the plan's). The log says a pause once, as information
+  ("pausing the charge; load balancing leaves less than the charger's minimum current"), however many
+  passes of the regulator or a failed battery probe ask for it before the charger is seen off; a safety
+  stop (a lower current the charger would not take) stays a warning. A stopped charger is not paused again, so the
   charge it holds back is not forgotten. A person's Stop, the window's end or a new plan with no window
   open ends it, also while the charger has not yet answered the pause: a pause repeated then holds back
   nothing. At most two resumes go out in ten minutes; one more due in them waits 15 minutes, so a load

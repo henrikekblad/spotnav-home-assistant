@@ -164,6 +164,7 @@ export const STATUS_WORDING: Readonly<Record<StatusCode, TranslationKey>> = {
   no_plan: "status.noPlan",
   nothing_to_charge: "status.nothingToCharge",
   waiting_for_vehicle_update: "status.waitingForVehicleUpdate",
+  car_ended_waiting: "status.carEndedWaiting",
   plan_energy: "status.planEnergy",
   plan_cost: "status.planCost",
   plan_distance: "status.planDistance",
@@ -497,6 +498,16 @@ export function lineText(line: StatusLine, format: FormatContext, nowMs: number)
       return credit !== null && credit > 0
         ? `${grid}${say("strategy.status.hybrid.creditSuffix", { credit: formatNumber(language, credit, 1) })}`
         : grid;
+    }
+    case "car_ended_waiting": {
+      // The car ended the plan's charge short of the target: at the level it ended at, "~" and "estimated" when that
+      // came from the delivered energy, and the plan waits for the car's own level.
+      const soc = num(p["soc_percent"]);
+      if (soc === null) {
+        return say("status.carEndedWaitingUnknown");
+      }
+      const level = formatNumber(language, soc, 0);
+      return say(p["estimated"] === true ? "status.carEndedWaitingEstimate" : "status.carEndedWaiting", { soc: level });
     }
     case "balancing_paused": {
       // Load balancing paused the plan's charge: why (the house, or a home battery charging from the grid) and when

@@ -394,6 +394,29 @@ def test_r3_which_windows_the_car_ended_record_holds(window_start, known_full, n
     assert kinds(commands) == ([] if holds else ["start"])
 
 
+@pytest.mark.parametrize("window_start", [T0 - timedelta(minutes=10), T0 + timedelta(hours=2)])
+def test_a_plan_waiting_for_the_cars_level_holds_every_window(window_start) -> None:
+    """The car ended the plan's charge short of the target on a level nobody read: no window starts it, the one open
+    then nor any later, until a level read since says it is below the target (the controller's fact)."""
+    session = ChargeSession(car_ended_at=T0)
+    assert car_ended_holds_window(
+        session, open_window_start=window_start, known_full=False, need_grew=False, awaits_level=True
+    )
+    for event in (
+        ev.WindowStart(open_window_start=window_start, car_ended_awaits_level=True),
+        ev.Recheck(
+            what=ev.RECHECK_CLAIM, control_on=True, window_open=True, in_window=True, plan_present=True,
+            open_window_start=window_start, car_ended_awaits_level=True,
+        ),
+    ):
+        _, commands = run(session, event, now=T0 + timedelta(hours=2))
+        assert kinds(commands) == []
+    # Without a car-ended record there is nothing to wait for.
+    assert not car_ended_holds_window(
+        ChargeSession(), open_window_start=window_start, known_full=False, need_grew=False, awaits_level=True
+    )
+
+
 def test_no_car_ended_record_holds_nothing() -> None:
     assert not car_ended_holds_window(ChargeSession(), open_window_start=T0, known_full=True, need_grew=False)
 

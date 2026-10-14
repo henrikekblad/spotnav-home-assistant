@@ -95,7 +95,10 @@ A target's completion says what the stop was taken on. On the car's reading it g
 level the car shows. On the estimate from delivered energy (no fresh reading came after the car was asked,
 see [Target state of charge](target-soc.md)) it never says the target was reached: *Charging stopped at 83 %
 (estimated), the target is 80 %.* A car that ended the charge itself just short of the target is told as
-*The car stopped charging at 79 %, just below the target 80 %.*
+*The car stopped charging at 79 %, just below the target 80 %.* A car that ended the plan's charge on an estimate
+short of the target is told then, on the estimate (*Charging stopped at 86 % (estimated), the target is 91 %.*), while
+the plan waits for the car's level; the period's end that follows is not told again. When the car's own level then
+says it is full, the end is told once more with that level.
 
 Charging complete gives the energy and the cost of that charge from its session, a new plan its start
 time, planned energy and estimated cost. Tapping the notification opens Home Assistant on the dashboard

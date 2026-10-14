@@ -24,6 +24,11 @@ It waits while all of these hold:
 * no departure is near: with one, it waits only until the need, if the reading were true, would just still
   fit at the charger's power (with `DEPARTURE_MARGIN_S` to spare), and that instant is `replan_at`.
 
+After the car ended the plan's charge short of the target on a level nobody read then (an estimate, or a reading
+older than the end: `controller.car_ended_waits_for`), it waits for the car's level whatever that level leaves to
+charge, with no departure to end the wait: only a reading after the end, an unplug or a target raised above the one
+the car ended at plans again (the field night of 14 October: a car full at 100 % estimated at 86 % against 91 %).
+
 After the car ended the charge by itself (`controller.car_ended_at`, later than the reading), the charge is over
 even with the plan's control still on or a window of it still ahead: those two no longer keep the wait from starting.
 The measured energy must still cover the need. And an estimate from delivered energy, which waits for nothing on its
@@ -135,15 +140,24 @@ def decide_vehicle_update_wait(
     now: datetime,
     car_ended_at: datetime | None = None,
     car_full: bool = False,
+    car_awaits_level: bool = False,
 ) -> WaitDecision:
     """Whether to wait for the car's new level rather than plan `need_kwh` (wall energy) again.
 
     `car_ended_at`: when the car last ended the charge by itself in this plug-in; `car_full`: whether the level
-    read now says that car is full (`target_stop.car_ended_full`)."""
+    read now says that car is full (`target_stop.car_ended_full`); `car_awaits_level`: the car ended the plan's
+    charge short of this target on a level nobody read then (`ChargingController.car_ended_waits_for`)."""
     if reading_age_s is None:
         return WaitDecision(False, "estimated" if estimated else "no_reading_age")
     read_at = now - timedelta(seconds=max(0.0, reading_age_s))
     ended = car_ended_at is not None and car_ended_at >= read_at
+    if ended and car_awaits_level:
+        # The car ended the plan's charge and nothing read since says its level: whatever the estimate or the
+        # older reading leaves to charge, the car took no more of it. No departure ends this wait: a window the car
+        # refuses delivers nothing by any departure, and the controller starts none (`car_ended_holds_window`).
+        if connected is False:
+            return WaitDecision(False, "unplugged")
+        return WaitDecision(True, "car_ended")
     if estimated:
         if not (ended and car_full):
             return WaitDecision(False, "estimated")
