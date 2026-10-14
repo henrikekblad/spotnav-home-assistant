@@ -210,6 +210,24 @@ def test_a_departure_still_bounds_the_wait_after_the_car_ended() -> None:
     assert not close.wait and close.reason == "departure_close"
 
 
+def test_a_car_that_ended_the_plans_charge_short_of_the_target_waits_for_its_level_whatever_is_left() -> None:
+    """14 October: the estimate said 86.2 % against 91 % (4.1 kWh left) when the car, full, stopped drawing. Waiting
+    for the car's level, nothing is planned again, by any departure; a reading after the end, or an unplug, plans."""
+    now = T0 + timedelta(minutes=10)
+    decision = _wait(
+        estimated=True, need_kwh=4.12, sessions=[], car_awaits_level=True, departure_at=now + timedelta(minutes=40)
+    )
+    assert decision.wait and decision.reason == "car_ended" and decision.replan_at is None
+    # The stale reading itself, with nothing measured: still the car's level from before the end.
+    assert _wait(need_kwh=4.12, sessions=[], car_awaits_level=True).reason == "car_ended"
+    # A reading after the end plans from it.
+    fresh = _wait(estimated=False, need_kwh=4.12, reading_age_s=60.0, sessions=[], car_awaits_level=True)
+    assert fresh.reason != "car_ended"
+    assert _wait(estimated=True, need_kwh=4.12, sessions=[], car_awaits_level=True, connected=False).reason == "unplugged"
+    # Without the controller's wait (a person's charge, a raised target), as before.
+    assert _wait(estimated=True, need_kwh=4.12, sessions=[], car_awaits_level=False).reason == "estimated"
+
+
 # ---------------------------------------------------------------------------------------------- the core
 
 

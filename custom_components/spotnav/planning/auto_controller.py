@@ -1746,6 +1746,9 @@ class AutoPlannerController:
                 target_soc_percent=settings.target.target_percent,
                 vehicle_max_percent=facts.max_percent,
             ),
+            car_awaits_level=controller.car_ended_waits_for(
+                target_percent=settings.target.target_percent, vehicle_id=vehicle_id
+            ),
         )
         if not decision.wait:
             return None
@@ -1763,15 +1766,16 @@ class AutoPlannerController:
                     self._entry_id, decision.delivery.kwh, facts.soc_percent or 0.0, need_kwh,
                 )
         else:
-            # The car ended the charge with the estimate at full: asked once per time it ended one.
+            # The car ended the charge (with the estimate at full, or short of the target on a level nobody read
+            # then): asked once per time it ended one.
             ended_at = controller.car_ended_at
             charge = f"car_ended:{None if ended_at is None else ended_at.isoformat()}"
             ask = charge != self._update_asked_for
             if ask:
                 _LOGGER.info(
-                    "SpotNav charger %s: the car ended the charge with an estimated %.0f %%; waiting for its "
-                    "new level before planning again",
-                    self._entry_id, facts.soc_percent or 0.0,
+                    "SpotNav charger %s: the car ended the charge at %s %.0f %%; waiting for its new level before "
+                    "planning again",
+                    self._entry_id, "an estimated" if facts.soc_estimated else "a reading of", facts.soc_percent or 0.0,
                 )
         if ask:
             self._update_asked_for = charge
