@@ -40,7 +40,10 @@ Events: `plug_in`, `unplug`, `connection_unknown`, `window_start` (timer, re-arm
 `strategy_change`, `solar_start`, `solar_stop` (also the take-over of a self-started charge), `min_soc_start`,
 `min_soc_end` (the car's minimum charge level), `charger_reported_on`,
 `charger_reported_off`, `car_ended` (a person's charge, or with `plan` the plan's: the car stopped taking it in an open
-window; a car full for the plan then also gives `target_reached`, or `need_met` without a target), `balancing_pause`, `balancing_resume`, `target_reached`, `need_met`,
+window; a car full for the plan then also gives `target_reached`, or `need_met` without a target; one that ended the
+plan's charge short of the target on a level nobody read then makes the plan wait for the car's level: the facts
+`car_ended_awaits_level` on `window_start`, `charger_reported_on` and `recheck` then hold every window until a level read
+after the end says it is below the target), `balancing_pause`, `balancing_resume`, `target_reached`, `need_met`,
 `top_off_end`, `plan_installed`, `plan_dropped`, `restart`, `timer`, `command_result`.
 
 The rules are today's (`plans/ha_manual_override_and_fixes.md` and its three review rounds): the gate every

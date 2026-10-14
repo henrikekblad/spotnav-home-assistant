@@ -84,10 +84,21 @@ a vehicle integration, charge a fixed number of kWh instead.
   for the plan (a reading within 1 percentage point of the target, or of the car's own limit when that is
   lower; an estimate within 3), the plan ends there as a reached target: the charge is stopped, the
   periods still ahead are cleared, the card shows the level it stopped at (*Stopped at 100 % (estimated)*)
-  and a charge to the car's own limit is told as *Charging complete: the car is full.* Otherwise the car
-  stopped for a reason of its own (its own timer, a fault): the charge and the plan stay, the period open
-  then does not start it again, and a later period charges as planned. Either way SpotNav asks the car's
-  integration once to read its level again; a fresh reading below the target is planned again at once.
+  and a charge to the car's own limit is told as *Charging complete: the car is full.* When the level
+  then is one nobody read at the end (the estimate from delivered energy, or a reading from before the
+  end), the plan waits for the car's level: no period starts the car again, neither the one open nor a
+  later one, the status says *The car ended the charge at ~86 % (estimated); waiting for the car's level*
+  (without "~" and "(estimated)" on an older reading), and the end is told once, on the estimate:
+  *Charging stopped at 86 % (estimated), the target is 91 %.* No departure ends this wait. A reading made
+  after the end decides: below the target (by more than the 1 point above) the car is charged as planned,
+  at the target the plan ends as above and is told with the car's own level. Unplugging or plugging in
+  again, raising the target above the one the car ended at, or a person's Start ends the wait too. (On 14
+  October a car full at 100 % read 86 % by the estimate against a target of 91 %, and the next period
+  started a car that drew nothing while the status said it charged.) Only a reading made just before the
+  end (within three minutes) that is below the target means the car stopped for a reason of its own (its
+  own timer, a fault): the charge and the plan stay, the period open then does not start it again, and a
+  later period charges as planned. Either way SpotNav asks the car's integration once to read its level
+  again; a fresh reading below the target is planned again at once.
   The car having stopped by itself is what lets a level within that margin count: no reading or estimate
   ever stops a car that is still drawing short of its target.
 - **To the car's own limit.** A target at or above the car's own charge limit (or 100 % when the car
