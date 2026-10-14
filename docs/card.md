@@ -49,6 +49,9 @@ The graph shows the price of every interval, in the price area's currency per kW
   ended is drawn, tomorrow is drawn like today, and a charging period across midnight is one band.
   Ticks come every six hours, and midnight is a dashed line labelled with the new day's weekday and
   date. Until tomorrow's prices are published, **From now** looks exactly like **Day**.
+
+  ![The card on From now: the now line at the left edge, today's prices then tomorrow's, and a dashed line at midnight named 15 Thu](images/card-from-now.png)
+
 - Bars cheaper than the day's average are marked as cheap and pricier ones as expensive. A line
   marks now, and the current interval is highlighted.
 - The plan is drawn on top of the prices. **Scheduled** bands are the charging periods Home
