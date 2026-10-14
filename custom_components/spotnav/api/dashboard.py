@@ -126,6 +126,7 @@ from ..vehicles.soc_estimate import battery_room_kwh, CHARGE_EFFICIENCY, target_
 from ..vehicles.identification_sources import sources_block
 from ..vehicles.vehicle_charge_limit import charge_limit_range
 from ..vehicles.vehicle_discovery import discover_vehicles, resolve_target_vehicle
+from ..vehicles.vehicle_wake import wake_supported
 from .charge_bar import charge_bar, ProgressFacts
 from .common import (
     ERROR_CHARGER_REQUIRED,
@@ -389,6 +390,9 @@ class CapturedVehicle:
     min_percent: int | None = None
     #: What the car's own limit can be written to (`vehicle_charge_limit.charge_limit_range`), `None` when unknown.
     charge_limit_range: dict[str, float] | None = None
+    #: Whether SpotNav wakes the car for a reading at a charge's end (`vehicle_wake`), `None` when its integration
+    #: offers no wake.
+    wake_for_reading: bool | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -737,6 +741,7 @@ def capture_vehicles(
                 target_percent=own.target_percent,
                 min_percent=own.min_percent,
                 charge_limit_range=charge_limit_range(hass, choice.id),
+                wake_for_reading=own.wake_for_reading if wake_supported(hass, choice.id) else None,
             )
         )
     return tuple(rows), target_id
@@ -2075,7 +2080,8 @@ def serialize_vehicle(vehicle: CapturedVehicle) -> dict[str, Any]:
     """One entry of the root `vehicles`: `capacity_source` is `reported` (by the vehicle, not editable),
     `stored` (a person's answer) or `null` (missing). `min_percent` is the car's minimum charge level, `null` when
     off. `charge_limit_range` is `{"min", "max", "step"}`, the percents the car's own limit can be written to, `null`
-    when there is none to write or its range is unknown.
+    when there is none to write or its range is unknown. `wake_for_reading` is whether SpotNav wakes the car for a
+    reading at a charge's end, `null` when its integration offers no wake (the setting is not offered).
     """
     return {
         "id": vehicle.id,
@@ -2092,6 +2098,7 @@ def serialize_vehicle(vehicle: CapturedVehicle) -> dict[str, Any]:
         "target_percent": finite_number(vehicle.target_percent),
         "min_percent": vehicle.min_percent,
         "charge_limit_range": vehicle.charge_limit_range,
+        "wake_for_reading": vehicle.wake_for_reading,
     }
 
 

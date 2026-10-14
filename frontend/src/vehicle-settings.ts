@@ -14,6 +14,7 @@ export interface VehicleEdits {
   sensor?: () => void;
   target?: () => void;
   minimum?: () => void;
+  wake?: () => void;
   capacity?: () => void;
   consumption?: () => void;
   onboard?: () => void;
@@ -137,6 +138,15 @@ export function vehicleSummary(doc: Document, language: Language, input: Vehicle
           ? `${level} · ${translate(language, "settings.vehicle.minimumNeedsSoc")}`
           : level,
         edits.minimum,
+      );
+    }
+    // Waking the car for a reading at a charge's end: offered only when the car's integration has a wake.
+    if (row.wake_for_reading !== undefined && row.wake_for_reading !== null) {
+      valueRow(
+        "wake_for_reading",
+        translate(language, "settings.vehicle.wake"),
+        translate(language, row.wake_for_reading ? "settings.value.on" : "settings.value.off"),
+        edits.wake,
       );
     }
   }

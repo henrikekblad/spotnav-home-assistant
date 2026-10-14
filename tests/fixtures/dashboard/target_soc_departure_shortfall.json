@@ -2358,7 +2358,8 @@
       "soc_entity_id": "sensor.ev6_battery",
       "soc_percent": 2.0,
       "suggested_onboard_phases": null,
-      "target_percent": 80.0
+      "target_percent": 80.0,
+      "wake_for_reading": null
     }
   ]
 }

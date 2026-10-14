@@ -2845,7 +2845,13 @@ export function createCardView(input: CardViewInput): CardView {
      * what the answer says is stored now (the editor says it changed elsewhere and keeps what was typed).
      */
     const propertyWrite = <
-      K extends "capacity_kwh" | "consumption_kwh_per_10km" | "onboard_phases" | "target_percent" | "min_percent",
+      K extends
+        | "capacity_kwh"
+        | "consumption_kwh_per_10km"
+        | "onboard_phases"
+        | "target_percent"
+        | "min_percent"
+        | "wake_for_reading",
     >(
       field: K,
     ): ((value: Vehicle[K]) => Promise<string | null>) => {
@@ -2917,6 +2923,21 @@ export function createCardView(input: CardViewInput): CardView {
             save,
             handlers,
           ),
+        );
+    }
+    const wake = row.wake_for_reading;
+    if (wake !== undefined && wake !== null) {
+      const save = propertyWrite("wake_for_reading");
+      edits.wake = () =>
+        editSingle(
+          translate(model.language, "settings.vehicle.wake"),
+          [
+            { value: "on", label: translate(model.language, "settings.value.on") },
+            { value: "off", label: translate(model.language, "settings.value.off") },
+          ],
+          wake ? "on" : "off",
+          (chosen) => save(chosen === "on"),
+          translate(model.language, "settings.vehicle.wakeHelp"),
         );
     }
     edits.capacity = () =>

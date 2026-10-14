@@ -812,6 +812,8 @@
   "settings.vehicle.minimumSlider": "Minimaal laadniveau, uit of procent",
   "settings.vehicle.minimumNeedsSoc": "vereist het laadniveau van de auto",
   "settings.vehicle.minimumHelp": "Onder dit niveau laadt SpotNav direct op volle stroom, ongeacht de strategie. Een pauze of Stoppen die je zelf kiest gaat voor. Vereist het laadniveau van de auto.",
+  "settings.vehicle.wake": "Auto wekken voor een uitlezing",
+  "settings.vehicle.wakeHelp": "Vraagt de auto zelf zijn laadniveau te melden wanneer een laadbeurt eindigt en de laatste melding oud is. Dit gebruikt de 12V-accu van de auto en de aanvraaglimiet van de fabrikant, dus SpotNav doet het hooguit één keer per einde van een laadbeurt.",
   "settings.vehicle.sourcesHelp": "Alleen gelezen om te bepalen welke auto is aangesloten.",
   "settings.section.display": "Weergave",
   "display.applies": "Alleen dit apparaat: geldt voor alle SpotNav-kaarten in deze browser.",

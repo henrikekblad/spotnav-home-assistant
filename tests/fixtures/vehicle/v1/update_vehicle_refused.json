@@ -490,6 +490,7 @@
     "soc_entity_id": "sensor.niro_battery",
     "soc_percent": 55.0,
     "suggested_onboard_phases": null,
-    "target_percent": null
+    "target_percent": null,
+    "wake_for_reading": null
   }
 }

@@ -10,7 +10,7 @@ from __future__ import annotations
 import logging
 from datetime import datetime
 from functools import partial
-from typing import Any
+from typing import Any, Callable
 
 from homeassistant.config_entries import ConfigEntry, ConfigEntryState
 from homeassistant.const import EVENT_HOMEASSISTANT_STARTED, EVENT_HOMEASSISTANT_STOP
@@ -52,7 +52,7 @@ from .execution.solar_execution import (
     async_setup_solar_execution,
     solar_execution_state,
 )
-from .execution.target_stop import resolve_charger_soc_reading, resolve_soc_reading, SocReading
+from .execution.target_stop import resolve_charger_soc_reading, resolve_soc_reading, SOC_FRESH_MAX_AGE_S, SocReading
 from .planning.auto_controller import (
     async_remove_auto_state,
     AutoPlannerController,
@@ -448,6 +448,20 @@ async def _async_setup_auto_preview(
                 hass, async_ask_vehicle_update(hass, vehicle_id), f"{entry_id} vehicle refresh"
             )
 
+    def _fresh(vehicle_id: str) -> Callable[[], bool]:
+        # A reading the car reported lately (not estimated forward): nothing to wake the car for.
+        def fresh() -> bool:
+            reading = data.soc_reader.read(vehicle_id)
+            return (
+                reading is not None
+                and not reading.estimated
+                and reading.soc_percent is not None
+                and reading.age_s is not None
+                and reading.age_s <= SOC_FRESH_MAX_AGE_S
+            )
+
+        return fresh
+
     def _consumption(vehicle_id: str) -> float | None:
         return consumption_kwh_per_10km(
             hass, resolve_target_vehicle(hass, vehicle_id or None, charger_vehicle_ids(hass, entry_id))[0]
@@ -480,16 +494,25 @@ async def _async_setup_auto_preview(
 
     def _car_ended(vehicle_id: str | None, _full: bool) -> None:
         # The car stopped taking the plan's charge by itself: hear of its next reading, ask its integration once to
-        # read it again (`refresh_vehicle`'s own call and interval, never a wake-up), and plan again from what is
-        # known now (a car full by the estimate, or a stale reading the charge already covered, waits for that
-        # reading instead of being planned again).
+        # read it again (`refresh_vehicle`'s own call and interval), and plan again from what is known now (a car
+        # full by the estimate, or a stale reading the charge already covered, waits for that reading instead of
+        # being planned again). While the plan waits for the car's level, a car whose wake is turned on is woken
+        # once for this end when the re-read brings nothing fresh (`vehicle_wake`).
         data.soc_reader.notify_next_reading()
         car = vehicle_id or resolve_target_vehicle(
             hass, settings_store.settings(entry_id).target.vehicle_id, charger_vehicle_ids(hass, entry_id)
         )[0]
         if car:
+            ended_at = data.controller.car_ended_at
+            occasion = (
+                f"car_ended:{ended_at.isoformat()}"
+                if ended_at is not None and data.controller.car_ended_wait is not None
+                else None
+            )
             entry.async_create_background_task(
-                hass, async_ask_vehicle_update(hass, car), f"{entry_id} vehicle refresh"
+                hass,
+                async_ask_vehicle_update(hass, car, wake_occasion=occasion, fresh=_fresh(car)),
+                f"{entry_id} vehicle refresh",
             )
         entry.async_create_task(hass, preview.async_recalculate(), f"{entry_id} recalculate")
 
@@ -498,13 +521,18 @@ async def _async_setup_auto_preview(
 
     def _ask_reading(vehicle_id: str | None) -> bool:
         # Only an estimate says the target is reached: ask the car's integration to read it again (its own
-        # interval, never a wake-up), and hear of the answer however little it moved. A car with nothing to
-        # re-read offers no refresh, and the estimate decides with its margin.
+        # interval), and hear of the answer however little it moved. A car with nothing to re-read offers no
+        # refresh, and the estimate decides with its margin. A car whose wake is turned on is woken once for this
+        # plug-in when the re-read brings nothing fresh (`vehicle_wake`), inside the same wait for the answer.
         if not vehicle_id or not vehicle_reading_entity_ids(hass, vehicle_id):
             return False
         data.soc_reader.notify_next_reading()
+        plugged_in_at = data.controller.plugged_in_at
+        occasion = f"target:{'' if plugged_in_at is None else plugged_in_at.isoformat()}"
         entry.async_create_background_task(
-            hass, async_ask_vehicle_update(hass, vehicle_id), f"{entry.entry_id} vehicle refresh for the target"
+            hass,
+            async_ask_vehicle_update(hass, vehicle_id, wake_occasion=occasion, fresh=_fresh(vehicle_id)),
+            f"{entry.entry_id} vehicle refresh for the target",
         )
         return True
 

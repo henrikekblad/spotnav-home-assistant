@@ -89,7 +89,6 @@ APP_READS_SOLAR_NO_CAR_STATUS: Final = "solar_no_car_status"
 #: place of `min_soc_charging`, and vehicle rows without `min_percent` (its settings row is never offered).
 APP_UNREAD_MIN_SOC_CODES: Final = ("min_soc_charging",)
 APP_READS_MIN_SOC: Final = "min_soc"
-APP_UNREAD_VEHICLE_FIELDS: Final = ("min_percent",)
 #: Automatic charge periods (`max_periods` null): an app that does not read `APP_READS_AUTO_PERIODS` gets the
 #: effective number, `MAX_PERIODS`, in its place, and its replacement echoing that number keeps automatic.
 APP_READS_AUTO_PERIODS: Final = "auto_periods"
@@ -101,6 +100,11 @@ APP_READS_BALANCING_PAUSED: Final = "balancing_paused"
 #: `APP_READS_CAR_ENDED_WAITING` gets the line it already words for a wait for the car's level in its place.
 APP_UNREAD_CAR_ENDED_CODES: Final = ("car_ended_waiting",)
 APP_READS_CAR_ENDED_WAITING: Final = "car_ended_waiting"
+#: Waking the car for a reading: an app that does not read `APP_READS_WAKE_FOR_READING` gets vehicle rows without
+#: `wake_for_reading` (its settings row is never offered).
+APP_READS_WAKE_FOR_READING: Final = "wake_for_reading"
+#: Each vehicle-row field an app released before it does not read, with the `reads` name that opts into it.
+APP_VEHICLE_FIELD_READS: Final = {"min_percent": APP_READS_MIN_SOC, "wake_for_reading": APP_READS_WAKE_FOR_READING}
 
 
 def _status_for_app(line: Any, opted_in: set[str]) -> Any:
@@ -129,9 +133,10 @@ def _opted_in(payload: dict[str, Any]) -> set[str]:
 
 def _vehicle_for_app(row: Any, opted_in: set[str]) -> Any:
     """One vehicle row as the app reads it: without the fields it has not opted into."""
-    if not isinstance(row, dict) or APP_READS_MIN_SOC in opted_in:
+    if not isinstance(row, dict):
         return row
-    return {key: value for key, value in row.items() if key not in APP_UNREAD_VEHICLE_FIELDS}
+    withheld = {field for field, read in APP_VEHICLE_FIELD_READS.items() if read not in opted_in}
+    return {key: value for key, value in row.items() if key not in withheld} if withheld else row
 
 
 def _vehicle_answer_for_app(body: dict[str, Any], payload: dict[str, Any]) -> dict[str, Any]:
@@ -148,7 +153,7 @@ def _for_app(body: dict[str, Any], payload: dict[str, Any]) -> dict[str, Any]:
     status lines, `solar_no_car_status` for the solar lines of an empty charger, `min_soc` for the car's minimum
     charge level: its status line and the vehicle rows' `min_percent`; `auto_periods` for a `max_periods` of
     null; `balancing_paused` for the plan's charge load balancing paused; `car_ended_waiting` for the plan waiting for
-    the car's level after the car ended its charge); anything else in it, or a `reads` that is not a list, is ignored.
+    the car's level after the car ended its charge; `wake_for_reading` for the vehicle rows' `wake_for_reading`); anything else in it, or a `reads` that is not a list, is ignored.
     """
     opted_in = _opted_in(payload)
     if isinstance(body.get("vehicles"), list):

@@ -44,7 +44,7 @@ charger executed whose pause could not be saved answers `{"ok": true, "action": 
 | `resume` | Clear a pause. |
 | `refresh_vehicle` | Re-read the vehicle's Home Assistant entities (`vehicle_id`); never wakes the car. |
 | `set_charge_limit` | Write the vehicle's charge-limit entity (`vehicle_id`, `percent`). |
-| `update_vehicle` | Change a vehicle's capacity, consumption, onboard charger, target or minimum charge level, with `expected` values. |
+| `update_vehicle` | Change a vehicle's capacity, consumption, onboard charger, target, minimum charge level or wake for a reading, with `expected` values. |
 | `update_site_settings` | Change solar priority or forecast sources of the charger's site. |
 | `update_charger_priority` | Change this charger's priority on its site: `{"priority", "expected"}` (see below). |
 | `push_register` | The app's instant notifications: `{"push_ref", "events"}`, or `{"push_ref": null}` to stop (see below). |
@@ -157,6 +157,14 @@ every vehicle row (the dashboard's `vehicles` and `update_vehicle`'s `vehicle`) 
 `null`) in place of `min_soc_charging` unless the request asks for them (`"reads": ["min_soc"]`). An app offers the
 setting only for a row that carries `min_percent`.
 
+**Waking a car for a reading.** A vehicle row carries the additive `wake_for_reading`: `true` or `false` for a car
+whose integration has a wake SpotNav knows, `null` when it has none (the setting is not offered). `update_vehicle`
+writes it (`changes: {"wake_for_reading": true}`; `false` or `null` turns it off; a value that is not a boolean is
+`invalid_wake_for_reading`, `true` for a car with no wake is `wake_unsupported`; `expected` may name it). See
+[waking the car](target-soc.md#waking-the-car-for-a-reading). The webhook leaves `wake_for_reading` out of every
+vehicle row unless the request asks for it (`"reads": ["wake_for_reading"]`); an app offers the setting only for a
+row where it is `true` or `false`.
+
 **A charge load balancing paused.** Inside an installed period, while load balancing holds the plan's charge back
 (no room for the car's minimum current), the status headline is `balancing_paused` (tone `normal`): `retry_at` is
 when it is tried again (the battery probe's or the resume's back-off end), `null` when it is tried as soon as there
@@ -228,7 +236,7 @@ and `charger_priority.writable` say whether it may change those (an administrato
 | `spotnav/find_region` | A Great Britain postcode to its price region (`GB-A` … `GB-P`): `{"postcode": "SW1A 1AA"}` answers `region` (one), `regions` (the relay-listed ones) and `reason` (`null`, `invalid_postcode`, `not_found`, `unavailable`). Home Assistant asks Octopus Energy's public lookup directly; the postcode never reaches the relay and is neither stored nor logged. |
 | `spotnav/get_entity_config`, `spotnav/update_entity_config` | The entities a charger and its site use. |
 | `spotnav/choose_vehicle_soc` | Choose (or clear) a vehicle's state-of-charge sensor. |
-| `spotnav/update_vehicle` | A vehicle's battery capacity, consumption, onboard charger, target and minimum charge level. |
+| `spotnav/update_vehicle` | A vehicle's battery capacity, consumption, onboard charger, target, minimum charge level and wake for a reading. |
 | `spotnav/write_charge_limit` | Write a car's own charge limit (`vehicle_id`, `percent`), the webhook's `set_charge_limit` over the WebSocket: same entity, range checks and one write a minute per car. Answers `{"api_version": 1, "ok", "error", "retry_after_s"}`; refusals `spotnav_invalid_value` (not a car with a writable limit, or a percent it cannot take), `spotnav_too_soon` (with `retry_after_s`), `spotnav_charge_limit_failed` (the car's integration failed the write). |
 | `spotnav/update_site_settings` | Solar priority, forecast sources, active load balancing. |
 | `spotnav/get_debug_bundle` | The redacted installation-wide debug bundle (administrators only). |

@@ -812,6 +812,8 @@
   "settings.vehicle.minimumSlider": "Nivel de carga mínimo, desactivado o porcentaje",
   "settings.vehicle.minimumNeedsSoc": "necesita el nivel de carga del coche",
   "settings.vehicle.minimumHelp": "Por debajo de este nivel SpotNav carga de inmediato a plena corriente, sea cual sea la estrategia. Una pausa o un Detener que elijas tiene prioridad. Necesita el nivel de carga del coche.",
+  "settings.vehicle.wake": "Despertar el coche para una lectura",
+  "settings.vehicle.wakeHelp": "Pide al propio coche que informe de su nivel de carga cuando termina una carga y su último informe es antiguo. Esto usa la batería de 12 V del coche y el límite de solicitudes del fabricante, así que SpotNav lo hace como máximo una vez por fin de carga.",
   "settings.vehicle.sourcesHelp": "Solo se lee para saber qué coche está enchufado.",
   "settings.section.display": "Visualización",
   "display.applies": "Solo este dispositivo: se aplica a todas las tarjetas SpotNav de este navegador.",

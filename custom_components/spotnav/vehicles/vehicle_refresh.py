@@ -1,11 +1,16 @@
 """Asking Home Assistant to re-read a vehicle's own entities.
 
 A car's entities go quiet and the dashboard reports whatever they last said; this is how the app
-asks "read it again". It calls only `homeassistant.update_entity`, which re-reads an entity from the
-integration that owns it (cheap, generic, no effect on the car). It never calls a brand's own
-force-update service, which wakes the car, drains its 12 V battery and can exhaust or lock an
-account. So there is no brand, service name or entity-name pattern here, and a sleeping car simply
-keeps reporting what it last knew.
+asks "read it again". It calls `homeassistant.update_entity`, which re-reads an entity from the
+integration that owns it (cheap, generic, no effect on the car). A person's Refresh never calls a
+brand's own force-update service, which wakes the car, drains its 12 V battery and can exhaust or lock
+an account, so a sleeping car keeps reporting what it last knew.
+
+The one exception is opt-in per car: with "Wake the car for a reading" turned on, and an integration
+that offers a wake (`vehicle_wake.WAKE_METHODS`, the only place a brand is named), SpotNav's own ask at a
+charge's end (`async_ask_vehicle_update` with an occasion) follows the cheap re-read with a wake when
+the reading is still not fresh, at most once per charge end and once per `vehicle_wake.WAKE_MIN_INTERVAL_S`,
+then re-reads again.
 """
 
 from __future__ import annotations
@@ -19,6 +24,7 @@ from homeassistant.core import HomeAssistant
 
 from ..runtime import domain_data
 from .vehicle_discovery import vehicle_reading_entity_ids
+from .vehicle_wake import RESULT_OK, async_wake_vehicle
 
 
 _LOGGER = logging.getLogger(__name__)
@@ -117,9 +123,33 @@ async def async_refresh_vehicle(hass: HomeAssistant, vehicle_id: object) -> int:
     return len(entity_ids)
 
 
-async def async_ask_vehicle_update(hass: HomeAssistant, vehicle_id: str) -> bool:
+async def async_ask_vehicle_update(
+    hass: HomeAssistant,
+    vehicle_id: str,
+    *,
+    wake_occasion: str | None = None,
+    fresh: Callable[[], bool] | None = None,
+) -> bool:
     """`async_refresh_vehicle` asked on SpotNav's own behalf (a target waiting for the car's new level after
-    a charge): within the same interval, and never an error. Returns whether the re-read was asked."""
+    a charge): within the same interval, and never an error. Returns whether the re-read was asked.
+
+    With a `wake_occasion` (one charge's end), a car whose wake is turned on and whose reading is still not `fresh`
+    after the re-read is woken (`vehicle_wake.async_wake_vehicle`, which decides whether it may be) and, when the
+    wake answered, its entities are read again so the woken car's report reaches its entities."""
+    asked = await _async_ask_quietly(hass, vehicle_id)
+    if wake_occasion is None:
+        return asked
+    try:
+        if fresh is not None and fresh():
+            return asked
+    except Exception:  # noqa: BLE001 - what cannot be read is not fresh
+        pass
+    if await async_wake_vehicle(hass, vehicle_id, wake_occasion) == RESULT_OK:
+        await _async_reread_after_wake(hass, vehicle_id)
+    return asked
+
+
+async def _async_ask_quietly(hass: HomeAssistant, vehicle_id: str) -> bool:
     try:
         await async_refresh_vehicle(hass, vehicle_id)
     except VehicleRefreshLimited:
@@ -131,3 +161,19 @@ async def async_ask_vehicle_update(hass: HomeAssistant, vehicle_id: str) -> bool
         _LOGGER.debug("Asking a vehicle to re-read failed: %s", type(err).__name__)
         return False
     return True
+
+
+async def _async_reread_after_wake(hass: HomeAssistant, vehicle_id: str) -> None:
+    """One re-read straight after a wake answered, outside the refresh interval (the wake is rarer than it): the
+    integration's next read of a woken car is its fresh report."""
+    entity_ids = vehicle_reading_entity_ids(hass, vehicle_id)
+    if not entity_ids:
+        return
+    try:
+        await hass.services.async_call(
+            REFRESH_SERVICE_DOMAIN, REFRESH_SERVICE, {"entity_id": entity_ids}, blocking=True
+        )
+    except Exception as err:  # noqa: BLE001 - another integration's failure is not ours to raise
+        _LOGGER.debug("Re-reading a vehicle after waking it failed: %s", type(err).__name__)
+        return
+    limiter_for(hass).note_refresh(vehicle_id)
