@@ -3146,20 +3146,36 @@ class ChargingController:
             return RegulatedWrite(REGULATED_HELD, outcome, False)
         return await self._regulated_stop("safety_stop", cause=outcome)
 
-    async def _regulated_stop(self, code: str, *, cause: str | None = None) -> RegulatedWrite:
-        if self._shut_down:
-            return RegulatedWrite(REGULATED_HELD, REGULATED_SHUT_DOWN, False)
+    def _log_regulated_stop(self, code: str, cause: str | None) -> None:
+        """Say once that load balancing stops the charge, under the operation lock. Several passes of the regulator
+        (and a failed battery probe's own stop) may each ask for the same pause before the charger is seen off: a
+        pause while balancing already holds the charge is that pause again, and only a debug line. A pause is load
+        balancing doing its work (info); a safety stop, a current the charger would not take, is a warning."""
+        if code == "pause":
+            if self._paused_by_balancing:
+                _LOGGER.debug("SpotNav charger %s: load balancing already holds the charge paused", self.entry_id)
+                return
+            _LOGGER.info(
+                "SpotNav charger %s: pausing the charge; load balancing leaves less than the charger's minimum current",
+                self.entry_id,
+            )
+            return
         _LOGGER.warning(
             "SpotNav charger %s: stopping the charge (%s%s); the current cannot be lowered in time",
             self.entry_id,
             code,
             "" if cause is None else f": {cause}",
         )
+
+    async def _regulated_stop(self, code: str, *, cause: str | None = None) -> RegulatedWrite:
+        if self._shut_down:
+            return RegulatedWrite(REGULATED_HELD, REGULATED_SHUT_DOWN, False)
         try:
             async with self._lock:
                 if self._shut_down:
                     # Shut down while this stop waited for the lock: nothing more goes to the charger.
                     return RegulatedWrite(REGULATED_HELD, REGULATED_SHUT_DOWN, False)
+                self._log_regulated_stop(code, cause)
                 # Only a charge that was running can be one balancing interrupted; a pause written to a
                 # charger somebody already stopped must not make it look wanted. Read under the operation
                 # lock: a person's Stop that lands first is never remembered as a charge to resume.
