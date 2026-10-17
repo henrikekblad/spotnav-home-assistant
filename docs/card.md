@@ -54,7 +54,7 @@ chosen under [Display](#display), its main unit (kr, €).
   instead, so they never run into each other. Until tomorrow's prices are published, **From now** looks
   exactly like **Day**.
 
-  ![The card on From now: the now line at the left edge, today's prices then tomorrow's, and a dashed line at midnight named 15 Thu](images/card-from-now.png)
+  ![The card on From now: the now line at the left edge, today's prices then tomorrow's, and a dashed line at midnight named 18 Sun](images/card-from-now.png)
 
 - Bars cheaper than the day's average are marked as cheap and pricier ones as expensive. A line
   marks now, and the current interval is highlighted.
