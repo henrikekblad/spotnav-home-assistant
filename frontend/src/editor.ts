@@ -128,7 +128,7 @@ export class SpotnavCardEditor extends HTMLElement {
     }
     const only = stubChargerId(this.list);
     if (only !== null) {
-      this.config = editorConfig(only, this.config.chart);
+      this.config = editorConfig(only, this.config);
       this.render();
       this.emit(only);
     }
@@ -138,7 +138,7 @@ export class SpotnavCardEditor extends HTMLElement {
     this.dispatchEvent(
       new CustomEvent("config-changed", {
         // Home Assistant's card editor reads `ev.detail.config`.
-        detail: { config: editorConfig(chargerId, this.config.chart) },
+        detail: { config: editorConfig(chargerId, this.config) },
         bubbles: true,
         composed: true,
       }),
@@ -171,7 +171,7 @@ export class SpotnavCardEditor extends HTMLElement {
       select.append(item);
     }
     select.addEventListener("change", () => {
-      this.config = editorConfig(select.value, this.config.chart);
+      this.config = editorConfig(select.value, this.config);
       this.emit(this.config.charger);
       this.render();
     });

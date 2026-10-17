@@ -2397,6 +2397,7 @@ export class SpotnavCard extends HTMLElement {
         mount: host,
         idPrefix: this.idPrefix,
         chartCollapsed: this.chartCollapsedNow(),
+        chartDetail: this.config?.chart_detail === true,
         onChartAxisChange: (mode) => {
           chooseChartAxis(mode);
         },

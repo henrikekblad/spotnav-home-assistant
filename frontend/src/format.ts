@@ -185,6 +185,14 @@ export function clock(context: FormatContext, instantMs: number): string {
   }).format(new Date(instantMs));
 }
 
+/** The local hour as two digits ("00" to "23") in the price area's zone: the detailed chart's hour labels. */
+export function hourLabel(context: FormatContext, instantMs: number): string {
+  if (!hasZone(context) || !Number.isFinite(instantMs)) {
+    return "";
+  }
+  return String(Math.floor(zoneClock(context.timeZone).msOfDay(instantMs) / 3_600_000)).padStart(2, "0");
+}
+
 export function weekdayDate(context: FormatContext, instantMs: number): string {
   if (!hasZone(context) || !Number.isFinite(instantMs)) {
     return "";

@@ -28,6 +28,7 @@
 // line and the pointer's inverse mapping.
 
 import type { PriceInterval } from "./validate";
+import { CHART_DENSITY, type ChartDensityStyle } from "./visual-styles";
 
 const MINUTES_PER_DAY = 1440;
 const HOUR_MS = 3_600_000;
@@ -146,11 +147,15 @@ export interface ChartMetrics {
   bottom: number;
   left: number;
   right: number;
+  /** How dense the chart is drawn (`CHART_DENSITY`): the ordinary card, or the `chart_detail` option. */
+  density: ChartDensityStyle;
 }
 
 export interface ChartScale extends ChartMetrics {
   minValue: number;
   maxValue: number;
+  /** The price axis's step (minor unit) when the density asks for stepped labels; the scale is widened to whole steps. */
+  priceStep?: number;
 }
 
 export interface ChartPoint {
@@ -165,14 +170,23 @@ const AXIS_TEXT = 12;
 const HEADER_CAP = 0.115;
 const AXIS_CAP = 0.082;
 
-/** Metrics for the plan-card profile: denser text, no footer. */
-export function chartMetrics(width: number, height: number): ChartMetrics {
+/**
+ * Metrics for the plan-card profile: denser text, no footer. `axisRows` is the lines of text under the
+ * plot: two when a detailed range axis names a new day under its hour label.
+ */
+export function chartMetrics(
+  width: number,
+  height: number,
+  density: ChartDensityStyle = CHART_DENSITY.normal,
+  axisRows = 1,
+): ChartMetrics {
   const w = Math.max(180, width);
   const h = Math.max(100, height);
   const scale = Math.min(Math.max(Math.min(w / 420, h / 220), MIN_SCALE), MAX_SCALE);
   const pad = 14 * scale;
   const headerTextSize = Math.min(HEADER_TEXT, h * HEADER_CAP);
-  const axisTextSize = Math.min(AXIS_TEXT, h * AXIS_CAP);
+  const textShare = density.axisFontPx / CHART_DENSITY.normal.axisFontPx;
+  const axisTextSize = Math.min(AXIS_TEXT, h * AXIS_CAP) * textShare;
   return {
     width: w,
     height: h,
@@ -181,20 +195,60 @@ export function chartMetrics(width: number, height: number): ChartMetrics {
     headerTextSize,
     axisTextSize,
     top: pad * 0.9,
-    bottom: h - pad - axisTextSize * 1.35,
+    bottom: h - pad - axisTextSize * (1.35 + (Math.max(1, axisRows) - 1) * 1.2),
     left: pad + Math.max(axisTextSize * 2.5, w * 0.07),
     right: w - pad,
+    density,
   };
 }
 
-export function chartScale(width: number, height: number, values: readonly number[]): ChartScale {
-  const metrics = chartMetrics(width, height);
+export function chartScale(
+  width: number,
+  height: number,
+  values: readonly number[],
+  density: ChartDensityStyle = CHART_DENSITY.normal,
+  axisRows = 1,
+): ChartScale {
+  const metrics = chartMetrics(width, height, density, axisRows);
   const finite = values.filter((value) => Number.isFinite(value));
+  const minValue = Math.min(0, ...(finite.length > 0 ? finite : [0]));
+  const maxValue = Math.max(1, ...(finite.length > 0 ? finite : [1]));
+  if (density.priceSteps <= 0) {
+    return { ...metrics, minValue, maxValue };
+  }
+  const priceStep = niceStep(minValue, maxValue, density.priceSteps);
   return {
     ...metrics,
-    minValue: Math.min(0, ...(finite.length > 0 ? finite : [0])),
-    maxValue: Math.max(1, ...(finite.length > 0 ? finite : [1])),
+    minValue: Math.floor(minValue / priceStep + 1e-9) * priceStep,
+    maxValue: Math.ceil(maxValue / priceStep - 1e-9) * priceStep,
+    priceStep,
   };
+}
+
+/**
+ * A nice step (1, 2 or 5 times a power of ten) that divides the span from `min` to `max`, widened to whole
+ * steps, into about `aim` steps: the closest count to `aim`, never fewer than `aim - 1`.
+ */
+export function niceStep(min: number, max: number, aim: number): number {
+  const span = Math.max(max - min, 1e-9);
+  const magnitude = 10 ** Math.floor(Math.log10(span / aim));
+  let best = magnitude;
+  let bestScore = Number.POSITIVE_INFINITY;
+  for (const power of [magnitude / 10, magnitude, magnitude * 10]) {
+    for (const factor of [1, 2, 5]) {
+      const step = power * factor;
+      const count = Math.ceil(max / step - 1e-9) - Math.floor(min / step + 1e-9);
+      if (count < aim - 1) {
+        continue;
+      }
+      const score = Math.abs(count - aim);
+      if (score < bestScore || (score === bestScore && step > best)) {
+        best = step;
+        bestScore = score;
+      }
+    }
+  }
+  return best;
 }
 
 /**
@@ -318,7 +372,9 @@ export function gutterLabels(
   const candidates =
     scale.maxValue - scale.minValue < 1e-9
       ? [scale.minValue]
-      : [scale.minValue, (scale.minValue + scale.maxValue) / 2, scale.maxValue];
+      : scale.priceStep !== undefined
+        ? steppedValues(scale.minValue, scale.maxValue, scale.priceStep)
+        : [scale.minValue, (scale.minValue + scale.maxValue) / 2, scale.maxValue];
   const seen = new Set<string>();
   const labels: Array<{ value: number; y: number; label: string }> = [];
   for (const value of candidates) {
@@ -330,6 +386,17 @@ export function gutterLabels(
     labels.push({ value, y: yAt(scale, value), label });
   }
   return labels;
+}
+
+/** Every whole step from `min` to `max` (both on steps), rounded so float steps never read 0.30000000000000004. */
+function steppedValues(min: number, max: number, step: number): number[] {
+  const first = Math.round(min / step);
+  const last = Math.round(max / step);
+  const values: number[] = [];
+  for (let index = first; index <= last; index += 1) {
+    values.push(Number((index * step).toPrecision(12)));
+  }
+  return values;
 }
 
 export function hourMarkers(): number[] {
@@ -411,6 +478,11 @@ export interface ChartSeries {
    * range every local 00/06/12/18 inside it plus the right edge.
    */
   axis: AxisTick[];
+  /**
+   * A tick at every local hour the axis shows (the left edge and each hour start inside, not the right
+   * edge), with the midnight inside the range as a `dayStart`: the labels of the `chart_detail` option.
+   */
+  hours: AxisTick[];
   /** The time mapping every position in this series came from. */
   time: TimeAxis;
   hourly: boolean;
@@ -516,6 +588,7 @@ export function chartSeries(
     marks,
     days,
     axis: time.kind === "range" ? rangeTicks(time, days, clock) : axisTicks(days, clock),
+    hours: hourTicks(time, days, clock),
     time,
     hourly: marks.length > 0 && marks.every((mark) => mark.hourly),
     minValue: Math.min(0, ...(prices.length > 0 ? prices : [0])),
@@ -638,6 +711,52 @@ export function rangeTicks(axis: TimeAxis, days: readonly ChartDay[], clock: Zon
   return ticks;
 }
 
+const HOURS_OF_DAY = Array.from({ length: 24 }, (_, hour) => hour);
+
+/**
+ * A tick at every local hour on the axis, for the `chart_detail` labels. On the wall-clock axis the 24
+ * wall-clock hours 00 to 23 (found by instant on the first day, like `axisTicks`); on the range every
+ * local hour start of the published days inside it, a midnight strictly inside marked `dayStart`. A
+ * spring day's missing hour falls on its neighbour's instant and is kept once.
+ */
+export function hourTicks(axis: TimeAxis, days: readonly ChartDay[], clock: ZoneClock): AxisTick[] {
+  const first = days[0];
+  if (first === undefined) {
+    return [];
+  }
+  if (axis.kind !== "range") {
+    const seen = new Set<number>();
+    const ticks: AxisTick[] = [];
+    for (const hour of HOURS_OF_DAY) {
+      const instantMs = hour === 0 ? first.startMs : instantAtWallClock(days, hour * 60, clock);
+      if (!seen.has(instantMs)) {
+        seen.add(instantMs);
+        ticks.push({ position: hour / 24, instantMs });
+      }
+    }
+    return ticks;
+  }
+  const startMs = axis.startMs ?? 0;
+  const endMs = axis.endMs ?? startMs;
+  const seen = new Set<number>();
+  const ticks: AxisTick[] = [];
+  for (const day of days) {
+    for (const hour of HOURS_OF_DAY) {
+      const instantMs = hour === 0 ? day.startMs : instantAtWallClock([day], hour * 60, clock);
+      if (instantMs < startMs || instantMs >= endMs || seen.has(instantMs)) {
+        continue;
+      }
+      seen.add(instantMs);
+      const tick: AxisTick = { position: axis.position(instantMs), instantMs };
+      if (hour === 0 && instantMs > startMs) {
+        tick.dayStart = true;
+      }
+      ticks.push(tick);
+    }
+  }
+  return ticks;
+}
+
 /**
  * An instant that reads `minuteOfDay` on the wall clock of one of these days.
  *
@@ -723,19 +842,21 @@ export function markGeometry(
     Math.max(preferredMarkRadius(scale, false), MIN_POINT_RADIUS),
     MAX_POINT_RADIUS,
   );
-  const normalRadius = Math.min(preferred, (spacing * NORMAL_DIAMETER_FRACTION) / 2);
+  // The density's mark scale (smaller for `chart_detail`) applies after the spacing cap, so it always shows.
+  const markScale = scale.density.markScale;
+  const normalRadius = Math.min(preferred, (spacing * NORMAL_DIAMETER_FRACTION) / 2) * markScale;
   const tomorrowPreferred = Math.min(
     Math.max(preferredMarkRadius(scale, true), MIN_POINT_RADIUS),
     MAX_POINT_RADIUS,
   );
-  const tomorrowRadius = Math.min(tomorrowPreferred, normalRadius * TOMORROW_RADIUS_RATIO);
+  const tomorrowRadius = Math.min(tomorrowPreferred * markScale, normalRadius * TOMORROW_RADIUS_RATIO);
   const hourHalf = hourly ? panel * (HOUR_MS / spanMs) : 0;
   return {
     spacing,
     normalRadius,
     tomorrowRadius,
-    strokeHalf: hourHalf * STROKE_SHARE,
-    tomorrowStrokeHalf: hourHalf * TOMORROW_STROKE_SHARE,
+    strokeHalf: hourHalf * STROKE_SHARE * markScale,
+    tomorrowStrokeHalf: hourHalf * TOMORROW_STROKE_SHARE * markScale,
   };
 }
 

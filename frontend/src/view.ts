@@ -13,7 +13,15 @@ export interface CardConfig {
    * does not set it, so a config round-trips unchanged.
    */
   chart?: ChartPresentation;
+  /**
+   * Draw the price chart with finer detail (every hour labelled, more price steps, smaller marks and
+   * text), for a card shown enlarged such as a wall screen's fullscreen view. Absent unless the YAML sets it.
+   */
+  chart_detail?: boolean;
 }
+
+/** The YAML options the editor keeps as they are when it changes the charger. */
+export type CardPresentation = Pick<CardConfig, "chart" | "chart_detail">;
 
 /**
  * The keys Home Assistant itself puts on any card's config (sizing in the sections view, the
@@ -28,8 +36,10 @@ const HOME_ASSISTANT_CARD_KEYS: ReadonlySet<string> = new Set([
   "card_mod",
 ]);
 
+const CARD_KEYS: ReadonlySet<string> = new Set(["type", "charger", "chart", "chart_detail"]);
+
 /**
- * Strict validation: only `type` (`custom:spotnav-card`) and `charger` are accepted, besides the keys
+ * Strict validation: only `type` (`custom:spotnav-card`), `charger`, `chart` and `chart_detail` are accepted, besides the keys
  * Home Assistant adds itself; other unknown options are refused rather than ignored. A missing or empty charger is the "pick one" state.
  * A supplied charger is a config-entry id and must be a non-empty string without surrounding
  * whitespace (trimming would point at a different charger). Error text is static.
@@ -42,19 +52,21 @@ export function parseCardConfig(config: unknown): CardConfig {
   if (candidate.type !== `custom:${CARD_TYPE}`) {
     throw new Error(`SpotNav card: type must be "custom:${CARD_TYPE}"`);
   }
-  if (
-    Object.keys(candidate).some(
-      (key) =>
-        key !== "type" && key !== "charger" && key !== "chart" && !HOME_ASSISTANT_CARD_KEYS.has(key),
-    )
-  ) {
-    throw new Error("SpotNav card: only the type, charger and chart options are supported");
+  if (Object.keys(candidate).some((key) => !CARD_KEYS.has(key) && !HOME_ASSISTANT_CARD_KEYS.has(key))) {
+    throw new Error("SpotNav card: only the type, charger, chart and chart_detail options are supported");
   }
   const chart = candidate.chart;
   if (chart !== undefined && chart !== "full" && chart !== "compact") {
     throw new Error('SpotNav card: chart must be "full" or "compact"');
   }
-  const presentation: { chart?: ChartPresentation } = chart === undefined ? {} : { chart };
+  const detail = candidate.chart_detail;
+  if (detail !== undefined && typeof detail !== "boolean") {
+    throw new Error("SpotNav card: chart_detail must be true or false");
+  }
+  const presentation: CardPresentation = {
+    ...(chart === undefined ? {} : { chart }),
+    ...(detail === undefined ? {} : { chart_detail: detail }),
+  };
   const charger = candidate.charger;
   if (charger === undefined || charger === "") {
     return { type: `custom:${CARD_TYPE}`, charger: "", ...presentation };
@@ -67,9 +79,14 @@ export function parseCardConfig(config: unknown): CardConfig {
   return { type: `custom:${CARD_TYPE}`, charger, ...presentation };
 }
 
-/** The config the editor emits: the chosen charger, keeping a chart option the YAML already set. */
-export function editorConfig(chargerId: string, chart?: ChartPresentation): CardConfig {
-  return { type: `custom:${CARD_TYPE}`, charger: chargerId, ...(chart === undefined ? {} : { chart }) };
+/** The config the editor emits: the chosen charger, keeping the chart options the YAML already set. */
+export function editorConfig(chargerId: string, keep: CardPresentation = {}): CardConfig {
+  return {
+    type: `custom:${CARD_TYPE}`,
+    charger: chargerId,
+    ...(keep.chart === undefined ? {} : { chart: keep.chart }),
+    ...(keep.chart_detail === undefined ? {} : { chart_detail: keep.chart_detail }),
+  };
 }
 
 export interface ChargerOption {

@@ -31,10 +31,10 @@ describe("configuration", () => {
   it("refuses an unknown option instead of ignoring it", () => {
     expect(() =>
       parseCardConfig({ type: "custom:spotnav-card", charger: "entry_a", theme: "dark" }),
-    ).toThrow(/only the type, charger and chart options/);
+    ).toThrow(/only the type, charger, chart and chart_detail options/);
     expect(() =>
       parseCardConfig({ type: "custom:spotnav-card", charger: "entry_a", amps: 16 }),
-    ).toThrow(/only the type, charger and chart options/);
+    ).toThrow(/only the type, charger, chart and chart_detail options/);
   });
 
   it("requires a real id: no whitespace-only, and no silent trimming", () => {
@@ -69,11 +69,11 @@ describe("configuration", () => {
     }
     expect(() =>
       parseCardConfig({ type: "custom:spotnav-card", charger: "entry_a", chart_collapsed: true }),
-    ).toThrow(/only the type, charger and chart options/);
+    ).toThrow(/only the type, charger, chart and chart_detail options/);
   });
 
   it("keeps the chart option when the editor changes the charger", () => {
-    expect(editorConfig("entry_b", "compact")).toEqual({
+    expect(editorConfig("entry_b", { chart: "compact" })).toEqual({
       type: "custom:spotnav-card",
       charger: "entry_b",
       chart: "compact",
