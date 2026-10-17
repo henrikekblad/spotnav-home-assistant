@@ -75,6 +75,25 @@ chosen under [Display](#display), its main unit (kr, €).
   again to open the graph. The choice is remembered per charger in that browser. To start folded
   where nothing is remembered yet, add `chart: compact` to the card's YAML.
 
+### Card options
+
+Besides `type` and `charger`, the card's YAML takes two options for the graph. Each card has its own.
+
+| Option | Values | What it does |
+| --- | --- | --- |
+| `chart` | `full` (default), `compact` | How the graph first shows where this browser remembers no choice: the full graph or the folded strip. |
+| `chart_detail` | `false` (default), `true` | Draws the graph with finer detail: every hour labelled (00, 01 ... 23, and every hour of the range on **From now**, with the new day still named under midnight), about five or six price steps instead of three, smaller points, thinner lines and smaller axis text, and a slightly taller graph. The rest of the card and the folded strip are unchanged. |
+
+`chart_detail` is for a card shown large, such as a wall screen's fullscreen view where the card is
+laid out at its usual width and then enlarged: the enlarged graph reads fine-grained rather than
+chunky. At normal size its text is small, so leave it off on an ordinary dashboard.
+
+```yaml
+type: custom:spotnav-card
+charger: 01JABCDEF0123456789ABCDEFG
+chart_detail: true
+```
+
 ## The plan
 
 Under the graph the card lists the charging periods: **Cheapest charging periods** for a

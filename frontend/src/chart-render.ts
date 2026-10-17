@@ -22,7 +22,7 @@ import {
   type PlanBand,
   type PlanBands,
 } from "./chart";
-import { PLAN_BAND_STYLE, VISUAL_CLASSES } from "./visual-styles";
+import { CHART_DENSITY, PLAN_BAND_STYLE, VISUAL_CLASSES, type ChartDensityStyle } from "./visual-styles";
 
 const SVG_NS = "http://www.w3.org/2000/svg";
 
@@ -33,6 +33,8 @@ export interface ChartLabels {
   day?(instantMs: number): string;
   /** One price-axis label from a value in the minor unit and the axis's span; whole minor units when omitted. */
   price?(value: number, span: number): string;
+  /** An hour label ("00" to "23") for the `chart_detail` axis; the time label when omitted. */
+  hour?(instantMs: number): string;
 }
 
 export interface ChartRenderInput {
@@ -49,6 +51,8 @@ export interface ChartRenderInput {
   title: string;
   description: string;
   labels: ChartLabels;
+  /** How dense the chart is drawn; the ordinary card when omitted, `CHART_DENSITY.detail` for `chart_detail`. */
+  density?: ChartDensityStyle;
   /**
    * Document-unique ids. `hatch` prefixes the band patterns' ids (`<hatch>-installed`,
    * `<hatch>-proposal`), so several cards on one page never reference each other's pattern.
@@ -77,18 +81,18 @@ function svg<K extends keyof SVGElementTagNameMap>(
 }
 
 /**
+ * The chart height for a viewport width: bounded (120-190 CSS px for the ordinary card) and proportional
+ * to the width, so the geometry never depends on content height such as a longer readout.
+ */
+export function chartHeightForWidth(width: number, density: ChartDensityStyle = CHART_DENSITY.normal): number {
+  const bounded = Number.isFinite(width) && width > 0 ? width : 320;
+  return Math.round(Math.min(density.maxHeight, Math.max(density.minHeight, bounded * density.heightRatio)));
+}
+
+/**
  * The classes one mark carries: cheap/expensive against its own day's mean (equal to the mean is
  * cheap), plus tomorrow, estimated and current treatments.
  */
-/**
- * The chart height for a viewport width: bounded (120-190 CSS px) and proportional to the width,
- * so the geometry never depends on content height such as a longer readout.
- */
-export function chartHeightForWidth(width: number): number {
-  const bounded = Number.isFinite(width) && width > 0 ? width : 320;
-  return Math.round(Math.min(190, Math.max(120, bounded * 0.26)));
-}
-
 export function markClassNames(target: ChartHitTarget, series: ChartSeries): string[] {
   const day = series.days[target.mark.dayIndex];
   const mean = day?.mean ?? null;
@@ -161,13 +165,19 @@ function bandRect(
 
 export function renderChart(input: ChartRenderInput): ChartRenderResult {
   const { series, bands, labels, ids } = input;
+  const density = input.density ?? CHART_DENSITY.normal;
+  // A detailed range axis names a new day on a second line, under that midnight's hour label.
+  const dayLine = density.hourLabels && series.axis.some((tick) => tick.dayStart === true);
   const scale = chartScale(
     input.width,
     input.height,
     series.marks.map((mark) => mark.price),
+    density,
+    dayLine ? 2 : 1,
   );
   const root = svg("svg", {
     class: VISUAL_CLASSES.svg,
+    ...(density === CHART_DENSITY.detail ? { "data-density": "detail" } : {}),
     viewBox: `0 0 ${scale.width} ${scale.height}`,
     preserveAspectRatio: "none",
     "aria-hidden": "true",
@@ -220,6 +230,7 @@ export function renderChart(input: ChartRenderInput): ChartRenderResult {
     text.textContent = label.label;
     axis.append(text);
   }
+  // Gridlines (and the day divider) stay at the six-hour ticks; the detailed axis labels every hour.
   for (const tick of series.axis) {
     const x = xForWallClock(scale, tick.position);
     const dayStart = tick.dayStart === true;
@@ -232,6 +243,9 @@ export function renderChart(input: ChartRenderInput): ChartRenderResult {
         y2: scale.bottom,
       }),
     );
+    if (density.hourLabels) {
+      continue;
+    }
     const text = svg("text", {
       class: dayStart ? `${VISUAL_CLASSES.tickLabel} ${VISUAL_CLASSES.dayLabel}` : VISUAL_CLASSES.tickLabel,
       x,
@@ -240,6 +254,31 @@ export function renderChart(input: ChartRenderInput): ChartRenderResult {
     });
     text.textContent = dayStart && labels.day !== undefined ? labels.day(tick.instantMs) : labels.time(tick.instantMs);
     axis.append(text);
+  }
+  if (density.hourLabels) {
+    for (const tick of series.hours) {
+      const x = xForWallClock(scale, tick.position);
+      const dayStart = tick.dayStart === true;
+      const text = svg("text", {
+        class: VISUAL_CLASSES.tickLabel,
+        x,
+        y: scale.bottom + scale.axisTextSize,
+        // Centred under its hour, the left edge's too: two-digit labels fit in the gutter beside it.
+        "text-anchor": "middle",
+      });
+      text.textContent = (labels.hour ?? labels.time)(tick.instantMs);
+      axis.append(text);
+      if (dayStart && labels.day !== undefined) {
+        const cue = svg("text", {
+          class: `${VISUAL_CLASSES.tickLabel} ${VISUAL_CLASSES.dayLabel}`,
+          x,
+          y: scale.bottom + scale.axisTextSize * 2.2,
+          "text-anchor": "middle",
+        });
+        cue.textContent = labels.day(tick.instantMs);
+        axis.append(cue);
+      }
+    }
   }
   root.append(axis);
   // Focus lines come before every mark in the DOM so they sit behind them; `applyFocus` decides

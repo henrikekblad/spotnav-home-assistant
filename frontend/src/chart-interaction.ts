@@ -14,6 +14,7 @@ import {
   type ChartScale,
 } from "./chart";
 import { chartHeightForWidth, chartLocalPoint } from "./chart-render";
+import type { ChartDensityStyle } from "./visual-styles";
 
 export interface ChartGeometry {
   scale: ChartScale;
@@ -44,6 +45,8 @@ export interface ChartInteractionOptions {
   onResize: (size: ChartSize) => void;
   surface: () => SVGSVGElement | null;
   measure?: (viewport: HTMLElement) => ChartSize;
+  /** The chart's density, whose height policy the default measurement uses; the ordinary card when omitted. */
+  density?: ChartDensityStyle;
   observe?: (host: HTMLElement, onResize: () => void) => ChartObserverLike | null;
   fallbackSize?: ChartSize;
   isInsideInteractive?: (node: EventTarget | null) => boolean;
@@ -92,9 +95,9 @@ const DEFAULT_DIRECTION_THRESHOLD = 4;
  * the SVG is drawn in layout pixels, and a rectangle includes any CSS transform or zoom on an ancestor, so
  * in a scaled container (a wall screen's fullscreen view) it would squeeze the chart sideways.
  */
-function defaultMeasure(viewport: HTMLElement): ChartSize {
+function defaultMeasure(viewport: HTMLElement, density?: ChartDensityStyle): ChartSize {
   const width = viewport.clientWidth > 0 ? viewport.clientWidth : FALLBACK_SIZE.width;
-  return { width, height: chartHeightForWidth(width) };
+  return { width, height: chartHeightForWidth(width, density) };
 }
 
 function defaultObserve(host: HTMLElement, onResize: () => void): ChartObserverLike | null {
@@ -108,7 +111,7 @@ function defaultObserve(host: HTMLElement, onResize: () => void): ChartObserverL
 
 export function createChartInteraction(options: ChartInteractionOptions): ChartInteraction {
   const threshold = options.directionThreshold ?? DEFAULT_DIRECTION_THRESHOLD;
-  const measure = options.measure ?? defaultMeasure;
+  const measure = options.measure ?? ((viewport: HTMLElement) => defaultMeasure(viewport, options.density));
   const surfaceOf = options.surface;
   const now = options.now ?? (() => Date.now());
   const isInsideInteractive =

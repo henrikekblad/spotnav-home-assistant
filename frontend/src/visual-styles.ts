@@ -297,6 +297,61 @@ export const PLAN_BAND_STYLE = {
   hatchAngle: 45,
 } as const;
 
+/**
+ * How dense the price chart is drawn, the one table to tune. `normal` is the ordinary card; `detail` is
+ * the `chart_detail: true` card option, for a card laid out at its usual width and then enlarged (a wall
+ * screen's fullscreen view scaled up by a CSS transform): every hour labelled, more price steps, smaller
+ * marks, thinner lines and smaller axis text, so the enlarged chart reads fine-grained rather than chunky.
+ *
+ * - `hourLabels`: label every hour under the chart (00, 01, ... 23) rather than the six-hour ticks.
+ * - `priceSteps`: the price axis's aim in nice steps (1, 2 or 5 times a power of ten) with the scale
+ *   widened to whole steps; 0 keeps the bottom, middle and top labels.
+ * - `axisFontPx`: the axis labels' font size in CSS pixels.
+ * - `markScale`: the quarter-hour dot radius and the hourly segment thickness, against the normal size.
+ * - `gridWidth`, `focusWidth`, `markStrokeWidth`: line widths in CSS pixels (gridlines, the now and
+ *   selection lines, the dot outline).
+ * - `heightRatio`, `minHeight`, `maxHeight`: the chart's height for its width, bounded, in CSS pixels.
+ */
+export interface ChartDensityStyle {
+  hourLabels: boolean;
+  priceSteps: number;
+  axisFontPx: number;
+  markScale: number;
+  gridWidth: number;
+  focusWidth: number;
+  markStrokeWidth: number;
+  heightRatio: number;
+  minHeight: number;
+  maxHeight: number;
+}
+
+export const CHART_DENSITY: { normal: ChartDensityStyle; detail: ChartDensityStyle } = {
+  normal: {
+    hourLabels: false,
+    priceSteps: 0,
+    axisFontPx: 11,
+    markScale: 1,
+    gridWidth: 1,
+    focusWidth: 1.5,
+    markStrokeWidth: 1,
+    heightRatio: 0.26,
+    minHeight: 120,
+    maxHeight: 190,
+  },
+  detail: {
+    hourLabels: true,
+    priceSteps: 5,
+    axisFontPx: 7,
+    markScale: 0.7,
+    gridWidth: 0.4,
+    focusWidth: 0.75,
+    markStrokeWidth: 0.35,
+    heightRatio: 0.34,
+    minHeight: 140,
+    maxHeight: 240,
+  },
+};
+
 /** A CSS gradient runs across its stripes, so its angle is the line angle plus a quarter turn. */
 const STRIP_HATCH_GRADIENT_ANGLE = PLAN_BAND_STYLE.hatchAngle + 90;
 
@@ -1213,12 +1268,12 @@ export const VISUAL_STYLES = `
   }
   .${VISUAL_CLASSES.gridline} {
     stroke: var(--divider-color, #e0e0e0);
-    stroke-width: 1;
+    stroke-width: ${CHART_DENSITY.normal.gridWidth};
   }
   .${VISUAL_CLASSES.axisLabel},
   .${VISUAL_CLASSES.tickLabel} {
     fill: var(--secondary-text-color, #727272);
-    font-size: 11px;
+    font-size: ${CHART_DENSITY.normal.axisFontPx}px;
   }
   /* A midnight inside the real-time axis: a quiet dashed divider, the new day named under it. */
   .${VISUAL_CLASSES.dayDivider} {
@@ -1258,11 +1313,11 @@ export const VISUAL_STYLES = `
   }
   .${VISUAL_CLASSES.now} {
     stroke: ${focusLineColour("now")};
-    stroke-width: 1.5;
+    stroke-width: ${CHART_DENSITY.normal.focusWidth};
   }
   .${VISUAL_CLASSES.selection} {
     stroke: ${focusLineColour("selection")};
-    stroke-width: 1.5;
+    stroke-width: ${CHART_DENSITY.normal.focusWidth};
     stroke-dasharray: 3 3;
   }
   .${VISUAL_CLASSES.point},
@@ -1272,6 +1327,21 @@ export const VISUAL_STYLES = `
   }
   .${VISUAL_CLASSES.segment} {
     stroke-linecap: round;
+  }
+  /* The chart_detail card option: the finer lines and text of CHART_DENSITY.detail. */
+  .${VISUAL_CLASSES.svg}[data-density="detail"] .${VISUAL_CLASSES.gridline} {
+    stroke-width: ${CHART_DENSITY.detail.gridWidth};
+  }
+  .${VISUAL_CLASSES.svg}[data-density="detail"] .${VISUAL_CLASSES.axisLabel},
+  .${VISUAL_CLASSES.svg}[data-density="detail"] .${VISUAL_CLASSES.tickLabel} {
+    font-size: ${CHART_DENSITY.detail.axisFontPx}px;
+  }
+  .${VISUAL_CLASSES.svg}[data-density="detail"] .${VISUAL_CLASSES.now},
+  .${VISUAL_CLASSES.svg}[data-density="detail"] .${VISUAL_CLASSES.selection} {
+    stroke-width: ${CHART_DENSITY.detail.focusWidth};
+  }
+  .${VISUAL_CLASSES.svg}[data-density="detail"] .${VISUAL_CLASSES.point} {
+    stroke-width: ${CHART_DENSITY.detail.markStrokeWidth};
   }
   .${VISUAL_CLASSES.expensive},
   .${VISUAL_CLASSES.expensive}:is(circle) {

@@ -32,6 +32,7 @@ import { eventOptions, noRecipientsNote, notificationsSummary, phoneOptions } fr
 import {
   clock,
   dayCue,
+  hourLabel,
   formatFixed,
   formatNumber,
   hasZone,
@@ -124,7 +125,7 @@ import {
   type SettingsEditorKind,
   type SettingsFormValues,
 } from "./settings";
-import { VISUAL_CLASSES as C } from "./visual-styles";
+import { CHART_DENSITY, VISUAL_CLASSES as C } from "./visual-styles";
 
 /** What the camera's editors ask the card for. */
 export type CameraPictureRequest =
@@ -168,6 +169,8 @@ export interface CardViewInput {
   clearTimer?: (handle: number) => void;
   /** Start with the chart collapsed to its 24-hour strip (the card's remembered or configured choice). */
   chartCollapsed?: boolean;
+  /** The `chart_detail` card option: draw the chart at `CHART_DENSITY.detail`, for a card shown enlarged. */
+  chartDetail?: boolean;
   /** The price row was pressed and the chart collapsed (`true`) or expanded; the card remembers it. */
   onChartCollapsedChange?: (collapsed: boolean) => void;
   /**
@@ -1338,7 +1341,8 @@ export function createCardView(input: CardViewInput): CardView {
   let drawn: ReturnType<typeof renderChart> | null = null;
   // The initial draw uses the measurement's own policy, so the first viewBox already matches what the reader sees.
   const initial = input.size?.() ?? FALLBACK_SIZE;
-  let size: ChartSize = { width: initial.width, height: chartHeightForWidth(initial.width) };
+  const density = input.chartDetail === true ? CHART_DENSITY.detail : CHART_DENSITY.normal;
+  let size: ChartSize = { width: initial.width, height: chartHeightForWidth(initial.width, density) };
   // The now fact of the last draw; nothing else in this view reads the wall clock for geometry.
   let nowState: ChartNow = chartNowAt(model.chart.marks, now());
   // The one pending interval-boundary appointment, and the injected scheduler that owns it.
@@ -1362,6 +1366,7 @@ export function createCardView(input: CardViewInput): CardView {
     const labels: ChartLabels = {
       time: (instantMs) => clock(model.format, instantMs),
       day: (instantMs) => dayCue(model.format, instantMs),
+      hour: (instantMs) => hourLabel(model.format, instantMs),
       price: (value, span) => priceAxisLabel(model.format, value, span),
     };
     const result = renderChart({
@@ -1380,6 +1385,7 @@ export function createCardView(input: CardViewInput): CardView {
         model.chart.days.length,
       ),
       labels,
+      density,
       ids: {
         title: `${idPrefix}-chart-title`,
         description: `${idPrefix}-chart-description`,
@@ -1389,7 +1395,7 @@ export function createCardView(input: CardViewInput): CardView {
     drawn?.element.remove();
     drawn = result;
     // The viewport's height is the policy's answer for the measured width, so the box, viewBox and CSS viewport agree 1:1.
-    viewport.style.height = `${chartHeightForWidth(size.width)}px`;
+    viewport.style.height = `${chartHeightForWidth(size.width, density)}px`;
     viewport.append(result.element);
     paintStrip();
     publish();
@@ -1580,6 +1586,7 @@ export function createCardView(input: CardViewInput): CardView {
     fallbackSize: size,
     now,
     measure: input.measure,
+    density,
     observe: input.observe,
     onResize: (next) => {
       render(next);
