@@ -47,7 +47,8 @@ Precedence (first match wins the headline; "add" rows append a fact line)
      balancing_paused{retry_at, cause} (+plan_energy +plan_cost; inside an installed period, load balancing
      paused the plan's charge because the house, or a home battery charging from the grid (`cause`), takes the
      whole fuse: it is tried again at `retry_at`, or as soon as there is room when that is null) >
-     held_until_window{time} (a charge that started by itself outside the plan was stopped, or a car
+     held_until_window{time} (+plan_energy +plan_cost +plan_distance, only while the proposal is the
+     installed plan it waits for; a charge that started by itself outside the plan was stopped, or a car
      waits for the next window) >
      waiting_for_history > waiting_for_publication > buying_before_publication > auto_planned (+energy +cost +distance) >
      auto_installed > proposal_pending (+energy +cost +distance) > waiting_for_tomorrow > no_plan
@@ -779,7 +780,13 @@ def _plan_headline(facts: StatusFacts) -> list[dict[str, Any]]:
             *_plan_facts(proposal, energy=True, cost=True, distance=False),
         ]
     if facts.hold_until is not None:
-        return [_line("held_until_window", time=aware_iso(facts.hold_until))]
+        # The figures are the plan it waits for only while the proposal is that installed plan; a pending
+        # proposal's are another plan's, so the line stands alone then.
+        held = proposal if facts.relation_applied is True else None
+        return [
+            _line("held_until_window", time=aware_iso(facts.hold_until)),
+            *_plan_facts(held, energy=True, cost=True, distance=True),
+        ]
     wait = _price_wait_line(facts)
     if wait is not None:
         return [wait]

@@ -254,6 +254,17 @@ describe("the status line renders the block and nothing else", () => {
     expect(statusText(swapped, format("en"), NOW)).toBe("20 kWh · No charging plan could be calculated right now.");
   });
 
+  it("joins the installed plan's facts after the wait for its window", () => {
+    const status = block(
+      statusLine("held_until_window", { time: "2026-09-22T20:30:00+00:00" }),
+      statusLine("plan_energy", { kwh: 16.6 }),
+      statusLine("plan_cost", { amount_minor: 1710, currency: "SEK" }),
+      statusLine("plan_distance", { mil: 8.7 }),
+    );
+    expect(statusText(status, format("sv"), NOW)).toBe("Laddningen väntar till planerad start kl. 22:30 · 16,6 kWh · 17,1 kr · 8,7 mil");
+    expect(statusText(status, format("en"), NOW)).toBe("Charging waits for the planned start at 22:30 · 16.6 kWh · 17.1 kr · 87 km");
+  });
+
   it("words waiting on history with the weekday's plural, the saving and the weeks, in every language", () => {
     const waiting = block(statusLine("waiting_for_history", { weekday: 7, percent: 30, weeks: 4 }));
     expect(statusText(waiting, format("en"), NOW)).toBe("Waiting: Sundays were 30 % cheaper the last 4 weeks.");
