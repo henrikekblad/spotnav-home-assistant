@@ -2495,6 +2495,7 @@ class SiteCapacityController:
             phases=phases,
             battery_charge_a=self._battery_charge_a(fresh, phases),
             battery_power_w=battery_power_w,
+            battery_fresh=self._fresh_battery_w() is not None,
             limit_a=limit_a,
             credit_allowed=(
                 self.config.get(CONF_SOLAR_PRIORITY, DEFAULT_SOLAR_PRIORITY)

@@ -216,6 +216,21 @@ It is best effort and is not a protective device. Turning it off gives back any 
     the home battery charged from the grid.) The outcome is in the site's diagnostics under
     `battery_probe` (with `car_refusals`, the refusals in a row) and in the decision log (`probe_started`,
     `probe_extended`, `probe_succeeded`, `probe_failed`, `probe_car_ended`).
+  - **A running car below its plan while the battery fills the fuse.** Only with *car first* and yield
+    stepping on. While the car draws what it was given and the battery charges from the grid by at
+    least a 2 A step's worth over the car's phases (2 A x 230 V x 3 = 1380 W on three phases, on a
+    fresh reading), the car is not lowered for the grid sitting at the limit, and it is stepped up
+    2 A into the battery's share even though the fuse has no headroom left. Such a step may take a
+    phase over the limit by at most 2.5 A (the 0.5 A band plus the step, and never past the yield
+    ceiling): a step that would go further is not tried. It is then measured like any other yield
+    step: if the battery's charge falls by what the car took, the grid stays put and the car goes
+    on, one step at a time (each sized to stay within the 2.5 A, and paced by the settle time) up to
+    its plan. If the grid carries the step instead, or a phase goes past the 2.5 A, or the charger's
+    own reading has not shown the step within 90 seconds, the car goes straight back to where it was
+    and no step is tried for 10 minutes, then 20, 40 and at most an hour. Anything above the
+    allowance is still cut at once. The card keeps saying that the battery shares the fuse, with the
+    current the car has now. (On 17 October a car sat at 7 A all night against a plan of 16 A while
+    the battery charged at 7.3 kW from a 20 A fuse held at 20.0-20.5 A.)
   - **A short overload is not a reset.** While yield stepping is verified, one sample above the
     ceiling (and at most 4 A above it) steps the car back once instead of to the minimum. A second
     sample in a row, a larger excess, or two such samples within two minutes still stops at the
