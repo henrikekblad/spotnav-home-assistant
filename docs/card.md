@@ -135,6 +135,7 @@ serious each is. Examples:
 | Buying 12 kWh now, the rest when the prices are published. | The deadline needs hours that are not priced yet, so part of the charge is bought now. |
 | Charging is scheduled from 02:00. / Planned from 02:00. | The installed plan, or a plan that is proposed. |
 | A new charging proposal is ready. | A newer proposal exists and is not installed yet. |
+| Charging waits for the planned start at 22:30 · 16.6 kWh · 17.1 kr · 87 km | A car is plugged in and the installed plan waits for its first window (or a charge that started by itself outside the plan was stopped). The plan's energy, cost and distance follow while they are the installed plan's own. |
 | Charging now; scheduled until 05:30. | A charge is running inside a planned period. |
 | Automatic charging is paused. / Schedule paused until 07:00. | A pause of the schedule is in effect (a charge may still run beside it). |
 | Stopped manually – until the car is unplugged. / Charging manually – until the car is full or unplugged. | You pressed Stop or Start: automatic charging is paused for this plug-in. A Stop given with no car plugged in reads *until the next plug-in ends*; on a charger that cannot tell when a car is plugged in, *until you resume automatic charging*. |
