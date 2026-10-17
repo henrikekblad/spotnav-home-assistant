@@ -21,7 +21,8 @@
 //     selection, readout and keyboard walk work on the instant, never the coordinate.
 //   * An autumn repeated hour keeps both occurrences, offset-disambiguated; a spring missing hour has no
 //     rows and so no marks.
-//   * 23-, 24- and 25-hour days are neither stretched nor filled; the axis keeps its five fixed ticks.
+//   * 23-, 24- and 25-hour days are neither stretched nor filled; the axis keeps its five fixed ticks
+//     (gridlines every six hours) and its nine fixed hour labels (every three hours).
 //
 // Every instant becomes a position through the series' `time.position`, and every position an x through
 // `xForWallClock(scale, position)`: marks, hit targets, plan bands, ticks, the now line, the selection
@@ -33,6 +34,11 @@ import { CHART_DENSITY, type ChartDensityStyle } from "./visual-styles";
 const MINUTES_PER_DAY = 1440;
 const HOUR_MS = 3_600_000;
 const DAY_MS = 24 * HOUR_MS;
+
+/** The gridlines (and the strip's labels) every six hours. */
+export const GRID_STEP_HOURS = 6;
+/** The ordinary chart's hour labels every three hours, thinned to the gridlines' six where they would touch. */
+export const LABEL_STEP_HOURS = 3;
 
 export interface ZoneClock {
   timeZone: string;
@@ -407,8 +413,13 @@ function steppedValues(min: number, max: number, step: number): number[] {
   return values;
 }
 
-export function hourMarkers(): number[] {
-  return [0, 6, 12, 18, 24].map((hour) => hour / 24);
+/** The wall-clock positions every `stepHours` from 00 to 24: the gridlines every six hours, the labels every three. */
+export function hourMarkers(stepHours: number = GRID_STEP_HOURS): number[] {
+  const positions: number[] = [];
+  for (let hour = 0; hour <= 24; hour += stepHours) {
+    positions.push(hour / 24);
+  }
+  return positions;
 }
 
 
@@ -486,6 +497,11 @@ export interface ChartSeries {
    * range every local 00/06/12/18 inside it plus the right edge.
    */
   axis: AxisTick[];
+  /**
+   * The same sequence every three hours (`LABEL_STEP_HOURS`): the ordinary chart's hour labels when they
+   * fit; the gridlines stay at `axis`.
+   */
+  labelTicks: AxisTick[];
   /**
    * A tick at every local hour the axis shows (the left edge and each hour start inside, not the right
    * edge), with the midnight inside the range as a `dayStart`: the labels of the `chart_detail` option.
@@ -596,6 +612,10 @@ export function chartSeries(
     marks,
     days,
     axis: time.kind === "range" ? rangeTicks(time, days, clock) : axisTicks(days, clock),
+    labelTicks:
+      time.kind === "range"
+        ? rangeTicks(time, days, clock, LABEL_STEP_HOURS)
+        : axisTicks(days, clock, LABEL_STEP_HOURS),
     hours: hourTicks(time, days, clock),
     time,
     hourly: marks.length > 0 && marks.every((mark) => mark.hourly),
@@ -675,17 +695,21 @@ export function nextIntervalBoundary(marks: readonly ChartMark[], nowMs: number)
 }
 
 /**
- * The shared axis: five ticks at fixed 00:00, 06:00, 12:00, 18:00 and 24:00, whichever days are
- * published, so 23-, 24- and 25-hour days draw the same axis. The instant is carried so the view can name
+ * The shared axis: five ticks at fixed 00:00, 06:00, 12:00, 18:00 and 24:00 (nine with `stepHours` 3),
+ * whichever days are published, so 23-, 24- and 25-hour days draw the same axis. The instant is carried so the view can name
  * the tick in the reader's zone and language; this module formats nothing. The right edge is the first
  * day's end instant, the next midnight.
  */
-export function axisTicks(days: readonly ChartDay[], clock: ZoneClock): AxisTick[] {
+export function axisTicks(
+  days: readonly ChartDay[],
+  clock: ZoneClock,
+  stepHours: number = GRID_STEP_HOURS,
+): AxisTick[] {
   const first = days[0];
   if (first === undefined) {
     return [];
   }
-  return hourMarkers().map((position) =>
+  return hourMarkers(stepHours).map((position) =>
     position >= 1
       ? { position: 1, instantMs: first.startMs + first.lengthMs }
       : { position, instantMs: instantAtWallClock(days, position * MINUTES_PER_DAY, clock) },
@@ -693,17 +717,23 @@ export function axisTicks(days: readonly ChartDay[], clock: ZoneClock): AxisTick
 }
 
 /**
- * The range axis's ticks: every local 00:00, 06:00, 12:00 and 18:00 of the published days that falls
+ * The range axis's ticks: every local 00:00, 06:00, 12:00 and 18:00 (every three hours with `stepHours`
+ * 3) of the published days that falls
  * inside the range (each found by instant, so a 23- or 25-hour day keeps its ticks on those wall clocks),
  * then the right edge. A midnight strictly inside is a `dayStart`; the left edge, the current hour, has no
  * tick of its own.
  */
-export function rangeTicks(axis: TimeAxis, days: readonly ChartDay[], clock: ZoneClock): AxisTick[] {
+export function rangeTicks(
+  axis: TimeAxis,
+  days: readonly ChartDay[],
+  clock: ZoneClock,
+  stepHours: number = GRID_STEP_HOURS,
+): AxisTick[] {
   const startMs = axis.startMs ?? 0;
   const endMs = axis.endMs ?? startMs;
   const ticks: AxisTick[] = [];
   for (const day of days) {
-    for (const hour of [0, 6, 12, 18]) {
+    for (let hour = 0; hour < 24; hour += stepHours) {
       const instantMs = hour === 0 ? day.startMs : instantAtWallClock([day], hour * 60, clock);
       if (instantMs < startMs || instantMs >= endMs) {
         continue;

@@ -33,8 +33,62 @@ export interface ChartLabels {
   day?(instantMs: number): string;
   /** One price-axis label from a value in the minor unit and the axis's span; whole minor units when omitted. */
   price?(value: number, span: number): string;
-  /** An hour label ("00" to "23") for the `chart_detail` axis; the time label when omitted. */
+  /** An hour label ("00" to "23") under the chart, every three hours or (`chart_detail`) every hour; the time label when omitted. */
   hour?(instantMs: number): string;
+}
+
+/** One hour label under the ordinary chart: where it sits, what it reads and how it is anchored. */
+export interface TimeAxisLabel {
+  x: number;
+  text: string;
+  anchor: "start" | "middle" | "end";
+  dayStart: boolean;
+}
+
+/** A label's estimated width per character, in em: two digits, or a short weekday and date. */
+const LABEL_CHAR_EM = 0.6;
+/** The least room between two labels, in em. */
+const LABEL_GAP_EM = 0.3;
+
+/**
+ * The ordinary chart's hour labels: two digits every three hours ("00 03 ... 21 24" on Day, the right
+ * edge reading 24 like the strip), a midnight inside the range named by its day instead. Where any two
+ * would touch at this width (estimated from `fontPx`), every six hours instead, on the gridlines.
+ */
+export function timeAxisLabels(
+  series: ChartSeries,
+  labels: ChartLabels,
+  scale: ChartScale,
+  fontPx: number,
+): TimeAxisLabel[] {
+  const hourText = labels.hour ?? labels.time;
+  const build = (ticks: ChartSeries["axis"]): TimeAxisLabel[] =>
+    ticks.map((tick) => {
+      const dayStart = tick.dayStart === true;
+      const hour = hourText(tick.instantMs);
+      return {
+        x: xForWallClock(scale, tick.position),
+        text: dayStart && labels.day !== undefined ? labels.day(tick.instantMs) : tick.position >= 1 && hour === "00" ? "24" : hour,
+        anchor: tick.position === 0 ? "start" : tick.position >= 1 ? "end" : "middle",
+        dayStart,
+      };
+    });
+  const dense = build(series.labelTicks);
+  return labelsFit(dense, fontPx) ? dense : build(series.axis);
+}
+
+function labelsFit(list: readonly TimeAxisLabel[], fontPx: number): boolean {
+  const gap = LABEL_GAP_EM * fontPx;
+  let previousRight = Number.NEGATIVE_INFINITY;
+  for (const label of list) {
+    const width = label.text.length * LABEL_CHAR_EM * fontPx;
+    const left = label.anchor === "start" ? label.x : label.anchor === "end" ? label.x - width : label.x - width / 2;
+    if (left < previousRight + gap) {
+      return false;
+    }
+    previousRight = left + width;
+  }
+  return true;
 }
 
 export interface ChartRenderInput {
@@ -230,7 +284,8 @@ export function renderChart(input: ChartRenderInput): ChartRenderResult {
     text.textContent = label.label;
     axis.append(text);
   }
-  // Gridlines (and the day divider) stay at the six-hour ticks; the detailed axis labels every hour.
+  // Gridlines (and the day divider) stay at the six-hour ticks; the labels come every three hours (every
+  // six where they would touch), or every hour on the detailed axis.
   for (const tick of series.axis) {
     const x = xForWallClock(scale, tick.position);
     const dayStart = tick.dayStart === true;
@@ -243,17 +298,18 @@ export function renderChart(input: ChartRenderInput): ChartRenderResult {
         y2: scale.bottom,
       }),
     );
-    if (density.hourLabels) {
-      continue;
+  }
+  if (!density.hourLabels) {
+    for (const label of timeAxisLabels(series, labels, scale, density.axisFontPx)) {
+      const text = svg("text", {
+        class: label.dayStart ? `${VISUAL_CLASSES.tickLabel} ${VISUAL_CLASSES.dayLabel}` : VISUAL_CLASSES.tickLabel,
+        x: label.x,
+        y: scale.bottom + scale.axisTextSize,
+        "text-anchor": label.anchor,
+      });
+      text.textContent = label.text;
+      axis.append(text);
     }
-    const text = svg("text", {
-      class: dayStart ? `${VISUAL_CLASSES.tickLabel} ${VISUAL_CLASSES.dayLabel}` : VISUAL_CLASSES.tickLabel,
-      x,
-      y: scale.bottom + scale.axisTextSize,
-      "text-anchor": tick.position === 0 ? "start" : tick.position === 1 ? "end" : "middle",
-    });
-    text.textContent = dayStart && labels.day !== undefined ? labels.day(tick.instantMs) : labels.time(tick.instantMs);
-    axis.append(text);
   }
   if (density.hourLabels) {
     for (const tick of series.hours) {
