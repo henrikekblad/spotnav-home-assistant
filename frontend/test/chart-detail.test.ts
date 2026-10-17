@@ -130,6 +130,10 @@ describe("the chart with chart_detail", () => {
       }
     }
     expect(niceStep(0, 208.5, 5)).toBe(50);
+    // The top is widened to a whole step; a price just below zero keeps the bottom where it is.
+    const scale = chartScale(460, 156, [-2.6, 167], CHART_DENSITY.detail);
+    expect([scale.minValue, scale.maxValue, scale.priceStep]).toEqual([-2.6, 200, 50]);
+    expect(gutterLabels(scale).map((label) => label.label)).toEqual(["0", "50", "100", "150", "200"]);
   });
 
   it("draws smaller marks, smaller axis text and a taller chart", () => {

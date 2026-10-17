@@ -154,7 +154,7 @@ export interface ChartMetrics {
 export interface ChartScale extends ChartMetrics {
   minValue: number;
   maxValue: number;
-  /** The price axis's step (minor unit) when the density asks for stepped labels; the scale is widened to whole steps. */
+  /** The price axis's step (minor unit) when the density asks for stepped labels; the top is widened to a whole step. */
   priceStep?: number;
 }
 
@@ -219,15 +219,18 @@ export function chartScale(
   const priceStep = niceStep(minValue, maxValue, density.priceSteps);
   return {
     ...metrics,
-    minValue: Math.floor(minValue / priceStep + 1e-9) * priceStep,
-    maxValue: Math.ceil(maxValue / priceStep - 1e-9) * priceStep,
+    // The top is widened to a whole step, so the highest label sits on the plot's top edge. The bottom is
+    // zero or the lowest price as before: a price just below zero does not cost a whole step of height.
+    minValue,
+    maxValue: Number((Math.ceil(maxValue / priceStep - 1e-9) * priceStep).toPrecision(12)),
     priceStep,
   };
 }
 
 /**
- * A nice step (1, 2 or 5 times a power of ten) that divides the span from `min` to `max`, widened to whole
- * steps, into about `aim` steps: the closest count to `aim`, never fewer than `aim - 1`.
+ * A nice step (1, 2 or 5 times a power of ten) for labels from `min` to `max` with the top widened to a
+ * whole step: about `aim` steps between the lowest and highest label, the closest count to `aim` and
+ * never fewer than `aim - 1`.
  */
 export function niceStep(min: number, max: number, aim: number): number {
   const span = Math.max(max - min, 1e-9);
@@ -237,7 +240,7 @@ export function niceStep(min: number, max: number, aim: number): number {
   for (const power of [magnitude / 10, magnitude, magnitude * 10]) {
     for (const factor of [1, 2, 5]) {
       const step = power * factor;
-      const count = Math.ceil(max / step - 1e-9) - Math.floor(min / step + 1e-9);
+      const count = Math.ceil(max / step - 1e-9) - Math.ceil(min / step - 1e-9);
       if (count < aim - 1) {
         continue;
       }
@@ -393,10 +396,10 @@ export function gutterLabels(
   return labels;
 }
 
-/** Every whole step from `min` to `max` (both on steps), rounded so float steps never read 0.30000000000000004. */
+/** Every whole step from `min` to `max`, rounded so float steps never read 0.30000000000000004. */
 function steppedValues(min: number, max: number, step: number): number[] {
-  const first = Math.round(min / step);
-  const last = Math.round(max / step);
+  const first = Math.ceil(min / step - 1e-9);
+  const last = Math.floor(max / step + 1e-9);
   const values: number[] = [];
   for (let index = first; index <= last; index += 1) {
     values.push(Number((index * step).toPrecision(12)));
