@@ -12,6 +12,11 @@ export interface FormatContext {
   unit: string;
   currency: string | null;
   majorUnit: string | null;
+  /**
+   * The unit per-kWh prices are shown in: the market's minor unit (the default, "öre/kWh") or its major
+   * unit ("kr/kWh"). A market without both unit names always shows the minor one.
+   */
+  priceUnit?: PriceUnit;
   /** The market's countries: an area covering Great Britain reads distance in miles. */
   countries?: readonly string[];
 }
@@ -59,11 +64,65 @@ export function formatNumber(language: Language, value: number, digits = 1): str
   }).format(value);
 }
 
+/** Which unit per-kWh prices are shown in: one choice per device, the minor unit unless chosen otherwise. */
+export type PriceUnit = "minor" | "major";
+
+export const PRICE_UNITS: readonly PriceUnit[] = ["minor", "major"];
+
+export const DEFAULT_PRICE_UNIT: PriceUnit = "minor";
+
+/** Minor units in one major unit: öre, øre, cent, snt and pence are all hundredths. */
+export const MINOR_PER_MAJOR = 100;
+
+/** Whether the market names both units, so there is a choice to offer between them. */
+export function priceUnitChoosable(context: FormatContext): boolean {
+  return context.unit !== "" && context.majorUnit !== null && context.majorUnit !== "";
+}
+
+/** Whether prices in this context are shown in the major unit. */
+function showsMajor(context: FormatContext): boolean {
+  return context.priceUnit === "major" && priceUnitChoosable(context);
+}
+
+/** The unit name per-kWh prices are shown in ("öre" or "kr"), without "/kWh". */
+export function priceUnitName(context: FormatContext): string {
+  return showsMajor(context) ? (context.majorUnit as string) : context.unit;
+}
+
+/**
+ * A price given in the minor unit, as a figure in the shown unit: the minor unit to a tenth with zeros
+ * trimmed ("163,1", "92"), the major unit to two decimals ("1,63").
+ */
+export function priceFigure(context: FormatContext, minorValue: number | null): string {
+  if (minorValue === null || !Number.isFinite(minorValue)) {
+    return "";
+  }
+  return showsMajor(context)
+    ? formatFixed(context.language, minorValue / MINOR_PER_MAJOR, 2)
+    : formatNumber(context.language, minorValue);
+}
+
+/**
+ * One label on the chart's price axis, from a value in the minor unit. The minor unit is whole numbers, as
+ * ever; the major unit takes the decimals the axis's span needs (none from 10 major units, one from 1, two
+ * below), and zero is just "0".
+ */
+export function priceAxisLabel(context: FormatContext, minorValue: number, minorSpan: number): string {
+  if (!showsMajor(context)) {
+    return String(Math.round(minorValue));
+  }
+  const span = Math.abs(minorSpan) / MINOR_PER_MAJOR;
+  const digits = span >= 10 ? 0 : span >= 1 ? 1 : 2;
+  const rounded = Number((minorValue / MINOR_PER_MAJOR).toFixed(digits));
+  return rounded === 0 ? "0" : formatFixed(context.language, rounded, digits);
+}
+
+/** A price given in the minor unit, per kWh in the shown unit: "163,1 öre/kWh" or "1,63 kr/kWh". */
 export function pricePerKwh(context: FormatContext, value: number | null): string {
   if (value === null || !Number.isFinite(value)) {
     return "";
   }
-  return `${formatNumber(context.language, value)} ${context.unit}/kWh`;
+  return `${priceFigure(context, value)} ${priceUnitName(context)}/kWh`;
 }
 
 export function money(context: FormatContext, value: number | null): string {
