@@ -2,7 +2,7 @@
 
 import { describe, expect, it } from "vitest";
 
-import { chartNowAt, hitTargets, hourMarkers, intervalIdentity, xForWallClock, type PlanBand } from "../src/chart";
+import { chartNowAt, hitTargets, hourMarkers, intervalIdentity, LABEL_STEP_HOURS, xForWallClock, type PlanBand } from "../src/chart";
 import {
   applyFocus,
   chartHeightForWidth,
@@ -570,10 +570,11 @@ describe("accessibility and safety of the SVG", () => {
     const model = twoDayModel();
     const result = renderFor(model);
     const ticks = Array.from(result.element.querySelectorAll(".spotnav-tick-label"));
-    // Five ticks, not ten: the two days share the clock axis instead of owning a panel each.
-    expect(ticks).toHaveLength(hourMarkers().length);
+    // Nine labels every three hours, not eighteen: the two days share the clock axis instead of owning a
+    // panel each.
+    expect(ticks).toHaveLength(hourMarkers(LABEL_STEP_HOURS).length);
     const xs = ticks.map((tick) => Number(tick.getAttribute("x")));
-    const expected = hourMarkers().map((position) => xForWallClock(result.scale, position));
+    const expected = hourMarkers(LABEL_STEP_HOURS).map((position) => xForWallClock(result.scale, position));
     expected.forEach((x, index) => {
       expect(xs[index]).toBeCloseTo(x, 9);
     });

@@ -70,6 +70,8 @@ export function externalModel(nowMs: number = NOW): CardModel {
 /** Deterministic, language-free labels: the SVG must not depend on any particular language. */
 export const TEST_LABELS: ChartLabels = {
   time: (instantMs) => `t${instantMs}`,
+  /** Two digits like the card's, here the UTC hour: short enough that the three-hour labels fit. */
+  hour: (instantMs) => String(Math.floor(instantMs / 3_600_000) % 24).padStart(2, "0"),
 };
 
 /** The now fact a render request carries: the model's own current interval unless a test injects one. */
@@ -433,9 +435,14 @@ export function chartHost(
  * Nothing that ended before the start is drawn; a plan run across midnight is one band, clipped to the axis.
  * Nothing is overlaid, so no mark is subdued and no band hatched: bands are solid at
  * `CROSS_PLAN_BAND_STYLE[kind].fillOpacity` (installed stronger than proposal), and the waiting-proposal
- * rule is the same as on the day axis. Ticks are every local 00/06/12/18 inside the range plus the right
- * edge; a midnight strictly inside is a day start (a dashed divider, labelled with weekday and date). With
- * no coming day published, "from_now" is exactly the day axis. Max/Min (▲/▼) cover the drawn marks.
+ * rule is the same as on the day axis. Ticks (gridlines, and the collapsed strip's labels) are every local
+ * 00/06/12/18 inside the range plus the right edge; a midnight strictly inside is a day start (a dashed
+ * divider). The chart's own labels come every three local hours by instant plus the right edge (`labels`),
+ * as two-digit hours without minutes, the right edge's midnight reading "24" like the strip; the midnight
+ * inside is labelled with weekday and date instead ("12 Mon"). Where any two labels would touch at the
+ * drawn width, the chart labels the six-hour ticks instead (same texts). On Day the labels read
+ * `dayLabels`, the edges anchored inward. With no coming day published, "from_now" is exactly the day
+ * axis. Max/Min (▲/▼) cover the drawn marks.
  * The choice is this device's own (`storageKey` in the card's browser storage), default "day".
  *
  * The scene: 2026-10-11 16:00 Europe/Stockholm (CEST), tomorrow published, a plan 14:00 → 05:30 tomorrow.
@@ -455,14 +462,31 @@ export const CROSS_AXIS_FROM_NOW = {
   planEndMs: Date.parse("2026-10-12T05:30:00+02:00"),
   /** The one band: clipped at the axis start, one run across midnight. */
   band: { startMs: Date.parse("2026-10-11T16:00:00+02:00"), endMs: Date.parse("2026-10-12T05:30:00+02:00"), startPosition: 0, endPosition: 13.5 / 32 },
+  /** The six-hour ticks: gridlines and the strip's labels (the strip names midnight "00"). */
   ticks: [
-    { position: 2 / 32, label: "18:00", dayStart: false },
-    { position: 8 / 32, label: "00:00", dayStart: true },
-    { position: 14 / 32, label: "06:00", dayStart: false },
-    { position: 20 / 32, label: "12:00", dayStart: false },
-    { position: 26 / 32, label: "18:00", dayStart: false },
-    { position: 1, label: "00:00", dayStart: false },
+    { position: 2 / 32, label: "18", dayStart: false },
+    { position: 8 / 32, label: "00", dayStart: true },
+    { position: 14 / 32, label: "06", dayStart: false },
+    { position: 20 / 32, label: "12", dayStart: false },
+    { position: 26 / 32, label: "18", dayStart: false },
+    { position: 1, label: "24", dayStart: false },
   ],
+  /** The chart's labels every three hours ("12 Mon" in English at the midnight inside). */
+  labels: [
+    { position: 2 / 32, label: "18", dayStart: false },
+    { position: 5 / 32, label: "21", dayStart: false },
+    { position: 8 / 32, label: "12 Mon", dayStart: true },
+    { position: 11 / 32, label: "03", dayStart: false },
+    { position: 14 / 32, label: "06", dayStart: false },
+    { position: 17 / 32, label: "09", dayStart: false },
+    { position: 20 / 32, label: "12", dayStart: false },
+    { position: 23 / 32, label: "15", dayStart: false },
+    { position: 26 / 32, label: "18", dayStart: false },
+    { position: 29 / 32, label: "21", dayStart: false },
+    { position: 1, label: "24", dayStart: false },
+  ],
+  /** The Day axis's labels, at positions 0, 1/8 ... 1. */
+  dayLabels: ["00", "03", "06", "09", "12", "15", "18", "21", "24"],
   /** The now line: the 16:00 quarter-hour's own position. */
   nowPosition: 0,
 } as const;

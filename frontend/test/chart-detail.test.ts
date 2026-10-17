@@ -51,7 +51,6 @@ function drawn(model: CardModel, detail: boolean, width = 460) {
     labels: {
       ...TEST_LABELS,
       day: (instantMs) => `day${instantMs}`,
-      hour: (instantMs) => `h${instantMs}`,
     },
     ...(detail ? { density: CHART_DENSITY.detail } : {}),
     ids: { title: "d-title", description: "d-desc", hatch: "d-hatch" },
@@ -84,11 +83,11 @@ describe("the chart_detail option in the card's YAML", () => {
 });
 
 describe("the chart without chart_detail", () => {
-  it("is drawn as before: six-hour labels, bottom, middle and top prices, no density mark", () => {
+  it("is drawn as before but for its hour labels every three hours: bottom, middle and top prices, no density mark", () => {
     const model = axisSceneModel({ axis: "day" });
     const result = drawn(model, false);
     expect(result.element.hasAttribute("data-density")).toBe(false);
-    expect(texts(result.element, C.tickLabel)).toHaveLength(5);
+    expect(texts(result.element, C.tickLabel)).toHaveLength(9);
     expect(texts(result.element, C.axisLabel).length).toBeLessThanOrEqual(3);
     expect(result.scale.priceStep).toBeUndefined();
     expect(chartHeightForWidth(460)).toBe(120);

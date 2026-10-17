@@ -41,17 +41,20 @@ review and opens the full list with the integration's own wording.
 The graph shows the price of every interval per kWh, in the price area's small unit (öre, cent) or, if
 chosen under [Display](#display), its main unit (kr, €).
 
-- By default (**Day**) the horizontal axis is one local day, 00:00 to 24:00. Today is drawn over
-  tomorrow, and an earlier day is subdued. Tomorrow's prices appear once they are published, usually
+- By default (**Day**) the horizontal axis is one local day, labelled with the hour every three hours
+  (00, 03, 06 ... 21, 24), with a line every six. Today is drawn over tomorrow, and an earlier day is
+  subdued. Tomorrow's prices appear once they are published, usually
   in the afternoon.
 - With **From now** (see [Display](#display)) and tomorrow's prices published, the axis runs in real
   time from the start of the current hour to the end of the last published day, about 32 to 35 hours,
   with the now line near the left edge. Every interval sits at its own time: nothing that has already
   ended is drawn, tomorrow is drawn like today, and a charging period across midnight is one band.
-  Ticks come every six hours, and midnight is a dashed line labelled with the new day's weekday and
-  date. Until tomorrow's prices are published, **From now** looks exactly like **Day**.
+  The hours are labelled every three hours, with a line every six, and midnight is a dashed line
+  labelled with the new day's weekday and date. On a narrow card the labels come every six hours
+  instead, so they never run into each other. Until tomorrow's prices are published, **From now** looks
+  exactly like **Day**.
 
-  ![The card on From now: the now line at the left edge, today's prices then tomorrow's, and a dashed line at midnight named 15 Thu](images/card-from-now.png)
+  ![The card on From now: the now line at the left edge, today's prices then tomorrow's, and a dashed line at midnight named 18 Sun](images/card-from-now.png)
 
 - Bars cheaper than the day's average are marked as cheap and pricier ones as expensive. A line
   marks now, and the current interval is highlighted.

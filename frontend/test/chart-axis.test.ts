@@ -7,7 +7,8 @@ import { afterEach, describe, expect, it } from "vitest";
 import { createCardView, type CardView, type CardViewInput } from "../src/card-view";
 import { chooseChartAxis, chartAxisNow } from "../src/card";
 import { CHART_AXIS_KEY, readChartAxis, writeChartAxis, type PreferenceStore } from "../src/chart-preference";
-import { renderChart } from "../src/chart-render";
+import { chartHeightForWidth, renderChart, timeAxisLabels } from "../src/chart-render";
+import { clock, dayCue, hourLabel } from "../src/format";
 import { stripBars, stripNowPosition, stripTicks } from "../src/chart-strip";
 import { translate } from "../src/i18n";
 import { VISUAL_CLASSES as C } from "../src/visual-styles";
@@ -182,6 +183,91 @@ describe("From now without tomorrow", () => {
     const a = renderOf(fromNow).element.outerHTML;
     const b = renderOf(day).element.outerHTML;
     expect(a).toBe(b);
+  });
+});
+
+/** The card's own label formatters, in the scene's zone and language. */
+function cardLabels(model: CardModel) {
+  return {
+    time: (instantMs: number) => clock(model.format, instantMs),
+    day: (instantMs: number) => dayCue(model.format, instantMs),
+    hour: (instantMs: number) => hourLabel(model.format, instantMs),
+  };
+}
+
+function hourTexts(model: CardModel, width: number) {
+  const drawn = renderChart({
+    series: model.chart,
+    bands: model.bands,
+    now: nowFor(model),
+    width,
+    height: chartHeightForWidth(width),
+    selected: null,
+    title: "t",
+    description: "d",
+    labels: cardLabels(model),
+    ids: { title: "h-title", description: "h-desc", hatch: "h-hatch" },
+  });
+  const nodes = Array.from(drawn.element.querySelectorAll(`.${C.tickLabel}`));
+  return {
+    drawn,
+    texts: nodes.map((node) => node.textContent),
+    anchors: nodes.map((node) => node.getAttribute("text-anchor")),
+    xs: nodes.map((node) => Number(node.getAttribute("x"))),
+  };
+}
+
+describe("the ordinary chart's hour labels", () => {
+  it("come every three hours by instant on From now, the midnight inside named by its day", () => {
+    const model = axisSceneModel({ axis: "from_now" });
+    expect(model.chart.labelTicks.map((tick) => tick.position)).toEqual(SCENE.labels.map((label) => label.position));
+    expect(model.chart.labelTicks.map((tick) => tick.dayStart === true)).toEqual(SCENE.labels.map((label) => label.dayStart));
+    const { drawn, texts, xs } = hourTexts(model, 640);
+    expect(texts).toEqual(SCENE.labels.map((label) => label.label));
+    const width = drawn.scale.right - drawn.scale.left;
+    SCENE.labels.forEach((label, index) => {
+      expect(xs[index]).toBeCloseTo(drawn.scale.left + width * label.position, 6);
+    });
+    // The gridlines stay every six hours: one per tick, the divider among them.
+    const vertical = Array.from(drawn.element.querySelectorAll(`.${C.gridline}`)).filter(
+      (line) => line.getAttribute("x1") === line.getAttribute("x2"),
+    );
+    expect(vertical).toHaveLength(SCENE.ticks.length);
+  });
+
+  it("read 00 03 ... 21 24 on Day, without minutes, the edges anchored inward", () => {
+    const model = axisSceneModel({ axis: "day" });
+    for (const width of [640, 280]) {
+      const { texts, anchors } = hourTexts(model, width);
+      expect(texts, `${width}`).toEqual([...SCENE.dayLabels]);
+      expect(anchors[0]).toBe("start");
+      expect(anchors.at(-1)).toBe("end");
+      expect(anchors.slice(1, -1).every((anchor) => anchor === "middle")).toBe(true);
+    }
+  });
+
+  it("thin to the six-hour ticks where three-hourly labels would touch", () => {
+    const model = axisSceneModel({ axis: "from_now" });
+    const { texts } = hourTexts(model, 280);
+    expect(texts).toEqual(SCENE.ticks.map((tick, index) => (tick.dayStart ? SCENE.labels[2]?.label : SCENE.ticks[index]?.label)));
+  });
+
+  it("never let two labels overlap, at any card width", () => {
+    for (const axis of ["day", "from_now"] as const) {
+      const model = axisSceneModel({ axis });
+      for (let width = 240; width <= 1200; width += 20) {
+        const { drawn } = hourTexts(model, width);
+        const placed = timeAxisLabels(model.chart, cardLabels(model), drawn.scale, 11);
+        const spans = placed.map((label) => {
+          const w = label.text.length * 0.6 * 11;
+          const left = label.anchor === "start" ? label.x : label.anchor === "end" ? label.x - w : label.x - w / 2;
+          return [left, left + w] as const;
+        });
+        for (let index = 1; index < spans.length; index += 1) {
+          expect(spans[index]![0], `${axis} ${width}`).toBeGreaterThan(spans[index - 1]![1]);
+        }
+      }
+    }
   });
 });
 
