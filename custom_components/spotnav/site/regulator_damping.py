@@ -102,6 +102,7 @@ class RegulatorDamper:
         margin_a: float | None,
         urgent: bool = False,
         verified_step: bool = False,
+        reaches_request: bool = False,
     ) -> DampingDecision:
         """Whether this proposal may be written now, and under which rule.
 
@@ -109,7 +110,9 @@ class RegulatorDamper:
         reduction only. `verified_step` is the one exception for an increase: a step the
         yield-stepping layer licensed on a battery it verified gives way, which has its own
         settle time and spacing, so a 1 A step near the target is not swallowed by the deadband
-        and the climb is not held for the dwell.
+        and the climb is not held for the dwell. `reaches_request` marks a yield step cut short
+        by the charger's requested current: an increase to it is not swallowed by the deadband
+        (the last amp to the plan may be smaller than it), but still waits for the dwell.
         """
         if proposed_current_a is None:
             return DampingDecision(False, self._written, "no_proposal")
@@ -143,7 +146,9 @@ class RegulatorDamper:
             self._write(proposed_current_a)
             return DampingDecision(True, proposed_current_a, "verified_step")
 
-        if change_a < self._deadband_a:
+        if change_a < self._deadband_a and not (
+            reaches_request and proposed_current_a > self._written
+        ):
             self._pending = None
             self._pending_since = None
             return DampingDecision(False, self._written, "deadband")
