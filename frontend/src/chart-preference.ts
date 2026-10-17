@@ -1,12 +1,15 @@
 // The chart's per-viewer display preferences, remembered in this browser only:
 //   * whether the price chart is collapsed to its strip, per charger;
-//   * the chart's time axis ("day" or "from_now"), one choice for every SpotNav card in this browser.
+//   * the chart's time axis ("day" or "from_now"), one choice for every SpotNav card in this browser;
+//   * the unit prices are shown in ("minor" or "major"), likewise one choice for the whole browser.
 //
 // The one place the card touches browser storage, and only for these per-viewer conveniences. Every
 // access is guarded: a private window, blocked site data or a storage that throws simply means nothing
-// is remembered, and the card renders from its default instead (the YAML option, or the "day" axis).
+// is remembered, and the card renders from its default instead (the YAML option, the "day" axis, the minor
+// unit).
 
 import { CHART_AXIS_MODES, DEFAULT_CHART_AXIS, type ChartAxisMode } from "./chart";
+import { DEFAULT_PRICE_UNIT, PRICE_UNITS, type PriceUnit } from "./format";
 import type { ChartPresentation } from "./view";
 
 /** The part of the Web Storage interface used here, so a test can hand in its own. */
@@ -82,6 +85,36 @@ export function writeChartAxis(store: () => PreferenceStore | null, mode: ChartA
       return false;
     }
     target.setItem(CHART_AXIS_KEY, mode);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/** The price unit is one choice for the whole browser, like the axis. */
+export const PRICE_UNIT_KEY = "spotnav-card.price-unit";
+
+/** Sent on the window after this browser's price unit changed, so every SpotNav card on the page redraws. */
+export const PRICE_UNIT_EVENT = "spotnav-card-price-unit";
+
+/** The stored price unit, or the minor unit when nothing usable is stored or storage is unavailable. */
+export function readPriceUnit(store: () => PreferenceStore | null): PriceUnit {
+  try {
+    const value = store()?.getItem(PRICE_UNIT_KEY) ?? null;
+    return PRICE_UNITS.find((unit) => unit === value) ?? DEFAULT_PRICE_UNIT;
+  } catch {
+    return DEFAULT_PRICE_UNIT;
+  }
+}
+
+/** Remember the price unit in this browser; `false` when it could not be stored (it then holds for this page only). */
+export function writePriceUnit(store: () => PreferenceStore | null, unit: PriceUnit): boolean {
+  try {
+    const target = store();
+    if (target === null) {
+      return false;
+    }
+    target.setItem(PRICE_UNIT_KEY, unit);
     return true;
   } catch {
     return false;

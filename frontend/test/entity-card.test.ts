@@ -222,12 +222,13 @@ describe("the Settings page's charger and site cards", () => {
     openSettings(element);
     await settle();
     expect(gets(hass)).toHaveLength(0);
-    // Settings shows such a reader only what they may change: this device's Display, no entities.
+    // Settings shows such a reader only what they may change: this device's Display (time axis and price
+    // unit), no entities.
     expect(openDialog(element)?.querySelector("[data-section='entities']")).toBeNull();
     const changeable = Array.from(
       openDialog(element)?.querySelectorAll("[data-edit-entities], .spotnav-setting-row-editable") ?? [],
     ).map((node) => node.closest("[data-section]")?.getAttribute("data-section"));
-    expect(changeable).toEqual(["display"]);
+    expect(changeable).toEqual(["display", "display"]);
   });
 
   it("states a failed read in words, with the code only as an attribute, and offers no editor", async () => {

@@ -821,5 +821,7 @@
   "display.chartAxis.day": "Dag",
   "display.chartAxis.dayHelp": "00–24, met morgen over vandaag getekend.",
   "display.chartAxis.fromNow": "Vanaf nu",
-  "display.chartAxis.fromNowHelp": "Van dit uur tot het einde van de laatst gepubliceerde dag. Tot de prijzen van morgen er zijn, hetzelfde als Dag."
+  "display.chartAxis.fromNowHelp": "Van dit uur tot het einde van de laatst gepubliceerde dag. Tot de prijzen van morgen er zijn, hetzelfde als Dag.",
+  "display.priceUnit": "Prijseenheid",
+  "display.priceUnit.example": "Bijvoorbeeld {price}"
 }

@@ -38,7 +38,8 @@ review and opens the full list with the integration's own wording.
 
 ## The price graph
 
-The graph shows the price of every interval, in the price area's currency per kWh.
+The graph shows the price of every interval per kWh, in the price area's small unit (öre, cent) or, if
+chosen under [Display](#display), its main unit (kr, €).
 
 - By default (**Day**) the horizontal axis is one local day, 00:00 to 24:00. Today is drawn over
   tomorrow, and an earlier day is subdued. Tomorrow's prices appear once they are published, usually
@@ -348,9 +349,15 @@ several. A charger with no site says so.
 How this device draws the card, marked "Only this device": nothing is sent to Home Assistant, and the
 choice applies to every SpotNav card in this browser (on other devices and browsers each keeps its own).
 **Chart time axis** is **Day** (00–24, tomorrow drawn over today; the default) or **From now** (from
-this hour to the end of the last published day; see [The price graph](#the-price-graph)). Where the
-browser cannot store it, for example in a private window, the choice holds until the page is reloaded
-and the card then starts on **Day**.
+this hour to the end of the last published day; see [The price graph](#the-price-graph)).
+**Price unit** is the price area's small unit (**öre/kWh**, **cent/kWh**; the default) or its main unit
+(**kr/kWh**, **€/kWh**), named from the area's own currency. It applies to every price per kWh on the
+card: **Now**, the highest and lowest price (▲ ▼), the graph's price axis, the readout of a chosen
+interval, and the average price in the charge history. The small unit shows a tenth (163,1 öre/kWh),
+the main unit two decimals (1,63 kr/kWh), and the axis as many decimals as its range needs. Amounts of
+money, such as the plan's cost, are always in the main unit. The choice is not offered for an area
+without a small unit. Where the browser cannot store these choices, for example in a private window,
+they hold until the page is reloaded and the card then starts on **Day** and the small unit.
 
 ## Plan settings
 

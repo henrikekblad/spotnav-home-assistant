@@ -20,10 +20,13 @@ import {
   money,
   periodIsAmbiguous,
   periodLabel,
+  priceFigure,
   pricePerKwh,
   distanceText,
+  DEFAULT_PRICE_UNIT,
   formatNumber,
   type FormatContext,
+  type PriceUnit,
 } from "./format";
 import { chargeBarFor, type ChargeBarFacts } from "./charge-bar";
 import { issuesOf, statusNote, statusText, type Issue } from "./status";
@@ -241,6 +244,8 @@ export interface CardModel {
   bands: PlanBands;
   /** This browser's chart axis preference, as asked for; `chart.time` says what is drawn. */
   chartAxis: ChartAxisMode;
+  /** This browser's price unit preference, as asked for; `format` shows the minor unit when the market lacks a name. */
+  priceUnit: PriceUnit;
   /**
    * Max and Min cover the marks drawn at full strength: the now-fact day's on the wall-clock overlay (the
    * other day is subdued there), every drawn mark on the range axis (from the current hour to the end of
@@ -785,6 +790,8 @@ export interface BuildInput {
   shownAutomatic?: string | null;
   /** This browser's chart axis preference; the wall-clock day when omitted. */
   chartAxis?: ChartAxisMode;
+  /** This browser's price unit preference; the market's minor unit when omitted. */
+  priceUnit?: PriceUnit;
 }
 
 export function buildModel(input: BuildInput): CardModel {
@@ -796,6 +803,7 @@ export function buildModel(input: BuildInput): CardModel {
     unit: market?.minor_unit ?? "",
     currency: market?.currency ?? null,
     majorUnit: market?.major_unit ?? null,
+    priceUnit: input.priceUnit ?? DEFAULT_PRICE_UNIT,
     countries: market?.countries ?? [],
   };
   const rows = dashboard.prices.intervals;
@@ -810,7 +818,7 @@ export function buildModel(input: BuildInput): CardModel {
   const price = (value: number | null): string | null =>
     value === null || !zone ? null : pricePerKwh(format, value);
   const figure = (value: number | null): string | null =>
-    value === null || !zone || !Number.isFinite(value) ? null : formatNumber(language, value);
+    value === null || !zone || !Number.isFinite(value) ? null : priceFigure(format, value);
   // Max/Min are for the day the now fact is in (by the chart's own role authority), never `days[0]`, which
   // is merely the earliest held date. When no accepted day is that day, both are unavailable.
   const nowDay = chart.days.find((day) => day.role === "today") ?? null;
@@ -843,6 +851,7 @@ export function buildModel(input: BuildInput): CardModel {
     chart,
     bands,
     chartAxis,
+    priceUnit: format.priceUnit ?? DEFAULT_PRICE_UNIT,
     summary: {
       max: price(extremes.max),
       min: price(extremes.min),

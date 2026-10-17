@@ -31,6 +31,8 @@ export interface ChartLabels {
   time(instantMs: number): string;
   /** The new day at a midnight inside the range axis (weekday and date); the time label when omitted. */
   day?(instantMs: number): string;
+  /** One price-axis label from a value in the minor unit and the axis's span; whole minor units when omitted. */
+  price?(value: number, span: number): string;
 }
 
 export interface ChartRenderInput {
@@ -199,7 +201,7 @@ export function renderChart(input: ChartRenderInput): ChartRenderResult {
   root.append(bandLayer);
 
   const axis = svg("g", { class: VISUAL_CLASSES.axis });
-  for (const label of gutterLabels(scale)) {
+  for (const label of gutterLabels(scale, labels.price)) {
     axis.append(
       svg("line", {
         class: VISUAL_CLASSES.gridline,

@@ -307,7 +307,14 @@ export function yAt(scale: ChartScale, value: number): number {
   return scale.bottom - share * (scale.bottom - scale.top);
 }
 
-export function gutterLabels(scale: ChartScale): Array<{ value: number; y: number; label: string }> {
+/**
+ * The price axis's labels: the bottom, middle and top of the scale. `format` writes one value (given in the
+ * minor unit) for the axis's span; without it, whole minor units.
+ */
+export function gutterLabels(
+  scale: ChartScale,
+  format: (value: number, span: number) => string = (value) => String(Math.round(value)),
+): Array<{ value: number; y: number; label: string }> {
   const candidates =
     scale.maxValue - scale.minValue < 1e-9
       ? [scale.minValue]
@@ -315,7 +322,7 @@ export function gutterLabels(scale: ChartScale): Array<{ value: number; y: numbe
   const seen = new Set<string>();
   const labels: Array<{ value: number; y: number; label: string }> = [];
   for (const value of candidates) {
-    const label = String(Math.round(value));
+    const label = format(value, scale.maxValue - scale.minValue);
     if (seen.has(label)) {
       continue;
     }

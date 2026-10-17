@@ -6,7 +6,16 @@
 // (a vehicle's name) is written with `textContent`, never parsed as markup.
 
 import { SESSIONS_API_VERSION } from "./types";
-import { dateLabel, energyTenths, formatNumber, money, pricePerKwh, type FormatContext } from "./format";
+import {
+  dateLabel,
+  DEFAULT_PRICE_UNIT,
+  energyTenths,
+  formatNumber,
+  money,
+  pricePerKwh,
+  type FormatContext,
+  type PriceUnit,
+} from "./format";
 import { pluralForm, translate, type Language, type TranslationKey } from "./i18n";
 import { VISUAL_CLASSES as C } from "./visual-styles";
 
@@ -310,6 +319,7 @@ export function monthLabel(language: Language, period: string): string {
 function formatContext(
   language: Language,
   source: { currency: string | null; major_unit: string | null; minor_unit: string | null },
+  priceUnit: PriceUnit = DEFAULT_PRICE_UNIT,
 ): FormatContext {
   return {
     language,
@@ -317,6 +327,7 @@ function formatContext(
     unit: source.minor_unit ?? "",
     currency: source.currency,
     majorUnit: source.major_unit,
+    priceUnit,
   };
 }
 
@@ -381,8 +392,8 @@ export function savingsLine(
   return translate(language, source.savings > 0 ? "history.savings.saved" : "history.savings.extra", { amount });
 }
 
-function figures(language: Language, bucket: SessionBucket | SessionRecord): string {
-  const context = formatContext(language, bucket);
+function figures(language: Language, bucket: SessionBucket | SessionRecord, priceUnit: PriceUnit): string {
+  const context = formatContext(language, bucket, priceUnit);
   const cost = bucket.cost === null ? translate(language, "history.noCost") : money(context, bucket.cost);
   const parts = [energyTenths(language, bucket.energy_kwh), cost];
   if (bucket.average_price_minor_per_kwh !== null && bucket.minor_unit !== null) {
@@ -391,14 +402,14 @@ function figures(language: Language, bucket: SessionBucket | SessionRecord): str
   return parts.join(" · ");
 }
 
-function monthSummary(doc: Document, language: Language, bucket: SessionBucket): HTMLElement {
+function monthSummary(doc: Document, language: Language, bucket: SessionBucket, priceUnit: PriceUnit): HTMLElement {
   const card = element(doc, "section", C.historyTile);
   card.dataset["tile"] = "month";
   if (bucket.sessions === 0) {
     card.append(element(doc, "p", C.muted, translate(language, "history.noneInMonth")));
     return card;
   }
-  card.append(element(doc, "p", C.historyFigures, figures(language, bucket)));
+  card.append(element(doc, "p", C.historyFigures, figures(language, bucket, priceUnit)));
   const notes = [sessionsCount(language, bucket.sessions)];
   if (bucket.solar_share !== null) {
     notes.push(translate(language, "history.solar", { percent: percent(language, bucket.solar_share) }));
@@ -415,12 +426,12 @@ function monthSummary(doc: Document, language: Language, bucket: SessionBucket):
 }
 
 /** The figures one day's bar stands for, as one line. */
-export function dayFigures(language: Language, day: SessionBucket): string {
+export function dayFigures(language: Language, day: SessionBucket, priceUnit: PriceUnit = DEFAULT_PRICE_UNIT): string {
   const date = dateLabel(language, day.period);
   if (day.sessions === 0) {
     return translate(language, "history.chart.noCharge", { date });
   }
-  const parts = [figures(language, day)];
+  const parts = [figures(language, day, priceUnit)];
   if (day.solar_share !== null) {
     parts.push(translate(language, "history.solar", { percent: percent(language, day.solar_share) }));
   }
@@ -432,7 +443,13 @@ export function dayFigures(language: Language, day: SessionBucket): string {
  * month (the card's cheap green to expensive red). Hover, focus or a tap shows that day's figures in
  * the readout under the chart; nothing is repainted, so a hover never loses its place.
  */
-function dayChart(doc: Document, language: Language, days: SessionBucket[], ui: HistoryUi): HTMLElement {
+function dayChart(
+  doc: Document,
+  language: Language,
+  days: SessionBucket[],
+  ui: HistoryUi,
+  priceUnit: PriceUnit,
+): HTMLElement {
   const wrap = element(doc, "div", C.historyChart);
   const top = Math.max(0, ...days.map((day) => day.energy_kwh));
   const positions = dayPricePositions(days);
@@ -441,7 +458,7 @@ function dayChart(doc: Document, language: Language, days: SessionBucket[], ui: 
   const hint = translate(language, "history.chart.hint");
   const bars: HTMLButtonElement[] = [];
   const show = (day: SessionBucket | null): void => {
-    readout.textContent = day === null ? hint : dayFigures(language, day);
+    readout.textContent = day === null ? hint : dayFigures(language, day, priceUnit);
     bars.forEach((bar) => bar.setAttribute("aria-pressed", String(day !== null && bar.dataset["day"] === day.period)));
   };
   const plot = element(doc, "div", C.historyBars);
@@ -451,7 +468,7 @@ function dayChart(doc: Document, language: Language, days: SessionBucket[], ui: 
     const bar = element(doc, "button", C.historyBar);
     bar.type = "button";
     bar.dataset["day"] = day.period;
-    bar.setAttribute("aria-label", dayFigures(language, day));
+    bar.setAttribute("aria-label", dayFigures(language, day, priceUnit));
     const fill = element(doc, "span", C.historyBarFill);
     const position = positions[index] ?? null;
     if (day.energy_kwh > 0 && top > 0) {
@@ -490,7 +507,7 @@ function dayChart(doc: Document, language: Language, days: SessionBucket[], ui: 
   return wrap;
 }
 
-function sessionRow(doc: Document, language: Language, session: SessionRecord): HTMLElement {
+function sessionRow(doc: Document, language: Language, session: SessionRecord, priceUnit: PriceUnit): HTMLElement {
   const row = element(doc, "li", C.historyRow);
   row.dataset["session"] = session.id;
   const end = session.end === null ? "" : clockOf(session.end);
@@ -498,7 +515,7 @@ function sessionRow(doc: Document, language: Language, session: SessionRecord): 
   const when = `${dateLabel(language, dayOf(session.start))} ${clockOf(session.start)}–${crosses ? `${dateLabel(language, dayOf(session.end as string))} ` : ""}${end}`;
   row.append(
     element(doc, "span", C.historyRowTitle, when),
-    element(doc, "span", C.historyRowFigures, figures(language, session)),
+    element(doc, "span", C.historyRowFigures, figures(language, session, priceUnit)),
   );
   const notes = [translate(language, session.source === "imported_hourly" ? "history.by.imported" : startedByKey(session.started_by))];
   if (session.vehicle !== null) {
@@ -572,6 +589,7 @@ export function historyBody(
   state: HistoryState,
   ui: HistoryUi,
   handlers: HistoryHandlers,
+  priceUnit: PriceUnit = DEFAULT_PRICE_UNIT,
 ): HTMLElement {
   const body = element(doc, "div", C.historyBody);
   if (state.kind === "loading") {
@@ -615,16 +633,16 @@ export function historyBody(
     month.setAttribute("aria-busy", "true");
     month.dataset["pending"] = "true";
   }
-  month.append(monthSummary(doc, language, answer.month_summary));
+  month.append(monthSummary(doc, language, answer.month_summary, priceUnit));
   if (answer.month_summary.sessions > 0) {
-    month.append(dayChart(doc, language, answer.month_days, ui));
+    month.append(dayChart(doc, language, answer.month_days, ui, priceUnit));
   }
   if (answer.month_sessions.length > 0) {
     month.append(element(doc, "h4", C.historyHeading, translate(language, "history.sessionsHeading")));
     const latest = element(doc, "ul", C.historyList);
     latest.dataset["list"] = "sessions";
     for (const session of answer.month_sessions) {
-      latest.append(sessionRow(doc, language, session));
+      latest.append(sessionRow(doc, language, session, priceUnit));
     }
     month.append(latest);
   }
