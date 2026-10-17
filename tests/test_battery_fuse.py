@@ -403,10 +403,13 @@ async def test_the_car_starts_at_the_minimum_the_battery_yields_and_the_car_clim
         _battery_w(hass, 15000.0 - 3 * 230.0 * (delivered - 5.34))
         await controller._async_apply_active_control()
         assigned = int(damper.last_written_a)
+        if written[-1] != assigned:
+            written.append(assigned)
         if assigned == 16:
             break
     assert assigned == 16, written
-    # Each step is one the stepper licensed: credited steps of up to 3 A, never past the plan's.
+    # Each step is one the stepper licensed: credited steps of up to 3 A, never past the plan's (here 2 A:
+    # with the grid at the limit, a step is no larger than the allowance over it leaves room for).
     assert all(0 < later - earlier <= 3 for earlier, later in zip([8] + written, written))
     assert max(written) == 16
     log = controller.regulator_decision_log
@@ -796,6 +799,25 @@ async def test_the_grid_held_at_20_03_amps_does_not_ratchet_the_car_down(
         yield_clock.advance(31.0)
         damper_clock.advance(61.0)
         await controller._async_apply_active_control()
+    # Never lowered: the one write is a step into the battery's share (`execution/yield_stepping.py`),
+    # held while the car's reading has not shown it.
+    assert _values(calls) == ["1.14,2.10"]
+    held = [e for e in controller.regulator_decision_log if e["outcome"] == "held"]
+    assert held and held[-1]["detail"] == "yield_stepping_held_battery_probe_in_flight"
+
+
+async def test_the_grid_held_at_the_limit_without_a_fresh_battery_reading_holds_as_before(
+    hass: HomeAssistant, monkeypatch
+) -> None:
+    controller, charger, calls, yield_clock, damper_clock, site, prefix = await _running_site(
+        hass, "bfbandnostep"
+    )
+    monkeypatch.setattr(controller, "_fresh_battery_w", lambda: None)
+    set_site_current_a(hass, site, 20.03)
+    for _ in range(4):
+        yield_clock.advance(31.0)
+        damper_clock.advance(61.0)
+        await controller._async_apply_active_control()
     assert calls == []
     held = [e for e in controller.regulator_decision_log if e["outcome"] == "held"]
     assert held and held[-1]["detail"] == "held_battery_at_limit"
@@ -826,7 +848,9 @@ async def test_the_band_is_not_granted_without_its_conditions(
     if case == "battery_not_charging":
         battery_w = 0.0
     if case == "small":
-        battery_w = 3000.0  # under the car's minimum power
+        # Under the car's minimum power, and under a 2 A step's (1380 W), which would otherwise be
+        # tried into the battery's share.
+        battery_w = 1000.0
     controller, charger, calls, yield_clock, damper_clock, site, prefix = await _running_site(
         hass, f"bfbandno{case}", battery_w=battery_w, **setup
     )
@@ -1156,3 +1180,93 @@ async def test_a_paused_charge_is_not_restarted_once_it_is_no_longer_wanted(
     assert cc._paused_by_balancing is False
     assert calls == [] and turn_on == [], (what, ending)
     assert [e for e in controller.regulator_decision_log if e["outcome"] in ("resumed", "probe_started")] == []
+
+
+# -- the night of 2026-10-17: the car at its minimum, the battery charging 7.3 kW from a full fuse
+
+
+async def _night_site(hass: HomeAssistant, entry_id: str, **setup):
+    """The car running at 7 A, the grid at 20.26 A, the battery charging at 7.3 kW, the regulator cutting to 6 A."""
+    controller, charger, calls, yield_clock, damper_clock, site, prefix = await _owner_site(
+        hass, entry_id, battery_w=7325.0, **setup
+    )
+    set_charger_delivered_a(hass, prefix, 6.9)
+    _seed_assigned_a(controller, charger.entry_id, 7.0)
+    await controller._async_apply_active_control()
+    assert _values(calls)[-1] == "1.7,2.10"
+    calls.clear()
+    set_site_current_a(hass, site, 20.26)
+    controller.regulator_decisions = {
+        charger.entry_id: _decision(proposed_a=6.0, requested_a=16.0, reason=_OVERLOAD)
+    }
+    return controller, charger, calls, yield_clock, damper_clock, site, prefix
+
+
+async def _step_once(controller, yield_clock, damper_clock) -> None:
+    yield_clock.advance(31.0)
+    damper_clock.advance(61.0)
+    await controller._async_apply_active_control()
+
+
+async def test_the_night_car_steps_into_a_battery_that_gives_way(hass: HomeAssistant) -> None:
+    controller, charger, calls, yield_clock, damper_clock, site, prefix = await _night_site(hass, "bfnight")
+
+    await controller._async_apply_active_control()
+    await _step_once(controller, yield_clock, damper_clock)
+    # Not lowered: one step into the battery's share, past the step guard (a yield step, not the regulator's).
+    assert _values(calls) == ["1.9,2.10"]
+    calls.clear()
+    await controller._async_apply_active_control()
+    assert controller._yield_stepping_last[charger.entry_id]["reason"] == "held_battery_probe_in_flight"
+
+    # The car takes the 2 A, the battery gives the same up, the grid stays where it was.
+    set_charger_delivered_a(hass, prefix, 8.85)
+    _battery_w(hass, 7325.0 - 3 * 230.0 * 1.95)
+    yield_clock.advance(5.0)
+    await controller._async_apply_active_control()
+    assert controller._yield_stepping_last[charger.entry_id]["state"] == "settling"
+    await _step_once(controller, yield_clock, damper_clock)
+    assert controller._yield_stepping_last[charger.entry_id]["state"] == "confirmed"
+    assert calls == []
+
+    # The next step follows, and so on while the battery keeps giving way.
+    await _step_once(controller, yield_clock, damper_clock)
+    assert _values(calls) == ["1.11,2.10"]
+    # The card's line stays what it was: limited, the battery sharing the fuse, at the current given.
+    assert controller.load_balancing_limit(charger.entry_id) == (11.0, "battery_shares_fuse")
+
+
+async def test_the_night_car_steps_back_when_the_battery_does_not_give_way(hass: HomeAssistant) -> None:
+    controller, charger, calls, yield_clock, damper_clock, site, prefix = await _night_site(hass, "bfnightno")
+
+    await controller._async_apply_active_control()
+    await _step_once(controller, yield_clock, damper_clock)
+    assert _values(calls) == ["1.9,2.10"]
+    calls.clear()
+
+    # The car takes the 2 A and the grid carries all of it.
+    set_charger_delivered_a(hass, prefix, 8.85)
+    set_site_current_a(hass, site, 22.2)
+    yield_clock.advance(5.0)
+    await controller._async_apply_active_control()
+    await _step_once(controller, yield_clock, damper_clock)
+    assert _values(calls) == ["1.7,2.10"]
+    assert controller._yield_stepping_last[charger.entry_id]["state"] == "backoff"
+    calls.clear()
+
+    # Back where it was, the car is held there, not stepped again for the backoff.
+    set_charger_delivered_a(hass, prefix, 6.9)
+    set_site_current_a(hass, site, 20.26)
+    for _ in range(8):
+        await _step_once(controller, yield_clock, damper_clock)
+    assert "1.9,2.10" not in _values(calls)
+
+
+async def test_the_night_car_is_held_as_before_with_yield_stepping_off(hass: HomeAssistant) -> None:
+    controller, charger, calls, yield_clock, damper_clock, site, prefix = await _night_site(
+        hass, "bfnightoff", yield_stepping_enabled=False
+    )
+    await controller._async_apply_active_control()
+    await _step_once(controller, yield_clock, damper_clock)
+    # Without yield stepping the regulator's cut goes through, exactly as before.
+    assert _values(calls) == ["1.6,2.10"]
