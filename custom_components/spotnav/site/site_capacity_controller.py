@@ -1509,6 +1509,9 @@ class SiteCapacityController:
                     yield_verdict.battery_credit_a is not None
                     or yield_verdict.reason == "down_step_absorbed_by_battery"
                 ),
+                # The last step to the request may be smaller than the deadband; it still waits
+                # for the dwell.
+                reaches_request=yield_verdict.reaches_request,
             )
         else:
             # Passthrough: the raw proposal, urgent only if the stepper says so.

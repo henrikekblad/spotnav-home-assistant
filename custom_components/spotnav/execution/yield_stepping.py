@@ -211,6 +211,11 @@ class _BatteryProbe:
     # The car's highest phase reading when the step was proposed.
     delivered_before_a: float
     written_at: float | None = None
+    # The last readings before the step was written, the baseline that measures a step too small
+    # for the ordinary step detection (`min_delta_a`).
+    site_before: dict[PhaseName, float] | None = None
+    delivered_before: dict[PhaseName, float] | None = None
+    battery_before_a: float | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -235,6 +240,9 @@ class YieldVerdict:
     battery_verified: bool = False
     # The battery charge current (A per phase) a larger step was sized from, else `None`.
     battery_credit_a: float | None = None
+    # A step up cut short by the charger's requested current: it lands on the request, and may be
+    # smaller than the regulator's deadband.
+    reaches_request: bool = False
 
 
 def _clamp01(value: float) -> float:
@@ -266,6 +274,9 @@ class YieldStepper:
         self._baseline_assigned: float | None = None
         # Whether settling interrupted "confirmed"; needed to restore it if the car did not follow.
         self._was_confirmed_before_settling = False
+        # The rise that counts as the car following the step being settled; `None` is
+        # `min_delta_a`, a small step into the battery's share sets its own.
+        self._settle_delta_a: float | None = None
 
         self._y: float | None = None
         self._y_at: float | None = None
@@ -388,6 +399,7 @@ class YieldStepper:
                 delivered_a[phase] - self._stable_delivered[phase] >= cfg.min_delta_a for phase in phases
             ):
                 self._was_confirmed_before_settling = self._state == "confirmed"
+                self._settle_delta_a = None
                 self._state = "settling"
                 self._t_step = now
                 self._baseline_site = dict(self._stable_site)
@@ -427,7 +439,8 @@ class YieldStepper:
             changed_phases = [
                 phase
                 for phase in phases
-                if delivered_a[phase] - self._baseline_delivered[phase] >= cfg.min_delta_a
+                if delivered_a[phase] - self._baseline_delivered[phase]
+                >= (cfg.min_delta_a if self._settle_delta_a is None else self._settle_delta_a)
             ]
             if not changed_phases:
                 # The car did not follow (not a failure): return to the pre-settling state and
@@ -480,7 +493,9 @@ class YieldStepper:
             return verified
 
         # 3c. A step into the battery's share the car's reading has not shown yet.
-        pending = self._battery_probe_pending(now, assigned_a, site_a, delivered_a, limit_a)
+        pending = self._battery_probe_pending(
+            now, assigned_a, site_a, delivered_a, limit_a, observation.battery_charge_a
+        )
         if pending is not None:
             return pending
 
@@ -599,7 +614,13 @@ class YieldStepper:
                     if credit_a is not None:
                         self._next_step_at = now + cfg.step_gap_s
                     return self._verdict(
-                        now, "write", target, "confirmed_step", False, battery_credit_a=credit_a
+                        now,
+                        "write",
+                        target,
+                        "confirmed_step",
+                        False,
+                        battery_credit_a=credit_a,
+                        reaches_request=assigned_a + step_a > requested_a,
                     )
 
             ceiling_ok = all(site_a[phase] + cfg.step_a <= cfg.ceiling_a for phase in phases)
@@ -617,7 +638,14 @@ class YieldStepper:
                             delivered_before_a=max(delivered_a.values()),
                         )
                     self._over_limit_steps = True
-                return self._verdict(now, "write", target, "probe_step", False)
+                return self._verdict(
+                    now,
+                    "write",
+                    target,
+                    "probe_step",
+                    False,
+                    reaches_request=assigned_a + cfg.step_a > requested_a,
+                )
 
         if step5_verdict is not None:
             return step5_verdict
@@ -681,11 +709,13 @@ class YieldStepper:
         site_a: Mapping[PhaseName, float],
         delivered_a: Mapping[PhaseName, float],
         limit_a: Mapping[PhaseName, float] | None,
+        battery_charge_a: float | None,
     ) -> YieldVerdict | None:
         """A step into the battery's share between its proposal and the car's reading showing it.
         Not yet written: nothing to do (the rules propose it again or not). Written: held while
         the site stays within the allowance and the car's reading may still be on its way, else
-        taken back at once and `backoff` begins."""
+        taken back at once and `backoff` begins. A step too small for the ordinary step detection
+        (the last amp to the request) is settled and measured from the readings before it."""
         probe = self._battery_probe
         if probe is None:
             return None
@@ -693,13 +723,39 @@ class YieldStepper:
             if abs(assigned_a - probe.from_a) > 0.01:
                 # Something else moved the charger: the probe is void.
                 self._battery_probe = None
+            else:
+                # Not written yet: the latest readings are the baseline it will be measured from.
+                self._battery_probe = replace(
+                    probe,
+                    site_before=dict(site_a),
+                    delivered_before=dict(delivered_a),
+                    battery_before_a=battery_charge_a,
+                )
             return None
         cfg = self._config
+        step_a = probe.to_a - probe.from_a
         if max(delivered_a.values()) - probe.delivered_before_a >= min(
-            cfg.min_delta_a, cfg.confirm_y * (probe.to_a - probe.from_a)
+            cfg.min_delta_a, cfg.confirm_y * step_a
         ):
-            # Shown (a step too small for settling to measure): the ordinary rules from here.
             self._battery_probe = None
+            if (
+                step_a < cfg.min_delta_a
+                and self._state != "settling"
+                and probe.site_before is not None
+                and probe.delivered_before is not None
+            ):
+                # Shown, but too small for the step detection: settled and measured like any
+                # step, so one the battery does not make room for is taken back.
+                self._was_confirmed_before_settling = self._state == "confirmed"
+                self._settle_delta_a = cfg.confirm_y * step_a
+                self._state = "settling"
+                self._t_step = now
+                self._baseline_site = dict(probe.site_before)
+                self._baseline_delivered = dict(probe.delivered_before)
+                self._baseline_assigned = probe.from_a
+                self._baseline_battery = probe.battery_before_a
+                return self._verdict(now, "hold", None, "settling_hold", False)
+            # Shown: the ordinary rules from here.
             return None
         if probe.written_at is None:
             probe = self._battery_probe = replace(probe, written_at=now)
@@ -870,6 +926,7 @@ class YieldStepper:
         self._baseline_delivered = None
         self._baseline_assigned = None
         self._was_confirmed_before_settling = False
+        self._settle_delta_a = None
         self._y = None
         self._y_at = None
         self._reference = None
@@ -897,6 +954,7 @@ class YieldStepper:
         reason: YieldReason,
         urgent: bool,
         battery_credit_a: float | None = None,
+        reaches_request: bool = False,
     ) -> YieldVerdict:
         if action == "write":
             self._last_write_a = current_a
@@ -912,4 +970,5 @@ class YieldStepper:
             reference_a=dict(self._reference) if self._reference is not None else {},
             battery_verified=self._battery_verified,
             battery_credit_a=battery_credit_a,
+            reaches_request=reaches_request,
         )
