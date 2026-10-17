@@ -97,8 +97,9 @@ export function priceFigure(context: FormatContext, minorValue: number | null): 
   if (minorValue === null || !Number.isFinite(minorValue)) {
     return "";
   }
+  // In the major unit, rounded in whole minor units first, so 208,5 öre reads 2,09 kr, not the binary 2,0849….
   return showsMajor(context)
-    ? formatFixed(context.language, minorValue / MINOR_PER_MAJOR, 2)
+    ? formatFixed(context.language, Math.round(minorValue) / MINOR_PER_MAJOR, 2)
     : formatNumber(context.language, minorValue);
 }
 
