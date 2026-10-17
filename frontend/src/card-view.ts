@@ -4057,7 +4057,7 @@ export function createCardView(input: CardViewInput): CardView {
 
   /** The scrolling panel of the Settings page. */
   function overviewPanel(): HTMLElement {
-    return settingsOverviewDialog.element.querySelector<HTMLElement>(`.${C.dialog}`) ?? settingsOverviewDialog.element;
+    return settingsOverviewDialog.element.querySelector<HTMLElement>(`.${C.dialogScroll}`) ?? settingsOverviewDialog.element;
   }
 
   function hideForChildDialog(): void {

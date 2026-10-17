@@ -5,7 +5,8 @@
 //   * the document keydown listener is added in `show()` and removed in `hide()` and `destroy()`;
 //   * focus is read from the caller's `activeElement` first (a ShadowRoot tracks its own), then the document's;
 //   * a removed opener is guarded by `isConnected`; a second `show()` updates in place;
-//   * only the backdrop itself closes; the background gets `inert`, else `aria-hidden`, restored on close.
+//   * only the backdrop itself closes; the background gets `inert`, else `aria-hidden`, restored on close;
+//   * the header (title and close) is the panel's fixed top row and only the intro and body below it scroll.
 //
 // No Home Assistant frontend internals are imported and no label is written in English.
 
@@ -132,7 +133,12 @@ export function createDialog(options: DialogOptions): DialogHandle {
   header.className = VISUAL_CLASSES.dialogHeader;
   header.append(title, close);
 
-  dialog.append(header, intro, body);
+  // Only this part scrolls: the header above it stays in view with the title and the close.
+  const scroller = doc.createElement("div");
+  scroller.className = VISUAL_CLASSES.dialogScroll;
+  scroller.append(intro, body);
+
+  dialog.append(header, scroller);
   overlay.append(dialog);
   owner.append(overlay);
 
@@ -188,6 +194,11 @@ export function createDialog(options: DialogOptions): DialogHandle {
       element.setAttribute("aria-hidden", "true");
     }
     hiddenBackground = previous;
+  }
+
+  /** A divider under the header while the content is scrolled away from the top. */
+  function markScrolled(): void {
+    dialog.classList.toggle(VISUAL_CLASSES.dialogScrolled, scroller.scrollTop > 0);
   }
 
   function onBackdropClick(event: MouseEvent): void {
@@ -274,6 +285,7 @@ export function createDialog(options: DialogOptions): DialogHandle {
       dialog.setAttribute("aria-describedby", introId);
     }
     body.replaceChildren(input.body);
+    markScrolled();
     if (!wasOpen) {
       opener = input.opener ?? null;
       overlay.hidden = false;
@@ -295,6 +307,7 @@ export function createDialog(options: DialogOptions): DialogHandle {
 
   close.addEventListener("click", onCloseClick);
   overlay.addEventListener("click", onBackdropClick);
+  scroller.addEventListener("scroll", markScrolled, { passive: true });
 
   return {
     element: overlay,
@@ -315,6 +328,7 @@ export function createDialog(options: DialogOptions): DialogHandle {
       doc.removeEventListener("keydown", onKeydown, true);
       close.removeEventListener("click", onCloseClick);
       overlay.removeEventListener("click", onBackdropClick);
+      scroller.removeEventListener("scroll", markScrolled);
       overlay.remove();
     },
   };

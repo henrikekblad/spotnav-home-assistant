@@ -68,7 +68,7 @@ function page(element: Element): HTMLElement {
 
 /** The Settings page's scrolling panel, with a scroll position jsdom keeps. */
 function scrollable(element: Element): HTMLElement {
-  const panel = shadow(element).querySelector<HTMLElement>(".spotnav-dialog-overlay:not([hidden]) .spotnav-dialog")!;
+  const panel = shadow(element).querySelector<HTMLElement>(".spotnav-dialog-overlay:not([hidden]) .spotnav-dialog-scroll")!;
   return panel;
 }
 

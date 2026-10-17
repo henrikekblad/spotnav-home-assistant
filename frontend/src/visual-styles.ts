@@ -226,6 +226,8 @@ export const VISUAL_CLASSES = {
   dialogClose: "spotnav-dialog-close",
   dialogIntro: "spotnav-dialog-intro",
   dialogBody: "spotnav-dialog-body",
+  dialogScroll: "spotnav-dialog-scroll",
+  dialogScrolled: "spotnav-dialog-scrolled",
   issueItem: "spotnav-issue",
   issueText: "spotnav-issue-text",
   capabilityItem: "spotnav-capability",
@@ -2057,12 +2059,13 @@ export const VISUAL_STYLES = `
   .${VISUAL_CLASSES.dialog} {
     display: flex;
     flex-direction: column;
-    gap: 6px;
+    gap: 0;
     width: 100%;
     max-width: 420px;
     max-height: 80vh;
-    overflow: auto;
-    padding: 14px;
+    max-height: 80dvh;
+    overflow: hidden;
+    padding: 0;
     background: var(--ha-card-background, var(--card-background-color, #ffffff));
     color: var(--primary-text-color, #212121);
     border-radius: 12px;
@@ -2071,13 +2074,38 @@ export const VISUAL_STYLES = `
   /*
    * One header row: the title takes the width it needs and the close button keeps its 44x44 tap
    * target at the end of the same row; a long title wraps around the button, never under it.
+   * The header is the panel's fixed top row and only the content below it scrolls, so the title and
+   * the close stay in view however long the dialog is (no fixed or sticky positioning involved).
+   * It has the panel's own background, and a divider appears under it once the content is scrolled.
    */
   .${VISUAL_CLASSES.dialogHeader} {
+    position: relative;
+    z-index: 1;
+    flex: none;
     display: flex;
     align-items: flex-start;
     justify-content: space-between;
     gap: 8px;
     min-width: 0;
+    padding: 14px 14px 6px;
+    background: inherit;
+    border-bottom: 1px solid transparent;
+  }
+  .${VISUAL_CLASSES.dialogScrolled} > .${VISUAL_CLASSES.dialogHeader} {
+    border-bottom-color: var(--divider-color, rgba(0, 0, 0, 0.12));
+  }
+  /* The scrolling part: the intro and the body, under the header. */
+  .${VISUAL_CLASSES.dialogScroll} {
+    flex: 1 1 auto;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    min-height: 0;
+    min-width: 0;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    -webkit-overflow-scrolling: touch;
+    padding: 0 14px 14px;
   }
   .${VISUAL_CLASSES.dialogTitle} {
     flex: 1 1 auto;
