@@ -406,6 +406,20 @@ class YieldStepper:
                 self._baseline_delivered = dict(self._stable_delivered)
                 self._baseline_assigned = self._stable_assigned
                 self._baseline_battery = self._stable_battery
+                probe = self._battery_probe
+                if (
+                    probe is not None
+                    and assigned_a >= probe.to_a - 0.01
+                    and probe.site_before is not None
+                    and probe.delivered_before is not None
+                ):
+                    # A step into the battery's share is measured from the readings before it was
+                    # written: the site meter sees the car before the charger reports it, so the
+                    # stable baseline may already hold the rise (and the new setting).
+                    self._baseline_site = dict(probe.site_before)
+                    self._baseline_delivered = dict(probe.delivered_before)
+                    self._baseline_assigned = probe.from_a
+                    self._baseline_battery = probe.battery_before_a
                 # The car's reading shows the step: settling measures it from here.
                 self._battery_probe = None
 
