@@ -108,6 +108,7 @@ from .battery_probe import (
     within_held_band,
 )
 from .regulator_damping import DampingDecision, RegulatorDamper
+from .step_guard import StepGuard
 from .regulator import (
     allocate_regulator_decisions,
     applyability_failure,
@@ -321,6 +322,8 @@ class SiteCapacityController:
         self._closed = False
         # Per-charger damping state (`site/regulator_damping.py`).
         self._dampers: dict[str, RegulatorDamper] = {}
+        # Per-charger step guard (`site/step_guard.py`): no step to the edge, no cut on a stale reading.
+        self._step_guards: dict[str, StepGuard] = {}
         # Per-charger yield steppers, created lazily; an options change reloads the entry and builds
         # a fresh controller.
         self._yield_steppers: dict[str, YieldStepper] = {}
@@ -1419,6 +1422,31 @@ class SiteCapacityController:
             decision = replace(decision, proposed_current_a=minimum)
             proposed = minimum
 
+        # No step to the very edge, no cut on a charger reading that cannot show the last step yet, one cut per
+        # site reading (`site/step_guard.py`). A real overload passes through untouched.
+        site_read_at = self._site_read_at(fresh)
+        guarded = self._step_guard_for(charger_entry_id).guard(
+            now=dt_util.utcnow().timestamp(),
+            proposed_a=proposed,
+            previous_a=previous_setpoint,
+            requested_a=next((basis.requested_current_a for basis in decision.basis.values()), None),
+            margin_a=margin_by_charger.get(charger_entry_id),
+            charger_read_at=self._charger_read_at(decision),
+            site_read_at=site_read_at,
+            min_current_a=self._min_current_a(charger_entry_id),
+        )
+        if guarded.rule is not None and guarded.proposed_a != proposed:
+            _LOGGER.debug(
+                "SpotNav site %s active control: charger %s proposal %sA taken as %sA (%s)",
+                self.entry_id,
+                charger_entry_id,
+                proposed,
+                guarded.proposed_a,
+                guarded.rule,
+            )
+            decision = replace(decision, proposed_current_a=guarded.proposed_a)
+            proposed = guarded.proposed_a
+
         # Yield-verified stepping, only when enabled. The probe gate matters even though writes
         # are suppressed during a probe: its artificial steps would contaminate the observation.
         yield_verdict: YieldVerdict | None = None
@@ -1521,6 +1549,7 @@ class SiteCapacityController:
             int(setpoint),
             previous_setpoint,
             yield_verdict,
+            site_read_at=site_read_at,
         )
         return True
 
@@ -1534,6 +1563,8 @@ class SiteCapacityController:
         setpoint: int,
         previous_setpoint: float | None,
         yield_verdict: YieldVerdict | None,
+        *,
+        site_read_at: float | None = None,
     ) -> None:
         """The write of one charger's regulated current and what it means for its damper and the log."""
         # The charger's own write path owns the OCPP read-modify-write and stays best-effort; any
@@ -1564,7 +1595,14 @@ class SiteCapacityController:
             )
             return
         writes = self._regulated_writes.setdefault(charger_entry_id, deque(maxlen=_WRITES_KEPT))
-        writes.append((dt_util.utcnow(), float(setpoint), previous_setpoint))
+        written_at = dt_util.utcnow()
+        writes.append((written_at, float(setpoint), previous_setpoint))
+        self._step_guard_for(charger_entry_id).note_write(
+            now=written_at.timestamp(),
+            previous_a=previous_setpoint,
+            written_a=float(setpoint),
+            site_read_at=site_read_at,
+        )
         self._log_active_control_outcome(
             charger_entry_id,
             decision,
@@ -2228,6 +2266,7 @@ class SiteCapacityController:
         side keeps running.
         """
         self._dampers.clear()
+        self._step_guards.clear()
         self._yield_steppers.clear()
         self._battery_probes.clear()
         self._resume_ready_since.clear()
@@ -2336,6 +2375,29 @@ class SiteCapacityController:
             outcome = RESTORE_NOT_NEEDED
         self._notify()
         return RestoreReport(outcome, tuple(reports))
+
+    def _step_guard_for(self, charger_entry_id: str) -> StepGuard:
+        """This charger's `StepGuard`, created on first use."""
+        guard = self._step_guards.get(charger_entry_id)
+        if guard is None:
+            guard = self._step_guards[charger_entry_id] = StepGuard()
+        return guard
+
+    @staticmethod
+    def _site_read_at(fresh: SiteCapacityResult) -> float | None:
+        """When the newest of the site's phase readings was taken (epoch seconds), or `None`."""
+        ages = [age for age in fresh.phase_signed_active_power_age_s.values() if age is not None]
+        if not ages:
+            return None
+        return dt_util.utcnow().timestamp() - min(ages)
+
+    @staticmethod
+    def _charger_read_at(decision: RegulatorDecision) -> float | None:
+        """When the oldest of the charger's own phase readings the decision used was taken, or `None`."""
+        ages = [basis.measured_current_age_s for basis in decision.basis.values()]
+        if not ages or any(age is None for age in ages):
+            return None
+        return dt_util.utcnow().timestamp() - max(ages)
 
     def _damper_for(self, charger_entry_id: str) -> RegulatorDamper:
         """This charger's damping state, created on first use from the site's deadband and dwell.

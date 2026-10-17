@@ -101,6 +101,15 @@ It is best effort and is not a protective device. Turning it off gives back any 
 - A sudden overload is reduced immediately. Other changes are damped: a change smaller than the
   *deadband* (2 A) is ignored, and a new level must hold for the *dwell* time (60 s) before it
   is written, so the charger does not dither.
+- **A step up stops one amp short of the room there is**, so the car settles one step below the
+  limit (the fuse less the site's safety margin, which may be 0) instead of landing on it and being
+  cut. A charger's own current is read far less often than the site meter (OCPP: about once a
+  minute), so right after a change the site already shows the new current while the charger still
+  reports the old one. A lowering on such a reading is held while no phase is over the limit; a
+  phase a little over it (up to 2 A) takes off only what it is over and one amp more, from what the
+  charger was set to. One site reading gives at most one cut, and a level that went over right after
+  a step is not tried again for ten minutes. A phase more than 2 A over the limit is cut at once on
+  the charger's own reading, as before.
 - A start never gives the car more than the site has room for now, and a start on its way holds its
   share of that room until the charger draws it (at most two minutes): two chargers starting in the
   same moment share the margin instead of both taking all of it. A charger whose own current cannot be
