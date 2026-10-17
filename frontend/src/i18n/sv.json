@@ -821,5 +821,7 @@
   "display.chartAxis.day": "Dygn",
   "display.chartAxis.dayHelp": "00–24, med morgondagen ritad över dagens.",
   "display.chartAxis.fromNow": "Från nu",
-  "display.chartAxis.fromNowHelp": "Från den här timmen till slutet av det sista publicerade dygnet. Tills morgondagens priser finns, samma som Dygn."
+  "display.chartAxis.fromNowHelp": "Från den här timmen till slutet av det sista publicerade dygnet. Tills morgondagens priser finns, samma som Dygn.",
+  "display.priceUnit": "Prisenhet",
+  "display.priceUnit.example": "Till exempel {price}"
 }

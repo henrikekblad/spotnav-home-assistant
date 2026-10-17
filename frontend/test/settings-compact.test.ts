@@ -137,9 +137,9 @@ describe("the page", () => {
   it("shows a reader who is not an administrator only Display, the one thing on it they may change", async () => {
     const { element } = await openSettings("en", false);
     expect(settingsOffered(element)).toBe(true);
-    // Display is this device's own preference, changeable by anyone, and the only section such a reader is shown.
+    // Display (time axis and price unit) is this device's own preference, changeable by anyone, and the only section such a reader is shown.
     const editable = Array.from(dialog(element).querySelectorAll(`.${VISUAL_CLASSES.settingRowEditable}`));
-    expect(editable.map((node) => node.closest("[data-section]")?.getAttribute("data-section"))).toEqual(["display"]);
+    expect(editable.map((node) => node.closest("[data-section]")?.getAttribute("data-section"))).toEqual(["display", "display"]);
     expect(Array.from(dialog(element).querySelectorAll("[data-section]")).map((node) => node.getAttribute("data-section"))).toEqual(["display"]);
   });
 

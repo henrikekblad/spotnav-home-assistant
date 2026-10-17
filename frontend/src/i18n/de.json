@@ -821,5 +821,7 @@
   "display.chartAxis.day": "Tag",
   "display.chartAxis.dayHelp": "00–24, morgen über heute gezeichnet.",
   "display.chartAxis.fromNow": "Ab jetzt",
-  "display.chartAxis.fromNowHelp": "Von dieser Stunde bis zum Ende des letzten veröffentlichten Tages. Bis die Preise für morgen da sind, wie Tag."
+  "display.chartAxis.fromNowHelp": "Von dieser Stunde bis zum Ende des letzten veröffentlichten Tages. Bis die Preise für morgen da sind, wie Tag.",
+  "display.priceUnit": "Preiseinheit",
+  "display.priceUnit.example": "Zum Beispiel {price}"
 }

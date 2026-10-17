@@ -821,5 +821,7 @@
   "display.chartAxis.day": "Vuorokausi",
   "display.chartAxis.dayHelp": "00–24, huominen piirrettynä tämän päivän päälle.",
   "display.chartAxis.fromNow": "Nyt alkaen",
-  "display.chartAxis.fromNowHelp": "Tästä tunnista viimeisen julkaistun vuorokauden loppuun. Kunnes huomisen hinnat on julkaistu, sama kuin Vuorokausi."
+  "display.chartAxis.fromNowHelp": "Tästä tunnista viimeisen julkaistun vuorokauden loppuun. Kunnes huomisen hinnat on julkaistu, sama kuin Vuorokausi.",
+  "display.priceUnit": "Hinnan yksikkö",
+  "display.priceUnit.example": "Esimerkiksi {price}"
 }

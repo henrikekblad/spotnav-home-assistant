@@ -29,7 +29,21 @@ import {
   sourceChoice,
 } from "./identification";
 import { eventOptions, noRecipientsNote, notificationsSummary, phoneOptions } from "./notifications";
-import { clock, dayCue, formatFixed, formatNumber, hasZone, percentAmount, pricePerKwh, wallTimeRepeats, weekdayDate } from "./format";
+import {
+  clock,
+  dayCue,
+  formatFixed,
+  formatNumber,
+  hasZone,
+  percentAmount,
+  priceAxisLabel,
+  pricePerKwh,
+  priceUnitChoosable,
+  priceUnitName,
+  wallTimeRepeats,
+  weekdayDate,
+  type PriceUnit,
+} from "./format";
 import { pluralForm, translate, type Language, type TranslationKey } from "./i18n";
 import {
   actionErrorKey,
@@ -161,6 +175,8 @@ export interface CardViewInput {
    * stores and applies to every SpotNav card in it. Anyone may choose it, not only an administrator.
    */
   onChartAxisChange?: (mode: ChartAxisMode) => void;
+  /** The price unit chosen in Display: stored for this browser, every SpotNav card in it redraws. */
+  onPriceUnitChange?: (unit: PriceUnit) => void;
   /**
    * What the row does when a person acts: the card owns the request, the guard and the refresh; the
    * view only reports the click with the backend-supplied choice.
@@ -420,6 +436,9 @@ function currentPriceText(model: CardModel, mark: ChartMark | null): string | nu
 function nowSummaryText(model: CardModel, figure: string | null): string | null {
   return figure === null ? null : `${translate(model.language, "graph.summary.current")} ${figure}`;
 }
+
+/** The price the Display choice shows each unit with, in the minor unit ("163,1 öre/kWh", "1,63 kr/kWh"). */
+const PRICE_UNIT_EXAMPLE = 163.1;
 
 /** `hass.config.country`, when Home Assistant states one. */
 function homeAssistantCountry(hass: unknown): string | null {
@@ -846,7 +865,8 @@ export function graphDescription(
       : `${weekdayDate(model.format, instantMs)} ${clock(model.format, instantMs)}`;
   const from = stamp(first?.startMs, translate(language, "plan.missing"));
   const to = stamp(last?.endMs, translate(language, "plan.missing"));
-  const unit = model.format.unit === "" ? translate(language, "plan.missing") : model.format.unit;
+  const shownUnit = priceUnitName(model.format);
+  const unit = shownUnit === "" ? translate(language, "plan.missing") : shownUnit;
   const selectedText = selected === null ? translate(language, "graph.descriptionNoSelection") : readoutTextFor(model, selected);
   const parts = [
     translate(language, "graph.description", {
@@ -1342,6 +1362,7 @@ export function createCardView(input: CardViewInput): CardView {
     const labels: ChartLabels = {
       time: (instantMs) => clock(model.format, instantMs),
       day: (instantMs) => dayCue(model.format, instantMs),
+      price: (value, span) => priceAxisLabel(model.format, value, span),
     };
     const result = renderChart({
       series: model.chart,
@@ -2140,7 +2161,64 @@ export function createCardView(input: CardViewInput): CardView {
       changeableText: translate(model.language, "settings.row.changeable", { label, value }),
     });
     section.append(row!);
+    if (priceUnitChoosable(model.format)) {
+      section.append(priceUnitRow());
+    }
     return section;
+  }
+
+  /** The price unit this view shows as chosen: the model's, then whatever was chosen here since. */
+  let priceUnitChoice: PriceUnit = model.priceUnit;
+
+  /**
+   * Display's price unit: the market's minor unit ("öre/kWh", "cent/kWh") or its major one ("kr/kWh",
+   * "€/kWh"), named from the market itself. Offered only when the market names both.
+   */
+  function priceUnitRow(): HTMLElement {
+    const minorName = `${model.format.unit}/kWh`;
+    const majorName = `${model.format.majorUnit ?? ""}/kWh`;
+    const label = translate(model.language, "display.priceUnit");
+    const example = (unit: PriceUnit): string =>
+      translate(model.language, "display.priceUnit.example", {
+        price: pricePerKwh({ ...model.format, priceUnit: unit }, PRICE_UNIT_EXAMPLE),
+      });
+    const value = priceUnitChoice === "major" ? majorName : minorName;
+    const options: ChoiceOption[] = [
+      {
+        value: "minor",
+        label: minorName,
+        help: example("minor"),
+      },
+      {
+        value: "major",
+        label: majorName,
+        help: example("major"),
+      },
+    ];
+    const [row] = settingRow(doc, {
+      key: "price_unit",
+      label,
+      value,
+      onTap: () =>
+        openValueEditor(
+          label,
+          (handlers) =>
+            singleEditor(
+              doc,
+              model.language,
+              { options, selected: priceUnitChoice, idPrefix: `${idPrefix}-price-unit` },
+              async (chosen) => {
+                priceUnitChoice = chosen === "major" ? "major" : "minor";
+                input.onPriceUnitChange?.(priceUnitChoice);
+                return null;
+              },
+              handlers,
+            ),
+          { anyone: true },
+        ),
+      changeableText: translate(model.language, "settings.row.changeable", { label, value }),
+    });
+    return row!;
   }
 
   /**
@@ -3514,7 +3592,7 @@ export function createCardView(input: CardViewInput): CardView {
         onExport: () => {
           input.onExportHistory?.();
         },
-      }),
+      }, model.priceUnit),
     });
     if (refocus !== null) {
       historyDialog.element.querySelector<HTMLElement>(refocus)?.focus();
@@ -3542,7 +3620,7 @@ export function createCardView(input: CardViewInput): CardView {
       body: historyBody(doc, model.language, historyState, historyUi, {
         onMonth: () => undefined,
         onExport: () => undefined,
-      }),
+      }, model.priceUnit),
       opener: historyButton,
     });
     paintHistory();
