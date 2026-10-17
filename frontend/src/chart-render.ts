@@ -263,7 +263,8 @@ export function renderChart(input: ChartRenderInput): ChartRenderResult {
         class: VISUAL_CLASSES.tickLabel,
         x,
         y: scale.bottom + scale.axisTextSize,
-        "text-anchor": tick.position === 0 ? "start" : "middle",
+        // Centred under its hour, the left edge's too: two-digit labels fit in the gutter beside it.
+        "text-anchor": "middle",
       });
       text.textContent = (labels.hour ?? labels.time)(tick.instantMs);
       axis.append(text);
