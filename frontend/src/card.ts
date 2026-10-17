@@ -152,12 +152,17 @@ import {
   CHART_AXIS_EVENT,
   CHART_AXIS_KEY,
   initialChartCollapsed,
+  PRICE_UNIT_EVENT,
+  PRICE_UNIT_KEY,
   readChartAxis,
   readChartCollapsed,
+  readPriceUnit,
   writeChartAxis,
   writeChartCollapsed,
+  writePriceUnit,
 } from "./chart-preference";
 import type { ChartAxisMode } from "./chart";
+import type { PriceUnit } from "./format";
 import { VISUAL_CLASSES, VISUAL_STYLES } from "./visual-styles";
 
 /** One bounded refresh cycle; the retry action exists because a timer alone is not a promise. */
@@ -186,6 +191,28 @@ export function chooseChartAxis(mode: ChartAxisMode): void {
   writeChartAxis(browserStore, mode);
   try {
     globalThis.dispatchEvent?.(new Event(CHART_AXIS_EVENT));
+  } catch {
+    // No window to announce on: the next render of each card reads the choice anyway.
+  }
+}
+
+/**
+ * The price unit chosen on this page, shared by every card in it: it holds where the browser cannot store
+ * it. `null` defers to storage (and its default, the market's minor unit).
+ */
+let pagePriceUnit: PriceUnit | null = null;
+
+/** This browser's price unit, the same for every SpotNav card in it. */
+export function priceUnitNow(): PriceUnit {
+  return pagePriceUnit ?? readPriceUnit(browserStore);
+}
+
+/** Choose the price unit for every card in this browser: stored, and announced to the cards on this page. */
+export function choosePriceUnit(unit: PriceUnit): void {
+  pagePriceUnit = unit;
+  writePriceUnit(browserStore, unit);
+  try {
+    globalThis.dispatchEvent?.(new Event(PRICE_UNIT_EVENT));
   } catch {
     // No window to announce on: the next render of each card reads the choice anyway.
   }
@@ -320,14 +347,19 @@ export class SpotnavCard extends HTMLElement {
    */
   private chartCollapsed: boolean | null = null;
 
-  /** Another card on this page, or another tab (through storage), changed the chart axis: redraw. */
-  private readonly onChartAxisChanged = (event: Event): void => {
+  /** Another card on this page, or another tab (through storage), changed the chart axis or price unit: redraw. */
+  private readonly onDisplayChanged = (event: Event): void => {
     if (event.type === "storage") {
       const key = (event as StorageEvent).key;
-      if (key !== null && key !== CHART_AXIS_KEY) {
+      if (key !== null && key !== CHART_AXIS_KEY && key !== PRICE_UNIT_KEY) {
         return;
       }
-      pageChartAxis = null;
+      if (key === null || key === CHART_AXIS_KEY) {
+        pageChartAxis = null;
+      }
+      if (key === null || key === PRICE_UNIT_KEY) {
+        pagePriceUnit = null;
+      }
     }
     if (this.connected && this.cardState.kind === "ready") {
       this.render();
@@ -415,15 +447,17 @@ export class SpotnavCard extends HTMLElement {
 
   connectedCallback(): void {
     this.connected = true;
-    globalThis.addEventListener?.(CHART_AXIS_EVENT, this.onChartAxisChanged);
-    globalThis.addEventListener?.("storage", this.onChartAxisChanged);
+    globalThis.addEventListener?.(CHART_AXIS_EVENT, this.onDisplayChanged);
+    globalThis.addEventListener?.(PRICE_UNIT_EVENT, this.onDisplayChanged);
+    globalThis.addEventListener?.("storage", this.onDisplayChanged);
     this.startWork();
   }
 
   disconnectedCallback(): void {
     this.connected = false;
-    globalThis.removeEventListener?.(CHART_AXIS_EVENT, this.onChartAxisChanged);
-    globalThis.removeEventListener?.("storage", this.onChartAxisChanged);
+    globalThis.removeEventListener?.(CHART_AXIS_EVENT, this.onDisplayChanged);
+    globalThis.removeEventListener?.(PRICE_UNIT_EVENT, this.onDisplayChanged);
+    globalThis.removeEventListener?.("storage", this.onDisplayChanged);
     this.stopTimer();
     this.generation += 1;
     this.attempt += 1;
@@ -2355,6 +2389,7 @@ export class SpotnavCard extends HTMLElement {
         sentAction: this.sentAction,
         shownAutomatic: this.shownAutomatic,
         chartAxis: chartAxisNow(),
+        priceUnit: priceUnitNow(),
       });
       this.rememberControls(model.control);
       this.view = createCardView({
@@ -2364,6 +2399,9 @@ export class SpotnavCard extends HTMLElement {
         chartCollapsed: this.chartCollapsedNow(),
         onChartAxisChange: (mode) => {
           chooseChartAxis(mode);
+        },
+        onPriceUnitChange: (unit) => {
+          choosePriceUnit(unit);
         },
         onChartCollapsedChange: (collapsed) => {
           this.chartCollapsed = collapsed;
