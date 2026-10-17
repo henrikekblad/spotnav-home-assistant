@@ -100,6 +100,11 @@ describe("the local-day model", () => {
     expect(ticks.map((tick) => tick.position)).toEqual([0, 0.25, 0.5, 0.75, 1]);
     const readings = ticks.map((tick) => clock.msOfDay(tick.instantMs) / 60_000);
     expect(readings).toEqual([0, 360, 720, 1080, 0]);
+    // The three-hour labels likewise: 03:00 is the first wall clock after the skipped hour.
+    const labelTicks = axisTicks(series.days, clock, 3);
+    expect(labelTicks.map((tick) => tick.position)).toEqual([0, 1, 2, 3, 4, 5, 6, 7, 8].map((index) => index / 8));
+    expect(labelTicks.map((tick) => clock.msOfDay(tick.instantMs) / 60_000)).toEqual([0, 180, 360, 540, 720, 900, 1080, 1260, 0]);
+    expect(series.labelTicks).toEqual(labelTicks);
     // The hour the zone skipped is absent, and the interval that really covers an instant inside the
     // 23-hour day is still selected by its own range -- never by a wall-clock search.
     expect(chartNowAt(series.marks, Date.parse("2026-03-28T23:16:00Z")).mark).toBe(series.marks[1]);
