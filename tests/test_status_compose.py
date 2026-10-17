@@ -881,6 +881,39 @@ CASES: list[tuple[str, StatusFacts, str, list[dict[str, Any]]]] = [
         [{"code": "held_until_window", "params": {"time": iso(2)}}],
     ),
     (
+        "a car waiting for the installed plan's window carries that plan's energy, cost and distance",
+        base(
+            hold_until=at(2),
+            installed_periods=((at(2), at(3)), (at(3), at(4))),
+            proposal=proposal(),
+            relation_applied=True,
+        ),
+        "normal",
+        [{"code": "held_until_window", "params": {"time": iso(2)}}, *PLANNED[1:]],
+    ),
+    (
+        "a pending proposal's figures are another plan's: the wait for the installed window stands alone",
+        base(
+            hold_until=at(2),
+            installed_periods=((at(2), at(3)),),
+            proposal=proposal(),
+            relation_applied=False,
+        ),
+        "normal",
+        [{"code": "held_until_window", "params": {"time": iso(2)}}],
+    ),
+    (
+        "an installed plan without figures waits with no facts",
+        base(
+            hold_until=at(2),
+            installed_periods=((at(2), at(3)),),
+            proposal=proposal(planned_kwh=None, requested_kwh=None, cost=None, currency=None, distance_mil=None),
+            relation_applied=True,
+        ),
+        "normal",
+        [{"code": "held_until_window", "params": {"time": iso(2)}}],
+    ),
+    (
         "a charge that runs is never held, whatever the hold says",
         base(hold_until=at(2), charging=True),
         "normal",
