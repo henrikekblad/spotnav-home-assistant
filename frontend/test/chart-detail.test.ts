@@ -5,7 +5,7 @@ import { afterEach, describe, expect, it } from "vitest";
 
 import { createCardView, type CardView, type CardViewInput } from "../src/card-view";
 import { chartHeightForWidth, renderChart } from "../src/chart-render";
-import { chartScale, gutterLabels, niceStep } from "../src/chart";
+import { chartScale, gutterLabels, localHourStart, niceStep, zoneClock } from "../src/chart";
 import { priceAxisLabel } from "../src/format";
 import type { CardModel } from "../src/model";
 import { parseCardConfig, editorConfig } from "../src/view";
@@ -154,5 +154,14 @@ describe("the chart with chart_detail", () => {
     const plain = view(model);
     expect(plain.root.querySelector("svg[data-density]")).toBeNull();
     plain.card.destroy();
+  });
+});
+
+describe("the From now axis's start", () => {
+  it("is the hour's start to the millisecond, so that hour keeps its label", () => {
+    const clock = zoneClock("Europe/Stockholm");
+    const hour = Date.parse("2026-10-17T11:00:00+02:00");
+    expect(localHourStart(hour + 20 * 60_000 + 764, clock)).toBe(hour);
+    expect(localHourStart(hour, clock)).toBe(hour);
   });
 });

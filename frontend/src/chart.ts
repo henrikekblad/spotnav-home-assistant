@@ -330,9 +330,14 @@ export function rangeAxis(startMs: number, endMs: number): TimeAxis {
   };
 }
 
-/** The instant the local hour containing `instantMs` began (zones with half-hour offsets included). */
+/**
+ * The instant the local hour containing `instantMs` began (zones with half-hour offsets included). The wall
+ * clock reads whole seconds, so the milliseconds within the second are taken off too: the hour starts on
+ * :00.000, where that hour's tick and first mark are.
+ */
 export function localHourStart(instantMs: number, clock: ZoneClock): number {
-  return instantMs - (clock.msOfDay(instantMs) % HOUR_MS);
+  const withinSecond = ((instantMs % 1_000) + 1_000) % 1_000;
+  return instantMs - withinSecond - (clock.msOfDay(instantMs) % HOUR_MS);
 }
 
 /**
