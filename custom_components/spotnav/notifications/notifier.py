@@ -22,7 +22,8 @@ alike (the event entity still fires for every plan):
   or when its first window opens, whichever is sooner;
 * not when it is the plan last told about (`plan_fingerprint`, kept across restarts), nor what is left of it
   (`plan_is_remainder`: a window ended, or the plan was calculated again partway through);
-* not when it follows a person's own settings write (`QUIET_AFTER_WRITE_S`): they see it;
+* not when it follows a person's own settings write (`QUIET_AFTER_WRITE_S`): they see it, and it counts as
+  this plug-in's told plan below;
 * not when a plan was already told for this plug-in, unless it rests on new prices: it reaches a later day (the
   local date its last window ends) than the told plan did, e.g. tomorrow's prices came at midday and the plan now
   reaches into tomorrow. Load balancing moving the windows in the night, or the rest laid out again after a
@@ -542,7 +543,9 @@ class ChargerNotifier:
         day = _last_day(plan)
         if quiet:
             # A person just changed this charger's settings and sees the plan that followed: not told, but
-            # known, so the same plan after a restart is not told either.
+            # known, so the same plan after a restart is not told either. The person has seen this plug-in's
+            # plan, so later replans in it on the same prices are not told.
+            self._plug_in_told = True
             self._plan_day = day
             self._notified_plan = fingerprint
             self._save_plan()
