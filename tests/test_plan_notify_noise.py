@@ -357,11 +357,12 @@ async def test_the_dashboard_counts_the_plans_told(hass: HomeAssistant, freezer:
     await _go(hass, freezer, at(23, 31))
     assert _notice(hass, entry)["seq"] == 1
 
-    # A plan told with no phone chosen and no app registered is still counted: the app reads it from here.
+    # A plan told with no phone chosen and no app registered is still counted: the app reads it from here. (It
+    # reaches a day the told plan did not, on new prices: a mere replan in the same plug-in is not told.)
     await _choose(hass, entry.entry_id, targets=(), events=())
     await charger_data(hass, entry.entry_id).push.async_register(None)
     await _go(hass, freezer, at(23, 33))
-    await _install(hass, entry.entry_id, plan_of([(at(1, day=1), at(4, day=1))], 25.0))
+    await _install(hass, entry.entry_id, plan_of([(at(1, day=2), at(4, day=2))], 25.0))
     await _go(hass, freezer, at(23, 34))
     assert _notice(hass, entry)["seq"] == 2
 
