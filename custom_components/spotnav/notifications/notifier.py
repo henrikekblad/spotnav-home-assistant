@@ -22,7 +22,16 @@ alike (the event entity still fires for every plan):
   or when its first window opens, whichever is sooner;
 * not when it is the plan last told about (`plan_fingerprint`, kept across restarts), nor what is left of it
   (`plan_is_remainder`: a window ended, or the plan was calculated again partway through);
-* not when it follows a person's own settings write (`QUIET_AFTER_WRITE_S`): they see it.
+* not when it follows a person's own settings write (`QUIET_AFTER_WRITE_S`): they see it;
+* not when a plan is already known for this plug-in (told, or one of the above: the same plan, its remainder, a
+  person's own write), unless it rests on new prices: it reaches a later day (the local date its last window ends)
+  than the told plan did, e.g. tomorrow's prices came at midday and the plan now reaches into tomorrow. Load
+  balancing moving the windows in the night, or the rest laid out again after a window, is not news. Such a plan
+  is not counted, but it becomes the told plan's measure (fingerprint and remainder), so its own remainders and a
+  restart do not tell it either. The plug-in is the car connected since the last known unplug (or since start-up
+  with the car connected), kept across restarts with the told plan; an unplug ends it, so the next plug-in's
+  first plan is told. For a charger that cannot say whether a car is connected it lasts while a plan stands:
+  once no plan stands (dropped, ended, or cleared by a change of strategy) the next plan is told.
 
 Each plan told is counted (`plan_notice`, kept across restarts with the told plan), whatever phones are chosen
 or limits allow: the dashboard carries the count, and the paired app's own check tells a new plan when it
@@ -191,6 +200,20 @@ def plan_is_remainder(plan: Any, told: str | None, now: datetime) -> bool:
     )
 
 
+def _last_day(plan: Any) -> str | None:
+    """The local date the plan's last window ends (ISO), or `None` when it cannot be read."""
+    try:
+        end = max(finish for _begin, finish in plan.windows)
+    except (ValueError, TypeError):
+        return None
+    return dt_util.as_local(end).date().isoformat()
+
+
+def _later_day(day: str | None, told: str | None) -> bool:
+    """Whether a plan reaching `day` reaches past the told plan's `told` day: it rests on new prices."""
+    return day is not None and (told is None or day > told)
+
+
 class ChargerNotifier:
     """Sends one charger's chosen events to its chosen notify services."""
 
@@ -231,6 +254,10 @@ class ChargerNotifier:
         # The plans told so far and when the last was (`plan_notice`), kept with the told plan.
         self._notice_seq = 0
         self._notice_at: datetime | None = None
+        # Whether a plan is known for the current plug-in, and the last day the told plan reaches (ISO local date):
+        # a later plan in the same plug-in is told only when it reaches a later day. Kept with the told plan.
+        self._plug_in_known = False
+        self._plan_day: str | None = None
         # The car at the charger: the last known reading, `None` before one (or for a charger that cannot say).
         self._connected: bool | None = None
         # A plan burst being settled: when it began, when it is judged, and whether its last plan followed a
@@ -255,6 +282,10 @@ class ChargerNotifier:
         self._notice_seq = seq if isinstance(seq, int) and not isinstance(seq, bool) and seq >= 0 else 0
         at = raw.get("notice_at") if isinstance(raw, dict) else None
         self._notice_at = dt_util.parse_datetime(at) if isinstance(at, str) and self._notice_seq else None
+        known = raw.get("plug_in_known") if isinstance(raw, dict) else None
+        self._plug_in_known = known is True
+        day = raw.get("plan_day") if isinstance(raw, dict) else None
+        self._plan_day = day if isinstance(day, str) else None
 
     @staticmethod
     async def async_remove_stored(hass: HomeAssistant, entry_id: str) -> None:
@@ -278,6 +309,10 @@ class ChargerNotifier:
         if self._notice_seq:
             record["notice_seq"] = self._notice_seq
             record["notice_at"] = None if self._notice_at is None else self._notice_at.isoformat()
+        if self._plug_in_known:
+            record["plug_in_known"] = True
+        if self._plan_day is not None:
+            record["plan_day"] = self._plan_day
         self._hass.async_create_task(self._plan_store.async_save(record), eager_start=True)
 
     @callback
@@ -354,8 +389,14 @@ class ChargerNotifier:
         adapter = self._controller.adapter
         if not adapter.reports_connection:
             self._connected = None
+            if self._controller.plan is None:
+                # A charger that cannot say: no plan standing ends what is taken as the plug-in.
+                self._end_plug_in()
             return
         reading = adapter.vehicle_connected()
+        if reading is False:
+            # Unplugged (also when found so at start-up): the next plug-in's first plan is told.
+            self._end_plug_in()
         if reading is None or reading == self._connected:
             return
         before, self._connected = self._connected, reading
@@ -458,6 +499,17 @@ class ChargerNotifier:
         self._owed_until = None
         self._arm_plan_timer(self._plan_due())
 
+    def _end_plug_in(self) -> None:
+        if self._plug_in_known:
+            self._plug_in_known = False
+            self._save_plan()
+
+    def _known_in_plug_in(self) -> None:
+        """The standing plan is known to a person for this plug-in: later ones are told only on new prices."""
+        if not self._plug_in_known:
+            self._plug_in_known = True
+            self._save_plan()
+
     def _plan_due(self) -> datetime | None:
         return self._burst_due if self._burst_due is not None else self._owed_until
 
@@ -493,23 +545,37 @@ class ChargerNotifier:
         fingerprint = plan_fingerprint(plan)
         if fingerprint is None or self._connected is False:
             return
+        day = _last_day(plan)
         if quiet:
             # A person just changed this charger's settings and sees the plan that followed: not told, but
             # known, so the same plan after a restart is not told either.
-            self._remember_plan(fingerprint)
+            self._plan_day = day
+            self._plug_in_known = True
+            self._notified_plan = fingerprint
+            self._save_plan()
             return
         if fingerprint == self._notified_plan:
             # The same plan as the one last told about (Home Assistant restarted, a burst came back to it, or
             # it was calculated again to the same result): nothing new for a person.
+            self._known_in_plug_in()
             return
         if plan_is_remainder(plan, self._notified_plan, now):
             # What is left of the told plan (a window ended): told already. The told plan stays the measure.
             _LOGGER.debug("SpotNav charger %s: the rest of the told plan is not told again", self._entry_id)
+            self._known_in_plug_in()
+            return
+        if self._plug_in_known and not _later_day(day, self._plan_day):
+            # Calculated again in the same plug-in on the same prices (load balancing moved the windows): the
+            # card shows it, nobody is woken. It is the measure from now, but not counted.
+            _LOGGER.debug("SpotNav charger %s: a replan in the same plug-in is not told", self._entry_id)
+            self._remember_plan(fingerprint)
             return
         # News: counted and known whether or not a phone or the app hears of it now (the app reads the count).
         self._notice_seq += 1
         self._notice_at = now
         self._notified_plan = fingerprint
+        self._plug_in_known = True
+        self._plan_day = day
         self._save_plan()
         self._send(EVENT_PLAN_INSTALLED, {}, now, fingerprint)
 
