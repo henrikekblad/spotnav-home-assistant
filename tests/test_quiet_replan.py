@@ -19,15 +19,24 @@ from pytest_homeassistant_custom_component.common import async_mock_service
 
 from custom_components.spotnav.execution.chargers.adapter import ChargerAdapter
 from custom_components.spotnav.notifications.notifier import SETTLE_S
+from custom_components.spotnav.notifications import push as push_module
 from custom_components.spotnav.notifications.push import PushRegistration
 from custom_components.spotnav.runtime import charger_data
 
 from .test_notifications import _choose
-from .test_plan_notify_noise import _go, _install, _notice, _told, plan_of, relay  # noqa: F401 - a fixture
+from .test_plan_notify_noise import _go, _install, _notice, _told, plan_of
 from .test_push import FakeRelay, REF
 from .world import setup_charger
 
 ZONE = ZoneInfo("Europe/Stockholm")
+
+
+@pytest.fixture
+def relay(monkeypatch: pytest.MonkeyPatch) -> FakeRelay:
+    """The SpotNav relay the paired app's wake-ups go to, recording each one."""
+    fake = FakeRelay()
+    monkeypatch.setattr(push_module, "async_get_clientsession", lambda _hass: fake)
+    return fake
 
 
 def local(day: int, hour: int, minute: int = 0) -> datetime:
