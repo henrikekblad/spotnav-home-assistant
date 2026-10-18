@@ -11,6 +11,7 @@ import pytest
 from custom_components.spotnav.site.solar_surplus import (
     FALSE_CREDIT_CONFIRM_S,
     FALSE_CREDIT_DRAW_FRACTION,
+    FALSE_CREDIT_RAMP_S,
     SolarConfig,
     SolarController,
     SolarObservation,
@@ -1121,6 +1122,96 @@ def test_the_draw_that_counts_as_near_what_was_asked_is_seventy_percent():
     assert below.reason == "start_verifying"
     at = ctrl.observe(_one_phase(131.0, car_w=0.7 * 7.0 * VOLTAGE_V, battery_w=-1400.0, grid_w=0.0))
     assert at.reason == "battery_credit_false"
+
+
+# The field case of 2026-10-18 (a Tibber Pulse, a SolaX battery, an Easee on one phase at 230 V, start minimum 7 A,
+# car_first): a charge the charger began by itself was taken over at 7 A on 1754 W, all of it the battery's charge
+# (1768 W, the grid at +14 W). 49 s later the car's reading had caught up (1541 W) and the battery was giving way
+# (419 W and falling), the grid at +1163 W: 797 W, short of the 6 A stop level.
+
+
+def _field_take_over(ctrl: SolarController) -> None:
+    taken = ctrl.take_over(_one_phase(0.0, car_w=0.0, battery_w=1768.0, grid_w=14.0))
+    assert (taken.action, taken.requested_a, taken.reason) == ("set_current", 7.0, "start_verifying")
+
+
+def _caught_up_short(ctrl: SolarController) -> SolarVerdict:
+    """The table's tick at 49 s: the car's reading caught up, the battery giving way, the surplus short."""
+    verdict = ctrl.observe(_one_phase(49.0, car_w=1541.0, battery_w=419.0, grid_w=1163.0))
+    assert verdict.available_w == pytest.approx(797.0)
+    return verdict
+
+
+def test_a_battery_giving_way_over_tens_of_seconds_keeps_the_charge():
+    ctrl = SolarController(_field_config())
+    _field_take_over(ctrl)
+    assert (_caught_up_short(ctrl).action, ctrl.running) == ("hold", True)
+
+    # The battery falls on towards zero, the surplus still short: held while it gives way.
+    for now, battery_w, grid_w in ((60.0, 200.0, 900.0), (75.0, 20.0, 600.0), (90.0, 0.0, 450.0)):
+        verdict = ctrl.observe(_one_phase(now, car_w=1541.0, battery_w=battery_w, grid_w=grid_w))
+        assert (verdict.action, verdict.reason, verdict.state) == ("hold", "start_verifying", "on")
+    # Within the minute the battery charges again beside the car and the grid is back at about +300 W: kept.
+    kept = ctrl.observe(_one_phase(100.0, car_w=1541.0, battery_w=450.0, grid_w=300.0))
+    assert (kept.action, kept.reason, kept.state) == ("hold", "start_verifying", "on")
+    assert ctrl.observe(_one_phase(115.0, car_w=1541.0, battery_w=450.0, grid_w=300.0)).state == "on"
+    assert ctrl.priority_now(115.0) == "car_first", "no back-off for a credit that held"
+
+    # After the verification, modulation as usual: 2141 W is 9 A.
+    stepped = ctrl.observe(_one_phase(130.0, car_w=1541.0, battery_w=900.0, grid_w=300.0))
+    assert (stepped.action, stepped.requested_a, stepped.reason) == ("set_current", 9.0, "on_modulate")
+
+
+@pytest.mark.parametrize("start", ["take_over", "start_after_delay"])
+def test_a_battery_that_does_not_give_way_within_the_minute_is_a_false_credit(start: str):
+    ctrl = SolarController(_field_config())
+    if start == "take_over":
+        _field_take_over(ctrl)
+        caught_up_at = 49.0
+        assert _caught_up_short(ctrl).action == "hold"
+    else:
+        _field_start(ctrl)
+        caught_up_at = 130.0
+        caught_up = ctrl.observe(_one_phase(caught_up_at, car_w=1541.0, battery_w=419.0, grid_w=1163.0))
+        assert caught_up.action == "hold"
+
+    # The battery stays at its 419 W and the grid keeps importing: short on every tick.
+    for offset in (10.0, 30.0, FALSE_CREDIT_RAMP_S - 1.0):
+        held = ctrl.observe(_one_phase(caught_up_at + offset, car_w=1541.0, battery_w=419.0, grid_w=1163.0))
+        assert (held.action, held.reason) == ("hold", "start_verifying")
+    judged_at = caught_up_at + FALSE_CREDIT_RAMP_S
+    judged = ctrl.observe(_one_phase(judged_at, car_w=1541.0, battery_w=419.0, grid_w=1163.0))
+    assert (judged.action, judged.reason, judged.state) == ("stop", "battery_credit_false", "off")
+    # The back-off as before: 600 s, the next one twice as long.
+    assert ctrl.priority_now(judged_at + 1.0) == "battery_first"
+    assert ctrl.credit_backoff(judged_at) == (pytest.approx(600.0), pytest.approx(1200.0))
+
+
+def test_a_battery_that_turns_to_discharging_while_short_is_stopped_at_once():
+    ctrl = SolarController(_field_config())
+    _field_take_over(ctrl)
+    _caught_up_short(ctrl)
+
+    verdict = ctrl.observe(_one_phase(55.0, car_w=1541.0, battery_w=-200.0, grid_w=900.0))
+
+    assert (verdict.action, verdict.reason, verdict.state) == ("stop", "battery_credit_false", "off")
+
+
+def test_a_tick_at_the_stop_level_within_the_minute_clears_the_shortfall():
+    ctrl = SolarController(_field_config())
+    _field_take_over(ctrl)
+    _caught_up_short(ctrl)
+
+    # One tick at 1691 W, above the 1380 W stop level, then short again from 90 s.
+    assert ctrl.observe(_one_phase(80.0, car_w=1541.0, battery_w=450.0, grid_w=300.0)).reason == "start_verifying"
+    assert ctrl.observe(_one_phase(90.0, car_w=1541.0, battery_w=419.0, grid_w=1163.0)).action == "hold"
+    # The first shortfall's minute (49 + 60 s) is past and nothing is judged ...
+    assert ctrl.observe(_one_phase(109.0, car_w=1541.0, battery_w=419.0, grid_w=1163.0)).action == "hold"
+    # ... and the new one's, begun inside the verification (120 s), is finished after it.
+    held = ctrl.observe(_one_phase(90.0 + FALSE_CREDIT_RAMP_S - 1.0, car_w=1541.0, battery_w=419.0, grid_w=1163.0))
+    assert (held.action, held.reason, held.state) == ("hold", "start_verifying", "on")
+    judged = ctrl.observe(_one_phase(90.0 + FALSE_CREDIT_RAMP_S, car_w=1541.0, battery_w=419.0, grid_w=1163.0))
+    assert (judged.action, judged.reason) == ("stop", "battery_credit_false")
 
 
 def test_a_discharging_battery_is_never_surplus():
