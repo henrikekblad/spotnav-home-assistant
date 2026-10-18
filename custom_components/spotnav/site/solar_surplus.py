@@ -58,13 +58,18 @@ A start is made at the start minimum (`start_a`), never at what the surplus seem
 there for `verify_s` while the car's draw shows up in the readings; only then does modulation step it up.
 A start that counted a charging battery under `car_first` is checked in that time: a battery that only
 took the sun's power until the car drew, and then turns to feed the car, leaves the surplus below `stop_a`
-with the grid near zero. That credit was false: the charge is stopped at once (`battery_credit_false`)
+with the grid near zero. That credit was false: the charge is stopped (`battery_credit_false`)
 and a charging battery is not counted again for `credit_backoff_s`, doubling with each false credit up to
 `credit_backoff_max_s`, and back to `credit_backoff_s` after a credit that held. A discharging battery is
 never surplus under either priority. The credit is judged false only on a car reading that has caught up: the
 car draws at least `FALSE_CREDIT_DRAW_FRACTION` of what it was asked, or the shortfall has lasted
 `FALSE_CREDIT_CONFIRM_S`. A charger's power reading can trail the battery's by several seconds, and a car
 still shown at a fraction of its current while the battery already gave way to it is no proof of anything.
+A battery gives way to the car over tens of seconds, not at once: once the car's reading has caught up, the
+credit is judged false only when the shortfall has lasted `FALSE_CREDIT_RAMP_S` from then, every tick in that
+time short of `stop_a`; one tick at or above it clears the shortfall. A battery that discharges while short
+no longer gives way to the car but feeds it, and is judged false at once. A judgment whose shortfall began
+inside `verify_s` is finished after it (false credit, or held) rather than left to the ordinary stop rules.
 
 The charger's own state is the caller's to watch: a charge solar runs that ended without solar (the
 charge control went off, or the car drew nothing for a while) is handed in through `charge_ended`. A car
@@ -102,6 +107,11 @@ FALSE_CREDIT_DRAW_FRACTION: float = 0.7
 #: 30 s rides that out, and a battery that really feeds the car meanwhile gives it at most 30 s of its charge
 #: (some 13 Wh at 7 A on one phase) before the charge is stopped.
 FALSE_CREDIT_CONFIRM_S: float = 30.0
+#: Once the car's reading has caught up, a shortfall is judged a false credit only when it has lasted this long
+#: (seconds): the battery's time to give way to the car. In the field case of 2026-10-18 (a SolaX battery, a
+#: car on one phase at 7 A) the battery went from 1768 W to 419 W charging in under a minute after the car's
+#: reading caught up, and on to near zero. A battery that discharges while short is judged at once.
+FALSE_CREDIT_RAMP_S: float = 60.0
 
 
 # Charger priority between car and battery; also the type of
@@ -461,8 +471,10 @@ class SolarController:
         # battery is not counted, and how long the next back-off is.
         self._verify_until: float | None = None
         self._credited_start = False
-        # When the surplus first fell short of the stop level during a credited start's verification.
+        # When the surplus first fell short of the stop level during a credited start's verification, and when
+        # it was first short with the car's reading caught up (the battery's time to give way runs from then).
         self._shortfall_since: float | None = None
+        self._ramp_since: float | None = None
         self._credit_backoff_until: float | None = None
         self._next_backoff_s: float = config.credit_backoff_s
         # A charge the car ended by itself (module docstring): why, until when no new one starts (`None`
@@ -527,6 +539,7 @@ class SolarController:
         self._verify_until = None
         self._credited_start = False
         self._shortfall_since = None
+        self._ramp_since = None
         self._import_since = None
         if cause == "charger_stopped":
             self._ended = None
@@ -557,6 +570,7 @@ class SolarController:
         self._verify_until = None
         self._credited_start = False
         self._shortfall_since = None
+        self._ramp_since = None
         return self._verdict("hold", None, "no_car")
 
     def car_drew(self) -> None:
@@ -636,6 +650,7 @@ class SolarController:
         self._verify_until = None
         self._credited_start = False
         self._shortfall_since = None
+        self._ramp_since = None
 
     def keeps_running(self, observation: SolarObservation) -> bool:
         """Whether, on this observation, the rule for a charge that runs keeps one going: the surplus (the car's own
@@ -659,6 +674,7 @@ class SolarController:
         self._verify_until = None
         self._credited_start = False
         self._shortfall_since = None
+        self._ramp_since = None
 
     def take_over(self, observation: SolarObservation, *, wait_for_reading: bool = False) -> SolarVerdict:
         """Decide at once, on this observation, a charge the charger began by itself (at plug-in, say)
@@ -692,6 +708,7 @@ class SolarController:
         self._verify_until = now + cfg.verify_s
         self._credited_start = self._battery_credited()
         self._shortfall_since = None
+        self._ramp_since = None
         return self._verdict("set_current", requested, "start_verifying")
 
     def _stop_taken_over(self, now: float, reason: SolarReason) -> SolarVerdict:
@@ -707,6 +724,7 @@ class SolarController:
         self._verify_until = None
         self._credited_start = False
         self._shortfall_since = None
+        self._ramp_since = None
         return self._verdict("stop", None, reason)
 
     def observe(self, observation: SolarObservation) -> SolarVerdict:
@@ -924,6 +942,7 @@ class SolarController:
                 self._verify_until = now + cfg.verify_s
                 self._credited_start = self._battery_credited()
                 self._shortfall_since = None
+                self._ramp_since = None
                 return self._verdict("start", requested, "start_after_delay")
             reason: SolarReason = "arming_delay" if elapsed < cfg.start_delay_s else "arming_min_off_wait"
             return self._verdict("hold", None, reason)
@@ -960,6 +979,7 @@ class SolarController:
         self._verify_until = None
         self._credited_start = False
         self._shortfall_since = None
+        self._ramp_since = None
         return self._verdict("stop", None, "battery_credit_false")
 
     def _car_reading_caught_up(self) -> bool:
@@ -969,20 +989,38 @@ class SolarController:
             return True
         return self._car_w >= FALSE_CREDIT_DRAW_FRACTION * asked_a * self._watts_per_a - 1e-9
 
+    def _judge_credit(self, now: float) -> SolarVerdict:
+        """A credited start's tick short of the stop level (module docstring): a false credit once the car's
+        reading has caught up and the battery discharges, or has had `FALSE_CREDIT_RAMP_S` to give way, or once
+        a reading that never caught up has left it short for `FALSE_CREDIT_CONFIRM_S`; else held."""
+        if self._shortfall_since is None:
+            self._shortfall_since = now
+        if self._ramp_since is None and self._car_reading_caught_up():
+            self._ramp_since = now
+        if self._ramp_since is not None:
+            # Feeding the car rather than giving way to it.
+            if self._battery_w is not None and self._battery_w < 0:
+                return self._false_credit(now)
+            if now - self._ramp_since >= FALSE_CREDIT_RAMP_S:
+                return self._false_credit(now)
+        elif now - self._shortfall_since >= FALSE_CREDIT_CONFIRM_S:
+            return self._false_credit(now)
+        # The car's reading has not caught up with the battery's, or the battery is still giving way to the car.
+        self._state = "on"
+        self._disarming_since = None
+        return self._verdict("hold", None, "start_verifying")
+
     def _handle_on_or_disarming(self, now: float, available_a: float) -> SolarVerdict:
         cfg = self._config
         if self._verify_until is not None:
+            short = available_a < cfg.stop_a  # type: ignore[operator]
+            # A judgment whose shortfall began inside the verification is finished after it.
+            judging = self._credited_start and short and (now < self._verify_until or self._shortfall_since is not None)
+            if judging:
+                return self._judge_credit(now)
             if now < self._verify_until:
-                if available_a < cfg.stop_a and self._credited_start:  # type: ignore[operator]
-                    if self._shortfall_since is None:
-                        self._shortfall_since = now
-                    if self._car_reading_caught_up() or now - self._shortfall_since >= FALSE_CREDIT_CONFIRM_S:
-                        return self._false_credit(now)
-                    # The car's reading has not caught up with the battery's: no basis to judge the credit yet.
-                    self._state = "on"
-                    self._disarming_since = None
-                    return self._verdict("hold", None, "start_verifying")
                 self._shortfall_since = None
+                self._ramp_since = None
                 if available_a >= cfg.stop_a:  # type: ignore[operator]
                     # Held at the start minimum while the car's draw shows the surplus is real.
                     self._state = "on"
@@ -996,6 +1034,7 @@ class SolarController:
                 self._verify_until = None
                 self._credited_start = False
                 self._shortfall_since = None
+                self._ramp_since = None
         was_on = self._state == "on"
 
         if available_a < cfg.stop_a:
