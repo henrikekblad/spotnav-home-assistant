@@ -2,6 +2,13 @@
 
 Registered once by `async_setup`, never per entry. Only the decision store is touched: no
 charger, schedule, entity or other service call is made.
+
+The six decision services change the integration's configuration, so they are admin services: a
+call from a user who is not an administrator is refused (`Unauthorized`), the same rule as the
+card's `spotnav/choose_vehicle_soc`. A call with no user behind it (an automation fired by a
+trigger) is allowed. Nothing inside SpotNav calls them: the Repairs flow, the config flow, the
+card's WebSocket commands and the phones' notification answers reach the decision store without a
+service call. `send_test_notification` changes nothing and stays open.
 """
 
 from __future__ import annotations
@@ -15,6 +22,7 @@ from homeassistant.core import HomeAssistant, ServiceCall, ServiceResponse, Supp
 from homeassistant.exceptions import ServiceValidationError
 from homeassistant.helpers import config_validation as cv
 from homeassistant.helpers import entity_registry as er
+from homeassistant.helpers.service import async_register_admin_service
 
 from .const import CONF_ENTRY_TYPE, DOMAIN, ENTRY_TYPE_SITE
 from .repairs import (
@@ -38,8 +46,8 @@ _LOGGER = logging.getLogger(__name__)
 def async_register_services(hass: HomeAssistant) -> None:
     """Register the dismissal and confirmation services and the resolution read, once for the domain.
 
-    `unconfirm_vehicle` makes decisions symmetric: every recorded decision can be undone. Guarded by
-    `has_service` so a repeat call is safe.
+    `unconfirm_vehicle` makes decisions symmetric: every recorded decision can be undone. The decision
+    services are admin-only (see the module docstring). Guarded by `has_service` so a repeat call is safe.
     """
     async def async_dismiss_vehicle(call: ServiceCall) -> None:
         await _async_set_dismissed(hass, call, dismissed=True)
@@ -69,7 +77,7 @@ def async_register_services(hass: HomeAssistant) -> None:
     ):
         if hass.services.has_service(DOMAIN, service):
             continue
-        hass.services.async_register(DOMAIN, service, handler, schema=device_schema)
+        async_register_admin_service(hass, DOMAIN, service, handler, schema=device_schema)
 
     decision_schema = vol.Schema(
         {
@@ -83,7 +91,7 @@ def async_register_services(hass: HomeAssistant) -> None:
     ):
         if hass.services.has_service(DOMAIN, service):
             continue
-        hass.services.async_register(DOMAIN, service, handler, schema=decision_schema)
+        async_register_admin_service(hass, DOMAIN, service, handler, schema=decision_schema)
 
     if not hass.services.has_service(DOMAIN, SERVICE_SEND_TEST_NOTIFICATION):
 
