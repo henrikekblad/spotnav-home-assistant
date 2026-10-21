@@ -104,6 +104,7 @@ async def _two(hass: HomeAssistant, monkeypatch, *, fuse: float, base: float) ->
         cc.set_start_cap(
             lambda eid=entry.entry_id: controller.start_allowance_a(eid),
             reserve=lambda amps, eid=entry.entry_id: controller.reserve_start(eid, amps),
+            record=lambda amps, reason, eid=entry.entry_id: controller.note_charger_write(eid, amps, reason),
         )
         controller._dampers[entry.entry_id] = RegulatorDamper(now=t.damper_clock)
         t.cc[n] = cc

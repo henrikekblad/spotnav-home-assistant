@@ -157,10 +157,11 @@ async def _halo(
         cancel()
     controller._controller_listener_cancels.clear()  # noqa: SLF001
     cc = controller_of(hass, charger.entry_id)
-    # The start cap and its reservation, as the site wires them.
+    # The start cap, its reservation and the record of other writes, as the site wires them.
     cc.set_start_cap(
         lambda: controller.start_allowance_a(charger.entry_id),
         reserve=lambda amps: controller.reserve_start(charger.entry_id, amps),
+        record=lambda amps, reason: controller.note_charger_write(charger.entry_id, amps, reason),
     )
     clock = _SecondsClock()
     controller._yield_now = clock  # noqa: SLF001

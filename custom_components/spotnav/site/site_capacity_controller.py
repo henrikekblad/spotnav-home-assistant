@@ -84,6 +84,7 @@ from ..execution.controller import (
     RESTORE_NOT_NEEDED,
     RESTORE_RESTORED,
 )
+from ..execution.chargers.base import WRITE_SESSION_START
 from ..execution.yield_stepping import YieldConfig, YieldObservation, YieldStepper, YieldVerdict
 from ..planning.auto_settings import MANUAL_START, MANUAL_STOP, STRATEGY_HYBRID, STRATEGY_SOLAR
 from ..runtime import charger_data, controller_for, domain_data
@@ -366,6 +367,10 @@ class SiteCapacityController:
         # The regulator's own writes per charger (`_async_write_regulated`): when (wall clock), the current written
         # and the one in force before it (`None` when not known), newest last.
         self._regulated_writes: dict[str, deque[tuple[datetime, float, float | None]]] = {}
+        # When (epoch seconds) a current last went to each charger by any path the site knows of: its regulator, a
+        # resume or probe, or a write it was told of (`note_charger_write`). An overload trusts the charger's own
+        # reading over the damper's memory only on a reading taken after that (`charger_above_written`).
+        self._written_at: dict[str, float] = {}
         # Last logged apply outcome per charger, so a line is emitted per change rather than per
         # recompute.
         self._logged_apply_outcomes: dict[str, tuple[Any, ...]] = {}
@@ -513,6 +518,9 @@ class SiteCapacityController:
                     lambda charger_entry_id=charger_entry_id: self.start_allowance_a(charger_entry_id),
                     reserve=lambda amps, charger_entry_id=charger_entry_id: self.reserve_start(
                         charger_entry_id, amps
+                    ),
+                    record=lambda amps, reason, charger_entry_id=charger_entry_id: self.note_charger_write(
+                        charger_entry_id, amps, reason
                     ),
                 )
                 self._controller_listener_cancels.append(
@@ -1131,6 +1139,44 @@ class SiteCapacityController:
             self._yield_now() + START_RESERVATION_S,
         )
 
+    def note_charger_write(self, charger_entry_id: str, amps: float, reason: str) -> None:
+        """A current went to this charger by a path other than the regulator (a start, a resend after a status
+        blip, the deferred session write, the sun's own write). Never measured against a value from before it:
+
+        * a start (`WRITE_SESSION_START`, its deferred session write included) begins a charge, and the damper
+          forgets what it last wrote, as for any charge whose current the regulator has not written yet: its
+          first word goes out at once (`first_write`), whatever it is;
+        * any other write is taken as the value on the charger, as for the regulator's own write: the damper,
+          the step guard and the record of writes measure the next decision against it, so an overload above
+          an older, lower value is never "no change", and a reading taken before it is not its result.
+
+        Nothing to do while active control is off: enabling it starts from clean state."""
+        if self._closed or not self._active_control_allowed():
+            return
+        damper = self._damper_for(charger_entry_id)
+        previous = damper.last_written_a
+        now = dt_util.utcnow()
+        self._written_at[charger_entry_id] = now.timestamp()
+        if reason == WRITE_SESSION_START:
+            damper.forget_write(None)
+            return
+        if previous == amps:
+            return
+        damper.record_write(amps)
+        self._step_guard_for(charger_entry_id).note_write(
+            now=now.timestamp(), previous_a=previous, written_a=amps, site_read_at=None
+        )
+        writes = self._regulated_writes.setdefault(charger_entry_id, deque(maxlen=_WRITES_KEPT))
+        writes.append((now, float(amps), previous))
+        _LOGGER.debug(
+            "SpotNav site %s active control: charger %s was written %sA outside the regulator (%s), was %sA",
+            self.entry_id,
+            charger_entry_id,
+            amps,
+            reason,
+            previous,
+        )
+
     def _reserved_by_others_a(self, charger_entry_id: str) -> dict[PhaseName, float]:
         """Per phase, the amps the other chargers' starts on their way have not drawn yet. What a charger
         has drawn is read from its own current only: while that reads nothing the whole share is held (a
@@ -1585,9 +1631,10 @@ class SiteCapacityController:
                 # does not pause the stopped charger again, and the resume (`_async_maybe_resume_paused_charge`)
                 # is not held back by the current it had before the pause.
                 damper.record_write(0.0)
-            else:
+            elif damper.last_written_a == damping.current_a:
                 # Nothing went out: the damper must not believe it did, or the next deadband and the
-                # restore would be measured against a value the charger never had.
+                # restore would be measured against a value the charger never had. (Unless another path's
+                # write was told meanwhile: that one is on the charger.)
                 damper.forget_write(previous_setpoint)
             self._log_active_control_outcome(
                 charger_entry_id,
@@ -1597,8 +1644,13 @@ class SiteCapacityController:
                 yield_verdict=yield_verdict,
             )
             return
+        if damper.last_written_a != damping.current_a:
+            # Another path's write was told to the site while this one was on its way (`note_charger_write`):
+            # this write landed last, so it is what the charger carries.
+            damper.record_write(float(setpoint))
         writes = self._regulated_writes.setdefault(charger_entry_id, deque(maxlen=_WRITES_KEPT))
         written_at = dt_util.utcnow()
+        self._written_at[charger_entry_id] = written_at.timestamp()
         writes.append((written_at, float(setpoint), previous_setpoint))
         self._step_guard_for(charger_entry_id).note_write(
             now=written_at.timestamp(),
@@ -1933,6 +1985,7 @@ class SiteCapacityController:
         self._resume_ready_since.pop(charger_entry_id, None)
         self._resume_times.setdefault(charger_entry_id, deque()).append(now)
         damper.record_write(float(amps))
+        self._written_at[charger_entry_id] = dt_util.utcnow().timestamp()
         self._record_probe_event(
             charger_entry_id,
             decision,
@@ -2103,6 +2156,7 @@ class SiteCapacityController:
             )
             return True
         damper.record_write(probe_a)
+        self._written_at[charger_entry_id] = dt_util.utcnow().timestamp()
         probe.start(
             now,
             probe_a,
