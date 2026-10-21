@@ -489,12 +489,6 @@
       }
     },
     "sensor": {
-      "instance_connection": {
-        "name": "Parkoppling (alla laddare)"
-      },
-      "connection": {
-        "name": "Appanslutning"
-      },
       "plan_start": {
         "name": "Schemalagd start"
       },

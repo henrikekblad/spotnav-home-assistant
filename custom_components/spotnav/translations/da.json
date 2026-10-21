@@ -489,12 +489,6 @@
       }
     },
     "sensor": {
-      "instance_connection": {
-        "name": "App-parring (alle ladere)"
-      },
-      "connection": {
-        "name": "App-forbindelse"
-      },
       "plan_start": {
         "name": "Planlagt start"
       },

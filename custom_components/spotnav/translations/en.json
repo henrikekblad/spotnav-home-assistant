@@ -489,12 +489,6 @@
       }
     },
     "sensor": {
-      "instance_connection": {
-        "name": "App pairing (all chargers)"
-      },
-      "connection": {
-        "name": "App connection"
-      },
       "plan_start": {
         "name": "Scheduled start"
       },

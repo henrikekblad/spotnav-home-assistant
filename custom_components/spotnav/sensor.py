@@ -1,19 +1,15 @@
-"""Schedule, connection and site-capacity sensors for SpotNav charging control."""
+"""Schedule, energy and site-capacity sensors for SpotNav charging control."""
 
-import json
 import math
 import time
 from collections.abc import Callable
 from datetime import datetime, timedelta
 from typing import Any
-from urllib.parse import urlencode
 
 from homeassistant.components.sensor import SensorDeviceClass, SensorEntity, SensorStateClass
-from homeassistant.config_entries import ConfigEntry, ConfigEntryChange, SIGNAL_CONFIG_ENTRY_CHANGED
+from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import EntityCategory, UnitOfElectricCurrent, UnitOfEnergy, UnitOfPower
 from homeassistant.core import callback, HomeAssistant
-from homeassistant.helpers.device_registry import DeviceInfo
-from homeassistant.helpers.dispatcher import async_dispatcher_connect
 from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.event import (
@@ -28,7 +24,6 @@ from .const import (
     CONF_CHARGER_ENTRY_IDS,
     CONF_ENTRY_TYPE,
     CONF_SOLAR_PRIORITY,
-    CONF_WEBHOOK_ID,
     DEFAULT_MAX_AGE_S,
     DEFAULT_SOLAR_PRIORITY,
     DOMAIN,
@@ -45,12 +40,6 @@ from .vehicles.choices import flow_language
 from .site.site_capacity import site_activity
 from .site.site_capacity_controller import SiteCapacityController
 from .site.solar_surplus import SiteSurplus
-from .vehicles.charger_inventory import (
-    charger_entries,
-    charger_pairing_payload,
-    site_entry,
-    webhook_base_url,
-)
 
 
 #: How often a smart plug's power is sampled between its own reports.
@@ -60,11 +49,10 @@ INTEGRATION_TICK_S = 30
 async def async_setup_entry(
     hass: HomeAssistant, entry: ConfigEntry, async_add_entities: AddEntitiesCallback
 ) -> None:
+    remove_pairing_sensors(hass, entry)
     if entry.data.get(CONF_ENTRY_TYPE) == ENTRY_TYPE_SITE:
         site_controller = entry.runtime_data.controller
         entities: list[Any] = [SiteStateEntity(entry, site_controller), SiteSolarSurplusEntity(entry, site_controller)]
-        if entry.entry_id == instance_owner_entry_id(hass):
-            entities.append(InstanceConnectionEntity(hass, entry))
         for charger_entry_id in site_controller.config.get(CONF_CHARGER_ENTRY_IDS) or []:
             charger_entry = hass.config_entries.async_get_entry(charger_entry_id)
             charger_title = charger_entry.title if charger_entry else charger_entry_id
@@ -76,16 +64,40 @@ async def async_setup_entry(
 
     controller = entry.runtime_data.controller
     entities = [
-        ConnectionEntity(hass, entry, controller),
         PlanTimeEntity(entry, controller, "start"),
         PlanTimeEntity(entry, controller, "end"),
     ]
     entities.extend(integrated_energy_entities(hass, entry, controller))
     entities.extend(session_entities(hass, entry, controller))
     entities.extend(auto_entities(entry, controller, AutoSurface.resolve(hass, entry.entry_id)))
-    if entry.entry_id == instance_owner_entry_id(hass):
-        entities.append(InstanceConnectionEntity(hass, entry))
     async_add_entities(entities)
+
+
+#: The unique-id suffixes of the "App connection" and "App pairing" sensors of releases up to 1.17.0.
+#: Their attributes held the webhook ids and pairing URIs, readable by every user and kept by the recorder.
+REMOVED_PAIRING_SENSOR_SUFFIXES = ("_connection", "_instance_connection")
+
+
+@callback
+def remove_pairing_sensors(hass: HomeAssistant, entry: ConfigEntry) -> None:
+    """Remove this entry's pairing sensors left from an earlier release, and their recorded history.
+
+    A webhook id is the only credential of a charger's webhook, so it never sits in an entity's
+    attributes; the app gets it only through the approved pairing handshake (`api/pairing.py`). The
+    recorder's rows for the removed sensors are purged when the recorder runs, best effort.
+    """
+    registry = er.async_get(hass)
+    removed: list[str] = []
+    for suffix in REMOVED_PAIRING_SENSOR_SUFFIXES:
+        entity_id = registry.async_get_entity_id("sensor", DOMAIN, f"{entry.entry_id}{suffix}")
+        if entity_id is not None:
+            registry.async_remove(entity_id)
+            removed.append(entity_id)
+    if removed and hass.services.has_service("recorder", "purge_entities"):
+        hass.async_create_task(
+            hass.services.async_call("recorder", "purge_entities", {"entity_id": removed, "keep_days": 0}),
+            "spotnav purge removed pairing sensors",
+        )
 
 
 def integrated_energy_entities(
@@ -122,32 +134,6 @@ def auto_entities(
         AutoEnergySensor(entry, controller, auto),
         AutoSettingsRevisionSensor(entry, controller, auto),
     ]
-
-
-def instance_owner_entry_id(hass: HomeAssistant) -> str | None:
-    """Which config entry carries the instance-wide pairing entity: the site entry when one exists,
-    otherwise the first charger (creation order).
-    """
-    site = site_entry(hass)
-    if site is not None:
-        return site.entry_id
-    first_charger = next(iter(charger_entries(hass)), None)
-    return first_charger.entry_id if first_charger else None
-
-
-def instance_pairing_uri(base_url: str, chargers: list[dict[str, str]]) -> str:
-    """The whole instance as one pairing value: the URL once, every charger.
-
-    One query parameter, `chargers`, holding JSON: unlike separator-joined forms it cannot be
-    confused by a charger name with commas, ampersands or non-ASCII characters. `urlencode`
-    percent-encodes it and `json.dumps` keeps it ASCII. `pairing_uri` keeps the per-charger form.
-    """
-    return "spotnav://home-assistant?" + urlencode(
-        {
-            "url": base_url,
-            "chargers": json.dumps(chargers, separators=(",", ":")),
-        }
-    )
 
 
 class IntegratedEnergySensor(SpotNavChargingEntity, RestoreEntity, SensorEntity):
@@ -214,84 +200,6 @@ class IntegratedEnergySensor(SpotNavChargingEntity, RestoreEntity, SensorEntity)
             fresh_power_w(self._hass, self.controller.power_entity_id, now, self._integrator.max_age_s),
         )
         self.async_write_ha_state()
-
-
-class ConnectionEntity(SpotNavChargingEntity, SensorEntity):
-    """Expose pairing data to the Home Assistant owner."""
-
-    _attr_entity_category = EntityCategory.DIAGNOSTIC
-
-    _attr_translation_key = "connection"
-    _attr_native_value = "ready"
-
-    def __init__(
-        self, hass: HomeAssistant, entry: ConfigEntry, controller: ChargingController
-    ) -> None:
-        super().__init__(entry, controller)
-        self._hass = hass
-        self._attr_unique_id = f"{entry.entry_id}_connection"
-
-    @property
-    def extra_state_attributes(self) -> dict[str, str]:
-        webhook_id = self._entry.data[CONF_WEBHOOK_ID]
-        base_url, webhook_url = webhook_base_url(self._hass, webhook_id)
-        pairing_query = urlencode({"url": base_url, "webhook": webhook_id})
-        return {
-            "home_assistant_url": base_url,
-            "webhook_id": webhook_id,
-            "webhook_url": webhook_url,
-            "pairing_uri": f"spotnav://home-assistant?{pairing_query}",
-        }
-
-
-class InstanceConnectionEntity(SensorEntity):
-    """Every charger on this instance in one pairing value.
-
-    One base URL plus each charger's own webhook id, so one value provisions all of them and each
-    webhook stays scoped to a single charger. It lives on the site entry's device (or the first
-    charger's) and is named "App pairing". The value is an attribute, not the state, because states
-    are limited to 255 characters. `webhook_id` and pairing URIs stay out of logs and diagnostics.
-    """
-
-    _attr_entity_category = EntityCategory.DIAGNOSTIC
-
-    _attr_has_entity_name = True
-    _attr_translation_key = "instance_connection"
-    _attr_native_value = "ready"
-
-    def __init__(self, hass: HomeAssistant, entry: ConfigEntry) -> None:
-        self.hass = hass
-        self._attr_unique_id = f"{entry.entry_id}_instance_connection"
-        # Identifiers only: restating name/manufacturer/model would overwrite the owning entry's device.
-        self._attr_device_info = DeviceInfo(identifiers={(DOMAIN, entry.entry_id)})
-
-    async def async_added_to_hass(self) -> None:
-        # A charger appearing or disappearing may happen in another config entry, so listen for
-        # entries changing rather than for a plan.
-        self.async_on_remove(
-            async_dispatcher_connect(
-                self.hass, SIGNAL_CONFIG_ENTRY_CHANGED, self._entry_changed
-            )
-        )
-
-    @callback
-    def _entry_changed(self, change: ConfigEntryChange, entry: ConfigEntry) -> None:
-        if entry.domain == DOMAIN:
-            self.async_write_ha_state()
-
-    @property
-    def extra_state_attributes(self) -> dict[str, Any]:
-        chargers = charger_pairing_payload(self.hass)
-        # Any charger's webhook yields the same base URL; no chargers means no URL.
-        base_url = webhook_base_url(self.hass, chargers[0]["webhook"])[0] if chargers else ""
-        return {
-            "home_assistant_url": base_url,
-            "pairing_uri": instance_pairing_uri(base_url, chargers),
-            # Names and ids only, no webhook ids (those are in the value above).
-            "chargers": [
-                {"id": charger["id"], "name": charger["name"]} for charger in chargers
-            ],
-        }
 
 
 class PlanTimeEntity(SpotNavChargingEntity, SensorEntity):
