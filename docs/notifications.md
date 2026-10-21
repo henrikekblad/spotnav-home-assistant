@@ -129,7 +129,7 @@ whether an app is registered and how the last wake-up went.
 **Testing.** The action `spotnav.send_test_notification` (Developer tools → Actions), optionally for
 one charger, sends the app a test push and the Companion phones chosen above a test message. It is
 refused when no charger has the app's instant notifications turned on, and the result per charger is
-logged.
+logged. Only an administrator may run it.
 
 ## For the paired app and automations
 

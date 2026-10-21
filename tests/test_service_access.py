@@ -1,8 +1,8 @@
 """Who may call SpotNav's services.
 
 The six decision services change the integration's configuration and are admin services, the same
-rule as the card's `spotnav/choose_vehicle_soc`; a call with no user behind it (an automation) is
-allowed. `send_test_notification` changes nothing and stays open to every signed-in user.
+rule as the card's `spotnav/choose_vehicle_soc`. `send_test_notification` messages the household's
+phones and is an admin service too. A call with no user behind it (an automation) is allowed.
 """
 
 from __future__ import annotations
@@ -96,13 +96,16 @@ async def test_an_administrator_and_an_automation_may_decide(
     assert store.is_dismissed(DECISION_DOMAIN_VEHICLE, vehicle["device_id"]) is False
 
 
-async def test_the_test_notification_stays_open_to_every_user(
-    hass: HomeAssistant, hass_read_only_user: Any
+async def test_the_test_notification_is_for_administrators(
+    hass: HomeAssistant, hass_read_only_user: Any, hass_admin_user: Any
 ) -> None:
-    """A non-administrator reaches the test service: with no app registered it is the ordinary refusal."""
+    """A non-administrator is refused before anything is sent; an administrator reaches the service.
+
+    With no app registered the administrator's call ends in the service's own refusal, not `Unauthorized`.
+    """
     await one_charger(hass)
 
-    with pytest.raises(ServiceValidationError) as refusal:
+    with pytest.raises(Unauthorized):
         await hass.services.async_call(
             DOMAIN,
             "send_test_notification",
@@ -111,5 +114,12 @@ async def test_the_test_notification_stays_open_to_every_user(
             context=Context(user_id=hass_read_only_user.id),
         )
 
-    assert not isinstance(refusal.value, Unauthorized)
+    with pytest.raises(ServiceValidationError) as refusal:
+        await hass.services.async_call(
+            DOMAIN,
+            "send_test_notification",
+            {},
+            blocking=True,
+            context=Context(user_id=hass_admin_user.id),
+        )
     assert refusal.value.translation_key == "no_push_registered"

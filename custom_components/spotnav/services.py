@@ -3,12 +3,13 @@
 Registered once by `async_setup`, never per entry. Only the decision store is touched: no
 charger, schedule, entity or other service call is made.
 
-The six decision services change the integration's configuration, so they are admin services: a
-call from a user who is not an administrator is refused (`Unauthorized`), the same rule as the
-card's `spotnav/choose_vehicle_soc`. A call with no user behind it (an automation fired by a
-trigger) is allowed. Nothing inside SpotNav calls them: the Repairs flow, the config flow, the
-card's WebSocket commands and the phones' notification answers reach the decision store without a
-service call. `send_test_notification` changes nothing and stays open.
+Every service is an admin service: a call from a user who is not an administrator is refused
+(`Unauthorized`). The six decision services change the integration's configuration, the same rule
+as the card's `spotnav/choose_vehicle_soc`; `send_test_notification` messages the household's
+phones and names the chargers, an administrator's field test. A call with no user behind it (an
+automation fired by a trigger) is allowed. Nothing inside SpotNav calls them: the Repairs flow, the
+config flow, the card's WebSocket commands and the phones' notification answers reach the decision
+store without a service call.
 """
 
 from __future__ import annotations
@@ -47,7 +48,7 @@ def async_register_services(hass: HomeAssistant) -> None:
     """Register the dismissal and confirmation services and the resolution read, once for the domain.
 
     `unconfirm_vehicle` makes decisions symmetric: every recorded decision can be undone. The decision
-    services are admin-only (see the module docstring). Guarded by `has_service` so a repeat call is safe.
+    services and the test notification are admin-only (see the module docstring). Guarded by `has_service` so a repeat call is safe.
     """
     async def async_dismiss_vehicle(call: ServiceCall) -> None:
         await _async_set_dismissed(hass, call, dismissed=True)
@@ -98,7 +99,8 @@ def async_register_services(hass: HomeAssistant) -> None:
         async def async_send_test_notification(call: ServiceCall) -> ServiceResponse:
             return await _async_send_test_notification(hass, call)
 
-        hass.services.async_register(
+        async_register_admin_service(
+            hass,
             DOMAIN,
             SERVICE_SEND_TEST_NOTIFICATION,
             async_send_test_notification,
