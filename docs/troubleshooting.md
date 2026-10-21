@@ -127,7 +127,9 @@ changes.
 - **A vehicle needs a decision.** A device reports several battery readings or charge limits. Open
   the repair under **Settings, System, Repairs** and choose which reading to use.
 - **The charge-level sensor is wrong.** In the card's vehicle settings choose another sensor, or set it back to automatic.
-  The services `dismiss_vehicle`, `undismiss_vehicle` and `unconfirm_vehicle` do the same by device id.
+  The services `dismiss_vehicle`, `undismiss_vehicle` and `unconfirm_vehicle` do the same by device id. They, and
+  `confirm_vehicle_soc`, `confirm_charge_limit` and `unconfirm_charge_limit`, are for administrators: a call by
+  another user is refused, while an automation may call them.
 
 ## Site
 

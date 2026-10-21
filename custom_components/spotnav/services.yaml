@@ -3,7 +3,7 @@ dismiss_vehicle:
   description: >
     Stop reporting one vehicle-like Home Assistant device in the vehicle
     list, until it is undismissed. Useful when automatic detection
-    picks up a device that is not the car you charge.
+    picks up a device that is not the car you charge. Administrators only.
   fields:
     device_id:
       name: Device ID
@@ -20,7 +20,7 @@ undismiss_vehicle:
   name: Undismiss a detected vehicle
   description: >
     Undo dismiss_vehicle for one device ID, so automatic detection reports it
-    again.
+    again. Administrators only.
   fields:
     device_id:
       name: Device ID
@@ -38,7 +38,7 @@ unconfirm_vehicle:
     automatically, if only one plausible reading is left). Useful when the
     wrong reading was picked. A confirmation that names an entity which no
     longer exists is already ignored without this, and dismissing a vehicle is
-    a separate decision this never touches.
+    a separate decision this never touches. Administrators only.
   fields:
     device_id:
       name: Device ID
