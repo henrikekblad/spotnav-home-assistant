@@ -40,6 +40,10 @@ class Clock:
         return self.now
 
 
+#: A fake webhook id that cannot occur in a file path or a log line by chance (log lines carry paths).
+WEBHOOK_ID = "9c41e07b2fd85a3e6b1d4c70a2e59f18"
+
+
 async def _loaded(hass: HomeAssistant) -> None:
     """Bring the integration up: which is what registers the pairing endpoint."""
     hass.config.external_url = EXTERNAL_URL
@@ -50,7 +54,7 @@ async def _loaded(hass: HomeAssistant) -> None:
         entry_id="entry_charger_a",
         charge_control="switch.charger_a",
         current_limit=None,
-        webhook_id="webhook-a",
+        webhook_id=WEBHOOK_ID,
         title="Garage",
     )
     assert await hass.config_entries.async_setup(entry.entry_id)
@@ -227,7 +231,7 @@ async def test_an_approved_request_delivers_the_pairing_payload_again_to_the_sam
     # Exactly what the pairing entity shows: id, name and this charger's own
     # webhook id, and the only place a webhook id crosses to the app.
     assert answer["chargers"] == charger_pairing_payload(hass)
-    assert answer["chargers"][0]["webhook"] == "webhook-a"
+    assert answer["chargers"][0]["webhook"] == WEBHOOK_ID
     # A lost response must not waste the approval: the same id gets the same payload again.
     assert await _poll(client, request_id) == answer
     # Another id never saw an approval.
@@ -406,7 +410,7 @@ async def test_nothing_sensitive_is_logged(hass: HomeAssistant, hass_client_no_a
     # at debug either.
     assert CODE not in logged
     assert request_id not in logged
-    assert "webhook-a" not in logged
+    assert WEBHOOK_ID not in logged
     # The payload's own values: the charger's config entry id, and the six-digit
     # code that is only ever meant for a person to read on a screen.
     assert "entry_charger_a" not in logged
