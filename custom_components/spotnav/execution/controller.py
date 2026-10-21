@@ -74,6 +74,7 @@ from .chargers.base import (
     ASSIGN_PROBE_IN_FLIGHT,
     ASSIGN_READ_FAILED,
     ASSIGN_TARGET_UNAVAILABLE,
+    ASSIGN_UNCHANGED,
     ASSIGN_UNCONFIRMED,
     ASSIGN_UNSUPPORTED,
     IN_EFFECT_OUTCOMES,
@@ -606,6 +607,9 @@ class ChargingController:
         # Where a capped start says how much it took, so another start on the site in the same tick is given
         # only what is left (`set_start_cap`); `None` when nothing is reserved.
         self._start_reserve: Callable[[float | None], None] | None = None
+        # Where a current written outside the site's regulator is told to the site (`set_start_cap`), so its
+        # damper and step guard measure the next decision against what is really on the charger.
+        self._site_record: Callable[[float, str], None] | None = None
         self._last_connected: bool | None = None
         # The last connection the charger reported in so many words (`None` until it said one): only a
         # change between two known states is a plug-in or an unplug, never a status that comes back after
@@ -2606,21 +2610,23 @@ class ChargingController:
 
     async def _async_write_after_start(self) -> None:
         """Write the requested current now that the session exists; a refusal is not retried. Under the
-        operation lock, so it never lands inside a stop."""
+        operation lock, so it never lands inside a stop, and no more than the site allows now
+        (`_site_capped_amps`): the start that deferred it may be long past."""
         async with self._lock:
             amps = self._requested_current_a
             if amps is None or not self.adapter.capabilities.set_current:
                 return
-            await self._async_assign_current_outcome(amps, reason=WRITE_SESSION_START)
+            await self._async_assign_current_outcome(amps, reason=WRITE_SESSION_START, capped=True)
 
     async def _async_resend_current(self) -> None:
         """Send the last requested current again, the limit having been cleared by the charger. Under the
-        operation lock, so it never lands inside a stop."""
+        operation lock, so it never lands inside a stop. No more than the site allows now: the request may
+        be far above what load balancing has the charger at (`_site_capped_amps`)."""
         async with self._lock:
             amps = self._requested_current_a
             if amps is None:
                 return
-            await self._async_assign_current_outcome(amps, reason=WRITE_RESEND)
+            await self._async_assign_current_outcome(amps, reason=WRITE_RESEND, capped=True)
 
     def _watched_control_entities(self) -> list[str]:
         """The charge control and whatever else reports the charging state, each once."""
@@ -2921,13 +2927,50 @@ class ChargingController:
         cap: Callable[[], float | None] | None,
         *,
         reserve: Callable[[float | None], None] | None = None,
+        record: Callable[[float, str], None] | None = None,
     ) -> None:
         """Set (or clear) what a start may give the car: the site's allowance in amps while active
         control is on and the measurements are usable, else `None` (no cap). `reserve` is told what a
         capped start took (`None` when it did not go out), so the site gives a second start in the same
-        tick only what is left."""
+        tick only what is left. `record` is told every current that goes to the charger by any path but
+        the site's own regulator (a start, a resend after a blip, the deferred session write, the sun's
+        own write), with its reason: the site's damper and step guard then know what is on the charger,
+        and an overload never reads as "no change" against an older, lower value."""
         self._start_cap = cap
         self._start_reserve = reserve if cap is not None else None
+        self._site_record = record if cap is not None else None
+
+    def _site_capped_amps(self, amps: int) -> int:
+        """`amps`, but never more than the site allows this charger now (`set_start_cap`), and never
+        below the charger's minimum on that account: a write that is not a start cannot be refused (the
+        charger may already run on a cleared limit), and the site's regulator lowers or pauses from there,
+        knowing what was written (`_tell_site`)."""
+        allowance = self._start_allowance_a()
+        if allowance is None:
+            return amps
+        return min(amps, max(int(DEFAULT_MIN_CURRENT_A), int(allowance)))
+
+    def _tell_site(self, amps: float, reason: str) -> None:
+        """Tell the site a current that went to the charger outside its regulator. Never raises."""
+        record = self._site_record
+        if record is None:
+            return
+        try:
+            record(float(amps), reason)
+        except Exception:  # noqa: BLE001 - a failing note must not fail the write; the regulator's check still holds
+            _LOGGER.debug("Telling the site about a written current failed", exc_info=True)
+
+    def _written_amps(self, amps: int, outcome: str) -> float:
+        """What the charger carries after an in-effect write of `amps`: the adapter may have written more
+        (Easee's start floor), and an unchanged write leaves what the charger reports. The higher of the
+        two, the safe side for a fuse."""
+        current = self.adapter.current
+        known: float | None
+        if outcome == ASSIGN_UNCHANGED:
+            known = current.setpoint_a()
+        else:
+            known = getattr(current, "last_written_a", None)
+        return float(amps if known is None else max(amps, known))
 
     def _reserve_start(self, amps: float | None) -> None:
         reserve = self._start_reserve
@@ -3217,9 +3260,16 @@ class ChargingController:
                 and self._writes_current_at_start
                 and self.adapter.policy.ignored_while_paused
             ):
-                # A charger that only stores a value while paused takes it once it is running.
-                await self._async_assign_current_outcome(explicit_amps, reason=WRITE_SESSION_START)
+                # A charger that only stores a value while paused takes it once it is running; the site may
+                # have less room than when the start was decided.
+                await self._async_assign_current_outcome(
+                    explicit_amps, reason=WRITE_SESSION_START, capped=capped
+                )
         if executed:
+            started_at_a = getattr(getattr(self.adapter, "path", None), "started_at_a", None)
+            if started_at_a is not None:
+                # A start that is itself a current write (ABB's): the site learns what it wrote.
+                self._tell_site(started_at_a, WRITE_SESSION_START)
             # Whoever started it (a plan, the sun, hybrid, a person, a resume), a charge is on: a target's stop
             # no longer describes the charger.
             self._end_target_stop(LAPSE_CHARGE_STARTED)
@@ -3248,7 +3298,8 @@ class ChargingController:
 
         Never more than `cap_a`, the amps the person set for this charger: the sun only ever lowers a charge from
         what a plain start at those amps already allows, so this write adds no load beyond it, and the fuse stays
-        as safe as with a plain start. Never below the 6 A floor (below it the sun stops instead). Under the
+        as safe as with a plain start; and, like a start, never more than the site allows now (`_site_capped_amps`),
+        told to the site once written. Never below the 6 A floor (below it the sun stops instead). Under the
         operation lock, so it never lands inside a Start, a Stop or a plan replacement, and never while a stop is on
         its way or after shut-down. Through the adapter's own policy for repeated writes (`MODULATION_WRITES`): its
         rate limit, a paused charger that would be lifted by a current, a flash-stored setting.
@@ -3261,7 +3312,7 @@ class ChargingController:
                 return REGULATED_SHUT_DOWN
             if self._stop_in_flight:
                 return REGULATED_STOPPING
-            return await self._async_assign_current_outcome(amps, reason=WRITE_SOLAR)
+            return await self._async_assign_current_outcome(amps, reason=WRITE_SOLAR, capped=True)
 
     async def _set_requested_current_locked(self, amps: int) -> None:
         """The record itself. Runs with the operation lock held."""
@@ -3278,7 +3329,7 @@ class ChargingController:
         await self._async_assign_current_outcome(amps)
 
     async def _async_assign_current_outcome(
-        self, amps: int, *, verify: bool = False, reason: str = WRITE_SESSION_START
+        self, amps: int, *, verify: bool = False, reason: str = WRITE_SESSION_START, capped: bool = False
     ) -> str:
         """Ask the charger's adapter to assign this current, or say why not.
 
@@ -3291,15 +3342,20 @@ class ChargingController:
         no reboot; it runs only for a charger that opted in, and there is no fallback to
         `number.set_value`. Best effort: the request is recorded by the caller either way, and every way
         this cannot proceed logs one warning naming no entity and writes nothing.
+
+        `capped` holds the write to what the site allows now, read under `_assign_lock` (`_site_capped_amps`).
+        Every write that is not the regulator's own is told to the site once it is in effect (`_tell_site`).
         """
         if reason in MODULATION_WRITES and self._stop_in_flight:
             # A stop holds `_assign_lock` while its command is on its way: the regulator's write never waits
             # for it, it is simply not sent (`_assign_current_locked` checks again once the lock is held).
             return REGULATED_STOPPING
         async with self._assign_lock:
-            return await self._assign_current_locked(amps, verify=verify, reason=reason)
+            return await self._assign_current_locked(amps, verify=verify, reason=reason, capped=capped)
 
-    async def _assign_current_locked(self, amps: int, *, verify: bool, reason: str) -> str:
+    async def _assign_current_locked(
+        self, amps: int, *, verify: bool, reason: str, capped: bool = False
+    ) -> str:
         """The write itself. Runs with `_assign_lock` held."""
         if self._probe.in_flight:
             # The pilot-floor probe is stepping this connector down and reading the response.
@@ -3313,10 +3369,16 @@ class ChargingController:
             # The regulator writes without the operation lock: a stop on its way (or one that began while this
             # write waited for `_assign_lock`) is not lifted by a current sent under it.
             return REGULATED_STOPPING
+        if capped:
+            amps = self._site_capped_amps(amps)
         # Everything below is the adapter's: for an OCPP charger the very same read, rewrite and
         # write of `AssignedCurrent` it has always been (`OcppAssignedCurrent`); for any other, a
         # write under the platform's policy.
-        return await self.adapter.async_set_current(amps, reason=reason, verify=verify)
+        outcome = await self.adapter.async_set_current(amps, reason=reason, verify=verify)
+        if reason != WRITE_REGULATOR and outcome in IN_EFFECT_OUTCOMES:
+            # The regulator knows its own writes; every other one the site must be told.
+            self._tell_site(self._written_amps(amps, outcome), reason)
+        return outcome
 
     async def async_apply_regulated_current(self, amps: int, *, must_lower: bool) -> RegulatedWrite:
         """The regulator's one write to this charger, through the same `_assign_lock`.

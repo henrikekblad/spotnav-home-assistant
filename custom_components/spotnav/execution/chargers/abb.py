@@ -45,6 +45,8 @@ class NumberPausePath(StartStopPath):
         self._status = status
         #: The limit the charge ran at when it was last paused, to resume at when no current is asked.
         self._resume_a: int | None = None
+        #: The current the last start wrote (a start here is a current write), for the site to be told.
+        self.started_at_a: int | None = None
 
     async def _write(self, value: int) -> bool:
         if _entity_unavailable(self.hass, self.number_entity_id):
@@ -88,7 +90,12 @@ class NumberPausePath(StartStopPath):
                 self.hass,
                 "button", "press", {"entity_id": self.start_entity_id}, blocking=True
             )
-        return await self._write(self._start_current(amps))
+        value = self._start_current(amps)
+        self.started_at_a = None
+        written = await self._write(value)
+        if written:
+            self.started_at_a = value
+        return written
 
     def enabled_state(self) -> bool | None:
         limit = self._limit()

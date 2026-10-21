@@ -24,6 +24,12 @@ So, per charger, between the regulator and the damper:
 4. An overload of more than `TRIM_MAX_OVER_A` always goes through at the regulator's own value,
    at once: none of the above holds back a real overload.
 
+What was written last is what the site was told, by the regulator and by every other path that writes
+a current (a start, a resend after a status blip, the deferred session write, the sun's own write). As
+a last line, an overload is also measured against the charger's own reading when that reading is fresh
+and shows the charger a step above what was written (`charger_above_written`): a limit the charger
+dropped by itself, or a write nobody told the site of, never reads as "no change".
+
 The limit is the regulator's (`main fuse - the site's safety margin`, whatever that margin is,
 0 included); the margins here are on the step, not on the fuse. Pure: times are passed in seconds.
 """
@@ -180,3 +186,23 @@ class StepGuard:
 
     def reset(self) -> None:
         self.__init__()
+
+
+def charger_above_written(
+    *,
+    written_a: float | None,
+    measured_a: float | None,
+    charger_read_at: float | None,
+    written_at: float | None,
+) -> float | None:
+    """For an overload only: the charger's measured current when it is at least a step (`UP_MARGIN_A`) above
+    `written_a`, what was last written to it, on a reading taken at least `CATCH_UP_S` after that write (the
+    charger had time to follow it), else `None`. The charger is then at more than anybody wrote, and a
+    lowering must be measured from there, not from the value written. Times are epoch seconds."""
+    if written_a is None or measured_a is None or charger_read_at is None:
+        return None
+    if written_at is not None and charger_read_at < written_at + CATCH_UP_S:
+        return None
+    if measured_a < written_a + UP_MARGIN_A:
+        return None
+    return measured_a

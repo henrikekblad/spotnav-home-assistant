@@ -119,6 +119,14 @@ It is best effort and is not a protective device. Turning it off gives back any 
   on its own, one at a time per charger, and a lower current decided meanwhile goes out as soon as the
   one on its way returns. A stop waits for a current change already on its way, so the change cannot
   undo it.
+- **Every other current SpotNav writes is held to the same room and told to load balancing**: the
+  current an Easee is sent again after its status blips or a car is plugged in, an OCPP session limit
+  written once the session exists, and the sun's own current. Such a write goes out at no more than
+  the site has room for now (never below the charger's minimum, since writing nothing would leave the
+  charger on the limit it cleared), and load balancing takes it as what the charger is at, so the
+  next overload lowers it from there. As a last line, an overload is also measured against the
+  charger's own current when a fresh reading shows it a step above what was written: a charger that
+  dropped its limit by itself is lowered all the same.
 - **Right after a start** a charger's own current often reads nothing for a while (OCPP meter values
   come every so often) while the site meter already shows the car. For up to 90 seconds after a start
   (SpotNav's own, or the charger seen charging), and only while the charger's own reading still shows
