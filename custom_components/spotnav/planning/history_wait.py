@@ -27,8 +27,8 @@ from dataclasses import dataclass, replace
 from datetime import timedelta, timezone
 from typing import Any, Final, Literal
 
-from homeassistant.util import dt as dt_util
 
+from .. import time_zones
 from ..pricing.relay_contract import PriceProfile
 from .planner import (
     cheapest_slots,
@@ -107,7 +107,7 @@ def unknown_slots(
     change repeats or skips an hour the way the day files do. A quarter whose weekday-hour the profile
     omitted (too few samples) is left out: no history, no claim.
     """
-    zone = dt_util.get_time_zone(profile.tz)
+    zone = time_zones.require_zone(profile.tz)
     step = timedelta(minutes=STEP_MINUTES)
     # Absolute time throughout: wall-clock arithmetic on a zone-aware value would repeat or skip an hour wrongly.
     cursor = gap.missing_from.astimezone(timezone.utc)
@@ -173,7 +173,7 @@ def evaluate(
     margin = MARGIN_STANDARD_DEVIATIONS * sum(spreads) / len(spreads)
     saving = known_mean - expected_mean
 
-    zone = dt_util.get_time_zone(profile.tz)
+    zone = time_zones.require_zone(profile.tz)
     days = Counter(slot.start.astimezone(zone).isoweekday() for slot in best)
     top = max(days.values())
     # The earliest of the most frequent weekdays, so a tie reads as the first day the charge would fall on.

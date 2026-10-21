@@ -13,6 +13,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field, replace
 from datetime import date, datetime, time, timedelta, timezone
 from typing import Any
+from zoneinfo import ZoneInfo
 
 import pytest
 from homeassistant.util import dt as dt_util
@@ -31,6 +32,7 @@ from custom_components.spotnav.pricing.relay_contract import PriceDocument, Pric
 
 UTC = timezone.utc
 STOCKHOLM = "Europe/Stockholm"
+BRUSSELS = ZoneInfo(price_wait.PUBLICATION_ZONE)
 
 
 def at(text: str) -> datetime:
@@ -138,22 +140,22 @@ def test_a_decision_needs_something_to_charge() -> None:
 
 
 def test_publication_is_thirteen_hundred_brussels_plus_the_margin_on_the_day_before() -> None:
-    assert expected_publication_at(date(2026, 9, 23)) == at("2026-09-22T11:45:00+00:00")  # CEST
-    assert expected_publication_at(date(2026, 1, 15)) == at("2026-01-14T12:45:00+00:00")  # CET
+    assert expected_publication_at(zone=BRUSSELS, missing_day=date(2026, 9, 23)) == at("2026-09-22T11:45:00+00:00")  # CEST
+    assert expected_publication_at(zone=BRUSSELS, missing_day=date(2026, 1, 15)) == at("2026-01-14T12:45:00+00:00")  # CET
 
 
 def test_publication_is_dst_safe_across_both_clock_changes() -> None:
     # Spring: the clocks go forward on Sunday 2026-03-29. The day *after* it is published on the
     # 29th at 13:00 CEST (11:00Z); the transition day itself on the 28th at 13:00 CET (12:00Z).
-    assert expected_publication_at(date(2026, 3, 29)) == at("2026-03-28T12:45:00+00:00")
-    assert expected_publication_at(date(2026, 3, 30)) == at("2026-03-29T11:45:00+00:00")
+    assert expected_publication_at(zone=BRUSSELS, missing_day=date(2026, 3, 29)) == at("2026-03-28T12:45:00+00:00")
+    assert expected_publication_at(zone=BRUSSELS, missing_day=date(2026, 3, 30)) == at("2026-03-29T11:45:00+00:00")
     # Autumn: back on Sunday 2026-10-25.
-    assert expected_publication_at(date(2026, 10, 25)) == at("2026-10-24T11:45:00+00:00")
-    assert expected_publication_at(date(2026, 10, 26)) == at("2026-10-25T12:45:00+00:00")
+    assert expected_publication_at(zone=BRUSSELS, missing_day=date(2026, 10, 25)) == at("2026-10-24T11:45:00+00:00")
+    assert expected_publication_at(zone=BRUSSELS, missing_day=date(2026, 10, 26)) == at("2026-10-25T12:45:00+00:00")
     # Never a wall-clock subtraction: the gap between consecutive days' publications is 23 or 25 hours.
-    across = expected_publication_at(date(2026, 3, 30)) - expected_publication_at(date(2026, 3, 29))
+    across = expected_publication_at(zone=BRUSSELS, missing_day=date(2026, 3, 30)) - expected_publication_at(zone=BRUSSELS, missing_day=date(2026, 3, 29))
     assert across == timedelta(hours=23)
-    across = expected_publication_at(date(2026, 10, 26)) - expected_publication_at(date(2026, 10, 25))
+    across = expected_publication_at(zone=BRUSSELS, missing_day=date(2026, 10, 26)) - expected_publication_at(zone=BRUSSELS, missing_day=date(2026, 10, 25))
     assert across == timedelta(hours=25)
 
 
@@ -274,7 +276,7 @@ def run_day(
                     KnownInterval(known.start, known.start + slot, known.local_major_per_kwh)
                     for known in gap.known
                 ],
-                publication_at=expected_publication_at(missing_day),
+                publication_at=expected_publication_at(missing_day, zone=BRUSSELS),
             )
             decision_name = decision.action
             if decision.action == "buy_now":

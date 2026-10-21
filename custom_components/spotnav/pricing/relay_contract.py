@@ -30,6 +30,8 @@ from urllib.parse import urlsplit
 
 from homeassistant.util import dt as dt_util
 
+from .. import time_zones
+
 _LOGGER = logging.getLogger(__name__)
 
 #: Entries already reported as skipped, so a catalogue re-read every hour logs each damaged entry once.
@@ -479,12 +481,12 @@ def _local_midnight(day: date, tz: str) -> datetime:
     """Midnight at the start of a local calendar date, built from the zone's own rules so a skipped or
     doubled midnight is handled.
     """
-    return datetime(day.year, day.month, day.day, tzinfo=dt_util.get_time_zone(tz))
+    return datetime(day.year, day.month, day.day, tzinfo=time_zones.require_zone(tz))
 
 
 def _next_local_midnight(instant: datetime, tz: str) -> datetime:
     """The next local midnight after [instant], which may be 23, 24 or 25 hours away."""
-    local = instant.astimezone(dt_util.get_time_zone(tz))
+    local = instant.astimezone(time_zones.require_zone(tz))
     following = local.date() + timedelta(days=1)
     return _local_midnight(following, tz)
 
@@ -529,7 +531,7 @@ def _parse_area(raw: Any, version: int = SUPPORTED_VERSION) -> AreaEntry:
     ):
         _fail("invalid_field", f"{what}: 'countries' must be a non-empty list of strings")
     timezone = _text(area, "tz", what)
-    if dt_util.get_time_zone(timezone) is None:
+    if time_zones.zone(timezone) is None:
         _fail("invalid_field", f"{what}: {timezone!r} is not a known timezone")
 
     # The v2 properties. A v1 list states none of them, and its zone is both calendars.
@@ -544,7 +546,7 @@ def _parse_area(raw: Any, version: int = SUPPORTED_VERSION) -> AreaEntry:
         eic = _text(area, "eic", what) if "eic" in area else None
         if "market_tz" in area:
             market_tz = _text(area, "market_tz", what)
-            if dt_util.get_time_zone(market_tz) is None:
+            if time_zones.zone(market_tz) is None:
                 _fail("invalid_field", f"{what}: {market_tz!r} is not a known timezone")
         included = _included(area, what)
         source = _source(area, what)
@@ -587,7 +589,7 @@ def _publication(area: Mapping[str, Any], area_id: str) -> AreaPublication:
         match = PUBLICATION_TIME_PATTERN.fullmatch(clock) if isinstance(clock, str) else None
         if match is None:
             problem = "has no 'time' as HH:MM"
-        elif not isinstance(zone, str) or not zone or dt_util.get_time_zone(zone) is None:
+        elif not isinstance(zone, str) or not zone or time_zones.zone(zone) is None:
             problem = "has no known 'tz'"
         else:
             return AreaPublication(local_time=time(int(match[1]), int(match[2])), tz=zone)
@@ -753,14 +755,14 @@ def parse_day(document: Any, *, area_id: str, day: date) -> PriceDocument:
     # A file's calendar is its `market_tz` when it states one (a Great Britain file: shown in London,
     # dated in Paris) and its `tz` otherwise (every v1 zone, Portugal's Madrid included).
     timezone = _text(document, "market_tz" if "market_tz" in document else "tz", "the day document")
-    if dt_util.get_time_zone(timezone) is None:
+    if time_zones.zone(timezone) is None:
         _fail("invalid_field", f"the day document: {timezone!r} is not a known timezone")
     resolution = _resolution(_require(document, "res", "the day document"), "the day document: 'res'")
     unit = _text(document, "unit", "the day document")
     if unit != RELAY_PRICE_UNIT:
         _fail("unit_mismatch", f"the day document is priced in {unit!r}, not {RELAY_PRICE_UNIT!r}")
 
-    zone = dt_util.get_time_zone(timezone)
+    zone = time_zones.require_zone(timezone)
     published_start = _timestamp(document, "start", "the day document")
     # Compared by instant: the published `start` carries the relay's offset, the constructed
     # midnight the zone's own.
@@ -870,7 +872,7 @@ def parse_profile(document: Any, *, area_id: str) -> PriceProfile:
     if document_area != area_id:
         _fail("area_mismatch", f"the profile is for {document_area!r}, not {area_id!r}")
     timezone = _text(document, "tz", what)
-    if dt_util.get_time_zone(timezone) is None:
+    if time_zones.zone(timezone) is None:
         _fail("invalid_field", f"{what}: {timezone!r} is not a known timezone")
     unit = _text(document, "unit", what)
     if unit != RELAY_PRICE_UNIT:

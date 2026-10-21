@@ -21,9 +21,8 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 from dataclasses import dataclass
-from datetime import date, datetime, time, timedelta, timezone
+from datetime import date, datetime, time, timedelta, timezone, tzinfo
 from typing import Final, Literal
-from zoneinfo import ZoneInfo
 
 
 #: Fraction of the charger's maximum rate the deadline must still be reachable at (same derating as hybrid).
@@ -79,17 +78,19 @@ class PriceWaitDecision:
 def expected_publication_at(
     missing_day: date,
     *,
+    zone: tzinfo,
     margin: timedelta = PUBLICATION_MARGIN,
-    zone: str = PUBLICATION_ZONE,
     local_time: time = PUBLICATION_LOCAL_TIME,
 ) -> datetime:
     """When `missing_day` (market date of the first instant with no price) is expected, as aware UTC.
 
-    The previous day at `local_time` in `zone` (the source's own clock), converted to UTC before the margin
-    is added, so a clock change between the two days cannot shift it.
+    The previous day at `local_time` in `zone` (the source's own clock, [PUBLICATION_ZONE] unless the area
+    states another), converted to UTC before the margin is added, so a clock change between the two days
+    cannot shift it. The zone is passed in already resolved: building one reads the disk, which the caller
+    does off the event loop (`time_zones`).
     """
     previous = missing_day - timedelta(days=1)
-    local = datetime.combine(previous, local_time, tzinfo=ZoneInfo(zone))
+    local = datetime.combine(previous, local_time, tzinfo=zone)
     return local.astimezone(timezone.utc) + margin
 
 

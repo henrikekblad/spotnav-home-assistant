@@ -150,7 +150,7 @@ def test_a_malformed_publication_falls_back_to_the_default_and_keeps_the_area(
 def test_great_britain_is_due_at_16_45_uk_time_on_both_sides_of_each_clock_change(
     missing_day: date, expected: str
 ) -> None:
-    at = expected_publication_at(missing_day, zone=LONDON, local_time=time(16, 0))
+    at = expected_publication_at(missing_day, zone=ZoneInfo(LONDON), local_time=time(16, 0))
     assert at == utc(expected)
     assert at.astimezone(ZoneInfo(LONDON)).time() == time(16, 45)
 
@@ -166,7 +166,7 @@ def test_great_britain_is_due_at_16_45_uk_time_on_both_sides_of_each_clock_chang
     ],
 )
 def test_spain_pvpc_is_due_at_21_00_madrid_on_both_sides_of_each_clock_change(missing_day: date, expected: str) -> None:
-    assert expected_publication_at(missing_day, zone=MADRID, local_time=time(20, 15)) == utc(expected)
+    assert expected_publication_at(missing_day, zone=ZoneInfo(MADRID), local_time=time(20, 15)) == utc(expected)
 
 
 def test_the_gap_a_plan_waits_for_is_the_market_days_and_the_time_the_areas() -> None:

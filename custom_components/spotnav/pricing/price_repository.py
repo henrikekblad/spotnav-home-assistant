@@ -25,6 +25,11 @@ The restore is single-flight the same way: one repository-owned task reads the s
 it finds, callers await it under `shield`, and adoption is ordered by acquisition time so a late
 store read never overwrites a newer fetch. A failed restore is logged and treated as an absent store.
 
+Every zone a document names (an area's `tz` and `market_tz`, a publication's clock, a day file's or
+profile's zone) is resolved off the event loop when the document is fetched or restored, before it is
+parsed, so the parsers and everything after them read zones from `time_zones`' cache and never build one
+from disk on the loop.
+
 Only explicit `refresh` operations live here: no cadence, backoff or timers (see the manager). Prices
 are stored as published.
 
@@ -55,6 +60,7 @@ from homeassistant.util import dt as dt_util
 
 from ..const import DOMAIN
 from ..runtime import domain_data
+from .. import time_zones
 from .market_day import compose_display_day, market_days_for, principal_market_day
 from .relay_contract import (
     AreaCatalogue,
@@ -627,6 +633,8 @@ class PriceRepository:
         except Exception as err:  # noqa: BLE001 - any store failure means "no store"
             _LOGGER.warning("Could not read the stored relay cache (%s); continuing without it", type(err).__name__)
             return
+        # Every zone the stored documents name, resolved off the loop before they are parsed.
+        await time_zones.async_resolve_document(raw)
         self._adopt(raw)
 
     def _adopt(self, raw: Any) -> None:
@@ -952,7 +960,10 @@ class PriceRepository:
             raise _Failure("timeout") from err
         except ClientError as err:
             raise _Failure("network") from err
-        return loads_document(body.decode("utf-8", errors="replace"))
+        document = loads_document(body.decode("utf-8", errors="replace"))
+        # Every zone the document names, resolved off the loop before any parser reads it.
+        await time_zones.async_resolve_document(document)
+        return document
 
     def _payload(self) -> dict[str, Any]:
         """Everything worth restoring, as one document, rebuilt from the caches on every write so the last
@@ -1115,6 +1126,8 @@ async def async_setup_price_repository(
     fetch: a restart shows the last good documents without asking the network.
     """
     data = domain_data(hass)
+    # The fixed zones and Home Assistant's own, before anything reads them on the loop.
+    await time_zones.async_resolve_defaults(hass.config.time_zone)
     if data.price_repository is not None:
         await data.price_repository.async_restore()
         return data.price_repository

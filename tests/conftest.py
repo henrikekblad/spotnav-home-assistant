@@ -10,6 +10,7 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers import event as event_helper
 from pytest_homeassistant_custom_component.common import async_mock_service
 
+from custom_components.spotnav import time_zones
 from custom_components.spotnav.execution import auto_execution as auto_execution_module, controller as controller_module
 from custom_components.spotnav.execution.controller import ChargingController, ChargingPlan
 
@@ -24,6 +25,32 @@ pytest_plugins = "pytest_homeassistant_custom_component"
 def auto_enable_custom_integrations(enable_custom_integrations):
     """Make custom_components/spotnav discoverable during tests."""
     yield
+
+
+@pytest.fixture(autouse=True)
+def resolved_time_zones():
+    """Every test starts with the same zones resolved, whatever ran before it on this worker: the ones
+    the relay fixtures name, as a fetched or restored catalogue leaves them in a running installation.
+    Resolved here, off the loop. `test_time_zones.py` starts from an empty cache instead."""
+    time_zones.clear()
+    for name in RESOLVED_ZONES:
+        time_zones.zone(name)
+    yield
+
+
+#: Every zone the relay fixtures and the tests' own documents name.
+RESOLVED_ZONES = (
+    "Europe/Berlin",
+    "Europe/Brussels",
+    "Europe/Copenhagen",
+    "Europe/Helsinki",
+    "Europe/Lisbon",
+    "Europe/London",
+    "Europe/Madrid",
+    "Europe/Oslo",
+    "Europe/Paris",
+    "Europe/Stockholm",
+)
 
 
 @pytest.fixture(autouse=True)

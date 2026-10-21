@@ -30,6 +30,7 @@ from homeassistant.core import callback, HomeAssistant
 from homeassistant.helpers import entity_registry as er
 from homeassistant.util import dt as dt_util
 
+from .. import time_zones
 from ..const import (
     CONF_BATTERY_AGGREGATE_POWER_ENTITY,
     CONF_CHARGE_CONTROL,
@@ -956,7 +957,7 @@ def _held_documents(
     """
     if repository is None or area_id is None or tz is None:
         return ((), ())
-    zone = dt_util.get_time_zone(tz)
+    zone = time_zones.zone(tz)
     if zone is None:
         return ((), ())
     today = now.astimezone(zone).date()

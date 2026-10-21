@@ -22,6 +22,7 @@ from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers.event import async_track_state_change_event
 from homeassistant.util import dt as dt_util
 
+from .. import time_zones
 from . import history_wait, price_wait, vehicle_update_wait
 from ..execution import hybrid_execution
 from ..execution.auto_execution import (
@@ -762,7 +763,7 @@ class AutoPlannerController:
         area's zone before anything is subscribed to it.
         """
         entry = None if not settings.area_id else self._manager.catalogue_snapshot().area(settings.area_id)
-        zone = None if entry is None else dt_util.get_time_zone(entry.tz)
+        zone = None if entry is None else time_zones.zone(entry.tz)
         return zone if zone is not None else dt_util.get_default_time_zone()
 
     def _with_departure_date_guard(
@@ -808,7 +809,7 @@ class AutoPlannerController:
         """
         if not settings.departure_enabled:
             return None
-        zone = dt_util.get_time_zone(entry.tz)
+        zone = time_zones.zone(entry.tz)
         if zone is None:
             return None
         chosen = settings.departure_date
@@ -825,7 +826,7 @@ class AutoPlannerController:
         already on one (the ordinary daily departure) or every weekday is allowed."""
         if len(settings.departure_weekdays) >= 7:
             return None
-        zone = dt_util.get_time_zone(tz)
+        zone = time_zones.zone(tz)
         if zone is None:
             return None
         day = resolve_departure(calculated_at, tz, settings.departure, calculated_at).astimezone(zone).date()
@@ -1857,7 +1858,7 @@ class AutoPlannerController:
             return None
         dated = self._effective_departure_date(settings, entry, calculated_at)
         if dated is not None:
-            zone = dt_util.get_time_zone(entry.tz)
+            zone = time_zones.zone(entry.tz)
             if zone is None:
                 return None
             return local_instant(dated, settings.departure, zone)
@@ -2577,9 +2578,9 @@ def expected_publication(entry: AreaEntry, missing_from: datetime) -> datetime:
     The publication that fills a gap is the market day's (a London evening hour is the next Paris file),
     at the area's own stated time in its own zone (`publication`, 13:00 Brussels when unstated).
     """
-    missing_day = missing_from.astimezone(dt_util.get_time_zone(entry.market_tz)).date()
+    missing_day = missing_from.astimezone(time_zones.require_zone(entry.market_tz)).date()
     return price_wait.expected_publication_at(
-        missing_day, zone=entry.publication.tz, local_time=entry.publication.local_time
+        missing_day, zone=time_zones.require_zone(entry.publication.tz), local_time=entry.publication.local_time
     )
 
 
