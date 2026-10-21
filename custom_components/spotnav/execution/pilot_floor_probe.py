@@ -1,20 +1,23 @@
-"""One-shot diagnostic: what does the charger do when `AssignedCurrent` names a value below 6 A?
+"""Diagnostic: what does the charger do when `AssignedCurrent` names a value below 6 A?
 
-Not a feature and no options flow. The regulator sometimes computes that a charger should draw no
-current, but `rewrite_assigned_current` refuses values below 1 A and the charger keeps its previous
-assignment. `AssignedCurrent` is a vendor key outside OCPP 1.6, so only the charger can say whether
-it clamps to the IEC 61851 floor of 6 A, suspends, or refuses; this probe asks it once during a real
-charge.
+Not a feature, off by default and never started on its own. The regulator sometimes computes that a
+charger should draw no current, but `rewrite_assigned_current` refuses values below 1 A and the charger
+keeps its previous assignment. `AssignedCurrent` is a vendor key outside OCPP 1.6, so only the charger can
+say whether it clamps to the IEC 61851 floor of 6 A, suspends, or refuses. An administrator asks for one
+run on one charger with the `spotnav/run_pilot_floor_probe` WebSocket command (`api/debug.py`); the answers
+are the `PILOT_FLOOR_PROBE` log lines.
 
 Rules:
 
+* it runs only when asked, and only during a real charge (`probe_refusal`);
 * it only ever lowers a current, never touches the charge-control switch or starts anything;
-* it runs once per installation and any failure ends it for good, no retries;
+* any failure ends that run, no retries;
 * total perturbation is about a hundred seconds;
 * while in flight `_async_assign_current` writes nothing, so the regulator cannot overwrite a step.
 
 The restore must never fail: it runs from a `finally` for every exit, including cancellation, and
-writes the remembered slot verbatim rather than a rebuilt one.
+writes the remembered slot verbatim rather than a rebuilt one. A run cut short by a crash or a restart
+is put back when the entry loads (`async_restore_interrupted`), retried while the charger is not ready.
 """
 
 from __future__ import annotations
@@ -22,13 +25,15 @@ from __future__ import annotations
 import asyncio
 import logging
 from collections.abc import Awaitable, Callable
+from contextlib import AbstractAsyncContextManager, nullcontext
 from datetime import datetime
 from typing import Any, Protocol
 
 from homeassistant.core import HomeAssistant
 from homeassistant.util import dt as dt_util
 
-from ..const import CURRENT_CONTROL_CHANGE_CONFIGURATION
+from ..const import CURRENT_CONTROL_CHANGE_CONFIGURATION, DEFAULT_MIN_CURRENT_A
+from .chargers.ocpp import assigned_amps_for_connector, rewrite_assigned_current
 
 
 _LOGGER = logging.getLogger(__name__)
@@ -54,8 +59,7 @@ STORE_KEY = "pilot_floor_probe"
 
 def probe_refusal(
     *,
-    completed: bool,
-    started: bool,
+    interrupted: bool,
     current_control: str,
     has_current_limit: bool,
     plan_active: bool,
@@ -64,13 +68,13 @@ def probe_refusal(
 ) -> str | None:
     """Why the probe may not run right now, or `None`.
 
-    Pure; the reason is the first applicable condition in report order.
+    Pure; the reason is the first applicable condition in report order. A finished run does not stop
+    another: the request is the consent, so a person may ask again (after a firmware update, say).
     """
-    if completed:
-        return "already_completed"
-    if started:
-        # A run began and did not finish (restart or crash); it is not retried.
-        return "already_started"
+    if interrupted:
+        # A run began and did not finish (restart or crash), and its slot is not put back yet: a new
+        # run would remember the probe's own value as the original.
+        return "interrupted_probe_not_restored"
     if current_control != CURRENT_CONTROL_CHANGE_CONFIGURATION:
         return "current_control_is_not_change_configuration"
     if not has_current_limit:
@@ -108,12 +112,20 @@ class ProbeHost(Protocol):
     async def probe_write_assigned_current(self, devid: str, value: str) -> bool:
         """Write the AssignedCurrent string verbatim, reporting whether it went."""
 
+    async def probe_read_slot(self, devid: str) -> str | None:
+        """The AssignedCurrent string of charge point `devid`, or None when it cannot be read."""
+
+def interrupted(record: dict[str, Any]) -> bool:
+    """Whether the record is of a run that started and did not finish."""
+    return bool(record.get("started")) and not record.get("completed")
+
+
 def connector_entity_id(devid: str, connector: int, kind: str) -> str:
     """One of a connector's OCPP sensors: `sensor.<devid>_connector_<n>_<kind>`."""
     return f"sensor.{devid}_connector_{connector}_{kind}"
 
 class PilotFloorProbe:
-    """Runs the sequence once; while in flight the site regulator cannot interrupt it."""
+    """Runs the sequence when asked; while in flight the site regulator cannot interrupt it."""
 
     def __init__(
         self,
@@ -152,10 +164,8 @@ class PilotFloorProbe:
             # Checked first: two reports in one loop iteration would both pass the gate, and the
             # second probe would remember and later restore the first one's written value.
             return "already_running"
-        record = self._host.probe_records()
         return probe_refusal(
-            completed=bool(record.get("completed")),
-            started=bool(record.get("started")),
+            interrupted=interrupted(self._host.probe_records()),
             current_control=self._host.current_control,
             has_current_limit=bool(self._host.current_limit),
             plan_active=self._host.plan is not None,
@@ -163,18 +173,11 @@ class PilotFloorProbe:
             at_or_above_floor_for_s=self.at_or_above_floor_for_s(),
         )
 
-    async def async_maybe_run(self) -> None:
-        """Run the probe when every condition holds, and say why not when one does not."""
-        reason = self.refusal()
-        if reason is not None:
-            _LOGGER.debug("%s not starting: %s", PROBE_TOKEN, reason)
-            return
-        # Claimed before the first await so two reports cannot both start a probe.
-        self._in_flight = True
-        await self._async_run_claimed()
-
     async def async_run(self) -> None:
-        """Run the whole sequence, unless one is already running. Never raises."""
+        """Run the whole sequence, unless one is already running. Never raises.
+
+        The caller has checked `refusal()`; this only refuses a second run beside one in flight.
+        """
         if self._in_flight:
             _LOGGER.warning("%s is already running; not starting a second", PROBE_TOKEN)
             return
@@ -201,14 +204,16 @@ class PilotFloorProbe:
                 )
                 return
             devid, connector, remembered = read
-            # Recorded before the first write so a restart never leaves the original slot unknown.
+            # Recorded before the first write so a restart never leaves the original slot unknown. A
+            # new record, not a merge: an earlier run's `completed` must not mark this one finished.
             await self._async_record(
                 {
                     "started": True,
                     "remembered": remembered,
                     "devid": devid,
                     "connector": connector,
-                }
+                },
+                replace=True,
             )
             _LOGGER.info(
                 "%s remembered %s connector %s as %r", PROBE_TOKEN, devid, connector, remembered
@@ -227,9 +232,7 @@ class PilotFloorProbe:
             finally:
                 self._in_flight = False
                 self._above_since = None
-                await self._async_record(
-                    {"started": True, "completed": True, "completed_at": self._now().isoformat()}
-                )
+                await self._async_finish()
 
     async def _async_step(self, devid: str, connector: int, amps: int) -> bool:
         """One step: write, hold, read back, log. False ends the probe."""
@@ -268,15 +271,91 @@ class PilotFloorProbe:
             remembered,
         )
 
+    async def async_restore_interrupted(
+        self, guard: Callable[[], AbstractAsyncContextManager[Any]] = nullcontext
+    ) -> bool:
+        """Put back the slot of a run that a crash or restart cut short. True when nothing is left to do.
+
+        False means the charger could not be read or written (not connected yet, say) and the caller
+        tries again later. Only the probe's own connector is touched, and only while it still carries a
+        value below the 6 A floor: nothing else assigns one (`OcppAssignedCurrent.async_set` refuses it),
+        so a value at or above the floor means the regulator has assigned this connector since, and the
+        probe has nothing left to undo. The other connectors keep whatever they carry now. `guard` is
+        held from the read to the write (the caller's assignment lock), never while the record is saved.
+        """
+        record = self._host.probe_records()
+        if not interrupted(record):
+            return True
+        devid = record.get("devid")
+        connector = record.get("connector")
+        remembered = record.get("remembered")
+        if (
+            not isinstance(devid, str)
+            or not devid
+            or type(connector) is not int
+            or not isinstance(remembered, str)
+        ):
+            # A run that stopped before it read the slot wrote nothing; any other shape is not ours.
+            _LOGGER.info("%s an interrupted run had written nothing; nothing to restore", PROBE_TOKEN)
+            await self._async_finish()
+            return True
+        async with guard():
+            outcome = await self._async_put_back(devid, connector, remembered)
+        if outcome is None:
+            return False
+        await self._async_finish()
+        return True
+
+    async def _async_put_back(self, devid: str, connector: int, remembered: str) -> str | None:
+        """Read, decide and write for `async_restore_interrupted`: what was done, or None to try later."""
+        slot = await self._host.probe_read_slot(devid)
+        if slot is None:
+            return None
+        now_amps = assigned_amps_for_connector(slot, connector)
+        if now_amps is None or now_amps >= DEFAULT_MIN_CURRENT_A:
+            _LOGGER.info(
+                "%s %s connector %s is already assigned again (%r); nothing to restore",
+                PROBE_TOKEN,
+                devid,
+                connector,
+                slot,
+            )
+            return "already_assigned"
+        remembered_amps = assigned_amps_for_connector(remembered, connector)
+        try:
+            value = (
+                remembered
+                if remembered_amps is None
+                else rewrite_assigned_current(slot, connector, remembered_amps)
+            )
+        except ValueError:
+            value = remembered
+        if not await self._host.probe_write_assigned_current(devid, value):
+            return None
+        _LOGGER.info(
+            "%s restored %s connector %s after an interrupted run: %r -> %r",
+            PROBE_TOKEN,
+            devid,
+            connector,
+            slot,
+            value,
+        )
+        return "restored"
+
+    async def _async_finish(self) -> None:
+        await self._async_record(
+            {"started": True, "completed": True, "completed_at": self._now().isoformat()}
+        )
+
     def _reading(self, entity_id: str) -> str:
         state = self._host.hass.states.get(entity_id)
         return state.state if state is not None else "missing"
 
-    async def _async_record(self, fields: dict[str, Any]) -> None:
-        """Merge into the persisted record and save. Never raises: a failed probe must still
-        be able to say so, and persistence trouble is no reason to leave a charger mid-step.
+    async def _async_record(self, fields: dict[str, Any], *, replace: bool = False) -> None:
+        """Merge into the persisted record (or replace it) and save. Never raises: a failed probe must
+        still be able to say so, and persistence trouble is no reason to leave a charger mid-step.
         """
-        record = dict(self._host.probe_records())
+        record = {} if replace else dict(self._host.probe_records())
         record.update(fields)
         try:
             await self._host.probe_save(record)

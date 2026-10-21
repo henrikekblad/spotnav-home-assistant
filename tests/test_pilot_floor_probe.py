@@ -1,19 +1,22 @@
-"""The one-off pilot-floor probe, a diagnostic that deletes itself.
+"""The pilot-floor probe, a diagnostic that runs only when an administrator asks.
 
 No socket: OCPP services are mocked, the clock is moved by hand and the thirty-second holds return at once.
-Each test pins the dangerous part: nothing but the probe writes a current while it runs, and the charger
-is always put back exactly where it was found.
+Each test pins the dangerous part: nothing starts the probe but the request, nothing but the probe writes a
+current while it runs, and the charger is always put back where it was found, also after a restart.
 """
 
 from __future__ import annotations
 
+import asyncio
 import logging
 from datetime import datetime, timedelta, timezone
+from typing import Any
 
 import pytest
-from homeassistant.core import HomeAssistant
+from homeassistant.core import HomeAssistant, ServiceCall, SupportsResponse
+from homeassistant.exceptions import HomeAssistantError
 from homeassistant.util import dt as dt_util
-from pytest_homeassistant_custom_component.common import async_mock_service
+from pytest_homeassistant_custom_component.common import async_fire_time_changed, async_mock_service
 
 from custom_components.spotnav.const import (
     CONF_CHARGE_CONTROL,
@@ -23,7 +26,11 @@ from custom_components.spotnav.const import (
     CONF_OCPP_CONNECTOR_ID,
     CURRENT_CONTROL_CHANGE_CONFIGURATION,
 )
-from custom_components.spotnav.execution.controller import ChargingController
+from custom_components.spotnav.execution.controller import (
+    ChargingController,
+    PROBE_RESTORE_RETRY_S,
+    PROBE_RESTORE_TRIES,
+)
 from tests.helpers import install_schedule
 from custom_components.spotnav.execution.pilot_floor_probe import (
     FLOOR_FOR_S,
@@ -82,8 +89,7 @@ def _values(configure_calls: list) -> list[str]:
 
 
 _GATE = {
-    "completed": False,
-    "started": False,
+    "interrupted": False,
     "current_control": CURRENT_CONTROL_CHANGE_CONFIGURATION,
     "has_current_limit": True,
     "plan_active": True,
@@ -99,8 +105,7 @@ def test_the_gate_opens_when_every_condition_holds() -> None:
 @pytest.mark.parametrize(
     ("change", "expected"),
     [
-        ({"completed": True}, "already_completed"),
-        ({"started": True}, "already_started"),
+        ({"interrupted": True}, "interrupted_probe_not_restored"),
         ({"current_control": ""}, "current_control_is_not_change_configuration"),
         ({"has_current_limit": False}, "no_current_limit_entity"),
         ({"plan_active": False}, "no_active_plan"),
@@ -177,7 +182,6 @@ async def test_a_probe_already_in_flight_cannot_be_started_again(
     probe._in_flight = True
 
     assert probe.refusal() == "already_running"
-    await probe.async_maybe_run()
     await probe.async_run()
     assert configure_calls == []
 
@@ -339,10 +343,11 @@ async def test_an_unreadable_slot_writes_nothing_and_is_not_retried(
     await controller.async_shutdown()
 
 
-async def test_completion_survives_a_restart_and_the_probe_never_runs_again(
+async def test_a_restart_never_runs_the_probe_and_a_finished_run_does_not_block_a_new_request(
     hass: HomeAssistant,
 ) -> None:
-    """Run it, restart the integration, and nothing is written a second time."""
+    """Run it, restart: nothing is written on its own. A finished run is no reason to refuse a person who asks
+    again, and the new run's record starts afresh, so a crash in it is noticed."""
     hass.states.async_set("switch.a", "on")
     configure_calls = _mocked_ocpp(hass)
     controller = _controller(hass)
@@ -355,58 +360,152 @@ async def test_completion_survives_a_restart_and_the_probe_never_runs_again(
     configure_calls.clear()
     restarted = _controller(hass)
     await restarted.async_initialize()
-
-    assert restarted._probe.refusal() == "already_completed"
-    await restarted._probe.async_maybe_run()
+    await hass.async_block_till_done()
     assert configure_calls == []
+    # Only the gates of a charge refuse it now, not the earlier run.
+    assert restarted._probe.refusal() == "no_active_plan"
 
     await restarted.async_shutdown()
 
 
-async def test_a_probe_that_did_not_finish_says_what_to_put_back(
+def _interrupted_record(**changes: Any) -> dict[str, Any]:
+    return {
+        "started": True,
+        "remembered": _ASSIGNED,
+        "last_written": "1.1,2.10",
+        "devid": "charger",
+        "connector": 1,
+        **changes,
+    }
+
+
+async def _seed(hass: HomeAssistant, record: dict[str, Any]) -> None:
+    await _controller(hass)._store.async_save({STORE_KEY: record})
+
+
+def _flaky_ocpp(hass: HomeAssistant, answers: list[object]) -> list:
+    """`get_configuration` answering each of `answers` in turn (an exception is raised), then the last for good."""
+
+    async def get_configuration(call: ServiceCall) -> dict[str, Any]:
+        answer = answers.pop(0) if len(answers) > 1 else answers[0]
+        if isinstance(answer, Exception):
+            raise answer
+        return {"value": answer}
+
+    hass.services.async_register(
+        "ocpp", "get_configuration", get_configuration, supports_response=SupportsResponse.ONLY
+    )
+    return async_mock_service(hass, "ocpp", "configure")
+
+
+async def test_an_interrupted_probe_is_put_back_when_the_entry_loads(
     hass: HomeAssistant, caplog: pytest.LogCaptureFixture
 ) -> None:
-    """A restart in the middle leaves the car where the last step put it.
-
-    Nothing writes the remembered value back automatically (the site regulator has assigned its own
-    currents by then); an ERROR naming both values is left for a person to act on.
-    """
-    seeder = _controller(hass)
-    await seeder._store.async_save(
-        {
-            STORE_KEY: {
-                "started": True,
-                "remembered": _ASSIGNED,
-                "last_written": "1.1,2.10",
-                "devid": "charger",
-                "connector": 1,
-            }
-        }
-    )
+    """A restart in the middle left connector 1 at the probe's 1 A: the next load puts back its 16 A by
+    itself, keeps connector 2 as it is now, and says at INFO what it wrote."""
+    await _seed(hass, _interrupted_record())
     hass.states.async_set("switch.a", "on")
-    configure_calls = _mocked_ocpp(hass)
+    configure_calls = _flaky_ocpp(hass, ["1.1,2.12"])
 
     restarted = _controller(hass)
-    with caplog.at_level(logging.ERROR):
+    with caplog.at_level(logging.INFO):
         await restarted.async_initialize()
+        await hass.async_block_till_done()
 
-    assert "1.1,2.10" in caplog.text
-    assert _ASSIGNED in caplog.text
-    # Neither a write nor a re-run: the probe is over and only a person can undo what it left.
-    assert configure_calls == []
-    assert restarted._probe.refusal() == "already_started"
+    assert _values(configure_calls) == ["1.16,2.12"]
+    restored = [r for r in caplog.records if "restored charger connector 1" in r.getMessage()]
+    assert restored and restored[0].levelno == logging.INFO
+    assert "set it back by hand" not in caplog.text
+    saved = await restarted._store.async_load()
+    assert saved is not None and saved[STORE_KEY]["completed"] is True
+    assert restarted._probe.refusal() != "interrupted_probe_not_restored"
 
     await restarted.async_shutdown()
 
 
-async def test_a_real_charge_starts_the_probe_and_stopping_it_disarms_the_watch(
+async def test_an_interrupted_probe_whose_connector_was_assigned_since_writes_nothing(
     hass: HomeAssistant,
 ) -> None:
-    """The whole path: a plan, a sensor report, sixty seconds, three steps, a restore.
+    """At or above the 6 A floor only the regulator can have written: nothing of the probe is left to undo."""
+    await _seed(hass, _interrupted_record())
+    hass.states.async_set("switch.a", "on")
+    configure_calls = _flaky_ocpp(hass, ["1.10,2.10"])
 
-    Nothing calls the probe directly: the state-change listener opened by the connector's current-import
-    sensor feeds it, and goes away with the plan. The car starts drawing nothing, because a report of
-    the value the sensor already holds is not a state change and would never start the floor clock.
+    restarted = _controller(hass)
+    await restarted.async_initialize()
+    await hass.async_block_till_done()
+
+    assert configure_calls == []
+    saved = await restarted._store.async_load()
+    assert saved is not None and saved[STORE_KEY]["completed"] is True
+
+    await restarted.async_shutdown()
+
+
+async def test_an_interrupted_probe_is_put_back_once_the_charger_becomes_ready(
+    hass: HomeAssistant,
+) -> None:
+    """The charge point has not reconnected when Home Assistant starts: tried again a minute later, and put
+    back then; until it is, a new run is refused."""
+    await _seed(hass, _interrupted_record())
+    hass.states.async_set("switch.a", "on")
+    configure_calls = _flaky_ocpp(
+        hass, [HomeAssistantError("not connected"), HomeAssistantError("not connected"), "1.3,2.10"]
+    )
+
+    restarted = _controller(hass)
+    await restarted.async_initialize()
+    await hass.async_block_till_done()
+    assert configure_calls == []
+    assert restarted._probe.refusal() == "interrupted_probe_not_restored"
+
+    async_fire_time_changed(hass, dt_util.utcnow() + timedelta(seconds=PROBE_RESTORE_RETRY_S + 1))
+    await hass.async_block_till_done()
+    assert configure_calls == []
+
+    async_fire_time_changed(hass, dt_util.utcnow() + timedelta(seconds=2 * PROBE_RESTORE_RETRY_S + 2))
+    await hass.async_block_till_done()
+    assert _values(configure_calls) == [_ASSIGNED]
+    assert restarted._probe_restore_cancel is None
+
+    await restarted.async_shutdown()
+
+
+async def test_a_charger_that_never_answers_is_given_up_on_until_the_next_start(
+    hass: HomeAssistant, caplog: pytest.LogCaptureFixture
+) -> None:
+    """Bounded: after the last try a warning names both values, and the record stays for the next start."""
+    await _seed(hass, _interrupted_record())
+    hass.states.async_set("switch.a", "on")
+    configure_calls = _flaky_ocpp(hass, [HomeAssistantError("not connected")])
+
+    restarted = _controller(hass)
+    with caplog.at_level(logging.WARNING):
+        await restarted.async_initialize()
+        await hass.async_block_till_done()
+        for tick in range(1, PROBE_RESTORE_TRIES + 2):
+            async_fire_time_changed(
+                hass, dt_util.utcnow() + timedelta(seconds=tick * (PROBE_RESTORE_RETRY_S + 1))
+            )
+            await hass.async_block_till_done()
+
+    assert configure_calls == []
+    assert restarted._probe_restore_cancel is None
+    assert "trying again at the next start" in caplog.text
+    assert "1.1,2.10" in caplog.text and _ASSIGNED in caplog.text
+    saved = await restarted._store.async_load()
+    assert saved is not None and not saved[STORE_KEY].get("completed")
+
+    await restarted.async_shutdown()
+
+
+async def test_a_real_charge_never_starts_the_probe_and_the_request_does(
+    hass: HomeAssistant,
+) -> None:
+    """The whole path: a plan, sensor reports, sixty seconds, and still nothing until it is asked for; then
+    three steps and a restore. The listener only feeds the floor clock and goes away with the plan. The car
+    starts drawing nothing, because a report of the value the sensor already holds is not a state change and
+    would never start the floor clock.
     """
     hass.states.async_set("switch.a", "on")
     for kind, value in (
@@ -426,6 +525,9 @@ async def test_a_real_charge_starts_the_probe_and_stopping_it_disarms_the_watch(
     probe = PilotFloorProbe(controller, now=clock, sleep=_no_wait)
     controller._probe = probe
 
+    # No plan, no charge to probe: refused with the gate's word, nothing written.
+    assert controller.async_run_pilot_floor_probe() == "no_active_plan"
+
     now = dt_util.utcnow()
     await install_schedule(
         controller,
@@ -437,10 +539,8 @@ async def test_a_real_charge_starts_the_probe_and_stopping_it_disarms_the_watch(
     )
     await hass.async_block_till_done()
     configure_calls.clear()
-    # The listener is armed and the gate is still shut: no report has been seen, so nothing claims a minute of draw.
     assert controller._probe_listener_cancel is not None
-    assert probe.refusal() == "drawing_below_5a_for_60s"
-    assert configure_calls == []
+    assert controller.async_run_pilot_floor_probe() == "drawing_below_5a_for_60s"
 
     hass.states.async_set("sensor.charger_connector_1_current_import", "16.0")
     await hass.async_block_till_done()
@@ -448,6 +548,12 @@ async def test_a_real_charge_starts_the_probe_and_stopping_it_disarms_the_watch(
     hass.states.async_set("sensor.charger_connector_1_current_import", "16.1")
     await hass.async_block_till_done()
 
+    # Every gate is open, and still nothing: the probe is never armed by itself.
+    assert probe.refusal() is None
+    assert configure_calls == []
+
+    assert controller.async_run_pilot_floor_probe() is None
+    await hass.async_block_till_done()
     assert _values(configure_calls) == ["1.5,2.10", "1.3,2.10", "1.1,2.10", _ASSIGNED]
     assert probe.in_flight is False
 
@@ -456,3 +562,31 @@ async def test_a_real_charge_starts_the_probe_and_stopping_it_disarms_the_watch(
     assert controller._probe_listener_cancel is None
 
     await controller.async_shutdown()
+
+
+async def test_a_shutdown_in_the_middle_of_a_requested_run_puts_the_slot_back(
+    hass: HomeAssistant,
+) -> None:
+    """An unload while the current is held down cancels the run, and its `finally` restores the slot."""
+    hass.states.async_set("switch.a", "on")
+    configure_calls = _mocked_ocpp(hass)
+    controller = _controller(hass)
+    await controller.async_initialize()
+
+    held = asyncio.Event()
+
+    async def hold_forever(_seconds: float) -> None:
+        held.set()
+        await asyncio.Event().wait()
+
+    controller._probe = PilotFloorProbe(controller, now=_Clock(), sleep=hold_forever)
+    controller._probe.refusal = lambda: None  # type: ignore[method-assign]
+    assert controller.async_run_pilot_floor_probe() is None
+    await held.wait()
+    assert _values(configure_calls) == ["1.5,2.10"]
+
+    await controller.async_shutdown()
+
+    assert _values(configure_calls) == ["1.5,2.10", _ASSIGNED]
+    saved = await controller._store.async_load()
+    assert saved is not None and saved[STORE_KEY]["completed"] is True
