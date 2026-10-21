@@ -109,7 +109,7 @@ from .battery_probe import (
     within_held_band,
 )
 from .regulator_damping import DampingDecision, RegulatorDamper
-from .step_guard import StepGuard
+from .step_guard import charger_above_written, StepGuard
 from .regulator import (
     allocate_regulator_decisions,
     applyability_failure,
@@ -1442,6 +1442,36 @@ class SiteCapacityController:
             # at is not known here, so the next proposal is a first write, at once (a lowering one above all).
             damper.forget_write(None)
             previous_setpoint = None
+
+        if decision.reason in MUST_LOWER_REASONS and previous_setpoint is not None:
+            # An overload is measured against what is on the charger, not only against what was written: a fresh
+            # reading a step above it (a limit the charger dropped, a write the site was not told of) is where the
+            # lowering starts from, and the proposal never goes above what was written on that account.
+            measured = [
+                basis.measured_current_a
+                for basis in decision.basis.values()
+                if basis.measured_current_a is not None
+            ]
+            on_charger = charger_above_written(
+                written_a=previous_setpoint,
+                measured_a=max(measured) if measured else None,
+                charger_read_at=self._charger_read_at(decision),
+                written_at=self._written_at.get(charger_entry_id),
+            )
+            if on_charger is not None:
+                _LOGGER.info(
+                    "SpotNav site %s active control: charger %s reads %.1fA, above the %sA written to it; "
+                    "the overload is lowered from what it draws",
+                    self.entry_id,
+                    charger_entry_id,
+                    on_charger,
+                    previous_setpoint,
+                )
+                if proposed > previous_setpoint:
+                    proposed = previous_setpoint
+                    decision = replace(decision, proposed_current_a=proposed)
+                damper.record_write(on_charger)
+                previous_setpoint = on_charger
 
         # A grid-charging battery that may give way to the car: start the car at its minimum as
         # a probe (only where nothing else would start it; see `site/battery_probe.py`).
