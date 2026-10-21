@@ -86,6 +86,10 @@ match and choose **Approve**. No Home Assistant password or token is stored on t
 - [Home batteries](docs/home-battery.md): the "charging from the grid" signal for Predbat,
   EMHASS and automations.
 - [OCPP chargers](docs/ocpp.md): entity model, current control, connectors.
+- The pilot-floor probe, an OCPP diagnostic that is off by default and never runs on its own: an
+  administrator can ask it once, during a charge, to set one charger's `AssignedCurrent` to 5, 3 and
+  1 A for about thirty seconds each and log what the charger does; it then puts the value back, also
+  after a restart. How to run it: [OCPP chargers](docs/ocpp.md#the-pilot-floor-probe-diagnostic).
 - [Notifications](docs/notifications.md): what SpotNav tells a phone through the Home Assistant app.
 - [Apps and API](docs/api.md): pairing, webhook and WebSocket contracts.
 - [Diagnostics and troubleshooting](docs/troubleshooting.md).
