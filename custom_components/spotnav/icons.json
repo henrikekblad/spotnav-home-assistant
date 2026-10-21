@@ -43,9 +43,6 @@
       }
     },
     "sensor": {
-      "connection": {
-        "default": "mdi:home-assistant"
-      },
       "plan_start": {
         "default": "mdi:clock-start"
       },

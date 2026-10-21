@@ -489,12 +489,6 @@
       }
     },
     "sensor": {
-      "instance_connection": {
-        "name": "Appsammenkobling (alle ladere)"
-      },
-      "connection": {
-        "name": "Apptilkobling"
-      },
       "plan_start": {
         "name": "Planlagt start"
       },

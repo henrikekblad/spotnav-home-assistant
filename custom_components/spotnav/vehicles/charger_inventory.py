@@ -20,7 +20,7 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.network import NoURLAvailableError
 
-from ..const import CONF_ENTRY_TYPE, CONF_WEBHOOK_ID, DOMAIN, ENTRY_TYPE_CHARGER, ENTRY_TYPE_SITE
+from ..const import CONF_ENTRY_TYPE, CONF_WEBHOOK_ID, DOMAIN, ENTRY_TYPE_CHARGER
 
 
 def webhook_base_url(hass: HomeAssistant, webhook_id: str) -> tuple[str, str]:
@@ -51,18 +51,6 @@ def charger_entries(hass: HomeAssistant) -> list[ConfigEntry]:
         if entry.data.get(CONF_ENTRY_TYPE) == ENTRY_TYPE_CHARGER
         and entry.data.get(CONF_WEBHOOK_ID)
     ]
-
-
-def site_entry(hass: HomeAssistant) -> ConfigEntry | None:
-    """This instance's site entry, if it has one."""
-    return next(
-        (
-            entry
-            for entry in hass.config_entries.async_entries(DOMAIN)
-            if entry.data.get(CONF_ENTRY_TYPE) == ENTRY_TYPE_SITE
-        ),
-        None,
-    )
 
 
 def charger_pairing_payload(hass: HomeAssistant) -> list[dict[str, str]]:

@@ -489,12 +489,6 @@
       }
     },
     "sensor": {
-      "instance_connection": {
-        "name": "Sovelluksen pariliitos (kaikki laturit)"
-      },
-      "connection": {
-        "name": "Sovellusyhteys"
-      },
       "plan_start": {
         "name": "Aikataulutettu alku"
       },
