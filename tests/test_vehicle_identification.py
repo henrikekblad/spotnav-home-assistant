@@ -526,6 +526,25 @@ async def test_any_signed_in_user_may_answer_in_the_card(
     assert refused["result"]["error"] == "spotnav_not_admin", "the settings stay an administrator's"
 
 
+async def test_a_phone_of_a_user_who_is_not_an_administrator_answers_the_question(
+    world: World, hass: HomeAssistant, hass_read_only_user
+) -> None:
+    """The phone's answer is an event in that user's context, never an admin service call."""
+    from homeassistant.core import Context
+
+    await world.start()
+    await world.plug_in()
+    await world.later(ASK_AFTER_S + 5)
+    question = world.sent()[0]
+    action = question["data"]["actions"][1]["action"]
+    hass.bus.async_fire(
+        "mobile_app_notification_action", {"action": action}, context=Context(user_id=hass_read_only_user.id)
+    )
+    await hass.async_block_till_done()
+    assert world.settings.target.vehicle_id == world.cars["Tesla"]
+    assert world.identifier.method == METHOD_ANSWERED
+
+
 async def test_the_app_answers_through_the_webhook(world: World, hass: HomeAssistant, hass_client_no_auth) -> None:
     await world.start()
     client = await hass_client_no_auth()

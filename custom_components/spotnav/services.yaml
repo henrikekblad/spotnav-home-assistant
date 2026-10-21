@@ -3,7 +3,7 @@ dismiss_vehicle:
   description: >
     Stop reporting one vehicle-like Home Assistant device in the vehicle
     list, until it is undismissed. Useful when automatic detection
-    picks up a device that is not the car you charge.
+    picks up a device that is not the car you charge. Administrators only.
   fields:
     device_id:
       name: Device ID
@@ -20,7 +20,7 @@ undismiss_vehicle:
   name: Undismiss a detected vehicle
   description: >
     Undo dismiss_vehicle for one device ID, so automatic detection reports it
-    again.
+    again. Administrators only.
   fields:
     device_id:
       name: Device ID
@@ -38,7 +38,77 @@ unconfirm_vehicle:
     automatically, if only one plausible reading is left). Useful when the
     wrong reading was picked. A confirmation that names an entity which no
     longer exists is already ignored without this, and dismissing a vehicle is
-    a separate decision this never touches.
+    a separate decision this never touches. Administrators only.
+  fields:
+    device_id:
+      name: Device ID
+      description: >
+        The Home Assistant device ID to unconfirm. An id with no confirmation
+        is not an error: there is simply nothing to forget.
+      required: true
+      example: 8f14e45fceea167a5a36dedd4bea2543
+      selector:
+        text:
+
+confirm_vehicle_soc:
+  name: Confirm a detected vehicle's state of charge
+  description: >
+    Choose which of a vehicle device's battery sensors is its state of
+    charge, when detection found more than one plausible reading. The same
+    choice as the repair under Settings, System, Repairs and the card's
+    vehicle settings. An entity that is not one of the device's candidates
+    records nothing and is logged once. Undo with unconfirm_vehicle.
+    Administrators only.
+  fields:
+    device_id:
+      name: Device ID
+      description: The Home Assistant device ID of the vehicle.
+      required: true
+      example: 8f14e45fceea167a5a36dedd4bea2543
+      selector:
+        text:
+    entity_id:
+      name: Entity ID
+      description: >
+        The state-of-charge sensor to use, one of the device's current
+        candidates.
+      required: true
+      example: sensor.my_car_battery_level
+      selector:
+        text:
+
+confirm_charge_limit:
+  name: Confirm a detected vehicle's charge limit
+  description: >
+    Choose which of a vehicle device's charge-limit entities SpotNav writes
+    to, when the device has more than one (for example one for AC and one
+    for DC charging). A vehicle with a single charge limit needs none of
+    this. An entity that is not one of the device's charge limits records
+    nothing and is logged once. Undo with unconfirm_charge_limit.
+    Administrators only.
+  fields:
+    device_id:
+      name: Device ID
+      description: The Home Assistant device ID of the vehicle.
+      required: true
+      example: 8f14e45fceea167a5a36dedd4bea2543
+      selector:
+        text:
+    entity_id:
+      name: Entity ID
+      description: The charge-limit entity to write to, one of the device's own.
+      required: true
+      example: number.my_car_charge_limit_ac
+      selector:
+        text:
+
+unconfirm_charge_limit:
+  name: Unconfirm a detected vehicle's charge limit
+  description: >
+    Forget which charge-limit entity was confirmed for one device ID, so the
+    choice goes back to being an ambiguity to resolve. The state-of-charge
+    confirmation and a dismissal are separate decisions this never touches.
+    Administrators only.
   fields:
     device_id:
       name: Device ID
@@ -58,7 +128,7 @@ send_test_notification:
     notifications on for, and a test message to the Companion app phones
     chosen for that charger's notifications. Refused when no charger has the
     app's instant notifications turned on. The result per charger is logged
-    and returned.
+    and returned. Administrators only.
   fields:
     charger:
       name: Charger
