@@ -16,6 +16,7 @@ from typing import Any
 from homeassistant.core import HomeAssistant
 from homeassistant.util import dt as dt_util
 
+from .. import time_zones
 from ..execution.controller import ChargingController
 from ..execution.solar_execution import solar_execution_state
 from ..planning.auto_controller import fiscal_choice_for
@@ -142,7 +143,7 @@ def price_market(hass: HomeAssistant, charger_id: str) -> PriceMarket | None:
     if area is None:
         return None
     return PriceMarket(
-        repository, area_id, area, dt_util.get_time_zone(area.tz), fiscal_choice_for(settings, area)
+        repository, area_id, area, time_zones.zone(area.tz), fiscal_choice_for(settings, area)
     )
 
 
@@ -164,7 +165,7 @@ def price_book_for(hass: HomeAssistant, charger_id: str, now: datetime) -> Price
 
 def local_zone(hass: HomeAssistant):
     """Home Assistant's own time zone, the one days and months are counted in."""
-    return dt_util.get_time_zone(hass.config.time_zone) or dt_util.UTC
+    return time_zones.zone(hass.config.time_zone) or dt_util.UTC
 
 
 def sessions_block(hass: HomeAssistant, charger_id: str, now: datetime) -> dict | None:

@@ -36,6 +36,7 @@ from homeassistant.core import callback, HomeAssistant
 from homeassistant.helpers.event import async_track_point_in_utc_time
 from homeassistant.util import dt as dt_util
 
+from .. import time_zones
 from ..runtime import domain_data
 from .market_day import market_days_for, principal_market_day
 from .price_repository import (
@@ -222,12 +223,12 @@ class CadenceInput:
 
 
 def local_dates(now: datetime, tz: str) -> tuple[date, date]:
-    today = now.astimezone(dt_util.get_time_zone(tz)).date()
+    today = now.astimezone(time_zones.require_zone(tz)).date()
     return today, today + timedelta(days=1)
 
 
 def next_local_midnight(now: datetime, tz: str) -> datetime:
-    zone = dt_util.get_time_zone(tz)
+    zone = time_zones.require_zone(tz)
     following = now.astimezone(zone).date() + timedelta(days=1)
     return datetime(following.year, following.month, following.day, tzinfo=zone)
 
@@ -239,7 +240,7 @@ def in_publication_window(now: datetime, publication: AreaPublication = DEFAULT_
     Madrid for PVPC), not the area's or the host's, so both offsets of a clock change keep the same wall
     time. Yesterday's window is checked too, for a time late enough that its window runs past midnight.
     """
-    zone = dt_util.get_time_zone(publication.tz)
+    zone = time_zones.require_zone(publication.tz)
     instant = now.astimezone(zone)
     for day in (instant.date(), instant.date() - timedelta(days=1)):
         expected = datetime.combine(day, publication.local_time, tzinfo=zone)
@@ -520,6 +521,10 @@ class PriceRefreshManager:
         """
         if self._shutdown:
             raise RuntimeError("the price refresh manager has been shut down")
+        if tz:
+            # A zone named by the caller rather than by a fetched list is resolved here, off the loop. A
+            # zone from the catalogue was resolved when the list was fetched or restored.
+            await time_zones.async_resolve((tz,))
         zone, market_zone = (tz, self._market_zone_for(area_id, tz)) if tz else await self._zone_for(area_id)
 
         previous = self._owner_area(owner_id)

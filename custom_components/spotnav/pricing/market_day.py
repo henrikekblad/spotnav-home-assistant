@@ -25,12 +25,13 @@ from typing import Iterable
 
 from homeassistant.util import dt as dt_util
 
+from .. import time_zones
 from .relay_contract import PriceDocument, PriceInterval
 
 
 def local_midnight(day: date, tz: str) -> datetime:
     """The first instant of a local calendar date, from the zone's own rules."""
-    return datetime(day.year, day.month, day.day, tzinfo=dt_util.get_time_zone(tz))
+    return datetime(day.year, day.month, day.day, tzinfo=time_zones.require_zone(tz))
 
 
 def display_day_span(day: date, tz: str) -> tuple[datetime, datetime]:
@@ -47,7 +48,7 @@ def market_days_for(day: date, tz: str, market_tz: str) -> tuple[date, ...]:
     if tz == market_tz:
         return (day,)
     start, end = display_day_span(day, tz)
-    zone = dt_util.get_time_zone(market_tz)
+    zone = time_zones.require_zone(market_tz)
     first = start.astimezone(zone).date()
     last = (end - timedelta(microseconds=1)).astimezone(zone).date()
     days = [first]
@@ -68,12 +69,12 @@ def principal_market_day(day: date, tz: str, market_tz: str) -> date:
         return day
     start, end = display_day_span(day, tz)
     middle = start + (end - start) / 2
-    return middle.astimezone(dt_util.get_time_zone(market_tz)).date()
+    return middle.astimezone(time_zones.require_zone(market_tz)).date()
 
 
 def market_day_of(instant: datetime, market_tz: str) -> date:
     """The market day an instant falls in (the file that prices it)."""
-    return instant.astimezone(dt_util.get_time_zone(market_tz)).date()
+    return instant.astimezone(time_zones.require_zone(market_tz)).date()
 
 
 def _cut(document: PriceDocument, start: datetime, end: datetime) -> tuple[PriceInterval, ...]:
@@ -95,7 +96,7 @@ def compose_display_day(
     (a day whose later file is not out yet simply ends early). Its own rate table and provenance are the
     first part's.
     """
-    zone = dt_util.get_time_zone(tz)
+    zone = time_zones.require_zone(tz)
     start, end = display_day_span(day, tz)
     parts: list[PriceDocument] = []
     for document in sorted(files, key=lambda item: item.start_instant):

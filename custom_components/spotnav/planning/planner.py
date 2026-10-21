@@ -20,8 +20,8 @@ from dataclasses import dataclass
 from datetime import date, datetime, time, timedelta, timezone
 from typing import Any, Final, Literal
 
-from homeassistant.util import dt as dt_util
 
+from .. import time_zones
 from ..pricing.relay_contract import PriceDocument
 
 
@@ -390,7 +390,7 @@ class PlanRequest:
                 _refuse("invalid_departure", "a departure date needs a departure time")
             if not isinstance(self.departure_date, date) or isinstance(self.departure_date, datetime):
                 _refuse("invalid_departure", "departure_date must be a calendar date")
-        if dt_util.get_time_zone(self.timezone) is None:
+        if time_zones.zone(self.timezone) is None:
             _refuse("timezone_mismatch", f"{self.timezone!r} is not a known timezone")
         for document in self.documents:
             if document.area_id != self.area_id:
@@ -479,7 +479,7 @@ def first_start_for(documents: tuple[PriceDocument, ...], *, now: datetime, tz: 
     `planning_slots` refuse a document lacking its rate. Requires at least one document.
     """
     slots = planning_slots(documents, currency="EUR", timezone=tz)
-    zone = dt_util.get_time_zone(tz)
+    zone = time_zones.require_zone(tz)
     day_offset = slots[0].start.astimezone(zone).utcoffset() or timedelta(0)
     day_zone = timezone(day_offset)
     local_now = now.astimezone(day_zone)
@@ -509,7 +509,7 @@ def resolve_departure(now: datetime, tz: str, departure: time, first_start: date
     arrive late); a nonexistent one advances to the first valid instant after the gap.
     Compared as UTC instants, never wall datetimes.
     """
-    zone = dt_util.get_time_zone(tz)
+    zone = time_zones.require_zone(tz)
     local_now = now.astimezone(zone)
     for day in (local_now.date(), local_now.date() + timedelta(days=1)):
         moment = local_instant(day, departure, zone)
@@ -645,7 +645,7 @@ def _window(request: PlanRequest) -> _Window | PlannerReason:
 
     Shared by `calculate_plan` and `price_gap` so both agree on which prices a request needs.
     """
-    zone = dt_util.get_time_zone(request.timezone)
+    zone = time_zones.require_zone(request.timezone)
     try:
         slots = planning_slots(request.documents, currency=request.currency, timezone=request.timezone)
     except PlannerInputError as err:

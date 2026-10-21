@@ -33,6 +33,7 @@ from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers.event import async_call_later, async_track_point_in_time, async_track_time_interval
 from homeassistant.util import dt as dt_util
 
+from .. import time_zones
 from ..planning.auto_settings import (
     AutoSettings,
     AutoSettingsError,
@@ -2456,7 +2457,7 @@ class AutoExecutor:
         tz = None if snapshot is None else getattr(snapshot, "timezone", None)
         if not isinstance(tz, str) or not tz:
             return None
-        zone = dt_util.get_time_zone(tz)
+        zone = time_zones.zone(tz)
         if zone is None:
             return None
         local = now.astimezone(zone)
