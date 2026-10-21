@@ -21,8 +21,9 @@ webhook, `POST /api/webhook/spotnav_pairing`, that grants nothing by itself:
 
 Requests live in memory for five minutes, at most eight at a time, and codes and ids are never logged.
 The chargers' webhook ids are the credentials handed over; each one is scoped to its own charger.
-An instance-wide `pairing_uri` is also available on the *App pairing (all chargers)* sensor for manual setup.
-Treat webhook ids as secrets and do not share the sensor's attributes.
+The approved handshake is the only way a webhook id leaves Home Assistant: no entity carries one in
+its state or attributes. (The *App connection* and *App pairing* sensors of releases up to 1.17.0 did;
+they are removed on upgrade, together with their recorded history.) Treat webhook ids as secrets.
 
 ## Charger webhook
 
