@@ -35,6 +35,7 @@ from __future__ import annotations
 
 import logging
 import math
+from collections import deque
 from collections.abc import Callable, Iterable
 from dataclasses import dataclass, field, replace
 from datetime import datetime, timedelta
@@ -88,6 +89,10 @@ PEAK_SAVE_INTERVAL_S: Final = 60.0
 #: lagging there: the reading's baseline is its value at the report time (`register_value_at`). An Easee cloud
 #: register that books an hour at once has no value this close and keeps the first value after the reading.
 REGISTER_STEADY_GAP_S: Final = 120.0
+
+#: How far back `SocReader` keeps the register's values (in memory only), and at most how many.
+REGISTER_HISTORY_S: Final = 7200.0
+REGISTER_HISTORY_MAX: Final = 4096
 
 #: How long a vehicle's reported capacity and ceiling are reused (a pack size does not change).
 FACTS_CACHE_S: Final = 300.0
@@ -728,6 +733,11 @@ class SocReader:
         # sensor's state anywhere (one with no state yet resolves to nothing `ensure_watch` could watch).
         self._awaited_vehicle: str | None = None
         self._arrival_cancel: Callable[[], None] | None = None
+        # The register's values seen in the last `REGISTER_HISTORY_S` (in memory only: none after a restart), and
+        # the register they are of (`resolve_soc`'s `register_history`).
+        self._register_samples: deque[RegisterSample] = deque(maxlen=REGISTER_HISTORY_MAX)
+        self._samples_entity_id: str | None = None
+        self._register_watch_cancel: Callable[[], None] | None = None
         self._closed = False
 
     async def async_load(self) -> None:
@@ -746,6 +756,7 @@ class SocReader:
         self._closed = True
         self._drop_watch()
         self._drop_arrival()
+        self._drop_register_watch()
 
     def await_reading(self, stored_vehicle_id: str | None) -> None:
         """A calculation found no usable level: tell `set_on_reading`'s callback of the first one that
@@ -876,10 +887,13 @@ class SocReader:
 
     def _resolve(self, vehicle_id: str | None, anchor: SocAnchor | None) -> SocResolution:
         register_entity_id = self._register_entity_id()
+        self._watch_register(register_entity_id)
         reading, throughout = self._with_comeback(self._raw_reader(vehicle_id))
         since_restart = self._since_restart(reading)
         self._last_reading, self._last_since_restart = reading, since_restart
         register_kwh, register_updated_at = read_energy_register(self._hass, register_entity_id)
+        if register_kwh is not None and register_updated_at is not None:
+            self._note_register(register_updated_at, register_kwh)
         return resolve_soc(
             reading=reading,
             anchor=anchor,
@@ -892,7 +906,47 @@ class SocReader:
             plugged_in_throughout=throughout,
             ceiling_percent=self.vehicle_max_percent(vehicle_id),
             since_restart=since_restart,
+            register_history=self._register_samples,
         )
+
+    def _watch_register(self, entity_id: str | None) -> None:
+        """Keep the register's values as they are posted (`register_history`); another register starts afresh."""
+        if self._closed or entity_id == self._samples_entity_id:
+            return
+        self._drop_register_watch()
+        self._register_samples.clear()
+        self._samples_entity_id = entity_id
+        if entity_id:
+            self._register_watch_cancel = async_track_state_change_event(
+                self._hass, [entity_id], self._on_register_changed
+            )
+
+    def _drop_register_watch(self) -> None:
+        if self._register_watch_cancel is not None:
+            self._register_watch_cancel()
+        self._register_watch_cancel = None
+        self._samples_entity_id = None
+
+    @callback
+    def _on_register_changed(self, event: Event[EventStateChangedData]) -> None:
+        new = event.data["new_state"]
+        if new is None:
+            self._note_register(self._now(), None)
+        else:
+            self._note_register(new.last_updated, _register_kwh(new))
+
+    def _note_register(self, posted_at: datetime, value: float | None) -> None:
+        """Add a register value (`None`: unreadable, a break in its run) and forget those older than
+        `REGISTER_HISTORY_S`."""
+        samples = self._register_samples
+        if samples and samples[-1][0] == posted_at:
+            if samples[-1][1] == value:
+                return
+            samples.pop()
+        samples.append((posted_at, value))
+        horizon = self._now() - timedelta(seconds=REGISTER_HISTORY_S)
+        while samples and samples[0][0] < horizon:
+            samples.popleft()
 
     def _since_restart(self, reading: SocReading | None) -> bool:
         """Whether `reading` is its entity's state as SpotNav found it when it started (`resolve_soc`'s
