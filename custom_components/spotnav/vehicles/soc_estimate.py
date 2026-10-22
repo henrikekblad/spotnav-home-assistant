@@ -17,7 +17,15 @@ state of charge and how sure we are, answered in three layers:
 lag (a cloud that books an hour's energy at once), so the register value the reading is measured from (its
 baseline) is never one posted before the reading: it is the first value the register posts at or after it
 (`resolve_soc`). Energy charged before the reading and booked late lands in that value, not in the estimate;
-energy charged between the reading and that value is left uncounted (an under-count, never an over-count). The
+energy charged between the reading and that value is left uncounted (an under-count, never an over-count).
+
+A reading timed by the car's own report time arrives later than it was made (a cloud poll: the field night of
+21-22 October, an EV6's 70 % made at 02:47:54 arrived at 03:02:51, and the 2.7 kWh charged in between was left
+out, 3.1 points). When the register is seen posting steadily from the report time to the arrival (a value at
+most `REGISTER_STEADY_GAP_S` before and after the report time, no longer gap after it, no reset), it is not
+lagging there: the baseline is its value at the report time, interpolated between the two values around it
+(`register_value_at`, from the values `SocReader` saw in the last `REGISTER_HISTORY_S`). Otherwise, or with no
+values seen (after a restart), the rule above stands. The
 result is flagged `estimated`, a fresh reading (no older than `target_stop.SOC_FRESH_MAX_AGE_S`)
 always replaces it, and it is never invented: with no register, no capacity or a register that
 went backwards the raw reading is reported as is. Nothing here writes to a charger or a car.
@@ -27,10 +35,11 @@ from __future__ import annotations
 
 import logging
 import math
-from collections.abc import Callable
+from collections import deque
+from collections.abc import Callable, Iterable
 from dataclasses import dataclass, field, replace
 from datetime import datetime, timedelta
-from typing import Any, Final
+from typing import Any, Final, Literal
 
 from homeassistant.const import EVENT_STATE_CHANGED, STATE_UNAVAILABLE, STATE_UNKNOWN
 from homeassistant.core import callback, Event, EventStateChangedData, HomeAssistant
@@ -76,12 +85,28 @@ SAME_READING_S: Final = 1.0
 #: what a crash loses of it is under-counted after a reset, never over-counted.
 PEAK_SAVE_INTERVAL_S: Final = 60.0
 
+#: A register seen posting at least this often around a car's report time, and on to the reading's arrival, is not
+#: lagging there: the reading's baseline is its value at the report time (`register_value_at`). An Easee cloud
+#: register that books an hour at once has no value this close and keeps the first value after the reading.
+REGISTER_STEADY_GAP_S: Final = 120.0
+
+#: How far back `SocReader` keeps the register's values (in memory only), and at most how many.
+REGISTER_HISTORY_S: Final = 7200.0
+REGISTER_HISTORY_MAX: Final = 4096
+
 #: How long a vehicle's reported capacity and ceiling are reused (a pack size does not change).
 FACTS_CACHE_S: Final = 300.0
 
 #: A reading that moved less than this since the planner last heard of it does not trigger a
 #: new calculation.
 RECALCULATE_DELTA_PERCENT: Final = 2.0
+
+#: A register value and when it was posted (`None`: the register was unreadable then).
+RegisterSample = tuple[datetime, float | None]
+
+#: Which value a baseline is (`SocAnchor.baseline`): the register's at the car's report time, or the first one
+#: posted after the reading.
+BaselineRule = Literal["report_time", "after_arrival"]
 
 _STORE_VERSION: Final = 1
 _STORE_KEY_PREFIX: Final = f"{DOMAIN}.soc_anchor"
@@ -103,7 +128,8 @@ class SocAnchor:
     it showed since the baseline (what a fall carries); `reset_from_kwh` the value it last fell from, with
     `resume_carried_kwh` what was carried then: a register back at that value was a glitch, and is measured
     on from there with that carry, so the values it showed while down are never counted twice.
-    `time_basis` is what `read_at` was taken from (`SocReading.time_basis`).
+    `time_basis` is what `read_at` was taken from (`SocReading.time_basis`). `baseline` says which value the
+    baseline is (`BaselineRule`, `resolve_soc`), for the diagnostics.
     """
 
     soc_percent: float
@@ -118,6 +144,8 @@ class SocAnchor:
     time_basis: TimeBasis = "last_updated"
     #: Not part of the anchor's identity: a rise alone is saved at most every `PEAK_SAVE_INTERVAL_S`.
     peak_kwh: float | None = field(default=None, compare=False)
+    #: Only shown: it changes with `register_kwh`.
+    baseline: BaselineRule | None = field(default=None, compare=False)
 
     def as_dict(self) -> dict[str, Any]:
         return {
@@ -132,6 +160,7 @@ class SocAnchor:
             "resume_carried_kwh": self.resume_carried_kwh,
             "peak_kwh": self.peak_kwh,
             "time_basis": self.time_basis,
+            "baseline": self.baseline,
         }
 
     @classmethod
@@ -168,6 +197,9 @@ class SocAnchor:
         )
         if register is None:
             return anchor
+        stored_rule = raw.get("baseline")
+        if stored_rule in ("report_time", "after_arrival"):
+            anchor = replace(anchor, baseline=stored_rule)
         # What a fallen register carried (stored since 14 October); anything malformed carries nothing, which
         # can only under-count.
         reset_from = finite_number(raw.get("reset_from_kwh"))
@@ -281,6 +313,49 @@ def estimate_soc_percent(
     return max(anchor.soc_percent, estimate)
 
 
+def register_value_at(samples: Iterable[RegisterSample], at: datetime, until: datetime) -> float | None:
+    """The register's value at `at`, interpolated between the values posted around it, or `None` unless the
+    register was posting steadily from then to `until`. Pure.
+
+    Steadily: a value posted at most `REGISTER_STEADY_GAP_S` before `at` and one at most that after it, no longer
+    gap between values from then to `until` (nor from the last one to `until`), no unreadable value and no fall
+    of more than `REGISTER_TOLERANCE_KWH` (a reset: interpolated only within one unbroken run). A register that
+    posts this often books its energy as it is charged, so its value at `at` holds nothing charged after `at`.
+    """
+    ordered = sorted(dict(samples).items())
+    start = None
+    for index, (posted_at, _value) in enumerate(ordered):
+        if posted_at > at:
+            break
+        start = index
+    if start is None:
+        return None
+    window = [sample for sample in ordered[start:] if sample[0] <= until]
+    gap = timedelta(seconds=REGISTER_STEADY_GAP_S)
+    if not window or at - window[0][0] > gap or until - window[-1][0] > gap:
+        return None
+    previous: tuple[datetime, float] | None = None
+    for posted_at, value in window:
+        if value is None:
+            return None
+        if previous is not None and (
+            posted_at - previous[0] > gap or value < previous[1] - REGISTER_TOLERANCE_KWH
+        ):
+            return None
+        previous = (posted_at, value)
+    before_at, before = window[0]
+    if before_at == at:
+        return before
+    if len(window) < 2:
+        return None
+    after_at, after = window[1]
+    assert before is not None and after is not None
+    if after_at - at > gap:
+        return None
+    share = (at - before_at).total_seconds() / (after_at - before_at).total_seconds()
+    return before + (after - before) * share
+
+
 def resolve_soc(
     *,
     reading: SocReading | None,
@@ -294,6 +369,7 @@ def resolve_soc(
     ceiling_percent: float | None = None,
     register_updated_at: datetime | None = None,
     since_restart: bool = False,
+    register_history: Iterable[RegisterSample] = (),
 ) -> SocResolution:
     """The state of charge to plan and stop against, and the anchor to keep. Pure.
 
@@ -316,7 +392,13 @@ def resolve_soc(
       arrives the anchor has no baseline and the reading is not carried forward; energy charged between the
       reading and that value is not counted. It can only under-count, provided the register's first value
       after a reading holds what was charged before it (a register that lags past its own next update is not
-      caught);
+      caught). One exception: a reading timed by the car's own report time that arrived after it
+      is measured from the register's value at the report time when `register_history` (the values seen
+      lately) shows the register posting steadily from then to now with no reset (`register_value_at`), and
+      that value is not above the one the rule above would take. A register that posts that often does not lag,
+      so nothing charged before the report time is counted, and the energy between the report and its arrival
+      is (the field night of 21-22 October: a 70 % made at 02:47:54 and seen at 03:02:51 left 2.7 kWh out). The
+      anchor's `baseline` says which rule gave its baseline;
     * an anchor's baseline from another register than `register_entity_id` is dropped and taken again under
       the same rule: energy before it is not credited, so it can only under-count;
     * a register that falls back is followed (`track_register`): what it counted is carried, never subtracted;
@@ -355,9 +437,14 @@ def resolve_soc(
     ):
         # The first value the register posted after the reading (or the first readable one, after a restart
         # before the charger's integration had its register): what it had booked of the energy charged before
-        # the reading is in it.
+        # the reading is in it. Its value at the car's report time instead, when it was seen posting steadily.
+        baseline, rule = _baseline(
+            anchor.read_at, anchor.time_basis, _arrived_at(reading, anchor.read_at, now),
+            register_kwh, register_updated_at, register_history, now,
+        )
         anchor = replace(
-            anchor, register_kwh=register_kwh, register_entity_id=register_entity_id, peak_kwh=register_kwh
+            anchor, register_kwh=baseline, register_entity_id=register_entity_id, peak_kwh=register_kwh,
+            baseline=rule,
         )
     anchor = track_register(anchor, register_kwh)
     usable = reading is not None and reading.soc_percent is not None
@@ -388,13 +475,19 @@ def resolve_soc(
         newer = anchor is None or _newer(read_at, anchor)
         if is_fresh(reading):
             if newer:
-                anchor = _new_anchor(reading, read_at, vehicle_id, register_kwh, register_entity_id, register_updated_at)
+                anchor = _new_anchor(
+                    reading, read_at, vehicle_id, register_kwh, register_entity_id, register_updated_at,
+                    register_history, now,
+                )
             return SocResolution(reading, anchor)
         if newer:
             delivered = None if anchor is None else delivered_since_kwh(anchor, register_kwh)
             idle = delivered is None or delivered <= REGISTER_TOLERANCE_KWH
             if idle or reading.time_basis == "vehicle_timestamp":
-                anchor = _new_anchor(reading, read_at, vehicle_id, register_kwh, register_entity_id, register_updated_at)
+                anchor = _new_anchor(
+                    reading, read_at, vehicle_id, register_kwh, register_entity_id, register_updated_at,
+                    register_history, now,
+                )
     if anchor is None:
         return SocResolution(reading, None)
     if restored:
@@ -440,6 +533,45 @@ def _posted_after(register_updated_at: datetime | None, read_at: datetime) -> bo
     return register_updated_at is None or register_updated_at >= read_at
 
 
+def _arrived_at(reading: SocReading | None, read_at: datetime, now: datetime) -> datetime | None:
+    """When the reading made at `read_at` arrived, by its state's own time, when `reading` is that reading timed
+    by the car's report time; `None` when not known."""
+    if (
+        reading is None
+        or reading.soc_percent is None
+        or reading.time_basis != "vehicle_timestamp"
+        or reading.state_age_s is None
+        or abs((_read_at(reading, now) - read_at).total_seconds()) > SAME_READING_S
+    ):
+        return None
+    return now - timedelta(seconds=max(0.0, reading.state_age_s))
+
+
+def _baseline(
+    read_at: datetime,
+    time_basis: TimeBasis,
+    arrived_at: datetime | None,
+    register_kwh: float | None,
+    register_updated_at: datetime | None,
+    register_history: Iterable[RegisterSample],
+    now: datetime,
+) -> tuple[float | None, BaselineRule | None]:
+    """The baseline for a reading made at `read_at` and the rule that gave it (`resolve_soc`): none while the
+    register's value was posted before the reading; its value at the car's report time when that came before the
+    arrival and the register was posting steadily from then to now (and that value is not above the present one);
+    else the present value."""
+    if register_kwh is None or not _posted_after(register_updated_at, read_at):
+        return None, None
+    if time_basis == "vehicle_timestamp" and arrived_at is not None and read_at < arrived_at:
+        samples = list(register_history)
+        if register_updated_at is not None:
+            samples.append((register_updated_at, register_kwh))
+        at_report = register_value_at(samples, read_at, now)
+        if at_report is not None and at_report <= register_kwh:
+            return at_report, "report_time"
+    return register_kwh, "after_arrival"
+
+
 def _new_anchor(
     reading: SocReading,
     read_at: datetime,
@@ -447,14 +579,19 @@ def _new_anchor(
     register_kwh: float | None,
     register_entity_id: str | None,
     register_updated_at: datetime | None,
+    register_history: Iterable[RegisterSample],
+    now: datetime,
 ) -> SocAnchor:
-    """An anchor for `reading`, with the register as its baseline only when it was posted after the reading."""
+    """An anchor for `reading`, with a baseline (`_baseline`) only when the register was posted after the
+    reading."""
     assert reading.soc_percent is not None
-    baseline = register_kwh if _posted_after(register_updated_at, read_at) else None
     basis: TimeBasis = "vehicle_timestamp" if reading.time_basis == "vehicle_timestamp" else "last_updated"
+    baseline, rule = _baseline(
+        read_at, basis, _arrived_at(reading, read_at, now), register_kwh, register_updated_at, register_history, now
+    )
     return SocAnchor(
         reading.soc_percent, baseline, read_at, reading.source, vehicle_id, register_entity_id,
-        time_basis=basis, peak_kwh=baseline,
+        time_basis=basis, peak_kwh=register_kwh if baseline is not None else None, baseline=rule,
     )
 
 
@@ -596,6 +733,11 @@ class SocReader:
         # sensor's state anywhere (one with no state yet resolves to nothing `ensure_watch` could watch).
         self._awaited_vehicle: str | None = None
         self._arrival_cancel: Callable[[], None] | None = None
+        # The register's values seen in the last `REGISTER_HISTORY_S` (in memory only: none after a restart), and
+        # the register they are of (`resolve_soc`'s `register_history`).
+        self._register_samples: deque[RegisterSample] = deque(maxlen=REGISTER_HISTORY_MAX)
+        self._samples_entity_id: str | None = None
+        self._register_watch_cancel: Callable[[], None] | None = None
         self._closed = False
 
     async def async_load(self) -> None:
@@ -614,6 +756,7 @@ class SocReader:
         self._closed = True
         self._drop_watch()
         self._drop_arrival()
+        self._drop_register_watch()
 
     def await_reading(self, stored_vehicle_id: str | None) -> None:
         """A calculation found no usable level: tell `set_on_reading`'s callback of the first one that
@@ -744,10 +887,13 @@ class SocReader:
 
     def _resolve(self, vehicle_id: str | None, anchor: SocAnchor | None) -> SocResolution:
         register_entity_id = self._register_entity_id()
+        self._watch_register(register_entity_id)
         reading, throughout = self._with_comeback(self._raw_reader(vehicle_id))
         since_restart = self._since_restart(reading)
         self._last_reading, self._last_since_restart = reading, since_restart
         register_kwh, register_updated_at = read_energy_register(self._hass, register_entity_id)
+        if register_kwh is not None and register_updated_at is not None:
+            self._note_register(register_updated_at, register_kwh)
         return resolve_soc(
             reading=reading,
             anchor=anchor,
@@ -760,7 +906,47 @@ class SocReader:
             plugged_in_throughout=throughout,
             ceiling_percent=self.vehicle_max_percent(vehicle_id),
             since_restart=since_restart,
+            register_history=self._register_samples,
         )
+
+    def _watch_register(self, entity_id: str | None) -> None:
+        """Keep the register's values as they are posted (`register_history`); another register starts afresh."""
+        if self._closed or entity_id == self._samples_entity_id:
+            return
+        self._drop_register_watch()
+        self._register_samples.clear()
+        self._samples_entity_id = entity_id
+        if entity_id:
+            self._register_watch_cancel = async_track_state_change_event(
+                self._hass, [entity_id], self._on_register_changed
+            )
+
+    def _drop_register_watch(self) -> None:
+        if self._register_watch_cancel is not None:
+            self._register_watch_cancel()
+        self._register_watch_cancel = None
+        self._samples_entity_id = None
+
+    @callback
+    def _on_register_changed(self, event: Event[EventStateChangedData]) -> None:
+        new = event.data["new_state"]
+        if new is None:
+            self._note_register(self._now(), None)
+        else:
+            self._note_register(new.last_updated, _register_kwh(new))
+
+    def _note_register(self, posted_at: datetime, value: float | None) -> None:
+        """Add a register value (`None`: unreadable, a break in its run) and forget those older than
+        `REGISTER_HISTORY_S`."""
+        samples = self._register_samples
+        if samples and samples[-1][0] == posted_at:
+            if samples[-1][1] == value:
+                return
+            samples.pop()
+        samples.append((posted_at, value))
+        horizon = self._now() - timedelta(seconds=REGISTER_HISTORY_S)
+        while samples and samples[0][0] < horizon:
+            samples.popleft()
 
     def _since_restart(self, reading: SocReading | None) -> bool:
         """Whether `reading` is its entity's state as SpotNav found it when it started (`resolve_soc`'s
