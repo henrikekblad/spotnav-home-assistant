@@ -17,6 +17,7 @@ from homeassistant.exceptions import ServiceValidationError
 from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
+from .price_entities import price_numbers
 from .const import CONF_ENTRY_TYPE, DOMAIN, ENTRY_TYPE_SITE
 from .entity import (
     AutoSurface,
@@ -31,7 +32,7 @@ from .entity import (
 from .execution.controller import ABSOLUTE_MAX_AMPS, ABSOLUTE_MIN_AMPS, ChargingController
 from .planning.auto_controller import component_included
 from .planning.auto_settings import AutoSettingsError
-from .runtime import ChargerConfigEntry
+from .runtime import ChargerConfigEntry, price_data
 
 
 #: The widest inputs the UI offers; not a backend limit (energy has no upper bound in the model).
@@ -55,6 +56,10 @@ def whole_number(value: float) -> float:
 async def async_setup_entry(
     hass: HomeAssistant, entry: ChargerConfigEntry, async_add_entities: AddEntitiesCallback
 ) -> None:
+    if (price := price_data(hass, entry.entry_id)) is not None:
+        # An electricity price entry's device (`price_entities.py`).
+        async_add_entities(price_numbers(entry, price.device))
+        return
     if entry.data.get(CONF_ENTRY_TYPE) == ENTRY_TYPE_SITE:
         return
     controller = entry.runtime_data.controller

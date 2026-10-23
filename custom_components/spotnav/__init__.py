@@ -1,6 +1,6 @@
 """SpotNav charging control integration.
 
-Two kinds of config entry (a charger and a site) plus an installation-wide layer. Everything an
+Three kinds of config entry (a charger, a site and an electricity price) plus an installation-wide layer. Everything an
 entry starts is stopped by `entry.async_on_unload` where it is started; live objects are on
 `entry.runtime_data` (see `runtime.py`).
 """
@@ -37,8 +37,10 @@ from .const import (
     CONF_CHARGER_ENTRY_IDS,
     CONF_ENTRY_TYPE,
     DOMAIN,
+    ENTRY_TYPE_PRICE,
     ENTRY_TYPE_SITE,
     PLATFORMS,
+    PRICE_PLATFORMS,
     SITE_PLATFORMS,
 )
 from .energy_register import async_store_detected_register, async_watch_for_register
@@ -66,11 +68,15 @@ from .pricing.market_observation import MarketObservation
 from .pricing.price_refresh import async_setup_price_refresh
 from .pricing.price_repository import async_setup_price_repository
 from .repairs import async_arm_resolution_sync, async_sync_resolution_repairs
+from .price_device import PriceDevice
 from .runtime import (
     charger_data,
     ChargerConfigEntry,
     ChargerData,
     domain_data,
+    entry_kind,
+    PriceConfigEntry,
+    PriceData,
     SiteConfigEntry,
     SiteData,
 )
@@ -185,6 +191,9 @@ async def _async_stop(hass: HomeAssistant, _event: Event | None = None) -> None:
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
+    if entry_kind(entry) == ENTRY_TYPE_PRICE:
+        # An electricity price is neither a charger nor a site: nothing it does can be a Repairs issue.
+        return await _async_setup_price_entry(hass, entry)
     if entry.data.get(CONF_ENTRY_TYPE) == ENTRY_TYPE_SITE:
         loaded = await _async_setup_site_entry(hass, entry)
     else:
@@ -608,6 +617,27 @@ async def _async_setup_site_entry(hass: HomeAssistant, entry: SiteConfigEntry) -
     return True
 
 
+async def _async_setup_price_entry(hass: HomeAssistant, entry: PriceConfigEntry) -> bool:
+    """An electricity price: its area's prices with fees, through the shared price manager (`price_device.py`)."""
+    manager = domain_data(hass).price_refresh
+    if manager is None:
+        # Domain setup creates the manager before any entry; without it there is nothing to price with.
+        return False
+    device = PriceDevice(hass, entry.entry_id, entry.data, manager)
+    entry.runtime_data = PriceData(device)
+    entry.async_on_unload(device.async_stop)
+    await device.async_start()
+    await hass.config_entries.async_forward_entry_setups(entry, PRICE_PLATFORMS)
+    return True
+
+
+def _platforms_for(entry: ConfigEntry) -> list[str]:
+    kind = entry_kind(entry)
+    if kind == ENTRY_TYPE_SITE:
+        return SITE_PLATFORMS
+    return PRICE_PLATFORMS if kind == ENTRY_TYPE_PRICE else PLATFORMS
+
+
 async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Unload a SpotNav entry.
 
@@ -615,16 +645,18 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     platform unload leaves the entry loaded and running. An unload is not an instruction to stop
     charging.
     """
-    platforms = SITE_PLATFORMS if entry.data.get(CONF_ENTRY_TYPE) == ENTRY_TYPE_SITE else PLATFORMS
-    return await hass.config_entries.async_unload_platforms(entry, platforms)
+    return await hass.config_entries.async_unload_platforms(entry, _platforms_for(entry))
 
 
 async def async_remove_entry(hass: HomeAssistant, entry: ConfigEntry) -> None:
     """An entry was deleted for good: take a charger out of its site and remove its own Auto state.
 
     Unload does not come here (a reload must find its settings). Charger entries only; a site entry
-    never writes settings.
+    never writes settings, and an electricity price keeps nothing but its entry (its numbers' last values
+    are Home Assistant's restore state).
     """
+    if entry_kind(entry) == ENTRY_TYPE_PRICE:
+        return
     await async_sync_resolution_repairs(hass, (entry.entry_id,))
     if entry.data.get(CONF_ENTRY_TYPE) == ENTRY_TYPE_SITE:
         return

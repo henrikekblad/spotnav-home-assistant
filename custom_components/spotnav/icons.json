@@ -9,6 +9,12 @@
       },
       "grid_charging_site": {
         "default": "mdi:transmission-tower-import"
+      },
+      "cheap_now": {
+        "default": "mdi:cash-check"
+      },
+      "expensive_now": {
+        "default": "mdi:cash-remove"
       }
     },
     "button": {
@@ -81,6 +87,9 @@
       },
       "auto_settings_revision": {
         "default": "mdi:counter"
+      },
+      "price_now": {
+        "default": "mdi:cash"
       }
     },
     "select": {
@@ -115,6 +124,12 @@
       },
       "transfer_fee": {
         "default": "mdi:transmission-tower"
+      },
+      "cheap_hours": {
+        "default": "mdi:timer-sand"
+      },
+      "expensive_hours": {
+        "default": "mdi:timer-sand"
       }
     },
     "switch": {
@@ -131,6 +146,11 @@
       "charger_events": {
         "default": "mdi:ev-station"
       }
+    }
+  },
+  "services": {
+    "get_prices": {
+      "service": "mdi:cash-multiple"
     }
   }
 }
