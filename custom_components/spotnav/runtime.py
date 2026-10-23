@@ -3,6 +3,7 @@
 * A charger entry owns a `ChargerData` on `entry.runtime_data` (controller, authority boundary,
   Auto preview, market display observation, solar coordinator, state-of-charge reader ...).
 * A site entry owns a `SiteData` (its capacity controller).
+* A price entry owns a `PriceData` (its `PriceDevice`, `price_device.py`).
 * The installation owns one `SpotNavData` under `DATA_KEY`: everything that belongs to no entry
   (settings store, price repository and manager, decision store, pairing register ...). Created
   by `async_setup`, before any entry, and outlives every entry.
@@ -22,7 +23,7 @@ from homeassistant.core import HomeAssistant
 from homeassistant.util import dt as dt_util
 from homeassistant.util.hass_dict import HassKey
 
-from .const import CONF_ENTRY_TYPE, DOMAIN, ENTRY_TYPE_SITE
+from .const import CONF_ENTRY_TYPE, DOMAIN, ENTRY_TYPE_CHARGER, ENTRY_TYPE_PRICE, ENTRY_TYPE_SITE
 
 
 if TYPE_CHECKING:
@@ -34,6 +35,7 @@ if TYPE_CHECKING:
     from .vehicles.discovery_decisions import DiscoveryDecisionStore
     from .execution.hybrid_execution import HybridChargerState, ReplanMemory
     from .pricing.market_observation import MarketObservation
+    from .price_device import PriceDevice
     from .api.pairing import PairingRegister
     from .pricing.price_refresh import PriceRefreshManager
     from .pricing.price_repository import PriceRepository
@@ -85,6 +87,13 @@ class SiteData:
 
 
 @dataclass
+class PriceData:
+    """One electricity price entry's live object."""
+
+    device: PriceDevice
+
+
+@dataclass
 class SpotNavData:
     """The installation-wide singletons: nothing here belongs to one config entry."""
 
@@ -110,6 +119,7 @@ DATA_KEY: HassKey[SpotNavData] = HassKey(DOMAIN)
 
 type ChargerConfigEntry = ConfigEntry[ChargerData]
 type SiteConfigEntry = ConfigEntry[SiteData]
+type PriceConfigEntry = ConfigEntry[PriceData]
 
 
 def domain_data(hass: HomeAssistant) -> SpotNavData:
@@ -120,24 +130,36 @@ def domain_data(hass: HomeAssistant) -> SpotNavData:
     return data
 
 
-def _entry_data(hass: HomeAssistant, entry_id: str, *, site: bool) -> ChargerData | SiteData | None:
+def entry_kind(entry: ConfigEntry) -> str:
+    """`site`, `price` or `charger`: what a SpotNav entry is. An entry that names neither of the first two
+    is a charger, as it always was."""
+    kind = entry.data.get(CONF_ENTRY_TYPE)
+    return kind if kind in (ENTRY_TYPE_SITE, ENTRY_TYPE_PRICE) else ENTRY_TYPE_CHARGER
+
+
+def _entry_data(hass: HomeAssistant, entry_id: str, *, kind: str) -> ChargerData | SiteData | PriceData | None:
     """The runtime data of a loaded entry of the wanted kind, or `None`."""
     entry = hass.config_entries.async_get_entry(entry_id)
     if entry is None or entry.domain != DOMAIN:
         return None
-    if (entry.data.get(CONF_ENTRY_TYPE) == ENTRY_TYPE_SITE) is not site:
+    if entry_kind(entry) != kind:
         return None
     return getattr(entry, "runtime_data", None)
 
 
 def charger_data(hass: HomeAssistant, entry_id: str) -> ChargerData | None:
-    """A loaded charger entry's runtime data, or `None` (unknown id, a site entry, not set up yet)."""
-    return _entry_data(hass, entry_id, site=False)  # type: ignore[return-value]
+    """A loaded charger entry's runtime data, or `None` (unknown id, a site or price entry, not set up yet)."""
+    return _entry_data(hass, entry_id, kind=ENTRY_TYPE_CHARGER)  # type: ignore[return-value]
 
 
 def site_data(hass: HomeAssistant, entry_id: str) -> SiteData | None:
     """A loaded site entry's runtime data, or `None`."""
-    return _entry_data(hass, entry_id, site=True)  # type: ignore[return-value]
+    return _entry_data(hass, entry_id, kind=ENTRY_TYPE_SITE)  # type: ignore[return-value]
+
+
+def price_data(hass: HomeAssistant, entry_id: str) -> PriceData | None:
+    """A loaded electricity price entry's runtime data, or `None`."""
+    return _entry_data(hass, entry_id, kind=ENTRY_TYPE_PRICE)  # type: ignore[return-value]
 
 
 def controller_for(hass: HomeAssistant, entry_id: str) -> ChargingController | None:

@@ -7,17 +7,22 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
+from .price_entities import price_binary_sensors
 from .const import CONF_CHARGER_ENTRY_IDS, CONF_ENTRY_TYPE, ENTRY_TYPE_SITE
 from .entity import SpotNavChargingEntity, SpotNavSiteEntity
 from .execution.controller import ChargingController
 from .execution.grid_charge import grid_charge
-from .runtime import controller_for
+from .runtime import controller_for, price_data
 from .site.site_capacity_controller import SiteCapacityController
 
 
 async def async_setup_entry(
     hass: HomeAssistant, entry: ConfigEntry, async_add_entities: AddEntitiesCallback
 ) -> None:
+    if (price := price_data(hass, entry.entry_id)) is not None:
+        # An electricity price entry's device (`price_entities.py`).
+        async_add_entities(price_binary_sensors(entry, price.device))
+        return
     if entry.data.get(CONF_ENTRY_TYPE) == ENTRY_TYPE_SITE:
         async_add_entities([SiteGridChargingEntity(hass, entry, entry.runtime_data.controller)])
         return

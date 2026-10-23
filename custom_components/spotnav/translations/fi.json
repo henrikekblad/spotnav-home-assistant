@@ -19,7 +19,7 @@
       },
       "user": {
         "title": "Mitä haluat lisätä?",
-        "description": "Laturi liittää yhden fyysisen latauspisteen SpotNaviin. Kohde on valinnainen: se hallitsee kaikkien saman sähköliittymän laturien kuormaa pääsulakkeen alapuolella.",
+        "description": "Laturi liittää yhden fyysisen latauspisteen SpotNaviin. Kohde on valinnainen: se hallitsee kaikkien saman sähköliittymän laturien kuormaa pääsulakkeen alapuolella. Sähkön hinta antaa muille automaatioille SpotNavin hinnat maksuineen.",
         "data": {
           "entry_type": "Lisättävä"
         }
@@ -227,6 +227,25 @@
           "charger_phases": "Laturin vaiheet",
           "voltage_between_phases_v": "Vaiheiden välinen jännite"
         }
+      },
+      "price": {
+        "title": "Sähkön hinta",
+        "description": "Hinnat automaatioille, jotka eivät koske autoa, kuten lattialämmitykselle tai pesukoneelle. Mikä hinta-alue?",
+        "data": {
+          "area_id": "Hinta-alue"
+        }
+      },
+      "price_fees": {
+        "title": "Maksut ja ALV",
+        "description": "Hinta-alue {area}. Sen ehdotukset: ALV {vat_suggestion}, sähkövero {tax_suggestion}, siirtomaksu {transfer_suggestion}. Valitse kullekin ehdotus, oma luku tai ei mitään. ✓ tarkoittaa, että julkaistu hinta sisältää sen jo eikä mitään lisätä.",
+        "data": {
+          "vat_mode": "ALV",
+          "vat_value": "ALV, oma luku",
+          "tax_mode": "Sähkövero",
+          "tax_value": "Sähkövero, oma luku",
+          "transfer_mode": "Siirtomaksu",
+          "transfer_value": "Siirtomaksu, oma luku"
+        }
       }
     },
     "abort": {
@@ -242,7 +261,8 @@
       "vehicle_dismissed": "Ajoneuvo ohitettu. SpotNav ei raportoi sitä, ennen kuin ohitus perutaan.",
       "not_a_charger": "Laite ei ole sähköauton laturi (vaan lämmittimen tai pistorasian ohjain).",
       "charger_not_recognised": "SpotNav ei tunne tätä integraatiota. Valitse sen sijaan Manuaalinen.",
-      "charger_not_controllable": "SpotNav ei voi käynnistää tai pysäyttää tätä laturia. Sitä voi vain lukea."
+      "charger_not_controllable": "SpotNav ei voi käynnistää tai pysäyttää tätä laturia. Sitä voi vain lukea.",
+      "no_price_areas": "Hinta-alueiden luetteloa ei voitu lukea. Yritä uudelleen minuutin kuluttua."
     },
     "error": {
       "safety_margin_at_or_above_fuse": "Turvamarginaalin on oltava pääsulaketta pienempi, muuten latureille ei jää virtaa.",
@@ -266,7 +286,9 @@
       "unit_expected_voltage": "Tämän anturin on ilmoitettava jännite yksikössä V.",
       "unit_expected_reactive_power": "Tämän anturin on ilmoitettava loisteho yksikössä var tai kvar.",
       "unit_expected_apparent_power": "Tämän anturin on ilmoitettava näennäisteho yksikössä VA tai kVA.",
-      "manual_entities_duplicate": "Jokainen vaihe tarvitsee oman entiteettinsä."
+      "manual_entities_duplicate": "Jokainen vaihe tarvitsee oman entiteettinsä.",
+      "fee_value_required": "Anna oma luku tai valitse ehdotus.",
+      "fee_no_suggestion": "Hinta-alueella ei ole tälle ehdotusta: anna oma luku tai valitse ei mitään."
     }
   },
   "options": {
@@ -385,10 +407,30 @@
           "entity_L2": "L2-virta",
           "entity_L3": "L3-virta"
         }
+      },
+      "price_init": {
+        "title": "Sähkön hinta",
+        "description": "Hinnat automaatioille, jotka eivät koske autoa, kuten lattialämmitykselle tai pesukoneelle. Mikä hinta-alue?",
+        "data": {
+          "area_id": "Hinta-alue"
+        }
+      },
+      "price_fees": {
+        "title": "Maksut ja ALV",
+        "description": "Hinta-alue {area}. Sen ehdotukset: ALV {vat_suggestion}, sähkövero {tax_suggestion}, siirtomaksu {transfer_suggestion}. Valitse kullekin ehdotus, oma luku tai ei mitään. ✓ tarkoittaa, että julkaistu hinta sisältää sen jo eikä mitään lisätä.",
+        "data": {
+          "vat_mode": "ALV",
+          "vat_value": "ALV, oma luku",
+          "tax_mode": "Sähkövero",
+          "tax_value": "Sähkövero, oma luku",
+          "transfer_mode": "Siirtomaksu",
+          "transfer_value": "Siirtomaksu, oma luku"
+        }
       }
     },
     "abort": {
-      "no_pending_site": "Kohteen tietoja ei lähetetty ennen kuin laturin manuaalinen syöttö avattiin, joten mitään ei tallennettu."
+      "no_pending_site": "Kohteen tietoja ei lähetetty ennen kuin laturin manuaalinen syöttö avattiin, joten mitään ei tallennettu.",
+      "no_price_areas": "Hinta-alueiden luetteloa ei voitu lukea. Yritä uudelleen minuutin kuluttua."
     },
     "error": {
       "safety_margin_at_or_above_fuse": "Turvamarginaalin on oltava pääsulaketta pienempi, muuten latureille ei jää virtaa.",
@@ -408,7 +450,9 @@
       "unit_expected_voltage": "Tämän anturin on ilmoitettava jännite yksikössä V.",
       "unit_expected_reactive_power": "Tämän anturin on ilmoitettava loisteho yksikössä var tai kvar.",
       "unit_expected_apparent_power": "Tämän anturin on ilmoitettava näennäisteho yksikössä VA tai kVA.",
-      "manual_entities_duplicate": "Jokainen vaihe tarvitsee oman entiteettinsä."
+      "manual_entities_duplicate": "Jokainen vaihe tarvitsee oman entiteettinsä.",
+      "fee_value_required": "Anna oma luku tai valitse ehdotus.",
+      "fee_no_suggestion": "Hinta-alueella ei ole tälle ehdotusta: anna oma luku tai valitse ei mitään."
     }
   },
   "selector": {
@@ -422,7 +466,8 @@
       "options": {
         "charger": "Latauslaite",
         "site": "Kohde (kuormanhallinta)",
-        "resolve_vehicle": "Ratkaise tunnistettu ajoneuvo"
+        "resolve_vehicle": "Ratkaise tunnistettu ajoneuvo",
+        "price": "Sähkön hinta"
       }
     },
     "measurement_mode": {
@@ -448,6 +493,13 @@
         "1": "Yksi vaihe",
         "3": "Kolme vaihetta"
       }
+    },
+    "fee_mode": {
+      "options": {
+        "off": "Ei mitään",
+        "suggested": "Hinta-alueen ehdotus",
+        "manual": "Oma luku"
+      }
     }
   },
   "entity": {
@@ -460,6 +512,12 @@
       },
       "grid_charging_site": {
         "name": "Lataus verkosta"
+      },
+      "cheap_now": {
+        "name": "Halpaa nyt"
+      },
+      "expensive_now": {
+        "name": "Kallista nyt"
       }
     },
     "button": {
@@ -599,6 +657,9 @@
       },
       "sessions_last_cost": {
         "name": "Viimeisimmän latauksen kustannus"
+      },
+      "price_now": {
+        "name": "Sähkön hinta nyt"
       }
     },
     "select": {
@@ -667,6 +728,12 @@
       },
       "transfer_fee": {
         "name": "Siirtomaksu"
+      },
+      "cheap_hours": {
+        "name": "Halpoja tunteja vuorokaudessa"
+      },
+      "expensive_hours": {
+        "name": "Kalliita tunteja vuorokaudessa"
       }
     },
     "date": {
@@ -818,6 +885,42 @@
     },
     "reconcile_failed": {
       "message": "Laturi otti komennon vastaan, mutta automaattista latausta ei voitu päivittää vastaamaan sitä. Tarkista laturin tila."
+    },
+    "price_entry_unknown": {
+      "message": "Tällä tunnisteella ei ole ladattua SpotNav-sähkön hintaa."
+    },
+    "price_entry_required": {
+      "message": "Sähkön hintoja on useampi: kerro, mikä luetaan."
+    },
+    "price_unavailable": {
+      "message": "Tällä sähkön hinnalla ei ole vielä hintoja."
+    },
+    "price_range_invalid": {
+      "message": "Lopun on oltava alun jälkeen."
+    }
+  },
+  "services": {
+    "get_prices": {
+      "name": "Hae sähkön hinnat",
+      "description": "Vastaa yhden SpotNav-sähkön hinnan hinnoilla: kunkin jakson alku ja loppu, hinta maksuineen ja ALV:ineen sekä spot-hinta, hinta-alueen valuutassa kilowattitunnilta. Oletuksena tänään, ja huomenna kun sen hinnat on julkaistu.",
+      "fields": {
+        "config_entry_id": {
+          "name": "Sähkön hinta",
+          "description": "Luettava sähkön hinta. Jätä pois, kun niitä on vain yksi."
+        },
+        "device_id": {
+          "name": "Laite",
+          "description": "Sähkön hinnan laite merkinnän sijaan."
+        },
+        "start": {
+          "name": "Alku",
+          "description": "Ensimmäinen mukaan otettava jakso (oletus: tämän päivän alku hinta-alueella)."
+        },
+        "end": {
+          "name": "Loppu",
+          "description": "Mihin lopetetaan (oletus: huomisen loppu, kun sen hinnat on julkaistu, muuten tämän päivän loppu)."
+        }
+      }
     }
   }
 }

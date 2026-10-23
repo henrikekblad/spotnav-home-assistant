@@ -19,7 +19,7 @@
       },
       "user": {
         "title": "¿Qué quieres añadir?",
-        "description": "Un cargador conecta un punto de carga físico con SpotNav. Una instalación es opcional: equilibra la carga de todos los cargadores de una misma acometida eléctrica por debajo del fusible general.",
+        "description": "Un cargador conecta un punto de carga físico con SpotNav. Una instalación es opcional: equilibra la carga de todos los cargadores de una misma acometida eléctrica por debajo del fusible general. Un precio de la electricidad da a otras automatizaciones los precios de SpotNav con tus cargos.",
         "data": {
           "entry_type": "Qué añadir"
         }
@@ -227,6 +227,25 @@
           "charger_phases": "Fases del cargador",
           "voltage_between_phases_v": "Tensión entre fases"
         }
+      },
+      "price": {
+        "title": "Precio de la electricidad",
+        "description": "Precios para automatizaciones que no tienen que ver con un coche, como la calefacción por suelo radiante o una lavadora. ¿Qué zona de precios?",
+        "data": {
+          "area_id": "Zona de precios"
+        }
+      },
+      "price_fees": {
+        "title": "Cargos e IVA",
+        "description": "Zona de precios {area}. Sus sugerencias: IVA {vat_suggestion}, impuesto sobre la electricidad {tax_suggestion}, peaje de acceso {transfer_suggestion}. Para cada uno, usa la sugerencia, una cifra propia o nada. Un ✓ significa que el precio publicado ya lo incluye y no se añade nada.",
+        "data": {
+          "vat_mode": "IVA",
+          "vat_value": "IVA, mi propia cifra",
+          "tax_mode": "Impuesto sobre la electricidad",
+          "tax_value": "Impuesto sobre la electricidad, mi propia cifra",
+          "transfer_mode": "Peaje de acceso",
+          "transfer_value": "Peaje de acceso, mi propia cifra"
+        }
       }
     },
     "abort": {
@@ -242,7 +261,8 @@
       "vehicle_dismissed": "Vehículo descartado. SpotNav dejará de avisar de él hasta que se deshaga el descarte.",
       "not_a_charger": "Ese dispositivo no es un cargador de vehículos eléctricos (es un controlador de calefacción o de enchufe).",
       "charger_not_recognised": "SpotNav no conoce esta integración. Elige Manual en su lugar.",
-      "charger_not_controllable": "SpotNav no puede iniciar ni detener este cargador. Solo se puede leer."
+      "charger_not_controllable": "SpotNav no puede iniciar ni detener este cargador. Solo se puede leer.",
+      "no_price_areas": "No se pudo leer la lista de zonas de precios. Inténtalo de nuevo en un minuto."
     },
     "error": {
       "safety_margin_at_or_above_fuse": "El margen de seguridad debe ser menor que el fusible general; de lo contrario no queda corriente para los cargadores.",
@@ -266,7 +286,9 @@
       "unit_expected_voltage": "Este sensor debe informar de la tensión en V.",
       "unit_expected_reactive_power": "Este sensor debe informar de la potencia reactiva en var o kvar.",
       "unit_expected_apparent_power": "Este sensor debe informar de la potencia aparente en VA o kVA.",
-      "manual_entities_duplicate": "Cada fase necesita su propia entidad."
+      "manual_entities_duplicate": "Cada fase necesita su propia entidad.",
+      "fee_value_required": "Introduce tu propia cifra, o elige la sugerencia.",
+      "fee_no_suggestion": "Esta zona no tiene sugerencia para esto: introduce tu propia cifra o elige nada."
     }
   },
   "options": {
@@ -385,10 +407,30 @@
           "entity_L2": "Corriente L2",
           "entity_L3": "Corriente L3"
         }
+      },
+      "price_init": {
+        "title": "Precio de la electricidad",
+        "description": "Precios para automatizaciones que no tienen que ver con un coche, como la calefacción por suelo radiante o una lavadora. ¿Qué zona de precios?",
+        "data": {
+          "area_id": "Zona de precios"
+        }
+      },
+      "price_fees": {
+        "title": "Cargos e IVA",
+        "description": "Zona de precios {area}. Sus sugerencias: IVA {vat_suggestion}, impuesto sobre la electricidad {tax_suggestion}, peaje de acceso {transfer_suggestion}. Para cada uno, usa la sugerencia, una cifra propia o nada. Un ✓ significa que el precio publicado ya lo incluye y no se añade nada.",
+        "data": {
+          "vat_mode": "IVA",
+          "vat_value": "IVA, mi propia cifra",
+          "tax_mode": "Impuesto sobre la electricidad",
+          "tax_value": "Impuesto sobre la electricidad, mi propia cifra",
+          "transfer_mode": "Peaje de acceso",
+          "transfer_value": "Peaje de acceso, mi propia cifra"
+        }
       }
     },
     "abort": {
-      "no_pending_site": "Los datos de esta instalación no se enviaron antes de abrir la entrada manual del cargador, así que no se ha guardado nada."
+      "no_pending_site": "Los datos de esta instalación no se enviaron antes de abrir la entrada manual del cargador, así que no se ha guardado nada.",
+      "no_price_areas": "No se pudo leer la lista de zonas de precios. Inténtalo de nuevo en un minuto."
     },
     "error": {
       "safety_margin_at_or_above_fuse": "El margen de seguridad debe ser menor que el fusible general; de lo contrario no queda corriente para los cargadores.",
@@ -408,7 +450,9 @@
       "unit_expected_voltage": "Este sensor debe informar de la tensión en V.",
       "unit_expected_reactive_power": "Este sensor debe informar de la potencia reactiva en var o kvar.",
       "unit_expected_apparent_power": "Este sensor debe informar de la potencia aparente en VA o kVA.",
-      "manual_entities_duplicate": "Cada fase necesita su propia entidad."
+      "manual_entities_duplicate": "Cada fase necesita su propia entidad.",
+      "fee_value_required": "Introduce tu propia cifra, o elige la sugerencia.",
+      "fee_no_suggestion": "Esta zona no tiene sugerencia para esto: introduce tu propia cifra o elige nada."
     }
   },
   "selector": {
@@ -422,7 +466,8 @@
       "options": {
         "charger": "Un cargador",
         "site": "Una instalación (equilibrado de carga)",
-        "resolve_vehicle": "Resolver un vehículo detectado"
+        "resolve_vehicle": "Resolver un vehículo detectado",
+        "price": "Un precio de la electricidad"
       }
     },
     "measurement_mode": {
@@ -448,6 +493,13 @@
         "1": "Una fase",
         "3": "Tres fases"
       }
+    },
+    "fee_mode": {
+      "options": {
+        "off": "Nada",
+        "suggested": "La sugerencia de la zona",
+        "manual": "Mi propia cifra"
+      }
     }
   },
   "entity": {
@@ -460,6 +512,12 @@
       },
       "grid_charging_site": {
         "name": "Cargando desde la red"
+      },
+      "cheap_now": {
+        "name": "Barato ahora"
+      },
+      "expensive_now": {
+        "name": "Caro ahora"
       }
     },
     "button": {
@@ -599,6 +657,9 @@
       },
       "sessions_last_cost": {
         "name": "Coste de la última carga"
+      },
+      "price_now": {
+        "name": "Precio ahora"
       }
     },
     "select": {
@@ -667,6 +728,12 @@
       },
       "transfer_fee": {
         "name": "Peaje de acceso"
+      },
+      "cheap_hours": {
+        "name": "Horas baratas al día"
+      },
+      "expensive_hours": {
+        "name": "Horas caras al día"
       }
     },
     "date": {
@@ -818,6 +885,42 @@
     },
     "reconcile_failed": {
       "message": "El cargador ha aceptado la orden, pero no se ha podido actualizar la carga automática para que coincida. Revisa el estado del cargador."
+    },
+    "price_entry_unknown": {
+      "message": "No hay ningún precio de la electricidad de SpotNav cargado con ese id."
+    },
+    "price_entry_required": {
+      "message": "Hay más de un precio de la electricidad: indica cuál leer."
+    },
+    "price_unavailable": {
+      "message": "Este precio de la electricidad aún no tiene precios."
+    },
+    "price_range_invalid": {
+      "message": "El fin debe ser posterior al inicio."
+    }
+  },
+  "services": {
+    "get_prices": {
+      "name": "Obtener precios de la electricidad",
+      "description": "Responde con los precios de un precio de la electricidad de SpotNav: el inicio y el fin de cada intervalo, su precio con tus cargos e IVA y su precio spot, en la moneda de la zona por kWh. Por defecto hoy, y mañana cuando se publique.",
+      "fields": {
+        "config_entry_id": {
+          "name": "Precio de la electricidad",
+          "description": "El precio de la electricidad que se lee. Omítelo si solo hay uno."
+        },
+        "device_id": {
+          "name": "Dispositivo",
+          "description": "El dispositivo del precio de la electricidad, en lugar de la entrada."
+        },
+        "start": {
+          "name": "Inicio",
+          "description": "El primer intervalo incluido (por defecto: el inicio de hoy en la zona de precios)."
+        },
+        "end": {
+          "name": "Fin",
+          "description": "Dónde termina (por defecto: el final de mañana cuando sus precios estén publicados, si no el final de hoy)."
+        }
+      }
     }
   }
 }

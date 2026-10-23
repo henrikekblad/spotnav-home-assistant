@@ -20,6 +20,7 @@ from homeassistant.helpers.event import (
 from homeassistant.helpers.restore_state import RestoreEntity
 from homeassistant.util import dt as dt_util
 
+from .price_entities import price_sensors
 from .const import (
     CONF_CHARGER_ENTRY_IDS,
     CONF_ENTRY_TYPE,
@@ -34,7 +35,7 @@ from .execution.controller import ChargingController
 from .execution.solar_execution import site_solar_surplus
 from .setup_hints import add_charger_hint
 from .execution.power_energy import fresh_power_w, integrated_energy_unique_id, PowerIntegrator
-from .runtime import controller_for
+from .runtime import controller_for, price_data
 from .sessions.sensors import session_entities
 from .vehicles.choices import flow_language
 from .site.site_capacity import site_activity
@@ -49,6 +50,10 @@ INTEGRATION_TICK_S = 30
 async def async_setup_entry(
     hass: HomeAssistant, entry: ConfigEntry, async_add_entities: AddEntitiesCallback
 ) -> None:
+    if (price := price_data(hass, entry.entry_id)) is not None:
+        # An electricity price entry's device (`price_entities.py`).
+        async_add_entities(price_sensors(entry, price.device))
+        return
     remove_pairing_sensors(hass, entry)
     if entry.data.get(CONF_ENTRY_TYPE) == ENTRY_TYPE_SITE:
         site_controller = entry.runtime_data.controller

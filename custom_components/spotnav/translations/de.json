@@ -19,7 +19,7 @@
       },
       "user": {
         "title": "Was möchtest du hinzufügen?",
-        "description": "Eine Ladestation verbindet einen physischen Ladepunkt mit SpotNav. Ein Standort ist optional: Er verteilt die Last aller Ladestationen an einem Netzanschluss unter der Hauptsicherung.",
+        "description": "Eine Ladestation verbindet einen physischen Ladepunkt mit SpotNav. Ein Standort ist optional: Er verteilt die Last aller Ladestationen an einem Netzanschluss unter der Hauptsicherung. Ein Strompreis gibt anderen Automationen SpotNavs Preise mit deinen Abgaben.",
         "data": {
           "entry_type": "Was hinzufügen"
         }
@@ -227,6 +227,25 @@
           "charger_phases": "Phasen der Ladestation",
           "voltage_between_phases_v": "Spannung zwischen den Phasen"
         }
+      },
+      "price": {
+        "title": "Strompreis",
+        "description": "Preise für Automationen, die nichts mit einem Auto zu tun haben, etwa Fußbodenheizung oder Waschmaschine. Welche Preiszone?",
+        "data": {
+          "area_id": "Preiszone"
+        }
+      },
+      "price_fees": {
+        "title": "Abgaben und MwSt.",
+        "description": "Preiszone {area}. Ihre Vorschläge: MwSt. {vat_suggestion}, Stromsteuer {tax_suggestion}, Netzentgelt {transfer_suggestion}. Wähle jeweils den Vorschlag, einen eigenen Wert oder nichts. Ein ✓ heißt, dass der veröffentlichte Preis ihn schon enthält und nichts hinzukommt.",
+        "data": {
+          "vat_mode": "MwSt.",
+          "vat_value": "MwSt., eigener Wert",
+          "tax_mode": "Stromsteuer",
+          "tax_value": "Stromsteuer, eigener Wert",
+          "transfer_mode": "Netzentgelt",
+          "transfer_value": "Netzentgelt, eigener Wert"
+        }
       }
     },
     "abort": {
@@ -242,7 +261,8 @@
       "vehicle_dismissed": "Fahrzeug ausgeblendet. SpotNav meldet es nicht mehr, bis es wieder eingeblendet wird.",
       "not_a_charger": "Dieses Gerät ist keine Ladestation für E-Autos (sondern eine Heizungs- oder Steckdosensteuerung).",
       "charger_not_recognised": "SpotNav kennt diese Integration nicht. Wähle stattdessen Manuell.",
-      "charger_not_controllable": "SpotNav kann diese Ladestation nicht starten oder stoppen. Sie lässt sich nur auslesen."
+      "charger_not_controllable": "SpotNav kann diese Ladestation nicht starten oder stoppen. Sie lässt sich nur auslesen.",
+      "no_price_areas": "Die Liste der Preiszonen konnte nicht gelesen werden. Versuche es in einer Minute erneut."
     },
     "error": {
       "safety_margin_at_or_above_fuse": "Die Sicherheitsreserve muss kleiner als die Hauptsicherung sein, sonst bleibt kein Strom für die Ladestationen.",
@@ -266,7 +286,9 @@
       "unit_expected_voltage": "Dieser Sensor muss Spannung in V melden.",
       "unit_expected_reactive_power": "Dieser Sensor muss Blindleistung in var oder kvar melden.",
       "unit_expected_apparent_power": "Dieser Sensor muss Scheinleistung in VA oder kVA melden.",
-      "manual_entities_duplicate": "Jede Phase braucht eine eigene Entität."
+      "manual_entities_duplicate": "Jede Phase braucht eine eigene Entität.",
+      "fee_value_required": "Gib einen eigenen Wert ein oder wähle den Vorschlag.",
+      "fee_no_suggestion": "Diese Preiszone hat dafür keinen Vorschlag: gib einen eigenen Wert ein oder wähle nichts."
     }
   },
   "options": {
@@ -385,10 +407,30 @@
           "entity_L2": "Strom L2",
           "entity_L3": "Strom L3"
         }
+      },
+      "price_init": {
+        "title": "Strompreis",
+        "description": "Preise für Automationen, die nichts mit einem Auto zu tun haben, etwa Fußbodenheizung oder Waschmaschine. Welche Preiszone?",
+        "data": {
+          "area_id": "Preiszone"
+        }
+      },
+      "price_fees": {
+        "title": "Abgaben und MwSt.",
+        "description": "Preiszone {area}. Ihre Vorschläge: MwSt. {vat_suggestion}, Stromsteuer {tax_suggestion}, Netzentgelt {transfer_suggestion}. Wähle jeweils den Vorschlag, einen eigenen Wert oder nichts. Ein ✓ heißt, dass der veröffentlichte Preis ihn schon enthält und nichts hinzukommt.",
+        "data": {
+          "vat_mode": "MwSt.",
+          "vat_value": "MwSt., eigener Wert",
+          "tax_mode": "Stromsteuer",
+          "tax_value": "Stromsteuer, eigener Wert",
+          "transfer_mode": "Netzentgelt",
+          "transfer_value": "Netzentgelt, eigener Wert"
+        }
       }
     },
     "abort": {
-      "no_pending_site": "Die Angaben dieses Standorts wurden nicht übermittelt, bevor die manuelle Ladestation geöffnet wurde, daher wurde nichts gespeichert."
+      "no_pending_site": "Die Angaben dieses Standorts wurden nicht übermittelt, bevor die manuelle Ladestation geöffnet wurde, daher wurde nichts gespeichert.",
+      "no_price_areas": "Die Liste der Preiszonen konnte nicht gelesen werden. Versuche es in einer Minute erneut."
     },
     "error": {
       "safety_margin_at_or_above_fuse": "Die Sicherheitsreserve muss kleiner als die Hauptsicherung sein, sonst bleibt kein Strom für die Ladestationen.",
@@ -408,7 +450,9 @@
       "unit_expected_voltage": "Dieser Sensor muss Spannung in V melden.",
       "unit_expected_reactive_power": "Dieser Sensor muss Blindleistung in var oder kvar melden.",
       "unit_expected_apparent_power": "Dieser Sensor muss Scheinleistung in VA oder kVA melden.",
-      "manual_entities_duplicate": "Jede Phase braucht eine eigene Entität."
+      "manual_entities_duplicate": "Jede Phase braucht eine eigene Entität.",
+      "fee_value_required": "Gib einen eigenen Wert ein oder wähle den Vorschlag.",
+      "fee_no_suggestion": "Diese Preiszone hat dafür keinen Vorschlag: gib einen eigenen Wert ein oder wähle nichts."
     }
   },
   "selector": {
@@ -422,7 +466,8 @@
       "options": {
         "charger": "Eine Ladestation",
         "site": "Einen Standort (Lastmanagement)",
-        "resolve_vehicle": "Ein erkanntes Fahrzeug klären"
+        "resolve_vehicle": "Ein erkanntes Fahrzeug klären",
+        "price": "Einen Strompreis"
       }
     },
     "measurement_mode": {
@@ -448,6 +493,13 @@
         "1": "Eine Phase",
         "3": "Drei Phasen"
       }
+    },
+    "fee_mode": {
+      "options": {
+        "off": "Nichts",
+        "suggested": "Vorschlag der Preiszone",
+        "manual": "Eigener Wert"
+      }
     }
   },
   "entity": {
@@ -460,6 +512,12 @@
       },
       "grid_charging_site": {
         "name": "Laden aus dem Netz"
+      },
+      "cheap_now": {
+        "name": "Jetzt günstig"
+      },
+      "expensive_now": {
+        "name": "Jetzt teuer"
       }
     },
     "button": {
@@ -599,6 +657,9 @@
       },
       "sessions_last_cost": {
         "name": "Kosten des letzten Ladevorgangs"
+      },
+      "price_now": {
+        "name": "Strompreis jetzt"
       }
     },
     "select": {
@@ -667,6 +728,12 @@
       },
       "transfer_fee": {
         "name": "Netzentgelt"
+      },
+      "cheap_hours": {
+        "name": "Günstige Stunden pro Tag"
+      },
+      "expensive_hours": {
+        "name": "Teure Stunden pro Tag"
       }
     },
     "date": {
@@ -818,6 +885,42 @@
     },
     "reconcile_failed": {
       "message": "Die Ladestation hat den Befehl angenommen, aber das automatische Laden konnte nicht angepasst werden. Prüfe den Status der Ladestation."
+    },
+    "price_entry_unknown": {
+      "message": "Kein geladener SpotNav-Strompreis mit dieser ID."
+    },
+    "price_entry_required": {
+      "message": "Es gibt mehr als einen Strompreis: gib an, welcher gelesen werden soll."
+    },
+    "price_unavailable": {
+      "message": "Dieser Strompreis hat noch keine Preise."
+    },
+    "price_range_invalid": {
+      "message": "Das Ende muss nach dem Beginn liegen."
+    }
+  },
+  "services": {
+    "get_prices": {
+      "name": "Strompreise abrufen",
+      "description": "Antwortet mit den Preisen eines SpotNav-Strompreises: Beginn und Ende jedes Intervalls, sein Preis mit deinen Abgaben und MwSt. und sein Spotpreis, in der Währung der Preiszone pro kWh. Standardmäßig heute und, sobald veröffentlicht, morgen.",
+      "fields": {
+        "config_entry_id": {
+          "name": "Strompreis",
+          "description": "Der zu lesende Strompreis. Weglassen, wenn es nur einen gibt."
+        },
+        "device_id": {
+          "name": "Gerät",
+          "description": "Das Gerät des Strompreises statt des Eintrags."
+        },
+        "start": {
+          "name": "Beginn",
+          "description": "Das erste einbezogene Intervall (Standard: der Beginn von heute in der Preiszone)."
+        },
+        "end": {
+          "name": "Ende",
+          "description": "Wo es endet (Standard: das Ende von morgen, wenn dessen Preise veröffentlicht sind, sonst das Ende von heute)."
+        }
+      }
     }
   }
 }

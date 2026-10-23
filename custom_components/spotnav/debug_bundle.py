@@ -67,12 +67,14 @@ from .const import (
     CONF_PHASE_WIRING,
     CONF_SITE_CURRENT_SOURCE,
     DOMAIN,
+    ENTRY_TYPE_CHARGER,
+    ENTRY_TYPE_PRICE,
     ENTRY_TYPE_SITE,
 )
 from .diagnostics import _price_data, entry_diagnostics, TO_REDACT
 from .execution.other_controllers import CONTROLLERS
 from .planning.hybrid_forecast import async_forecast_capable_domains
-from .runtime import domain_data, site_controller_for
+from .runtime import domain_data, entry_kind, site_controller_for
 from .site.measurement_source import grid_power_source_from_dict, source_from_dict
 
 _LOGGER = logging.getLogger(__name__)
@@ -407,8 +409,9 @@ async def async_build_debug_bundle(hass: HomeAssistant) -> dict[str, Any]:
     """The whole installation as one redacted, JSON-safe document. Never raises for a bad entry."""
     entries = list(hass.config_entries.async_entries(DOMAIN))
     forecast = await async_forecast_capable_domains(hass)
-    chargers = [e for e in entries if e.data.get(CONF_ENTRY_TYPE) != ENTRY_TYPE_SITE]
+    chargers = [e for e in entries if entry_kind(e) == ENTRY_TYPE_CHARGER]
     sites = [e for e in entries if e.data.get(CONF_ENTRY_TYPE) == ENTRY_TYPE_SITE]
+    prices = [e for e in entries if entry_kind(e) == ENTRY_TYPE_PRICE]
     charger_sections = [await _charger_section(hass, entry, forecast) for entry in chargers]
     site_sections = []
     for entry in sites:
@@ -444,6 +447,11 @@ async def async_build_debug_bundle(hass: HomeAssistant) -> dict[str, Any]:
         "price_data": _price_data(hass),
         "sites": site_sections,
         "chargers": charger_sections,
+        # The electricity price entries: area, fees as resolved, hours and state, never a price array.
+        "prices": [
+            {"entry_id": entry.entry_id, "title": entry.title, "diagnostics": _entry_diagnostics(hass, entry)}
+            for entry in prices
+        ],
         "log": {
             "note": "The last SpotNav log records at INFO and above; DEBUG ones only if DEBUG was enabled.",
             "records": [] if buffer is None else buffer.records(),

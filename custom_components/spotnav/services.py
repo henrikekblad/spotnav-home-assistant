@@ -3,13 +3,17 @@
 Registered once by `async_setup`, never per entry. Only the decision store is touched: no
 charger, schedule, entity or other service call is made.
 
-Every service is an admin service: a call from a user who is not an administrator is refused
-(`Unauthorized`). The six decision services change the integration's configuration, the same rule
-as the card's `spotnav/choose_vehicle_soc`; `send_test_notification` messages the household's
-phones and names the chargers, an administrator's field test. A call with no user behind it (an
-automation fired by a trigger) is allowed. Nothing inside SpotNav calls them: the Repairs flow, the
-config flow, the card's WebSocket commands and the phones' notification answers reach the decision
-store without a service call.
+The rule is that a service which changes configuration, or acts on the household, is an admin service: a
+call from a user who is not an administrator is refused (`Unauthorized`). The six decision services
+change the integration's configuration, the same rule as the card's `spotnav/choose_vehicle_soc`;
+`send_test_notification` messages the household's phones and names the chargers, an administrator's
+field test. A call with no user behind it (an automation fired by a trigger) is allowed. Nothing inside
+SpotNav calls them: the Repairs flow, the config flow, the card's WebSocket commands and the phones'
+notification answers reach the decision store without a service call.
+
+`get_prices` only reads (an electricity price entry's prices, which every user's dashboard can show
+anyway) and changes nothing, so it is open to every user. It answers and does nothing else
+(`SupportsResponse.ONLY`).
 """
 
 from __future__ import annotations
@@ -22,16 +26,20 @@ from homeassistant.components import websocket_api
 from homeassistant.core import HomeAssistant, ServiceCall, ServiceResponse, SupportsResponse
 from homeassistant.exceptions import ServiceValidationError
 from homeassistant.helpers import config_validation as cv
+from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers.service import async_register_admin_service
+from homeassistant.util import dt as dt_util
 
+from . import time_zones
 from .const import CONF_ENTRY_TYPE, DOMAIN, ENTRY_TYPE_SITE
 from .repairs import (
     async_clear_vehicle_soc,
     async_record_vehicle_soc,
     async_sync_resolution_repairs,
 )
-from .runtime import charger_data, domain_data
+from .pricing.price_points import resolution_minutes, rounded
+from .runtime import charger_data, domain_data, price_data, PriceData
 from .vehicles.discovery_decisions import (
     DECISION_DOMAIN_VEHICLE,
     DECISION_DOMAIN_VEHICLE_CHARGE_LIMIT,
@@ -108,7 +116,102 @@ def async_register_services(hass: HomeAssistant) -> None:
             supports_response=SupportsResponse.OPTIONAL,
         )
 
+    if not hass.services.has_service(DOMAIN, SERVICE_GET_PRICES):
+
+        async def async_get_prices(call: ServiceCall) -> ServiceResponse:
+            return _get_prices(hass, call)
+
+        # Read-only, so not an admin service (see the module docstring).
+        hass.services.async_register(
+            DOMAIN,
+            SERVICE_GET_PRICES,
+            async_get_prices,
+            schema=GET_PRICES_SCHEMA,
+            supports_response=SupportsResponse.ONLY,
+        )
+
     websocket_api.async_register_command(hass, _async_ws_resolve_required)
+
+
+#: An electricity price entry's prices with fees, for an automation or a script to work with.
+SERVICE_GET_PRICES = "get_prices"
+
+GET_PRICES_SCHEMA = vol.Schema(
+    {
+        vol.Optional("config_entry_id"): cv.string,
+        vol.Optional("device_id"): cv.string,
+        vol.Optional("start"): cv.datetime,
+        vol.Optional("end"): cv.datetime,
+    }
+)
+
+
+def _price_refusal(key: str, message: str) -> ServiceValidationError:
+    return ServiceValidationError(message, translation_domain=DOMAIN, translation_key=key)
+
+
+def _price_entry(hass: HomeAssistant, call: ServiceCall) -> tuple[str, PriceData]:
+    """The electricity price entry a call names by entry id or device id, or the only one there is."""
+    entry_id = call.data.get("config_entry_id")
+    device_id = call.data.get("device_id")
+    candidates: list[str]
+    if entry_id:
+        candidates = [entry_id]
+    elif device_id:
+        device = dr.async_get(hass).async_get(device_id)
+        candidates = [] if device is None else sorted(device.config_entries)
+    else:
+        candidates = [entry.entry_id for entry in hass.config_entries.async_entries(DOMAIN)]
+    found = [(candidate, data) for candidate in candidates if (data := price_data(hass, candidate)) is not None]
+    if len(found) == 1:
+        return found[0]
+    if not found:
+        raise _price_refusal("price_entry_unknown", "No loaded SpotNav electricity price by that id")
+    raise _price_refusal("price_entry_required", "Name the electricity price: there is more than one")
+
+
+def _instant(value: Any) -> Any:
+    """An aware instant in UTC; a time without a zone is Home Assistant's own local time."""
+    if value.tzinfo is None:
+        value = value.replace(tzinfo=dt_util.get_default_time_zone())
+    return dt_util.as_utc(value)
+
+
+def _get_prices(hass: HomeAssistant, call: ServiceCall) -> ServiceResponse:
+    """The prices of one electricity price entry, modelled on Home Assistant's `nordpool.get_prices`:
+    the area's list of `{start, end, price, spot_price}` (major unit per kWh, `price` with fees and VAT)
+    under the area's id, beside the currency, unit and resolution. Default span: today, and tomorrow once
+    published. Only what the installation holds is read; nothing is fetched."""
+    entry_id, data = _price_entry(hass, call)
+    device = data.device
+    area = device.area
+    span = device.default_span()
+    if area is None or span is None or device.fiscal is None:
+        raise _price_refusal("price_unavailable", "This electricity price has no prices yet")
+    start = _instant(call.data["start"]) if "start" in call.data else span[0]
+    end = _instant(call.data["end"]) if "end" in call.data else span[1]
+    if end <= start:
+        raise _price_refusal("price_range_invalid", "The end must be after the start")
+    repository = domain_data(hass).price_repository
+    points = () if repository is None else device.points_between(start, end, repository)
+    zone = time_zones.zone(area.tz) or dt_util.UTC
+    return {
+        "config_entry_id": entry_id,
+        "area": area.id,
+        "currency": area.currency,
+        "unit": f"{area.major_unit}/kWh",
+        "resolution_minutes": resolution_minutes(points),
+        "tomorrow_published": device.tomorrow_published,
+        area.id: [
+            {
+                "start": point.start.astimezone(zone).isoformat(),
+                "end": point.end.astimezone(zone).isoformat(),
+                "price": rounded(point.price),
+                "spot_price": rounded(point.spot),
+            }
+            for point in points
+        ],
+    }
 
 
 #: A field test without unplugging the car: a test push to the paired app, a test message to the

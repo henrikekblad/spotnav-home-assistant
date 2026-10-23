@@ -90,6 +90,9 @@ current values every time it is shown (see [Charge history](card.md#charge-histo
 
 ## How the integration uses the prices
 
+The same prices, with the same fees, are there for automations that have nothing to do with a car:
+see [Prices for other automations](price-device.md).
+
 ### Plans only on published prices
 
 A plan is placed only in intervals that have a published price. With no departure time the plan

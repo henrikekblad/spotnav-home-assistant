@@ -9,6 +9,9 @@ public SpotNav Relay (no account or API key) and follows them.
   target state of charge, and starts and stops your charger to follow the plan.
 - **Uses your sun and respects your fuse.** It can charge from solar surplus, hold back grid energy
   when a solar forecast promises sun, and keep several chargers under one main fuse.
+- **Prices for the rest of the house.** An *Electricity price* entry gives any automation (floor
+  heating, a washing machine) the price now with your fees, "cheap now" and "expensive now" sensors,
+  and a `spotnav.get_prices` action; see [Prices for other automations](docs/price-device.md).
 - **Runs locally.** The plan lives in Home Assistant and keeps running if your phone is away. A
   Lovelace card is included, and the SpotNav Android app
   ([Google Play](https://play.google.com/store/apps/details?id=se.sensnology.spotnav),
@@ -79,6 +82,8 @@ match and choose **Approve**. No Home Assistant password or token is stored on t
 - [The card](docs/card.md): graph, plan, buttons, status lines and settings.
 - [Charging strategies](docs/strategies.md): cheapest, solar and hybrid.
 - [Prices](docs/prices.md): sources, taxes and fees, and the relay's published files.
+- [Prices for other automations](docs/price-device.md): the Electricity price entry, its sensors and
+  `spotnav.get_prices`, with a floor-heating and a washing-machine example.
 - [Target state of charge](docs/target-soc.md): vehicles, estimates and stopping at a target.
 - [Which car is plugged in?](docs/vehicle-identification.md): several cars at one charger.
 - [Site and load balancing](docs/site-and-load-balancing.md): main fuse, measurement sources,

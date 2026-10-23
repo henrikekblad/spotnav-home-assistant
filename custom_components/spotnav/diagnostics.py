@@ -21,10 +21,21 @@ from .const import (
     CONF_OCPP_CHARGE_POINT_ID,
     CONF_WEBHOOK_ID,
     DOMAIN,
+    ENTRY_TYPE_CHARGER,
+    ENTRY_TYPE_PRICE,
     ENTRY_TYPE_SITE,
 )
 from .pricing.price_repository import catalogue_summary, day_summary, index_summary
-from .runtime import charger_data, controller_for, domain_data, executor_for, preview_for, site_controller_for
+from .runtime import (
+    charger_data,
+    controller_for,
+    domain_data,
+    entry_kind,
+    executor_for,
+    preview_for,
+    price_data,
+    site_controller_for,
+)
 from .site.regulator import RegulatorDecision
 from .site.site_capacity import ChargerAllocation, site_activity, SiteCapacityResult
 from .vehicles.capability import SiteCapabilitySnapshot
@@ -57,14 +68,29 @@ def entry_diagnostics(hass: HomeAssistant, entry: ConfigEntry) -> dict[str, Any]
     """One entry's own diagnostics, without the installation-wide bundle."""
     if entry.data.get(CONF_ENTRY_TYPE) == ENTRY_TYPE_SITE:
         return _site_diagnostics(hass, entry)
+    if entry_kind(entry) == ENTRY_TYPE_PRICE:
+        return _price_entry_diagnostics(hass, entry)
     return _charger_diagnostics(hass, entry)
 
 
+def _price_entry_diagnostics(hass: HomeAssistant, entry: ConfigEntry) -> dict[str, Any]:
+    """An electricity price entry: its stored area and fees and its device's state. It holds no secret."""
+    data = price_data(hass, entry.entry_id)
+    return {
+        "entry_type": ENTRY_TYPE_PRICE,
+        "config": dict(entry.data),
+        "price_data": _price_data(hass),
+        "device": None if data is None else data.device.diagnostics(),
+    }
+
+
 def _bundle_carrier_id(hass: HomeAssistant) -> str | None:
-    """The entry whose diagnostics carry the debug bundle: the first site, else the first charger."""
+    """The entry whose diagnostics carry the debug bundle: the first site, else the first charger, else the
+    first entry of any kind."""
     entries = sorted(hass.config_entries.async_entries(DOMAIN), key=lambda entry: entry.entry_id)
     sites = [entry for entry in entries if entry.data.get(CONF_ENTRY_TYPE) == ENTRY_TYPE_SITE]
-    chosen = sites or entries
+    chargers = [entry for entry in entries if entry_kind(entry) == ENTRY_TYPE_CHARGER]
+    chosen = sites or chargers or entries
     return chosen[0].entry_id if chosen else None
 
 

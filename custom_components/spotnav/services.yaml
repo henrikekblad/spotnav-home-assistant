@@ -139,3 +139,45 @@ send_test_notification:
       example: 01J9ZQ2X3V4W5Y6Z7A8B9C0D1E
       selector:
         text:
+
+get_prices:
+  name: Get electricity prices
+  description: >
+    Answer with the prices of one SpotNav electricity price: each interval's
+    start and end, its price with your fees and VAT and its spot price, in the
+    area's currency per kWh. Defaults to today, and tomorrow once published.
+    Reads only what Home Assistant already holds and changes nothing, so every
+    user may call it.
+  fields:
+    config_entry_id:
+      name: Electricity price
+      description: >
+        The electricity price entry to read. Leave it out when there is only
+        one.
+      required: false
+      selector:
+        config_entry:
+          integration: spotnav
+    device_id:
+      name: Device
+      description: The electricity price's device, instead of the entry.
+      required: false
+      selector:
+        device:
+          integration: spotnav
+    start:
+      name: Start
+      description: >
+        The first interval to include (default: the start of today in the
+        price area).
+      required: false
+      selector:
+        datetime:
+    end:
+      name: End
+      description: >
+        Where to stop (default: the end of tomorrow when its prices are
+        published, else the end of today).
+      required: false
+      selector:
+        datetime:

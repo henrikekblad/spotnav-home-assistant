@@ -19,7 +19,7 @@
       },
       "user": {
         "title": "Que voulez-vous ajouter ?",
-        "description": "Une borne relie un point de charge physique à SpotNav. Un site est facultatif : il équilibre la charge de toutes les bornes d'un même raccordement électrique sous le fusible principal.",
+        "description": "Une borne relie un point de charge physique à SpotNav. Un site est facultatif : il équilibre la charge de toutes les bornes d'un même raccordement électrique sous le fusible principal. Un prix de l'électricité donne aux autres automatisations les prix de SpotNav avec vos taxes.",
         "data": {
           "entry_type": "Élément à ajouter"
         }
@@ -227,6 +227,25 @@
           "charger_phases": "Phases de la borne",
           "voltage_between_phases_v": "Tension entre phases"
         }
+      },
+      "price": {
+        "title": "Prix de l'électricité",
+        "description": "Des prix pour les automatisations qui ne concernent pas une voiture, comme un plancher chauffant ou un lave-linge. Quelle zone de prix ?",
+        "data": {
+          "area_id": "Zone de prix"
+        }
+      },
+      "price_fees": {
+        "title": "Taxes et TVA",
+        "description": "Zone de prix {area}. Ses suggestions : TVA {vat_suggestion}, taxe sur l'électricité {tax_suggestion}, frais de réseau {transfer_suggestion}. Pour chacune, utilisez la suggestion, votre propre montant ou rien. Un ✓ signifie que le prix publié l'inclut déjà et que rien n'est ajouté.",
+        "data": {
+          "vat_mode": "TVA",
+          "vat_value": "TVA, mon propre montant",
+          "tax_mode": "Taxe sur l'électricité",
+          "tax_value": "Taxe sur l'électricité, mon propre montant",
+          "transfer_mode": "Frais de réseau",
+          "transfer_value": "Frais de réseau, mon propre montant"
+        }
       }
     },
     "abort": {
@@ -242,7 +261,8 @@
       "vehicle_dismissed": "Véhicule écarté. SpotNav cessera de le signaler jusqu'à ce qu'il soit rétabli.",
       "not_a_charger": "Cet appareil n'est pas une borne de recharge (c'est un contrôleur de chauffage ou de prise).",
       "charger_not_recognised": "SpotNav ne connaît pas cette intégration. Choisissez plutôt Manuel.",
-      "charger_not_controllable": "SpotNav ne peut pas démarrer ni arrêter cette borne. Elle peut seulement être lue."
+      "charger_not_controllable": "SpotNav ne peut pas démarrer ni arrêter cette borne. Elle peut seulement être lue.",
+      "no_price_areas": "La liste des zones de prix n'a pas pu être lue. Réessayez dans une minute."
     },
     "error": {
       "safety_margin_at_or_above_fuse": "La marge de sécurité doit être inférieure au fusible principal, sinon il ne reste aucun courant pour les bornes.",
@@ -266,7 +286,9 @@
       "unit_expected_voltage": "Ce capteur doit indiquer une tension en V.",
       "unit_expected_reactive_power": "Ce capteur doit indiquer une puissance réactive en var ou kvar.",
       "unit_expected_apparent_power": "Ce capteur doit indiquer une puissance apparente en VA ou kVA.",
-      "manual_entities_duplicate": "Chaque phase doit avoir sa propre entité."
+      "manual_entities_duplicate": "Chaque phase doit avoir sa propre entité.",
+      "fee_value_required": "Saisissez votre propre montant, ou choisissez la suggestion.",
+      "fee_no_suggestion": "Cette zone n'a pas de suggestion pour cela : saisissez votre propre montant ou choisissez rien."
     }
   },
   "options": {
@@ -385,10 +407,30 @@
           "entity_L2": "Courant L2",
           "entity_L3": "Courant L3"
         }
+      },
+      "price_init": {
+        "title": "Prix de l'électricité",
+        "description": "Des prix pour les automatisations qui ne concernent pas une voiture, comme un plancher chauffant ou un lave-linge. Quelle zone de prix ?",
+        "data": {
+          "area_id": "Zone de prix"
+        }
+      },
+      "price_fees": {
+        "title": "Taxes et TVA",
+        "description": "Zone de prix {area}. Ses suggestions : TVA {vat_suggestion}, taxe sur l'électricité {tax_suggestion}, frais de réseau {transfer_suggestion}. Pour chacune, utilisez la suggestion, votre propre montant ou rien. Un ✓ signifie que le prix publié l'inclut déjà et que rien n'est ajouté.",
+        "data": {
+          "vat_mode": "TVA",
+          "vat_value": "TVA, mon propre montant",
+          "tax_mode": "Taxe sur l'électricité",
+          "tax_value": "Taxe sur l'électricité, mon propre montant",
+          "transfer_mode": "Frais de réseau",
+          "transfer_value": "Frais de réseau, mon propre montant"
+        }
       }
     },
     "abort": {
-      "no_pending_site": "Les informations de ce site n'avaient pas été envoyées avant l'ouverture de l'entrée manuelle de borne, rien n'a donc été enregistré."
+      "no_pending_site": "Les informations de ce site n'avaient pas été envoyées avant l'ouverture de l'entrée manuelle de borne, rien n'a donc été enregistré.",
+      "no_price_areas": "La liste des zones de prix n'a pas pu être lue. Réessayez dans une minute."
     },
     "error": {
       "safety_margin_at_or_above_fuse": "La marge de sécurité doit être inférieure au fusible principal, sinon il ne reste aucun courant pour les bornes.",
@@ -408,7 +450,9 @@
       "unit_expected_voltage": "Ce capteur doit indiquer une tension en V.",
       "unit_expected_reactive_power": "Ce capteur doit indiquer une puissance réactive en var ou kvar.",
       "unit_expected_apparent_power": "Ce capteur doit indiquer une puissance apparente en VA ou kVA.",
-      "manual_entities_duplicate": "Chaque phase doit avoir sa propre entité."
+      "manual_entities_duplicate": "Chaque phase doit avoir sa propre entité.",
+      "fee_value_required": "Saisissez votre propre montant, ou choisissez la suggestion.",
+      "fee_no_suggestion": "Cette zone n'a pas de suggestion pour cela : saisissez votre propre montant ou choisissez rien."
     }
   },
   "selector": {
@@ -422,7 +466,8 @@
       "options": {
         "charger": "Une borne",
         "site": "Un site (équilibrage de charge)",
-        "resolve_vehicle": "Identifier un véhicule détecté"
+        "resolve_vehicle": "Identifier un véhicule détecté",
+        "price": "Un prix de l'électricité"
       }
     },
     "measurement_mode": {
@@ -448,6 +493,13 @@
         "1": "Une phase",
         "3": "Trois phases"
       }
+    },
+    "fee_mode": {
+      "options": {
+        "off": "Rien",
+        "suggested": "La suggestion de la zone",
+        "manual": "Mon propre montant"
+      }
     }
   },
   "entity": {
@@ -460,6 +512,12 @@
       },
       "grid_charging_site": {
         "name": "Charge depuis le réseau"
+      },
+      "cheap_now": {
+        "name": "Bon marché maintenant"
+      },
+      "expensive_now": {
+        "name": "Cher maintenant"
       }
     },
     "button": {
@@ -599,6 +657,9 @@
       },
       "sessions_last_cost": {
         "name": "Coût de la dernière recharge"
+      },
+      "price_now": {
+        "name": "Prix actuel"
       }
     },
     "select": {
@@ -667,6 +728,12 @@
       },
       "transfer_fee": {
         "name": "Frais de réseau"
+      },
+      "cheap_hours": {
+        "name": "Heures bon marché par jour"
+      },
+      "expensive_hours": {
+        "name": "Heures chères par jour"
       }
     },
     "date": {
@@ -818,6 +885,42 @@
     },
     "reconcile_failed": {
       "message": "La borne a accepté l'ordre, mais la charge automatique n'a pas pu être mise à jour en conséquence. Vérifiez l'état de la borne."
+    },
+    "price_entry_unknown": {
+      "message": "Aucun prix de l'électricité SpotNav chargé avec cet identifiant."
+    },
+    "price_entry_required": {
+      "message": "Il y a plus d'un prix de l'électricité : indiquez celui à lire."
+    },
+    "price_unavailable": {
+      "message": "Ce prix de l'électricité n'a pas encore de prix."
+    },
+    "price_range_invalid": {
+      "message": "La fin doit être après le début."
+    }
+  },
+  "services": {
+    "get_prices": {
+      "name": "Obtenir les prix de l'électricité",
+      "description": "Répond avec les prix d'un prix de l'électricité SpotNav : le début et la fin de chaque intervalle, son prix avec vos taxes et la TVA et son prix spot, dans la devise de la zone par kWh. Par défaut aujourd'hui, et demain une fois publié.",
+      "fields": {
+        "config_entry_id": {
+          "name": "Prix de l'électricité",
+          "description": "Le prix de l'électricité à lire. À omettre s'il n'y en a qu'un."
+        },
+        "device_id": {
+          "name": "Appareil",
+          "description": "L'appareil du prix de l'électricité, au lieu de l'entrée."
+        },
+        "start": {
+          "name": "Début",
+          "description": "Le premier intervalle inclus (par défaut : le début d'aujourd'hui dans la zone de prix)."
+        },
+        "end": {
+          "name": "Fin",
+          "description": "Où s'arrêter (par défaut : la fin de demain quand ses prix sont publiés, sinon la fin d'aujourd'hui)."
+        }
+      }
     }
   }
 }

@@ -19,7 +19,7 @@
       },
       "user": {
         "title": "Hva vil du legge til?",
-        "description": "En lader kobler ett fysisk ladepunkt til SpotNav. Et anlegg er valgfritt: det balanserer lasten for alle ladere på én elektrisk tilkobling under hovedsikringen.",
+        "description": "En lader kobler ett fysisk ladepunkt til SpotNav. Et anlegg er valgfritt: det balanserer lasten for alle ladere på én elektrisk tilkobling under hovedsikringen. En strømpris gir andre automasjoner SpotNavs priser med dine avgifter.",
         "data": {
           "entry_type": "Hva som skal legges til"
         }
@@ -227,6 +227,25 @@
           "charger_phases": "Laderens faser",
           "voltage_between_phases_v": "Spenning mellom faser"
         }
+      },
+      "price": {
+        "title": "Strømpris",
+        "description": "Priser for automasjoner som ikke handler om en bil, for eksempel gulvvarme eller vaskemaskin. Hvilket prisområde?",
+        "data": {
+          "area_id": "Prisområde"
+        }
+      },
+      "price_fees": {
+        "title": "Avgifter og MVA",
+        "description": "Prisområde {area}. Forslagene: MVA {vat_suggestion}, energiavgift {tax_suggestion}, nettleie {transfer_suggestion}. Velg for hver forslaget, ditt eget tall eller ingenting. En ✓ betyr at den publiserte prisen allerede inneholder den, og at ingenting legges til.",
+        "data": {
+          "vat_mode": "MVA",
+          "vat_value": "MVA, mitt eget tall",
+          "tax_mode": "Energiavgift",
+          "tax_value": "Energiavgift, mitt eget tall",
+          "transfer_mode": "Nettleie",
+          "transfer_value": "Nettleie, mitt eget tall"
+        }
       }
     },
     "abort": {
@@ -242,7 +261,8 @@
       "vehicle_dismissed": "Kjøretøyet er avvist. SpotNav slutter å rapportere det til avvisningen oppheves.",
       "not_a_charger": "Den enheten er ikke en elbillader (den styrer en varmeovn eller en stikkontakt).",
       "charger_not_recognised": "SpotNav kjenner ikke denne integrasjonen. Velg Manuell i stedet.",
-      "charger_not_controllable": "SpotNav kan ikke starte eller stoppe denne laderen. Den kan bare leses."
+      "charger_not_controllable": "SpotNav kan ikke starte eller stoppe denne laderen. Den kan bare leses.",
+      "no_price_areas": "Listen over prisområder kunne ikke leses. Prøv igjen om et minutt."
     },
     "error": {
       "safety_margin_at_or_above_fuse": "Sikkerhetsmarginen må være lavere enn hovedsikringen, ellers blir det ingen strøm igjen til laderne.",
@@ -266,7 +286,9 @@
       "unit_expected_voltage": "Denne sensoren må oppgi spenning i V.",
       "unit_expected_reactive_power": "Denne sensoren må oppgi reaktiv effekt i var eller kvar.",
       "unit_expected_apparent_power": "Denne sensoren må oppgi tilsynelatende effekt i VA eller kVA.",
-      "manual_entities_duplicate": "Hver fase trenger sin egen entitet."
+      "manual_entities_duplicate": "Hver fase trenger sin egen entitet.",
+      "fee_value_required": "Skriv inn ditt eget tall, eller velg forslaget.",
+      "fee_no_suggestion": "Prisområdet har ikke noe forslag for den: skriv inn ditt eget tall eller velg ingenting."
     }
   },
   "options": {
@@ -385,10 +407,30 @@
           "entity_L2": "Strøm L2",
           "entity_L3": "Strøm L3"
         }
+      },
+      "price_init": {
+        "title": "Strømpris",
+        "description": "Priser for automasjoner som ikke handler om en bil, for eksempel gulvvarme eller vaskemaskin. Hvilket prisområde?",
+        "data": {
+          "area_id": "Prisområde"
+        }
+      },
+      "price_fees": {
+        "title": "Avgifter og MVA",
+        "description": "Prisområde {area}. Forslagene: MVA {vat_suggestion}, energiavgift {tax_suggestion}, nettleie {transfer_suggestion}. Velg for hver forslaget, ditt eget tall eller ingenting. En ✓ betyr at den publiserte prisen allerede inneholder den, og at ingenting legges til.",
+        "data": {
+          "vat_mode": "MVA",
+          "vat_value": "MVA, mitt eget tall",
+          "tax_mode": "Energiavgift",
+          "tax_value": "Energiavgift, mitt eget tall",
+          "transfer_mode": "Nettleie",
+          "transfer_value": "Nettleie, mitt eget tall"
+        }
       }
     },
     "abort": {
-      "no_pending_site": "Anleggets opplysninger ble ikke sendt inn før den manuelle laderoppføringen ble åpnet, så ingenting ble lagret."
+      "no_pending_site": "Anleggets opplysninger ble ikke sendt inn før den manuelle laderoppføringen ble åpnet, så ingenting ble lagret.",
+      "no_price_areas": "Listen over prisområder kunne ikke leses. Prøv igjen om et minutt."
     },
     "error": {
       "safety_margin_at_or_above_fuse": "Sikkerhetsmarginen må være lavere enn hovedsikringen, ellers blir det ingen strøm igjen til laderne.",
@@ -408,7 +450,9 @@
       "unit_expected_voltage": "Denne sensoren må oppgi spenning i V.",
       "unit_expected_reactive_power": "Denne sensoren må oppgi reaktiv effekt i var eller kvar.",
       "unit_expected_apparent_power": "Denne sensoren må oppgi tilsynelatende effekt i VA eller kVA.",
-      "manual_entities_duplicate": "Hver fase trenger sin egen entitet."
+      "manual_entities_duplicate": "Hver fase trenger sin egen entitet.",
+      "fee_value_required": "Skriv inn ditt eget tall, eller velg forslaget.",
+      "fee_no_suggestion": "Prisområdet har ikke noe forslag for den: skriv inn ditt eget tall eller velg ingenting."
     }
   },
   "selector": {
@@ -422,7 +466,8 @@
       "options": {
         "charger": "En lader",
         "site": "Et anlegg (lastbalansering)",
-        "resolve_vehicle": "Avklar et oppdaget kjøretøy"
+        "resolve_vehicle": "Avklar et oppdaget kjøretøy",
+        "price": "En strømpris"
       }
     },
     "measurement_mode": {
@@ -448,6 +493,13 @@
         "1": "Én fase",
         "3": "Tre faser"
       }
+    },
+    "fee_mode": {
+      "options": {
+        "off": "Ingenting",
+        "suggested": "Prisområdets forslag",
+        "manual": "Mitt eget tall"
+      }
     }
   },
   "entity": {
@@ -460,6 +512,12 @@
       },
       "grid_charging_site": {
         "name": "Lader fra strømnettet"
+      },
+      "cheap_now": {
+        "name": "Billig nå"
+      },
+      "expensive_now": {
+        "name": "Dyrt nå"
       }
     },
     "button": {
@@ -599,6 +657,9 @@
       },
       "sessions_last_cost": {
         "name": "Kostnad siste lading"
+      },
+      "price_now": {
+        "name": "Strømpris nå"
       }
     },
     "select": {
@@ -667,6 +728,12 @@
       },
       "transfer_fee": {
         "name": "Nettleie"
+      },
+      "cheap_hours": {
+        "name": "Billige timer per døgn"
+      },
+      "expensive_hours": {
+        "name": "Dyre timer per døgn"
       }
     },
     "date": {
@@ -818,6 +885,42 @@
     },
     "reconcile_failed": {
       "message": "Laderen tok imot kommandoen, men automatisk lading kunne ikke oppdateres tilsvarende. Sjekk laderens status."
+    },
+    "price_entry_unknown": {
+      "message": "Ingen lastet SpotNav-strømpris med den id-en."
+    },
+    "price_entry_required": {
+      "message": "Det finnes mer enn én strømpris: oppgi hvilken som skal leses."
+    },
+    "price_unavailable": {
+      "message": "Denne strømprisen har ingen priser ennå."
+    },
+    "price_range_invalid": {
+      "message": "Slutten må være etter starten."
+    }
+  },
+  "services": {
+    "get_prices": {
+      "name": "Hent strømpriser",
+      "description": "Svarer med prisene for en SpotNav-strømpris: hvert intervalls start og slutt, prisen med dine avgifter og MVA og spotprisen, i prisområdets valuta per kWh. Som standard i dag, og i morgen når de prisene er publisert.",
+      "fields": {
+        "config_entry_id": {
+          "name": "Strømpris",
+          "description": "Strømprisen som skal leses. Utelat den når det bare finnes én."
+        },
+        "device_id": {
+          "name": "Enhet",
+          "description": "Strømprisens enhet i stedet for oppføringen."
+        },
+        "start": {
+          "name": "Start",
+          "description": "Det første intervallet som tas med (standard: starten av i dag i prisområdet)."
+        },
+        "end": {
+          "name": "Slutt",
+          "description": "Hvor det stopper (standard: slutten av i morgen når de prisene er publisert, ellers slutten av i dag)."
+        }
+      }
     }
   }
 }

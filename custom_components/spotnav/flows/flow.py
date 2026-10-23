@@ -69,6 +69,7 @@ from ..const import (
     DEFAULT_YIELD_STEPPING_ENABLED,
     DOMAIN,
     ENTRY_TYPE_CHARGER,
+    ENTRY_TYPE_PRICE,
     ENTRY_TYPE_RESOLVE_VEHICLE,
     ENTRY_TYPE_SITE,
     MEASUREMENT_MODE_DIRECT,
@@ -131,6 +132,7 @@ from .measured_source import (
     site_device_scope,
 )
 from .options import SiteCapacityOptionsFlow, SpotNavChargingOptionsFlow
+from .price import PriceConfigSteps, PriceOptionsFlow
 from ..setup_hints import add_charger_hint
 from ..texts import async_load as async_load_texts, table
 from .site_confirm import charger_found_summary, site_confirm_summary, site_join_summary
@@ -166,7 +168,7 @@ PROBE_UNREACHABLE = "unreachable"
 FIELD_CHARGING_STATE_ENTITY = "charging_state_entity"
 
 
-class SpotNavChargingConfigFlow(ChargerWiringSteps, config_entries.ConfigFlow, domain=DOMAIN):
+class SpotNavChargingConfigFlow(ChargerWiringSteps, PriceConfigSteps, config_entries.ConfigFlow, domain=DOMAIN):
     """Configure SpotNav charging control."""
 
     VERSION = CONFIG_ENTRY_VERSION
@@ -277,14 +279,16 @@ class SpotNavChargingConfigFlow(ChargerWiringSteps, config_entries.ConfigFlow, d
         return self.async_abort(reason="pairing_denied")
 
     async def async_step_user(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:
-        """Choose what to add: a charger, a site capacity/load-balancing group,
-        or a resolution for a vehicle detection could not decide about.
+        """Choose what to add: a charger, a site capacity/load-balancing group, an electricity price for
+        other automations, or a resolution for a vehicle detection could not decide about.
         """
         # A first charger's flow can run before the integration's setup has read SpotNav's texts.
         await async_load_texts(self.hass)
         if user_input is not None:
             if user_input[CONF_ENTRY_TYPE] == ENTRY_TYPE_SITE:
                 return await self.async_step_site()
+            if user_input[CONF_ENTRY_TYPE] == ENTRY_TYPE_PRICE:
+                return await self.async_step_price()
             if user_input[CONF_ENTRY_TYPE] == ENTRY_TYPE_RESOLVE_VEHICLE:
                 return await self.async_step_resolve_vehicle()
             return await self.async_step_charger_type()
@@ -299,6 +303,7 @@ class SpotNavChargingConfigFlow(ChargerWiringSteps, config_entries.ConfigFlow, d
                             options=[
                                 ENTRY_TYPE_CHARGER,
                                 ENTRY_TYPE_SITE,
+                                ENTRY_TYPE_PRICE,
                                 # Only offered when detection has something it refuses to guess.
                                 *(
                                     [ENTRY_TYPE_RESOLVE_VEHICLE]
@@ -1568,4 +1573,6 @@ class SpotNavChargingConfigFlow(ChargerWiringSteps, config_entries.ConfigFlow, d
     def async_get_options_flow(config_entry: config_entries.ConfigEntry):
         if config_entry.data.get(CONF_ENTRY_TYPE) == ENTRY_TYPE_SITE:
             return SiteCapacityOptionsFlow(config_entry)
+        if config_entry.data.get(CONF_ENTRY_TYPE) == ENTRY_TYPE_PRICE:
+            return PriceOptionsFlow(config_entry)
         return SpotNavChargingOptionsFlow(config_entry)
