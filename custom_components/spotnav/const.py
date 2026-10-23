@@ -76,10 +76,13 @@ PLATFORMS = ["binary_sensor", "button", "date", "event", "number", "select", "se
 
 MAX_SCHEDULE_PERIODS = 8
 
-# Every config entry is either a charger (the default kind) or a site capacity group.
+# Every config entry is a charger (the default kind), a site capacity group or an electricity price.
 CONF_ENTRY_TYPE = "entry_type"
 ENTRY_TYPE_CHARGER = "charger"
 ENTRY_TYPE_SITE = "site"
+# An electricity price for automations that are not about a charger (`price_device.py`): one area and
+# its fees, independent of chargers and sites.
+ENTRY_TYPE_PRICE = "price"
 # Not a stored entry kind: resolves or dismisses a vehicle whose state of charge detection
 # refuses to guess, records the decision in the discovery-decision store, and finishes.
 ENTRY_TYPE_RESOLVE_VEHICLE = "resolve_vehicle"
@@ -168,6 +171,14 @@ DEFAULT_MIN_CURRENT_A = 6.0
 SITE_RECOMPUTE_INTERVAL_S = 30
 
 SITE_PLATFORMS = ["binary_sensor", "sensor"]
+
+PRICE_PLATFORMS = ["binary_sensor", "number", "sensor"]
+# A price entry's data: the area, and each fee as a charger's settings store it
+# (`auto_settings.FiscalOverride.as_dict`: `{"enabled": bool, "value": float | None}`).
+CONF_PRICE_AREA = "area_id"
+CONF_PRICE_VAT = "vat"
+CONF_PRICE_TAX = "tax"
+CONF_PRICE_TRANSFER = "transfer"
 
 # Opt-in per site: whether `execution/yield_stepping.py`'s `YieldStepper` is consulted when applying.
 CONF_YIELD_STEPPING_ENABLED = "yield_stepping_enabled"
