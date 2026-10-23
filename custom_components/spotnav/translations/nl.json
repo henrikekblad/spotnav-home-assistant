@@ -19,7 +19,7 @@
       },
       "user": {
         "title": "Wat wil je toevoegen?",
-        "description": "Een laadpaal koppelt één fysiek laadpunt aan SpotNav. Een locatie is optioneel: die verdeelt de belasting van alle laadpalen op één elektrische aansluiting onder de hoofdzekering.",
+        "description": "Een laadpaal koppelt één fysiek laadpunt aan SpotNav. Een locatie is optioneel: die verdeelt de belasting van alle laadpalen op één elektrische aansluiting onder de hoofdzekering. Een elektriciteitsprijs geeft andere automatiseringen de prijzen van SpotNav met jouw heffingen.",
         "data": {
           "entry_type": "Wat toevoegen"
         }
@@ -227,6 +227,25 @@
           "charger_phases": "Fasen van de laadpaal",
           "voltage_between_phases_v": "Spanning tussen fasen"
         }
+      },
+      "price": {
+        "title": "Elektriciteitsprijs",
+        "description": "Prijzen voor automatiseringen die niet over een auto gaan, zoals vloerverwarming of een wasmachine. Welk prijsgebied?",
+        "data": {
+          "area_id": "Prijsgebied"
+        }
+      },
+      "price_fees": {
+        "title": "Heffingen en btw",
+        "description": "Prijsgebied {area}. De voorstellen: btw {vat_suggestion}, energiebelasting {tax_suggestion}, nettarief {transfer_suggestion}. Kies per onderdeel het voorstel, een eigen bedrag of niets. Een ✓ betekent dat de gepubliceerde prijs het al bevat en er niets bij komt.",
+        "data": {
+          "vat_mode": "Btw",
+          "vat_value": "Btw, eigen bedrag",
+          "tax_mode": "Energiebelasting",
+          "tax_value": "Energiebelasting, eigen bedrag",
+          "transfer_mode": "Nettarief",
+          "transfer_value": "Nettarief, eigen bedrag"
+        }
       }
     },
     "abort": {
@@ -242,7 +261,8 @@
       "vehicle_dismissed": "Auto genegeerd. SpotNav meldt hem niet meer tot het negeren ongedaan wordt gemaakt.",
       "not_a_charger": "Dat apparaat is geen laadpaal voor elektrische auto's (maar een verwarmings- of stopcontactregelaar).",
       "charger_not_recognised": "SpotNav kent deze integratie niet. Kies in plaats daarvan Handmatig.",
-      "charger_not_controllable": "SpotNav kan deze laadpaal niet starten of stoppen. Hij kan alleen worden uitgelezen."
+      "charger_not_controllable": "SpotNav kan deze laadpaal niet starten of stoppen. Hij kan alleen worden uitgelezen.",
+      "no_price_areas": "De lijst met prijsgebieden kon niet worden gelezen. Probeer het over een minuut opnieuw."
     },
     "error": {
       "safety_margin_at_or_above_fuse": "De veiligheidsmarge moet lager zijn dan de hoofdzekering, anders blijft er geen stroom over voor de laadpalen.",
@@ -266,7 +286,9 @@
       "unit_expected_voltage": "Deze sensor moet spanning doorgeven in V.",
       "unit_expected_reactive_power": "Deze sensor moet blindvermogen doorgeven in var of kvar.",
       "unit_expected_apparent_power": "Deze sensor moet schijnbaar vermogen doorgeven in VA of kVA.",
-      "manual_entities_duplicate": "Elke fase heeft een eigen entiteit nodig."
+      "manual_entities_duplicate": "Elke fase heeft een eigen entiteit nodig.",
+      "fee_value_required": "Vul een eigen bedrag in, of kies het voorstel.",
+      "fee_no_suggestion": "Dit prijsgebied heeft er geen voorstel voor: vul een eigen bedrag in of kies niets."
     }
   },
   "options": {
@@ -385,10 +407,30 @@
           "entity_L2": "Stroom L2",
           "entity_L3": "Stroom L3"
         }
+      },
+      "price_init": {
+        "title": "Elektriciteitsprijs",
+        "description": "Prijzen voor automatiseringen die niet over een auto gaan, zoals vloerverwarming of een wasmachine. Welk prijsgebied?",
+        "data": {
+          "area_id": "Prijsgebied"
+        }
+      },
+      "price_fees": {
+        "title": "Heffingen en btw",
+        "description": "Prijsgebied {area}. De voorstellen: btw {vat_suggestion}, energiebelasting {tax_suggestion}, nettarief {transfer_suggestion}. Kies per onderdeel het voorstel, een eigen bedrag of niets. Een ✓ betekent dat de gepubliceerde prijs het al bevat en er niets bij komt.",
+        "data": {
+          "vat_mode": "Btw",
+          "vat_value": "Btw, eigen bedrag",
+          "tax_mode": "Energiebelasting",
+          "tax_value": "Energiebelasting, eigen bedrag",
+          "transfer_mode": "Nettarief",
+          "transfer_value": "Nettarief, eigen bedrag"
+        }
       }
     },
     "abort": {
-      "no_pending_site": "De gegevens van deze locatie zijn niet verstuurd voordat het handmatige laadpaalitem werd geopend, dus er is niets opgeslagen."
+      "no_pending_site": "De gegevens van deze locatie zijn niet verstuurd voordat het handmatige laadpaalitem werd geopend, dus er is niets opgeslagen.",
+      "no_price_areas": "De lijst met prijsgebieden kon niet worden gelezen. Probeer het over een minuut opnieuw."
     },
     "error": {
       "safety_margin_at_or_above_fuse": "De veiligheidsmarge moet lager zijn dan de hoofdzekering, anders blijft er geen stroom over voor de laadpalen.",
@@ -408,7 +450,9 @@
       "unit_expected_voltage": "Deze sensor moet spanning doorgeven in V.",
       "unit_expected_reactive_power": "Deze sensor moet blindvermogen doorgeven in var of kvar.",
       "unit_expected_apparent_power": "Deze sensor moet schijnbaar vermogen doorgeven in VA of kVA.",
-      "manual_entities_duplicate": "Elke fase heeft een eigen entiteit nodig."
+      "manual_entities_duplicate": "Elke fase heeft een eigen entiteit nodig.",
+      "fee_value_required": "Vul een eigen bedrag in, of kies het voorstel.",
+      "fee_no_suggestion": "Dit prijsgebied heeft er geen voorstel voor: vul een eigen bedrag in of kies niets."
     }
   },
   "selector": {
@@ -422,7 +466,8 @@
       "options": {
         "charger": "Een laadpaal",
         "site": "Een locatie (load balancing)",
-        "resolve_vehicle": "Een gevonden auto oplossen"
+        "resolve_vehicle": "Een gevonden auto oplossen",
+        "price": "Een elektriciteitsprijs"
       }
     },
     "measurement_mode": {
@@ -448,6 +493,13 @@
         "1": "Eén fase",
         "3": "Drie fasen"
       }
+    },
+    "fee_mode": {
+      "options": {
+        "off": "Niets",
+        "suggested": "Voorstel van het prijsgebied",
+        "manual": "Eigen bedrag"
+      }
     }
   },
   "entity": {
@@ -460,6 +512,12 @@
       },
       "grid_charging_site": {
         "name": "Laadt van het net"
+      },
+      "cheap_now": {
+        "name": "Nu goedkoop"
+      },
+      "expensive_now": {
+        "name": "Nu duur"
       }
     },
     "button": {
@@ -599,6 +657,9 @@
       },
       "sessions_last_cost": {
         "name": "Kosten laatste laadsessie"
+      },
+      "price_now": {
+        "name": "Prijs nu"
       }
     },
     "select": {
@@ -667,6 +728,12 @@
       },
       "transfer_fee": {
         "name": "Nettarief"
+      },
+      "cheap_hours": {
+        "name": "Goedkope uren per dag"
+      },
+      "expensive_hours": {
+        "name": "Dure uren per dag"
       }
     },
     "date": {
@@ -818,6 +885,42 @@
     },
     "reconcile_failed": {
       "message": "De laadpaal heeft het commando uitgevoerd, maar automatisch laden kon niet worden bijgewerkt. Controleer de status van de laadpaal."
+    },
+    "price_entry_unknown": {
+      "message": "Geen geladen SpotNav-elektriciteitsprijs met dat id."
+    },
+    "price_entry_required": {
+      "message": "Er is meer dan één elektriciteitsprijs: geef aan welke gelezen moet worden."
+    },
+    "price_unavailable": {
+      "message": "Deze elektriciteitsprijs heeft nog geen prijzen."
+    },
+    "price_range_invalid": {
+      "message": "Het einde moet na het begin liggen."
+    }
+  },
+  "services": {
+    "get_prices": {
+      "name": "Elektriciteitsprijzen ophalen",
+      "description": "Antwoordt met de prijzen van één SpotNav-elektriciteitsprijs: begin en einde van elk interval, de prijs met jouw heffingen en btw en de spotprijs, in de valuta van het prijsgebied per kWh. Standaard vandaag, en morgen zodra gepubliceerd.",
+      "fields": {
+        "config_entry_id": {
+          "name": "Elektriciteitsprijs",
+          "description": "De elektriciteitsprijs om te lezen. Weglaten als er maar één is."
+        },
+        "device_id": {
+          "name": "Apparaat",
+          "description": "Het apparaat van de elektriciteitsprijs, in plaats van de vermelding."
+        },
+        "start": {
+          "name": "Begin",
+          "description": "Het eerste interval dat meetelt (standaard: het begin van vandaag in het prijsgebied)."
+        },
+        "end": {
+          "name": "Einde",
+          "description": "Waar het stopt (standaard: het einde van morgen als die prijzen gepubliceerd zijn, anders het einde van vandaag)."
+        }
+      }
     }
   }
 }

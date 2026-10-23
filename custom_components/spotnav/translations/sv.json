@@ -19,7 +19,7 @@
       },
       "user": {
         "title": "Vad vill du lägga till?",
-        "description": "En laddare kopplar en fysisk laddpunkt till SpotNav. En site är valfri: den lastbalanserar alla laddare på samma elanslutning under huvudsäkringen.",
+        "description": "En laddare kopplar en fysisk laddpunkt till SpotNav. En site är valfri: den lastbalanserar alla laddare på samma elanslutning under huvudsäkringen. Ett elpris ger andra automationer SpotNavs priser med dina avgifter.",
         "data": {
           "entry_type": "Vad som ska läggas till"
         }
@@ -227,6 +227,25 @@
           "charger_phases": "Laddarens faser",
           "voltage_between_phases_v": "Spänning mellan faser"
         }
+      },
+      "price": {
+        "title": "Elpris",
+        "description": "Priser för automationer som inte handlar om en bil, till exempel golvvärme eller tvättmaskin. Vilket elområde?",
+        "data": {
+          "area_id": "Elområde"
+        }
+      },
+      "price_fees": {
+        "title": "Avgifter och moms",
+        "description": "Elområde {area}. Dess förslag: moms {vat_suggestion}, energiskatt {tax_suggestion}, nätavgift {transfer_suggestion}. Välj för var och en förslaget, en egen siffra eller inget. En ✓ betyder att det publicerade priset redan innehåller den och att inget läggs till.",
+        "data": {
+          "vat_mode": "Moms",
+          "vat_value": "Moms, egen siffra",
+          "tax_mode": "Energiskatt",
+          "tax_value": "Energiskatt, egen siffra",
+          "transfer_mode": "Nätavgift",
+          "transfer_value": "Nätavgift, egen siffra"
+        }
       }
     },
     "abort": {
@@ -242,7 +261,8 @@
       "vehicle_dismissed": "Fordonet avfärdat. SpotNav slutar rapportera det tills du ångrar avfärdandet.",
       "not_a_charger": "Den enheten är ingen elbilsladdare (en värmare eller uttagsstyrning).",
       "charger_not_recognised": "SpotNav känner inte igen den här integrationen. Välj Manuell i stället.",
-      "charger_not_controllable": "SpotNav kan inte starta eller stoppa den här laddaren. Den kan bara läsas."
+      "charger_not_controllable": "SpotNav kan inte starta eller stoppa den här laddaren. Den kan bara läsas.",
+      "no_price_areas": "Listan över elområden kunde inte läsas. Försök igen om en minut."
     },
     "error": {
       "safety_margin_at_or_above_fuse": "Säkerhetsmarginalen måste vara lägre än huvudsäkringen, annars blir ingen ström kvar till laddarna.",
@@ -266,7 +286,9 @@
       "unit_expected_voltage": "Sensorn måste rapportera spänning i V.",
       "unit_expected_reactive_power": "Sensorn måste rapportera reaktiv effekt i var eller kvar.",
       "unit_expected_apparent_power": "Sensorn måste rapportera skenbar effekt i VA eller kVA.",
-      "manual_entities_duplicate": "Varje fas behöver en egen entitet."
+      "manual_entities_duplicate": "Varje fas behöver en egen entitet.",
+      "fee_value_required": "Ange en egen siffra, eller välj förslaget.",
+      "fee_no_suggestion": "Elområdet har inget förslag för den: ange en egen siffra eller välj inget."
     }
   },
   "options": {
@@ -385,10 +407,30 @@
           "entity_L2": "Ström L2",
           "entity_L3": "Ström L3"
         }
+      },
+      "price_init": {
+        "title": "Elpris",
+        "description": "Priser för automationer som inte handlar om en bil, till exempel golvvärme eller tvättmaskin. Vilket elområde?",
+        "data": {
+          "area_id": "Elområde"
+        }
+      },
+      "price_fees": {
+        "title": "Avgifter och moms",
+        "description": "Elområde {area}. Dess förslag: moms {vat_suggestion}, energiskatt {tax_suggestion}, nätavgift {transfer_suggestion}. Välj för var och en förslaget, en egen siffra eller inget. En ✓ betyder att det publicerade priset redan innehåller den och att inget läggs till.",
+        "data": {
+          "vat_mode": "Moms",
+          "vat_value": "Moms, egen siffra",
+          "tax_mode": "Energiskatt",
+          "tax_value": "Energiskatt, egen siffra",
+          "transfer_mode": "Nätavgift",
+          "transfer_value": "Nätavgift, egen siffra"
+        }
       }
     },
     "abort": {
-      "no_pending_site": "Sitens uppgifter skickades inte in innan den manuella laddarinmatningen öppnades, så inget sparades."
+      "no_pending_site": "Sitens uppgifter skickades inte in innan den manuella laddarinmatningen öppnades, så inget sparades.",
+      "no_price_areas": "Listan över elområden kunde inte läsas. Försök igen om en minut."
     },
     "error": {
       "safety_margin_at_or_above_fuse": "Säkerhetsmarginalen måste vara lägre än huvudsäkringen, annars blir ingen ström kvar till laddarna.",
@@ -408,7 +450,9 @@
       "unit_expected_voltage": "Sensorn måste rapportera spänning i V.",
       "unit_expected_reactive_power": "Sensorn måste rapportera reaktiv effekt i var eller kvar.",
       "unit_expected_apparent_power": "Sensorn måste rapportera skenbar effekt i VA eller kVA.",
-      "manual_entities_duplicate": "Varje fas behöver en egen entitet."
+      "manual_entities_duplicate": "Varje fas behöver en egen entitet.",
+      "fee_value_required": "Ange en egen siffra, eller välj förslaget.",
+      "fee_no_suggestion": "Elområdet har inget förslag för den: ange en egen siffra eller välj inget."
     }
   },
   "selector": {
@@ -422,7 +466,8 @@
       "options": {
         "charger": "En laddare",
         "site": "En site (lastbalansering)",
-        "resolve_vehicle": "Lös upp ett upptäckt fordon"
+        "resolve_vehicle": "Lös upp ett upptäckt fordon",
+        "price": "Ett elpris"
       }
     },
     "measurement_mode": {
@@ -448,6 +493,13 @@
         "1": "En fas",
         "3": "Tre faser"
       }
+    },
+    "fee_mode": {
+      "options": {
+        "off": "Inget",
+        "suggested": "Elområdets förslag",
+        "manual": "Egen siffra"
+      }
     }
   },
   "entity": {
@@ -460,6 +512,12 @@
       },
       "grid_charging_site": {
         "name": "Laddar från nätet"
+      },
+      "cheap_now": {
+        "name": "Billigt nu"
+      },
+      "expensive_now": {
+        "name": "Dyrt nu"
       }
     },
     "button": {
@@ -599,6 +657,9 @@
       },
       "sessions_last_cost": {
         "name": "Senaste laddningens kostnad"
+      },
+      "price_now": {
+        "name": "Elpris nu"
       }
     },
     "select": {
@@ -667,6 +728,12 @@
       },
       "transfer_fee": {
         "name": "Nätavgift"
+      },
+      "cheap_hours": {
+        "name": "Billiga timmar per dygn"
+      },
+      "expensive_hours": {
+        "name": "Dyra timmar per dygn"
       }
     },
     "date": {
@@ -818,6 +885,42 @@
     },
     "reconcile_failed": {
       "message": "Laddaren tog emot kommandot, men den automatiska laddningen kunde inte uppdateras efter det. Kontrollera laddarens status."
+    },
+    "price_entry_unknown": {
+      "message": "Inget inläst SpotNav-elpris med det id:t."
+    },
+    "price_entry_required": {
+      "message": "Det finns mer än ett elpris: ange vilket som ska läsas."
+    },
+    "price_unavailable": {
+      "message": "Det här elpriset har inga priser ännu."
+    },
+    "price_range_invalid": {
+      "message": "Slutet måste vara efter starten."
+    }
+  },
+  "services": {
+    "get_prices": {
+      "name": "Hämta elpriser",
+      "description": "Svarar med priserna för ett SpotNav-elpris: varje intervalls start och slut, dess pris med dina avgifter och moms och dess spotpris, i elområdets valuta per kWh. Som standard i dag, och i morgon när de priserna är publicerade.",
+      "fields": {
+        "config_entry_id": {
+          "name": "Elpris",
+          "description": "Elpriset som ska läsas. Utelämna det när det bara finns ett."
+        },
+        "device_id": {
+          "name": "Enhet",
+          "description": "Elprisets enhet, i stället för posten."
+        },
+        "start": {
+          "name": "Start",
+          "description": "Det första intervallet som tas med (standard: början av i dag i elområdet)."
+        },
+        "end": {
+          "name": "Slut",
+          "description": "Var det slutar (standard: slutet av i morgon när de priserna är publicerade, annars slutet av i dag)."
+        }
+      }
     }
   }
 }

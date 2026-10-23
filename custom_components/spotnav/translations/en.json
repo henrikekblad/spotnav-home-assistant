@@ -19,7 +19,7 @@
       },
       "user": {
         "title": "What do you want to add?",
-        "description": "A charger connects one physical charge point to SpotNav. A site is optional: it balances the load of every charger at one electrical connection under the main fuse.",
+        "description": "A charger connects one physical charge point to SpotNav. A site is optional: it balances the load of every charger at one electrical connection under the main fuse. An electricity price gives other automations SpotNav's prices with your fees.",
         "data": {
           "entry_type": "What to add"
         }
@@ -227,6 +227,25 @@
           "charger_phases": "Phases of the charger",
           "voltage_between_phases_v": "Voltage between phases"
         }
+      },
+      "price": {
+        "title": "Electricity price",
+        "description": "Prices for automations that are not about a car, such as floor heating or a washing machine. Which price area?",
+        "data": {
+          "area_id": "Price area"
+        }
+      },
+      "price_fees": {
+        "title": "Fees and VAT",
+        "description": "Price area {area}. Its suggestions: VAT {vat_suggestion}, energy tax {tax_suggestion}, grid fee {transfer_suggestion}. For each, use the suggestion, a figure of your own, or nothing. A ✓ means the published price already includes it and nothing is added.",
+        "data": {
+          "vat_mode": "VAT",
+          "vat_value": "VAT, my own figure",
+          "tax_mode": "Energy tax",
+          "tax_value": "Energy tax, my own figure",
+          "transfer_mode": "Grid fee",
+          "transfer_value": "Grid fee, my own figure"
+        }
       }
     },
     "abort": {
@@ -242,7 +261,8 @@
       "vehicle_dismissed": "Vehicle dismissed. SpotNav will stop reporting it until it is undismissed.",
       "not_a_charger": "That device is not an EV charger (a heater or outlet controller).",
       "charger_not_recognised": "SpotNav does not know this integration. Choose Manual instead.",
-      "charger_not_controllable": "SpotNav cannot start or stop this charger. It can only be read."
+      "charger_not_controllable": "SpotNav cannot start or stop this charger. It can only be read.",
+      "no_price_areas": "The list of price areas could not be read. Try again in a minute."
     },
     "error": {
       "safety_margin_at_or_above_fuse": "The safety margin must be lower than the main fuse, or no current is left for the chargers.",
@@ -266,7 +286,9 @@
       "unit_expected_voltage": "This sensor must report voltage in V.",
       "unit_expected_reactive_power": "This sensor must report reactive power in var or kvar.",
       "unit_expected_apparent_power": "This sensor must report apparent power in VA or kVA.",
-      "manual_entities_duplicate": "Each phase needs its own entity."
+      "manual_entities_duplicate": "Each phase needs its own entity.",
+      "fee_value_required": "Enter your own figure, or choose the suggestion.",
+      "fee_no_suggestion": "This area has no suggestion for it: enter your own figure or choose nothing."
     }
   },
   "options": {
@@ -385,10 +407,30 @@
           "entity_L2": "L2 current",
           "entity_L3": "L3 current"
         }
+      },
+      "price_init": {
+        "title": "Electricity price",
+        "description": "Prices for automations that are not about a car, such as floor heating or a washing machine. Which price area?",
+        "data": {
+          "area_id": "Price area"
+        }
+      },
+      "price_fees": {
+        "title": "Fees and VAT",
+        "description": "Price area {area}. Its suggestions: VAT {vat_suggestion}, energy tax {tax_suggestion}, grid fee {transfer_suggestion}. For each, use the suggestion, a figure of your own, or nothing. A ✓ means the published price already includes it and nothing is added.",
+        "data": {
+          "vat_mode": "VAT",
+          "vat_value": "VAT, my own figure",
+          "tax_mode": "Energy tax",
+          "tax_value": "Energy tax, my own figure",
+          "transfer_mode": "Grid fee",
+          "transfer_value": "Grid fee, my own figure"
+        }
       }
     },
     "abort": {
-      "no_pending_site": "This site's details were not submitted before the manual charger entry was opened, so nothing was saved."
+      "no_pending_site": "This site's details were not submitted before the manual charger entry was opened, so nothing was saved.",
+      "no_price_areas": "The list of price areas could not be read. Try again in a minute."
     },
     "error": {
       "safety_margin_at_or_above_fuse": "The safety margin must be lower than the main fuse, or no current is left for the chargers.",
@@ -408,7 +450,9 @@
       "unit_expected_voltage": "This sensor must report voltage in V.",
       "unit_expected_reactive_power": "This sensor must report reactive power in var or kvar.",
       "unit_expected_apparent_power": "This sensor must report apparent power in VA or kVA.",
-      "manual_entities_duplicate": "Each phase needs its own entity."
+      "manual_entities_duplicate": "Each phase needs its own entity.",
+      "fee_value_required": "Enter your own figure, or choose the suggestion.",
+      "fee_no_suggestion": "This area has no suggestion for it: enter your own figure or choose nothing."
     }
   },
   "selector": {
@@ -422,7 +466,8 @@
       "options": {
         "charger": "A charger",
         "site": "A site (load balancing)",
-        "resolve_vehicle": "Resolve a detected vehicle"
+        "resolve_vehicle": "Resolve a detected vehicle",
+        "price": "An electricity price"
       }
     },
     "measurement_mode": {
@@ -448,6 +493,13 @@
         "1": "One phase",
         "3": "Three phases"
       }
+    },
+    "fee_mode": {
+      "options": {
+        "off": "Nothing",
+        "suggested": "The area's suggestion",
+        "manual": "My own figure"
+      }
     }
   },
   "entity": {
@@ -460,6 +512,12 @@
       },
       "grid_charging_site": {
         "name": "Charging from the grid"
+      },
+      "cheap_now": {
+        "name": "Cheap now"
+      },
+      "expensive_now": {
+        "name": "Expensive now"
       }
     },
     "button": {
@@ -599,6 +657,9 @@
       },
       "sessions_last_cost": {
         "name": "Last charge cost"
+      },
+      "price_now": {
+        "name": "Price now"
       }
     },
     "select": {
@@ -667,6 +728,12 @@
       },
       "transfer_fee": {
         "name": "Grid transfer fee"
+      },
+      "cheap_hours": {
+        "name": "Cheap hours per day"
+      },
+      "expensive_hours": {
+        "name": "Expensive hours per day"
       }
     },
     "date": {
@@ -818,6 +885,42 @@
     },
     "reconcile_failed": {
       "message": "The charger took the command, but automatic charging could not be updated to match. Check the charger's status."
+    },
+    "price_entry_unknown": {
+      "message": "No loaded SpotNav electricity price by that id."
+    },
+    "price_entry_required": {
+      "message": "There is more than one electricity price: name the one to read."
+    },
+    "price_unavailable": {
+      "message": "This electricity price has no prices yet."
+    },
+    "price_range_invalid": {
+      "message": "The end must be after the start."
+    }
+  },
+  "services": {
+    "get_prices": {
+      "name": "Get electricity prices",
+      "description": "Answers with the prices of one SpotNav electricity price: each interval's start and end, its price with your fees and VAT and its spot price, in the area's currency per kWh. Defaults to today, and tomorrow once published.",
+      "fields": {
+        "config_entry_id": {
+          "name": "Electricity price",
+          "description": "The electricity price entry to read. Leave it out when there is only one."
+        },
+        "device_id": {
+          "name": "Device",
+          "description": "The electricity price's device, instead of the entry."
+        },
+        "start": {
+          "name": "Start",
+          "description": "The first interval to include (default: the start of today in the price area)."
+        },
+        "end": {
+          "name": "End",
+          "description": "Where to stop (default: the end of tomorrow when its prices are published, else the end of today)."
+        }
+      }
     }
   }
 }

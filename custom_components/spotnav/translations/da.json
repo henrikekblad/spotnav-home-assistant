@@ -19,7 +19,7 @@
       },
       "user": {
         "title": "Hvad vil du tilføje?",
-        "description": "En lader forbinder ét fysisk ladepunkt med SpotNav. Et anlæg er valgfrit: det balancerer lasten for alle ladere på én eltilslutning under hovedsikringen.",
+        "description": "En lader forbinder ét fysisk ladepunkt med SpotNav. Et anlæg er valgfrit: det balancerer lasten for alle ladere på én eltilslutning under hovedsikringen. En elpris giver andre automatiseringer SpotNavs priser med dine afgifter.",
         "data": {
           "entry_type": "Hvad skal tilføjes"
         }
@@ -227,6 +227,25 @@
           "charger_phases": "Laderens faser",
           "voltage_between_phases_v": "Spænding mellem faser"
         }
+      },
+      "price": {
+        "title": "Elpris",
+        "description": "Priser til automatiseringer, der ikke handler om en bil, for eksempel gulvvarme eller vaskemaskine. Hvilket prisområde?",
+        "data": {
+          "area_id": "Prisområde"
+        }
+      },
+      "price_fees": {
+        "title": "Afgifter og moms",
+        "description": "Prisområde {area}. Dets forslag: moms {vat_suggestion}, elafgift {tax_suggestion}, nettarif {transfer_suggestion}. Vælg for hver forslaget, dit eget tal eller intet. Et ✓ betyder, at den offentliggjorte pris allerede indeholder den, og at intet lægges til.",
+        "data": {
+          "vat_mode": "Moms",
+          "vat_value": "Moms, mit eget tal",
+          "tax_mode": "Elafgift",
+          "tax_value": "Elafgift, mit eget tal",
+          "transfer_mode": "Nettarif",
+          "transfer_value": "Nettarif, mit eget tal"
+        }
       }
     },
     "abort": {
@@ -242,7 +261,8 @@
       "vehicle_dismissed": "Køretøjet er afvist. SpotNav holder op med at rapportere det, indtil afvisningen fortrydes.",
       "not_a_charger": "Den enhed er ikke en elbillader (men en styring til varmeapparat eller stikkontakt).",
       "charger_not_recognised": "SpotNav kender ikke denne integration. Vælg Manuel i stedet.",
-      "charger_not_controllable": "SpotNav kan ikke starte eller stoppe denne lader. Den kan kun aflæses."
+      "charger_not_controllable": "SpotNav kan ikke starte eller stoppe denne lader. Den kan kun aflæses.",
+      "no_price_areas": "Listen over prisområder kunne ikke læses. Prøv igen om et minut."
     },
     "error": {
       "safety_margin_at_or_above_fuse": "Sikkerhedsmarginen skal være lavere end hovedsikringen, ellers er der ingen strøm tilbage til laderne.",
@@ -266,7 +286,9 @@
       "unit_expected_voltage": "Denne sensor skal angive spænding i V.",
       "unit_expected_reactive_power": "Denne sensor skal angive reaktiv effekt i var eller kvar.",
       "unit_expected_apparent_power": "Denne sensor skal angive tilsyneladende effekt i VA eller kVA.",
-      "manual_entities_duplicate": "Hver fase skal have sin egen entitet."
+      "manual_entities_duplicate": "Hver fase skal have sin egen entitet.",
+      "fee_value_required": "Indtast dit eget tal, eller vælg forslaget.",
+      "fee_no_suggestion": "Prisområdet har intet forslag til den: indtast dit eget tal eller vælg intet."
     }
   },
   "options": {
@@ -385,10 +407,30 @@
           "entity_L2": "Strøm L2",
           "entity_L3": "Strøm L3"
         }
+      },
+      "price_init": {
+        "title": "Elpris",
+        "description": "Priser til automatiseringer, der ikke handler om en bil, for eksempel gulvvarme eller vaskemaskine. Hvilket prisområde?",
+        "data": {
+          "area_id": "Prisområde"
+        }
+      },
+      "price_fees": {
+        "title": "Afgifter og moms",
+        "description": "Prisområde {area}. Dets forslag: moms {vat_suggestion}, elafgift {tax_suggestion}, nettarif {transfer_suggestion}. Vælg for hver forslaget, dit eget tal eller intet. Et ✓ betyder, at den offentliggjorte pris allerede indeholder den, og at intet lægges til.",
+        "data": {
+          "vat_mode": "Moms",
+          "vat_value": "Moms, mit eget tal",
+          "tax_mode": "Elafgift",
+          "tax_value": "Elafgift, mit eget tal",
+          "transfer_mode": "Nettarif",
+          "transfer_value": "Nettarif, mit eget tal"
+        }
       }
     },
     "abort": {
-      "no_pending_site": "Anlæggets oplysninger blev ikke sendt, før den manuelle laderpost blev åbnet, så intet blev gemt."
+      "no_pending_site": "Anlæggets oplysninger blev ikke sendt, før den manuelle laderpost blev åbnet, så intet blev gemt.",
+      "no_price_areas": "Listen over prisområder kunne ikke læses. Prøv igen om et minut."
     },
     "error": {
       "safety_margin_at_or_above_fuse": "Sikkerhedsmarginen skal være lavere end hovedsikringen, ellers er der ingen strøm tilbage til laderne.",
@@ -408,7 +450,9 @@
       "unit_expected_voltage": "Denne sensor skal angive spænding i V.",
       "unit_expected_reactive_power": "Denne sensor skal angive reaktiv effekt i var eller kvar.",
       "unit_expected_apparent_power": "Denne sensor skal angive tilsyneladende effekt i VA eller kVA.",
-      "manual_entities_duplicate": "Hver fase skal have sin egen entitet."
+      "manual_entities_duplicate": "Hver fase skal have sin egen entitet.",
+      "fee_value_required": "Indtast dit eget tal, eller vælg forslaget.",
+      "fee_no_suggestion": "Prisområdet har intet forslag til den: indtast dit eget tal eller vælg intet."
     }
   },
   "selector": {
@@ -422,7 +466,8 @@
       "options": {
         "charger": "En lader",
         "site": "Et anlæg (lastbalancering)",
-        "resolve_vehicle": "Afklar et fundet køretøj"
+        "resolve_vehicle": "Afklar et fundet køretøj",
+        "price": "En elpris"
       }
     },
     "measurement_mode": {
@@ -448,6 +493,13 @@
         "1": "Én fase",
         "3": "Tre faser"
       }
+    },
+    "fee_mode": {
+      "options": {
+        "off": "Intet",
+        "suggested": "Prisområdets forslag",
+        "manual": "Mit eget tal"
+      }
     }
   },
   "entity": {
@@ -460,6 +512,12 @@
       },
       "grid_charging_site": {
         "name": "Lader fra elnettet"
+      },
+      "cheap_now": {
+        "name": "Billigt nu"
+      },
+      "expensive_now": {
+        "name": "Dyrt nu"
       }
     },
     "button": {
@@ -599,6 +657,9 @@
       },
       "sessions_last_cost": {
         "name": "Seneste opladnings omkostning"
+      },
+      "price_now": {
+        "name": "Elpris nu"
       }
     },
     "select": {
@@ -667,6 +728,12 @@
       },
       "transfer_fee": {
         "name": "Nettarif"
+      },
+      "cheap_hours": {
+        "name": "Billige timer pr. døgn"
+      },
+      "expensive_hours": {
+        "name": "Dyre timer pr. døgn"
       }
     },
     "date": {
@@ -818,6 +885,42 @@
     },
     "reconcile_failed": {
       "message": "Laderen modtog kommandoen, men den automatiske opladning kunne ikke opdateres til at passe. Kontrollér laderens status."
+    },
+    "price_entry_unknown": {
+      "message": "Ingen indlæst SpotNav-elpris med det id."
+    },
+    "price_entry_required": {
+      "message": "Der er mere end én elpris: angiv den, der skal læses."
+    },
+    "price_unavailable": {
+      "message": "Denne elpris har ingen priser endnu."
+    },
+    "price_range_invalid": {
+      "message": "Slut skal være efter start."
+    }
+  },
+  "services": {
+    "get_prices": {
+      "name": "Hent elpriser",
+      "description": "Svarer med priserne for en SpotNav-elpris: hvert intervals start og slut, dets pris med dine afgifter og moms og dets spotpris, i prisområdets valuta pr. kWh. Som standard i dag, og i morgen når de priser er offentliggjort.",
+      "fields": {
+        "config_entry_id": {
+          "name": "Elpris",
+          "description": "Den elpris, der skal læses. Udelad den, når der kun er én."
+        },
+        "device_id": {
+          "name": "Enhed",
+          "description": "Elprisens enhed i stedet for posten."
+        },
+        "start": {
+          "name": "Start",
+          "description": "Det første interval, der tages med (standard: starten af i dag i prisområdet)."
+        },
+        "end": {
+          "name": "Slut",
+          "description": "Hvor det stopper (standard: slutningen af i morgen, når de priser er offentliggjort, ellers slutningen af i dag)."
+        }
+      }
     }
   }
 }
