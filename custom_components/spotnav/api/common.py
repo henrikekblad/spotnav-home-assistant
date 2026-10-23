@@ -11,7 +11,7 @@ from homeassistant.components import websocket_api
 from homeassistant.config_entries import ConfigEntry, ConfigEntryState
 from homeassistant.core import HomeAssistant
 
-from ..const import CONF_ENTRY_TYPE, DOMAIN, ENTRY_TYPE_SITE
+from ..const import CONF_ENTRY_TYPE, DOMAIN, ENTRY_TYPE_PRICE, ENTRY_TYPE_SITE
 
 
 #: Stable WebSocket error codes. Consumers switch on these, never on a message.
@@ -52,7 +52,8 @@ def lookup_charger(
     if not isinstance(charger_id, str) or not charger_id:
         return None, ERROR_UNKNOWN_CHARGER
     entry = hass.config_entries.async_get_entry(charger_id)
-    if entry is None or entry.domain != DOMAIN:
+    if entry is None or entry.domain != DOMAIN or entry.data.get(CONF_ENTRY_TYPE) == ENTRY_TYPE_PRICE:
+        # An electricity price is no charger, and is not one by another name either.
         return None, ERROR_UNKNOWN_CHARGER
     if entry.data.get(CONF_ENTRY_TYPE) == ENTRY_TYPE_SITE:
         return None, ERROR_SITE_NOT_CHARGER
