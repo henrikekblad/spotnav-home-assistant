@@ -15,8 +15,9 @@ from homeassistant import config_entries
 from homeassistant.config_entries import ConfigFlowResult
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers import selector
+from homeassistant.setup import async_setup_component
 
-from ..const import CONF_ENTRY_TYPE, CONF_PRICE_AREA, ENTRY_TYPE_PRICE
+from ..const import CONF_ENTRY_TYPE, CONF_PRICE_AREA, DOMAIN, ENTRY_TYPE_PRICE
 from ..planning.first_run import suggest_area
 from ..pricing.price_points import (
     default_fee_mode,
@@ -46,7 +47,13 @@ def default_title(area_id: str) -> str:
 
 
 async def async_price_catalogue(hass: HomeAssistant) -> AreaCatalogue | None:
-    """The relay's area list, fetched once if it is not held yet, or `None` when there is none."""
+    """The relay's area list, fetched once if it is not held yet, or `None` when there is none.
+
+    An electricity price can be the installation's first SpotNav entry, before the integration's own
+    setup has created the price manager: that setup runs first (once; it is what any entry would start).
+    """
+    if domain_data(hass).price_refresh is None:
+        await async_setup_component(hass, DOMAIN, {})
     manager = domain_data(hass).price_refresh
     if manager is None:
         return None
