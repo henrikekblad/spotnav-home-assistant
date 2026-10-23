@@ -6,7 +6,9 @@ the spot price with your energy tax, grid fee and VAT added, in your currency pe
 
 - [Add an electricity price](#add-an-electricity-price)
 - [The entities](#the-entities)
+- [Example: a bathroom floor](#example-a-bathroom-floor)
 - [The `spotnav.get_prices` action](#the-spotnavget_prices-action)
+- [Example: a washing machine](#example-a-washing-machine)
 - [How it is built](#how-it-is-built)
 
 ## Add an electricity price
@@ -17,7 +19,14 @@ of your own, or nothing. You can add several (another area, or other fees); each
 own, named **Electricity price** and its area. **Configure** on the entry changes the area and fees.
 
 An electricity price is independent of chargers and sites. It needs no charger, and adding one
-changes nothing a charger does.
+changes nothing a charger does. Its prices are fetched once per area for the whole installation, so
+an electricity price in the same area as a charger asks the relay for nothing more.
+
+With the area SE4 the entities are named `sensor.electricity_price_se4_price_now`,
+`binary_sensor.electricity_price_se4_cheap_now`, `binary_sensor.electricity_price_se4_expensive_now`,
+`number.electricity_price_se4_cheap_hours_per_day` and `number.electricity_price_se4_expensive_hours_per_day`
+(in Swedish Home Assistant the names read *Elpris nu*, *Billigt nu* and *Dyrt nu*; the entity ids
+follow the device's name, which you can change).
 
 ## The entities
 
@@ -47,10 +56,120 @@ Known limits of this first version: because each day is ranked on its own, the s
 midnight, and a late evening is never compared with the night after it. A choice of one contiguous
 block is not there yet.
 
+## Example: a bathroom floor
+
+Warmer while power is cheap, cooler while it is dear, and the normal setpoint in between:
+
+```yaml
+automation:
+  - alias: "Bathroom floor follows the price"
+    triggers:
+      - trigger: state
+        entity_id:
+          - binary_sensor.electricity_price_se4_cheap_now
+          - binary_sensor.electricity_price_se4_expensive_now
+      - trigger: homeassistant
+        event: start
+    actions:
+      - action: climate.set_temperature
+        target:
+          entity_id: climate.bathroom_floor
+        data:
+          temperature: >
+            {% if is_state('binary_sensor.electricity_price_se4_cheap_now', 'on') %}26
+            {% elif is_state('binary_sensor.electricity_price_se4_expensive_now', 'on') %}20
+            {% else %}23{% endif %}
+```
+
+Set **Cheap hours per day** and **Expensive hours per day** on the device to how long the floor may
+run warm and how long it should hold back.
+
 ## The `spotnav.get_prices` action
 
 `spotnav.get_prices` answers with the prices of one electricity price entry, for an automation or a
-script to work with. It changes nothing, so every user may call it.
+script to work with. It changes nothing, so every user may call it. It reads only what Home Assistant
+already holds and never asks the relay.
+
+| Field | |
+|---|---|
+| `config_entry_id` | The electricity price entry. Can be left out when there is only one. |
+| `device_id` | The electricity price's device, instead of the entry. |
+| `start`, `end` | The span to answer for. Without them: today, and tomorrow once it is published. A time without a zone is Home Assistant's local time. At most seven days. |
+
+The answer follows Home Assistant's own Nord Pool action: a list of intervals under the area's id, with
+the currency, unit and resolution beside it. `price` is with your fees and VAT, `spot_price` without;
+both in the area's currency per kWh, four decimals.
+
+```yaml
+config_entry_id: 01K8...
+area: SE4
+currency: SEK
+unit: kr/kWh
+resolution_minutes: 15
+tomorrow_published: true
+SE4:
+  - start: "2026-09-22T00:00:00+02:00"
+    end: "2026-09-22T00:15:00+02:00"
+    price: 3.4339
+    spot_price: 2.0871
+  - start: "2026-09-22T00:15:00+02:00"
+    end: "2026-09-22T00:30:00+02:00"
+    price: 3.339
+    spot_price: 2.0112
+  # ... one row per interval, 96 a day (92 or 100 on a clock-change day)
+```
+
+## Example: a washing machine
+
+A script that finds the cheapest two hours from now on, and an automation that starts the machine
+then (a machine with a smart plug, loaded and set in the evening):
+
+```yaml
+input_datetime:
+  washing_machine_start:
+    name: Washing machine start
+    has_date: true
+    has_time: true
+
+script:
+  washing_machine_plan:
+    alias: "Plan the washing machine"
+    sequence:
+      - action: spotnav.get_prices
+        response_variable: prices
+      - variables:
+          best: >
+            {% set rows = prices[prices.area] %}
+            {% set n = (120 / prices.resolution_minutes) | int %}
+            {% set ns = namespace(start=none, cost=none) %}
+            {% for i in range(rows | count - n + 1) %}
+              {% if as_datetime(rows[i].start) >= now() %}
+                {% set cost = rows[i:i + n] | sum(attribute='price') %}
+                {% if ns.cost is none or cost < ns.cost %}
+                  {% set ns.start = rows[i].start %}
+                  {% set ns.cost = cost %}
+                {% endif %}
+              {% endif %}
+            {% endfor %}
+            {{ ns.start }}
+      - action: input_datetime.set_datetime
+        target:
+          entity_id: input_datetime.washing_machine_start
+        data:
+          timestamp: "{{ as_timestamp(best) }}"
+
+automation:
+  - alias: "Start the washing machine when it is cheapest"
+    triggers:
+      - trigger: time
+        at: input_datetime.washing_machine_start
+    actions:
+      - action: switch.turn_on
+        target:
+          entity_id: switch.washing_machine
+```
+
+Run the script after tomorrow's prices are published (in the afternoon) to let it look into the night.
 
 ## How it is built
 
