@@ -1,6 +1,7 @@
-"""Step 2 of the refactor, behind `CONF_CORE_OWNERSHIP` (off unless a charger's entry data says so): the charge-
-ownership core decides, today's code acts on its verdicts and takes its owner back. Off, today's code decides as
-ever. (`SPOTNAV_CORE_OWNERSHIP=1` runs the whole suite with it on.)"""
+"""The charge-ownership core drives (`CONF_CORE_OWNERSHIP`, on unless a charger's entry data says false): it decides,
+today's code acts on its verdicts and takes its owner back, and is still computed beside it and compared. A charger
+set to the previous logic decides with today's code as ever, the core only in shadow. (`SPOTNAV_CORE_OWNERSHIP=0`
+runs the whole suite with the previous logic.)"""
 
 from __future__ import annotations
 
@@ -40,19 +41,49 @@ async def _charger(hass: HomeAssistant, *, drives: bool | None) -> tuple[Chargin
     return controller, executor, starts
 
 
-async def test_the_core_does_not_drive_unless_a_charger_says_so(hass: HomeAssistant, timers: FakeScheduler) -> None:
-    default = ownership_shadow.CORE_OWNERSHIP_DEFAULT
-    ownership_shadow.CORE_OWNERSHIP_DEFAULT = False
-    try:
-        controller, executor, _starts = await _charger(hass, drives=None)
-        assert not controller.ownership_shadow.drives
-        assert controller.ownership_shadow.diagnostics()["drives"] is False
-        await executor.async_shutdown()
-        await controller.async_shutdown()
-        controller, executor, _starts = await _charger(hass, drives=True)
-        assert controller.ownership_shadow.drives
-    finally:
-        ownership_shadow.CORE_OWNERSHIP_DEFAULT = default
+@pytest.mark.parametrize(("default", "configured", "drives"), [
+    (True, None, True),
+    (True, False, False),
+    (True, True, True),
+    (False, None, False),
+    (False, True, True),
+])
+async def test_the_core_drives_unless_a_charger_says_otherwise(
+    hass: HomeAssistant, timers: FakeScheduler, monkeypatch, default: bool, configured: bool | None, drives: bool
+) -> None:
+    monkeypatch.setattr(ownership_shadow, "CORE_OWNERSHIP_DEFAULT", default)
+    controller, executor, _starts = await _charger(hass, drives=configured)
+    assert controller.ownership_shadow.drives is drives
+    assert controller.ownership_shadow.diagnostics()["drives"] is drives
+    await executor.async_shutdown()
+    await controller.async_shutdown()
+
+
+def test_the_default_is_that_the_core_drives() -> None:
+    import os
+
+    if os.environ.get("SPOTNAV_CORE_OWNERSHIP") == "0":
+        pytest.skip("this run sets the previous logic as the default")
+    assert ownership_shadow.CORE_OWNERSHIP_DEFAULT is True
+
+
+@pytest.mark.parametrize("drives", [True, False])
+async def test_the_previous_logic_is_still_computed_and_compared_while_the_core_drives(
+    hass: HomeAssistant, timers: FakeScheduler, drives: bool
+) -> None:
+    """Either way the other side runs beside the one that decides: a plan window's start is compared, and the
+    diagnostics say which one drives."""
+    controller, executor, starts = await _charger(hass, drives=drives)
+    before = len(starts)
+    compared = controller.ownership_shadow.counts["compared"]
+    await install_schedule(controller, open_window())
+    await hass.async_block_till_done()
+    assert len(starts) > before and controller.charging
+    shadow = controller.ownership_shadow.diagnostics()
+    assert shadow["drives"] is drives
+    assert shadow["counts"]["compared"] > compared
+    assert shadow["counts"]["disagreements"] == 0
+    assert shadow["events"], "the events the comparison saw are kept for the diagnostics"
     await executor.async_shutdown()
     await controller.async_shutdown()
 

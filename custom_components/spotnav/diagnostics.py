@@ -170,7 +170,8 @@ def _charger_diagnostics(hass: HomeAssistant, entry: ConfigEntry) -> dict[str, A
                 "charger_disabled": controller.charger_disabled,
             }, TO_REDACT),
             "plan": asdict(controller.plan) if controller.plan else None,
-            # The charge-ownership core in shadow mode (`execution/ownership_shadow.py`): what it counted, its
+            # The charge-ownership core beside the previous logic (`execution/ownership_shadow.py`): which of the two
+            # decides (`drives`, the core unless the entry says otherwise), what the comparison counted, the core's
             # session, and the last disagreements, drifts and events (no entity ids, no secrets), replayable by
             # `core/replay.py`, and its tally per event kind kept across restarts (`coverage`).
             "ownership_shadow": controller.ownership_shadow.diagnostics(),

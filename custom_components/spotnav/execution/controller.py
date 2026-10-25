@@ -874,7 +874,7 @@ class ChargingController:
         self._shadow_car_facts: tuple[bool, bool, bool] = (False, False, False)
         self._shadow_unobserved = False
         self._solar_hold_probe: Callable[[], bool] | None = None
-        # Step 2, behind `CONF_CORE_OWNERSHIP` (off unless set): the core decides, today's code acts on its verdicts
+        # Step 2, `CONF_CORE_OWNERSHIP` (on unless the entry says false): the core decides, today's code acts on its verdicts
         # and takes its owner back (`_take_core_owner`). The verdicts a report or a timer acts on, while it runs.
         drives = config.get(CONF_CORE_OWNERSHIP)
         self._core_drives = bool(ownership_shadow_module.CORE_OWNERSHIP_DEFAULT if drives is None else drives)
