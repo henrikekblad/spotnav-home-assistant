@@ -25,7 +25,15 @@ out, 3.1 points). When the register is seen posting steadily from the report tim
 most `REGISTER_STEADY_GAP_S` before and after the report time, no longer gap after it, no reset), it is not
 lagging there: the baseline is its value at the report time, interpolated between the two values around it
 (`register_value_at`, from the values `SocReader` saw in the last `REGISTER_HISTORY_S`). Otherwise, or with no
-values seen (after a restart), the rule above stands. The
+values seen (after a restart), the rule above stands.
+
+A car's report time is not always when its level was measured (the field night of 24-25 October: the same EV6's
+60 % arrived at 02:06:51 stamped 00:39:39, 7 points above its 53 % of 00:06:47, while the charger delivered nothing
+until 01:00:45). A report time inside a charge that is earlier than the measurement would count energy the reading
+already holds, and the estimate would run ahead. So before the register's value at the report time is taken, the
+reading is checked against the car's previous one (`check_report_time`): the level may not have risen more than
+the energy the register delivered between the two report times makes. A pair that disagrees keeps the value after
+the arrival, and `SocReader` stops trusting that car's report times (in memory only) until a later pair agrees. The
 result is flagged `estimated`, a fresh reading (no older than `target_stop.SOC_FRESH_MAX_AGE_S`)
 always replaces it, and it is never invented: with no register, no capacity or a register that
 went backwards the raw reading is reported as is. Nothing here writes to a charger or a car.
@@ -90,6 +98,19 @@ PEAK_SAVE_INTERVAL_S: Final = 60.0
 #: register that books an hour at once has no value this close and keeps the first value after the reading.
 REGISTER_STEADY_GAP_S: Final = 120.0
 
+#: A car's change in level agrees with the energy delivered between two report times (`check_report_time`) when it
+#: is within the larger of these of the change that energy makes: two points for the whole-percent rounding of both
+#: readings, and a quarter for what the fixed `CHARGE_EFFICIENCY` and a nominal battery size miss (a cold pack, a
+#: heater or the cabin drawing from the charge, a capacity a few percent off). A report time put earlier than the
+#: measurement by more than about a quarter of the time between two readings taken while charging is caught.
+REPORT_CHECK_MIN_POINTS: Final = 2.0
+REPORT_CHECK_SHARE: Final = 0.25
+
+#: A rise of more than `REPORT_IDLE_RISE_POINTS` across a span in which the register delivered less than
+#: `REPORT_IDLE_KWH` (at most) cannot be: the report time is not when the level was measured.
+REPORT_IDLE_KWH: Final = 0.3
+REPORT_IDLE_RISE_POINTS: Final = 1.0
+
 #: How far back `SocReader` keeps the register's values (in memory only), and at most how many.
 REGISTER_HISTORY_S: Final = 7200.0
 REGISTER_HISTORY_MAX: Final = 4096
@@ -107,6 +128,10 @@ RegisterSample = tuple[datetime, float | None]
 #: Which value a baseline is (`SocAnchor.baseline`): the register's at the car's report time, or the first one
 #: posted after the reading.
 BaselineRule = Literal["report_time", "after_arrival"]
+
+#: How a reading timed by the car's report time fared against the car's previous reading (`check_report_time`):
+#: agreed, disagreed, no previous reading to compare with, or one that could not tell (too few register values).
+BaselineCheck = Literal["passed", "failed", "no_previous", "inconclusive"]
 
 _STORE_VERSION: Final = 1
 _STORE_KEY_PREFIX: Final = f"{DOMAIN}.soc_anchor"
@@ -130,6 +155,11 @@ class SocAnchor:
     on from there with that carry, so the values it showed while down are never counted twice.
     `time_basis` is what `read_at` was taken from (`SocReading.time_basis`). `baseline` says which value the
     baseline is (`BaselineRule`, `resolve_soc`), for the diagnostics.
+
+    For a reading timed by the car's report time, what the next one is checked against (`check_report_time`), all
+    from `register_entity_id`: `report_kwh` is the register's value at the report time when it posted steadily then
+    (`register_value_at`, whichever value became the baseline), `floor_kwh` the last value it posted at or before
+    the report time. `baseline_check` is how the reading itself fared.
     """
 
     soc_percent: float
@@ -146,6 +176,9 @@ class SocAnchor:
     peak_kwh: float | None = field(default=None, compare=False)
     #: Only shown: it changes with `register_kwh`.
     baseline: BaselineRule | None = field(default=None, compare=False)
+    report_kwh: float | None = None
+    floor_kwh: float | None = None
+    baseline_check: BaselineCheck | None = None
 
     def as_dict(self) -> dict[str, Any]:
         return {
@@ -161,6 +194,9 @@ class SocAnchor:
             "peak_kwh": self.peak_kwh,
             "time_basis": self.time_basis,
             "baseline": self.baseline,
+            "report_kwh": self.report_kwh,
+            "floor_kwh": self.floor_kwh,
+            "baseline_check": self.baseline_check,
         }
 
     @classmethod
@@ -191,9 +227,14 @@ class SocAnchor:
         if read_at is None or read_at.tzinfo is None:
             return None
         basis = raw.get("time_basis")
+        check = raw.get("baseline_check")
         anchor = cls(
             soc, register, read_at, source, vehicle_id, register_entity_id,
             time_basis=basis if basis in ("last_updated", "vehicle_timestamp") else "last_updated",
+            # What the next reading is checked against: from the named register only.
+            report_kwh=finite_number(raw.get("report_kwh")) if register_entity_id is not None else None,
+            floor_kwh=finite_number(raw.get("floor_kwh")) if register_entity_id is not None else None,
+            baseline_check=check if check in ("passed", "failed", "no_previous", "inconclusive") else None,
         )
         if register is None:
             return anchor
@@ -356,6 +397,97 @@ def register_value_at(samples: Iterable[RegisterSample], at: datetime, until: da
     return before + (after - before) * share
 
 
+def check_report_time(
+    previous: SocAnchor | None,
+    *,
+    soc_percent: float,
+    read_at: datetime,
+    vehicle_id: str | None,
+    register_entity_id: str | None,
+    samples: Iterable[RegisterSample],
+    report_kwh: float | None,
+    capacity_kwh: float | None,
+    ceiling_percent: float | None = None,
+) -> BaselineCheck:
+    """Whether a reading of `soc_percent` the car stamped `read_at` agrees with its previous reading. Pure.
+
+    `previous` is the anchor the reading replaces; it is compared with only when it is a reading of the same car
+    timed by its report time, measured on the same register with no reset since (else `no_previous`). `samples`
+    are the register's values seen (the present one included) and `report_kwh` its value at `read_at` when it posted
+    steadily then (`register_value_at`).
+
+    * `failed` when the report time is earlier than the previous one's, when the level rose by more than
+      `REPORT_IDLE_RISE_POINTS` while the register delivered less than `REPORT_IDLE_KWH` between the two report
+      times (at most: from the previous reading's value, else the last one posted before it, to the first value
+      posted at or after this report time), or when the level rose more than the delivered energy makes
+      (`x CHARGE_EFFICIENCY / capacity_kwh x 100`, up to the car's charge limit as the estimate counts it) by more
+      than the larger of `REPORT_CHECK_MIN_POINTS` and `REPORT_CHECK_SHARE` of it. That rise is known exactly when
+      the register's value at both report times is; otherwise only a rise beyond the most the register can have
+      delivered is caught;
+    * `passed` when the register's value at both report times is known and the change agrees within the same
+      tolerance;
+    * `inconclusive` when nothing disagrees but the register's values do not show the energy exactly, or the level
+      is lower than the energy makes. A lower level is a car driven or drawing on its battery between the two
+      readings, or a measurement made after its report time: the report time's baseline can then only under-count,
+      so it is no evidence against it, nor for it.
+    """
+    if (
+        previous is None
+        or previous.source != "vehicle"
+        or previous.vehicle_id != vehicle_id
+        or previous.time_basis != "vehicle_timestamp"
+        or previous.register_entity_id is None
+        or previous.register_entity_id != register_entity_id
+        or previous.carried_kwh > 0
+        or previous.reset_from_kwh is not None
+        or capacity_kwh is None
+        or not capacity_kwh > 0
+    ):
+        return "no_previous"
+    if (previous.read_at - read_at).total_seconds() > SAME_READING_S:
+        return "failed"
+    rise = soc_percent - previous.soc_percent
+    points_per_kwh = CHARGE_EFFICIENCY / capacity_kwh * 100.0
+    if previous.report_kwh is not None and report_kwh is not None:
+        delivered = report_kwh - previous.report_kwh
+        if delivered < -REGISTER_TOLERANCE_KWH:
+            return "inconclusive"
+        delivered = max(0.0, delivered)
+        if delivered < REPORT_IDLE_KWH and rise > REPORT_IDLE_RISE_POINTS:
+            return "failed"
+        room = max(0.0, charge_ceiling_percent(ceiling_percent) - previous.soc_percent)
+        expected = min(room, delivered * points_per_kwh)
+        tolerance = max(REPORT_CHECK_MIN_POINTS, REPORT_CHECK_SHARE * expected)
+        if rise > expected + tolerance:
+            return "failed"
+        return "passed" if rise >= expected - tolerance else "inconclusive"
+    # The most the register can have delivered: from the previous reading's value (else the last one posted
+    # before it) to the first value posted at or after this report time.
+    since = previous.report_kwh if previous.report_kwh is not None else previous.floor_kwh
+    until = report_kwh if report_kwh is not None else _first_posted_at_or_after(samples, read_at)
+    if since is None or until is None or until < since - REGISTER_TOLERANCE_KWH:
+        return "inconclusive"
+    most = max(0.0, until - since)
+    if most < REPORT_IDLE_KWH and rise > REPORT_IDLE_RISE_POINTS:
+        return "failed"
+    most_points = most * points_per_kwh
+    if rise > most_points + max(REPORT_CHECK_MIN_POINTS, REPORT_CHECK_SHARE * most_points):
+        return "failed"
+    return "inconclusive"
+
+
+def _first_posted_at_or_after(samples: Iterable[RegisterSample], at: datetime) -> float | None:
+    """The first readable register value posted at or after `at`, or `None`."""
+    later = sorted((posted_at, value) for posted_at, value in samples if posted_at >= at and value is not None)
+    return later[0][1] if later else None
+
+
+def _last_posted_at_or_before(samples: Iterable[RegisterSample], at: datetime) -> float | None:
+    """The last readable register value posted at or before `at`, or `None`."""
+    earlier = sorted((posted_at, value) for posted_at, value in samples if posted_at <= at and value is not None)
+    return earlier[-1][1] if earlier else None
+
+
 def resolve_soc(
     *,
     reading: SocReading | None,
@@ -370,6 +502,7 @@ def resolve_soc(
     register_updated_at: datetime | None = None,
     since_restart: bool = False,
     register_history: Iterable[RegisterSample] = (),
+    report_time_untrusted: bool = False,
 ) -> SocResolution:
     """The state of charge to plan and stop against, and the anchor to keep. Pure.
 
@@ -397,8 +530,12 @@ def resolve_soc(
       lately) shows the register posting steadily from then to now with no reset (`register_value_at`), and
       that value is not above the one the rule above would take. A register that posts that often does not lag,
       so nothing charged before the report time is counted, and the energy between the report and its arrival
-      is (the field night of 21-22 October: a 70 % made at 02:47:54 and seen at 03:02:51 left 2.7 kWh out). The
-      anchor's `baseline` says which rule gave its baseline;
+      is (the field night of 21-22 October: a 70 % made at 02:47:54 and seen at 03:02:51 left 2.7 kWh out). Only
+      when the report time is trusted: the reading is checked against the anchor it replaces (`check_report_time`,
+      kept as the anchor's `baseline_check`); one that fails keeps the value after the arrival, and with nothing to
+      compare with the report time is not used while the car's report times are untrusted
+      (`report_time_untrusted`, kept by `SocReader` from an earlier failed pair until one passes). The anchor's
+      `baseline` says which rule gave its baseline;
     * an anchor's baseline from another register than `register_entity_id` is dropped and taken again under
       the same rule: energy before it is not credited, so it can only under-count;
     * a register that falls back is followed (`track_register`): what it counted is carried, never subtracted;
@@ -441,6 +578,7 @@ def resolve_soc(
         baseline, rule = _baseline(
             anchor.read_at, anchor.time_basis, _arrived_at(reading, anchor.read_at, now),
             register_kwh, register_updated_at, register_history, now,
+            trust_report_time=_trusted(anchor.baseline_check, report_time_untrusted),
         )
         anchor = replace(
             anchor, register_kwh=baseline, register_entity_id=register_entity_id, peak_kwh=register_kwh,
@@ -477,7 +615,8 @@ def resolve_soc(
             if newer:
                 anchor = _new_anchor(
                     reading, read_at, vehicle_id, register_kwh, register_entity_id, register_updated_at,
-                    register_history, now,
+                    register_history, now, previous=anchor, capacity_kwh=capacity_kwh,
+                    ceiling_percent=ceiling_percent, report_time_untrusted=report_time_untrusted,
                 )
             return SocResolution(reading, anchor)
         if newer:
@@ -486,7 +625,8 @@ def resolve_soc(
             if idle or reading.time_basis == "vehicle_timestamp":
                 anchor = _new_anchor(
                     reading, read_at, vehicle_id, register_kwh, register_entity_id, register_updated_at,
-                    register_history, now,
+                    register_history, now, previous=anchor, capacity_kwh=capacity_kwh,
+                    ceiling_percent=ceiling_percent, report_time_untrusted=report_time_untrusted,
                 )
     if anchor is None:
         return SocResolution(reading, None)
@@ -555,21 +695,38 @@ def _baseline(
     register_updated_at: datetime | None,
     register_history: Iterable[RegisterSample],
     now: datetime,
+    *,
+    trust_report_time: bool = True,
 ) -> tuple[float | None, BaselineRule | None]:
     """The baseline for a reading made at `read_at` and the rule that gave it (`resolve_soc`): none while the
-    register's value was posted before the reading; its value at the car's report time when that came before the
-    arrival and the register was posting steadily from then to now (and that value is not above the present one);
-    else the present value."""
+    register's value was posted before the reading; its value at the car's report time when that is trusted, came
+    before the arrival and the register was posting steadily from then to now (and that value is not above the
+    present one); else the present value."""
     if register_kwh is None or not _posted_after(register_updated_at, read_at):
         return None, None
-    if time_basis == "vehicle_timestamp" and arrived_at is not None and read_at < arrived_at:
-        samples = list(register_history)
-        if register_updated_at is not None:
-            samples.append((register_updated_at, register_kwh))
-        at_report = register_value_at(samples, read_at, now)
+    if trust_report_time and time_basis == "vehicle_timestamp" and arrived_at is not None and read_at < arrived_at:
+        at_report = register_value_at(_with_present(register_history, register_kwh, register_updated_at), read_at, now)
         if at_report is not None and at_report <= register_kwh:
             return at_report, "report_time"
     return register_kwh, "after_arrival"
+
+
+def _with_present(
+    register_history: Iterable[RegisterSample], register_kwh: float | None, register_updated_at: datetime | None
+) -> list[RegisterSample]:
+    """The register's values seen, with the present one."""
+    samples = list(register_history)
+    if register_kwh is not None and register_updated_at is not None:
+        samples.append((register_updated_at, register_kwh))
+    return samples
+
+
+def _trusted(check: BaselineCheck | None, report_time_untrusted: bool) -> bool:
+    """Whether a reading's report time may give its baseline: never after a failed check, always after a passed
+    one, and otherwise unless the car's report times are untrusted."""
+    if check == "failed":
+        return False
+    return check == "passed" or not report_time_untrusted
 
 
 def _new_anchor(
@@ -581,17 +738,37 @@ def _new_anchor(
     register_updated_at: datetime | None,
     register_history: Iterable[RegisterSample],
     now: datetime,
+    *,
+    previous: SocAnchor | None = None,
+    capacity_kwh: float | None = None,
+    ceiling_percent: float | None = None,
+    report_time_untrusted: bool = False,
 ) -> SocAnchor:
     """An anchor for `reading`, with a baseline (`_baseline`) only when the register was posted after the
-    reading."""
+    reading. A reading timed by the car's report time is first checked against `previous`, the anchor it replaces
+    (`check_report_time`), and keeps what the next one is checked against."""
     assert reading.soc_percent is not None
     basis: TimeBasis = "vehicle_timestamp" if reading.time_basis == "vehicle_timestamp" else "last_updated"
+    report_kwh: float | None = None
+    floor_kwh: float | None = None
+    check: BaselineCheck | None = None
+    if basis == "vehicle_timestamp":
+        samples = _with_present(register_history, register_kwh, register_updated_at)
+        report_kwh = register_value_at(samples, read_at, now)
+        floor_kwh = _last_posted_at_or_before(samples, read_at)
+        check = check_report_time(
+            previous, soc_percent=reading.soc_percent, read_at=read_at, vehicle_id=vehicle_id,
+            register_entity_id=register_entity_id, samples=samples, report_kwh=report_kwh,
+            capacity_kwh=capacity_kwh, ceiling_percent=ceiling_percent,
+        )
     baseline, rule = _baseline(
-        read_at, basis, _arrived_at(reading, read_at, now), register_kwh, register_updated_at, register_history, now
+        read_at, basis, _arrived_at(reading, read_at, now), register_kwh, register_updated_at, register_history, now,
+        trust_report_time=_trusted(check, report_time_untrusted),
     )
     return SocAnchor(
         reading.soc_percent, baseline, read_at, reading.source, vehicle_id, register_entity_id,
         time_basis=basis, peak_kwh=register_kwh if baseline is not None else None, baseline=rule,
+        report_kwh=report_kwh, floor_kwh=floor_kwh, baseline_check=check,
     )
 
 
@@ -738,6 +915,9 @@ class SocReader:
         self._register_samples: deque[RegisterSample] = deque(maxlen=REGISTER_HISTORY_MAX)
         self._samples_entity_id: str | None = None
         self._register_watch_cancel: Callable[[], None] | None = None
+        # Cars whose report time failed `check_report_time` since SpotNav started, until a later pair passes (in
+        # memory only: `resolve_soc`'s `report_time_untrusted`).
+        self._report_time_untrusted: set[str] = set()
         self._closed = False
 
     async def async_load(self) -> None:
@@ -864,6 +1044,7 @@ class SocReader:
             return self.peek(vehicle_id)
         resolution = self._resolve(vehicle_id, self._anchor)
         previous, self._anchor = self._anchor, resolution.anchor
+        self._note_report_check(previous, resolution.anchor)
         if resolution.anchor != previous:
             self._save()
         elif resolution.anchor is not None and previous is not None and resolution.anchor.peak_kwh != previous.peak_kwh:
@@ -884,6 +1065,25 @@ class SocReader:
         """
         anchor = self._anchor if self._anchor is not None and self._anchor.vehicle_id == vehicle_id else None
         return self._resolve(vehicle_id, anchor).reading
+
+    def _note_report_check(self, previous: SocAnchor | None, anchor: SocAnchor | None) -> None:
+        """Remember a car whose report time failed the check on a new reading, until one passes."""
+        if anchor is None or not anchor.vehicle_id or anchor.baseline_check not in ("passed", "failed"):
+            return
+        if previous is not None and (previous.read_at, previous.soc_percent) == (anchor.read_at, anchor.soc_percent):
+            return
+        vehicle_id = anchor.vehicle_id
+        if anchor.baseline_check == "failed":
+            if vehicle_id not in self._report_time_untrusted:
+                self._report_time_untrusted.add(vehicle_id)
+                _LOGGER.info(
+                    "The car's %.0f %% stamped %s does not agree with the energy charged since its previous "
+                    "reading: its report times are not used for the estimate until a later reading agrees",
+                    anchor.soc_percent, anchor.read_at.isoformat(),
+                )
+        elif vehicle_id in self._report_time_untrusted:
+            self._report_time_untrusted.discard(vehicle_id)
+            _LOGGER.debug("The car's report time agrees with the energy charged again: used for the estimate")
 
     def _resolve(self, vehicle_id: str | None, anchor: SocAnchor | None) -> SocResolution:
         register_entity_id = self._register_entity_id()
@@ -907,6 +1107,7 @@ class SocReader:
             ceiling_percent=self.vehicle_max_percent(vehicle_id),
             since_restart=since_restart,
             register_history=self._register_samples,
+            report_time_untrusted=bool(vehicle_id) and vehicle_id in self._report_time_untrusted,
         )
 
     def _watch_register(self, entity_id: str | None) -> None:
@@ -958,8 +1159,12 @@ class SocReader:
         """The kept anchor and what the last reading's age was measured from (no entity's value beyond the
         state of charge, no name)."""
         reading = self._last_reading
+        anchor = self._anchor
         return {
-            "anchor": None if self._anchor is None else self._anchor.as_dict(),
+            "anchor": None if anchor is None else anchor.as_dict(),
+            "report_time_untrusted": anchor is not None
+            and anchor.vehicle_id is not None
+            and anchor.vehicle_id in self._report_time_untrusted,
             "last_reading": None
             if reading is None
             else {
