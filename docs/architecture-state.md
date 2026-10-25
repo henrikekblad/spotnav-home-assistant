@@ -1,13 +1,14 @@
 # Charge ownership: the session model and its shadow
 
-> **Developer documentation.** The core described here runs in shadow mode: it decides beside today's code and
-> records where it would differ, but it does not control any charger. Names and fields below follow the code and
-> will change as the work goes on.
+> **Developer documentation.** The core described here decides who owns a charge on every charger by default
+> (step 2, below), with today's code still computed beside it and compared; a charger set to the previous logic runs
+> today's code with the core in shadow. Names and fields below follow the code and will change as the work goes on.
 
 For developers. Who owns a charger's charge, and which person intent holds, is today the product of about fifteen
 fields across `execution/controller.py`, `execution/window_hold.py` and the Auto settings' pause. The refactor
-moves that into one explicit record and one pure decision. Step 1 (this) runs the new core **beside** today's
-code, in shadow mode: it decides, compares and records, and never acts on a charger.
+moves that into one explicit record and one pure decision. Step 1 ran the new core **beside** today's code, in
+shadow mode: it decides, compares and records, and never acts on a charger. That is still what happens for a charger
+set to the previous logic. Step 2 (the default since the shadow ran without a disagreement) lets the core decide.
 
 ## The session (`core/session.py`)
 
@@ -150,11 +151,13 @@ when one was first and last seen, since `since` under the integration's `version
 up are counted under the event whose feed found them; what belongs to no event is `unattributed`. It says when the
 core has seen every kind live often enough to take over; only removing the charger resets it.
 
-## Step 2: the core drives, behind an option
+## Step 2: the core drives, by default
 
-A charger whose entry data says `core_ownership: true` (`const.CONF_CORE_OWNERSHIP`; no card or flow sets it, and it
-is off otherwise) lets the core decide. Off, today's code decides exactly as before and the core only shadows it.
-On:
+Every charger lets the core decide unless its entry data says `core_ownership: false` (`const.CONF_CORE_OWNERSHIP`;
+the default is `execution/ownership_shadow.CORE_OWNERSHIP_DEFAULT`, on). An administrator sets it per charger under
+the charger's **Configure** (`flows/options.py`, **Charging decisions**: **Current (default)** removes the key,
+**Previous logic** writes it false; saving reloads the entry). An entry from before the default changed has no key
+and drives after the update. Off, today's code decides exactly as before and the core only shadows it. On:
 
 * At every decision point fed to the shadow (a window's start and end, the re-arm, the stray stop, the top-off, the
   need-met stop, a report's hold, claim and stray stop, the stop under a person's Stop and its give-up, load
@@ -178,7 +181,9 @@ On:
 
 The shadow still compares, before the owner is taken back, and counts each decision where today's rule on the same
 state would have chosen otherwise (`verdict_differs`) and each time it cleared today's fields (`written_back`).
-`SPOTNAV_CORE_OWNERSHIP=1` runs the whole test suite with the option on.
+Diagnostics and the debug bundle say which side decides (`ownership_shadow.drives`). The plain test run uses the
+default (the core drives); `SPOTNAV_CORE_OWNERSHIP=0` runs the whole suite with the previous logic, and both must
+pass.
 
 With the option on the core's session is also kept across restarts, as one versioned record per charger
 (`charge_session` in the charger's store, `ChargeSession.to_store`) beside today's keys, which are still written as
@@ -196,7 +201,10 @@ two marks on one counter: the core's last decision (`session`) and the last chan
 state, except that today's keys written after the record's last change (a start whose result had not come back when
 they were saved) are the newer: the session is read from them then, and only the person intent from the record. A
 record that is missing or of a version the core does not know is read from today's keys once (`legacy_session`) and
-written. With the option off nothing of it is written or read: today's restore, exactly. In the shadow's facts, the
+written: so a charger that starts driving mid-session (the update that made it the default, during a plan's or the
+sun's charge, or a charger set back from the previous logic) takes the running charge over as today's keys describe
+it. With the option off nothing of it is written or read: today's restore, exactly, and the first save of today's
+keys drops a record left from when it drove, so a charger set back to the current logic later reads no stale one. In the shadow's facts, the
 car-ended rule's answer is read only when the core drives; off, it is what today's rule read itself (a read of the
 car's state of charge may move and save its anchor, so the shadow makes none).
 
@@ -211,10 +219,13 @@ the session itself after the restart (all read from today's fields at each feed,
   changes nothing).
 * `tests/test_core_replay.py`: replay of a synthetic bundle and of a real charger's recording, and the shadow's own
   guarantees.
-* `tests/test_core_drives.py`: the option, today's code following the core's verdict, the owner cleared one-way.
+* `tests/test_core_drives.py`: the option and its default, the comparison running whichever side drives, today's
+  code following the core's verdict, the owner cleared one-way.
+* `tests/test_charging_decisions_option.py`: the per-charger choice under **Configure**.
 * `tests/test_core_recheck.py`: a background task's re-check asked of the core, and its command's result.
 * `tests/test_core_session_store.py`: the stored record: round trip, migration from today's keys, an unknown version,
-  no save at every report, and a restart in each scope of a manual pause.
+  no save at every report, a restart in each scope of a manual pause, and the core taking over at an update during
+  a plan's and the sun's charge, and after a charger was set to the previous logic and back.
 * `tests/test_core_plan_ends.py`: 1.11's plan ends and replans in both modes: the best-effort plan's charge taken over
   at its departure by the next departure's plan, the replan a returning register reading asks for while the plan's charge runs, and a need met by that
   same reading.
