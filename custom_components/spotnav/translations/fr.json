@@ -301,10 +301,12 @@
           "current_control": "Régler le courant de la borne",
           "energy_register_entity": "Compteur d'énergie (cumulé, facultatif)",
           "power_entity": "Capteur de puissance, prise connectée (facultatif)",
-          "idle_power_w": "Ne consomme pas en dessous de (W)"
+          "idle_power_w": "Ne consomme pas en dessous de (W)",
+          "charging_decisions": "Décisions de charge"
         },
         "data_description": {
-          "idle_power_w": "En dessous de cette puissance pendant cinq minutes lors d'une charge planifiée, SpotNav considère que la voiture ne consomme pas. Par défaut 100 W."
+          "idle_power_w": "En dessous de cette puissance pendant cinq minutes lors d'une charge planifiée, SpotNav considère que la voiture ne consomme pas. Par défaut 100 W.",
+          "charging_decisions": "Quelle logique décide quand cette borne démarre et s'arrête. Choisissez Logique précédente uniquement si l'actuelle ne fonctionne pas correctement sur cette borne ; l'enregistrement recharge la borne."
         }
       },
       "site_init": {
@@ -499,6 +501,12 @@
         "off": "Rien",
         "suggested": "La suggestion de la zone",
         "manual": "Mon propre montant"
+      }
+    },
+    "charging_decisions": {
+      "options": {
+        "current": "Actuelle (par défaut)",
+        "previous": "Logique précédente"
       }
     }
   },

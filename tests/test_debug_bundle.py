@@ -23,6 +23,7 @@ from custom_components.spotnav.log_buffer import (
 from custom_components.spotnav.runtime import domain_data
 
 from custom_components.spotnav.core.replay import replay_bundle
+from custom_components.spotnav.execution import ownership_shadow
 
 from .world import admin, non_admin, setup_charger_and_site, ws_call
 
@@ -49,6 +50,7 @@ async def test_bundle_has_every_section(hass: HomeAssistant) -> None:
     # Version 5: the ownership core's shadow, replayable as it is; version 6: its cumulative tally per event kind.
     shadow = section["diagnostics"]["controller"]["ownership_shadow"]
     assert shadow["counts"]["disagreements"] == 0 and shadow["events"]
+    assert shadow["drives"] is ownership_shadow.CORE_OWNERSHIP_DEFAULT, "which side decides, beside the comparison"
     assert shadow["coverage"]["kinds"]["restart"]["events"] >= 1 and shadow["coverage"]["version"]
     assert replay_bundle(json.loads(json.dumps(bundle)))[charger.entry_id].mismatches == ()
     # Each fact once: the price data at the top only, the rest inside the entry's diagnostics or dashboard.

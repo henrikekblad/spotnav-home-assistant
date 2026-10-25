@@ -301,10 +301,12 @@
           "current_control": "Set the charger current",
           "energy_register_entity": "Energy meter (lifetime, optional)",
           "power_entity": "Power sensor, smart plug (optional)",
-          "idle_power_w": "Not drawing below (W)"
+          "idle_power_w": "Not drawing below (W)",
+          "charging_decisions": "Charging decisions"
         },
         "data_description": {
-          "idle_power_w": "Below this power for five minutes during a planned charge, SpotNav says the car is not drawing. Default 100 W."
+          "idle_power_w": "Below this power for five minutes during a planned charge, SpotNav says the car is not drawing. Default 100 W.",
+          "charging_decisions": "Which logic decides when this charger starts and stops. Choose Previous logic only if the current one misbehaves on this charger; saving reloads the charger."
         }
       },
       "site_init": {
@@ -499,6 +501,12 @@
         "off": "Nothing",
         "suggested": "The area's suggestion",
         "manual": "My own figure"
+      }
+    },
+    "charging_decisions": {
+      "options": {
+        "current": "Current (default)",
+        "previous": "Previous logic"
       }
     }
   },

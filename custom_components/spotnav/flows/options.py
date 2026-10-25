@@ -19,6 +19,7 @@ from ..const import (
     CONF_CHARGER_ENTRY_IDS,
     CONF_CHARGER_PLATFORM,
     CONF_CONTROL_PATH,
+    CONF_CORE_OWNERSHIP,
     CONF_CURRENT_CONTROL,
     CONF_CURRENT_LIMIT_NONE,
     CONF_CURRENT_LIMIT,
@@ -105,6 +106,26 @@ from .site_form import (
 
 
 _LOGGER = logging.getLogger(__name__)
+
+#: The charger's way back from the charge-ownership core (`CONF_CORE_OWNERSHIP`): which logic decides when it starts
+#: and stops. A form field only: "previous" stores the key false, "current" (the default) removes a false one.
+CHARGING_DECISIONS = "charging_decisions"
+DECISIONS_CURRENT = "current"
+DECISIONS_PREVIOUS = "previous"
+
+
+def charging_decisions_choice(data: Any) -> str:
+    """What the form shows for an entry's stored `CONF_CORE_OWNERSHIP`: the previous logic only where it says false."""
+    return DECISIONS_PREVIOUS if data.get(CONF_CORE_OWNERSHIP) is False else DECISIONS_CURRENT
+
+
+def apply_charging_decisions(data: dict[str, Any], choice: str) -> None:
+    """Write the choice into an entry's data: false for the previous logic, the key removed for the default. A key an
+    entry set true is kept (it drives either way)."""
+    if choice == DECISIONS_PREVIOUS:
+        data[CONF_CORE_OWNERSHIP] = False
+    elif data.get(CONF_CORE_OWNERSHIP) is False:
+        data.pop(CONF_CORE_OWNERSHIP)
 
 
 class SpotNavChargingOptionsFlow(config_entries.OptionsFlow):
@@ -200,6 +221,16 @@ class SpotNavChargingOptionsFlow(config_entries.OptionsFlow):
             )
             if kinds:
                 schema_fields[current_control_field] = current_control_selector(self.hass, kinds)
+        # An administrator's way back for this charger only; the current logic unless the entry says otherwise.
+        schema_fields[
+            vol.Required(CHARGING_DECISIONS, default=charging_decisions_choice(self._entry.data))
+        ] = selector.SelectSelector(
+            selector.SelectSelectorConfig(
+                options=[DECISIONS_CURRENT, DECISIONS_PREVIOUS],
+                translation_key=CHARGING_DECISIONS,
+                mode=selector.SelectSelectorMode.DROPDOWN,
+            )
+        )
         schema = vol.Schema(schema_fields)
         if user_input is not None:
             # Exclude this entry itself so re-saving its own entities never conflicts with itself.
@@ -256,6 +287,9 @@ class SpotNavChargingOptionsFlow(config_entries.OptionsFlow):
                     updated_data.pop(CONF_IDLE_POWER_W)
                 if detected:
                     updated_data[CONF_CONTROL_PATH] = path
+                apply_charging_decisions(
+                    updated_data, user_input.get(CHARGING_DECISIONS) or charging_decisions_choice(self._entry.data)
+                )
                 if self._entry.data.get(CONF_MODE) == MODE_OCPP:
                     # The charge control may have been re-pointed, so re-resolve the stored identity
                     # rather than keep commanding the connector the old entity named; an unresolved

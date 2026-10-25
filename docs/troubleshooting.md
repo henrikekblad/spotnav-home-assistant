@@ -30,6 +30,9 @@ administrators) also carries the whole installation as one debug bundle (`bundle
   `card_bundle_hash_served` (the one browsers are handed). When they differ, the file says so in
   `client.note`, and the card's Support section says it too: the browser or the Companion app runs an
   older card. Reload the page; in the Companion app, force-stop the app and open it again.
+- `ownership_shadow.drives` in each charger's controller diagnostics: `true` when the charge-ownership core decides
+  (the default), `false` for a charger set to the previous logic. Either way the other side is computed beside it,
+  and `counts` and the rings say where they disagreed.
 - `ownership_shadow.coverage` in each charger's controller diagnostics: per event kind of the
   charge-ownership core (every kind, zero until seen), how many events it decided, compared,
   disagreed on, found drift at and failed on, and when it first and last saw one. Unlike the rest of
@@ -118,9 +121,11 @@ changes.
   installed; check *Auto execution state* and whether automatic charging is paused.
 - **Prices are stale or missing.** Prices come from the public SpotNav Relay. If the relay is unreachable, the last successful
   fetch is used and the card says the prices are stale. No token or account is involved.
-- **Helping test the new charge-ownership logic.** A new core that decides who owns a charge runs beside today's
-  logic and controls nothing: it only records where it would have decided otherwise. Downloading the debug info
-  (card Settings, Support) after a few days of ordinary charging, and sending it with an issue, helps it get there.
+- **A charger starts or stops when it should not, since the charge-ownership logic took over.** The charge-ownership
+  core decides who owns a charge on every charger by default, with the previous logic still computed beside it and
+  compared (`ownership_shadow.drives` is `true` in the charger's diagnostics). An administrator can take one charger
+  back under its **Configure**: **Charging decisions**, **Previous logic** (saving reloads that charger). Download
+  the debug info (card Settings, Support) first and send it with an issue: it records where the two disagreed.
 
 ## Vehicles
 

@@ -301,10 +301,12 @@
           "current_control": "Ladestrom der Ladestation setzen",
           "energy_register_entity": "Energiezähler (gesamt, optional)",
           "power_entity": "Leistungssensor, smarte Steckdose (optional)",
-          "idle_power_w": "Zieht keinen Strom unter (W)"
+          "idle_power_w": "Zieht keinen Strom unter (W)",
+          "charging_decisions": "Ladeentscheidungen"
         },
         "data_description": {
-          "idle_power_w": "Liegt die Leistung während eines geplanten Ladevorgangs fünf Minuten darunter, meldet SpotNav, dass das Auto keinen Strom zieht. Standard 100 W."
+          "idle_power_w": "Liegt die Leistung während eines geplanten Ladevorgangs fünf Minuten darunter, meldet SpotNav, dass das Auto keinen Strom zieht. Standard 100 W.",
+          "charging_decisions": "Welche Logik entscheidet, wann diese Ladestation startet und stoppt. Wähle Bisherige Logik nur, wenn die aktuelle bei dieser Ladestation nicht richtig funktioniert; beim Speichern wird die Ladestation neu geladen."
         }
       },
       "site_init": {
@@ -499,6 +501,12 @@
         "off": "Nichts",
         "suggested": "Vorschlag der Preiszone",
         "manual": "Eigener Wert"
+      }
+    },
+    "charging_decisions": {
+      "options": {
+        "current": "Aktuell (Standard)",
+        "previous": "Bisherige Logik"
       }
     }
   },
