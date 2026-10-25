@@ -301,10 +301,12 @@
           "current_control": "Fijar la corriente del cargador",
           "energy_register_entity": "Contador de energía (total, opcional)",
           "power_entity": "Sensor de potencia, enchufe inteligente (opcional)",
-          "idle_power_w": "Sin consumo por debajo de (W)"
+          "idle_power_w": "Sin consumo por debajo de (W)",
+          "charging_decisions": "Decisiones de carga"
         },
         "data_description": {
-          "idle_power_w": "Si la potencia está por debajo de este valor durante cinco minutos en una carga planificada, SpotNav indica que el coche no está consumiendo. Por defecto, 100 W."
+          "idle_power_w": "Si la potencia está por debajo de este valor durante cinco minutos en una carga planificada, SpotNav indica que el coche no está consumiendo. Por defecto, 100 W.",
+          "charging_decisions": "Qué lógica decide cuándo este cargador empieza y se detiene. Elige Lógica anterior solo si la actual no funciona bien en este cargador; al guardar, el cargador se recarga."
         }
       },
       "site_init": {
@@ -499,6 +501,12 @@
         "off": "Nada",
         "suggested": "La sugerencia de la zona",
         "manual": "Mi propia cifra"
+      }
+    },
+    "charging_decisions": {
+      "options": {
+        "current": "Actual (predeterminada)",
+        "previous": "Lógica anterior"
       }
     }
   },

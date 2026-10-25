@@ -301,10 +301,12 @@
           "current_control": "Ställ in laddarens ström",
           "energy_register_entity": "Energimätare (total, valfritt)",
           "power_entity": "Effektsensor, smart plugg (valfri)",
-          "idle_power_w": "Drar ingen ström under (W)"
+          "idle_power_w": "Drar ingen ström under (W)",
+          "charging_decisions": "Laddbeslut"
         },
         "data_description": {
-          "idle_power_w": "Under den här effekten i fem minuter under en planerad laddning säger SpotNav att bilen inte drar ström. Standard 100 W."
+          "idle_power_w": "Under den här effekten i fem minuter under en planerad laddning säger SpotNav att bilen inte drar ström. Standard 100 W.",
+          "charging_decisions": "Vilken logik som bestämmer när den här laddaren startar och stoppar. Välj Tidigare logik bara om den nuvarande inte fungerar för den här laddaren; laddaren startas om i SpotNav när du sparar."
         }
       },
       "site_init": {
@@ -499,6 +501,12 @@
         "off": "Inget",
         "suggested": "Elområdets förslag",
         "manual": "Egen siffra"
+      }
+    },
+    "charging_decisions": {
+      "options": {
+        "current": "Nuvarande (standard)",
+        "previous": "Tidigare logik"
       }
     }
   },

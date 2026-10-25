@@ -301,10 +301,12 @@
           "current_control": "Laadstroom van de laadpaal instellen",
           "energy_register_entity": "Energiemeter (totaal, optioneel)",
           "power_entity": "Vermogenssensor, slimme stekker (optioneel)",
-          "idle_power_w": "Neemt niets af onder (W)"
+          "idle_power_w": "Neemt niets af onder (W)",
+          "charging_decisions": "Laadbeslissingen"
         },
         "data_description": {
-          "idle_power_w": "Blijft het vermogen tijdens gepland laden vijf minuten onder deze waarde, dan meldt SpotNav dat de auto niets afneemt. Standaard 100 W."
+          "idle_power_w": "Blijft het vermogen tijdens gepland laden vijf minuten onder deze waarde, dan meldt SpotNav dat de auto niets afneemt. Standaard 100 W.",
+          "charging_decisions": "Welke logica bepaalt wanneer deze laadpaal start en stopt. Kies Vorige logica alleen als de huidige op deze laadpaal niet goed werkt; opslaan laadt de laadpaal opnieuw."
         }
       },
       "site_init": {
@@ -499,6 +501,12 @@
         "off": "Niets",
         "suggested": "Voorstel van het prijsgebied",
         "manual": "Eigen bedrag"
+      }
+    },
+    "charging_decisions": {
+      "options": {
+        "current": "Huidig (standaard)",
+        "previous": "Vorige logica"
       }
     }
   },

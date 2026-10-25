@@ -301,10 +301,12 @@
           "current_control": "Aseta laturin virta",
           "energy_register_entity": "Energiamittari (kumulatiivinen, valinnainen)",
           "power_entity": "Tehoanturi, älypistoke (valinnainen)",
-          "idle_power_w": "Ei ota virtaa, kun teho alle (W)"
+          "idle_power_w": "Ei ota virtaa, kun teho alle (W)",
+          "charging_decisions": "Latauspäätökset"
         },
         "data_description": {
-          "idle_power_w": "Jos teho pysyy tämän alapuolella viisi minuuttia suunnitellun latauksen aikana, SpotNav toteaa, ettei auto ota virtaa. Oletus 100 W."
+          "idle_power_w": "Jos teho pysyy tämän alapuolella viisi minuuttia suunnitellun latauksen aikana, SpotNav toteaa, ettei auto ota virtaa. Oletus 100 W.",
+          "charging_decisions": "Mikä logiikka päättää, milloin tämä laturi aloittaa ja lopettaa latauksen. Valitse Aiempi logiikka vain, jos nykyinen ei toimi oikein tällä laturilla; tallennus lataa laturin uudelleen."
         }
       },
       "site_init": {
@@ -499,6 +501,12 @@
         "off": "Ei mitään",
         "suggested": "Hinta-alueen ehdotus",
         "manual": "Oma luku"
+      }
+    },
+    "charging_decisions": {
+      "options": {
+        "current": "Nykyinen (oletus)",
+        "previous": "Aiempi logiikka"
       }
     }
   },

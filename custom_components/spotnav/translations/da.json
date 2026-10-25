@@ -301,10 +301,12 @@
           "current_control": "Indstil laderens strøm",
           "energy_register_entity": "Energitæller (samlet, valgfrit)",
           "power_entity": "Effektsensor, smart stik (valgfrit)",
-          "idle_power_w": "Trækker ikke strøm under (W)"
+          "idle_power_w": "Trækker ikke strøm under (W)",
+          "charging_decisions": "Ladebeslutninger"
         },
         "data_description": {
-          "idle_power_w": "Er effekten under denne værdi i fem minutter under en planlagt opladning, melder SpotNav, at bilen ikke trækker strøm. Standard 100 W."
+          "idle_power_w": "Er effekten under denne værdi i fem minutter under en planlagt opladning, melder SpotNav, at bilen ikke trækker strøm. Standard 100 W.",
+          "charging_decisions": "Hvilken logik der bestemmer, hvornår denne lader starter og stopper. Vælg Tidligere logik kun hvis den nuværende ikke fungerer for denne lader; når du gemmer, genindlæses laderen."
         }
       },
       "site_init": {
@@ -499,6 +501,12 @@
         "off": "Intet",
         "suggested": "Prisområdets forslag",
         "manual": "Mit eget tal"
+      }
+    },
+    "charging_decisions": {
+      "options": {
+        "current": "Nuværende (standard)",
+        "previous": "Tidligere logik"
       }
     }
   },
