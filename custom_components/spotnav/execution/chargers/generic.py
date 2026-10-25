@@ -16,6 +16,7 @@ from ...const import CURRENT_CONTROL_NUMBER, DEFAULT_MIN_CURRENT_A
 from ..charger_profiles import PATH_BUTTONS, PATH_SELECT, PATH_SWITCH, WritePolicy
 from .base import (
     _amps_factor,
+    _entity_ready,
     _entity_unavailable,
     _finite,
     _lower,
@@ -157,6 +158,13 @@ class ButtonPath(StartStopPath):
     async def async_start(self, amps: int | None = None) -> bool:
         return await self._press(self.start_entity_id)
 
+    def ready(self) -> bool:
+        # A button rests in `unknown` until it is first pressed.
+        return all(
+            _entity_ready(self.hass, entity_id, unknown_ok=True)
+            for entity_id in (self.start_entity_id, self.stop_entity_id)
+        )
+
     async def async_stop(self) -> bool:
         return await self._press(self.stop_entity_id)
 
@@ -262,6 +270,10 @@ class NumberCurrent(CurrentPath):
 
     def wait_s(self) -> float:
         return self._limiter.wait_s()
+
+    def ready(self) -> bool:
+        # A session-bound number reads `unknown` until its first write.
+        return _entity_ready(self.hass, self.entity_id, unknown_ok=self.policy.session_bound)
 
     def retry_entity_ids(self) -> tuple[str, ...]:
         return (self.entity_id,) if self.policy.session_bound else ()

@@ -224,6 +224,13 @@ class OcppAssignedCurrent(CurrentPath):
     def available(self) -> str | None:
         return ASSIGN_NO_TARGET if self._target() is None else None
 
+    def ready(self) -> bool:
+        # The OCPP integration registers its services when it loads, which may be well after SpotNav.
+        return all(
+            self.hass.services.has_service(_OCPP_DOMAIN, service)
+            for service in (_OCPP_GET_CONFIGURATION_SERVICE, _OCPP_CONFIGURE_SERVICE)
+        )
+
     def describe(self) -> dict[str, Any]:
         return current_description(self.kind, service=f"{_OCPP_DOMAIN}.{_OCPP_CONFIGURE_SERVICE}")
 

@@ -172,6 +172,17 @@ def _entity_unavailable(hass: HomeAssistant, entity_id: str) -> bool:
     return state is None or state.state == STATE_UNAVAILABLE
 
 
+def _entity_ready(hass: HomeAssistant, entity_id: str, *, unknown_ok: bool = False) -> bool:
+    """Whether the entity exists and says something: not missing, not `unavailable`, and not `unknown`
+    unless that is a state it may rest in (a button that was never pressed). An entity whose integration
+    has not loaded yet (right after a restart) is not ready.
+    """
+    state = hass.states.get(entity_id)
+    if state is None or state.state == STATE_UNAVAILABLE:
+        return False
+    return unknown_ok or state.state != STATE_UNKNOWN
+
+
 def _not_executed(entity_id: str) -> bool:
     _ADAPTER_LOGGER.warning(
         "The charger's %s is unavailable, so the command was not sent", entity_id.split(".", 1)[0]
@@ -294,6 +305,14 @@ class StartStopPath(ABC):
     def entity_ids(self) -> tuple[str, ...]:
         """The entities whose reports change `enabled_state`."""
 
+    def ready(self) -> bool:
+        """Whether a command through this path can reach the charger now: every entity it commands exists and
+        says something, and every service it calls is registered. Right after a restart a charger integration
+        that loads after SpotNav is not ready, and a command then would be dropped by Home Assistant (or raise
+        `ServiceNotFound`) without reaching the charger.
+        """
+        return all(_entity_ready(self.hass, entity_id) for entity_id in self.entity_ids())
+
     def memory(self) -> dict[str, Any]:
         """What this path remembers that a restart must not forget (plain JSON values); none by default."""
         return {}
@@ -342,6 +361,13 @@ class CurrentPath(ABC):
     def available(self) -> str | None:
         """`None` while this path can write, else the code saying why it cannot right now."""
         return None
+
+    def ready(self) -> bool:
+        """Whether a write could reach the charger now: its entity exists, its service is registered. `False`
+        only while the charger's integration has not loaded (right after a restart); a policy refusal is
+        `available`'s, not this.
+        """
+        return True
 
     def wait_s(self) -> float:
         return 0.0
