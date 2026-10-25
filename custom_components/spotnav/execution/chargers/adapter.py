@@ -441,6 +441,15 @@ class ChargerAdapter:
 
     # -- what it supports
 
+    def ready(self) -> bool:
+        """Whether a start or a stop could reach the charger now (`StartStopPath.ready`): `False` while the
+        charger's integration has not loaded its entities or services, as right after a restart."""
+        return self.path.ready()
+
+    def current_ready(self) -> bool:
+        """Whether a current write could reach the charger now (`CurrentPath.ready`)."""
+        return self.current.ready()
+
     @property
     def capabilities(self) -> AdapterCapabilities:
         can_set = self.current.can_set and self.current_enabled

@@ -190,6 +190,12 @@ AUTOMATIC_PERSON_RESUME: Final = "person_resume"
 #: How long (seconds) after an automatic stop the charger's control did not execute, while the charger is
 #: seen charging, the decision is taken again (besides the next report of the charger's state).
 STOP_RETRY_S: Final = 30.0
+#: A command an automatic decision made while the charger's integration had not loaded its entities or services
+#: (right after a restart, before an OCPP charge point is there) is neither sent nor done: it is owed, the charger
+#: is looked at every `OWED_CHECK_S`, and once it is ready the decision is taken again on what holds then (never
+#: the stale command replayed). Given up on, logged once, after `OWED_GIVE_UP_S`.
+OWED_CHECK_S: Final = 5.0
+OWED_GIVE_UP_S: Final = 900.0
 #: Putting back an interrupted pilot-floor probe while the charger is not ready yet (an OCPP charge point
 #: reconnects some time after Home Assistant starts): a try a minute for half an hour, then again at the
 #: next start.
@@ -687,6 +693,13 @@ class ChargingController:
         # The appointment at which an automatic stop the charger's control did not execute is decided again
         # (`_automatic_stop_locked`), or `None`.
         self._stop_retry_cancel: Callable[[], None] | None = None
+        # A command not sent because the charger was not ready (`_owe`): since when, whether a start or stop decision
+        # and whether a session's current is owed, and the watch that takes them up again once it is.
+        self._owed_since: datetime | None = None
+        self._owed_command = False
+        self._owed_current = False
+        self._owed_settling = False
+        self._owed_cancel: Callable[[], None] | None = None
         # A person's Stop as an older release stored it (`person_stopped`), read once at the restore for
         # the execution boundary to take over as its manual pause (`take_legacy_person_stop`).
         self._legacy_person_stopped = False
@@ -3375,6 +3388,13 @@ class ChargingController:
         # write of `AssignedCurrent` it has always been (`OcppAssignedCurrent`); for any other, a
         # write under the platform's policy.
         outcome = await self.adapter.async_set_current(amps, reason=reason, verify=verify)
+        if reason in (WRITE_SESSION_START, WRITE_RESEND):
+            if outcome in IN_EFFECT_OUTCOMES:
+                self._owed_current = False
+            elif not self.adapter.current_ready() and not self.adapter.policy.session_bound:
+                # The charger's integration has not loaded its current service or entity: the session's current is
+                # owed, and written once it has (a session-bound number has its own wait, `_start_write_pending`).
+                self._owe("the charge's current", current=True)
         if reason != WRITE_REGULATOR and outcome in IN_EFFECT_OUTCOMES:
             # The regulator knows its own writes; every other one the site must be told.
             self._tell_site(self._written_amps(amps, outcome), reason)
@@ -3810,16 +3830,23 @@ class ChargingController:
             await self._shadow_direct_stop(request, clear_schedule)
 
     async def _stop_request_locked(
-        self, *, clear_schedule: bool = False, balancing: bool = False, urgent: bool = False
+        self,
+        *,
+        clear_schedule: bool = False,
+        balancing: bool = False,
+        urgent: bool = False,
+        defer_unready: bool = False,
     ) -> None:
         """`async_stop` itself, with the operation lock held."""
         if self._top_off_until is not None and not balancing:
             # The plan ends with its top-off.
             _LOGGER.info("SpotNav charger %s: the top-off is stopped", self.entry_id)
             clear_schedule = True
-        await self._stop_locked(clear_schedule=clear_schedule, urgent=urgent)
+        await self._stop_locked(clear_schedule=clear_schedule, urgent=urgent, defer_unready=defer_unready)
 
-    async def _stop_locked(self, *, clear_schedule: bool = False, urgent: bool = False) -> None:
+    async def _stop_locked(
+        self, *, clear_schedule: bool = False, urgent: bool = False, defer_unready: bool = False
+    ) -> None:
         """The stop itself, with the operation lock held: stop charging, optionally removing the saved
         schedule.
 
@@ -3828,7 +3855,16 @@ class ChargingController:
         subscription, since a gone plan enforces nothing. A stop of an automatic decision while another
         settles (`_stop_settling`) sends nothing (`_stop_settled` says so); an `urgent` one (a safety stop, a
         person's Stop) always goes out.
+
+        An automatic decision's stop (`defer_unready`) that would send nothing only because the charge control
+        cannot be read yet (its integration has not loaded, right after a restart) is not done either: it raises
+        `EXECUTION_STOP_NOT_EXECUTED` before anything is forgotten, and `_automatic_stop_locked` owes it.
         """
+        if defer_unready and not self._stop_needed and self._control_observation is None:
+            _LOGGER.debug(
+                "SpotNav charger %s: the stop was not sent, the charge control cannot be read yet", self.entry_id
+            )
+            raise ChargingExecutionError(EXECUTION_STOP_NOT_EXECUTED, "the charger is not ready")
         was_owned = self._hold.owned
         was_balancing = (self._paused_by_balancing, self._paused_charge)
         session = self._session_generation
@@ -3929,12 +3965,16 @@ class ChargingController:
         """
         try:
             if request:
-                await self._stop_request_locked(clear_schedule=clear_schedule)
+                await self._stop_request_locked(clear_schedule=clear_schedule, defer_unready=True)
             else:
-                await self._stop_locked(clear_schedule=clear_schedule)
+                await self._stop_locked(clear_schedule=clear_schedule, defer_unready=True)
         except ChargingExecutionError as err:
             if err.code != EXECUTION_STOP_NOT_EXECUTED:
                 raise
+            ready = self._charger_ready()
+            if not ready:
+                # The charger's integration has not loaded: the decision is taken again once it has.
+                self._owe(what)
             if self.charging or self._control_observation is True:
                 _LOGGER.warning(
                     "SpotNav charger %s: %s was not executed; trying again in %ss",
@@ -3943,7 +3983,7 @@ class ChargingController:
                     int(STOP_RETRY_S),
                 )
                 self._arm_stop_retry()
-            else:
+            elif ready:
                 _LOGGER.info(
                     "SpotNav charger %s: %s was not executed; the charger is not seen charging, so nothing is "
                     "left to stop",
@@ -3985,6 +4025,107 @@ class ChargingController:
             # give-up (`_observe_person_hold`), never a second stop beside one the gap's own timer sends.
             self._observe_person_hold_timer()
 
+    def _charger_ready(self) -> bool:
+        """Whether a start or a stop could reach the charger now and its charge control can be read: its
+        integration has loaded the entities and services the command path uses (`ChargerAdapter.ready`)."""
+        return self.adapter.ready() and self._control_observation is not None
+
+    def _owe(self, what: str, *, current: bool = False) -> None:
+        """An automatic decision's command (`what`) was not sent because the charger is not ready: it is owed.
+        The charger is looked at every `OWED_CHECK_S`; once ready, the decision is taken again (`_async_settle_owed`),
+        and after `OWED_GIVE_UP_S` it is given up on. Logged once per wait."""
+        if current:
+            self._owed_current = True
+        else:
+            self._owed_command = True
+        if self._owed_since is not None or self._shut_down:
+            return
+        self._owed_since = dt_util.utcnow()
+        _LOGGER.warning(
+            "SpotNav charger %s: %s was not sent, the charger is not ready yet (its integration has not loaded); "
+            "it is decided again once the charger is ready",
+            self.entry_id,
+            what,
+        )
+        self._owed_cancel = async_track_time_interval(
+            self.hass, self._owed_tick, timedelta(seconds=OWED_CHECK_S), cancel_on_shutdown=True
+        )
+
+    def _cancel_owed(self) -> None:
+        cancel = self._owed_cancel
+        self._owed_cancel = None
+        self._owed_since = None
+        self._owed_settling = False
+        self._owed_command = False
+        self._owed_current = False
+        if cancel is not None:
+            cancel()
+
+    @property
+    def commands_owed(self) -> bool:
+        """Whether a command waits for the charger to become ready (`_owe`)."""
+        return self._owed_command or self._owed_current
+
+    @callback
+    def _owed_tick(self, _now: datetime | None = None) -> None:
+        """Look at the charger once more for what is owed: a decision whose charger is ready now is taken again,
+        a wait past `OWED_GIVE_UP_S` is given up on."""
+        since = self._owed_since
+        if since is None or self._shut_down or self._owed_settling:
+            return
+        if not self.commands_owed:
+            # What was owed went out meanwhile (a later start wrote the current).
+            self._cancel_owed()
+            return
+        ready = self._charger_ready()
+        command = self._owed_command and ready
+        current = self._owed_current and ready and self.adapter.current_ready()
+        if command or current:
+            self._owed_command = self._owed_command and not command
+            self._owed_settling = True
+            self._async_spawn(self._async_settle_owed(command, current), "the owed command")
+            return
+        if (dt_util.utcnow() - since).total_seconds() >= OWED_GIVE_UP_S:
+            self._cancel_owed()
+            _LOGGER.warning(
+                "SpotNav charger %s: the charger did not become ready within %s minutes; the command it was owed "
+                "is given up",
+                self.entry_id,
+                int(OWED_GIVE_UP_S // 60),
+            )
+
+    async def _async_settle_owed(self, command: bool, current: bool) -> None:
+        """The charger is ready: what was owed is decided again on the facts now, never replayed. A start or a
+        stop through the plan's re-arm (a window open now starts, outside every window a charge is stopped, past
+        the last one a stray plan charge), whichever holds now; a session's current is written as the request
+        stands now, capped by what the site allows now, and only while a charge of ours runs."""
+        try:
+            async with self._automatic(AUTOMATIC_STOP):
+                if self._shut_down:
+                    return
+                if command and self.plan is not None:
+                    _LOGGER.info(
+                        "SpotNav charger %s: the charger is ready; the plan's command is decided again", self.entry_id
+                    )
+                    await self._reschedule_locked()
+                # A start just made wrote the current itself (and so cleared what was owed).
+                current = current and self._owed_current
+                self._owed_current = self._owed_current and not current
+                amps = self._requested_current_a
+                if (
+                    current
+                    and amps is not None
+                    and self._charge_origin is not None
+                    and not self._paused_by_balancing
+                    and self.adapter.capabilities.set_current
+                ):
+                    await self._async_assign_current_outcome(amps, reason=WRITE_SESSION_START, capped=True)
+                self._notify()
+        finally:
+            self._owed_settling = False
+            if not self.commands_owed:
+                self._cancel_owed()
+
     async def async_shutdown(self) -> None:
         """Cancel local callbacks without changing the charger (a probe run in flight is put back)."""
         # Before the lock: a regulator write or resume waiting behind it sends nothing once it gets it.
@@ -4009,6 +4150,7 @@ class ChargingController:
             await self._async_save_session()
         await self._shadow.coverage.async_flush()
         self._cancel_stop_retry()
+        self._cancel_owed()
         self._cancel_person_hold_retry()
         # A top-off's deadline stays stored: the next start resumes it or ends it.
         self._cancel_top_off_timers()
@@ -4617,6 +4759,9 @@ class ChargingController:
             outcome = CommandOutcome(False)
             executed = await self._start_locked(cause="plan_window")
             outcome = self._shadow_start_outcome(executed)
+            if not executed and not self._paused_by_balancing and not self._charger_ready():
+                # Not sent: the charger's integration has not loaded. Decided again once it has.
+                self._owe("the window's start")
             return False
         finally:
             self._shadow_end_event(

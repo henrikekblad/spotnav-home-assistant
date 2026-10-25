@@ -235,6 +235,9 @@ class EaseeCommandPath(StartStopPath):
     def enabled_state(self) -> None:
         return None
 
+    def ready(self) -> bool:
+        return self.hass.services.has_service(_EASEE_DOMAIN, "action_command")
+
     def entity_ids(self) -> tuple[str, ...]:
         return ()
 
@@ -486,6 +489,9 @@ class EaseeDynamicLimit(CurrentPath):
         if old in _EASEE_UNREADABLE:
             return not self._paused()
         return False
+
+    def ready(self) -> bool:
+        return self.hass.services.has_service(_EASEE_DOMAIN, "set_charger_dynamic_limit")
 
     def describe(self) -> dict[str, Any]:
         return current_description(self.kind, service=f"{_EASEE_DOMAIN}.set_charger_dynamic_limit")
