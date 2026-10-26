@@ -10,7 +10,9 @@ from homeassistant.util import dt as dt_util
 from pytest_homeassistant_custom_component.common import async_fire_time_changed, async_mock_service
 
 from custom_components.spotnav.const import (
+    CONF_GRID_POWER_SOURCE,
     CONF_MEASURED_CURRENT_SOURCE,
+    CONF_SITE_CURRENT_SIGNED,
     MEASUREMENT_MODE_DERIVED,
     SITE_RECOMPUTE_INTERVAL_S,
 )
@@ -470,3 +472,114 @@ async def test_log_line_carries_every_phase_basis_not_just_the_limiting_phase(
     # Every phase's signed power must be present, not only L1's.
     for phase, watts in distinct.items():
         assert str(watts) in log, f"{phase}'s signed power {watts} missing from log:\n{log}"
+
+
+async def _signed_direct_site(hass: HomeAssistant, name: str, *, grid_power: bool = True):
+    """A charging 3-phase charger (10 A delivered, 9 A asked) on a direct site whose currents carry a sign."""
+    hass.states.async_set(f"switch.{name}_charger", "off")
+    async_mock_service(hass, "switch", "turn_on")
+    charger = make_entry(
+        hass, entry_id=f"charger_{name}", charge_control=f"switch.{name}_charger",
+        current_limit=None, webhook_id=f"webhook-{name}", title=name.capitalize(),
+    )
+    assert await hass.config_entries.async_setup(charger.entry_id)
+    await hass.async_block_till_done()
+    charger_controller = controller_of(hass, charger.entry_id)
+    await charger_controller.async_start(amps=9)
+    hass.states.async_set(f"switch.{name}_charger", "on")
+    for suffix in ("l1", "l2", "l3"):
+        set_current_sensor(hass, f"sensor.{name}_charger_{suffix}", 10)
+    extra = {CONF_SITE_CURRENT_SIGNED: True}
+    if grid_power:
+        extra[CONF_GRID_POWER_SOURCE] = {"power": f"sensor.{name}_grid_power"}
+    entry = make_site_entry(
+        hass,
+        entry_id=f"site_{name}",
+        main_fuse_a=MAIN_FUSE_A,
+        safety_margin_a=1.0,
+        charger_entry_ids=[charger.entry_id],
+        phase_wiring={
+            charger.entry_id: {
+                "phases": 3,
+                "phase": None,
+                CONF_MEASURED_CURRENT_SOURCE: separate_entities_source(
+                    *(f"sensor.{name}_charger_l{n}" for n in (1, 2, 3))
+                ),
+            }
+        },
+        extra_data=extra,
+    )
+    _report_signed_site(hass, name, (12.0, 13.0, 14.0), 36.0 * 230.0)
+    assert await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+    return charger, controller_of(hass, entry.entry_id)
+
+
+def _report_signed_site(hass: HomeAssistant, name: str, currents, grid_w: float) -> None:
+    """One new report of the site's signed per-phase currents and its total grid power."""
+    for suffix, amps in zip(("l1", "l2", "l3"), currents):
+        set_current_sensor(hass, f"sensor.site_{name}_{suffix}", amps)
+    hass.states.async_set(f"sensor.{name}_grid_power", str(grid_w), {"unit_of_measurement": "W"})
+
+
+async def _confirm(hass: HomeAssistant, name: str, total_w: float = 36.0 * 230.0, times: int = 8) -> None:
+    for _ in range(times):
+        _report_signed_site(hass, name, (12.0, 13.0, 14.0), total_w)
+        await _tick(hass)
+
+
+async def _restart_charge(hass: HomeAssistant, name: str, charger) -> None:
+    """The charge ends (the charger stops) and a new one starts at 9 A."""
+    hass.states.async_set(f"switch.{name}_charger", "off")
+    await _tick(hass)
+    await controller_of(hass, charger.entry_id).async_start(amps=9)
+    hass.states.async_set(f"switch.{name}_charger", "on")
+    await _tick(hass)
+
+
+async def test_a_direct_site_decides_once_its_current_sign_is_confirmed_by_the_total(hass: HomeAssistant) -> None:
+    charger, site_controller = await _signed_direct_site(hass, "signed")
+    decision = site_controller.regulator_decisions[charger.entry_id]
+    assert (decision.proposed_current_a, decision.reason) == (None, "phase_direction_unknown_at_charge_start")
+    assert not site_controller._writer_direction_known(charger.entry_id)
+
+    await _confirm(hass, "signed")
+    assert site_controller.result.phase_direction_source == {phase: "signed_current" for phase in ("L1", "L2", "L3")}
+    assert site_controller._direction_known_for(charger.entry_id)
+
+    # The charge started with the sun as its writer: it stays so, and the regulator stays off it, until it ends.
+    decision = site_controller.regulator_decisions[charger.entry_id]
+    assert (decision.proposed_current_a, decision.reason) == (None, "phase_direction_unknown_at_charge_start")
+    assert not site_controller._writer_direction_known(charger.entry_id)
+
+    # The next charge starts confirmed: active control decides it.
+    await _restart_charge(hass, "signed", charger)
+    await _confirm(hass, "signed", times=4)
+    assert site_controller._writer_direction_known(charger.entry_id)
+    decision = site_controller.regulator_decisions[charger.entry_id]
+    assert (decision.proposed_current_a, decision.reason) == (9.0, "decrease_confirmed_safe")
+
+    # The total turns against the currents mid-charge: the regulator decides nothing (the current is held), and
+    # the writer stays active control, so the sun does not take over and raise it.
+    await _confirm(hass, "signed", total_w=-36.0 * 230.0, times=2)
+    decision = site_controller.regulator_decisions[charger.entry_id]
+    assert (decision.proposed_current_a, decision.reason) == (None, "phase_direction_unknown")
+    assert not site_controller._direction_known_for(charger.entry_id)
+    assert site_controller._writer_direction_known(charger.entry_id)
+
+    # Once that charge ends, the next one starts on what is known then: the sun's.
+    await _restart_charge(hass, "signed", charger)
+    assert not site_controller._writer_direction_known(charger.entry_id)
+    decision = site_controller.regulator_decisions[charger.entry_id]
+    assert decision.reason == "phase_direction_unknown_at_charge_start"
+
+
+async def test_a_signed_direct_site_without_a_total_never_decides(hass: HomeAssistant) -> None:
+    charger, site_controller = await _signed_direct_site(hass, "nototal", grid_power=False)
+    for _ in range(6):
+        _report_signed_site(hass, "nototal", (12.0, 13.0, 14.0), 36.0 * 230.0)
+        await _tick(hass)
+    decision = site_controller.regulator_decisions[charger.entry_id]
+    assert (decision.proposed_current_a, decision.reason) == (None, "phase_direction_unknown_at_charge_start")
+    assert not site_controller._direction_known_for(charger.entry_id)
+    assert site_controller.result.phase_signed_current_a == {"L1": 12.0, "L2": 13.0, "L3": 14.0}

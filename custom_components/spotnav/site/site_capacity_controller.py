@@ -14,7 +14,7 @@ import logging
 import math
 import time
 from collections import deque
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, replace
 from datetime import datetime, timedelta
 from typing import Any, Literal
@@ -84,7 +84,7 @@ from ..execution.controller import (
     RESTORE_NOT_NEEDED,
     RESTORE_RESTORED,
 )
-from ..execution.chargers.base import WRITE_SESSION_START
+from ..execution.chargers.base import WRITE_SESSION_START, WRITE_SOLAR
 from ..execution.yield_stepping import YieldConfig, YieldObservation, YieldStepper, YieldVerdict
 from ..planning.auto_settings import MANUAL_START, MANUAL_STOP, STRATEGY_HYBRID, STRATEGY_SOLAR
 from ..runtime import charger_data, controller_for, domain_data
@@ -118,10 +118,13 @@ from .regulator import (
     DEFAULT_HELP_MARGIN_FACTOR,
     DEFAULT_MIN_CONSECUTIVE_CONFIRMATIONS,
     DEFAULT_ZERO_MARGIN_W,
+    direction_phases,
     DirectionClass,
+    magnitude_overload_lowering,
     MUST_LOWER_REASONS,
     RegulatorDecision,
 )
+from .current_sign import CurrentSignCheck
 from .auto_phase import AutoPhaseTracker, drawn_phase
 from .site_capacity import (
     ACTIVE_CONTROL_READY,
@@ -132,7 +135,9 @@ from .site_capacity import (
     classify_current,
     classify_phase_liveness,
     classify_power,
+    classify_signed_current,
     classify_voltage,
+    DIRECTION_NOMINAL_PHASE_VOLTAGE_V,
     DerivedPhaseInput,
     DerivedPhaseMeasurement,
     DirectPhaseMeasurement,
@@ -219,6 +224,7 @@ BATTERY_RISE_WINDOW_S = 60.0
 #: charger sends no meter values while no transaction runs, so a charger load balancing stopped reads its last value,
 #: unchanged and unreported, for as long as it is stopped.
 REASON_CHARGER_MEASUREMENT_UNUSABLE = "charger_measurement_unusable"
+REASON_MAGNITUDE_LOWERING = "lowering_overload_on_current_magnitude_direction_unknown"
 
 #: The regulator writes kept per charger, newest last, to tell which of them a site reading may already show
 #: (`_written_at_reading`).
@@ -360,6 +366,12 @@ class SiteCapacityController:
         # be read holds its whole share until it can or the time is up: a fall of the site's margin may be
         # another load, and counting a start twice is the safe side.
         self._start_reservations: dict[str, tuple[float, tuple[PhaseName, ...], float]] = {}
+        # On a direct site, where the sun and active control may each write a charger of their own: the sun's
+        # writes and active control's raises, held the same way until the charger draws them or
+        # `START_RESERVATION_S` pass, so neither writer is given the room the other has just given away
+        # (`_reserved_by_others_a`, `_solar_reserved_a`). What a charger already draws is in the site's reading.
+        self._solar_write_reservations: dict[str, tuple[float, tuple[PhaseName, ...], float]] = {}
+        self._regulator_write_reservations: dict[str, tuple[float, tuple[PhaseName, ...], float]] = {}
         # Chargers just started, credited with the draw the site shows while their own reading lags
         # (`_credited_measurements`); what was credited per phase on the last decision; and whether each charger was
         # seen charging at the last recompute (a charger seen on by itself is credited as a start of ours is).
@@ -398,6 +410,15 @@ class SiteCapacityController:
         self._last_seen_active_power_report_at: dict[PhaseName, datetime | None] = {
             phase: None for phase in PHASES
         }
+        # A direct site's signed current, confirmed per phase against the meter's total before its sign is
+        # taken as the phase's direction (`site/current_sign.py`). Not persisted.
+        self._current_sign = CurrentSignCheck(
+            zero_margin_w=DEFAULT_ZERO_MARGIN_W, min_agreements=DEFAULT_MIN_CONSECUTIVE_CONFIRMATIONS
+        )
+        # On a direct site, per charger in a charge: whether its direction was known when the charge started,
+        # which keeps the charge's current writer (active control or the sun) until it ends
+        # (`_update_charge_writers`). Not persisted: a charge found running after a restart starts unknown.
+        self._direction_at_charge_start: dict[str, bool] = {}
         # How often each measurement entity reports (`site/meter_cadence.py`): fed from every state
         # write Home Assistant reports, changed or not, and sampled on each recompute.
         self._cadence = ReportCadence()
@@ -1165,6 +1186,8 @@ class SiteCapacityController:
         if reason == WRITE_SESSION_START:
             damper.forget_write(None)
             return
+        if reason == WRITE_SOLAR:
+            self._reserve_write(self._solar_write_reservations, charger_entry_id, amps)
         if previous == amps:
             return
         damper.record_write(amps)
@@ -1186,38 +1209,125 @@ class SiteCapacityController:
         """Per phase, the amps the other chargers' starts on their way have not drawn yet. What a charger
         has drawn is read from its own current only: while that reads nothing the whole share is held (a
         change of the site's margin may be another load's), until `START_RESERVATION_S` pass."""
+        return self._undrawn_a(
+            (self._start_reservations, self._solar_write_reservations, self._regulator_write_reservations),
+            exclude=charger_entry_id,
+        )
+
+    def _solar_reserved_a(self) -> dict[PhaseName, float]:
+        """Per phase, what the sun's own writes on a direct site gave its chargers and they have not drawn yet:
+        room the regulator does not give to its own chargers' raises meanwhile."""
+        return self._undrawn_a((self._solar_write_reservations,), exclude=None)
+
+    def _undrawn_a(
+        self,
+        tables: Sequence[dict[str, tuple[float, tuple[PhaseName, ...], float]]],
+        *,
+        exclude: str | None,
+    ) -> dict[PhaseName, float]:
+        """Per phase, what the reservations in `tables` (but `exclude`'s) have not drawn yet, read from each
+        charger's own current; expired ones are dropped."""
         now = self._yield_now()
-        for other, (_amps, _phases, until) in list(self._start_reservations.items()):
-            if now >= until:
-                del self._start_reservations[other]
-        if not self._start_reservations:
+        for table in tables:
+            for other, (_amps, _phases, until) in list(table.items()):
+                if now >= until:
+                    del table[other]
+        if not any(tables):
             return {}
         requests = {r.charger_entry_id: r for r in self._build_requests(credit=False)}
         reserved: dict[PhaseName, float] = {}
-        for other, (amps, phases, _until) in self._start_reservations.items():
-            if other == charger_entry_id:
-                continue
-            delivered = None if other not in requests else requests[other].measured_current_a
-            for phase in phases:
-                drawn = 0.0 if delivered is None else (delivered.get(phase).value or 0.0)
-                reserved[phase] = reserved.get(phase, 0.0) + max(0.0, amps - drawn)
+        for table in tables:
+            for other, (amps, phases, _until) in table.items():
+                if other == exclude:
+                    continue
+                delivered = None if other not in requests else requests[other].measured_current_a
+                for phase in phases:
+                    drawn = 0.0 if delivered is None else (delivered.get(phase).value or 0.0)
+                    reserved[phase] = reserved.get(phase, 0.0) + max(0.0, amps - drawn)
         return reserved
+
+    def _reserve_write(
+        self,
+        table: dict[str, tuple[float, tuple[PhaseName, ...], float]],
+        charger_entry_id: str,
+        amps: float,
+    ) -> None:
+        """Hold a write of `amps` to this charger in `table` (direct sites only, see `__init__`)."""
+        if self.config.get(CONF_MEASUREMENT_MODE) != MEASUREMENT_MODE_DIRECT:
+            return
+        request = next((r for r in self._build_requests() if r.charger_entry_id == charger_entry_id), None)
+        phases = None if request is None else request.phases_used()
+        if not phases or amps <= 0:
+            table.pop(charger_entry_id, None)
+            return
+        table[charger_entry_id] = (float(amps), tuple(phases), self._yield_now() + START_RESERVATION_S)
 
     def active_control_writes(self, charger_entry_id: str) -> bool:
         """Whether the active-control pass writes this charger's requested current at all: active control on, a
-        derived site (the regulator decides nothing on any other, `derived_mode_required`), its own measured
-        current configured, and a charger it can command. An "Automatic" single-phase charger counts: the regulator
+        site that knows the direction on every phase the charger may draw on (a derived site, or a direct one whose
+        signed current is confirmed there; the regulator decides nothing elsewhere, `phase_direction_unknown`), its
+        own measured current configured, and a charger it can command. An "Automatic" single-phase charger counts: the regulator
         reckons it on its followed or worst phase. Wherever it does not, the sun writes its own current
-        (`execution/solar_execution.py`); wherever it does, it stays the only writer.
+        (`execution/solar_execution.py`); wherever it does, it stays the only writer. On a direct site the direction
+        is the one the charge started with (`_update_charge_writers`), so the writer does not change mid-charge.
         """
         if not self._active_control_allowed():
             return False
-        if self.config.get(CONF_MEASUREMENT_MODE) != MEASUREMENT_MODE_DERIVED:
+        if not self._writer_direction_known(charger_entry_id):
             return False
         wiring = (self.config.get(CONF_PHASE_WIRING) or {}).get(charger_entry_id) or {}
         if source_from_dict(wiring.get(CONF_MEASURED_CURRENT_SOURCE)) is None:
             return False
         return self._is_commandable_charger(controller_for(self.hass, charger_entry_id))
+
+    def _writer_direction_known(self, charger_entry_id: str) -> bool:
+        """`_direction_known_for`, except on a direct site in a charge, where it is what it was when the charge
+        started."""
+        held = self._direction_at_charge_start.get(charger_entry_id)
+        if held is not None and self._in_charge(charger_entry_id):
+            return held
+        return self._direction_known_for(charger_entry_id)
+
+    def _in_charge(self, charger_entry_id: str) -> bool:
+        """Whether this charger is in a charge: charging, a start of ours on its way, or paused by load balancing
+        (the charge goes on once there is room). Ends when the charger stops or the car is unplugged."""
+        charger_controller = controller_for(self.hass, charger_entry_id)
+        if charger_controller is None:
+            return False
+        return bool(
+            charger_controller.charging or charger_controller.start_pending or charger_controller.paused_by_balancing
+        )
+
+    def _update_charge_writers(self) -> None:
+        """On a direct site, note for each charger whose charge just started whether its direction is known now,
+        and forget it for a charger no longer in a charge. A charge that started with the sun writing its current
+        keeps the sun as its writer, and the regulator off it, even once its phases are confirmed; one that started
+        with active control keeps active control, which only holds the current if a confirmation is withdrawn
+        (the regulator decides nothing without a direction) rather than handing a raise to the sun."""
+        if self.config.get(CONF_MEASUREMENT_MODE) != MEASUREMENT_MODE_DIRECT:
+            self._direction_at_charge_start.clear()
+            return
+        for charger_entry_id in list(self.config.get(CONF_CHARGER_ENTRY_IDS) or []):
+            if not self._in_charge(charger_entry_id):
+                self._direction_at_charge_start.pop(charger_entry_id, None)
+            elif charger_entry_id not in self._direction_at_charge_start:
+                self._direction_at_charge_start[charger_entry_id] = self._direction_known_for(charger_entry_id)
+
+    def _direction_known_for(self, charger_entry_id: str) -> bool:
+        """Whether the latest result knows the direction on every phase this charger may draw on
+        (`regulator.direction_phases`), as the regulator requires before deciding on it."""
+        mode = self.config.get(CONF_MEASUREMENT_MODE)
+        if mode == MEASUREMENT_MODE_DERIVED:
+            return True
+        if mode != MEASUREMENT_MODE_DIRECT:
+            return False
+        request = next(
+            (request for request in self._build_requests() if request.charger_entry_id == charger_entry_id), None
+        )
+        if request is None:
+            return False
+        sources = self.result.phase_direction_source
+        return all(sources.get(phase) for phase in direction_phases(request))
 
     def _active_control_allowed(self) -> bool:
         """Both gates: the compile-time `ACTIVE_CONTROL_READY` and this site's
@@ -1408,6 +1518,9 @@ class SiteCapacityController:
                     await self._async_maybe_start_battery_probe(
                         charger_entry_id, charger_controller, decision, fresh, damper, damper.last_written_a
                     )
+            return True
+        if decision.reason == REASON_MAGNITUDE_LOWERING:
+            await self._async_apply_magnitude_lowering(charger_entry_id, charger_controller, decision, fresh, max_age_s)
             return True
         failure = applyability_failure(
             decision=decision,
@@ -1636,6 +1749,59 @@ class SiteCapacityController:
         )
         return True
 
+    async def _async_apply_magnitude_lowering(
+        self,
+        charger_entry_id: str,
+        charger_controller: ChargingController,
+        decision: RegulatorDecision,
+        fresh: SiteCapacityResult,
+        max_age_s: float,
+    ) -> None:
+        """Write a `magnitude_overload_lowering` decision: only while the fresh reading still shows the overload
+        by |I|, never above it again, and never above what was last written (a lowering only), at once."""
+        request = next(
+            (r for r in self._build_requests(credit=False) if r.charger_entry_id == charger_entry_id), None
+        )
+        again = (
+            None
+            if request is None or fresh.state != "observing"
+            else magnitude_overload_lowering(site_result=fresh, request=request, max_age_s=max_age_s)
+        )
+        if again is None or again.proposed_current_a is None or decision.proposed_current_a is None:
+            self._log_active_control_outcome(charger_entry_id, decision, outcome="held", detail="overload_over")
+            return
+        damper = self._damper_for(charger_entry_id)
+        previous_setpoint = damper.last_written_a
+        measured = [b.measured_current_a for b in decision.basis.values() if b.measured_current_a is not None]
+        ceiling = previous_setpoint if previous_setpoint is not None else (max(measured) if measured else None)
+        setpoint = min(decision.proposed_current_a, again.proposed_current_a)
+        if ceiling is None or setpoint >= ceiling:
+            self._log_active_control_outcome(charger_entry_id, decision, outcome="held", detail="not_a_lowering")
+            return
+        damping = damper.consider(
+            proposed_current_a=setpoint,
+            margin_a=fresh.measured_margin_a.get(again.limiting_phase) if again.limiting_phase else None,
+            urgent=True,
+        )
+        if not damping.write or damping.current_a is None or damping.current_a > setpoint:
+            self._log_active_control_outcome(
+                charger_entry_id, decision, outcome="held", detail=f"damping_{damping.reason}"
+            )
+            return
+        if not self._active_control_allowed() or self._closed:
+            return
+        await self._async_write_regulated(
+            charger_entry_id,
+            charger_controller,
+            replace(decision, proposed_current_a=setpoint),
+            damper,
+            damping,
+            int(setpoint),
+            previous_setpoint,
+            None,
+            site_read_at=self._site_read_at(fresh),
+        )
+
     async def _async_write_regulated(
         self,
         charger_entry_id: str,
@@ -1682,6 +1848,9 @@ class SiteCapacityController:
             # Another path's write was told to the site while this one was on its way (`note_charger_write`):
             # this write landed last, so it is what the charger carries.
             damper.record_write(float(setpoint))
+        if previous_setpoint is None or setpoint > previous_setpoint:
+            # A raise: the sun's own writes to other chargers are not given this room meanwhile.
+            self._reserve_write(self._regulator_write_reservations, charger_entry_id, float(setpoint))
         writes = self._regulated_writes.setdefault(charger_entry_id, deque(maxlen=_WRITES_KEPT))
         written_at = dt_util.utcnow()
         self._written_at[charger_entry_id] = written_at.timestamp()
@@ -2782,6 +2951,7 @@ class SiteCapacityController:
         main_fuse_a = self.config.get(CONF_MAIN_FUSE_A)
         direct = self._read_direct_entities() if mode == MEASUREMENT_MODE_DIRECT else None
         derived = self._read_derived_entities() if mode == MEASUREMENT_MODE_DERIVED else None
+        direct_signed = self._read_direct_signed_entities() if mode == MEASUREMENT_MODE_DIRECT else None
         return SiteCalculationConfig(
             enabled=bool(self.config.get(CONF_SITE_ENABLED, False)),
             main_fuse_a=float(main_fuse_a) if main_fuse_a is not None else None,
@@ -2791,6 +2961,8 @@ class SiteCapacityController:
             direct=direct,
             derived=derived,
             battery=self._read_battery_estimate(),
+            direct_signed=direct_signed,
+            direct_sign_confirmed=self._current_sign.confirmed if direct_signed is not None else (),
         )
 
     def _read_battery_estimate(self) -> BatteryYieldEstimate | None:
@@ -2904,9 +3076,14 @@ class SiteCapacityController:
         """The `last_reported` timestamp of this phase's active-power entity, read directly off
         `hass.states`.
 
-        `None` when it cannot be determined: not derived mode, no entity configured, no state yet,
-        or no `last_reported` support.
+        On a direct site it is the phase's current entity (the one entity of a source carrying all three).
+        `None` when it cannot be determined: neither mode, no entity configured, no state yet, or no
+        `last_reported` support.
         """
+        if self.config.get(CONF_MEASUREMENT_MODE) == MEASUREMENT_MODE_DIRECT:
+            entity_id = self.phase_entities().get(phase)
+            state = self._state_or_none(entity_id)
+            return getattr(state, "last_reported", None) if state is not None else None
         if self.config.get(CONF_MEASUREMENT_MODE) != MEASUREMENT_MODE_DERIVED:
             return None
         entities: dict[str, dict[str, str]] = self.config.get(CONF_DERIVED_ENTITIES) or {}
@@ -2925,7 +3102,7 @@ class SiteCapacityController:
 
     def _update_direction_history(self) -> None:
         """Append each phase's direction classification to its history, only when a new report has
-        arrived.
+        arrived, and on a direct site feed that report to the current-sign check (`_update_current_sign`).
 
         Recomputes fire far more often than the entity reports (timer, charger listeners, charge-
         control changes), so counting each one would satisfy the consecutive-confirmation
@@ -2939,6 +3116,7 @@ class SiteCapacityController:
         never overwritten with `None`. A new HA report is still not proof of a new physical
         measurement, so this makes confirmation harder to satisfy by accident, not airtight.
         """
+        any_new_report = False
         for phase in PHASES:
             last_reported = self._active_power_last_reported(phase)
             previous = self._last_seen_active_power_report_at.get(phase)
@@ -2949,8 +3127,32 @@ class SiteCapacityController:
                 self._last_seen_active_power_report_at[phase] = last_reported
             if not is_new_report:
                 continue
+            any_new_report = True
             signed_w = self.result.phase_signed_active_power_w.get(phase)
             self._direction_history[phase].append(classify_direction(signed_w, DEFAULT_ZERO_MARGIN_W))
+        if any_new_report:
+            self._update_current_sign()
+
+    def _update_current_sign(self) -> None:
+        """Feed a direct site's new signed reading and the meter's total to `CurrentSignCheck`; only fresh,
+        usable values count. Takes effect from the next calculation."""
+        if self.config.get(CONF_MEASUREMENT_MODE) != MEASUREMENT_MODE_DIRECT:
+            return
+        signed = self._read_direct_signed_entities()
+        if signed is None:
+            return
+        max_age_s = float(self.config.get(CONF_MAX_AGE_S, DEFAULT_MAX_AGE_S))
+
+        def fresh(value: PhaseValue | None) -> float | None:
+            if value is None or value.value is None or value.problem is not None:
+                return None
+            if value.age_s is None or value.age_s > max_age_s:
+                return None
+            return value.value
+
+        self._current_sign.observe(
+            {phase: fresh(signed.get(phase)) for phase in PHASES}, fresh(self.grid_total_power())
+        )
 
     def _compute_regulator_decisions(self) -> dict[str, RegulatorDecision]:
         """One regulator decision per associated charger on top of `self.result`
@@ -2963,7 +3165,13 @@ class SiteCapacityController:
         voltage_by_phase: dict[PhaseName, float | None] = (
             {phase: config.derived.get(phase).voltage_v.value for phase in PHASES}
             if config.measurement_mode == MEASUREMENT_MODE_DERIVED and config.derived is not None
-            else {phase: None for phase in PHASES}
+            else {
+                # A direct site's signed current stands in for power at the nominal voltage it was multiplied by.
+                phase: DIRECTION_NOMINAL_PHASE_VOLTAGE_V
+                if self.result.phase_direction_source.get(phase) == "signed_current"
+                else None
+                for phase in PHASES
+            }
         )
         confirmed_direction_by_phase: dict[PhaseName, DirectionClass | None] = {
             phase: confirmed_direction(
@@ -2971,8 +3179,15 @@ class SiteCapacityController:
             )
             for phase in PHASES
         }
-        requests = self._build_requests()
-        return allocate_regulator_decisions(
+        self._update_charge_writers()
+        # A direct site's charge that started without a known direction stays the sun's (or nobody's) to write.
+        not_ours = {
+            charger_entry_id
+            for charger_entry_id, known in self._direction_at_charge_start.items()
+            if not known and self._in_charge(charger_entry_id)
+        }
+        requests = [request for request in self._build_requests() if request.charger_entry_id not in not_ours]
+        decisions = allocate_regulator_decisions(
             site_result=self.result,
             requests=requests,
             # A credited start is judged on its own reading too: the credit never stands for a raise.
@@ -2985,7 +3200,25 @@ class SiteCapacityController:
             max_age_s=config.max_age_s,
             zero_margin_w=DEFAULT_ZERO_MARGIN_W,
             help_margin_factor=DEFAULT_HELP_MARGIN_FACTOR,
+            increase_reserved_by_phase=self._solar_reserved_a() if not_ours else None,
         )
+        for charger_entry_id in not_ours:
+            decisions[charger_entry_id] = RegulatorDecision(None, "phase_direction_unknown_at_charge_start", None, {})
+        # A charge active control started on whose direction was lost meanwhile: still lowered on an overload by
+        # |I| (as the sun's capped write did before), never raised.
+        for request in requests:
+            charger_entry_id = request.charger_entry_id
+            decision = decisions.get(charger_entry_id)
+            if (
+                decision is not None
+                and decision.reason == "phase_direction_unknown"
+                and self._direction_at_charge_start.get(charger_entry_id)
+                and self._in_charge(charger_entry_id)
+            ):
+                decisions[charger_entry_id] = magnitude_overload_lowering(
+                    site_result=self.result, request=request, max_age_s=config.max_age_s
+                )
+        return decisions
 
     def charger_measured_current(self, charger_entry_id: str) -> DirectPhaseMeasurement | None:
         """One associated charger's raw measured current, for entities and diagnostics."""
@@ -2999,8 +3232,9 @@ class SiteCapacityController:
         returns a `PhaseValue`, even if currently unusable. An import/export pair is import minus
         export, and a missing or invalid half makes the whole value missing or invalid, never zero.
         `CONF_GRID_POWER_INVERTED` negates it for an export-positive meter. Used by the solar
-        executor and diagnostics; never by the fuse protection, which stays per phase on the measured
-        currents.
+        executor and diagnostics, and on a direct site only to confirm the sign of its per-phase currents
+        (`site/current_sign.py`); never as amps by the fuse protection, which stays per phase on the
+        measured currents.
         """
         source = grid_power_source_from_dict(self.config.get(CONF_GRID_POWER_SOURCE))
         if source is None:
@@ -3219,6 +3453,17 @@ class SiteCapacityController:
                 l3=PhaseValue(None, None, problem="missing"),
             )
         values = read_phase_measurement(self.hass, source, classify_current)
+        return DirectPhaseMeasurement(l1=values["L1"], l2=values["L2"], l3=values["L3"])
+
+    def _read_direct_signed_entities(self) -> DirectPhaseMeasurement | None:
+        """The site's per-phase current with its sign (+ import, - export), or `None` unless the source is
+        `site_current_signed`. Only a direction once `CurrentSignCheck` confirms a phase."""
+        if not bool(self.config.get(CONF_SITE_CURRENT_SIGNED, False)):
+            return None
+        source = self._resolve_site_current_source()
+        if source is None:
+            return None
+        values = read_phase_measurement(self.hass, replace(source, signed_current=False), classify_signed_current)
         return DirectPhaseMeasurement(l1=values["L1"], l2=values["L2"], l3=values["L3"])
 
     def _read_derived_entities(self) -> DerivedPhaseMeasurement:

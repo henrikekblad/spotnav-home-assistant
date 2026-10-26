@@ -194,6 +194,29 @@ It is best effort and is not a protective device. Turning it off gives back any 
   with a current number or service, see [supported hardware](supported.md)). A charger whose
   current is stored in the charger cannot be adjusted during a charge, but can be stopped when the
   fuse needs less than its setting. It is refused while a charger belongs to more than one site.
+- **It needs to know which way each phase flows** (import or export). Lowering a car lowers the import,
+  which on a phase that nets to export raises the current instead, so a lowering is only allowed where
+  the phase is known to import. A *derived* site knows this from its signed power on every phase. A
+  *direct* site knows it only when its currents carry a sign (*The grid current is signed*) **and** it
+  has the meter's **total grid power**: the sign is trusted on a phase only after that phase has agreed
+  with the total on three readings in a row where the answer is clear (the total and the phase outside
+  ±500 W, every phase outside it on the total's side, and the phases adding up to the total). Not every
+  meter counts export as negative, so the sign is checked rather than assumed; a reading against the
+  total withdraws it again, and after a restart it is checked again (on a solar site, where the phases
+  often point different ways in the daytime, that can take until a reading where they agree, such as
+  the evening). A charger on one chosen phase, or an *Automatic* one followed to its phase, needs that
+  phase; a three-phase charger, or an Automatic one not yet followed, needs all three. Elsewhere the
+  regulator decides nothing for the charger (`phase_direction_unknown` in the diagnostics) and the sun,
+  if it runs the charge, writes its current itself. Who writes is settled when a charge starts and kept
+  until it ends (the charger stops or the car is unplugged): a charge that started before its phases were
+  confirmed stays the sun's (`phase_direction_unknown_at_charge_start`), and one that started with active
+  load balancing keeps it if the confirmation is withdrawn meanwhile: the current is never raised then, and
+  a phase it draws on that goes over the limit by its measured current still lowers it at once to the room
+  that leaves (as the sun's own capped write did), until the confirmation is back or the charge ends. Room
+  the sun's write gave its charger, or a raise active control gave one of its own, is not given to the
+  other writer until the charger draws it (at most two minutes). On a direct site a raise is judged on the measured
+  current as it is (export on a phase is not counted as room), and a lowering also stays within the
+  room the phase has, since a current with a sign does not tell how much of it is active power.
 - **Yield-verified stepping** (opt-in) is for sites with a load that gives way when the car
   draws more, for example a house battery holding the grid at its setpoint. SpotNav then judges a
   step by whether it moves the site current, within a hard ceiling that must be above the main
@@ -315,7 +338,7 @@ state; `solar_reason` is `needs_total_grid_power` when a direct site lacks it.
 
 SpotNav scans the entity registry (including entities an integration ships disabled) for grid meters and home batteries and offers them in the site editor and the create flow (the recognised integrations are listed under [supported hardware](supported.md)); nothing is applied until confirmed, and applying enables only entities the integration disabled, never ones a person disabled. Each integration carries its sign conventions:
 
-* `site_current_signed`: the meter reports export as a negative current; the fuse carries |I|, so the magnitude is read. Without the flag a negative current is invalid.
+* `site_current_signed`: the meter reports export as a negative current; the fuse carries |I|, so the magnitude is read. Without the flag a negative current is invalid. On a direct site with the total grid power, the sign also gives each phase its direction for active load balancing once checked against the total (see [Active load balancing](#active-load-balancing)).
 * `grid_power_inverted` / `battery_power_inverted`: export-positive grid power (the per-phase power of a derived site and the total grid power) and discharge-positive battery power are negated.
 * Import and export reported as two entities (`power` and `power_export`, or a battery's charge and discharge) are combined as import minus export; a missing half makes the value missing, never zero.
 
