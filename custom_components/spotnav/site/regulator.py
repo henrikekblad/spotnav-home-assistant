@@ -6,6 +6,14 @@ decisions are acted on by `SiteCapacityController._async_apply_active_control`,
 which needs `ACTIVE_CONTROL_READY` and the site's `CONF_ACTIVE_CONTROL_ENABLED`
 opt-in, and re-checks live readings first (`decision_still_applyable`).
 
+A phase is decided on only where its import/export direction is known
+(`SiteCapacityResult.phase_direction_source`): derived mode's signed active power on every phase, or
+on a direct site a signed current whose sign the controller confirmed against the meter's total grid
+power. Elsewhere the charger gets `phase_direction_unknown`. A direct site's signed current stands in
+for active power as `I x DIRECTION_NOMINAL_PHASE_VOLTAGE_V` and goes through the same rules and
+thresholds; since |I| also carries any reactive part, a decrease there additionally keeps the
+triangle-inequality worst case `|net| + drop` within the ceiling.
+
 Per phase:
 
 - Increase: capped by the uncredited margin (`measured_margin_a`, |net|), or where the direction
@@ -29,6 +37,7 @@ from dataclasses import dataclass, field, replace
 from typing import Literal, Mapping, Sequence
 
 from .site_capacity import (
+    PHASES,
     allocation_order,
     ChargerRequest,
     DirectPhaseMeasurement,
@@ -45,6 +54,10 @@ DirectionClass = Literal["net_import", "net_export", "near_zero"]
 
 # Every reason reported for a phase or a whole charger.
 RegulatorReason = Literal[
+    # The site has no known import/export direction on a phase the charger may draw on: a direct site
+    # whose currents carry no sign, or whose sign is not yet confirmed against the meter's total.
+    "phase_direction_unknown",
+    # No longer given (`phase_direction_unknown` replaced it); kept so older diagnostics still read.
     "derived_mode_required",
     "requested_current_unknown",
     "charger_phase_wiring_unknown",
@@ -151,6 +164,7 @@ def _decide_phase(
     zero_margin_w: float,
     help_margin_factor: float,
     min_current_a: float,
+    direction_from_current: bool = False,
 ) -> tuple[float | None, RegulatorReason]:
     """One phase's decision; see the module docstring for the rules."""
     if (
@@ -226,6 +240,10 @@ def _decide_phase(
     if confirmed_dir != "net_import":
         return current, "insufficient_consecutive_confirmation_kept_unchanged"
     if delta_w > help_margin_factor * signed_active_power_w:
+        return current, "decrease_margin_exceeded_kept_unchanged"
+    if direction_from_current and current - requested_current_a > safe_uncredited_headroom_a:
+        # A signed current is |I| with a sign: how much of it is active is not known, so the drop is
+        # kept within what the phase could take even if it all added to |net| (|net - d| <= |net| + d).
         return current, "decrease_margin_exceeded_kept_unchanged"
     return _legalize_or_pause(requested_current_a, min_current_a, "decrease_confirmed_safe")
 
@@ -357,14 +375,22 @@ def decide_charging_current(
 ) -> RegulatorDecision:
     """One charger's decision, combining every phase it draws from.
 
-    Derived mode only. The most restrictive phase wins: an increase takes the
+    Only where the direction is known on every phase the charger may draw on
+    (`_direction_unknown_phase`). The most restrictive phase wins: an increase takes the
     smallest per-phase value, a decrease the largest (a charger cannot reduce
     one phase alone). Both pick an existing, already legal per-phase value.
     """
-    if site_result.measurement_mode != "derived_phase_current":
-        return RegulatorDecision(None, "derived_mode_required", None, {})
+    direction_sources = site_result.phase_direction_source
+    if site_result.measurement_mode == "derived_phase_current":
+        # Derived mode always knows the direction from active power (its readings are checked per phase).
+        direction_sources = {phase: "active_power" for phase in PHASES}
+    if not any(direction_sources.get(phase) for phase in PHASES):
+        return RegulatorDecision(None, "phase_direction_unknown", None, {})
     if request.requested_current_a is None:
         return RegulatorDecision(None, "requested_current_unknown", None, {})
+    unknown_phase = _direction_unknown_phase(request, direction_sources)
+    if unknown_phase is not None:
+        return RegulatorDecision(None, "phase_direction_unknown", unknown_phase, {})
     phases = request.phases_used()
     if phases is None:
         return RegulatorDecision(None, "charger_phase_wiring_unknown", None, {})
@@ -408,6 +434,7 @@ def decide_charging_current(
             zero_margin_w=zero_margin_w,
             help_margin_factor=help_margin_factor,
             min_current_a=request.min_current_a,
+            direction_from_current=direction_sources.get(phase) == "signed_current",
         )
         per_phase[phase] = (value, reason)
         if headroom is not None and headroom < 0.0:
@@ -450,6 +477,25 @@ def decide_charging_current(
         limiting_phase, (proposed, reason) = max(per_phase.items(), key=lambda kv: kv[1][0])
 
     return RegulatorDecision(proposed, reason, limiting_phase, basis)
+
+
+def direction_phases(request: ChargerRequest) -> tuple[PhaseName, ...]:
+    """Every phase a charger may draw on: a single-phase charger's chosen phase or the one its own
+    current shows it on, else all three (a three-phase charger, or an "Automatic" one only reckoned on
+    the worst phase, which may be drawing on any)."""
+    if request.phases == 1 and request.phase_basis in ("chosen", "measured") and request.phase is not None:
+        return (request.phase,)
+    return PHASES
+
+
+def _direction_unknown_phase(
+    request: ChargerRequest, direction_sources: Mapping[PhaseName, object]
+) -> PhaseName | None:
+    """The first phase in `direction_phases` without a known direction, or `None`."""
+    for phase in direction_phases(request):
+        if not direction_sources.get(phase):
+            return phase
+    return None
 
 
 def _raises_on_credit(

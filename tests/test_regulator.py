@@ -471,7 +471,7 @@ def test_no_change_requested_is_reported_directly() -> None:
     assert decision.proposed_current_a == 10.0
 
 
-def test_direct_mode_is_not_supported() -> None:
+def test_direct_mode_without_a_signed_current_has_no_direction() -> None:
     config = SiteCalculationConfig(
         enabled=True,
         main_fuse_a=MAIN_FUSE_A,
@@ -490,7 +490,7 @@ def test_direct_mode_is_not_supported() -> None:
     decision = _decide(site_result, request)
 
     assert decision.proposed_current_a is None
-    assert decision.reason == "derived_mode_required"
+    assert decision.reason == "phase_direction_unknown"
 
 
 def test_requested_current_unknown_is_undetermined() -> None:

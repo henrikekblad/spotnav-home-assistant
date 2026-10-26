@@ -106,10 +106,8 @@ async def test_site_diagnostics_includes_the_regulator_decision_per_charger(
     diagnostics = await async_get_config_entry_diagnostics(hass, entry)
 
     decision = diagnostics["regulator"][charger.entry_id]
-    # This site is in direct mode (no P/Q/V) -- the regulator always
-    # resolves to "derived_mode_required" there, matching every other
-    # signed-power diagnostic in this codebase.
-    assert decision["reason"] == "derived_mode_required"
+    # A direct site whose currents carry no sign: the regulator knows no direction there.
+    assert decision["reason"] == "phase_direction_unknown"
     assert decision["proposed_current_a"] is None
     assert "basis" in decision
 
