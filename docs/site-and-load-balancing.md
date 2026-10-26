@@ -207,7 +207,11 @@ It is best effort and is not a protective device. Turning it off gives back any 
   the evening). A charger on one chosen phase, or an *Automatic* one followed to its phase, needs that
   phase; a three-phase charger, or an Automatic one not yet followed, needs all three. Elsewhere the
   regulator decides nothing for the charger (`phase_direction_unknown` in the diagnostics) and the sun,
-  if it runs the charge, writes its current itself. On a direct site a raise is judged on the measured
+  if it runs the charge, writes its current itself. Who writes is settled when a charge starts and kept
+  until it ends (the charger stops or the car is unplugged): a charge that started before its phases were
+  confirmed stays the sun's (`phase_direction_unknown_at_charge_start`), and one that started with active
+  load balancing keeps it, which holds the current, rather than letting the sun raise it, if the
+  confirmation is withdrawn meanwhile. On a direct site a raise is judged on the measured
   current as it is (export on a phase is not counted as room), and a lowering also stays within the
   room the phase has, since a current with a sign does not tell how much of it is active power.
 - **Yield-verified stepping** (opt-in) is for sites with a load that gives way when the car
