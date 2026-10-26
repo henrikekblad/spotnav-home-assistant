@@ -1546,14 +1546,20 @@ class SiteCapacityController:
         # Captured before `consider` advances the damper; also the yield stepper's `assigned_a`
         # (the value last written).
         previous_setpoint = damper.last_written_a
+        min_current_a = float(
+            ((self.config.get(CONF_PHASE_WIRING) or {}).get(charger_entry_id) or {}).get(
+                "min_current_a", DEFAULT_MIN_CURRENT_A
+            )
+        )
         if (
             previous_setpoint is not None
-            and previous_setpoint < float(
-                ((self.config.get(CONF_PHASE_WIRING) or {}).get(charger_entry_id) or {}).get(
-                    "min_current_a", DEFAULT_MIN_CURRENT_A
-                )
-            )
+            and previous_setpoint < min_current_a
             and (charger_controller.charging or charger_controller.start_pending)
+            # A pause again while a stop of ours settles: the charger still reporting the charge has not answered
+            # that stop yet. Paused again it is sent nothing, but the site is told again and decides again at once
+            # (a pass, the pause, a recompute, a pass, as fast as the loop runs, until the charger reports off). The
+            # pause stays remembered; once the stop has had its time, a charger still charging is paused again.
+            and not (charger_controller.stop_settling and proposed < DEFAULT_MIN_CURRENT_A)
         ):
             # The damper remembers a pause, but the charger charges again (a start, a resume, a person): what it is
             # at is not known here, so the next proposal is a first write, at once (a lowering one above all).

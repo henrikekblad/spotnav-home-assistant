@@ -3005,6 +3005,12 @@ class ChargingController:
             return None
 
     @property
+    def stop_settling(self) -> bool:
+        """Whether a stop of ours is on its way and the charger has not been seen to start again since
+        (`_stop_settling`): a charger still reporting the charge meanwhile is that stop not answered yet."""
+        return self._stop_settling()
+
+    @property
     def paused_by_balancing(self) -> bool:
         """Whether the charger is stopped because load balancing paused it, and nothing has stopped
         or started it since (a person's Stop, a window's end, a target stop all clear it)."""
