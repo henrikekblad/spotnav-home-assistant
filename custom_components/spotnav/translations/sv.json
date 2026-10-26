@@ -505,9 +505,9 @@
     "charger_phase": {
       "options": {
         "auto": "Automatiskt (följer laddboxen)",
-        "L1": "L1",
-        "L2": "L2",
-        "L3": "L3"
+        "l1": "L1",
+        "l2": "L2",
+        "l3": "L3"
       }
     },
     "fee_mode": {
