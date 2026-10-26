@@ -224,6 +224,30 @@ async def test_a_single_phase_charger_of_unknown_phase_is_reckoned_on_a_stand_in
     assert observation.phase_cap_a == {STAND_IN_PHASE: 11.0}
 
 
+async def test_a_single_phase_charger_followed_to_its_phase_is_reckoned_on_that_phase(hass: HomeAssistant) -> None:
+    # "Automatic": once its own current has shown it on L3 for the settle time, solar reckons it there.
+    from custom_components.spotnav.site.auto_phase import AUTO_PHASE_SETTLE_S
+
+    charger, _s, site, *_ = await direct_solar_setup(
+        hass, source={"power": TOTAL}, phases=1, phase=None, site_amps=10.0
+    )
+    clock = {"now": 0.0}
+    site._yield_now = lambda: clock["now"]  # noqa: SLF001
+    set_current_sensor(hass, "sensor.direct_site_l3", 20.0)
+    for phase, amps in (("l1", 0.0), ("l2", 0.0), ("l3", 7.0)):
+        set_current_sensor(hass, f"sensor.{charger.entry_id}_{phase}", amps)
+    _set_total(hass, TOTAL, -2300.0)
+    site._recompute()
+    clock["now"] += AUTO_PHASE_SETTLE_S
+    site._recompute()
+
+    observation = _build_observation(site, charger.entry_id, now=0.0)
+
+    assert observation.car_phases == ("L3",)
+    assert observation.car_delivered_a == {"L3": 7.0}
+    assert observation.signed_grid_w == {"L1": 0.0, "L2": 0.0, "L3": -2300.0}
+
+
 # ---- b) what keeps solar from a basis, named -----------------------------------------------------------
 
 
