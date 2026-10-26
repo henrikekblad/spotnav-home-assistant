@@ -204,11 +204,14 @@
       },
       "site_charger_wiring": {
         "title": "Kytkentä: {charger}",
-        "description": "Valitse yksivaiheiselle laturille kytketty vaihe erikseen -- tuntemattomalle vaiheelle ei voi koskaan laskea turvallista suositusta. Laturin oma mitattu virta on valinnainen: valitse löydetty ehdotus, anna yksi entiteetti vaihekohtaisine attribuutteineen, anna kolme erillistä entiteettiä (yksi vaihetta kohti, kuten Charge Amps -integraatio tarjoaa) tai jätä valinnaksi \"Ohita toistaiseksi\" ja määritä se myöhemmin.",
+        "description": "Valitse yksivaiheiselle laturille kytketty vaihe tai jätä valinnaksi \"Automaattinen\", jolloin seurataan vaihetta, jolla se lataa (kuten Easee Equalizerin kanssa); kunnes vaihe nähdään, laturi lasketaan kuormitetuimmalle vaiheelle. Laturin oma mitattu virta on valinnainen: valitse löydetty ehdotus, anna yksi entiteetti vaihekohtaisine attribuutteineen, anna kolme erillistä entiteettiä (yksi vaihetta kohti, kuten Charge Amps -integraatio tarjoaa) tai jätä valinnaksi \"Ohita toistaiseksi\" ja määritä se myöhemmin.",
         "data": {
           "phases": "Vaiheiden määrä",
           "phase": "Kytketty vaihe (yksivaiheiset laturit)",
           "measured_source": "Mitatun virran lähde (valinnainen)"
+        },
+        "data_description": {
+          "phase": "Automaattinen seuraa vaihetta, jolla laturi lataa, esim. Easee Equalizerin kanssa."
         }
       },
       "charger_manual_entities": {
@@ -394,11 +397,14 @@
       },
       "site_charger_wiring": {
         "title": "Kytkentä: {charger}",
-        "description": "Valitse yksivaiheiselle laturille kytketty vaihe erikseen -- tuntemattomalle vaiheelle ei voi koskaan laskea turvallista suositusta. Laturin oma mitattu virta on valinnainen: valitse löydetty ehdotus, anna yksi entiteetti vaihekohtaisine attribuutteineen, anna kolme erillistä entiteettiä (yksi vaihetta kohti, kuten Charge Amps -integraatio tarjoaa) tai jätä valinnaksi \"Ohita toistaiseksi\" ja määritä se myöhemmin.",
+        "description": "Valitse yksivaiheiselle laturille kytketty vaihe tai jätä valinnaksi \"Automaattinen\", jolloin seurataan vaihetta, jolla se lataa (kuten Easee Equalizerin kanssa); kunnes vaihe nähdään, laturi lasketaan kuormitetuimmalle vaiheelle. Laturin oma mitattu virta on valinnainen: valitse löydetty ehdotus, anna yksi entiteetti vaihekohtaisine attribuutteineen, anna kolme erillistä entiteettiä (yksi vaihetta kohti, kuten Charge Amps -integraatio tarjoaa) tai jätä valinnaksi \"Ohita toistaiseksi\" ja määritä se myöhemmin.",
         "data": {
           "phases": "Vaiheiden määrä",
           "phase": "Kytketty vaihe (yksivaiheiset laturit)",
           "measured_source": "Mitatun virran lähde (valinnainen)"
+        },
+        "data_description": {
+          "phase": "Automaattinen seuraa vaihetta, jolla laturi lataa, esim. Easee Equalizerin kanssa."
         }
       },
       "charger_manual_entities": {
@@ -494,6 +500,14 @@
       "options": {
         "1": "Yksi vaihe",
         "3": "Kolme vaihetta"
+      }
+    },
+    "charger_phase": {
+      "options": {
+        "auto": "Automaattinen (seuraa laturia)",
+        "L1": "L1",
+        "L2": "L2",
+        "L3": "L3"
       }
     },
     "fee_mode": {

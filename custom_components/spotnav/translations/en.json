@@ -204,11 +204,14 @@
       },
       "site_charger_wiring": {
         "title": "Wiring for {charger}",
-        "description": "For a single-phase charger, choose the connected phase explicitly -- an unknown phase means no safe recommendation can ever be calculated for it. The charger's own measured current is optional: pick a discovered suggestion, enter one entity with per-phase attributes, enter three separate entities (one per phase, as the Charge Amps integration provides), or leave it as \"skip\" to configure it later.",
+        "description": "For a single-phase charger, choose the connected phase, or leave it on \"Automatic\" to follow the phase it charges on (as with an Easee Equalizer); until that is seen it is reckoned on the most loaded phase. The charger's own measured current is optional: pick a discovered suggestion, enter one entity with per-phase attributes, enter three separate entities (one per phase, as the Charge Amps integration provides), or leave it as \"skip\" to configure it later.",
         "data": {
           "phases": "Number of phases",
           "phase": "Connected phase (single-phase chargers)",
           "measured_source": "Measured current source (optional)"
+        },
+        "data_description": {
+          "phase": "Automatic follows the phase the charger charges on, e.g. with an Easee Equalizer."
         }
       },
       "charger_manual_entities": {
@@ -394,11 +397,14 @@
       },
       "site_charger_wiring": {
         "title": "Wiring for {charger}",
-        "description": "For a single-phase charger, choose the connected phase explicitly -- an unknown phase means no safe recommendation can ever be calculated for it. The charger's own measured current is optional: pick a discovered suggestion, enter one entity with per-phase attributes, enter three separate entities (one per phase, as the Charge Amps integration provides), or leave it as \"skip\" to configure it later.",
+        "description": "For a single-phase charger, choose the connected phase, or leave it on \"Automatic\" to follow the phase it charges on (as with an Easee Equalizer); until that is seen it is reckoned on the most loaded phase. The charger's own measured current is optional: pick a discovered suggestion, enter one entity with per-phase attributes, enter three separate entities (one per phase, as the Charge Amps integration provides), or leave it as \"skip\" to configure it later.",
         "data": {
           "phases": "Number of phases",
           "phase": "Connected phase (single-phase chargers)",
           "measured_source": "Measured current source (optional)"
+        },
+        "data_description": {
+          "phase": "Automatic follows the phase the charger charges on, e.g. with an Easee Equalizer."
         }
       },
       "charger_manual_entities": {
@@ -494,6 +500,14 @@
       "options": {
         "1": "One phase",
         "3": "Three phases"
+      }
+    },
+    "charger_phase": {
+      "options": {
+        "auto": "Automatic (follows the charger)",
+        "L1": "L1",
+        "L2": "L2",
+        "L3": "L3"
       }
     },
     "fee_mode": {

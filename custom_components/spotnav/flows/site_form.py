@@ -166,6 +166,9 @@ def site_current_suggestions_schema(
 #: The safety margin a new site starts on.
 DEFAULT_SAFETY_MARGIN_A = 1.0
 
+#: The phase choice of a single-phase charger that follows the phase it charges on (stored as no phase).
+PHASE_AUTOMATIC = "auto"
+
 
 def site_margin_errors(user_input: dict[str, Any]) -> dict[str, str]:
     """A safety margin at or above the main fuse leaves no current for any charger: refused."""
@@ -316,8 +319,9 @@ def charger_wiring_schema(
     existing: dict[str, Any] | None = None,
     candidates: list[DiscoveryCandidate] | None = None,
 ) -> vol.Schema:
-    """One charger's wiring: its phase count, the connected phase of a single-phase one and, when its
-    device resolves (`charger_device_id`), an optional measured-current source. The keys are fixed
+    """One charger's wiring: its phase count, the connected phase of a single-phase one ("Automatic", the
+    default, or L1-L3) and, when its device resolves (`charger_device_id`), an optional measured-current
+    source. The keys are fixed
     (`phases`, `phase`, `measured_source`) so each has a translated label; which charger it is, is
     said by the step's description.
 
@@ -332,10 +336,17 @@ def charger_wiring_schema(
     schema_dict: dict[Any, Any] = {
         vol.Required("phases", default=existing.get("phases", 3)): vol.In([1, 3])
     }
-    phase_field: Any = vol.Optional("phase")
-    if existing.get("phase") is not None:
-        phase_field = vol.Optional("phase", description={"suggested_value": existing["phase"]})
-    schema_dict[phase_field] = vol.In(PHASES)
+    # "Automatic" (no phase stored) is the default: the phase is followed from the charger's measured current.
+    stored_phase = existing.get("phase")
+    schema_dict[vol.Optional("phase", default=stored_phase if stored_phase in PHASES else PHASE_AUTOMATIC)] = (
+        selector.SelectSelector(
+            selector.SelectSelectorConfig(
+                options=[PHASE_AUTOMATIC, *PHASES],
+                translation_key="charger_phase",
+                mode=selector.SelectSelectorMode.DROPDOWN,
+            )
+        )
+    )
     if charger_device_id(hass, charger_entry_id) is not None:
         # Shown whenever the device resolves, even with no candidate: manual entry is what such a
         # charger needs. Without a device there is nothing to list or check.
@@ -485,7 +496,9 @@ def parse_charger_wiring(
     """
     wiring = dict(existing or {})
     wiring["phases"] = inputs["phases"]
-    wiring["phase"] = inputs.get("phase")
+    # "Automatic" is stored as no phase, as before there was a choice for it.
+    phase = inputs.get("phase")
+    wiring["phase"] = phase if phase in PHASES else None
     choice = inputs.get("measured_source")
     if choice is None:
         return wiring

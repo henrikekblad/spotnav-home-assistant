@@ -204,11 +204,14 @@
       },
       "site_charger_wiring": {
         "title": "Câblage de {charger}",
-        "description": "Pour une borne monophasée, choisissez explicitement la phase raccordée -- avec une phase inconnue, aucune recommandation sûre ne peut jamais être calculée. Le courant mesuré propre à la borne est facultatif : choisissez une suggestion détectée, saisissez une entité avec des attributs par phase, saisissez trois entités séparées (une par phase, comme le fournit l'intégration Charge Amps), ou laissez « ignorer » pour le configurer plus tard.",
+        "description": "Pour une borne monophasée, choisissez la phase raccordée, ou laissez « Automatique » pour suivre la phase sur laquelle elle charge (comme avec un Easee Equalizer) ; tant qu'elle n'est pas vue, la borne est comptée sur la phase la plus chargée. Le courant mesuré propre à la borne est facultatif : choisissez une suggestion détectée, saisissez une entité avec des attributs par phase, saisissez trois entités séparées (une par phase, comme le fournit l'intégration Charge Amps), ou laissez « ignorer » pour le configurer plus tard.",
         "data": {
           "phases": "Nombre de phases",
           "phase": "Phase raccordée (bornes monophasées)",
           "measured_source": "Source du courant mesuré (facultatif)"
+        },
+        "data_description": {
+          "phase": "Automatique suit la phase sur laquelle la borne charge, par ex. avec un Easee Equalizer."
         }
       },
       "charger_manual_entities": {
@@ -394,11 +397,14 @@
       },
       "site_charger_wiring": {
         "title": "Câblage de {charger}",
-        "description": "Pour une borne monophasée, choisissez explicitement la phase raccordée -- avec une phase inconnue, aucune recommandation sûre ne peut jamais être calculée. Le courant mesuré propre à la borne est facultatif : choisissez une suggestion détectée, saisissez une entité avec des attributs par phase, saisissez trois entités séparées (une par phase, comme le fournit l'intégration Charge Amps), ou laissez « ignorer » pour le configurer plus tard.",
+        "description": "Pour une borne monophasée, choisissez la phase raccordée, ou laissez « Automatique » pour suivre la phase sur laquelle elle charge (comme avec un Easee Equalizer) ; tant qu'elle n'est pas vue, la borne est comptée sur la phase la plus chargée. Le courant mesuré propre à la borne est facultatif : choisissez une suggestion détectée, saisissez une entité avec des attributs par phase, saisissez trois entités séparées (une par phase, comme le fournit l'intégration Charge Amps), ou laissez « ignorer » pour le configurer plus tard.",
         "data": {
           "phases": "Nombre de phases",
           "phase": "Phase raccordée (bornes monophasées)",
           "measured_source": "Source du courant mesuré (facultatif)"
+        },
+        "data_description": {
+          "phase": "Automatique suit la phase sur laquelle la borne charge, par ex. avec un Easee Equalizer."
         }
       },
       "charger_manual_entities": {
@@ -494,6 +500,14 @@
       "options": {
         "1": "Une phase",
         "3": "Trois phases"
+      }
+    },
+    "charger_phase": {
+      "options": {
+        "auto": "Automatique (suit la borne)",
+        "L1": "L1",
+        "L2": "L2",
+        "L3": "L3"
       }
     },
     "fee_mode": {

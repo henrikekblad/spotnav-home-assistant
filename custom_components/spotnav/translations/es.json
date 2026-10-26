@@ -204,11 +204,14 @@
       },
       "site_charger_wiring": {
         "title": "Conexión de {charger}",
-        "description": "En un cargador monofásico, elige explícitamente la fase conectada -- con una fase desconocida nunca se puede calcular una recomendación segura para él. La corriente medida propia del cargador es opcional: elige una sugerencia encontrada, introduce una entidad con atributos por fase, introduce tres entidades separadas (una por fase, como las que ofrece la integración de Charge Amps) o déjalo en \"omitir\" para configurarlo más tarde.",
+        "description": "En un cargador monofásico, elige la fase conectada o déjalo en \"Automático\" para seguir la fase en la que carga (como con un Easee Equalizer); hasta que se vea, se cuenta con la fase más cargada. La corriente medida propia del cargador es opcional: elige una sugerencia encontrada, introduce una entidad con atributos por fase, introduce tres entidades separadas (una por fase, como las que ofrece la integración de Charge Amps) o déjalo en \"omitir\" para configurarlo más tarde.",
         "data": {
           "phases": "Número de fases",
           "phase": "Fase conectada (cargadores monofásicos)",
           "measured_source": "Fuente de corriente medida (opcional)"
+        },
+        "data_description": {
+          "phase": "Automático sigue la fase en la que carga el cargador, p. ej. con un Easee Equalizer."
         }
       },
       "charger_manual_entities": {
@@ -394,11 +397,14 @@
       },
       "site_charger_wiring": {
         "title": "Conexión de {charger}",
-        "description": "En un cargador monofásico, elige explícitamente la fase conectada -- con una fase desconocida nunca se puede calcular una recomendación segura para él. La corriente medida propia del cargador es opcional: elige una sugerencia encontrada, introduce una entidad con atributos por fase, introduce tres entidades separadas (una por fase, como las que ofrece la integración de Charge Amps) o déjalo en \"omitir\" para configurarlo más tarde.",
+        "description": "En un cargador monofásico, elige la fase conectada o déjalo en \"Automático\" para seguir la fase en la que carga (como con un Easee Equalizer); hasta que se vea, se cuenta con la fase más cargada. La corriente medida propia del cargador es opcional: elige una sugerencia encontrada, introduce una entidad con atributos por fase, introduce tres entidades separadas (una por fase, como las que ofrece la integración de Charge Amps) o déjalo en \"omitir\" para configurarlo más tarde.",
         "data": {
           "phases": "Número de fases",
           "phase": "Fase conectada (cargadores monofásicos)",
           "measured_source": "Fuente de corriente medida (opcional)"
+        },
+        "data_description": {
+          "phase": "Automático sigue la fase en la que carga el cargador, p. ej. con un Easee Equalizer."
         }
       },
       "charger_manual_entities": {
@@ -494,6 +500,14 @@
       "options": {
         "1": "Una fase",
         "3": "Tres fases"
+      }
+    },
+    "charger_phase": {
+      "options": {
+        "auto": "Automático (sigue al cargador)",
+        "L1": "L1",
+        "L2": "L2",
+        "L3": "L3"
       }
     },
     "fee_mode": {

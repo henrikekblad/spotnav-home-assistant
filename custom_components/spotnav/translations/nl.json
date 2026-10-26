@@ -204,11 +204,14 @@
       },
       "site_charger_wiring": {
         "title": "Aansluiting van {charger}",
-        "description": "Kies voor een eenfasige laadpaal expliciet de aangesloten fase -- met een onbekende fase kan er nooit een veilige aanbeveling voor worden berekend. De eigen gemeten stroom van de laadpaal is optioneel: kies een gevonden voorstel, geef één entiteit met attributen per fase op, geef drie aparte entiteiten op (één per fase, zoals de Charge Amps-integratie die levert), of laat het op \"overslaan\" staan om het later in te stellen.",
+        "description": "Kies voor een eenfasige laadpaal de aangesloten fase, of laat hem op \"Automatisch\" staan om de fase te volgen waarop hij laadt (zoals met een Easee Equalizer); tot die gezien is, wordt gerekend met de zwaarst belaste fase. De eigen gemeten stroom van de laadpaal is optioneel: kies een gevonden voorstel, geef één entiteit met attributen per fase op, geef drie aparte entiteiten op (één per fase, zoals de Charge Amps-integratie die levert), of laat het op \"overslaan\" staan om het later in te stellen.",
         "data": {
           "phases": "Aantal fasen",
           "phase": "Aangesloten fase (eenfasige laadpalen)",
           "measured_source": "Bron van gemeten stroom (optioneel)"
+        },
+        "data_description": {
+          "phase": "Automatisch volgt de fase waarop de laadpaal laadt, bijv. met een Easee Equalizer."
         }
       },
       "charger_manual_entities": {
@@ -394,11 +397,14 @@
       },
       "site_charger_wiring": {
         "title": "Aansluiting van {charger}",
-        "description": "Kies voor een eenfasige laadpaal expliciet de aangesloten fase -- met een onbekende fase kan er nooit een veilige aanbeveling voor worden berekend. De eigen gemeten stroom van de laadpaal is optioneel: kies een gevonden voorstel, geef één entiteit met attributen per fase op, geef drie aparte entiteiten op (één per fase, zoals de Charge Amps-integratie die levert), of laat het op \"overslaan\" staan om het later in te stellen.",
+        "description": "Kies voor een eenfasige laadpaal de aangesloten fase, of laat hem op \"Automatisch\" staan om de fase te volgen waarop hij laadt (zoals met een Easee Equalizer); tot die gezien is, wordt gerekend met de zwaarst belaste fase. De eigen gemeten stroom van de laadpaal is optioneel: kies een gevonden voorstel, geef één entiteit met attributen per fase op, geef drie aparte entiteiten op (één per fase, zoals de Charge Amps-integratie die levert), of laat het op \"overslaan\" staan om het later in te stellen.",
         "data": {
           "phases": "Aantal fasen",
           "phase": "Aangesloten fase (eenfasige laadpalen)",
           "measured_source": "Bron van gemeten stroom (optioneel)"
+        },
+        "data_description": {
+          "phase": "Automatisch volgt de fase waarop de laadpaal laadt, bijv. met een Easee Equalizer."
         }
       },
       "charger_manual_entities": {
@@ -494,6 +500,14 @@
       "options": {
         "1": "Eén fase",
         "3": "Drie fasen"
+      }
+    },
+    "charger_phase": {
+      "options": {
+        "auto": "Automatisch (volgt de laadpaal)",
+        "L1": "L1",
+        "L2": "L2",
+        "L3": "L3"
       }
     },
     "fee_mode": {
