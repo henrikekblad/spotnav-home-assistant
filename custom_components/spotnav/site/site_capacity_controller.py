@@ -118,10 +118,12 @@ from .regulator import (
     DEFAULT_HELP_MARGIN_FACTOR,
     DEFAULT_MIN_CONSECUTIVE_CONFIRMATIONS,
     DEFAULT_ZERO_MARGIN_W,
+    direction_phases,
     DirectionClass,
     MUST_LOWER_REASONS,
     RegulatorDecision,
 )
+from .current_sign import CurrentSignCheck
 from .auto_phase import AutoPhaseTracker, drawn_phase
 from .site_capacity import (
     ACTIVE_CONTROL_READY,
@@ -132,7 +134,9 @@ from .site_capacity import (
     classify_current,
     classify_phase_liveness,
     classify_power,
+    classify_signed_current,
     classify_voltage,
+    DIRECTION_NOMINAL_PHASE_VOLTAGE_V,
     DerivedPhaseInput,
     DerivedPhaseMeasurement,
     DirectPhaseMeasurement,
@@ -398,6 +402,11 @@ class SiteCapacityController:
         self._last_seen_active_power_report_at: dict[PhaseName, datetime | None] = {
             phase: None for phase in PHASES
         }
+        # A direct site's signed current, confirmed per phase against the meter's total before its sign is
+        # taken as the phase's direction (`site/current_sign.py`). Not persisted.
+        self._current_sign = CurrentSignCheck(
+            zero_margin_w=DEFAULT_ZERO_MARGIN_W, min_agreements=DEFAULT_MIN_CONSECUTIVE_CONFIRMATIONS
+        )
         # How often each measurement entity reports (`site/meter_cadence.py`): fed from every state
         # write Home Assistant reports, changed or not, and sampled on each recompute.
         self._cadence = ReportCadence()
@@ -1205,19 +1214,36 @@ class SiteCapacityController:
 
     def active_control_writes(self, charger_entry_id: str) -> bool:
         """Whether the active-control pass writes this charger's requested current at all: active control on, a
-        derived site (the regulator decides nothing on any other, `derived_mode_required`), its own measured
-        current configured, and a charger it can command. An "Automatic" single-phase charger counts: the regulator
+        site that knows the direction on every phase the charger may draw on (a derived site, or a direct one whose
+        signed current is confirmed there; the regulator decides nothing elsewhere, `phase_direction_unknown`), its
+        own measured current configured, and a charger it can command. An "Automatic" single-phase charger counts: the regulator
         reckons it on its followed or worst phase. Wherever it does not, the sun writes its own current
         (`execution/solar_execution.py`); wherever it does, it stays the only writer.
         """
         if not self._active_control_allowed():
             return False
-        if self.config.get(CONF_MEASUREMENT_MODE) != MEASUREMENT_MODE_DERIVED:
+        if not self._direction_known_for(charger_entry_id):
             return False
         wiring = (self.config.get(CONF_PHASE_WIRING) or {}).get(charger_entry_id) or {}
         if source_from_dict(wiring.get(CONF_MEASURED_CURRENT_SOURCE)) is None:
             return False
         return self._is_commandable_charger(controller_for(self.hass, charger_entry_id))
+
+    def _direction_known_for(self, charger_entry_id: str) -> bool:
+        """Whether the latest result knows the direction on every phase this charger may draw on
+        (`regulator.direction_phases`), as the regulator requires before deciding on it."""
+        mode = self.config.get(CONF_MEASUREMENT_MODE)
+        if mode == MEASUREMENT_MODE_DERIVED:
+            return True
+        if mode != MEASUREMENT_MODE_DIRECT:
+            return False
+        request = next(
+            (request for request in self._build_requests() if request.charger_entry_id == charger_entry_id), None
+        )
+        if request is None:
+            return False
+        sources = self.result.phase_direction_source
+        return all(sources.get(phase) for phase in direction_phases(request))
 
     def _active_control_allowed(self) -> bool:
         """Both gates: the compile-time `ACTIVE_CONTROL_READY` and this site's
@@ -2782,6 +2808,7 @@ class SiteCapacityController:
         main_fuse_a = self.config.get(CONF_MAIN_FUSE_A)
         direct = self._read_direct_entities() if mode == MEASUREMENT_MODE_DIRECT else None
         derived = self._read_derived_entities() if mode == MEASUREMENT_MODE_DERIVED else None
+        direct_signed = self._read_direct_signed_entities() if mode == MEASUREMENT_MODE_DIRECT else None
         return SiteCalculationConfig(
             enabled=bool(self.config.get(CONF_SITE_ENABLED, False)),
             main_fuse_a=float(main_fuse_a) if main_fuse_a is not None else None,
@@ -2791,6 +2818,8 @@ class SiteCapacityController:
             direct=direct,
             derived=derived,
             battery=self._read_battery_estimate(),
+            direct_signed=direct_signed,
+            direct_sign_confirmed=self._current_sign.confirmed if direct_signed is not None else (),
         )
 
     def _read_battery_estimate(self) -> BatteryYieldEstimate | None:
@@ -2904,9 +2933,14 @@ class SiteCapacityController:
         """The `last_reported` timestamp of this phase's active-power entity, read directly off
         `hass.states`.
 
-        `None` when it cannot be determined: not derived mode, no entity configured, no state yet,
-        or no `last_reported` support.
+        On a direct site it is the phase's current entity (the one entity of a source carrying all three).
+        `None` when it cannot be determined: neither mode, no entity configured, no state yet, or no
+        `last_reported` support.
         """
+        if self.config.get(CONF_MEASUREMENT_MODE) == MEASUREMENT_MODE_DIRECT:
+            entity_id = self.phase_entities().get(phase)
+            state = self._state_or_none(entity_id)
+            return getattr(state, "last_reported", None) if state is not None else None
         if self.config.get(CONF_MEASUREMENT_MODE) != MEASUREMENT_MODE_DERIVED:
             return None
         entities: dict[str, dict[str, str]] = self.config.get(CONF_DERIVED_ENTITIES) or {}
@@ -2925,7 +2959,7 @@ class SiteCapacityController:
 
     def _update_direction_history(self) -> None:
         """Append each phase's direction classification to its history, only when a new report has
-        arrived.
+        arrived, and on a direct site feed that report to the current-sign check (`_update_current_sign`).
 
         Recomputes fire far more often than the entity reports (timer, charger listeners, charge-
         control changes), so counting each one would satisfy the consecutive-confirmation
@@ -2939,6 +2973,7 @@ class SiteCapacityController:
         never overwritten with `None`. A new HA report is still not proof of a new physical
         measurement, so this makes confirmation harder to satisfy by accident, not airtight.
         """
+        any_new_report = False
         for phase in PHASES:
             last_reported = self._active_power_last_reported(phase)
             previous = self._last_seen_active_power_report_at.get(phase)
@@ -2949,8 +2984,32 @@ class SiteCapacityController:
                 self._last_seen_active_power_report_at[phase] = last_reported
             if not is_new_report:
                 continue
+            any_new_report = True
             signed_w = self.result.phase_signed_active_power_w.get(phase)
             self._direction_history[phase].append(classify_direction(signed_w, DEFAULT_ZERO_MARGIN_W))
+        if any_new_report:
+            self._update_current_sign()
+
+    def _update_current_sign(self) -> None:
+        """Feed a direct site's new signed reading and the meter's total to `CurrentSignCheck`; only fresh,
+        usable values count. Takes effect from the next calculation."""
+        if self.config.get(CONF_MEASUREMENT_MODE) != MEASUREMENT_MODE_DIRECT:
+            return
+        signed = self._read_direct_signed_entities()
+        if signed is None:
+            return
+        max_age_s = float(self.config.get(CONF_MAX_AGE_S, DEFAULT_MAX_AGE_S))
+
+        def fresh(value: PhaseValue | None) -> float | None:
+            if value is None or value.value is None or value.problem is not None:
+                return None
+            if value.age_s is None or value.age_s > max_age_s:
+                return None
+            return value.value
+
+        self._current_sign.observe(
+            {phase: fresh(signed.get(phase)) for phase in PHASES}, fresh(self.grid_total_power())
+        )
 
     def _compute_regulator_decisions(self) -> dict[str, RegulatorDecision]:
         """One regulator decision per associated charger on top of `self.result`
@@ -2963,7 +3022,13 @@ class SiteCapacityController:
         voltage_by_phase: dict[PhaseName, float | None] = (
             {phase: config.derived.get(phase).voltage_v.value for phase in PHASES}
             if config.measurement_mode == MEASUREMENT_MODE_DERIVED and config.derived is not None
-            else {phase: None for phase in PHASES}
+            else {
+                # A direct site's signed current stands in for power at the nominal voltage it was multiplied by.
+                phase: DIRECTION_NOMINAL_PHASE_VOLTAGE_V
+                if self.result.phase_direction_source.get(phase) == "signed_current"
+                else None
+                for phase in PHASES
+            }
         )
         confirmed_direction_by_phase: dict[PhaseName, DirectionClass | None] = {
             phase: confirmed_direction(
@@ -2999,8 +3064,9 @@ class SiteCapacityController:
         returns a `PhaseValue`, even if currently unusable. An import/export pair is import minus
         export, and a missing or invalid half makes the whole value missing or invalid, never zero.
         `CONF_GRID_POWER_INVERTED` negates it for an export-positive meter. Used by the solar
-        executor and diagnostics; never by the fuse protection, which stays per phase on the measured
-        currents.
+        executor and diagnostics, and on a direct site only to confirm the sign of its per-phase currents
+        (`site/current_sign.py`); never as amps by the fuse protection, which stays per phase on the
+        measured currents.
         """
         source = grid_power_source_from_dict(self.config.get(CONF_GRID_POWER_SOURCE))
         if source is None:
@@ -3219,6 +3285,17 @@ class SiteCapacityController:
                 l3=PhaseValue(None, None, problem="missing"),
             )
         values = read_phase_measurement(self.hass, source, classify_current)
+        return DirectPhaseMeasurement(l1=values["L1"], l2=values["L2"], l3=values["L3"])
+
+    def _read_direct_signed_entities(self) -> DirectPhaseMeasurement | None:
+        """The site's per-phase current with its sign (+ import, - export), or `None` unless the source is
+        `site_current_signed`. Only a direction once `CurrentSignCheck` confirms a phase."""
+        if not bool(self.config.get(CONF_SITE_CURRENT_SIGNED, False)):
+            return None
+        source = self._resolve_site_current_source()
+        if source is None:
+            return None
+        values = read_phase_measurement(self.hass, replace(source, signed_current=False), classify_signed_current)
         return DirectPhaseMeasurement(l1=values["L1"], l2=values["L2"], l3=values["L3"])
 
     def _read_derived_entities(self) -> DerivedPhaseMeasurement:

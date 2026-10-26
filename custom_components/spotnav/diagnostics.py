@@ -302,12 +302,17 @@ def _result_to_dict(result: SiteCapacityResult) -> dict[str, Any]:
         # by `CONFIRMED_UNCHANGED_MARGIN_A`). See `classify_phase_liveness` in site/site_capacity.py.
         "phase_report_age_s": dict(result.phase_report_age_s),
         "phase_liveness": dict(result.phase_liveness),
-        # Diagnostic only, never a charging current: one phase's signed active power in watts
-        # (derived mode only; `None` in direct mode or when the phase is unusable, with
-        # `phase_signed_active_power_reason` saying why). See `_phase_signed_active_power`.
+        # Never a charging current: the signed active power in watts the regulator judges each phase's
+        # direction on (derived mode's, or a direct site's confirmed signed current x 230 V; `None` when
+        # unknown or unusable, with `phase_signed_active_power_reason` saying why). See
+        # `_phase_signed_active_power`. `phase_direction_source` says where each direction comes from
+        # (`active_power`, `signed_current` or `None`); `phase_signed_current_a` is a direct site's
+        # current with its sign, confirmed or not.
         "phase_signed_active_power_w": dict(result.phase_signed_active_power_w),
         "phase_signed_active_power_age_s": dict(result.phase_signed_active_power_age_s),
         "phase_signed_active_power_reason": dict(result.phase_signed_active_power_reason),
+        "phase_direction_source": dict(result.phase_direction_source),
+        "phase_signed_current_a": dict(result.phase_signed_current_a),
         # How each phase's current was obtained (`measured`, `apparent`, `reactive` or `estimated`);
         # `current_estimated` is true when any phase is estimated from active power alone, which
         # assumes `estimated_power_factor` (see `estimate_current_from_power`).
