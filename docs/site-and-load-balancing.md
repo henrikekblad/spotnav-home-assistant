@@ -210,8 +210,11 @@ It is best effort and is not a protective device. Turning it off gives back any 
   if it runs the charge, writes its current itself. Who writes is settled when a charge starts and kept
   until it ends (the charger stops or the car is unplugged): a charge that started before its phases were
   confirmed stays the sun's (`phase_direction_unknown_at_charge_start`), and one that started with active
-  load balancing keeps it, which holds the current, rather than letting the sun raise it, if the
-  confirmation is withdrawn meanwhile. On a direct site a raise is judged on the measured
+  load balancing keeps it if the confirmation is withdrawn meanwhile: the current is never raised then, and
+  a phase it draws on that goes over the limit by its measured current still lowers it at once to the room
+  that leaves (as the sun's own capped write did), until the confirmation is back or the charge ends. Room
+  the sun's write gave its charger, or a raise active control gave one of its own, is not given to the
+  other writer until the charger draws it (at most two minutes). On a direct site a raise is judged on the measured
   current as it is (export on a phase is not counted as room), and a lowering also stays within the
   room the phase has, since a current with a sign does not tell how much of it is active power.
 - **Yield-verified stepping** (opt-in) is for sites with a load that gives way when the car
