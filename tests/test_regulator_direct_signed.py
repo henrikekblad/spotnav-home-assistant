@@ -9,6 +9,7 @@ from custom_components.spotnav.site.regulator import (
     allocate_regulator_decisions,
     applyability_failure,
     decide_charging_current,
+    magnitude_overload_lowering,
 )
 from custom_components.spotnav.site.site_capacity import (
     DIRECTION_NOMINAL_PHASE_VOLTAGE_V,
@@ -265,3 +266,50 @@ def test_the_re_check_before_a_write_works_on_direct_signed_readings() -> None:
     assert failure(_direct_site((-4.9, -6.1, -3.0))) == ("direction_changed", "L3")
     assert failure(_direct_site(USER_SITE, confirmed=("L1", "L2"))) == ("phase_unusable", "L3")
     assert failure(_direct_site(USER_SITE, age=MAX_AGE + 1)) == ("phase_unusable", "L3")
+
+
+def test_a_lost_direction_lowers_only_on_an_overload_by_magnitude() -> None:
+    request = _single_phase("L3", 14.2, 16.0, basis="measured")
+    unconfirmed = dict(confirmed=())
+
+    held = magnitude_overload_lowering(site_result=_direct_site(USER_SITE, **unconfirmed), request=request, max_age_s=MAX_AGE)
+    assert (held.proposed_current_a, held.reason) == (None, "phase_direction_unknown")
+
+    over = magnitude_overload_lowering(
+        site_result=_direct_site((-4.9, -6.1, 17.5), **unconfirmed), request=request, max_age_s=MAX_AGE
+    )
+    assert (over.proposed_current_a, over.reason, over.limiting_phase) == (
+        11.0,
+        "lowering_overload_on_current_magnitude_direction_unknown",
+        "L3",
+    )
+    # |I| over the limit whichever way it flows: an export of 17.5 A is lowered the same, never raised.
+    export = magnitude_overload_lowering(
+        site_result=_direct_site((-4.9, -6.1, -17.5), **unconfirmed), request=request, max_age_s=MAX_AGE
+    )
+    assert export.proposed_current_a == 11.0
+    # Too little room for the minimum: a pause.
+    deep = magnitude_overload_lowering(
+        site_result=_direct_site((-4.9, -6.1, 25.0), **unconfirmed), request=request, max_age_s=MAX_AGE
+    )
+    assert (deep.proposed_current_a, deep.reason) == (0.0, "paused_safe_current_below_charger_minimum")
+
+
+def test_room_another_writer_holds_is_not_given_to_an_increase() -> None:
+    site = _direct_site(USER_SITE)
+    request = _single_phase("L3", 10.0, 16.0, basis="measured")
+    kwargs = dict(
+        voltage_by_phase={phase: V for phase in PHASES},
+        confirmed_direction_by_phase={phase: "net_import" for phase in PHASES},
+        max_age_s=MAX_AGE,
+    )
+    free = allocate_regulator_decisions(site_result=site, requests=[request], **kwargs)["charger"]
+    held = allocate_regulator_decisions(
+        site_result=site, requests=[request], increase_reserved_by_phase={"L3": 2.0}, **kwargs
+    )["charger"]
+    gone = allocate_regulator_decisions(
+        site_result=site, requests=[request], increase_reserved_by_phase={"L3": 5.0}, **kwargs
+    )["charger"]
+    assert free.proposed_current_a == 12.0  # 2.6 A of room
+    assert held.proposed_current_a == 10.0  # 0.6 A left, rounded down
+    assert gone.proposed_current_a == 10.0  # never below what it draws on that account
