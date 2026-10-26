@@ -204,11 +204,14 @@
       },
       "site_charger_wiring": {
         "title": "Anschluss von {charger}",
-        "description": "Wähle bei einer einphasigen Ladestation die angeschlossene Phase ausdrücklich -- bei unbekannter Phase lässt sich nie eine sichere Empfehlung für sie berechnen. Der eigene gemessene Strom der Ladestation ist optional: Wähle einen gefundenen Vorschlag, gib eine Entität mit Attributen pro Phase ein, gib drei separate Entitäten ein (eine pro Phase, wie bei der Charge-Amps-Integration) oder lass „überspringen“ stehen, um es später einzurichten.",
+        "description": "Wähle bei einer einphasigen Ladestation die angeschlossene Phase oder lass „Automatisch“ stehen, um der Phase zu folgen, auf der sie lädt (wie mit einem Easee Equalizer); bis diese erkannt ist, wird mit der am stärksten belasteten Phase gerechnet. Der eigene gemessene Strom der Ladestation ist optional: Wähle einen gefundenen Vorschlag, gib eine Entität mit Attributen pro Phase ein, gib drei separate Entitäten ein (eine pro Phase, wie bei der Charge-Amps-Integration) oder lass „überspringen“ stehen, um es später einzurichten.",
         "data": {
           "phases": "Anzahl der Phasen",
           "phase": "Angeschlossene Phase (einphasige Ladestationen)",
           "measured_source": "Quelle des gemessenen Stroms (optional)"
+        },
+        "data_description": {
+          "phase": "Automatisch folgt der Phase, auf der die Ladestation lädt, z. B. mit einem Easee Equalizer."
         }
       },
       "charger_manual_entities": {
@@ -394,11 +397,14 @@
       },
       "site_charger_wiring": {
         "title": "Anschluss von {charger}",
-        "description": "Wähle bei einer einphasigen Ladestation die angeschlossene Phase ausdrücklich -- bei unbekannter Phase lässt sich nie eine sichere Empfehlung für sie berechnen. Der eigene gemessene Strom der Ladestation ist optional: Wähle einen gefundenen Vorschlag, gib eine Entität mit Attributen pro Phase ein, gib drei separate Entitäten ein (eine pro Phase, wie bei der Charge-Amps-Integration) oder lass „überspringen“ stehen, um es später einzurichten.",
+        "description": "Wähle bei einer einphasigen Ladestation die angeschlossene Phase oder lass „Automatisch“ stehen, um der Phase zu folgen, auf der sie lädt (wie mit einem Easee Equalizer); bis diese erkannt ist, wird mit der am stärksten belasteten Phase gerechnet. Der eigene gemessene Strom der Ladestation ist optional: Wähle einen gefundenen Vorschlag, gib eine Entität mit Attributen pro Phase ein, gib drei separate Entitäten ein (eine pro Phase, wie bei der Charge-Amps-Integration) oder lass „überspringen“ stehen, um es später einzurichten.",
         "data": {
           "phases": "Anzahl der Phasen",
           "phase": "Angeschlossene Phase (einphasige Ladestationen)",
           "measured_source": "Quelle des gemessenen Stroms (optional)"
+        },
+        "data_description": {
+          "phase": "Automatisch folgt der Phase, auf der die Ladestation lädt, z. B. mit einem Easee Equalizer."
         }
       },
       "charger_manual_entities": {
@@ -494,6 +500,14 @@
       "options": {
         "1": "Eine Phase",
         "3": "Drei Phasen"
+      }
+    },
+    "charger_phase": {
+      "options": {
+        "auto": "Automatisch (folgt der Ladestation)",
+        "L1": "L1",
+        "L2": "L2",
+        "L3": "L3"
       }
     },
     "fee_mode": {

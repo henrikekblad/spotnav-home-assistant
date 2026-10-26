@@ -21,9 +21,10 @@
   that does not caps the charger at what it draws there now, or the minimum current if that is more,
   whatever the total says: a netted total can export while the unread phase imports heavily (a
   three-phase inverter against a one-phase load), so current never rises on a phase that cannot be read.
-* A single-phase charger whose phase is not known is reckoned on a stand-in phase (`L1`): the total does not
-  depend on the phase, the fuse cap is the lowest of all three phases' caps, and its draw the largest
-  phase its own measured current reads.
+* A single-phase charger with no phase chosen ("Automatic") is on the phase its own measured current shows
+  it drawing on (`SiteCapacityController.followed_phase`). While that is not known it is reckoned on a
+  stand-in phase (`L1`): the total does not depend on the phase, the fuse cap is the lowest of all three
+  phases' caps, and its draw the largest phase its own measured current reads.
 * What keeps solar from a basis is named (`SolarBasis`): the total grid power not set or unreadable, an
   unreadable battery, the charger's own current not set or unreadable (solar then runs blind, at the
   minimum current only), and the phases of an incomplete site measurement it runs without.
@@ -290,20 +291,21 @@ def _wiring(site: SiteCapacityController, charger_entry_id: str) -> dict[str, An
 
 def _car_phases(site: SiteCapacityController, charger_entry_id: str) -> tuple[PhaseName, ...]:
     """This charger's wired phases from the site's `CONF_PHASE_WIRING` (as
-    `SiteCapacityController._build_requests` reads them). Empty when a single-phase
-    charger's phase is unknown (`_phase_unknown`).
+    `SiteCapacityController._build_requests` reads them): the chosen phase of a single-phase charger,
+    or for an "Automatic" one the phase its measured current has it on (`followed_phase`). Empty when
+    neither is known (`_phase_unknown`).
     """
     wiring = _wiring(site, charger_entry_id)
     if wiring.get("phases", 3) == 3:
         return PHASES
-    phase = wiring.get("phase")
+    phase = wiring.get("phase") or site.followed_phase(charger_entry_id)
     return (phase,) if phase else ()
 
 
 def _phase_unknown(site: SiteCapacityController, charger_entry_id: str) -> bool:
-    """A single-phase charger whose phase is not set in the site's wiring."""
-    wiring = _wiring(site, charger_entry_id)
-    return wiring.get("phases", 3) != 3 and not wiring.get("phase")
+    """A single-phase charger whose phase is neither chosen in the site's wiring nor followed from its
+    measured current ("Automatic", idle or not yet settled)."""
+    return not _car_phases(site, charger_entry_id)
 
 
 #: The phase a single-phase charger of unknown phase is reckoned on (`_build_observation`).

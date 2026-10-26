@@ -204,11 +204,14 @@
       },
       "site_charger_wiring": {
         "title": "Tilslutning for {charger}",
-        "description": "For en enfaset lader skal du udtrykkeligt vælge den tilsluttede fase -- med en ukendt fase kan der aldrig beregnes en sikker anbefaling for den. Laderens egen målte strøm er valgfri: vælg et fundet forslag, angiv én entitet med attributter pr. fase, angiv tre separate entiteter (én pr. fase, som Charge Amps-integrationen leverer), eller behold \"spring over\" for at sætte det op senere.",
+        "description": "For en enfaset lader skal du vælge den tilsluttede fase eller lade den stå på \"Automatisk\" for at følge den fase, den lader på (som med en Easee Equalizer); indtil den ses, regnes den på den mest belastede fase. Laderens egen målte strøm er valgfri: vælg et fundet forslag, angiv én entitet med attributter pr. fase, angiv tre separate entiteter (én pr. fase, som Charge Amps-integrationen leverer), eller behold \"spring over\" for at sætte det op senere.",
         "data": {
           "phases": "Antal faser",
           "phase": "Tilsluttet fase (enfasede ladere)",
           "measured_source": "Kilde til målt strøm (valgfrit)"
+        },
+        "data_description": {
+          "phase": "Automatisk følger den fase, laderen lader på, f.eks. med en Easee Equalizer."
         }
       },
       "charger_manual_entities": {
@@ -394,11 +397,14 @@
       },
       "site_charger_wiring": {
         "title": "Tilslutning for {charger}",
-        "description": "For en enfaset lader skal du udtrykkeligt vælge den tilsluttede fase -- med en ukendt fase kan der aldrig beregnes en sikker anbefaling for den. Laderens egen målte strøm er valgfri: vælg et fundet forslag, angiv én entitet med attributter pr. fase, angiv tre separate entiteter (én pr. fase, som Charge Amps-integrationen leverer), eller behold \"spring over\" for at sætte det op senere.",
+        "description": "For en enfaset lader skal du vælge den tilsluttede fase eller lade den stå på \"Automatisk\" for at følge den fase, den lader på (som med en Easee Equalizer); indtil den ses, regnes den på den mest belastede fase. Laderens egen målte strøm er valgfri: vælg et fundet forslag, angiv én entitet med attributter pr. fase, angiv tre separate entiteter (én pr. fase, som Charge Amps-integrationen leverer), eller behold \"spring over\" for at sætte det op senere.",
         "data": {
           "phases": "Antal faser",
           "phase": "Tilsluttet fase (enfasede ladere)",
           "measured_source": "Kilde til målt strøm (valgfrit)"
+        },
+        "data_description": {
+          "phase": "Automatisk følger den fase, laderen lader på, f.eks. med en Easee Equalizer."
         }
       },
       "charger_manual_entities": {
@@ -494,6 +500,14 @@
       "options": {
         "1": "Én fase",
         "3": "Tre faser"
+      }
+    },
+    "charger_phase": {
+      "options": {
+        "auto": "Automatisk (følger laderen)",
+        "L1": "L1",
+        "L2": "L2",
+        "L3": "L3"
       }
     },
     "fee_mode": {

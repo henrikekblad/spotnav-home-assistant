@@ -204,11 +204,14 @@
       },
       "site_charger_wiring": {
         "title": "Inkoppling för {charger}",
-        "description": "För en 1-fasladdare, ange uttryckligen vilken fas den är kopplad till -- en okänd fas innebär att ingen säker rekommendation någonsin kan beräknas för den. Laddarens egen uppmätta ström är valfri: välj ett hittat förslag, ange en entitet med fasattribut, ange tre separata entiteter (en per fas, som Charge Amps-integrationen ger) eller lämna som \"skip\" för att konfigurera det senare.",
+        "description": "För en 1-fasladdare, ange vilken fas den är kopplad till, eller låt den stå på \"Automatiskt\" för att följa fasen den laddar på (som med en Easee Equalizer); tills den syns räknas den på den mest belastade fasen. Laddarens egen uppmätta ström är valfri: välj ett hittat förslag, ange en entitet med fasattribut, ange tre separata entiteter (en per fas, som Charge Amps-integrationen ger) eller lämna som \"skip\" för att konfigurera det senare.",
         "data": {
           "phases": "Antal faser",
           "phase": "Ansluten fas (1-fasladdare)",
           "measured_source": "Källa för uppmätt ström (valfri)"
+        },
+        "data_description": {
+          "phase": "Automatiskt följer fasen laddboxen laddar på, t.ex. med en Easee Equalizer."
         }
       },
       "charger_manual_entities": {
@@ -394,11 +397,14 @@
       },
       "site_charger_wiring": {
         "title": "Inkoppling för {charger}",
-        "description": "För en 1-fasladdare, ange uttryckligen vilken fas den är kopplad till -- en okänd fas innebär att ingen säker rekommendation någonsin kan beräknas för den. Laddarens egen uppmätta ström är valfri: välj ett hittat förslag, ange en entitet med fasattribut, ange tre separata entiteter (en per fas, som Charge Amps-integrationen ger) eller lämna som \"skip\" för att konfigurera det senare.",
+        "description": "För en 1-fasladdare, ange vilken fas den är kopplad till, eller låt den stå på \"Automatiskt\" för att följa fasen den laddar på (som med en Easee Equalizer); tills den syns räknas den på den mest belastade fasen. Laddarens egen uppmätta ström är valfri: välj ett hittat förslag, ange en entitet med fasattribut, ange tre separata entiteter (en per fas, som Charge Amps-integrationen ger) eller lämna som \"skip\" för att konfigurera det senare.",
         "data": {
           "phases": "Antal faser",
           "phase": "Ansluten fas (1-fasladdare)",
           "measured_source": "Källa för uppmätt ström (valfri)"
+        },
+        "data_description": {
+          "phase": "Automatiskt följer fasen laddboxen laddar på, t.ex. med en Easee Equalizer."
         }
       },
       "charger_manual_entities": {
@@ -494,6 +500,14 @@
       "options": {
         "1": "En fas",
         "3": "Tre faser"
+      }
+    },
+    "charger_phase": {
+      "options": {
+        "auto": "Automatiskt (följer laddboxen)",
+        "L1": "L1",
+        "L2": "L2",
+        "L3": "L3"
       }
     },
     "fee_mode": {

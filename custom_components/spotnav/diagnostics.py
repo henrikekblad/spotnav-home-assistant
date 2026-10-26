@@ -235,6 +235,10 @@ def _site_diagnostics(hass: HomeAssistant, entry: ConfigEntry) -> dict[str, Any]
         "solar_surplus": {} if controller is None else controller.solar_surplus_snapshot,
         "hybrid": {} if controller is None else controller.hybrid_snapshot,
         "start_credit": {} if controller is None else controller.start_credit_snapshot(),
+        # Per member charger, the phase load balancing reckons it on and how that was decided: `chosen` in the
+        # wiring, `measured` (an "Automatic" single-phase charger followed by its own measured current) or
+        # `worst_case` (the phase with the least headroom).
+        "charger_phase": {} if controller is None else controller.charger_phase_snapshot(),
         # The resumes of a balancing pause per charger, and the back-off left after too many in ten minutes.
         "balancing_resume": {} if controller is None else controller.balancing_resume_snapshot(),
         # How often each measurement entity reports (median of its recent `last_reported` gaps, `None`

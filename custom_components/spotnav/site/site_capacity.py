@@ -51,7 +51,7 @@ from __future__ import annotations
 
 import math
 from collections.abc import Collection, Mapping, Sequence
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from typing import cast, Literal
 
 from ..const import (
@@ -144,6 +144,8 @@ REASON_MISSING = "required_phase_measurement_missing"
 REASON_STALE = "phase_measurement_stale"
 REASON_INVALID = "phase_measurement_invalid"
 REASON_OBSERVING = "observing"
+# An "Automatic" single-phase charger that cannot be reckoned on any phase: some phase's headroom is
+# unknown. `calculate_site_capacity` only allocates with every phase known, so it never gives this.
 REASON_UNKNOWN_PHASE = "single_phase_charger_wiring_unknown"
 REASON_REQUESTED_UNKNOWN = "charger_requested_current_unknown"
 REASON_BLOCKED_BY_UNKNOWN_SIBLING = "shared_phase_blocked_by_another_chargers_unknown_request"
@@ -236,12 +238,20 @@ class DerivedPhaseMeasurement:
         return {"L1": self.l1, "L2": self.l2, "L3": self.l3}[phase]
 
 
+# How a single-phase charger's phase was decided: `chosen` in the site's wiring, `measured` (an
+# "Automatic" charger followed to the one phase its own measured current shows it drawing on,
+# `site/auto_phase.py`) or `worst_case` (an "Automatic" charger reckoned on the phase with the least
+# headroom, `resolve_worst_case_phases`). A three-phase charger is always `chosen`.
+PhaseBasis = Literal["chosen", "measured", "worst_case"]
+
+
 @dataclass(frozen=True, slots=True)
 class ChargerRequest:
     """One SpotNav-controlled charger's request and known wiring.
 
-    `phase` must be set for a single-phase charger (`None` means unknown wiring
-    and no recommendation). `measured_current_a` is the charger's own measured
+    A single-phase charger whose `phase` is `None` is "Automatic": it is reckoned on the phase with the
+    least headroom (`resolve_worst_case_phases`) unless the caller already followed it to the phase it
+    draws on (`phase_basis` `measured`). `measured_current_a` is the charger's own measured
     current, never a setpoint; unusable readings credit nothing and a
     three-phase charger is all-or-nothing. `requested_current_a` of `None` is
     unknown, unlike `0.0`.
@@ -259,14 +269,81 @@ class ChargerRequest:
     #: chargers of one priority; equal places fall back to the entry id, so the order never depends
     #: on how the requests are listed.
     order: int = 0
+    #: How `phase` was decided (`PhaseBasis`): `worst_case` with `phase` still `None` is an "Automatic"
+    #: charger not yet resolved.
+    phase_basis: PhaseBasis = "chosen"
 
     def phases_used(self) -> tuple[PhaseName, ...] | None:
-        """The phases this request draws from, or `None` if that's unknown."""
+        """The phases this request draws from, or `None` if that's unknown (an "Automatic" single-phase
+        charger before `resolve_worst_case_phases`)."""
         if self.phases == 3:
             return PHASES
         if self.phase is None:
             return None
         return (self.phase,)
+
+
+def worst_phase(headroom_a: Mapping[PhaseName, float | None]) -> PhaseName | None:
+    """The phase with the least headroom (the first in `PHASES` on a tie), or `None` when any phase's
+    headroom is unknown: an "Automatic" single-phase charger may draw on any of them."""
+    values: dict[PhaseName, float] = {}
+    for phase in PHASES:
+        value = headroom_a.get(phase)
+        if value is None:
+            return None
+        values[phase] = value
+    return min(PHASES, key=lambda phase: values[phase])
+
+
+def _draw_on_one_phase(
+    measured: DirectPhaseMeasurement | None, phase: PhaseName
+) -> DirectPhaseMeasurement | None:
+    """`measured` with `phase` carrying the largest reading of any phase (with the oldest age among the
+    phases that read), so a charger reckoned on a phase it may not be drawing on is still taken to draw
+    what it draws. A phase that reads nothing stays as it is when no phase reads."""
+    if measured is None:
+        return None
+    read = [measured.get(p) for p in PHASES if measured.get(p).value is not None]
+    if not read:
+        return measured
+    largest = max(read, key=lambda value: cast(float, value.value))
+    ages = [value.age_s for value in read]
+    report_ages = [value.report_age_s for value in read]
+    moved = replace(
+        largest,
+        age_s=None if any(age is None for age in ages) else max(cast(list[float], ages)),
+        report_age_s=None
+        if any(age is None for age in report_ages)
+        else max(cast(list[float], report_ages)),
+    )
+    return DirectPhaseMeasurement(
+        l1=moved if phase == "L1" else measured.l1,
+        l2=moved if phase == "L2" else measured.l2,
+        l3=moved if phase == "L3" else measured.l3,
+    )
+
+
+def resolve_worst_case_phases(
+    requests: Sequence[ChargerRequest], headroom_a: Mapping[PhaseName, float | None]
+) -> list[ChargerRequest]:
+    """Every "Automatic" single-phase charger not followed to a measured phase, reckoned on the phase
+    with the least headroom (`worst_phase`), its draw the largest phase its measured current reads.
+    Left unresolved (`phases_used` `None`) only when a phase's headroom is unknown."""
+    worst = worst_phase(headroom_a)
+    resolved: list[ChargerRequest] = []
+    for request in requests:
+        if request.phases != 1 or request.phase is not None or worst is None:
+            resolved.append(request)
+            continue
+        resolved.append(
+            replace(
+                request,
+                phase=worst,
+                phase_basis="worst_case",
+                measured_current_a=_draw_on_one_phase(request.measured_current_a, worst),
+            )
+        )
+    return resolved
 
 
 @dataclass(frozen=True, slots=True)
@@ -918,8 +995,12 @@ def allocate_chargers(
 
     Chargers are taken in `allocation_order` (priority, then the site's charger order), each reserving its
     proposal. An unknown `requested_current_a` blocks every charger sharing one of
-    its phases, since it draws an unquantified amount.
+    its phases, since it draws an unquantified amount. An "Automatic" single-phase
+    charger not followed to a measured phase is reckoned on the phase with the least
+    headroom (`resolve_worst_case_phases`).
     """
+    # An "Automatic" single-phase charger is reckoned on the phase with the least headroom.
+    requests = resolve_worst_case_phases(requests, phase_headroom_a)
     phases_blocked_by_unknown_request: set[PhaseName] = set()
     for request in requests:
         if request.requested_current_a is None:

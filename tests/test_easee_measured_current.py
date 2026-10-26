@@ -190,6 +190,28 @@ async def test_a_one_phase_charger_is_read_from_its_first_terminal_only(hass: Ho
     assert source["attributes"] == {"L2": "state_inCurrentT3"}
 
 
+async def test_an_automatic_one_phase_charger_is_read_from_every_terminal(hass: HomeAssistant) -> None:
+    # No phase chosen: an Equalizer may move the charge, and only every terminal shows where it went.
+    _easee(hass)
+    _charger(hass)
+    site = _site(hass, {"phases": 1, "phase": None})
+
+    assert await hass.config_entries.async_setup(site.entry_id)
+    source = hass.config_entries.async_get_entry("site").data["phase_wiring"]["charger_easee"]["measured_current_source"]
+
+    assert source == SOURCE_TN
+
+
+async def test_an_automatic_one_phase_charger_on_an_it_network_is_not_filled_in(hass: HomeAssistant) -> None:
+    _easee(hass)
+    _charger(hass)
+    site = _site(hass, {"phases": 1, "phase": None}, extra_data={"voltage_between_phases_v": 230})
+
+    assert await hass.config_entries.async_setup(site.entry_id)
+
+    assert "measured_current_source" not in hass.config_entries.async_get_entry("site").data["phase_wiring"]["charger_easee"]
+
+
 async def test_what_a_person_set_is_kept(hass: HomeAssistant) -> None:
     _easee(hass)
     _charger(hass)

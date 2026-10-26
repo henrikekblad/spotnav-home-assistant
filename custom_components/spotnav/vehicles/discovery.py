@@ -288,7 +288,8 @@ def profile_attribute_source(
     attributes carry the phase currents (Easee's input terminals), or `None`.
 
     `voltage_between_phases_v` of 230 selects the profile's IT attribute names. A one-phase charger
-    on grid phase `phase` is read from its first terminal only. `require_state` is off at start-up,
+    on grid phase `phase` is read from its first terminal only, and one with no phase chosen
+    ("Automatic") from all three, as a three-phase charger is. `require_state` is off at start-up,
     when the registry is known but the sensor may not have reported yet.
     """
     registry = er.async_get(hass)
@@ -308,10 +309,14 @@ def profile_attribute_source(
         if require_state and hass.states.get(entry.entity_id) is None:
             continue
         if phases == 1:
-            if phase not in PHASES or is_it:
+            if is_it:
                 # A one-phase charger on an IT network uses two terminals: not mapped here.
                 continue
-            mapping: dict[PhaseName, str] = {phase: names[0]}
+            # A one-phase charger on a chosen phase reads its first terminal; an "Automatic" one (no phase
+            # chosen, e.g. moved by an Easee Equalizer) every terminal, which shows the phase it draws on.
+            mapping: dict[PhaseName, str] = (
+                {phase: names[0]} if phase in PHASES else dict(zip(PHASES, names))
+            )
         else:
             mapping = dict(zip(PHASES, names))
         return PhaseMeasurementSource(
