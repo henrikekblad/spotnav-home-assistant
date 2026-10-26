@@ -522,28 +522,56 @@ def _report_signed_site(hass: HomeAssistant, name: str, currents, grid_w: float)
     hass.states.async_set(f"sensor.{name}_grid_power", str(grid_w), {"unit_of_measurement": "W"})
 
 
+async def _confirm(hass: HomeAssistant, name: str, total_w: float = 36.0 * 230.0, times: int = 8) -> None:
+    for _ in range(times):
+        _report_signed_site(hass, name, (12.0, 13.0, 14.0), total_w)
+        await _tick(hass)
+
+
+async def _restart_charge(hass: HomeAssistant, name: str, charger) -> None:
+    """The charge ends (the charger stops) and a new one starts at 9 A."""
+    hass.states.async_set(f"switch.{name}_charger", "off")
+    await _tick(hass)
+    await controller_of(hass, charger.entry_id).async_start(amps=9)
+    hass.states.async_set(f"switch.{name}_charger", "on")
+    await _tick(hass)
+
+
 async def test_a_direct_site_decides_once_its_current_sign_is_confirmed_by_the_total(hass: HomeAssistant) -> None:
     charger, site_controller = await _signed_direct_site(hass, "signed")
     decision = site_controller.regulator_decisions[charger.entry_id]
-    assert (decision.proposed_current_a, decision.reason) == (None, "phase_direction_unknown")
-    assert not site_controller._direction_known_for(charger.entry_id)
+    assert (decision.proposed_current_a, decision.reason) == (None, "phase_direction_unknown_at_charge_start")
+    assert not site_controller._writer_direction_known(charger.entry_id)
 
-    for _ in range(8):
-        _report_signed_site(hass, "signed", (12.0, 13.0, 14.0), 36.0 * 230.0)
-        await _tick(hass)
-
+    await _confirm(hass, "signed")
     assert site_controller.result.phase_direction_source == {phase: "signed_current" for phase in ("L1", "L2", "L3")}
     assert site_controller._direction_known_for(charger.entry_id)
+
+    # The charge started with the sun as its writer: it stays so, and the regulator stays off it, until it ends.
+    decision = site_controller.regulator_decisions[charger.entry_id]
+    assert (decision.proposed_current_a, decision.reason) == (None, "phase_direction_unknown_at_charge_start")
+    assert not site_controller._writer_direction_known(charger.entry_id)
+
+    # The next charge starts confirmed: active control decides it.
+    await _restart_charge(hass, "signed", charger)
+    await _confirm(hass, "signed", times=4)
+    assert site_controller._writer_direction_known(charger.entry_id)
     decision = site_controller.regulator_decisions[charger.entry_id]
     assert (decision.proposed_current_a, decision.reason) == (9.0, "decrease_confirmed_safe")
 
-    # The total turns against the currents: the sign is no longer trusted.
-    for _ in range(2):
-        _report_signed_site(hass, "signed", (12.0, 13.0, 14.0), -36.0 * 230.0)
-        await _tick(hass)
+    # The total turns against the currents mid-charge: the regulator decides nothing (the current is held), and
+    # the writer stays active control, so the sun does not take over and raise it.
+    await _confirm(hass, "signed", total_w=-36.0 * 230.0, times=2)
     decision = site_controller.regulator_decisions[charger.entry_id]
     assert (decision.proposed_current_a, decision.reason) == (None, "phase_direction_unknown")
     assert not site_controller._direction_known_for(charger.entry_id)
+    assert site_controller._writer_direction_known(charger.entry_id)
+
+    # Once that charge ends, the next one starts on what is known then: the sun's.
+    await _restart_charge(hass, "signed", charger)
+    assert not site_controller._writer_direction_known(charger.entry_id)
+    decision = site_controller.regulator_decisions[charger.entry_id]
+    assert decision.reason == "phase_direction_unknown_at_charge_start"
 
 
 async def test_a_signed_direct_site_without_a_total_never_decides(hass: HomeAssistant) -> None:
@@ -552,5 +580,6 @@ async def test_a_signed_direct_site_without_a_total_never_decides(hass: HomeAssi
         _report_signed_site(hass, "nototal", (12.0, 13.0, 14.0), 36.0 * 230.0)
         await _tick(hass)
     decision = site_controller.regulator_decisions[charger.entry_id]
-    assert (decision.proposed_current_a, decision.reason) == (None, "phase_direction_unknown")
+    assert (decision.proposed_current_a, decision.reason) == (None, "phase_direction_unknown_at_charge_start")
+    assert not site_controller._direction_known_for(charger.entry_id)
     assert site_controller.result.phase_signed_current_a == {"L1": 12.0, "L2": 13.0, "L3": 14.0}

@@ -57,6 +57,9 @@ RegulatorReason = Literal[
     # The site has no known import/export direction on a phase the charger may draw on: a direct site
     # whose currents carry no sign, or whose sign is not yet confirmed against the meter's total.
     "phase_direction_unknown",
+    # A direct site's charge that started while the direction was unknown: its current stays the sun's
+    # (or nobody's) to write until it ends, even once confirmed (`SiteCapacityController`).
+    "phase_direction_unknown_at_charge_start",
     # No longer given (`phase_direction_unknown` replaced it); kept so older diagnostics still read.
     "derived_mode_required",
     "requested_current_unknown",

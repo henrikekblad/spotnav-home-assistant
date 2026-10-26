@@ -407,6 +407,10 @@ class SiteCapacityController:
         self._current_sign = CurrentSignCheck(
             zero_margin_w=DEFAULT_ZERO_MARGIN_W, min_agreements=DEFAULT_MIN_CONSECUTIVE_CONFIRMATIONS
         )
+        # On a direct site, per charger in a charge: whether its direction was known when the charge started,
+        # which keeps the charge's current writer (active control or the sun) until it ends
+        # (`_update_charge_writers`). Not persisted: a charge found running after a restart starts unknown.
+        self._direction_at_charge_start: dict[str, bool] = {}
         # How often each measurement entity reports (`site/meter_cadence.py`): fed from every state
         # write Home Assistant reports, changed or not, and sampled on each recompute.
         self._cadence = ReportCadence()
@@ -1218,16 +1222,50 @@ class SiteCapacityController:
         signed current is confirmed there; the regulator decides nothing elsewhere, `phase_direction_unknown`), its
         own measured current configured, and a charger it can command. An "Automatic" single-phase charger counts: the regulator
         reckons it on its followed or worst phase. Wherever it does not, the sun writes its own current
-        (`execution/solar_execution.py`); wherever it does, it stays the only writer.
+        (`execution/solar_execution.py`); wherever it does, it stays the only writer. On a direct site the direction
+        is the one the charge started with (`_update_charge_writers`), so the writer does not change mid-charge.
         """
         if not self._active_control_allowed():
             return False
-        if not self._direction_known_for(charger_entry_id):
+        if not self._writer_direction_known(charger_entry_id):
             return False
         wiring = (self.config.get(CONF_PHASE_WIRING) or {}).get(charger_entry_id) or {}
         if source_from_dict(wiring.get(CONF_MEASURED_CURRENT_SOURCE)) is None:
             return False
         return self._is_commandable_charger(controller_for(self.hass, charger_entry_id))
+
+    def _writer_direction_known(self, charger_entry_id: str) -> bool:
+        """`_direction_known_for`, except on a direct site in a charge, where it is what it was when the charge
+        started."""
+        held = self._direction_at_charge_start.get(charger_entry_id)
+        if held is not None and self._in_charge(charger_entry_id):
+            return held
+        return self._direction_known_for(charger_entry_id)
+
+    def _in_charge(self, charger_entry_id: str) -> bool:
+        """Whether this charger is in a charge: charging, a start of ours on its way, or paused by load balancing
+        (the charge goes on once there is room). Ends when the charger stops or the car is unplugged."""
+        charger_controller = controller_for(self.hass, charger_entry_id)
+        if charger_controller is None:
+            return False
+        return bool(
+            charger_controller.charging or charger_controller.start_pending or charger_controller.paused_by_balancing
+        )
+
+    def _update_charge_writers(self) -> None:
+        """On a direct site, note for each charger whose charge just started whether its direction is known now,
+        and forget it for a charger no longer in a charge. A charge that started with the sun writing its current
+        keeps the sun as its writer, and the regulator off it, even once its phases are confirmed; one that started
+        with active control keeps active control, which only holds the current if a confirmation is withdrawn
+        (the regulator decides nothing without a direction) rather than handing a raise to the sun."""
+        if self.config.get(CONF_MEASUREMENT_MODE) != MEASUREMENT_MODE_DIRECT:
+            self._direction_at_charge_start.clear()
+            return
+        for charger_entry_id in list(self.config.get(CONF_CHARGER_ENTRY_IDS) or []):
+            if not self._in_charge(charger_entry_id):
+                self._direction_at_charge_start.pop(charger_entry_id, None)
+            elif charger_entry_id not in self._direction_at_charge_start:
+                self._direction_at_charge_start[charger_entry_id] = self._direction_known_for(charger_entry_id)
 
     def _direction_known_for(self, charger_entry_id: str) -> bool:
         """Whether the latest result knows the direction on every phase this charger may draw on
@@ -3036,8 +3074,15 @@ class SiteCapacityController:
             )
             for phase in PHASES
         }
-        requests = self._build_requests()
-        return allocate_regulator_decisions(
+        self._update_charge_writers()
+        # A direct site's charge that started without a known direction stays the sun's (or nobody's) to write.
+        not_ours = {
+            charger_entry_id
+            for charger_entry_id, known in self._direction_at_charge_start.items()
+            if not known and self._in_charge(charger_entry_id)
+        }
+        requests = [request for request in self._build_requests() if request.charger_entry_id not in not_ours]
+        decisions = allocate_regulator_decisions(
             site_result=self.result,
             requests=requests,
             # A credited start is judged on its own reading too: the credit never stands for a raise.
@@ -3051,6 +3096,9 @@ class SiteCapacityController:
             zero_margin_w=DEFAULT_ZERO_MARGIN_W,
             help_margin_factor=DEFAULT_HELP_MARGIN_FACTOR,
         )
+        for charger_entry_id in not_ours:
+            decisions[charger_entry_id] = RegulatorDecision(None, "phase_direction_unknown_at_charge_start", None, {})
+        return decisions
 
     def charger_measured_current(self, charger_entry_id: str) -> DirectPhaseMeasurement | None:
         """One associated charger's raw measured current, for entities and diagnostics."""
