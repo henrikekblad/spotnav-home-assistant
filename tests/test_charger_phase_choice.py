@@ -15,6 +15,6 @@ def test_the_wiring_step_offers_automatic_as_the_default_and_stores_it_as_no_pha
 
     # A chosen phase is offered as it is and kept.
     chosen = charger_wiring_schema(hass, "no_such_charger", existing={"phases": 1, "phase": "L2"})({"phases": 1})
-    assert chosen["phase"] == "L2"
-    assert parse_charger_wiring({"phases": 1, "phase": "L2"}, chosen)["phase"] == "L2"
+    assert chosen["phase"] == "l2"
+    assert parse_charger_wiring({"phases": 1, "phase": "l2"}, chosen)["phase"] == "L2"
     assert parse_charger_wiring({"phases": 1, "phase": "L2"}, {"phases": 1, "phase": PHASE_AUTOMATIC})["phase"] is None

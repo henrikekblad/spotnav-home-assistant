@@ -337,11 +337,12 @@ def charger_wiring_schema(
         vol.Required("phases", default=existing.get("phases", 3)): vol.In([1, 3])
     }
     # "Automatic" (no phase stored) is the default: the phase is followed from the charger's measured current.
+    # The options are lower case (translation keys must be), the stored phase upper case ("L1").
     stored_phase = existing.get("phase")
-    schema_dict[vol.Optional("phase", default=stored_phase if stored_phase in PHASES else PHASE_AUTOMATIC)] = (
+    schema_dict[vol.Optional("phase", default=stored_phase.lower() if stored_phase in PHASES else PHASE_AUTOMATIC)] = (
         selector.SelectSelector(
             selector.SelectSelectorConfig(
-                options=[PHASE_AUTOMATIC, *PHASES],
+                options=[PHASE_AUTOMATIC, *(phase.lower() for phase in PHASES)],
                 translation_key="charger_phase",
                 mode=selector.SelectSelectorMode.DROPDOWN,
             )
@@ -498,6 +499,7 @@ def parse_charger_wiring(
     wiring["phases"] = inputs["phases"]
     # "Automatic" is stored as no phase, as before there was a choice for it.
     phase = inputs.get("phase")
+    phase = phase.upper() if isinstance(phase, str) else None
     wiring["phase"] = phase if phase in PHASES else None
     choice = inputs.get("measured_source")
     if choice is None:
