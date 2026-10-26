@@ -122,6 +122,7 @@ from .regulator import (
     MUST_LOWER_REASONS,
     RegulatorDecision,
 )
+from .auto_phase import AutoPhaseTracker, drawn_phase
 from .site_capacity import (
     ACTIVE_CONTROL_READY,
     BatteryYieldEstimate,
@@ -135,9 +136,11 @@ from .site_capacity import (
     DerivedPhaseInput,
     DerivedPhaseMeasurement,
     DirectPhaseMeasurement,
+    PhaseBasis,
     PhaseName,
     PHASES,
     PhaseValue,
+    resolve_worst_case_phases,
     SiteCalculationConfig,
     SiteCapacityResult,
 )
@@ -349,6 +352,8 @@ class SiteCapacityController:
         # Clock for `YieldObservation.now`, in seconds. Monotonic so a wall-clock step cannot freeze
         # the stepper; replaceable in tests.
         self._yield_now: Callable[[], float] = time.monotonic
+        # Each "Automatic" single-phase charger's followed phase (`site/auto_phase.py`), by `_yield_now`.
+        self._auto_phases: dict[str, AutoPhaseTracker] = {}
         # Starts on their way, per charger: the amps a start was given, the phases it draws from, and until
         # when (`_yield_now` seconds) the reservation holds. What another start may take is the measured
         # margin less what these have not drawn yet (`start_allowance_a`). A charger whose own current cannot
@@ -1200,17 +1205,16 @@ class SiteCapacityController:
 
     def active_control_writes(self, charger_entry_id: str) -> bool:
         """Whether the active-control pass writes this charger's requested current at all: active control on, a
-        derived site (the regulator decides nothing on any other, `derived_mode_required`), the charger's phases
-        known, its own measured current configured, and a charger it can command. Wherever it does not, the sun
-        writes its own current (`execution/solar_execution.py`); wherever it does, it stays the only writer.
+        derived site (the regulator decides nothing on any other, `derived_mode_required`), its own measured
+        current configured, and a charger it can command. An "Automatic" single-phase charger counts: the regulator
+        reckons it on its followed or worst phase. Wherever it does not, the sun writes its own current
+        (`execution/solar_execution.py`); wherever it does, it stays the only writer.
         """
         if not self._active_control_allowed():
             return False
         if self.config.get(CONF_MEASUREMENT_MODE) != MEASUREMENT_MODE_DERIVED:
             return False
         wiring = (self.config.get(CONF_PHASE_WIRING) or {}).get(charger_entry_id) or {}
-        if wiring.get("phases", 3) != 3 and not wiring.get("phase"):
-            return False
         if source_from_dict(wiring.get(CONF_MEASURED_CURRENT_SOURCE)) is None:
             return False
         return self._is_commandable_charger(controller_for(self.hass, charger_entry_id))
@@ -2767,8 +2771,11 @@ class SiteCapacityController:
         return margins
 
     def _calculate(self) -> SiteCapacityResult:
-        # The site's own figures never rest on a credit (which is read from them).
-        return calculate_site_capacity(self._build_config(), self._build_requests(credit=False))
+        # The site's own figures never rest on a credit (which is read from them). An "Automatic" charger not
+        # followed to a phase is reckoned on the worst phase of the figures being calculated, not the last ones.
+        return calculate_site_capacity(
+            self._build_config(), self._build_requests(credit=False, resolve=False)
+        )
 
     def _build_config(self) -> SiteCalculationConfig:
         mode = self.config.get(CONF_MEASUREMENT_MODE)
@@ -2809,25 +2816,40 @@ class SiteCapacityController:
             aggregate_charge_power_w=aggregate_power,
         )
 
-    def _build_requests(self, *, credit: bool = True) -> list[ChargerRequest]:
+    def _build_requests(self, *, credit: bool = True, resolve: bool = True) -> list[ChargerRequest]:
         """One request per charger; with `credit`, a charger just started is credited with the draw the latest
-        result shows it took (`_credited_measurements`)."""
+        result shows it took (`_credited_measurements`).
+
+        An "Automatic" single-phase charger (no phase chosen) is on the phase its own measured current shows it
+        drawing on (`_followed_phase`), else, with `resolve`, on the phase with the least headroom in the latest
+        result (`resolve_worst_case_phases`)."""
         charger_entry_ids: list[str] = list(self.config.get(CONF_CHARGER_ENTRY_IDS) or [])
         phase_wiring: dict[str, dict[str, Any]] = self.config.get(CONF_PHASE_WIRING) or {}
         requests: list[ChargerRequest] = []
         for order, charger_entry_id in enumerate(charger_entry_ids):
             wiring = phase_wiring.get(charger_entry_id) or {}
+            phases = wiring.get("phases", 3)
+            phase = wiring.get("phase")
+            measured = self._read_charger_measured_current(wiring)
+            basis: PhaseBasis = "chosen"
+            if phases == 1 and phase is None:
+                phase = self._followed_phase(charger_entry_id, measured)
+                basis = "measured" if phase is not None else "worst_case"
             request = ChargerRequest(
                 charger_entry_id=charger_entry_id,
                 requested_current_a=self._charger_requested_current(charger_entry_id),
-                phases=wiring.get("phases", 3),
-                phase=wiring.get("phase"),
+                phases=phases,
+                phase=phase,
                 min_current_a=float(wiring.get("min_current_a", DEFAULT_MIN_CURRENT_A)),
-                measured_current_a=self._read_charger_measured_current(wiring),
+                measured_current_a=measured,
                 priority=self.charger_priority(charger_entry_id),
                 order=order,
+                phase_basis=basis,
             )
             requests.append(request)
+        latest: SiteCapacityResult | None = getattr(self, "result", None)
+        if resolve and latest is not None:
+            requests = resolve_worst_case_phases(requests, latest.measured_margin_a)
         if not credit:
             return requests
         credited = self._credited_measurements(requests, self.result.measured_phase_current_a)
@@ -2837,6 +2859,39 @@ class SiteCapacityController:
             else request
             for request in requests
         ]
+
+    def _followed_phase(
+        self, charger_entry_id: str, measured: DirectPhaseMeasurement | None
+    ) -> PhaseName | None:
+        """The phase an "Automatic" single-phase charger is followed to (`site/auto_phase.py`), or `None` for the
+        worst phase: its own measured current shows it drawing on that one phase alone, the site's reading of it
+        bears that out, and it has held for the settle time."""
+        tracker = self._auto_phases.setdefault(charger_entry_id, AutoPhaseTracker())
+        max_age_s = float(self.config.get(CONF_MAX_AGE_S, DEFAULT_MAX_AGE_S))
+        # The first calculation has no result yet to bear a draw out: the worst phase until there is one.
+        result: SiteCapacityResult | None = getattr(self, "result", None)
+        drawn = drawn_phase(measured, max_age_s, None if result is None else result.measured_phase_current_a)
+        return tracker.observe(drawn, self._yield_now())
+
+    def charger_phase_snapshot(self) -> dict[str, dict[str, Any]]:
+        """Per charger, for the diagnostics: its phases, the phase a single-phase charger is reckoned on now and
+        how that was decided (`chosen`, `measured` or `worst_case`; `None` while no phase can be reckoned)."""
+        snapshot: dict[str, dict[str, Any]] = {}
+        for request in self._build_requests(credit=False):
+            single = request.phases == 1
+            snapshot[request.charger_entry_id] = {
+                "phases": request.phases,
+                "phase": request.phase if single else None,
+                "phase_basis": request.phase_basis if not single or request.phase is not None else None,
+                "automatic": single and request.phase_basis != "chosen",
+            }
+        return snapshot
+
+    def followed_phase(self, charger_entry_id: str) -> PhaseName | None:
+        """The phase an "Automatic" single-phase charger was last followed to by its measured current, else
+        `None` (a chosen phase, three phases, or reckoned on the worst phase)."""
+        tracker = self._auto_phases.get(charger_entry_id)
+        return None if tracker is None else tracker.current
 
     def charger_priority(self, charger_entry_id: str) -> str:
         """The charger's own `CONF_CHARGER_PRIORITY`, "normal" when none is stored or its entry is gone."""
