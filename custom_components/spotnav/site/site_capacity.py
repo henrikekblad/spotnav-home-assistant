@@ -66,14 +66,24 @@ PhaseName = Literal["L1", "L2", "L3"]
 PHASES: tuple[PhaseName, ...] = ("L1", "L2", "L3")
 
 # Prerequisites for commanding chargers: a verified grid-meter sign convention
-# (every source was the inverter's own), a signed power source (derived mode
-# only; direct-mode CT readings are unsigned) and a regulation model for both
+# (every source was the inverter's own), a signed source per phase (derived mode's
+# active power, or direct mode's signed current once its sign is confirmed against
+# the meter's total, `PhaseDirectionSource`) and a regulation model for both
 # directions (`site/regulator.py`, best-effort). Commands happen only in
 # `SiteCapacityController._async_apply_active_control`, which also needs the
 # site's `CONF_ACTIVE_CONTROL_ENABLED` option.
 ACTIVE_CONTROL_READY = True
 
 MeasurementMode = Literal["direct_phase_current", "derived_phase_current", "unavailable"]
+
+# Where a phase's import/export direction comes from: derived mode's signed active power, or a direct
+# site's signed current (+ import, - export) whose sign the caller confirmed against the meter's total
+# grid power. `None`: the direction is unknown and the regulator decides nothing on that phase.
+PhaseDirectionSource = Literal["active_power", "signed_current"]
+
+# The phase voltage a direct site's signed current is multiplied by to compare its direction with the
+# regulator's zero band in watts (a direct site measures no voltage). Every other use of it divides out.
+DIRECTION_NOMINAL_PHASE_VOLTAGE_V = 230.0
 
 # Site-level: whether configuration and measurements are healthy enough to compute.
 SiteState = Literal[
@@ -390,6 +400,11 @@ class SiteCalculationConfig:
     direct: DirectPhaseMeasurement | None = None
     derived: DerivedPhaseMeasurement | None = None
     battery: BatteryYieldEstimate | None = None
+    # Direct mode only: the same per-phase currents read with their sign (+ import, - export), for a
+    # source that carries one (`site_current_signed`). Diagnostic until a phase is in
+    # `direct_sign_confirmed`: only there does the sign give the phase a direction.
+    direct_signed: DirectPhaseMeasurement | None = None
+    direct_sign_confirmed: Collection[PhaseName] = ()
 
 
 @dataclass(frozen=True, slots=True)
@@ -427,8 +442,10 @@ class SiteCapacityResult:
     phase_liveness: Mapping[PhaseName, PhaseLiveness | None] = field(
         default_factory=lambda: {phase: None for phase in PHASES}
     )
-    # Diagnostic only: signed active power in watts (negative = exporting), derived
-    # mode only; `None` when not usable (see `_phase_signed_active_power`).
+    # Signed active power in watts (negative = exporting) that the regulator judges a phase's
+    # direction on; `None` when not usable (see `_phase_signed_active_power`). Derived mode's active
+    # power, or on a direct site a confirmed signed current times `DIRECTION_NOMINAL_PHASE_VOLTAGE_V`
+    # (`phase_direction_source` says which).
     phase_signed_active_power_w: Mapping[PhaseName, float | None] = field(
         default_factory=lambda: {phase: None for phase in PHASES}
     )
@@ -464,6 +481,15 @@ class SiteCapacityResult:
     # Phases where a magnitude-only source has the charger reading more than the site reading,
     # possible miswiring; diagnostic only, never a reason to refuse the reading.
     charger_reading_exceeds_site_phases: tuple[PhaseName, ...] = ()
+    # Where each phase's direction comes from (`PhaseDirectionSource`), `None` where it is unknown.
+    phase_direction_source: Mapping[PhaseName, PhaseDirectionSource | None] = field(
+        default_factory=lambda: {phase: None for phase in PHASES}
+    )
+    # Diagnostic only: a direct site's per-phase current with its sign (+ import, - export), confirmed
+    # or not; `None` elsewhere or when unusable.
+    phase_signed_current_a: Mapping[PhaseName, float | None] = field(
+        default_factory=lambda: {phase: None for phase in PHASES}
+    )
 
 
 # Accepted ampere spellings, shared via `normalized_ampere_unit` with
@@ -505,6 +531,22 @@ def classify_current(
     if value is not None and signed:
         value = abs(value)
     if value is None or value < 0:
+        return None, "invalid"
+    canonical = normalized_ampere_unit(unit)
+    if canonical is None:
+        return None, "invalid"
+    if canonical == "mA":
+        return value / 1000.0, None
+    return value, None
+
+
+def classify_signed_current(raw: object, unit: str | None) -> tuple[float | None, PhaseProblem | None]:
+    """As `classify_current`, but keeping the sign of a source that reports export as a negative
+    current: the direction a direct site's phase is judged on once confirmed, never the fuse's |I|."""
+    if _is_absent(raw):
+        return None, "missing"
+    value = _as_finite_float(raw)
+    if value is None:
         return None, "invalid"
     canonical = normalized_ampere_unit(unit)
     if canonical is None:
@@ -1188,7 +1230,7 @@ def calculate_site_capacity(
         headroom, config.battery, _derived_voltage_by_phase(config), config.max_age_s
     )
     signed_power, signed_power_age, signed_power_reason, signed_power_diagnostic = (
-        _derived_signed_active_power_by_phase(config)
+        _signed_active_power_by_phase(config)
     )
     voltage_diagnostic = _derived_voltage_diagnostic_by_phase(config)
 
@@ -1219,6 +1261,8 @@ def calculate_site_capacity(
         estimated_power_factor=ESTIMATED_POWER_FACTOR if _any_estimated(bases) else None,
         phase_signed_margin_a=cast(dict[PhaseName, float | None], signed_margin),
         charger_reading_exceeds_site_phases=exceeds,
+        phase_direction_source=_direction_source_by_phase(config),
+        phase_signed_current_a=_signed_current_diagnostic_by_phase(config),
     )
 
 
@@ -1303,7 +1347,7 @@ def _short_circuit(
         headroom, config.battery, _derived_voltage_by_phase(config), config.max_age_s
     )
     signed_power, signed_power_age, signed_power_reason, signed_power_diagnostic = (
-        _derived_signed_active_power_by_phase(config)
+        _signed_active_power_by_phase(config)
     )
     voltage_diagnostic = _derived_voltage_diagnostic_by_phase(config)
     return SiteCapacityResult(
@@ -1331,6 +1375,8 @@ def _short_circuit(
         phase_current_basis=dict(bases) if bases is not None else dict(empty),
         current_estimated=_any_estimated(bases),
         estimated_power_factor=ESTIMATED_POWER_FACTOR if _any_estimated(bases) else None,
+        phase_direction_source=_direction_source_by_phase(config),
+        phase_signed_current_a=_signed_current_diagnostic_by_phase(config),
     )
 
 
@@ -1395,6 +1441,62 @@ def _derived_signed_active_power_by_phase(
         ages[phase] = age_s
         reasons[phase] = reason
         diagnostic[phase] = _phase_diagnostic_value(power)
+    return values, ages, reasons, diagnostic
+
+
+def _direction_source_by_phase(
+    config: SiteCalculationConfig,
+) -> dict[PhaseName, PhaseDirectionSource | None]:
+    """`phase_direction_source` per phase: every phase in derived mode, a confirmed phase of a direct
+    site with signed readings, else `None`."""
+    if config.measurement_mode == "derived_phase_current" and config.derived is not None:
+        return {phase: "active_power" for phase in PHASES}
+    if config.measurement_mode == "direct_phase_current" and config.direct_signed is not None:
+        return {
+            phase: "signed_current" if phase in config.direct_sign_confirmed else None for phase in PHASES
+        }
+    return {phase: None for phase in PHASES}
+
+
+def _signed_current_diagnostic_by_phase(config: SiteCalculationConfig) -> dict[PhaseName, float | None]:
+    """`phase_signed_current_a` per phase; all `None` unless direct mode has signed readings."""
+    if config.measurement_mode != "direct_phase_current" or config.direct_signed is None:
+        return {phase: None for phase in PHASES}
+    return {phase: _phase_diagnostic_value(config.direct_signed.get(phase)) for phase in PHASES}
+
+
+def _signed_active_power_by_phase(
+    config: SiteCalculationConfig,
+) -> tuple[
+    dict[PhaseName, float | None],
+    dict[PhaseName, float | None],
+    dict[PhaseName, PhaseUnusableReason | None],
+    dict[PhaseName, float | None],
+]:
+    """Signed power `values`/`ages`/`reasons`/`diagnostic` per phase: derived mode's active power,
+    or a direct site's confirmed signed current times `DIRECTION_NOMINAL_PHASE_VOLTAGE_V`.
+
+    On a direct site a phase whose sign is not confirmed is `None` with reason `"missing"`, and the
+    `diagnostic` stays `None` throughout: it is read as measured active power elsewhere (solar), which
+    a current times a nominal voltage is not.
+    """
+    if config.measurement_mode != "direct_phase_current" or config.direct_signed is None:
+        return _derived_signed_active_power_by_phase(config)
+    values: dict[PhaseName, float | None] = {}
+    ages: dict[PhaseName, float | None] = {}
+    reasons: dict[PhaseName, PhaseUnusableReason | None] = {}
+    diagnostic: dict[PhaseName, float | None] = {phase: None for phase in PHASES}
+    for phase in PHASES:
+        current = config.direct_signed.get(phase)
+        if phase not in config.direct_sign_confirmed:
+            values[phase], ages[phase], reasons[phase] = None, current.age_s, "missing"
+            continue
+        power = (
+            current
+            if current.value is None
+            else replace(current, value=current.value * DIRECTION_NOMINAL_PHASE_VOLTAGE_V)
+        )
+        values[phase], ages[phase], reasons[phase] = _phase_signed_active_power(power, config.max_age_s)
     return values, ages, reasons, diagnostic
 
 
