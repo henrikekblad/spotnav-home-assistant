@@ -173,7 +173,7 @@ async def test_every_charger_wiring_step_labels_its_fields(
         assert result["step_id"] == "site_details"
         result = await flow.async_configure(result["flow_id"], meter)
         assert result["step_id"] == "site_charger_wiring"
-        result = await flow.async_configure(result["flow_id"], {"phases": 1, "phase": "L2", "measured_source": choice})
+        result = await flow.async_configure(result["flow_id"], {"phases": 1, "phase": "l2", "measured_source": choice})
         assert result["step_id"] == manual_step
         flow.async_abort(result["flow_id"])
 

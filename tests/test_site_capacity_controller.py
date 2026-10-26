@@ -520,7 +520,7 @@ async def test_options_flow_can_edit_every_structural_field(hass: HomeAssistant)
     )
     assert result["step_id"] == "site_charger_wiring"
     result = await hass.config_entries.options.async_configure(
-        result["flow_id"], {"phases": 1, "phase": "L2"}
+        result["flow_id"], {"phases": 1, "phase": "l2"}
     )
     assert result["type"] is FlowResultType.CREATE_ENTRY
     await hass.async_block_till_done()
