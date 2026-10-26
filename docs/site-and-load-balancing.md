@@ -20,8 +20,22 @@ shown in [Set up SpotNav](setup.md#2-add-a-site-optional). You provide:
   - *Derived*: current computed from each phase's active power and voltage, with the meter's own
     current, apparent power or reactive power when it has them. Without any of those the current
     is estimated, which is marked as such.
-- **Chargers on this site**, and for each charger whether it is three-phase or on one explicitly
-  chosen phase. A single-phase charger whose phase is unknown never gets a recommendation.
+- **Chargers on this site**, and for each charger whether it is three-phase or single-phase, and for
+  a single-phase charger its phase: L1, L2, L3 or **Automatic (follows the charger)**, the default.
+  Automatic is for a charger whose phase is not fixed, such as one behind an Easee Equalizer, which
+  moves a one-phase charge to another phase from one session to the next:
+  - While the charger draws, its own measured current shows the phase: every phase reads, fresh, and
+    exactly one carries 1 A or more, which the site's reading of that phase bears out (at least the
+    charger's draw, less 2 A). Load balancing reckons it on that phase and follows it when it moves. A
+    new phase counts once it has held for 10 s, and a reading in transition (two phases drawing) keeps
+    the phase it had for at most that long.
+  - Otherwise (idle, before a start, no measured current set, a stale or missing reading, a source that
+    reads one phase only, or a reading the site does not bear out) it is reckoned on the phase with the
+    least headroom, drawing the largest current any phase of its own reads: never on a guess.
+  - The site's diagnostics show, per charger, the phase it is reckoned on and how that was decided
+    (`charger_phase`: `chosen`, `measured` or `worst_case`). Only when some phase's headroom is unknown
+    can it not be reckoned at all (`single_phase_charger_wiring_unknown`); the site then proposes
+    nothing for any charger anyway.
 - Optionally, each charger's own **measured current** (its per-phase sensors). Never use a
   commanded current here: a car can draw less than its setpoint, and crediting a setpoint would
   overstate how much of the site's load is the charger's.
@@ -32,8 +46,9 @@ shown in [Set up SpotNav](setup.md#2-add-a-site-optional). You provide:
     neutral and T2, T3 and T4 are L1, L2 and L3. SpotNav fills this in when a charger joins a
     site, and for a charger already in a site the next time the site starts (once, logged),
     when the wiring has no source; a source you chose, or removed on purpose, is never changed.
-    A one-phase charger is read from T3 only (TN). The charger's dialog shows the source the
-    site reads, read-only.
+    A one-phase charger on a chosen phase is read from T3 only (TN); an Automatic one from T3, T4
+    and T5, which show the phase it charges on. The charger's dialog shows the source the site
+    reads, read-only.
   - Without any measured current for a charger, the regulator holds (`charger_measurement_unusable`)
     and solar runs that charger blind, at the minimum current only. It starts (reason
     `unmeasured_start`, after `unmeasured_arming`) when the spare power without the car (export, plus
@@ -49,9 +64,10 @@ shown in [Set up SpotNav](setup.md#2-add-a-site-optional). You provide:
   current if that is more, even while the total exports: the total is netted over the phases, and a
   three-phase inverter's export says nothing about one phase's import. Current never rises on a phase
   that cannot be read.
-- A single-phase charger whose phase is unknown is reckoned by solar on a stand-in phase: the total
-  grid power does not depend on the phase, the fuse cap is the lowest of all three phases' caps, and
-  its draw the largest phase its measured current reads.
+- An Automatic single-phase charger is reckoned by solar on the phase its measured current shows it
+  on, as above. While that is not known it is reckoned on a stand-in phase: the total grid power does
+  not depend on the phase, the fuse cap is the lowest of all three phases' caps, and its draw the
+  largest phase its measured current reads.
 
 After the basics, SpotNav looks for your grid meter in the entity registry (see
 [Meter detection](#meter-detection-signs-and-estimated-current)). When it finds the meter and

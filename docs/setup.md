@@ -291,7 +291,9 @@ meter first. Prefer the meter: the Equalizer reports a derived figure and balanc
 If SpotNav does the load balancing, turn off the charger's own smart charging and the Equalizer's
 load balancing, because two controllers on one charger fight each other.
 
-A single-phase charger whose phase is unknown never gets a recommendation, so choose its phase.
+For a single-phase charger, choose its phase, or leave it on Automatic (follows the charger), the
+default, when the phase moves, as with an Easee Equalizer: SpotNav then follows the phase the charger's
+own measured current shows, and reckons it on the most loaded phase while it cannot tell.
 
 ## 3. Add the card
 
