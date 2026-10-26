@@ -10,12 +10,14 @@ from custom_components.spotnav.site.site_capacity import (
     MEASUREMENT_TOLERANCE_A,
     PHASES,
     REASON_STALE,
+    REASON_UNKNOWN_PHASE,
     ChargerRequest,
     DerivedPhaseInput,
     DerivedPhaseMeasurement,
     DirectPhaseMeasurement,
     PhaseValue,
     SiteCalculationConfig,
+    allocate_chargers,
     apparent_current_from_derived,
     calculate_site_capacity,
     classify_current,
@@ -785,17 +787,29 @@ def test_single_phase_charger_on_an_explicitly_chosen_phase_is_limited_by_that_p
     assert result.allocations[0].state == "capacity_available"
 
 
-def test_single_phase_charger_with_unknown_phase_gets_no_safe_recommendation() -> None:
-    config = _config(direct=_direct(0.0, 0.0, 0.0))
+def test_an_automatic_single_phase_charger_is_reckoned_on_the_worst_phase() -> None:
+    # No phase chosen ("Automatic") and nothing measured: the most loaded phase, never a guess. Was: no
+    # recommendation at all (`single_phase_charger_wiring_unknown`).
+    config = _config(direct=_direct(2.0, 15.0, 4.0))  # headroom 22, 9, 20
     charger = _charger(requested_current_a=16.0, phases=1, phase=None)
 
     result = calculate_site_capacity(config, [charger])
 
     allocation = result.allocations[0]
-    assert allocation.proposed_current_a is None
-    assert allocation.state == "invalid_measurements"
-    # The site's three-phase measurements are otherwise fine.
+    assert allocation.proposed_current_a == 9.0
+    assert allocation.state == "capacity_limited"
+    assert allocation.limiting_phase == "L2"
     assert result.state == "observing"
+
+
+def test_an_automatic_single_phase_charger_with_a_phase_of_unknown_headroom_gets_no_recommendation() -> None:
+    # Only where no phase can be reckoned at all is the wiring "unknown".
+    charger = _charger(requested_current_a=16.0, phases=1, phase=None)
+
+    allocation = allocate_chargers({"L1": 20.0, "L2": None, "L3": 20.0}, [charger])["charger_a"]  # type: ignore[dict-item]
+
+    assert allocation.proposed_current_a is None
+    assert allocation.reason == REASON_UNKNOWN_PHASE
 
 
 def test_requested_current_exactly_equal_to_headroom_is_capacity_available_not_limited() -> None:
