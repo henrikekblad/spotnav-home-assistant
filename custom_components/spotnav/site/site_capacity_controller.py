@@ -314,6 +314,8 @@ class SiteCapacityController:
         # The last site calculation, the readings it was made from and when (`_calculate`).
         self._calculation: tuple[tuple[Any, ...], datetime, SiteCapacityResult] | None = None
         self._reading_entities: tuple[str, ...] | None = None
+        # A recompute queued for the next turn of the event loop (`_schedule_recompute`).
+        self._recompute_pending = False
         self._timer_cancel: Callable[[], None] | None = None
         self._state_listener_cancel: Callable[[], None] | None = None
         self._controller_listener_cancels: list[Callable[[], None]] = []
@@ -459,8 +461,9 @@ class SiteCapacityController:
         return self._check_membership()
 
     async def async_initialize(self) -> None:
-        """Recompute once, then on a periodic timer, tracked-entity state changes and each charger
-        controller's listener (a requested-current change need not change any HA state).
+        """Recompute once, then on a periodic timer, tracked-entity state changes (once per turn of the event
+        loop, `_schedule_recompute`) and each charger controller's listener (a requested-current change need not
+        change any HA state; at once, in step with the charger's own commands).
         """
         self._recompute()
         self._timer_cancel = async_track_time_interval(
@@ -600,7 +603,36 @@ class SiteCapacityController:
 
     @callback
     def _async_state_changed(self, _event: Event[EventStateChangedData]) -> None:
-        self._recompute()
+        self._schedule_recompute()
+
+    @callback
+    def _schedule_recompute(self) -> None:
+        """Recompute once for every change in this turn of the event loop: a meter that writes its phases one entity
+        at a time, and the chargers that tell the site of each of their own changes, would otherwise recompute (and
+        queue an apply pass on) every partial state. The recompute runs at the next turn (`call_soon`), so it sees
+        every change of this one.
+
+        While the site is over its limit on an import (`_import_overload_now`) a change is recomputed at once, as
+        before: an overload's lowering waits for nothing, not even the rest of the loop's turn."""
+        if self._closed:
+            return
+        if self._import_overload_now():
+            self._recompute()
+            return
+        if self._recompute_pending:
+            return
+        self._recompute_pending = True
+        self.hass.loop.call_soon(self._run_scheduled_recompute)
+
+    @callback
+    def _run_scheduled_recompute(self) -> None:
+        self._recompute_pending = False
+        if not self._closed:
+            self._recompute()
+
+    def _import_overload_now(self) -> bool:
+        """Whether the last recompute found an import overload: a decision that must lower (`MUST_LOWER_REASONS`)."""
+        return any(decision.reason in MUST_LOWER_REASONS for decision in self.regulator_decisions.values())
 
     @callback
     def _async_state_reported(self, event: Event[EventStateReportedData]) -> None:
