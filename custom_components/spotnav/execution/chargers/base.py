@@ -339,6 +339,10 @@ class CurrentPath(ABC):
 
     kind: str = "none"
     can_set: bool = False
+    #: The write's own answer cannot tell an accepted value from a rejected one (OCPP's `configure`), so the
+    #: regulator asks for a read-back (`verify`) of a lowering the fuse needs and stops the charge when the
+    #: value is not confirmed (`ChargingController.async_apply_regulated_current`).
+    confirms_must_lower: bool = False
 
     def __init__(self, policy: WritePolicy) -> None:
         self.policy = policy

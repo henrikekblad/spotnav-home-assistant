@@ -3409,15 +3409,17 @@ class ChargingController:
     async def async_apply_regulated_current(self, amps: int, *, must_lower: bool) -> RegulatedWrite:
         """The regulator's one write to this charger, through the same `_assign_lock`.
 
-        For an OCPP charger exactly what it has always been: `_async_assign_current`, best effort,
-        reported as written. For any other adapter the write goes through the platform's policy and
-        can be refused; a refusal is then judged against the fuse:
+        The write goes through the platform's policy and can be refused; a refusal is then judged against
+        the fuse:
 
         * a proposal below the 6 A floor is a pause: the charge is stopped (OCPP keeps its old
           behaviour of sending nothing);
         * a refusal when `must_lower` (an overload, or a reduction in the protection band) and the
           proposal is below what the charger is set to, or what it is set to is unknown: the charge
           is **stopped**, since nothing slower than a stop can be trusted to protect the fuse;
+        * on a path whose write cannot tell accepted from rejected (`confirms_must_lower`: OCPP's
+          `ChangeConfiguration`), a `must_lower` write is read back, within a few seconds, and a value
+          not confirmed counts as a refusal, so it is stopped as above;
         * any other refusal just holds; the damper's state is kept at what is really on the
           charger and the next pass tries again.
 
@@ -3433,14 +3435,15 @@ class ChargingController:
         # Never under the operation lock: a must-lower write waits for no Start or Stop on its way (a slow cloud
         # command). What it must not do is lift a pause, so the state is read again, with no wait in between,
         # right before the send (`_assign_current_locked`; Easee also between its two sends).
-        outcome = await self._async_assign_current_outcome(amps, reason=WRITE_REGULATOR)
+        confirm = must_lower and self.adapter.current.confirms_must_lower
+        outcome = await self._async_assign_current_outcome(amps, reason=WRITE_REGULATOR, verify=confirm)
         if outcome == REGULATED_STOPPING:
             # A stop is on its way: it gives the car less than any current would, and a current written
             # while it lands would lift it on a charger that pauses by its limit.
             return RegulatedWrite(REGULATED_HELD, REGULATED_STOPPING, False)
         if outcome == REGULATED_SHUT_DOWN:
             return RegulatedWrite(REGULATED_HELD, REGULATED_SHUT_DOWN, False)
-        if outcome in IN_EFFECT_OUTCOMES:
+        if outcome in IN_EFFECT_OUTCOMES and not (confirm and outcome == ASSIGN_UNCONFIRMED):
             return RegulatedWrite(REGULATED_WROTE, outcome, True)
         if not must_lower:
             return RegulatedWrite(REGULATED_HELD, outcome, False)

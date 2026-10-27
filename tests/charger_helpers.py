@@ -5,7 +5,7 @@ from __future__ import annotations
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
-from homeassistant.core import HomeAssistant
+from homeassistant.core import HomeAssistant, ServiceCall, SupportsResponse
 from homeassistant.helpers import entity_registry as er
 
 from custom_components.spotnav.flows.charger_detection import DetectedCharger
@@ -35,6 +35,27 @@ class Clock:
 
     def advance(self, seconds: float) -> None:
         self.current += timedelta(seconds=seconds)
+
+
+def mock_ocpp_assigned_current(hass: HomeAssistant, value: str) -> list[ServiceCall]:
+    """The OCPP integration's `get_configuration` and `configure` for a charge point that accepts every
+    `AssignedCurrent` written: what is configured is what is read back. Returns the `configure` calls.
+    """
+    slot = {"value": value}
+    calls: list[ServiceCall] = []
+
+    async def get_configuration(call: ServiceCall) -> dict[str, Any]:
+        return {"value": slot["value"]}
+
+    async def configure(call: ServiceCall) -> None:
+        calls.append(call)
+        slot["value"] = call.data["value"]
+
+    hass.services.async_register(
+        "ocpp", "get_configuration", get_configuration, supports_response=SupportsResponse.ONLY
+    )
+    hass.services.async_register("ocpp", "configure", configure)
+    return calls
 
 
 def detected_config(found: DetectedCharger, *, current_control: str | None = None) -> dict[str, Any]:

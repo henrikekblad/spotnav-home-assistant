@@ -36,6 +36,7 @@ from custom_components.spotnav.site.regulator import (
 from custom_components.spotnav.site.site_capacity import PHASES
 from custom_components.spotnav.site.site_capacity_controller import SiteCapacityController
 
+from .charger_helpers import mock_ocpp_assigned_current
 from .helpers import make_entry, make_site_entry, set_current_sensor
 from .world import set_charger_delivered_a, set_derived_site_entities, set_site_current_a
 from .world import separate_entities_source
@@ -64,8 +65,7 @@ async def _yield_setup(
     prefix = f"{entry_id}_charger"
     hass.states.async_set(f"switch.{prefix}", "off")
     async_mock_service(hass, "switch", "turn_on")
-    async_mock_service(hass, "ocpp", "get_configuration", response={"value": "1.6,2.10"})
-    configure_calls = async_mock_service(hass, "ocpp", "configure")
+    configure_calls = mock_ocpp_assigned_current(hass, "1.6,2.10")
     charger = make_entry(
         hass,
         entry_id=f"{entry_id}_charger",

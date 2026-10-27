@@ -41,6 +41,10 @@ configuration key, a read-only question with a ten second limit:
 - **The charge point lists this connector.** The current is set through **ChangeConfiguration
   (AssignedCurrent)**: the OCPP integration's `configure` service sets the `AssignedCurrent`
   configuration key. It modulates a running charge with no charging profile and no reboot.
+  Load balancing and the sun write it at most six times a minute. The `configure` service answers
+  the same whether the charge point accepted the value or rejected it, so when load balancing must
+  lower the current (an overload) the key is read back, for at most 5 seconds, and is never held by
+  that budget: a charge point that does not confirm the lower value is stopped instead.
 - **The charge point answers without it.** If the connector has exactly one session current limit
   number, the current is set through that number, at most one write every 10 s. Otherwise
   SpotNav does not set the current.

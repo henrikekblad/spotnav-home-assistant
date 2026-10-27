@@ -4,6 +4,7 @@ time, through the OCPP integration's `get_configuration` and `configure` service
 
 from __future__ import annotations
 
+import asyncio
 import logging
 from collections.abc import Callable
 from typing import Any
@@ -21,6 +22,7 @@ from .base import (
     ASSIGN_ASSIGNED,
     ASSIGN_BELOW_MINIMUM,
     ASSIGN_NO_TARGET,
+    ASSIGN_RATE_LIMITED,
     ASSIGN_READ_FAILED,
     ASSIGN_REBOOT_REQUIRED,
     ASSIGN_UNCONFIRMED,
@@ -28,6 +30,8 @@ from .base import (
     call_service,
     current_description,
     CurrentPath,
+    MODULATION_WRITES,
+    WriteRateLimiter,
 )
 from .registry import ChargerContext, register_current
 
@@ -38,6 +42,13 @@ _OCPP_DOMAIN = "ocpp"
 _OCPP_GET_CONFIGURATION_SERVICE = "get_configuration"
 _OCPP_CONFIGURE_SERVICE = "configure"
 _OCPP_ASSIGNED_CURRENT_KEY = "AssignedCurrent"
+
+#: How long a verified write may take to be read back, in all: OCPP answers in about a second on a
+#: local network and a few on a busy one, and a lowering the fuse needs cannot wait much longer before
+#: the charge is stopped instead.
+OCPP_VERIFY_TIMEOUT_S = 5.0
+#: The pause before reading the slot again when a read-back gave no answer.
+OCPP_VERIFY_RETRY_S = 1.0
 
 
 def rewrite_assigned_current(current: str, connector: int, amps: int) -> str:
@@ -102,17 +113,28 @@ async def read_assigned_current_value(hass: HomeAssistant, devid: str) -> str | 
 class OcppAssignedCurrent(CurrentPath):
     """OCPP `ChangeConfiguration` on `AssignedCurrent`: read, rewrite one connector's entry, write.
 
-    The original path, unchanged: the same two service calls with the same payloads in the same order
-    and the same log lines, only moved out of the controller. It has no policy of its own.
+    The same two service calls with the same payloads in the same order as ever. The regulator's and the
+    sun's writes keep `OCPP_POLICY`'s per-minute budget, except a verified one: the regulator asks for a
+    read-back exactly when the fuse needs the current lowered (`confirms_must_lower`), and such a write is
+    never held. A session start, a re-send and a restore neither count against the budget nor wait for it.
     """
 
     kind = "ocpp"
     can_set = True
+    #: `ocpp.configure` answers alike whether the charge point accepted or rejected the value, so a lowering
+    #: the fuse needs is read back before it counts.
+    confirms_must_lower = True
 
-    def __init__(self, hass: HomeAssistant, target: Callable[[], OcppConnectorTarget | None]) -> None:
+    def __init__(
+        self,
+        hass: HomeAssistant,
+        target: Callable[[], OcppConnectorTarget | None],
+        limiter: WriteRateLimiter | None = None,
+    ) -> None:
         super().__init__(OCPP_POLICY)
         self.hass = hass
         self._target = target
+        self._limiter = limiter or WriteRateLimiter(OCPP_POLICY)
         #: The last write's answer said a reboot is required (`ocpp.configure`'s `reboot_required`).
         self.reboot_required = False
 
@@ -135,6 +157,10 @@ class OcppAssignedCurrent(CurrentPath):
                 "through ChangeConfiguration"
             )
             return ASSIGN_NO_TARGET
+        if reason in MODULATION_WRITES and not verify and self._limiter.wait_s() > 0:
+            # A modulation write beyond the budget waits for a later pass; a verified one (the fuse needs the
+            # current lowered) never does.
+            return ASSIGN_RATE_LIMITED
         read = await self.async_read_assigned_current()
         if read is None:
             _LOGGER.warning(
@@ -152,6 +178,10 @@ class OcppAssignedCurrent(CurrentPath):
                 "the request is recorded but not applied"
             )
             return ASSIGN_READ_FAILED
+        if reason in MODULATION_WRITES:
+            # Recorded before the call: a call that raised may still have reached the charge point. Only the
+            # regulator's and the sun's own writes count: a session start or a restore is not a modulation.
+            self._limiter.record()
         if not await self.async_write_assigned_current(devid, assigned):
             # Deliberately every failure: a missing, unreachable or refusing charger integration is
             # one situation here, the current was not assigned.
@@ -166,12 +196,37 @@ class OcppAssignedCurrent(CurrentPath):
                 "The charger stored its assigned current but needs a reboot before it applies it"
             )
             return ASSIGN_REBOOT_REQUIRED
-        if verify:
-            confirmed = await self.async_read_assigned_current()
-            if confirmed is None or assigned_amps_for_connector(confirmed[2], connector) != amps:
-                return ASSIGN_UNCONFIRMED
+        if verify and not await self._async_confirm(connector, amps):
+            _LOGGER.debug(
+                "The charger did not confirm its assigned current of %sA; it is not taken as applied", amps
+            )
+            return ASSIGN_UNCONFIRMED
         self.last_written_a = amps
         return ASSIGN_ASSIGNED
+
+    async def _async_confirm(self, connector: int, amps: int) -> bool:
+        """Whether reading `AssignedCurrent` back shows `amps` for the connector, within `OCPP_VERIFY_TIMEOUT_S`.
+
+        A read that answers decides: the value, or a contradiction (a charge point that rejected the write
+        still carries its old value). A read that gives no answer is tried again after `OCPP_VERIFY_RETRY_S`
+        while time is left; one still unanswered at the bound is not a confirmation.
+        """
+        loop = asyncio.get_running_loop()
+        deadline = loop.time() + OCPP_VERIFY_TIMEOUT_S
+        while True:
+            remaining = deadline - loop.time()
+            if remaining <= 0:
+                return False
+            try:
+                async with asyncio.timeout(remaining):
+                    read = await self.async_read_assigned_current()
+            except TimeoutError:
+                return False
+            if read is not None:
+                return assigned_amps_for_connector(read[2], connector) == amps
+            if deadline - loop.time() <= OCPP_VERIFY_RETRY_S:
+                return False
+            await asyncio.sleep(OCPP_VERIFY_RETRY_S)
 
     async def async_read_assigned_current(self) -> tuple[str, int, str] | None:
         """Read the charger's `AssignedCurrent` slot."""
@@ -224,6 +279,9 @@ class OcppAssignedCurrent(CurrentPath):
     def available(self) -> str | None:
         return ASSIGN_NO_TARGET if self._target() is None else None
 
+    def wait_s(self) -> float:
+        return self._limiter.wait_s()
+
     def ready(self) -> bool:
         # The OCPP integration registers its services when it loads, which may be well after SpotNav.
         return all(
@@ -236,7 +294,7 @@ class OcppAssignedCurrent(CurrentPath):
 
 
 def _ocpp_current(context: ChargerContext) -> CurrentPath | None:
-    return OcppAssignedCurrent(context.hass, context.ocpp_target)
+    return OcppAssignedCurrent(context.hass, context.ocpp_target, context.limiter)
 
 
 register_current(CURRENT_CONTROL_CHANGE_CONFIGURATION, _ocpp_current)
