@@ -49,6 +49,26 @@ def test_a_charge_that_ends_by_unplugging_says_so_and_has_no_energy_without_a_re
     assert events == [("unplugged", {}), ("charge_finished", {"unplugged": True})]
 
 
+def test_an_unreadable_charge_is_no_observation_so_a_reload_is_no_event() -> None:
+    """The charger's integration reloads: its entities read unavailable for a while, then charging again."""
+    tracker = ChargerEventTracker()
+    tracker.observe(ChargerFacts(charging=True, connected=True, register_kwh=100.0))
+
+    assert tracker.observe(ChargerFacts(charging=None, connected=None, register_kwh=None)) == []
+    assert tracker.observe(ChargerFacts(charging=True, connected=True, register_kwh=101.0)) == []
+    # A charge that did end meanwhile still finishes, counted from its start.
+    tracker.observe(ChargerFacts(charging=None, connected=None))
+    finished = tracker.observe(ChargerFacts(charging=False, connected=True, register_kwh=103.0))
+    assert finished == [("charge_finished", {"unplugged": False, "energy_kwh": 3.0})]
+
+
+def test_a_charge_read_first_after_an_unreadable_start_is_the_baseline() -> None:
+    tracker = ChargerEventTracker()
+    tracker.observe(ChargerFacts(charging=None, connected=None))
+    assert tracker.observe(ChargerFacts(charging=True, connected=None)) == []
+    assert kinds(tracker.observe(ChargerFacts(charging=False, connected=None))) == ["charge_finished"]
+
+
 def test_a_new_plan_is_installed_once_and_a_risk_fires_when_it_begins() -> None:
     tracker = ChargerEventTracker()
     tracker.observe(ChargerFacts(charging=False, connected=True))
@@ -81,3 +101,21 @@ async def test_a_charger_gets_one_event_entity_that_fires_on_charging(hass: Home
     hass.states.async_set("switch.charger_a", "off")
     await hass.async_block_till_done()
     assert hass.states.get(event).attributes["event_type"] == "charge_finished"
+
+
+async def test_a_charger_integration_reload_fires_no_charge_event(hass: HomeAssistant) -> None:
+    entry = await setup_charger(hass)
+    event = entity_id(hass, entry.entry_id, "charger_events", "event")
+    hass.states.async_set("switch.charger_a", "on")
+    await hass.async_block_till_done()
+    fired = hass.states.get(event).last_changed
+
+    hass.states.async_set("switch.charger_a", "unavailable")
+    await hass.async_block_till_done()
+    hass.states.async_set("switch.charger_a", "on")
+    await hass.async_block_till_done()
+
+    state = hass.states.get(event)
+    assert state.attributes["event_type"] == "charge_started" and state.last_changed == fired, (
+        "neither a finished nor a new charge"
+    )

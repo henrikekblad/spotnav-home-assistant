@@ -172,6 +172,38 @@ async def test_a_short_pause_is_the_same_session(hass: HomeAssistant, store: Ses
     assert done.start == at(8) and done.energy_kwh == pytest.approx(6.0)
 
 
+async def test_a_charger_integration_reload_does_not_split_the_session(
+    hass: HomeAssistant, store: SessionStore
+) -> None:
+    """The charger's entities read unavailable for longer than the end debounce: no observation, one session."""
+    world = World(hass, store)
+    world.at(at(8), charging=True)
+    world.at(at(8, 30), register_kwh=103.0)
+    world.at(at(8, 31), charging=None, connected=None, register_kwh=None)
+    world.at(at(8, 31) + timedelta(seconds=2 * END_DEBOUNCE_S))
+    world.at(at(8, 40), charging=True, connected=True, register_kwh=104.0)
+    world.at(at(9), register_kwh=106.0)
+    world.at(at(9, 1), charging=False)
+    world.at(at(9, 1) + timedelta(seconds=END_DEBOUNCE_S))
+
+    (done,) = store.closed(CHARGER)
+    assert done.start == at(8) and done.end == at(9, 1) and done.energy_kwh == pytest.approx(6.0)
+
+
+async def test_a_charge_that_ended_while_unreadable_ends_when_last_seen(
+    hass: HomeAssistant, store: SessionStore
+) -> None:
+    world = World(hass, store)
+    world.at(at(8), charging=True)
+    world.at(at(8, 30), register_kwh=103.0)
+    world.at(at(8, 31), charging=None, connected=None, register_kwh=None)
+    world.at(at(9), charging=False, connected=True, register_kwh=103.0)
+    world.at(at(9) + timedelta(seconds=END_DEBOUNCE_S))
+
+    (done,) = store.closed(CHARGER)
+    assert done.end == at(8, 31) and done.energy_kwh == pytest.approx(3.0)
+
+
 async def test_unplugging_ends_the_session_at_once(hass: HomeAssistant, store: SessionStore) -> None:
     world = World(hass, store)
     world.at(at(8), charging=True)

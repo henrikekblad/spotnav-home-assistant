@@ -313,6 +313,22 @@ class ChargerAdapter:
             return status in self._charging_values
         return self.path.enabled_state() is True
 
+    def charging_observation(self) -> bool | None:
+        """Whether the charger is charging, or `None` when nothing readable says it: what the events and
+        the session record read, so a charger integration that reloads (its entities unavailable or unknown for
+        a while) is neither a charge that finished nor one that started.
+
+        With a status sensor configured, that sensor alone says it (an unreadable one is no observation, never
+        the charge control in its place); without one, the charge control, while any of its entities reads
+        something.
+        """
+        if self.status_entity_id:
+            status = self._status()
+            return None if status is None else status in self._charging_values
+        if not any(_lower(self.hass.states.get(entity_id)) is not None for entity_id in self.path.entity_ids()):
+            return None
+        return self.path.enabled_state() is True
+
     def _status(self) -> str | None:
         if not self.status_entity_id:
             return None

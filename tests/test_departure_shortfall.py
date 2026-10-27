@@ -375,6 +375,10 @@ def test_the_risk_event_fires_once_for_a_best_effort_plan_and_again_only_after_i
         def vehicle_connected() -> bool:
             return True
 
+        @staticmethod
+        def charging_observation() -> bool:
+            return False
+
     class Controller:
         plan = None
         charging = False
