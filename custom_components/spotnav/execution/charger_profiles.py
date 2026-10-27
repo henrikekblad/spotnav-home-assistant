@@ -117,8 +117,11 @@ class WritePolicy:
 
 #: A platform nobody described: assume a cloud round trip, and that 0 A may pause it.
 DEFAULT_POLICY: Final = WritePolicy(min_interval_s=90.0, zero_pauses=True)
-#: OCPP's `ChangeConfiguration` path: no limit of its own, exactly as it has always been.
-OCPP_POLICY: Final = WritePolicy()
+#: OCPP's `ChangeConfiguration` path: a local round trip, so the regulator's and the sun's writes only keep a
+#: budget of six a minute (a charge point is never re-sent the same value pass after pass). A lowering the fuse
+#: needs is never held by it (`execution/chargers/ocpp.py`): it is read back instead, and a charge whose
+#: current is not confirmed is stopped.
+OCPP_POLICY: Final = WritePolicy(max_writes_per_minute=6)
 
 #: An OCPP charger whose current is set through its session-limit number: like other local chargers,
 #: and a zero does not pause it (the pilot floor is 6 A).

@@ -33,7 +33,7 @@ from homeassistant.helpers.event import async_call_later
 from homeassistant.util import dt as dt_util
 
 from ...const import DEFAULT_MIN_CURRENT_A
-from ...vehicles.ocpp_identity import OcppConnectorTarget
+from ...vehicles.ocpp_identity import connector_sensor_entity_id, OcppConnectorTarget, STATUS_CONNECTOR_KEY
 from ...vehicles.soc_estimate import read_energy_register_kwh
 from ..charge_progress import connector_status
 from ..charger_connection import (
@@ -47,7 +47,6 @@ from ..charger_connection import (
     UNKNOWN,
 )
 from ..charger_profiles import OCPP_NUMBER_POLICY, OCPP_POLICY, WritePolicy
-from ..pilot_floor_probe import connector_entity_id
 from .base import (
     _amps_factor,
     _finite,
@@ -484,6 +483,7 @@ class ChargerAdapter:
 
 
 def _connector_status_entity_of(
+    hass: HomeAssistant,
     ocpp_target: Callable[[], OcppConnectorTarget | None],
 ) -> Callable[[], str | None]:
     """The entity that reports the OCPP connector's status, once the connector is known."""
@@ -492,7 +492,7 @@ def _connector_status_entity_of(
         target = ocpp_target()
         if target is None:
             return None
-        return connector_entity_id(target.devid, target.connector_id, "status_connector")
+        return connector_sensor_entity_id(hass, target, STATUS_CONNECTOR_KEY)
 
     return entity_id
 
@@ -604,7 +604,7 @@ def build_adapter(
         current_enabled=bool(control),
         now=now,
         disconnected_values=tuple(profile.disconnected_values) if profile is not None else (),
-        connector_status_entity=_connector_status_entity_of(ocpp_target),
+        connector_status_entity=_connector_status_entity_of(hass, ocpp_target),
     )
     holder["adapter"] = adapter
     return adapter

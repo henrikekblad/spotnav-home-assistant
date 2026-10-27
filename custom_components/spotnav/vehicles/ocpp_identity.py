@@ -192,6 +192,95 @@ def energy_register_entity_for(hass: HomeAssistant, target: OcppConnectorTarget)
     return None
 
 
+#: A connector's sensors read by key: its status, its imported current and its transaction.
+STATUS_CONNECTOR_KEY = "status_connector"
+CURRENT_IMPORT_KEY = "current_import"
+TRANSACTION_ID_KEY = "transaction_id"
+
+
+def connector_sensor_template(devid: str, connector: int, key: str) -> str:
+    """The entity id the OCPP integration gives a connector's sensor by default: `sensor.<cpid>_connector_<n>_<key>`."""
+    return f"sensor.{devid}_connector_{connector}_{key}"
+
+
+def _charge_control_entry(registry: er.EntityRegistry, target: OcppConnectorTarget) -> er.RegistryEntry | None:
+    """The connector's charge-control switch in the registry, connector-scoped or (connector 1) flat."""
+    cpid, connector = target.charge_point_id, target.connector_id
+    unique_ids = [f"switch.{OCPP_DOMAIN}.{cpid}.conn{connector}.{CHARGE_CONTROL_KEY}"]
+    if connector == 1:
+        unique_ids.append(f"switch.{OCPP_DOMAIN}.{cpid}.{CHARGE_CONTROL_KEY}")
+    for unique_id in unique_ids:
+        entity_id = registry.async_get_entity_id("switch", OCPP_DOMAIN, unique_id)
+        if entity_id is not None:
+            return registry.async_get(entity_id)
+    return None
+
+
+def _single_connector(registry: er.EntityRegistry, hass: HomeAssistant, target: OcppConnectorTarget) -> bool:
+    """Whether the charge point is known to have one connector: its charge control is the flat one.
+
+    The flat names mean one connector (see the module docstring); a charge point with several has flat
+    station-wide sensors too, which are never a connector's.
+    """
+    if target.connector_id != 1:
+        return False
+    cpid = target.charge_point_id
+    if registry.async_get_entity_id("switch", OCPP_DOMAIN, f"switch.{OCPP_DOMAIN}.{cpid}.{CHARGE_CONTROL_KEY}"):
+        return True
+    if registry.async_get_entity_id("switch", OCPP_DOMAIN, f"switch.{OCPP_DOMAIN}.{cpid}.conn1.{CHARGE_CONTROL_KEY}"):
+        return False
+    # No registry entry either way: the states, by the integration's own naming.
+    return (
+        hass.states.get(f"switch.{cpid}_{CHARGE_CONTROL_KEY}") is not None
+        and hass.states.get(f"switch.{cpid}_connector_1_{CHARGE_CONTROL_KEY}") is None
+    )
+
+
+def connector_sensor_entity_id(hass: HomeAssistant, target: OcppConnectorTarget, key: str) -> str:
+    """The entity id of one of the target connector's sensors (`status_connector`, `current_import`, ...).
+
+    Found by what the entity is, not by its name, so a renamed entity is still found:
+
+    1. the registry's unique id, `ocpp.<cpid>.conn<n>.<key>.sensor` (the flat `ocpp.<cpid>.<key>.sensor`
+       only on a charge point with one connector);
+    2. the sensor on the connector's own device (the device of its charge-control switch) whose
+       `translation_key`, or unique id, names `key`, and whose unique id names this connector (or, on a
+       one-connector charge point, no connector);
+    3. the integration's default name, `sensor.<cpid>_connector_<n>_<key>`, or the flat
+       `sensor.<cpid>_<key>` of a one-connector charge point when only that one exists.
+
+    Read-only, and never `None`: a sensor that does not exist (yet) reads as missing to the caller.
+    """
+    registry = er.async_get(hass)
+    cpid, connector = target.charge_point_id, target.connector_id
+    single = _single_connector(registry, hass, target)
+    unique_ids = [f"{OCPP_DOMAIN}.{cpid}.conn{connector}.{key}.sensor", f"sensor.{OCPP_DOMAIN}.{cpid}.conn{connector}.{key}"]
+    if single:
+        unique_ids += [f"{OCPP_DOMAIN}.{cpid}.{key}.sensor", f"sensor.{OCPP_DOMAIN}.{cpid}.{key}"]
+    for unique_id in unique_ids:
+        entity_id = registry.async_get_entity_id("sensor", OCPP_DOMAIN, unique_id)
+        if entity_id is not None:
+            return entity_id
+    control = _charge_control_entry(registry, target)
+    if control is not None and control.device_id is not None:
+        for entry in er.async_entries_for_device(registry, control.device_id):
+            if entry.domain != "sensor" or entry.platform != OCPP_DOMAIN:
+                continue
+            unique_id = entry.unique_id if isinstance(entry.unique_id, str) else ""
+            if not (entry.translation_key == key or unique_id.endswith((f".{key}.sensor", f".{key}"))):
+                continue
+            # Another connector's sensor, or (on a charge point with several) one that names no connector,
+            # is never this connector's.
+            scoped = f".conn{connector}." in f"{unique_id}."
+            if scoped or (single and ".conn" not in unique_id):
+                return entry.entity_id
+    template = connector_sensor_template(target.devid, connector, key)
+    flat = f"sensor.{target.devid}_{key}"
+    if single and hass.states.get(template) is None and hass.states.get(flat) is not None:
+        return flat
+    return template
+
+
 def target_from_entity_id(entity_id: str) -> OcppConnectorTarget | None:
     """The connector an OCPP control entity names: the charge control's, else the session limit's."""
     return charge_control_target_from_entity_id(entity_id) or session_limit_target_from_entity_id(

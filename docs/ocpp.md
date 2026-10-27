@@ -16,10 +16,14 @@ OCPP hardware has been tested.
 | Session current limit | `number.<charge_point>_connector_<n>_session_current_limit` | per connector, only during a transaction |
 | Station maximum | `number.<charge_point>_maximum_current` | per charge point, a persistent ceiling |
 | Connector status | `sensor.<charge_point>_connector_<n>_status_connector` | per connector |
+| Current import | `sensor.<charge_point>_connector_<n>_current_import` | per connector |
 | Transaction | `sensor.<charge_point>_connector_<n>_transaction_id` | per connector |
 
-A charge point with one connector uses the flat names (`switch.<charge_point>_charge_control`),
-which mean connector 1. The station maximum is never written by SpotNav. The session current
+A charge point with one connector uses the flat names (`switch.<charge_point>_charge_control`,
+`sensor.<charge_point>_status_connector`), which mean connector 1. SpotNav finds a connector's
+sensors by their identity in Home Assistant's entity registry (the connector they belong to), so a
+renamed sensor is still read; the names above are only the fallback. On a charge point with several
+connectors a flat sensor is the station's, never a connector's. The station maximum is never written by SpotNav. The session current
 limit is `unavailable` while no transaction runs, which is normal.
 
 ## Which connector
@@ -41,6 +45,10 @@ configuration key, a read-only question with a ten second limit:
 - **The charge point lists this connector.** The current is set through **ChangeConfiguration
   (AssignedCurrent)**: the OCPP integration's `configure` service sets the `AssignedCurrent`
   configuration key. It modulates a running charge with no charging profile and no reboot.
+  Load balancing and the sun write it at most six times a minute. The `configure` service answers
+  the same whether the charge point accepted the value or rejected it, so when load balancing must
+  lower the current (an overload) the key is read back, for at most 5 seconds, and is never held by
+  that budget: a charge point that does not confirm the lower value is stopped instead.
 - **The charge point answers without it.** If the connector has exactly one session current limit
   number, the current is set through that number, at most one write every 10 s. Otherwise
   SpotNav does not set the current.

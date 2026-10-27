@@ -33,7 +33,7 @@ from ..charger_shapes import register_shape, SHAPES
 NUMBER_ATTRS = {"unit_of_measurement": "A", "min": 0, "max": 16, "step": 1}
 
 
-async def test_the_ocpp_adapter_is_the_original_path_with_no_policy_of_its_own(hass: HomeAssistant) -> None:
+async def test_the_ocpp_adapter_is_the_original_path_with_a_budget_for_the_regulator(hass: HomeAssistant) -> None:
     hass.states.async_set("switch.cp_charge_control", "off")
     config = {
         CONF_MODE: MODE_OCPP,
@@ -49,6 +49,8 @@ async def test_the_ocpp_adapter_is_the_original_path_with_no_policy_of_its_own(h
 
     assert adapter.is_ocpp
     assert adapter.policy.min_interval_s == 0 and not adapter.policy.flash_stored
+    assert adapter.policy.max_writes_per_minute == 6
+    assert adapter.current.confirms_must_lower is True
     assert adapter.capabilities.regulated_current is True
     assert adapter.describe()["current"]["service"] == "ocpp.configure"
     assert adapter.describe()["start_stop"]["kind"] == "switch"

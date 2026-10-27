@@ -29,6 +29,7 @@ from custom_components.spotnav.core.session import ChargeSession
 from custom_components.spotnav.site.regulator_damping import RegulatorDamper
 from custom_components.spotnav.site.site_capacity_controller import START_CREDIT_S
 
+from .charger_helpers import mock_ocpp_assigned_current
 from .helpers import make_entry, make_site_entry
 from .test_battery_fuse import _end_the_wish
 from .test_yield_stepping_wiring import _DamperClock, _SecondsClock
@@ -102,8 +103,7 @@ async def _halo(
 
     prefix = f"{entry_id}_charger"
     hass.states.async_set(f"switch.{prefix}", "off")
-    async_mock_service(hass, "ocpp", "get_configuration", response={"value": "1.16,2.10"})
-    configure = async_mock_service(hass, "ocpp", "configure")
+    configure = mock_ocpp_assigned_current(hass, "1.16,2.10")
     monkeypatch.setattr(ChargerAdapter, "vehicle_connected", lambda self: True)
     charger = make_entry(
         hass,
