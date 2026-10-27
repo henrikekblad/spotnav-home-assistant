@@ -58,11 +58,14 @@ from ..const import (
     MODE_OCPP,
 )
 from ..vehicles.ocpp_identity import (
+    connector_sensor_entity_id,
+    CURRENT_IMPORT_KEY,
     discover_controls,
     energy_register_entity_for,
     OcppConnectorTarget,
     OcppCurrentControls,
     resolve_target,
+    STATUS_CONNECTOR_KEY,
 )
 from .charger_entities import charger_is_disabled
 from .power_energy import integrated_energy_unique_id, read_power_w
@@ -99,7 +102,7 @@ from .charge_progress import (
     connector_status,
     START_ACK_TIMEOUT_S,
 )
-from .pilot_floor_probe import connector_entity_id, interrupted, PilotFloorProbe, PROBE_TOKEN, STORE_KEY
+from .pilot_floor_probe import interrupted, PilotFloorProbe, PROBE_TOKEN, STORE_KEY
 from .plan_car_ended import PlanChargeWatch
 from .target_stop import (
     car_ended_full,
@@ -1223,12 +1226,12 @@ class ChargingController:
             states = self.hass.states
             status = connector_status(
                 states.get(
-                    connector_entity_id(target.devid, target.connector_id, "status_connector")
+                    connector_sensor_entity_id(self.hass, target, STATUS_CONNECTOR_KEY)
                 )
             )
             current = connector_current(
                 states.get(
-                    connector_entity_id(target.devid, target.connector_id, "current_import")
+                    connector_sensor_entity_id(self.hass, target, CURRENT_IMPORT_KEY)
                 )
             )
         # A charger with a power sensor and no status sensor is judged by its power.
@@ -1259,7 +1262,7 @@ class ChargingController:
         target = self.ocpp_target
         if target is not None:
             return connector_current(
-                self.hass.states.get(connector_entity_id(target.devid, target.connector_id, "current_import"))
+                self.hass.states.get(connector_sensor_entity_id(self.hass, target, CURRENT_IMPORT_KEY))
             )
         if self.adapter.is_ocpp:
             return None
@@ -2661,10 +2664,10 @@ class ChargingController:
         target = self.ocpp_target
         if target is not None:
             entity_ids.append(
-                connector_entity_id(target.devid, target.connector_id, "status_connector")
+                connector_sensor_entity_id(self.hass, target, STATUS_CONNECTOR_KEY)
             )
             entity_ids.append(
-                connector_entity_id(target.devid, target.connector_id, "current_import")
+                connector_sensor_entity_id(self.hass, target, CURRENT_IMPORT_KEY)
             )
         entity_ids.extend(
             entity_id
@@ -5200,7 +5203,7 @@ class ChargingController:
             return
         self._probe_listener_cancel = async_track_state_change_event(
             self.hass,
-            [connector_entity_id(target.devid, target.connector_id, "current_import")],
+            [connector_sensor_entity_id(self.hass, target, CURRENT_IMPORT_KEY)],
             self._async_probe_import_changed,
         )
 

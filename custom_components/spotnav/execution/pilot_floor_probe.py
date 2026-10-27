@@ -33,6 +33,13 @@ from homeassistant.core import HomeAssistant
 from homeassistant.util import dt as dt_util
 
 from ..const import CURRENT_CONTROL_CHANGE_CONFIGURATION, DEFAULT_MIN_CURRENT_A
+from ..vehicles.ocpp_identity import (
+    connector_sensor_entity_id,
+    CURRENT_IMPORT_KEY,
+    OcppConnectorTarget,
+    STATUS_CONNECTOR_KEY,
+    TRANSACTION_ID_KEY,
+)
 from .chargers.ocpp import assigned_amps_for_connector, rewrite_assigned_current
 
 
@@ -120,9 +127,6 @@ def interrupted(record: dict[str, Any]) -> bool:
     return bool(record.get("started")) and not record.get("completed")
 
 
-def connector_entity_id(devid: str, connector: int, kind: str) -> str:
-    """One of a connector's OCPP sensors: `sensor.<devid>_connector_<n>_<kind>`."""
-    return f"sensor.{devid}_connector_{connector}_{kind}"
 
 class PilotFloorProbe:
     """Runs the sequence when asked; while in flight the site regulator cannot interrupt it."""
@@ -250,9 +254,9 @@ class PilotFloorProbe:
             amps,
             written,
             read_back[2] if read_back is not None else None,
-            self._reading(connector_entity_id(devid, connector, "status_connector")),
-            self._reading(connector_entity_id(devid, connector, "current_import")),
-            self._reading(connector_entity_id(devid, connector, "transaction_id")),
+            self._reading(self._sensor(devid, connector, STATUS_CONNECTOR_KEY)),
+            self._reading(self._sensor(devid, connector, CURRENT_IMPORT_KEY)),
+            self._reading(self._sensor(devid, connector, TRANSACTION_ID_KEY)),
         )
         return True
 
@@ -346,6 +350,10 @@ class PilotFloorProbe:
         await self._async_record(
             {"started": True, "completed": True, "completed_at": self._now().isoformat()}
         )
+
+    def _sensor(self, devid: str, connector: int, key: str) -> str:
+        """One of the connector's OCPP sensors, found through the registry (`connector_sensor_entity_id`)."""
+        return connector_sensor_entity_id(self._host.hass, OcppConnectorTarget(devid, connector), key)
 
     def _reading(self, entity_id: str) -> str:
         state = self._host.hass.states.get(entity_id)
