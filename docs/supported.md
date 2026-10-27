@@ -193,6 +193,7 @@ The integrations below are the ones the detection was checked against, from each
 | Leapmotor (`leapmotor`) | Can be set | The one-decimal level is a diagnostic battery sensor, the remaining energy is not a capacity. | Detected from the integration's source |
 | Lucid Motors (`lucidmotors`) | Can be set | capacity_kwhr is the pack, kwhr the energy left in it. | Detected from the integration's source |
 | Lynk & Co (`lynkco`) | Read only, used as the ceiling | The read-only charge limit is a percent sensor, a service sets it. | Detected from the integration's source |
+| Mazda Connected Services ng (`mazda_cs`) | None found | The level is read only, the 12 V estimate has no class, the odometer is a distance too. | Tested: charging verified (Mazda MX-30) |
 | Mercedes-Benz (`mbapi2020`) | Read only, used as the ceiling | max_soc sensor is a ceiling only. | Tested: charging verified (Mercedes-Benz) |
 | MG (SAIC) (`mg_saic`) | Can be set | Target SOC and fuel level are battery class; capacity is declared a meter. | Detected from the integration's source |
 | MySkoda (`myskoda`) | Can be set |  | Detected from the integration's source |

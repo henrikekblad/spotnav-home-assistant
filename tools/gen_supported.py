@@ -49,6 +49,7 @@ TESTED_ON: dict[tuple[str, str], str] = {
     ("charger", "easee"): "Easee Home",
     ("meter", "tibber"): "Tibber Pulse",
     ("vehicle", "mbapi2020"): "Mercedes-Benz",
+    ("vehicle", "mazda_cs"): "Mazda MX-30",
     ("forecast", "solcast_solar"): "Solcast",
 }
 
@@ -143,6 +144,7 @@ NAMES: dict[str, str] = {
     "leapmotor": "Leapmotor",
     "nissan_carwings": "Nissan Carwings",
     "uconnect": "Uconnect (Fiat, Jeep, Alfa Romeo)",
+    "mazda_cs": "Mazda Connected Services ng",
 }
 
 #: Solar forecast integrations: Home Assistant domain, display name. Any integration that feeds the
