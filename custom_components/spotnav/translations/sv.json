@@ -325,7 +325,7 @@
           "regulator_deadband_a": "Aktiv styrning: ignorera ändringar mindre än (A)",
           "regulator_dwell_s": "Aktiv styrning: hur länge en ändring måste hålla (sekunder)",
           "yield_stepping_enabled": "Verifierad eftergiftssteg aktiverad (opt-in, för en site med en last som ger vika, t.ex. ett hembatteri)",
-          "yield_ceiling_a": "Eftergiftssteg: hårt tak, överskrids aldrig (A, måste vara större än huvudsäkringen)",
+          "yield_ceiling_a": "Eftergiftssteg: hårt tak, överskrids aldrig (A, måste vara större än huvudsäkringen); gäller först när hembatteriet har setts ge vika, dessförinnan är huvudsäkringen själv taket",
           "solar_priority": "Prioritet för solöverskott (bilen eller hembatteriet först)",
           "battery_aggregate_power_entity": "Hembatteriets laddeffekt (valfri, endast diagnostik)",
           "change_measurement": "Ändra mätning och fasinkoppling",

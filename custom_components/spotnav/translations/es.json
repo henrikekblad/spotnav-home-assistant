@@ -325,7 +325,7 @@
           "regulator_deadband_a": "Control activo: ignorar cambios menores que (A)",
           "regulator_dwell_s": "Control activo: cuánto tiempo debe mantenerse un cambio (segundos)",
           "yield_stepping_enabled": "Escalonado con cesión verificada activado (opcional, para una instalación con una carga que cede, p. ej. una batería doméstica)",
-          "yield_ceiling_a": "Escalonado con cesión: techo absoluto, nunca se supera (A, debe ser mayor que el fusible general)",
+          "yield_ceiling_a": "Escalonado con cesión: techo absoluto, nunca se supera (A, debe ser mayor que el fusible general); solo se aplica cuando se ha visto ceder a la batería doméstica, hasta entonces el propio fusible general es el techo",
           "solar_priority": "Prioridad del excedente solar (primero el coche o la batería doméstica)",
           "battery_aggregate_power_entity": "Potencia de carga de la batería doméstica (opcional, solo diagnóstico)",
           "change_measurement": "Cambiar la medición y la conexión de fases",

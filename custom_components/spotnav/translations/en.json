@@ -325,7 +325,7 @@
           "regulator_deadband_a": "Active control: ignore changes smaller than (A)",
           "regulator_dwell_s": "Active control: how long a change must hold (seconds)",
           "yield_stepping_enabled": "Yield-verified stepping enabled (opt-in, for a site with a load that yields, e.g. a house battery)",
-          "yield_ceiling_a": "Yield stepping: hard ceiling, never exceeded (A, must be greater than the main fuse)",
+          "yield_ceiling_a": "Yield stepping: hard ceiling, never exceeded (A, must be greater than the main fuse); applies only once the home battery has been seen to give way, until then the main fuse itself is the ceiling",
           "solar_priority": "Solar surplus priority (car or the house battery first)",
           "battery_aggregate_power_entity": "Home battery charging power (optional, diagnostic only)",
           "change_measurement": "Change measurement and phase wiring",

@@ -325,7 +325,7 @@
           "regulator_deadband_a": "Aktiv styring: ignorér ændringer mindre end (A)",
           "regulator_dwell_s": "Aktiv styring: hvor længe en ændring skal holde (sekunder)",
           "yield_stepping_enabled": "Trinvis øgning med bekræftet eftergivelse slået til (tilvalg, for et anlæg med en last, der giver efter, f.eks. et hjemmebatteri)",
-          "yield_ceiling_a": "Trinvis øgning: absolut loft, overskrides aldrig (A, skal være større end hovedsikringen)",
+          "yield_ceiling_a": "Trinvis øgning: absolut loft, overskrides aldrig (A, skal være større end hovedsikringen); gælder først, når hjemmebatteriet er set give efter, indtil da er hovedsikringen selv loftet",
           "solar_priority": "Prioritet for soloverskud (bilen eller hjemmebatteriet først)",
           "battery_aggregate_power_entity": "Hjemmebatteriets ladeeffekt (valgfrit, kun diagnostik)",
           "change_measurement": "Ændr måling og fasetilslutning",
