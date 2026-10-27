@@ -132,6 +132,8 @@ def _verdict(state: dict[str, Any]) -> YieldVerdict | None:
     )
 
 
+# Hypothesis's own PRNG bookkeeping warns when it is drawn from inside a running event loop's test; nothing of ours.
+@pytest.mark.filterwarnings("ignore::hypothesis.errors.HypothesisWarning")
 async def test_an_import_overload_always_ends_in_a_lower_write_or_a_safety_stop(
     hass: HomeAssistant, monkeypatch: pytest.MonkeyPatch
 ) -> None:
