@@ -35,7 +35,7 @@ Commands are intents: `Start(reason)`, `Stop(reason, clear_schedule)`, `Keep()`,
 start or stop comes back as `CommandResult(executed, balancing_held, unobserved)`, and only then does the owner
 change: a stop that never went out keeps the owner (I4), a start that never went out owns nothing.
 
-Events: `plug_in`, `unplug`, `connection_unknown`, `window_start` (timer, re-arm or plug-in), `window_end`,
+Events: `plug_in`, `unplug`, `connection_unknown`, `window_start` (timer, re-arm, plug-in, or `retry`: a start that has not taken sent again, decided as a plug-in's), `window_end`,
 `final_window_end`, `rearm` (outside every window, or past the last), `person_start`, `person_stop`,
 `direct_start`/`direct_stop` (no boundary), `resume` (resume, follow, an expired span pause), `pause_choice`,
 `strategy_change`, `solar_start`, `solar_stop` (also the take-over of a self-started charge), `min_soc_start`,

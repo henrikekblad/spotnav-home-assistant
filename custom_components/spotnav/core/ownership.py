@@ -86,6 +86,7 @@ from .events import (
     Timer,
     TopOffEnd,
     TRIGGER_PLUG_IN,
+    TRIGGER_RETRY,
     Unplug,
     WindowEnd,
     WindowStart,
@@ -371,7 +372,7 @@ def _window_start(session: ChargeSession, event: WindowStart, now: datetime) -> 
         need_grew=event.need_grew,
         awaits_level=event.car_ended_awaits_level,
     )
-    if event.trigger != TRIGGER_PLUG_IN:
+    if event.trigger not in (TRIGGER_PLUG_IN, TRIGGER_RETRY):
         # The plug-in session a hold belonged to ends where the next window starts.
         s = session.with_changes(held=False, overridden=False)
         if event.target_stopping or event.target_reached:
