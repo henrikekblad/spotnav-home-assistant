@@ -354,3 +354,30 @@ async def test_a_switch_on_while_the_charger_idles_is_not_the_car_ending_the_cha
     assert len(starts) == 1, "a switch already on gets no stop-and-start kick"
     assert controller._car_ended_at is None  # noqa: SLF001
     assert controller.plan is not None and controller.plan_window_active_now
+
+
+async def test_a_full_car_refusing_at_once_is_the_car_ending_the_charge(
+    hass: HomeAssistant, freezer: Any, core: bool
+) -> None:
+    """The charger took the start (its switch is on) and the car says `SuspendedEV` from the first moment: a full car,
+    recognised after `PLAN_CAR_IDLE_S`, and the start is not sent again."""
+    controller, starts = await _switch_charger(hass, core, mode="follows", status="SuspendedEV")
+    await install_schedule(controller, _window())
+    await _after(hass, freezer, 31)
+    assert len(starts) == 1
+    for tick in range(14):
+        await _after(hass, freezer, 30)
+        hass.states.async_set(STATUS, "SuspendedEV", {"tick": tick})
+        await hass.async_block_till_done()
+    assert controller._car_ended_at is not None  # noqa: SLF001
+    assert len(starts) == 1
+
+
+async def test_a_start_the_car_refuses_is_not_sent_again(hass: HomeAssistant, freezer: Any, core: bool) -> None:
+    controller, starts = await _switch_charger(hass, core, status="SuspendedEV")
+    await install_schedule(controller, _window())
+    await _after(hass, freezer, 31)
+    assert len(starts) == 1
+    await _walk(hass, freezer, 1200, step=60)
+    assert len(starts) == 1
+    assert controller.window_start_retry["last"]["result"] == "car_refuses"

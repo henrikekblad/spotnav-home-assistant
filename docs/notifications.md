@@ -90,7 +90,8 @@ by itself, 90 seconds, 5 minutes and 10 minutes after it (once only for a Webast
 its stop first). Those retries tell nothing of their own: "did not start" is still told after three
 minutes, once, and a retry that gets the charge going later counts as the charge recovering. Nothing
 is sent again while the charger's own schedule or load balancer holds the charge, while its enable
-switch is off, once it says the car finished, while its charge control already reads on, or after
+switch is off, once it says the car finished or the car refuses the charge (`SuspendedEV`), while its
+charge control already reads on, or after
 the window ended, the car was unplugged, a person pressed Stop, load balancing paused the charge or
 solar took the charger.
 

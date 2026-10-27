@@ -4126,6 +4126,10 @@ class ChargingController:
         if self.adapter.connection()[0] == CONNECTION_FINISHED:
             # The car finished (or the charger wants it replugged): a start does not change that.
             return "finished"
+        status = self.charge_progress_facts().connector_status
+        if status is not None and status.lower() == "suspendedev":
+            # The car refuses the charge (full, or its own timer): sending the start again does not change that.
+            return "car_refuses"
         if self._paused_by_balancing:
             # Load balancing holds the charge back: its regulator resumes it, with its own margin and dwell.
             return "balancing_paused"

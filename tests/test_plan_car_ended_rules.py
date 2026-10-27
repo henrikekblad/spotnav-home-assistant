@@ -103,25 +103,35 @@ def test_suspended_ev_with_no_current_reading_is_not_drawing() -> None:
     assert _look(watch, T0 + timedelta(seconds=PLAN_CAR_IDLE_S), drawing=None)
 
 
-@pytest.mark.parametrize("status", ["suspendedev", "ready", "awaiting_start", "SuspendedEVSE"])
-def test_a_start_that_never_drew_is_not_the_car_ending_the_charge(status: str) -> None:
-    """A switch that reads on while the charger idles (a start it did not act on): however long, the car did not end a
-    charge it never drew in."""
+@pytest.mark.parametrize("status", ["ready", "awaiting_start", "SuspendedEVSE", "suspendedevse", None])
+def test_a_start_that_never_drew_is_not_the_car_ending_the_charge(status: str | None) -> None:
+    """A switch that reads on while the charger side idles (a start it did not act on): however long, the car did not
+    end a charge it never drew in."""
     watch = PlanChargeWatch()
     for seconds in range(0, 3600, 30):
         assert not _look(watch, T0 + timedelta(seconds=seconds), drawing=False, connector_status=status)
 
 
+@pytest.mark.parametrize("status", ["SuspendedEV", "suspendedev"])
+def test_a_full_car_refusing_at_once_ended_the_charge(status: str) -> None:
+    """Before any draw the car's own refusal still counts: a full car says `SuspendedEV` from the start."""
+    watch = PlanChargeWatch()
+    assert not _look(watch, T0, connector_status=status)
+    assert not _look(watch, T0 + timedelta(seconds=PLAN_CAR_IDLE_S - 1), connector_status=status)
+    assert _look(watch, T0 + timedelta(seconds=PLAN_CAR_IDLE_S), connector_status=status)
+
+
 def test_once_the_car_drew_its_idling_ends_the_charge_and_a_new_start_must_draw_again() -> None:
     watch = PlanChargeWatch()
-    assert not _look(watch, T0, drawing=False)
+    assert not _look(watch, T0, drawing=False, connector_status="ready")
     assert not _look(watch, T0 + timedelta(seconds=60), drawing=True, connector_status="Charging")
-    assert not _look(watch, T0 + timedelta(seconds=90))
-    assert _look(watch, T0 + timedelta(seconds=90 + PLAN_CAR_IDLE_S))
-    # The control went off and on again: a new start, which has not drawn.
+    # Drawn: idling with any status ends it now.
+    assert not _look(watch, T0 + timedelta(seconds=90), connector_status="ready")
+    assert _look(watch, T0 + timedelta(seconds=90 + PLAN_CAR_IDLE_S), connector_status="ready")
+    # The control went off and on again: a new start, which has not drawn, so a charger side idling is not the car.
     assert not _look(watch, T0 + timedelta(seconds=1000), control_on=False)
     for seconds in range(1030, 3000, 30):
-        assert not _look(watch, T0 + timedelta(seconds=seconds))
+        assert not _look(watch, T0 + timedelta(seconds=seconds), connector_status="ready")
 
 
 # ---------------------------------------------------------------------------------------------- full or not

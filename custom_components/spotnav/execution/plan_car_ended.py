@@ -9,9 +9,10 @@ the plan's charge control on, it draws nothing for `PLAN_CAR_IDLE_S` in a row: b
 Not the car: load balancing pausing the charge, the charger's own scheduler or load balancer holding it (or its
 connector saying `SuspendedEVSE`, in any case: a charger other than OCPP reports its status lower-cased), a Start not
 yet answered, a control that is off, a charge that is not the plan's, and a car whose drawing cannot be read at all.
-Each of these starts the clock again. Nor a charge that has not drawn at all since its start: a start the charger did
-not act on (a switch that reads on while the charger idles, `awaiting_start`) is no charge the car ended, and the start
-is sent again instead (`START_RETRY_AFTER_S`).
+Each of these starts the clock again. Before a charge has drawn at all since its start, only the car's own refusal
+counts (its status says `SuspendedEV`, or the profile's value for it: a full car refusing at once): a start the charger
+did not act on (a switch that reads on while the charger idles, `awaiting_start`, `ready`, no status) is no charge the
+car ended, and the start is sent again instead (`START_RETRY_AFTER_S`).
 
 While load balancing holds the plan's charge back this watch sees nothing; there the battery probe is the car's
 test instead: two probes in a row the car refused (`site/battery_probe.py`, `car_refused`) end the charge the same
@@ -74,7 +75,10 @@ class PlanChargeWatch:
             or start_pending
             or status == SUSPENDED_EVSE.lower()
             or not idle
-            or not self._drawn
+            # Before the charge has drawn only the car's own refusal counts (`SuspendedEV`, or the profile's value
+            # for it): a charger side that idles (`SuspendedEVSE`, ready, awaiting a start, no status) is a start
+            # that did not take.
+            or (not self._drawn and status != SUSPENDED_EV.lower())
         )
         if not_the_car:
             self.reset()
