@@ -48,8 +48,15 @@ def _look(watch: PlanChargeWatch, at: datetime, **facts: object) -> bool:
     return watch.observe(**values)  # type: ignore[arg-type]
 
 
-def test_a_car_at_suspended_ev_for_five_minutes_in_a_window_ended_the_charge() -> None:
+def _drawn(at: datetime = T0 - timedelta(seconds=60)) -> PlanChargeWatch:
+    """A watch over a plan's charge the car has drawn in since its start: only such a charge can the car end."""
     watch = PlanChargeWatch()
+    assert not _look(watch, at, drawing=True, connector_status="Charging")
+    return watch
+
+
+def test_a_car_at_suspended_ev_for_five_minutes_in_a_window_ended_the_charge() -> None:
+    watch = _drawn()
     assert not _look(watch, T0)
     assert not _look(watch, T0 + timedelta(seconds=PLAN_CAR_IDLE_S - 1))
     assert _look(watch, T0 + timedelta(seconds=PLAN_CAR_IDLE_S))
@@ -57,7 +64,7 @@ def test_a_car_at_suspended_ev_for_five_minutes_in_a_window_ended_the_charge() -
 
 
 def test_a_current_near_zero_with_the_charge_on_is_the_car_ending_it_too() -> None:
-    watch = PlanChargeWatch()
+    watch = _drawn()
     # 02:24-02:30 the EV6 drew 0.57 A with the connector still saying `Charging`: not drawing by the measurement.
     assert not _look(watch, T0, connector_status="Charging", drawing=False)
     assert _look(watch, T0 + timedelta(seconds=PLAN_CAR_IDLE_S), connector_status="Charging", drawing=False)
@@ -73,22 +80,48 @@ def test_a_current_near_zero_with_the_charge_on_is_the_car_ending_it_too() -> No
         {"start_pending": True},
         {"control_on": False},
         {"plan_charge": False},
-        # The charger holds the car back (its own limit), not the car itself.
+        # The charger holds the car back (its own limit), not the car itself; a charger other than OCPP says it
+        # lower-cased.
         {"connector_status": "SuspendedEVSE"},
+        {"connector_status": "suspendedevse"},
     ],
 )
 def test_what_is_not_the_car_ending_the_charge_starts_the_clock_again(facts: dict[str, object]) -> None:
-    watch = PlanChargeWatch()
+    watch = _drawn()
     assert not _look(watch, T0)
     assert not _look(watch, T0 + timedelta(seconds=200), **facts)
+    if facts.get("control_on") is False or facts.get("plan_charge") is False:
+        # The charge ended: the next one has to draw before the car can end it.
+        assert not _look(watch, T0 + timedelta(seconds=201), drawing=True)
     assert not _look(watch, T0 + timedelta(seconds=PLAN_CAR_IDLE_S + 10)), "the clock started again"
     assert _look(watch, T0 + timedelta(seconds=200 + 2 * PLAN_CAR_IDLE_S))
 
 
 def test_suspended_ev_with_no_current_reading_is_not_drawing() -> None:
-    watch = PlanChargeWatch()
+    watch = _drawn()
     assert not _look(watch, T0, drawing=None)
     assert _look(watch, T0 + timedelta(seconds=PLAN_CAR_IDLE_S), drawing=None)
+
+
+@pytest.mark.parametrize("status", ["suspendedev", "ready", "awaiting_start", "SuspendedEVSE"])
+def test_a_start_that_never_drew_is_not_the_car_ending_the_charge(status: str) -> None:
+    """A switch that reads on while the charger idles (a start it did not act on): however long, the car did not end a
+    charge it never drew in."""
+    watch = PlanChargeWatch()
+    for seconds in range(0, 3600, 30):
+        assert not _look(watch, T0 + timedelta(seconds=seconds), drawing=False, connector_status=status)
+
+
+def test_once_the_car_drew_its_idling_ends_the_charge_and_a_new_start_must_draw_again() -> None:
+    watch = PlanChargeWatch()
+    assert not _look(watch, T0, drawing=False)
+    assert not _look(watch, T0 + timedelta(seconds=60), drawing=True, connector_status="Charging")
+    assert not _look(watch, T0 + timedelta(seconds=90))
+    assert _look(watch, T0 + timedelta(seconds=90 + PLAN_CAR_IDLE_S))
+    # The control went off and on again: a new start, which has not drawn.
+    assert not _look(watch, T0 + timedelta(seconds=1000), control_on=False)
+    for seconds in range(1030, 3000, 30):
+        assert not _look(watch, T0 + timedelta(seconds=seconds))
 
 
 # ---------------------------------------------------------------------------------------------- full or not
