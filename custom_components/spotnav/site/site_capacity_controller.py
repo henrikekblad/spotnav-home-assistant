@@ -1363,7 +1363,7 @@ class SiteCapacityController:
         1. skip a charger that is not commandable (`_is_commandable_charger`);
         2. skip a decision with no proposed current (a refusal is never a silent keep);
         3. hold unless `applyability_failure` passes on freshly re-read measurements;
-        4. if yield stepping is enabled and no pilot probe is in flight, consult the `YieldStepper`:
+        4. if yield stepping is enabled, consult the `YieldStepper`:
            "hold" writes nothing, "write" replaces the proposal, "passthrough" keeps it (all pass
            `urgent` on);
         5. let the charger's `RegulatorDamper` decide between write and hold;
@@ -1647,13 +1647,9 @@ class SiteCapacityController:
             decision = replace(decision, proposed_current_a=guarded.proposed_a)
             proposed = guarded.proposed_a
 
-        # Yield-verified stepping, only when enabled. The probe gate matters even though writes
-        # are suppressed during a probe: its artificial steps would contaminate the observation.
+        # Yield-verified stepping, only when enabled.
         yield_verdict: YieldVerdict | None = None
-        if (
-            bool(self.config.get(CONF_YIELD_STEPPING_ENABLED, DEFAULT_YIELD_STEPPING_ENABLED))
-            and not charger_controller._probe.in_flight
-        ):
+        if bool(self.config.get(CONF_YIELD_STEPPING_ENABLED, DEFAULT_YIELD_STEPPING_ENABLED)):
             yield_verdict = self._consult_yield_stepper(
                 charger_entry_id=charger_entry_id,
                 decision=decision,
@@ -2307,7 +2303,7 @@ class SiteCapacityController:
         `PROBE_MAX_FUSE_FACTOR` times the fuse; and no back-off is running. A start the charger
         refuses counts as a failure.
         """
-        if not self._battery_rules_apply() or charger_controller._probe.in_flight:
+        if not self._battery_rules_apply():
             return False
         wiring: dict[str, Any] = (self.config.get(CONF_PHASE_WIRING) or {}).get(
             charger_entry_id

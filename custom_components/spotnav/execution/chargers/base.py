@@ -28,7 +28,6 @@ _ADAPTER_LOGGER = logging.getLogger(__name__)
 
 # Why a write was not made, or what became of it: stable codes, never prose.
 ASSIGN_ASSIGNED: Final = "assigned"
-ASSIGN_PROBE_IN_FLIGHT: Final = "probe_in_flight"
 ASSIGN_BELOW_MINIMUM: Final = "below_minimum"
 ASSIGN_NO_TARGET: Final = "no_connector_target"
 ASSIGN_READ_FAILED: Final = "assigned_current_unreadable"

@@ -17,8 +17,8 @@ observed). The advisory is true only of one captured snapshot in which all of th
 
 `L1/L2/L3` attributes are never read: some sensors keep the last non-zero per-phase samples there
 after the main state has gone to `0`. `unavailable`, `unknown` and non-numeric states are
-unobservable, not zero. `SuspendedEVSE` is the charger's own pilot (see `pilot_floor_probe`), not
-the vehicle's failure, and a connector that reports `Charging` is the charger doing as told.
+unobservable, not zero. `SuspendedEVSE` is the charger holding the car back itself, not the vehicle's
+failure, and a connector that reports `Charging` is the charger doing as told.
 
 A charger with a power sensor and no status sensor (a dumb charger behind a smart plug) has no
 connector status: it is judged by its power instead. The advisory is the same state, with the reason
@@ -106,7 +106,7 @@ SUSPENDED_EV = "SuspendedEV"
 CHARGING = "Charging"
 
 #: Above this many amperes the main state is a charge in progress; well below the
-#: IEC 61851 6 A floor that `pilot_floor_probe` measures against.
+#: IEC 61851 6 A floor.
 ZERO_CURRENT_A = 0.5
 
 #: How long the full predicate must hold before the advisory is published.
