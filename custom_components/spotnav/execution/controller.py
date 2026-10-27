@@ -193,7 +193,8 @@ STOP_RETRY_S: Final = 30.0
 #: A command an automatic decision made while the charger's integration had not loaded its entities or services
 #: (right after a restart, before an OCPP charge point is there) is neither sent nor done: it is owed, the charger
 #: is looked at every `OWED_CHECK_S`, and once it is ready the decision is taken again on what holds then (never
-#: the stale command replayed). Given up on, logged once, after `OWED_GIVE_UP_S`.
+#: the stale command replayed). Given up on, logged once, after `OWED_GIVE_UP_S`; an owed start of a window that is
+#: still open is not given up until the window ends.
 OWED_CHECK_S: Final = 5.0
 OWED_GIVE_UP_S: Final = 900.0
 #: Putting back an interrupted pilot-floor probe while the charger is not ready yet (an OCPP charge point
@@ -4075,7 +4076,8 @@ class ChargingController:
     @callback
     def _owed_tick(self, _now: datetime | None = None) -> None:
         """Look at the charger once more for what is owed: a decision whose charger is ready now is taken again,
-        a wait past `OWED_GIVE_UP_S` is given up on."""
+        a wait past `OWED_GIVE_UP_S` is given up on (a command owed while a window of the plan is open waits for the
+        window's end)."""
         since = self._owed_since
         if since is None or self._shut_down or self._owed_settling:
             return
@@ -4092,6 +4094,9 @@ class ChargingController:
             self._async_spawn(self._async_settle_owed(command, current), "the owed command")
             return
         if (dt_util.utcnow() - since).total_seconds() >= OWED_GIVE_UP_S:
+            if self._owed_command and self.plan is not None and self._open_window_end() is not None:
+                # A window of the plan is still open: its start is owed until the window ends, not given up on.
+                return
             self._cancel_owed()
             _LOGGER.warning(
                 "SpotNav charger %s: the charger did not become ready within %s minutes; the command it was owed "
