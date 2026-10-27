@@ -72,38 +72,7 @@ Without any of these, SpotNav still starts and stops the charge.
 
 IEC 61851 chargers do not deliver under 6 A. SpotNav never writes a current below the charger's
 minimum (6 A by default); when load balancing or solar leaves less, it does not lower the
-charger further. The one exception is the diagnostic below, and only when an administrator asks.
-
-## The pilot-floor probe (diagnostic)
-
-Below 6 A, OCPP leaves it to the charger what `AssignedCurrent` means: it may hold the 6 A floor,
-pause the charge, or refuse the value. The pilot-floor probe asks one charger. It is off by default
-and never starts by itself; only an administrator's request runs it, once per request.
-
-It runs only on a charger set to **ChangeConfiguration (AssignedCurrent)** with a current-limit
-entity, during a plan's charge that has drawn at least 5 A for a minute. It remembers the charger's
-`AssignedCurrent`, writes 5, 3 and 1 A for this connector (about thirty seconds each, a hundred
-seconds in all, while SpotNav's own current changes wait), logs each step with the charger's
-status and current, then writes the remembered value back. It never starts, stops or raises a
-charge. If Home Assistant stops in the middle, the next start puts this connector back to its
-remembered value by itself (and logs it), unless something has assigned it 6 A or more since; while
-the charger is not connected yet it tries again every minute for half an hour, and then at the next
-start.
-
-To run it, open Home Assistant in a browser as an administrator, open the browser's developer
-console and enter, with the charger entry's id:
-
-```js
-await document.querySelector("home-assistant").hass.callWS({
-  type: "spotnav/run_pilot_floor_probe", api_version: 1, charger_id: "<charger entry id>",
-});
-```
-
-`{"ok": true}` means it started. `"error": "spotnav_probe_refused"` names the reason in `refusal`,
-for example `charge_not_running`, `no_active_plan` or `drawing_below_5a_for_60s`. The results are
-the `PILOT_FLOOR_PROBE` lines in the Home Assistant log (Settings, System, Logs, or the debug
-bundle). Nothing in SpotNav reads them; they are for deciding how chargers should be driven below
-6 A.
+charger further.
 
 ## Vehicle not requesting current
 
