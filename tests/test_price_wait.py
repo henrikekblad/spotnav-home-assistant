@@ -131,6 +131,32 @@ def test_known_prices_too_few_to_hold_the_purchase_fall_back_to_the_guarantee() 
     assert decision.action == "guarantee", "a purchase that cannot fit would silently miss the deadline"
 
 
+def test_known_intervals_in_the_areas_zone_are_read_as_instants_across_the_autumn_change() -> None:
+    """Six quarter-hours from 00:00Z, given in Stockholm time: 02:45+02:00 is followed by 02:00+01:00.
+
+    As wall clocks that interval would last minus 45 minutes and sort before its predecessors; as
+    instants the six hold 1.5 hours, enough for what cannot wait (4.2 kWh at 4 kW).
+    """
+    zone = ZoneInfo(STOCKHOLM)
+    start = at("2026-10-25T00:00:00+00:00")
+    known = [
+        KnownInterval(
+            (start + timedelta(minutes=15 * index)).astimezone(zone),
+            (start + timedelta(minutes=15 * (index + 1))).astimezone(zone),
+            1.0,
+        )
+        for index in reversed(range(6))
+    ]
+    decision = decide(
+        now=start, deadline=at("2026-10-25T03:00:00+00:00"), need_kwh=9.0, max_charge_kw=4.0,
+        known=known, publication_at=at("2026-10-25T01:30:00+00:00"),
+    )
+    assert decision.action == "buy_now"
+    assert [interval.start.astimezone(UTC) for interval in decision.eligible] == [
+        start + timedelta(minutes=15 * index) for index in range(6)
+    ]
+
+
 def test_a_decision_needs_something_to_charge() -> None:
     with pytest.raises(ValueError):
         decide(

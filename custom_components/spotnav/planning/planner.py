@@ -698,8 +698,13 @@ def _window(request: PlanRequest) -> _Window | PlannerReason:
             return "insufficient_price_horizon"
     else:
         # Deadline: the bound is the latest start, so the last slot may end at the deadline.
+        # Absolute time throughout: the deadline is in the area's zone, and wall-clock arithmetic on
+        # it would move the latest start by an hour on a clock-change night. The deadline is first
+        # brought down to the last slot boundary at or before it, so no slot starting at or after the
+        # departure is ever required (a 00:10 departure needs no price for 00:00 of the next day).
         step = timedelta(minutes=STEP_MINUTES)
-        latest_start_exclusive = min(horizon, deadline - duration + step)
+        last_end = first_start + step * ((deadline.astimezone(timezone.utc) - first_start) // step)
+        latest_start_exclusive = min(horizon, last_end - duration + step)
         if latest_start_exclusive <= first_start:
             if departure_deadline is None or deadline != departure_deadline:
                 # A caller's own tighter window (the published part, what must be bought before a
@@ -709,7 +714,7 @@ def _window(request: PlanRequest) -> _Window | PlannerReason:
             # slot from the first usable one up to the departure, so the car leaves with the most energy
             # there was time for. That is one contiguous run, so the period limit can never cut energy
             # here; were it ever to, delivering the most energy wins over the limit.
-            fit = (min(deadline, horizon) - first_start) // step
+            fit = (min(last_end, horizon) - first_start) // step
             if fit < 1:
                 # Not one whole slot before the departure: nothing can be planned.
                 return "deadline_too_short"
@@ -717,11 +722,9 @@ def _window(request: PlanRequest) -> _Window | PlannerReason:
             duration = step * fit
             latest_start_exclusive = first_start + step
             short = True
-        required_end = latest_start_exclusive + duration
-        if request.window_end is not None and deadline == request.window_end:
-            # A caller's own window (the published part, or what must be bought before a publication) ends
-            # where it says: no slot can be chosen past it, so no price past it is required either.
-            required_end = min(required_end, deadline)
+        # Where the latest possible start's run ends: never past the deadline's last slot boundary, so
+        # no price at or after the deadline (or a caller's own `window_end`) is ever required.
+        required_end = latest_start_exclusive - step + duration
     return _Window(
         slots=slots,
         zone=zone,
