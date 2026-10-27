@@ -1369,35 +1369,42 @@ class SiteCapacityController:
         6. round to whole amps (debug-logged when it changes the value) and call the charger's
            `_async_assign_current`.
 
+        An import overload (`MUST_LOWER_REASONS`) passes every gate that is not about safety: a membership
+        conflict, a slow meter, a resume or probe about to start, the step guard's holds, yield stepping's holds
+        and steps, the band of a battery at the limit and the damper. Steps 1 and 3 still apply, a running battery
+        probe still judges its car, and the lowering is written at once (`_async_apply_must_lower`), unless the
+        battery's yield is verified on the site and the site is below the yield ceiling (the stepper then judges
+        it as in 4).
+
         Outcomes are logged once per change (`_log_active_control_outcome`). This method knows
         nothing about why a decision says what it says; that is `site/regulator.py`.
         """
         self._apply_pending = False
         if not self._active_control_allowed() or self._closed:
             return
-        # A charger of doubtful ownership is never written; held proposals are still logged.
+        decisions = dict(self.regulator_decisions)
+        # A charger of doubtful ownership is not regulated, and nothing is regulated on a meter load balancing
+        # reads that is fresh only now and then. Neither holds an import overload's lowering: less current is
+        # safe whoever owns the charger, and the lowering is still re-checked on the fresh readings below.
+        # Held proposals are still logged.
+        held_detail: str | None = None
         if self.membership_conflicts:
-            for charger_entry_id, decision in self.regulator_decisions.items():
-                if decision.proposed_current_a is not None:
+            held_detail = "membership_conflict"
+        elif self.load_balancing_slow_meters:
+            held_detail = DETAIL_HELD_METER_TOO_SLOW
+        if held_detail is not None:
+            for charger_entry_id, decision in decisions.items():
+                if decision.proposed_current_a is not None and decision.reason not in MUST_LOWER_REASONS:
                     self._log_active_control_outcome(
-                        charger_entry_id,
-                        decision,
-                        outcome="held",
-                        detail="membership_conflict",
+                        charger_entry_id, decision, outcome="held", detail=held_detail
                     )
-            return
-        # A meter load balancing reads that is fresh only now and then: nothing is written on it.
-        slow = self.load_balancing_slow_meters
-        if slow:
-            for charger_entry_id, decision in self.regulator_decisions.items():
-                if decision.proposed_current_a is not None:
-                    self._log_active_control_outcome(
-                        charger_entry_id,
-                        decision,
-                        outcome="held",
-                        detail=DETAIL_HELD_METER_TOO_SLOW,
-                    )
-            return
+            decisions = {
+                charger_entry_id: decision
+                for charger_entry_id, decision in decisions.items()
+                if decision.reason in MUST_LOWER_REASONS
+            }
+            if not decisions:
+                return
         fresh = self._calculate()
         max_age_s = float(self.config.get(CONF_MAX_AGE_S, DEFAULT_MAX_AGE_S))
         margin_by_charger = self._most_restrictive_margin_by_charger(fresh)
@@ -1405,7 +1412,7 @@ class SiteCapacityController:
         # probe's start through a cloud that takes its time to answer) never holds another charger's
         # must-lower write, in this pass or the next. Steps start in decision order; one step per charger.
         spawned: list[asyncio.Task[None]] = []
-        for charger_entry_id, decision in list(self.regulator_decisions.items()):
+        for charger_entry_id, decision in decisions.items():
             if not self._active_control_allowed():
                 break
             running = self._charger_ops.get(charger_entry_id)
@@ -1499,7 +1506,9 @@ class SiteCapacityController:
         probe = self._battery_probes.get(charger_entry_id)
         if probe is not None and probe.probing:
             # A battery probe is running (or its stop is not confirmed yet): it alone judges
-            # this charger until it is over, on the freshly read measurements.
+            # this charger until it is over, on the freshly read measurements. It is a safety judge of its
+            # own, an import overload included: bounded by the fuse (`PROBE_MAX_FUSE_FACTOR`), by what the car
+            # can explain and by its window, and ended by a hard stop (`_async_battery_probe_pass`).
             await self._async_battery_probe_pass(
                 charger_entry_id, charger_controller, decision, fresh, probe
             )
@@ -1596,13 +1605,20 @@ class SiteCapacityController:
                 damper.record_write(on_charger)
                 previous_setpoint = on_charger
 
+        # An import overload (`MUST_LOWER_REASONS`): from here on no gate that is not about safety holds its lowering.
+        # It ends in a write of a lower current (or, refused, the charger's safety stop), unless what is on the
+        # charger is already at or below the proposal (`_async_apply_must_lower`).
+        overload = decision.reason in MUST_LOWER_REASONS
+        lowering_due = overload and (previous_setpoint is None or proposed < previous_setpoint)
+
         # A grid-charging battery that may give way to the car: start the car at its minimum as
-        # a probe (only where nothing else would start it; see `site/battery_probe.py`).
-        if await self._async_maybe_resume_paused_charge(
+        # a probe (only where nothing else would start it; see `site/battery_probe.py`). Never in place of a
+        # lowering that is due; a charger the overload has already stopped may still be resumed or probed.
+        if not lowering_due and await self._async_maybe_resume_paused_charge(
             charger_entry_id, charger_controller, decision, fresh, damper, previous_setpoint
         ):
             return True
-        if await self._async_maybe_start_battery_probe(
+        if not lowering_due and await self._async_maybe_start_battery_probe(
             charger_entry_id, charger_controller, decision, fresh, damper, previous_setpoint
         ):
             return True
@@ -1634,7 +1650,12 @@ class SiteCapacityController:
             site_read_at=site_read_at,
             min_current_a=self._min_current_a(charger_entry_id),
         )
-        if guarded.rule is not None and guarded.proposed_a != proposed:
+        if (
+            guarded.rule is not None
+            and guarded.proposed_a != proposed
+            # An overload takes the guard's gentler lowering (a trimmed overshoot), never its hold.
+            and not (overload and (previous_setpoint is None or guarded.proposed_a >= previous_setpoint))
+        ):
             _LOGGER.debug(
                 "SpotNav site %s active control: charger %s proposal %sA taken as %sA (%s)",
                 self.entry_id,
@@ -1662,6 +1683,36 @@ class SiteCapacityController:
             self._record_yield_stepping_verdict(charger_entry_id, yield_verdict)
             self._log_yield_stepping_transition(charger_entry_id, yield_verdict, fresh)
 
+        if overload and not (
+            yield_verdict is not None
+            and yield_verdict.yield_verified
+            and yield_verdict.reason != "passthrough_ceiling"
+        ):
+            # The stepper is still fed the observation (its bookkeeping follows the site), but only its own lowering
+            # is taken from it; a hold, a step up or a passthrough leaves the overload's proposal as it is. The one
+            # exception is a battery whose yield is verified on this site, below the yield ceiling (the stepper's
+            # hard ceiling, `CONF_YIELD_CEILING_A`): the stepper judges that overload as before.
+            stepped = (
+                yield_verdict.current_a
+                if yield_verdict is not None
+                and yield_verdict.action == "write"
+                and yield_verdict.current_a is not None
+                and previous_setpoint is not None
+                and yield_verdict.current_a < previous_setpoint
+                else None
+            )
+            return await self._async_apply_must_lower(
+                charger_entry_id,
+                charger_controller,
+                decision,
+                damper,
+                proposed if stepped is None else stepped,
+                previous_setpoint,
+                margin_by_charger.get(charger_entry_id),
+                yield_verdict,
+                site_read_at,
+            )
+
         if yield_verdict is not None and yield_verdict.action == "hold":
             # A hold carries no current: skip the damper and write nothing.
             self._log_active_control_outcome(
@@ -1674,7 +1725,8 @@ class SiteCapacityController:
             return True
 
         if (
-            yield_verdict is not None
+            not overload
+            and yield_verdict is not None
             and yield_verdict.action == "passthrough"
             and yield_verdict.reason != "passthrough_ceiling"
             and self._battery_holds_grid_at_limit(
@@ -1692,9 +1744,8 @@ class SiteCapacityController:
             )
             return True
 
-        # An overload's reduction is never held for the dwell, whatever margin the damper is shown: the
-        # regulator saw a phase over the fuse (urgency only ever hastens a reduction).
-        overload = decision.reason in MUST_LOWER_REASONS
+        # An overload the stepper judges (a verified battery below the yield ceiling) is never held for the dwell:
+        # urgency only ever hastens a reduction.
         if yield_verdict is not None and yield_verdict.action == "write":
             # The stepper's own current replaces the raw proposal; `urgent` lets a revert skip
             # deadband and dwell.
@@ -1749,6 +1800,56 @@ class SiteCapacityController:
             damper,
             damping,
             int(setpoint),
+            previous_setpoint,
+            yield_verdict,
+            site_read_at=site_read_at,
+        )
+        return True
+
+    async def _async_apply_must_lower(
+        self,
+        charger_entry_id: str,
+        charger_controller: ChargingController,
+        decision: RegulatorDecision,
+        damper: RegulatorDamper,
+        target_a: float,
+        previous_setpoint: float | None,
+        margin_a: float | None,
+        yield_verdict: YieldVerdict | None,
+        site_read_at: float | None,
+    ) -> bool:
+        """The end of an import overload's step (`MUST_LOWER_REASONS`): `target_a` goes out at once, whole amps
+        rounded down, past the damper's deadband, dwell and an unusable margin, as a must-lower write (a charger
+        that cannot take it in time is stopped, `ChargingController.async_apply_regulated_current`).
+
+        The one case written nothing: what is on the charger (what was last written, or the charger's own reading
+        above it, `charger_above_written`) is already at or below `target_a`. There is nothing to lower; the
+        regulator lowers again from the next reading that still shows the overload."""
+        setpoint = math.floor(target_a + 1e-9)
+        if previous_setpoint is not None and setpoint >= previous_setpoint:
+            self._log_active_control_outcome(
+                charger_entry_id,
+                decision,
+                outcome="held",
+                detail="overload_already_lowered",
+                previous_setpoint=round(previous_setpoint),
+                yield_verdict=yield_verdict,
+            )
+            return True
+        damping = damper.consider(proposed_current_a=float(setpoint), margin_a=margin_a, urgent=True)
+        if not damping.write or damping.current_a != setpoint:
+            # Only the damper's bookkeeping is kept from it: an overload is not held by the damper.
+            damper.record_write(float(setpoint))
+            damping = DampingDecision(True, float(setpoint), "urgent")
+        if not self._active_control_allowed() or self._closed:
+            return False
+        await self._async_write_regulated(
+            charger_entry_id,
+            charger_controller,
+            decision,
+            damper,
+            damping,
+            setpoint,
             previous_setpoint,
             yield_verdict,
             site_read_at=site_read_at,
@@ -2449,8 +2550,10 @@ class SiteCapacityController:
             if verdict.state == "succeeded":
                 probe.succeeded(now)
                 # The car runs at its minimum on a grid the battery holds at the limit; the stepper
-                # starts from nothing and climbs it as it always does.
+                # starts from nothing and climbs it as it always does, on a battery now verified to give way
+                # (the yield ceiling holds, `YieldConfig.unverified_ceiling_a`).
                 self._yield_steppers.pop(charger_entry_id, None)
+                self._yield_stepper_for(charger_entry_id).note_battery_yielded()
                 self._record_probe_event(
                     charger_entry_id,
                     decision,
@@ -2703,6 +2806,8 @@ class SiteCapacityController:
                         float(self.config.get(CONF_YIELD_CEILING_A, default_ceiling_a)),
                         max_yield_ceiling_a(float(main_fuse_a)) if main_fuse_a is not None else 0.0,
                     ),
+                    # Above the fuse only on a battery whose yield is verified on this site.
+                    unverified_ceiling_a=float(main_fuse_a) if main_fuse_a is not None else 0.0,
                     min_current_a=float(wiring.get("min_current_a", DEFAULT_MIN_CURRENT_A)),
                     real_excess_a=float(
                         self.config.get(CONF_REGULATOR_DEADBAND_A, DEFAULT_REGULATOR_DEADBAND_A)

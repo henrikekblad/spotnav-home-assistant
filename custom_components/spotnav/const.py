@@ -184,7 +184,8 @@ CONF_PRICE_TRANSFER = "transfer"
 CONF_YIELD_STEPPING_ENABLED = "yield_stepping_enabled"
 DEFAULT_YIELD_STEPPING_ENABLED = False
 
-# Hard ceiling in amps for a yield step or probe. Defaults to 1.15x the main fuse; must exceed it.
+# Hard ceiling in amps for a yield step or probe once the battery's yield is verified on the site; until then the
+# ceiling is the main fuse itself (`YieldConfig.unverified_ceiling_a`). Defaults to 1.15x the main fuse; must exceed it.
 CONF_YIELD_CEILING_A = "yield_ceiling_a"
 YIELD_CEILING_FUSE_FACTOR = 1.15
 # Largest yield ceiling as a multiple of the main fuse (1.25 x In is a gG fuse's conventional

@@ -556,3 +556,28 @@ def test_a_car_at_the_floor_delivering_just_under_it_may_still_probe() -> None:
         for i in range(5)
     ]
     assert any(v.action == "write" and v.reason == "probe_step" and v.current_a == 8.0 for v in writes)
+
+
+def test_until_the_battery_is_verified_the_ceiling_is_the_fuse() -> None:
+    """With `unverified_ceiling_a` (the main fuse) a site at 20.2 A on a 20 A fuse is over the ceiling and nothing is
+    stepped; once the site's battery probe verified the battery, the configured ceiling (23 A) holds again; a
+    backoff forgets it."""
+    stepper = YieldStepper(_config(unverified_ceiling_a=20.0))
+    verdict = stepper.observe(0.0, 16.0, 6.0, _obs(0.0, site=20.2, delivered=5.9))
+    assert (verdict.action, verdict.reason, verdict.yield_verified) == ("passthrough", "passthrough_ceiling", False)
+
+    stepper.note_battery_yielded()
+    verdict = stepper.observe(1.0, 16.0, 6.0, _obs(1.0, site=20.2, delivered=5.9))
+    assert verdict.reason != "passthrough_ceiling"
+    assert verdict.yield_verified is True
+
+    stepper._enter_backoff(2.0)  # noqa: SLF001 - a step the battery did not take
+    assert stepper.yield_verified is False
+    verdict = stepper.observe(3.0, 16.0, 6.0, _obs(3.0, site=20.2, delivered=5.9))
+    assert verdict.reason == "passthrough_ceiling"
+
+
+def test_without_an_unverified_ceiling_the_configured_one_holds_throughout() -> None:
+    stepper = YieldStepper(_config())
+    verdict = stepper.observe(0.0, 16.0, 6.0, _obs(0.0, site=20.2, delivered=5.9))
+    assert verdict.reason != "passthrough_ceiling"

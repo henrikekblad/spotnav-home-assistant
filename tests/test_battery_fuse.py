@@ -769,7 +769,12 @@ async def test_a_start_the_charger_refuses_is_a_failed_probe_and_backs_off(
     assert calls == [] and turn_off == []
 
 
-# -- the band: a battery-held limit is not an overload
+# -- the band: a battery-held limit is an overload until the battery's yield is verified on the site
+
+
+def _verified(controller, charger) -> None:
+    """The battery's yield verified on the site, as a battery probe that succeeded leaves it."""
+    controller._yield_stepper_for(charger.entry_id).note_battery_yielded()
 
 
 async def _running_site(hass: HomeAssistant, entry_id: str, **setup):
@@ -788,12 +793,27 @@ async def _running_site(hass: HomeAssistant, entry_id: str, **setup):
     return controller, charger, calls, yield_clock, damper_clock, site, prefix
 
 
-async def test_the_grid_held_at_20_03_amps_does_not_ratchet_the_car_down(
+async def test_the_grid_held_at_20_03_amps_lowers_the_car_on_an_unverified_battery(
+    hass: HomeAssistant,
+) -> None:
+    """An import overload is lowered at once, whatever the band, the stepper or the dwell would say, while the
+    battery's yield is not verified on the site."""
+    controller, charger, calls, yield_clock, damper_clock, site, prefix = await _running_site(
+        hass, "bfbandunverified"
+    )
+    set_site_current_a(hass, site, 20.03)
+    await controller._async_apply_active_control()
+    assert _values(calls) == ["1.11,2.10"]
+    assert not any(e["detail"] == "held_battery_at_limit" for e in controller.regulator_decision_log)
+
+
+async def test_a_verified_battery_holding_the_grid_at_20_03_amps_does_not_ratchet_the_car_down(
     hass: HomeAssistant,
 ) -> None:
     controller, charger, calls, yield_clock, damper_clock, site, prefix = await _running_site(
         hass, "bfband"
     )
+    _verified(controller, charger)
     set_site_current_a(hass, site, 20.03)
     for _ in range(4):
         yield_clock.advance(31.0)
@@ -806,21 +826,18 @@ async def test_the_grid_held_at_20_03_amps_does_not_ratchet_the_car_down(
     assert held and held[-1]["detail"] == "yield_stepping_held_battery_probe_in_flight"
 
 
-async def test_the_grid_held_at_the_limit_without_a_fresh_battery_reading_holds_as_before(
+async def test_the_grid_held_at_the_limit_without_a_fresh_battery_reading_is_lowered(
     hass: HomeAssistant, monkeypatch
 ) -> None:
+    """The band's hold (`held_battery_at_limit`) is not about safety: it never holds an import overload."""
     controller, charger, calls, yield_clock, damper_clock, site, prefix = await _running_site(
         hass, "bfbandnostep"
     )
     monkeypatch.setattr(controller, "_fresh_battery_w", lambda: None)
     set_site_current_a(hass, site, 20.03)
-    for _ in range(4):
-        yield_clock.advance(31.0)
-        damper_clock.advance(61.0)
-        await controller._async_apply_active_control()
-    assert calls == []
-    held = [e for e in controller.regulator_decision_log if e["outcome"] == "held"]
-    assert held and held[-1]["detail"] == "held_battery_at_limit"
+    await controller._async_apply_active_control()
+    assert _values(calls) == ["1.11,2.10"]
+    assert not any(e["detail"] == "held_battery_at_limit" for e in controller.regulator_decision_log)
 
 
 @pytest.mark.parametrize("amps", [20.6, 21.5, 24.0])
@@ -1208,8 +1225,19 @@ async def _step_once(controller, yield_clock, damper_clock) -> None:
     await controller._async_apply_active_control()
 
 
+async def test_the_night_car_is_lowered_while_the_battery_is_not_verified(hass: HomeAssistant) -> None:
+    """The grid at 20.26 A on a 20 A fuse and a battery not yet seen to give way: the regulator's cut goes out at
+    once, not a step into the battery's share above the fuse."""
+    controller, charger, calls, yield_clock, damper_clock, site, prefix = await _night_site(hass, "bfnightunverified")
+
+    await controller._async_apply_active_control()
+    assert _values(calls) == ["1.6,2.10"]
+    assert controller._yield_stepping_last[charger.entry_id]["reason"] == "passthrough_ceiling"
+
+
 async def test_the_night_car_steps_into_a_battery_that_gives_way(hass: HomeAssistant) -> None:
     controller, charger, calls, yield_clock, damper_clock, site, prefix = await _night_site(hass, "bfnight")
+    _verified(controller, charger)
 
     await controller._async_apply_active_control()
     await _step_once(controller, yield_clock, damper_clock)
@@ -1238,6 +1266,7 @@ async def test_the_night_car_steps_into_a_battery_that_gives_way(hass: HomeAssis
 
 async def test_the_night_car_steps_back_when_the_battery_does_not_give_way(hass: HomeAssistant) -> None:
     controller, charger, calls, yield_clock, damper_clock, site, prefix = await _night_site(hass, "bfnightno")
+    _verified(controller, charger)
 
     await controller._async_apply_active_control()
     await _step_once(controller, yield_clock, damper_clock)
