@@ -5262,7 +5262,8 @@ class ChargingController:
 
     @callback
     def _async_start_callback(self, _now: datetime) -> None:
-        self.hass.async_create_task(self._async_start_window())
+        # Logged when it fails (a start the charger's cloud refused): never an unretrieved task exception.
+        self._async_spawn(self._async_start_window(), "the window's start")
 
     @callback
     def _async_end_callback(self, _now: datetime) -> None:
