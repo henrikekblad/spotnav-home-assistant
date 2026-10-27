@@ -511,6 +511,17 @@ CASES: tuple[Case, ...] = (
         soc="state_of_charge",
     ),
     Case(
+        "mazda_cs: the level is read only, the 12 V estimate has no class, the odometer is a distance too",
+        (
+            soc("ev_charge_level", name="Charge level"),
+            E("sensor", "soc_ecm_a_est", "88", {"unit_of_measurement": "%", "state_class": "measurement"}),
+            E("sensor", "ev_remaining_charging_time", "120", {"device_class": "duration", "unit_of_measurement": "min"}),
+            rng("ev_remaining_range"),
+            E("sensor", "odometer", "12034", RANGE),
+        ),
+        soc="ev_charge_level",
+    ),
+    Case(
         "vag_connect: the electric and the 'primary engine' level look the same, a repair asks",
         (
             soc("battery_soc"),
