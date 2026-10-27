@@ -78,7 +78,10 @@ changes.
   is on. Turn it off in the charger's integration or app and continue, or choose to continue anyway.
 - **A start is sent but the charger does not charge, or something else changes it back.** Only one
   controller may drive a charger. Turn off the charger's own smart charging (Easee: its smart
-  charging switch) and any other integration that controls it, such as EV Smart Charging.
+  charging switch) and any other integration that controls it, such as EV Smart Charging. A window's
+  start that does not take is sent again up to three times in its first ten minutes; the charger's
+  diagnostics show them under `controller.window_start_retry` (`retries`, and what the last one
+  found in `last.result`).
 - **"This charge control is already used by another SpotNav charger."** A charge control or current
   number can belong to only one SpotNav charger.
 - **"{name} and this charger are the same physical charger."** Two SpotNav chargers share a Home
@@ -108,7 +111,8 @@ changes.
 
 ## Charging
 
-- **OCPP entities are unavailable after a restart.** Give the charger time to reconnect.
+- **OCPP entities are unavailable after a restart.** Give the charger time to reconnect. A window's
+  start that could not be sent then is sent once the charger is back, for as long as the window is open.
 - **The wrong connector is used, or the current is not applied.** See
   [OCPP chargers](ocpp.md#which-connector). Choose the Charge Control switch for the outlet you
   use under the integration's **Configure** action.

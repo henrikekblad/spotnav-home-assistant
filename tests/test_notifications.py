@@ -317,7 +317,11 @@ async def test_a_window_whose_charge_does_not_start_is_told_after_the_grace_peri
     await controller.async_install(_window_now())
     await hass.async_block_till_done()
     assert calls == []
-    await _later(hass, freezer, GRACE_S + 5)
+    # The start is sent again at 90 s (`START_RETRY_AFTER_S`); that retry, unanswered too, does not move when the
+    # trouble is told, and the retries after it tell nothing more.
+    await _later(hass, freezer, 90)
+    assert calls == []
+    await _later(hass, freezer, GRACE_S - 90 + 5)
     assert [call.data["message"] for call in calls] == ["Laddningen startade inte enligt planen."]
     await _later(hass, freezer, 600)
     assert len(calls) == 1
