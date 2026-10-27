@@ -282,7 +282,6 @@ describe("the sentences, in five locales", () => {
       "no_authoritative_current",
       "charger_not_loaded",
       "membership_conflict",
-      "probe_in_flight",
       "below_minimum",
       "no_connector_target",
       "external_balancer",

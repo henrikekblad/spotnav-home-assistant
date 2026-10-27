@@ -14,7 +14,6 @@
 from __future__ import annotations
 
 import asyncio
-import contextlib
 import logging
 import math
 from collections.abc import AsyncIterator, Awaitable, Callable
@@ -76,7 +75,6 @@ from .chargers.base import (
     ASSIGN_ASSIGNED,
     ASSIGN_BELOW_MINIMUM,
     ASSIGN_NO_TARGET,
-    ASSIGN_PROBE_IN_FLIGHT,
     ASSIGN_READ_FAILED,
     ASSIGN_TARGET_UNAVAILABLE,
     ASSIGN_UNCHANGED,
@@ -94,8 +92,6 @@ from .chargers.base import (
 from .chargers.ocpp import (
     assigned_amps_for_connector,
     OcppAssignedCurrent,
-    read_assigned_current_value,
-    rewrite_assigned_current,
 )
 from .charge_progress import (
     ChargeProgress,
@@ -105,7 +101,6 @@ from .charge_progress import (
     connector_status,
     START_ACK_TIMEOUT_S,
 )
-from .pilot_floor_probe import interrupted, PilotFloorProbe, PROBE_TOKEN, STORE_KEY
 from .plan_car_ended import PlanChargeWatch
 from .target_stop import (
     car_ended_full,
@@ -213,11 +208,6 @@ OWED_GIVE_UP_S: Final = 900.0
 #: not act on (Easee's `awaiting_start`). Never while the charger's own scheduler holds the charge, while its enable
 #: switch is off, once it says the car finished, or while its charge control is already on (no stop-and-start kick).
 START_RETRY_AFTER_S: Final = (90.0, 300.0, 600.0)
-#: Putting back an interrupted pilot-floor probe while the charger is not ready yet (an OCPP charge point
-#: reconnects some time after Home Assistant starts): a try a minute for half an hour, then again at the
-#: next start.
-PROBE_RESTORE_RETRY_S: Final = 60.0
-PROBE_RESTORE_TRIES: Final = 30
 #: Under a person's Stop, a charge the charger begins by itself is stopped at most once per this many
 #: seconds, and at most `PERSON_HOLD_MAX_STOPS` times in any `PERSON_HOLD_WINDOW_S` of the plug-in (every stop
 #: sent counts, taken or not): then SpotNav gives up and says so (`ChargingController.ignores_person_stop`)
@@ -883,21 +873,6 @@ class ChargingController:
         self._store: Store[dict[str, Any]] = Store(
             hass, STORE_VERSION, f"{DOMAIN}.{entry_id}"
         )
-        # The pilot-floor probe (`pilot_floor_probe.py`), a diagnostic run only when an administrator asks
-        # (`async_run_pilot_floor_probe`), built with this controller as its host (a protocol, so the
-        # dependency runs one way).
-        self._probe = PilotFloorProbe(self)
-        # The probe's persisted state, restored in `async_initialize`.
-        self._probe_record: dict[str, Any] = {}
-        # The probe's state-change subscription, alive while a plan is (see `_async_reschedule`). It only
-        # feeds the floor clock and never starts anything: "has the car been drawing for a minute" is only
-        # answerable from that sensor's reports.
-        self._probe_listener_cancel: Callable[[], None] | None = None
-        # A requested run, cancelled (and so restored) on shutdown.
-        self._probe_task: asyncio.Task[None] | None = None
-        # Putting back an interrupted run when the charger was not ready: the next try and how many are left.
-        self._probe_restore_cancel: Callable[[], None] | None = None
-        self._probe_restore_tries_left = PROBE_RESTORE_TRIES
         self._timer_cancels: list[Callable[[], None]] = []
         self._listeners: set[Callable[[], None]] = set()
         # Who wants to know what Home Assistant reports for the charge control, as opposed to what
@@ -1053,15 +1028,6 @@ class ChargingController:
                 self._hold.held = hold.get("held") is True
                 self._hold.overridden = hold.get("overridden") is True
             self.adapter.restore_memory(saved.get("adapter_memory"))
-            raw_probe = saved.get(STORE_KEY)
-            if isinstance(raw_probe, dict):
-                self._probe_record = raw_probe
-            # A probe that started and did not finish leaves the charger where its last step put it:
-            # put back once the lock is released (the restore saves through it), retried while the
-            # charger is not ready.
-            if interrupted(self._probe_record):
-                self._probe_restore_tries_left = PROBE_RESTORE_TRIES
-                self._async_spawn(self._async_restore_interrupted_probe(), "restoring an interrupted probe")
         self._saved_memory = self._memory_signature()
         stored, migrate = self._stored_session(saved)
         keys_newer = self._restore_order(saved) if stored is not None else False
@@ -1959,7 +1925,6 @@ class ChargingController:
                 self._clear_top_off()
                 self._cancel_timers()
                 self._async_disarm_target_listener()
-                self._async_disarm_probe_listener()
                 await self._async_save_quietly()
                 self._notify()
             finally:
@@ -1977,7 +1942,6 @@ class ChargingController:
             self._clear_top_off()
             self._cancel_timers()
             self._async_disarm_target_listener()
-            self._async_disarm_probe_listener()
             _LOGGER.info("SpotNav charger %s: the strategy changed; the sun takes the running charge over", self.entry_id)
             await self._async_save_quietly()
             self._notify()
@@ -2193,7 +2157,6 @@ class ChargingController:
             self.plan = None
             self._cancel_timers()
             self._async_disarm_target_listener()
-            self._async_disarm_probe_listener()
             await self._async_save()
             self._notify()
             return True
@@ -3422,12 +3385,6 @@ class ChargingController:
         self, amps: int, *, verify: bool, reason: str, capped: bool = False
     ) -> str:
         """The write itself. Runs with `_assign_lock` held."""
-        if self._probe.in_flight:
-            # The pilot-floor probe is stepping this connector down and reading the response.
-            _LOGGER.debug(
-                "Not assigning %sA: the pilot-floor probe is stepping the current down", amps
-            )
-            return ASSIGN_PROBE_IN_FLIGHT
         if reason in MODULATION_WRITES and self._shut_down:
             return REGULATED_SHUT_DOWN
         if reason in MODULATION_WRITES and self._stop_in_flight:
@@ -3685,116 +3642,6 @@ class ChargingController:
             return None
         return await current.async_read_assigned_current()
 
-    async def _async_write_assigned_current(self, devid: str, value: str) -> bool:
-        """Write the slot verbatim, reporting whether it went. Writes nothing else."""
-        current = self.adapter.current
-        if not isinstance(current, OcppAssignedCurrent):
-            return False
-        return await current.async_write_assigned_current(devid, value)
-
-    def probe_records(self) -> dict[str, Any]:
-        """The probe's persisted record."""
-        return dict(self._probe_record)
-
-    async def probe_save(self, record: dict[str, Any]) -> None:
-        """Persist the probe's record through this controller's own store."""
-        async with self._lock:
-            await self._probe_save_locked(record)
-
-    async def _probe_save_locked(self, record: dict[str, Any]) -> None:
-        """The probe's own save. Runs with the operation lock held."""
-        self._probe_record = dict(record)
-        await self._async_save()
-
-    async def probe_read_assigned_current(self) -> tuple[str, int, str] | None:
-        return await self._async_read_assigned_current()
-
-    async def probe_write_amps(self, devid: str, connector: int, amps: int) -> str | None:
-        """Read, rewrite for this connector and write, returning the value written."""
-        read = await self._async_read_assigned_current()
-        if read is None:
-            return None
-        try:
-            value = rewrite_assigned_current(read[2], connector, amps)
-        except Exception:
-            _LOGGER.warning("%s could not rewrite AssignedCurrent for %sA", PROBE_TOKEN, amps)
-            return None
-        if not await self._async_write_assigned_current(devid, value):
-            return None
-        return value
-
-    async def probe_write_assigned_current(self, devid: str, value: str) -> bool:
-        """Write a slot string back exactly as it was read."""
-        return await self._async_write_assigned_current(devid, value)
-
-    async def probe_read_slot(self, devid: str) -> str | None:
-        """Charge point `devid`'s AssignedCurrent, or None when it cannot be read (not connected yet)."""
-        try:
-            value = await read_assigned_current_value(self.hass, devid)
-        except Exception:  # noqa: BLE001 - an unreachable charger is "not yet", tried again later
-            return None
-        return value or None
-
-    def async_run_pilot_floor_probe(self) -> str | None:
-        """Start one pilot-floor probe run on this charger, as an administrator asked; None when started.
-
-        Otherwise the refusal word (`PilotFloorProbe.refusal`): the probe runs only during a charge, with
-        every one of its gates. The run is a task (it holds the current down for about a hundred seconds),
-        cancelled and so restored on shutdown.
-        """
-        if self._shut_down:
-            return "shutting_down"
-        if self._probe_task is not None and not self._probe_task.done():
-            # Asked twice before the first run's task began: `refusal` cannot see that one yet.
-            return "already_running"
-        reason = self._probe.refusal()
-        if reason is not None:
-            _LOGGER.info("%s not starting: %s", PROBE_TOKEN, reason)
-            return reason
-        self._probe_task = self.hass.async_create_task(self._probe.async_run())
-        return None
-
-    async def _async_restore_interrupted_probe(self) -> None:
-        """Put back what an interrupted probe left, or try again later while the charger is not ready."""
-        self._probe_restore_cancel = None
-        if self._shut_down or self._probe.in_flight:
-            return
-        # The regulator's own lock from the read to the write: nothing assigns this charger in between.
-        done = await self._probe.async_restore_interrupted(lambda: self._assign_lock)
-        if done:
-            return
-        self._probe_restore_tries_left -= 1
-        if self._probe_restore_tries_left <= 0:
-            _LOGGER.warning(
-                "%s could not put back %s after an interrupted run (the charger did not answer); "
-                "trying again at the next start. It may still be left at %r rather than %r",
-                PROBE_TOKEN,
-                self._probe_record.get("devid"),
-                self._probe_record.get("last_written"),
-                self._probe_record.get("remembered"),
-            )
-            return
-        _LOGGER.info(
-            "%s the charger is not ready to put back an interrupted run; trying again in %ss",
-            PROBE_TOKEN,
-            int(PROBE_RESTORE_RETRY_S),
-        )
-        self._probe_restore_cancel = async_call_later(
-            self.hass, PROBE_RESTORE_RETRY_S, self._probe_restore_retry_callback
-        )
-
-    @callback
-    def _probe_restore_retry_callback(self, _now: datetime) -> None:
-        self._probe_restore_cancel = None
-        self._async_spawn(self._async_restore_interrupted_probe(), "restoring an interrupted probe")
-
-    def _cancel_probe_restore(self) -> None:
-        cancel = self._probe_restore_cancel
-        self._probe_restore_cancel = None
-        if cancel is not None:
-            cancel()
-        _LOGGER.debug("Assigned the charger's current through ChangeConfiguration")
-
     def _current_limit_entity_value(self) -> int | None:
         """The charger's live current setpoint, fully validated; read only, never written back.
 
@@ -4021,8 +3868,6 @@ class ChargingController:
             self._clear_top_off()
             self._cancel_timers()
             self._async_disarm_target_listener()
-            # The probe's subscription follows the plan: with no plan nothing may be watched.
-            self._async_disarm_probe_listener()
             await self._async_save()
         self._notify()
 
@@ -4369,17 +4214,9 @@ class ChargingController:
                 self._cancel_owed()
 
     async def async_shutdown(self) -> None:
-        """Cancel local callbacks without changing the charger (a probe run in flight is put back)."""
+        """Cancel local callbacks without changing the charger."""
         # Before the lock: a regulator write or resume waiting behind it sends nothing once it gets it.
         self._shut_down = True
-        self._cancel_probe_restore()
-        task = self._probe_task
-        self._probe_task = None
-        if task is not None and not task.done():
-            # Before the lock: the run's restore and its record save go through it.
-            task.cancel()
-            with contextlib.suppress(asyncio.CancelledError):
-                await task
         async with self._lock:
             await self._shutdown_locked()
 
@@ -4400,7 +4237,6 @@ class ChargingController:
         # once this controller is gone.
         self._async_disarm_target_listener()
         self._cancel_estimate_check_timer()
-        self._async_disarm_probe_listener()
         self._async_disarm_charge_state_listener()
         self._async_disarm_progress_listener()
         self.adapter.cancel_pending_reads()
@@ -4639,9 +4475,6 @@ class ChargingController:
                 "next_s": self._credit_backoff_next_s,
             },
             "solar_car_ended": self._solar_car_ended,
-            # The pilot-floor probe's record; written only through its host interface, absent until
-            # the probe has started.
-            STORE_KEY: self._probe_record,
         }
 
     # ------------------------------------------------------------------ the core's stored session
@@ -4812,11 +4645,7 @@ class ChargingController:
         self._cancel_timers()
         if self.plan is None:
             self._async_disarm_target_listener()
-            self._async_disarm_probe_listener()
             return
-        # The probe's listener follows a plan, not a target: the probe runs during any real
-        # charge, and its persisted record stops a second run.
-        self._async_arm_probe_listener()
         # Armed before the windows are decided so a plan with a target is watched from the moment
         # it exists, including across a restart (`async_initialize` resumes through this call).
         self._async_arm_target_listener()
@@ -4843,7 +4672,6 @@ class ChargingController:
                 # A plan whose windows are all past is history, kept so the execution layer can report it
                 # as `complete` (a reload must not claim Auto never ran); nothing is armed for it.
                 self._async_disarm_target_listener()
-                self._async_disarm_probe_listener()
                 # A plan charge of ours still running past the last window is stopped (never a person's).
                 verdict = (
                     None
@@ -5419,40 +5247,6 @@ class ChargingController:
             self._state_listener_cancel()
             self._state_listener_cancel = None
 
-    def _async_arm_probe_listener(self) -> None:
-        """Watch the connector's current-import sensor while a plan is active.
-
-        Only its reports can answer the probe's gate (drawing at or above the floor for a minute), so the
-        floor clock is fed from here with nothing polling; the probe itself runs only when asked. A charger that never opted in to `ChangeConfiguration`,
-        or whose current-limit entity is missing or not per-connector, gets no listener.
-        """
-        if self._probe_listener_cancel is not None:
-            return
-        if self.current_control != CURRENT_CONTROL_CHANGE_CONFIGURATION:
-            return
-        target = self.ocpp_target
-        if target is None:
-            return
-        self._probe_listener_cancel = async_track_state_change_event(
-            self.hass,
-            [connector_sensor_entity_id(self.hass, target, CURRENT_IMPORT_KEY)],
-            self._async_probe_import_changed,
-        )
-
-    def _async_disarm_probe_listener(self) -> None:
-        """Drop the probe's subscription, if one is held."""
-        if self._probe_listener_cancel is not None:
-            self._probe_listener_cancel()
-            self._probe_listener_cancel = None
-
-    @callback
-    def _async_probe_import_changed(self, event: Event[EventStateChangedData]) -> None:
-        """Feed the probe's floor clock. Never starts the probe: only a request does."""
-        new_state = event.data.get("new_state")
-        self._probe.note_current_import(
-            _safe_float(new_state.state) if new_state is not None else None
-        )
-
     @callback
     def _async_target_state_changed(self, _event: Event[EventStateChangedData]) -> None:
         """A new reading arrived while a target is being enforced.
@@ -5669,7 +5463,6 @@ class ChargingController:
         self._clear_top_off()
         self._cancel_timers()
         self._async_disarm_target_listener()
-        self._async_disarm_probe_listener()
         await self._async_save()
         self._notify()
 

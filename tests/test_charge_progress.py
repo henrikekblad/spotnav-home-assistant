@@ -267,8 +267,7 @@ def test_the_published_value_has_exactly_three_keys_and_no_identifiers() -> None
             STATE_NORMAL,
             REASON_CONNECTOR_CHARGING,
         ),
-        # The EVSE side's own suspended state, which `pilot_floor_probe` cares about and the vehicle
-        # does not answer for.
+        # The EVSE side's own suspended state, which the vehicle does not answer for.
         (
             facts(connector_status="SuspendedEVSE", current_import_a=0.0),
             STATE_NORMAL,

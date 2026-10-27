@@ -1,8 +1,8 @@
 """Wiring `execution/yield_stepping.py` into `SiteCapacityController._async_apply_active_control`.
 
-Covers the four gates (`yield_stepping_enabled`, a decision that passed `applyability_failure`,
-a real proposal, no pilot-floor probe in flight), how a verdict ("hold", "write", "passthrough")
-becomes a charger command or none, and the site options and sensor attribute round trip.
+Covers the three gates (`yield_stepping_enabled`, a decision that passed `applyability_failure`,
+a real proposal), how a verdict ("hold", "write", "passthrough") becomes a charger command or none, and
+the site options and sensor attribute round trip.
 
 No test sleeps: the stepper's clock (`controller._yield_now`) and the damper's
 (`RegulatorDamper(now=...)`) are injected and moved by hand. `_active_control_setup`,
@@ -268,7 +268,6 @@ async def test_enabled_on_the_real_condition_a_probe_write_reaches_the_charger(
     }
     # An ordinary (non-urgent) increase is damped like any proposal, so it does not reach the charger on this pass.
     assert configure_calls == []
-    assert not charger_controller._probe.in_flight  # the guard this test is not exercising
 
     damper_clock.advance(61.0)  # past the default 60 s dwell
     await controller._async_apply_active_control()
@@ -300,35 +299,6 @@ async def test_stale_reading_means_the_stepper_is_not_consulted(hass: HomeAssist
 
     assert configure_calls == []
     assert controller._yield_steppers == {}
-
-
-async def test_probe_in_flight_means_the_stepper_is_not_consulted(hass: HomeAssistant) -> None:
-    """While the pilot-floor probe runs (`execution/controller.py` suppresses writes itself), the stepper is also never fed an observation, since its artificial steps would contaminate `y`."""
-    site_entry, charger, configure_calls = await _yield_setup(hass, entry_id="probeflight")
-    controller = controller_of(hass, site_entry.entry_id)
-    charger_controller = controller_of(hass, charger.entry_id)
-    controller._dampers.clear()
-    controller._yield_steppers.clear()
-
-    _seed_assigned_a(controller, charger.entry_id, 6.0)
-    await controller._async_apply_active_control()
-    configure_calls.clear()
-    controller._yield_steppers.clear()
-
-    charger_controller._probe._in_flight = True
-    set_site_current_a(hass, "probeflight_site", 20.2)
-    set_charger_delivered_a(hass, "probeflight_charger", 5.9)
-    pause = _decision(
-        proposed_a=0.0, requested_a=16.0, reason="paused_safe_current_below_charger_minimum"
-    )
-    controller.regulator_decisions = {charger.entry_id: pause}
-
-    await controller._async_apply_active_control()
-
-    assert configure_calls == []
-    assert controller._yield_steppers == {}
-
-    charger_controller._probe._in_flight = False
 
 
 async def test_a_hold_results_in_no_call_to_the_assign_path(hass: HomeAssistant) -> None:

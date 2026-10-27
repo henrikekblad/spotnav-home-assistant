@@ -376,29 +376,3 @@ async def test_card_info_answers_any_user(
     assert frame["result"]["card_bundle_hash"] == "abcd1234"
     wrong = await ws_call(await admin(hass, hass_ws_client), {"type": "spotnav/get_card_info", "api_version": 2})
     assert wrong["success"] is False and wrong["error"]["code"] == "spotnav_unsupported_api_version"
-
-
-async def test_the_probe_command_is_an_administrators_and_keeps_the_probes_gates(
-    hass: HomeAssistant, hass_ws_client, hass_read_only_access_token: str
-) -> None:
-    """`spotnav/run_pilot_floor_probe`: the only way to start the probe. A charger that is not an OCPP
-    `ChangeConfiguration` one is refused with the gate's word, and nothing runs."""
-    charger, site = await setup_charger_and_site(hass)
-    request = {"type": "spotnav/run_pilot_floor_probe", "api_version": 1, "charger_id": charger.entry_id}
-
-    denied = await ws_call(await non_admin(hass, hass_ws_client, hass_read_only_access_token), request)
-    assert denied["result"] == {"api_version": 1, "ok": False, "error": "spotnav_not_admin", "refusal": None}
-
-    client = await admin(hass, hass_ws_client)
-    refused = await ws_call(client, request)
-    assert refused["result"] == {
-        "api_version": 1,
-        "ok": False,
-        "error": "spotnav_probe_refused",
-        "refusal": "current_control_is_not_change_configuration",
-    }
-
-    site_id = await ws_call(client, {**request, "charger_id": site.entry_id})
-    assert site_id["result"]["error"] == "spotnav_site_not_charger"
-    wrong = await ws_call(client, {**request, "api_version": 2})
-    assert wrong["error"]["code"] == "spotnav_unsupported_api_version"

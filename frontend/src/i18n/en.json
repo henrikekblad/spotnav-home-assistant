@@ -340,7 +340,6 @@
   "site.activeControl.restore.failed.no_authoritative_current": "SpotNav has no requested current to return the charger to, so it may still be limited.",
   "site.activeControl.restore.failed.charger_not_loaded": "The charger is not loaded in Home Assistant, so it may still be limited.",
   "site.activeControl.restore.failed.membership_conflict": "The charger belongs to more than one site and was left untouched, so it may still be limited.",
-  "site.activeControl.restore.failed.probe_in_flight": "The charger was busy with a current test, so it may still be limited.",
   "site.activeControl.restore.failed.below_minimum": "The current to restore is below what the charger accepts, so it may still be limited.",
   "site.activeControl.restore.failed.external_balancer": "Another integration balances the charger's current, so SpotNav did not write it and it may still be limited.",
   "site.activeControl.restore.failed.no_connector_target": "SpotNav could not find the charger's connector to command, so it may still be limited.",

@@ -340,7 +340,6 @@
   "site.activeControl.restore.failed.no_authoritative_current": "SpotNav hat keinen angeforderten Strom, auf den die Ladestation zurückgesetzt werden kann, daher ist sie womöglich noch begrenzt.",
   "site.activeControl.restore.failed.charger_not_loaded": "Die Ladestation ist in Home Assistant nicht geladen, daher ist sie womöglich noch begrenzt.",
   "site.activeControl.restore.failed.membership_conflict": "Die Ladestation gehört zu mehr als einem Standort und wurde nicht angetastet, daher ist sie womöglich noch begrenzt.",
-  "site.activeControl.restore.failed.probe_in_flight": "Die Ladestation war mit einem Stromtest beschäftigt, daher ist sie womöglich noch begrenzt.",
   "site.activeControl.restore.failed.below_minimum": "Der wiederherzustellende Strom liegt unter dem, was die Ladestation annimmt, daher ist sie womöglich noch begrenzt.",
   "site.activeControl.restore.failed.external_balancer": "Eine andere Integration regelt den Strom der Ladestation, daher hat SpotNav ihn nicht geschrieben, und sie ist womöglich noch begrenzt.",
   "site.activeControl.restore.failed.no_connector_target": "SpotNav hat den anzusteuernden Anschluss der Ladestation nicht gefunden, daher ist sie womöglich noch begrenzt.",

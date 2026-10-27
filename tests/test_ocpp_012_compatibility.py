@@ -39,10 +39,8 @@ from custom_components.spotnav.const import (
     MODE_OCPP,
 )
 from custom_components.spotnav.flows import SpotNavChargingConfigFlow
-from custom_components.spotnav.execution.controller import (
-    ChargingController,
-    rewrite_assigned_current,
-)
+from custom_components.spotnav.execution.chargers.ocpp import rewrite_assigned_current
+from custom_components.spotnav.execution.controller import ChargingController
 from custom_components.spotnav.vehicles.ocpp_identity import (
     OcppConnectorTarget,
     discover_controls,

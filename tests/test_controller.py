@@ -25,8 +25,8 @@ from custom_components.spotnav.execution.controller import (
     ChargingController,
     _validate_current_limit_state,
     _validate_stored_amps,
-    rewrite_assigned_current,
 )
+from custom_components.spotnav.execution.chargers.ocpp import rewrite_assigned_current
 from tests.helpers import install_schedule
 from custom_components.spotnav.vehicles.ocpp_identity import (
     OcppConnectorTarget,
@@ -92,13 +92,7 @@ async def test_a_malformed_stored_target_stop_record_is_discarded_even_alongside
     await controller._store.async_save(
         {
             "target_stop": "not a record",
-            "pilot_floor_probe": {
-                "started": True,
-                "completed": False,
-                "devid": "charger",
-                "last_written": "1.1,2.10",
-                "remembered": "1.16,2.10",
-            },
+            "hold": {"held": True, "overridden": False},
         }
     )
 
@@ -601,13 +595,12 @@ async def test_a_sub_floor_current_sends_nothing_and_is_not_called_a_failure(
 ) -> None:
     """The regulator's own 0 A decisions are not logged as a failure.
 
-    There is no valid pilot current below 6 A, so `_async_assign_current(0)`
+    There is no valid charging current below 6 A, so `_async_assign_current(0)`
     cannot be expressed and nothing is sent -- which is what the charger already
     did with those decisions. The old line for this case said "Could not set the
     charger's current through ChangeConfiguration", describing a service call
     that failed; none was ever attempted. What a charger *does* with a
-    sub-floor value is the subject of the separate probe and is deliberately not
-    guessed at here.
+    sub-floor value is deliberately not guessed at here.
     """
     hass.states.async_set("switch.a", "off")
     async_mock_service(hass, "switch", "turn_on")
