@@ -25,7 +25,7 @@ These integrations can be started and stopped, and most can have their current s
 | Integration | Start and stop | Current | Energy and status | Notes | Verification |
 | --- | --- | --- | --- | --- | --- |
 | OCPP (`ocpp`), any charge point | Charge control switch | AssignedCurrent through ChangeConfiguration, else the connector's session current limit number | Energy.Active.Import.Register sensor | SpotNav asks the charge point which of the two it supports when the charger is added. A charge point with several connectors is added once per connector. | Tested: charging verified (Charge Amps HALO) |
-| Easee (`easee`) | Easee services | Easee dynamic limit service | Lifetime energy, status sensor | Start and stop (resume and pause) and the dynamic limit go through Easee's own services; the max-limit services are never used (flash). A charge starts at 7 A or more, since the firmware delays a 6 A start by about five minutes. Enable the disabled "Dynamic charger limit" sensor for confirmed writes, and the disabled "Current" sensor: its terminal attributes are the charger's measured current per phase, which the site reads for the regulator and solar (T3, T4, T5 are L1, L2, L3 on a TN network; T2, T3, T4 on an IT network). Turn off its own smart charging: two controllers on one charger fight each other. | Set up by users: detected and configured, charging not yet confirmed (Easee Home) |
+| Easee (`easee`) | Easee services | Easee dynamic limit service | Lifetime energy, status sensor | Start and stop (resume and pause) and the dynamic limit go through Easee's own services; the max-limit services are never used (flash). A charge starts at 7 A or more, since the firmware delays a 6 A start by about five minutes. Enable the disabled "Dynamic charger limit" sensor for confirmed writes, and the disabled "Current" sensor: its terminal attributes are the charger's measured current per phase, which the site reads for the regulator and solar (T3, T4, T5 are L1, L2, L3 on a TN network; T2, T3, T4 on an IT network). Turn off its own smart charging: two controllers on one charger fight each other. | Tested: charging verified (Easee Home) |
 | Wallbox (`wallbox`) | Switch | Number entity | Per-session energy, status sensor | Cloud: at most one current write every 90 s. Pause and resume end the charger's own schedule until its Resume schedule button is pressed; a charger in Ready cannot be started from Home Assistant. The integration has no entity for Power Boost, Power Sharing or the app's schedule, so only Eco-Smart is shown as a conflict, and a charge held in a Power Sharing, Power Boost or Eco-Smart queue is reported as held by the charger. Turn off its own Eco-Smart: two controllers on one charger fight each other. | Detected from the integration's source |
 | Zaptec (`zaptec`) | Switch | Number entity | Lifetime energy, status sensor | The limit is installation-wide: used only for a single-charger installation, and at most every 15 minutes. | Detected from the integration's source |
 | go-e Charger (API v2) (`goecharger_api2`) | Mode select | Number entity | Lifetime energy, status sensor | The raw `car` sensor is disabled by default; the enabled `car_value` sensor reports the state in Home Assistant's language, so the German word is accepted as well. The charger returns the force state to neutral on unplug. Turn off its own PV surplus and charging mode: two controllers on one charger fight each other. | Detected from the integration's source |
@@ -116,7 +116,7 @@ Solar and hybrid need the grid's signed power. A derived site has it per phase; 
 | --- | --- | --- | --- | --- |
 | Shelly EM / 3EM (`shelly`) | Derived from power and voltage, current exact | None needed | Check that the meter measures the whole main feed, not a sub-circuit. Total grid power for solar and hybrid: one signed entity. | Detected from the integration's source |
 | HomeWizard (`homewizard`) | Derived from power and voltage, current exact | Negative current while exporting, read as its size | Total grid power for solar and hybrid: one signed entity. | Detected from the integration's source |
-| Tibber Pulse (`tibber`) | Direct phase current | Negative current while exporting, read as its size | Total grid power for solar and hybrid: an import and an export entity. | Detected from the integration's source |
+| Tibber Pulse (`tibber`) | Direct phase current | Negative current while exporting, read as its size | Total grid power for solar and hybrid: an import and an export entity. | Tested: charging verified (Tibber Pulse) |
 | DSMR smart meter (`dsmr`) | Derived from power and voltage, current exact | Import and export are two entities | Total grid power for solar and hybrid: an import and an export entity. Updates about every 30 s. | Set up by users: detected and configured, charging not yet confirmed (ESPHome P1 reader) |
 | DSMR Reader (`dsmr_reader`) | Derived from power and voltage, current exact | Import and export are two entities | Total grid power for solar and hybrid: an import and an export entity. | Detected from the integration's source |
 | P1 Monitor (`p1_monitor`) | Derived from power and voltage, current exact | Import and export are two entities | Total grid power for solar and hybrid: an import and an export entity. | Detected from the integration's source |
@@ -192,7 +192,7 @@ The integrations below are the ones the detection was checked against, from each
 | Leapmotor (`leapmotor`) | Can be set | The one-decimal level is a diagnostic battery sensor, the remaining energy is not a capacity. | Detected from the integration's source |
 | Lucid Motors (`lucidmotors`) | Can be set | capacity_kwhr is the pack, kwhr the energy left in it. | Detected from the integration's source |
 | Lynk & Co (`lynkco`) | Read only, used as the ceiling | The read-only charge limit is a percent sensor, a service sets it. | Detected from the integration's source |
-| Mercedes-Benz (`mbapi2020`) | Read only, used as the ceiling | max_soc sensor is a ceiling only. | Detected from the integration's source |
+| Mercedes-Benz (`mbapi2020`) | Read only, used as the ceiling | max_soc sensor is a ceiling only. | Tested: charging verified (Mercedes-Benz) |
 | MG (SAIC) (`mg_saic`) | Can be set | Target SOC and fuel level are battery class; capacity is declared a meter. | Detected from the integration's source |
 | MySkoda (`myskoda`) | Can be set |  | Detected from the integration's source |
 | Nissan Carwings (`nissan_carwings`) | None found | Electric mileage declares itself energy storage and is not the capacity. | Detected from the integration's source |
@@ -238,7 +238,7 @@ The Hybrid strategy holds back grid energy when a solar forecast promises sun. I
 | Integration | Verification |
 | --- | --- |
 | Forecast.Solar (`forecast_solar`) | Detected from the integration's source |
-| Solcast Solar (`solcast_solar`) | Detected from the integration's source |
+| Solcast Solar (`solcast_solar`) | Tested: charging verified (Solcast) |
 | Open-Meteo Solar Forecast (`open_meteo_solar_forecast`) | Detected from the integration's source |
 
 ## Supported price areas
