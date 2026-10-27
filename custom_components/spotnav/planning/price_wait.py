@@ -49,7 +49,7 @@ Action = Literal["wait", "buy_now", "guarantee"]
 
 @dataclass(frozen=True, slots=True)
 class KnownInterval:
-    """One interval whose price is published: start, end (aware) and any comparable price."""
+    """One interval whose price is published: start, end (aware, any zone; read as instants) and any comparable price."""
 
     start: datetime
     end: datetime
@@ -164,11 +164,14 @@ def decide(
                 if interval.start.astimezone(timezone.utc) >= now_utc - timedelta(seconds=EPSILON_SECONDS)
                 and interval.end.astimezone(timezone.utc) <= window_end
             ),
-            key=lambda interval: interval.start,
+            # Instants, not wall clocks: two values in the same zone compare and subtract as wall clocks,
+            # which would misorder the repeated autumn hour and miscount an interval across a clock change.
+            key=lambda interval: interval.start.astimezone(timezone.utc),
         )
     )
     capacity = sum(
-        (interval.end - interval.start).total_seconds() / 3600 for interval in eligible
+        (interval.end.astimezone(timezone.utc) - interval.start.astimezone(timezone.utc)).total_seconds() / 3600
+        for interval in eligible
     ) * max_charge_kw
     if capacity + EPSILON_KWH < must_buy:
         # Known prices cannot hold what must be bought; picking "cheapest" would miss the deadline.
