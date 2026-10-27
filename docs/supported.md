@@ -158,6 +158,7 @@ The site uses a house battery's power to tell the car's draw from the house's, a
 | SolarEdge Modbus Multi / SolarEdge Modbus (HACS) (`solaredge_modbus_multi`, `solaredge_modbus`) | Charge-positive, used as it is |  | Detected from the integration's source |
 | SolarEdge Modbus (Home Assistant core) (`solaredge_modbus`) | Charge-positive, used as it is |  | Detected from the integration's source |
 | HomeWizard (`homewizard`) | Charge-positive, used as it is | Only devices whose model contains "bat". | Detected from the integration's source |
+| SolaX Modbus (`solax_modbus`) | Charge-positive, used as it is | Only devices from solax. | Tested: charging verified (SolaX) |
 | Tesla Powerwall (`powerwall`) | Discharge-positive, negated |  | Detected from the integration's source |
 | Tesla Fleet / Teslemetry / Tesla Custom Integration (`tesla_fleet`, `teslemetry`, `tesla_custom`) | Discharge-positive, negated |  | Detected from the integration's source |
 | Fronius (`fronius`) | Discharge-positive, negated |  | Detected from the integration's source |

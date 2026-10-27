@@ -198,6 +198,8 @@ class BatteryRow:
     # For a battery that reports charge and discharge as two entities: `regex` is the charge power
     # and `discharge_regex` the discharge power.
     discharge_regex: re.Pattern[str] | None = None
+    # As `MeterRow.device_manufacturer`: for an integration whose plugins speak for several makers.
+    device_manufacturer: str | None = None
     device_model: str | None = None
     reject: re.Pattern[str] | None = None
     # As `MeterRow.label`.
@@ -588,6 +590,17 @@ BATTERY_ROWS: Final[tuple[BatteryRow, ...]] = (
         ("solaredge_modbus",), _re(r"_battery_.+_dc_power$"), label="SolarEdge Modbus (Home Assistant core)"
     ),
     BatteryRow(("homewizard",), _re(r"_active_power_w$"), device_model="bat"),
+    # SolaX's own plugins of `solax_modbus` (devices made by "SolaX Power"; the Sofar and Growatt plugins
+    # use the same key with their own registers). `battery_power_charge` ("Battery Power Charge", "Total
+    # Battery Power Charge" on Gen5/Gen6) is charge-positive: the integration's own house load is PV power
+    # minus it minus the grid meter's power, and a SolaX battery was seen at +1768 W charging and -1243 W
+    # discharging. The parallel-mode entities (`pm_` and the per-inverter `pm_iN_`) are left out.
+    BatteryRow(
+        ("solax_modbus",),
+        _re(r"(?:^|_)battery_power_charge$"),
+        device_manufacturer="solax",
+        reject=_re(r"(?:^|_)pm_(?:i\d+_)?battery_power_charge$"),
+    ),
     # Discharge-positive: negate.
     BatteryRow(("powerwall",), _re(r"battery_instant_power$"), inverted=True),
     BatteryRow(("tesla_fleet", "teslemetry", "tesla_custom"), _re(r"battery_power$"), inverted=True),
@@ -1230,7 +1243,7 @@ def _battery_candidates(
             if entity.platform not in row.platforms or not _usable(entity, excluded_device_ids):
                 continue
             device = devices.get(entity.device_id or "")
-            if not _device_ok(None, row.device_model, device):
+            if not _device_ok(row.device_manufacturer, row.device_model, device):
                 continue
             texts = _texts(entity)
             scope = entity.config_entry_id or entity.device_id or ""

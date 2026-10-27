@@ -44,6 +44,7 @@ TESTED_ON: dict[tuple[str, str], str] = {
     ("charger", "ocpp"): "Charge Amps HALO",
     ("meter", "sigen"): "Sigenergy",
     ("battery", "sigen"): "Sigenergy",
+    ("battery", "solax_modbus"): "SolaX",
     ("vehicle", "kia_uvo"): "Kia EV6",
     ("charger", "easee"): "Easee Home",
     ("meter", "tibber"): "Tibber Pulse",
@@ -530,7 +531,14 @@ def batteries_section() -> list[str]:
             convention = "Discharge-positive, negated"
         else:
             convention = "Charge-positive, used as it is"
-        notes = f"Only devices whose model contains \"{row.device_model}\"." if row.device_model else ""
+        notes = " ".join(
+            line
+            for line in (
+                f"Only devices from {row.device_manufacturer}." if row.device_manufacturer else "",
+                f"Only devices whose model contains \"{row.device_model}\"." if row.device_model else "",
+            )
+            if line
+        )
         rows.append((f"{names} ({domains_text(row.platforms)})", convention, notes, verified("battery", *row.platforms)))
     return [
         "## Supported house batteries",

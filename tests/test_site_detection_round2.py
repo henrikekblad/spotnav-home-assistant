@@ -263,6 +263,50 @@ def test_another_plugin_of_the_integration_is_not_assumed_to_share_solax_convent
     assert solax_hybrid(manufacturer="Solinteg").detect().meters == ()
 
 
+def solax_battery(*, manufacturer: str = "SolaX Power", parallel: bool = False) -> Registry:
+    """The SolaX plugin's battery power (`<name>_battery_power_charge`, "Battery Power Charge") beside the
+    plugin's other battery entities; with the parallel-mode entities on their own sub-device when asked."""
+    r = solax_hybrid(manufacturer=manufacturer)
+    if parallel:
+        r.device("solax_pm", model="Parallel", manufacturer=manufacturer, name="SolaX Parallel", entry="solax")
+        r.add(
+            "solax_modbus", "solax_pm_battery_power_charge", "SolaX_pm_battery_power_charge",
+            device_class="power", unit="W", device="solax_pm", entry="solax", original_name="Battery Power Charge",
+        )
+        r.add(
+            "solax_modbus", "solax_pm_i2_battery_power_charge", "SolaX_pm_i2_battery_power_charge",
+            device_class="power", unit="W", device="solax_pm", entry="solax", original_name="I2 Battery Power Charge",
+        )
+    r.add(
+        "solax_modbus", "solax_battery_1_power_charge", "SolaX_battery_1_power_charge",
+        device_class="power", unit="W", device="solax_inv", entry="solax", original_name="Battery 1 Power Charge",
+    )
+    r.add(
+        "solax_modbus", "solax_battery_power_charge", "SolaX_battery_power_charge",
+        device_class="power", unit="W", device="solax_inv", entry="solax", original_name="Battery Power Charge",
+    )
+    return r
+
+
+def test_the_solax_battery_is_charge_positive_and_used_as_it_is() -> None:
+    [battery] = solax_battery().detect().batteries
+
+    assert battery.entity_id == "sensor.solax_battery_power_charge"
+    assert battery.integration == "solax_modbus" and battery.inverted is False
+    assert battery.discharge_entity_id is None and battery.title == "SolaX Inverter"
+
+
+def test_the_solax_parallel_mode_totals_are_not_the_battery() -> None:
+    [battery] = solax_battery(parallel=True).detect().batteries
+
+    assert battery.entity_id == "sensor.solax_battery_power_charge"
+
+
+def test_another_plugin_with_the_same_battery_key_is_not_assumed_to_share_its_sign() -> None:
+    assert solax_battery(manufacturer="Sofar Solar").detect().batteries == ()
+    assert solax_battery(manufacturer="Growatt New Energy").detect().batteries == ()
+
+
 # ---- Perific --------------------------------------------------------------------------------------
 
 
