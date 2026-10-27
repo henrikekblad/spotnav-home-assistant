@@ -230,6 +230,10 @@ REASON_MAGNITUDE_LOWERING = "lowering_overload_on_current_magnitude_direction_un
 #: (`_written_at_reading`).
 _WRITES_KEPT = 4
 
+#: How long (s) one site calculation stands for the same readings (`SiteCapacityController._calculate`). A reading's
+#: age is taken when it is calculated, so a result is reused only within this, and only while no reading changed.
+CALCULATION_REUSE_S = 1.0
+
 
 @dataclass(frozen=True, slots=True)
 class BalancingPauseState:
@@ -300,13 +304,16 @@ class SiteCapacityController:
 
     `membership_conflicts` is computed live: a charger shared with another site entry blocks the
     apply step (the regulator calculation continues), so a charger of doubtful ownership is never
-    written from here.
+    written from here, but for an import overload's lowering.
     """
 
     def __init__(self, hass: HomeAssistant, entry_id: str, config: dict[str, Any]) -> None:
         self.hass = hass
         self.entry_id = entry_id
         self.config = config
+        # The last site calculation, the readings it was made from and when (`_calculate`).
+        self._calculation: tuple[tuple[Any, ...], datetime, SiteCapacityResult] | None = None
+        self._reading_entities: tuple[str, ...] | None = None
         self._timer_cancel: Callable[[], None] | None = None
         self._state_listener_cancel: Callable[[], None] | None = None
         self._controller_listener_cancels: list[Callable[[], None]] = []
@@ -3051,10 +3058,48 @@ class SiteCapacityController:
         return margins
 
     def _calculate(self) -> SiteCapacityResult:
+        """The site's figures on the latest readings, calculated once per reading: a recompute, the apply pass it
+        queues, a start's allowance and its reservation all read the same readings, so the result is reused while
+        no reading changed (`_readings_key`) and for at most `CALCULATION_REUSE_S`, over which a reading's age would
+        drift."""
+        key = self._readings_key()
+        now = dt_util.utcnow()
+        cached = self._calculation
+        if (
+            cached is not None
+            and cached[0] == key
+            and 0.0 <= (now - cached[1]).total_seconds() <= CALCULATION_REUSE_S
+        ):
+            return cached[2]
         # The site's own figures never rest on a credit (which is read from them). An "Automatic" charger not
         # followed to a phase is reckoned on the worst phase of the figures being calculated, not the last ones.
-        return calculate_site_capacity(
+        result = calculate_site_capacity(
             self._build_config(), self._build_requests(credit=False, resolve=False)
+        )
+        self._calculation = (key, now, result)
+        return result
+
+    def _readings_key(self) -> tuple[Any, ...]:
+        """What `_calculate` reads, by its readings' timestamps: each measurement entity's state with its
+        `last_updated` and `last_reported`, each charger's requested current and priority, and the phases whose
+        current sign is confirmed."""
+        if self._reading_entities is None:
+            self._reading_entities = tuple(self._tracked_entity_ids())
+        states = []
+        for entity_id in self._reading_entities:
+            state = self.hass.states.get(entity_id)
+            states.append(
+                None
+                if state is None
+                else (state.state, state.last_updated, getattr(state, "last_reported", None), id(state))
+            )
+        charger_entry_ids = list(self.config.get(CONF_CHARGER_ENTRY_IDS) or [])
+        return (
+            id(self.config),
+            tuple(states),
+            tuple(self._charger_requested_current(charger_entry_id) for charger_entry_id in charger_entry_ids),
+            tuple(self.charger_priority(charger_entry_id) for charger_entry_id in charger_entry_ids),
+            self._current_sign.confirmed,
         )
 
     def _build_config(self) -> SiteCalculationConfig:
@@ -3135,6 +3180,10 @@ class SiteCapacityController:
             requests = resolve_worst_case_phases(requests, latest.measured_margin_a)
         if not credit:
             return requests
+        return self._with_start_credit(requests)
+
+    def _with_start_credit(self, requests: list[ChargerRequest]) -> list[ChargerRequest]:
+        """`requests` (built without the credit) with a charger just started credited (`_build_requests`)."""
         credited = self._credited_measurements(requests, self.result.measured_phase_current_a)
         return [
             replace(request, measured_current_a=credited[request.charger_entry_id])
@@ -3297,14 +3346,14 @@ class SiteCapacityController:
             for charger_entry_id, known in self._direction_at_charge_start.items()
             if not known and self._in_charge(charger_entry_id)
         }
-        requests = [request for request in self._build_requests() if request.charger_entry_id not in not_ours]
+        # Built once: the credited requests are the same requests with a start's credit applied.
+        uncredited = self._build_requests(credit=False)
+        requests = [request for request in self._with_start_credit(uncredited) if request.charger_entry_id not in not_ours]
         decisions = allocate_regulator_decisions(
             site_result=self.result,
             requests=requests,
             # A credited start is judged on its own reading too: the credit never stands for a raise.
-            own_measured_current_a={
-                request.charger_entry_id: request.measured_current_a for request in self._build_requests(credit=False)
-            },
+            own_measured_current_a={request.charger_entry_id: request.measured_current_a for request in uncredited},
             credit_raise_tolerance_a=START_CREDIT_RAISE_TOLERANCE_A,
             voltage_by_phase=voltage_by_phase,
             confirmed_direction_by_phase=confirmed_direction_by_phase,
