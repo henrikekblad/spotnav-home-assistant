@@ -45,13 +45,16 @@ TESTED_ON: dict[tuple[str, str], str] = {
     ("meter", "sigen"): "Sigenergy",
     ("battery", "sigen"): "Sigenergy",
     ("vehicle", "kia_uvo"): "Kia EV6",
+    ("charger", "easee"): "Easee Home",
+    ("meter", "tibber"): "Tibber Pulse",
+    ("vehicle", "mbapi2020"): "Mercedes-Benz",
+    ("forecast", "solcast_solar"): "Solcast",
 }
 
 #: Hardware that users have set up successfully (SpotNav found and configured it) but where nobody
 #: has confirmed a charge or a balanced current yet. Same keys as `TESTED_ON`.
 SET_UP_ON: dict[tuple[str, str], str] = {
     ("meter", "dsmr"): "ESPHome P1 reader",
-    ("charger", "easee"): "Easee Home",
     ("meter", "easee"): "Easee Equalizer",
     ("vehicle", "toyota"): "Subaru e-Outback through the Toyota integration",
 }
@@ -648,7 +651,7 @@ def vehicles_section() -> list[str]:
 
 def forecast_section() -> list[str]:
     rows = [
-        (f"{name} (`{domain}`)", DETECTED) for domain, name in FORECAST_SOURCES
+        (f"{name} (`{domain}`)", verified("forecast", domain)) for domain, name in FORECAST_SOURCES
     ]
     return [
         "## Supported solar forecast",
