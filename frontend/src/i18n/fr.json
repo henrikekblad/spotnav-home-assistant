@@ -340,7 +340,6 @@
   "site.activeControl.restore.failed.no_authoritative_current": "SpotNav n'a aucun courant demandé auquel ramener la borne, elle peut donc être encore limitée.",
   "site.activeControl.restore.failed.charger_not_loaded": "La borne n'est pas chargée dans Home Assistant, elle peut donc être encore limitée.",
   "site.activeControl.restore.failed.membership_conflict": "La borne appartient à plusieurs sites et n'a pas été touchée, elle peut donc être encore limitée.",
-  "site.activeControl.restore.failed.probe_in_flight": "La borne était occupée par un test de courant, elle peut donc être encore limitée.",
   "site.activeControl.restore.failed.below_minimum": "Le courant à rétablir est inférieur à ce que la borne accepte, elle peut donc être encore limitée.",
   "site.activeControl.restore.failed.external_balancer": "Une autre intégration équilibre le courant de la borne, SpotNav ne l'a donc pas réglé et elle peut être encore limitée.",
   "site.activeControl.restore.failed.no_connector_target": "SpotNav n'a pas trouvé le connecteur de la borne à commander, elle peut donc être encore limitée.",

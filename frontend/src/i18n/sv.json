@@ -340,7 +340,6 @@
   "site.activeControl.restore.failed.no_authoritative_current": "SpotNav har ingen begärd ström att återställa laddaren till och den kan fortfarande vara begränsad.",
   "site.activeControl.restore.failed.charger_not_loaded": "Laddaren är inte laddad i Home Assistant och kan fortfarande vara begränsad.",
   "site.activeControl.restore.failed.membership_conflict": "Laddaren tillhör mer än en anläggning och lämnades orörd, så den kan fortfarande vara begränsad.",
-  "site.activeControl.restore.failed.probe_in_flight": "Laddaren var upptagen med ett strömtest och kan fortfarande vara begränsad.",
   "site.activeControl.restore.failed.below_minimum": "Strömmen som skulle återställas är lägre än laddaren accepterar och den kan fortfarande vara begränsad.",
   "site.activeControl.restore.failed.external_balancer": "En annan integration balanserar laddarens ström, så SpotNav skrev den inte och den kan fortfarande vara begränsad.",
   "site.activeControl.restore.failed.no_connector_target": "SpotNav hittade inte laddarens kontakt att styra och laddaren kan fortfarande vara begränsad.",

@@ -273,7 +273,6 @@ const RESTORE_FAILURE_KEYS: Record<string, TranslationKey> = {
   no_authoritative_current: "site.activeControl.restore.failed.no_authoritative_current",
   charger_not_loaded: "site.activeControl.restore.failed.charger_not_loaded",
   membership_conflict: "site.activeControl.restore.failed.membership_conflict",
-  probe_in_flight: "site.activeControl.restore.failed.probe_in_flight",
   below_minimum: "site.activeControl.restore.failed.below_minimum",
   no_connector_target: "site.activeControl.restore.failed.no_connector_target",
   external_balancer: "site.activeControl.restore.failed.external_balancer",

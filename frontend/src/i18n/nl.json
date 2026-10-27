@@ -340,7 +340,6 @@
   "site.activeControl.restore.failed.no_authoritative_current": "SpotNav heeft geen gevraagde stroom om de laadpaal naar terug te zetten, dus hij kan nog beperkt zijn.",
   "site.activeControl.restore.failed.charger_not_loaded": "De laadpaal is niet geladen in Home Assistant, dus hij kan nog beperkt zijn.",
   "site.activeControl.restore.failed.membership_conflict": "De laadpaal hoort bij meer dan één locatie en is niet aangeraakt, dus hij kan nog beperkt zijn.",
-  "site.activeControl.restore.failed.probe_in_flight": "De laadpaal was bezig met een stroomtest, dus hij kan nog beperkt zijn.",
   "site.activeControl.restore.failed.below_minimum": "De te herstellen stroom is lager dan wat de laadpaal accepteert, dus hij kan nog beperkt zijn.",
   "site.activeControl.restore.failed.external_balancer": "Een andere integratie regelt de stroom van de laadpaal, dus SpotNav heeft hem niet ingesteld en hij kan nog beperkt zijn.",
   "site.activeControl.restore.failed.no_connector_target": "SpotNav kon de connector van de laadpaal niet vinden om aan te sturen, dus hij kan nog beperkt zijn.",

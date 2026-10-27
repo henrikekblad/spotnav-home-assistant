@@ -340,7 +340,6 @@
   "site.activeControl.restore.failed.no_authoritative_current": "SpotNav no tiene ninguna corriente solicitada a la que devolver el cargador, así que puede que siga limitado.",
   "site.activeControl.restore.failed.charger_not_loaded": "El cargador no está cargado en Home Assistant, así que puede que siga limitado.",
   "site.activeControl.restore.failed.membership_conflict": "El cargador pertenece a más de una instalación y no se ha tocado, así que puede que siga limitado.",
-  "site.activeControl.restore.failed.probe_in_flight": "El cargador estaba ocupado con una prueba de corriente, así que puede que siga limitado.",
   "site.activeControl.restore.failed.below_minimum": "La corriente a restablecer está por debajo de lo que acepta el cargador, así que puede que siga limitado.",
   "site.activeControl.restore.failed.external_balancer": "Otra integración equilibra la corriente del cargador, así que SpotNav no la ha escrito y puede que siga limitado.",
   "site.activeControl.restore.failed.no_connector_target": "SpotNav no ha encontrado el conector del cargador al que enviar la orden, así que puede que siga limitado.",

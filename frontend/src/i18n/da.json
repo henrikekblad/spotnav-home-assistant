@@ -340,7 +340,6 @@
   "site.activeControl.restore.failed.no_authoritative_current": "SpotNav har ingen ønsket strøm at sætte laderen tilbage til, og den kan stadig være begrænset.",
   "site.activeControl.restore.failed.charger_not_loaded": "Laderen er ikke indlæst i Home Assistant og kan stadig være begrænset.",
   "site.activeControl.restore.failed.membership_conflict": "Laderen tilhører mere end ét anlæg og blev ikke rørt, så den kan stadig være begrænset.",
-  "site.activeControl.restore.failed.probe_in_flight": "Laderen var optaget af en strømtest og kan stadig være begrænset.",
   "site.activeControl.restore.failed.below_minimum": "Strømmen, der skulle genoprettes, er lavere end laderen accepterer, og den kan stadig være begrænset.",
   "site.activeControl.restore.failed.external_balancer": "En anden integration balancerer laderens strøm, så SpotNav skrev den ikke, og den kan stadig være begrænset.",
   "site.activeControl.restore.failed.no_connector_target": "SpotNav kunne ikke finde laderens stik at styre, og laderen kan stadig være begrænset.",
