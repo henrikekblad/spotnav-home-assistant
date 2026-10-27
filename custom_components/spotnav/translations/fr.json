@@ -893,6 +893,9 @@
     "stop_not_executed": {
       "message": "La borne n'a pas exécuté l'arrêt : sa commande est indisponible. Réessayez quand la borne sera de nouveau disponible."
     },
+    "stop_held_at_floor": {
+      "message": "La borne n'a pas mis la charge en pause : elle n'autorise que quelques pauses en dix minutes et maintient donc la charge à 6 A. Réessayez dans quelques minutes."
+    },
     "storage_failed": {
       "message": "Le plan de charge n'a pas pu être enregistré."
     },

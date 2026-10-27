@@ -13,12 +13,15 @@ The events, `CHARGER_EVENT_TYPES`:
 * `plan_installed`: a charging plan that is not the one before it was installed (by Auto or by hand);
 * `plan_at_risk`: the departure cannot be met with the energy that remains. Once per time it becomes so.
 
-The first observation only sets the baseline: restarting Home Assistant is not an event.
+The first observation only sets the baseline: restarting Home Assistant is not an event. A charging
+state that cannot be read (`charging` is `None`: the charger's integration reloading, its entities
+unavailable or unknown) is no observation either: the charge is as it was last seen, so a reload is
+neither a `charge_finished` nor, when it is over, a `charge_started`.
 """
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from typing import Any, Final
 
 EVENT_CHARGE_STARTED: Final = "charge_started"
@@ -43,7 +46,8 @@ type Event = tuple[str, dict[str, Any]]
 class ChargerFacts:
     """One observation of a charger."""
 
-    charging: bool
+    #: Whether the charger is charging, `None` when nothing readable says it (no observation).
+    charging: bool | None
     #: Whether a vehicle is plugged in, `None` when the charger cannot say.
     connected: bool | None
     #: What identifies the installed plan (`None` without one); a change of it is a new plan.
@@ -66,18 +70,24 @@ class ChargerEventTracker:
 
     def observe(self, facts: ChargerFacts) -> list[Event]:
         before = self._last
+        if facts.charging is None and before is not None:
+            # No observation of the charge: it is as it was last seen.
+            facts = replace(facts, charging=before.charging)
         self._last = facts
-        if before is None:
+        if before is None or before.charging is None:
+            # The baseline of the charge: the first observation, or the first that could read it.
             if facts.charging:
                 self._register_at_start = facts.register_kwh
-            return []
+            if before is None:
+                return []
         events: list[Event] = []
         if before.connected is not None and facts.connected is not None and before.connected != facts.connected:
             events.append((EVENT_PLUGGED_IN if facts.connected else EVENT_UNPLUGGED, {}))
-        if not before.charging and facts.charging:
+        # A charge's baseline, or still nothing read (`None` on either side), is no change of it.
+        if before.charging is False and facts.charging is True:
             self._register_at_start = facts.register_kwh
             events.append((EVENT_CHARGE_STARTED, {"energy_register_kwh": facts.register_kwh}))
-        elif before.charging and not facts.charging:
+        elif before.charging is True and facts.charging is False:
             attributes: dict[str, Any] = {"unplugged": facts.connected is False}
             if self._register_at_start is not None and facts.register_kwh is not None:
                 attributes["energy_kwh"] = round(max(facts.register_kwh - self._register_at_start, 0.0), 3)

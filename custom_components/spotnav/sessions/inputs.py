@@ -80,7 +80,7 @@ def session_facts(hass: HomeAssistant, controller: ChargingController) -> Sessio
     data = charger_data(hass, charger_id)
     identifier = None if data is None else data.identifier
     return SessionFacts(
-        charging=controller.charging,
+        charging=adapter.charging_observation(),
         connected=adapter.vehicle_connected(),
         register_kwh=adapter.energy_register_kwh(),
         register_integrated=controller.energy_from_power,

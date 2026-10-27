@@ -183,7 +183,8 @@ class PlatformProfile:
     session_energy_keys: tuple[str, ...] = ()
     #: The state classes a lifetime register named in `energy_keys` may have. Only `total_increasing`
     #: is accepted for one that is merely found on the device; a register the profile names itself may
-    #: be `total` (DEFA's meter reading), which is still a lifetime counter.
+    #: be `total` (DEFA's meter reading), which is still a lifetime counter. Every reading of the register
+    #: takes the same classes (`lifetime_register_state_classes`), so what detection offers is read.
     energy_state_classes: tuple[str, ...] = ("total_increasing",)
     #: The sensor that says what the charger is doing, the values meaning "charging" and the values
     #: meaning "a vehicle is connected but asks for no current" (the `SuspendedEV` of OCPP).
@@ -395,7 +396,8 @@ _PROFILES: Final[tuple[PlatformProfile, ...]] = (
         note="The switch and the current share one register. While paused a current written to the number "
         "is only stored, so the current is written before the switch is turned on, never after. Peblar "
         "allows at most three pauses in ten minutes (relay protection): beyond that a stop holds the "
-        "charge at 6 A instead.",
+        "charge at 6 A instead. SpotNav does not take that for a stop: it says so, load balancing counts "
+        "the 6 A, and the stop is tried again until a pause is allowed.",
     ),
     PlatformProfile(
         platform="nrgkick",
@@ -690,6 +692,40 @@ def policy_for(platform: str | None) -> WritePolicy:
     """The write policy of a platform; `DEFAULT_POLICY` for one nobody described."""
     profile = profile_for(platform)
     return profile.policy if profile is not None else DEFAULT_POLICY
+
+
+def register_owner(profile: PlatformProfile, *, translation_key: str | None, unique_id: str | None) -> str | None:
+    """Which list an energy sensor belongs to, `"lifetime"` or `"session"`, by the longest of the
+    profile's keys it matches. A key can be the tail of another (Lektrico's `energy` ends
+    `lifetime_energy`; DEFA's `meter_value` ends `transaction_meter_value`), and the longer one is
+    what the entity is.
+    """
+    best_length = 0
+    owner: str | None = None
+    for name, keys in (("lifetime", profile.energy_keys), ("session", profile.session_energy_keys)):
+        for key in keys:
+            if len(key) > best_length and entity_matches_keys(
+                translation_key=translation_key,
+                unique_id=unique_id,
+                keys=(key,),
+                key_first=profile.key_first,
+            ):
+                best_length = len(key)
+                owner = name
+    return owner
+
+
+def lifetime_register_state_classes(
+    platform: str | None, *, translation_key: str | None, unique_id: str | None
+) -> tuple[str, ...]:
+    """The state classes a lifetime energy register may have: `total_increasing`, and for the register a
+    platform's profile names as its lifetime one, the classes that profile allows (DEFA's `meter_value` is
+    `total`). Detection and every reading of the register ask this one table, so they agree.
+    """
+    profile = profile_for(platform)
+    if profile is None or register_owner(profile, translation_key=translation_key, unique_id=unique_id) != "lifetime":
+        return ("total_increasing",)
+    return profile.energy_state_classes
 
 
 def entity_matches_keys(

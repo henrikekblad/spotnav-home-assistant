@@ -79,6 +79,7 @@ from ..execution.charger_connection import (
 from ..execution.controller import (
     ChargingController,
     CurrentRestore,
+    REGULATED_FLOORED,
     REGULATED_STOPPED,
     RESTORE_FAILED,
     RESTORE_NOT_NEEDED,
@@ -1837,6 +1838,10 @@ class SiteCapacityController:
                 # does not pause the stopped charger again, and the resume (`_async_maybe_resume_paused_charge`)
                 # is not held back by the current it had before the pause.
                 damper.record_write(0.0)
+            elif write.outcome == REGULATED_FLOORED:
+                # The stop did not pause the charge: the charger holds it at the 6 A floor (a Peblar out of
+                # pauses), and that is what is counted until a later pass pauses it.
+                damper.record_write(float(DEFAULT_MIN_CURRENT_A))
             elif damper.last_written_a == damping.current_a:
                 # Nothing went out: the damper must not believe it did, or the next deadband and the
                 # restore would be measured against a value the charger never had. (Unless another path's
@@ -2489,6 +2494,9 @@ class SiteCapacityController:
                 )
                 charger_controller.note_car_refused_probe()
             return
+        if write.outcome == REGULATED_FLOORED:
+            # Not paused: the charge runs on at the floor, which is what the charger draws until the stop is taken.
+            damper.record_write(float(DEFAULT_MIN_CURRENT_A))
         _LOGGER.warning(
             "SpotNav site %s battery probe: charger %s could not be stopped (%s); trying again",
             self.entry_id,

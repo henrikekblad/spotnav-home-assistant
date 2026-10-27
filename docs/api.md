@@ -270,7 +270,7 @@ Each charger has one **Charger events** entity (an `event` entity). It fires:
 | `plan_installed` | a charging plan different from the one before is installed, by Auto or by hand | `start`, `end`, `periods`, `amps`, `energy_kwh`, `automatic` |
 | `plan_at_risk` | the departure cannot be met with the energy that remains (the plan is the best effort, or not one whole quarter-hour is left); once each time it becomes so | `departure_time`, `requested_kwh` |
 
-Starting Home Assistant is not an event. Example, a notification when a charge ends:
+Starting Home Assistant is not an event, and neither is a charger integration that reloads: while its charging state reads unavailable or unknown nothing is observed, and the charge is as it was last seen. Example, a notification when a charge ends:
 
 ```yaml
 automation:

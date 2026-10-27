@@ -58,6 +58,7 @@ from .base import (
     IN_EFFECT_OUTCOMES,
     start_call_tap,
     StartStopPath,
+    STOP_HELD_AT_FLOOR,
     WriteRateLimiter,
 )
 from .generic import NoCurrent
@@ -171,10 +172,16 @@ class ChargerAdapter:
             self._started_at = None
         return executed
 
-    async def async_stop(self) -> bool:
-        """Stop the charge; `False` when the command was not executed (its entity is unavailable)."""
-        self._started_at = None
-        return await self._logged(COMMAND_STOP, lambda: self.path.async_stop())
+    async def async_stop(self) -> bool | str:
+        """Stop the charge; `False` when the command was not executed (its entity is unavailable), and
+        `STOP_HELD_AT_FLOOR` when the charger held the charge at its floor instead of pausing it (a Peblar
+        out of pauses): the charge still runs, so what was started stays started.
+        """
+        started_at, self._started_at = self._started_at, None
+        result = await self._logged(COMMAND_STOP, lambda: self.path.async_stop())
+        if result == STOP_HELD_AT_FLOOR:
+            self._started_at = started_at
+        return result
 
     async def async_set_current(self, amps: int, *, reason: str, verify: bool = False) -> str:
         outcome: str | None = None
@@ -303,6 +310,22 @@ class ChargerAdapter:
         status = self._status()
         if status is not None:
             return status in self._charging_values
+        return self.path.enabled_state() is True
+
+    def charging_observation(self) -> bool | None:
+        """Whether the charger is charging, or `None` when nothing readable says it: what the events and
+        the session record read, so a charger integration that reloads (its entities unavailable or unknown for
+        a while) is neither a charge that finished nor one that started.
+
+        With a status sensor configured, that sensor alone says it (an unreadable one is no observation, never
+        the charge control in its place); without one, the charge control, while any of its entities reads
+        something.
+        """
+        if self.status_entity_id:
+            status = self._status()
+            return None if status is None else status in self._charging_values
+        if not any(_lower(self.hass.states.get(entity_id)) is not None for entity_id in self.path.entity_ids()):
+            return None
         return self.path.enabled_state() is True
 
     def _status(self) -> str | None:

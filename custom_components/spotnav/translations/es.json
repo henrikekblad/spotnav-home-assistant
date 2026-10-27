@@ -893,6 +893,9 @@
     "stop_not_executed": {
       "message": "El cargador no ha aceptado la parada: su control no está disponible. Vuelve a intentarlo cuando el cargador vuelva a estar disponible."
     },
+    "stop_held_at_floor": {
+      "message": "El cargador no pausó la carga: solo permite unas pocas pausas en diez minutos, así que mantiene la carga a 6 A. Inténtalo de nuevo en unos minutos."
+    },
     "storage_failed": {
       "message": "No se ha podido guardar el plan de carga."
     },

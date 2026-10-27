@@ -13,7 +13,10 @@ a price change inside the session is honoured. No cost is stored: it is made whe
 person's settings then.
 
 A session open across a restart is resumed when the charger is charging again, and otherwise closed at
-the last time it was seen charging (or now, if the register shows energy was delivered meanwhile).
+the last time it was seen charging (or now, if the register shows energy was delivered meanwhile). A
+charging state that cannot be read (the charger's integration reloading) is handled the same way: no
+observation, so the session is neither split nor ended by it; if the charge is not seen again it ended
+when it was last seen going.
 
 Nothing here awaits or writes to a charger: it reads, and saves through the store.
 """
@@ -74,7 +77,8 @@ class PriceBook:
 class SessionFacts:
     """One captured instant of everything a recorder reads from a charger."""
 
-    charging: bool
+    #: `None` when nothing readable says it (no observation: the charger's integration reloading).
+    charging: bool | None
     #: `None` when the charger cannot say.
     connected: bool | None
     register_kwh: float | None
@@ -191,6 +195,16 @@ class SessionRecorder:
             session.vehicle_id = facts.vehicle_id
             session.vehicle_name = facts.vehicle_name
             session.vehicle_decided_by = facts.vehicle_decided_by
+        if facts.charging is None:
+            # No observation: the charge is neither seen going nor seen stopped. A charge last seen going is
+            # taken, as after a restart, to have gone on until then (`_resumed_at`); an idle debounce runs on.
+            if self._was_charging and self._resumed_at is None:
+                self._resumed_at = now
+            if self._idle_seen_at is not None and (now - self._idle_seen_at).total_seconds() >= END_DEBOUNCE_S:
+                self._close(session, self._idle_since or now, now)
+            else:
+                self._store.set_open(session, charger_id=self._charger_id)
+            return
         self._was_charging = facts.charging
         if facts.charging:
             self._idle_since = self._idle_seen_at = None

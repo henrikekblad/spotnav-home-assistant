@@ -33,7 +33,6 @@ from ..execution.charger_entities import (
 )
 from ..execution.other_controllers import other_controllers, OtherController
 from ..execution.charger_profiles import (
-    entity_matches_keys,
     PlatformProfile,
     PATH_BUTTONS,
     PATH_BUTTONS_TOGGLE,
@@ -46,6 +45,7 @@ from ..execution.charger_profiles import (
     PATH_SWITCH_BUDGET,
     profile_for,
     PROFILES,
+    register_owner,
     ROLE_CHARGER,
     ROLE_EXTERNAL_CONTROLLER,
 )
@@ -287,24 +287,8 @@ def _is_energy_register(
 
 
 def _register_owner(profile: PlatformProfile, entry: er.RegistryEntry) -> str | None:
-    """Which list an energy sensor belongs to, `"lifetime"` or `"session"`, by the longest of the
-    profile's keys it matches. A key can be the tail of another (Lektrico's `energy` ends
-    `lifetime_energy`; DEFA's `meter_value` ends `transaction_meter_value`), and the longer one is
-    what the entity is.
-    """
-    best_length = 0
-    owner: str | None = None
-    for name, keys in (("lifetime", profile.energy_keys), ("session", profile.session_energy_keys)):
-        for key in keys:
-            if len(key) > best_length and entity_matches_keys(
-                translation_key=entry.translation_key,
-                unique_id=entry.unique_id,
-                keys=(key,),
-                key_first=profile.key_first,
-            ):
-                best_length = len(key)
-                owner = name
-    return owner
+    """`register_owner` of a registry entry: `"lifetime"`, `"session"` or `None`."""
+    return register_owner(profile, translation_key=entry.translation_key, unique_id=entry.unique_id)
 
 
 def _detect_energy(hass: HomeAssistant, found: DetectedCharger, matcher: EntityMatcher) -> None:

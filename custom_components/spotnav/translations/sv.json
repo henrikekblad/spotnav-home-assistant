@@ -893,6 +893,9 @@
     "stop_not_executed": {
       "message": "Laddaren tog inte emot stoppet: dess styrning är inte tillgänglig. Försök igen när laddaren är tillbaka."
     },
+    "stop_held_at_floor": {
+      "message": "Laddaren pausade inte laddningen: den tillåter bara några få pauser på tio minuter, så den håller laddningen på 6 A i stället. Försök igen om några minuter."
+    },
     "storage_failed": {
       "message": "Laddplanen kunde inte sparas."
     },

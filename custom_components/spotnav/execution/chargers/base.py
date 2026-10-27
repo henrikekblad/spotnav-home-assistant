@@ -56,6 +56,10 @@ ASSIGN_TARGET_UNAVAILABLE: Final = "target_unavailable"
 #: The charge point stored the value but needs a reboot before it applies it.
 ASSIGN_REBOOT_REQUIRED: Final = "reboot_required"
 
+#: A stop that did not pause the charge: the charger (a Peblar out of its relay-protection pauses) lowered it to the
+#: 6 A floor instead, so the charge runs on at that current. Truthy, but never a stop.
+STOP_HELD_AT_FLOOR: Final = "held_at_floor"
+
 #: Outcomes in which the charger now carries the requested current.
 IN_EFFECT_OUTCOMES: Final = frozenset({ASSIGN_ASSIGNED, ASSIGN_UNCONFIRMED, ASSIGN_UNCHANGED})
 #: Outcomes in which a write was refused by policy or capability, before anything was sent.
@@ -292,8 +296,10 @@ class StartStopPath(ABC):
         """
 
     @abstractmethod
-    async def async_stop(self) -> bool:
-        """Send the stop; `False` when it was not executed, as for `async_start`."""
+    async def async_stop(self) -> bool | str:
+        """Send the stop; `False` when it was not executed, as for `async_start`, and `STOP_HELD_AT_FLOOR`
+        when the charger took a lower current instead of a pause, so the charge still runs.
+        """
 
     @abstractmethod
     def enabled_state(self) -> bool | None:

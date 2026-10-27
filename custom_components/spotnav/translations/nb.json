@@ -893,6 +893,9 @@
     "stop_not_executed": {
       "message": "Laderen tok ikke imot stoppkommandoen: styringen er utilgjengelig. Prøv igjen når laderen er tilbake."
     },
+    "stop_held_at_floor": {
+      "message": "Laderen satte ikke ladingen på pause: den tillater bare noen få pauser på ti minutter, så den holder ladingen på 6 A i stedet. Prøv igjen om noen minutter."
+    },
     "storage_failed": {
       "message": "Ladeplanen kunne ikke lagres."
     },

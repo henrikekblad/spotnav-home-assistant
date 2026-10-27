@@ -104,7 +104,7 @@ def charger_facts(
             "requested_kwh": settings.requested_kwh,
         }
     return ChargerFacts(
-        charging=bool(controller.charging),
+        charging=controller.adapter.charging_observation(),
         connected=controller.adapter.vehicle_connected(),
         plan_key=plan_key_of(plan),
         plan=plan_attributes,

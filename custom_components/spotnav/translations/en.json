@@ -893,6 +893,9 @@
     "stop_not_executed": {
       "message": "The charger did not take the stop: its control is unavailable. Try again when the charger is back."
     },
+    "stop_held_at_floor": {
+      "message": "The charger did not pause the charge: it allows only a few pauses in ten minutes, so it holds the charge at 6 A instead. Try again in a few minutes."
+    },
     "storage_failed": {
       "message": "The charging plan could not be saved."
     },

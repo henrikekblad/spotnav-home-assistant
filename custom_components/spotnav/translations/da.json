@@ -893,6 +893,9 @@
     "stop_not_executed": {
       "message": "Laderen modtog ikke stoppet: dens styring er ikke tilgængelig. Prøv igen, når laderen er tilbage."
     },
+    "stop_held_at_floor": {
+      "message": "Laderen satte ikke opladningen på pause: den tillader kun få pauser på ti minutter, så den holder opladningen på 6 A i stedet. Prøv igen om et par minutter."
+    },
     "storage_failed": {
       "message": "Ladeplanen kunne ikke gemmes."
     },

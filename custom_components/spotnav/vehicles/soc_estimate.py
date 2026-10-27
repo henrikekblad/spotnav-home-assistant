@@ -49,14 +49,15 @@ from dataclasses import dataclass, field, replace
 from datetime import datetime, timedelta
 from typing import Any, Final, Literal
 
-from homeassistant.const import EVENT_STATE_CHANGED, STATE_UNAVAILABLE, STATE_UNKNOWN
+from homeassistant.const import STATE_UNAVAILABLE, STATE_UNKNOWN
 from homeassistant.core import callback, Event, EventStateChangedData, HomeAssistant
-from homeassistant.helpers import device_registry as dr
+from homeassistant.helpers import device_registry as dr, entity_registry as er
 from homeassistant.helpers.event import async_track_state_change_event
 from homeassistant.helpers.storage import Store
 from homeassistant.util import dt as dt_util
 
 from ..const import DOMAIN
+from ..execution.charger_profiles import lifetime_register_state_classes
 from ..execution.target_stop import (
     charge_ceiling_percent,
     charger_soc_entity_id,
@@ -819,7 +820,9 @@ def read_energy_register_kwh(hass: HomeAssistant, entity_id: str | None) -> floa
     """A cumulative energy register in kWh, or `None` when unreadable or not a meter.
 
     Requires a numeric state, `Wh`/`kWh` and `state_class: total_increasing`, so a session or
-    momentary value that falls back to zero is never misread as a reset.
+    momentary value that falls back to zero is never misread as a reset; or `total` for the lifetime
+    register a charger's profile names as such (DEFA's `meter_value`), which detection accepts as one
+    (`register_state_classes`).
     """
     return read_energy_register(hass, entity_id)[0]
 
@@ -830,17 +833,28 @@ def read_energy_register(hass: HomeAssistant, entity_id: str | None) -> tuple[fl
     if not entity_id:
         return None, None
     state = hass.states.get(entity_id)
-    value = _register_kwh(state)
+    value = _register_kwh(state, register_state_classes(hass, entity_id))
     return (None, None) if value is None or state is None else (value, state.last_updated)
 
 
-def _register_kwh(state: Any) -> float | None:
+def register_state_classes(hass: HomeAssistant, entity_id: str) -> tuple[str, ...]:
+    """The state classes this register may have, by its registry entry: the charger profile's table
+    (`charger_profiles.lifetime_register_state_classes`), as detection reads it."""
+    entry = er.async_get(hass).async_get(entity_id)
+    if entry is None:
+        return ("total_increasing",)
+    return lifetime_register_state_classes(
+        entry.platform, translation_key=entry.translation_key, unique_id=entry.unique_id
+    )
+
+
+def _register_kwh(state: Any, state_classes: tuple[str, ...] = ("total_increasing",)) -> float | None:
     if state is None or state.state in (STATE_UNAVAILABLE, STATE_UNKNOWN, ""):
         return None
     attributes = state.attributes or {}
     if attributes.get("device_class") != "energy":
         return None
-    if attributes.get("state_class") != "total_increasing":
+    if attributes.get("state_class") not in state_classes:
         return None
     try:
         value = float(state.state)
@@ -906,10 +920,11 @@ class SocReader:
         self._on_reading: Callable[[], None] | None = None
         self._last_notified: float | None = None
         self._notify_next = False
-        # While a calculation lacks a level: the stored vehicle it was for, and the listener for a battery
-        # sensor's state anywhere (one with no state yet resolves to nothing `ensure_watch` could watch).
+        # While a calculation lacks a level: the stored vehicle it was for, and the listener for the sensors that
+        # could bring it (`_arrival_entity_ids`: one with no state yet resolves to nothing `ensure_watch` could watch).
         self._awaited_vehicle: str | None = None
         self._arrival_cancel: Callable[[], None] | None = None
+        self._arrival_watched: tuple[str, ...] = ()
         # The register's values seen in the last `REGISTER_HISTORY_S` (in memory only: none after a restart), and
         # the register they are of (`resolve_soc`'s `register_history`).
         self._register_samples: deque[RegisterSample] = deque(maxlen=REGISTER_HISTORY_MAX)
@@ -942,23 +957,63 @@ class SocReader:
         """A calculation found no usable level: tell `set_on_reading`'s callback of the first one that
         arrives, whatever it is (the same value as the last one heard included). At start-up the car's
         sensor may get its first state only after the planner ran; until then it resolves to nothing to
-        watch, so any battery sensor's state is listened for and the vehicle resolved again on each."""
+        watch, so the sensors that could bring the level are listened to (`_arrival_entity_ids`: those of the
+        target vehicle and of the charger, found in the registry, which needs no state) and the vehicle is
+        resolved again on each battery state among them. With no vehicle to wait for nothing is listened to."""
         if self._closed:
             return
         self._notify_next = True
         self._awaited_vehicle = stored_vehicle_id
-        if self._arrival_cancel is None:
-            self._arrival_cancel = self._hass.bus.async_listen(
-                EVENT_STATE_CHANGED, self._on_any_battery_state, event_filter=_battery_state
-            )
+        self._listen_for_arrival()
+
+    def _arrival_entity_ids(self) -> tuple[str, ...]:
+        """The sensors a level may arrive on: the resolved vehicle's state of charge, else every sensor of the
+        vehicles it may be (the stored one, else the charger's own vehicles) as the registry lists them; and the
+        sensors of the charger's own device. Empty when no vehicle resolves or may be meant."""
+        hass = self._hass
+        allowed = charger_vehicle_ids(hass, self._entry_id)
+        vehicle_id, _ = resolve_target_vehicle(hass, self._awaited_vehicle, allowed)
+        entities = er.async_get(hass)
+        found: list[str] = []
+        soc_entity = vehicle_soc_entity_id(hass, vehicle_id) if vehicle_id else None
+        if soc_entity:
+            found.append(soc_entity)
+        else:
+            meant = vehicle_id or self._awaited_vehicle
+            devices = (meant,) if meant else tuple(allowed or ())
+            if not devices:
+                return ()
+            for device_id in devices:
+                found.extend(_device_sensor_ids(entities, device_id))
+        control = self._charge_control()
+        control_entry = entities.async_get(control) if isinstance(control, str) and control else None
+        if control_entry is not None and control_entry.device_id:
+            found.extend(_device_sensor_ids(entities, control_entry.device_id))
+        return tuple(sorted(set(found)))
+
+    def _listen_for_arrival(self) -> None:
+        """(Re)subscribe to `_arrival_entity_ids` while a level is awaited; none when there is nothing to wait for."""
+        if self._closed or not self._notify_next:
+            self._drop_arrival()
+            return
+        entity_ids = self._arrival_entity_ids()
+        if entity_ids == self._arrival_watched and (self._arrival_cancel is not None or not entity_ids):
+            return
+        self._drop_arrival()
+        if entity_ids:
+            self._arrival_watched = entity_ids
+            self._arrival_cancel = async_track_state_change_event(self._hass, list(entity_ids), self._on_arrival)
 
     def _drop_arrival(self) -> None:
         if self._arrival_cancel is not None:
             self._arrival_cancel()
         self._arrival_cancel = None
+        self._arrival_watched = ()
 
     @callback
-    def _on_any_battery_state(self, _event: Event[EventStateChangedData]) -> None:
+    def _on_arrival(self, event: Event[EventStateChangedData]) -> None:
+        if not _battery_state(event.data):
+            return
         vehicle_id, _ = resolve_target_vehicle(
             self._hass, self._awaited_vehicle, charger_vehicle_ids(self._hass, self._entry_id)
         )
@@ -966,6 +1021,9 @@ class SocReader:
         reading = self.read(vehicle_id)
         if reading is not None and reading.soc_percent is not None:
             self._tell(reading)
+        if self._arrival_cancel is not None:
+            # Still waiting: the vehicle may resolve now, and with it the sensors to listen to.
+            self._listen_for_arrival()
 
     def set_on_reading(self, callback_: Callable[[], None] | None) -> None:
         """Ask to be told when a reading moved enough to make a new plan worth calculating."""
@@ -1134,7 +1192,7 @@ class SocReader:
         if new is None:
             self._note_register(self._now(), None)
         else:
-            self._note_register(new.last_updated, _register_kwh(new))
+            self._note_register(new.last_updated, _register_kwh(new, register_state_classes(self._hass, new.entity_id)))
 
     def _note_register(self, posted_at: datetime, value: float | None) -> None:
         """Add a register value (`None`: unreadable, a break in its run) and forget those older than
@@ -1280,9 +1338,14 @@ class SocReader:
             self._on_reading()
 
 
+def _device_sensor_ids(entities: er.EntityRegistry, device_id: str) -> list[str]:
+    """The `sensor` entities the registry lists on a device: no state needed, so one not yet given a value counts."""
+    return [entry.entity_id for entry in er.async_entries_for_device(entities, device_id) if entry.domain == "sensor"]
+
+
 @callback
 def _battery_state(event_data: EventStateChangedData) -> bool:
-    """A sensor state that could be a state of charge (`await_reading`'s filter, run for every state)."""
+    """A sensor state that could be a state of charge (`await_reading`'s filter on the sensors it listens to)."""
     new = event_data["new_state"]
     return (
         new is not None

@@ -79,6 +79,7 @@ from .runtime import (
     PriceData,
     SiteConfigEntry,
     SiteData,
+    site_data,
 )
 from .services import async_register_services
 from .notifications.notifier import ChargerNotifier
@@ -165,11 +166,17 @@ async def async_setup(hass: HomeAssistant, config: dict[str, Any]) -> bool:
 
 
 async def _async_stop(hass: HomeAssistant, _event: Event | None = None) -> None:
-    """Home Assistant is stopping: silence the boundaries and previews, then the price manager.
+    """Home Assistant is stopping: silence the sites' load balancing, the boundaries and previews, then the
+    price manager.
 
     Settings and installed plans are left alone; stopping Home Assistant is not an instruction to
-    stop charging.
+    stop charging. A site's controller is shut down as its unload would (no entry is unloaded): its timers and
+    listeners end, and no apply pass of it reaches a charger while Home Assistant stops.
     """
+    for entry in hass.config_entries.async_entries(DOMAIN):
+        site = site_data(hass, entry.entry_id)
+        if site is not None:
+            await site.controller.async_shutdown()
     loaded = [
         data
         for entry in hass.config_entries.async_entries(DOMAIN)

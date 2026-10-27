@@ -893,6 +893,9 @@
     "stop_not_executed": {
       "message": "Laturi ei ottanut pysäytystä vastaan: sen ohjaus ei ole käytettävissä. Yritä uudelleen, kun laturi on taas tavoitettavissa."
     },
+    "stop_held_at_floor": {
+      "message": "Laturi ei keskeyttänyt latausta: se sallii vain muutaman tauon kymmenessä minuutissa, joten se pitää latauksen 6 A:ssa. Yritä uudelleen muutaman minuutin kuluttua."
+    },
     "storage_failed": {
       "message": "Lataussuunnitelmaa ei voitu tallentaa."
     },
