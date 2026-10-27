@@ -1,5 +1,12 @@
 """Easee: its own `action_command` service starts and stops, `set_charger_dynamic_limit` sets the
 current, and the charger's statuses, pause and plug-in behaviour need the handling below.
+
+Both services address the charger by device id. That id is resolved when a command is sent
+(`EaseeDevice`), from the registry entry of the charger's configured Easee entities (the charge control,
+the status sensor), falling back to the id stored at setup: an Easee integration removed and added again
+gives the charger a new device, and a call to the old id would reach no charger while Easee's service
+only logs it. When no id resolves to an existing device the paths are not ready, so a command is owed,
+never sent into nothing.
 """
 
 from __future__ import annotations
@@ -13,7 +20,7 @@ from typing import Any, Final
 
 from homeassistant.const import STATE_UNAVAILABLE, STATE_UNKNOWN
 from homeassistant.core import HomeAssistant
-from homeassistant.helpers import entity_registry as er
+from homeassistant.helpers import device_registry as dr, entity_registry as er
 from homeassistant.util import dt as dt_util
 
 from ...const import CURRENT_CONTROL_EASEE, DEFAULT_MIN_CURRENT_A
@@ -24,6 +31,7 @@ from .base import (
     ASSIGN_BELOW_MINIMUM,
     ASSIGN_IGNORED_WHILE_PAUSED,
     ASSIGN_RATE_LIMITED,
+    ASSIGN_TARGET_UNAVAILABLE,
     ASSIGN_UNCHANGED,
     ASSIGN_UNCONFIRMED,
     ASSIGN_WRITE_FAILED,
@@ -73,6 +81,59 @@ EASEE_START_HOLD_S: Final = 60.0
 EASEE_PAUSE_LAG_S: Final = 90.0
 
 
+class EaseeDevice:
+    """The Easee charger's device id, resolved at call time.
+
+    The configured entities (`entity_ids`: the charge control, the status sensor) are looked up in the entity
+    registry; the first that belongs to the Easee integration and sits on a device that exists names the
+    charger. Else the id stored at setup, while that device still exists. Else `None`: no command can reach
+    the charger, and the paths built on this say they are not ready.
+    """
+
+    def __init__(self, hass: HomeAssistant, stored_id: str, entity_ids: tuple[str | None, ...] = ()) -> None:
+        self.hass = hass
+        self.stored_id = stored_id
+        self._entity_ids = tuple(entity_id for entity_id in dict.fromkeys(entity_ids) if entity_id)
+        self._noted: str | None = None
+
+    def resolve(self) -> str | None:
+        devices = dr.async_get(self.hass)
+        entities = er.async_get(self.hass)
+        for entity_id in self._entity_ids:
+            entry = entities.async_get(entity_id)
+            if (
+                entry is not None
+                and entry.platform == _EASEE_DOMAIN
+                and entry.device_id
+                and devices.async_get(entry.device_id) is not None
+            ):
+                self._note(entry.device_id)
+                return entry.device_id
+        if self.stored_id and devices.async_get(self.stored_id) is not None:
+            return self.stored_id
+        return None
+
+    def _note(self, device_id: str) -> None:
+        """Say once that the charger has moved to another device (the Easee integration was added again)."""
+        if device_id != self.stored_id and device_id != self._noted:
+            self._noted = device_id
+            _ADAPTER_LOGGER.info(
+                "The Easee charger is now another device than when it was set up; commands go to the new one"
+            )
+
+
+def _easee_device(hass: HomeAssistant, device: EaseeDevice | str) -> EaseeDevice:
+    return device if isinstance(device, EaseeDevice) else EaseeDevice(hass, device)
+
+
+def _no_device() -> bool:
+    _ADAPTER_LOGGER.warning(
+        "The Easee charger's device cannot be found (its integration has not loaded, or it was removed), so the "
+        "command was not sent"
+    )
+    return False
+
+
 class EaseeCommandPath(StartStopPath):
     """`easee.action_command`: `pause` and `resume` start and stop a charge, `start` only authorizes.
 
@@ -88,6 +149,9 @@ class EaseeCommandPath(StartStopPath):
     limit written meanwhile would raise the paused charger's current and resume it behind our back.
     After a restart the memory is gone: a dynamic limit that reads back as 0 A (when the limit sensor
     is enabled) is a pause all the same.
+
+    The device a command goes to is resolved when it is sent (`EaseeDevice`); with none, a command is
+    not sent and answers `False`, and the path is not ready.
     """
 
     kind = PATH_EASEE
@@ -95,7 +159,7 @@ class EaseeCommandPath(StartStopPath):
     def __init__(
         self,
         hass: HomeAssistant,
-        device_id: str,
+        device: EaseeDevice | str,
         *,
         limiter: WriteRateLimiter | None = None,
         status: Callable[[], str | None] = lambda: None,
@@ -105,7 +169,7 @@ class EaseeCommandPath(StartStopPath):
     ) -> None:
         super().__init__(hass)
         self._now = now
-        self.device_id = device_id
+        self.device = _easee_device(hass, device)
         self._limiter = limiter
         self._status = status
         self._authorization_required = authorization_required
@@ -122,6 +186,11 @@ class EaseeCommandPath(StartStopPath):
         # When our last pause was sent, until a status other than `charging` (or `EASEE_PAUSE_LAG_S`)
         # says the charger has taken it: a `charging` status before then is the old one, not a resume.
         self._pause_sent_at: datetime | None = None
+
+    @property
+    def device_id(self) -> str:
+        """The device id stored at setup (`device.resolve()` is the one a command goes to)."""
+        return self.device.stored_id
 
     def pause_count(self) -> int:
         return self.pauses_sent
@@ -199,7 +268,7 @@ class EaseeCommandPath(StartStopPath):
             return True
         return status == _EASEE_AWAITING_START and self.paused is not True
 
-    async def _command(self, action: str) -> None:
+    async def _command(self, device_id: str, action: str) -> None:
         # Counted against the settings budget, never refused by it: a stop is a safety action.
         if self._limiter is not None:
             self._limiter.record()
@@ -207,14 +276,17 @@ class EaseeCommandPath(StartStopPath):
             self.hass,
             _EASEE_DOMAIN,
             "action_command",
-            {"device_id": self.device_id, "action_command": action},
+            {"device_id": device_id, "action_command": action},
             blocking=True,
         )
 
     async def async_start(self, amps: int | None = None) -> bool:
+        device_id = self.device.resolve()
+        if device_id is None:
+            return _no_device()
         if self._start_owed():
-            await self._command("start")
-        await self._command("resume")
+            await self._command(device_id, "start")
+        await self._command(device_id, "resume")
         self.paused = False
         self._pause_sent_at = None
         return True
@@ -222,11 +294,14 @@ class EaseeCommandPath(StartStopPath):
     async def async_stop(self) -> bool:
         # Never `stop`: deauthorizing would make the next Start wait for an authorization again. Paused from
         # the moment the command leaves: a limit written while it is on its way would resume the charge.
+        device_id = self.device.resolve()
+        if device_id is None:
+            return _no_device()
         self._pausing = True
         self.pauses_sent += 1
         self._pause_sent_at = self._now()
         try:
-            await self._command("pause")
+            await self._command(device_id, "pause")
         finally:
             self._pausing = False
         self.paused = True
@@ -236,7 +311,7 @@ class EaseeCommandPath(StartStopPath):
         return None
 
     def ready(self) -> bool:
-        return self.hass.services.has_service(_EASEE_DOMAIN, "action_command")
+        return self.hass.services.has_service(_EASEE_DOMAIN, "action_command") and self.device.resolve() is not None
 
     def entity_ids(self) -> tuple[str, ...]:
         return ()
@@ -290,7 +365,7 @@ class EaseeDynamicLimit(CurrentPath):
     def __init__(
         self,
         hass: HomeAssistant,
-        device_id: str,
+        device: EaseeDevice | str,
         policy: WritePolicy,
         *,
         status_entity_id: str | None,
@@ -310,7 +385,7 @@ class EaseeDynamicLimit(CurrentPath):
         self._on_plug_in = on_plug_in
         self._on_status = on_status
         self.hass = hass
-        self.device_id = device_id
+        self.device = _easee_device(hass, device)
         self.status_entity_id = status_entity_id
         self._limiter = limiter
         self._now = now
@@ -324,8 +399,11 @@ class EaseeDynamicLimit(CurrentPath):
         """The charger's enabled `dynamic_charger_limit` sensor, or `None` when it has none (it is
         disabled by default). Found on the charger's device by translation key or unique-id suffix.
         """
+        device_id = self.device.resolve()
+        if device_id is None:
+            return None
         registry = er.async_get(self.hass)
-        for entry in er.async_entries_for_device(registry, self.device_id):
+        for entry in er.async_entries_for_device(registry, device_id):
             if entry.domain != "sensor" or entry.platform != _EASEE_DOMAIN:
                 continue
             if (entry.translation_key or "").lower() == EASEE_LIMIT_SENSOR_KEY or str(
@@ -377,7 +455,7 @@ class EaseeDynamicLimit(CurrentPath):
         disagrees = self._disagrees_after_wait()
         return self._suspect if disagrees is None else disagrees
 
-    async def _send(self, amps: int) -> bool:
+    async def _send(self, device_id: str, amps: int) -> bool:
         self._limiter.record()
         try:
             await call_service(
@@ -385,7 +463,7 @@ class EaseeDynamicLimit(CurrentPath):
                 _EASEE_DOMAIN,
                 "set_charger_dynamic_limit",
                 {
-                    "device_id": self.device_id,
+                    "device_id": device_id,
                     "current": amps,
                     "time_to_live": EASEE_TIME_TO_LIVE_MIN,
                 },
@@ -431,12 +509,16 @@ class EaseeDynamicLimit(CurrentPath):
         )
         if self._limiter.wait_s() > 0 or not self._budget_allows(needed):
             return ASSIGN_RATE_LIMITED
-        if needed == 2 and not await self._send(amps - 1):
+        device_id = self.device.resolve()
+        if device_id is None:
+            # No charger to address: nothing is sent into nothing (`ready` says so too).
+            return ASSIGN_TARGET_UNAVAILABLE
+        if needed == 2 and not await self._send(device_id, amps - 1):
             return ASSIGN_WRITE_FAILED
         if needed == 2 and (self._paused() or self._pause_count() != pauses_before):
             # A pause landed between the two sends (on its way, or already out): the second would lift it.
             return ASSIGN_IGNORED_WHILE_PAUSED
-        if not await self._send(amps):
+        if not await self._send(device_id, amps):
             return ASSIGN_WRITE_FAILED
         self.last_written_a = amps
         self._written_at = self._now()
@@ -491,7 +573,10 @@ class EaseeDynamicLimit(CurrentPath):
         return False
 
     def ready(self) -> bool:
-        return self.hass.services.has_service(_EASEE_DOMAIN, "set_charger_dynamic_limit")
+        return (
+            self.hass.services.has_service(_EASEE_DOMAIN, "set_charger_dynamic_limit")
+            and self.device.resolve() is not None
+        )
 
     def describe(self) -> dict[str, Any]:
         return current_description(self.kind, service=f"{_EASEE_DOMAIN}.set_charger_dynamic_limit")
@@ -513,7 +598,7 @@ def _easee_path(context: ChargerContext) -> StartStopPath | None:
     hass = context.hass
     return EaseeCommandPath(
         hass,
-        str(device_id),
+        EaseeDevice(hass, str(device_id), (context.charge_control, context.status_entity_id)),
         limiter=context.limiter,
         status=context.status,
         authorization_required=lambda: _easee_authorization_required(hass, context.status_entity_id),
@@ -528,7 +613,7 @@ def _easee_current(context: ChargerContext) -> CurrentPath | None:
         return None
     return EaseeDynamicLimit(
         context.hass,
-        path.device_id,
+        path.device,
         context.policy,
         status_entity_id=context.status_entity_id,
         limiter=context.limiter,

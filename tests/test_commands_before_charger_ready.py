@@ -18,7 +18,12 @@ from typing import Any
 import pytest
 from homeassistant.core import HomeAssistant
 from homeassistant.util import dt as dt_util
-from pytest_homeassistant_custom_component.common import async_fire_time_changed, async_mock_service
+from homeassistant.helpers import device_registry as dr
+from pytest_homeassistant_custom_component.common import (
+    async_fire_time_changed,
+    async_mock_service,
+    MockConfigEntry,
+)
 
 from custom_components.spotnav.const import (
     CONF_CHARGE_CONTROL,
@@ -295,7 +300,11 @@ async def test_paths_are_not_ready_before_their_entities_and_services_exist(hass
     assert buttons.ready()
 
     async_mock_service(hass, "easee", "action_command")
-    assert easee.ready()
+    assert not easee.ready(), "no device of that id exists: a command would reach no charger"
+    easee_entry = MockConfigEntry(domain="easee")
+    easee_entry.add_to_hass(hass)
+    device = dr.async_get(hass).async_get_or_create(config_entry_id=easee_entry.entry_id, identifiers={("easee", "EH1")})
+    assert EaseeCommandPath(hass, device.id).ready()
 
     async_mock_service(hass, "ocpp", "get_configuration")
     assert not ocpp.ready()
