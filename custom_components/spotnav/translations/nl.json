@@ -325,7 +325,7 @@
           "regulator_deadband_a": "Actieve regeling: wijzigingen kleiner dan dit negeren (A)",
           "regulator_dwell_s": "Actieve regeling: hoe lang een wijziging moet aanhouden (seconden)",
           "yield_stepping_enabled": "Stapsgewijs verhogen met controle van terugschakelen ingeschakeld (opt-in, voor een locatie met een belasting die terugschakelt, bijv. een thuisbatterij)",
-          "yield_ceiling_a": "Stapsgewijs verhogen: harde bovengrens, nooit overschreden (A, moet hoger zijn dan de hoofdzekering)",
+          "yield_ceiling_a": "Stapsgewijs verhogen: harde bovengrens, nooit overschreden (A, moet hoger zijn dan de hoofdzekering); geldt pas zodra de thuisbatterij aantoonbaar meegeeft, tot dan is de hoofdzekering zelf de bovengrens",
           "solar_priority": "Prioriteit voor zonne-overschot (auto of thuisbatterij eerst)",
           "battery_aggregate_power_entity": "Laadvermogen van de thuisbatterij (optioneel, alleen diagnostisch)",
           "change_measurement": "Meting en fase-aansluiting wijzigen",

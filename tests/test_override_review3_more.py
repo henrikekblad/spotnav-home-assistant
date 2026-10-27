@@ -4,6 +4,7 @@ what shutdown and turning active control off do to the operations in flight."""
 from __future__ import annotations
 
 import asyncio
+from dataclasses import replace
 from typing import Any
 
 import pytest
@@ -89,7 +90,11 @@ async def test_shutdown_cancels_a_chargers_operation_on_its_way_and_nothing_is_w
 
     monkeypatch.setattr(ChargingController, "_async_assign_current_outcome", recording)
     monkeypatch.setattr(scc.SiteCapacityController, "_async_maybe_resume_paused_charge", resume)
-    site.regulator_decisions = {a.entry_id: _overload(a.entry_id), b.entry_id: _overload(b.entry_id)}
+    # Not an overload: an overload's lowering is never held for a resume, so it would not reach the slow resume.
+    site.regulator_decisions = {
+        charger.entry_id: replace(_overload(charger.entry_id), reason="increase_within_safe_uncredited_margin")
+        for charger in (a, b)
+    }
     apply = hass.async_create_task(site._async_apply_active_control())  # noqa: SLF001
     await _spin()
 

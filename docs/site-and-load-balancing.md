@@ -117,6 +117,17 @@ It is best effort and is not a protective device. Turning it off gives back any 
 - A sudden overload is reduced immediately. Other changes are damped: a change smaller than the
   *deadband* (2 A) is ignored, and a new level must hold for the *dwell* time (60 s) before it
   is written, so the charger does not dither.
+- **An import overload is always lowered.** When a phase imports more than the limit, the lowering
+  goes out in the same pass, as a lower current (a pause when the room left is below the charger's
+  minimum) or, if the charger cannot take it in time, a safety stop. Nothing that is not about safety holds it back: not the damper, not yield stepping's settle
+  time or holds, not the step guard below, not the band of a battery that holds the grid at the fuse,
+  not a resume or a battery probe about to start, not a meter that reports too seldom and not a charger
+  that more than one site claims (less current is safe whoever owns it). What still decides: the fresh
+  readings must still show the overload and its direction (never a lowering on export or an unknown
+  direction), a battery probe already running judges and stops the car itself, and a charger that is
+  already at or below the lower current is not written again. The one exception is a home battery whose
+  yield is verified on this site (see yield stepping below): up to the yield ceiling, yield stepping
+  judges that overload as before.
 - **A step up stops one amp short of the room there is**, so the car settles one step below the
   limit (the fuse less the site's safety margin, which may be 0) instead of landing on it and being
   cut. A charger's own current is read far less often than the site meter (OCPP: about once a
@@ -125,7 +136,8 @@ It is best effort and is not a protective device. Turning it off gives back any 
   phase a little over it (up to 2 A) takes off only what it is over and one amp more, from what the
   charger was set to. One site reading gives at most one cut, and a level that went over right after
   a step is not tried again for ten minutes. A phase more than 2 A over the limit is cut at once on
-  the charger's own reading, as before.
+  the charger's own reading, as before. An import overload is never held by these rules; it may only
+  take off less than the regulator asked when the step it overshot is still in flight.
 - A start never gives the car more than the site has room for now, and a start on its way holds its
   share of that room until the charger draws it (at most two minutes): two chargers starting in the
   same moment share the margin instead of both taking all of it. A charger whose own current cannot be
@@ -193,7 +205,8 @@ It is best effort and is not a protective device. Turning it off gives back any 
   current SpotNav is set to change (an OCPP charger set through ChangeConfiguration, or a charger
   with a current number or service, see [supported hardware](supported.md)). A charger whose
   current is stored in the charger cannot be adjusted during a charge, but can be stopped when the
-  fuse needs less than its setting. It is refused while a charger belongs to more than one site.
+  fuse needs less than its setting. It is refused while a charger belongs to more than one site, and
+  held while a meter it reads reports too seldom; an import overload is still lowered then.
 - **It needs to know which way each phase flows** (import or export). Lowering a car lowers the import,
   which on a phase that nets to export raises the current instead, so a lowering is only allowed where
   the phase is known to import. A *derived* site knows this from its signed power on every phase. A
@@ -219,8 +232,13 @@ It is best effort and is not a protective device. Turning it off gives back any 
   room the phase has, since a current with a sign does not tell how much of it is active power.
 - **Yield-verified stepping** (opt-in) is for sites with a load that gives way when the car
   draws more, for example a house battery holding the grid at its setpoint. SpotNav then judges a
-  step by whether it moves the site current, within a hard ceiling that must be above the main
-  fuse and below 1.25 times it.
+  step by whether it moves the site current, within a hard ceiling. Until the battery's yield is
+  verified on the site, the ceiling is the main fuse itself: no step or probe takes a phase above the
+  fuse on a battery that has not shown it gives way, and an import overload is lowered at once. Verified
+  means the battery probe below succeeded, or a step was confirmed and the battery's own charge fell by
+  what the car took; a failed step (its backoff) or the end of the car's draw forgets it. With the battery
+  verified, the configured *yield ceiling* holds (default 1.15 times the fuse; it must be above the fuse
+  and below 1.25 times it), and an import overload below it is yield stepping's to judge.
   - **A home battery that charges from the grid and gives way.** With a *home battery power*
     sensor and solar priority *car first* (the default), SpotNav also checks that the battery's
     own charge falls when the car takes more. Once that is verified the car may climb in larger
@@ -232,9 +250,10 @@ It is best effort and is not a protective device. Turning it off gives back any 
   - **A battery that holds the grid at the fuse.** Only with *car first* and yield stepping on. While
     the battery charges at least as hard as the car's minimum current would draw and every phase
     reads no more than 0.5 A above the limit (the fuse less the safety margin), the grid sitting at
-    the limit is the battery's own regulation, not an overload, and the car is not stepped down for
-    it (`held_battery_at_limit` in the decision log). A reading above that band, a stale
-    measurement or a sustained excess is handled exactly as before. When load balancing has paused
+    the limit is the battery's own regulation, and a pause or a lowering that is not an import
+    overload is not carried out for it (`held_battery_at_limit` in the decision log). An import
+    overload is lowered in the band too, unless the battery's yield is verified; a reading above that
+    band, a stale measurement or a sustained excess is handled exactly as before. When load balancing has paused
     the car for want of headroom and the battery is charging from the grid, SpotNav starts the car
     at its minimum current as a probe and watches the grid for up to 30 seconds (the damper's dwell
     if shorter): if every phase is back within the band the battery gave way and the car goes on
@@ -268,8 +287,9 @@ It is best effort and is not a protective device. Turning it off gives back any 
     least a 2 A step's worth over the car's phases (2 A x 230 V x 3 = 1380 W on three phases, on a
     fresh reading), the car is not lowered for the grid sitting at the limit, and it is stepped up
     2 A into the battery's share even though the fuse has no headroom left. Such a step may take a
-    phase over the limit by at most 2.5 A (the 0.5 A band plus the step, and never past the yield
-    ceiling): a step that would go further is not tried. It is then measured like any other yield
+    phase over the limit by at most 2.5 A (the 0.5 A band plus the step, and never past the ceiling,
+    which is the main fuse until the battery's yield is verified): a step that would go further is not
+    tried. It is then measured like any other yield
     step: if the battery's charge falls by what the car took, the grid stays put and the car goes
     on, one step at a time (each sized to stay within the 2.5 A, and paced by the settle time) up to
     its plan. If the grid carries the step instead, or a phase goes past the 2.5 A, or the charger's
@@ -277,7 +297,9 @@ It is best effort and is not a protective device. Turning it off gives back any 
     and no step is tried for 10 minutes, then 20, 40 and at most an hour. Anything above the
     allowance is still cut at once. The card keeps saying that the battery shares the fuse, with the
     current the car has now. (On 17 October a car sat at 7 A all night against a plan of 16 A while
-    the battery charged at 7.3 kW from a 20 A fuse held at 20.0-20.5 A.)
+    the battery charged at 7.3 kW from a 20 A fuse held at 20.0-20.5 A. With the grid above the fuse
+    and the battery not yet verified, the car now goes to its minimum instead; it climbs once a battery
+    probe or a confirmed step has verified the battery.)
   - **A short overload is not a reset.** While yield stepping is verified, one sample above the
     ceiling (and at most 4 A above it) steps the car back once instead of to the minimum. A second
     sample in a row, a larger excess, or two such samples within two minutes still stops at the

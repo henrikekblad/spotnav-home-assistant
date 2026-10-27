@@ -325,7 +325,7 @@
           "regulator_deadband_a": "Aktive Regelung: Änderungen kleiner als (A) ignorieren",
           "regulator_dwell_s": "Aktive Regelung: wie lange eine Änderung anhalten muss (Sekunden)",
           "yield_stepping_enabled": "Schrittweise Erhöhung mit Prüfung des Nachgebens aktiviert (optional, für einen Standort mit einer nachgebenden Last, z. B. einer Hausbatterie)",
-          "yield_ceiling_a": "Schrittweise Erhöhung: feste Obergrenze, nie überschritten (A, muss größer als die Hauptsicherung sein)",
+          "yield_ceiling_a": "Schrittweise Erhöhung: feste Obergrenze, nie überschritten (A, muss größer als die Hauptsicherung sein); gilt erst, wenn der Hausspeicher nachweislich nachgibt, bis dahin ist die Hauptsicherung selbst die Obergrenze",
           "solar_priority": "Priorität für Solarüberschuss (zuerst Auto oder Hausbatterie)",
           "battery_aggregate_power_entity": "Ladeleistung der Hausbatterie (optional, nur Diagnose)",
           "change_measurement": "Messung und Phasenbelegung ändern",

@@ -226,11 +226,12 @@ async def test_disabled_explicitly_matches_disabled_by_default(hass: HomeAssista
 async def test_enabled_on_the_real_condition_a_probe_write_reaches_the_charger(
     hass: HomeAssistant,
 ) -> None:
-    """Site pinned at ~20.2 A/phase on a 20 A fuse (1 A margin), charger at its 6 A floor delivering 5.9 A, raw a standing pause.
+    """Site at 17.5 A/phase on a 20 A fuse (1 A margin), charger at its 6 A floor delivering 5.9 A, raw a standing pause.
 
     With `assigned_a` at the floor, `held_at_floor_raw_pause` lets step 6 consider a probe. The stepper licenses
     an unverified probe to 8 A (`unknown` state, step_a 2.0), which reaches the charger's assign path once the
-    damper's deadband/dwell allow it.
+    damper's deadband/dwell allow it. Unverified, the step must keep the site at or under the fuse
+    (`test_an_unverified_probe_never_takes_the_site_over_the_fuse`).
     """
     site_entry, charger, configure_calls = await _yield_setup(hass, entry_id="probe")
     controller = controller_of(hass, site_entry.entry_id)
@@ -247,7 +248,7 @@ async def test_enabled_on_the_real_condition_a_probe_write_reaches_the_charger(
     assert configure_calls[-1].data["value"] == "1.6,2.10"
     configure_calls.clear()
 
-    set_site_current_a(hass, "probe_site", 20.2)
+    set_site_current_a(hass, "probe_site", 17.5)
     set_charger_delivered_a(hass, "probe_charger", 5.9)
     pause = _decision(
         proposed_a=0.0, requested_a=16.0, reason="paused_safe_current_below_charger_minimum"
@@ -274,6 +275,34 @@ async def test_enabled_on_the_real_condition_a_probe_write_reaches_the_charger(
 
     assert len(configure_calls) == 1
     assert configure_calls[0].data["value"] == "1.8,2.10"
+
+
+async def test_an_unverified_probe_never_takes_the_site_over_the_fuse(hass: HomeAssistant) -> None:
+    """The site at 20.2 A/phase on a 20 A fuse and a battery whose yield is not verified: the ceiling is the fuse
+    itself, not the configured yield ceiling, so no probe step is licensed and the pause goes through."""
+    site_entry, charger, configure_calls = await _yield_setup(hass, entry_id="unverified")
+    controller = controller_of(hass, site_entry.entry_id)
+    controller._dampers.clear()
+    controller._yield_steppers.clear()
+
+    _seed_assigned_a(controller, charger.entry_id, 6.0)
+    await controller._async_apply_active_control()
+    configure_calls.clear()
+    controller._yield_steppers.clear()
+
+    set_site_current_a(hass, "unverified_site", 20.2)
+    set_charger_delivered_a(hass, "unverified_charger", 5.9)
+    controller.regulator_decisions = {
+        charger.entry_id: _decision(
+            proposed_a=0.0, requested_a=16.0, reason="paused_safe_current_below_charger_minimum"
+        )
+    }
+    await controller._async_apply_active_control()
+
+    verdict = controller._yield_stepping_last[charger.entry_id]
+    assert (verdict["action"], verdict["reason"]) == ("passthrough", "passthrough_ceiling")
+    assert controller._yield_steppers[charger.entry_id]._ceiling_a() == 20.0
+    assert "1.8,2.10" not in [call.data["value"] for call in configure_calls]
 
 
 async def test_stale_reading_means_the_stepper_is_not_consulted(hass: HomeAssistant) -> None:
@@ -313,7 +342,7 @@ async def test_a_hold_results_in_no_call_to_the_assign_path(hass: HomeAssistant)
     configure_calls.clear()
     controller._yield_steppers.clear()
 
-    set_site_current_a(hass, "hold_site", 20.2)
+    set_site_current_a(hass, "hold_site", 17.5)
     set_charger_delivered_a(hass, "hold_charger", 5.9)
     pause = _decision(
         proposed_a=0.0, requested_a=6.0, reason="paused_safe_current_below_charger_minimum"
@@ -644,7 +673,7 @@ async def test_yield_stepping_diagnostics_reflect_the_latest_verdict_when_enable
     configure_calls.clear()
     controller._yield_steppers.clear()
 
-    set_site_current_a(hass, "attr_enabled_site", 20.2)
+    set_site_current_a(hass, "attr_enabled_site", 17.5)
     set_charger_delivered_a(hass, "attr_enabled_charger", 5.9)
     pause = _decision(
         proposed_a=0.0, requested_a=16.0, reason="paused_safe_current_below_charger_minimum"

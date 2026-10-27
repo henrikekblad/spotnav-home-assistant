@@ -211,7 +211,11 @@ async def test_a_slow_phase_meter_is_listed_to_check_and_holds_load_balancing(
         site, "_log_active_control_outcome", lambda entry_id, _d, *, outcome, detail, **_k: held.append((outcome, detail))
     )
     real_decisions = site.regulator_decisions
-    site.regulator_decisions = {charger.entry_id: SimpleNamespace(proposed_current_a=10.0)}
+    site.regulator_decisions = {
+        charger.entry_id: SimpleNamespace(
+            proposed_current_a=10.0, reason="increase_within_safe_uncredited_margin", overload=False
+        )
+    }
     try:
         await site._async_apply_active_control()
     finally:

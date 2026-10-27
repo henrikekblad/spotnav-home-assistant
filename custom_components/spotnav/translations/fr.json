@@ -325,7 +325,7 @@
           "regulator_deadband_a": "Contrôle actif : ignorer les variations inférieures à (A)",
           "regulator_dwell_s": "Contrôle actif : durée pendant laquelle une variation doit se maintenir (secondes)",
           "yield_stepping_enabled": "Paliers vérifiés par cession activés (sur option, pour un site avec une charge qui cède, p. ex. une batterie domestique)",
-          "yield_ceiling_a": "Paliers par cession : plafond strict, jamais dépassé (A, doit être supérieur au fusible principal)",
+          "yield_ceiling_a": "Paliers par cession : plafond strict, jamais dépassé (A, doit être supérieur au fusible principal) ; s'applique seulement une fois que la batterie domestique a été vue céder, jusque-là le fusible principal lui-même est le plafond",
           "solar_priority": "Priorité du surplus solaire (voiture ou batterie domestique d'abord)",
           "battery_aggregate_power_entity": "Puissance de charge de la batterie domestique (facultatif, diagnostic uniquement)",
           "change_measurement": "Modifier la mesure et le câblage des phases",

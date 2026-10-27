@@ -121,6 +121,16 @@ class RegulatorDecision:
     reason: RegulatorReason
     limiting_phase: PhaseName | None
     basis: Mapping[PhaseName, PhaseDecisionBasis] = field(default_factory=dict)
+    # Made on the import-overload path (a phase over the limit on a net import), whatever the reason says: a
+    # lowering, or the pause it was legalised to below the charger's minimum. Applied like `MUST_LOWER_REASONS`
+    # (`is_import_overload`).
+    overload: bool = False
+
+
+def is_import_overload(decision: RegulatorDecision) -> bool:
+    """Whether `decision` lowers (or pauses) a charger for an import overload: its reason is in
+    `MUST_LOWER_REASONS`, or it came from the overload path and was legalised to a pause (`overload`)."""
+    return decision.reason in MUST_LOWER_REASONS or decision.overload
 
 
 def classify_direction(signed_power_w: float | None, zero_margin_w: float) -> DirectionClass | None:
@@ -478,7 +488,7 @@ def decide_charging_current(
             voltage_by_phase=voltage_by_phase,
         ):
             return RegulatorDecision(None, "active_overload_direction_unclear_no_reliable_action", limiting_phase, basis)
-        return RegulatorDecision(proposed, reason, limiting_phase, basis)
+        return RegulatorDecision(proposed, reason, limiting_phase, basis, overload=proposed is not None)
 
     first_measured = request.measured_current_a.get(phases[0]).value or 0.0
     is_increase = request.requested_current_a > first_measured

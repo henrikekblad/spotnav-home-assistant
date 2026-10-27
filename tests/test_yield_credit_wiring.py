@@ -6,6 +6,7 @@ the stepper's and the damper's clocks moved by hand, handmade regulator decision
 
 from __future__ import annotations
 
+import pytest
 from homeassistant.core import HomeAssistant
 
 from custom_components.spotnav.const import SOLAR_PRIORITY_BATTERY_FIRST
@@ -37,7 +38,8 @@ def _set_battery_a(hass: HomeAssistant, amps_per_phase: float) -> None:
 
 
 async def _confirmed_site(hass: HomeAssistant, entry_id: str, **setup):
-    """A grid-charging battery that gave way to a 6 -> 8 A probe: yield confirmed and verified."""
+    """A grid-charging battery that gave way to a 6 -> 8 A probe: yield confirmed and verified. The site reads
+    17.5 A, so the unverified probe keeps it under the fuse (the ceiling before the battery is verified)."""
     _set_battery_a(hass, 15.9)
     site_entry, charger, configure_calls = await _yield_setup(
         hass, entry_id=entry_id, battery_entity=_BATTERY, **setup
@@ -55,7 +57,7 @@ async def _confirmed_site(hass: HomeAssistant, entry_id: str, **setup):
     await controller._async_apply_active_control()
     configure_calls.clear()
 
-    set_site_current_a(hass, site_prefix, 20.0)
+    set_site_current_a(hass, site_prefix, 17.5)
     set_charger_delivered_a(hass, prefix, 5.34)
     pause = _decision(
         proposed_a=0.0, requested_a=16.0, reason="paused_safe_current_below_charger_minimum"
@@ -93,7 +95,8 @@ async def test_a_verified_yielding_battery_gives_a_larger_step_without_the_dwell
     await controller._async_apply_active_control()
 
     verdict = controller._yield_stepping_last[charger.entry_id]
-    assert (verdict["reason"], verdict["battery_credit_a"]) == ("confirmed_step", 14.6)
+    assert verdict["reason"] == "confirmed_step"
+    assert verdict["battery_credit_a"] == pytest.approx(14.6)
     # 8 + 3 A, written in the very pass: the damper's 60 s dwell does not hold a verified step.
     assert [call.data["value"] for call in configure_calls] == ["1.11,2.10"]
 

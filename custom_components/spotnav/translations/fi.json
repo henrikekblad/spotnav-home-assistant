@@ -325,7 +325,7 @@
           "regulator_deadband_a": "Aktiivinen ohjaus: ohita muutokset, jotka ovat pienempiä kuin (A)",
           "regulator_dwell_s": "Aktiivinen ohjaus: kuinka kauan muutoksen on pysyttävä (sekuntia)",
           "yield_stepping_enabled": "Joustovarmistettu porrastus käytössä (otetaan käyttöön erikseen, kohteelle, jossa on joustava kuorma, esim. kotiakku)",
-          "yield_ceiling_a": "Joustoporrastus: ehdoton yläraja, jota ei koskaan ylitetä (A, oltava pääsulaketta suurempi)",
+          "yield_ceiling_a": "Joustoporrastus: ehdoton yläraja, jota ei koskaan ylitetä (A, oltava pääsulaketta suurempi); on voimassa vasta kun kotiakun on havaittu joustavan, sitä ennen yläraja on itse pääsulake",
           "solar_priority": "Aurinkoylijäämän etusija (auto vai kotiakku ensin)",
           "battery_aggregate_power_entity": "Kotiakun latausteho (valinnainen, vain diagnostiikkaan)",
           "change_measurement": "Muuta mittausta ja vaihekytkentää",

@@ -108,9 +108,11 @@ NOMINAL_PHASE_VOLTAGE_V = 230.0
 class YieldConfig:
     """Every tunable, with its default.
 
-    `ceiling_a` has no default: it is a property of the site, so the caller supplies it. `min_current_a`
-    is the charger's configured minimum; a raw pause at the floor is recognised as not a carryable
-    reduction by using it.
+    `ceiling_a` has no default: it is a property of the site, so the caller supplies it. It holds only while
+    the battery's yield is verified on the site (`YieldStepper.yield_verified`); until then the ceiling is
+    `unverified_ceiling_a` (the main fuse), so no step or probe takes a site above its fuse on a battery that has
+    not shown it gives way. `None` there keeps `ceiling_a` throughout. `min_current_a` is the charger's configured
+    minimum; a raw pause at the floor is recognised as not a carryable reduction by using it.
     """
 
     step_a: float = 2.0
@@ -161,6 +163,7 @@ class YieldConfig:
     battery_probe_over_a: float = 2.5
     battery_probe_detect_s: float = 90.0
     ceiling_a: float
+    unverified_ceiling_a: float | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -243,6 +246,9 @@ class YieldVerdict:
     # A step up cut short by the charger's requested current: it lands on the request, and may be
     # smaller than the regulator's deadband.
     reaches_request: bool = False
+    # The battery's yield is verified on the site (`YieldStepper.yield_verified`): the configured ceiling holds,
+    # and an import overload below it is the stepper's to judge (`SiteCapacityController`).
+    yield_verified: bool = False
 
 
 def _clamp01(value: float) -> float:
@@ -286,6 +292,8 @@ class YieldStepper:
         self._stable_battery: float | None = None
         self._baseline_battery: float | None = None
         self._battery_verified = False
+        # The site's battery probe saw the battery give way to this car's minimum (`note_battery_yielded`).
+        self._probe_verified = False
 
         # Verified downward steps: the previous observation, the step awaiting measurement, whether
         # the battery was found to take every freed amp, and the last value this stepper wrote.
@@ -312,6 +320,31 @@ class YieldStepper:
         # Duration of the next backoff: doubles on each consecutive failure up to
         # `backoff_max_s`, reset by a confirm.
         self._next_backoff_s = self._config.backoff_initial_s
+
+    @property
+    def yield_verified(self) -> bool:
+        """Whether the battery's yield is verified on the site: the site's battery probe saw it give way to the car's
+        minimum (`note_battery_yielded`), or a confirmed step (or a step settling from one) was given way to by the
+        battery's own charge current (`battery_verified`). A backoff or the end of the car's draw forgets it."""
+        if self._probe_verified:
+            return True
+        confirmed = self._state == "confirmed" or (
+            self._state == "settling" and self._was_confirmed_before_settling
+        )
+        return confirmed and self._battery_verified
+
+    def note_battery_yielded(self) -> None:
+        """The site's battery probe (`site/battery_probe.py`) saw the battery give way to this car at its minimum:
+        its yield is verified on the site until a backoff or the car's draw ends."""
+        self._probe_verified = True
+
+    def _ceiling_a(self) -> float:
+        """The hard ceiling in force: `ceiling_a` while the battery's yield is verified, else no higher than
+        `unverified_ceiling_a`."""
+        cfg = self._config
+        if cfg.unverified_ceiling_a is None or self.yield_verified:
+            return cfg.ceiling_a
+        return min(cfg.ceiling_a, cfg.unverified_ceiling_a)
 
     def observe(
         self,
@@ -424,7 +457,8 @@ class YieldStepper:
                 self._battery_probe = None
 
         # 2. Hard ceiling: checked before everything else; nothing overrides it.
-        over_ceiling = [site_a[phase] - cfg.ceiling_a for phase in phases if site_a[phase] >= cfg.ceiling_a]
+        ceiling_a = self._ceiling_a()
+        over_ceiling = [site_a[phase] - ceiling_a for phase in phases if site_a[phase] >= ceiling_a]
         if not over_ceiling:
             self._ceiling_hits = 0
         else:
@@ -614,7 +648,7 @@ class YieldStepper:
                 if (
                     step_a >= (cfg.step_a if credit_a is None else cfg.credit_min_a)
                     and now >= self._next_step_at
-                    and all(site_a[phase] + unabsorbed_a <= cfg.ceiling_a for phase in phases)
+                    and all(site_a[phase] + unabsorbed_a <= self._ceiling_a() for phase in phases)
                 ):
                     target = min(requested_a, assigned_a + step_a)
                     self._last_step_a = step_a
@@ -637,7 +671,7 @@ class YieldStepper:
                         reaches_request=assigned_a + step_a > requested_a,
                     )
 
-            ceiling_ok = all(site_a[phase] + cfg.step_a <= cfg.ceiling_a for phase in phases)
+            ceiling_ok = all(site_a[phase] + cfg.step_a <= self._ceiling_a() for phase in phases)
             stale_confirmed = self._state == "confirmed" and not fresh
             if (self._state == "unknown" or stale_confirmed) and ceiling_ok:
                 target = min(requested_a, assigned_a + cfg.step_a)
@@ -674,7 +708,7 @@ class YieldStepper:
         if limit_a is None:
             return True
         return any(
-            site_a[phase] > min(cfg.ceiling_a, limit_a[phase] + cfg.battery_probe_over_a)
+            site_a[phase] > min(self._ceiling_a(), limit_a[phase] + cfg.battery_probe_over_a)
             for phase in site_a
         )
 
@@ -689,7 +723,7 @@ class YieldStepper:
         return max(
             0.0,
             min(
-                min(cfg.ceiling_a, limit_a[phase] + cfg.battery_probe_over_a) - site_a[phase]
+                min(self._ceiling_a(), limit_a[phase] + cfg.battery_probe_over_a) - site_a[phase]
                 for phase in site_a
             ),
         )
@@ -924,6 +958,7 @@ class YieldStepper:
         self._backoff_until = now + duration
         self._state = "backoff"
         self._battery_verified = False
+        self._probe_verified = False
         self._battery_probe = None
         self._over_limit_steps = False
         self._next_backoff_s = min(duration * 2.0, self._config.backoff_max_s)
@@ -947,6 +982,7 @@ class YieldStepper:
         self._stable_battery = None
         self._baseline_battery = None
         self._battery_verified = False
+        self._probe_verified = False
         self._last_obs = None
         self._last_assigned = None
         self._last_write_a = None
@@ -985,4 +1021,5 @@ class YieldStepper:
             battery_verified=self._battery_verified,
             battery_credit_a=battery_credit_a,
             reaches_request=reaches_request,
+            yield_verified=self.yield_verified,
         )
