@@ -51,12 +51,13 @@ from typing import Any, Final, Literal
 
 from homeassistant.const import EVENT_STATE_CHANGED, STATE_UNAVAILABLE, STATE_UNKNOWN
 from homeassistant.core import callback, Event, EventStateChangedData, HomeAssistant
-from homeassistant.helpers import device_registry as dr
+from homeassistant.helpers import device_registry as dr, entity_registry as er
 from homeassistant.helpers.event import async_track_state_change_event
 from homeassistant.helpers.storage import Store
 from homeassistant.util import dt as dt_util
 
 from ..const import DOMAIN
+from ..execution.charger_profiles import lifetime_register_state_classes
 from ..execution.target_stop import (
     charge_ceiling_percent,
     charger_soc_entity_id,
@@ -819,7 +820,9 @@ def read_energy_register_kwh(hass: HomeAssistant, entity_id: str | None) -> floa
     """A cumulative energy register in kWh, or `None` when unreadable or not a meter.
 
     Requires a numeric state, `Wh`/`kWh` and `state_class: total_increasing`, so a session or
-    momentary value that falls back to zero is never misread as a reset.
+    momentary value that falls back to zero is never misread as a reset; or `total` for the lifetime
+    register a charger's profile names as such (DEFA's `meter_value`), which detection accepts as one
+    (`register_state_classes`).
     """
     return read_energy_register(hass, entity_id)[0]
 
@@ -830,17 +833,28 @@ def read_energy_register(hass: HomeAssistant, entity_id: str | None) -> tuple[fl
     if not entity_id:
         return None, None
     state = hass.states.get(entity_id)
-    value = _register_kwh(state)
+    value = _register_kwh(state, register_state_classes(hass, entity_id))
     return (None, None) if value is None or state is None else (value, state.last_updated)
 
 
-def _register_kwh(state: Any) -> float | None:
+def register_state_classes(hass: HomeAssistant, entity_id: str) -> tuple[str, ...]:
+    """The state classes this register may have, by its registry entry: the charger profile's table
+    (`charger_profiles.lifetime_register_state_classes`), as detection reads it."""
+    entry = er.async_get(hass).async_get(entity_id)
+    if entry is None:
+        return ("total_increasing",)
+    return lifetime_register_state_classes(
+        entry.platform, translation_key=entry.translation_key, unique_id=entry.unique_id
+    )
+
+
+def _register_kwh(state: Any, state_classes: tuple[str, ...] = ("total_increasing",)) -> float | None:
     if state is None or state.state in (STATE_UNAVAILABLE, STATE_UNKNOWN, ""):
         return None
     attributes = state.attributes or {}
     if attributes.get("device_class") != "energy":
         return None
-    if attributes.get("state_class") != "total_increasing":
+    if attributes.get("state_class") not in state_classes:
         return None
     try:
         value = float(state.state)
@@ -1134,7 +1148,7 @@ class SocReader:
         if new is None:
             self._note_register(self._now(), None)
         else:
-            self._note_register(new.last_updated, _register_kwh(new))
+            self._note_register(new.last_updated, _register_kwh(new, register_state_classes(self._hass, new.entity_id)))
 
     def _note_register(self, posted_at: datetime, value: float | None) -> None:
         """Add a register value (`None`: unreadable, a break in its run) and forget those older than
