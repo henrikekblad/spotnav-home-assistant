@@ -18,10 +18,11 @@ from typing import Any, ClassVar, Final
 from .session import SessionError
 
 #: A window start's triggers: its timer, a re-arm inside an open window (a restore, a follow, an install),
-#: or a plug-in inside one.
+#: a plug-in inside one, or a retry of a start that has not taken (decided as a plug-in's start is).
 TRIGGER_TIMER: Final = "timer"
 TRIGGER_REARM: Final = "rearm"
 TRIGGER_PLUG_IN: Final = "plug_in"
+TRIGGER_RETRY: Final = "retry"
 
 #: Why a pause ended (`Resume.reason`).
 RESUME_PERSON: Final = "resume"
@@ -70,7 +71,8 @@ class ConnectionUnknown(Event):
 
 @dataclass(frozen=True)
 class WindowStart(Event):
-    """A window of the plan opens: its timer, a re-arm inside it, or a plug-in inside it.
+    """A window of the plan opens: its timer, a re-arm inside it, or a plug-in inside it; or a start of it that has not
+    taken is sent again (a retry, decided as a plug-in's start).
 
     Facts: whether the target's stop fired or is on its way (it ends the plan instead), whether a window is open
     (a plug-in), the open window's start (the car-ended rule, R3), whether the car that ended a person's charge is

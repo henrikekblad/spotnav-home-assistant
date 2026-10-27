@@ -85,6 +85,16 @@ car), and a car that takes no current because it sits at its own charge limit, b
 is not a fault.
 It is told once while it lasts; if the charge recovers and stops again, it is told again.
 
+A window's start that does not take (a cloud error, an Easee left at *awaiting start*) is sent again
+by itself, 90 seconds, 5 minutes and 10 minutes after it (once only for a Webasto, whose start presses
+its stop first). Those retries tell nothing of their own: "did not start" is still told after three
+minutes, once, and a retry that gets the charge going later counts as the charge recovering. Nothing
+is sent again while the charger's own schedule or load balancer holds the charge, while its enable
+switch is off, once it says the car finished or the car refuses the charge (`SuspendedEV`), while its
+charge control already reads on, or after
+the window ended, the car was unplugged, a person pressed Stop, load balancing paused the charge or
+solar took the charger.
+
 The same event also tells when SpotNav gives up stopping a charger under a person's **Stop**: a charger
 that keeps charging, or begins again, after three stops within ten minutes is left alone, and the
 phones hear "The charger keeps charging although it was stopped". The card's status says so until the

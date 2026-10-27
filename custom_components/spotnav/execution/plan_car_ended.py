@@ -7,8 +7,12 @@ the plan's charge control on, it draws nothing for `PLAN_CAR_IDLE_S` in a row: b
 `SuspendedEV`: the car asks for no current).
 
 Not the car: load balancing pausing the charge, the charger's own scheduler or load balancer holding it (or its
-connector saying `SuspendedEVSE`), a Start not yet answered, a control that is off, a charge that is not the plan's,
-and a car whose drawing cannot be read at all. Each of these starts the clock again.
+connector saying `SuspendedEVSE`, in any case: a charger other than OCPP reports its status lower-cased), a Start not
+yet answered, a control that is off, a charge that is not the plan's, and a car whose drawing cannot be read at all.
+Each of these starts the clock again. Before a charge has drawn at all since its start, only the car's own refusal
+counts (its status says `SuspendedEV`, or the profile's value for it: a full car refusing at once): a start the charger
+did not act on (a switch that reads on while the charger idles, `awaiting_start`, `ready`, no status) is no charge the
+car ended, and the start is sent again instead (`START_RETRY_AFTER_S`).
 
 While load balancing holds the plan's charge back this watch sees nothing; there the battery probe is the car's
 test instead: two probes in a row the car refused (`site/battery_probe.py`, `car_refused`) end the charge the same
@@ -36,6 +40,8 @@ class PlanChargeWatch:
     def __init__(self) -> None:
         self._idle_since: datetime | None = None
         self._told = False
+        # The car has drawn in this charge (since the plan's charge control was last seen on): only then can it end it.
+        self._drawn = False
 
     def reset(self) -> None:
         self._idle_since = None
@@ -54,15 +60,25 @@ class PlanChargeWatch:
         start_pending: bool,
     ) -> bool:
         """One look at the plan's charge. `True` once per stretch of idling: the car ended it by itself."""
-        idle = drawing is False or (drawing is None and connector_status == SUSPENDED_EV)
+        status = None if connector_status is None else connector_status.lower()
+        if not plan_charge or not control_on:
+            # The charge is over (or not the plan's): the next one has to draw before the car can end it.
+            self._drawn = False
+        elif drawing is True:
+            self._drawn = True
+        idle = drawing is False or (drawing is None and status == SUSPENDED_EV.lower())
         not_the_car = (
             not plan_charge
             or not control_on
             or balancing_paused
             or held
             or start_pending
-            or connector_status == SUSPENDED_EVSE
+            or status == SUSPENDED_EVSE.lower()
             or not idle
+            # Before the charge has drawn only the car's own refusal counts (`SuspendedEV`, or the profile's value
+            # for it): a charger side that idles (`SuspendedEVSE`, ready, awaiting a start, no status) is a start
+            # that did not take.
+            or (not self._drawn and status != SUSPENDED_EV.lower())
         )
         if not_the_car:
             self.reset()

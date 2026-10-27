@@ -24,7 +24,7 @@ from datetime import datetime, timedelta
 from typing import Any, AsyncContextManager, Final, Literal, Protocol
 
 from homeassistant.const import STATE_UNAVAILABLE, STATE_UNKNOWN
-from homeassistant.core import callback, Event, EventStateChangedData, HomeAssistant, State
+from homeassistant.core import callback, Event, EventStateChangedData, HassJob, HomeAssistant, State
 from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers.event import (
     async_call_later,
@@ -67,9 +67,11 @@ from ..vehicles.ocpp_identity import (
     resolve_target,
     STATUS_CONNECTOR_KEY,
 )
+from .charger_connection import FINISHED as CONNECTION_FINISHED
 from .charger_entities import charger_is_disabled
 from .power_energy import integrated_energy_unique_id, read_power_w
 from .chargers.adapter import build_adapter, ChargerAdapter
+from .charger_profiles import PATH_BUTTONS_TOGGLE
 from .chargers.base import (
     ASSIGN_ASSIGNED,
     ASSIGN_BELOW_MINIMUM,
@@ -202,9 +204,15 @@ STOP_RETRY_S: Final = 30.0
 #: A command an automatic decision made while the charger's integration had not loaded its entities or services
 #: (right after a restart, before an OCPP charge point is there) is neither sent nor done: it is owed, the charger
 #: is looked at every `OWED_CHECK_S`, and once it is ready the decision is taken again on what holds then (never
-#: the stale command replayed). Given up on, logged once, after `OWED_GIVE_UP_S`.
+#: the stale command replayed). Given up on, logged once, after `OWED_GIVE_UP_S`; an owed start of a window that is
+#: still open is not given up until the window ends.
 OWED_CHECK_S: Final = 5.0
 OWED_GIVE_UP_S: Final = 900.0
+#: A window's start (its timer, a re-arm, a plug-in, an owed start settled) that leaves the charger not charging is
+#: decided again this many seconds after it, at most once each: a cloud error, a start the charger accepted and did
+#: not act on (Easee's `awaiting_start`). Never while the charger's own scheduler holds the charge, while its enable
+#: switch is off, once it says the car finished, or while its charge control is already on (no stop-and-start kick).
+START_RETRY_AFTER_S: Final = (90.0, 300.0, 600.0)
 #: Putting back an interrupted pilot-floor probe while the charger is not ready yet (an OCPP charge point
 #: reconnects some time after Home Assistant starts): a try a minute for half an hour, then again at the
 #: next start.
@@ -712,6 +720,15 @@ class ChargingController:
         self._owed_current = False
         self._owed_settling = False
         self._owed_cancel: Callable[[], None] | None = None
+        # A window's start that has not taken is decided again (`START_RETRY_AFTER_S`): when the start was, the end of
+        # the window it opened, how many retries went out, the appointment of the next, and a generation that a new
+        # start or a cancel moves on (a retry decided under an older one sends nothing more). In memory only.
+        self._start_retry_since: datetime | None = None
+        self._start_retry_window_end: datetime | None = None
+        self._start_retry_count = 0
+        self._start_retry_generation = 0
+        self._start_retry_cancel: Callable[[], None] | None = None
+        self._start_retry_last: dict[str, Any] | None = None
         # A person's Stop as an older release stored it (`person_stopped`), read once at the restore for
         # the execution boundary to take over as its manual pause (`take_legacy_person_stop`).
         self._legacy_person_stopped = False
@@ -1294,6 +1311,9 @@ class ChargingController:
         """
         self._tick_charge_clock()
         self._observe_charging_again()
+        if self._start_retry_since is not None and self.charging:
+            # The window's start took: nothing is sent again.
+            self._cancel_start_retry()
         self._maybe_resend_current(event)
         self._maybe_write_after_start(event)
         self._observe_connection()
@@ -1411,6 +1431,8 @@ class ChargingController:
         if not connected:
             # The car the target stopped for left (or, after a restart, left while nobody looked).
             self._end_target_stop(LAPSE_UNPLUGGED)
+            # Nothing is started again for a car that is gone.
+            self._cancel_start_retry()
             self._end_estimate_check()
         if connected is False or previous is False:
             self._session_generation += 1
@@ -1992,7 +2014,9 @@ class ChargingController:
         async with self._automatic(AUTOMATIC_START) as allowed:
             return allowed and await self._plug_in_start_locked()
 
-    async def _plug_in_start_locked(self) -> bool:
+    async def _plug_in_start_locked(self, *, trigger: str = core_events.TRIGGER_PLUG_IN) -> bool:
+        """The start at plug-in, with the lock held; also a window start's retry (`TRIGGER_RETRY`), which rechecks
+        everything a plug-in does."""
         token = self._shadow.begin()
         self._shadow_car_facts = (False, False, False)
         facts = self._shadow_facts(
@@ -2005,16 +2029,16 @@ class ChargingController:
         )
         note: dict[str, Any] = {"legacy": [], "outcome": None, "target": False}
         try:
-            verdict = self._core_window_start_verdict(core_events.TRIGGER_PLUG_IN, facts)
+            verdict = self._core_window_start_verdict(trigger, facts)
             if verdict is not None:
-                return await self._core_plug_in_start(note, verdict)
-            return await self._plug_in_start_body(note)
+                return await self._core_plug_in_start(note, verdict, trigger=trigger)
+            return await self._plug_in_start_body(note, trigger=trigger)
         finally:
             self._shadow_end_event(
                 token,
                 facts,
                 lambda: core_events.WindowStart(
-                    trigger=core_events.TRIGGER_PLUG_IN,
+                    trigger=trigger,
                     target_reached=note["target"],
                     **facts,
                     **self._shadow_take_car_facts(),
@@ -2023,7 +2047,9 @@ class ChargingController:
                 outcome=note["outcome"],
             )
 
-    async def _core_plug_in_start(self, note: dict[str, Any], verdict: frozenset[tuple[str, str]]) -> bool:
+    async def _core_plug_in_start(
+        self, note: dict[str, Any], verdict: frozenset[tuple[str, str]], *, trigger: str = core_events.TRIGGER_PLUG_IN
+    ) -> bool:
         """The start at plug-in as the core decided it (`CONF_CORE_OWNERSHIP`): a claim, a start after the target's
         own check, or nothing."""
         if ("start", "claim") in verdict:
@@ -2036,7 +2062,20 @@ class ChargingController:
         if await self._enforce_target_locked():
             note["target"] = True
             return False
-        _LOGGER.info("SpotNav charger %s: plugged in inside a planned window, starting", self.entry_id)
+        return await self._plug_in_start_send(note, trigger)
+
+    async def _plug_in_start_send(self, note: dict[str, Any], trigger: str) -> bool:
+        """The start a plug-in (or a window start's retry) decided on."""
+        if trigger == core_events.TRIGGER_RETRY:
+            _LOGGER.info(
+                "SpotNav charger %s: the window's start has not taken; sending it again (retry %s of %s)",
+                self.entry_id,
+                self._start_retry_count,
+                self._start_retry_limit(),
+            )
+        else:
+            _LOGGER.info("SpotNav charger %s: plugged in inside a planned window, starting", self.entry_id)
+            self._arm_start_retry()
         note["legacy"].append("start")
         note["outcome"] = CommandOutcome(False)
         executed = await self._start_locked(cause="plan_window")
@@ -2063,7 +2102,7 @@ class ChargingController:
             return None
         return self._shadow.verdict(event)
 
-    async def _plug_in_start_body(self, note: dict[str, Any]) -> bool:
+    async def _plug_in_start_body(self, note: dict[str, Any], *, trigger: str = core_events.TRIGGER_PLUG_IN) -> bool:
         if self._open_window_end() is None or self._target_stopping:
             return False
         if not self._automatic_permitted(AUTOMATIC_START):
@@ -2088,12 +2127,7 @@ class ChargingController:
         if await self._enforce_target_locked():
             note["target"] = True
             return False
-        _LOGGER.info("SpotNav charger %s: plugged in inside a planned window, starting", self.entry_id)
-        note["legacy"].append("start")
-        note["outcome"] = CommandOutcome(False)
-        executed = await self._start_locked(cause="plan_window")
-        note["outcome"] = self._shadow_start_outcome(executed)
-        return executed
+        return await self._plug_in_start_send(note, trigger)
 
     async def async_end_plan_need_met(self) -> bool:
         """The need is met before the plan ran out: stop the charge the plan started and clear the
@@ -4046,6 +4080,157 @@ class ChargingController:
             return False
         return True
 
+    def _start_retry_limit(self) -> int:
+        """How many times a window's start is sent again: once on a charger whose start button toggles (Webasto's
+        start presses its stop first), else once per `START_RETRY_AFTER_S`."""
+        if getattr(self.adapter.path, "kind", None) == PATH_BUTTONS_TOGGLE:
+            return 1
+        return len(START_RETRY_AFTER_S)
+
+    def _arm_start_retry(self) -> None:
+        """A window's start is about to go out: decide it again later should the charger not charge
+        (`START_RETRY_AFTER_S`). One sequence per start; one already running for this window is kept."""
+        if self._shut_down or self._start_retry_since is not None or self.charging:
+            return
+        window_end = self._open_window_end()
+        if window_end is None or self.top_off_until is not None:
+            return
+        self._start_retry_generation += 1
+        self._start_retry_since = dt_util.utcnow()
+        self._start_retry_window_end = window_end
+        self._start_retry_count = 0
+        self._start_retry_last = None
+        self._schedule_start_retry()
+
+    def _schedule_start_retry(self) -> None:
+        """The next retry's appointment, or none once the last went out (the sequence stays, so this window's start
+        is not retried afresh until something ends it)."""
+        self._clear_start_retry_timer()
+        since = self._start_retry_since
+        if since is None or self._shut_down or self._start_retry_count >= self._start_retry_limit():
+            return
+        due = since + timedelta(seconds=START_RETRY_AFTER_S[self._start_retry_count])
+        delay = max(0.0, (due - dt_util.utcnow()).total_seconds())
+        self._start_retry_cancel = async_call_later(
+            self.hass,
+            delay,
+            HassJob(self._async_start_retry_callback, "SpotNav window start retry", cancel_on_shutdown=True),
+        )
+
+    def _clear_start_retry_timer(self) -> None:
+        cancel = self._start_retry_cancel
+        self._start_retry_cancel = None
+        if cancel is not None:
+            cancel()
+
+    def _cancel_start_retry(self) -> None:
+        """No more retries of this window's start: it took, the window ended, the plan was replaced or dropped, the
+        car left, a reason not to send it again holds, or this controller shuts down."""
+        self._clear_start_retry_timer()
+        if self._start_retry_since is not None:
+            self._start_retry_generation += 1
+        self._start_retry_since = None
+        self._start_retry_window_end = None
+
+    @property
+    def window_start_retry(self) -> dict[str, Any]:
+        """A window start's retries, for the diagnostics: whether a sequence runs, since when, how many went out of
+        how many, whether another is due, and what the last one found."""
+        since = self._start_retry_since
+        return {
+            "active": since is not None,
+            "since": None if since is None else since.isoformat(),
+            "retries": self._start_retry_count,
+            "limit": self._start_retry_limit(),
+            "next_due": self._start_retry_cancel is not None,
+            "last": None if self._start_retry_last is None else dict(self._start_retry_last),
+        }
+
+    @callback
+    def _async_start_retry_callback(self, _now: datetime) -> None:
+        self._start_retry_cancel = None
+        self._async_spawn(self._async_retry_window_start(), "the window start's retry")
+
+    def _start_retry_refused(self, allowed: bool) -> str | None:
+        """Why a window's start is not sent again now (the sequence ends), or `None`. The retry itself is the
+        plug-in's start (`_plug_in_start_locked`), which checks the window, the target, the top-off, Auto's gate, who
+        else owns the charger, the car ending it, the car being there, a Start on its way and load balancing again."""
+        if not allowed or not self._automatic_permitted(AUTOMATIC_START):
+            return "auto_paused"
+        if self.charging:
+            return "charging"
+        window_end = self._open_window_end()
+        if window_end is None or window_end != self._start_retry_window_end or self.top_off_until is not None:
+            return "window_over"
+        if self.adapter.vehicle_connected() is False:
+            return "unplugged"
+        if self.adapter.held_by_charger():
+            # The charger's own scheduler or load balancer took the start and holds it: sending it again releases
+            # nothing.
+            return "held_by_charger"
+        if self.charger_disabled:
+            return "charger_disabled"
+        if self.adapter.connection()[0] == CONNECTION_FINISHED:
+            # The car finished (or the charger wants it replugged): a start does not change that.
+            return "finished"
+        status = self.charge_progress_facts().connector_status
+        if status is not None and status.lower() == "suspendedev":
+            # The car refuses the charge (full, or its own timer): sending the start again does not change that.
+            return "car_refuses"
+        if self._paused_by_balancing:
+            # Load balancing holds the charge back: its regulator resumes it, with its own margin and dwell.
+            return "balancing_paused"
+        if self._hold_blocked():
+            return "owned_elsewhere"
+        if self._car_ended_hold()[0]:
+            return "car_ended"
+        if self._control_on:
+            # The charge control already reads on while the charger idles: no stop-and-start kick is sent.
+            return "control_on"
+        if not self.adapter.ready():
+            return "not_ready"
+        return None
+
+    async def _async_retry_window_start(self) -> None:
+        """Decide a window's start again, as a plug-in inside the window decides it, under the boundary's lock and
+        this controller's. A start that raises counts as a retry and is logged; the next is armed either way."""
+        generation = self._start_retry_generation
+        try:
+            async with self._automatic(AUTOMATIC_START) as allowed:
+                if self._shut_down or self._start_retry_since is None or generation != self._start_retry_generation:
+                    return
+                refused = self._start_retry_refused(allowed)
+                if refused is not None:
+                    self._start_retry_last = {"at": dt_util.utcnow().isoformat(), "result": refused}
+                    if refused == "not_ready":
+                        # The charger's integration went away: the start is owed, and decided again once it is back
+                        # while the window is open (`_owe`).
+                        self._owe("the window's start")
+                    if refused != "charging":
+                        _LOGGER.debug(
+                            "SpotNav charger %s: the window's start is not sent again (%s)", self.entry_id, refused
+                        )
+                    self._cancel_start_retry()
+                    return
+                self._start_retry_count += 1
+                result = "not_sent"
+                try:
+                    if await self._plug_in_start_locked(trigger=core_events.TRIGGER_RETRY):
+                        result = "sent"
+                except Exception as err:  # noqa: BLE001 - counted, logged; the next retry decides again
+                    result = "failed"
+                    _LOGGER.warning(
+                        "SpotNav charger %s: the window start's retry %s of %s failed: %s",
+                        self.entry_id,
+                        self._start_retry_count,
+                        self._start_retry_limit(),
+                        type(err).__name__,
+                    )
+                self._start_retry_last = {"at": dt_util.utcnow().isoformat(), "result": result}
+        finally:
+            if generation == self._start_retry_generation and self._start_retry_since is not None:
+                self._schedule_start_retry()
+
     def _arm_stop_retry(self) -> None:
         if self._stop_retry_cancel is None:
             self._stop_retry_cancel = async_call_later(self.hass, STOP_RETRY_S, self._async_stop_retry_callback)
@@ -4122,7 +4307,8 @@ class ChargingController:
     @callback
     def _owed_tick(self, _now: datetime | None = None) -> None:
         """Look at the charger once more for what is owed: a decision whose charger is ready now is taken again,
-        a wait past `OWED_GIVE_UP_S` is given up on."""
+        a wait past `OWED_GIVE_UP_S` is given up on (a command owed while a window of the plan is open waits for the
+        window's end)."""
         since = self._owed_since
         if since is None or self._shut_down or self._owed_settling:
             return
@@ -4139,6 +4325,9 @@ class ChargingController:
             self._async_spawn(self._async_settle_owed(command, current), "the owed command")
             return
         if (dt_util.utcnow() - since).total_seconds() >= OWED_GIVE_UP_S:
+            if self._owed_command and self.plan is not None and self._open_window_end() is not None:
+                # A window of the plan is still open: its start is owed until the window ends, not given up on.
+                return
             self._cancel_owed()
             _LOGGER.warning(
                 "SpotNav charger %s: the charger did not become ready within %s minutes; the command it was owed "
@@ -4810,6 +4999,8 @@ class ChargingController:
                 return False
             legacy.append("start")
             outcome = CommandOutcome(False)
+            # Armed before the command: a start that raises is decided again too.
+            self._arm_start_retry()
             executed = await self._start_locked(cause="plan_window")
             outcome = self._shadow_start_outcome(executed)
             if not executed and not self._paused_by_balancing and not self._charger_ready():
@@ -5309,7 +5500,8 @@ class ChargingController:
 
     @callback
     def _async_start_callback(self, _now: datetime) -> None:
-        self.hass.async_create_task(self._async_start_window())
+        # Logged when it fails (a start the charger's cloud refused): never an unretrieved task exception.
+        self._async_spawn(self._async_start_window(), "the window's start")
 
     @callback
     def _async_end_callback(self, _now: datetime) -> None:
@@ -5319,6 +5511,7 @@ class ChargingController:
         `set_end_window_guard`), in which case nothing happens and charging continues, or the next plan
         takes the charge over at this boundary (`_successor_continues`).
         """
+        self._cancel_start_retry()
         if self._end_window_guard is not None and self._end_window_guard():
             _LOGGER.debug(
                 "%s charger %s: window ended with sun available, handing off to solar control",
@@ -5375,6 +5568,7 @@ class ChargingController:
         a top-off (`top_off.py`, `_async_begin_top_off`), nor one the next plan takes over at this instant
         (`_successor_continues`).
         """
+        self._cancel_start_retry()
         if self._end_window_guard is not None and self._end_window_guard():
             _LOGGER.debug(
                 "%s charger %s: final window ended with sun available, handing off to solar control",
@@ -6098,3 +6292,5 @@ class ChargingController:
         for cancel in self._timer_cancels:
             cancel()
         self._timer_cancels.clear()
+        # The plan's timers go (a plan replaced or dropped, a re-arm, a shutdown): so does a window start's retry.
+        self._cancel_start_retry()

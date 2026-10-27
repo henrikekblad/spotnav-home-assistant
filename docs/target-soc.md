@@ -94,7 +94,10 @@ a vehicle integration, charge a fixed number of kWh instead.
 - **The car ends the charge.** When, inside a planned period with the plan's charge on, the car takes
   nothing for five minutes (the charger measures at most 1 A, or an OCPP charger says `SuspendedEV`), the
   car has ended the charge. Load balancing pausing it, the charger holding it back itself
-  (`SuspendedEVSE`) and a Start not yet answered are not the car. While load balancing holds the
+  (`SuspendedEVSE`, however the charger spells it) and a Start not yet answered are not the car.
+  Before the charge has drawn at all, only the car's own refusal counts (`SuspendedEV`, or the
+  charger's status for a car asking for nothing: a full car refusing at once): a charge control that
+  reads on while the charger side idles (ready, awaiting a start) is a start that did not take. While load balancing holds the
   plan's charge back for a home battery charging from the grid, a car that refuses two of its battery
   probes in a row (it takes nothing at its minimum current, and the charger says `SuspendedEV`) has
   ended the charge the same way ([load balancing](site-and-load-balancing.md)). If the car's level then says it is full

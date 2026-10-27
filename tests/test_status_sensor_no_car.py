@@ -283,5 +283,7 @@ async def test_a_plugged_in_car_whose_window_does_not_start_is_told(
     await hass.async_block_till_done()
     await _go(hass, freezer, FIRST[0])
     assert len(night.starts) == 1
+    # The start is sent again at 90 s (`START_RETRY_AFTER_S`), at its own moment: it does not move when this is told.
+    await _go(hass, freezer, FIRST[0] + timedelta(seconds=95))
     await _go(hass, freezer, FIRST[0] + timedelta(seconds=GRACE_S + 5))
     assert night.told() == ["Charging did not start as planned."]
