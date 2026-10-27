@@ -11,6 +11,7 @@ from pytest_homeassistant_custom_component.common import async_mock_service
 from custom_components.spotnav.execution.chargers.base import (
     ASSIGN_ASSIGNED,
     ASSIGN_UNCHANGED,
+    STOP_HELD_AT_FLOOR,
     WRITE_REGULATOR,
     WRITE_RESEND,
     WRITE_SESSION_START,
@@ -361,7 +362,8 @@ async def test_peblar_pauses_three_times_in_ten_minutes_then_holds_at_the_floor(
         assert await adapter.async_stop() is True
         clock.advance(60)
     hass.states.async_set(switch, "on")
-    assert await adapter.async_stop() is True
+    # Out of pauses: the charge runs on at the floor, and the answer says so, never a plain True.
+    assert await adapter.async_stop() == STOP_HELD_AT_FLOOR
 
     assert len(offs) == 3
     assert [(call.data["entity_id"], call.data["value"]) for call in numbers] == [
@@ -372,6 +374,31 @@ async def test_peblar_pauses_three_times_in_ten_minutes_then_holds_at_the_floor(
     hass.states.async_set(switch, "on")
     assert await adapter.async_stop() is True
     assert len(offs) == 4
+
+
+async def test_a_peblar_held_at_the_floor_stays_started(hass: HomeAssistant) -> None:
+    """A Stop the charger answered by holding the charge at 6 A does not clear the start: the charge runs on, so
+    a current written meanwhile still counts the charger as enabled through the start's grace."""
+    clock = Clock()
+    adapter = _adapter(hass, "peblar", clock)
+    async_mock_service(hass, "switch", "turn_off")
+    async_mock_service(hass, "switch", "turn_on")
+    async_mock_service(hass, "number", "set_value")
+    switch = "switch.peblar_charge"
+    for _ in range(3):
+        hass.states.async_set(switch, "on")
+        await adapter.async_stop()
+    hass.states.async_set(switch, "off")
+    assert await adapter.async_start() is True
+    started_at = adapter._started_at  # noqa: SLF001 - the start's grace is what is checked
+    assert started_at is not None
+    hass.states.async_set(switch, "on")
+
+    assert await adapter.async_stop() == STOP_HELD_AT_FLOOR
+
+    assert adapter._started_at == started_at  # noqa: SLF001
+    assert adapter.command_log()[-1]["outcome"] == STOP_HELD_AT_FLOOR
+    assert adapter.command_log()[-1]["result"] == "sent"
 
 
 async def test_peblar_counts_no_pause_for_a_stop_while_already_paused(hass: HomeAssistant) -> None:

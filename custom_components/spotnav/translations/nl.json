@@ -893,6 +893,9 @@
     "stop_not_executed": {
       "message": "De laadpaal heeft het stopcommando niet uitgevoerd: de bediening is niet beschikbaar. Probeer het opnieuw als de laadpaal weer bereikbaar is."
     },
+    "stop_held_at_floor": {
+      "message": "De laadpaal heeft het laden niet gepauzeerd: hij staat maar een paar pauzes per tien minuten toe en houdt het laden daarom op 6 A. Probeer het over een paar minuten opnieuw."
+    },
     "storage_failed": {
       "message": "Het laadplan kon niet worden opgeslagen."
     },

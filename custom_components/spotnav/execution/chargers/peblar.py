@@ -4,7 +4,9 @@ The charge switch is the REST API's current limit (0 mA pauses, the last known l
 OpenAPI says pausing must not happen more than three times in ten minutes (rolling window), to protect
 the relays of the charger and the vehicle. A Stop beyond that budget does not pause: it lowers the
 current limit to the 6 A floor, so the charge keeps running at the least the pilot allows, and the
-next Stop after the window has room pauses again. A Stop while already paused counts for nothing.
+next Stop after the window has room pauses again. Such a Stop answers `STOP_HELD_AT_FLOOR`, never a plain
+`True`: the controller does not take it for a stop, and load balancing counts the 6 A still drawn. A Stop
+while already paused counts for nothing.
 """
 
 from __future__ import annotations
@@ -21,7 +23,14 @@ from homeassistant.util import dt as dt_util
 
 from ...const import DEFAULT_MIN_CURRENT_A
 from ..charger_profiles import PATH_SWITCH, PATH_SWITCH_BUDGET
-from .base import _entity_unavailable, _not_executed, call_service, path_description, StartStopPath
+from .base import (
+    _entity_unavailable,
+    _not_executed,
+    call_service,
+    path_description,
+    StartStopPath,
+    STOP_HELD_AT_FLOOR,
+)
 from .generic import SwitchPath
 from .registry import ChargerContext, register_start_stop
 
@@ -56,7 +65,7 @@ class PauseBudgetSwitchPath(SwitchPath):
             self._pauses.popleft()
         return len(self._pauses)
 
-    async def async_stop(self) -> bool:
+    async def async_stop(self) -> bool | str:
         state = self.hass.states.get(self.entity_id)
         if state is not None and state.state != STATE_ON:
             return await super().async_stop()  # already paused: nothing is counted
@@ -67,8 +76,9 @@ class PauseBudgetSwitchPath(SwitchPath):
             return executed
         # Out of pauses: hold at the floor instead of pausing once more.
         _LOGGER.warning(
-            "The charger allows %s pauses in ten minutes, so the charge is held at the floor instead",
+            "The charger allows %s pauses in ten minutes, so the charge is not paused but held at %s A",
             self._budget,
+            int(DEFAULT_MIN_CURRENT_A),
         )
         if self._floor_entity_id is None or _entity_unavailable(self.hass, self._floor_entity_id):
             return _not_executed(self._floor_entity_id or self.entity_id)
@@ -79,7 +89,7 @@ class PauseBudgetSwitchPath(SwitchPath):
             {"entity_id": self._floor_entity_id, "value": int(DEFAULT_MIN_CURRENT_A)},
             blocking=True,
         )
-        return True
+        return STOP_HELD_AT_FLOOR
 
     def describe_state(self) -> dict[str, Any]:
         return {"pauses_in_window": self._pauses_in_window(), "pause_budget": self._budget}

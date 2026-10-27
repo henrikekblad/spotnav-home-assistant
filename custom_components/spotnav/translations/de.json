@@ -893,6 +893,9 @@
     "stop_not_executed": {
       "message": "Die Ladestation hat den Stopp nicht angenommen: Ihre Steuerung ist nicht verfügbar. Versuche es erneut, wenn die Ladestation wieder da ist."
     },
+    "stop_held_at_floor": {
+      "message": "Die Ladestation hat das Laden nicht pausiert: Sie erlaubt nur wenige Pausen in zehn Minuten und hält das Laden stattdessen bei 6 A. Versuche es in ein paar Minuten erneut."
+    },
     "storage_failed": {
       "message": "Der Ladeplan konnte nicht gespeichert werden."
     },

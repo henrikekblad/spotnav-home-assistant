@@ -79,6 +79,7 @@ from .chargers.base import (
     ASSIGN_UNSUPPORTED,
     IN_EFFECT_OUTCOMES,
     MODULATION_WRITES,
+    STOP_HELD_AT_FLOOR,
     WRITE_REGULATOR,
     WRITE_RESEND,
     WRITE_RESTORE,
@@ -175,6 +176,11 @@ EXECUTION_RESCHEDULE_FAILED = "reschedule_failed"
 EXECUTION_ROLLBACK_FAILED = "rollback_failed"
 #: A stop the charger's control did not execute (it was unavailable): nothing of the charge is forgotten.
 EXECUTION_STOP_NOT_EXECUTED = "stop_not_executed"
+#: A stop the charger answered by holding the charge at its 6 A floor instead of pausing it (a Peblar out of the
+#: pauses its relays allow): the charge runs on, so, as for one not executed, nothing of it is forgotten.
+EXECUTION_STOP_HELD_AT_FLOOR = "stop_held_at_floor"
+#: The codes of a stop that did not end the charge.
+STOP_NOT_DONE_CODES: Final = frozenset({EXECUTION_STOP_NOT_EXECUTED, EXECUTION_STOP_HELD_AT_FLOOR})
 
 
 #: What an automatic decision is about to do, as the execution boundary's gate is asked
@@ -536,6 +542,9 @@ REGULATED_WROTE = "wrote"
 REGULATED_HELD = "held"
 #: The fuse needed a lower current the adapter could not write in time: the charge was stopped.
 REGULATED_STOPPED = "stopped"
+#: The fuse needed a lower current and the stop for it did not pause the charge: the charger holds it at the 6 A
+#: floor (a Peblar out of pauses), so that is what it draws.
+REGULATED_FLOORED = "held_at_floor"
 #: Why a write was held: a stop of the charge was on its way.
 REGULATED_STOPPING = "stop_in_flight"
 #: The controller has shut down: nothing more is sent to its charger.
@@ -546,7 +555,7 @@ REGULATED_SHUT_DOWN = "shut_down"
 class RegulatedWrite:
     """The answer to one regulator write: what was done and why.
 
-    `outcome` is `wrote`, `held` or `stopped`; `code` is the adapter's stable outcome code (or
+    `outcome` is `wrote`, `held`, `stopped` or `held_at_floor`; `code` is the adapter's stable outcome code (or
     `safety_stop`/`pause`); `written` says whether the current went out, so the caller can keep its
     damping state honest about what is really on the charger.
     """
@@ -3422,7 +3431,8 @@ class ChargingController:
           charger and the next pass tries again.
 
         A stop is never refused by a write policy. It takes the operation lock, so it cannot land
-        inside a plan replacement; the write itself does not (see below).
+        inside a plan replacement; the write itself does not (see below). A stop the charger answers by
+        holding the charge at its 6 A floor instead of pausing it is `held_at_floor`, never `stopped`.
         """
         if self._shut_down:
             return RegulatedWrite(REGULATED_HELD, REGULATED_SHUT_DOWN, False)
@@ -3527,6 +3537,12 @@ class ChargingController:
                     self._shadow.end(
                         token, core_events.BalancingPause(code=code, was_on=was_on), legacy=("stop",), outcome=outcome
                     )
+        except ChargingExecutionError as err:
+            if err.code == EXECUTION_STOP_HELD_AT_FLOOR:
+                # Not paused: the charge runs on at the floor, which is what load balancing must count.
+                return RegulatedWrite(REGULATED_FLOORED, STOP_HELD_AT_FLOOR, False)
+            _LOGGER.exception("SpotNav charger %s: the safety stop failed", self.entry_id)
+            return RegulatedWrite(REGULATED_HELD, "stop_failed", False)
         except Exception:  # noqa: BLE001 - reported, and the next pass tries again
             _LOGGER.exception("SpotNav charger %s: the safety stop failed", self.entry_id)
             return RegulatedWrite(REGULATED_HELD, "stop_failed", False)
@@ -3865,6 +3881,9 @@ class ChargingController:
         An automatic decision's stop (`defer_unready`) that would send nothing only because the charge control
         cannot be read yet (its integration has not loaded, right after a restart) is not done either: it raises
         `EXECUTION_STOP_NOT_EXECUTED` before anything is forgotten, and `_automatic_stop_locked` owes it.
+
+        A stop the charger answers by holding the charge at its floor (`STOP_HELD_AT_FLOOR`) did not end the charge:
+        like one not executed it forgets nothing and raises, as `EXECUTION_STOP_HELD_AT_FLOOR`.
         """
         if defer_unready and not self._stop_needed and self._control_observation is None:
             _LOGGER.debug(
@@ -3913,7 +3932,8 @@ class ChargingController:
                 executed = False
             finally:
                 self._stop_in_flight = False
-            if executed is False:
+            floored = executed == STOP_HELD_AT_FLOOR
+            if executed is False or floored:
                 # The command never went out (the control is unavailable): nothing of the charge is
                 # forgotten, neither who owns it nor the plan, so the retries that apply to a running
                 # charge (a pause's retry, the stray-charge stop) still find it.
@@ -3922,11 +3942,21 @@ class ChargingController:
                 if self._session_generation == session:
                     # Not after an unplug while the command was on its way: that plug-in's pause is over.
                     self._paused_by_balancing, self._paused_charge = was_balancing
+                self._notify()
+                if floored:
+                    _LOGGER.warning(
+                        "SpotNav charger %s: the charge was not paused; the charger allows no more pauses for now, so "
+                        "it holds the charge at %s A instead",
+                        self.entry_id,
+                        int(DEFAULT_MIN_CURRENT_A),
+                    )
+                    raise ChargingExecutionError(
+                        EXECUTION_STOP_HELD_AT_FLOOR, "the charger held the charge at its floor instead of pausing it"
+                    )
                 _LOGGER.warning(
                     "SpotNav charger %s: the stop was not executed (the charge control is unavailable)",
                     self.entry_id,
                 )
-                self._notify()
                 raise ChargingExecutionError(
                     EXECUTION_STOP_NOT_EXECUTED, "the stop command was not executed"
                 ) from failure
@@ -3967,7 +3997,8 @@ class ChargingController:
         charge and the plan are kept (`_stop_locked`), a warning is logged, and while the charger is seen
         charging the decision is taken again in `STOP_RETRY_S` (and at its next report). A charger whose
         control cannot be read and that is not seen charging needs no stop. A stop a person asked for is
-        theirs to hear about (`stop_not_executed`), never through here.
+        theirs to hear about (`stop_not_executed`), never through here. A stop the charger answered by holding the
+        charge at its floor (`stop_held_at_floor`) is the same: the charge runs on, and the stop is tried again.
         """
         try:
             if request:
@@ -3975,8 +4006,18 @@ class ChargingController:
             else:
                 await self._stop_locked(clear_schedule=clear_schedule, defer_unready=True)
         except ChargingExecutionError as err:
-            if err.code != EXECUTION_STOP_NOT_EXECUTED:
+            if err.code not in STOP_NOT_DONE_CODES:
                 raise
+            if err.code == EXECUTION_STOP_HELD_AT_FLOOR:
+                # The charge runs on at the floor: the stop is tried again until the charger has a pause to give.
+                _LOGGER.info(
+                    "SpotNav charger %s: %s held the charge at the floor; trying again in %ss",
+                    self.entry_id,
+                    what,
+                    int(STOP_RETRY_S),
+                )
+                self._arm_stop_retry()
+                return False
             ready = self._charger_ready()
             if not ready:
                 # The charger's integration has not loaded: the decision is taken again once it has.

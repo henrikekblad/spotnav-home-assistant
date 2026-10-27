@@ -59,6 +59,7 @@ from .base import (
     IN_EFFECT_OUTCOMES,
     start_call_tap,
     StartStopPath,
+    STOP_HELD_AT_FLOOR,
     WriteRateLimiter,
 )
 from .generic import NoCurrent
@@ -172,10 +173,16 @@ class ChargerAdapter:
             self._started_at = None
         return executed
 
-    async def async_stop(self) -> bool:
-        """Stop the charge; `False` when the command was not executed (its entity is unavailable)."""
-        self._started_at = None
-        return await self._logged(COMMAND_STOP, lambda: self.path.async_stop())
+    async def async_stop(self) -> bool | str:
+        """Stop the charge; `False` when the command was not executed (its entity is unavailable), and
+        `STOP_HELD_AT_FLOOR` when the charger held the charge at its floor instead of pausing it (a Peblar
+        out of pauses): the charge still runs, so what was started stays started.
+        """
+        started_at, self._started_at = self._started_at, None
+        result = await self._logged(COMMAND_STOP, lambda: self.path.async_stop())
+        if result == STOP_HELD_AT_FLOOR:
+            self._started_at = started_at
+        return result
 
     async def async_set_current(self, amps: int, *, reason: str, verify: bool = False) -> str:
         outcome: str | None = None
