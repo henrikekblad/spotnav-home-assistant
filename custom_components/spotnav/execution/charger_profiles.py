@@ -392,7 +392,8 @@ _PROFILES: Final[tuple[PlatformProfile, ...]] = (
         note="The switch and the current share one register. While paused a current written to the number "
         "is only stored, so the current is written before the switch is turned on, never after. Peblar "
         "allows at most three pauses in ten minutes (relay protection): beyond that a stop holds the "
-        "charge at 6 A instead.",
+        "charge at 6 A instead. SpotNav does not take that for a stop: it says so, load balancing counts "
+        "the 6 A, and the stop is tried again until a pause is allowed.",
     ),
     PlatformProfile(
         platform="nrgkick",
