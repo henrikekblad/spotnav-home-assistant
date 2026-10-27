@@ -118,8 +118,8 @@ It is best effort and is not a protective device. Turning it off gives back any 
   *deadband* (2 A) is ignored, and a new level must hold for the *dwell* time (60 s) before it
   is written, so the charger does not dither.
 - **An import overload is always lowered.** When a phase imports more than the limit, the lowering
-  goes out in the same pass, as a lower current or, if the charger cannot take it in time, a safety
-  stop. Nothing that is not about safety holds it back: not the damper, not yield stepping's settle
+  goes out in the same pass, as a lower current (a pause when the room left is below the charger's
+  minimum) or, if the charger cannot take it in time, a safety stop. Nothing that is not about safety holds it back: not the damper, not yield stepping's settle
   time or holds, not the step guard below, not the band of a battery that holds the grid at the fuse,
   not a resume or a battery probe about to start, not a meter that reports too seldom and not a charger
   that more than one site claims (less current is safe whoever owns it). What still decides: the fresh

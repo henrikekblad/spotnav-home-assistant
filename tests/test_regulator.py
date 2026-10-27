@@ -13,6 +13,7 @@ from custom_components.spotnav.site.regulator import (
     confirmed_direction,
     decide_charging_current,
     decision_still_applyable,
+    is_import_overload,
 )
 from custom_components.spotnav.site.site_capacity import (
     DEFAULT_MIN_CURRENT_A,
@@ -557,6 +558,23 @@ def test_active_import_overload_reduction_landing_below_the_minimum_is_an_explic
 
     assert decision.reason == "paused_safe_current_below_charger_minimum"
     assert decision.proposed_current_a == 0.0
+    # Still an import overload, whatever the reason says: applied past every gate that is not about safety.
+    assert decision.overload is True
+    assert is_import_overload(decision)
+
+
+def test_only_the_overload_path_marks_a_decision_as_an_overload() -> None:
+    increase_pause = _decide(
+        _site_result(16.0 * VOLTAGE), _charger(requested_current_a=10.0, measured_current_a=0.0, min_current_a=6.0)
+    )
+    assert increase_pause.reason == "paused_safe_current_below_charger_minimum"
+    assert increase_pause.overload is False
+    assert not is_import_overload(increase_pause)
+    lowering = _decide(
+        _site_result(20.0 * VOLTAGE), _charger(requested_current_a=16.0, measured_current_a=10.0, min_current_a=6.0)
+    )
+    assert lowering.reason == "reducing_current_due_to_active_import_overload"
+    assert lowering.overload is True
 
 
 def test_confirmed_safe_decrease_landing_below_the_minimum_is_an_explicit_pause() -> None:

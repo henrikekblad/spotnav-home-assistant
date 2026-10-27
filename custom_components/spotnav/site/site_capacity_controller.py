@@ -121,7 +121,7 @@ from .regulator import (
     direction_phases,
     DirectionClass,
     magnitude_overload_lowering,
-    MUST_LOWER_REASONS,
+    is_import_overload,
     RegulatorDecision,
 )
 from .current_sign import CurrentSignCheck
@@ -632,7 +632,7 @@ class SiteCapacityController:
 
     def _import_overload_now(self) -> bool:
         """Whether the last recompute found an import overload: a decision that must lower (`MUST_LOWER_REASONS`)."""
-        return any(decision.reason in MUST_LOWER_REASONS for decision in self.regulator_decisions.values())
+        return any(is_import_overload(decision) for decision in self.regulator_decisions.values())
 
     @callback
     def _async_state_reported(self, event: Event[EventStateReportedData]) -> None:
@@ -1408,7 +1408,7 @@ class SiteCapacityController:
         6. round to whole amps (debug-logged when it changes the value) and call the charger's
            `_async_assign_current`.
 
-        An import overload (`MUST_LOWER_REASONS`) passes every gate that is not about safety: a membership
+        An import overload (`is_import_overload`: `MUST_LOWER_REASONS`, or the pause an overload was legalised to) passes every gate that is not about safety: a membership
         conflict, a slow meter, a resume or probe about to start, the step guard's holds, yield stepping's holds
         and steps, the band of a battery at the limit and the damper. Steps 1 and 3 still apply, a running battery
         probe still judges its car, and the lowering is written at once (`_async_apply_must_lower`), unless the
@@ -1433,14 +1433,14 @@ class SiteCapacityController:
             held_detail = DETAIL_HELD_METER_TOO_SLOW
         if held_detail is not None:
             for charger_entry_id, decision in decisions.items():
-                if decision.proposed_current_a is not None and decision.reason not in MUST_LOWER_REASONS:
+                if decision.proposed_current_a is not None and not is_import_overload(decision):
                     self._log_active_control_outcome(
                         charger_entry_id, decision, outcome="held", detail=held_detail
                     )
             decisions = {
                 charger_entry_id: decision
                 for charger_entry_id, decision in decisions.items()
-                if decision.reason in MUST_LOWER_REASONS
+                if is_import_overload(decision)
             }
             if not decisions:
                 return
@@ -1614,7 +1614,13 @@ class SiteCapacityController:
             damper.forget_write(None)
             previous_setpoint = None
 
-        if decision.reason in MUST_LOWER_REASONS and previous_setpoint is not None:
+        if (
+            is_import_overload(decision)
+            and previous_setpoint is not None
+            # A stop of ours still settling: the charger reads its old current until it answers, which is the stop
+            # on its way, not a current above the one written (the pause would otherwise be sent again and again).
+            and not (previous_setpoint < min_current_a and charger_controller.stop_settling)
+        ):
             # An overload is measured against what is on the charger, not only against what was written: a fresh
             # reading a step above it (a limit the charger dropped, a write the site was not told of) is where the
             # lowering starts from, and the proposal never goes above what was written on that account.
@@ -1644,10 +1650,10 @@ class SiteCapacityController:
                 damper.record_write(on_charger)
                 previous_setpoint = on_charger
 
-        # An import overload (`MUST_LOWER_REASONS`): from here on no gate that is not about safety holds its lowering.
+        # An import overload (`is_import_overload`, its pause included): from here on no gate that is not about safety holds its lowering.
         # It ends in a write of a lower current (or, refused, the charger's safety stop), unless what is on the
         # charger is already at or below the proposal (`_async_apply_must_lower`).
-        overload = decision.reason in MUST_LOWER_REASONS
+        overload = is_import_overload(decision)
         lowering_due = overload and (previous_setpoint is None or proposed < previous_setpoint)
 
         # A grid-charging battery that may give way to the car: start the car at its minimum as
@@ -1857,7 +1863,7 @@ class SiteCapacityController:
         yield_verdict: YieldVerdict | None,
         site_read_at: float | None,
     ) -> bool:
-        """The end of an import overload's step (`MUST_LOWER_REASONS`): `target_a` goes out at once, whole amps
+        """The end of an import overload's step (`is_import_overload`; a pause below the minimum stops the charge): `target_a` goes out at once, whole amps
         rounded down, past the damper's deadband, dwell and an unusable margin, as a must-lower write (a charger
         that cannot take it in time is stopped, `ChargingController.async_apply_regulated_current`).
 
@@ -1967,7 +1973,7 @@ class SiteCapacityController:
         write = await charger_controller.async_apply_regulated_current(
             setpoint,
             must_lower=(
-                decision.reason in MUST_LOWER_REASONS
+                is_import_overload(decision)
                 or damping.reason in ("protection", "urgent")
             ),
         )

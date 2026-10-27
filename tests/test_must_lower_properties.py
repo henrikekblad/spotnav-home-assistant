@@ -3,7 +3,8 @@
 For random states of every such gate (a membership conflict, a slow meter, a resume or battery probe about to
 start, the step guard, the yield stepper's verdict, the band of a battery at the limit, the damper's deadband,
 dwell and margin, a battery filling the fuse), one apply pass on a `reducing_current_due_to_active_import_overload`
-decision ends, whenever a lowering is due (nothing written yet, or the proposal below what was written), in exactly
+decision (or the pause an overload below the charger's minimum is legalised to, `RegulatorDecision.overload`) ends,
+whenever a lowering is due (nothing written yet, or the proposal below what was written), in exactly
 one must-lower write of a lower current: the charger's own write path stops the charge when it cannot take that in
 time (`ChargingController.async_apply_regulated_current`). When no lowering is due, nothing higher is written.
 
@@ -17,6 +18,7 @@ does for the ownership core; a failure names the state it failed on.
 
 from __future__ import annotations
 
+from dataclasses import replace
 from typing import Any
 
 import pytest
@@ -34,6 +36,7 @@ from .test_yield_stepping_wiring import _decision, _yield_setup
 from .world import controller_of
 
 _OVERLOAD = "reducing_current_due_to_active_import_overload"
+_PAUSE = "paused_safe_current_below_charger_minimum"
 _YIELD_REASONS = (
     "settling_hold",
     "confirmed_after_settling",
@@ -57,6 +60,9 @@ GATES = st.fixed_dictionaries(
     {
         "previous": st.one_of(st.none(), st.integers(6, 32)),
         "proposed": st.integers(0, 32),
+        # The overload's safe current below the charger's minimum: legalised to a pause, its reason
+        # `paused_safe_current_below_charger_minimum`, carried as an overload by `RegulatorDecision.overload`.
+        "pause": st.booleans(),
         "conflict": st.booleans(),
         "slow_meter": st.booleans(),
         "resume_claims": st.booleans(),
@@ -193,19 +199,22 @@ async def test_an_import_overload_always_ends_in_a_lower_write_or_a_safety_stop(
         controller._written_at.clear()
         controller._regulated_writes.clear()
         controller._battery_probes.clear()
-        controller.regulator_decisions = {
-            cid: _decision(proposed_a=float(state["proposed"]), requested_a=16.0, reason=_OVERLOAD)
-        }
+        if state["pause"]:
+            decision = replace(_decision(proposed_a=0.0, requested_a=16.0, reason=_PAUSE), overload=True)
+        else:
+            decision = _decision(proposed_a=float(state["proposed"]), requested_a=16.0, reason=_OVERLOAD)
+        controller.regulator_decisions = {cid: decision}
 
         await controller._async_apply_active_control()
 
         previous = state["previous"]
-        if previous is None or state["proposed"] < previous:
+        proposed = 0 if state["pause"] else state["proposed"]
+        if previous is None or proposed < previous:
             assert len(writes) == 1, state
             setpoint, must_lower = writes[0]
             assert must_lower, state
             if previous is None:
-                assert setpoint <= state["proposed"], state
+                assert setpoint <= proposed, state
             else:
                 assert setpoint < previous, state
         else:

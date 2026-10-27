@@ -26,10 +26,10 @@ _OVERLOAD = "reducing_current_due_to_active_import_overload"
 
 
 async def _listening_site(hass: HomeAssistant, entry_id: str):
-    """`_yield_setup`'s site and charger (20 A fuse, 1 A margin, the car asking 16 A), with the site's state listener
+    """`_yield_setup`'s site and charger (a 32 A fuse, 1 A margin, the car asking 16 A), with the site's state listener
     on, as in a running Home Assistant, and every recompute counted."""
     site_entry, charger, configure_calls = await _yield_setup(
-        hass, entry_id=entry_id, yield_stepping_enabled=False
+        hass, entry_id=entry_id, main_fuse_a=32.0, yield_stepping_enabled=False
     )
     controller = controller_of(hass, site_entry.entry_id)
     controller._state_listener_cancel = async_track_state_change_event(
@@ -78,9 +78,9 @@ async def test_an_overload_is_acted_on_in_the_recompute_that_sees_it(hass: HomeA
     configure_calls.clear()
     recomputes.clear()
 
-    # The site goes 1.5 A over its 19 A limit, written phase by phase: one recompute, and its apply pass lowers the
+    # The site goes 1.5 A over its 31 A limit, written phase by phase: one recompute, and its apply pass lowers the
     # car from that very recompute.
-    set_site_current_a(hass, "coalesceover_site", 20.5)
+    set_site_current_a(hass, "coalesceover_site", 32.5)
     await _one_turn()
     assert len(recomputes) == 1
     assert controller.regulator_decisions[charger.entry_id].reason == _OVERLOAD
@@ -92,12 +92,12 @@ async def test_an_overload_is_acted_on_in_the_recompute_that_sees_it(hass: HomeA
 async def test_while_an_overload_stands_a_change_is_recomputed_at_once(hass: HomeAssistant) -> None:
     controller, charger, _calls, recomputes = await _listening_site(hass, "coalescenow")
     set_charger_delivered_a(hass, "coalescenow_charger", 10.0)
-    set_site_current_a(hass, "coalescenow_site", 20.5)
+    set_site_current_a(hass, "coalescenow_site", 32.5)
     await hass.async_block_till_done()
     assert controller._import_overload_now()
     recomputes.clear()
 
-    hass.states.async_set("sensor.coalescenow_site_power_l1", str(21.0 * 230.0), {"unit_of_measurement": "W"})
+    hass.states.async_set("sensor.coalescenow_site_power_l1", str(33.0 * 230.0), {"unit_of_measurement": "W"})
     assert len(recomputes) == 1, "no wait for the rest of the loop's turn"
 
 
