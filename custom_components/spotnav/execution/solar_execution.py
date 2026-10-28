@@ -65,6 +65,16 @@
 * A charger that is not charging draws nothing, whatever its measured current still reads: a sensor keeps
   its last value when a charge ends, and that leftover is not the car's draw (`_build_observation`'s
   `charger_idle`).
+* Phase switching (`site/solar_surplus.py` decides, `execution/phase_switching.py` keeps what follows): allowed only
+  where the charger's option is on, its integration can switch it, it is wired for three phases and the planned
+  car's onboard charger is not a one-phase one (`ChargingController.phase_switch_allowed`). The controller is told
+  the phases the charge is on (what the charger's read-back confirmed), the most one phase may take (the charger's
+  maximum, capped by the site's room on the phase the charge is on, or the worst phase while that is unknown) and
+  whether the site has room for three phases at `UP_MARGIN` x the minimum on every phase (`_phase_room`). A start on
+  one phase sets the phase right before the start; a switch down is just the switch, a switch up writes the
+  minimum current first. The charger does the interruption itself. A charger forced to one phase is reckoned as a
+  single-phase "Automatic" one (`SiteCapacityController.reckoned_phases`, `_car_phases`), and while a switch settles the watch on
+  the charge reads no car ending it and no start not taken (`_watch_charge`).
 """
 
 from __future__ import annotations
@@ -75,7 +85,7 @@ from collections import deque
 from datetime import datetime, timedelta
 from collections.abc import Callable
 from dataclasses import dataclass, field, replace
-from typing import Any, Final
+from typing import Any, Final, Literal
 
 from homeassistant.core import callback, HomeAssistant
 from homeassistant.util import dt as dt_util
@@ -109,6 +119,7 @@ from ..site.site_capacity import PhaseName, PHASES, charger_order_key
 from ..site.site_capacity_controller import SiteCapacityController
 from ..site.solar_capability import solar_capability
 from ..site.solar_surplus import (
+    UP_MARGIN,
     SolarConfig,
     SolarController,
     SolarEndCause,
@@ -289,23 +300,30 @@ def _wiring(site: SiteCapacityController, charger_entry_id: str) -> dict[str, An
     return (site.config.get(CONF_PHASE_WIRING) or {}).get(charger_entry_id) or {}
 
 
-def _car_phases(site: SiteCapacityController, charger_entry_id: str) -> tuple[PhaseName, ...]:
+def _car_phases(
+    site: SiteCapacityController, charger_entry_id: str, *, forced_one_phase: bool = False
+) -> tuple[PhaseName, ...]:
     """This charger's wired phases from the site's `CONF_PHASE_WIRING` (as
     `SiteCapacityController._build_requests` reads them): the chosen phase of a single-phase charger,
     or for an "Automatic" one the phase its measured current has it on (`followed_phase`). Empty when
-    neither is known (`_phase_unknown`).
+    neither is known (`_phase_unknown`). A three-phase charger `forced_one_phase` (the sun switched it,
+    `ChargingController.switched_phases`) is a single-phase "Automatic" one, as the site reckons it
+    (`SiteCapacityController.reckoned_phases`).
     """
     wiring = _wiring(site, charger_entry_id)
     if wiring.get("phases", 3) == 3:
-        return PHASES
-    phase = wiring.get("phase") or site.followed_phase(charger_entry_id)
+        if not forced_one_phase:
+            return PHASES
+        phase = site.followed_phase(charger_entry_id)
+    else:
+        phase = wiring.get("phase") or site.followed_phase(charger_entry_id)
     return (phase,) if phase else ()
 
 
-def _phase_unknown(site: SiteCapacityController, charger_entry_id: str) -> bool:
+def _phase_unknown(site: SiteCapacityController, charger_entry_id: str, *, forced_one_phase: bool = False) -> bool:
     """A single-phase charger whose phase is neither chosen in the site's wiring nor followed from its
     measured current ("Automatic", idle or not yet settled)."""
-    return not _car_phases(site, charger_entry_id)
+    return not _car_phases(site, charger_entry_id, forced_one_phase=forced_one_phase)
 
 
 #: The phase a single-phase charger of unknown phase is reckoned on (`_build_observation`).
@@ -392,6 +410,41 @@ def _fuse_caps(
     return caps
 
 
+def _phase_room(
+    site: SiteCapacityController,
+    charger_entry_id: str,
+    *,
+    min_current_a: float,
+    max_current_a: float,
+    forced_one_phase: bool,
+) -> tuple[float | None, bool]:
+    """For a phase switch: the most current one phase may take (the charger's maximum, capped by the room on the
+    phase the charge is on, or on the worst phase while that is unknown; `None` when a phase's room cannot be read),
+    and whether every phase has room for `UP_MARGIN` x the minimum current. A phase's room is its fuse headroom plus
+    what this charger draws there now; with no fuse there is no cap."""
+    fuse_limit_a = _fuse_limit_a(site)
+    if fuse_limit_a is None:
+        return max_current_a, True
+    result = site.result
+    measured = site.charger_measured_current(charger_entry_id)
+
+    def room(phase: PhaseName) -> float | None:
+        headroom = _phase_headroom_a(result, phase, fuse_limit_a)
+        if headroom is None:
+            return None
+        value = None if measured is None else measured.get(phase).value
+        return headroom + (value if isinstance(value, (int, float)) else 0.0)
+
+    rooms = {phase: room(phase) for phase in PHASES}
+    three_room = all(value is not None and value >= UP_MARGIN * min_current_a for value in rooms.values())
+    car_phases = _car_phases(site, charger_entry_id, forced_one_phase=forced_one_phase)
+    on = car_phases if len(car_phases) == 1 else PHASES
+    caps = [rooms[phase] for phase in on]
+    if any(cap is None for cap in caps):
+        return None, three_room
+    return min(max_current_a, *caps), three_room  # type: ignore[type-var]
+
+
 def _limited_to(
     car_phases: tuple[PhaseName, ...], limit: int | None, measured: Any
 ) -> tuple[PhaseName, ...]:
@@ -426,6 +479,7 @@ def _build_observation(
     now: float,
     effective_phases: int | None = None,
     charger_idle: bool = False,
+    forced_one_phase: bool = False,
 ) -> SolarObservation:
     """One tick's `SolarObservation` from the site's computed result plus this charger's
     measured current.
@@ -437,17 +491,20 @@ def _build_observation(
     is what the charge uses (`planning/phases.py`): a car on fewer phases than the charger is wired for
     draws on that many of them. A single-phase charger of unknown phase is reckoned on `STAND_IN_PHASE`.
     `charger_idle` is a charger that is not charging: what its measured current still reads is a leftover,
-    and it draws nothing (a phase that does not read stays unknown).
+    and it draws nothing (a phase that does not read stays unknown). `forced_one_phase`: the sun switched a
+    three-phase charger to one phase, which is then reckoned as a single-phase "Automatic" one (`_car_phases`).
     """
     result = site.result
     measured = site.charger_measured_current(charger_entry_id)
-    phase_unknown = _phase_unknown(site, charger_entry_id)
+    phase_unknown = _phase_unknown(site, charger_entry_id, forced_one_phase=forced_one_phase)
     car_delivered_a: dict[PhaseName, float | None]
     if phase_unknown:
         car_phases: tuple[PhaseName, ...] = (STAND_IN_PHASE,)
         car_delivered_a = {STAND_IN_PHASE: _delivered_any_phase(measured)}
     else:
-        car_phases = _limited_to(_car_phases(site, charger_entry_id), effective_phases, measured)
+        car_phases = _limited_to(
+            _car_phases(site, charger_entry_id, forced_one_phase=forced_one_phase), effective_phases, measured
+        )
         car_delivered_a = {
             phase: (None if measured is None else measured.get(phase).value) for phase in car_phases
         }
@@ -563,6 +620,7 @@ def site_solar_surplus(hass: HomeAssistant, site: SiteCapacityController) -> Sit
             now=0.0,
             effective_phases=effective_phases(hass, charger_entry_id),
             charger_idle=_charger_idle(controller),
+            forced_one_phase=controller.switched_phases == 1,
         )
         car_w += car_draw_w(observation) or 0.0
     return site_surplus(
@@ -752,6 +810,9 @@ class SolarExecutionCoordinator:
         # start or write, and when the last write was tried (this coordinator's clock).
         self._written_a: int | None = None
         self._written_at: float | None = None
+        # The charger's plug-in this coordinator last saw (`ChargingController.plug_in_generation`): a new one gives
+        # the solar controller the whole phase-switch budget again.
+        self._phase_generation: int | None = None
 
     @property
     def state(self) -> SolarExecutionState | None:
@@ -885,6 +946,9 @@ class SolarExecutionCoordinator:
             return
         if self._first_evaluated_at is None:
             self._first_evaluated_at = self._now()
+        # A phase switch's read-back: confirmed, given up, or (at a restart) what the charger is set to.
+        self._controller.reconcile_phases()
+        self._follow_plug_in()
         await self._retry_owed_stop()
         settings = self._store.settings(self._charger_entry_id)
         if settings.strategy in (STRATEGY_SOLAR, STRATEGY_HYBRID):
@@ -1036,13 +1100,46 @@ class SolarExecutionCoordinator:
             now=now,
             effective_phases=effective_phases(self._hass, self._charger_entry_id),
             charger_idle=self._charger_idle(),
+            forced_one_phase=self._controller.switched_phases == 1,
         )
         share_adjust_w = self._share_adjust_w(site, observation)
         if share_adjust_w:
             observation = replace(observation, share_adjust_w=share_adjust_w)
         if self._unmeasured_start_allowed(site, now=observation.now):
             observation = replace(observation, unmeasured_start_allowed=True)
-        return observation
+        return self._with_phase_inputs(site, observation)
+
+    def _with_phase_inputs(self, site: SiteCapacityController, observation: SolarObservation) -> SolarObservation:
+        """The observation with what the phase decision reads (module docstring). Switching not allowed, only a
+        settle (a charger set back to three for a charge that is not the sun's) is told."""
+        controller = self._controller
+        settling = controller.phase_switch_settling
+        if not controller.phase_switch_allowed():
+            return replace(observation, phase_switch_settling=True) if settling else observation
+        config = self._solar.config if self._solar is not None else self._solar_config(site)
+        one_phase_max_a, three_phase_room = _phase_room(
+            site,
+            self._charger_entry_id,
+            min_current_a=config.min_current_a,
+            max_current_a=config.max_current_a,
+            forced_one_phase=controller.switched_phases == 1,
+        )
+        return replace(
+            observation,
+            phase_switch_allowed=True,
+            phases_now=1 if controller.switched_phases == 1 else 3,
+            one_phase_max_a=one_phase_max_a,
+            three_phase_room=three_phase_room,
+            phase_switch_settling=settling,
+        )
+
+    def _follow_plug_in(self) -> None:
+        """A new plug-in on the charger (`plug_in_generation`): the solar controller's switch budget starts afresh. A
+        passing reading of no car is no new plug-in."""
+        generation = self._controller.plug_in_generation
+        if self._phase_generation is not None and generation != self._phase_generation and self._solar is not None:
+            self._solar.new_plug_in()
+        self._phase_generation = generation
 
     def _car_unplugged(self) -> bool:
         """Whether the charger says no car is plugged in: its connection `disconnected`, or its status naming no
@@ -1067,6 +1164,11 @@ class SolarExecutionCoordinator:
             self._unseen_since = None
             return None
         if controller.paused_by_balancing:
+            return None
+        if controller.phase_switch_settling:
+            # The charger interrupts the charge for a phase switch: no car ending it, no start not taken.
+            self._idle_since = None
+            self._unseen_since = None
             return None
         if controller.charge_control_on:
             self._seen_control_on = True
@@ -1256,6 +1358,7 @@ class SolarExecutionCoordinator:
             now=now,
             effective_phases=effective_phases(self._hass, self._charger_entry_id),
             charger_idle=self._charger_idle(),
+            forced_one_phase=self._controller.switched_phases == 1,
         )
         return self._member(site, observation, order=order, now=now)
 
@@ -1398,6 +1501,13 @@ class SolarExecutionCoordinator:
         solar.seed_credit_backoff(now, remaining, next_s)
         # So does a charge the car ended by itself, and what it ended at (`_keep_ended`).
         self._seed_ended(solar, now)
+        # And the plug-in's phase-switch budget.
+        last_switch_at = self._controller.last_phase_switch_at
+        solar.seed_phase_switches(
+            now,
+            self._controller.phase_switches_this_plug_in,
+            None if last_switch_at is None else (dt_util.utcnow() - last_switch_at).total_seconds(),
+        )
         if self._controller.charging and not self._controller.self_started_charge():
             # A charge found running (a restart, a strategy switch) is adopted, never cycled; one the charger
             # began by itself is not: `_take_over` decides it on its first reading.
@@ -1540,6 +1650,15 @@ class SolarExecutionCoordinator:
         its minimum off time."""
         if verdict.action == "start":
             assert verdict.requested_a is not None
+            if not await self._set_start_phases(verdict):
+                _LOGGER.info(
+                    "%s charger %s: the charger could not be set to one phase; solar stays off",
+                    SOLAR_SURPLUS_LOG_TOKEN,
+                    self._charger_entry_id,
+                )
+                if self._solar is None:
+                    return replace(verdict, action="hold")
+                return replace(self._solar.charge_ended(self._now(), "charger_stopped"), action="hold")
             started = await self._executor.async_solar_start(int(verdict.requested_a))
             if started:
                 # The start wrote its own current: the sun's next write is a change from it.
@@ -1561,8 +1680,47 @@ class SolarExecutionCoordinator:
         elif verdict.action == "set_current":
             assert verdict.requested_a is not None
             await self._executor.async_solar_set_current(int(verdict.requested_a))
+        elif verdict.switch_phases is not None:
+            await self._switch_phases(verdict.switch_phases)
         # hold: nothing to do.
         return verdict
+
+    def _min_current_a(self) -> float:
+        solar = self._solar
+        site = self._site
+        if solar is not None:
+            return solar.config.min_current_a
+        return DEFAULT_MIN_CURRENT_A if site is None else self._solar_config(site).min_current_a
+
+    async def _set_start_phases(self, verdict: SolarVerdict) -> bool:
+        """The phases a solar start is made on, set right before it (never while idle "just in case") and only when
+        they differ from what the charger is on. `False` when the charge was to start on one phase and the charger
+        could not be set to it: the surplus does not carry three."""
+        phases = verdict.start_phases
+        phases_now = 1 if self._controller.switched_phases == 1 else 3
+        if phases is None or phases == phases_now:
+            return True
+        # A start's phase choice is no switch of the budget: the charge has not begun, so nothing is interrupted.
+        switched = await self._executor.async_solar_set_phases(
+            phases, min_current_a=self._min_current_a(), counted=False
+        )
+        return switched or phases == 3
+
+    async def _switch_phases(self, phases: Literal[1, 3]) -> None:
+        """A switch of the running charge (`SolarVerdict.switch_phases`): up writes the minimum current first, down is
+        the switch alone; the charger interrupts the charge itself."""
+        min_current_a = self._min_current_a()
+        switched = await self._executor.async_solar_set_phases(phases, min_current_a=min_current_a)
+        if switched and phases == 3:
+            # The minimum went out before the switch: the sun's next write is a change from it.
+            self._written_a = int(min_current_a)
+        _LOGGER.info(
+            "%s charger %s: switch to %s phase(s) %s",
+            SOLAR_SURPLUS_LOG_TOKEN,
+            self._charger_entry_id,
+            phases,
+            "sent" if switched else "not sent",
+        )
 
     def current_writer(self, site: SiteCapacityController) -> str:
         """Who writes the sun's current to this charger (`SolarExecutionState.solar_current_writer`)."""
