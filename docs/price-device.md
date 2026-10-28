@@ -54,7 +54,8 @@ electricity price:
 - A site whose chargers all had the same fees points at that one. Chargers on a site whose fees
   differ each point at their own.
 - An existing electricity price with the same area but other fees is never changed. The chargers get
-  one of their own, and the card asks once: "Two electricity prices for SE4 with different fees. Use
+  one of their own, named after who uses it: the site ("Electricity price SE4 (Home)"), else the
+  charger, else how many chargers. The card asks once: "Two electricity prices for SE4 with different fees. Use
   one?" **Use …** moves every charger and site that used the other one to the chosen one; the other
   stays and can be removed under **Devices & services**. **Keep both** keeps them as they are. The
   question is not asked again either way. Only administrators see it.
