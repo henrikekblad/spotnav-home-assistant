@@ -833,6 +833,10 @@
     "site_without_chargers": {
       "title": "Lägg till en laddare på anläggningen",
       "description": "Anläggningen **{site}** har ingen laddare än. Lägg till en laddare: Inställningar → Enheter och tjänster → SpotNav → Lägg till post → Laddare; den erbjuder sig att ansluta till den här anläggningen."
+    },
+    "core_decision_failed": {
+      "title": "En laddares laddbeslut misslyckades",
+      "description": "SpotNavs nuvarande logik kunde inte fatta beslut för **{charger}** flera gånger det senaste dygnet, så den tidigare logiken beslutade i stället. Laddningen fortsätter. För att hjälpa till att rätta felet: ladda ner felsökningsinfon (kugghjulet på SpotNav-kortet → Ladda ner felsökningsinfo) och bifoga den i ett ärende på GitHub. Om laddaren beter sig konstigt kan du byta till Tidigare logik: laddarens Konfigurera → Laddbeslut. Meddelandet försvinner efter ett dygn utan fel."
     }
   },
   "exceptions": {

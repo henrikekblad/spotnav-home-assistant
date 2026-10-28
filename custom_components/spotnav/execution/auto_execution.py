@@ -1147,7 +1147,7 @@ class AutoExecutor:
         * A paused Auto's plan is dropped without touching the charger (its windows' ends would stop what
           the person started), and the start is marked as awaiting the charger's report.
         """
-        connected = self._shadow_connected(fallback=False)
+        connected = self._shadow_connected(fallback=False, kind=core_events.PersonStart.kind)
         token = self._shadow.begin(early=None if connected is ... else core_events.PersonStart(connected=connected))
         note: dict[str, Any] = {"legacy": [], "outcome": None}
         try:
@@ -1170,7 +1170,8 @@ class AutoExecutor:
             return scope
         try:
             session = self._shadow.session
-        except Exception:  # noqa: BLE001 - today's decision stands
+        except Exception as err:  # noqa: BLE001 - today's decision stands, not silently
+            self._shadow.failed("stop_scope", core_events.PersonStop.kind, err)
             return scope
         return None if session.manual is None else session.manual.scope
 
@@ -1184,15 +1185,16 @@ class AutoExecutor:
         except Exception:  # noqa: BLE001 - the shadow never raises into the real path
             return CommandOutcome(True)
 
-    def _shadow_connected(self, *, fallback: bool) -> Any:
+    def _shadow_connected(self, *, fallback: bool, kind: str) -> Any:
         """What the charger says of a car now (with `fallback`, the last it stated when it says nothing), for the
-        ownership shadow; `...` when it cannot be read."""
+        ownership shadow's event of `kind`; `...` when it cannot be read (a failure: today's code decides it)."""
         try:
             connected = self._controller.adapter.vehicle_connected()
             if connected is None and fallback:
                 connected = self._controller.known_connected
             return connected
-        except Exception:  # noqa: BLE001 - the shadow never raises into the real path
+        except Exception as err:  # noqa: BLE001 - the shadow never raises into the real path
+            self._shadow.failed("facts", kind, err)
             return ...
 
     async def _manual_start_body(self, amps: int | None, note: dict[str, Any]) -> None:
@@ -1703,7 +1705,7 @@ class AutoExecutor:
         `pause_stop_failed` and raises; Stop again is the retry. A pause that could not be stored is logged
         and reported (`reconcile_failed`); the charger is stopped all the same.
         """
-        connected = self._shadow_connected(fallback=True)
+        connected = self._shadow_connected(fallback=True, kind=core_events.PersonStop.kind)
         token = self._shadow.begin(early=None if connected is ... else core_events.PersonStop(connected=connected))
         note: dict[str, Any] = {"outcome": None, "connected": connected, "early": token.early is not None}
         try:
@@ -2151,7 +2153,8 @@ class AutoExecutor:
                 "start_pending": controller._shadow_start_pending(),  # noqa: SLF001 - read without its side effect
                 "stop_recent": controller._shadow_stop_recent(),  # noqa: SLF001
             }
-        except Exception:  # noqa: BLE001 - the shadow never raises into the real path
+        except Exception as err:  # noqa: BLE001 - the shadow never raises into the real path; today's code decides
+            self._shadow.failed("facts", core_events.SolarStop.kind, err)
             return None
 
     async def async_solar_set_current(self, amps: int) -> None:

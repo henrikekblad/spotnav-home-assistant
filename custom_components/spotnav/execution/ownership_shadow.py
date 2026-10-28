@@ -19,7 +19,9 @@ Nesting is counted per asyncio task, so a report callback that lands while a com
 is a feed of its own; while another task's feed is open, today's state is mid-way, so nothing is compared or
 called drift then (`skipped`). A plug-in or an unplug ends a manual pause in the core at once, while today's
 execution boundary writes that a moment later: the core's intent is kept until the boundary's own `check`.
-The shadow never raises into the real path: every failure is caught and counted (`errors`). The events it saw are
+The shadow never raises into the real path: every failure is caught and counted (`errors`). A decision that could not
+be taken (the core raised, or its facts or its stored session could not be read) is a *failure* (`failed`): today's
+code decides that event, as ever, but not silently. The events it saw are
 kept (`EVENT_RING`, no entity ids, no secrets), so a debug bundle's are replayable (`core/replay.py`). What it decided,
 compared, disagreed on, found drift at and failed on is also tallied per event kind, across restarts
 (`ownership_coverage.py`).
@@ -107,6 +109,10 @@ class ShadowToken:
     outermost: bool
     ok: bool = True
     lined_up: bool = True
+    #: A failure this feed met is already told (`failed`): one event is one failure, however many steps it failed at.
+    reported: bool = False
+    #: What lining the feed up failed with, told at its end (`failed`) under the kind of the event it ends with.
+    error: BaseException | None = None
     #: Whether lining up found drift, or failed: counted under the kind of the event this feed ends with.
     drift: bool = False
     failed: bool = False
@@ -168,6 +174,9 @@ class NullShadow:
     def check(self, fields: tuple[str, ...], where: str) -> None:
         return
 
+    def failed(self, where: str, kind: str | None, error: BaseException | None = None) -> None:
+        return
+
 
 def _manual_dict(manual: ManualPause | None) -> dict[str, str] | None:
     return None if manual is None else {"action": manual.action, "scope": manual.scope}
@@ -198,9 +207,16 @@ class OwnershipShadow:
         writer: Callable[[ChargeSession], bool] | None = None,
         persist: Callable[[ChargeSession], None] | None = None,
         coverage: OwnershipCoverage | None = None,
+        name: str = "",
+        on_failure: Callable[[], None] | None = None,
     ) -> None:
         SHADOWS.add(self)
         self._legacy = legacy
+        # Which charger this is, in a log line; and who hears a failure while the core drives (Repairs, `failed`).
+        self._name = name
+        self._on_failure = on_failure
+        # The failures already logged as a warning this run, as `(where, kind)`: each is logged once, then counted.
+        self._warned: set[tuple[str, str | None]] = set()
         # Step 2: the core drives (today's code acts on `verdict`, and a charge the core says nobody owns clears
         # today's owner fields, `writer`), or it only shadows (today's state stays the truth after a comparison).
         self.drives = drives
@@ -219,7 +235,8 @@ class OwnershipShadow:
         self._intent_deferred = False
         # Feeds that ended while another task's was open, decided after it (`end`).
         self._queue: deque[_Feed] = deque()
-        self.counts: dict[str, int] = {
+        # `failures`: per `where/kind`, the decisions that could not be taken (`failed`); `last_failure`: when.
+        self.counts: dict[str, Any] = {
             "events": 0,
             "compared": 0,
             "disagreements": 0,
@@ -230,6 +247,8 @@ class OwnershipShadow:
             "verdict_differs": 0,
             "quiet": 0,
             "errors": 0,
+            "failures": {},
+            "last_failure": None,
         }
         self.disagreements: deque[dict[str, Any]] = deque(maxlen=DISAGREEMENT_RING)
         self.drift: deque[dict[str, Any]] = deque(maxlen=DRIFT_RING)
@@ -279,10 +298,10 @@ class OwnershipShadow:
         else:
             try:
                 drifted = self._line_up() if line_up else False
-            except Exception:  # noqa: BLE001 - the shadow never raises into the real path
+            except Exception as err:  # noqa: BLE001 - the shadow never raises into the real path
                 # Counted under the kind of the event the feed ends with (`end`), or none (`cancel`).
                 self._error("begin", cover=False)
-                return ShadowToken(key, True, ok=False, failed=True)
+                return ShadowToken(key, True, ok=False, failed=True, error=err)
             token = ShadowToken(key, True, drift=drifted)
         self._stack.setdefault(key, []).append(token)
         if early is not None and self.drives:
@@ -295,8 +314,9 @@ class OwnershipShadow:
             token.early_order = self._tick()
             self.session, token.early_commands = decide(self.session, event, self._now())
             token.early = event
-        except Exception:  # noqa: BLE001 - decided at `end` as ever
+        except Exception as err:  # noqa: BLE001 - decided at `end` as ever
             self._error("begin_early", event.kind)
+            self.failed("decide_early", event.kind, err, token=token)
         return token.early_commands
 
     def _close(self, token: ShadowToken) -> None:
@@ -364,8 +384,9 @@ class OwnershipShadow:
                 self._compare(record, event.kind, core_kinds, item.legacy, fields, kind=event.kind)
             else:
                 record["unchecked"] = True
-        except Exception:  # noqa: BLE001 - the shadow never raises into the real path
+        except Exception as err:  # noqa: BLE001 - the shadow never raises into the real path
             self._error(event.kind, event.kind)
+            self.failed("decide", event.kind, err, token=token)
         finally:
             self._quiet = None
         self._persisted()
@@ -401,8 +422,9 @@ class OwnershipShadow:
             else:
                 self.session = today
             self._intent_deferred = False
-        except Exception:  # noqa: BLE001 - the shadow never raises into the real path
+        except Exception as err:  # noqa: BLE001 - the shadow never raises into the real path
             self._error("restart", event.kind)
+            self.failed("restart", event.kind, err)
             return
         self.end(self.begin(line_up=not from_store), event)
 
@@ -651,8 +673,9 @@ class OwnershipShadow:
                     return None
             else:
                 _session, commands = self.preview(event)
-        except Exception:  # noqa: BLE001 - today's decision stands
+        except Exception as err:  # noqa: BLE001 - today's decision stands
             self._error("verdict", event.kind)
+            self.failed("verdict", event.kind, err, token=token)
             return None
         return frozenset(
             (command.kind, str(getattr(command, "reason", getattr(command, "code", ""))))
@@ -684,6 +707,8 @@ class OwnershipShadow:
             self._cover(kind, "drift")
         if token.failed:
             self._cover(kind, "errors")
+            # The session could not be lined up with today's state: whatever was decided from it is not to be trusted.
+            self.failed("line_up", kind, token.error, token=token)
 
     def _error(self, where: str, kind: str | None = None, *, cover: bool = True) -> None:
         """A failure at `where`, counted under the event `kind` it met (`None`: no event's), unless counted later
@@ -693,6 +718,54 @@ class OwnershipShadow:
             self._cover(kind, "errors")
         _LOGGER.debug("SpotNav ownership shadow failed at %s", where, exc_info=True)
         self._tell("error", {"where": where})
+
+    def failed(
+        self,
+        where: str,
+        kind: str | None,
+        error: BaseException | None = None,
+        *,
+        token: ShadowToken | None = None,
+    ) -> None:
+        """A decision that could not be taken at `where` for an event of `kind` (`None`: no event's): the core raised,
+        or its facts or its stored session could not be read. Today's code decides that event, as ever. Counted per
+        `where/kind` with the time of the last (`counts`, so diagnostics and the debug bundle carry it). While the core
+        drives, the first of each `(where, kind)` this run is a warning in the log, and every one is told to
+        `on_failure` (which raises a Repairs issue only when failures repeat); while it only shadows, a debug line.
+        A feed's `token` makes one event one failure, however many of its steps failed. Never raises."""
+        try:
+            if token is not None:
+                if token.reported:
+                    return
+                token.reported = True
+            failures = self.counts["failures"]
+            label = f"{where}/{kind or '-'}"
+            failures[label] = failures.get(label, 0) + 1
+            self.counts["last_failure"] = self._now().isoformat()
+            TOTALS["failures"] = TOTALS.get("failures", 0) + 1
+            if self.drives and (where, kind) not in self._warned:
+                self._warned.add((where, kind))
+                _LOGGER.warning(
+                    "SpotNav charger %s: the charging decision could not be taken at %s (%s), so the previous logic "
+                    "decided it; later ones are only counted (diagnostics)",
+                    self._name,
+                    where,
+                    kind or "no event",
+                    exc_info=error,
+                )
+            else:
+                _LOGGER.debug(
+                    "SpotNav charger %s: the charging decision could not be taken at %s (%s)",
+                    self._name,
+                    where,
+                    kind or "no event",
+                    exc_info=error,
+                )
+            self._tell("failure", {"where": where, "kind": kind})
+            if self.drives and self._on_failure is not None:
+                self._on_failure()
+        except Exception:  # noqa: BLE001 - the shadow never raises into the real path
+            _LOGGER.debug("SpotNav ownership shadow: a failure could not be told", exc_info=True)
 
     def _tell(self, kind: str, record: dict[str, Any]) -> None:
         for listener in list(LISTENERS):

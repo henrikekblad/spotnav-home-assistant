@@ -5,12 +5,17 @@ made, created and deleted by `async_sync_resolution_repairs` (called by every mu
 An issue is a view of a decision: its id is `{kind}_{device_id}`, its text names the device and
 kind but never a candidate entity id. The fix flow offers the same candidates, validates with the
 same `valid_*_entity_id` and records through the same store calls as the services.
+
+One more, not a decision: a charger whose charging decisions keep failing (`CoreFailureRepairs`), raised
+only when they repeat and gone after a day without one.
 """
 
 from __future__ import annotations
 
+from collections import deque
 from collections.abc import Callable, Iterable
-from typing import Any
+from datetime import datetime, timedelta
+from typing import Any, Final
 
 import voluptuous as vol
 from homeassistant.components.repairs import RepairsFlow, RepairsFlowResult
@@ -23,6 +28,7 @@ from homeassistant.helpers import (
     selector,
 )
 from homeassistant.helpers.event import async_call_later
+from homeassistant.util import dt as dt_util
 
 from .const import CONF_CHARGER_ENTRY_IDS, CONF_ENTRY_TYPE, DOMAIN, ENTRY_TYPE_SITE
 from .vehicles.duplicate_chargers import charger_entries_except, duplicate_pairs
@@ -62,6 +68,12 @@ _ISSUE_TRANSLATION_KEYS = {
 #: Issues about how entries are set up (translation keys under `issues`, issue-id prefixes).
 DUPLICATE_CHARGER_ISSUE = "duplicate_charger"
 SITE_WITHOUT_CHARGERS_ISSUE = "site_without_chargers"
+
+#: A charger whose charging decisions keep failing (translation key under `issues`, issue-id prefix): raised when
+#: `CORE_FAILURE_REPEATS` failures fall within `CORE_FAILURE_WINDOW`, deleted after that long without one.
+CORE_DECISION_FAILED_ISSUE: Final = "core_decision_failed"
+CORE_FAILURE_REPEATS: Final = 3
+CORE_FAILURE_WINDOW: Final = timedelta(hours=24)
 
 #: Abort reason when the decision is already gone; not an error, the human's goal is met.
 _NO_LONGER_NEEDS_DECISION = "no_longer_needs_decision"
@@ -141,8 +153,13 @@ async def async_sync_resolution_repairs(
         for decision in resolve_required(hass)
     }
     wanted.update(_setup_issue_fields(hass, exclude_entry_ids))
+    # A charger's failing decisions are not a view of live state: kept (its own timer and unload end them), unless
+    # that charger's entry is being removed.
+    excluded = {core_decision_issue_id(entry_id) for entry_id in exclude_entry_ids}
     registry = ir.async_get(hass)
     for issue_id in [key[1] for key in registry.issues if key[0] == DOMAIN]:
+        if issue_id.startswith(f"{CORE_DECISION_FAILED_ISSUE}_") and issue_id not in excluded:
+            continue
         if issue_id not in wanted:
             ir.async_delete_issue(hass, DOMAIN, issue_id)
     for issue_id, fields in wanted.items():
@@ -211,6 +228,75 @@ async def async_arm_resolution_sync(hass: HomeAssistant) -> Callable[[], None]:
             pending_cancel = None
 
     return cancel
+
+
+def core_decision_issue_id(entry_id: str) -> str:
+    """The issue id for one charger's failing decisions."""
+    return f"{CORE_DECISION_FAILED_ISSUE}_{entry_id}"
+
+
+class CoreFailureRepairs:
+    """The Repairs side of one charger's failing charging decisions (`OwnershipShadow.failed`, while the core drives).
+
+    A single failure is a log line and a count only: nobody can act on it. Only `CORE_FAILURE_REPEATS` within
+    `CORE_FAILURE_WINDOW` (a sliding window, in memory) raise `core_decision_failed_<entry_id>`, which says the only
+    two things a person can do: send the debug info with an issue, and switch the charger to the previous logic. It
+    is deleted once a whole window passes without a failure (a timer) and when the charger is unloaded (`clear`).
+    """
+
+    def __init__(self, hass: HomeAssistant, entry_id: str, name: Callable[[], str]) -> None:
+        self._hass = hass
+        self._entry_id = entry_id
+        self._name = name
+        self._times: deque[datetime] = deque()
+        self._cancel_timer: Callable[[], None] | None = None
+
+    @property
+    def issue_id(self) -> str:
+        return core_decision_issue_id(self._entry_id)
+
+    @callback
+    def failed(self) -> None:
+        """One failure now: raise the issue when they repeat, and (re)start the day after which it goes."""
+        now = dt_util.utcnow()
+        self._times.append(now)
+        while self._times and now - self._times[0] > CORE_FAILURE_WINDOW:
+            self._times.popleft()
+        if len(self._times) >= CORE_FAILURE_REPEATS:
+            ir.async_create_issue(
+                self._hass,
+                DOMAIN,
+                self.issue_id,
+                is_fixable=False,
+                severity=ir.IssueSeverity.WARNING,
+                translation_key=CORE_DECISION_FAILED_ISSUE,
+                translation_placeholders={"charger": self._name()},
+            )
+        self._cancel()
+        self._cancel_timer = async_call_later(
+            self._hass,
+            CORE_FAILURE_WINDOW,
+            HassJob(self._quiet_day, cancel_on_shutdown=True),
+        )
+
+    @callback
+    def _quiet_day(self, _now: Any) -> None:
+        """A whole window without a failure: the issue goes, and the count starts again."""
+        self._cancel_timer = None
+        self._times.clear()
+        ir.async_delete_issue(self._hass, DOMAIN, self.issue_id)
+
+    def _cancel(self) -> None:
+        if self._cancel_timer is not None:
+            self._cancel_timer()
+            self._cancel_timer = None
+
+    @callback
+    def clear(self) -> None:
+        """The charger is unloaded (a reload, a removal, Home Assistant stopping): no timer, no issue."""
+        self._cancel()
+        self._times.clear()
+        ir.async_delete_issue(self._hass, DOMAIN, self.issue_id)
 
 
 class ResolutionRepairFlow(RepairsFlow):

@@ -833,6 +833,10 @@
     "site_without_chargers": {
       "title": "Lisää laturi kohteeseen",
       "description": "Kohteessa **{site}** ei ole vielä laturia. Lisää laturi: Asetukset → Laitteet ja palvelut → SpotNav → Lisää merkintä → Latauslaite; se tarjoutuu liittymään tähän kohteeseen."
+    },
+    "core_decision_failed": {
+      "title": "Laturin latauspäätökset epäonnistuivat",
+      "description": "SpotNavin nykyinen logiikka ei pystynyt tekemään päätöstä laturille **{charger}** useita kertoja viimeisen vuorokauden aikana, joten aiempi logiikka päätti sen sijaan. Lataus jatkuu. Voit auttaa vian korjaamisessa: lataa vianetsintätiedot (SpotNav-kortin ratas → Lataa vianetsintätiedot) ja liitä ne GitHubin issueen. Jos laturi toimii oudosti, vaihda se Aiempaan logiikkaan: laturin Määritä → Latauspäätökset. Ilmoitus poistuu vuorokauden kuluttua ilman virheitä."
     }
   },
   "exceptions": {

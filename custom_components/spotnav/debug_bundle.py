@@ -35,6 +35,10 @@ one, kept across restarts since `since` (under the integration's `version` then;
 
 Version 7 adds, inside the site's `diagnostics`, `yield_stepping`, `solar_surplus` and `hybrid` (per member charger),
 which the site state sensor carried as attributes until it stopped carrying what moves with each reading.
+
+Inside `ownership_shadow.counts`, `failures` (per `where/kind`, the charging decisions the core could not take, which
+the previous logic took instead) and `last_failure` (when) came later with no version change: a reader that does not
+know them passes them by.
 """
 
 from __future__ import annotations
