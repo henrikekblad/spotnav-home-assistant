@@ -3,7 +3,7 @@
 
 import { describe, expect, it } from "vitest";
 
-import { clock, dateLabel, departureDayLabel, energyAmount, formatNumber, hasZone, money, offsetLabel, periodIsAmbiguous, periodLabel, pricePerKwh, wallTimeRepeats, weekdayDate, weekdayPlural } from "../src/format";
+import { clock, dateLabel, departureDayLabel, energyAmount, formatNumber, hasZone, money, offsetLabel, periodIsAmbiguous, periodLabel, pricePerKwh, wallTimeRepeats, weekdayDate, weekdaySingular } from "../src/format";
 import { LANGUAGES, type Language } from "../src/i18n";
 
 const stockholm = {
@@ -172,30 +172,27 @@ describe("a departure date for people", () => {
   });
 });
 
-describe("a weekday in the plural", () => {
+describe("a weekday as the prices-for sentence takes it", () => {
   it.each([
-    ["en", 7, "Sundays"],
-    ["en", 1, "Mondays"],
-    ["sv", 7, "söndagar"],
-    ["sv", 3, "onsdagar"],
-    ["nb", 7, "søndager"],
-    ["da", 7, "søndage"],
-    ["fi", 7, "sunnuntaisin"],
-    ["fi", 3, "keskiviikkoisin"],
-    ["fi", 1, "maanantaisin"],
-    ["de", 7, "Sonntage"],
-    ["de", 3, "Mittwoche"],
-    ["nl", 7, "zondagen"],
-    ["es", 7, "domingos"],
-    ["es", 1, "lunes"],
-    ["fr", 7, "dimanches"],
+    ["en", 4, "Thursday"],
+    ["en", 7, "Sunday"],
+    ["sv", 4, "torsdag"],
+    ["nb", 4, "torsdag"],
+    ["da", 4, "torsdag"],
+    ["fi", 4, "torstain"],
+    ["fi", 3, "keskiviikon"],
+    ["fi", 1, "maanantain"],
+    ["de", 4, "Donnerstag"],
+    ["nl", 4, "donderdag"],
+    ["es", 3, "miércoles"],
+    ["fr", 4, "jeudi"],
   ] as const)("%s weekday %s is %s", (language, weekday, expected) => {
-    expect(weekdayPlural(language, weekday)).toBe(expected);
+    expect(weekdaySingular(language, weekday)).toBe(expected);
   });
 
   it("is null for a number that is no ISO weekday", () => {
     for (const bad of [0, 8, 1.5, Number.NaN, 1234]) {
-      expect(weekdayPlural("en", bad)).toBeNull();
+      expect(weekdaySingular("en", bad)).toBeNull();
     }
   });
 });

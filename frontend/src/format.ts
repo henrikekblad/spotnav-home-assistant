@@ -349,35 +349,21 @@ export function departureDayLabel(
 }
 
 /**
- * A weekday in the plural the language uses for "every Sunday" (`Sundays`, `söndagar`, `søndager`,
- * `søndage`, `sunnuntaisin`, `Sonntage`, `zondagen`, `domingos`, `dimanches`), from the weekday name
- * `Intl` gives. `null` for a number that is no ISO weekday.
+ * One weekday as the "prices for Thursday" sentence takes it: the name `Intl` gives in the language's own
+ * case (`Thursday`, `torsdag`, `Donnerstag`, `jeudi`), and in Finnish the genitive the sentence needs
+ * (`torstain`, `keskiviikon`). `null` for a number that is no ISO weekday.
  */
-export function weekdayPlural(language: Language, isoWeekday: number): string | null {
+export function weekdaySingular(language: Language, isoWeekday: number): string | null {
   if (!Number.isInteger(isoWeekday) || isoWeekday < 1 || isoWeekday > 7) {
     return null;
   }
-  const name = dateFormat(language, { weekday: "long", timeZone: "UTC" })
-    .format(new Date(referenceWeekday(isoWeekday)))
-    .toLocaleLowerCase(language);
-  switch (language) {
-    case "sv":
-      return `${name}ar`;
-    case "nb":
-      return `${name}er`;
-    case "da":
-      return `${name}e`;
-    case "fi":
-      return name.endsWith("i") ? `${name}sin` : `${name}isin`;
-    case "de":
-      return `${name.charAt(0).toLocaleUpperCase(language)}${name.slice(1)}e`;
-    case "nl":
-      return `${name}en`;
-    case "es":
-      return name.endsWith("s") ? name : `${name}s`;
-    case "fr":
-      return `${name}s`;
-    default:
-      return `${name.charAt(0).toLocaleUpperCase(language)}${name.slice(1)}s`;
+  const name = dateFormat(language, { weekday: "long", timeZone: "UTC" }).format(
+    new Date(referenceWeekday(isoWeekday)),
+  );
+  if (language === "fi") {
+    // Every name takes -n; keskiviikko also loses a k (keskiviikon).
+    const lower = name.toLocaleLowerCase(language);
+    return lower.endsWith("kko") ? `${lower.slice(0, -3)}kon` : `${lower}n`;
   }
+  return name;
 }
