@@ -67,6 +67,7 @@ from .planning.first_run import async_seed_first_run
 from .planning.phases import async_migrate_settings_phases
 from .pricing.market_observation import MarketObservation
 from .pricing.price_refresh import async_setup_price_refresh
+from .pricing.price_source import async_price_sources_changed, price_source_for
 from .pricing.price_repository import async_setup_price_repository
 from .repairs import async_arm_resolution_sync, async_sync_resolution_repairs
 from .price_device import PriceDevice
@@ -377,10 +378,8 @@ async def _async_start_notifier(
         return
 
     def _currency() -> str | None:
-        area_id = store.settings(entry.entry_id).area_id
-        manager = domain_data(hass).price_refresh
-        area = None if manager is None or area_id is None else manager.catalogue_snapshot().area(area_id)
-        return None if area is None else area.currency
+        source = price_source_for(hass, entry.entry_id)
+        return None if source is None else source.currency
 
     notifier = data.notifier = ChargerNotifier(
         hass,
@@ -642,7 +641,17 @@ async def _async_setup_price_entry(hass: HomeAssistant, entry: PriceConfigEntry)
     entry.async_on_unload(device.async_stop)
     await device.async_start()
     await hass.config_entries.async_forward_entry_setups(entry, PRICE_PLATFORMS)
+    # The chargers that price with this entry resolve their source again (`pricing/price_source.py`): when it
+    # arrives, when its area or fees are saved, and when it goes (unloaded, disabled; removal is announced from
+    # `async_remove_entry`, once the entry is gone).
+    entry.async_on_unload(entry.add_update_listener(_async_price_entry_updated))
+    entry.async_on_unload(lambda: async_price_sources_changed(hass, entry.entry_id))
+    async_price_sources_changed(hass, entry.entry_id)
     return True
+
+
+async def _async_price_entry_updated(hass: HomeAssistant, entry: ConfigEntry) -> None:
+    async_price_sources_changed(hass, entry.entry_id)
 
 
 def _platforms_for(entry: ConfigEntry) -> list[str]:
@@ -670,6 +679,7 @@ async def async_remove_entry(hass: HomeAssistant, entry: ConfigEntry) -> None:
     are Home Assistant's restore state).
     """
     if entry_kind(entry) == ENTRY_TYPE_PRICE:
+        async_price_sources_changed(hass, entry.entry_id)
         return
     await async_sync_resolution_repairs(hass, (entry.entry_id,))
     if entry.data.get(CONF_ENTRY_TYPE) == ENTRY_TYPE_SITE:
