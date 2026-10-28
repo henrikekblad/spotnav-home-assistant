@@ -445,7 +445,7 @@ const V7_STATUS_EXPECTED: Record<string, { tone: string; codes: string[]; englis
   "waiting_for_history.json": {
     tone: "normal",
     codes: ["waiting_for_history"],
-    english: "Waiting: Sundays were 70 % cheaper the last 4 weeks.",
+    english: "Waiting for Sunday's prices (at 13:45), which have been 70 % cheaper over the last 4 weeks.",
   },
 };
 

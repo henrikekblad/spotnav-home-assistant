@@ -265,21 +265,52 @@ describe("the status line renders the block and nothing else", () => {
     expect(statusText(status, format("en"), NOW)).toBe("Charging waits for the planned start at 22:30 · 16.6 kWh · 17.1 kr · 87 km");
   });
 
-  it("words waiting on history with the weekday's plural, the saving and the weeks, in every language", () => {
+  it("words waiting on history as waiting for the weekday's prices, the saving and the weeks, in every language", () => {
     const waiting = block(statusLine("waiting_for_history", { weekday: 7, percent: 30, weeks: 4 }));
-    expect(statusText(waiting, format("en"), NOW)).toBe("Waiting: Sundays were 30 % cheaper the last 4 weeks.");
-    expect(statusText(waiting, format("sv"), NOW)).toBe("Väntar: söndagar har varit 30 % billigare de senaste 4 veckorna.");
-    expect(statusText(waiting, format("nb"), NOW)).toBe("Venter: søndager har vært 30 % billigere de siste 4 ukene.");
-    expect(statusText(waiting, format("da"), NOW)).toBe("Venter: søndage har været 30 % billigere de seneste 4 uger.");
+    expect(statusText(waiting, format("en"), NOW)).toBe(
+      "Waiting for Sunday's prices, which have been 30 % cheaper over the last 4 weeks.",
+    );
+    expect(statusText(waiting, format("sv"), NOW)).toBe(
+      "Väntar på priserna för söndag, som de senaste 4 veckorna varit 30 % billigare.",
+    );
+    expect(statusText(waiting, format("nb"), NOW)).toBe(
+      "Venter på prisene for søndag, som de siste 4 ukene har vært 30 % billigere.",
+    );
+    expect(statusText(waiting, format("da"), NOW)).toBe(
+      "Venter på priserne for søndag, som de seneste 4 uger har været 30 % billigere.",
+    );
     expect(statusText(waiting, format("fi"), NOW)).toBe(
-      "Odotetaan: sunnuntaisin on ollut 30 % halvempaa viimeisten 4 viikon aikana.",
+      "Odotetaan sunnuntain hintoja, jotka ovat olleet viimeiset 4 viikkoa 30 % halvempia.",
+    );
+  });
+
+  it("says when the weekday's prices come, from the planning record's publication time while it is ahead", () => {
+    const waiting = block(statusLine("waiting_for_history", { weekday: 4, percent: 41, weeks: 4 }));
+    const ahead = "2026-09-22T11:00:00+00:00";
+    expect(statusText(waiting, format("sv"), NOW, ahead)).toBe(
+      "Väntar på priserna för torsdag (kl. 13:00), som de senaste 4 veckorna varit 41 % billigare.",
+    );
+    expect(statusText(waiting, format("en"), NOW, ahead)).toBe(
+      "Waiting for Thursday's prices (at 13:00), which have been 41 % cheaper over the last 4 weeks.",
+    );
+    for (const without of [null, "2026-09-22T07:59:00+00:00", "not a time"]) {
+      expect(statusText(waiting, format("sv"), NOW, without)).toBe(
+        "Väntar på priserna för torsdag, som de senaste 4 veckorna varit 41 % billigare.",
+      );
+      expect(statusText(waiting, format("en"), NOW, without)).toBe(
+        "Waiting for Thursday's prices, which have been 41 % cheaper over the last 4 weeks.",
+      );
+    }
+    // With no zone to read the time in, the time is left out rather than shown in another zone.
+    expect(statusText(waiting, format("en", ""), NOW, ahead)).toBe(
+      "Waiting for Thursday's prices, which have been 41 % cheaper over the last 4 weeks.",
     );
   });
 
   it("names the weekday of the market's own week, whatever the card's zone", () => {
     const monday = block(statusLine("waiting_for_history", { weekday: 1, percent: 12, weeks: 3 }));
     expect(statusText(monday, format("en", "Pacific/Auckland"), NOW)).toBe(
-      "Waiting: Mondays were 12 % cheaper the last 3 weeks.",
+      "Waiting for Monday's prices, which have been 12 % cheaper over the last 3 weeks.",
     );
   });
 

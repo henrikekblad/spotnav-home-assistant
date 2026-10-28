@@ -126,8 +126,8 @@ for each area: the median price and its spread for every weekday and hour. SpotN
 cheapest published intervals with what the profile expects for the hours that are not published yet.
 
 If the unpublished hours were clearly cheaper (by more than one standard deviation of the spread,
-after your tax, grid fee and VAT), it waits and says so: *Waiting: Sundays were 30 % cheaper the last
-4 weeks*. It only waits while the charge can still be finished in time, buys what cannot wait, and
+after your tax, grid fee and VAT), it waits and says so: *Waiting for Sunday's prices (at 13:00), which have
+been 30 % cheaper over the last 4 weeks*. It only waits while the charge can still be finished in time, buys what cannot wait, and
 plans again each time prices are published. The profile only ever argues for waiting; what is
 charged is always decided on published prices. Without a usable profile, or without a clear saving,
 it plans on the published prices.

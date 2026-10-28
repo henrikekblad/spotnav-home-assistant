@@ -51,8 +51,9 @@ not break anything, but the tests above fail until it is complete.
 Numbers in notifications are written with a decimal comma in every language except English
 (`notifications/messages.py`); a language that needs another rule needs a line of code there. Dutch
 writes the euro sign before the amount (`€ 4,50`), the other languages after it (`4,50 €`). The card
-takes its numbers and dates from `Intl`, but the plural weekday in "Sundays were 30 % cheaper" is
-built per language in `weekdayPlural` (`frontend/src/format.ts`), so a new language needs a case there.
+takes its numbers and dates from `Intl`, but the weekday in "Waiting for Sunday's prices" is
+built per language in `weekdaySingular` (`frontend/src/format.ts`, the Finnish genitive), so a new
+language whose sentence needs another form of the name needs a case there.
 
 ## Glossaries
 
