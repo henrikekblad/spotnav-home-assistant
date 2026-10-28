@@ -833,6 +833,10 @@
     "site_without_chargers": {
       "title": "Add a charger to the site",
       "description": "The site **{site}** has no charger yet. Add a charger: Settings → Devices & services → SpotNav → Add entry → Charger; it will offer to join this site."
+    },
+    "core_decision_failed": {
+      "title": "A charger's charging decisions failed",
+      "description": "SpotNav's current logic could not decide for **{charger}** several times in the last day, so the previous logic decided instead. Charging goes on. To help fix it, download the debug info (the gear icon on the SpotNav card → Download debug info) and attach it to an issue on GitHub. If the charger behaves oddly, switch it to Previous logic: the charger's Configure → Charging decisions. This message goes away after a day without failures."
     }
   },
   "exceptions": {

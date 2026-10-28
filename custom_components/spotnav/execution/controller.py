@@ -56,6 +56,7 @@ from ..const import (
     MAX_SCHEDULE_PERIODS,
     MODE_OCPP,
 )
+from ..repairs import CoreFailureRepairs
 from ..vehicles.ocpp_identity import (
     connector_sensor_entity_id,
     CURRENT_IMPORT_KEY,
@@ -920,6 +921,8 @@ class ChargingController:
         self._keys_as_of = 0
         self._keys_seen: tuple[Any, ...] | None = None
         self._session_written_as_of = 0
+        # A Repairs issue when the core's decisions keep failing while it drives (`OwnershipShadow.failed`).
+        self._failure_repairs = CoreFailureRepairs(hass, entry_id, self._repairs_name)
         self._shadow = OwnershipShadow(
             self._shadow_session,
             drives=self._core_drives,
@@ -929,8 +932,14 @@ class ChargingController:
             # restore, removed with the entry).
             coverage=OwnershipCoverage(store=Store(hass, COVERAGE_STORE_VERSION, coverage_key(entry_id))),
             name=entry_id,
+            on_failure=self._failure_repairs.failed,
         )
         self._shadow.today_fields = lambda: f"origin={self._charge_origin} plan_charge={self._plan_charge}"
+
+    def _repairs_name(self) -> str:
+        """What a Repairs issue calls this charger: its entry's title, read when the issue is raised."""
+        entry = self.hass.config_entries.async_get_entry(self.entry_id)
+        return entry.title if entry is not None and entry.title else self.entry_id
 
     async def async_initialize(self) -> None:
         """Restore a saved schedule and requested-current memory, and resume."""
@@ -4240,6 +4249,8 @@ class ChargingController:
     async def _shutdown_locked(self) -> None:
         """The shutdown itself. Runs with the operation lock held."""
         self._cancel_timers()
+        # The charger is unloaded (a reload, a removal): its failing-decisions issue and timer go with it.
+        self._failure_repairs.clear()
         # A change of the core's session still waiting for its debounced save, or decided while this shutdown waited
         # for the lock (`_shut_down` is set before it, and no decision saves once it is).
         if self._cancel_session_save() or self._core_drives:

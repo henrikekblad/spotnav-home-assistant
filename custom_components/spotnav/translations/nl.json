@@ -833,6 +833,10 @@
     "site_without_chargers": {
       "title": "Voeg een laadpaal toe aan de locatie",
       "description": "De locatie **{site}** heeft nog geen laadpaal. Voeg een laadpaal toe: Instellingen → Apparaten & diensten → SpotNav → Item toevoegen → Laadpaal; je krijgt dan de vraag of hij aan deze locatie moet worden toegevoegd."
+    },
+    "core_decision_failed": {
+      "title": "De laadbeslissingen van een laadpaal mislukten",
+      "description": "De huidige logica van SpotNav kon het afgelopen etmaal meerdere keren niet beslissen voor **{charger}**, dus de vorige logica besliste in plaats daarvan. Het laden gaat door. Om te helpen het op te lossen: download de debuginfo (het tandwiel op de SpotNav-kaart → Debuginfo downloaden) en voeg die toe aan een issue op GitHub. Als de laadpaal zich vreemd gedraagt, schakel dan naar Vorige logica: Configureren van de laadpaal → Laadbeslissingen. Deze melding verdwijnt na een etmaal zonder fouten."
     }
   },
   "exceptions": {

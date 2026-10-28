@@ -833,6 +833,10 @@
     "site_without_chargers": {
       "title": "Eine Ladestation zum Standort hinzufügen",
       "description": "Der Standort **{site}** hat noch keine Ladestation. Ladestation hinzufügen: Einstellungen → Geräte & Dienste → SpotNav → Eintrag hinzufügen → Ladestation; sie bietet dann an, diesem Standort beizutreten."
+    },
+    "core_decision_failed": {
+      "title": "Ladeentscheidungen einer Ladestation sind fehlgeschlagen",
+      "description": "Die aktuelle Logik von SpotNav konnte für **{charger}** am letzten Tag mehrmals nicht entscheiden, deshalb hat die bisherige Logik entschieden. Das Laden geht weiter. Um beim Beheben zu helfen: Lade die Debug-Infos herunter (Zahnrad auf der SpotNav-Karte → Debug-Infos herunterladen) und hänge sie an ein Issue auf GitHub an. Wenn sich die Ladestation seltsam verhält, wechsle zu Bisherige Logik: Konfigurieren der Ladestation → Ladeentscheidungen. Diese Meldung verschwindet nach einem Tag ohne Fehler."
     }
   },
   "exceptions": {

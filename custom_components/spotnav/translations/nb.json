@@ -833,6 +833,10 @@
     "site_without_chargers": {
       "title": "Legg til en lader i anlegget",
       "description": "Anlegget **{site}** har ingen lader ennå. Legg til en lader: Innstillinger → Enheter og tjenester → SpotNav → Legg til oppføring → Lader; den tilbyr å bli med i dette anlegget."
+    },
+    "core_decision_failed": {
+      "title": "En laders ladebeslutninger mislyktes",
+      "description": "SpotNavs nåværende logikk kunne ikke ta en beslutning for **{charger}** flere ganger det siste døgnet, så den tidligere logikken bestemte i stedet. Ladingen fortsetter. For å hjelpe med å rette feilen: last ned feilsøkingsinfo (tannhjulet på SpotNav-kortet → Last ned feilsøkingsinfo) og legg den ved et issue på GitHub. Hvis laderen oppfører seg rart, kan du bytte til Tidligere logikk: laderens Konfigurer → Ladebeslutninger. Meldingen forsvinner etter et døgn uten feil."
     }
   },
   "exceptions": {
