@@ -18,6 +18,7 @@ from homeassistant.helpers import selector
 from homeassistant.setup import async_setup_component
 
 from ..const import CONF_ENTRY_TYPE, CONF_PRICE_AREA, DOMAIN, ENTRY_TYPE_PRICE
+from ..planning.auto_settings import AutoSettingsError, FiscalOverride
 from ..planning.first_run import suggest_area
 from ..pricing.price_points import (
     default_fee_mode,
@@ -152,8 +153,31 @@ def parse_fees(area: AreaEntry, user_input: dict[str, Any]) -> tuple[dict[str, A
     return data, errors
 
 
+def import_fees(area: AreaEntry, data: dict[str, Any]) -> dict[str, Any] | None:
+    """The stored fees of an imported electricity price, judged as the form judges them, or `None` when one cannot
+    be stored: unreadable, a suggestion the area lacks, or a figure outside the form's range. A fee the area's
+    price already holds is stored off; an off fee keeps no figure (the form keeps none)."""
+    fees: dict[str, Any] = {}
+    for component in FEE_COMPONENTS:
+        if included(area, component):
+            fees[component] = fee_override(FEE_OFF, None).as_dict()
+            continue
+        try:
+            stored = FiscalOverride.from_stored(data.get(component, fee_override(FEE_OFF, None).as_dict()), component)
+        except AutoSettingsError:
+            return None
+        mode = fee_mode(stored)
+        if mode == FEE_SUGGESTED and suggestion(area, component) is None:
+            return None
+        if mode == FEE_MANUAL and stored.value is not None and stored.value > (100 if component == "vat" else MAX_FEE):
+            return None
+        fees[component] = fee_override(mode, stored.value).as_dict()
+    return fees
+
+
 class PriceConfigSteps:
-    """The config flow's two steps for a new electricity price (mixed into the integration's config flow)."""
+    """The config flow's steps for a new electricity price (mixed into the integration's config flow): the two the
+    person answers, and the import SpotNav itself starts (`pricing/price_setup.py`)."""
 
     hass: HomeAssistant
     _price_catalogue: AreaCatalogue | None = None
@@ -172,6 +196,29 @@ class PriceConfigSteps:
         default = suggest_area(catalogue, config.country, config.latitude, config.longitude)
         return self.async_show_form(  # type: ignore[attr-defined]
             step_id="price", data_schema=area_schema(catalogue, default)
+        )
+
+    async def async_step_import(self, import_data: dict[str, Any]) -> ConfigFlowResult:
+        """An electricity price SpotNav adds itself, from `{area_id, vat, tax, transfer}` (each fee as stored),
+        judged as the form judges it and named as the form names it. No question is asked.
+
+        Started only by the integration once it is set up: Home Assistant's setup of the integration waits for an
+        import flow, so this step never sets it up itself (no price manager is an abort)."""
+        if domain_data(self.hass).price_refresh is None:
+            return self.async_abort(reason="no_price_areas")  # type: ignore[attr-defined]
+        catalogue = await async_price_catalogue(self.hass)
+        if catalogue is None or not catalogue.areas:
+            return self.async_abort(reason="no_price_areas")  # type: ignore[attr-defined]
+        area_id = import_data.get(CONF_PRICE_AREA)
+        area = catalogue.area(area_id) if isinstance(area_id, str) else None
+        if area is None:
+            return self.async_abort(reason="unknown_price_area")  # type: ignore[attr-defined]
+        fees = import_fees(area, import_data)
+        if fees is None:
+            return self.async_abort(reason="invalid_price_fees")  # type: ignore[attr-defined]
+        return self.async_create_entry(  # type: ignore[attr-defined]
+            title=default_title(area.id),
+            data={CONF_ENTRY_TYPE: ENTRY_TYPE_PRICE, CONF_PRICE_AREA: area.id, **fees},
         )
 
     async def async_step_price_fees(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:
