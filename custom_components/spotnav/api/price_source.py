@@ -14,7 +14,8 @@ own settings:
 
 Two WebSocket commands, administrators only, each answering `{"ok": true}` or a stable error code:
 
-* `spotnav/set_price_source {entry_id, price_entry_id}`: the charger (`entry_id`) uses that price entry. A charger
+* `spotnav/choose_price_source {entry_id, price_entry_id}` (named `choose_`, as the card's bundle carries no `set_`
+  command): the charger (`entry_id`) uses that price entry. A charger
   on a site points its site at it, so it applies to every charger there; one without a site points at it itself.
 * `spotnav/answer_price_duplicate {area_id, keep_entry_id}`: the card's question answered. With an entry, every
   site and charger using one of the others in the record moves to it (the others stay, removable under Devices &
@@ -114,13 +115,13 @@ def _price_entry_ids(hass: HomeAssistant) -> set[str]:
 
 @websocket_api.websocket_command(
     {
-        vol.Required("type"): "spotnav/set_price_source",
+        vol.Required("type"): "spotnav/choose_price_source",
         vol.Required("entry_id"): str,
         vol.Required("price_entry_id"): str,
     }
 )
 @websocket_api.async_response
-async def websocket_set_price_source(
+async def websocket_choose_price_source(
     hass: HomeAssistant, connection: websocket_api.ActiveConnection, msg: dict[str, Any]
 ) -> None:
     """The charger uses this electricity price entry: through its site when it has one (see the module)."""
@@ -173,5 +174,5 @@ async def websocket_answer_price_duplicate(
 @callback
 def async_setup_price_source_api(hass: HomeAssistant) -> None:
     """Register both commands once for the domain."""
-    websocket_api.async_register_command(hass, websocket_set_price_source)
+    websocket_api.async_register_command(hass, websocket_choose_price_source)
     websocket_api.async_register_command(hass, websocket_answer_price_duplicate)

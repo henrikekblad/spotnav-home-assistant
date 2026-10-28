@@ -50,7 +50,7 @@ async def two_prices(hass: HomeAssistant) -> None:
 
 async def set_source(client: Any, charger: str, price_entry_id: str) -> dict[str, Any]:
     return await ws_call(
-        client, {"type": "spotnav/set_price_source", "entry_id": charger, "price_entry_id": price_entry_id}
+        client, {"type": "spotnav/choose_price_source", "entry_id": charger, "price_entry_id": price_entry_id}
     )
 
 
