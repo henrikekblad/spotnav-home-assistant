@@ -28,6 +28,13 @@ public face, so nothing here serializes `as_dict()` or accepts `from_stored()` p
   nothing is added for them, whatever the overrides say. A body may echo it; it is never stored.
 * `revision` is not part of the body: the client names it in `expected_revision`, and a body
   carrying `revision` is refused as an unknown field rather than overriding the compare-and-set.
+  While an electricity price entry is the charger's price source, the record's `revision` is the charger's own
+  plus the price entry's write counter (`pricing/price_source.py:wire_revision`), so a body read before a change
+  of the area or fees made anywhere else is a `revision_conflict`.
+* `area_id` and the row for the price source's area belong to that source: while it is an electricity price
+  entry, a body that changes them changes the price entry (in place, `async_write_price_entry`), never the
+  charger's own record, and every charger using that entry follows. The other rows (areas the charger used
+  before, which price its old sessions) are the charger's own and are written as sent.
 * Absence is not zero: a fiscal component is off, on with a value, or on with none; `null` never
   becomes `0` and nothing is clamped, coerced or inferred.
 * Every refusal is a stable code (`AutoSettingsError.code`); the message is for the log only.
@@ -69,7 +76,14 @@ from ..planning.auto_settings import (
 from ..notifications.settings import NotificationSettings, NotificationSettingsError
 from ..notifications.targets import available_targets, encoded_available
 from ..planning.phases import effective_phases
-from ..pricing.price_source import effective_settings
+from ..pricing.price_source import (
+    async_write_price_entry,
+    effective_settings,
+    entry_source_for,
+    price_write_revision,
+    PriceSource,
+    wire_revision,
+)
 from ..runtime import controller_for, domain_data, preview_for
 from ..vehicles import vehicle_properties
 from ..vehicles.camera_settings import CameraSettings, CameraSettingsError
@@ -633,11 +647,18 @@ def settings_failure(
     }
 
 
+def wire_settings(hass: HomeAssistant, entry_id: str, settings: AutoSettings) -> AutoSettings:
+    """The charger's record as the wire carries it: area and fees from its price source, and the `revision` that
+    also moves with the price entry's writes (see the module)."""
+    readable = effective_settings(hass, entry_id, settings)
+    return replace(readable, revision=wire_revision(hass, entry_id, settings.revision))
+
+
 def settings_answer(hass: HomeAssistant, entry_id: str, settings: AutoSettings) -> dict[str, Any]:
     """`settings_envelope` for one charger, as every transport answers it: `area_id` and that area's override row
     are the charger's price source's (`pricing/price_source.py`), the other rows as stored. Without a price entry
     this is the stored record exactly."""
-    readable = effective_settings(hass, entry_id, settings)
+    readable = wire_settings(hass, entry_id, settings)
     return settings_envelope(
         readable, effective_phases(hass, entry_id), fiscal_included_for(hass, readable), available_targets(hass)
     )
@@ -645,7 +666,7 @@ def settings_answer(hass: HomeAssistant, entry_id: str, settings: AutoSettings) 
 
 def settings_failure_answer(hass: HomeAssistant, entry_id: str, code: str, settings: AutoSettings) -> dict[str, Any]:
     """`settings_failure` for one charger, its record read as `settings_answer` reads it."""
-    readable = effective_settings(hass, entry_id, settings)
+    readable = wire_settings(hass, entry_id, settings)
     return settings_failure(
         code, readable, effective_phases(hass, entry_id), fiscal_included_for(hass, readable), available_targets(hass)
     )
@@ -735,6 +756,71 @@ def _refuse_camera_choice(stored: CameraSettings | None, sent: CameraSettings | 
         _refuse("invalid_camera", "the camera and the AI Task entity are chosen by an administrator")
 
 
+class PriceRoute:
+    """How one body's area and fees go to a charger's electricity price entry (see the module).
+
+    `write_revision` is the entry's write counter the body is judged against; `overrides` the area and fees to
+    store on the entry, `None` when the body leaves them as they are; `areas` the areas whose rows stay the
+    charger's own as stored (the source's area and the body's).
+    """
+
+    __slots__ = ("entry_id", "write_revision", "overrides", "areas")
+
+    def __init__(self, source: PriceSource, decoded: AutoSettings) -> None:
+        if decoded.area_id is None:
+            _refuse("invalid_area", "an electricity price always has an area")
+        assert source.entry_id is not None
+        self.entry_id: str = source.entry_id
+        self.write_revision = source.write_revision
+        row = decoded.override_for(decoded.area_id)
+        self.overrides: AreaAutoSettings | None = (
+            None if decoded.area_id == source.area_id and row == source.overrides else row
+        )
+        self.areas = frozenset({source.area_id, decoded.area_id})
+
+    def check(self, hass: HomeAssistant) -> Any:
+        """The price entry, or `revision_conflict` when it was written since the body's answer (or is gone)."""
+        entry = hass.config_entries.async_get_entry(self.entry_id)
+        if entry is None or price_write_revision(entry) != self.write_revision:
+            _refuse("revision_conflict", "the electricity price changed since these settings were read")
+        return entry
+
+    def charger_part(self, current: AutoSettings, updated: AutoSettings) -> AutoSettings:
+        """`updated` with the area and the rows of the price entry's areas as the charger stores them; every
+        other row as the body sent it. The stored order is kept, so a body that moves nothing changes nothing."""
+        sent = {row.area_id: row for row in updated.overrides}
+        rows: list[AreaAutoSettings] = []
+        for row in current.overrides:
+            if row.area_id in self.areas:
+                rows.append(row)
+            elif row.area_id in sent:
+                rows.append(sent[row.area_id])
+        known = {row.area_id for row in current.overrides}
+        rows.extend(row for row in updated.overrides if row.area_id not in known and row.area_id not in self.areas)
+        return replace(updated, area_id=current.area_id, overrides=tuple(rows))
+
+    def mutator(
+        self, hass: HomeAssistant, mutate: Callable[[AutoSettings], AutoSettings]
+    ) -> Callable[[AutoSettings], AutoSettings]:
+        """`mutate` judged against the price entry inside the store's lock, keeping the price part off the
+        charger's record."""
+
+        def routed(current: AutoSettings) -> AutoSettings:
+            self.check(hass)
+            return self.charger_part(current, mutate(current))
+
+        return routed
+
+    def write(self, hass: HomeAssistant) -> None:
+        """Store the area and fees on the price entry, compare-and-set against the counter the body was judged
+        at. Nothing when the body leaves them as they are."""
+        if self.overrides is None:
+            return
+        async_write_price_entry(
+            hass, self.check(hass), self.overrides, expected_write_revision=self.write_revision
+        )
+
+
 def plan_only_mutator(mutate: Callable[[AutoSettings], AutoSettings]) -> Callable[[AutoSettings], AutoSettings]:
     """`mutate` for a caller who is not an administrator: refused (`spotnav_not_admin`) while the record being
     replaced does not allow it (`users_change_plan`), or when the result moves a field outside `NON_ADMIN_FIELDS`.
@@ -787,11 +873,11 @@ async def async_update_settings(
     committed record is what this returns. One edit is one store mutation, one revision and at most
     one reconcile, and never admits or clears a pause.
 
-    Known gap until writes are routed to the price source: `area_id` and the override rows are stored on the
-    charger as sent. While an electricity price entry is the charger's price source (`pricing/price_source.py`),
-    every reader takes the area and its fees from that entry, so a change of them made here has no effect, and a
-    body read from the dashboard carries the price entry's area and fees into the charger's own record. Not to be
-    released in this state.
+    While an electricity price entry is the charger's price source (`pricing/price_source.py`), `area_id` and the
+    row for its area go to that entry (`PriceRoute`): the charger's record keeps its own for them, and
+    `expected_revision` is the wire revision (the charger's own plus the entry's write counter). The entry is
+    judged again inside the store's lock, and written right after the charger's record committed; changing it is
+    an administrator's. Without a price entry nothing of this applies and the body is stored as sent.
 
     `plan_only` is a caller who is not an administrator: refused (`spotnav_not_admin`) unless the charger's
     `users_change_plan` is on, and then only for a body that moves nothing outside `NON_ADMIN_FIELDS`. Both are
@@ -807,6 +893,14 @@ async def async_update_settings(
         raise SettingsRefusal(ERROR_NOT_ADMIN)
     revision = expected_revision_from(expected_revision)
     decoded = decode_settings(replacement)
+    source = entry_source_for(hass, entry_id)
+    route = None if source is None else PriceRoute(source, decoded)
+    if route is not None:
+        if plan_only and route.overrides is not None:
+            # The area and fees are an administrator's, wherever they are stored.
+            raise SettingsRefusal(ERROR_NOT_ADMIN)
+        # The wire revision carries the entry's counter on top of the charger's own.
+        revision -= route.write_revision
     if from_app and isinstance(replacement, Mapping) and "identify_camera" in replacement:
         _refuse_camera_choice(store.settings(entry_id).identify_camera, decoded.identify_camera)
     mutate = replacement_mutator(
@@ -823,6 +917,8 @@ async def async_update_settings(
         keep_users_change_plan=isinstance(replacement, Mapping) and "users_change_plan" not in replacement,
         vehicle_target=lambda vehicle_id: vehicle_properties.stored_properties(hass, vehicle_id).target_percent,
     )
+    if route is not None:
+        mutate = route.mutator(hass, mutate)
     if plan_only:
         mutate = plan_only_mutator(mutate)
         # Judged once now, so a refused body touches nothing (not even the executor's attempt).
@@ -842,10 +938,16 @@ async def async_update_settings(
         raise
     except SettingsReconcileError:
         # The controller's exact boundary: the write committed and this is the committed record
-        # (not re-read; a later mutation may already have moved the revision).
+        # (not re-read; a later mutation may already have moved the revision). The price part follows it.
+        if route is not None:
+            route.write(hass)
         raise
     except Exception:
         raise SettingsNotCommitted(store.settings(entry_id)) from None
+    if route is not None:
+        # After the charger's record committed, with no wait between the check and the write: a price entry
+        # written in the moment between is a conflict (the charger's part stands; the retry carries the rest).
+        route.write(hass)
     return store.settings(entry_id)
 
 

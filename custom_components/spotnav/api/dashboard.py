@@ -75,7 +75,7 @@ from ..execution.controller import (
 )
 from ..notifications.targets import available_targets
 from ..planning.auto_controller import AutoSnapshot, fiscal_choice_for
-from ..pricing.price_source import effective_settings
+from ..pricing.price_source import effective_settings, wire_revision
 from ..planning.auto_settings import (
     AutoSettings,
     AutoSettingsStore,
@@ -489,6 +489,9 @@ class CapturedDashboard:
     session: CapturedSession | None = None
     #: The notifier's count of the plans it told (`ChargerNotifier.plan_notice`), `None` without a notifier.
     plan_notice: dict[str, Any] | None = None
+    #: The settings record's `revision` on the wire, `None` for the stored one: the charger's own plus its price
+    #: entry's write counter (`pricing/price_source.py:wire_revision`).
+    wire_revision: int | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -1054,6 +1057,7 @@ def capture_dashboard(
         generated_at=now,
         charger=capture_charger(hass, entry),
         settings=settings,
+        wire_revision=None if settings is None else wire_revision(hass, entry_id, settings.revision),
         snapshot=snapshot,
         catalogue=catalogue,
         area_entry=area_entry,
@@ -1271,6 +1275,8 @@ def serialize_settings(capture: CapturedDashboard) -> dict[str, Any] | None:
     settings = capture.settings
     if settings is None:
         return None
+    if capture.wire_revision is not None:
+        settings = replace(settings, revision=capture.wire_revision)
     return encode_settings(
         settings, _effective_phases(capture), included_components(capture.area_entry), capture.notify_available
     )
