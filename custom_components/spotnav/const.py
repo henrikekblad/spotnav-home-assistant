@@ -178,7 +178,7 @@ SITE_RECOMPUTE_INTERVAL_S = 30
 
 SITE_PLATFORMS = ["binary_sensor", "sensor"]
 
-PRICE_PLATFORMS = ["binary_sensor", "number", "sensor"]
+PRICE_PLATFORMS = ["binary_sensor", "number", "select", "sensor"]
 # A price entry's data: the area, and each fee as a charger's settings store it
 # (`auto_settings.FiscalOverride.as_dict`: `{"enabled": bool, "value": float | None}`).
 CONF_PRICE_AREA = "area_id"

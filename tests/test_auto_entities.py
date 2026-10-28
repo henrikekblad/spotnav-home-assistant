@@ -41,6 +41,7 @@ from .relay import StubTransport
 from .helpers import set_charger_phases
 from .world import call, entity_id, go_auto, settings_of, setup_charger, setup_site
 from .world import controller_of
+from .test_price_device import add_price
 from custom_components.spotnav.runtime import domain_data
 from custom_components.spotnav.runtime import executor_for, preview_for
 
@@ -99,8 +100,9 @@ async def test_an_incomplete_charger_gets_the_whole_surface_and_does_nothing(
     unique_ids = registered(hass, "entry_a")
     for key in AUTO_SENSOR_KEYS:
         assert f"entry_a_{key}" in unique_ids
-    for key in ("price_area", "fiscal_vat_policy"):
-        assert f"entry_a_{key}" in unique_ids
+    # The area and fees are the electricity price device's (`price_entities.py`), not a charger's.
+    for key in ("price_area", "fiscal_vat_policy", "vat_rate"):
+        assert f"entry_a_{key}" not in unique_ids
     # The phases are not a setting any more: the charger no longer has a select for them.
     assert "entry_a_charging_phases" not in unique_ids
     for key in ("recalculate_auto", "pause_auto", "resume_auto"):
@@ -157,15 +159,6 @@ async def test_two_chargers_keep_their_values_and_actions_apart(hass: HomeAssist
 
     await call(
         hass,
-        "select",
-        "select_option",
-        {
-            "entity_id": entity_id(hass, "entry_a", "price_area", "select"),
-            "option": SE4,
-        },
-    )
-    await call(
-        hass,
         "number",
         "set_value",
         {"entity_id": entity_id(hass, "entry_a", "charging_current", "number"), "value": 13},
@@ -180,17 +173,12 @@ async def test_two_chargers_keep_their_values_and_actions_apart(hass: HomeAssist
 async def test_completing_settings_enables_auto_and_installs_once(
     hass: HomeAssistant, transport: StubTransport
 ) -> None:
-    """The mode select is the one act that turns automation on, and it installs one plan."""
+    """The entities complete the settings, with the area from the electricity price, and one plan is installed."""
     turn_on = async_mock_service(hass, "switch", "turn_on")
     entry = await setup_charger(hass)
     preview = preview_for(hass, entry.entry_id)
     assert preview is not None and preview.snapshot().state == "incomplete_settings"
-    await call(
-        hass,
-        "select",
-        "select_option",
-        {"entity_id": entity_id(hass, entry.entry_id, "price_area", "select"), "option": SE4},
-    )
+    await add_price(hass)
     await call(
         hass,
         "number",
@@ -265,151 +253,6 @@ async def test_a_write_carries_the_revision_it_displayed_and_loses_no_edit(
     # and the next write carries the current revision.
     await call(hass, "number", "set_value", {"entity_id": current, "value": 16})
     assert settings_of(hass, entry.entry_id).amps == 16
-
-
-async def test_area_options_come_only_from_the_catalogue(
-    hass: HomeAssistant, transport: StubTransport
-) -> None:
-    """The options are what the relay published, plus the configured area and nothing else."""
-    entry = await setup_charger(hass)
-    state = hass.states.get(entity_id(hass, entry.entry_id, "price_area", "select"))
-    assert state is not None
-    published = [area for area in state.attributes["options"] if area]
-    assert published == ["DE-LU", "DK1", "NO1", "SE4"], "exactly the catalogue's ids"
-    assert state.attributes["area_names"][SE4] == "SE4" or state.attributes["area_names"][SE4]
-
-
-async def test_a_configured_area_survives_an_offline_catalogue(
-    hass: HomeAssistant, transport: StubTransport
-) -> None:
-    """Losing the relay never loses the choice: it stays selected and stays an option."""
-    entry = await setup_charger(hass)
-    area = entity_id(hass, entry.entry_id, "price_area", "select")
-    await call(hass, "select", "select_option", {"entity_id": area, "option": "DK1"})
-
-    # The relay stops answering for the catalogue: a refresh attempt fails, and the selector is
-    # told the retained list is now stale -- not that it is fresh, and not silence.
-    transport.serve("/v1/areas.json", 500, "")
-    manager = domain_data(hass).price_refresh
-    repository = domain_data(hass).price_repository
-    assert manager is not None and repository is not None
-    await repository.async_get_catalogue(refresh=True)
-    await manager.async_ensure_catalogue()
-    await hass.async_block_till_done()
-
-    state = hass.states.get(area)
-    assert state is not None and state.state == "DK1", "the configured area is untouched"
-    assert "DK1" in state.attributes["options"]
-    assert state.attributes["catalogue_state"] == "stale", "the retained list is not presented as fresh"
-    assert settings_of(hass, entry.entry_id).area_id == "DK1"
-    # And the entity still works: a market that is already configured stays selectable.
-    await call(hass, "select", "select_option", {"entity_id": area, "option": "DK1"})
-
-FISCAL = (
-    # component, policy select key, value number key
-    ("vat", "fiscal_vat_policy", "vat_rate"),
-    ("tax", "fiscal_tax_policy", "energy_tax"),
-    ("transfer", "fiscal_transfer_policy", "transfer_fee"),
-)
-
-#: What the fixture catalogue publishes, per market, for the three components. A `None` is a
-#: market that publishes no suggestion for that component, which is a state of its own.
-SUGGESTIONS = {
-    SE4: {"vat": 25.0, "tax": 36.0, "transfer": 30.0},
-    NO1: {"vat": 25.0, "tax": 7.13, "transfer": 0.0},
-    DK1: {"vat": 25.0, "tax": 0.0, "transfer": None},
-    DE_LU: {"vat": None, "tax": None, "transfer": None},
-}
-
-
-def override_of(hass: HomeAssistant, entry_id: str, component: str) -> Any:
-    settings = settings_of(hass, entry_id)
-    assert settings.area_id is not None
-    return getattr(settings.override_for(settings.area_id), component)
-
-
-@pytest.mark.parametrize(("component", "policy_key", "value_key"), FISCAL)
-async def test_every_fiscal_component_round_trips_its_three_policies(
-    hass: HomeAssistant,
-    transport: StubTransport,
-    component: str,
-    policy_key: str,
-    value_key: str,
-) -> None:
-    """Off, suggested and manual are three states, and each survives a round trip."""
-    entry = await setup_charger(hass)
-    await go_auto(hass)
-    policy = entity_id(hass, entry.entry_id, policy_key, "select")
-    value = entity_id(hass, entry.entry_id, value_key, "number")
-
-    assert hass.states.get(policy).state == "off"
-    assert hass.states.get(value).state == "unknown"
-    assert override_of(hass, entry.entry_id, component).enabled is False
-
-    # Suggested: on, with no override -- never stored as zero, and the figure the plan will
-    # actually use is shown, with its source named.
-    await call(hass, "select", "select_option", {"entity_id": policy, "option": "suggested"})
-    override = override_of(hass, entry.entry_id, component)
-    assert (override.enabled, override.value) == (True, None)
-    assert hass.states.get(policy).state == "suggested"
-    shown = hass.states.get(value)
-    assert float(shown.state) == SUGGESTIONS[SE4][component], "the suggestion, not unknown"
-    assert shown.attributes["value_source"] == "suggested"
-    assert shown.attributes["explicit_value"] is None, "a suggestion is not an override"
-    assert shown.attributes["suggested_value"] == SUGGESTIONS[SE4][component]
-    assert shown.attributes["effective_value"] == SUGGESTIONS[SE4][component]
-    assert shown.attributes["effective"] is True
-
-    # Manual through the value entity: one write, and the policy follows it.
-    await call(hass, "number", "set_value", {"entity_id": value, "value": 7.5})
-    override = override_of(hass, entry.entry_id, component)
-    assert (override.enabled, override.value) == (True, 7.5)
-    assert hass.states.get(policy).state == "manual"
-    assert float(hass.states.get(value).state) == 7.5
-
-    # Off again: disabled, and the explicit value is *kept* for later -- shown, but named as
-    # retained rather than charged.
-    await call(hass, "select", "select_option", {"entity_id": policy, "option": "off"})
-    override = override_of(hass, entry.entry_id, component)
-    assert (override.enabled, override.value) == (False, 7.5)
-    assert hass.states.get(policy).state == "off"
-    retained = hass.states.get(value)
-    assert float(retained.state) == 7.5, "the remembered figure does not disappear"
-    assert retained.attributes["value_source"] == "off"
-    assert retained.attributes["explicit_value"] == 7.5
-    assert retained.attributes["effective_value"] is None and retained.attributes["effective"] is False
-
-    # Manual again finds the value that was typed, and back to suggested clears it by design.
-    await call(hass, "select", "select_option", {"entity_id": policy, "option": "manual"})
-    assert override_of(hass, entry.entry_id, component).value == 7.5
-    await call(hass, "select", "select_option", {"entity_id": policy, "option": "suggested"})
-    assert override_of(hass, entry.entry_id, component).value is None
-
-
-async def test_manual_without_a_value_is_refused_and_a_zero_is_a_real_value(
-    hass: HomeAssistant, transport: StubTransport
-) -> None:
-    """Manual means somebody typed a figure: none is refused, and zero is a figure."""
-    entry = await setup_charger(hass)
-    await go_auto(hass)
-    policy = entity_id(hass, entry.entry_id, "fiscal_vat_policy", "select")
-    value = entity_id(hass, entry.entry_id, "vat_rate", "number")
-
-    with pytest.raises(ServiceValidationError) as refusal:
-        await call(hass, "select", "select_option", {"entity_id": policy, "option": "manual"})
-    assert refusal.value.translation_key == "invalid_fiscal"
-    assert hass.states.get(policy).state == "off", "the refusal changed nothing"
-    assert override_of(hass, entry.entry_id, "vat").value is None
-
-    # An explicit zero is a stored figure, and it is not the same state as suggested.
-    await call(hass, "number", "set_value", {"entity_id": value, "value": 0})
-    override = override_of(hass, entry.entry_id, "vat")
-    assert (override.enabled, override.value) == (True, 0.0)
-    assert hass.states.get(policy).state == "manual"
-    await call(hass, "select", "select_option", {"entity_id": policy, "option": "suggested"})
-    override = override_of(hass, entry.entry_id, "vat")
-    assert (override.enabled, override.value) == (True, None)
-    assert hass.states.get(policy).state == "suggested"
 
 
 async def test_numbers_refuse_rather_than_clamp(
@@ -494,38 +337,6 @@ async def test_the_departure_is_a_naive_wall_time_that_survives_a_reload(
     )
     assert settings_of(hass, entry.entry_id).departure == time(7, 35)
 
-async def test_switching_market_changes_units_without_copying_overrides(
-    hass: HomeAssistant, transport: StubTransport
-) -> None:
-    """SE4's öre figures never become DE-LU's, and the units follow the market."""
-    entry = await setup_charger(hass)
-    await go_auto(hass)
-    area = entity_id(hass, entry.entry_id, "price_area", "select")
-    tax = entity_id(hass, entry.entry_id, "energy_tax", "number")
-    policy = entity_id(hass, entry.entry_id, "fiscal_tax_policy", "select")
-
-    se_unit = hass.states.get(tax).attributes["unit_of_measurement"]
-    assert se_unit and se_unit.endswith("/kWh") and "öre" in se_unit
-    await call(hass, "number", "set_value", {"entity_id": tax, "value": 45.0})
-    assert hass.states.get(policy).state == "manual"
-
-    await call(hass, "select", "select_option", {"entity_id": area, "option": DE_LU})
-
-    de_unit = hass.states.get(tax).attributes["unit_of_measurement"]
-    assert de_unit and de_unit != se_unit, "the money unit follows the market"
-    assert hass.states.get(policy).state == "off", "DE-LU has its own, empty choice"
-    assert hass.states.get(tax).state == "unknown", "and no copied figure"
-    assert settings_of(hass, entry.entry_id).area_id == DE_LU
-    assert settings_of(hass, entry.entry_id).override_for(SE4).tax.value == 45.0
-    assert settings_of(hass, entry.entry_id).override_for(DE_LU).tax.value is None
-
-    # Back to SE4: what was typed there is still there, and the unit is öre again.
-    await call(hass, "select", "select_option", {"entity_id": area, "option": SE4})
-    assert hass.states.get(tax).attributes["unit_of_measurement"] == se_unit
-    assert float(hass.states.get(tax).state) == 45.0
-    assert hass.states.get(policy).state == "manual"
-
-
 async def test_both_chargers_update_from_one_catalogue_fetch_and_one_listener_each(
     hass: HomeAssistant, transport: StubTransport
 ) -> None:
@@ -539,9 +350,9 @@ async def test_both_chargers_update_from_one_catalogue_fetch_and_one_listener_ea
 
     await go_auto(hass, "entry_a")
     await go_auto(hass, "entry_b", area_id=DE_LU)
-    # One per area selector *and* one per loaded charger's market observation (the dashboard's own
-    # display need), and no more: the observation is a second, legitimate consumer of the same list.
-    assert len(manager._catalogue_listeners) == 4, "two selectors, two observations, and no more"
+    # One per loaded charger's market observation (the dashboard's own display need), and no more: the area
+    # select is the electricity price device's.
+    assert len(manager._catalogue_listeners) == 2, "two observations, and no more"
 
     catalogs_before = transport.call_count("/v1/areas.json")
     # The relay publishes a market list with one more market. One load, then one broadcast:
@@ -556,10 +367,8 @@ async def test_both_chargers_update_from_one_catalogue_fetch_and_one_listener_ea
     await hass.async_block_till_done()
 
     assert transport.call_count("/v1/areas.json") - catalogs_before <= 1, "one fetch, not one per charger"
-    for entry_id_value in ("entry_a", "entry_b"):
-        state = hass.states.get(entity_id(hass, entry_id_value, "price_area", "select"))
-        assert state is not None and "NO2" in state.attributes["options"]
-    assert len(manager._catalogue_listeners) == 4, "still exactly one listener per consumer"
+    assert "NO2" in manager.catalogue_snapshot().catalogue.area_ids
+    assert len(manager._catalogue_listeners) == 2, "still exactly one listener per consumer"
 
 @freeze_time("2026-09-22 06:00:00")
 async def test_the_published_states_are_the_backends_and_every_state_is_translated(
@@ -696,9 +505,7 @@ async def test_no_auto_sensor_exposes_an_array_an_identifier_or_an_exception(
     registry = er.async_get(hass)
     checked = 0
     for entity in er.async_entries_for_config_entry(registry, entry.entry_id):
-        if "auto_" not in entity.unique_id and not entity.unique_id.endswith(
-            ("_planning_mode", "_price_area", "_fiscal_vat_policy")
-        ):
+        if "auto_" not in entity.unique_id and not entity.unique_id.endswith("_planning_mode"):
             continue
         state = hass.states.get(entity.entity_id)
         assert state is not None
@@ -709,7 +516,7 @@ async def test_no_auto_sensor_exposes_an_array_an_identifier_or_an_exception(
             assert not any(bad in text for bad in forbidden_values), (key, text)
             if isinstance(value, list):
                 assert len(value) <= 8, key
-    assert checked >= 10
+    assert checked >= 9
 
 # --------------------------------------------------------- actions, lifecycle, the example
 
@@ -824,14 +631,13 @@ async def test_unloading_removes_the_listeners_and_late_callbacks_are_inert(
     await go_auto(hass)
     manager = domain_data(hass).price_refresh
     assert manager is not None
-    # The area selector's listener and the market observation's -- the observability of the graph the
-    # *other* tests in this module are about.
-    assert len(manager._catalogue_listeners) == 2
+    # The market observation's -- the observability of the graph the *other* tests in this module are about.
+    assert len(manager._catalogue_listeners) == 1
 
     assert await hass.config_entries.async_unload(entry.entry_id)
     await hass.async_block_till_done()
 
-    assert manager._catalogue_listeners == [], "both listeners went with the entry"
+    assert manager._catalogue_listeners == [], "the listener went with the entry"
     assert preview_for(hass, entry.entry_id) is None
     assert executor_for(hass, entry.entry_id) is None
 
@@ -850,17 +656,17 @@ async def test_a_reload_creates_no_duplicate_entities_or_listeners(
     manager = domain_data(hass).price_refresh
     assert manager is not None
     before = registered(hass, entry.entry_id)
-    assert len(manager._catalogue_listeners) == 2
+    assert len(manager._catalogue_listeners) == 1
 
     assert await hass.config_entries.async_reload(entry.entry_id)
     await hass.async_block_till_done()
 
     assert registered(hass, entry.entry_id) == before
-    assert len(manager._catalogue_listeners) == 2, "still one per consumer, not two each"
+    assert len(manager._catalogue_listeners) == 1, "still one per consumer, not two each"
     entries = er.async_entries_for_config_entry(er.async_get(hass), entry.entry_id)
     auto_ids = [item.unique_id for item in entries if "auto" in item.unique_id or "fiscal" in item.unique_id]
     assert auto_ids and len(auto_ids) == len(set(auto_ids)), "no Auto entity registered twice"
-    assert len(entries) == 41, "the surface this release creates, counted once"
+    assert len(entries) == 34, "the surface this release creates, counted once"
 
 
 
@@ -868,119 +674,6 @@ async def test_a_reload_creates_no_duplicate_entities_or_listeners(
 
 
 
-
-async def test_a_fiscal_figure_names_its_source_and_the_effective_value(
-    hass: HomeAssistant, transport: StubTransport
-) -> None:
-    """Four sources, four readings: the number shown is the number the plan would use."""
-    entry = await setup_charger(hass)
-    await go_auto(hass)
-    value = entity_id(hass, entry.entry_id, "vat_rate", "number")
-    policy = entity_id(hass, entry.entry_id, "fiscal_vat_policy", "select")
-
-    # off, with nothing stored: nothing to show, nothing charged, and it says so.
-    off = hass.states.get(value)
-    assert off.state == "unknown"
-    assert (off.attributes["value_source"], off.attributes["effective"]) == ("off", False)
-    assert off.attributes["effective_value"] is None
-
-    # manual: what somebody typed.
-    await call(hass, "number", "set_value", {"entity_id": value, "value": 8.5})
-    manual = hass.states.get(value)
-    assert (manual.state, manual.attributes["value_source"]) == ("8.5", "manual")
-    assert (manual.attributes["explicit_value"], manual.attributes["effective_value"]) == (8.5, 8.5)
-    assert manual.attributes["suggested_value"] == SUGGESTIONS[SE4]["vat"]
-    assert manual.attributes["effective"] is True
-
-    # suggested: the catalogue's own figure, with no override stored.
-    await call(hass, "select", "select_option", {"entity_id": policy, "option": "suggested"})
-    suggested = hass.states.get(value)
-    assert suggested.attributes["value_source"] == "suggested"
-    assert float(suggested.state) == SUGGESTIONS[SE4]["vat"]
-    assert suggested.attributes["explicit_value"] is None
-    assert suggested.attributes["effective_value"] == SUGGESTIONS[SE4]["vat"]
-
-    # suggestion_unavailable: DK1 publishes no grid fee, so that figure cannot be resolved.
-    transfer_policy = entity_id(hass, entry.entry_id, "fiscal_transfer_policy", "select")
-    transfer = entity_id(hass, entry.entry_id, "transfer_fee", "number")
-    area = entity_id(hass, entry.entry_id, "price_area", "select")
-    await call(hass, "select", "select_option", {"entity_id": area, "option": DK1})
-    await call(hass, "select", "select_option", {"entity_id": transfer_policy, "option": "suggested"})
-    unresolved = hass.states.get(transfer)
-    assert unresolved.attributes["value_source"] == "suggestion_unavailable"
-    assert unresolved.state == "unknown"
-    assert unresolved.attributes["effective_value"] is None
-    assert unresolved.attributes["effective"] is False
-    # And it is still a suggestion policy, not silently a manual zero.
-    assert hass.states.get(transfer_policy).state == "suggested"
-    assert override_of(hass, entry.entry_id, "transfer").value is None
-
-
-async def test_a_literal_zero_is_a_real_value_in_both_policies(
-    hass: HomeAssistant, transport: StubTransport
-) -> None:
-    """NO1's published zero fee is a figure, and a typed zero is a figure too."""
-    entry = await setup_charger(hass)
-    await go_auto(hass)
-    area = entity_id(hass, entry.entry_id, "price_area", "select")
-    policy = entity_id(hass, entry.entry_id, "fiscal_transfer_policy", "select")
-    value = entity_id(hass, entry.entry_id, "transfer_fee", "number")
-
-    await call(hass, "select", "select_option", {"entity_id": area, "option": NO1})
-    await call(hass, "select", "select_option", {"entity_id": policy, "option": "suggested"})
-    shown = hass.states.get(value)
-    assert shown.attributes["suggested_value"] == 0.0
-    assert float(shown.state) == 0.0, "a published zero is shown, not blanked"
-    assert shown.attributes["value_source"] == "suggested"
-    assert shown.attributes["explicit_value"] is None
-
-    await call(hass, "number", "set_value", {"entity_id": value, "value": 0})
-    typed = hass.states.get(value)
-    assert float(typed.state) == 0.0 and typed.attributes["value_source"] == "manual"
-    assert typed.attributes["explicit_value"] == 0.0
-    assert override_of(hass, entry.entry_id, "transfer").value == 0.0
-
-
-async def test_reading_and_rendering_a_fiscal_figure_writes_nothing(
-    hass: HomeAssistant, transport: StubTransport
-) -> None:
-    """Displaying a suggestion must not turn it into a stored value."""
-    entry = await setup_charger(hass)
-    await go_auto(hass)
-    store = domain_data(hass).auto_store
-    assert store is not None
-    revision = settings_of(hass, entry.entry_id).revision
-
-    await call(
-        hass,
-        "select",
-        "select_option",
-        {
-            "entity_id": entity_id(hass, entry.entry_id, "fiscal_vat_policy", "select"),
-            "option": "suggested",
-        },
-    )
-    after_policy = settings_of(hass, entry.entry_id).revision
-    stored = settings_of(hass, entry.entry_id).override_for(SE4)
-    assert stored.vat.value is None and stored.vat.enabled is True
-
-    # Reading everything the surface exposes, twice, changes nothing at all.
-    for _ in range(2):
-        for suffix, platform in (
-            ("vat_rate", "number"),
-            ("energy_tax", "number"),
-            ("transfer_fee", "number"),
-            ("fiscal_vat_policy", "select"),
-            ("price_area", "select"),
-        ):
-            state = hass.states.get(entity_id(hass, entry.entry_id, suffix, platform))
-            assert state is not None
-            assert state.attributes.get("suggested_value", "absent") != "written"
-        await hass.async_block_till_done()
-
-    assert settings_of(hass, entry.entry_id).revision == after_policy
-    assert after_policy == revision + 1, "exactly the one write the policy change made"
-    assert settings_of(hass, entry.entry_id).override_for(SE4).vat.value is None
 
 # ---------------------------------------------- catalogue notification (one shared broadcast)
 
@@ -988,57 +681,6 @@ async def test_reading_and_rendering_a_fiscal_figure_writes_nothing(
 def catalogue_deliveries(count: list) -> int:
     """How many of these deliveries carried a catalogue with markets in it."""
     return sum(1 for snapshot in count if snapshot.catalogue is not None)
-
-
-async def test_an_external_charger_gets_the_market_list_without_an_area_subscription(
-    hass: HomeAssistant, transport: StubTransport
-) -> None:
-    """Loading the catalogue must reach the selector even with nothing subscribed to a price.
-
-    A charger in `external` mode subscribes to no area, so the manager's own cycle never runs
-    for it: the market list can only reach its selector through the ensure path's notification.
-    """
-    transport.serve("/v1/areas.json", 500, "")  # nothing can be loaded at setup
-    entry = await setup_charger(hass)
-    area = entity_id(hass, entry.entry_id, "price_area", "select")
-    assert hass.states.get(area).attributes["options"] == [], "no catalogue, no options"
-    assert controller_of(hass, entry.entry_id).plan is None, "and this charger is external"
-
-    transport.serve_area(SE4)
-    manager = domain_data(hass).price_refresh
-    assert manager is not None
-    await manager.async_ensure_catalogue()
-    await hass.async_block_till_done()
-
-    state = hass.states.get(area)
-    assert [option for option in state.attributes["options"]] == ["DE-LU", "DK1", "NO1", "SE4"]
-    assert state.attributes["catalogue_state"] == "ready"
-    assert state.attributes["area_names"]["SE4"]
-    assert controller_of(hass, entry.entry_id).plan is None, "still external, still nothing planned"
-
-
-async def test_a_failed_catalogue_load_reaches_the_selector_with_its_configured_option(
-    hass: HomeAssistant, transport: StubTransport
-) -> None:
-    """A refusal is reported as a state, and never costs the configured market."""
-    entry = await setup_charger(hass)
-    area = entity_id(hass, entry.entry_id, "price_area", "select")
-    await call(hass, "select", "select_option", {"entity_id": area, "option": DK1})
-
-    # The catalogue was loaded at setup, so a refresh that now fails leaves a *stale* list:
-    # retained (it is still the best answer anyone has) and reported as not fresh.
-    transport.serve("/v1/areas.json", 500, "")
-    repository = domain_data(hass).price_repository
-    manager = domain_data(hass).price_refresh
-    assert repository is not None and manager is not None
-    await repository.async_get_catalogue(refresh=True)
-    assert repository.catalogue_snapshot().state == "stale"
-    await manager.async_ensure_catalogue()
-    await hass.async_block_till_done()
-
-    state = hass.states.get(area)
-    assert state.attributes["catalogue_state"] == "stale", "the failure is visible"
-    assert state.state == "DK1" and "DK1" in state.attributes["options"]
 
 
 async def test_a_listener_registered_after_a_change_still_hears_it(
@@ -1110,11 +752,6 @@ async def test_concurrent_ensures_are_one_fetch_and_one_update_each(
     counts = (len(first), len(second))
     await manager.async_ensure_catalogue()
     assert (len(first), len(second)) == counts, "an unchanged catalogue says nothing"
-    for state_entry in ("entry_a", "entry_b"):
-        options = hass.states.get(
-            entity_id(hass, state_entry, "price_area", "select")
-        ).attributes["options"]
-        assert "SE4" in options
 
 
 async def test_a_removed_listener_hears_nothing_and_a_late_load_is_inert(

@@ -36,6 +36,7 @@ follow the device's name, which you can change).
 | **Cheap now** (binary sensor) | On during the day's cheapest hours. How many hours is the **Cheap hours per day** number (default 6). |
 | **Expensive now** (binary sensor) | On during the day's most expensive hours. How many is the **Expensive hours per day** number (default 4). |
 | **Cheap hours per day**, **Expensive hours per day** (numbers) | 0 to 24 in quarter-hours. They keep their value across restarts. |
+| **Price area** (select), the three fee policies (selects) and **VAT**, **Energy tax**, **Grid transfer fee** (numbers) | The area and fees this electricity price uses. A change takes effect at once, for every charger that prices with it. |
 
 Price now's attributes are small on purpose: the area, the currency, the resolution in minutes, the
 spot price without fees, when the price next changes and whether tomorrow's prices are published.
