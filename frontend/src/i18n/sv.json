@@ -321,7 +321,7 @@
   "site.solarPriority.carFirst": "Bilen först",
   "site.solarPriority.batteryFirst": "Batteriet först",
   "site.solarForecast.title": "Källor för solprognos",
-  "site.activeControl.title": "Aktiv lastbalansering",
+  "site.activeControl.title": "Lastbalansering",
   "site.activeControl.on": "På",
   "site.activeControl.off": "Av",
   "site.activeControl.available": "Tillgänglig",

@@ -321,7 +321,7 @@
   "site.solarPriority.carFirst": "Voiture d'abord",
   "site.solarPriority.batteryFirst": "Batterie d'abord",
   "site.solarForecast.title": "Sources de prévision solaire",
-  "site.activeControl.title": "Équilibrage de charge actif",
+  "site.activeControl.title": "Équilibrage de charge",
   "site.activeControl.on": "Activé",
   "site.activeControl.off": "Désactivé",
   "site.activeControl.available": "Disponible",

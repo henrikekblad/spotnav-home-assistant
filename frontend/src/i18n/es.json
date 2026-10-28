@@ -321,7 +321,7 @@
   "site.solarPriority.carFirst": "Primero el coche",
   "site.solarPriority.batteryFirst": "Primero la batería",
   "site.solarForecast.title": "Fuentes de previsión solar",
-  "site.activeControl.title": "Equilibrado de carga activo",
+  "site.activeControl.title": "Equilibrado de carga",
   "site.activeControl.on": "Activado",
   "site.activeControl.off": "Desactivado",
   "site.activeControl.available": "Disponible",
