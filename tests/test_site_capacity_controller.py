@@ -18,10 +18,7 @@ from custom_components.spotnav.const import (
     CONF_MAX_AGE_S,
     CONF_MEASURED_CURRENT_SOURCE,
     CONF_PHASE_WIRING,
-    CONF_REGULATOR_DEADBAND_A,
-    CONF_REGULATOR_DWELL_S,
     CONF_SAFETY_MARGIN_A,
-    CONF_SITE_ENABLED,
     CURRENT_CONTROL_CHANGE_CONFIGURATION,
     DOMAIN,
     ENTRY_TYPE_SITE,
@@ -30,7 +27,8 @@ from custom_components.spotnav.const import (
 )
 from custom_components.spotnav.vehicles.entity_conflicts import find_conflict
 from custom_components.spotnav.site.regulator_damping import (
-    DEFAULT_REGULATOR_DWELL_S,
+    REGULATOR_DEADBAND_A,
+    REGULATOR_DWELL_S,
     RegulatorDamper,
 )
 from custom_components.spotnav.site.regulator import (
@@ -90,8 +88,8 @@ async def test_config_flow_creates_a_site_entry_with_direct_measurements(
     assert result["type"] is FlowResultType.CREATE_ENTRY
     assert result["data"][CONF_ENTRY_TYPE] == ENTRY_TYPE_SITE
     assert result["data"][CONF_MAIN_FUSE_A] == 25.0
-    # Creation needs a complete configuration, so the calculation starts enabled.
-    assert result["data"]["site_enabled"] is True
+    # A site always calculates once it has a measurement: there is no switch to store.
+    assert "site_enabled" not in result["data"]
 
 
 async def test_charger_flow_is_unaffected_by_the_new_entry_type_step(
@@ -497,7 +495,6 @@ async def test_options_flow_can_edit_every_structural_field(hass: HomeAssistant)
             "safety_margin_a": 2,
             "measurement_mode": "direct_phase_current",
             "charger_entry_ids": [charger.entry_id],
-            "site_enabled": True,
             "max_age_s": 60,
         },
     )
@@ -528,13 +525,9 @@ async def test_options_flow_can_edit_every_structural_field(hass: HomeAssistant)
     updated_entry = hass.config_entries.async_get_entry(entry.entry_id)
     assert updated_entry.data[CONF_MAIN_FUSE_A] == 32.0
     assert updated_entry.data[CONF_SAFETY_MARGIN_A] == 2.0
-    assert updated_entry.data[CONF_SITE_ENABLED] is True
     assert updated_entry.data[CONF_MAX_AGE_S] == 60.0
     assert updated_entry.data[CONF_CHARGER_ENTRY_IDS] == [charger.entry_id]
     assert updated_entry.data[CONF_PHASE_WIRING][charger.entry_id] == {"phases": 1, "phase": "L2"}
-
-    controller = controller_of(hass, entry.entry_id)
-    assert controller.config[CONF_SITE_ENABLED] is True
 
 
 async def test_options_flow_rejects_a_race_conflict_on_submit(hass: HomeAssistant) -> None:
@@ -567,7 +560,6 @@ async def test_options_flow_rejects_a_race_conflict_on_submit(hass: HomeAssistan
             "safety_margin_a": 1,
             "measurement_mode": "direct_phase_current",
             "charger_entry_ids": [claimed_charger.entry_id],
-            "site_enabled": False,
             "max_age_s": 120,
         },
     )
@@ -603,7 +595,6 @@ async def test_options_flow_rejects_a_race_conflict_created_between_its_two_step
             "safety_margin_a": 2,
             "measurement_mode": "direct_phase_current",
             "charger_entry_ids": [charger.entry_id],
-            "site_enabled": True,
             "max_age_s": 60,
         },
     )
@@ -658,7 +649,6 @@ async def test_options_flow_only_shows_fields_relevant_to_the_selected_measureme
             "safety_margin_a": 1,
             "measurement_mode": "derived_phase_current",
             "charger_entry_ids": [],
-            "site_enabled": False,
             "max_age_s": 120,
         },
     )
@@ -669,6 +659,24 @@ async def test_options_flow_only_shows_fields_relevant_to_the_selected_measureme
     assert "derived_L1_reactive_power" in field_names
     assert "derived_L1_voltage" in field_names
     assert "direct_L1" not in field_names
+
+
+async def test_a_site_stored_with_its_calculation_off_calculates_and_loses_the_old_switch(
+    hass: HomeAssistant,
+) -> None:
+    """The former "site calculation enabled" switch: a site stored "off" measures all the same, and the key is
+    dropped from its data at setup so nothing reads it any more."""
+    entry = make_site_entry(hass, entry_id="site_legacy_off", extra_data={"site_enabled": False})
+    set_current_sensor(hass, "sensor.site_legacy_off_l1", 3)
+    set_current_sensor(hass, "sensor.site_legacy_off_l2", 0)
+    set_current_sensor(hass, "sensor.site_legacy_off_l3", 0)
+    assert await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+
+    assert "site_enabled" not in hass.config_entries.async_get_entry(entry.entry_id).data
+    controller = controller_of(hass, entry.entry_id)
+    assert controller.result.state == "observing"
+    assert controller.result.phase_headroom_a["L1"] == 21.0  # 25 - 1 - 3
 
 
 async def test_state_change_triggers_an_immediate_recompute_without_waiting_for_the_timer(
@@ -1208,7 +1216,7 @@ async def test_active_control_holds_a_change_until_its_dwell_then_writes_it(
     await controller._async_apply_active_control()
     assert len(configure_calls) == 1
 
-    clock.advance(DEFAULT_REGULATOR_DWELL_S - 1)
+    clock.advance(REGULATOR_DWELL_S - 1)
     await controller._async_apply_active_control()
     assert len(configure_calls) == 1
 
@@ -1254,26 +1262,22 @@ async def test_active_control_writes_a_protection_reduction_immediately(
     assert "damping=protection" in written[0]
 
 
-async def test_the_configured_damping_numbers_reach_the_damper(hass: HomeAssistant) -> None:
-    """Zero is a legal configuration meaning "no damping".
+async def test_the_damping_is_fixed_whatever_a_site_once_stored(hass: HomeAssistant) -> None:
+    """The deadband and dwell are no longer settings: a site that stored its own (here "no damping") is set up
+    with the fixed numbers, and the stored keys are dropped."""
+    site_entry, charger, _configure_calls = await _active_control_setup(hass, entry_id="olddamp")
+    hass.config_entries.async_update_entry(
+        site_entry, data={**site_entry.data, "regulator_deadband_a": 0.0, "regulator_dwell_s": 0.0}
+    )
+    assert await hass.config_entries.async_reload(site_entry.entry_id)
+    await hass.async_block_till_done()
 
-    A 1 A change is inside the default 2 A deadband, so writing immediately proves the site's own numbers took effect.
-    """
-    site_entry, charger, configure_calls = await _active_control_setup(hass, entry_id="nodamp")
-    controller = controller_of(hass, site_entry.entry_id)
-    configure_calls.clear()
-    controller.config[CONF_REGULATOR_DEADBAND_A] = 0.0
-    controller.config[CONF_REGULATOR_DWELL_S] = 0.0
-    # The setup's pass built a damper from the defaults; a site's numbers are read when its damper is built, as after an options-change reload.
-    controller._dampers.clear()
-
-    controller.regulator_decisions = {charger.entry_id: _handmade_decision(16.0)}
-    await controller._async_apply_active_control()
-    controller.regulator_decisions = {charger.entry_id: _handmade_decision(15.0)}
-    await controller._async_apply_active_control()
-
-    assert [call.data["value"] for call in configure_calls] == ["1.16,2.10", "1.15,2.10"]
-    assert controller._damper_for(charger.entry_id).last_written_a == 15.0
+    entry = hass.config_entries.async_get_entry(site_entry.entry_id)
+    assert "regulator_deadband_a" not in entry.data
+    assert "regulator_dwell_s" not in entry.data
+    damper = controller_of(hass, site_entry.entry_id)._damper_for(charger.entry_id)
+    assert damper._deadband_a == REGULATOR_DEADBAND_A == 2.0
+    assert damper._dwell_s == REGULATOR_DWELL_S == 60.0
 
 
 async def test_capability_snapshot_reports_the_active_control_pair(hass: HomeAssistant) -> None:

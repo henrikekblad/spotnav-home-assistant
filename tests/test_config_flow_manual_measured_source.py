@@ -187,7 +187,7 @@ def _site_entry_ids(hass: HomeAssistant) -> set[str]:
     return {entry.entry_id for entry in hass.config_entries.async_entries(DOMAIN)}
 
 
-def _options_basics(charger_entry_ids: list[str], *, site_enabled: bool = True) -> dict:
+def _options_basics(charger_entry_ids: list[str]) -> dict:
     """One `site_init` submission for the options flow, mirroring what
     `make_site_entry` already stored (so a roundtrip save changes nothing
     else).
@@ -197,7 +197,6 @@ def _options_basics(charger_entry_ids: list[str], *, site_enabled: bool = True) 
         "safety_margin_a": 1.0,
         "measurement_mode": "direct_phase_current",
         "charger_entry_ids": list(charger_entry_ids),
-        "site_enabled": site_enabled,
         "change_measurement": True,
         "max_age_s": DEFAULT_MAX_AGE_S,
     }

@@ -43,7 +43,6 @@ def _direct_site(
     age: float = AGE,
 ):
     config = SiteCalculationConfig(
-        enabled=True,
         main_fuse_a=fuse,
         safety_margin_a=margin,
         measurement_mode="direct_phase_current",
@@ -66,7 +65,6 @@ def _derived_site(currents: tuple[float, float, float], *, fuse: float = 16.0, m
         )
 
     config = SiteCalculationConfig(
-        enabled=True,
         main_fuse_a=fuse,
         safety_margin_a=margin,
         measurement_mode="derived_phase_current",

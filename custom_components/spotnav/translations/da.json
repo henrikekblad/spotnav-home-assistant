@@ -313,26 +313,37 @@
         }
       },
       "site_init": {
-        "title": "Indstillinger for anlæggets kapacitet",
-        "description": "Lastbalancering under hovedsikringen. Aktiv styring sænker en laders strøm, når det er nødvendigt; den er bedste indsats, ikke en beskyttelsesanordning. Sensoren for batteriets effekt er valgfri og bruges kun til et diagnostisk skøn -- aldrig til en sikker ladegrænse.",
+        "title": "Indstillinger for anlægget",
+        "description": "Én elforbindelse og de ladere, der deler den. Hvert felt fortæller, hvad det gør.",
         "data": {
-          "name": "Anlæggets navn",
-          "site_enabled": "Anlægsberegning slået til",
-          "active_control_enabled": "Aktiv styring slået til (tilvalg, kun beregnet målemetode)",
+          "name": "Navn",
           "main_fuse_a": "Hovedsikring (A)",
           "safety_margin_a": "Sikkerhedsmargin (A)",
-          "max_age_s": "Højeste måleralder (sekunder)",
-          "regulator_deadband_a": "Aktiv styring: ignorér ændringer mindre end (A)",
-          "regulator_dwell_s": "Aktiv styring: hvor længe en ændring skal holde (sekunder)",
-          "yield_stepping_enabled": "Trinvis øgning med bekræftet eftergivelse slået til (tilvalg, for et anlæg med en last, der giver efter, f.eks. et hjemmebatteri)",
-          "yield_ceiling_a": "Trinvis øgning: absolut loft, overskrides aldrig (A, skal være større end hovedsikringen); gælder først, når hjemmebatteriet er set give efter, indtil da er hovedsikringen selv loftet",
-          "solar_priority": "Prioritet for soloverskud (bilen eller hjemmebatteriet først)",
-          "battery_aggregate_power_entity": "Hjemmebatteriets ladeeffekt (valgfrit, kun diagnostik)",
-          "change_measurement": "Ændr måling og fasetilslutning",
+          "voltage_between_phases_v": "Spænding mellem faser",
           "measurement_mode": "Målemetode",
-          "charger_entry_ids": "Ladere, der deler anlæggets kapacitet",
-          "solar_forecast_entries": "Kilder til solprognose (valgfrit, bruges af hybridstrategien)",
-          "voltage_between_phases_v": "Spænding mellem faser"
+          "charger_entry_ids": "Ladere på anlægget",
+          "active_control_enabled": "Lastbalancering",
+          "max_age_s": "Højeste alder for målinger (sekunder)",
+          "yield_stepping_enabled": "Bilen må tage hjemmebatteriets andel",
+          "solar_priority": "Soloverskuddet går først til",
+          "battery_aggregate_power_entity": "Hjemmebatteriets effekt (valgfrit)",
+          "solar_forecast_entries": "Solprognose (valgfrit)",
+          "change_measurement": "Næste: ændr måler og faser"
+        },
+        "data_description": {
+          "name": "Anlæggets navn i Home Assistant.",
+          "main_fuse_a": "Hovedsikringens størrelse, som på sikringen eller i elaftalen. Ændr den, når sikringen skiftes.",
+          "safety_margin_a": "Strøm, der holdes fri under hovedsikringen på hver fase. Hæv den for større afstand til sikringen; den skal være mindre end sikringen.",
+          "voltage_between_phases_v": "400 V i de fleste elnet, 230 V i et IT-net (almindeligt i Norge). SpotNav regner ladernes effekt ud fra den.",
+          "measurement_mode": "Direkte: måleren angiver strømmen pr. fase. Beregnet: SpotNav regner strømmen ud fra hver fases effekt og spænding. Ændr den kun, når du skifter måler.",
+          "charger_entry_ids": "De SpotNav-ladere, der deler denne hovedsikring. En lader kan kun høre til ét anlæg.",
+          "active_control_enabled": "Sænker ladernes strøm, når huset bruger meget, så hovedsikringen ikke springer. Fra: SpotNav viser kun, hvad den ville gøre. Sker efter bedste evne og erstatter ikke sikringen.",
+          "max_age_s": "En måling, der er ældre end dette, stoler SpotNav ikke på. Hæv den kun, hvis måleren virkelig opdaterer så sjældent.",
+          "yield_stepping_enabled": "Lader bilen tage mere end hovedsikringens andel, mens et hjemmebatteri, der har vist sig at give efter, holder op med at lade, aldrig over 1,15 gange hovedsikringen. Slå til, hvis et hjemmebatteri holder nettet ved sikringen.",
+          "solar_priority": "Bilen eller hjemmebatteriet: hvem der får solens overskud først.",
+          "battery_aggregate_power_entity": "Hjemmebatteriets effektsensor, positiv når det lader. Solopladningen og hjemmebatteriets andel ovenfor bruger den til at se, hvornår batteriet lader.",
+          "solar_forecast_entries": "Hvor hybridstrategien henter sin solprognose. Tom: hybrid lader kun i de billigste timer.",
+          "change_measurement": "Lad den være fra for kun at gemme det, der står på denne side."
         }
       },
       "site_current_suggestions": {
@@ -451,8 +462,6 @@
       "site_manual_source_entity_on_charger_device": "Den entitet hører til en af anlæggets ladere, så den kan ikke være anlæggets egen samlede strøm.",
       "manual_source_attributes_required": "Angiv attributnavnet for denne fase.",
       "manual_source_unverified": "Intet på denne entitet passer lige nu til de attributnavne, og intet i historikken for de seneste {lookback_days} dage gør heller -- det kan være en helt ny lader eller en tastefejl. Sæt flueben ved \"gem alligevel\" for at gemme den alligevel.",
-      "yield_ceiling_below_fuse": "Loftet for trinvis øgning skal være større end hovedsikringen.",
-      "yield_ceiling_above_limit": "Loftet skal være under 1,25 gange hovedsikringen: det er den last, en gG-sikring skal kunne bære i en time uden at springe, og et prøvetrin må nærme sig den, men aldrig nå den.",
       "unit_expected_current": "Denne sensor skal angive strøm i A eller mA.",
       "unit_expected_power": "Denne sensor skal angive effekt i W eller kW.",
       "unit_expected_voltage": "Denne sensor skal angive spænding i V.",
@@ -578,7 +587,6 @@
       "site_state": {
         "name": "Kapacitetstilstand",
         "state": {
-          "disabled": "Deaktiveret",
           "not_configured": "Ikke sat op",
           "missing_measurements": "Måling mangler",
           "stale_measurements": "Måling forældet",

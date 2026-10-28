@@ -185,7 +185,6 @@ def test_the_oldest_input_sets_freshness() -> None:
 
 def _site(derived_inputs: dict[str, DerivedPhaseInput], *, fuse: float = 25.0):
     config = SiteCalculationConfig(
-        enabled=True,
         main_fuse_a=fuse,
         safety_margin_a=1.0,
         measurement_mode="derived_phase_current",

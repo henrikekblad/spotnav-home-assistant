@@ -276,7 +276,6 @@ async def test_options_flow_roundtrip_preserves_a_generic_site_current_source(
             "safety_margin_a": 1.0,
             "measurement_mode": "direct_phase_current",
             "charger_entry_ids": [],
-            "site_enabled": False,
             "change_measurement": True,
             "max_age_s": 120.0,
         },

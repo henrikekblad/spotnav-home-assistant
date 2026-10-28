@@ -313,26 +313,37 @@
         }
       },
       "site_init": {
-        "title": "Site capacity settings",
-        "description": "Load balancing under the main fuse. Active control lowers a charger's current when needed; it is best effort, not a protective device. The battery power sensor is optional and only feeds a diagnostic estimate -- never a safe charging limit.",
+        "title": "Site settings",
+        "description": "One electrical connection and the chargers that share it. Each field says what it does.",
         "data": {
-          "name": "Site name",
-          "site_enabled": "Site calculation enabled",
-          "active_control_enabled": "Active control enabled (opt-in, derived mode only)",
-          "main_fuse_a": "Main fuse rating (A)",
+          "name": "Name",
+          "main_fuse_a": "Main fuse (A)",
           "safety_margin_a": "Safety margin (A)",
+          "voltage_between_phases_v": "Voltage between phases",
+          "measurement_mode": "Measurement type",
+          "charger_entry_ids": "Chargers on this site",
+          "active_control_enabled": "Load balancing",
           "max_age_s": "Maximum measurement age (seconds)",
-          "regulator_deadband_a": "Active control: ignore changes smaller than (A)",
-          "regulator_dwell_s": "Active control: how long a change must hold (seconds)",
-          "yield_stepping_enabled": "Yield-verified stepping enabled (opt-in, for a site with a load that yields, e.g. a house battery)",
-          "yield_ceiling_a": "Yield stepping: hard ceiling, never exceeded (A, must be greater than the main fuse); applies only once the home battery has been seen to give way, until then the main fuse itself is the ceiling",
-          "solar_priority": "Solar surplus priority (car or the house battery first)",
-          "battery_aggregate_power_entity": "Home battery charging power (optional, diagnostic only)",
-          "change_measurement": "Change measurement and phase wiring",
-          "measurement_mode": "Measurement source",
-          "charger_entry_ids": "Chargers sharing this site's capacity",
-          "solar_forecast_entries": "Solar forecast sources (optional, used by the hybrid strategy)",
-          "voltage_between_phases_v": "Voltage between phases"
+          "yield_stepping_enabled": "Car may take the home battery's share",
+          "solar_priority": "Solar surplus goes first to",
+          "battery_aggregate_power_entity": "Home battery power (optional)",
+          "solar_forecast_entries": "Solar forecast (optional)",
+          "change_measurement": "Next: change meter and phases"
+        },
+        "data_description": {
+          "name": "The site's name in Home Assistant.",
+          "main_fuse_a": "Your main fuse's rating, as on the fuse or in your grid contract. Change it when the fuse is changed.",
+          "safety_margin_a": "Current kept free below the main fuse on every phase. Raise it for more distance to the fuse; it must stay below the fuse.",
+          "voltage_between_phases_v": "400 V on most grids, 230 V on an IT grid (common in Norway). SpotNav works out the chargers' power from it.",
+          "measurement_mode": "Direct: the meter reports the current per phase. Derived: SpotNav works the current out from each phase's power and voltage. Change it only when you change meter.",
+          "charger_entry_ids": "The SpotNav chargers that share this main fuse. A charger can belong to one site only.",
+          "active_control_enabled": "Lowers the chargers' current when the house draws a lot, so the main fuse does not blow. Off: SpotNav only shows what it would do. Best effort; it does not replace the fuse.",
+          "max_age_s": "A reading older than this is not trusted. Raise it only if your meter really updates that seldom.",
+          "yield_stepping_enabled": "Lets the car take more than the main fuse's share while a home battery shown to give way stops charging, never above 1.15 times the main fuse. Turn it on if a home battery holds the grid at the fuse.",
+          "solar_priority": "The car or the home battery: which one gets the sun's surplus first.",
+          "battery_aggregate_power_entity": "The home battery's power sensor, positive while it charges. Solar and the home battery's share above use it to see when the battery charges.",
+          "solar_forecast_entries": "Where the hybrid strategy gets its solar forecast. Empty: hybrid charges on the cheapest hours only.",
+          "change_measurement": "Leave off to save only what is on this page."
         }
       },
       "site_current_suggestions": {
@@ -451,8 +462,6 @@
       "site_manual_source_entity_on_charger_device": "That entity belongs to one of this site's chargers, so it cannot be the site's own total current.",
       "manual_source_attributes_required": "Enter the attribute name for this phase.",
       "manual_source_unverified": "Nothing on this entity currently matches those attribute names, and nothing in the last {lookback_days} days of history does either -- this may be a brand-new charger, or a typo. Tick \"save anyway\" to store it regardless.",
-      "yield_ceiling_below_fuse": "The yield-stepping ceiling must be greater than the main fuse rating.",
-      "yield_ceiling_above_limit": "The ceiling must be below 1.25 times the main fuse: that is the load a gG fuse must carry for an hour without blowing, and a probe step may approach it but never reach it.",
       "unit_expected_current": "This sensor must report current in A or mA.",
       "unit_expected_power": "This sensor must report power in W or kW.",
       "unit_expected_voltage": "This sensor must report voltage in V.",
@@ -578,7 +587,6 @@
       "site_state": {
         "name": "Capacity state",
         "state": {
-          "disabled": "Disabled",
           "not_configured": "Not set up",
           "missing_measurements": "Measurement missing",
           "stale_measurements": "Measurement stale",

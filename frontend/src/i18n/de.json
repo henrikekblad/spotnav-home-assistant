@@ -321,7 +321,7 @@
   "site.solarPriority.carFirst": "Zuerst das Auto",
   "site.solarPriority.batteryFirst": "Zuerst die Batterie",
   "site.solarForecast.title": "Quellen für die Solarprognose",
-  "site.activeControl.title": "Aktives Lastmanagement",
+  "site.activeControl.title": "Lastmanagement",
   "site.activeControl.on": "An",
   "site.activeControl.off": "Aus",
   "site.activeControl.available": "Verfügbar",

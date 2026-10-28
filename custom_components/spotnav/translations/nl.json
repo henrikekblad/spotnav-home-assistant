@@ -313,26 +313,37 @@
         }
       },
       "site_init": {
-        "title": "Capaciteitsinstellingen van de locatie",
-        "description": "Load balancing onder de hoofdzekering. Actieve regeling verlaagt zo nodig de stroom van een laadpaal; het is naar beste vermogen, geen beveiligingsapparaat. De sensor voor het batterijvermogen is optioneel en voedt alleen een diagnostische schatting -- nooit een veilige laadlimiet.",
+        "title": "Instellingen van de locatie",
+        "description": "Eén aansluiting op het net en de laadpalen die haar delen. Elk veld zegt wat het doet.",
         "data": {
-          "name": "Naam van de locatie",
-          "site_enabled": "Locatieberekening ingeschakeld",
-          "active_control_enabled": "Actieve regeling ingeschakeld (opt-in, alleen afgeleide meetmethode)",
+          "name": "Naam",
           "main_fuse_a": "Hoofdzekering (A)",
           "safety_margin_a": "Veiligheidsmarge (A)",
+          "voltage_between_phases_v": "Spanning tussen fasen",
+          "measurement_mode": "Meetwijze",
+          "charger_entry_ids": "Laadpalen op deze locatie",
+          "active_control_enabled": "Load balancing",
           "max_age_s": "Maximale leeftijd van metingen (seconden)",
-          "regulator_deadband_a": "Actieve regeling: wijzigingen kleiner dan dit negeren (A)",
-          "regulator_dwell_s": "Actieve regeling: hoe lang een wijziging moet aanhouden (seconden)",
-          "yield_stepping_enabled": "Stapsgewijs verhogen met controle van terugschakelen ingeschakeld (opt-in, voor een locatie met een belasting die terugschakelt, bijv. een thuisbatterij)",
-          "yield_ceiling_a": "Stapsgewijs verhogen: harde bovengrens, nooit overschreden (A, moet hoger zijn dan de hoofdzekering); geldt pas zodra de thuisbatterij aantoonbaar meegeeft, tot dan is de hoofdzekering zelf de bovengrens",
-          "solar_priority": "Prioriteit voor zonne-overschot (auto of thuisbatterij eerst)",
-          "battery_aggregate_power_entity": "Laadvermogen van de thuisbatterij (optioneel, alleen diagnostisch)",
-          "change_measurement": "Meting en fase-aansluiting wijzigen",
-          "measurement_mode": "Meetbron",
-          "charger_entry_ids": "Laadpalen die de capaciteit van deze locatie delen",
-          "solar_forecast_entries": "Bronnen voor zonneprognose (optioneel, gebruikt door de hybride strategie)",
-          "voltage_between_phases_v": "Spanning tussen fasen"
+          "yield_stepping_enabled": "Auto mag het deel van de thuisbatterij nemen",
+          "solar_priority": "Zonne-overschot gaat eerst naar",
+          "battery_aggregate_power_entity": "Vermogen van de thuisbatterij (optioneel)",
+          "solar_forecast_entries": "Zonneprognose (optioneel)",
+          "change_measurement": "Volgende: meter en fasen wijzigen"
+        },
+        "data_description": {
+          "name": "De naam van de locatie in Home Assistant.",
+          "main_fuse_a": "De waarde van uw hoofdzekering, zoals op de zekering of in uw netcontract. Wijzig dit als de zekering wordt vervangen.",
+          "safety_margin_a": "Stroom die op elke fase vrij blijft onder de hoofdzekering. Verhoog dit voor meer afstand tot de zekering; het moet kleiner blijven dan de zekering.",
+          "voltage_between_phases_v": "400 V op de meeste netten, 230 V op een IT-net (gebruikelijk in Noorwegen). SpotNav berekent daarmee het vermogen van de laadpalen.",
+          "measurement_mode": "Direct: de meter meldt de stroom per fase. Afgeleid: SpotNav berekent de stroom uit het vermogen en de spanning van elke fase. Wijzig dit alleen als u van meter wisselt.",
+          "charger_entry_ids": "De SpotNav-laadpalen die deze hoofdzekering delen. Een laadpaal hoort bij één locatie.",
+          "active_control_enabled": "Verlaagt de stroom van de laadpalen als het huis veel verbruikt, zodat de hoofdzekering niet doorslaat. Uit: SpotNav laat alleen zien wat het zou doen. Naar beste vermogen; vervangt de zekering niet.",
+          "max_age_s": "Een oudere meting vertrouwt SpotNav niet. Verhoog dit alleen als uw meter echt zo zelden bijwerkt.",
+          "yield_stepping_enabled": "Laat de auto meer nemen dan het deel van de hoofdzekering terwijl een thuisbatterij die aantoonbaar meegeeft stopt met laden, nooit boven 1,15 keer de hoofdzekering. Zet dit aan als een thuisbatterij het net op de zekering houdt.",
+          "solar_priority": "De auto of de thuisbatterij: wie het overschot van de zon het eerst krijgt.",
+          "battery_aggregate_power_entity": "De vermogenssensor van de thuisbatterij, positief tijdens het laden. Zonneladen en het deel van de thuisbatterij hierboven zien daaraan wanneer de batterij laadt.",
+          "solar_forecast_entries": "Waar de hybride strategie haar zonneprognose vandaan haalt. Leeg: hybride laadt alleen in de goedkoopste uren.",
+          "change_measurement": "Laat uit om alleen deze pagina op te slaan."
         }
       },
       "site_current_suggestions": {
@@ -451,8 +462,6 @@
       "site_manual_source_entity_on_charger_device": "Die entiteit hoort bij een van de laadpalen van deze locatie, dus het kan niet de totale stroom van de locatie zelf zijn.",
       "manual_source_attributes_required": "Vul de attribuutnaam voor deze fase in.",
       "manual_source_unverified": "Niets op deze entiteit komt nu overeen met die attribuutnamen, en ook niets in de geschiedenis van de afgelopen {lookback_days} dagen -- misschien is het een gloednieuwe laadpaal, of een typfout. Vink \"toch opslaan\" aan om het toch te bewaren.",
-      "yield_ceiling_below_fuse": "De bovengrens voor stapsgewijs verhogen moet hoger zijn dan de waarde van de hoofdzekering.",
-      "yield_ceiling_above_limit": "De bovengrens moet lager zijn dan 1,25 keer de hoofdzekering: dat is de belasting die een gG-zekering een uur lang moet kunnen dragen zonder door te slaan, en een teststap mag die benaderen maar nooit bereiken.",
       "unit_expected_current": "Deze sensor moet stroom doorgeven in A of mA.",
       "unit_expected_power": "Deze sensor moet vermogen doorgeven in W of kW.",
       "unit_expected_voltage": "Deze sensor moet spanning doorgeven in V.",
@@ -578,7 +587,6 @@
       "site_state": {
         "name": "Capaciteitsstatus",
         "state": {
-          "disabled": "Uitgeschakeld",
           "not_configured": "Niet ingesteld",
           "missing_measurements": "Meting ontbreekt",
           "stale_measurements": "Meting verouderd",

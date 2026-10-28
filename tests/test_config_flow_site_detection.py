@@ -162,7 +162,6 @@ async def test_the_options_flow_keeps_a_stored_optional_source_and_flags(hass: H
             "safety_margin_a": 1.0,
             "measurement_mode": MEASUREMENT_MODE_DERIVED,
             "charger_entry_ids": [],
-            "site_enabled": True,
             "change_measurement": True,
             "max_age_s": 120.0,
         },

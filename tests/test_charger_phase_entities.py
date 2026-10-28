@@ -179,7 +179,7 @@ async def test_an_existing_separate_entities_source_comes_back_as_manual_entitie
     result = await hass.config_entries.options.async_configure(
         result["flow_id"],
         {"main_fuse_a": 25.0, "safety_margin_a": 1.0, "measurement_mode": "direct_phase_current",
-         "charger_entry_ids": [charger.entry_id], "site_enabled": True, "change_measurement": True},
+         "charger_entry_ids": [charger.entry_id], "change_measurement": True},
     )
     result = await hass.config_entries.options.async_configure(result["flow_id"], {"choice": "manual"})
     result = await hass.config_entries.options.async_configure(

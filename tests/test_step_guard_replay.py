@@ -102,7 +102,6 @@ class Night:
         )
         site = calculate_site_capacity(
             SiteCalculationConfig(
-                enabled=True,
                 main_fuse_a=FUSE_A,
                 safety_margin_a=self.safety_margin_a,
                 measurement_mode="derived_phase_current",

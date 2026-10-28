@@ -313,26 +313,37 @@
         }
       },
       "site_init": {
-        "title": "Kapazitätseinstellungen des Standorts",
-        "description": "Lastmanagement unter der Hauptsicherung. Die aktive Regelung senkt den Strom einer Ladestation bei Bedarf; sie arbeitet nach bestem Bemühen und ist keine Schutzeinrichtung. Der Leistungssensor der Batterie ist optional und speist nur eine Diagnoseschätzung -- nie eine sichere Ladegrenze.",
+        "title": "Einstellungen des Standorts",
+        "description": "Ein Netzanschluss und die Ladestationen, die ihn teilen. Jedes Feld sagt, was es tut.",
         "data": {
-          "name": "Name des Standorts",
-          "site_enabled": "Standortberechnung aktiviert",
-          "active_control_enabled": "Aktive Regelung aktiviert (optional, nur abgeleiteter Modus)",
+          "name": "Name",
           "main_fuse_a": "Hauptsicherung (A)",
           "safety_margin_a": "Sicherheitsreserve (A)",
+          "voltage_between_phases_v": "Spannung zwischen den Phasen",
+          "measurement_mode": "Messart",
+          "charger_entry_ids": "Ladestationen an diesem Standort",
+          "active_control_enabled": "Lastmanagement",
           "max_age_s": "Maximales Alter der Messung (Sekunden)",
-          "regulator_deadband_a": "Aktive Regelung: Änderungen kleiner als (A) ignorieren",
-          "regulator_dwell_s": "Aktive Regelung: wie lange eine Änderung anhalten muss (Sekunden)",
-          "yield_stepping_enabled": "Schrittweise Erhöhung mit Prüfung des Nachgebens aktiviert (optional, für einen Standort mit einer nachgebenden Last, z. B. einer Hausbatterie)",
-          "yield_ceiling_a": "Schrittweise Erhöhung: feste Obergrenze, nie überschritten (A, muss größer als die Hauptsicherung sein); gilt erst, wenn der Hausspeicher nachweislich nachgibt, bis dahin ist die Hauptsicherung selbst die Obergrenze",
-          "solar_priority": "Priorität für Solarüberschuss (zuerst Auto oder Hausbatterie)",
-          "battery_aggregate_power_entity": "Ladeleistung der Hausbatterie (optional, nur Diagnose)",
-          "change_measurement": "Messung und Phasenbelegung ändern",
-          "measurement_mode": "Messquelle",
-          "charger_entry_ids": "Ladestationen, die sich die Kapazität dieses Standorts teilen",
-          "solar_forecast_entries": "Quellen für die Solarprognose (optional, für die Hybrid-Strategie)",
-          "voltage_between_phases_v": "Spannung zwischen den Phasen"
+          "yield_stepping_enabled": "Auto darf den Anteil der Hausbatterie nehmen",
+          "solar_priority": "Solarüberschuss geht zuerst an",
+          "battery_aggregate_power_entity": "Leistung der Hausbatterie (optional)",
+          "solar_forecast_entries": "Solarprognose (optional)",
+          "change_measurement": "Weiter: Zähler und Phasen ändern"
+        },
+        "data_description": {
+          "name": "Der Name des Standorts in Home Assistant.",
+          "main_fuse_a": "Die Größe der Hauptsicherung, wie auf der Sicherung oder im Netzvertrag. Ändern, wenn die Sicherung getauscht wird.",
+          "safety_margin_a": "Strom, der auf jeder Phase unter der Hauptsicherung frei bleibt. Erhöhen für mehr Abstand zur Sicherung; er muss kleiner als die Sicherung bleiben.",
+          "voltage_between_phases_v": "400 V in den meisten Netzen, 230 V in einem IT-Netz (verbreitet in Norwegen). SpotNav berechnet daraus die Leistung der Ladestationen.",
+          "measurement_mode": "Direkt: Der Zähler meldet den Strom je Phase. Abgeleitet: SpotNav berechnet den Strom aus Leistung und Spannung jeder Phase. Nur ändern, wenn Sie den Zähler wechseln.",
+          "charger_entry_ids": "Die SpotNav-Ladestationen, die sich diese Hauptsicherung teilen. Eine Ladestation gehört zu nur einem Standort.",
+          "active_control_enabled": "Senkt den Strom der Ladestationen, wenn das Haus viel verbraucht, damit die Hauptsicherung nicht auslöst. Aus: SpotNav zeigt nur, was es tun würde. Nach bestem Bemühen; ersetzt die Sicherung nicht.",
+          "max_age_s": "Einem älteren Messwert vertraut SpotNav nicht. Nur erhöhen, wenn Ihr Zähler wirklich so selten meldet.",
+          "yield_stepping_enabled": "Lässt das Auto mehr als den Anteil der Hauptsicherung nehmen, während eine Hausbatterie, die nachweislich nachgibt, das Laden einstellt, nie über das 1,15-Fache der Hauptsicherung. Einschalten, wenn eine Hausbatterie das Netz an der Sicherung hält.",
+          "solar_priority": "Das Auto oder die Hausbatterie: wer den Überschuss der Sonne zuerst bekommt.",
+          "battery_aggregate_power_entity": "Der Leistungssensor der Hausbatterie, positiv beim Laden. Solarladen und der Anteil der Hausbatterie oben lesen daraus, wann die Batterie lädt.",
+          "solar_forecast_entries": "Woher die Hybrid-Strategie ihre Solarprognose nimmt. Leer: Hybrid lädt nur in den günstigsten Stunden.",
+          "change_measurement": "Aus lassen, um nur diese Seite zu speichern."
         }
       },
       "site_current_suggestions": {
@@ -451,8 +462,6 @@
       "site_manual_source_entity_on_charger_device": "Diese Entität gehört zu einer Ladestation dieses Standorts und kann daher nicht der Gesamtstrom des Standorts sein.",
       "manual_source_attributes_required": "Gib den Attributnamen für diese Phase ein.",
       "manual_source_unverified": "Auf dieser Entität passt derzeit nichts zu diesen Attributnamen, und auch nichts in den letzten {lookback_days} Tagen des Verlaufs -- vielleicht ist die Ladestation ganz neu, oder es ist ein Tippfehler. Hake „trotzdem speichern“ an, um es dennoch zu speichern.",
-      "yield_ceiling_below_fuse": "Die Obergrenze der schrittweisen Erhöhung muss größer als die Hauptsicherung sein.",
-      "yield_ceiling_above_limit": "Die Obergrenze muss unter dem 1,25-Fachen der Hauptsicherung liegen: Diese Last muss eine gG-Sicherung eine Stunde lang tragen, ohne auszulösen, und ein Prüfschritt darf sich ihr nähern, sie aber nie erreichen.",
       "unit_expected_current": "Dieser Sensor muss Strom in A oder mA melden.",
       "unit_expected_power": "Dieser Sensor muss Leistung in W oder kW melden.",
       "unit_expected_voltage": "Dieser Sensor muss Spannung in V melden.",
@@ -578,7 +587,6 @@
       "site_state": {
         "name": "Kapazitätsstatus",
         "state": {
-          "disabled": "Deaktiviert",
           "not_configured": "Nicht eingerichtet",
           "missing_measurements": "Messung fehlt",
           "stale_measurements": "Messung veraltet",

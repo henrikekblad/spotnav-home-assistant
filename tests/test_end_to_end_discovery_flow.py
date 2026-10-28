@@ -14,7 +14,7 @@ from homeassistant.data_entry_flow import FlowResultType
 from homeassistant.helpers import device_registry as dr, entity_registry as er
 from pytest_homeassistant_custom_component.common import async_mock_service
 
-from custom_components.spotnav.const import CONF_SITE_ENABLED, DOMAIN
+from custom_components.spotnav.const import DOMAIN
 
 from .helpers import create_ocpp_charger_device, make_entry, make_ocpp_config_entry, set_current_sensor
 from .world import controller_of
@@ -92,7 +92,7 @@ async def test_site_current_attributes_candidate_works_end_to_end(hass: HomeAssi
     reloaded_controller = controller_of(hass, entry_id)
     assert reloaded_controller.capability_snapshot.site_measurement.health == "healthy"
 
-    # Enable active control via the options flow and confirm the real `observing` state.
+    # Save the options flow through the measurement steps; the reloaded site measures (`observing`).
     options_result = await hass.config_entries.options.async_init(entry_id)
     options_result = await hass.config_entries.options.async_configure(
         options_result["flow_id"],
@@ -101,7 +101,6 @@ async def test_site_current_attributes_candidate_works_end_to_end(hass: HomeAssi
             "safety_margin_a": 1.0,
             "measurement_mode": "direct_phase_current",
             "charger_entry_ids": [],
-            "site_enabled": True,
             "change_measurement": True,
             "max_age_s": 120.0,
         },
@@ -115,8 +114,6 @@ async def test_site_current_attributes_candidate_works_end_to_end(hass: HomeAssi
     assert options_result["type"] is FlowResultType.CREATE_ENTRY
     await hass.async_block_till_done()
 
-    enabled_entry = hass.config_entries.async_get_entry(entry_id)
-    assert enabled_entry.data[CONF_SITE_ENABLED] is True
     enabled_controller = controller_of(hass, entry_id)
     assert enabled_controller.result.state == "observing"
     assert enabled_controller.result.measured_phase_current_a == {"L1": 5.0, "L2": 6.0, "L3": 7.0}
@@ -196,7 +193,6 @@ async def test_charger_current_attributes_candidate_is_credited_exactly_once_end
     snapshot = site_controller.capability_snapshot
     assert snapshot.charger_measurement[charger.entry_id].health == "healthy"
 
-    # Enable active control so `result` reflects the live calculation, not the "disabled" short-circuit.
     options_result = await hass.config_entries.options.async_init(site_entry_id)
     options_result = await hass.config_entries.options.async_configure(
         options_result["flow_id"],
@@ -205,7 +201,6 @@ async def test_charger_current_attributes_candidate_is_credited_exactly_once_end
             "safety_margin_a": 1.0,
             "measurement_mode": "direct_phase_current",
             "charger_entry_ids": [charger.entry_id],
-            "site_enabled": True,
             "change_measurement": True,
             "max_age_s": 120.0,
         },

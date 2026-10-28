@@ -10,8 +10,8 @@ split is by what a change is *for*, not by direction:
   protection.
 * Regulation: everything else. Needs a deadband (changes smaller than
   `deadband_a` are ignored) and a dwell (the new level must stay justified for
-  `dwell_s` before it is written). Both come from the site options
-  (`CONF_REGULATOR_DEADBAND_A` / `CONF_REGULATOR_DWELL_S`).
+  `dwell_s` before it is written). Both are fixed
+  (`REGULATOR_DEADBAND_A` / `REGULATOR_DWELL_S` in const.py).
 
 Damping only chooses between the proposal and what is already on the charger,
 never anything bolder. Whether a proposal may be written at all is
@@ -29,7 +29,7 @@ from typing import Literal
 
 from homeassistant.util import dt as dt_util
 
-from ..const import DEFAULT_REGULATOR_DEADBAND_A, DEFAULT_REGULATOR_DWELL_S
+from ..const import REGULATOR_DEADBAND_A, REGULATOR_DWELL_S
 
 
 _LOGGER = logging.getLogger(__name__)
@@ -79,8 +79,8 @@ class RegulatorDamper:
     def __init__(
         self,
         *,
-        deadband_a: float = DEFAULT_REGULATOR_DEADBAND_A,
-        dwell_s: float = DEFAULT_REGULATOR_DWELL_S,
+        deadband_a: float = REGULATOR_DEADBAND_A,
+        dwell_s: float = REGULATOR_DWELL_S,
         now: Callable[[], datetime] = dt_util.utcnow,
     ) -> None:
         self._deadband_a = deadband_a

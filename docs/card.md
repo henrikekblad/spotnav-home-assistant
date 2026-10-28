@@ -357,7 +357,7 @@ several. A charger with no site says so.
 - **Solar priority**: **Car first** or **Battery first**.
 - **Solar forecast sources**: the forecast integrations the site may use for Hybrid. Without one,
   Hybrid plans like Cheapest.
-- **Active load balancing**: a switch for administrators, best effort and not a protective
+- **Load balancing**: a switch for administrators, best effort and not a protective
   device. The card says when it is not available: the charger is claimed by more than one site, no
   charger on the site accepts a current command, or the site's own power measurement is not healthy.
   Turning it off gives back any current it had lowered, and the card reports each charger it

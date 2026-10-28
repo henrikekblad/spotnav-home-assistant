@@ -245,8 +245,8 @@ battery (or that there is none), and each charger with its phases and the sensor
 its current is measured from. Submit to create the site, or tick **Change these choices** to see
 the full form with everything pre-filled.
 
-The site is created with its calculation on and **active control off**. Turning active control on
-is a separate, later decision (see [the card](card.md#the-settings-popover)).
+The site is created with **load balancing off**. Turning load balancing on is a separate, later
+decision (see [the card](card.md#the-settings-popover)).
 
 ### When the meter is not found
 
@@ -342,14 +342,14 @@ each with its own private webhook secret. Treat webhook ids as secrets. See
   that decides when the charger starts and stops; **Previous logic** is the logic before it, for a
   charger where the current one misbehaves. Saving reloads that charger only. Please report a
   charger that needs the previous logic, with its debug info.
-- **A site.** Use **Configure** on the site's entry. The first step, **Site capacity settings**,
-  has the site's basics, whether the calculation is on, active control, the damping and yield
-  settings, solar priority, the home battery power sensor and the solar forecast sources, and a tick
-  box **Change measurement and phase wiring**.
+- **A site.** Use **Configure** on the site's entry. The first page, **Site settings**, has the
+  site's basics, load balancing, whether the car may take the home battery's share, solar priority, the home
+  battery power sensor and the solar forecast sources, each with a line on what it does, and last the
+  switch **Next: change meter and phases**.
 
   ![The first step of a site's Configure dialog](images/site-options.png)
 
-  With the box unticked, saving changes only the basics and keeps the stored measurement and
+  With that switch off, saving changes only this page and keeps the stored measurement and
   wiring. SpotNav opens the measurement and wiring step anyway when the measurement mode changed,
   when chargers were added or removed, or when the measurement is incomplete.
 - **The site's entities**, from the card: **Site, Change site entities**.

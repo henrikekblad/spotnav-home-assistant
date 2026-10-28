@@ -321,7 +321,7 @@
   "site.solarPriority.carFirst": "Auto ensin",
   "site.solarPriority.batteryFirst": "Akku ensin",
   "site.solarForecast.title": "Aurinkoennusteen lähteet",
-  "site.activeControl.title": "Aktiivinen kuormanhallinta",
+  "site.activeControl.title": "Kuormanhallinta",
   "site.activeControl.on": "Päällä",
   "site.activeControl.off": "Pois",
   "site.activeControl.available": "Käytettävissä",

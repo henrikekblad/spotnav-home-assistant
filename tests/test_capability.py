@@ -21,9 +21,8 @@ def _direct(l1: float, l2: float, l3: float, age: float = HEALTHY_AGE) -> Direct
     )
 
 
-def _config(*, enabled: bool = False, direct=None, main_fuse_a: float | None = 25.0, mode="direct_phase_current") -> SiteCalculationConfig:
+def _config(*, direct=None, main_fuse_a: float | None = 25.0, mode="direct_phase_current") -> SiteCalculationConfig:
     return SiteCalculationConfig(
-        enabled=enabled,
         main_fuse_a=main_fuse_a,
         safety_margin_a=1.0,
         measurement_mode=mode,
@@ -41,9 +40,9 @@ def _charger(charger_entry_id="charger_a", requested_current_a=10.0, measured_cu
     )
 
 
-def test_healthy_site_measurement_even_though_the_site_is_disabled() -> None:
-    # enabled=False, but health is still visible, so a user can see the setup works before enabling.
-    config = _config(enabled=False, direct=_direct(5.0, 5.0, 5.0))
+def test_healthy_site_measurement_while_load_balancing_is_off() -> None:
+    # Load balancing off, but health is still visible, so a user can see the setup works before turning it on.
+    config = _config(direct=_direct(5.0, 5.0, 5.0))
     snapshot = build_capability_snapshot(
         config=config,
         requests=[_charger()],
@@ -55,7 +54,7 @@ def test_healthy_site_measurement_even_though_the_site_is_disabled() -> None:
     assert snapshot.site_measurement.configured is True
     assert snapshot.site_measurement.health == "healthy"
     assert snapshot.load_balancing.calculation_available is True
-    assert snapshot.load_balancing.calculation_enabled is False
+    assert snapshot.load_balancing.active_enabled is False
 
 
 def test_not_configured_when_main_fuse_is_missing() -> None:
@@ -190,12 +189,11 @@ def _snapshot(**overrides):
     site actively controllable already in place, so each test can spoil exactly
     one thing.
 
-    `config` is `enabled=False` (site disabled) on purpose: the two pairs are
-    independent questions, and the active pair must never be read off the calculation
-    mode's.
+    Load balancing is off (`active_control_enabled=False`) on purpose: whether the site could be
+    actively controlled is a different question from whether it is turned on.
     """
     kwargs = {
-        "config": _config(enabled=False, direct=_direct(5.0, 5.0, 5.0)),
+        "config": _config(direct=_direct(5.0, 5.0, 5.0)),
         "requests": [_charger()],
         "charger_has_charge_control": {"charger_a": True},
         "charger_has_current_control": {"charger_a": True},
@@ -213,14 +211,13 @@ def test_active_available_with_a_closed_gate_healthy_measurement_and_a_commandab
     assert snapshot.load_balancing.active_available is True
     # ...which is a different question from whether it is turned on.
     assert snapshot.load_balancing.active_enabled is False
-    # And the calculation pair neither moves nor is consulted by any of this.
+    # And the calculation's availability neither moves nor is consulted by any of this.
     assert snapshot.load_balancing.calculation_available is True
-    assert snapshot.load_balancing.calculation_enabled is False
 
 
 def test_active_unavailable_when_the_measurement_is_not_healthy() -> None:
     snapshot = _snapshot(
-        config=_config(enabled=False, direct=_direct(5.0, 5.0, 5.0, age=MAX_AGE + 60.0))
+        config=_config(direct=_direct(5.0, 5.0, 5.0, age=MAX_AGE + 60.0))
     )
 
     assert snapshot.site_measurement.health == "stale"
@@ -275,7 +272,7 @@ def test_the_active_pair_reports_both_combinations_independently() -> None:
 
     enabled_but_not_available = _snapshot(
         active_control_enabled=True,
-        config=_config(enabled=False, direct=_direct(5.0, 5.0, 5.0, age=MAX_AGE + 60.0)),
+        config=_config(direct=_direct(5.0, 5.0, 5.0, age=MAX_AGE + 60.0)),
     )
     assert enabled_but_not_available.load_balancing.active_available is False
     assert enabled_but_not_available.load_balancing.active_enabled is True

@@ -44,7 +44,6 @@ def _config(
     safety_margin_a: float = 1.0,
 ) -> SiteCalculationConfig:
     return SiteCalculationConfig(
-        enabled=True,
         main_fuse_a=main_fuse_a,
         safety_margin_a=safety_margin_a,
         measurement_mode="derived_phase_current",

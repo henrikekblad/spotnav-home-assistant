@@ -384,7 +384,6 @@ def test_build_observation_uses_confirmed_unchanged_grid_power_the_strict_field_
         l3=stale_but_confirmed(-1400.0),
     )
     config = SiteCalculationConfig(
-        enabled=True,
         main_fuse_a=25.0,
         safety_margin_a=1.0,
         measurement_mode="derived_phase_current",

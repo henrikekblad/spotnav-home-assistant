@@ -53,7 +53,6 @@ async def test_the_options_flow_offers_and_persists_a_forecast_capable_entry(
             "safety_margin_a": 1,
             "measurement_mode": "direct_phase_current",
             "charger_entry_ids": [],
-            "site_enabled": False,
             "change_measurement": True,
             "max_age_s": 120,
             CONF_SOLAR_FORECAST_ENTRIES: [forecast_entry.entry_id],

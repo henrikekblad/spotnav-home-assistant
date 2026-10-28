@@ -321,7 +321,7 @@
   "site.solarPriority.carFirst": "Auto eerst",
   "site.solarPriority.batteryFirst": "Batterij eerst",
   "site.solarForecast.title": "Bronnen voor zonneprognose",
-  "site.activeControl.title": "Actieve load balancing",
+  "site.activeControl.title": "Load balancing",
   "site.activeControl.on": "Aan",
   "site.activeControl.off": "Uit",
   "site.activeControl.available": "Beschikbaar",

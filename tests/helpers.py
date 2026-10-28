@@ -25,8 +25,6 @@ from custom_components.spotnav.const import (
     CONF_ENTRY_TYPE,
     CONF_MAIN_FUSE_A,
     CONF_MAX_AGE_S,
-    CONF_REGULATOR_DEADBAND_A,
-    CONF_REGULATOR_DWELL_S,
     CONF_MEASUREMENT_MODE,
     CONF_MODE,
     CONF_OCPP_CHARGE_POINT_ID,
@@ -36,15 +34,11 @@ from custom_components.spotnav.const import (
     CONF_SITE_CURRENT_SOURCE,
     CONF_ACTIVE_CONTROL_ENABLED,
     CONF_CURRENT_CONTROL,
-    CONF_SITE_ENABLED,
     CONF_SOLAR_FORECAST_ENTRIES,
     CONF_SOLAR_PRIORITY,
     CONF_WEBHOOK_ID,
-    CONF_YIELD_CEILING_A,
     CONF_YIELD_STEPPING_ENABLED,
     DEFAULT_MAX_AGE_S,
-    DEFAULT_REGULATOR_DEADBAND_A,
-    DEFAULT_REGULATOR_DWELL_S,
     DOMAIN,
     ENTRY_TYPE_CHARGER,
     ENTRY_TYPE_SITE,
@@ -302,13 +296,11 @@ def make_site_entry(
     site_current_source: dict | None = None,
     measurement_mode: str = MEASUREMENT_MODE_DIRECT,
     derived_entities: dict | None = None,
-    site_enabled: bool = True,
     max_age_s: float = DEFAULT_MAX_AGE_S,
     battery_aggregate_power_entity: str | None = None,
     battery_per_phase_source: dict | None = None,
     active_control_enabled: bool = False,
     yield_stepping_enabled: bool = False,
-    yield_ceiling_a: float | None = None,
     solar_priority: str | None = None,
     solar_forecast_entries: list[str] | None = None,
     title: str = "Site",
@@ -323,7 +315,6 @@ def make_site_entry(
     charger_entry_ids = charger_entry_ids or []
     data: dict = {
         CONF_ENTRY_TYPE: ENTRY_TYPE_SITE,
-        CONF_SITE_ENABLED: site_enabled,
         CONF_MAIN_FUSE_A: main_fuse_a,
         CONF_SAFETY_MARGIN_A: safety_margin_a,
         CONF_MEASUREMENT_MODE: measurement_mode,
@@ -338,8 +329,6 @@ def make_site_entry(
         CONF_DERIVED_ENTITIES: derived_entities or {},
         CONF_MAX_AGE_S: max_age_s,
         # The create path writes the damping numbers at their defaults; absent reads the same.
-        CONF_REGULATOR_DEADBAND_A: DEFAULT_REGULATOR_DEADBAND_A,
-        CONF_REGULATOR_DWELL_S: DEFAULT_REGULATOR_DWELL_S,
     }
     if site_current_source is not None:
         data[CONF_SITE_CURRENT_SOURCE] = site_current_source
@@ -353,10 +342,6 @@ def make_site_entry(
     if yield_stepping_enabled:
         # Same opt-in convention: absent means off.
         data[CONF_YIELD_STEPPING_ENABLED] = True
-    if yield_ceiling_a is not None:
-        # Only stored when customised, matching the options flow's "only persist a customized
-        # ceiling" rule; otherwise the 1.15x-fuse default applies (`default_yield_ceiling_a`).
-        data[CONF_YIELD_CEILING_A] = yield_ceiling_a
     if solar_priority is not None:
         # Only written when named; otherwise the default (`car_first`) applies.
         data[CONF_SOLAR_PRIORITY] = solar_priority

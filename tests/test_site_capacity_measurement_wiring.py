@@ -460,7 +460,6 @@ async def test_options_flow_roundtrip_sets_and_clears_the_battery_entity(
             "safety_margin_a": 1.0,
             "measurement_mode": "direct_phase_current",
             "charger_entry_ids": [],
-            "site_enabled": True,
             "change_measurement": True,
             "max_age_s": 120.0,
             "battery_aggregate_power_entity": "sensor.new_battery_power",

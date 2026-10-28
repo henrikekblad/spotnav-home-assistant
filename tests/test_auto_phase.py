@@ -47,7 +47,6 @@ def _amps(l1: float | None, l2: float | None, l3: float | None, age: float = 2.0
 def _site(l1: float, l2: float, l3: float) -> SiteCalculationConfig:
     """A direct site on a 25 A fuse with 1 A of margin: the headroom is 24 A less each phase's current."""
     return SiteCalculationConfig(
-        enabled=True,
         main_fuse_a=25.0,
         safety_margin_a=1.0,
         measurement_mode="direct_phase_current",

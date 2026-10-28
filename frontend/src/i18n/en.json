@@ -321,7 +321,7 @@
   "site.solarPriority.carFirst": "Car first",
   "site.solarPriority.batteryFirst": "Battery first",
   "site.solarForecast.title": "Solar forecast sources",
-  "site.activeControl.title": "Active load balancing",
+  "site.activeControl.title": "Load balancing",
   "site.activeControl.on": "On",
   "site.activeControl.off": "Off",
   "site.activeControl.available": "Available",

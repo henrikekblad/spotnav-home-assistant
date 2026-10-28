@@ -12,7 +12,7 @@ Neither enables or performs control; both come from the facts
 from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
-from dataclasses import dataclass, replace
+from dataclasses import dataclass
 from typing import Literal
 
 from ..site.site_capacity import (
@@ -59,7 +59,6 @@ class ChargerMeasurementHealth:
 @dataclass(frozen=True, slots=True)
 class LoadBalancingCapability:
     calculation_available: bool
-    calculation_enabled: bool
     has_unknown_active_request: bool
     blocking_reasons: tuple[str, ...]
     # Defaults are False: a capability nobody reported is not announced.
@@ -96,17 +95,15 @@ def build_capability_snapshot(
 ) -> SiteCapabilitySnapshot:
     """Build the snapshot. `requests` is what would be passed to `calculate_site_capacity` now.
 
-    Measurement health and `active_available` are evaluated as if the site were
-    enabled, so a user can see a setup would work before switching it on;
-    `calculation_enabled` / `active_enabled` report the real toggles.
+    Measurement health and `active_available` are evaluated whether or not load balancing is on, so a
+    user can see a setup would work before switching it on; `active_enabled` reports the real toggle.
 
     `charger_is_commandable` is the exact predicate the apply path gates each
     write on (`current_control` is `CURRENT_CONTROL_CHANGE_CONFIGURATION`), not
     derived from `charger_has_current_control`: a charger with a current entity
     but no opt-in is never written to. `None` means "no commandable charger".
     """
-    probe_config = replace(config, enabled=True)
-    probe_result = calculate_site_capacity(probe_config, requests)
+    probe_result = calculate_site_capacity(config, requests)
 
     site_measurement = _site_measurement_health(config, probe_result)
     charger_measurement = {
@@ -137,7 +134,6 @@ def build_capability_snapshot(
 
     load_balancing = LoadBalancingCapability(
         calculation_available=site_measurement.health == "healthy" and not membership_conflict_charger_ids,
-        calculation_enabled=config.enabled,
         has_unknown_active_request=has_unknown_active_request,
         blocking_reasons=tuple(blocking),
         active_available=active_available,
@@ -175,7 +171,7 @@ def _site_measurement_health(config: SiteCalculationConfig, probe_result) -> Mea
         health = "invalid"
     elif state == "observing":
         health = "healthy"
-    else:  # pragma: no cover - defensive; enabled=True rules out "disabled"
+    else:  # pragma: no cover - defensive; "not_configured" is answered above
         health = "invalid"
 
     return MeasurementHealth(
