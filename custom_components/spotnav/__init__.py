@@ -15,6 +15,7 @@ from typing import Any, Callable
 from homeassistant.config_entries import ConfigEntry, ConfigEntryState
 from homeassistant.const import EVENT_HOMEASSISTANT_STARTED, EVENT_HOMEASSISTANT_STOP
 from homeassistant.core import CoreState, Event, HomeAssistant, callback
+from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers.event import async_call_later
 from homeassistant.helpers.start import async_at_started
 
@@ -650,7 +651,14 @@ async def _async_setup_price_entry(hass: HomeAssistant, entry: PriceConfigEntry)
     return True
 
 
-async def _async_price_entry_updated(hass: HomeAssistant, entry: ConfigEntry) -> None:
+async def _async_price_entry_updated(hass: HomeAssistant, entry: PriceConfigEntry) -> None:
+    """The entry's area, fees or name were saved (`async_write_price_entry`): its device takes them in place, the
+    device keeps the entry's name, and every charger that prices with it is told."""
+    entry.runtime_data.device.update_data(entry.data)
+    registry = dr.async_get(hass)
+    device = registry.async_get_device(identifiers={(DOMAIN, entry.entry_id)})
+    if device is not None and device.name != entry.title:
+        registry.async_update_device(device.id, name=entry.title)
     async_price_sources_changed(hass, entry.entry_id)
 
 

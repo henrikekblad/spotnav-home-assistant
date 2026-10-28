@@ -36,6 +36,7 @@ follow the device's name, which you can change).
 | **Cheap now** (binary sensor) | On during the day's cheapest hours. How many hours is the **Cheap hours per day** number (default 6). |
 | **Expensive now** (binary sensor) | On during the day's most expensive hours. How many is the **Expensive hours per day** number (default 4). |
 | **Cheap hours per day**, **Expensive hours per day** (numbers) | 0 to 24 in quarter-hours. They keep their value across restarts. |
+| **Price area** (select), the three fee policies (selects) and **VAT**, **Energy tax**, **Grid transfer fee** (numbers) | The area and fees this electricity price uses. A change takes effect at once, for every charger that prices with it. |
 
 Price now's attributes are small on purpose: the area, the currency, the resolution in minutes, the
 spot price without fees, when the price next changes and whether tomorrow's prices are published.
@@ -175,7 +176,9 @@ Run the script after tomorrow's prices are published (in the afternoon) to let i
 
 - A new kind of config entry, `price`, beside `charger` and `site`. Its data is the area and the
   three fees, each stored as the charger's settings store them (`FiscalOverride`: off, on with the
-  area's suggestion, or on with a figure). The options flow edits the same data and reloads the entry.
+  area's suggestion, or on with a figure). The options flow, the device's area and fee entities and a
+  charger's settings writes (the card, the app) edit the same data in place
+  (`price_source.async_write_price_entry`): the entry is not reloaded, its device prices again at once.
 - The fees are resolved by the charger's own code (`auto_controller.fiscal_choice_for`) and the
   price with fees by the planner's (`planner.chart_intervals`, which applies
   `planner.effective_minor_per_kwh`), so a charger and a price entry with the same settings show the

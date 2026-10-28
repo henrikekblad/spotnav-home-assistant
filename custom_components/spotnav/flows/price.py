@@ -31,7 +31,7 @@ from ..pricing.price_points import (
     overrides_from_data,
     suggestion,
 )
-from ..pricing.price_source import FEE_COMPONENTS
+from ..pricing.price_source import async_write_price_entry, default_price_title, FEE_COMPONENTS
 from ..pricing.relay_contract import AreaCatalogue, AreaEntry
 from ..runtime import domain_data
 
@@ -43,7 +43,7 @@ MAX_FEE = 10000.0
 
 
 def default_title(area_id: str) -> str:
-    return f"Electricity price {area_id}"
+    return default_price_title(area_id)
 
 
 async def async_price_catalogue(hass: HomeAssistant) -> AreaCatalogue | None:
@@ -199,7 +199,8 @@ class PriceConfigSteps:
 
 
 class PriceOptionsFlow(config_entries.OptionsFlow):
-    """Change an electricity price's area and fees. Saving reloads the entry."""
+    """Change an electricity price's area and fees. Saving updates the entry in place (`async_write_price_entry`):
+    its device prices again at once and its sensors never go unavailable."""
 
     def __init__(self, config_entry: config_entries.ConfigEntry) -> None:
         self._entry = config_entry
@@ -229,17 +230,7 @@ class PriceOptionsFlow(config_entries.OptionsFlow):
         if user_input is not None:
             fees, errors = parse_fees(area, user_input)
             if not errors:
-                previous = self._entry.data.get(CONF_PRICE_AREA)
-                title = self._entry.title
-                if previous and title == default_title(previous):
-                    # A name SpotNav gave follows the area; a name the person gave stays.
-                    title = default_title(area.id)
-                self.hass.config_entries.async_update_entry(
-                    self._entry,
-                    data={**self._entry.data, CONF_PRICE_AREA: area.id, **fees},
-                    title=title,
-                )
-                await self.hass.config_entries.async_reload(self._entry.entry_id)
+                async_write_price_entry(self.hass, self._entry, overrides_from_data(area.id, fees))
                 return self.async_create_entry(title="", data={})
         schema = fees_schema(area, fee_defaults(area, dict(self._entry.data)))
         if user_input is not None:

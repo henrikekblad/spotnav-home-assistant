@@ -24,6 +24,12 @@ settings revision, so the fallback adds nothing there and every identity stays w
 
 A price entry that is added, changed, disabled or removed is announced with `SIGNAL_PRICE_SOURCES` (and its own
 `signal_price_source(entry_id)`); a consumer resolves again and acts when its source moved.
+
+Writes: `async_write_price_entry` is the one way the area and fees of a price entry change (the settings writes
+routed from a charger, the price device's own entities, its options flow). It updates the entry in place, never
+reloads it, and counts the write (`PriceSource.write_revision`, a counter that only grows). The settings record a
+charger answers with carries its own revision plus that counter (`wire_revision`), so a body read before a fee
+change made anywhere else is stale when it comes back (`api/settings.py`).
 """
 
 from __future__ import annotations
@@ -42,11 +48,12 @@ from ..const import (
     CONF_ENTRY_TYPE,
     CONF_PRICE_AREA,
     CONF_PRICE_ENTRY_ID,
+    CONF_PRICE_WRITE_REVISION,
     DOMAIN,
     ENTRY_TYPE_PRICE,
     ENTRY_TYPE_SITE,
 )
-from ..planning.auto_settings import AreaAutoSettings, AutoSettings, FiscalOverride
+from ..planning.auto_settings import AreaAutoSettings, AutoSettings, AutoSettingsError, FiscalOverride
 from ..runtime import domain_data
 from .relay_contract import AreaEntry
 
@@ -99,6 +106,8 @@ class PriceSource:
     #: The area's catalogue entry, or `None` while the catalogue does not list it.
     area: AreaEntry | None
     revision: str
+    #: How many times the price entry's area or fees were written in place; 0 for the charger's own settings.
+    write_revision: int = 0
 
     @property
     def fiscal(self) -> FiscalChoice | None:
@@ -128,7 +137,13 @@ class PriceSource:
         return None if self.entry_id is None else self.revision
 
     def diagnostics(self) -> dict[str, Any]:
-        return {"entry_id": self.entry_id, "area_id": self.area_id, "revision": self.revision, "via": self.via}
+        return {
+            "entry_id": self.entry_id,
+            "area_id": self.area_id,
+            "revision": self.revision,
+            "write_revision": self.write_revision,
+            "via": self.via,
+        }
 
 
 def source_revision(overrides: AreaAutoSettings) -> str:
@@ -197,6 +212,7 @@ def _from_entry(hass: HomeAssistant, entry: ConfigEntry, via: str) -> PriceSourc
         overrides=overrides,
         area=_area(hass, area_id),
         revision=source_revision(overrides),
+        write_revision=price_write_revision(entry),
     )
 
 
@@ -263,3 +279,56 @@ def plan_revision_for(hass: HomeAssistant, charger_id: str) -> str | None:
     """The price revision a plan for this charger is built on now (`PriceSource.plan_revision`)."""
     source = entry_source_for(hass, charger_id)
     return None if source is None else source.plan_revision
+
+
+def wire_revision(hass: HomeAssistant, charger_id: str, settings_revision: int) -> int:
+    """The `revision` a charger's settings record carries on the wire: its own, plus its price entry's write
+    counter. Both only grow, so the sum moves whenever either does and never goes back."""
+    source = entry_source_for(hass, charger_id)
+    return settings_revision + (0 if source is None else source.write_revision)
+
+
+def price_write_revision(entry: ConfigEntry) -> int:
+    """How many times this price entry's area or fees were written in place (0 for one never written)."""
+    value = entry.data.get(CONF_PRICE_WRITE_REVISION)
+    return value if isinstance(value, int) and not isinstance(value, bool) and value >= 0 else 0
+
+
+def default_price_title(area_id: str) -> str:
+    """The name SpotNav gives an electricity price entry: it follows the area while nobody renamed it."""
+    return f"Electricity price {area_id}"
+
+
+@callback
+def async_write_price_entry(
+    hass: HomeAssistant,
+    entry: ConfigEntry,
+    overrides: AreaAutoSettings,
+    *,
+    expected_write_revision: int | None = None,
+) -> None:
+    """Store a price entry's area and fees in place (no reload) and count the write.
+
+    `overrides` names the area and its fees. `expected_write_revision` is a compare-and-set against the entry's
+    write counter: a write built on an older one is refused (`revision_conflict`) and nothing changes. The entry's
+    update listener moves its live device and tells every consumer (`async_price_sources_changed`).
+    """
+    current = price_write_revision(entry)
+    if expected_write_revision is not None and current != expected_write_revision:
+        raise AutoSettingsError(
+            "revision_conflict",
+            f"the electricity price is at write {current}, not {expected_write_revision}",
+        )
+    overrides = overrides.validated()
+    previous_area = entry.data.get(CONF_PRICE_AREA)
+    title = entry.title
+    if previous_area and title == default_price_title(str(previous_area)):
+        # A name SpotNav gave follows the area; a name the person gave stays.
+        title = default_price_title(overrides.area_id)
+    data = {
+        **entry.data,
+        CONF_PRICE_AREA: overrides.area_id,
+        **{component: getattr(overrides, component).as_dict() for component in FEE_COMPONENTS},
+        CONF_PRICE_WRITE_REVISION: current + 1,
+    }
+    hass.config_entries.async_update_entry(entry, data=data, title=title)

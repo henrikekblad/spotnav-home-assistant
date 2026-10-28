@@ -2010,8 +2010,8 @@ async def test_a_real_entry_charts_on_reload_and_releases_everything_on_removal(
     await hass.async_block_till_done()
     assert response_for(hass, entry)["prices"]["intervals"], "a reload restores the chart"
     assert manager.area_snapshot(SE4) is not None
-    # One area selector's listener and one market observation's: exactly as many as before the reload.
-    assert len(manager._catalogue_listeners) == 2, "one per consumer, not two per consumer"
+    # The market observation's: exactly as many as before the reload (the area select is the price device's).
+    assert len(manager._catalogue_listeners) == 1, "one per consumer, not two per consumer"
 
     assert await hass.config_entries.async_remove(entry.entry_id)
     await hass.async_block_till_done()

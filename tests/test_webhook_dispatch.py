@@ -87,7 +87,7 @@ async def test_configuration_and_diagnostic_entities_are_categorised(hass: HomeA
     def category(key: str, platform: str):
         return registry.async_get(entity_id(hass, entry.entry_id, key, platform)).entity_category
 
-    assert category("price_area", "select").value == "config"
+    assert category("charge_periods", "select").value == "config"
     assert category("charging_current", "number").value == "config"
     assert category("departure_enabled", "switch").value == "config"
     assert category("auto_settings_revision", "sensor").value == "diagnostic"

@@ -16,15 +16,12 @@ from .execution.auto_execution import AutoExecutor
 from .execution.controller import ChargingController
 from .planning.auto_controller import AutoPlannerController, AutoSnapshot, SettingsReconcileError
 from .planning.auto_settings import (
-    AreaAutoSettings,
     AutoSettings,
     AutoSettingsError,
     AutoSettingsStore,
     FiscalOverride,
 )
 from .pricing.price_refresh import PriceRefreshManager
-from .pricing.price_repository import CatalogueSnapshot
-from .pricing.relay_contract import AreaEntry
 from .runtime import domain_data, executor_for, preview_for
 from .site.site_capacity_controller import SiteCapacityController
 
@@ -153,17 +150,6 @@ class AutoSurface:
         """This charger's stored settings, or `None` when there is no store to read."""
         return None if self.store is None else self.store.settings(entry_id)
 
-    def catalogue(self) -> CatalogueSnapshot | None:
-        """The relay's area list as it stands, or `None` when there is no price layer."""
-        return None if self.manager is None else self.manager.catalogue_snapshot()
-
-    def catalogue_entry(self, area_id: str | None) -> AreaEntry | None:
-        """One area's catalogue entry, or `None` when it cannot be read."""
-        if area_id is None:
-            return None
-        catalogue = self.catalogue()
-        return None if catalogue is None else catalogue.area(area_id)
-
 
 class SpotNavSiteEntity(Entity):
     """Entity backed by the SpotNav site capacity controller."""
@@ -234,24 +220,6 @@ class SpotNavAutoEntity(Entity):
     def snapshot(self) -> AutoSnapshot | None:
         """The preview's current immutable snapshot, or `None` without a preview."""
         return None if self._auto.preview is None else self._auto.preview.snapshot()
-
-    # Known gap until the area and fee entities move to the price entry: they show and write the charger's own
-    # stored area and fees. While an electricity price entry is the charger's price source
-    # (`pricing/price_source.py`) planning ignores those, so a change made here has no effect. Not to be released
-    # in this state.
-    @property
-    def area(self) -> AreaEntry | None:
-        """The selected area's catalogue entry, or `None` when there is none to read."""
-        settings = self.settings
-        return self._auto.catalogue_entry(None if settings is None else settings.area_id)
-
-    @property
-    def override(self) -> AreaAutoSettings | None:
-        """The selected area's fiscal overrides, or `None` when no area is selected."""
-        settings = self.settings
-        if settings is None or settings.area_id is None:
-            return None
-        return settings.override_for(settings.area_id)
 
     async def async_added_to_hass(self) -> None:
         """One listener, on the preview, for as long as HA keeps this entity."""

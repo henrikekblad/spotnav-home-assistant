@@ -178,13 +178,16 @@ SITE_RECOMPUTE_INTERVAL_S = 30
 
 SITE_PLATFORMS = ["binary_sensor", "sensor"]
 
-PRICE_PLATFORMS = ["binary_sensor", "number", "sensor"]
+PRICE_PLATFORMS = ["binary_sensor", "number", "select", "sensor"]
 # A price entry's data: the area, and each fee as a charger's settings store it
 # (`auto_settings.FiscalOverride.as_dict`: `{"enabled": bool, "value": float | None}`).
 CONF_PRICE_AREA = "area_id"
 CONF_PRICE_VAT = "vat"
 CONF_PRICE_TAX = "tax"
 CONF_PRICE_TRANSFER = "transfer"
+# How many times the area or fees were written in place (`pricing/price_source.py:async_write_price_entry`): a
+# counter that only grows, folded into the settings record's `revision` so a body read before a change is stale.
+CONF_PRICE_WRITE_REVISION = "write_revision"
 # On a charger entry or a site entry: the electricity price entry whose area and fees the charger (or every
 # charger on the site) uses (`pricing/price_source.py`). Absent, the site's pointer, then the only price entry,
 # then the charger's own Auto settings decide.
