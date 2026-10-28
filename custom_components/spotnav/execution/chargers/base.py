@@ -1,5 +1,6 @@
 """What every charger path shares: the outcome codes, the rate limiter, the two path interfaces
-(`StartStopPath`, `CurrentPath`), `AdapterCapabilities` and the small helpers the paths read states with.
+(`StartStopPath`, `CurrentPath`), the optional `PhaseSwitch` capability, `AdapterCapabilities` and the small
+helpers the paths read states with.
 
 Nothing here knows a vendor. A vendor's behaviour lives in its own module beside this one and
 registers itself in `registry.py`.
@@ -16,7 +17,7 @@ from collections.abc import Callable, Mapping
 from contextvars import ContextVar
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Any, Final
+from typing import Any, Final, Literal
 
 from homeassistant.const import STATE_UNAVAILABLE, STATE_UNKNOWN
 from homeassistant.core import HomeAssistant, State
@@ -393,6 +394,54 @@ class CurrentPath(ABC):
     def describe_state(self) -> dict[str, Any]:
         """What this path remembers or reads that decides what a write does (diagnostics only)."""
         return {}
+
+
+# --- phase switching -----------------------------------------------------------------------------
+
+#: Why a phase change was not sent: stable codes, never prose.
+PHASES_TARGET_UNAVAILABLE: Final = ASSIGN_TARGET_UNAVAILABLE
+#: Neither one nor three phases was asked for.
+PHASES_INVALID: Final = "invalid_phases"
+#: This charger has no way to change its phases.
+PHASES_UNSUPPORTED: Final = ASSIGN_UNSUPPORTED
+
+
+@dataclass(frozen=True, slots=True)
+class PhaseSwitchResult:
+    """What a phase change came to: sent, or not executed and why (`PHASES_*`)."""
+
+    sent: bool
+    reason: str | None = None
+
+
+def phase_switch_facts(switch: PhaseSwitch | None) -> dict[str, Any]:
+    """The capability as diagnostics report it, the same keys whether or not the charger has it."""
+    if switch is None:
+        return {"supported": False, "entity": None, "phases_now": None}
+    return {"supported": True, "entity": switch.entity_id, "phases_now": switch.phases_now()}
+
+
+class PhaseSwitch(ABC):
+    """An optional capability: the charger can be told to charge on one phase or on three.
+
+    A charger whose integration offers no such control has no `PhaseSwitch`, and nothing else about it changes.
+    Each vendor's module registers how its capability is found (`registry.register_phase_switch`), always through
+    the entity registry, never by a default entity id.
+    """
+
+    def __init__(self, hass: HomeAssistant, entity_id: str) -> None:
+        self.hass = hass
+        self.entity_id = entity_id
+
+    @abstractmethod
+    async def async_set_phases(self, phases: Literal[1, 3]) -> PhaseSwitchResult:
+        """Ask for `phases`; not executed (with its reason) when the entity is unavailable, so nothing may claim
+        a change that was never sent. Whether the charger took it is `phases_now`'s to say.
+        """
+
+    @abstractmethod
+    def phases_now(self) -> int | None:
+        """The phases the charger reports it is set to (1 or 3), or `None` when unknown or unavailable."""
 
 
 @dataclass(frozen=True, slots=True)
