@@ -910,7 +910,7 @@ class ChargingController:
         # Phase switching for solar (`phase_switching.py`): the charger's option (`CONF_PHASE_SWITCHING`, off unless its
         # entry data says true), what the switching of this plug-in has come to (persisted with the record), the timer
         # that gives up a switch the read-back never confirmed, and whether that was said in this plug-in.
-        self.phase_switching_option: bool = config.get(CONF_PHASE_SWITCHING) is True
+        self._phase_switching_config: bool = config.get(CONF_PHASE_SWITCHING) is True
         self._phases = PhaseSwitchState()
         self._phase_confirm_cancel: Callable[[], None] | None = None
         self._phase_warned = False
@@ -2624,6 +2624,15 @@ class ChargingController:
             await self._async_save_quietly()
 
     # ------------------------------------------------------------------ phase switching (`phase_switching.py`)
+
+    @property
+    def phase_switching_option(self) -> bool:
+        """The charger's phase switching option (`CONF_PHASE_SWITCHING`), read from its entry each time, so the
+        card's setting takes effect without a reload; the config it was set up with while the entry is gone."""
+        entry = self.hass.config_entries.async_get_entry(self.entry_id)
+        if entry is None:
+            return self._phase_switching_config
+        return entry.data.get(CONF_PHASE_SWITCHING) is True
 
     @property
     def switched_phases(self) -> Literal[1] | None:

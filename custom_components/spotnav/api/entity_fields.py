@@ -10,7 +10,10 @@ into a wire refusal and a pass into a write.
   (`number`) and `energy_register_entity` (`sensor`). Their only server-side check is the
   cross-entry duplicate-target guard in `vehicles/entity_conflicts.py`. `vehicle_soc` is reported
   read-only: it is resolved system-wide per device (`vehicles/vehicle_discovery.py`), not stored in
-  the charger's entry, so `update_entity_config` always refuses a write to it.
+  the charger's entry, so `update_entity_config` always refuses a write to it. `phase_switching` (a flag,
+  `CONF_PHASE_SWITCHING`: switch the charge to one phase when the sun does not carry three) is listed only
+  for a charger it can work on (`phase_switching_offered`); turning it on anywhere else is `not_writable`,
+  turning it off is always allowed.
 * Site fields (`SITE_FIELDS`): main fuse (A), measurement mode (`direct|derived`), the per-phase
   meters each mode needs (three `direct_L{n}`, or per phase in derived mode the required
   `derived_L{n}_{power,voltage}` and the optional `_power_export` (the export half of an import/export
@@ -68,6 +71,7 @@ from ..const import (
     CONF_SITE_CURRENT_SIGNED,
     CONF_SITE_CURRENT_SOURCE,
     CONF_MODE,
+    CONF_PHASE_SWITCHING,
     CURRENT_CONTROL_NUMBER,
     DEFAULT_CHARGER_PRIORITY,
     DEFAULT_MAX_AGE_S,
@@ -93,6 +97,7 @@ from ..site.site_detection import (
     MeterCandidate,
 )
 from ..site.measurement_source import PhaseMeasurementSource, grid_power_source_from_dict, source_from_dict
+from ..site.solar_capability import solar_capability
 from ..execution.charger_entities import (
     charger_entries,
     CONFLICT_DISABLED,
@@ -148,6 +153,9 @@ FIELD_CHARGER_PRIORITY: Final = "charger_priority"
 #: Where the site reads the charger's own measured current from (the entity, or the three entities,
 #: as text; `None` when it reads none). A site's per-charger wiring holds it: stated read-only.
 FIELD_CHARGER_MEASURED_SOURCE: Final = "measured_current_source"
+#: Phase switching for solar (`CONF_PHASE_SWITCHING`, a flag, off unless set): listed only where it can work
+#: (`phase_switching_offered`).
+FIELD_PHASE_SWITCHING: Final = "phase_switching"
 CHARGER_FIELDS: Final = (
     FIELD_CHARGE_CONTROL,
     FIELD_CURRENT_LIMIT,
@@ -157,6 +165,7 @@ CHARGER_FIELDS: Final = (
     FIELD_CHARGER_PHASES,
     FIELD_CHARGER_PRIORITY,
     FIELD_CHARGER_MEASURED_SOURCE,
+    FIELD_PHASE_SWITCHING,
     FIELD_VEHICLE_SOC,
 )
 FIELD_MAIN_FUSE_A: Final = "main_fuse_a"
@@ -578,9 +587,25 @@ def _voltage_descriptor(scope: Scope, value: str) -> dict[str, Any]:
     }
 
 
-def current_charger_values(entry: ConfigEntry) -> dict[str, str]:
+def phase_switching_offered(hass: HomeAssistant, entry: ConfigEntry) -> bool:
+    """Whether phase switching for solar is offered for this charger: its integration can switch the phases
+    (`adapter.phase_switch`), it is wired for three phases, and its site has a solar source (knows the grid's
+    signed power, `site/solar_capability.py`). Anywhere else the setting is not listed."""
+    controller = controller_for(hass, entry.entry_id)
+    if controller is None or controller.adapter.phase_switch is None:
+        return False
+    if (charger_wiring(hass, entry.entry_id) or DEFAULT_WIRING_PHASES) != 3:
+        return False
+    site = site_for_charger(hass, entry.entry_id)
+    if site is None:
+        return False
+    return solar_capability(site.data.get(CONF_MEASUREMENT_MODE), site.data.get(CONF_GRID_POWER_SOURCE)).capable
+
+
+def current_charger_values(entry: ConfigEntry) -> dict[str, Any]:
     """The writable charger fields' stored values, `""` for "not configured" (as `entry.data`), except
-    `current_limit` and `energy_register_entity`, which are `CURRENT_LIMIT_NONE` once the person chose "None".
+    `current_limit` and `energy_register_entity`, which are `CURRENT_LIMIT_NONE` once the person chose "None",
+    and `phase_switching`, a boolean.
     """
     return {
         FIELD_CHARGE_CONTROL: entry.data.get(CONF_CHARGE_CONTROL) or "",
@@ -598,6 +623,7 @@ def current_charger_values(entry: ConfigEntry) -> dict[str, str]:
         FIELD_VOLTAGE_BETWEEN_PHASES: _voltage_text(entry),
         FIELD_CHARGER_PHASES: str(charger_phases_from_entry(entry.data) or 3),
         FIELD_CHARGER_PRIORITY: entry.data.get(CONF_CHARGER_PRIORITY) or DEFAULT_CHARGER_PRIORITY,
+        FIELD_PHASE_SWITCHING: entry.data.get(CONF_PHASE_SWITCHING) is True,
     }
 
 
@@ -682,6 +708,13 @@ def charger_field_errors(
         elif changes[FIELD_CHARGER_PRIORITY] not in CHARGER_PRIORITIES:
             errors.append(FieldError(FIELD_CHARGER_PRIORITY, ERR_INVALID_VALUE))
 
+    if FIELD_PHASE_SWITCHING in changes:
+        if not isinstance(changes[FIELD_PHASE_SWITCHING], bool):
+            errors.append(FieldError(FIELD_PHASE_SWITCHING, ERR_INVALID_VALUE))
+        elif changes[FIELD_PHASE_SWITCHING] and not phase_switching_offered(hass, entry):
+            # Off is always allowed (a setting left on where it no longer works can be cleared).
+            errors.append(FieldError(FIELD_PHASE_SWITCHING, ERR_NOT_WRITABLE))
+
     if (
         FIELD_CHARGE_CONTROL in resolved
         and entry.data.get(CONF_MODE) == MODE_DETECTED
@@ -710,7 +743,7 @@ def charger_field_errors(
 
 def charger_field_descriptors(hass: HomeAssistant, entry: ConfigEntry) -> list[dict[str, Any]]:
     """`get_entity_config`'s `fields` entries for one charger, all scoped `"charger"`: `charge_control`,
-    `current_limit`, `energy_register_entity`, `vehicle_soc`.
+    `current_limit`, `energy_register_entity`, `vehicle_soc`, and `phase_switching` only where it is offered.
     """
     values = current_charger_values(entry)
     effective = _charger_effective(hass, entry, values)
@@ -819,6 +852,20 @@ def charger_field_descriptors(hass: HomeAssistant, entry: ConfigEntry) -> list[d
                 }
             ]
             if site_for_charger(hass, entry.entry_id) is not None
+            else []
+        ),
+        *(
+            [
+                {
+                    "field": FIELD_PHASE_SWITCHING,
+                    "scope": "charger",
+                    "kind": "flag",
+                    "required": False,
+                    "writable": True,
+                    "value": bool(values[FIELD_PHASE_SWITCHING]),
+                }
+            ]
+            if phase_switching_offered(hass, entry)
             else []
         ),
         vehicle_soc_descriptor(hass),

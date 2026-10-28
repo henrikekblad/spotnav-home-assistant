@@ -36,8 +36,9 @@ per-phase meters, battery power sensor and maximum measurement age), validated b
   touches `active_control_enabled` (any unknown key is `unknown_field`). An unload never stops a
   charge or clears a stored plan or setting.
 * Every outcome is one envelope, `not_admin` included, with the config re-read after any write.
-* A charger's priority alone is written without a reload: the site reads it from the entry on every
-  recompute. The webhook writes it through the same core as `update_charger_priority`
+* A charger's priority and its phase switching for solar are written without a reload: the site reads the
+  priority from the entry on every recompute, the charger's controller the phase switching each time it decides
+  (`ChargingController.phase_switching_option`). The webhook writes it through the same core as `update_charger_priority`
   (`async_webhook_update_charger_priority`), answering the dashboard's `charger_priority` block.
 """
 
@@ -77,6 +78,7 @@ from ..const import (
     CONF_MODE,
     CONF_SAFETY_MARGIN_A,
     CONF_CHARGER_PHASES,
+    CONF_PHASE_SWITCHING,
     CONF_VOLTAGE_BETWEEN_PHASES_V,
     MODE_DETECTED,
     MODE_OCPP,
@@ -136,6 +138,7 @@ from .entity_fields import (
     FIELD_SAFETY_MARGIN_A,
     FIELD_VEHICLE_SOC,
     FIELD_CHARGER_PHASES,
+    FIELD_PHASE_SWITCHING,
     FIELD_VOLTAGE_BETWEEN_PHASES,
     FieldError,
     FLAG_FIELDS,
@@ -167,6 +170,8 @@ ERROR_CONFLICT: Final = "spotnav_conflict"
 ERROR_INVALID_VALUE: Final = "spotnav_invalid_value"
 
 _SCOPES: Final = ("charger", "site")
+#: Charger fields read from the entry when they are used, so a write of only these needs no reload.
+_NO_RELOAD_CHARGER_FIELDS: Final = frozenset({FIELD_CHARGER_PRIORITY, FIELD_PHASE_SWITCHING})
 
 
 class EntityConfigRefusal(Exception):
@@ -264,6 +269,12 @@ def _write_charger(hass: HomeAssistant, entry: ConfigEntry, changes: dict[str, A
             updated.pop(CONF_CHARGER_PRIORITY, None)
         else:
             updated[CONF_CHARGER_PRIORITY] = changes[FIELD_CHARGER_PRIORITY]
+    if FIELD_PHASE_SWITCHING in changes:
+        # Stored only while on, so a charger left alone keeps exactly its old data.
+        if changes[FIELD_PHASE_SWITCHING]:
+            updated[CONF_PHASE_SWITCHING] = True
+        else:
+            updated.pop(CONF_PHASE_SWITCHING, None)
     if entry.data.get(CONF_MODE) == MODE_OCPP:
         apply_target(
             updated,
@@ -404,7 +415,7 @@ async def async_update_entity_config(
         raise _refuse(ERROR_INVALID_VALUE, errors)
 
     written = _write_site(hass, target, changes) if scope == "site" else _write_charger(hass, target, changes)
-    if written and not (scope == "charger" and set(changes) == {FIELD_CHARGER_PRIORITY}):
+    if written and not (scope == "charger" and set(changes) <= _NO_RELOAD_CHARGER_FIELDS):
         # Same reload the options flows perform: neither entry kind has an update listener.
         await hass.config_entries.async_reload(target.entry_id)
     return read_entity_config(hass, charger)
