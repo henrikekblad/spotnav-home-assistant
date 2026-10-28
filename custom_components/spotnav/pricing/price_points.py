@@ -20,11 +20,9 @@ from typing import Any, Callable, Final, Iterable, Mapping, Sequence
 from ..planning.auto_controller import fiscal_choice_for
 from ..planning.auto_settings import AreaAutoSettings, AutoSettings, FiscalOverride
 from ..planning.planner import chart_intervals, FiscalChoice
+from .price_source import fees_from_data
 from .relay_contract import AreaEntry, PriceDocument
 
-
-#: The three fees, in the order the flow asks for them, and the names a price entry stores them under.
-FEE_COMPONENTS: Final = ("vat", "tax", "transfer")
 
 #: What one fee is set to: nothing, the area's suggestion, or a figure of the person's own.
 FEE_OFF: Final = "off"
@@ -98,14 +96,7 @@ def default_fee_mode(area: AreaEntry | None, component: str) -> str:
 
 def overrides_from_data(area_id: str, data: Mapping[str, Any]) -> AreaAutoSettings:
     """A price entry's stored fees as a charger's per-area record. A missing or odd fee is off."""
-    fees: dict[str, FiscalOverride] = {}
-    for component in FEE_COMPONENTS:
-        raw = data.get(component)
-        try:
-            fees[component] = FiscalOverride.from_stored(raw, component)
-        except Exception:  # noqa: BLE001 - a stored entry that cannot be read adds nothing
-            fees[component] = FiscalOverride()
-    return AreaAutoSettings(area_id=area_id, **fees)
+    return fees_from_data(area_id, data)
 
 
 def fiscal_for(overrides: AreaAutoSettings, area: AreaEntry | None) -> FiscalChoice | None:

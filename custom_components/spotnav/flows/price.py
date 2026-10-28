@@ -21,7 +21,6 @@ from ..const import CONF_ENTRY_TYPE, CONF_PRICE_AREA, DOMAIN, ENTRY_TYPE_PRICE
 from ..planning.first_run import suggest_area
 from ..pricing.price_points import (
     default_fee_mode,
-    FEE_COMPONENTS,
     FEE_MANUAL,
     FEE_MODES,
     FEE_OFF,
@@ -32,6 +31,7 @@ from ..pricing.price_points import (
     overrides_from_data,
     suggestion,
 )
+from ..pricing.price_source import FEE_COMPONENTS
 from ..pricing.relay_contract import AreaCatalogue, AreaEntry
 from ..runtime import domain_data
 

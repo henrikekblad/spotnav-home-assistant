@@ -19,6 +19,7 @@ from typing import Any, Callable, Final, Literal
 
 from homeassistant.core import callback, HomeAssistant
 from homeassistant.exceptions import HomeAssistantError
+from homeassistant.helpers.dispatcher import async_dispatcher_connect
 from homeassistant.helpers.event import async_track_state_change_event
 from homeassistant.util import dt as dt_util
 
@@ -41,6 +42,7 @@ from ..execution.auto_execution import (
 from ..execution.solar_execution import site_supports_solar
 from ..pricing.market_observation import MarketObservation
 from ..pricing.price_refresh import PriceRefreshManager
+from ..pricing.price_source import entry_source_for, PriceSource, SIGNAL_PRICE_SOURCES, with_source
 from ..pricing.relay_contract import AreaEntry
 from ..runtime import domain_data
 from ..execution.controller import CONNECTION_PLUGGED_IN
@@ -489,6 +491,10 @@ class AutoSnapshot:
     #: is expected to reach by then, from the live reading, the planned energy and the charging
     #: efficiency; `None` for a manual need or a plan that is not short.
     expected_soc_percent: float | None = None
+    #: The price entry's revision this calculation priced with (`price_source.PriceSource.plan_revision`), or
+    #: `None` when the charger's own settings are its price source. A change of it is news, and it enters the
+    #: application's identity, so a fee change on the price entry replans and reinstalls.
+    price_revision: str | None = None
 
     def meaningful_key(self) -> tuple[Any, ...]:
         """What a listener hears about, and is not told twice.
@@ -500,6 +506,7 @@ class AutoSnapshot:
             self.state,
             self.reason,
             self.settings_revision,
+            self.price_revision,
             self.area_id,
             self.missing,
             self.price_state,
@@ -639,6 +646,12 @@ class AutoPlannerController:
         self._listeners: list[Callable[[AutoSnapshot], None]] = []
         self._unsubscribe: Callable[[], None] | None = None
         self._subscribed_area: str | None = None
+        # The price source (`pricing/price_source.py`) the subscription and observation were last matched to, as
+        # (entry id, area, revision); a price entry's change that moves it reconciles again. The listener for those
+        # changes, and the price revision the calculation in progress prices with.
+        self._source_key: tuple[str | None, str, str] | None = None
+        self._remove_source_listener: Callable[[], None] | None = None
+        self._price_revision: str | None = None
         # Which subscription a price notification belongs to. Not `_generation`: a settings write moves
         # that and keeps an unchanged area's subscription, which would then be heard as stale for good.
         self._subscription = 0
@@ -653,7 +666,10 @@ class AutoPlannerController:
 
     async def async_start(self) -> AutoSnapshot:
         """Bring the controller in line with the stored settings, once."""
-        settings = self._store.settings(self._entry_id)
+        settings = self._matched_source(self._store.settings(self._entry_id))
+        self._remove_source_listener = async_dispatcher_connect(
+            self._hass, SIGNAL_PRICE_SOURCES, self._on_price_sources
+        )
         if settings.area_id:
             await self._subscribe_for(settings)
         # The display need joins after the calculation subscription (the preview is the primary consumer).
@@ -661,10 +677,46 @@ class AutoPlannerController:
         self._publish(await self._calculate(settings))
         return self.snapshot()
 
+    def _source(self) -> PriceSource | None:
+        """The electricity price entry this charger prices with, or `None` for its own settings."""
+        return entry_source_for(self._hass, self._entry_id)
+
+    def _effective(self, settings: AutoSettings) -> AutoSettings:
+        """[settings] with the price source's area and fees: what every price reading here plans with."""
+        return with_source(settings, self._source())
+
+    @staticmethod
+    def _key_of(source: PriceSource | None) -> tuple[str | None, str, str] | None:
+        return None if source is None else (source.entry_id, source.area_id, source.revision)
+
+    def _matched_source(self, settings: AutoSettings) -> AutoSettings:
+        """`_effective`, remembering the source the subscription is about to be matched to."""
+        source = self._source()
+        self._source_key = self._key_of(source)
+        return with_source(settings, source)
+
+    @callback
+    def _on_price_sources(self, _entry_id: str) -> None:
+        """An electricity price entry was added, changed or removed: reconcile when this charger's source moved
+        (another entry, another area, other fees). A change to an entry this charger does not use is nothing."""
+        if self._shutdown:
+            return
+        if self._key_of(self._source()) == self._source_key:
+            return
+        self._hass.async_create_task(self._async_source_moved())
+
+    async def _async_source_moved(self) -> None:
+        if self._shutdown:
+            return
+        await self._reconcile(self._store.settings(self._entry_id))
+
     async def async_shutdown(self) -> None:
         """Stop for good: no more subscription, no more calculation, no more delivery."""
         self._shutdown = True
         self._generation += 1
+        if self._remove_source_listener is not None:
+            self._remove_source_listener()
+            self._remove_source_listener = None
         self._drop_subscription()
         self._cancel_wake()
         self._cancel_departure()
@@ -693,7 +745,7 @@ class AutoPlannerController:
     def snapshot(self) -> AutoSnapshot:
         """The current immutable snapshot, so a caller never waits for a change to read one."""
         if self._snapshot is None:
-            settings = self._store.settings(self._entry_id)
+            settings = self._effective(self._store.settings(self._entry_id))
             return self._fresh_snapshot(
                 settings,
                 "incomplete_settings",
@@ -760,8 +812,9 @@ class AutoPlannerController:
         """The zone the departure date is read in: the chosen area's, else the installation's own.
 
         From the held catalogue, not the subscription: a write that moves the area is judged in the new
-        area's zone before anything is subscribed to it.
+        area's zone before anything is subscribed to it. The area is the price source's (`_effective`).
         """
+        settings = self._effective(settings)
         entry = None if not settings.area_id else self._manager.catalogue_snapshot().area(settings.area_id)
         zone = None if entry is None else time_zones.zone(entry.tz)
         return zone if zone is not None else dt_util.get_default_time_zone()
@@ -932,7 +985,8 @@ class AutoPlannerController:
         return self.snapshot()
 
     async def _reconcile(self, settings: AutoSettings) -> None:
-        """Match the subscription to the settings, then recalculate."""
+        """Match the subscription to the settings and their price source, then recalculate."""
+        settings = self._matched_source(settings)
         self._generation += 1
         if settings.area_id:
             await self._subscribe_for(settings)
@@ -1014,6 +1068,10 @@ class AutoPlannerController:
             self._executor.begin_attempt() if self._executor is not None else self._attempt + 1
         )
         attempt = self._attempt
+        # The price source's area and fees, read once per calculation: everything below plans with them.
+        source = self._source()
+        settings = with_source(settings, source)
+        self._price_revision = None if source is None else source.plan_revision
         self._lapse_target_stop(settings)
         snapshot = await self._compute(settings, attempt)
         await self._apply(settings, snapshot, attempt)
@@ -1462,7 +1520,7 @@ class AutoPlannerController:
         """
         execution, applied_identity, pending_identity, _latest = self._execution_facts()
         application = application_for(
-            self._store.settings(self._entry_id), snapshot, effective_phases(self._hass, self._entry_id)
+            self._effective(self._store.settings(self._entry_id)), snapshot, effective_phases(self._hass, self._entry_id)
         )
         proposal_identity = None if application is None else application.identity
         applied = (
@@ -2478,6 +2536,7 @@ class AutoPlannerController:
             must_buy_kwh=must_buy_kwh,
             history=history,
             wait_rule=wait_rule,
+            price_revision=self._price_revision,
         )
 
     async def _state_only(self, state: AutoState, reason: AutoReason) -> AutoSnapshot:
@@ -2487,7 +2546,7 @@ class AutoPlannerController:
         """
         execution, _applied, _pending, latest_attempt = self._execution_facts()
         return self._fresh_snapshot(
-            self._store.settings(self._entry_id),
+            self._effective(self._store.settings(self._entry_id)),
             state,
             reason,
             self._now(),

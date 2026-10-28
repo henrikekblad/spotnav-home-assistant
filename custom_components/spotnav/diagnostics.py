@@ -26,6 +26,7 @@ from .const import (
     ENTRY_TYPE_SITE,
 )
 from .pricing.price_repository import catalogue_summary, day_summary, index_summary
+from .pricing.price_source import price_source_for
 from .runtime import (
     charger_data,
     controller_for,
@@ -119,6 +120,11 @@ def _push(hass: HomeAssistant, entry_id: str) -> dict[str, Any] | None:
     return None if push is None else push.diagnostics()
 
 
+def _price_source(hass: HomeAssistant, entry_id: str) -> dict[str, Any] | None:
+    source = price_source_for(hass, entry_id)
+    return None if source is None else source.diagnostics()
+
+
 def _charger_diagnostics(hass: HomeAssistant, entry: ConfigEntry) -> dict[str, Any]:
     controller = controller_for(hass, entry.entry_id)
     resolved = controller.resolve_current() if controller else None
@@ -127,6 +133,9 @@ def _charger_diagnostics(hass: HomeAssistant, entry: ConfigEntry) -> dict[str, A
         "config": async_redact_data(dict(entry.data), TO_REDACT),
         "price_data": _price_data(hass),
         "auto_price": _auto_price(hass, entry),
+        # Where the charger's price area and fees come from (`pricing/price_source.py`): the price entry, the area,
+        # the revision of its area and fees, and how it was found; null when nothing names an area.
+        "price_source": _price_source(hass, entry.entry_id),
         # The one-off import of charges from before the sessions feature: status, range, sessions and
         # how many hours were priced.
         "history_import": _history_import(hass, entry.entry_id),

@@ -23,7 +23,6 @@ from homeassistant.core import HomeAssistant
 
 from ..const import CONF_WEBHOOK_ID, DOMAIN
 from ..notifications.push import ERROR_INVALID_PUSH, parse_push_register, PushRegisterError
-from ..notifications.targets import available_targets
 from ..execution.auto_execution import (
     ACTION_RESUME,
     ACTION_STOP,
@@ -33,7 +32,6 @@ from ..execution.auto_execution import (
 )
 from ..execution.controller import ChargingExecutionError
 from ..planning.auto_settings import AutoSettingsError, MAX_PERIODS
-from ..planning.phases import effective_phases
 from ..runtime import ChargerConfigEntry, domain_data
 from ..vehicles.vehicle_charge_limit import async_set_charge_limit, VehicleChargeLimitLimited
 from ..vehicles.vehicle_refresh import async_refresh_vehicle, VehicleRefreshLimited
@@ -45,9 +43,9 @@ from .identification import webhook_choose_vehicle_identification, webhook_ident
 from .sessions import SESSIONS_API_VERSION, sessions_answer, SessionsRefusal
 from .settings import (
     async_update_settings,
-    fiscal_included_for,
-    settings_envelope,
+    settings_answer,
     settings_failure,
+    settings_failure_answer,
     settings_version_of,
     SettingsNotCommitted,
     SettingsReconcileError,
@@ -337,16 +335,16 @@ async def _settings(hass: HomeAssistant, entry: ChargerConfigEntry, payload: dic
         # Valid request, resolvable charger: our follow-up or persistence failed (502 here means
         # the charger's own command failed).
         return web.json_response(
-            _for_app({**settings_failure(failure.code, failure.settings, effective_phases(hass, entry.entry_id), fiscal_included_for(hass, failure.settings), available_targets(hass)), "action": action}, payload), status=500
+            _for_app({**settings_failure_answer(hass, entry.entry_id, failure.code, failure.settings), "action": action}, payload), status=500
         )
     except AutoSettingsError as refusal:
         store = domain_data(hass).auto_store
         current = None if store is None else store.settings(entry.entry_id)
         return web.json_response(
-            _for_app({**settings_failure(refusal.code, current, effective_phases(hass, entry.entry_id), fiscal_included_for(hass, current), available_targets(hass)), "action": action}, payload),
+            _for_app({**settings_failure_answer(hass, entry.entry_id, refusal.code, current), "action": action}, payload),
             status=409 if refusal.code == "revision_conflict" else 400,
         )
-    return web.json_response(_for_app({**settings_envelope(committed, effective_phases(hass, entry.entry_id), fiscal_included_for(hass, committed), available_targets(hass)), "action": action}, payload))
+    return web.json_response(_for_app({**settings_answer(hass, entry.entry_id, committed), "action": action}, payload))
 
 
 async def _push_register(hass: HomeAssistant, entry: ChargerConfigEntry, payload: dict[str, Any]) -> Outcome:

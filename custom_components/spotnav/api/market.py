@@ -23,6 +23,7 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import callback, HomeAssistant
 
 from ..pricing.price_repository import CatalogueSnapshot
+from ..pricing.price_source import price_source_for
 from ..pricing.relay_contract import AreaEntry
 from ..runtime import domain_data
 from .common import send_unsupported_version
@@ -118,8 +119,8 @@ async def async_market_options(hass: HomeAssistant, entry: ConfigEntry) -> dict[
     coalesced ensure path, since that is the one moment a fetch can change the answer; a held catalogue
     is never refreshed here and no timer, listener or download is created.
     """
-    store = domain_data(hass).auto_store
-    configured_area = None if store is None else store.settings(entry.entry_id).area_id
+    source = price_source_for(hass, entry.entry_id)
+    configured_area = None if source is None else source.area_id
     manager = domain_data(hass).price_refresh
     snapshot = None if manager is None else manager.catalogue_snapshot()
     if snapshot is None or snapshot.catalogue is None:

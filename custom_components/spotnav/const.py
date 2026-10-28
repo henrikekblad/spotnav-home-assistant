@@ -185,6 +185,10 @@ CONF_PRICE_AREA = "area_id"
 CONF_PRICE_VAT = "vat"
 CONF_PRICE_TAX = "tax"
 CONF_PRICE_TRANSFER = "transfer"
+# On a charger entry or a site entry: the electricity price entry whose area and fees the charger (or every
+# charger on the site) uses (`pricing/price_source.py`). Absent, the site's pointer, then the only price entry,
+# then the charger's own Auto settings decide.
+CONF_PRICE_ENTRY_ID = "price_entry_id"
 
 # Opt-in per site: whether `execution/yield_stepping.py`'s `YieldStepper` is consulted when applying.
 CONF_YIELD_STEPPING_ENABLED = "yield_stepping_enabled"

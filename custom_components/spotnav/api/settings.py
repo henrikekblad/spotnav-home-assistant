@@ -69,6 +69,7 @@ from ..planning.auto_settings import (
 from ..notifications.settings import NotificationSettings, NotificationSettingsError
 from ..notifications.targets import available_targets, encoded_available
 from ..planning.phases import effective_phases
+from ..pricing.price_source import effective_settings
 from ..runtime import controller_for, domain_data, preview_for
 from ..vehicles import vehicle_properties
 from ..vehicles.camera_settings import CameraSettings, CameraSettingsError
@@ -632,6 +633,24 @@ def settings_failure(
     }
 
 
+def settings_answer(hass: HomeAssistant, entry_id: str, settings: AutoSettings) -> dict[str, Any]:
+    """`settings_envelope` for one charger, as every transport answers it: `area_id` and that area's override row
+    are the charger's price source's (`pricing/price_source.py`), the other rows as stored. Without a price entry
+    this is the stored record exactly."""
+    readable = effective_settings(hass, entry_id, settings)
+    return settings_envelope(
+        readable, effective_phases(hass, entry_id), fiscal_included_for(hass, readable), available_targets(hass)
+    )
+
+
+def settings_failure_answer(hass: HomeAssistant, entry_id: str, code: str, settings: AutoSettings) -> dict[str, Any]:
+    """`settings_failure` for one charger, its record read as `settings_answer` reads it."""
+    readable = effective_settings(hass, entry_id, settings)
+    return settings_failure(
+        code, readable, effective_phases(hass, entry_id), fiscal_included_for(hass, readable), available_targets(hass)
+    )
+
+
 # The settings mutation, shared by the WebSocket commands and the scoped webhook, so the two
 # cannot drift.
 #
@@ -768,6 +787,12 @@ async def async_update_settings(
     committed record is what this returns. One edit is one store mutation, one revision and at most
     one reconcile, and never admits or clears a pause.
 
+    Known gap until writes are routed to the price source: `area_id` and the override rows are stored on the
+    charger as sent. While an electricity price entry is the charger's price source (`pricing/price_source.py`),
+    every reader takes the area and its fees from that entry, so a change of them made here has no effect, and a
+    body read from the dashboard carries the price entry's area and fees into the charger's own record. Not to be
+    released in this state.
+
     `plan_only` is a caller who is not an administrator: refused (`spotnav_not_admin`) unless the charger's
     `users_change_plan` is on, and then only for a body that moves nothing outside `NON_ADMIN_FIELDS`. Both are
     judged before anything is touched and again inside the store's lock, against the record being replaced.
@@ -845,7 +870,7 @@ async def websocket_get_settings(
     except SettingsRefusal as refusal:
         connection.send_error(msg["id"], refusal.code, "That charger is not available")
         return
-    connection.send_result(msg["id"], settings_envelope(settings, effective_phases(hass, msg["charger_id"]), fiscal_included_for(hass, settings), available_targets(hass)))
+    connection.send_result(msg["id"], settings_answer(hass, msg["charger_id"], settings))
 
 
 @websocket_api.websocket_command(
@@ -885,22 +910,12 @@ async def websocket_update_settings(
         connection.send_error(msg["id"], refusal.code, message)
         return
     except SettingsReconcileError as failure:
-        connection.send_result(
-            msg["id"], settings_failure(
-                failure.code, failure.settings, effective_phases(hass, entry_id),
-                fiscal_included_for(hass, failure.settings), available_targets(hass),
-            )
-        )
+        connection.send_result(msg["id"], settings_failure_answer(hass, entry_id, failure.code, failure.settings))
         return
     except SettingsNotCommitted as failure:
         # Nothing written, old record stands: a contract envelope (successful frame) since the
         # request itself was valid.
-        connection.send_result(
-            msg["id"], settings_failure(
-                failure.code, failure.settings, effective_phases(hass, entry_id),
-                fiscal_included_for(hass, failure.settings), available_targets(hass),
-            )
-        )
+        connection.send_result(msg["id"], settings_failure_answer(hass, entry_id, failure.code, failure.settings))
         return
     except AutoSettingsError as refusal:
         store = domain_data(hass).auto_store
@@ -908,14 +923,9 @@ async def websocket_update_settings(
         if current is None:
             connection.send_error(msg["id"], refusal.code, "Settings were refused")
             return
-        connection.send_result(
-            msg["id"], settings_failure(
-                refusal.code, current, effective_phases(hass, entry_id), fiscal_included_for(hass, current),
-                available_targets(hass),
-            )
-        )
+        connection.send_result(msg["id"], settings_failure_answer(hass, entry_id, refusal.code, current))
         return
-    connection.send_result(msg["id"], settings_envelope(settings, effective_phases(hass, msg["charger_id"]), fiscal_included_for(hass, settings), available_targets(hass)))
+    connection.send_result(msg["id"], settings_answer(hass, msg["charger_id"], settings))
 
 
 @callback

@@ -75,6 +75,7 @@ from ..execution.controller import (
 )
 from ..notifications.targets import available_targets
 from ..planning.auto_controller import AutoSnapshot, fiscal_choice_for
+from ..pricing.price_source import effective_settings
 from ..planning.auto_settings import (
     AutoSettings,
     AutoSettingsStore,
@@ -1017,7 +1018,9 @@ def capture_dashboard(
     controller = controller_for(hass, entry_id)
 
     now = dt_util.utcnow()
-    settings = None if store is None else store.settings(entry_id)
+    # The area and fees are the price source's (`pricing/price_source.py`): the market, the `fiscal` block and the
+    # settings record's `area_id`/`overrides` all follow it. Without a price entry it is the stored record.
+    settings = None if store is None else effective_settings(hass, entry_id, store.settings(entry_id))
     snapshot = None if preview is None else preview.snapshot()
     catalogue = None if repository is None else repository.catalogue_snapshot()
     area_id = None if settings is None else settings.area_id
