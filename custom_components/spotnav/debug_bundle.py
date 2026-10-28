@@ -43,6 +43,10 @@ know them passes them by.
 Inside each charger's `diagnostics.controller.adapter`, `phase_switch` (`supported`, `entity`, `phases_now`: whether
 the charger's integration can switch it between one and three phases, through which entity, and to what it is set)
 came later with no version change.
+
+Inside each charger's `diagnostics.controller`, `phase_switching` (`allowed`, `switched_phases`,
+`switches_this_plug_in`, `last_switch_at`, `settling`, `given_up`, `given_up_count`: the sun's switching between one
+and three phases on that charger) came later with no version change.
 """
 
 from __future__ import annotations
