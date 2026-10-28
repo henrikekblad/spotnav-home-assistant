@@ -200,7 +200,8 @@ class PriceConfigSteps:
 
     async def async_step_import(self, import_data: dict[str, Any]) -> ConfigFlowResult:
         """An electricity price SpotNav adds itself, from `{area_id, vat, tax, transfer}` (each fee as stored),
-        judged as the form judges it and named as the form names it. No question is asked.
+        judged as the form judges it and named as the form names it, or by an optional `title` (the migration names
+        a second price for an area after who uses it). No question is asked.
 
         Started only by the integration once it is set up: Home Assistant's setup of the integration waits for an
         import flow, so this step never sets it up itself (no price manager is an abort)."""
@@ -216,8 +217,9 @@ class PriceConfigSteps:
         fees = import_fees(area, import_data)
         if fees is None:
             return self.async_abort(reason="invalid_price_fees")  # type: ignore[attr-defined]
+        title = import_data.get("title")
         return self.async_create_entry(  # type: ignore[attr-defined]
-            title=default_title(area.id),
+            title=title if isinstance(title, str) and title.strip() else default_title(area.id),
             data={CONF_ENTRY_TYPE: ENTRY_TYPE_PRICE, CONF_PRICE_AREA: area.id, **fees},
         )
 

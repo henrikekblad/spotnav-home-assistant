@@ -20,7 +20,13 @@ from custom_components.spotnav.const import CONF_PRICE_ENTRY_ID, DOMAIN, ENTRY_T
 from custom_components.spotnav.planning.auto_settings import AreaAutoSettings, AutoSettingsError, FiscalOverride
 from custom_components.spotnav.pricing import price_setup
 from custom_components.spotnav.pricing.price_setup import async_migrate_price_sources
-from custom_components.spotnav.pricing.price_source import fees_from_data, price_source_for, VIA_CHARGER, VIA_SITE
+from custom_components.spotnav.pricing.price_source import (
+    async_write_price_entry,
+    fees_from_data,
+    price_source_for,
+    VIA_CHARGER,
+    VIA_SITE,
+)
 from custom_components.spotnav.pricing.price_store import price_duplicates
 from custom_components.spotnav.runtime import domain_data
 
@@ -437,3 +443,63 @@ async def test_a_removed_price_takes_its_pointers_along(hass: HomeAssistant, fre
 
     assert pointer(hass, site.entry_id) is None and pointer(hass, "entry_b") is None
     assert pointer(hass, "entry_a") == kept.entry_id, "a pointer to another entry stays"
+
+
+# ------------------------------------------------------------------ names beside a same-area price
+
+
+async def test_a_second_price_for_an_area_is_named_after_its_site(hass: HomeAssistant, freezer) -> None:
+    """The owner's installation: an existing SE4 price, and a site whose charger had other fees."""
+    await setup_charger(hass)
+    await setup_site(hass, charger_entry_ids=["entry_a"], title="Home")
+    freezer.move_to(NOW)
+    await go_auto(hass, overrides=(SE4_OWN_FEE,))
+    existing = await add_price(hass)
+
+    assert await migrate_again(hass)
+
+    [made] = [entry for entry in prices(hass) if entry.entry_id != existing.entry_id]
+    assert (existing.title, made.title) == ("Electricity price SE4", "Electricity price SE4 (Home)")
+
+
+async def test_a_second_price_is_named_after_its_charger_or_its_count(hass: HomeAssistant, freezer) -> None:
+    await two_chargers(hass)
+    await setup_charger(hass, entry_id="entry_c", webhook_id="webhook-c", charge_control="switch.charger_c", title="Garage")
+    freezer.move_to(NOW)
+    await go_auto(hass, "entry_a", overrides=(SE4_OWN_FEE,))
+    await go_auto(hass, "entry_b", overrides=(SE4_OWN_FEE,))
+    company = replace(SE4_OWN_FEE, vat=FiscalOverride())
+    await go_auto(hass, "entry_c", overrides=(company,))
+    await add_price(hass)
+
+    assert await migrate_again(hass)
+
+    by_fees = {fees_of(entry): entry.title for entry in prices(hass)}
+    assert by_fees[SE4_OWN_FEE] == "Electricity price SE4 (2 chargers)"
+    assert by_fees[company] == "Electricity price SE4 (Garage)"
+
+
+async def test_a_sole_price_keeps_the_forms_name(hass: HomeAssistant, freezer) -> None:
+    await setup_charger(hass, title="Garage")
+    freezer.move_to(NOW)
+    await go_auto(hass, overrides=(SE4_OWN_FEE,))
+
+    assert await migrate_again(hass)
+
+    assert [entry.title for entry in prices(hass)] == ["Electricity price SE4"]
+
+
+async def test_a_name_after_its_users_stays_when_the_area_changes(hass: HomeAssistant, freezer) -> None:
+    await setup_charger(hass)
+    await setup_site(hass, charger_entry_ids=["entry_a"], title="Home")
+    freezer.move_to(NOW)
+    await go_auto(hass, overrides=(SE4_OWN_FEE,))
+    existing = await add_price(hass)
+    assert await migrate_again(hass)
+    [made] = [entry for entry in prices(hass) if entry.entry_id != existing.entry_id]
+
+    async_write_price_entry(hass, made, AreaAutoSettings(area_id="DK1"))
+    await hass.async_block_till_done()
+
+    assert made.data["area_id"] == "DK1"
+    assert made.title == "Electricity price SE4 (Home)", "not the default name, so it does not follow the area"
