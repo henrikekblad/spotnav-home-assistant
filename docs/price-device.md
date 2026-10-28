@@ -175,7 +175,9 @@ Run the script after tomorrow's prices are published (in the afternoon) to let i
 
 - A new kind of config entry, `price`, beside `charger` and `site`. Its data is the area and the
   three fees, each stored as the charger's settings store them (`FiscalOverride`: off, on with the
-  area's suggestion, or on with a figure). The options flow edits the same data and reloads the entry.
+  area's suggestion, or on with a figure). The options flow, the device's area and fee entities and a
+  charger's settings writes (the card, the app) edit the same data in place
+  (`price_source.async_write_price_entry`): the entry is not reloaded, its device prices again at once.
 - The fees are resolved by the charger's own code (`auto_controller.fiscal_choice_for`) and the
   price with fees by the planner's (`planner.chart_intervals`, which applies
   `planner.effective_minor_per_kwh`), so a charger and a price entry with the same settings show the

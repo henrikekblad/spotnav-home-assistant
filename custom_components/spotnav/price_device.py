@@ -5,6 +5,10 @@ through the installation's one `PriceRefreshManager` under its own owner (`price
 shares the area's one fetch with every charger and releases only its own share. It keeps exactly one
 timer, at the next interval boundary, and tells its entities when the price, the hours or the
 interval changes; the entities poll nothing. The arithmetic is `pricing/price_points.py`.
+
+A change of the entry's area or fees is taken in place (`update_data`, from the entry's update listener): new
+fees price again at once, a new area releases the old one and subscribes to the new. The entry is never reloaded
+for it, so its entities never go unavailable over a fee change.
 """
 
 from __future__ import annotations
@@ -40,6 +44,7 @@ from .pricing.price_points import (
     Ranking,
 )
 from .pricing.price_refresh import AreaPriceSnapshot, PriceRefreshManager
+from .pricing.price_repository import CatalogueSnapshot
 from .pricing.relay_contract import AreaEntry
 
 
@@ -122,10 +127,11 @@ class PriceDevice:
         if self._closed or self._unsubscribe is not None or self._subscribing or not self.area_id:
             return
         self._subscribing = True
+        area_id = self.area_id
         try:
             await self._manager.async_ensure_catalogue()
             handle = await self._manager.async_subscribe(
-                owner_id=self.owner_id, area_id=self.area_id, listener=self._on_snapshot
+                owner_id=self.owner_id, area_id=area_id, listener=self._on_snapshot
             )
         except Exception as err:  # noqa: BLE001 - no prices yet is a state, not a failed setup
             _LOGGER.debug("Electricity price %s could not subscribe to %s: %s", self._entry_id, self.area_id, err)
@@ -137,6 +143,11 @@ class PriceDevice:
             self._subscribing = False
         if self._closed:
             handle()
+            return
+        if area_id != self.area_id:
+            # The area moved while this subscription was on its way: release it and take the new one.
+            handle()
+            self._hass.async_create_task(self._async_subscribe())
             return
         self._unsubscribe = handle
         if self._cancel_retry is not None:
@@ -174,6 +185,33 @@ class PriceDevice:
         self._snapshot = snapshot
         self._rebuild()
         self._notify()
+
+    @callback
+    def update_data(self, data: Mapping[str, Any]) -> None:
+        """The entry's area or fees were saved: price again with the new fees, or move to the new area."""
+        if self._closed:
+            return
+        area_id = str(data.get(CONF_PRICE_AREA) or "")
+        overrides = overrides_from_data(area_id, data)
+        if area_id == self.area_id and overrides == self.overrides:
+            return
+        moved = area_id != self.area_id
+        self.area_id, self.overrides = area_id, overrides
+        if not moved:
+            self._rebuild()
+            self._notify()
+            return
+        if self._unsubscribe is not None:
+            self._unsubscribe()
+            self._unsubscribe = None
+        if self._cancel_retry is not None:
+            self._cancel_retry()
+            self._cancel_retry = None
+        self._snapshot = None
+        self._points, self._problem = (), "loading"
+        self._rank()
+        self._notify()
+        self._hass.async_create_task(self._async_subscribe())
 
     # ----------------------------------------------------------------- the prices
 
@@ -234,6 +272,10 @@ class PriceDevice:
             listener()
 
     # ----------------------------------------------------------------- reads
+
+    def catalogue(self) -> CatalogueSnapshot:
+        """The relay's area list as the installation holds it."""
+        return self._manager.catalogue_snapshot()
 
     @property
     def area(self) -> AreaEntry | None:

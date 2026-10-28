@@ -322,5 +322,6 @@ async def test_diagnostics_name_each_chargers_price_source(hass: HomeAssistant, 
         "entry_id": "price_a",
         "area_id": SE4,
         "revision": source.revision,
+        "write_revision": 0,
         "via": "only",
     }
