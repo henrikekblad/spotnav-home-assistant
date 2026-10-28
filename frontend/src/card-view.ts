@@ -2451,10 +2451,13 @@ export function createCardView(input: CardViewInput): CardView {
     return section;
   }
 
-  /** An electricity price's name as shown: the name SpotNav gives one ("Electricity price SE4") in the reader's language. */
+  /**
+   * An electricity price's name as shown: the name SpotNav gives one ("Electricity price SE4", or "Electricity price
+   * SE4 (Home)" beside another for the same area) in the reader's language, the part in brackets as it is.
+   */
   function priceTitle(title: string): string {
-    const given = /^Electricity price ([A-Za-z0-9-]+)$/.exec(title);
-    return given === null ? title : translate(model.language, "price.title", { area: given[1]! });
+    const given = /^Electricity price ([A-Za-z0-9-]+)( \(.+\))?$/.exec(title);
+    return given === null ? title : `${translate(model.language, "price.title", { area: given[1]! })}${given[2] ?? ""}`;
   }
 
   /**

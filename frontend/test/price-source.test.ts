@@ -141,7 +141,7 @@ describe("the Electricity price section", () => {
     expect(question.textContent).toContain("Två elpriser för SE4 med olika avgifter. Använd ett?");
     expect(Array.from(question.querySelectorAll("button")).map((button) => button.textContent)).toEqual([
       "Använd Elpris SE4",
-      "Använd Electricity price SE4 (company)",
+      "Använd Elpris SE4 (company)",
       "Behåll båda",
     ]);
   });
