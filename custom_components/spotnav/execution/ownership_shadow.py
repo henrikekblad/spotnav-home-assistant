@@ -115,6 +115,8 @@ class ShadowToken:
     early: Event | None = None
     early_pre: ChargeSession | None = None
     early_commands: tuple[Command, ...] = ()
+    #: When it was decided at `begin`, on the shadow's decision clock (`_decide`'s `order`): its record says so.
+    early_order: int = 0
 
 
 @dataclass(frozen=True)
@@ -235,6 +237,8 @@ class OwnershipShadow:
         # Records kept so far, and a quiet report's record held back with the count at the time (`_decide`).
         self._recorded = 0
         self._quiet: tuple[dict[str, Any], int] | None = None
+        # The decision clock (`_tick`).
+        self._ticks = 0
 
     # ------------------------------------------------------------------ feeding
 
@@ -288,6 +292,7 @@ class OwnershipShadow:
     def _decide_early(self, token: ShadowToken, event: Event) -> tuple[Command, ...]:
         try:
             token.early_pre = self.session
+            token.early_order = self._tick()
             self.session, token.early_commands = decide(self.session, event, self._now())
             token.early = event
         except Exception:  # noqa: BLE001 - decided at `end` as ever
@@ -491,6 +496,12 @@ class OwnershipShadow:
             record["result"] = result.to_dict()
         if item.token.outermost and item.token.lined_up:
             record["pre"] = _compact(pre)
+        # The decision clock: when this record's event (or, decided at `begin`, its result) was decided, and when
+        # an event decided at `begin` was. A replay decides each in that order (`core/replay.py`), so a feed decided
+        # at its `begin` comes before the feeds in it that are kept before its own record.
+        record["order"] = self._tick()
+        if item.token.early is not None and item.token.early_pre is not None:
+            record["early"] = item.token.early_order
         if (
             item.event.kind in _REPORTS
             and session == pre
@@ -506,6 +517,10 @@ class OwnershipShadow:
         if item.defer_intent and (session.manual, session.span_pause) != (pre.manual, pre.span_pause):
             self._intent_deferred = True
         return record, tuple(sorted(command.kind for command in commands if command.kind != "keep"))
+
+    def _tick(self) -> int:
+        self._ticks += 1
+        return self._ticks
 
     def _record(self, record: dict[str, Any]) -> None:
         self.events.append(record)
