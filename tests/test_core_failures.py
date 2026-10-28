@@ -166,6 +166,19 @@ async def test_the_issue_goes_after_a_day_without_failures(
 
 
 @pytest.mark.usefixtures("driving")
+async def test_an_issue_left_from_before_a_crash_goes_when_the_charger_starts(
+    hass: HomeAssistant, timers: FakeScheduler
+) -> None:
+    ir.async_create_issue(
+        hass, DOMAIN, ISSUE, is_fixable=False, severity=ir.IssueSeverity.WARNING,
+        translation_key=CORE_DECISION_FAILED_ISSUE, translation_placeholders={"charger": TITLE},
+    )
+    world = await _world(hass, timers)
+    assert _issue(hass) is None, "nothing in memory would ever end it"
+    await world.shutdown()
+
+
+@pytest.mark.usefixtures("driving")
 async def test_the_issue_goes_at_a_reload_and_survives_a_resync(
     hass: HomeAssistant, timers: FakeScheduler, monkeypatch: pytest.MonkeyPatch, freezer: Any
 ) -> None:
