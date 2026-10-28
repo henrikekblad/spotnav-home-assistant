@@ -288,7 +288,7 @@ async def test_with_a_price_entry_the_card_and_the_app_read_its_area_and_fees(ha
     assert dashboard_api.serialize_market(capture)["area_id"] == SE4
     assert (fiscal["tax"]["policy"], fiscal["transfer"]["effective_value"]) == ("off", 12.5)
     assert answer["settings"] == record
-    # The charger's own record is untouched: writes are not routed to the price entry yet.
+    # Reading changes nothing: the charger's own record keeps its own area.
     assert settings_of(hass, "entry_a").area_id == "DK1"
 
 
