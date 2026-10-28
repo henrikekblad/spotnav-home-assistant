@@ -48,6 +48,7 @@ from ..const import (
     CONF_OCPP_CHARGE_POINT_ID,
     CONF_OCPP_CONNECTOR_ID,
     CONF_OCPP_TARGET_UNRESOLVED,
+    CONF_PHASE_SWITCHING,
     CONF_POWER_ENTITY,
     CURRENT_CONTROL_CHANGE_CONFIGURATION,
     DEFAULT_IDLE_POWER_W,
@@ -102,6 +103,7 @@ from .charge_progress import (
     connector_status,
     START_ACK_TIMEOUT_S,
 )
+from .phase_switching import CONFIRM_S, PhaseSwitchState, STORE_KEY as PHASE_SWITCHING_STORE_KEY
 from .plan_car_ended import PlanChargeWatch
 from .target_stop import (
     car_ended_full,
@@ -905,6 +907,13 @@ class ChargingController:
         # and takes its owner back (`_take_core_owner`). The verdicts a report or a timer acts on, while it runs.
         drives = config.get(CONF_CORE_OWNERSHIP)
         self._core_drives = bool(ownership_shadow_module.CORE_OWNERSHIP_DEFAULT if drives is None else drives)
+        # Phase switching for solar (`phase_switching.py`): the charger's option (`CONF_PHASE_SWITCHING`, off unless its
+        # entry data says true), what the switching of this plug-in has come to (persisted with the record), the timer
+        # that gives up a switch the read-back never confirmed, and whether that was said in this plug-in.
+        self.phase_switching_option: bool = config.get(CONF_PHASE_SWITCHING) is True
+        self._phases = PhaseSwitchState()
+        self._phase_confirm_cancel: Callable[[], None] | None = None
+        self._phase_warned = False
         self._core_report_verdict: frozenset[tuple[str, str]] | None = None
         # The manual pause the core decided for the plug-in or unplug being told (`core_connection_manual`).
         self._core_connection_manual: Any = ...
@@ -1047,6 +1056,9 @@ class ChargingController:
                 self._hold.held = hold.get("held") is True
                 self._hold.overridden = hold.get("overridden") is True
             self.adapter.restore_memory(saved.get("adapter_memory"))
+            # Forced to one phase by us before the restart: kept, until the charger's read-back says otherwise
+            # (`reconcile_phases`).
+            self._phases = PhaseSwitchState.from_store(saved.get(PHASE_SWITCHING_STORE_KEY))
         self._saved_memory = self._memory_signature()
         stored, migrate = self._stored_session(saved)
         keys_newer = self._restore_order(saved) if stored is not None else False
@@ -1421,6 +1433,9 @@ class ChargingController:
             self._end_estimate_check()
         if connected is False or previous is False:
             self._session_generation += 1
+            # Phase switching's budget and a give-up belong to the plug-in; nothing is sent (the charger stays on
+            # whatever phases it is set to until a start sets what it needs).
+            self._new_phase_plug_in()
             # A safety stop's hold belongs to the plug-in it was made in.
             self._held_for_safety = False
             self._safety_stopped_at = None
@@ -1794,6 +1809,7 @@ class ChargingController:
             held=self.adapter.held_by_charger(),
             balancing_paused=self._paused_by_balancing,
             start_pending=self.start_pending,
+            phase_switch_settling=self.phase_switch_settling,
         )
         if ended:
             self._async_spawn(self._async_plan_car_ended(), "the car's end of the plan's charge")
@@ -2474,7 +2490,8 @@ class ChargingController:
         return await self._claim_locked()
 
     async def _claim_locked(self) -> bool:
-        """The claim itself: the charge running is the plan's."""
+        """The claim itself: the charge running is the plan's, on the charger's full phases."""
+        await self._restore_three_phases_locked()
         self._plan_charge = True
         self._charge_origin = "plan_window"
         self._hold.spotnav_started()
@@ -2603,6 +2620,197 @@ class ChargingController:
         async with self._lock:
             self._solar_car_ended = None if record is None else dict(record)
             await self._async_save_quietly()
+
+    # ------------------------------------------------------------------ phase switching (`phase_switching.py`)
+
+    @property
+    def switched_phases(self) -> Literal[1] | None:
+        """1 while the charger is forced to one phase by us (its read-back confirmed it), else `None`."""
+        return self._phases.switched_phases
+
+    @property
+    def phase_switch_settling(self) -> bool:
+        """Whether a phase switch settles (`phase_switching.SETTLE_S` after it was sent): the charge may show nothing
+        meanwhile, and nothing reads that as the car ending it, a start that did not take or a phase it charges on."""
+        return self._phases.settling(dt_util.utcnow())
+
+    def phase_switch_settle_left_s(self) -> float:
+        """How long (seconds) the settle of a phase switch still runs, 0 when none does."""
+        return self._phases.settle_left_s(dt_util.utcnow())
+
+    @property
+    def phase_switches_this_plug_in(self) -> int:
+        """The phase switches the sun made in this plug-in (its budget's count)."""
+        return self._phases.switches
+
+    @property
+    def last_phase_switch_at(self) -> datetime | None:
+        """When the sun last switched this plug-in's phases, `None` when it did not."""
+        return self._phases.last_switch_at
+
+    def phase_switch_allowed(self) -> bool:
+        """Whether the sun may switch this charger's phases now: its option is on, its integration can switch it, it
+        is wired for three phases, the planned vehicle's onboard charger is not a one-phase one, and switching was not
+        given up in this plug-in."""
+        if not self.phase_switching_option or self._phases.given_up or self.adapter.phase_switch is None:
+            return False
+        # (imported here: `planning/phases.py` reaches this module through `planning/first_run.py`)
+        from ..planning.phases import charging_phases
+
+        phases = charging_phases(self.hass, self.entry_id)
+        return phases.wiring == 3 and phases.vehicle != 1
+
+    def phase_switching_facts(self) -> dict[str, Any]:
+        """For the diagnostics: whether switching is allowed, what the charger is forced to, the budget's count, the
+        last switch, a settle, a give-up and how many were given up."""
+        return self._phases.facts(dt_util.utcnow(), allowed=self.phase_switch_allowed())
+
+    def _phases_read_back(self) -> int | None:
+        switch = self.adapter.phase_switch
+        return None if switch is None else switch.phases_now()
+
+    def _phase_switching_kept(self) -> bool:
+        """Whether anything about phases is looked at: the option on, or a switch of ours kept or on its way."""
+        phases = self._phases
+        return self.phase_switching_option or phases.switched_phases is not None or phases.confirming is not None
+
+    def reconcile_phases(self) -> None:
+        """Look at the charger's read-back: a switch on its way is confirmed or, past `CONFIRM_S`, given up; with none
+        on its way the read-back wins over what is kept (a restart, a switch made by hand). Nothing with the option
+        off and no switch of ours."""
+        if not self._phase_switching_kept():
+            return
+        read_back = self._phases_read_back()
+        outcome = self._phases.confirm(read_back, dt_util.utcnow())
+        if outcome == "confirmed":
+            self._cancel_phase_confirm()
+            _LOGGER.debug(
+                "SpotNav charger %s: the charger confirmed %s phase(s)", self.entry_id, read_back
+            )
+            self._save_memory_soon()
+            self._notify()
+        elif outcome == "given_up":
+            self._phase_switch_given_up(read_back)
+        elif self._phases.reconcile(read_back):
+            _LOGGER.info(
+                "SpotNav charger %s: the charger reads %s phase(s), which is what it is reckoned on now",
+                self.entry_id,
+                read_back,
+            )
+            self._save_memory_soon()
+            self._notify()
+
+    def _phase_switch_given_up(self, read_back: int | None) -> None:
+        """A switch the charger did not take: logged once per plug-in, counted in the diagnostics, nothing more (the
+        person cannot act on it). The charge goes on, by the rules without switching, on what the read-back shows."""
+        self._cancel_phase_confirm()
+        if not self._phase_warned:
+            self._phase_warned = True
+            _LOGGER.warning(
+                "SpotNav charger %s: the charger did not confirm a phase switch within %.0f s; phase switching is off "
+                "for this plug-in, and the charge goes on on %s phase(s)",
+                self.entry_id,
+                CONFIRM_S,
+                1 if read_back == 1 else 3,
+            )
+        self._save_memory_soon()
+        self._notify()
+
+    def _arm_phase_confirm(self) -> None:
+        self._cancel_phase_confirm()
+        self._phase_confirm_cancel = async_call_later(
+            self.hass,
+            CONFIRM_S,
+            HassJob(self._phase_confirm_due, "SpotNav phase switch confirmation", cancel_on_shutdown=True),
+        )
+
+    def _cancel_phase_confirm(self) -> None:
+        cancel = self._phase_confirm_cancel
+        self._phase_confirm_cancel = None
+        if cancel is not None:
+            cancel()
+
+    @callback
+    def _phase_confirm_due(self, _now: datetime) -> None:
+        """`CONFIRM_S` after a switch: confirmed by now, or given up."""
+        self._phase_confirm_cancel = None
+        if self._shut_down or self._phases.confirming is None:
+            return
+        read_back = self._phases_read_back()
+        by = self._phases.confirm_by
+        outcome = self._phases.confirm(read_back, max(dt_util.utcnow(), by) if by is not None else dt_util.utcnow())
+        if outcome == "given_up":
+            self._phase_switch_given_up(read_back)
+        elif outcome == "confirmed":
+            self._save_memory_soon()
+            self._notify()
+
+    def _new_phase_plug_in(self) -> None:
+        """A plug-in or an unplug: the switch budget and a give-up start afresh (`PhaseSwitchState.new_plug_in`)."""
+        if self._phases.switches or self._phases.given_up or self._phase_warned:
+            self._phases.new_plug_in()
+            self._phase_warned = False
+            self._save_memory_soon()
+
+    async def async_switch_phases(self, phases: Literal[1, 3], *, min_current_a: float, counted: bool = True) -> bool:
+        """The sun's switch of the charge it runs, `counted` against the plug-in's budget, or the phases of the charge
+        it is about to start (not counted: nothing is interrupted). Returns whether the switch went out."""
+        async with self._lock:
+            return await self._switch_phases_locked(phases, min_current_a=min_current_a, counted=counted)
+
+    async def _switch_phases_locked(self, phases: Literal[1, 3], *, min_current_a: float, counted: bool) -> bool:
+        """The switch itself, with the operation lock held. Up to three phases while a charge runs, the minimum
+        current is written first (evcc #8572: a charger that jumped from one phase at its maximum to three), and the
+        current asked for is lowered to it; the charger does the interruption itself (no pause or resume is sent).
+        Then it settles and waits for its read-back (`CONFIRM_S`). A switch that does not go out is given up for the
+        plug-in."""
+        if self._shut_down:
+            return False
+        now = dt_util.utcnow()
+        if phases == 3 and (self._control_on or self.charging):
+            amps = max(int(math.ceil(min_current_a - 1e-9)), int(DEFAULT_MIN_CURRENT_A))
+            if self._requested_current_a is not None and self._requested_current_a > amps:
+                self._requested_current_a = amps
+            outcome = await self._async_assign_current_outcome(amps, reason=WRITE_SOLAR)
+            if outcome not in IN_EFFECT_OUTCOMES and self.adapter.capabilities.set_current:
+                _LOGGER.debug(
+                    "SpotNav charger %s: not switched to three phases, the minimum current did not go out first (%s)",
+                    self.entry_id,
+                    outcome,
+                )
+                if counted:
+                    self._phases.counted_attempt(now)
+                await self._async_save_quietly()
+                return False
+        result = await self.adapter.async_set_phases(phases)
+        if not result.sent:
+            if counted:
+                self._phases.counted_attempt(now)
+            read_back = self._phases_read_back()
+            self._phases.give_up(read_back)
+            self._phase_switch_given_up(read_back)
+            await self._async_save_quietly()
+            return False
+        _LOGGER.info("SpotNav charger %s: switching to %s phase(s)", self.entry_id, phases)
+        self._phases.sent(phases, now, counted=counted)
+        self._arm_phase_confirm()
+        # A read-back that already shows it confirms it at once.
+        self.reconcile_phases()
+        await self._async_save_quietly()
+        self._notify()
+        return True
+
+    async def _restore_three_phases_locked(self) -> None:
+        """Before a start or a take-over that is not the sun's (a plan window, a person's Start, a top-off, the car's
+        minimum charge level, Hybrid's grid part): a charger forced to one phase by us is set back to three, the minimum
+        current first. Not counted against the budget, and not once switching was given up in this plug-in."""
+        phases = self._phases
+        if phases.given_up or (phases.switched_phases != 1 and phases.confirming != 1):
+            return
+        if self.adapter.phase_switch is None:
+            return
+        _LOGGER.info("SpotNav charger %s: back to three phases before a charge that is not the sun's", self.entry_id)
+        await self._switch_phases_locked(3, min_current_a=DEFAULT_MIN_CURRENT_A, counted=False)
 
     def self_started_charge(self) -> bool:
         """Whether a charge runs that the charger began by itself (at plug-in, say): nobody here started
@@ -2776,7 +2984,12 @@ class ChargingController:
         """One look at which phases carry the charge; a finished charge is taken into what is learned."""
         from ..planning.phases import async_record_charge_phases
 
-        observed = self._phase_observer.sample(self.charging, self.charge_phase_currents())
+        observed = self._phase_observer.sample(
+            self.charging,
+            self.charge_phase_currents(),
+            # A charge forced to one phase, or one whose switch settles, says nothing about the car (`phases.py`).
+            switched=self.switched_phases == 1 or self.phase_switch_settling,
+        )
         if observed is not None:
             self.hass.async_create_task(async_record_charge_phases(self.hass, self.entry_id, observed))
 
@@ -3188,7 +3401,11 @@ class ChargingController:
           (`CONF_CURRENT_CONTROL`). By default the current-limit entity is never written, since that would
           send a persistent charging profile. The recorded request is what the dashboard reports and what
           the load balancer computes against.
+        * A start that is not the sun's sets a charger forced to one phase back to three first
+          (`_restore_three_phases_locked`): only the sun's charges switch phases.
         """
+        if manual or cause != "solar":
+            await self._restore_three_phases_locked()
         self._paused_by_balancing = False
         # Whatever balancing paused before is over: this start is a charge of its own.
         self._paused_charge = None
@@ -4020,6 +4237,16 @@ class ChargingController:
     @callback
     def _async_start_retry_callback(self, _now: datetime) -> None:
         self._start_retry_cancel = None
+        settle_left_s = self.phase_switch_settle_left_s()
+        if settle_left_s > 0 and self._start_retry_since is not None:
+            # A phase switch settles: the charger interrupts the charge itself, which is no start that did not take.
+            # The retry is decided once it has settled.
+            self._start_retry_cancel = async_call_later(
+                self.hass,
+                settle_left_s,
+                HassJob(self._async_start_retry_callback, "SpotNav window start retry", cancel_on_shutdown=True),
+            )
+            return
         self._async_spawn(self._async_retry_window_start(), "the window start's retry")
 
     def _start_retry_refused(self, allowed: bool) -> str | None:
@@ -4259,6 +4486,7 @@ class ChargingController:
         self._cancel_stop_retry()
         self._cancel_owed()
         self._cancel_person_hold_retry()
+        self._cancel_phase_confirm()
         # A top-off's deadline stays stored: the next start resumes it or ends it.
         self._cancel_top_off_timers()
         # State-change subscriptions are local callbacks too: nothing may be decided or called
@@ -4433,6 +4661,7 @@ class ChargingController:
             self._charge_origin,
             self._plan_charge,
             tuple(sorted(self.adapter.memory().items())),
+            self._phases.to_store(),
         )
 
     def _save_memory_soon(self) -> None:
@@ -4470,7 +4699,7 @@ class ChargingController:
 
     def _store_record(self) -> dict[str, Any]:
         """Today's keys, as saved."""
-        return {
+        record: dict[str, Any] = {
             "plan": asdict(self.plan) if self.plan else None,
             "requested_current_a": self._requested_current_a,
             "plan_charge": self._plan_charge,
@@ -4504,6 +4733,11 @@ class ChargingController:
             },
             "solar_car_ended": self._solar_car_ended,
         }
+        phases = self._phases.to_store()
+        if phases is not None:
+            # Only while there is something to keep: a charger that never switched keeps exactly its old record.
+            record[PHASE_SWITCHING_STORE_KEY] = phases
+        return record
 
     # ------------------------------------------------------------------ the core's stored session
 

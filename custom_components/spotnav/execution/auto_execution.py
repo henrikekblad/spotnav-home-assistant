@@ -26,7 +26,7 @@ from collections.abc import AsyncIterator, Awaitable, Callable
 from contextlib import asynccontextmanager
 from dataclasses import dataclass, replace
 from datetime import datetime, time as dt_time, timedelta, timezone
-from typing import Any, Final
+from typing import Any, Final, Literal
 
 from homeassistant.core import callback, HomeAssistant
 from homeassistant.exceptions import HomeAssistantError
@@ -2169,6 +2169,21 @@ class AutoExecutor:
             ) or self._controller.charge_origin == ORIGIN_MIN_SOC:
                 return
             await self._controller.async_set_requested_current(amps)
+
+    async def async_solar_set_phases(
+        self, phases: Literal[1, 3], *, min_current_a: float, counted: bool = True
+    ) -> bool:
+        """The sun's phase switch of the charge it runs, or the phases of the charge it is about to start (not
+        `counted`: nothing is interrupted), through `ChargingController.async_switch_phases`, under this lock, only
+        while the strategy is the sun's and no pause blocks execution, and never on the floor's charge. Not an
+        ownership change: who owns the charge stays as it is. Returns whether the switch went out."""
+        async with self._lock:
+            settings = self._store.settings(self._entry_id)
+            if pause_blocks_execution(settings) or settings.strategy not in (
+                STRATEGY_SOLAR, STRATEGY_HYBRID
+            ) or self._controller.charge_origin == ORIGIN_MIN_SOC:
+                return False
+            return await self._controller.async_switch_phases(phases, min_current_a=min_current_a, counted=counted)
 
     async def async_solar_write_current(self, amps: int, *, cap_a: int) -> str | None:
         """The sun's own write of its current, where active control does not write it
