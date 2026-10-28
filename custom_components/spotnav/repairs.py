@@ -250,6 +250,8 @@ class CoreFailureRepairs:
         self._name = name
         self._times: deque[datetime] = deque()
         self._cancel_timer: Callable[[], None] | None = None
+        # The count lives in memory, so an issue left from before a crash has nothing to end it: it goes now.
+        ir.async_delete_issue(hass, DOMAIN, self.issue_id)
 
     @property
     def issue_id(self) -> str:
