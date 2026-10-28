@@ -13,6 +13,7 @@ Everything an entry starts is stopped with `entry.async_on_unload` where it is s
 
 from __future__ import annotations
 
+import asyncio
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import datetime
@@ -39,6 +40,7 @@ if TYPE_CHECKING:
     from .api.pairing import PairingRegister
     from .pricing.price_refresh import PriceRefreshManager
     from .pricing.price_repository import PriceRepository
+    from .pricing.price_store import PriceSourceStore
     from .site.site_capacity_controller import SiteCapacityController
     from .vehicles.soc_estimate import SocReader
     from .execution.solar_execution import SolarExecutionCoordinator
@@ -100,6 +102,10 @@ class SpotNavData:
     auto_store: AutoSettingsStore | None = None
     price_repository: PriceRepository | None = None
     price_refresh: PriceRefreshManager | None = None
+    #: The price entries' migration marker, same-area duplicates and wire revision ledger (`pricing/price_store.py`).
+    price_store: PriceSourceStore | None = None
+    #: Held while a price entry is being created for the installation (first install, migration, a card write).
+    price_setup_lock: asyncio.Lock = field(default_factory=asyncio.Lock)
     decision_store: DiscoveryDecisionStore | None = None
     pairing: PairingRegister | None = None
     refresh_limiter: VehicleRefreshLimiter | None = None
