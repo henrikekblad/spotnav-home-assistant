@@ -194,6 +194,30 @@ cannot, and for a direct site without the total it says the meter's total grid p
   once. To a strategy with a plan, inside one of its periods: the plan keeps the charge. Outside the
   plan's periods with no sun to carry it, the charge is stopped once, and the status names the next
   period.
+- **Phase switching for solar** (a charger setting, *Off* by default): a three-phase charge cannot go
+  below three times the minimum current (about 4.1 kW at 6 A), so with less sun it either draws the rest
+  from the grid until the stop or does not run at all. Set to *Automatic*, SpotNav lets such a charge go on
+  one phase instead (1.4 to 3.7 kW). It is offered only for a charger whose integration can switch its phases
+  (today a Peblar, through its *Force single phase* switch), wired for three phases, on a site with a solar
+  source. The rules:
+  - Only a solar charge switches. A plan's period, your **Start**, a top-off, the car's minimum charge level
+    and Hybrid's grid part always charge on all three phases; when one of them takes over a charge on one
+    phase, three phases are set back first, at the minimum current.
+  - A solar start whose surplus carries one phase at the minimum but not three starts on one phase. The phase
+    is set right before the start, never while the charger is idle.
+  - On three phases at the minimum, when the surplus stays short of three phases for the stop delay (five
+    minutes) but carries one, the charge goes to one phase instead of stopping. When one phase is not carried
+    either, it stops as before. Back to three phases only when one phase is at its maximum and the surplus has
+    carried three phases with 10 % to spare for ten minutes.
+  - At most three switches per plug-in, at least 15 minutes apart. After that the charge stays on the phase it
+    is on (on three phases it stops by the usual rule).
+  - The charger pauses the charge itself for a switch. For 90 seconds after one, a charge that shows nothing
+    is not taken for the car ending it or a start that failed, and nothing is learnt from the phases it draws
+    on. A switch the charger does not confirm within 30 seconds is given up for the plug-in and only logged.
+  - While a charge is on one phase, the status says so with its power, for example
+    *Solar · 1 phase · 2.9 kW*, and the site reckons the charger as a single-phase one.
+
+  Some cars charge badly or stop after a phase change: turn the setting off if yours does.
 - **Solar priority** (a site setting): *car first* uses surplus before the house battery;
   *battery first* leaves the surplus to the battery and charges the car from what it does not
   take. A house battery power sensor can be set on the site.
