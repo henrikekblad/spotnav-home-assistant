@@ -588,6 +588,15 @@ _CORE_OWNER_ORIGIN: Final = {
 }
 
 
+def _report_kind(observed: bool | None) -> str | None:
+    """The kind of a charger's report of its control, as the core names it (`None`: it said nothing to feed)."""
+    if observed is True:
+        return core_events.ChargerReportedOn.kind
+    if observed is False:
+        return core_events.ChargerReportedOff.kind
+    return None
+
+
 class ChargingController:
     """Control one Home Assistant charger from SpotNav commands.
 
@@ -919,6 +928,7 @@ class ChargingController:
             # What the core has seen per event kind, kept across restarts in a store of its own (read back at the
             # restore, removed with the entry).
             coverage=OwnershipCoverage(store=Store(hass, COVERAGE_STORE_VERSION, coverage_key(entry_id))),
+            name=entry_id,
         )
         self._shadow.today_fields = lambda: f"origin={self._charge_origin} plan_charge={self._plan_charge}"
 
@@ -1989,7 +1999,9 @@ class ChargingController:
                 "target_stopping": self._target_stopping,
                 "top_off": self.top_off_until is not None,
                 **self._shadow_start_facts(),
-            }
+            },
+            core_events.WindowStart.kind,
+            token=token,
         )
         note: dict[str, Any] = {"legacy": [], "outcome": None, "target": False}
         try:
@@ -2062,7 +2074,8 @@ class ChargingController:
                 need_grew=need_grew,
                 car_ended_awaits_level=awaits,
             )
-        except Exception:  # noqa: BLE001 - today's decision stands
+        except Exception as err:  # noqa: BLE001 - today's decision stands, not silently
+            self._shadow.failed("window_start_facts", core_events.WindowStart.kind, err)
             return None
         return self._shadow.verdict(event)
 
@@ -2132,7 +2145,9 @@ class ChargingController:
                 "control_on": self._control_on,
                 "handed_off": self._shadow_handed_off(),
                 **self._shadow_hold_facts(),
-            }
+            },
+            core_events.NeedMet.kind,
+            token=token,
         )
         legacy: list[str] = []
         outcome: CommandOutcome | None = None
@@ -3068,7 +3083,9 @@ class ChargingController:
         """
         async with self._automatic(AUTOMATIC_BALANCING_RESUME):
             token = self._shadow.begin()
-            charging = self._shadow_facts(lambda: {"charging": self.charging})
+            charging = self._shadow_facts(
+                lambda: {"charging": self.charging}, core_events.BalancingResume.kind, token=token
+            )
             note: dict[str, Any] = {"legacy": [], "outcome": None}
             try:
                 return await self._battery_probe_start_locked(amps, capped, note)
@@ -4503,12 +4520,8 @@ class ChargingController:
         try:
             return ChargeSession.from_store(raw), False
         except SessionError as err:
-            _LOGGER.info(
-                "SpotNav charger %s: the stored charge session is not readable (%s); it is read from the older "
-                "keys again",
-                self.entry_id,
-                err,
-            )
+            # Read from today's keys again, not silently (a warning once, a count, Repairs when failures repeat).
+            self._shadow.failed("stored_session", core_events.Restart.kind, err)
             return None, True
 
     def _persist_session(self, session: ChargeSession) -> None:
@@ -4658,7 +4671,9 @@ class ChargingController:
                     "control_on": self._control_observation is True,
                     "handed_off": self._shadow_handed_off(),
                     **self._shadow_hold_facts(),
-                }
+                },
+                core_events.Rearm.kind,
+                token=token,
             )
             legacy: list[str] = []
             outcome: CommandOutcome | None = None
@@ -4719,7 +4734,9 @@ class ChargingController:
                     "charging": self.charging,
                     "handed_off": self._shadow_handed_off(),
                     **self._shadow_hold_facts(),
-                }
+                },
+                core_events.Rearm.kind,
+                token=token,
             )
             legacy = []
             outcome = None
@@ -4791,7 +4808,7 @@ class ChargingController:
             return True
         token = self._shadow.begin()
         self._shadow_car_facts = (False, False, False)
-        facts = self._shadow_facts(self._shadow_start_facts)
+        facts = self._shadow_facts(self._shadow_start_facts, core_events.WindowStart.kind, token=token)
         legacy: list[str] = []
         outcome: CommandOutcome | None = None
         try:
@@ -5838,13 +5855,15 @@ class ChargingController:
         self._shadow_car_facts = (False, False, False)
         return {"car_ended_known_full": known_full, "need_grew": need_grew, "car_ended_awaits_level": awaits}
 
-    def _shadow_facts(self, read: Callable[[], dict[str, Any]]) -> dict[str, Any] | None:
-        """Facts for an event, read without ever raising into the real path (`None`: they could not be read, and
-        the event is not fed)."""
+    def _shadow_facts(
+        self, read: Callable[[], dict[str, Any]], kind: str, *, token: ShadowToken | None = None
+    ) -> dict[str, Any] | None:
+        """Facts for an event of `kind`, read without ever raising into the real path (`None`: they could not be
+        read, the event is not fed, and today's code decides it: a failure, `OwnershipShadow.failed`)."""
         try:
             return read()
-        except Exception:  # noqa: BLE001 - the shadow never raises into the real path
-            _LOGGER.debug("SpotNav ownership shadow: facts unreadable", exc_info=True)
+        except Exception as err:  # noqa: BLE001 - the shadow never raises into the real path
+            self._shadow.failed("facts", kind, err, token=token)
             return None
 
     def _shadow_end_event(
@@ -5861,8 +5880,8 @@ class ChargingController:
             return
         try:
             event = build()
-        except Exception:  # noqa: BLE001 - the shadow never raises into the real path
-            _LOGGER.debug("SpotNav ownership shadow: event unbuildable", exc_info=True)
+        except Exception as err:  # noqa: BLE001 - the shadow never raises into the real path
+            self._shadow.failed("event", None, err, token=token)
             self._shadow.cancel(token)
             return
         self._shadow.end(token, event, legacy=legacy, outcome=outcome)
@@ -5883,7 +5902,9 @@ class ChargingController:
         command, else today's rule (`today`) does. What the command did comes back to the core as its
         `CommandResult`. Returns whether it went out."""
         token = self._shadow.begin()
-        facts = self._shadow_facts(lambda: self._recheck_facts(what))
+        facts = self._shadow_facts(
+            lambda: self._recheck_facts(what), core_events.Recheck.kind, token=token
+        )
         command = "start" if what == core_events.RECHECK_CLAIM else "stop"
         legacy: list[str] = []
         outcome: CommandOutcome | None = None
@@ -5952,8 +5973,8 @@ class ChargingController:
         """Before a report's decisions: the facts as the report found them, and a list for what it decides."""
         token = self._shadow.begin()
         event: core_events.Event | None = None
+        observed = self._control_observation
         try:
-            observed = self._control_observation
             connected = self.adapter.vehicle_connected()
             if observed is False:
                 event = core_events.ChargerReportedOff(
@@ -5976,8 +5997,8 @@ class ChargingController:
                     owned=self._hold.owned,
                     **self._shadow_hold_facts(),
                 )
-        except Exception:  # noqa: BLE001 - the shadow never raises into the real path
-            _LOGGER.debug("SpotNav ownership shadow: report facts unreadable", exc_info=True)
+        except Exception as err:  # noqa: BLE001 - the shadow never raises into the real path
+            self._shadow.failed("report_facts", _report_kind(observed), err, token=token)
             event = None
         previous = self._shadow_decisions
         self._shadow_decisions = []
@@ -5991,7 +6012,8 @@ class ChargingController:
                         event, car_ended_known_full=known_full, need_grew=need_grew, car_ended_awaits_level=awaits
                     )
                 self._core_report_verdict = self._core_hold_verdict = self._shadow.verdict(event)
-            except Exception:  # noqa: BLE001 - today's decision stands
+            except Exception as err:  # noqa: BLE001 - today's decision stands, not silently
+                self._shadow.failed("report_facts", event.kind, err, token=token)
                 self._core_report_verdict = self._core_hold_verdict = None
         return token, event, previous
 
@@ -6006,7 +6028,8 @@ class ChargingController:
         if isinstance(event, core_events.ChargerReportedOn) and not self._core_drives:
             try:
                 event = replace(event, **self._shadow_take_car_facts())
-            except Exception:  # noqa: BLE001
+            except Exception as err:  # noqa: BLE001 - the shadow never raises into the real path
+                self._shadow.failed("report_facts", event.kind, err, token=token)
                 self._shadow.cancel(token)
                 return
         self._shadow.end(token, event, legacy=decisions)
@@ -6015,7 +6038,9 @@ class ChargingController:
         """`_observe_person_hold` outside a report (its retry, a restore, a stop's retry), fed as a timer."""
         token = self._shadow.begin()
         facts = self._shadow_facts(
-            lambda: {"control_on": self._control_observation is True, "start_pending": self._shadow_start_pending()}
+            lambda: {"control_on": self._control_observation is True, "start_pending": self._shadow_start_pending()},
+            core_events.Timer.kind,
+            token=token,
         )
         previous = self._shadow_decisions
         self._shadow_decisions = []
