@@ -100,8 +100,9 @@ async def test_the_page_ends_with_the_way_on_and_explains_every_field(hass: Home
 
     fields = [str(marker.schema if isinstance(marker, vol.Marker) else marker) for marker in result["data_schema"].schema]
     assert fields[-1] == "change_measurement"
-    assert "site_enabled" not in fields
+    gone = {"site_enabled", "regulator_deadband_a", "regulator_dwell_s", "yield_ceiling_a"}
+    assert gone.isdisjoint(fields)
     for language in LANGUAGES:
         step = json.loads((TRANSLATIONS / f"{language}.json").read_text(encoding="utf-8"))["options"]["step"]["site_init"]
-        assert "site_enabled" not in step["data"], language
+        assert gone.isdisjoint(step["data"]) and gone.isdisjoint(step["data_description"]), language
         assert [name for name in fields if not step["data_description"].get(name)] == [], language

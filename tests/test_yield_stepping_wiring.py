@@ -14,6 +14,7 @@ from __future__ import annotations
 
 from datetime import timedelta
 
+import pytest
 from homeassistant.core import HomeAssistant
 from homeassistant.util import dt as dt_util
 from pytest_homeassistant_custom_component.common import async_mock_service
@@ -21,12 +22,11 @@ from pytest_homeassistant_custom_component.common import async_mock_service
 from custom_components.spotnav.diagnostics import entry_diagnostics
 from custom_components.spotnav.const import (
     CONF_MEASURED_CURRENT_SOURCE,
-    CONF_YIELD_CEILING_A,
     CONF_YIELD_STEPPING_ENABLED,
     CURRENT_CONTROL_CHANGE_CONFIGURATION,
     DOMAIN,
     MEASUREMENT_MODE_DERIVED,
-    default_yield_ceiling_a,
+    yield_ceiling_a,
 )
 from custom_components.spotnav.site.regulator_damping import RegulatorDamper
 from custom_components.spotnav.site.regulator import (
@@ -53,7 +53,6 @@ async def _yield_setup(
     main_fuse_a: float = 20.0,
     safety_margin_a: float = 1.0,
     yield_stepping_enabled: bool = True,
-    yield_ceiling_a: float | None = None,
     min_current_a: float = 6.0,
     battery_entity: str | None = None,
     solar_priority: str | None = None,
@@ -106,7 +105,6 @@ async def _yield_setup(
         derived_entities=derived_entities,
         active_control_enabled=True,
         yield_stepping_enabled=yield_stepping_enabled,
-        yield_ceiling_a=yield_ceiling_a,
         battery_aggregate_power_entity=battery_entity,
         solar_priority=solar_priority,
     )
@@ -437,7 +435,6 @@ async def test_options_round_trip_the_yield_stepping_fields(hass: HomeAssistant)
             "change_measurement": True,
             "max_age_s": 120,
             CONF_YIELD_STEPPING_ENABLED: True,
-            CONF_YIELD_CEILING_A: 30.0,
         },
     )
     assert result["step_id"] == "site_current_suggestions"
@@ -457,42 +454,11 @@ async def test_options_round_trip_the_yield_stepping_fields(hass: HomeAssistant)
 
     updated = hass.config_entries.async_get_entry(entry.entry_id)
     assert updated.data[CONF_YIELD_STEPPING_ENABLED] is True
-    assert updated.data[CONF_YIELD_CEILING_A] == 30.0
-
-
-async def test_options_flow_rejects_a_ceiling_at_or_below_the_fuse(hass: HomeAssistant) -> None:
-    entry = make_site_entry(hass, entry_id="yield_reject", charger_entry_ids=[])
-    set_current_sensor(hass, "sensor.yield_reject_l1", 0)
-    set_current_sensor(hass, "sensor.yield_reject_l2", 0)
-    set_current_sensor(hass, "sensor.yield_reject_l3", 0)
-    assert await hass.config_entries.async_setup(entry.entry_id)
-    await hass.async_block_till_done()
-
-    result = await hass.config_entries.options.async_init(entry.entry_id)
-    result = await hass.config_entries.options.async_configure(
-        result["flow_id"],
-        {
-            "name": "Yield Reject",
-            "main_fuse_a": 20,
-            "safety_margin_a": 1,
-            "measurement_mode": "direct_phase_current",
-            "charger_entry_ids": [],
-            "change_measurement": True,
-            "max_age_s": 120,
-            CONF_YIELD_STEPPING_ENABLED: True,
-            CONF_YIELD_CEILING_A: 20.0,  # equal to the fuse: rejected
-        },
-    )
-
-    assert result["step_id"] == "site_init"
-    assert result["errors"] == {CONF_YIELD_CEILING_A: "yield_ceiling_below_fuse"}
-
-    unchanged = hass.config_entries.async_get_entry(entry.entry_id)
-    assert CONF_YIELD_CEILING_A not in unchanged.data
+    assert "yield_ceiling_a" not in updated.data
 
 
 async def test_defaults_for_an_old_entry_that_predates_these_options(hass: HomeAssistant) -> None:
-    """An entry with neither key (built directly, not via `make_site_entry`) reads the defaults: disabled, and a ceiling of 1.15x its main fuse."""
+    """An entry without the key (built directly, not via `make_site_entry`) reads the default: disabled. The ceiling is 1.15x its main fuse."""
     from pytest_homeassistant_custom_component.common import MockConfigEntry
 
     from custom_components.spotnav.const import (
@@ -528,7 +494,7 @@ async def test_defaults_for_an_old_entry_that_predates_these_options(hass: HomeA
             },
             CONF_DERIVED_ENTITIES: {},
             CONF_MAX_AGE_S: DEFAULT_MAX_AGE_S,
-            # Deliberately no CONF_YIELD_STEPPING_ENABLED / CONF_YIELD_CEILING_A.
+            # Deliberately no CONF_YIELD_STEPPING_ENABLED.
         },
     )
     entry.add_to_hass(hass)
@@ -541,17 +507,14 @@ async def test_defaults_for_an_old_entry_that_predates_these_options(hass: HomeA
     controller = controller_of(hass, entry.entry_id)
     assert bool(controller.config.get(CONF_YIELD_STEPPING_ENABLED, False)) is False
     stepper = controller._yield_stepper_for("some_charger")
-    assert stepper._config.ceiling_a == default_yield_ceiling_a(20.0)
+    assert stepper._config.ceiling_a == yield_ceiling_a(20.0) == pytest.approx(23.0)
 
 
-async def test_a_stored_ceiling_is_clamped_to_the_fuse_actually_configured(
+async def test_a_stored_ceiling_is_ignored_and_dropped(
     hass: HomeAssistant,
 ) -> None:
-    """A ceiling chosen for a larger fuse must not survive that fuse being replaced by a smaller one.
-
-    28.75 A was 1.15 x a 25 A fuse; on a 20 A fuse it would be 1.44 x, past the 1.25 x a gG fuse
-    carries for an hour. The run-time clamp makes that impossible whatever is stored.
-    """
+    """The ceiling is no longer a setting: one a site once stored (28.75 A, chosen for a 25 A fuse) gives way
+    to 1.15 x the fuse configured now, and the key is dropped from the entry at setup."""
     from pytest_homeassistant_custom_component.common import MockConfigEntry
 
     from custom_components.spotnav.const import (
@@ -567,7 +530,6 @@ async def test_a_stored_ceiling_is_clamped_to_the_fuse_actually_configured(
         DEFAULT_MAX_AGE_S,
         ENTRY_TYPE_SITE,
         MEASUREMENT_MODE_DIRECT,
-        max_yield_ceiling_a,
     )
 
     entry = MockConfigEntry(
@@ -589,7 +551,7 @@ async def test_a_stored_ceiling_is_clamped_to_the_fuse_actually_configured(
             CONF_DERIVED_ENTITIES: {},
             CONF_MAX_AGE_S: DEFAULT_MAX_AGE_S,
             CONF_YIELD_STEPPING_ENABLED: True,
-            CONF_YIELD_CEILING_A: 28.75,
+            "yield_ceiling_a": 28.75,
         },
     )
     entry.add_to_hass(hass)
@@ -600,35 +562,8 @@ async def test_a_stored_ceiling_is_clamped_to_the_fuse_actually_configured(
 
     controller = controller_of(hass, entry.entry_id)
     stepper = controller._yield_stepper_for("some_charger")
-    assert stepper._config.ceiling_a == max_yield_ceiling_a(20.0)
-    assert stepper._config.ceiling_a < 28.75
-
-
-async def test_options_flow_rejects_a_ceiling_at_or_above_the_limit(hass: HomeAssistant) -> None:
-    entry = make_site_entry(hass, entry_id="yield_high", charger_entry_ids=[])
-    for phase in ("l1", "l2", "l3"):
-        set_current_sensor(hass, f"sensor.yield_high_{phase}", 0)
-    assert await hass.config_entries.async_setup(entry.entry_id)
-    await hass.async_block_till_done()
-
-    result = await hass.config_entries.options.async_init(entry.entry_id)
-    result = await hass.config_entries.options.async_configure(
-        result["flow_id"],
-        {
-            "name": "Yield High",
-            "main_fuse_a": 20,
-            "safety_margin_a": 1,
-            "measurement_mode": "direct_phase_current",
-            "charger_entry_ids": [],
-            "change_measurement": True,
-            "max_age_s": 120,
-            CONF_YIELD_STEPPING_ENABLED: True,
-            CONF_YIELD_CEILING_A: 25.0,  # exactly 1.25 x the fuse: rejected
-        },
-    )
-
-    assert result["step_id"] == "site_init"
-    assert result["errors"] == {CONF_YIELD_CEILING_A: "yield_ceiling_above_limit"}
+    assert stepper._config.ceiling_a == pytest.approx(23.0)
+    assert "yield_ceiling_a" not in hass.config_entries.async_get_entry(entry.entry_id).data
 
 
 async def test_yield_stepping_diagnostics_present_when_disabled(hass: HomeAssistant) -> None:

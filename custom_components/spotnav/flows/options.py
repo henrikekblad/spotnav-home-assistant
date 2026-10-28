@@ -36,25 +36,19 @@ from ..const import (
     CONF_MEASUREMENT_MODE,
     CONF_MODE,
     CONF_PHASE_WIRING,
-    CONF_REGULATOR_DEADBAND_A,
-    CONF_REGULATOR_DWELL_S,
     CONF_SAFETY_MARGIN_A,
     CONF_VOLTAGE_BETWEEN_PHASES_V,
     CONF_SITE_CURRENT_SIGNED,
     CONF_SITE_CURRENT_SOURCE,
     CONF_SOLAR_FORECAST_ENTRIES,
     CONF_SOLAR_PRIORITY,
-    CONF_YIELD_CEILING_A,
     CONF_YIELD_STEPPING_ENABLED,
     DEFAULT_MAX_AGE_S,
     DEFAULT_VOLTAGE_BETWEEN_PHASES_V,
-    DEFAULT_REGULATOR_DEADBAND_A,
-    DEFAULT_REGULATOR_DWELL_S,
     DEFAULT_SOLAR_PRIORITY,
-    default_yield_ceiling_a,
     DEFAULT_YIELD_STEPPING_ENABLED,
     DOMAIN,
-    max_yield_ceiling_a,
+    LEGACY_SITE_KEYS,
     CURRENT_CONTROL_CHANGE_CONFIGURATION,
     CURRENT_CONTROL_EASEE,
     CURRENT_CONTROL_NUMBER,
@@ -77,7 +71,6 @@ from ..execution.charger_entities import control_path_for_entity
 from .charger_wiring import ChargerWiringSteps
 from .labels import (
     current_control_selector,
-    display_number,
     MANUAL_ATTRIBUTES_CHOICE,
     power_sensor_entity_options,
     SKIP_CHOICE,
@@ -345,10 +338,6 @@ class SiteCapacityOptionsFlow(ChargerWiringSteps, config_entries.OptionsFlow):
         self._site_current_source_choice: str | None = None
         self._site_current_source: dict[str, Any] | None = None
         self._site_current_candidates: list[DiscoveryCandidate] = []
-        # Whether `async_step_site_init` genuinely customized the yield ceiling, as opposed to
-        # carrying its suggested value forward; `_save_site_details` persists an explicit value
-        # only then (or when one was already stored).
-        self._pending_yield_ceiling_customized = False
         # Config entries able to answer the Energy dashboard's solar-forecast platform, discovered
         # once per flow instance rather than on every render.
         self._forecast_entry_options: list[dict[str, str]] | None = None
@@ -365,7 +354,6 @@ class SiteCapacityOptionsFlow(ChargerWiringSteps, config_entries.OptionsFlow):
         """The site_init schema, defaulted from `self._pending_basic` (a submission re-shown after an error)
         else the stored values. Shared by the first render and the race-conflict re-render.
         """
-        main_fuse_a = float(self._entry.data[CONF_MAIN_FUSE_A])
         defaults = {
             "name": self._entry.title,
             CONF_MAIN_FUSE_A: self._entry.data[CONF_MAIN_FUSE_A],
@@ -382,19 +370,9 @@ class SiteCapacityOptionsFlow(ChargerWiringSteps, config_entries.OptionsFlow):
                 CONF_ACTIVE_CONTROL_ENABLED, False
             ),
             CONF_MAX_AGE_S: self._entry.data.get(CONF_MAX_AGE_S, DEFAULT_MAX_AGE_S),
-            CONF_REGULATOR_DEADBAND_A: self._entry.data.get(
-                CONF_REGULATOR_DEADBAND_A, DEFAULT_REGULATOR_DEADBAND_A
-            ),
-            CONF_REGULATOR_DWELL_S: self._entry.data.get(
-                CONF_REGULATOR_DWELL_S, DEFAULT_REGULATOR_DWELL_S
-            ),
-            # Yield-verified stepping: off unless opted in. The ceiling defaults to 1.15x the
-            # currently stored main fuse.
+            # Yield-verified stepping: off unless opted in; its ceiling is fixed (`yield_ceiling_a`).
             CONF_YIELD_STEPPING_ENABLED: self._entry.data.get(
                 CONF_YIELD_STEPPING_ENABLED, DEFAULT_YIELD_STEPPING_ENABLED
-            ),
-            CONF_YIELD_CEILING_A: self._entry.data.get(
-                CONF_YIELD_CEILING_A, display_number(default_yield_ceiling_a(main_fuse_a))
             ),
             # Solar surplus: which claim on the sun wins, car or house battery; `car_first` unless stored.
             CONF_SOLAR_PRIORITY: self._entry.data.get(
@@ -445,24 +423,11 @@ class SiteCapacityOptionsFlow(ChargerWiringSteps, config_entries.OptionsFlow):
                 vol.Optional(CONF_MAX_AGE_S, default=defaults[CONF_MAX_AGE_S]): vol.All(
                     vol.Coerce(float), vol.Range(min=MAX_AGE_MIN_S)
                 ),
-                # Active control's damping (see `site/regulator_damping.py`). Zero is valid: no
-                # deadband, write as soon as decided.
-                vol.Optional(
-                    CONF_REGULATOR_DEADBAND_A, default=defaults[CONF_REGULATOR_DEADBAND_A]
-                ): vol.All(vol.Coerce(float), vol.Range(min=0)),
-                vol.Optional(
-                    CONF_REGULATOR_DWELL_S, default=defaults[CONF_REGULATOR_DWELL_S]
-                ): vol.All(vol.Coerce(float), vol.Range(min=0)),
-                # Yield-verified stepping: off by default. The ceiling must exceed the main fuse,
-                # which depends on another field, so `async_step_site_init` checks it after this
-                # schema and re-renders with a translated error.
+                # Yield-verified stepping: off by default.
                 vol.Required(
                     CONF_YIELD_STEPPING_ENABLED,
                     default=defaults[CONF_YIELD_STEPPING_ENABLED],
                 ): bool,
-                vol.Optional(
-                    CONF_YIELD_CEILING_A, default=defaults[CONF_YIELD_CEILING_A]
-                ): vol.All(vol.Coerce(float), vol.Range(min=0)),
                 # Solar priority: a plain choice, valid beside every fuse or mode choice.
                 vol.Required(
                     CONF_SOLAR_PRIORITY, default=defaults[CONF_SOLAR_PRIORITY]
@@ -525,35 +490,6 @@ class SiteCapacityOptionsFlow(ChargerWiringSteps, config_entries.OptionsFlow):
                 exclude_entry_id=self._entry.entry_id,
             )
             errors.update(site_margin_errors(user_input))
-            # The yield ceiling must exceed the main fuse, or `execution/yield_stepping.py`'s
-            # hard-ceiling check would license steps at or past the site's limit (see
-            # `default_yield_ceiling_a`). Not a `vol.Range` because it depends on this
-            # submission's main fuse.
-            #
-            # The schema default follows the main fuse as currently stored, so raising the fuse
-            # without touching the ceiling would carry forward a now-too-low number. Comparing the
-            # submission with that old default detects "untouched": the ceiling then follows the
-            # new fuse, and only a genuinely different, too-low value is rejected. The comparison
-            # uses the generic formula's old value, never the stored one, so an already-stored
-            # explicit ceiling is kept when the field is carried forward untouched.
-            old_generic_default_ceiling_a = default_yield_ceiling_a(
-                float(self._entry.data[CONF_MAIN_FUSE_A])
-            )
-            submitted_ceiling_a = float(user_input[CONF_YIELD_CEILING_A])
-            new_main_fuse_a = float(user_input[CONF_MAIN_FUSE_A])
-            # Whether this submission genuinely customized the ceiling; `_save_site_details` uses
-            # it to decide whether to persist an explicit value at all.
-            self._pending_yield_ceiling_customized = (
-                abs(submitted_ceiling_a - old_generic_default_ceiling_a) >= 1e-9
-                # The form shows the default rounded (`display_number`), so that is untouched too.
-                and abs(submitted_ceiling_a - display_number(old_generic_default_ceiling_a)) >= 1e-9
-            )
-            if not self._pending_yield_ceiling_customized:
-                user_input[CONF_YIELD_CEILING_A] = default_yield_ceiling_a(new_main_fuse_a)
-            elif submitted_ceiling_a <= new_main_fuse_a:
-                errors[CONF_YIELD_CEILING_A] = "yield_ceiling_below_fuse"
-            elif submitted_ceiling_a >= max_yield_ceiling_a(new_main_fuse_a):
-                errors[CONF_YIELD_CEILING_A] = "yield_ceiling_above_limit"
             if errors:
                 self._pending_basic = user_input
                 return self.async_show_form(
@@ -826,14 +762,6 @@ class SiteCapacityOptionsFlow(ChargerWiringSteps, config_entries.OptionsFlow):
             CONF_MAX_AGE_S: self._pending_basic.get(
                 CONF_MAX_AGE_S, self._entry.data.get(CONF_MAX_AGE_S, DEFAULT_MAX_AGE_S)
             ),
-            CONF_REGULATOR_DEADBAND_A: self._pending_basic.get(
-                CONF_REGULATOR_DEADBAND_A,
-                self._entry.data.get(CONF_REGULATOR_DEADBAND_A, DEFAULT_REGULATOR_DEADBAND_A),
-            ),
-            CONF_REGULATOR_DWELL_S: self._pending_basic.get(
-                CONF_REGULATOR_DWELL_S,
-                self._entry.data.get(CONF_REGULATOR_DWELL_S, DEFAULT_REGULATOR_DWELL_S),
-            ),
             CONF_BATTERY_AGGREGATE_POWER_ENTITY: self._pending_basic.get(
                 CONF_BATTERY_AGGREGATE_POWER_ENTITY
             )
@@ -853,17 +781,9 @@ class SiteCapacityOptionsFlow(ChargerWiringSteps, config_entries.OptionsFlow):
         )
         if submitted_yield_stepping or CONF_YIELD_STEPPING_ENABLED in self._entry.data:
             updated_data[CONF_YIELD_STEPPING_ENABLED] = submitted_yield_stepping
-        # The yield ceiling is persisted only when this submission customized it (see
-        # `async_step_site_init`) or one was already stored, so an untouched entry round-trips
-        # unchanged. `self._pending_basic[CONF_YIELD_CEILING_A]` is always present here: either
-        # the customized value or the fresh default for the submitted main fuse.
-        if (
-            self._pending_yield_ceiling_customized
-            or CONF_YIELD_CEILING_A in self._entry.data
-        ):
-            updated_data[CONF_YIELD_CEILING_A] = self._pending_basic[CONF_YIELD_CEILING_A]
-        else:
-            updated_data.pop(CONF_YIELD_CEILING_A, None)
+        # Former settings, now fixed: never carried forward (setup drops them too).
+        for key in LEGACY_SITE_KEYS:
+            updated_data.pop(key, None)
         # Solar priority, persisted the same way: written when it differs from the default or a
         # value was already stored.
         submitted_solar_priority = self._pending_basic.get(

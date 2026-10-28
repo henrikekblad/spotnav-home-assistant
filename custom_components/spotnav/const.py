@@ -91,9 +91,11 @@ ENTRY_TYPE_PRICE = "price"
 # refuses to guess, records the decision in the discovery-decision store, and finishes.
 ENTRY_TYPE_RESOLVE_VEHICLE = "resolve_vehicle"
 
-# A former on/off switch for the site's calculation. A site now always calculates once it has a
-# measurement (the calculation only reads); the key is dropped from a site's entry data at setup.
-LEGACY_CONF_SITE_ENABLED = "site_enabled"
+# Keys a site's entry data no longer has a use for, dropped from it at setup: the former on/off switch
+# for the site's calculation (a site now always calculates once it has a measurement; the calculation
+# only reads), and the former settings for load balancing's damping and yield stepping's ceiling, now
+# fixed (`REGULATOR_DEADBAND_A`, `REGULATOR_DWELL_S`, `yield_ceiling_a`).
+LEGACY_SITE_KEYS = ("site_enabled", "regulator_deadband_a", "regulator_dwell_s", "yield_ceiling_a")
 # Site config keys (config/options flow only).
 # Per-site opt-in for writing a charger from the regulator's decisions. Off by default and
 # separate from `ACTIVE_CONTROL_READY` in `site/site_capacity.py`; both must hold before any write.
@@ -161,14 +163,12 @@ MEASUREMENT_MODE_DIRECT = "direct_phase_current"
 MEASUREMENT_MODE_DERIVED = "derived_phase_current"
 
 # Minimum change, in amps, before the charger is rewritten; wider than one step to stop dithering
-# (see `site/regulator_damping.py`).
-CONF_REGULATOR_DEADBAND_A = "regulator_deadband_a"
-DEFAULT_REGULATOR_DEADBAND_A = 2.0
+# (see `site/regulator_damping.py`). Fixed: no longer a setting.
+REGULATOR_DEADBAND_A = 2.0
 
 # Seconds a change must be continuously justified before it is written; longer than the 30 s
-# recompute interval, so a value surviving one recompute is never written.
-CONF_REGULATOR_DWELL_S = "regulator_dwell_s"
-DEFAULT_REGULATOR_DWELL_S = 60.0
+# recompute interval, so a value surviving one recompute is never written. Fixed: no longer a setting.
+REGULATOR_DWELL_S = 60.0
 
 DEFAULT_MAX_AGE_S = 120.0
 
@@ -190,13 +190,10 @@ CONF_PRICE_TRANSFER = "transfer"
 CONF_YIELD_STEPPING_ENABLED = "yield_stepping_enabled"
 DEFAULT_YIELD_STEPPING_ENABLED = False
 
-# Hard ceiling in amps for a yield step or probe once the battery's yield is verified on the site; until then the
-# ceiling is the main fuse itself (`YieldConfig.unverified_ceiling_a`). Defaults to 1.15x the main fuse; must exceed it.
-CONF_YIELD_CEILING_A = "yield_ceiling_a"
+# Hard ceiling for a yield step or probe once the battery's yield is verified on the site, as a multiple of
+# the main fuse; until then the ceiling is the main fuse itself (`YieldConfig.unverified_ceiling_a`). Fixed
+# (no longer a setting), and below 1.25 x In, a gG fuse's conventional non-fusing current.
 YIELD_CEILING_FUSE_FACTOR = 1.15
-# Largest yield ceiling as a multiple of the main fuse (1.25 x In is a gG fuse's conventional
-# non-fusing current), enforced at run time as well as in the options flow.
-YIELD_CEILING_MAX_FUSE_FACTOR = 1.25
 
 
 # Per-site solar priority: `car_first` (default) or `battery_first`.
@@ -213,11 +210,6 @@ DEFAULT_SOLAR_PRIORITY = SOLAR_PRIORITY_CAR_FIRST
 CONF_SOLAR_FORECAST_ENTRIES = "solar_forecast_entries"
 
 
-def max_yield_ceiling_a(main_fuse_a: float) -> float:
-    """The ceiling no configuration may exceed; see `YIELD_CEILING_MAX_FUSE_FACTOR`."""
-    return main_fuse_a * YIELD_CEILING_MAX_FUSE_FACTOR
-
-
-def default_yield_ceiling_a(main_fuse_a: float) -> float:
-    """The yield ceiling's default, used when a site has not configured one."""
+def yield_ceiling_a(main_fuse_a: float) -> float:
+    """Yield stepping's hard ceiling for a site with this main fuse (`YIELD_CEILING_FUSE_FACTOR`)."""
     return main_fuse_a * YIELD_CEILING_FUSE_FACTOR

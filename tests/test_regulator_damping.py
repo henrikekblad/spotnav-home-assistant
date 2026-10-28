@@ -12,8 +12,8 @@ from datetime import datetime, timedelta, timezone
 import pytest
 
 from custom_components.spotnav.site.regulator_damping import (
-    DEFAULT_REGULATOR_DEADBAND_A,
-    DEFAULT_REGULATOR_DWELL_S,
+    REGULATOR_DEADBAND_A,
+    REGULATOR_DWELL_S,
     PROTECTION_BAND_A,
     RegulatorDamper,
     band_for_measurement,
@@ -146,7 +146,7 @@ def test_a_one_amp_improvement_is_never_written() -> None:
     assert decision.reason == "deadband"
 
     # It stays unwritten however long it is asked for.
-    clock.advance(DEFAULT_REGULATOR_DWELL_S * 5)
+    clock.advance(REGULATOR_DWELL_S * 5)
     assert damper.consider(proposed_current_a=11.0, margin_a=9.0).write is False
     assert damper.last_written_a == 10.0
 
@@ -167,7 +167,7 @@ def test_a_two_amp_improvement_is_written_only_after_the_dwell() -> None:
     # Exactly at the deadband is a change: the deadband is "smaller than".
     assert damper.consider(proposed_current_a=12.0, margin_a=11.0).reason == "dwell_pending"
 
-    clock.advance(DEFAULT_REGULATOR_DWELL_S - 1)
+    clock.advance(REGULATOR_DWELL_S - 1)
     assert damper.consider(proposed_current_a=12.0, margin_a=11.0).write is False
 
     clock.advance(1)
@@ -203,9 +203,9 @@ def test_a_flickering_candidate_is_replaced_rather_than_accumulated() -> None:
 
     for _ in range(5):
         damper.consider(proposed_current_a=13.0, margin_a=12.0)
-        clock.advance(DEFAULT_REGULATOR_DWELL_S * 0.6)
+        clock.advance(REGULATOR_DWELL_S * 0.6)
         damper.consider(proposed_current_a=16.0, margin_a=15.0)
-        clock.advance(DEFAULT_REGULATOR_DWELL_S * 0.6)
+        clock.advance(REGULATOR_DWELL_S * 0.6)
 
     assert damper.last_written_a == 10.0
 
@@ -258,8 +258,8 @@ def test_a_raise_is_never_protection_however_close_the_limit_is() -> None:
 
 def test_the_defaults_are_the_configured_ones() -> None:
     """The two numbers are configuration, so their defaults are the contract."""
-    assert DEFAULT_REGULATOR_DEADBAND_A == 2.0
-    assert DEFAULT_REGULATOR_DWELL_S == 60.0
+    assert REGULATOR_DEADBAND_A == 2.0
+    assert REGULATOR_DWELL_S == 60.0
 
 
 def test_a_deadband_of_zero_can_still_write() -> None:
@@ -285,7 +285,7 @@ def test_a_deadband_of_zero_still_never_rewrites_the_value_already_there() -> No
     damper.consider(proposed_current_a=10.0, margin_a=9.0)
 
     decision = damper.consider(proposed_current_a=10.0, margin_a=9.0)
-    clock.advance(DEFAULT_REGULATOR_DWELL_S * 10)
+    clock.advance(REGULATOR_DWELL_S * 10)
     again = damper.consider(proposed_current_a=10.0, margin_a=9.0)
 
     assert decision.write is False
@@ -300,7 +300,7 @@ def test_a_deadband_of_zero_still_needs_the_dwell_to_elapse() -> None:
     damper.consider(proposed_current_a=10.0, margin_a=9.0)
 
     assert damper.consider(proposed_current_a=11.0, margin_a=9.0).reason == "dwell_pending"
-    clock.advance(DEFAULT_REGULATOR_DWELL_S - 1)
+    clock.advance(REGULATOR_DWELL_S - 1)
     assert damper.consider(proposed_current_a=11.0, margin_a=9.0).write is False
     clock.advance(1)
     assert damper.consider(proposed_current_a=11.0, margin_a=9.0).write is True

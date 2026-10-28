@@ -18,8 +18,6 @@ from custom_components.spotnav.const import (
     CONF_MAX_AGE_S,
     CONF_MEASURED_CURRENT_SOURCE,
     CONF_PHASE_WIRING,
-    CONF_REGULATOR_DEADBAND_A,
-    CONF_REGULATOR_DWELL_S,
     CONF_SAFETY_MARGIN_A,
     CURRENT_CONTROL_CHANGE_CONFIGURATION,
     DOMAIN,
@@ -29,7 +27,8 @@ from custom_components.spotnav.const import (
 )
 from custom_components.spotnav.vehicles.entity_conflicts import find_conflict
 from custom_components.spotnav.site.regulator_damping import (
-    DEFAULT_REGULATOR_DWELL_S,
+    REGULATOR_DEADBAND_A,
+    REGULATOR_DWELL_S,
     RegulatorDamper,
 )
 from custom_components.spotnav.site.regulator import (
@@ -1217,7 +1216,7 @@ async def test_active_control_holds_a_change_until_its_dwell_then_writes_it(
     await controller._async_apply_active_control()
     assert len(configure_calls) == 1
 
-    clock.advance(DEFAULT_REGULATOR_DWELL_S - 1)
+    clock.advance(REGULATOR_DWELL_S - 1)
     await controller._async_apply_active_control()
     assert len(configure_calls) == 1
 
@@ -1263,26 +1262,22 @@ async def test_active_control_writes_a_protection_reduction_immediately(
     assert "damping=protection" in written[0]
 
 
-async def test_the_configured_damping_numbers_reach_the_damper(hass: HomeAssistant) -> None:
-    """Zero is a legal configuration meaning "no damping".
+async def test_the_damping_is_fixed_whatever_a_site_once_stored(hass: HomeAssistant) -> None:
+    """The deadband and dwell are no longer settings: a site that stored its own (here "no damping") is set up
+    with the fixed numbers, and the stored keys are dropped."""
+    site_entry, charger, _configure_calls = await _active_control_setup(hass, entry_id="olddamp")
+    hass.config_entries.async_update_entry(
+        site_entry, data={**site_entry.data, "regulator_deadband_a": 0.0, "regulator_dwell_s": 0.0}
+    )
+    assert await hass.config_entries.async_reload(site_entry.entry_id)
+    await hass.async_block_till_done()
 
-    A 1 A change is inside the default 2 A deadband, so writing immediately proves the site's own numbers took effect.
-    """
-    site_entry, charger, configure_calls = await _active_control_setup(hass, entry_id="nodamp")
-    controller = controller_of(hass, site_entry.entry_id)
-    configure_calls.clear()
-    controller.config[CONF_REGULATOR_DEADBAND_A] = 0.0
-    controller.config[CONF_REGULATOR_DWELL_S] = 0.0
-    # The setup's pass built a damper from the defaults; a site's numbers are read when its damper is built, as after an options-change reload.
-    controller._dampers.clear()
-
-    controller.regulator_decisions = {charger.entry_id: _handmade_decision(16.0)}
-    await controller._async_apply_active_control()
-    controller.regulator_decisions = {charger.entry_id: _handmade_decision(15.0)}
-    await controller._async_apply_active_control()
-
-    assert [call.data["value"] for call in configure_calls] == ["1.16,2.10", "1.15,2.10"]
-    assert controller._damper_for(charger.entry_id).last_written_a == 15.0
+    entry = hass.config_entries.async_get_entry(site_entry.entry_id)
+    assert "regulator_deadband_a" not in entry.data
+    assert "regulator_dwell_s" not in entry.data
+    damper = controller_of(hass, site_entry.entry_id)._damper_for(charger.entry_id)
+    assert damper._deadband_a == REGULATOR_DEADBAND_A == 2.0
+    assert damper._dwell_s == REGULATOR_DWELL_S == 60.0
 
 
 async def test_capability_snapshot_reports_the_active_control_pair(hass: HomeAssistant) -> None:

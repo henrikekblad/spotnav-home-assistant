@@ -49,22 +49,18 @@ from ..const import (
     CONF_MEASURED_CURRENT_SOURCE,
     CONF_MEASUREMENT_MODE,
     CONF_PHASE_WIRING,
-    CONF_REGULATOR_DEADBAND_A,
-    CONF_REGULATOR_DWELL_S,
     CONF_SAFETY_MARGIN_A,
     CONF_SITE_CURRENT_SIGNED,
     CONF_SITE_CURRENT_SOURCE,
     CONF_SOLAR_PRIORITY,
-    CONF_YIELD_CEILING_A,
     CONF_YIELD_STEPPING_ENABLED,
     DEFAULT_MAX_AGE_S,
     DEFAULT_MIN_CURRENT_A,
-    DEFAULT_REGULATOR_DEADBAND_A,
-    DEFAULT_REGULATOR_DWELL_S,
+    REGULATOR_DEADBAND_A,
+    REGULATOR_DWELL_S,
     DEFAULT_SOLAR_PRIORITY,
-    default_yield_ceiling_a,
+    yield_ceiling_a,
     DEFAULT_YIELD_STEPPING_ENABLED,
-    max_yield_ceiling_a,
     MEASUREMENT_MODE_DERIVED,
     MEASUREMENT_MODE_DIRECT,
     SITE_RECOMPUTE_INTERVAL_S,
@@ -1750,7 +1746,7 @@ class SiteCapacityController:
             # The stepper is still fed the observation (its bookkeeping follows the site), but only its own lowering
             # is taken from it; a hold, a step up or a passthrough leaves the overload's proposal as it is. The one
             # exception is a battery whose yield is verified on this site, below the yield ceiling (the stepper's
-            # hard ceiling, `CONF_YIELD_CEILING_A`): the stepper judges that overload as before.
+            # hard ceiling, `yield_ceiling_a`): the stepper judges that overload as before.
             stepped = (
                 yield_verdict.current_a
                 if yield_verdict is not None
@@ -2172,9 +2168,7 @@ class SiteCapacityController:
         probe = self._battery_probes.get(charger_entry_id)
         if probe is None:
             probe = BatteryProbe(
-                window_s=float(
-                    self.config.get(CONF_REGULATOR_DWELL_S, DEFAULT_REGULATOR_DWELL_S)
-                )
+                window_s=REGULATOR_DWELL_S
             )
             self._battery_probes[charger_entry_id] = probe
         return probe
@@ -2346,7 +2340,7 @@ class SiteCapacityController:
             self._resume_ready_since.pop(charger_entry_id, None)
             return False
         since = self._resume_ready_since.setdefault(charger_entry_id, now)
-        dwell_s = float(self.config.get(CONF_REGULATOR_DWELL_S, DEFAULT_REGULATOR_DWELL_S))
+        dwell_s = REGULATOR_DWELL_S
         if now - since < dwell_s:
             return False
         if self._resume_backed_off(charger_entry_id, decision, now, previous_setpoint):
@@ -2835,25 +2829,18 @@ class SiteCapacityController:
         return dt_util.utcnow().timestamp() - max(ages)
 
     def _damper_for(self, charger_entry_id: str) -> RegulatorDamper:
-        """This charger's damping state, created on first use from the site's deadband and dwell.
+        """This charger's damping state, created on first use with the fixed deadband and dwell.
         Per charger because the rule depends on that charger's own history.
         """
         damper = self._dampers.get(charger_entry_id)
         if damper is None:
-            damper = RegulatorDamper(
-                deadband_a=float(
-                    self.config.get(CONF_REGULATOR_DEADBAND_A, DEFAULT_REGULATOR_DEADBAND_A)
-                ),
-                dwell_s=float(
-                    self.config.get(CONF_REGULATOR_DWELL_S, DEFAULT_REGULATOR_DWELL_S)
-                ),
-            )
+            damper = RegulatorDamper(deadband_a=REGULATOR_DEADBAND_A, dwell_s=REGULATOR_DWELL_S)
             self._dampers[charger_entry_id] = damper
         return damper
 
     def _yield_stepper_for(self, charger_entry_id: str) -> YieldStepper:
-        """This charger's `YieldStepper`, created on first use. `ceiling_a` comes from the site
-        option, `min_current_a` from the charger's wiring (as for the regulator).
+        """This charger's `YieldStepper`, created on first use. `ceiling_a` is the fixed multiple of the
+        main fuse (`yield_ceiling_a`), `min_current_a` from the charger's wiring (as for the regulator).
         """
         stepper = self._yield_steppers.get(charger_entry_id)
         if stepper is None:
@@ -2861,23 +2848,13 @@ class SiteCapacityController:
                 charger_entry_id
             ) or {}
             main_fuse_a = self.config.get(CONF_MAIN_FUSE_A)
-            default_ceiling_a = (
-                default_yield_ceiling_a(float(main_fuse_a)) if main_fuse_a is not None else 0.0
-            )
             stepper = YieldStepper(
                 YieldConfig(
-                    # Clamped as well as validated: a stored value can outlive the fuse it was
-                    # chosen for.
-                    ceiling_a=min(
-                        float(self.config.get(CONF_YIELD_CEILING_A, default_ceiling_a)),
-                        max_yield_ceiling_a(float(main_fuse_a)) if main_fuse_a is not None else 0.0,
-                    ),
+                    ceiling_a=yield_ceiling_a(float(main_fuse_a)) if main_fuse_a is not None else 0.0,
                     # Above the fuse only on a battery whose yield is verified on this site.
                     unverified_ceiling_a=float(main_fuse_a) if main_fuse_a is not None else 0.0,
                     min_current_a=float(wiring.get("min_current_a", DEFAULT_MIN_CURRENT_A)),
-                    real_excess_a=float(
-                        self.config.get(CONF_REGULATOR_DEADBAND_A, DEFAULT_REGULATOR_DEADBAND_A)
-                    ),
+                    real_excess_a=REGULATOR_DEADBAND_A,
                 )
             )
             self._yield_steppers[charger_entry_id] = stepper

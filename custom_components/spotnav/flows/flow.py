@@ -50,8 +50,6 @@ from ..const import (
     CONF_OCPP_CHARGE_POINT_ID,
     CONF_OCPP_CONNECTOR_ID,
     CONF_PHASE_WIRING,
-    CONF_REGULATOR_DEADBAND_A,
-    CONF_REGULATOR_DWELL_S,
     CONF_SAFETY_MARGIN_A,
     CONF_VOLTAGE_BETWEEN_PHASES_V,
     CONF_SITE_CURRENT_SOURCE,
@@ -63,8 +61,6 @@ from ..const import (
     CURRENT_CONTROL_NUMBER,
     DEFAULT_MAX_AGE_S,
     DEFAULT_VOLTAGE_BETWEEN_PHASES_V,
-    DEFAULT_REGULATOR_DEADBAND_A,
-    DEFAULT_REGULATOR_DWELL_S,
     DEFAULT_YIELD_STEPPING_ENABLED,
     DOMAIN,
     ENTRY_TYPE_CHARGER,
@@ -1408,12 +1404,7 @@ class SpotNavChargingConfigFlow(ChargerWiringSteps, PriceConfigSteps, config_ent
             CONF_SITE_CURRENT_SOURCE: self._site_current_source,
             **parse_site_flags(pending.details, pending.mode),
             CONF_MAX_AGE_S: DEFAULT_MAX_AGE_S,
-            # Active control's damping at its documented defaults (see const.py); tunable later.
-            CONF_REGULATOR_DEADBAND_A: DEFAULT_REGULATOR_DEADBAND_A,
-            CONF_REGULATOR_DWELL_S: DEFAULT_REGULATOR_DWELL_S,
-            # Yield-verified stepping: off by default and set from the options flow. The ceiling is
-            # deliberately not written: absent means "1.15x the main fuse", computed on every read,
-            # so a stored copy could only go stale when the fuse is edited.
+            # Yield-verified stepping: off by default and set from the options flow.
             CONF_YIELD_STEPPING_ENABLED: DEFAULT_YIELD_STEPPING_ENABLED,
         }
         detected = self._site_detected

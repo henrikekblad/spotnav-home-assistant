@@ -37,16 +37,12 @@ from custom_components.spotnav.const import (
     CONF_ENTRY_TYPE,
     CONF_MAIN_FUSE_A,
     CONF_MAX_AGE_S,
-    CONF_REGULATOR_DEADBAND_A,
-    CONF_REGULATOR_DWELL_S,
     CONF_MEASURED_CURRENT_SOURCE,
     CONF_MEASUREMENT_MODE,
     CONF_PHASE_WIRING,
     CONF_SAFETY_MARGIN_A,
     CONF_SITE_CURRENT_SOURCE,
     DEFAULT_MAX_AGE_S,
-    DEFAULT_REGULATOR_DEADBAND_A,
-    DEFAULT_REGULATOR_DWELL_S,
     DOMAIN,
     ENTRY_TYPE_SITE,
     MEASUREMENT_MODE_DIRECT,
@@ -491,8 +487,6 @@ async def test_options_flow_roundtrip_preserves_a_manual_attributes_site_source(
             # What the create path writes for active control's damping, so this
             # entry is exactly the shape a real site has (this test compares the
             # whole data dict before and after an options round-trip).
-            CONF_REGULATOR_DEADBAND_A: DEFAULT_REGULATOR_DEADBAND_A,
-            CONF_REGULATOR_DWELL_S: DEFAULT_REGULATOR_DWELL_S,
         },
     )
     entry.add_to_hass(hass)
