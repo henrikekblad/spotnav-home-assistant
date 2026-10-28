@@ -914,6 +914,8 @@ class ChargingController:
         self._phases = PhaseSwitchState()
         self._phase_confirm_cancel: Callable[[], None] | None = None
         self._phase_warned = False
+        # Three phases were tried back once after switching was given up in this plug-in (`_restore_three_phases_locked`).
+        self._phase_restore_tried = False
         self._core_report_verdict: frozenset[tuple[str, str]] | None = None
         # The manual pause the core decided for the plug-in or unplug being told (`core_connection_manual`).
         self._core_connection_manual: Any = ...
@@ -2750,6 +2752,7 @@ class ChargingController:
         if self._phases.switches or self._phases.given_up or self._phase_warned:
             self._phases.new_plug_in()
             self._phase_warned = False
+            self._phase_restore_tried = False
             self._save_memory_soon()
 
     async def async_switch_phases(self, phases: Literal[1, 3], *, min_current_a: float, counted: bool = True) -> bool:
@@ -2787,8 +2790,12 @@ class ChargingController:
             if counted:
                 self._phases.counted_attempt(now)
             read_back = self._phases_read_back()
-            self._phases.give_up(read_back)
-            self._phase_switch_given_up(read_back)
+            if self._phases.given_up:
+                # Already given up (three tried back once): no new give-up, only what the read-back shows.
+                self._phases.reconcile(read_back)
+            else:
+                self._phases.give_up(read_back)
+                self._phase_switch_given_up(read_back)
             await self._async_save_quietly()
             return False
         _LOGGER.info("SpotNav charger %s: switching to %s phase(s)", self.entry_id, phases)
@@ -2802,15 +2809,25 @@ class ChargingController:
 
     async def _restore_three_phases_locked(self) -> None:
         """Before a start or a take-over that is not the sun's (a plan window, a person's Start, a top-off, the car's
-        minimum charge level, Hybrid's grid part): a charger forced to one phase by us is set back to three, the minimum
-        current first. Not counted against the budget, and not once switching was given up in this plug-in."""
+        minimum charge level, Hybrid's grid part): a charger forced to one phase by us (our record, a switch to one on its
+        way, or a give-up whose read-back showed one) is set back to three, the minimum current first, not counted
+        against the budget. After a give-up it is tried once in the plug-in; whether it is sent or confirmed or not, the
+        start goes ahead. A charger we never switched is never touched."""
         phases = self._phases
-        if phases.given_up or (phases.switched_phases != 1 and phases.confirming != 1):
+        if phases.switched_phases != 1 and phases.confirming != 1:
             return
         if self.adapter.phase_switch is None:
             return
+        if phases.given_up:
+            if self._phase_restore_tried:
+                return
+            self._phase_restore_tried = True
         _LOGGER.info("SpotNav charger %s: back to three phases before a charge that is not the sun's", self.entry_id)
-        await self._switch_phases_locked(3, min_current_a=DEFAULT_MIN_CURRENT_A, counted=False)
+        if not await self._switch_phases_locked(3, min_current_a=DEFAULT_MIN_CURRENT_A, counted=False):
+            _LOGGER.info(
+                "SpotNav charger %s: three phases could not be set back; the charge starts on what the charger is on",
+                self.entry_id,
+            )
 
     def self_started_charge(self) -> bool:
         """Whether a charge runs that the charger began by itself (at plug-in, say): nobody here started

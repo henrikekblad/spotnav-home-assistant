@@ -549,3 +549,61 @@ async def test_load_balancing_must_lower_during_the_settle_still_lowers(
     charger_controller._phases.sent_at = dt_util.utcnow() - timedelta(seconds=SETTLE_S + 1)  # noqa: SLF001
     await apply(12.0, "no_change_requested", previous=8.0)
     assert writes and writes[0][0] > 8
+
+
+async def test_given_up_on_one_phase_a_plan_window_still_sets_three_phases_before_the_start(
+    hass: HomeAssistant, freezer: Any
+) -> None:
+    """An up-switch the charger never confirmed leaves it on one phase, given up for the plug-in: a plan window's start
+    still tries three phases once (the minimum current first, not counted) before it starts, and starts anyway."""
+    w = await _switched_down(hass, freezer)
+    switched_at = w.t
+    await w.charger_takes(1)
+    w.draw(16.0, sun_w=6000.0)
+    await w.run(switched_at + 60.0)
+    while len(w.force_calls()) < 2 and w.t < switched_at + MIN_BETWEEN_S + UP_DELAY_S + 60.0:
+        await w.at(w.t + 10.0)
+    assert w.force_calls() == ["1", "3"]
+    # The read-back stays at one phase: given up, on one phase.
+    await w.run(w.t + CONFIRM_S + 10.0)
+    facts = w.controller.phase_switching_facts()
+    assert facts["given_up"] is True and facts["given_up_count"] == 1
+    assert w.controller.switched_phases == 1
+    switches = w.controller.phase_switches_this_plug_in
+
+    order: list[str] = []
+    adapter = w.controller.adapter
+    set_phases, start = adapter.async_set_phases, adapter.async_start
+
+    async def phases(n: int) -> Any:
+        order.append(f"phases {n}")
+        return await set_phases(n)
+
+    async def started(amps: int | None) -> bool:
+        order.append("start")
+        return await start(amps)
+
+    adapter.async_set_phases = phases  # type: ignore[method-assign]
+    adapter.async_start = started  # type: ignore[method-assign]
+    hass.states.async_set(SWITCH, "off")
+    await hass.async_block_till_done()
+    assert await w.controller.async_start(16, cause="plan_window")
+    assert order == ["phases 3", "start"]
+    assert w.controller.phase_switches_this_plug_in == switches
+    # Not confirmed either: no new give-up, and the next start of the plug-in does not try again.
+    freezer.tick(timedelta(seconds=CONFIRM_S + 1))
+    async_fire_time_changed(hass)
+    await hass.async_block_till_done()
+    assert w.controller.phase_switching_facts()["given_up_count"] == 1
+    order.clear()
+    hass.states.async_set(SWITCH, "off")
+    assert await w.controller.async_start(16, cause="plan_window")
+    assert order == ["start"]
+
+
+async def test_a_charger_never_switched_is_never_touched_before_a_start(hass: HomeAssistant, freezer: Any) -> None:
+    w = await _world(hass, freezer, option=False)
+    hass.states.async_set(FORCE, "on")  # forced by hand, not by us
+    w.controller.reconcile_phases()
+    await w.controller.async_start(16, cause="plan_window")
+    assert w.force_calls() == []

@@ -108,8 +108,10 @@ class PhaseSwitchState:
 
     def give_up(self, read_back: int | None) -> None:
         """Switching is over for this plug-in: the charge is on what the read-back shows (unknown: three)."""
+        if not self.given_up:
+            # One give-up per plug-in: setting three back after it does not count again.
+            self.given_up_count += 1
         self.given_up = True
-        self.given_up_count += 1
         self.confirming = None
         self.confirm_by = None
         self.switched_phases = 1 if read_back == 1 else None
