@@ -217,6 +217,10 @@ class PlatformProfile:
     #: The integration puts the entity key first in the `unique_id` (`<key>-<serial>`).
     key_first: bool = False
     note: str = ""
+    #: How phase switching for solar switches this platform's chargers between one and three phases, in the words
+    #: `docs/supported.md` uses (the entity and what it needs), or `""` where it cannot. Matches the platforms that
+    #: register a `PhaseSwitch` (`execution/chargers/registry.py`).
+    phase_switching: str = ""
 
     @property
     def can_set_current(self) -> bool:
@@ -398,6 +402,7 @@ _PROFILES: Final[tuple[PlatformProfile, ...]] = (
         "allows at most three pauses in ten minutes (relay protection): beyond that a stop holds the "
         "charge at 6 A instead. SpotNav does not take that for a stop: it says so, load balancing counts "
         "the 6 A, and the stop is tried again until a pause is allowed.",
+        phase_switching="the Force single phase switch; needs the smart charging strategy Default",
     ),
     PlatformProfile(
         platform="nrgkick",
