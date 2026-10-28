@@ -1516,6 +1516,21 @@ class SiteCapacityController:
             charger_entry_id,
         )
 
+    def _held_while_phases_settle(
+        self, charger_entry_id: str, charger_controller: Any, decision: RegulatorDecision
+    ) -> bool:
+        """Whether this pass decides nothing on a charger whose phase switch settles (`ChargingController.
+        phase_switch_settling`): no raise, no resume, no probe on a charge the charger itself interrupts. A
+        must-lower (an import overload) and any lowering still act: a phase switch never holds back the fuse's
+        protection."""
+        if getattr(charger_controller, "phase_switch_settling", False) is not True:
+            return False
+        if is_import_overload(decision) or decision.reason == REASON_MAGNITUDE_LOWERING:
+            return False
+        proposed = decision.proposed_current_a
+        previous = self._damper_for(charger_entry_id).last_written_a
+        return proposed is None or previous is None or proposed >= previous
+
     async def _async_apply_to_charger(
         self,
         charger_entry_id: str,
@@ -1552,6 +1567,9 @@ class SiteCapacityController:
             await self._async_battery_probe_pass(
                 charger_entry_id, charger_controller, decision, fresh, probe
             )
+            return True
+        if self._held_while_phases_settle(charger_entry_id, charger_controller, decision):
+            self._log_active_control_outcome(charger_entry_id, decision, outcome="held", detail="phase_switch_settling")
             return True
         proposed = decision.proposed_current_a
         if proposed is None:
@@ -3198,8 +3216,7 @@ class SiteCapacityController:
         requests: list[ChargerRequest] = []
         for order, charger_entry_id in enumerate(charger_entry_ids):
             wiring = phase_wiring.get(charger_entry_id) or {}
-            phases = wiring.get("phases", 3)
-            phase = wiring.get("phase")
+            phases, phase = self.reckoned_phases(charger_entry_id)
             measured = self._read_charger_measured_current(wiring)
             basis: PhaseBasis = "chosen"
             if phases == 1 and phase is None:
@@ -3245,7 +3262,23 @@ class SiteCapacityController:
         # The first calculation has no result yet to bear a draw out: the worst phase until there is one.
         result: SiteCapacityResult | None = getattr(self, "result", None)
         drawn = drawn_phase(measured, max_age_s, None if result is None else result.measured_phase_current_a)
-        return tracker.observe(drawn, self._yield_now())
+        charger_controller = controller_for(self.hass, charger_entry_id)
+        settling = getattr(charger_controller, "phase_switch_settling", False) is True
+        return tracker.observe(drawn, self._yield_now(), settling=settling)
+
+    def reckoned_phases(self, charger_entry_id: str) -> tuple[int, PhaseName | None]:
+        """The phases a charger is reckoned on and its chosen phase: its wiring, except that a three-phase charger
+        the sun forced to one phase (`ChargingController.switched_phases`) is a single-phase one with no phase
+        chosen ("Automatic": the phase its measured current shows, else the worst), exactly as such a charger is
+        reckoned. A must-lower never waits for, and never uses, a phase switch."""
+        wiring = (self.config.get(CONF_PHASE_WIRING) or {}).get(charger_entry_id) or {}
+        phases = wiring.get("phases", 3)
+        phase = wiring.get("phase")
+        if phases == 3:
+            charger_controller = controller_for(self.hass, charger_entry_id)
+            if getattr(charger_controller, "switched_phases", None) == 1:
+                return 1, None
+        return phases, phase
 
     def charger_phase_snapshot(self) -> dict[str, dict[str, Any]]:
         """Per charger, for the diagnostics: its phases, the phase a single-phase charger is reckoned on now and
