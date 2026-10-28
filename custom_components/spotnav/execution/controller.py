@@ -2818,7 +2818,7 @@ class ChargingController:
 
     async def _restore_three_phases_locked(self) -> None:
         """Before a start or a take-over that is not the sun's (a plan window, a person's Start, a top-off, the car's
-        minimum charge level, Hybrid's grid part): a charger forced to one phase by us (our record, a switch to one on its
+        minimum charge level, Hybrid's grid part), and before any start once phase switching was turned off: a charger forced to one phase by us (our record, a switch to one on its
         way, or a give-up whose read-back showed one) is set back to three, the minimum current first, not counted
         against the budget. After a give-up it is tried once in the plug-in; whether it is sent or confirmed or not, the
         start goes ahead. A charger we never switched is never touched."""
@@ -3428,9 +3428,11 @@ class ChargingController:
           send a persistent charging profile. The recorded request is what the dashboard reports and what
           the load balancer computes against.
         * A start that is not the sun's sets a charger forced to one phase back to three first
-          (`_restore_three_phases_locked`): only the sun's charges switch phases.
+          (`_restore_three_phases_locked`): only the sun's charges switch phases. So does a start of the sun's once
+          phase switching was turned off: the next start of any kind leaves the one phase we set behind. A charge that
+          runs when the setting is turned off is left as it is (no extra interruption).
         """
-        if manual or cause != "solar":
+        if manual or cause != "solar" or not self.phase_switching_option:
             await self._restore_three_phases_locked()
         self._paused_by_balancing = False
         # Whatever balancing paused before is over: this start is a charge of its own.

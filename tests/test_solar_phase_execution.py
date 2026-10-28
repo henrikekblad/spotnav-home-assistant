@@ -607,3 +607,71 @@ async def test_a_charger_never_switched_is_never_touched_before_a_start(hass: Ho
     w.controller.reconcile_phases()
     await w.controller.async_start(16, cause="plan_window")
     assert w.force_calls() == []
+
+
+async def test_turned_off_while_on_one_phase_the_charge_runs_on_and_the_next_sun_start_sets_three_first(
+    hass: HomeAssistant, freezer: Any
+) -> None:
+    w = await _switched_down(hass, freezer)
+    switched_at = w.t
+    w.draw(0.0)
+    await w.run(switched_at + 20.0)
+    await w.charger_takes(1)
+    w.draw(13.0)
+    await w.run(switched_at + 200.0)
+    assert w.controller.switched_phases == 1
+
+    # The setting is turned off (the card writes the entry without a reload): the running charge is left as it is.
+    hass.config_entries.async_update_entry(w.charger, data={**w.charger.data, CONF_PHASE_SWITCHING: False})
+    await hass.async_block_till_done()
+    assert w.controller.phase_switching_option is False
+    await w.run(w.t + 200.0)
+    assert w.force_calls() == ["1"], "no extra interruption of the charge that runs"
+    assert w.controller.switched_phases == 1
+
+    # The sun fades and the charge stops as usual.
+    w.draw(13.0, sun_w=500.0)
+    deadline = w.t + 900.0
+    while w.charge_stops() == 0 and w.t < deadline:
+        await w.at(w.t + 10.0)
+    assert w.charge_stops() == 1
+    hass.states.async_set(SWITCH, "off")
+    w.draw(0.0)
+    await w.run(w.t + 30.0)
+    assert w.force_calls() == ["1"], "nothing is sent while the charger is idle"
+
+    order: list[str] = []
+    adapter = w.controller.adapter
+    set_phases, start = adapter.async_set_phases, adapter.async_start
+
+    async def phases(n: int) -> Any:
+        order.append(f"phases {n}")
+        return await set_phases(n)
+
+    async def started(amps: int | None) -> bool:
+        order.append("start")
+        return await start(amps)
+
+    adapter.async_set_phases = phases  # type: ignore[method-assign]
+    adapter.async_start = started  # type: ignore[method-assign]
+    switches = w.controller.phase_switches_this_plug_in
+
+    # Enough sun again: the sun's next start sets three phases first.
+    w.draw(0.0, sun_w=6000.0)
+    deadline = w.t + 1800.0
+    while "start" not in order and w.t < deadline:
+        await w.at(w.t + 10.0)
+    assert order[:2] == ["phases 3", "start"], order
+    assert w.force_calls()[-1] == "3"
+    assert w.controller.phase_switches_this_plug_in == switches, "setting three back is not a switch of the budget"
+
+
+async def test_turned_off_a_charger_never_switched_is_never_touched_at_a_sun_start(
+    hass: HomeAssistant, freezer: Any
+) -> None:
+    w = await _world(hass, freezer, option=False)
+    w.draw(0.0, sun_w=6000.0)
+    await w.at(0.0)
+    await w.at(125.0)
+    assert w.coordinator.state.action == "start"
+    assert w.force_calls() == []
