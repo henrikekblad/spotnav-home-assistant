@@ -11,7 +11,9 @@ two interchangeable parts plus read-only facts:
   `number.set_value` under the write policy, or a vendor's own service; each is built by the factory
   its module registered (`registry.py`);
 * read-only facts: a status sensor and the values that mean charging, measured-current sensors (A or
-  mA) and the energy register.
+  mA) and the energy register;
+* optional capabilities, found by the charger's platform through the entity registry each time they are
+  asked for: a `PhaseSwitch` (one or three phases) where the integration offers one.
 
 The controller keeps its locks, deadband, dwell and yield stepping; this module only decides whether
 one write may go out *now* and sends it. Nothing here waits for a rate limit: a write the policy does
@@ -26,7 +28,7 @@ from collections import deque
 from collections.abc import Awaitable, Callable
 from dataclasses import replace
 from datetime import datetime, timedelta
-from typing import Any, Final
+from typing import Any, Final, Literal
 
 from homeassistant.core import callback, CALLBACK_TYPE, HassJob, HomeAssistant
 from homeassistant.helpers.event import async_call_later
@@ -56,6 +58,10 @@ from .base import (
     CurrentPath,
     end_call_tap,
     IN_EFFECT_OUTCOMES,
+    phase_switch_facts,
+    PhaseSwitch,
+    PhaseSwitchResult,
+    PHASES_UNSUPPORTED,
     start_call_tap,
     StartStopPath,
     STOP_HELD_AT_FLOOR,
@@ -63,7 +69,7 @@ from .base import (
 )
 from .generic import NoCurrent
 from .ocpp import OcppAssignedCurrent
-from .registry import build_current, build_start_stop, ChargerContext
+from .registry import build_current, build_phase_switch, build_start_stop, ChargerContext
 
 
 #: After a Start, how long a charger that has not yet reported itself enabled is still treated as
@@ -79,6 +85,7 @@ COMMAND_AFTER_S: Final = 5.0
 COMMAND_START: Final = "start"
 COMMAND_STOP: Final = "stop"
 COMMAND_CURRENT: Final = "current"
+COMMAND_PHASES: Final = "phases"
 RESULT_SENT: Final = "sent"
 RESULT_NOT_EXECUTED: Final = "not_executed"
 RESULT_ERROR: Final = "error"
@@ -120,6 +127,7 @@ class ChargerAdapter:
         current_entity_ids: tuple[str, ...] = (),
         energy_entity_id: str | None = None,
         current_enabled: bool = False,
+        phase_switch: Callable[[], PhaseSwitch | None] | None = None,
         now: Callable[[], datetime] = dt_util.utcnow,
     ) -> None:
         self.hass = hass
@@ -142,6 +150,7 @@ class ChargerAdapter:
             dict.fromkeys((*(value.lower() for value in disconnected_values), *no_vehicle_values(platform)))
         )
         self._connector_status_entity = connector_status_entity
+        self._phase_switch = phase_switch
         #: The lowest current a charge is started at: the profile's, never below the 6 A floor.
         self.min_start_current_a = max(DEFAULT_MIN_CURRENT_A, min_start_current_a or 0.0)
         self.current_entity_ids = current_entity_ids
@@ -201,6 +210,26 @@ class ChargerAdapter:
                 "outcome": outcome,
                 "in_effect": None if outcome is None else outcome in IN_EFFECT_OUTCOMES,
             }
+
+    @property
+    def phase_switch(self) -> PhaseSwitch | None:
+        """The charger's `PhaseSwitch`, or `None` when it has none (now: its entity may come or go)."""
+        return None if self._phase_switch is None else self._phase_switch()
+
+    async def async_set_phases(self, phases: Literal[1, 3]) -> PhaseSwitchResult:
+        """Ask the charger for one or three phases, noted in the command log like every command."""
+        switch = self.phase_switch
+        if switch is None:
+            return PhaseSwitchResult(False, PHASES_UNSUPPORTED)
+        result = PhaseSwitchResult(False)
+
+        async def run() -> bool | str:
+            nonlocal result
+            result = await switch.async_set_phases(phases)
+            return True if result.sent else (result.reason or False)
+
+        await self._logged(COMMAND_PHASES, run)
+        return result
 
     async def _logged(self, kind: str, run: Callable[[], Awaitable[Any]], *, only_when_sent: bool = False) -> Any:
         """Run one command and note it in the log: when, what was called, how it ended, and the status
@@ -272,7 +301,8 @@ class ChargerAdapter:
 
     def diagnostics(self, charge_control: str | None) -> dict[str, Any]:
         """Why a Start may have done nothing: the status and the charge control as they read now, the
-        paths' own state, the last current outcome and the command log. Ids and states only, no secrets.
+        paths' own state, the last current outcome, whether the charger can switch phases (and to what it is set)
+        and the command log. Ids and states only, no secrets.
         """
         control_id = charge_control or next(iter(self.path.entity_ids()), None)
         control = None if control_id is None else self.hass.states.get(control_id)
@@ -285,6 +315,7 @@ class ChargerAdapter:
             "start_stop_state": self.path.describe_state(),
             "current_state": self.current.describe_state(),
             "last_current": None if self._last_current is None else dict(self._last_current),
+            "phase_switch": phase_switch_facts(self.phase_switch),
             "commands": self.command_log(),
         }
 
@@ -628,6 +659,7 @@ def build_adapter(
         now=now,
         disconnected_values=tuple(profile.disconnected_values) if profile is not None else (),
         connector_status_entity=_connector_status_entity_of(hass, ocpp_target),
+        phase_switch=lambda: build_phase_switch(platform, context),
     )
     holder["adapter"] = adapter
     return adapter

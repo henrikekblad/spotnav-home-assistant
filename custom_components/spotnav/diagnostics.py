@@ -157,8 +157,9 @@ def _charger_diagnostics(hass: HomeAssistant, entry: ConfigEntry) -> dict[str, A
             "ocpp": controller.ocpp_control_facts(),
             # How the charger is driven and under which write policy (`execution/chargers/`), and
             # why a Start may have done nothing: the status and charge control as they read now,
-            # each path's own state, the last current outcome and the last 20 commands with the
-            # status around them. Entity and device ids are included; secrets never are.
+            # each path's own state, the last current outcome, whether the charger can switch between one
+            # and three phases (`phase_switch`) and the last 20 commands with the status around them.
+            # Entity and device ids are included; secrets never are.
             "adapter": async_redact_data({
                 **controller.adapter.diagnostics(controller.charge_control),
                 "platform": controller.adapter.platform,

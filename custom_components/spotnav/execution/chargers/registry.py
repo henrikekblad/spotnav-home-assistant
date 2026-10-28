@@ -2,9 +2,10 @@
 
 A start/stop factory is looked up by the stored path `kind`, a current factory by the current-control
 kind. Both receive one `ChargerContext` and return the path, or `None` when the stored configuration
-is incomplete for that kind (the caller then falls back to the generic path). Adding a vendor is a new
-module that calls `register_start_stop` / `register_current`; neither `adapter.py` nor the controller
-changes.
+is incomplete for that kind (the caller then falls back to the generic path). An optional capability is
+looked up by the charger's platform: `register_phase_switch` names how a platform's `PhaseSwitch` is found,
+and its factory returns `None` when this charger does not offer it. Adding a vendor is a new module that
+calls these; neither `adapter.py` nor the controller changes.
 """
 
 from __future__ import annotations
@@ -18,7 +19,7 @@ from homeassistant.core import HomeAssistant
 
 from ..charger_profiles import PlatformProfile, PATH_SWITCH, WritePolicy
 from ...vehicles.ocpp_identity import OcppConnectorTarget
-from .base import CurrentPath, StartStopPath, WriteRateLimiter
+from .base import CurrentPath, PhaseSwitch, StartStopPath, WriteRateLimiter
 
 
 @dataclass(frozen=True, slots=True)
@@ -47,12 +48,14 @@ class ChargerContext:
 
 StartStopFactory = Callable[[ChargerContext], StartStopPath | None]
 CurrentFactory = Callable[[ChargerContext], CurrentPath | None]
+PhaseSwitchFactory = Callable[[ChargerContext], PhaseSwitch | None]
 InstallationCheck = Callable[[HomeAssistant, str], bool]
 #: Which other system, if any, writes an installation-wide current limit of this charger's platform.
 ExternalBalancerCheck = Callable[[HomeAssistant], str | None]
 
 _START_STOP: dict[str, StartStopFactory] = {}
 _CURRENT: dict[str, CurrentFactory] = {}
+_PHASE_SWITCH: dict[str, PhaseSwitchFactory] = {}
 _installation_check: InstallationCheck | None = None
 _external_balancer_check: ExternalBalancerCheck | None = None
 
@@ -63,6 +66,11 @@ def register_start_stop(kind: str, factory: StartStopFactory) -> None:
 
 def register_current(kind: str, factory: CurrentFactory) -> None:
     _CURRENT[kind] = factory
+
+
+def register_phase_switch(platform: str, factory: PhaseSwitchFactory) -> None:
+    """How a platform's chargers are switched between one and three phases, where they can be."""
+    _PHASE_SWITCH[platform] = factory
 
 
 def register_installation_check(check: InstallationCheck) -> None:
@@ -99,4 +107,10 @@ def build_start_stop(context: ChargerContext) -> StartStopPath:
 def build_current(kind: str, context: ChargerContext) -> CurrentPath | None:
     """The current path for the current-control kind, or `None` (no current can be set)."""
     factory = _CURRENT.get(kind)
+    return factory(context) if factory is not None else None
+
+
+def build_phase_switch(platform: str | None, context: ChargerContext) -> PhaseSwitch | None:
+    """The charger's `PhaseSwitch`, or `None`: its platform registered none, or this charger does not offer it."""
+    factory = _PHASE_SWITCH.get(platform) if platform else None
     return factory(context) if factory is not None else None
