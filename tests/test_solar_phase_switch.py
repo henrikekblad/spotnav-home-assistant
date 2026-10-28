@@ -280,8 +280,13 @@ def test_switches_are_spaced_and_counted_per_plug_in():
     # Beyond the budget, on three phases, the stop rule applies again.
     assert phases == 1  # down, up, down
 
-    # A new plug-in has the whole budget again.
+    # A passing reading of no car does not refill the budget; a new plug-in does.
     solar.car_absent(_obs(t, 0.0, phases=phases))
+    solar.adopt(t, requested_a=MIN_A, on_since=t - 10_000.0)
+    verdicts = _run(solar, t, t + UP_DELAY_S + 10.0, 6000.0, phases=1, drawing_a=ONE_MAX_A)
+    assert _switches(verdicts) == []
+    t += UP_DELAY_S + 20.0
+    solar.new_plug_in()
     solar.adopt(t, requested_a=MIN_A, on_since=t - 10_000.0)
     verdicts = _run(solar, t, t + UP_DELAY_S + 10.0, 6000.0, phases=1, drawing_a=ONE_MAX_A)
     assert _switches(verdicts) == [3]

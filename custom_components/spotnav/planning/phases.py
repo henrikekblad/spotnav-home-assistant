@@ -7,7 +7,8 @@
 
 What charges show is learned here too (`PhaseObserver`, `async_record_charge_phases`): three phases confirm
 the wiring, one phase on three-phase wiring twice running for the same vehicle becomes a suggestion about
-its onboard charger. Nothing but a site-less charger's unset wiring is ever changed by itself.
+its onboard charger. A charge the sun forced to one phase, or whose phase switch settles, says nothing about the
+car: such a stretch is dropped from the observation (`PhaseObserver.sample`'s `switched`). Nothing but a site-less charger's unset wiring is ever changed by itself.
 
 The stored settings' `phases` is not read any more: it is what an older release recorded, moved here by
 `async_migrate_settings_phases` once and kept on the wire (as this effective value) for older clients.
@@ -174,8 +175,15 @@ class PhaseObserver:
         self._best = 0
         self._announced = False
 
-    def sample(self, charging: bool, currents: Sequence[float | None] | None) -> int | None:
-        """The finished observation (1, 2 or 3 phases) this sample completes, else `None`."""
+    def sample(
+        self, charging: bool, currents: Sequence[float | None] | None, *, switched: bool = False
+    ) -> int | None:
+        """The finished observation (1, 2 or 3 phases) this sample completes, else `None`. `switched`: the charge is
+        forced to one phase by us, or a phase switch settles; the charge observed so far is dropped and nothing is
+        recorded (a forced one-phase charge would teach that the car is a one-phase one)."""
+        if switched:
+            self._reset()
+            return None
         if not charging:
             result = self._best if self._samples >= MIN_SAMPLES and not self._announced else None
             self._reset()
