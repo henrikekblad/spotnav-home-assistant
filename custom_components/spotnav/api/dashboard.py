@@ -482,6 +482,8 @@ class CapturedDashboard:
     measured_power_kw: float | None = None
     #: The charger's voltage between phases (`grid_voltage.voltage_between_phases_v`).
     voltage_between_phases_v: float = 400.0
+    #: 1 while the sun switched the charge to one phase (`ChargingController.switched_phases`), else `None`.
+    switched_phases: int | None = None
     #: The open charge session, `None` while none runs.
     session: CapturedSession | None = None
     #: The notifier's count of the plans it told (`ChargerNotifier.plan_notice`), `None` without a notifier.
@@ -1121,6 +1123,7 @@ def capture_dashboard(
         vehicle_choices=tuple((choice.id, choice.name) for choice in resolve_target_vehicle(hass, None)[1]),
         measured_power_kw=_measured_power_kw(controller),
         voltage_between_phases_v=voltage_between_phases_v(hass, entry_id),
+        switched_phases=None if controller is None else controller.switched_phases,
         session=capture_session(hass, entry_id),
         plan_notice=_plan_notice(hass, entry_id),
     )
@@ -1805,6 +1808,7 @@ def progress_facts(capture: CapturedDashboard) -> ProgressFacts:
         measured_power_kw=capture.measured_power_kw,
         measured_current_a=finite_number(capture.live.measured_current_a),
         phases=_effective_phases(capture),
+        switched_one_phase=capture.switched_phases == 1,
         voltage_between_phases_v=capture.voltage_between_phases_v,
         assigned_current_a=finite_number(capture.live.requested_current_a),
         installed_power_kw=None if installed is None else installed["power_kw"],
@@ -2169,10 +2173,15 @@ def status_facts(capture: CapturedDashboard) -> StatusFacts:
     if state is not None and strategy == STRATEGY_SOLAR:
         # The basis facts are the live snapshot's, not part of the `strategy_state` contract.
         basis = (None if capture.site is None else capture.site.solar_state) or {}
+        one_phase = capture.switched_phases == 1
+        requested_a = state["requested_a"]
+        if one_phase and requested_a is None:
+            # On one phase the line names the power: a steady tick's verdict carries no current, so the one asked now.
+            requested_a = finite_number(capture.live.requested_current_a)
         solar = SolarFacts(
             state=state["state"],
             reason=state["reason"],
-            requested_a=state["requested_a"],
+            requested_a=requested_a,
             basis_problem=_text(basis.get("basis_problem")),
             basis_entity=_text(basis.get("basis_entity")),
             charger_current=_text(basis.get("charger_current")),
@@ -2184,6 +2193,7 @@ def status_facts(capture: CapturedDashboard) -> StatusFacts:
             available_a=finite_number(basis.get("available_a")),
             available_w=finite_number(basis.get("available_w")),
             start_a=finite_number(basis.get("start_a")),
+            one_phase=one_phase,
         )
     elif state is not None and strategy == STRATEGY_HYBRID:
         hybrid = HybridFacts(

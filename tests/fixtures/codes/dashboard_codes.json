@@ -438,6 +438,12 @@
       ],
       "tone": "normal"
     },
+    "solar_charging_one_phase": {
+      "params": [
+        "requested_a"
+      ],
+      "tone": "normal"
+    },
     "solar_disarming": {
       "params": [],
       "tone": "normal"

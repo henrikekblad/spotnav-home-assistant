@@ -21,7 +21,7 @@ that is missing makes its field `null`.
   falls after the last one; solar and hybrid state no end.
 - The percent is rounded down and kept within 0-100.
 - The power: measured first (the charger's power sensor, else its measured current over the phases the
-  charge uses), else what SpotNav assigned now, else the installed schedule's power or current, else
+  charge uses: one while the sun switched the charge to one phase), else what SpotNav assigned now, else the installed schedule's power or current, else
   the proposal's power, else the settings' current.
 - From the open session: when this charge began, the car's level then, and the energy measured since
   (`null` for an estimated session).
@@ -97,6 +97,9 @@ class ProgressFacts:
     #: The phases the charge uses (the installed schedule's, else the effective count).
     phases: int | None = None
     voltage_between_phases_v: float = 400.0
+    #: The sun switched the charge to one phase (`ChargingController.switched_phases == 1`): the measured and the
+    #: assigned current are reckoned on one phase, whatever the wiring or the installed schedule says.
+    switched_one_phase: bool = False
     #: The current SpotNav asks of the charger now (a plan, solar or the site's limit).
     assigned_current_a: float | None = None
     installed_power_kw: float | None = None
@@ -227,7 +230,10 @@ def _kw(amps: float | None, phases: int | None, voltage: float) -> float | None:
 def _power(facts: ProgressFacts) -> tuple[float | None, str | None]:
     """The power the charge runs at in kW and where it came from, or `(None, None)`."""
     voltage = facts.voltage_between_phases_v
-    phases = facts.installed_phases if facts.installed_phases in (1, 3) else facts.phases
+    if facts.switched_one_phase:
+        phases: int | None = 1
+    else:
+        phases = facts.installed_phases if facts.installed_phases in (1, 3) else facts.phases
     measured = finite_number(facts.measured_power_kw)
     if measured is None or measured <= 0:
         measured = _kw(finite_number(facts.measured_current_a), phases, voltage)

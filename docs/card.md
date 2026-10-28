@@ -145,6 +145,7 @@ serious each is. Examples:
 | Paused – the house is using the whole fuse; trying again at 04:30 | Load balancing paused the plan's charge inside its window for want of room for the car's minimum; it is tried again then ("when there is room" when no time is set; "the home battery charges from the grid and fills the main fuse" when that is why). |
 | Charging to the minimum level (30 %) | The car is below its [minimum charge level](target-soc.md#minimum-charge-level), so SpotNav charges at once at the set current; the strategy takes over at the floor. |
 | Solar · charging 9 A from surplus | The solar strategy's state: waiting for sun, surplus found and starting soon, surplus fading, charging, or no usable reading. |
+| Solar · 1 phase · 2.9 kW | A solar charge the sun has switched to one phase (see *Phase switching for solar* below), with the power it charges at on that phase. |
 | Solar · surplus available (4.2 kW) / Solar · no car plugged in | Solar with no car plugged in: the surplus is enough to start a charge (plug the car in now), or it is not. |
 | Hybrid · 12 kWh from grid, 8 kWh expected from sun | The hybrid plan's split; with no forecast source it says it plans like Cheapest. |
 | The energy meter cannot be read: 6.5 kWh remains, from its last reading. / No energy meter: 3 kWh remains, counted from this charger's recorded charges. | The requested energy is counted without the charger's energy register, see [counting the requested energy](strategies.md#cheapest). |
@@ -326,6 +327,13 @@ the editor, where a charger on a site also has its **Charger priority** (first, 
 [site and load balancing](site-and-load-balancing.md)). Under **Energy**, **None** is kept as your
 choice: SpotNav then reads no energy register and looks for none, and lists one it finds on the charger
 under **To check**.
+
+**Phase switching for solar**, below the priority, is **Off** by default or **Automatic**. It is shown only for
+a charger whose integration can switch between one and three phases (today a Peblar), that is wired for three
+phases, on a site with a solar source; no other charger has the row. Set to Automatic, a solar charge with too
+little sun for three phases charges on one phase instead of drawing from the grid, and the status then says
+so with its power (*Solar · 1 phase · 2.9 kW*). Some cars charge badly after a phase change: turn it off if
+your car stops charging. The rules are under [Solar](strategies.md#solar).
 
 **Charge periods**, below the charger's setup rows for administrators, is **Automatic** (the default) or
 **1 period** to **8 periods**. Automatic splits the charge only where the saving is worth another start, and

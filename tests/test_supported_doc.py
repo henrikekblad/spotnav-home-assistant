@@ -43,3 +43,16 @@ def test_page_has_one_section_per_category() -> None:
         "## Supported solar forecast",
     ):
         assert f"\n{heading}\n" in f"\n{text}", heading
+
+
+def test_the_phase_switching_note_names_exactly_the_platforms_that_can_switch() -> None:
+    import custom_components.spotnav.execution.chargers  # noqa: F401 - registers every platform's paths
+    from custom_components.spotnav.execution import charger_profiles as cp
+    from custom_components.spotnav.execution.chargers import registry
+
+    noted = {profile.platform for profile in cp._PROFILES if profile.phase_switching}
+    assert noted == set(registry._PHASE_SWITCH)
+    peblar = next(profile for profile in cp._PROFILES if profile.platform == "peblar")
+    assert "Phase switching for solar through the Force single phase switch; needs the smart charging strategy Default." in (
+        _generator().charger_notes(peblar)
+    )

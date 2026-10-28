@@ -448,6 +448,13 @@ describe("the status line renders the block and nothing else", () => {
       "Solar · charging 8 A from surplus",
     );
     expect(statusText(block(statusLine("solar_waiting_for_sun")), format("sv"), NOW)).toBe("Sol · väntar på sol");
+    // On the one phase the sun switched to: the power is the current on that phase (12.5 A x 230 V).
+    const onePhase = block(statusLine("solar_charging_one_phase", { requested_a: 12.5 }));
+    expect(statusText(onePhase, format("en"), NOW)).toBe("Solar · 1 phase · 2.9 kW");
+    expect(statusText(onePhase, format("sv"), NOW)).toBe("Sol · 1 fas · 2,9 kW");
+    expect(statusText(block(statusLine("solar_charging_one_phase", { requested_a: null })), format("en"), NOW)).toBe(
+      "Solar · charging on 1 phase",
+    );
     const hybrid = block(
       statusLine("hybrid_grid", {
         grid_kwh: 20,

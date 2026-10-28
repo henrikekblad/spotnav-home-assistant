@@ -1398,6 +1398,7 @@ export const STATUS_CODE_TABLE = {
   plan_cost: ["normal", { amount_minor: "int", currency: "text" }],
   plan_distance: ["normal", { mil: "number" }],
   solar_charging: ["normal", { requested_a: "numberOrNull" }],
+  solar_charging_one_phase: ["normal", { requested_a: "numberOrNull" }],
   solar_arming: ["normal", {}],
   solar_disarming: ["normal", {}],
   solar_no_reading_stopped: ["normal", {}],

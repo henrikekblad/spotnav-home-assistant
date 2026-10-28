@@ -276,6 +276,8 @@ def charger_notes(profile: cp.PlatformProfile) -> str:
     if profile.own_modes:
         labels = join_words(sorted({rule.label for rule in profile.own_modes}))
         lines.append(f"Turn off its own {labels}: two controllers on one charger fight each other.")
+    if profile.phase_switching:
+        lines.append(f"Phase switching for solar through {profile.phase_switching}.")
     return " ".join(lines)
 
 
