@@ -68,7 +68,9 @@ from .planning.first_run import async_seed_first_run
 from .planning.phases import async_migrate_settings_phases
 from .pricing.market_observation import MarketObservation
 from .pricing.price_refresh import async_setup_price_refresh
+from .pricing.price_setup import async_drop_pointers, async_ensure_first_price_entry, async_start_price_migration
 from .pricing.price_source import async_price_sources_changed, price_source_for
+from .pricing.price_store import async_setup_price_store
 from .pricing.price_repository import async_setup_price_repository
 from .repairs import async_arm_resolution_sync, async_sync_resolution_repairs
 from .price_device import PriceDevice
@@ -143,6 +145,8 @@ async def async_setup(hass: HomeAssistant, config: dict[str, Any]) -> bool:
     await async_setup_price_refresh(hass, repository)
     hass.bus.async_listen_once(EVENT_HOMEASSISTANT_STOP, partial(_async_stop, hass))
     await async_setup_auto_settings(hass)
+    # The price entries' marker, duplicates and revision ledger, before any entry answers a settings record.
+    await async_setup_price_store(hass)
     # A car's target is the car's at every charger (`vehicles/vehicle_target.py`).
     async_setup_vehicle_targets(hass)
     # The charge sessions' record, loaded before any charger entry starts recording into it.
@@ -165,7 +169,20 @@ async def async_setup(hass: HomeAssistant, config: dict[str, Any]) -> bool:
     # Static route for the bundled card asset, versioned by the manifest.
     await async_setup_card_asset(hass)
     async_register_pairing(hass)
+    # Once Home Assistant has started (every entry known), the chargers' own area and fees move to electricity
+    # price entries, once per installation (`pricing/price_setup.py`).
+    async_at_started(hass, _async_at_started_migration)
     return True
+
+
+async def _async_at_started_migration(hass: HomeAssistant) -> None:
+    hass.async_create_task(async_start_price_migration(hass), "spotnav price migration")
+
+
+@callback
+def _async_first_price_entry(hass: HomeAssistant) -> None:
+    """A charger or site was set up: the installation's first electricity price entry, if it has none yet."""
+    hass.async_create_task(async_ensure_first_price_entry(hass), "spotnav first price entry")
 
 
 async def _async_stop(hass: HomeAssistant, _event: Event | None = None) -> None:
@@ -322,6 +339,8 @@ async def _async_setup_charger_entry(hass: HomeAssistant, entry: ChargerConfigEn
     await async_apply_site_join(hass, entry)
     # After the join, so the site's wiring and fuse are known to the defaults.
     await async_seed_first_run(hass, entry, controller, data.preview)
+    # No electricity price yet: the first one, from Home Assistant's location (`pricing/price_setup.py`).
+    _async_first_price_entry(hass)
     # A target stored before targets were the car's becomes its car's.
     await async_adopt_vehicle_target(hass, entry.entry_id)
     if (
@@ -342,6 +361,7 @@ async def _async_setup_charger_entry(hass: HomeAssistant, entry: ChargerConfigEn
                 remove()
             remove_listener.clear()
             hass.async_create_task(async_seed_first_run(hass, entry, controller, data.preview))
+            _async_first_price_entry(hass)
 
         remove_listener.append(price_manager.add_catalogue_listener(_on_catalogue))
         entry.async_on_unload(lambda: [remove() for remove in remove_listener])
@@ -628,6 +648,8 @@ async def _async_setup_site_entry(hass: HomeAssistant, entry: SiteConfigEntry) -
     # that this controller exists (also covers this site reloading).
     async_rebind_solar_execution(hass, list(entry.data.get(CONF_CHARGER_ENTRY_IDS) or []))
     await hass.config_entries.async_forward_entry_setups(entry, SITE_PLATFORMS)
+    # No electricity price yet: the first one, from Home Assistant's location (`pricing/price_setup.py`).
+    _async_first_price_entry(hass)
     return True
 
 
@@ -684,15 +706,19 @@ async def async_remove_entry(hass: HomeAssistant, entry: ConfigEntry) -> None:
 
     Unload does not come here (a reload must find its settings). Charger entries only; a site entry
     never writes settings, and an electricity price keeps nothing but its entry (its numbers' last values
-    are Home Assistant's restore state).
+    are Home Assistant's restore state); the pointers to a removed electricity price are dropped.
     """
     if entry_kind(entry) == ENTRY_TYPE_PRICE:
+        # No site or charger keeps a pointer to an entry that is gone.
+        async_drop_pointers(hass, entry.entry_id)
         async_price_sources_changed(hass, entry.entry_id)
         return
     await async_sync_resolution_repairs(hass, (entry.entry_id,))
     if entry.data.get(CONF_ENTRY_TYPE) == ENTRY_TYPE_SITE:
         return
     async_leave_sites(hass, entry.entry_id)
+    if (price_store := domain_data(hass).price_store) is not None:
+        price_store.forget(entry.entry_id)
     await async_remove_auto_state(hass, entry.entry_id)
     await SocReader.async_remove_stored(hass, entry.entry_id)
     await ChargerPush.async_remove_stored(hass, entry.entry_id)

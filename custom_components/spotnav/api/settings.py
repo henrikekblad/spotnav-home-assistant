@@ -76,12 +76,14 @@ from ..planning.auto_settings import (
 from ..notifications.settings import NotificationSettings, NotificationSettingsError
 from ..notifications.targets import available_targets, encoded_available
 from ..planning.phases import effective_phases
+from ..pricing.price_setup import async_price_entry_from_settings
 from ..pricing.price_source import (
     async_write_price_entry,
     effective_settings,
     entry_source_for,
     price_write_revision,
     PriceSource,
+    wire_offset,
     wire_revision,
 )
 from ..runtime import controller_for, domain_data, preview_for
@@ -877,7 +879,10 @@ async def async_update_settings(
     row for its area go to that entry (`PriceRoute`): the charger's record keeps its own for them, and
     `expected_revision` is the wire revision (the charger's own plus the entry's write counter). The entry is
     judged again inside the store's lock, and written right after the charger's record committed; changing it is
-    an administrator's. Without a price entry nothing of this applies and the body is stored as sent.
+    an administrator's. Without a price entry the body is stored as sent; when it sets the area and no electricity
+    price entry exists at all, one is made from that area and its row and the charger (or its site) points at it.
+    `expected_revision` is the wire revision: also the offset kept since the charger's price source last moved
+    (`pricing/price_store.py`) comes off it.
 
     `plan_only` is a caller who is not an administrator: refused (`spotnav_not_admin`) unless the charger's
     `users_change_plan` is on, and then only for a body that moves nothing outside `NON_ADMIN_FIELDS`. Both are
@@ -895,12 +900,12 @@ async def async_update_settings(
     decoded = decode_settings(replacement)
     source = entry_source_for(hass, entry_id)
     route = None if source is None else PriceRoute(source, decoded)
-    if route is not None:
-        if plan_only and route.overrides is not None:
-            # The area and fees are an administrator's, wherever they are stored.
-            raise SettingsRefusal(ERROR_NOT_ADMIN)
-        # The wire revision carries the entry's counter on top of the charger's own.
-        revision -= route.write_revision
+    if route is not None and plan_only and route.overrides is not None:
+        # The area and fees are an administrator's, wherever they are stored.
+        raise SettingsRefusal(ERROR_NOT_ADMIN)
+    # The wire revision carries the entry's counter, and the offset kept since the source last moved, on top of the
+    # charger's own.
+    revision -= wire_offset(hass, entry_id, store.settings(entry_id).revision)
     if from_app and isinstance(replacement, Mapping) and "identify_camera" in replacement:
         _refuse_camera_choice(store.settings(entry_id).identify_camera, decoded.identify_camera)
     mutate = replacement_mutator(
@@ -928,6 +933,7 @@ async def async_update_settings(
     if controller is None:
         # Loaded but no Auto controller: readable, not writable.
         raise SettingsRefusal(ERROR_CHARGER_UNLOADED)
+    before = store.settings(entry_id)
     try:
         await controller.async_apply_settings(mutate=mutate, expected_revision=revision)
     except SettingsRefusal:
@@ -936,11 +942,13 @@ async def async_update_settings(
     except AutoSettingsError:
         # Refused by validation or the compare-and-set before the store returned: nothing written.
         raise
-    except SettingsReconcileError:
+    except SettingsReconcileError as err:
         # The controller's exact boundary: the write committed and this is the committed record
         # (not re-read; a later mutation may already have moved the revision). The price part follows it.
         if route is not None:
             route.write(hass)
+        else:
+            await async_price_entry_from_settings(hass, entry_id, before, err.settings)
         raise
     except Exception:
         raise SettingsNotCommitted(store.settings(entry_id)) from None
@@ -948,6 +956,9 @@ async def async_update_settings(
         # After the charger's record committed, with no wait between the check and the write: a price entry
         # written in the moment between is a conflict (the charger's part stands; the retry carries the rest).
         route.write(hass)
+    else:
+        # The area set while no electricity price exists makes the first one (`pricing/price_setup.py`).
+        await async_price_entry_from_settings(hass, entry_id, before, store.settings(entry_id))
     return store.settings(entry_id)
 
 

@@ -29,7 +29,9 @@ Writes: `async_write_price_entry` is the one way the area and fees of a price en
 routed from a charger, the price device's own entities, its options flow). It updates the entry in place, never
 reloads it, and counts the write (`PriceSource.write_revision`, a counter that only grows). The settings record a
 charger answers with carries its own revision plus that counter (`wire_revision`), so a body read before a fee
-change made anywhere else is stale when it comes back (`api/settings.py`).
+change made anywhere else is stale when it comes back (`api/settings.py`). When the charger's source moves, the
+sum could fall; the installation's ledger then lifts it above every revision answered before
+(`pricing/price_store.py`), so the wire revision only grows.
 """
 
 from __future__ import annotations
@@ -281,11 +283,23 @@ def plan_revision_for(hass: HomeAssistant, charger_id: str) -> str | None:
     return None if source is None else source.plan_revision
 
 
+def wire_offset(hass: HomeAssistant, charger_id: str, settings_revision: int) -> int:
+    """What the charger's wire revision adds to its own revision: its price entry's write counter, plus the offset
+    the installation's ledger keeps for it since its source last moved (`pricing/price_store.py`)."""
+    source = entry_source_for(hass, charger_id)
+    source_id = None if source is None else source.entry_id
+    write = 0 if source is None else source.write_revision
+    store = domain_data(hass).price_store
+    if store is None:
+        return write
+    return store.wire_offset(charger_id, source_id, settings_revision, write)
+
+
 def wire_revision(hass: HomeAssistant, charger_id: str, settings_revision: int) -> int:
     """The `revision` a charger's settings record carries on the wire: its own, plus its price entry's write
-    counter. Both only grow, so the sum moves whenever either does and never goes back."""
-    source = entry_source_for(hass, charger_id)
-    return settings_revision + (0 if source is None else source.write_revision)
+    counter, plus an offset set when its source moves. Each part only grows while the source stays, and a new
+    source starts above every revision answered before, so the sum never goes back."""
+    return settings_revision + wire_offset(hass, charger_id, settings_revision)
 
 
 def price_write_revision(entry: ConfigEntry) -> int:

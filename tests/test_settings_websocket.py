@@ -103,6 +103,7 @@ async def test_a_later_read_returns_the_exact_stored_record(
     assert frame["result"]["settings"]["revision"] == committed.revision == 1
 
 
+@pytest.mark.usefixtures("no_price_entry_from_settings")
 async def test_an_admin_full_replacement_commits_once_and_returns_the_envelope(
     hass: HomeAssistant, hass_ws_client
 ) -> None:

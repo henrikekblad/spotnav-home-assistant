@@ -173,6 +173,7 @@ async def test_settings_write_accepts_the_one_version_and_no_negotiation_exists(
     assert "settings_api_version" not in absent
 
 
+@pytest.mark.usefixtures("no_price_entry_from_settings")
 async def test_a_valid_replacement_returns_the_success_envelope_and_subscribes(
     hass: HomeAssistant, hass_client_no_auth
 ) -> None:
