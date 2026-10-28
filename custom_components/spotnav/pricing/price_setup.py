@@ -18,6 +18,11 @@ the form would, and only while `price_setup_lock` is held, so two chargers set u
   question (`price_store.py`). The chargers' own settings are left as they were (a rollback reads them). The
   marker is set only at the end, so an interrupted run starts again and reuses what it made.
 * **Removal** (`async_drop_pointers`): a price entry that is removed takes every pointer to it along.
+* **A choice from the card** (`choose_price_entry`): with several price entries, an administrator picks the one a
+  charger uses. A charger on a site points its site at it (every charger there follows: their own pointers are
+  dropped), a charger without one points at it itself.
+* **The card's question** (`use_price_entry`): for same-area price entries with different fees, every pointer to
+  the others moves to the one kept. The others stay (removed only by the person, under Devices & services).
 
 Pointers are written in the entries' data (`CONF_PRICE_ENTRY_ID`), on a site when the charger is on one, else on
 the charger. Neither entry reloads for it; every consumer is told (`async_price_sources_changed`) and resolves again.
@@ -195,6 +200,47 @@ async def async_price_entry_from_settings(
         if created is not None:
             point_charger(hass, charger_id, created.entry_id)
         return created
+
+
+# ------------------------------------------------------------------ the card's choice and question
+
+
+@callback
+def choose_price_entry(hass: HomeAssistant, charger_id: str, price_entry_id: str) -> None:
+    """The charger's site points at the price entry and every charger on it follows (their own pointers are
+    dropped); a charger without a site points at it itself."""
+    before = {entry.data.get(CONF_PRICE_ENTRY_ID) for entry in hass.config_entries.async_entries(DOMAIN)}
+    site = site_for_charger(hass, charger_id)
+    changed = False
+    if site is None:
+        charger = hass.config_entries.async_get_entry(charger_id)
+        changed = charger is not None and _write_pointer(hass, charger, price_entry_id)
+    else:
+        changed = _write_pointer(hass, site, price_entry_id)
+        for member_id in site.data.get(CONF_CHARGER_ENTRY_IDS) or []:
+            member = hass.config_entries.async_get_entry(member_id)
+            if member is not None and _write_pointer(hass, member, None):
+                changed = True
+    if changed:
+        _announce(hass, {price_entry_id, *before})
+
+
+@callback
+def use_price_entry(hass: HomeAssistant, keep_entry_id: str, other_entry_ids: Iterable[str]) -> None:
+    """Every site and charger pointing at one of the others points at the kept entry; nothing is removed."""
+    others = set(other_entry_ids) - {keep_entry_id}
+    moved = False
+    for entry in hass.config_entries.async_entries(DOMAIN):
+        if entry.data.get(CONF_PRICE_ENTRY_ID) in others:
+            moved = _write_pointer(hass, entry, keep_entry_id) or moved
+    if moved:
+        _announce(hass, {keep_entry_id, *others})
+
+
+@callback
+def _announce(hass: HomeAssistant, entry_ids: Iterable[Any]) -> None:
+    for entry_id in sorted(entry_id for entry_id in entry_ids if isinstance(entry_id, str)):
+        async_price_sources_changed(hass, entry_id)
 
 
 # ------------------------------------------------------------------ removal

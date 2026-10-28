@@ -31,6 +31,7 @@ from .api.region import async_setup_region_api
 from .api.pairing import async_register_pairing
 from .api.sessions import async_setup_sessions_api
 from .api.settings import async_setup_settings_api
+from .api.price_source import async_setup_price_source_api
 from .api.site_settings import async_setup_site_settings_api
 from .api.webhook import async_register_charger_webhook
 from .card_asset import async_setup_card_asset
@@ -161,6 +162,7 @@ async def async_setup(hass: HomeAssistant, config: dict[str, Any]) -> bool:
     async_setup_settings_api(hass)
     async_setup_manual_action_api(hass)
     async_setup_site_settings_api(hass)
+    async_setup_price_source_api(hass)
     async_setup_entity_config_api(hass)
     async_setup_identification_api(hass)
     async_setup_charge_limit_api(hass)
