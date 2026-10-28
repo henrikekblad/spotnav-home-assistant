@@ -111,6 +111,8 @@
     "off_no_surplus",
     "on_modulate",
     "on_steady",
+    "phase_down",
+    "phase_up",
     "start_after_delay",
     "start_verifying",
     "stop_after_delay",
