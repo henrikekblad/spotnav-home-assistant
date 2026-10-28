@@ -317,7 +317,6 @@
         "description": "Equilibrado de carga por debajo del fusible general. El control activo reduce la corriente de un cargador cuando hace falta; funciona lo mejor posible, pero no es un dispositivo de protección. El sensor de potencia de la batería es opcional y solo alimenta una estimación de diagnóstico -- nunca un límite de carga seguro.",
         "data": {
           "name": "Nombre de la instalación",
-          "site_enabled": "Cálculo de la instalación activado",
           "active_control_enabled": "Control activo activado (opcional, solo en modo derivado)",
           "main_fuse_a": "Calibre del fusible general (A)",
           "safety_margin_a": "Margen de seguridad (A)",
@@ -578,7 +577,6 @@
       "site_state": {
         "name": "Estado de capacidad",
         "state": {
-          "disabled": "Desactivado",
           "not_configured": "Sin configurar",
           "missing_measurements": "Falta la medición",
           "stale_measurements": "Medición desactualizada",

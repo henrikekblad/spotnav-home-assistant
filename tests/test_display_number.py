@@ -54,7 +54,6 @@ async def test_submitting_the_rounded_default_is_not_a_customised_ceiling(hass: 
             "safety_margin_a": 1,
             "measurement_mode": "direct_phase_current",
             "charger_entry_ids": [],
-            "site_enabled": False,
             "change_measurement": True,
             "max_age_s": 120,
             "yield_stepping_enabled": True,

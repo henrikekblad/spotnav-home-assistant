@@ -44,7 +44,6 @@ from custom_components.spotnav.const import (
     CONF_PHASE_WIRING,
     CONF_SAFETY_MARGIN_A,
     CONF_SITE_CURRENT_SOURCE,
-    CONF_SITE_ENABLED,
     DEFAULT_MAX_AGE_S,
     DEFAULT_REGULATOR_DEADBAND_A,
     DEFAULT_REGULATOR_DWELL_S,
@@ -123,7 +122,7 @@ def _site_basics(charger_entry_ids: list[str]) -> dict:
     }
 
 
-def _options_basics(charger_entry_ids: list[str], *, site_enabled: bool = True) -> dict:
+def _options_basics(charger_entry_ids: list[str]) -> dict:
     """One `site_init` submission for the options flow, mirroring what the
     site entries below already store (so a roundtrip save changes nothing
     else).
@@ -133,7 +132,6 @@ def _options_basics(charger_entry_ids: list[str], *, site_enabled: bool = True) 
         "safety_margin_a": 1.0,
         "measurement_mode": "direct_phase_current",
         "charger_entry_ids": list(charger_entry_ids),
-        "site_enabled": site_enabled,
         "change_measurement": True,
         "max_age_s": DEFAULT_MAX_AGE_S,
     }
@@ -480,7 +478,6 @@ async def test_options_flow_roundtrip_preserves_a_manual_attributes_site_source(
         title="Site",
         data={
             CONF_ENTRY_TYPE: ENTRY_TYPE_SITE,
-            CONF_SITE_ENABLED: True,
             CONF_MAIN_FUSE_A: 25.0,
             CONF_SAFETY_MARGIN_A: 1.0,
             CONF_MEASUREMENT_MODE: MEASUREMENT_MODE_DIRECT,
@@ -674,7 +671,7 @@ async def test_the_existing_separate_entities_manual_path_is_unchanged_in_both_f
     data_before = dict(entry.data)
     result = await hass.config_entries.options.async_init(site_entry_id)
     result = await hass.config_entries.options.async_configure(
-        result["flow_id"], _options_basics([], site_enabled=True)
+        result["flow_id"], _options_basics([])
     )
 
     # Nothing is stored, so "manual" (the guided pickers) is again the

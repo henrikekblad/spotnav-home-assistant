@@ -317,7 +317,6 @@
         "description": "Lastbalancering under hovedsikringen. Aktiv styring sænker en laders strøm, når det er nødvendigt; den er bedste indsats, ikke en beskyttelsesanordning. Sensoren for batteriets effekt er valgfri og bruges kun til et diagnostisk skøn -- aldrig til en sikker ladegrænse.",
         "data": {
           "name": "Anlæggets navn",
-          "site_enabled": "Anlægsberegning slået til",
           "active_control_enabled": "Aktiv styring slået til (tilvalg, kun beregnet målemetode)",
           "main_fuse_a": "Hovedsikring (A)",
           "safety_margin_a": "Sikkerhedsmargin (A)",
@@ -578,7 +577,6 @@
       "site_state": {
         "name": "Kapacitetstilstand",
         "state": {
-          "disabled": "Deaktiveret",
           "not_configured": "Ikke sat op",
           "missing_measurements": "Måling mangler",
           "stale_measurements": "Måling forældet",

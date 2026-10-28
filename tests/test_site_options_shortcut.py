@@ -16,7 +16,6 @@ def _basics(charger_ids: list[str], **extra) -> dict:
         "safety_margin_a": 1.0,
         "measurement_mode": "direct_phase_current",
         "charger_entry_ids": charger_ids,
-        "site_enabled": True,
         "max_age_s": 120.0,
         **extra,
     }
@@ -28,7 +27,6 @@ def _site(hass: HomeAssistant, charger_ids: list[str]):
         entry_id="site",
         charger_entry_ids=charger_ids,
         phase_wiring={cid: dict(WIRING) for cid in charger_ids},
-        site_enabled=False,
     )
 
 
@@ -41,11 +39,10 @@ async def test_unticked_saves_at_once_and_changes_only_the_basics(hass: HomeAssi
 
     assert result["type"] is FlowResultType.CREATE_ENTRY
     after = dict(hass.config_entries.async_get_entry(entry.entry_id).data)
-    assert after["site_enabled"] is True
     assert after["phase_wiring"] == before["phase_wiring"]
     assert after["direct_entities"] == before["direct_entities"]
     changed = {key for key in after if after[key] != before.get(key)}
-    assert changed <= {"site_enabled", "battery_aggregate_power_entity"}
+    assert changed <= {"battery_aggregate_power_entity"}
 
 
 async def test_ticked_shows_the_measurement_step(hass: HomeAssistant) -> None:
@@ -88,3 +85,4 @@ async def test_a_changed_mode_shows_the_step(hass: HomeAssistant) -> None:
 
     assert result["step_id"] == "site_details"
     assert "mode changed" in result["description_placeholders"]["reason"]
+

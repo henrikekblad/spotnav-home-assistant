@@ -21,7 +21,6 @@ from custom_components.spotnav.const import (
     CONF_REGULATOR_DEADBAND_A,
     CONF_REGULATOR_DWELL_S,
     CONF_SAFETY_MARGIN_A,
-    CONF_SITE_ENABLED,
     CURRENT_CONTROL_CHANGE_CONFIGURATION,
     DOMAIN,
     ENTRY_TYPE_SITE,
@@ -90,8 +89,8 @@ async def test_config_flow_creates_a_site_entry_with_direct_measurements(
     assert result["type"] is FlowResultType.CREATE_ENTRY
     assert result["data"][CONF_ENTRY_TYPE] == ENTRY_TYPE_SITE
     assert result["data"][CONF_MAIN_FUSE_A] == 25.0
-    # Creation needs a complete configuration, so the calculation starts enabled.
-    assert result["data"]["site_enabled"] is True
+    # A site always calculates once it has a measurement: there is no switch to store.
+    assert "site_enabled" not in result["data"]
 
 
 async def test_charger_flow_is_unaffected_by_the_new_entry_type_step(
@@ -497,7 +496,6 @@ async def test_options_flow_can_edit_every_structural_field(hass: HomeAssistant)
             "safety_margin_a": 2,
             "measurement_mode": "direct_phase_current",
             "charger_entry_ids": [charger.entry_id],
-            "site_enabled": True,
             "max_age_s": 60,
         },
     )
@@ -528,13 +526,9 @@ async def test_options_flow_can_edit_every_structural_field(hass: HomeAssistant)
     updated_entry = hass.config_entries.async_get_entry(entry.entry_id)
     assert updated_entry.data[CONF_MAIN_FUSE_A] == 32.0
     assert updated_entry.data[CONF_SAFETY_MARGIN_A] == 2.0
-    assert updated_entry.data[CONF_SITE_ENABLED] is True
     assert updated_entry.data[CONF_MAX_AGE_S] == 60.0
     assert updated_entry.data[CONF_CHARGER_ENTRY_IDS] == [charger.entry_id]
     assert updated_entry.data[CONF_PHASE_WIRING][charger.entry_id] == {"phases": 1, "phase": "L2"}
-
-    controller = controller_of(hass, entry.entry_id)
-    assert controller.config[CONF_SITE_ENABLED] is True
 
 
 async def test_options_flow_rejects_a_race_conflict_on_submit(hass: HomeAssistant) -> None:
@@ -567,7 +561,6 @@ async def test_options_flow_rejects_a_race_conflict_on_submit(hass: HomeAssistan
             "safety_margin_a": 1,
             "measurement_mode": "direct_phase_current",
             "charger_entry_ids": [claimed_charger.entry_id],
-            "site_enabled": False,
             "max_age_s": 120,
         },
     )
@@ -603,7 +596,6 @@ async def test_options_flow_rejects_a_race_conflict_created_between_its_two_step
             "safety_margin_a": 2,
             "measurement_mode": "direct_phase_current",
             "charger_entry_ids": [charger.entry_id],
-            "site_enabled": True,
             "max_age_s": 60,
         },
     )
@@ -658,7 +650,6 @@ async def test_options_flow_only_shows_fields_relevant_to_the_selected_measureme
             "safety_margin_a": 1,
             "measurement_mode": "derived_phase_current",
             "charger_entry_ids": [],
-            "site_enabled": False,
             "max_age_s": 120,
         },
     )
@@ -669,6 +660,24 @@ async def test_options_flow_only_shows_fields_relevant_to_the_selected_measureme
     assert "derived_L1_reactive_power" in field_names
     assert "derived_L1_voltage" in field_names
     assert "direct_L1" not in field_names
+
+
+async def test_a_site_stored_with_its_calculation_off_calculates_and_loses_the_old_switch(
+    hass: HomeAssistant,
+) -> None:
+    """The former "site calculation enabled" switch: a site stored "off" measures all the same, and the key is
+    dropped from its data at setup so nothing reads it any more."""
+    entry = make_site_entry(hass, entry_id="site_legacy_off", extra_data={"site_enabled": False})
+    set_current_sensor(hass, "sensor.site_legacy_off_l1", 3)
+    set_current_sensor(hass, "sensor.site_legacy_off_l2", 0)
+    set_current_sensor(hass, "sensor.site_legacy_off_l3", 0)
+    assert await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+
+    assert "site_enabled" not in hass.config_entries.async_get_entry(entry.entry_id).data
+    controller = controller_of(hass, entry.entry_id)
+    assert controller.result.state == "observing"
+    assert controller.result.phase_headroom_a["L1"] == 21.0  # 25 - 1 - 3
 
 
 async def test_state_change_triggers_an_immediate_recompute_without_waiting_for_the_timer(

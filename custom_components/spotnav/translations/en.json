@@ -317,7 +317,6 @@
         "description": "Load balancing under the main fuse. Active control lowers a charger's current when needed; it is best effort, not a protective device. The battery power sensor is optional and only feeds a diagnostic estimate -- never a safe charging limit.",
         "data": {
           "name": "Site name",
-          "site_enabled": "Site calculation enabled",
           "active_control_enabled": "Active control enabled (opt-in, derived mode only)",
           "main_fuse_a": "Main fuse rating (A)",
           "safety_margin_a": "Safety margin (A)",
@@ -578,7 +577,6 @@
       "site_state": {
         "name": "Capacity state",
         "state": {
-          "disabled": "Disabled",
           "not_configured": "Not set up",
           "missing_measurements": "Measurement missing",
           "stale_measurements": "Measurement stale",

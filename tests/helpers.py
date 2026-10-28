@@ -36,7 +36,6 @@ from custom_components.spotnav.const import (
     CONF_SITE_CURRENT_SOURCE,
     CONF_ACTIVE_CONTROL_ENABLED,
     CONF_CURRENT_CONTROL,
-    CONF_SITE_ENABLED,
     CONF_SOLAR_FORECAST_ENTRIES,
     CONF_SOLAR_PRIORITY,
     CONF_WEBHOOK_ID,
@@ -302,7 +301,6 @@ def make_site_entry(
     site_current_source: dict | None = None,
     measurement_mode: str = MEASUREMENT_MODE_DIRECT,
     derived_entities: dict | None = None,
-    site_enabled: bool = True,
     max_age_s: float = DEFAULT_MAX_AGE_S,
     battery_aggregate_power_entity: str | None = None,
     battery_per_phase_source: dict | None = None,
@@ -323,7 +321,6 @@ def make_site_entry(
     charger_entry_ids = charger_entry_ids or []
     data: dict = {
         CONF_ENTRY_TYPE: ENTRY_TYPE_SITE,
-        CONF_SITE_ENABLED: site_enabled,
         CONF_MAIN_FUSE_A: main_fuse_a,
         CONF_SAFETY_MARGIN_A: safety_margin_a,
         CONF_MEASUREMENT_MODE: measurement_mode,

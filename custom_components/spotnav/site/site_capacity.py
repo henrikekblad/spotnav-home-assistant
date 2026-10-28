@@ -87,7 +87,6 @@ DIRECTION_NOMINAL_PHASE_VOLTAGE_V = 230.0
 
 # Site-level: whether configuration and measurements are healthy enough to compute.
 SiteState = Literal[
-    "disabled",
     "not_configured",
     "missing_measurements",
     "stale_measurements",
@@ -148,7 +147,6 @@ MEASUREMENT_TOLERANCE_A = 0.5
 # and nonzero so it never equals `fresh`.
 CONFIRMED_UNCHANGED_MARGIN_A = 1.0
 
-REASON_DISABLED = "site_disabled"
 REASON_NOT_CONFIGURED = "site_not_configured"
 REASON_MISSING = "required_phase_measurement_missing"
 REASON_STALE = "phase_measurement_stale"
@@ -392,7 +390,6 @@ class BatteryYieldEstimate:
 class SiteCalculationConfig:
     """Site-level configuration for one calculation. Home-Assistant-independent."""
 
-    enabled: bool
     main_fuse_a: float | None
     safety_margin_a: float
     measurement_mode: MeasurementMode
@@ -1134,19 +1131,6 @@ def calculate_site_capacity(
     empty_ages: dict[PhaseName, float | None] = {phase: None for phase in PHASES}
     empty_headroom: dict[PhaseName, float | None] = {phase: None for phase in PHASES}
     empty_liveness: dict[PhaseName, PhaseLiveness | None] = {phase: None for phase in PHASES}
-
-    if not config.enabled:
-        return _short_circuit(
-            "disabled",
-            REASON_DISABLED,
-            config,
-            requests,
-            empty_currents,
-            empty_ages,
-            empty_headroom,
-            report_ages=empty_ages,
-            liveness=empty_liveness,
-        )
 
     if (
         config.measurement_mode == "unavailable"

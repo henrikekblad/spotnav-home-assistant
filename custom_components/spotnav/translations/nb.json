@@ -317,7 +317,6 @@
         "description": "Lastbalansering under hovedsikringen. Aktiv lastbalansering senker en laders strøm ved behov; den er best effort, ingen verneinnretning. Sensoren for batteriets effekt er valgfri og brukes bare til et diagnostisk anslag -- aldri som en trygg grense for lading.",
         "data": {
           "name": "Anleggets navn",
-          "site_enabled": "Anleggsberegning aktivert",
           "active_control_enabled": "Aktiv lastbalansering aktivert (må slås på, bare med beregnede fasestrømmer)",
           "main_fuse_a": "Hovedsikringens størrelse (A)",
           "safety_margin_a": "Sikkerhetsmargin (A)",
@@ -578,7 +577,6 @@
       "site_state": {
         "name": "Kapasitetsstatus",
         "state": {
-          "disabled": "Deaktivert",
           "not_configured": "Ikke satt opp",
           "missing_measurements": "Måling mangler",
           "stale_measurements": "Måling utdatert",

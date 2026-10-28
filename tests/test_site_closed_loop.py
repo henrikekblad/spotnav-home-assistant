@@ -108,7 +108,6 @@ def cycle(plant: Plant, style: str, **kwargs) -> tuple[object, object]:
         l3=derived_input(plant, "L3", style, **kwargs),
     )
     config = SiteCalculationConfig(
-        enabled=True,
         main_fuse_a=FUSE_A,
         safety_margin_a=MARGIN_A,
         measurement_mode="derived_phase_current",
@@ -282,7 +281,6 @@ def direct_site(readings: dict[str, tuple[object, bool]]):
         value, problem = classify_current(raw, "A", signed=signed)
         values[phase] = PhaseValue(value, AGE, problem, report_age_s=AGE)
     config = SiteCalculationConfig(
-        enabled=True,
         main_fuse_a=FUSE_A,
         safety_margin_a=MARGIN_A,
         measurement_mode="direct_phase_current",
@@ -378,7 +376,6 @@ def test_a_magnitude_only_source_is_judged_with_the_car_additive_and_never_inval
         "L3": PhaseValue(12.0, AGE, None, report_age_s=AGE),
     }
     config = SiteCalculationConfig(
-        enabled=True,
         main_fuse_a=FUSE_A,
         safety_margin_a=MARGIN_A,
         measurement_mode="direct_phase_current",

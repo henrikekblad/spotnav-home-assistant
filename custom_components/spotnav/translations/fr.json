@@ -317,7 +317,6 @@
         "description": "Équilibrage de charge sous le fusible principal. Le contrôle actif réduit le courant d'une borne si nécessaire ; il fonctionne au mieux et n'est pas un dispositif de protection. Le capteur de puissance de la batterie est facultatif et ne sert qu'à une estimation de diagnostic -- jamais à une limite de charge sûre.",
         "data": {
           "name": "Nom du site",
-          "site_enabled": "Calcul du site activé",
           "active_control_enabled": "Contrôle actif activé (sur option, mode dérivé uniquement)",
           "main_fuse_a": "Calibre du fusible principal (A)",
           "safety_margin_a": "Marge de sécurité (A)",
@@ -578,7 +577,6 @@
       "site_state": {
         "name": "État de la capacité",
         "state": {
-          "disabled": "Désactivé",
           "not_configured": "Non configuré",
           "missing_measurements": "Mesure manquante",
           "stale_measurements": "Mesure périmée",

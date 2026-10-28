@@ -39,6 +39,7 @@ from .const import (
     DOMAIN,
     ENTRY_TYPE_PRICE,
     ENTRY_TYPE_SITE,
+    LEGACY_CONF_SITE_ENABLED,
     PLATFORMS,
     PRICE_PLATFORMS,
     SITE_PLATFORMS,
@@ -608,6 +609,11 @@ async def _async_setup_site_entry(hass: HomeAssistant, entry: SiteConfigEntry) -
                 await hass.config_entries.async_reload(entry.entry_id)
 
         hass.bus.async_listen_once(EVENT_HOMEASSISTANT_STARTED, _prune)
+    # The site calculation's former on/off switch: a site always calculates now, also one stored "off".
+    if LEGACY_CONF_SITE_ENABLED in entry.data:
+        hass.config_entries.async_update_entry(
+            entry, data={key: value for key, value in entry.data.items() if key != LEGACY_CONF_SITE_ENABLED}
+        )
     # A member charger whose platform names its own measured current (Easee) gets that source without
     # redoing the site; what a person set stays.
     filled = backfill_profile_measured_sources(hass, entry)

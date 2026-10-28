@@ -91,8 +91,10 @@ ENTRY_TYPE_PRICE = "price"
 # refuses to guess, records the decision in the discovery-decision store, and finishes.
 ENTRY_TYPE_RESOLVE_VEHICLE = "resolve_vehicle"
 
+# A former on/off switch for the site's calculation. A site now always calculates once it has a
+# measurement (the calculation only reads); the key is dropped from a site's entry data at setup.
+LEGACY_CONF_SITE_ENABLED = "site_enabled"
 # Site config keys (config/options flow only).
-CONF_SITE_ENABLED = "site_enabled"
 # Per-site opt-in for writing a charger from the regulator's decisions. Off by default and
 # separate from `ACTIVE_CONTROL_READY` in `site/site_capacity.py`; both must hold before any write.
 CONF_ACTIVE_CONTROL_ENABLED = "active_control_enabled"

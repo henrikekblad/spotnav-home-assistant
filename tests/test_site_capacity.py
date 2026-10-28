@@ -48,12 +48,10 @@ def _config(
     safety_margin_a: float = 1.0,
     direct: DirectPhaseMeasurement | None = None,
     derived: DerivedPhaseMeasurement | None = None,
-    enabled: bool = True,
     max_age_s: float = MAX_AGE,
     mode: str = "direct_phase_current",
 ) -> SiteCalculationConfig:
     return SiteCalculationConfig(
-        enabled=enabled,
         main_fuse_a=main_fuse_a,
         safety_margin_a=safety_margin_a,
         measurement_mode=mode,  # type: ignore[arg-type]
@@ -1625,15 +1623,6 @@ def test_restart_with_no_persisted_freshness_never_assumes_safety() -> None:
     result = calculate_site_capacity(config, [_charger()])
 
     assert result.state == "stale_measurements"
-    assert result.allocations[0].proposed_current_a is None
-
-
-def test_disabled_short_circuits_before_reading_any_measurement() -> None:
-    config = _config(enabled=False, direct=None)
-
-    result = calculate_site_capacity(config, [_charger()])
-
-    assert result.state == "disabled"
     assert result.allocations[0].proposed_current_a is None
 
 

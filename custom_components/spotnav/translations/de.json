@@ -317,7 +317,6 @@
         "description": "Lastmanagement unter der Hauptsicherung. Die aktive Regelung senkt den Strom einer Ladestation bei Bedarf; sie arbeitet nach bestem Bemühen und ist keine Schutzeinrichtung. Der Leistungssensor der Batterie ist optional und speist nur eine Diagnoseschätzung -- nie eine sichere Ladegrenze.",
         "data": {
           "name": "Name des Standorts",
-          "site_enabled": "Standortberechnung aktiviert",
           "active_control_enabled": "Aktive Regelung aktiviert (optional, nur abgeleiteter Modus)",
           "main_fuse_a": "Hauptsicherung (A)",
           "safety_margin_a": "Sicherheitsreserve (A)",
@@ -578,7 +577,6 @@
       "site_state": {
         "name": "Kapazitätsstatus",
         "state": {
-          "disabled": "Deaktiviert",
           "not_configured": "Nicht eingerichtet",
           "missing_measurements": "Messung fehlt",
           "stale_measurements": "Messung veraltet",

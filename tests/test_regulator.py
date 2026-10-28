@@ -54,7 +54,6 @@ def _site_result(
         l3=_derived_input(p3, age=ages[2]),
     )
     config = SiteCalculationConfig(
-        enabled=True,
         main_fuse_a=MAIN_FUSE_A,
         safety_margin_a=1.0,
         measurement_mode="derived_phase_current",  # type: ignore[arg-type]
@@ -446,7 +445,6 @@ def test_overload_with_unclear_direction_is_no_reliable_action_not_a_guess() -> 
         l3=_derived_input(p=100.0, q=21.0 * VOLTAGE, v=VOLTAGE),
     )
     config = SiteCalculationConfig(
-        enabled=True,
         main_fuse_a=MAIN_FUSE_A,
         safety_margin_a=1.0,
         measurement_mode="derived_phase_current",  # type: ignore[arg-type]
@@ -474,7 +472,6 @@ def test_no_change_requested_is_reported_directly() -> None:
 
 def test_direct_mode_without_a_signed_current_has_no_direction() -> None:
     config = SiteCalculationConfig(
-        enabled=True,
         main_fuse_a=MAIN_FUSE_A,
         safety_margin_a=1.0,
         measurement_mode="direct_phase_current",  # type: ignore[arg-type]

@@ -386,7 +386,6 @@ async def _save_through_options_flow(world: World, *, active: bool) -> Any:
             "safety_margin_a": data["safety_margin_a"],
             "measurement_mode": MEASUREMENT_MODE_DERIVED,
             "charger_entry_ids": list(world.charger_ids),
-            "site_enabled": True,
             "active_control_enabled": active,
             "max_age_s": data["max_age_s"],
         },

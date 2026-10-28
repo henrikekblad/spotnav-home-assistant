@@ -54,7 +54,6 @@ from ..const import (
     CONF_SAFETY_MARGIN_A,
     CONF_SITE_CURRENT_SIGNED,
     CONF_SITE_CURRENT_SOURCE,
-    CONF_SITE_ENABLED,
     CONF_SOLAR_PRIORITY,
     CONF_YIELD_CEILING_A,
     CONF_YIELD_STEPPING_ENABLED,
@@ -3169,7 +3168,6 @@ class SiteCapacityController:
         derived = self._read_derived_entities() if mode == MEASUREMENT_MODE_DERIVED else None
         direct_signed = self._read_direct_signed_entities() if mode == MEASUREMENT_MODE_DIRECT else None
         return SiteCalculationConfig(
-            enabled=bool(self.config.get(CONF_SITE_ENABLED, False)),
             main_fuse_a=float(main_fuse_a) if main_fuse_a is not None else None,
             safety_margin_a=float(self.config.get(CONF_SAFETY_MARGIN_A, 0.0)),
             measurement_mode=mode if mode in (MEASUREMENT_MODE_DIRECT, MEASUREMENT_MODE_DERIVED) else "unavailable",

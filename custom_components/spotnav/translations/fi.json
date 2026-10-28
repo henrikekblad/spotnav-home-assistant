@@ -317,7 +317,6 @@
         "description": "Kuormanhallinta pääsulakkeen alapuolella. Aktiivinen ohjaus pienentää laturin virtaa tarvittaessa; se toimii parhaan kyvyn mukaan, eikä se ole suojalaite. Akun tehoanturi on valinnainen ja syöttää vain diagnostista arviota -- ei koskaan turvallista latauksen rajaa.",
         "data": {
           "name": "Kohteen nimi",
-          "site_enabled": "Kohteen laskenta käytössä",
           "active_control_enabled": "Aktiivinen ohjaus käytössä (otetaan käyttöön erikseen, vain johdettu mittaustapa)",
           "main_fuse_a": "Pääsulakkeen koko (A)",
           "safety_margin_a": "Turvamarginaali (A)",
@@ -578,7 +577,6 @@
       "site_state": {
         "name": "Kapasiteetin tila",
         "state": {
-          "disabled": "Pois käytöstä",
           "not_configured": "Ei määritetty",
           "missing_measurements": "Mittaus puuttuu",
           "stale_measurements": "Mittaus vanhentunut",

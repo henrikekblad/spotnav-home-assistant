@@ -317,7 +317,6 @@
         "description": "Lastbalansering under huvudsäkringen. Aktiv styrning sänker en laddares ström vid behov; den är bästa möjliga försök, inte ett skyddsorgan. Batteriets effektsensor är valfri och används endast för en diagnostisk uppskattning -- aldrig som en säker laddgräns.",
         "data": {
           "name": "Sitenamn",
-          "site_enabled": "Sitens beräkning aktiverad",
           "active_control_enabled": "Aktiv styrning aktiverad (opt-in, endast derived mode)",
           "main_fuse_a": "Huvudsäkring (A)",
           "safety_margin_a": "Säkerhetsmarginal (A)",
@@ -578,7 +577,6 @@
       "site_state": {
         "name": "Kapacitetsstatus",
         "state": {
-          "disabled": "Avstängd",
           "not_configured": "Inte konfigurerad",
           "missing_measurements": "Mätvärde saknas",
           "stale_measurements": "Mätvärde inaktuellt",

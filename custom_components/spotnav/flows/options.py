@@ -42,7 +42,6 @@ from ..const import (
     CONF_VOLTAGE_BETWEEN_PHASES_V,
     CONF_SITE_CURRENT_SIGNED,
     CONF_SITE_CURRENT_SOURCE,
-    CONF_SITE_ENABLED,
     CONF_SOLAR_FORECAST_ENTRIES,
     CONF_SOLAR_PRIORITY,
     CONF_YIELD_CEILING_A,
@@ -323,7 +322,7 @@ CHANGE_MEASUREMENT = "change_measurement"
 class SiteCapacityOptionsFlow(ChargerWiringSteps, config_entries.OptionsFlow):
     """Edit every structural choice a site was created with.
 
-    `CONF_SITE_ENABLED` gates the site calculation; `CONF_ACTIVE_CONTROL_ENABLED` is this
+    A site always calculates once it has a measurement; `CONF_ACTIVE_CONTROL_ENABLED` is this
     installation's half of the active-control gate and writes nothing unless
     `site/site_capacity.py`'s `ACTIVE_CONTROL_READY` is also set. Uses the create flow's schema and
     parsing functions (`site_basic_schema`, `site_current_suggestions_schema`, `site_details_schema`,
@@ -378,7 +377,6 @@ class SiteCapacityOptionsFlow(ChargerWiringSteps, config_entries.OptionsFlow):
                 CONF_MEASUREMENT_MODE, MEASUREMENT_MODE_DIRECT
             ),
             CONF_CHARGER_ENTRY_IDS: self._entry.data.get(CONF_CHARGER_ENTRY_IDS, []),
-            CONF_SITE_ENABLED: self._entry.data.get(CONF_SITE_ENABLED, False),
             # Off unless the site opted in; suggested from the stored value, never defaulted on.
             CONF_ACTIVE_CONTROL_ENABLED: self._entry.data.get(
                 CONF_ACTIVE_CONTROL_ENABLED, False
@@ -439,7 +437,6 @@ class SiteCapacityOptionsFlow(ChargerWiringSteps, config_entries.OptionsFlow):
             self.hass, defaults=defaults, exclude_entry_id=self._entry.entry_id
         ).extend(
             {
-                vol.Required(CONF_SITE_ENABLED, default=defaults[CONF_SITE_ENABLED]): bool,
                 # Off: save these basics and keep the stored measurement and phase wiring.
                 vol.Optional(CHANGE_MEASUREMENT, default=False): bool,
                 # The human's opt-in half of the active-control gate, default off.
@@ -516,7 +513,8 @@ class SiteCapacityOptionsFlow(ChargerWiringSteps, config_entries.OptionsFlow):
         self._forecast_entry_options = options
 
     async def async_step_site_init(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:
-        """Enabled state, main fuse, safety margin, measurement mode, chargers."""
+        """The site's settings page: main fuse, safety margin, measurement mode, chargers, load balancing,
+        solar; ends with the choice to go on to the measurement and phase wiring steps."""
         await self._async_ensure_forecast_entry_options()
         if user_input is not None:
             charger_entry_ids: list[str] = user_input.get(CONF_CHARGER_ENTRY_IDS, [])
@@ -816,7 +814,6 @@ class SiteCapacityOptionsFlow(ChargerWiringSteps, config_entries.OptionsFlow):
                 or voltage != DEFAULT_VOLTAGE_BETWEEN_PHASES_V
                 else {}
             ),
-            CONF_SITE_ENABLED: self._pending_basic[CONF_SITE_ENABLED],
             CONF_MAIN_FUSE_A: self._pending_basic[CONF_MAIN_FUSE_A],
             CONF_SAFETY_MARGIN_A: self._pending_basic.get(CONF_SAFETY_MARGIN_A, 0.0),
             CONF_MEASUREMENT_MODE: mode,
@@ -900,7 +897,7 @@ class SiteCapacityOptionsFlow(ChargerWiringSteps, config_entries.OptionsFlow):
         A reload alone discards the running controller and its memory of what it wrote, so a lowered
         current would stay lowered with the option "off". With the controller's `transition_lock` held:
 
-        * balancing running and the save turns it off (or disables the whole site): the controller's
+        * balancing running and the save turns it off: the controller's
           `async_disable_active_control` runs first, restoring lowered currents through the charger's
           serialized write path, and only then is the entry persisted and reloaded;
         * anything else writes nothing to any charger here. Turning on stays the reload path: the rebuilt
@@ -917,9 +914,8 @@ class SiteCapacityOptionsFlow(ChargerWiringSteps, config_entries.OptionsFlow):
             async with controller.transition_lock:
                 if site_controller_for(self.hass, entry_id) is not controller:
                     continue  # replaced while waiting for the lock: look again
-                turning_off = controller.active_control_enabled and not (
-                    bool(updated_data.get(CONF_ACTIVE_CONTROL_ENABLED, False))
-                    and bool(updated_data.get(CONF_SITE_ENABLED, True))
+                turning_off = controller.active_control_enabled and not bool(
+                    updated_data.get(CONF_ACTIVE_CONTROL_ENABLED, False)
                 )
                 if turning_off:
                     await self._async_disable_before_save(controller)

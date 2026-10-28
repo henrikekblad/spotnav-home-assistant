@@ -55,7 +55,6 @@ from ..const import (
     CONF_SAFETY_MARGIN_A,
     CONF_VOLTAGE_BETWEEN_PHASES_V,
     CONF_SITE_CURRENT_SOURCE,
-    CONF_SITE_ENABLED,
     CONF_WEBHOOK_ID,
     CONF_YIELD_STEPPING_ENABLED,
     CONFIG_ENTRY_VERSION,
@@ -1394,9 +1393,6 @@ class SpotNavChargingConfigFlow(ChargerWiringSteps, PriceConfigSteps, config_ent
         )
         data = {
             CONF_ENTRY_TYPE: ENTRY_TYPE_SITE,
-            # Creation needs a complete configuration, so the calculation starts on; it only reads.
-            # Active control stays off below.
-            CONF_SITE_ENABLED: True,
             # Off, and not a field of this flow: turning active control on is a later decision from
             # the options flow, and also needs the compile-time gate in `site/site_capacity.py`
             # (see `CONF_ACTIVE_CONTROL_ENABLED` in const.py).

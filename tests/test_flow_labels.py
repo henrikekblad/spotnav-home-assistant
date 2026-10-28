@@ -107,7 +107,6 @@ async def test_every_options_form_labels_its_fields(
             "safety_margin_a": 1.0,
             "measurement_mode": "direct_phase_current",
             "charger_entry_ids": [charger.entry_id],
-            "site_enabled": True,
             "change_measurement": True,
         },
     )
@@ -185,7 +184,7 @@ async def test_every_charger_wiring_step_labels_its_fields(
             {
                 "name": "Site", "main_fuse_a": 25.0, "safety_margin_a": 1.0,
                 "measurement_mode": "direct_phase_current", "charger_entry_ids": [charger.entry_id],
-                "site_enabled": True, "change_measurement": True,
+                "change_measurement": True,
             },
         )
         result = await hass.config_entries.options.async_configure(result["flow_id"], {"choice": "manual"})

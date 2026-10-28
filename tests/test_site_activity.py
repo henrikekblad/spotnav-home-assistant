@@ -21,7 +21,6 @@ from .helpers import make_site_entry, set_current_sensor
 
 TRANSLATIONS = Path(__file__).parent.parent / "custom_components" / DOMAIN / "translations"
 SITE_STATES = (
-    "disabled",
     "not_configured",
     "missing_measurements",
     "stale_measurements",
@@ -37,7 +36,7 @@ SITE_STATES = (
         ("observing", True, "balancing"),
         ("stale_measurements", True, "not_measuring"),
         ("missing_measurements", False, "not_measuring"),
-        ("disabled", False, "not_measuring"),
+        ("not_configured", False, "not_measuring"),
     ],
 )
 def test_the_activity_says_measuring_and_whether_load_balancing_is_on(state: str, active: bool, activity: str) -> None:

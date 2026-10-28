@@ -317,7 +317,6 @@
         "description": "Load balancing onder de hoofdzekering. Actieve regeling verlaagt zo nodig de stroom van een laadpaal; het is naar beste vermogen, geen beveiligingsapparaat. De sensor voor het batterijvermogen is optioneel en voedt alleen een diagnostische schatting -- nooit een veilige laadlimiet.",
         "data": {
           "name": "Naam van de locatie",
-          "site_enabled": "Locatieberekening ingeschakeld",
           "active_control_enabled": "Actieve regeling ingeschakeld (opt-in, alleen afgeleide meetmethode)",
           "main_fuse_a": "Hoofdzekering (A)",
           "safety_margin_a": "Veiligheidsmarge (A)",
@@ -578,7 +577,6 @@
       "site_state": {
         "name": "Capaciteitsstatus",
         "state": {
-          "disabled": "Uitgeschakeld",
           "not_configured": "Niet ingesteld",
           "missing_measurements": "Meting ontbreekt",
           "stale_measurements": "Meting verouderd",
