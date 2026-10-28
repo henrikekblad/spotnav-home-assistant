@@ -16,24 +16,29 @@ include it straight away. If the site came first, add the charger later: the las
 charger flow offers to join the site (see [Add the charger to an existing
 site](#add-the-charger-to-an-existing-site)).
 
-Everything else, such as price area, the energy to charge and the departure time, is set
-in the [card](card.md).
+Everything else, such as the energy to charge and the departure time, is set in the
+[card](card.md). No dialog asks for the price area: SpotNav makes the installation's
+[electricity price](price-device.md) by itself (below), and the card's **Electricity price** section
+changes it.
 
 ### First-run defaults
 
 A new charger starts with a working card instead of an empty form. When the charger is added,
 SpotNav fills in only what Home Assistant already knows:
 
-- **Price area**: the area for Home Assistant's country. A country with several areas (Sweden,
-  Norway and Denmark) gets the area nearest to Home Assistant's configured location. With no
-  country, an unlisted country or a location far from every area, the area is left empty.
-  Great Britain is left empty too: choose your region in the card, where **Find my region** looks it
-  up from your postcode (see below).
+- **Electricity price**: the first charger or site added makes the installation's electricity
+  price, a device of its own named after its area ("Electricity price SE4"), with the area's
+  suggested VAT, energy tax and grid fee. The area is the one for Home Assistant's country; a
+  country with several areas (Sweden, Norway and Denmark) gets the area nearest to Home Assistant's
+  configured location. Every charger and site added later uses the same electricity price, without
+  a question. With no country, an unlisted country or a location far from every area, nothing is
+  made: choose the area in the card, which makes it then. Great Britain is left empty too: choose
+  your region in the card, where **Find my region** looks it up from your postcode (see below).
 
 ### Great Britain: Octopus Agile
 
 In Great Britain SpotNav plans on Octopus Energy's **Agile** prices, one region per GSP group (`GB-A`
-to `GB-P`), and is meant for Agile customers. In the card's **Settings, Area and taxes**, pick your
+to `GB-P`), and is meant for Agile customers. In the card's **Settings, Electricity price**, tap the area and pick your
 region under Great Britain ("GB C – London"), or type your postcode under **Find my region**: Home
 Assistant asks Octopus Energy's public lookup directly, and the postcode is not sent to the SpotNav
 relay, stored or logged. The Agile price is all-in, so VAT, energy tax and grid transfer show as

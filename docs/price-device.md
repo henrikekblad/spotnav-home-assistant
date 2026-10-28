@@ -1,26 +1,68 @@
-# Prices for other automations
+# The electricity price
 
-SpotNav's prices are not only for the car. An **Electricity price** entry gives any automation, a
-bathroom floor, a water heater, a washing machine, the same price SpotNav plans a charge against:
-the spot price with your energy tax, grid fee and VAT added, in your currency per kWh.
+An **Electricity price** is where SpotNav keeps your price area, VAT, energy tax and grid fee. Every
+charger plans its charges against it, and any automation, a bathroom floor, a water heater, a washing
+machine, can use the same price: the spot price with your energy tax, grid fee and VAT added, in your
+currency per kWh.
 
-- [Add an electricity price](#add-an-electricity-price)
+- [One price for the whole installation](#one-price-for-the-whole-installation)
+- [Several electricity prices](#several-electricity-prices)
+- [Upgrading from an earlier version](#upgrading-from-an-earlier-version)
 - [The entities](#the-entities)
 - [Example: a bathroom floor](#example-a-bathroom-floor)
 - [The `spotnav.get_prices` action](#the-spotnavget_prices-action)
 - [Example: a washing machine](#example-a-washing-machine)
 - [How it is built](#how-it-is-built)
 
-## Add an electricity price
+## One price for the whole installation
 
-Go to **Settings, Devices & services, SpotNav, Add entry** and choose **Electricity price**. Pick the
-price area, then say for VAT, energy tax and grid fee whether to use the area's suggestion, a figure
-of your own, or nothing. You can add several (another area, or other fees); each is a device of its
-own, named **Electricity price** and its area. **Configure** on the entry changes the area and fees.
+You do not add it yourself. When the first charger or site is added, SpotNav makes the electricity
+price from Home Assistant's country and location, with the area's suggested fees, without asking
+anything. Every charger and site added later uses it too. With no country or a location SpotNav
+cannot place, nothing is made; choosing the area in the card then makes it.
 
-An electricity price is independent of chargers and sites. It needs no charger, and adding one
-changes nothing a charger does. Its prices are fetched once per area for the whole installation, so
-an electricity price in the same area as a charger asks the relay for nothing more.
+The area and fees are changed in one place: the card's **Electricity price** section (see
+[the card](card.md#electricity-price)), the device's own entities, or **Configure** on the entry
+(**Settings, Devices & services, SpotNav**). A change applies at once to every charger that uses the
+price; each of them plans again. The card names the price and says how many chargers use it
+("Electricity price SE4 · used by all 2 chargers").
+
+A site points at one electricity price, and all its chargers use it. A charger without a site
+points at one itself. While there is only one electricity price, every charger uses it.
+
+## Several electricity prices
+
+A second price is for a second address (another area or grid company) or a charger whose fees
+differ, such as a company charger without VAT. Add one under **Settings, Devices & services,
+SpotNav, Add entry, Electricity price**: pick the price area, then say for VAT, energy tax and grid
+fee whether to use the area's suggestion, a figure of your own, or nothing. Each is a device of its
+own, named **Electricity price** and its area; you can rename it.
+
+With more than one, the card's **Electricity price** section has a **Price from** row where an
+administrator chooses which one the charger uses. For a charger on a site, the choice is the site's:
+every charger on it follows. Its prices are fetched once per area for the whole installation, so a
+second electricity price in the same area asks the relay for nothing more.
+
+## Upgrading from an earlier version
+
+Before 1.22.0 each charger kept its own area and fees, and an electricity price device was separate
+from them. On the first start of 1.22.0, once, SpotNav moves each charger's area and fees to an
+electricity price:
+
+- Chargers with the same area and fees share one. An existing electricity price with exactly that
+  area and those fees is used; otherwise one is made.
+- A site whose chargers all had the same fees points at that one. Chargers on a site whose fees
+  differ each point at their own.
+- An existing electricity price with the same area but other fees is never changed. The chargers get
+  one of their own, and the card asks once: "Two electricity prices for SE4 with different fees. Use
+  one?" **Use …** moves every charger and site that used the other one to the chosen one; the other
+  stays and can be removed under **Devices & services**. **Keep both** keeps them as they are. The
+  question is not asked again either way. Only administrators see it.
+- Each charger's own entities for the area and fees (the price area and fee policy selects, the VAT,
+  energy tax and grid transfer fee numbers) are removed; the electricity price has them now. An
+  automation that used the charger's entities needs the electricity price's.
+- The chargers' own stored figures are kept as they were, so a past charge is priced as it was, and
+  going back to 1.21 prices exactly as before.
 
 With the area SE4 the entities are named `sensor.electricity_price_se4_price_now`,
 `binary_sensor.electricity_price_se4_cheap_now`, `binary_sensor.electricity_price_se4_expensive_now`,
@@ -174,7 +216,13 @@ Run the script after tomorrow's prices are published (in the afternoon) to let i
 
 ## How it is built
 
-- A new kind of config entry, `price`, beside `charger` and `site`. Its data is the area and the
+- Each charger finds its price through `pricing/price_source.py`: its own pointer (`price_entry_id` in its
+  entry data), else its site's, else the only electricity price, else its own stored settings. Pointers are
+  written by the first install, the one-time migration, the card's **Price from** and its question
+  (`pricing/price_setup.py`); the migration's marker and the same-area records are in the
+  `spotnav.price_sources` store (`pricing/price_store.py`). A price entry's revision is part of a plan's
+  identity, so a fee change replans every charger that uses it.
+- A kind of config entry, `price`, beside `charger` and `site`. Its data is the area and the
   three fees, each stored as the charger's settings store them (`FiscalOverride`: off, on with the
   area's suggestion, or on with a figure). The options flow, the device's area and fee entities and a
   charger's settings writes (the card, the app) edit the same data in place

@@ -205,18 +205,29 @@ sections holding something they may change (today **Display**), and no gear icon
 
 ![The settings page: a section per subject and a value per row](images/card-settings.png)
 
-### Price area and fiscal
+### Electricity price
 
-On a new charger the area and the current are already filled in from your Home Assistant
-country and location and from the charger, and the card says "Suggested from your location
-and charger – check Settings."
-Nothing you saved is overwritten. See [first-run defaults](setup.md#first-run-defaults).
+The area and the VAT, energy tax and grid fee belong to the installation's
+[electricity price](price-device.md), not to the charger: every charger that uses it follows a change.
+SpotNav makes it from your Home Assistant country and location when the first charger is added, so a
+new charger already has an area (see [first-run defaults](setup.md#first-run-defaults)).
 
-Shows the area and the VAT, energy tax and grid fee as the plan applies them. Tapping the area or a tax
-opens the editor.
+The section shows, under its heading, which electricity price this charger uses and how many chargers
+use it ("Electricity price SE4 · used by all 2 chargers"; with one charger only its name), and, when more
+than one uses it, that a change here applies to every charger using it. Below are the area and the VAT,
+energy tax and grid fee as the plan applies them. Tapping the area or a tax opens the editor.
 
-![The price area and fiscal settings](images/card-settings-price.png)
+![The electricity price settings](images/card-settings-price.png)
 
+- **Price from** appears when there is more than one electricity price. An administrator chooses
+  which one this charger uses; for a charger on a site the choice is the site's, and every charger
+  on it follows.
+- **Two electricity prices for SE4 with different fees. Use one?** is asked once, to an administrator,
+  when an upgrade found an electricity price with the same area as a charger's but other fees (see
+  [upgrading](price-device.md#upgrading-from-an-earlier-version)). **Use …** moves every charger and
+  site to that one; the other is not removed, and the card says it can be removed under **Devices &
+  services**. **Keep both** keeps them as they are. Two prices with the same name are told apart by
+  which one this charger uses.
 - **Area** decides which prices are used and which taxes are suggested. The list is grouped by
   country and is what the public SpotNav Relay publishes; if it cannot be reached, the last list Home Assistant received is
   shown with a note.
@@ -343,7 +354,7 @@ each period is at least half an hour; a number is the most periods a plan may us
 **Let users who are not administrators change strategy and plan**, below it, is **Off** by default. Turn it
 **On** for a screen signed in as an ordinary Home Assistant user (a wall screen, for example) that should
 also choose the strategy and change the plan: the energy or target and its car, the finish-by time, date and
-weekdays, and the current. It applies to this charger. Everything else (the price area and fees, charge
+weekdays, and the current. It applies to this charger. Everything else (the electricity price's area and fees, charge
 periods, cars, notifications, the site and this switch itself) stays an administrator's, and
 Home Assistant refuses such a change from anyone else even when the card is bypassed.
 
