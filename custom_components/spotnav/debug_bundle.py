@@ -39,6 +39,10 @@ which the site state sensor carried as attributes until it stopped carrying what
 Inside `ownership_shadow.counts`, `failures` (per `where/kind`, the charging decisions the core could not take, which
 the previous logic took instead) and `last_failure` (when) came later with no version change: a reader that does not
 know them passes them by.
+
+Inside each charger's `diagnostics.controller.adapter`, `phase_switch` (`supported`, `entity`, `phases_now`: whether
+the charger's integration can switch it between one and three phases, through which entity, and to what it is set)
+came later with no version change.
 """
 
 from __future__ import annotations
