@@ -74,8 +74,10 @@ After the basics, SpotNav looks for your grid meter in the entity registry (see
 everything else it needs, it shows a **Site found** summary to confirm; otherwise it shows the
 forms above. A new site is created with load balancing off. A site always calculates once it has a
 measurement: the calculation only reads, and solar's per-phase fuse caps and the view of what load
-balancing would do depend on it. (An earlier version had a switch for the calculation; a site stored with
-it off calculates all the same, and the switch is gone from its settings.)
+balancing would do depend on it. (Earlier versions had a switch for the calculation and settings for load
+balancing's deadband and dwell and yield stepping's ceiling. They are gone: a site stored with the
+calculation off calculates all the same, and the others are fixed at their former defaults, whatever a site
+had stored.)
 
 A charger added later is offered to the site when exactly one site exists, if SpotNav can tell how
 the charger is wired (see [Set up SpotNav](setup.md#add-the-charger-to-an-existing-site)).
@@ -119,7 +121,7 @@ It is best effort and is not a protective device. Turning it off gives back any 
 
 - A sudden overload is reduced immediately. Other changes are damped: a change smaller than the
   *deadband* (2 A) is ignored, and a new level must hold for the *dwell* time (60 s) before it
-  is written, so the charger does not dither.
+  is written, so the charger does not dither. Both are fixed; they are not settings.
 - **An import overload is always lowered.** When a phase imports more than the limit, the lowering
   goes out in the same pass, as a lower current (a pause when the room left is below the charger's
   minimum) or, if the charger cannot take it in time, a safety stop. Nothing that is not about safety holds it back: not the damper, not yield stepping's settle
@@ -241,8 +243,8 @@ It is best effort and is not a protective device. Turning it off gives back any 
   fuse on a battery that has not shown it gives way, and an import overload is lowered at once. Verified
   means the battery probe below succeeded, or a step was confirmed and the battery's own charge fell by
   what the car took; a failed step (its backoff) or the end of the car's draw forgets it. With the battery
-  verified, the configured *yield ceiling* holds (default 1.15 times the fuse; it must be above the fuse
-  and below 1.25 times it), and an import overload below it is yield stepping's to judge.
+  verified, the *yield ceiling* holds (1.15 times the fuse, fixed: below the 1.25 times a gG fuse carries
+  for an hour), and an import overload below it is yield stepping's to judge.
   - **A home battery that charges from the grid and gives way.** With a *home battery power*
     sensor and solar priority *car first* (the default), SpotNav also checks that the battery's
     own charge falls when the car takes more. Once that is verified the car may climb in larger

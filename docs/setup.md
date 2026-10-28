@@ -343,7 +343,7 @@ each with its own private webhook secret. Treat webhook ids as secrets. See
   charger where the current one misbehaves. Saving reloads that charger only. Please report a
   charger that needs the previous logic, with its debug info.
 - **A site.** Use **Configure** on the site's entry. The first page, **Site settings**, has the
-  site's basics, load balancing, the damping and home battery settings, solar priority, the home
+  site's basics, load balancing, whether the car may take the home battery's share, solar priority, the home
   battery power sensor and the solar forecast sources, each with a line on what it does, and last the
   switch **Next: change meter and phases**.
 
