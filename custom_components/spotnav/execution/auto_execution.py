@@ -53,6 +53,7 @@ from ..planning.auto_settings import (
     STRATEGY_SOLAR,
 )
 from ..planning.phases import effective_phases
+from ..pricing.price_source import effective_settings, plan_revision_for
 from .controller import (
     AUTOMATIC_BALANCING_RESUME,
     AUTOMATIC_PERSON_RESUME,
@@ -349,13 +350,17 @@ def auto_application_identity(
     settings_revision: int,
     price_identity: str | None,
     to_vehicle_limit: bool = False,
+    price_revision: str | None = None,
 ) -> str:
     """A deterministic identity for one Auto application, over execution-relevant facts: ordered
     bounds, current, phases, area, energy, unpriced flag, target fields, driver, settings revision
-    and price identity, and whether the car ends the charge itself (named only when it does, so every
-    other identity stays what it was).
+    and price identity, whether the car ends the charge itself, and the revision of the electricity price
+    entry it priced with (`pricing/price_source.py`). The last two are named only when they are there, so
+    every other identity stays what it was.
     """
     extra: dict[str, Any] = {"to_vehicle_limit": True} if to_vehicle_limit else {}
+    if price_revision is not None:
+        extra["price_revision"] = price_revision
     canonical = json.dumps(
         {
             **extra,
@@ -386,6 +391,9 @@ class AutoApplication:
     plan: ChargingPlan
     settings_revision: int
     price_identity: str | None
+    #: The electricity price entry's revision the plan priced with, `None` for the charger's own fees (and for an
+    #: application read back from an installed plan, which does not keep it).
+    price_revision: str | None = None
 
     @property
     def periods(self) -> tuple[tuple[str, str], ...]:
@@ -470,7 +478,9 @@ def application_from_plan(plan: ChargingPlan) -> AutoApplication | None:
 def application_for(settings: AutoSettings, snapshot: Any, phases: int = 3) -> AutoApplication | None:
     """The application one snapshot describes, or `None` if not usable to execute: a proposal
     must be ready (or unpriced) and exist, and the settings must carry the current and phases
-    a plan needs. `phases` is the charge's effective phases (`planning/phases.py`).
+    a plan needs. `phases` is the charge's effective phases (`planning/phases.py`). `settings` are the
+    charger's with its price source's area and fees (`price_source.effective_settings`); the snapshot names the
+    price entry's revision it priced with.
     """
     if snapshot is None or snapshot.proposal is None:
         return None
@@ -488,6 +498,7 @@ def application_for(settings: AutoSettings, snapshot: Any, phases: int = 3) -> A
         return None
     target = settings.target
     carries_target = settings.driver == DRIVER_TARGET_SOC and target.target_percent is not None
+    price_revision = getattr(snapshot, "price_revision", None)
     identity = auto_application_identity(
         to_vehicle_limit=manual_to_vehicle_limit(settings, snapshot),
         periods=periods,
@@ -502,12 +513,14 @@ def application_for(settings: AutoSettings, snapshot: Any, phases: int = 3) -> A
         driver=settings.driver,
         settings_revision=settings.revision,
         price_identity=snapshot.price_identity,
+        price_revision=price_revision,
     )
     return AutoApplication(
         identity=identity,
         plan=auto_plan_for(settings, snapshot, identity, phases),
         settings_revision=settings.revision,
         price_identity=snapshot.price_identity,
+        price_revision=price_revision,
     )
 
 
@@ -999,8 +1012,11 @@ class AutoExecutor:
             if self._shutdown or pause_blocks_execution(settings):
                 self._pending = None
                 return self.applied
-            if settings.revision != pending.settings_revision:
-                # Its settings are gone: the next calculation decides, not a plan built from changed inputs.
+            if settings.revision != pending.settings_revision or (
+                plan_revision_for(self._hass, self._entry_id) != pending.application.price_revision
+            ):
+                # Its settings or its price entry's fees are gone: the next calculation decides, not a plan built
+                # from changed inputs.
                 self._pending = None
                 return self.applied
             if self.window_charging_now():
@@ -1035,7 +1051,11 @@ class AutoExecutor:
         snapshot = None if self._live_snapshot is None else self._live_snapshot()
         if snapshot is None:
             return False
-        application = application_for(settings, snapshot, effective_phases(self._hass, self._entry_id))
+        application = application_for(
+            effective_settings(self._hass, self._entry_id, settings),
+            snapshot,
+            effective_phases(self._hass, self._entry_id),
+        )
         if application is None:
             return False
         return (
@@ -1056,6 +1076,9 @@ class AutoExecutor:
         if pause_blocks_execution(settings):
             return False
         if settings.revision != application.settings_revision:
+            return False
+        if plan_revision_for(self._hass, self._entry_id) != application.price_revision:
+            # Priced with fees the price entry no longer has: the replan its change started decides.
             return False
         try:
             self._controller.validate_plan(application.plan)
@@ -1814,7 +1837,9 @@ class AutoExecutor:
         if snapshot is not None:
             try:
                 await self._reconcile_locked(
-                    self._store.settings(self._entry_id), snapshot, attempt=self.begin_attempt()
+                    effective_settings(self._hass, self._entry_id, self._store.settings(self._entry_id)),
+                    snapshot,
+                    attempt=self.begin_attempt(),
                 )
             except Exception as err:  # noqa: BLE001 - the pause is over; the next calculation reconciles
                 _LOGGER.warning("Reconciling after a manual pause failed: %s", type(err).__name__)
