@@ -506,6 +506,59 @@ describe("one setup value, one dialog", () => {
   });
 });
 
+describe("phase switching for solar", () => {
+  /** The charger's entity config with the setting Home Assistant lists only where it can work. */
+  function offered(value: boolean): Record<string, any> {
+    const answer = read("entity_config", "v1", "get_direct.json");
+    const fields = answer["config"]["fields"] as Array<Record<string, unknown>>;
+    const at = fields.findIndex((entry) => entry["field"] === "vehicle_soc");
+    fields.splice(at, 0, {
+      field: "phase_switching",
+      scope: "charger",
+      kind: "flag",
+      required: false,
+      writable: true,
+      value,
+    });
+    return answer;
+  }
+
+  it("is a row after the priority, Off or Automatic, and writes the flag through the entity config", async () => {
+    const { hass, element } = await openSettings("en", true, payload(), offered(false));
+    const rows = Array.from(
+      dialog(element).querySelectorAll<HTMLElement>("[data-section='entities'] [data-row]"),
+    ).map((row) => row.dataset["row"]);
+    expect(rows.indexOf("phase_switching")).toBe(rows.indexOf("charger_priority") + 1);
+    const row = dialog(element).querySelector<HTMLElement>("[data-row='phase_switching']")!;
+    expect(row.textContent).toContain("Phase switching for solar");
+    expect(row.textContent).toContain("Off");
+
+    await tap(element, "[data-edit='phase_switching']");
+    const form = dialog(element).querySelector<HTMLFormElement>("form[data-value-editor='single']")!;
+    expect(form.textContent).toContain(translate("en", "entity.help.phaseSwitching"));
+    form.querySelector<HTMLInputElement>("[data-value-option='true']")!.click();
+    hass.entityHandler = async () => offered(true);
+    form.requestSubmit();
+    await settle();
+    const update = hass.entityMessages.find((message) => message["type"] === "spotnav/update_entity_config") as Record<string, any>;
+    expect(update["scope"]).toBe("charger");
+    expect(update["changes"]).toEqual({ phase_switching: true });
+    expect(update["expected"]).toEqual({ phase_switching: false });
+  });
+
+  it("is worded in Swedish", async () => {
+    const { element } = await openSettings("sv", true, payload(), offered(true));
+    const row = dialog(element).querySelector<HTMLElement>("[data-row='phase_switching']")!;
+    expect(row.textContent).toContain("Fasväxling vid solladdning");
+    expect(row.textContent).toContain("Automatiskt");
+  });
+
+  it("has no row where Home Assistant does not list it", async () => {
+    const { element } = await openSettings();
+    expect(dialog(element).querySelector("[data-row='phase_switching']")).toBeNull();
+  });
+});
+
 describe("a value saved while the plan could not be updated", () => {
   it("returns to Settings and says so there, as the warning it is", async () => {
     const { hass, element } = await openSettings();

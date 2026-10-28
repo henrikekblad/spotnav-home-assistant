@@ -2543,6 +2543,7 @@ export function createCardView(input: CardViewInput): CardView {
     }
     nodes.push(...wiringRows(config));
     nodes.push(...priorityRows());
+    nodes.push(...phaseSwitchingRows(config));
     for (const conflict of control?.conflicts ?? []) {
       const warning = element(
         doc,
@@ -2647,6 +2648,35 @@ export function createCardView(input: CardViewInput): CardView {
       overviewRow("charger_priority", label, value, () =>
         editSingle(label, options, priority, (chosen) =>
           writeValue({ kind: "entity", scope: "charger", draft: { charger_priority: chosen } }), help),
+      ),
+    ];
+  }
+
+  /**
+   * Phase switching for solar: Off or Automatic. Listed by Home Assistant only for a charger whose integration can
+   * switch its phases, wired for three phases, on a site with a solar source; anywhere else there is no row.
+   */
+  function phaseSwitchingRows(config: EntityConfig): HTMLElement[] {
+    const field = fieldsOf(config, "charger").find((entry) => entry.field === "phase_switching");
+    if (field === undefined || field.kind !== "flag" || !field.writable) {
+      return [];
+    }
+    const label = translate(model.language, "entity.field.phaseSwitching");
+    const options: ChoiceOption[] = [
+      { value: "false", label: translate(model.language, "settings.value.off") },
+      { value: "true", label: translate(model.language, "entity.phaseSwitching.automatic") },
+    ];
+    const current = field.value ? "true" : "false";
+    const value = options.find((option) => option.value === current)?.label ?? current;
+    return [
+      overviewRow("phase_switching", label, value, () =>
+        editSingle(
+          label,
+          options,
+          current,
+          (chosen) => writeValue({ kind: "entity", scope: "charger", draft: { phase_switching: chosen } }),
+          translate(model.language, "entity.help.phaseSwitching"),
+        ),
       ),
     ];
   }

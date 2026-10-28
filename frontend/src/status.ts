@@ -14,6 +14,7 @@ import {
   type FormatContext,
 } from "./format";
 import { pluralForm, translate, type Language, type TranslationKey } from "./i18n";
+import { nominalPowerKw } from "./settings";
 import { STATUS_CODE_TABLE, type StatusCode, type StatusLine, type StatusParam, type StatusTone, type Status } from "./validate";
 
 export interface Issue {
@@ -169,6 +170,7 @@ export const STATUS_WORDING: Readonly<Record<StatusCode, TranslationKey>> = {
   plan_cost: "status.planCost",
   plan_distance: "status.planDistance",
   solar_charging: "strategy.status.solar.charging",
+  solar_charging_one_phase: "strategy.status.solar.chargingOnePhase",
   solar_arming: "strategy.status.solar.arming",
   solar_disarming: "strategy.status.solar.disarming",
   solar_no_reading_stopped: "strategy.status.solar.noReadingStopped",
@@ -248,6 +250,7 @@ export const STATUS_VARIANT_KEYS: readonly TranslationKey[] = [
   "status.balancingPausedHouseRoom",
   "status.balancingPausedBatteryRoom",
   "strategy.status.solar.chargingUnknown",
+  "strategy.status.solar.chargingOnePhaseUnknown",
   "strategy.status.hybrid.creditSuffix",
   "issue.needFromSessions",
   "strategy.status.solar.noGridPowerEntity",
@@ -501,6 +504,14 @@ export function lineText(
       return amps === null
         ? say("strategy.status.solar.chargingUnknown")
         : say("strategy.status.solar.charging", { amps: formatNumber(language, amps, 0) });
+    }
+    case "solar_charging_one_phase": {
+      // The sun switched the charge to one phase: the power is the current on that one phase.
+      const amps = num(p["requested_a"]);
+      const kw = amps === null || amps <= 0 ? null : nominalPowerKw(amps, 1);
+      return kw === null
+        ? say("strategy.status.solar.chargingOnePhaseUnknown")
+        : say("strategy.status.solar.chargingOnePhase", { kw: formatNumber(language, kw, 1) });
     }
     case "hybrid_grid": {
       const start = ms(p["window_start"]);
