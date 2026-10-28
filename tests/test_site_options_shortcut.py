@@ -2,12 +2,18 @@
 
 from __future__ import annotations
 
+import json
+from pathlib import Path
+
+import voluptuous as vol
 from homeassistant.core import HomeAssistant
 from homeassistant.data_entry_flow import FlowResultType
 
 from .helpers import create_ocpp_charger_device, make_entry, make_ocpp_config_entry, make_site_entry
 
 WIRING = {"phases": 3, "phase": None}
+TRANSLATIONS = Path(__file__).parents[1] / "custom_components" / "spotnav" / "translations"
+LANGUAGES = ("en", "sv", "da", "nb", "fi", "de", "nl", "fr", "es")
 
 
 def _basics(charger_ids: list[str], **extra) -> dict:
@@ -86,3 +92,16 @@ async def test_a_changed_mode_shows_the_step(hass: HomeAssistant) -> None:
     assert result["step_id"] == "site_details"
     assert "mode changed" in result["description_placeholders"]["reason"]
 
+
+async def test_the_page_ends_with_the_way_on_and_explains_every_field(hass: HomeAssistant) -> None:
+    entry = _site(hass, [])
+
+    result = await hass.config_entries.options.async_init(entry.entry_id)
+
+    fields = [str(marker.schema if isinstance(marker, vol.Marker) else marker) for marker in result["data_schema"].schema]
+    assert fields[-1] == "change_measurement"
+    assert "site_enabled" not in fields
+    for language in LANGUAGES:
+        step = json.loads((TRANSLATIONS / f"{language}.json").read_text(encoding="utf-8"))["options"]["step"]["site_init"]
+        assert "site_enabled" not in step["data"], language
+        assert [name for name in fields if not step["data_description"].get(name)] == [], language

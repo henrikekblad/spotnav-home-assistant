@@ -437,8 +437,6 @@ class SiteCapacityOptionsFlow(ChargerWiringSteps, config_entries.OptionsFlow):
             self.hass, defaults=defaults, exclude_entry_id=self._entry.entry_id
         ).extend(
             {
-                # Off: save these basics and keep the stored measurement and phase wiring.
-                vol.Optional(CHANGE_MEASUREMENT, default=False): bool,
                 # The human's opt-in half of the active-control gate, default off.
                 vol.Required(
                     CONF_ACTIVE_CONTROL_ENABLED,
@@ -486,6 +484,9 @@ class SiteCapacityOptionsFlow(ChargerWiringSteps, config_entries.OptionsFlow):
                         mode=selector.SelectSelectorMode.LIST,
                     )
                 ),
+                # Last, right above the submit button: off saves this page and keeps the stored
+                # measurement and phase wiring; on goes on to the measurement steps.
+                vol.Optional(CHANGE_MEASUREMENT, default=False): bool,
             }
         )
 
