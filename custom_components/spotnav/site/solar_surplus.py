@@ -83,6 +83,23 @@ is decided on the first usable reading: it never had a surplus, so it gets no st
 cloud. A surplus that covers the start minimum keeps it, as a start at the start minimum with its
 verification; anything less, or no usable reading, stops it at once.
 
+Phase switching (only where the caller allows it for this charge, `SolarObservation.phase_switch_allowed`:
+the charger's setting and its capability) is part of the same decisions, on the same surplus, and the
+verdict says it (`SolarVerdict.switch_phases`, `SolarVerdict.start_phases`); carrying it out is the caller's.
+A solar start whose surplus carries one phase at the start minimum but not three starts on one phase. On
+three phases at the minimum, a surplus short of three phases at the minimum but carrying one is a reason to
+disarm; when the stop delay has run out the charge switches to one phase instead of stopping. It is the
+stop delay's own timer, never a second one (two timers resetting each other under clouds, evcc #34746), and
+a surplus that does not carry one phase at the minimum stops the charge as without switching (evcc #32991:
+a switch followed by a stop is two interruptions for nothing). On one phase at its maximum
+(`SolarObservation.one_phase_max_a`), a surplus of `UP_MARGIN` x three phases at the minimum, with room on
+the site for that (`SolarObservation.three_phase_room`), held for `UP_DELAY_S`, switches to three. The band
+between three phases at the minimum and one phase at its maximum plus the margin keeps it from flapping. At
+most `MAX_SWITCHES_PER_SESSION` switches per plug-in (counted afresh once the car is gone, `car_absent`), at
+least `MIN_BETWEEN_S` apart, and none while the last one settles (`phase_switch_settling`); beyond that the
+charge stays on the phases it has, by the rules without switching. A start's phase choice is no switch: the
+charge has not begun, so nothing is interrupted.
+
 Freshness: a `None` where a reading is needed means no basis this tick. From
 `off` or `arming` that means never start; a running charge is kept for
 `stale_grace_s`. Stale ticks neither advance nor reset the timers.
@@ -112,6 +129,17 @@ FALSE_CREDIT_CONFIRM_S: float = 30.0
 #: car on one phase at 7 A) the battery went from 1768 W to 419 W charging in under a minute after the car's
 #: reading caught up, and on to near zero. A battery that discharges while short is judged at once.
 FALSE_CREDIT_RAMP_S: float = 60.0
+
+#: A switch from one phase to three needs this share over three phases at the minimum current: arriving at exactly
+#: the minimum would leave the next cloud to switch straight back (evcc's `phaseScaleUpBuffer`).
+UP_MARGIN: float = 1.1
+#: ... held this long (seconds) before switching up: longer than evcc's 60 s, since each switch interrupts the charge.
+UP_DELAY_S: float = 600.0
+#: At most this many switches per plug-in: some cars stop resuming after a few interruptions (evcc #34199).
+MAX_SWITCHES_PER_SESSION: int = 3
+#: At least this long (seconds) between two switches: well clear of a charger's own pause limits (Peblar: three
+#: pauses in ten minutes), and no back-and-forth under passing clouds.
+MIN_BETWEEN_S: float = 900.0
 
 
 # Charger priority between car and battery; also the type of
@@ -157,6 +185,11 @@ SolarReason = Literal[
     # Recovered above `stop_a`: back to `on`.
     "disarming_recover",
     "stop_after_delay",
+    # The stop delay ran out on three phases with a surplus that carries one phase at the minimum: the charge
+    # switches to one phase instead of stopping (`SolarVerdict.switch_phases`).
+    "phase_down",
+    # One phase at its maximum with a surplus for three, held for `UP_DELAY_S`: the charge switches to three.
+    "phase_up",
     # The charge ended without solar (`SolarController.charge_ended`): the car stopped drawing by itself
     # at its own limit, or short of it (tried again after the back-off), or something else ended it.
     "vehicle_full",
@@ -241,6 +274,17 @@ class SolarObservation:
     # Whether a charger with no reading of its own current may start blind, at the minimum current: the
     # caller's judgement that no other charger on the site is about to start or has only just started.
     unmeasured_start_allowed: bool = False
+    # Phase switching (module docstring). Whether this charge may switch between one and three phases: the
+    # charger's setting and its capability, the caller's judgement. Off, nothing below is read.
+    phase_switch_allowed: bool = False
+    # The phases the charge is on now.
+    phases_now: Literal[1, 3] = 3
+    # The most current one phase may take: the charger's maximum on one phase, capped by the site. `None`: no up-switch.
+    one_phase_max_a: float | None = None
+    # Whether the site has room for three phases at the minimum current on every phase (the caller's reckoning).
+    three_phase_room: bool = False
+    # A switch is settling: the charge may show nothing for a while, and no new phase decision is made.
+    phase_switch_settling: bool = False
 
 
 @dataclass(frozen=True, slots=True)
@@ -444,6 +488,10 @@ class SolarVerdict:
     available_w: float | None
     available_a: float | None
     priority_effective: SolarPriority | None
+    # The phases to switch the running charge to, `None` for no switch (module docstring).
+    switch_phases: Literal[1, 3] | None = None
+    # The phases a `start` is made on, where phase switching is allowed; `None`: the charger's own.
+    start_phases: Literal[1, 3] | None = None
 
 
 class SolarController:
@@ -492,6 +540,16 @@ class SolarController:
         self._priority_effective: SolarPriority | None = None
         # The watts one amp is to the car on this tick's phases (`_refresh_breakdown`).
         self._watts_per_a: float | None = None
+        # This tick's surplus before any fuse cap, the mean voltage of the car's phases, and the lowest fuse cap
+        # on them (`None`: no cap), for the phase decisions (`_carries`).
+        self._surplus_w: float | None = None
+        self._mean_voltage_v: float | None = None
+        self._cap_a: float | None = None
+        # Phase switching (module docstring): switches made since the car was plugged in, when the last one was
+        # made, and since when the surplus has wanted three phases.
+        self._phase_switches: int = 0
+        self._last_switch_at: float | None = None
+        self._up_since: float | None = None
         # A one-amp modulation waiting for the surplus to stay past it (`SolarConfig.step_confirm_s`): the
         # current, and since when.
         self._step_pending: tuple[float, float] | None = None
@@ -571,6 +629,10 @@ class SolarController:
         self._credited_start = False
         self._shortfall_since = None
         self._ramp_since = None
+        # The next plug-in has the whole switch budget again.
+        self._phase_switches = 0
+        self._last_switch_at = None
+        self._up_since = None
         return self._verdict("hold", None, "no_car")
 
     def car_drew(self) -> None:
@@ -646,6 +708,7 @@ class SolarController:
         self._disarming_since = None
         self._last_requested_a = requested_a
         self._step_pending = None
+        self._up_since = None
         self._stale_since = None
         self._verify_until = None
         self._credited_start = False
@@ -709,6 +772,7 @@ class SolarController:
         self._credited_start = self._battery_credited()
         self._shortfall_since = None
         self._ramp_since = None
+        self._up_since = None
         return self._verdict("set_current", requested, "start_verifying")
 
     def _stop_taken_over(self, now: float, reason: SolarReason) -> SolarVerdict:
@@ -750,8 +814,8 @@ class SolarController:
 
         self._stale_since = None
         if self._state in ("off", "arming"):
-            return self._handle_off_or_arming(now, available_a)
-        return self._handle_on_or_disarming(now, available_a)
+            return self._handle_off_or_arming(observation, available_a)
+        return self._handle_on_or_disarming(observation, available_a)
 
     @staticmethod
     def _charger_measurement_missing(observation: SolarObservation) -> bool:
@@ -786,6 +850,7 @@ class SolarController:
         when import lasts."""
         now = observation.now
         self._stale_since = None
+        self._up_since = None
         cfg = self._config
         net_grid_w = sum(observation.signed_grid_w[phase] for phase in PHASES)  # type: ignore[misc]
         spare_w = self._spare_w(observation)
@@ -876,7 +941,9 @@ class SolarController:
         car_phases = observation.car_phases
         mean_voltage = breakdown.mean_voltage_v
         available_w = breakdown.available_w + observation.share_adjust_w
+        surplus_w = available_w
         available_a = available_w / (len(car_phases) * mean_voltage)
+        cap_a: float | None = None
         if observation.phase_cap_a is not None:
             caps = [observation.phase_cap_a.get(phase) for phase in car_phases]
             if any(cap is None for cap in caps):
@@ -894,6 +961,9 @@ class SolarController:
         self._available_a = available_a
         self._priority_effective = breakdown.priority_effective
         self._watts_per_a = len(car_phases) * mean_voltage
+        self._surplus_w = surplus_w
+        self._mean_voltage_v = mean_voltage
+        self._cap_a = cap_a
         return available_a
 
     def _handle_no_basis(self, now: float) -> SolarVerdict:
@@ -916,11 +986,16 @@ class SolarController:
             return self._verdict("stop", None, "no_basis_stopped")
         return self._verdict("hold", None, "no_basis_grace")
 
-    def _handle_off_or_arming(self, now: float, available_a: float) -> SolarVerdict:
+    def _handle_off_or_arming(self, observation: SolarObservation, available_a: float) -> SolarVerdict:
+        now = observation.now
         cfg = self._config
+        assert cfg.start_a is not None
         was_arming = self._state == "arming"
+        self._up_since = None
+        # Where phases may switch, one phase at the start minimum is enough to start on (module docstring).
+        allowed = observation.phase_switch_allowed
 
-        if available_a >= cfg.start_a:
+        if available_a >= cfg.start_a or (allowed and self._carries(1, cfg.start_a)):
             if not was_arming:
                 self._arming_since = now
             self._state = "arming"
@@ -935,7 +1010,6 @@ class SolarController:
                 self._arming_since = None
                 # At the start minimum, never at what the surplus seems to allow: the car's draw shows
                 # within `verify_s` whether it is real (module docstring).
-                assert cfg.start_a is not None
                 requested = self._clamp_request(cfg.start_a)
                 self._last_requested_a = requested
                 self._step_pending = None
@@ -943,7 +1017,10 @@ class SolarController:
                 self._credited_start = self._battery_credited()
                 self._shortfall_since = None
                 self._ramp_since = None
-                return self._verdict("start", requested, "start_after_delay")
+                start_phases: Literal[1, 3] | None = None
+                if allowed:
+                    start_phases = 3 if self._carries(3, cfg.start_a) else 1
+                return self._verdict("start", requested, "start_after_delay", start_phases=start_phases)
             reason: SolarReason = "arming_delay" if elapsed < cfg.start_delay_s else "arming_min_off_wait"
             return self._verdict("hold", None, reason)
 
@@ -1006,11 +1083,13 @@ class SolarController:
         elif now - self._shortfall_since >= FALSE_CREDIT_CONFIRM_S:
             return self._false_credit(now)
         # The car's reading has not caught up with the battery's, or the battery is still giving way to the car.
+        self._up_since = None
         self._state = "on"
         self._disarming_since = None
         return self._verdict("hold", None, "start_verifying")
 
-    def _handle_on_or_disarming(self, now: float, available_a: float) -> SolarVerdict:
+    def _handle_on_or_disarming(self, observation: SolarObservation, available_a: float) -> SolarVerdict:
+        now = observation.now
         cfg = self._config
         if self._verify_until is not None:
             short = available_a < cfg.stop_a  # type: ignore[operator]
@@ -1023,6 +1102,7 @@ class SolarController:
                 self._ramp_since = None
                 if available_a >= cfg.stop_a:  # type: ignore[operator]
                     # Held at the start minimum while the car's draw shows the surplus is real.
+                    self._up_since = None
                     self._state = "on"
                     self._disarming_since = None
                     return self._verdict("hold", None, "start_verifying")
@@ -1036,8 +1116,12 @@ class SolarController:
                 self._shortfall_since = None
                 self._ramp_since = None
         was_on = self._state == "on"
+        # On three phases short of the minimum on each, a surplus that carries one phase disarms as well: the
+        # stop delay's timer decides the switch down (module docstring).
+        down = self._down_possible(observation)
 
-        if available_a < cfg.stop_a:
+        if available_a < cfg.stop_a or down:
+            self._up_since = None
             if was_on:
                 self._disarming_since = now
             self._state = "disarming"
@@ -1045,6 +1129,9 @@ class SolarController:
             assert self._on_since is not None
             elapsed = now - self._disarming_since
             min_on_ok = (now - self._on_since) >= cfg.min_on_s
+            if elapsed >= cfg.stop_delay_s and down:
+                # Not a stop: the charge goes on, on one phase, so `min_on_s` does not hold it.
+                return self._switch_phases(now, 1, "phase_down")
             if elapsed >= cfg.stop_delay_s and min_on_ok:
                 self._state = "off"
                 self._last_stop_at = now
@@ -1061,6 +1148,13 @@ class SolarController:
         was_disarming = self._state == "disarming"
         self._state = "on"
         self._disarming_since = None
+        if self._up_wanted(observation):
+            if self._up_since is None:
+                self._up_since = now
+            if now - self._up_since >= UP_DELAY_S and self._switch_spaced(now):
+                return self._switch_phases(now, 3, "phase_up")
+        else:
+            self._up_since = None
         requested = self._clamp_request(available_a)
         if (
             not was_disarming
@@ -1086,6 +1180,65 @@ class SolarController:
             return self._verdict("set_current", requested, "on_modulate")
         return self._verdict("hold", None, "on_steady")
 
+    def _carries(self, phases: int, current_a: float) -> bool:
+        """Whether this tick's surplus carries `phases` phases at `current_a` each, at the voltage of the car's
+        phases, within the fuse cap on them."""
+        if self._surplus_w is None or self._mean_voltage_v is None:
+            return False
+        if self._cap_a is not None and self._cap_a < current_a:
+            return False
+        return self._surplus_w >= phases * current_a * self._mean_voltage_v
+
+    def _switch_spaced(self, now: float) -> bool:
+        """Whether the last switch is at least `MIN_BETWEEN_S` ago (or there was none)."""
+        return self._last_switch_at is None or now - self._last_switch_at >= MIN_BETWEEN_S
+
+    def _may_switch(self, observation: SolarObservation) -> bool:
+        """Whether a phase switch may be decided at all this tick: allowed, nothing settling, budget left."""
+        return (
+            observation.phase_switch_allowed
+            and not observation.phase_switch_settling
+            and self._phase_switches < MAX_SWITCHES_PER_SESSION
+        )
+
+    def _down_possible(self, observation: SolarObservation) -> bool:
+        """On three phases, a surplus short of three at the minimum that carries one, and a switch may be made
+        now: the stop delay's timer runs for a switch to one phase."""
+        cfg = self._config
+        return (
+            self._may_switch(observation)
+            and self._switch_spaced(observation.now)
+            and observation.phases_now == 3
+            and not self._carries(3, cfg.min_current_a)
+            and self._carries(1, cfg.min_current_a)
+        )
+
+    def _up_wanted(self, observation: SolarObservation) -> bool:
+        """On one phase at its maximum, a surplus of `UP_MARGIN` x three phases at the minimum with room on the
+        site for three: the up-switch's delay runs (`MIN_BETWEEN_S` is waited out at its end)."""
+        cfg = self._config
+        one_phase_max_a = observation.one_phase_max_a
+        return (
+            self._may_switch(observation)
+            and observation.phases_now == 1
+            and observation.three_phase_room
+            and one_phase_max_a is not None
+            and self._carries(1, one_phase_max_a)
+            and self._carries(3, UP_MARGIN * cfg.min_current_a)
+        )
+
+    def _switch_phases(self, now: float, phases: Literal[1, 3], reason: SolarReason) -> SolarVerdict:
+        """A phase switch of the running charge, counted against the budget. The charge stays `on`; its next
+        modulation writes what the surplus carries on the new phases."""
+        self._phase_switches += 1
+        self._last_switch_at = now
+        self._up_since = None
+        self._state = "on"
+        self._disarming_since = None
+        self._last_requested_a = None
+        self._step_pending = None
+        return self._verdict("hold", None, reason, switch_phases=phases)
+
     def _clamp_request(self, available_a: float) -> float:
         """Floor to whole amps, then clamp to the charger limits, in that order."""
         cfg = self._config
@@ -1097,6 +1250,9 @@ class SolarController:
         action: SolarAction,
         requested_a: float | None,
         reason: SolarReason,
+        *,
+        switch_phases: Literal[1, 3] | None = None,
+        start_phases: Literal[1, 3] | None = None,
     ) -> SolarVerdict:
         return SolarVerdict(
             action=action,
@@ -1110,4 +1266,6 @@ class SolarController:
             available_w=self._available_w,
             available_a=self._available_a,
             priority_effective=self._priority_effective,
+            switch_phases=switch_phases,
+            start_phases=start_phases,
         )
