@@ -34,7 +34,9 @@ Precedence (first match wins the headline; "add" rows append a fact line)
    and solar_site_incomplete (the phases it runs without, on the total grid power) follow. A charge the
    car ended by itself is solar_vehicle_full (at its own limit) or solar_car_stopped{time} (tried again
    at `time`) in place of solar_waiting_for_sun, and so is an empty charger: solar_no_car_surplus while the surplus
-   would start a car (`start_a`), else solar_no_car. When planning
+   would start a car (`start_a`), else solar_no_car. A solar charge the sun switched to one phase
+   (`ChargingController.switched_phases`) is solar_charging_one_phase{requested_a} in place of solar_charging, so
+   the phase count and the power on one phase are told. When planning
    is waiting on prices (waiting_for_history, waiting_for_publication, buying_before_publication)
    that plan line follows the strategy headline (normal tone, params as in 4), so the wait is
    never hidden by the strategy.
@@ -63,7 +65,7 @@ Precedence (first match wins the headline; "add" rows append a fact line)
      the stop level, or a level read after the stop below the target ends it; a cancel does not). Tone
      normal. `stopped_at` is when the stop was made (null for a record without one); `reading_age_s` is the
      age of the reading at the stop, kept for older clients, never the age of the stop. Never after a
-     headline that says the car charges (solar_charging, charging_now, min_soc_charging, topping_off,
+     headline that says the car charges (solar_charging, solar_charging_one_phase, charging_now, min_soc_charging, topping_off,
      charging_without_prices), nor while the charger draws current: the stop is over then.
      target_unverifiable{reason: no_source|reading_unusable} while a plan with a target is
      enforced and no usable reading exists (no record then); tone notice, the target cannot be
@@ -209,6 +211,9 @@ STATUS_CODES: Final[dict[str, tuple[str, tuple[str, ...]]]] = {
     "plan_cost": (TONE_NORMAL, ("amount_minor", "currency")),
     "plan_distance": (TONE_NORMAL, ("mil",)),
     "solar_charging": (TONE_NORMAL, ("requested_a",)),
+    # A solar charge the sun switched to one phase (`execution/phase_switching.py`), in place of solar_charging:
+    # clients word the phase count and the power on one phase from `requested_a`.
+    "solar_charging_one_phase": (TONE_NORMAL, ("requested_a",)),
     "solar_arming": (TONE_NORMAL, ()),
     "solar_disarming": (TONE_NORMAL, ()),
     "solar_no_reading_stopped": (TONE_NORMAL, ()),
@@ -368,6 +373,8 @@ class SolarFacts:
     available_a: float | None = None
     available_w: float | None = None
     start_a: float | None = None
+    #: The sun switched the charge to one phase (`ChargingController.switched_phases == 1`).
+    one_phase: bool = False
 
 
 @dataclass(frozen=True, slots=True)
@@ -655,7 +662,7 @@ def _solar_lines(solar: SolarFacts, *, charging: bool) -> list[dict[str, Any]]:
 
 def _solar_line(solar: SolarFacts) -> dict[str, Any]:
     if solar.state == "on":
-        return _line("solar_charging", requested_a=solar.requested_a)
+        return _line("solar_charging_one_phase" if solar.one_phase else "solar_charging", requested_a=solar.requested_a)
     if solar.state == "arming":
         return _line("solar_arming")
     if solar.state == "disarming":
@@ -939,7 +946,7 @@ def _vehicle_limit_lines(facts: StatusFacts) -> list[dict[str, Any]]:
 
 #: Headlines that say the car charges now: a target's stop told after one would contradict it.
 CHARGING_HEADLINES: Final = frozenset(
-    {"solar_charging", "charging_now", "min_soc_charging", "topping_off", "charging_without_prices"}
+    {"solar_charging", "solar_charging_one_phase", "charging_now", "min_soc_charging", "topping_off", "charging_without_prices"}
 )
 
 

@@ -334,6 +334,16 @@ CASES: list[tuple[str, StatusFacts, str, list[dict[str, Any]]]] = [
         "normal",
         [{"code": "solar_charging", "params": {"requested_a": 9.0}}],
     ),
+    (
+        "solar charging on the one phase the sun switched to",
+        base(
+            strategy="solar",
+            solar=SolarFacts("on", "surplus", 12.5, one_phase=True),
+            planning=planning("planning_unavailable", "solar_running"),
+        ),
+        "normal",
+        [{"code": "solar_charging_one_phase", "params": {"requested_a": 12.5}}],
+    ),
     ("solar arming", base(strategy="solar", solar=SolarFacts("arming")), "normal", [{"code": "solar_arming", "params": {}}]),
     (
         "solar off, the car ended the charge at its own limit",

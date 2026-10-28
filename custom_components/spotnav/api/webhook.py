@@ -100,6 +100,10 @@ APP_READS_BALANCING_PAUSED: Final = "balancing_paused"
 #: `APP_READS_CAR_ENDED_WAITING` gets the line it already words for a wait for the car's level in its place.
 APP_UNREAD_CAR_ENDED_CODES: Final = ("car_ended_waiting",)
 APP_READS_CAR_ENDED_WAITING: Final = "car_ended_waiting"
+#: A solar charge the sun switched to one phase: an app that does not read `APP_READS_SOLAR_ONE_PHASE` gets the
+#: ordinary solar charging line, with the same current, in its place.
+APP_UNREAD_SOLAR_ONE_PHASE_CODES: Final = ("solar_charging_one_phase",)
+APP_READS_SOLAR_ONE_PHASE: Final = "solar_one_phase"
 #: Waking the car for a reading: an app that does not read `APP_READS_WAKE_FOR_READING` gets vehicle rows without
 #: `wake_for_reading` (its settings row is never offered).
 APP_READS_WAKE_FOR_READING: Final = "wake_for_reading"
@@ -123,6 +127,9 @@ def _status_for_app(line: Any, opted_in: set[str]) -> Any:
         return {"code": "load_balancing_limited", "params": {"limit_a": 0, "phase": None, "cause": params.get("cause")}}
     if code in APP_UNREAD_CAR_ENDED_CODES and APP_READS_CAR_ENDED_WAITING not in opted_in:
         return {"code": "waiting_for_vehicle_update", "params": {}}
+    if code in APP_UNREAD_SOLAR_ONE_PHASE_CODES and APP_READS_SOLAR_ONE_PHASE not in opted_in:
+        params = line.get("params") if isinstance(line.get("params"), dict) else {}
+        return {"code": "solar_charging", "params": {"requested_a": params.get("requested_a")}}
     return line
 
 
@@ -153,7 +160,8 @@ def _for_app(body: dict[str, Any], payload: dict[str, Any]) -> dict[str, Any]:
     status lines, `solar_no_car_status` for the solar lines of an empty charger, `min_soc` for the car's minimum
     charge level: its status line and the vehicle rows' `min_percent`; `auto_periods` for a `max_periods` of
     null; `balancing_paused` for the plan's charge load balancing paused; `car_ended_waiting` for the plan waiting for
-    the car's level after the car ended its charge; `wake_for_reading` for the vehicle rows' `wake_for_reading`); anything else in it, or a `reads` that is not a list, is ignored.
+    the car's level after the car ended its charge; `wake_for_reading` for the vehicle rows' `wake_for_reading`; `solar_one_phase` for a solar charge the sun
+    switched to one phase); anything else in it, or a `reads` that is not a list, is ignored.
     """
     opted_in = _opted_in(payload)
     if isinstance(body.get("vehicles"), list):
