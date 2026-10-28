@@ -57,8 +57,8 @@ _LOGGER = logging.getLogger(__name__)
 
 #: The publication window around an area's expected publication (`AreaEntry.publication`, 13:00 Brussels
 #: when unstated): from just before it to well after it. ENTSO-E's complete documents have been observed
-#: between 12:59:30 and 13:05 Brussels, with one late delivery around 13:30; the relay also publishes an
-#: early incomplete document shortly before noon, which is why "listed" is not "usable" (see
+#: between 12:59:30 and 13:05 Brussels, with one late delivery around 13:30. The relay publishes complete
+#: days only; "listed" is still not "usable" until the day's document has been fetched and accepted here (see
 #: [refresh_interval]). A policy about when to look, never a claim that prices cannot appear outside it.
 PUBLICATION_WINDOW_LEAD: Final = timedelta(minutes=5)
 PUBLICATION_WINDOW_TAIL: Final = timedelta(hours=2)
@@ -292,7 +292,7 @@ def refresh_interval(context: CadenceInput) -> timedelta:
 
     1. A failing area backs off through [BACKOFF_STEPS_SECONDS].
     2. A tomorrow that is not usable yet, inside the area's publication window, polls often. "Not usable",
-       not "not listed", because an early incomplete document is listed but cannot be planned against.
+       not "not listed", because a listed day cannot be planned against until its document is fetched and accepted.
     3. Nothing to wait for (valid index lists tomorrow, document in hand) is polled slowly.
     4. Otherwise the ordinary cadence.
     5. Invalid data raises the floor to [INVALID_POLL_SECONDS], whatever the failure count.
