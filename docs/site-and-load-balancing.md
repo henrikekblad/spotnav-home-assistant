@@ -72,16 +72,20 @@ shown in [Set up SpotNav](setup.md#2-add-a-site-optional). You provide:
 After the basics, SpotNav looks for your grid meter in the entity registry (see
 [Meter detection](#meter-detection-signs-and-estimated-current)). When it finds the meter and
 everything else it needs, it shows a **Site found** summary to confirm; otherwise it shows the
-forms above. A new site is created with its calculation on and active control off.
+forms above. A new site is created with load balancing off. A site always calculates once it has a
+measurement: the calculation only reads, and solar's per-phase fuse caps and the view of what load
+balancing would do depend on it. (An earlier version had a switch for the calculation; a site stored with
+it off calculates all the same, and the switch is gone from its settings.)
 
 A charger added later is offered to the site when exactly one site exists, if SpotNav can tell how
 the charger is wired (see [Set up SpotNav](setup.md#add-the-charger-to-an-existing-site)).
 
 Everything can be changed later under the site's **Configure** and, for entities, in the card's
-settings popover. In **Configure** the first step holds the basics and a tick box, **Change
-measurement and phase wiring**. Unticked, saving keeps the stored measurement and wiring; the step
-opens anyway when the measurement mode changed, when chargers were added or removed, or when the
-measurement is incomplete. A site with nothing configured yet reports "not configured" and does
+settings popover. In **Configure** the first page, **Site settings**, holds the basics, load balancing
+and solar, each field with a line on what it does, and ends with the switch **Next: change meter and
+phases**. Left off, saving keeps the stored measurement and wiring; the measurement step opens anyway
+when the measurement mode changed, when chargers were added or removed, or when the measurement is
+incomplete. A site with nothing configured yet reports "not configured" and does
 nothing.
 
 ## What the site calculates
@@ -100,8 +104,7 @@ whole result is reported as invalid rather than corrected silently. Results are 
 sensors and in [diagnostics](troubleshooting.md):
 
 - **Capacity state** on the site: **Measuring** when the site's measurement is healthy, otherwise why
-  not (**Not set up**, **Measurement missing**, **Measurement stale**, **Measurement invalid**,
-  **Disabled**). Its **Activity** attribute (`site_activity`) says it in a word: **Measuring, active load
+  not (**Not set up**, **Measurement missing**, **Measurement stale**, **Measurement invalid**). Its **Activity** attribute (`site_activity`) says it in a word: **Measuring, active load
   balancing off**, **Measuring, active load balancing on** or **Not measuring**.
 - **Proposed current** per charger, with the charger's share in its **State** attribute: **Fits**,
   **Limited** (lowered to the headroom), **Below the minimum current** (the headroom is too small for the
@@ -110,7 +113,7 @@ sensors and in [diagnostics](troubleshooting.md):
 
 ## Active load balancing
 
-By default the site only calculates. Turn on **Active load balancing** (site options, or in the
+By default the site only calculates. Turn on **Load balancing** (the site's **Configure**, or in the
 card by an administrator) to let SpotNav lower a charger's current to keep the site under its fuse.
 It is best effort and is not a protective device. Turning it off gives back any current it had lowered.
 
@@ -230,7 +233,8 @@ It is best effort and is not a protective device. Turning it off gives back any 
   other writer until the charger draws it (at most two minutes). On a direct site a raise is judged on the measured
   current as it is (export on a phase is not counted as room), and a lowering also stays within the
   room the phase has, since a current with a sign does not tell how much of it is active power.
-- **Yield-verified stepping** (opt-in) is for sites with a load that gives way when the car
+- **Yield-verified stepping** (**Car may take the home battery's share** in the site's settings, off by
+  default) is for sites with a load that gives way when the car
   draws more, for example a house battery holding the grid at its setpoint. SpotNav then judges a
   step by whether it moves the site current, within a hard ceiling. Until the battery's yield is
   verified on the site, the ceiling is the main fuse itself: no step or probe takes a phase above the
