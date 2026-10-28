@@ -12,6 +12,8 @@ keeps one `AutoPhaseTracker` per such charger.
   passes for a measured phase where the site shows no such load).
 * A new phase counts once it has held for `AUTO_PHASE_SETTLE_S`; until then the charger is reckoned on the
   worst phase. A reading in transition (two phases drawing) keeps the phase it had for at most that long.
+* While the charger's phase switch settles (a charger the sun forced to one phase, `execution/phase_switching.py`)
+  no new phase is taken: what it was reckoned on stays, and the reading in the switch's gap decides nothing.
 * Anything else (idle, before a start, a source that is not set, a stale or missing reading, a reading the
   site does not bear out) is no phase: the caller reckons the charger on the phase with the least headroom
   (`site_capacity.resolve_worst_case_phases`), never on a guess.
@@ -89,8 +91,12 @@ class AutoPhaseTracker:
     _candidate_since: float = 0.0
     _ambiguous_since: float | None = None
 
-    def observe(self, drawn: DrawnPhase, now: float) -> PhaseName | None:
-        """The phase to reckon the charger on, or `None` for the worst phase."""
+    def observe(self, drawn: DrawnPhase, now: float, *, settling: bool = False) -> PhaseName | None:
+        """The phase to reckon the charger on, or `None` for the worst phase. `settling`: a phase switch settles, and
+        the reading decides nothing (no new phase, none forgotten)."""
+        if settling:
+            self._candidate = None
+            return self.current
         self.current = self._decide(drawn, now)
         return self.current
 

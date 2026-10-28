@@ -95,9 +95,11 @@ a switch followed by a stop is two interruptions for nothing). On one phase at i
 (`SolarObservation.one_phase_max_a`), a surplus of `UP_MARGIN` x three phases at the minimum, with room on
 the site for that (`SolarObservation.three_phase_room`), held for `UP_DELAY_S`, switches to three. The band
 between three phases at the minimum and one phase at its maximum plus the margin keeps it from flapping. At
-most `MAX_SWITCHES_PER_SESSION` switches per plug-in (counted afresh once the car is gone, `car_absent`), at
-least `MIN_BETWEEN_S` apart, and none while the last one settles (`phase_switch_settling`); beyond that the
-charge stays on the phases it has, by the rules without switching. A start's phase choice is no switch: the
+most `MAX_SWITCHES_PER_SESSION` switches per plug-in (counted afresh with a new plug-in, `new_plug_in`, never on
+a passing reading of no car), at least `MIN_BETWEEN_S` apart, and none while the last one settles
+(`phase_switch_settling`); beyond that the charge stays on the phases it has, by the rules without switching.
+While a switch settles the charger interrupts the charge itself: a start's verification and a battery credit's
+judgement do not read that gap as a surplus that was not there. A start's phase choice is no switch: the
 charge has not begun, so nothing is interrupted.
 
 Freshness: a `None` where a reading is needed means no basis this tick. From
@@ -629,11 +631,21 @@ class SolarController:
         self._credited_start = False
         self._shortfall_since = None
         self._ramp_since = None
-        # The next plug-in has the whole switch budget again.
+        # The switch budget is the plug-in's (`new_plug_in`): a passing reading of no car does not refill it.
+        self._up_since = None
+        return self._verdict("hold", None, "no_car")
+
+    def new_plug_in(self) -> None:
+        """A new plug-in: the whole phase-switch budget again (module docstring)."""
         self._phase_switches = 0
         self._last_switch_at = None
         self._up_since = None
-        return self._verdict("hold", None, "no_car")
+
+    def seed_phase_switches(self, now: float, switches: int, since_last_s: float | None) -> None:
+        """Restore the plug-in's phase-switch budget the caller kept (a restart, a rebuilt controller): the switches
+        made, and how long ago the last one was (`None`: none)."""
+        self._phase_switches = max(0, switches)
+        self._last_switch_at = None if since_last_s is None else now - max(0.0, since_last_s)
 
     def car_drew(self) -> None:
         """The car took a charge again: the next one it ends waits the shortest retry again."""
@@ -1095,6 +1107,11 @@ class SolarController:
             short = available_a < cfg.stop_a  # type: ignore[operator]
             # A judgment whose shortfall began inside the verification is finished after it.
             judging = self._credited_start and short and (now < self._verify_until or self._shortfall_since is not None)
+            if observation.phase_switch_settling:
+                # The charger interrupts the charge for a phase switch: the car's gap says nothing about the credit.
+                judging = False
+                self._shortfall_since = None
+                self._ramp_since = None
             if judging:
                 return self._judge_credit(now)
             if now < self._verify_until:

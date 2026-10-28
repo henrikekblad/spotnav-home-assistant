@@ -9,7 +9,8 @@ the plan's charge control on, it draws nothing for `PLAN_CAR_IDLE_S` in a row: b
 Not the car: load balancing pausing the charge, the charger's own scheduler or load balancer holding it (or its
 connector saying `SuspendedEVSE`, in any case: a charger other than OCPP reports its status lower-cased), a Start not
 yet answered, a control that is off, a charge that is not the plan's, and a car whose drawing cannot be read at all.
-Each of these starts the clock again. Before a charge has drawn at all since its start, only the car's own refusal
+A phase switch that settles (`phase_switching.SETTLE_S`: the charger interrupts the charge itself) is not the car
+either. Each of these starts the clock again. Before a charge has drawn at all since its start, only the car's own refusal
 counts (its status says `SuspendedEV`, or the profile's value for it: a full car refusing at once): a start the charger
 did not act on (a switch that reads on while the charger idles, `awaiting_start`, `ready`, no status) is no charge the
 car ended, and the start is sent again instead (`START_RETRY_AFTER_S`).
@@ -58,6 +59,7 @@ class PlanChargeWatch:
         held: bool,
         balancing_paused: bool,
         start_pending: bool,
+        phase_switch_settling: bool = False,
     ) -> bool:
         """One look at the plan's charge. `True` once per stretch of idling: the car ended it by itself."""
         status = None if connector_status is None else connector_status.lower()
@@ -73,6 +75,7 @@ class PlanChargeWatch:
             or balancing_paused
             or held
             or start_pending
+            or phase_switch_settling
             or status == SUSPENDED_EVSE.lower()
             or not idle
             # Before the charge has drawn only the car's own refusal counts (`SuspendedEV`, or the profile's value
